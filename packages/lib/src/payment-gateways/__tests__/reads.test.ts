@@ -124,6 +124,46 @@ describe('listPaymentGateways', () => {
     expect(result.value[0]?.status).toBe('active')
     expect(result.value[0]?.feeGlAccountId).toBeNull()
   })
+
+  // ── brief 26 §4 and §10: the two fields migration 156 adds ────────────────
+
+  it('reads feeTreatment as netted on a record that predates the field', async () => {
+    // 🛑 The direction that matters. An org short of migration 156 holds no
+    // option row here, and `netted` is exactly the entry `buildPayoutEntry` has
+    // always produced - so its payouts keep their fee leg. Coercing the other
+    // way would silently drop the fee leg off every unanswered rail.
+    state.script.push([{ id: 'pg_1', createdAt: null, updatedAt: null }])
+    state.script.push([
+      { entityId: 'pg_1', fieldId: 'payment_gateway_name', valueText: 'Affirm' },
+      { entityId: 'pg_1', fieldId: 'payment_gateway_clearing_account', valueText: 'acct_affirm' },
+    ])
+
+    const result = await listPaymentGateways(fakeDb(), ORG)
+    if (!result.isOk()) throw result.error
+    expect(result.value[0]?.feeTreatment).toBe('netted')
+    expect(result.value[0]?.lastFeeBookedAt).toBeNull()
+  })
+
+  it('reads a stamped billed treatment and a last-fee date off the option and date columns', async () => {
+    state.script.push([{ id: 'pg_1', createdAt: null, updatedAt: null }])
+    state.script.push([
+      { entityId: 'pg_1', fieldId: 'payment_gateway_name', valueText: 'Authorize.Net' },
+      { entityId: 'pg_1', fieldId: 'payment_gateway_clearing_account', valueText: 'acct_authnet' },
+      // 🛑 `optionId`, not `valueText` - the column the CRUD handler writes a
+      // select into and the one migration 156 stamps.
+      { entityId: 'pg_1', fieldId: 'payment_gateway_fee_treatment', optionId: 'billed' },
+      {
+        entityId: 'pg_1',
+        fieldId: 'payment_gateway_last_fee_booked_at',
+        valueDate: '2026-07-14T00:00:00.000Z',
+      },
+    ])
+
+    const result = await listPaymentGateways(fakeDb(), ORG)
+    if (!result.isOk()) throw result.error
+    expect(result.value[0]?.feeTreatment).toBe('billed')
+    expect(result.value[0]?.lastFeeBookedAt).toBe('2026-07-14')
+  })
 })
 
 describe('getPaymentGateway', () => {

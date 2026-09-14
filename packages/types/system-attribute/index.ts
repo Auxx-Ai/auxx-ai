@@ -927,8 +927,15 @@ export const SYSTEM_ATTRIBUTES = [
   'payment_gateway_clearing_account',
   'payment_gateway_fee_account',
   'payment_gateway_settlement_source', // stripe | shopify_payments | manual
+  // netted | billed (brief 26 §4). Whether the processor withholds its cut from
+  // the deposit or bills for it later - two structurally different rails, and
+  // NOT the same question `payment_gateway_settlement_source` answers.
+  'payment_gateway_fee_treatment',
   'payment_gateway_status', // active | closed
   'payment_gateway_last_settlement_at',
+  // Informational, derived: when a fee was last booked to this rail's own fee
+  // account. The close console reads it as a date, never as an alarm (26 §6).
+  'payment_gateway_last_fee_booked_at',
 
   // Connector-owned (raw). The feed may correct any of these.
   'bank_transaction_external_id', // the dedupe key, across BOTH the feed and file import

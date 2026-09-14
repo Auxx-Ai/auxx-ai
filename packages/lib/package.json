@@ -1048,6 +1048,12 @@
       "import": "./dist/payment-gateways/client.mjs",
       "default": "./src/payment-gateways/client.ts"
     },
+    "./payment-gateways/rail-catalogue": {
+      "types": "./src/payment-gateways/rail-catalogue.ts",
+      "source": "./src/payment-gateways/rail-catalogue.ts",
+      "import": "./dist/payment-gateways/rail-catalogue.mjs",
+      "default": "./src/payment-gateways/rail-catalogue.ts"
+    },
     "./permissions": {
       "types": "./src/permissions/index.ts",
       "source": "./src/permissions/index.ts",

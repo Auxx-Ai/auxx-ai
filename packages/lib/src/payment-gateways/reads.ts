@@ -13,7 +13,8 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
 import { UnprocessableEntityError } from '../errors'
@@ -21,10 +22,12 @@ import type { FieldOptions } from '../field-values/converters'
 import { buildOptionIndex, resolveOptionId } from '../resources/registry/option-helpers'
 import { toRecordId } from '../resources/resource-id'
 import {
+  type GatewayHandleCensusRow,
   normaliseGatewayHandle,
   type ObservedGatewayHandle,
   type PaymentGatewayRow,
   RESERVED_GATEWAY_HANDLES,
+  resolvePaymentGatewayFeeTreatment,
   resolvePaymentGatewaySettlementSource,
   resolvePaymentGatewayStatus,
 } from './client'
@@ -37,8 +40,10 @@ const PAYMENT_GATEWAY_ATTRIBUTES = [
   'payment_gateway_clearing_account',
   'payment_gateway_fee_account',
   'payment_gateway_settlement_source',
+  'payment_gateway_fee_treatment',
   'payment_gateway_status',
   'payment_gateway_last_settlement_at',
+  'payment_gateway_last_fee_booked_at',
 ] as const
 
 type PaymentGatewayAttribute = (typeof PAYMENT_GATEWAY_ATTRIBUTES)[number]
@@ -205,7 +210,8 @@ export async function getPaymentGateway(
  * answered by the debit fork before any route is consulted, so reporting them
  * as unclaimed would be noise that never goes away.
  *
- * Sorted by handle. No order counts - see {@link ObservedGatewayHandle}.
+ * Sorted by handle. No order counts - see {@link ObservedGatewayHandle}, and
+ * {@link listGatewayHandleCensus} for the setup-screen read that pays for them.
  */
 export async function listObservedGatewayHandles(
   db: Database,
@@ -233,28 +239,14 @@ export async function listObservedGatewayHandles(
         )
       if (rows.length === 0) return []
 
-      // Closed rails included: a closed gateway still routes its own history
-      // (`toGatewayRoutes`), so its handles are claimed, not orphaned.
-      const gateways = await listPaymentGateways(db, organizationId, { includeArchived: true })
-      if (gateways.isErr()) throw gateways.error
-      const claimedBy = new Map<string, string>()
-      for (const gateway of gateways.value) {
-        for (const handle of gateway.handles) {
-          const key = normaliseGatewayHandle(handle)
-          if (key && !claimedBy.has(key)) claimedBy.set(key, gateway.id)
-        }
-      }
-
-      const options = buildOptionIndex(((field.options ?? {}) as FieldOptions).options ?? [])
-      const reserved = new Set(RESERVED_GATEWAY_HANDLES)
+      const claimedBy = await readHandleClaims(db, organizationId)
+      const readHandle = handleReader(field.options)
       const seen = new Map<string, ObservedGatewayHandle>()
       for (const row of rows) {
-        const stored = row.optionId ?? row.valueText
-        if (!stored) continue
-        const resolved = resolveOptionId(stored, options)
-        const handle = (resolved.status === 'known' ? resolved.label : resolved.raw).trim()
+        const handle = readHandle(row)
+        if (!handle) continue
         const key = normaliseGatewayHandle(handle)
-        if (!key || reserved.has(key) || seen.has(key)) continue
+        if (seen.has(key)) continue
         seen.set(key, { handle, claimedBy: claimedBy.get(key) ?? null })
       }
 
@@ -263,6 +255,176 @@ export async function listObservedGatewayHandles(
     "Failed to read the gateway handles on this organization's orders",
     { organizationId }
   )
+}
+
+/**
+ * {@link listObservedGatewayHandles}, plus the order count and last-seen date
+ * the setup wizard's rail page needs
+ * (`plans/accounting/tasks/26-a-clearing-account-per-rail.md` §8 item 1).
+ *
+ * ## 🛑 A SECOND export, not a widening of the first
+ *
+ * The settings list reads the cheap `selectDistinct` above and must keep
+ * reading it. The counts here are a `GROUP BY` on the same rows, but the
+ * last-seen date is a second join to the order's `placedAt` value - and that is
+ * a cost the "is this handle routed?" question on the settings screen should
+ * not pay on every render. See {@link GatewayHandleCensusRow} for why a setup
+ * screen genuinely needs both numbers where the settings list genuinely does
+ * not.
+ *
+ * ⚠️ **Rows merge on the NORMALISED handle**, so `'Affirm'` and `'affirm'` are
+ * one census row whose count is the sum and whose date is the later of the two.
+ * `authorize_net` and `authorize.net` do NOT merge here - they are different
+ * strings under the same normaliser, and grouping them is a claim about the
+ * RAIL rather than about the handle. §8 item 2's merge is the caller's, made
+ * against the suggestion catalogue.
+ *
+ * ⚠️ An org with no `order_placed_at` field provisioned gets every
+ * `lastSeenAt` as null rather than a refusal: a missing date field is a reason
+ * to say less on a setup page, never a reason to hide the census.
+ */
+export async function listGatewayHandleCensus(
+  db: Database,
+  organizationId: string
+): Promise<Result<GatewayHandleCensusRow[], Error>> {
+  return guard(
+    async () => {
+      const fields = await getOrgCache()
+        .from(organizationId, 'customFields')
+        .bySystemAttributes(['order_payment_gateways', 'order_placed_at'])
+      const field = fields.order_payment_gateways
+      if (!field) return []
+      const placedAtFieldId = fields.order_placed_at?.id ?? null
+
+      const placedAt = alias(schema.FieldValue, 'order_placed_at_value')
+      const rows = await db
+        .select({
+          optionId: schema.FieldValue.optionId,
+          valueText: schema.FieldValue.valueText,
+          // `::int` because `count` is a bigint and the driver hands those back
+          // as strings; `to_char(... at time zone 'UTC')` because `max` over a
+          // `timestamptz` bypasses Drizzle's own column mapping and would
+          // otherwise arrive as whatever the driver felt like. Both are read
+          // back through `Number`/a plain string below, never trusted raw.
+          orderCount: sql<number>`count(distinct ${schema.FieldValue.entityId})::int`,
+          lastSeenAt: sql<
+            string | null
+          >`to_char(max(${placedAt.valueDate}) at time zone 'UTC', 'YYYY-MM-DD')`,
+        })
+        .from(schema.FieldValue)
+        .leftJoin(
+          placedAt,
+          placedAtFieldId
+            ? and(
+                eq(placedAt.entityId, schema.FieldValue.entityId),
+                eq(placedAt.organizationId, schema.FieldValue.organizationId),
+                eq(placedAt.fieldId, placedAtFieldId)
+              )
+            : sql`false`
+        )
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, organizationId),
+            eq(schema.FieldValue.fieldId, field.id)
+          )
+        )
+        .groupBy(schema.FieldValue.optionId, schema.FieldValue.valueText)
+      if (rows.length === 0) return []
+
+      const claimedBy = await readHandleClaims(db, organizationId)
+      const readHandle = handleReader(field.options)
+      const merged = new Map<string, GatewayHandleCensusRow>()
+      for (const row of rows) {
+        const handle = readHandle(row)
+        if (!handle) continue
+        const key = normaliseGatewayHandle(handle)
+        const orderCount = Number(row.orderCount) || 0
+        const existing = merged.get(key)
+        if (!existing) {
+          merged.set(key, {
+            handle,
+            claimedBy: claimedBy.get(key) ?? null,
+            orderCount,
+            lastSeenAt: row.lastSeenAt ?? null,
+          })
+          continue
+        }
+        existing.orderCount += orderCount
+        // String comparison is a date comparison for `YYYY-MM-DD`.
+        if (row.lastSeenAt && (!existing.lastSeenAt || row.lastSeenAt > existing.lastSeenAt)) {
+          existing.lastSeenAt = row.lastSeenAt
+        }
+      }
+
+      // Busiest rail first: on a setup screen the rail carrying the history is
+      // the one whose account matters most, and alphabetical buries it.
+      return [...merged.values()].sort(
+        (a, b) => b.orderCount - a.orderCount || a.handle.localeCompare(b.handle)
+      )
+    },
+    "Failed to read the gateway handle census on this organization's orders",
+    { organizationId }
+  )
+}
+
+/**
+ * Normalised handle -> the `payment_gateway` id claiming it.
+ *
+ * Closed rails included: a closed gateway still routes its own history
+ * (`toGatewayRoutes`), so its handles are claimed, not orphaned.
+ *
+ * 🛑 Shared by both census reads deliberately. Two copies of "who claims this
+ * handle" that drifted would let one screen report a handle as unrouted while
+ * the other reported it routed, over the same database.
+ */
+async function readHandleClaims(
+  db: Database,
+  organizationId: string
+): Promise<Map<string, string>> {
+  const gateways = await listPaymentGateways(db, organizationId, { includeArchived: true })
+  if (gateways.isErr()) throw gateways.error
+  const claimedBy = new Map<string, string>()
+  for (const gateway of gateways.value) {
+    for (const handle of gateway.handles) {
+      const key = normaliseGatewayHandle(handle)
+      if (key && !claimedBy.has(key)) claimedBy.set(key, gateway.id)
+    }
+  }
+  return claimedBy
+}
+
+/**
+ * Turn one stored `order_payment_gateways` value into the RAW handle a person
+ * should see, or `''` for a value no census may report.
+ *
+ * Every value goes through {@link resolveOptionId} against the field's own
+ * option list, exactly as `readOrderFacts` (`money/fulfillment-posting/reads.ts`)
+ * does: a free-text tag is written with its own text AS the `optionId`, and the
+ * connector-provisioned case puts a real option key there instead. Reading
+ * `valueText` alone silently misses every order whose handle resolved to an
+ * option row.
+ *
+ * {@link RESERVED_GATEWAY_HANDLES} answer to `''`: `manual` and `bogus` are
+ * settled by the debit fork before any route is consulted, so reporting them as
+ * unclaimed would be noise that never goes away.
+ *
+ * 🛑 Shared by both census reads, same argument as {@link readHandleClaims} -
+ * two resolvers that disagreed would offer a handle on one screen that the
+ * other screen cannot see.
+ */
+function handleReader(
+  fieldOptions: unknown
+): (row: { optionId: string | null; valueText: string | null }) => string {
+  const options = buildOptionIndex(((fieldOptions ?? {}) as FieldOptions).options ?? [])
+  const reserved = new Set(RESERVED_GATEWAY_HANDLES)
+  return (row) => {
+    const stored = row.optionId ?? row.valueText
+    if (!stored) return ''
+    const resolved = resolveOptionId(stored, options)
+    const handle = (resolved.status === 'known' ? resolved.label : resolved.raw).trim()
+    const key = normaliseGatewayHandle(handle)
+    return !key || reserved.has(key) ? '' : handle
+  }
 }
 
 /**
@@ -330,6 +492,7 @@ async function hydratePaymentGateways(
 
   return page.map((row) => {
     const lastSettlementAt = readOne(row.id, 'payment_gateway_last_settlement_at')?.valueDate
+    const lastFeeBookedAt = readOne(row.id, 'payment_gateway_last_fee_booked_at')?.valueDate
     return {
       id: row.id,
       recordId: toRecordId(ctx.paymentGatewayDefId, row.id),
@@ -342,8 +505,16 @@ async function hydratePaymentGateways(
       settlementSource: resolvePaymentGatewaySettlementSource(
         readOne(row.id, 'payment_gateway_settlement_source')?.optionId
       ),
+      // 🛑 An org short of migration 156 has no option row here, and
+      // `resolvePaymentGatewayFeeTreatment` answers `netted` for it - which is
+      // exactly the entry `buildPayoutEntry` has always produced. Defaulting the
+      // other way would silently drop the fee leg off every unanswered rail.
+      feeTreatment: resolvePaymentGatewayFeeTreatment(
+        readOne(row.id, 'payment_gateway_fee_treatment')?.optionId
+      ),
       status: resolvePaymentGatewayStatus(readOne(row.id, 'payment_gateway_status')?.optionId),
       lastSettlementAt: lastSettlementAt ? lastSettlementAt.slice(0, 10) : null,
+      lastFeeBookedAt: lastFeeBookedAt ? lastFeeBookedAt.slice(0, 10) : null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     } satisfies PaymentGatewayRow

@@ -510,6 +510,61 @@ const CARD_RAIL_ACCOUNTS: readonly DefaultChartAccount[] = [
   },
 ]
 
+/**
+ * A contiguous range of account codes a new account may be numbered into.
+ *
+ * Declared here rather than in the allocator because a band is CHART data - it
+ * says where in this default numbering a new account of a given kind belongs,
+ * and it is only meaningful beside the accounts it extends.
+ */
+export interface AccountCodeBand {
+  /** Inclusive. */
+  start: number
+  /** Inclusive. */
+  end: number
+  /** Named in the refusal when the band is full. */
+  label: string
+}
+
+/**
+ * Where a per-rail CLEARING account is numbered (brief 26 §7.1).
+ *
+ * `1200 Card Clearing` is the first member and the one every unrouted gateway
+ * still falls back to; a rail that earns its own account (§2 - the grain is the
+ * settlement stream, so a rail auxx can reconcile independently gets one) takes
+ * the next free code above it. Fifty slots, which is more rails than any one
+ * merchant has ever had.
+ *
+ * 🛑 The accounts minted into this band carry **no role** (§7.3). `1200`'s
+ * `clearing_card` is the only role there will ever be here: `clearing_affirm`
+ * was deleted on 2026-09-10 because a role must not name a vendor, and the mint
+ * path deliberately offers no way to add one back.
+ */
+export const CLEARING_ACCOUNT_CODE_BAND: AccountCodeBand = {
+  start: 1200,
+  end: 1249,
+  label: 'asset clearing (1200-1249)',
+}
+
+/**
+ * Where a per-rail MERCHANT FEE account is numbered (brief 26 §7.1).
+ *
+ * `6100 Merchant Fees - Cards` is the first member and the fallback a `netted`
+ * rail books into by default (§5): its fee is booked automatically inside every
+ * payout entry, so a dedicated account buys only chart bloat. A `billed` rail
+ * mints its own, because its fees arrive weeks later as one ACH debit and
+ * "has this rail billed us this month" is unanswerable from a shared account.
+ *
+ * ⚠️ `6090 Bank Charges` sits directly below the band and is core, not a rail
+ * fee - what the BANK charges for the account itself. The band starts at 6100
+ * so the two never collide.
+ */
+export const MERCHANT_FEE_ACCOUNT_CODE_BAND: AccountCodeBand = {
+  start: 6100,
+  end: 6149,
+  label: 'merchant fees (6100-6149)',
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // prepayments: deposits and deferred revenue (16 §1.4)
 // ─────────────────────────────────────────────────────────────────────────────

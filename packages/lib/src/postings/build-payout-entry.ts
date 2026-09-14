@@ -8,8 +8,9 @@
  *
  * ```
  *   Dr <the settlement's own bank account>   the whole deposit that reached the bank
- *   Dr payment_processing_fees               fees withheld on the RECOGNISED charges
- *       Cr clearing_card                           RECOGNISED gross
+ *   Dr <the gateway's fee account, or payment_processing_fees>
+ *                                            fees withheld on the RECOGNISED charges
+ *       Cr <the gateway's clearing account, or clearing_card>   RECOGNISED gross
  *       Cr unidentified_receipts                   the unrecognised remainder, net
  * ```
  *
@@ -20,6 +21,22 @@
  * batch therefore leaves the clearing account at zero, and a non-zero balance
  * is a list of sales the gateway has not paid out yet - which is a useful
  * control on its own.
+ *
+ * ## 🛑 A clearing account is not a role either (brief 26 §3)
+ *
+ * The bank-account leg below was the precedent and the other two followed it on
+ * 2026-09-14. A fulfillment debits the gateway record's clearing account BY ID
+ * (`resolveFulfillmentDebit`), so a payout crediting the `clearing_card` ROLE
+ * relieves a different account the moment any rail is routed to its own: both
+ * accounts drift forever, in balanced entries nothing complains about. So
+ * {@link BuildPayoutEntryInput.clearingGlAccountId} and
+ * {@link BuildPayoutEntryInput.feeGlAccountId} name the accounts when the caller
+ * resolved the payout's gateway, and the roles are the fallback for an org that
+ * has no `payment_gateway` record at all - which is bit for bit what it was.
+ *
+ * And {@link BuildPayoutEntryInput.feeTreatment} decides whether there is a fee
+ * leg AT ALL: a `billed` rail deposits gross and invoices for its fees weeks
+ * later (§4), so `gross === net` is the expected arithmetic there.
  *
  * ## 🛑 A bank account is not a role (brief 13 §2)
  *
@@ -96,6 +113,7 @@
  */
 
 import { UnprocessableEntityError } from '../errors'
+import type { PaymentGatewayFeeTreatmentValue } from '../payment-gateways/client'
 import { ACCOUNT_ROLES, type AccountRole, buildEntry } from './build-entry'
 import { DOC_NUMBER_MAX_LENGTH } from './doc-number'
 import type { BuiltEntry, GlPostingLineInput } from './types'
@@ -120,6 +138,14 @@ export const PAYOUT_SOURCE_TYPE = 'payout'
  * structural rather than a name left off a list: an id-routed debit is not
  * `clearing_card`, and `clearing_card` is the only thing here. Each such rail
  * clears when a settlement feed for it exists, through its own entry.
+ *
+ * ⚠️ Since brief 26 §3 this is the FALLBACK guard, not the vocabulary. A caller
+ * that resolved the payout's `payment_gateway` record passes
+ * {@link BuildPayoutEntryInput.clearingGlAccountId} and the credit leg names
+ * that account by id, exactly as the bank-account debit already does; the role
+ * is what an org with no record still gets. `clearingRole` is checked either
+ * way, because a caller that names a nonsense role is wrong about something
+ * whether or not it also passed an id.
  */
 export const PAYOUT_CLEARING_ROLES: readonly AccountRole[] = [ACCOUNT_ROLES.CLEARING_CARD]
 
@@ -169,8 +195,48 @@ export interface BuildPayoutEntryInput {
    * matched - says nothing rather than passing a zero.
    */
   unrecognisedNetMinor?: number
-  /** Which clearing account this payout drains. See the file header on Affirm. */
+  /**
+   * Which clearing account this payout drains BY ROLE, when nothing resolved an
+   * id. See the file header on Affirm, and {@link PAYOUT_CLEARING_ROLES}.
+   *
+   * ⚠️ Still validated when {@link clearingGlAccountId} is given. It is then
+   * unused, and a caller naming a role that is not a clearing account is wrong
+   * about something either way.
+   */
   clearingRole: AccountRole
+  /**
+   * The `gl_account` id of the `payment_gateway` record this payout settles,
+   * resolved by the caller (`money/payouts/sync.ts`). When present the credit
+   * leg names this account; when absent it falls back to {@link clearingRole},
+   * bit for bit as before (brief 26 §3).
+   *
+   * 🔑 **This is what makes the debit and the credit meet.** A fulfillment
+   * debits the gateway record's clearing account BY ID
+   * (`resolveFulfillmentDebit`), so a payout crediting the `clearing_card` ROLE
+   * relieves a different account the moment any rail is routed to its own - and
+   * both accounts then drift forever, in balanced entries nothing complains
+   * about.
+   */
+  clearingGlAccountId?: string
+  /**
+   * The `gl_account` id the resolved gateway withholds its fee into, or absent
+   * for the `payment_processing_fees` role fallback. Same id-over-role shape as
+   * {@link clearingGlAccountId}; §5's netted default is deliberately the shared
+   * fallback account, so most netted rails pass nothing here.
+   */
+  feeGlAccountId?: string
+  /**
+   * How the resolved gateway charges for itself (brief 26 §4). Defaults to
+   * `netted`, which is what this builder has always assumed.
+   *
+   * 🛑 **`billed` drops the fee leg entirely.** A traditional acquirer on
+   * statement billing deposits GROSS and invoices for the fees weeks later, so
+   * a fee leg inside the settlement entry is simply wrong: it would debit an
+   * expense the deposit never carried and leave the clearing account short by
+   * the same amount. `gross === net` is then the EXPECTED arithmetic rather than
+   * a mis-read payout.
+   */
+  feeTreatment?: PaymentGatewayFeeTreatmentValue
   /** `YYYY-MM-DD`. The date the money reached the bank. */
   paidAt: string
   memo?: string
@@ -209,13 +275,16 @@ function assertMinor(value: number, label: string, payoutNumber: string): number
  * account that can never reach zero for reasons nobody can reconstruct.
  *
  * @throws {UnprocessableEntityError} on a fractional or negative amount, an
- *   arithmetic disagreement, an over-long payout number, a missing
- *   `bankAccountGlAccountId`, or a `clearingRole` that is not a clearing
- *   account.
+ *   arithmetic disagreement, a withheld fee on a `billed` rail, an over-long
+ *   payout number, a missing `bankAccountGlAccountId`, or a `clearingRole` that
+ *   is not a clearing account.
  */
 export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry {
   const { payoutId, payoutNumber, clearingRole, paidAt, memo } = input
   const bankAccountGlAccountId = input.bankAccountGlAccountId?.trim()
+  const clearingGlAccountId = input.clearingGlAccountId?.trim()
+  const feeGlAccountId = input.feeGlAccountId?.trim()
+  const feeTreatment = input.feeTreatment ?? 'netted'
 
   const number = payoutNumber.trim()
   if (!number) {
@@ -286,6 +355,19 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       { payoutNumber: number, unrecognisedNetMinor: String(unrecognisedNetMinor) }
     )
   }
+  // 🛑 A billed rail's deposit is GROSS: the processor bills for its cut weeks
+  // later, so a settlement that reports a withheld fee is describing a netted
+  // rail and this record says otherwise. Refusing names the disagreement;
+  // dropping the fee silently would leave the clearing account short by it
+  // forever, in an entry that balances.
+  if (feeTreatment === 'billed' && feesMinor !== 0) {
+    throw new UnprocessableEntityError(
+      `Payout ${number} reports ${feesMinor} of withheld fees, but its gateway bills its fees ` +
+        'separately, so the deposit should be gross. Either the payout was mis-read or the ' +
+        "gateway's fee treatment should be netted.",
+      { payoutNumber: number, feesMinor: String(feesMinor), feeTreatment }
+    )
+  }
   if (netMinor + feesMinor !== grossMinor) {
     throw new UnprocessableEntityError(
       `Payout ${number} does not add up: net ${netMinor} + fees ${feesMinor} = ` +
@@ -320,10 +402,19 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
   ]
   // Dropped when zero rather than posted at zero: an org whose processor
   // withheld nothing has no reason to have mapped `payment_processing_fees`.
-  if (feesMinor !== 0) {
+  // Dropped ENTIRELY on a billed rail, which is a different statement: there is
+  // no fee in this settlement to post at any amount.
+  if (feeTreatment !== 'billed' && feesMinor !== 0) {
     lines.push({
       ...source,
-      accountRole: ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES,
+      // The resolved gateway's own fee account when it has one, the shared
+      // `payment_processing_fees` role when it does not. §5: a netted rail
+      // defaults to the role on purpose - the fee is booked automatically in
+      // every payout entry, so it cannot be forgotten, and per-rail margin is
+      // answerable from the dimension on the line.
+      ...(feeGlAccountId
+        ? { glAccountId: feeGlAccountId }
+        : { accountRole: ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES }),
       direction: 'debit',
       amount: feesMinor,
       memo: `Payout ${number} - processor fees withheld`,
@@ -332,7 +423,10 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
   }
   lines.push({
     ...source,
-    accountRole: clearingRole,
+    // 🔑 The id when the caller resolved a `payment_gateway` record, the role
+    // when it did not. The debit side has been id-routed since brief 13 §5.3;
+    // this is the credit side catching up (brief 26 §3).
+    ...(clearingGlAccountId ? { glAccountId: clearingGlAccountId } : { accountRole: clearingRole }),
     direction: 'credit',
     amount: grossMinor,
     memo: `Payout ${number} - gross settled`,

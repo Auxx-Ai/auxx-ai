@@ -230,3 +230,127 @@ describe('the unrecognised remainder', () => {
     expect(() => buildPayoutEntry({ ...BASE, unrecognisedNetMinor: 58_000 })).not.toThrow()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// brief 26 §3: id over role, with the role as the fallback. The credit side
+// catching up with the debit side, which has been id-routed since brief 13 §5.3.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The leg naming a `gl_account` id that is NOT the bank account. */
+function idLine(entry: ReturnType<typeof buildPayoutEntry>['entry'], glAccountId: string) {
+  return entry.lines.find((row) => row.glAccountId === glAccountId)
+}
+
+describe('the clearing leg', () => {
+  it('credits the resolved gateway account BY ID when the caller passed one', () => {
+    const built = buildPayoutEntry({ ...BASE, clearingGlAccountId: 'acct_authnet' })
+
+    expect(idLine(built.entry, 'acct_authnet')).toMatchObject({
+      direction: 'credit',
+      amount: 500_000,
+    })
+    // And the role is gone from the line entirely - not carried alongside.
+    expect(idLine(built.entry, 'acct_authnet')?.accountRole).toBeUndefined()
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toBeUndefined()
+  })
+
+  it('falls back to the role when no id is given, unchanged', () => {
+    const built = buildPayoutEntry(BASE)
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toMatchObject({
+      direction: 'credit',
+      amount: 500_000,
+    })
+  })
+
+  it('treats a blank id as no id rather than posting to an empty account', () => {
+    const built = buildPayoutEntry({ ...BASE, clearingGlAccountId: '   ' })
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toBeDefined()
+  })
+
+  it('still refuses a nonsense clearing role even when an id was passed', () => {
+    // PAYOUT_CLEARING_ROLES is the FALLBACK guard, not the vocabulary - but a
+    // caller naming a role that is not a clearing account is wrong about
+    // something whether or not it also resolved an id.
+    expect(() =>
+      buildPayoutEntry({
+        ...BASE,
+        clearingRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
+        clearingGlAccountId: 'acct_authnet',
+      })
+    ).toThrowError(/not a clearing account/)
+  })
+})
+
+describe('the fee leg', () => {
+  it("debits the gateway's own fee account by id when one was resolved", () => {
+    const built = buildPayoutEntry({ ...BASE, feeGlAccountId: 'acct_authnet_fees' })
+
+    expect(idLine(built.entry, 'acct_authnet_fees')).toMatchObject({
+      direction: 'debit',
+      amount: 14_800,
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)).toBeUndefined()
+  })
+
+  it('falls back to payment_processing_fees when the gateway names no fee account', () => {
+    // §5: the netted default is deliberately the shared fallback. The fee is
+    // booked automatically in every payout entry, so it cannot be forgotten,
+    // and per-rail margin is answerable from the dimension on the line.
+    const built = buildPayoutEntry(BASE)
+    expect(line(built.entry, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)).toMatchObject({
+      direction: 'debit',
+      amount: 14_800,
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// brief 26 §4: `feeTreatment`. A billed rail deposits GROSS.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('a billed rail', () => {
+  const BILLED = {
+    ...BASE,
+    feeTreatment: 'billed' as const,
+    grossMinor: 500_000,
+    feesMinor: 0,
+    netMinor: 500_000,
+  }
+
+  it('has THREE legs, not four, and gross === net passes rather than refusing', () => {
+    const built = buildPayoutEntry({ ...BILLED, unrecognisedNetMinor: 58_000 })
+
+    expect(built.entry.lines).toHaveLength(3)
+    expect(line(built.entry, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)).toBeUndefined()
+    expect(bankLine(built.entry)).toMatchObject({ direction: 'debit', amount: 558_000 })
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toMatchObject({
+      direction: 'credit',
+      amount: 500_000,
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.UNIDENTIFIED_RECEIPTS)).toMatchObject({
+      direction: 'credit',
+      amount: 58_000,
+    })
+    expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
+  })
+
+  it('books no fee leg even when the rail also names a fee account', () => {
+    // The account exists for the statement the acquirer sends later. There is
+    // no fee IN THIS SETTLEMENT to post to it at any amount.
+    const built = buildPayoutEntry({ ...BILLED, feeGlAccountId: 'acct_authnet_fees' })
+    expect(idLine(built.entry, 'acct_authnet_fees')).toBeUndefined()
+    expect(built.entry.lines).toHaveLength(2)
+  })
+
+  it('refuses a withheld fee, because a billed rail deposits gross', () => {
+    expect(() => buildPayoutEntry({ ...BASE, feeTreatment: 'billed' })).toThrowError(
+      /bills its fees separately/
+    )
+  })
+
+  it('defaults to netted, so an unset treatment is exactly today', () => {
+    const withDefault = buildPayoutEntry(BASE)
+    const explicit = buildPayoutEntry({ ...BASE, feeTreatment: 'netted' })
+    expect(withDefault.entry.lines).toEqual(explicit.entry.lines)
+  })
+})

@@ -6,10 +6,20 @@
  *
  * `money/payouts/sync.ts` is the gatherer and the trigger: it lists an org's
  * Stripe payouts, resolves each payout's destination to a confirmed
- * `bank_account` (brief 13 §2.3), and calls this function once it has a
+ * `bank_account` (brief 13 §2.3) AND the payout's own `payment_gateway` record
+ * (brief 26 §3, `resolvePayoutGateway`), and calls this function once it has a
  * `bankAccountGlAccountId` to pass in. See {@link payoutAccountUnmappedResult}
- * for the shape it returns INSTEAD of calling this function when that
+ * for the shape it returns INSTEAD of calling this function when either
  * resolution fails - no entry is built and nothing is claimed.
+ *
+ * ⚠️ **This file resolves nothing itself and must not start.** The gateway's
+ * `clearingGlAccountId`, `feeGlAccountId` and `feeTreatment` ride in through
+ * {@link PostPayoutEntryOptions}, which is {@link BuildPayoutEntryInput}
+ * verbatim, and are all optional - an org with no `payment_gateway` record
+ * passes none of them and gets the role fallback, bit for bit as before. The
+ * resolution lives beside the bank-account resolution, in one place, because a
+ * second resolver here would be a second opinion about which account a rail
+ * settles into.
  */
 
 import type { Database } from '@auxx/database'
@@ -47,9 +57,10 @@ export function payoutAccountUnmappedResult(message: string): PostResult {
  * Build and post one payout entry.
  *
  * **Never throws.** A builder refusal - a gateway whose gross does not equal
- * net plus fees, an over-long payout id, a clearing role that is not one -
- * comes back as `{ status: 'error' }` with the builder's own message, which is
- * what `EntryBlockers` renders. Everything `postEntry` can answer passes
+ * net plus fees, a withheld fee on a rail that bills separately, an over-long
+ * payout id, a clearing role that is not one - comes back as
+ * `{ status: 'error' }` with the builder's own message, which is what
+ * `EntryBlockers` renders. Everything `postEntry` can answer passes
  * through unchanged.
  *
  * Checked FIRST, before the builder: an org that has never turned accounting on

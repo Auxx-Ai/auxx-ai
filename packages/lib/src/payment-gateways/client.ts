@@ -29,6 +29,20 @@ export type PaymentGatewaySettlementSourceValue =
 export const PAYMENT_GATEWAY_STATUSES = ['active', 'closed'] as const
 export type PaymentGatewayStatusValue = (typeof PAYMENT_GATEWAY_STATUSES)[number]
 
+/**
+ * How a rail charges for itself. Mirrors `PaymentGatewayFeeTreatment`
+ * (enum-values.ts). `plans/accounting/tasks/26-a-clearing-account-per-rail.md`
+ * §4.
+ *
+ * 🛑 **This decides the SHAPE of the payout entry, not a label.** A `netted`
+ * rail withholds its cut from the deposit, so the fee leg belongs inside the
+ * settlement entry and `gross = net + fees`. A `billed` rail deposits GROSS and
+ * invoices for the fees weeks later, so the payout entry has no fee leg at all
+ * and `gross === net` is the expected arithmetic rather than a mis-read payout.
+ */
+export const PAYMENT_GATEWAY_FEE_TREATMENTS = ['netted', 'billed'] as const
+export type PaymentGatewayFeeTreatmentValue = (typeof PAYMENT_GATEWAY_FEE_TREATMENTS)[number]
+
 /** Human labels, so the picker and the badge agree without a second table. */
 export const PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS: Record<
   PaymentGatewaySettlementSourceValue,
@@ -44,6 +58,12 @@ export const PAYMENT_GATEWAY_STATUS_LABELS: Record<PaymentGatewayStatusValue, st
   closed: 'Closed',
 }
 
+export const PAYMENT_GATEWAY_FEE_TREATMENT_LABELS: Record<PaymentGatewayFeeTreatmentValue, string> =
+  {
+    netted: 'Netted from the deposit',
+    billed: 'Billed separately',
+  }
+
 /** Narrow an unknown option value to a {@link PaymentGatewaySettlementSourceValue}. */
 export function resolvePaymentGatewaySettlementSource(
   value: string | null | undefined
@@ -56,6 +76,21 @@ export function resolvePaymentGatewayStatus(
   value: string | null | undefined
 ): PaymentGatewayStatusValue {
   return value === 'closed' ? 'closed' : 'active'
+}
+
+/**
+ * Narrow an unknown option value to a {@link PaymentGatewayFeeTreatmentValue}.
+ *
+ * 🛑 **Unset reads as `netted`, and that is the safe direction.** A record
+ * written before migration 156 carries no option row at all, and `netted` is
+ * exactly what the payout builder has always done - so a stale record keeps
+ * producing the entry it produced yesterday. Defaulting the other way would
+ * silently drop the fee leg off every rail nobody has answered for.
+ */
+export function resolvePaymentGatewayFeeTreatment(
+  value: string | null | undefined
+): PaymentGatewayFeeTreatmentValue {
+  return value === 'billed' ? 'billed' : 'netted'
 }
 
 /**
@@ -105,6 +140,33 @@ export interface ObservedGatewayHandle {
 }
 
 /**
+ * {@link ObservedGatewayHandle} plus the two numbers a SETUP screen needs
+ * (`plans/accounting/tasks/26-a-clearing-account-per-rail.md` §8 item 1).
+ *
+ * 🔑 **The counts belong here and nowhere else.** The settings list's argument
+ * against them still stands - a count there invites reading the list as a
+ * revenue report, and it is stale the moment an order syncs. On a setup screen
+ * the question inverts: a handle with 5,000 orders and none in the last year is
+ * a RETIRED rail that wants an account and a `closed` status, and a handle with
+ * orders last week and no record is the actual alarm. Nothing else on the page
+ * separates those two, which is why `listGatewayHandleCensus` pays for a second
+ * join and `listObservedGatewayHandles` deliberately does not.
+ */
+export interface GatewayHandleCensusRow extends ObservedGatewayHandle {
+  /** Distinct orders carrying this handle. A tally, never a revenue figure. */
+  orderCount: number
+  /**
+   * `YYYY-MM-DD` of the most recent order carrying it, or null when no order
+   * carrying it has a `placedAt`.
+   *
+   * ⚠️ Derived in UTC, not the book time zone. It is a "how long ago" reading
+   * on a setup screen, and a day boundary either way changes nothing it is used
+   * for - unlike a period key, which must never be drawn in a viewer's zone.
+   */
+  lastSeenAt: string | null
+}
+
+/**
  * One `payment_gateway` record, as the settings screen and the fulfillment
  * planner both read it.
  */
@@ -119,9 +181,21 @@ export interface PaymentGatewayRow {
   /** The `gl_account` id the processor withholds its fee into, or null (`6100` is the fallback). */
   feeGlAccountId: string | null
   settlementSource: PaymentGatewaySettlementSourceValue
+  /**
+   * Whether the processor withholds its cut from the deposit or bills for it
+   * later. Read by `buildPayoutEntry` through `postPayoutEntry`: a `billed`
+   * rail's payout has NO fee leg. See {@link PAYMENT_GATEWAY_FEE_TREATMENTS}.
+   */
+  feeTreatment: PaymentGatewayFeeTreatmentValue
   status: PaymentGatewayStatusValue
   /** `YYYY-MM-DD`, or null. Informational only - nothing in posting reads it. */
   lastSettlementAt: string | null
+  /**
+   * `YYYY-MM-DD`, or null. Informational only, exactly like
+   * {@link lastSettlementAt} - nothing derives it yet. The close console's
+   * billed-rail line is what will read it (26 §6).
+   */
+  lastFeeBookedAt: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }

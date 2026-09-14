@@ -2,11 +2,16 @@
 
 'use client'
 
-import type { BooksBalanceReport, DuplicateMovementFinding } from '@auxx/lib/postings/client'
+import type {
+  BooksBalanceReport,
+  DuplicateMovementFinding,
+  RailFeeStatus,
+} from '@auxx/lib/postings/client'
 import { ModuleSidebar } from '@auxx/ui/components/module-sidebar'
 import { useLedgerSidebarStore } from '~/components/accounting/stores/ledger-sidebar-store'
 import { BooksGroup } from './books-group'
 import { CloseMonthGroup } from './close-month-group'
+import { RailFeesGroup } from './rail-fees-group'
 
 interface LedgerSidebarProps {
   periodLabel: string
@@ -23,6 +28,12 @@ interface LedgerSidebarProps {
   duplicates: DuplicateMovementFinding[] | undefined
   currencyCode: string
   bookTimeZone: string
+
+  /** Every ACTIVE payment rail and what the ledger says about its fees (brief 26 §6). */
+  rails: RailFeeStatus[] | undefined
+  railsError: string | null
+  /** `YYYY-MM`, or `''` when no month resolved. The rail sentences are relative to it. */
+  periodKey: string
 
   /** Setup is not finalized, or no month resolved: the Close group has nothing to act on. */
   hasPeriod: boolean
@@ -62,6 +73,9 @@ export function LedgerSidebar({
   duplicates,
   currencyCode,
   bookTimeZone,
+  rails,
+  railsError,
+  periodKey,
   hasPeriod,
 }: LedgerSidebarProps) {
   const open = useLedgerSidebarStore((state) => state.open)
@@ -79,6 +93,18 @@ export function LedgerSidebar({
           onToggleLock={onToggleLock}
           canReverse={canReverse}
           onReverse={onReverse}
+        />
+      )}
+
+      {/* 🛑 Gated on a month, unlike `BooksGroup`: two of the three things §6
+          says are knowable about a rail's fees are about a specific month, so
+          with no month resolved there is nothing here to say. */}
+      {hasPeriod && (
+        <RailFeesGroup
+          rails={rails}
+          error={railsError}
+          monthKey={periodKey}
+          bookTimeZone={bookTimeZone}
         />
       )}
 

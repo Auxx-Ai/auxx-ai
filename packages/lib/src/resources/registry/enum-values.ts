@@ -939,6 +939,35 @@ export const PaymentGatewaySettlementSource = {
 } as const
 
 /**
+ * How a `payment_gateway` charges for itself
+ * (`plans/accounting/tasks/26-a-clearing-account-per-rail.md` §4).
+ *
+ * - `netted`: the processor withholds its cut from the deposit, so the fee is
+ *   known per settlement and its leg belongs inside the payout entry. Stripe,
+ *   Shopify Payments, PayPal, Affirm.
+ * - `billed`: a traditional acquirer on statement billing. The deposit is
+ *   GROSS, there is no fee leg in the settlement at all, and the fees arrive
+ *   weeks later as one ACH debit or an invoice.
+ *
+ * 🛑 **Not the same question `PaymentGatewaySettlementSource` answers.** The two
+ * correlate - `manual` tends to be billed - but Affirm settles outside every
+ * API and still nets its discount fee. Two questions, two fields.
+ *
+ * `netted` is the default because it preserves today's behaviour on every
+ * existing record: a payout entry with a fee leg is what the builder has always
+ * produced.
+ */
+export const PaymentGatewayFeeTreatment = {
+  NETTED: 'netted',
+  BILLED: 'billed',
+
+  values: [
+    { value: 'netted', label: 'Netted from the deposit', color: 'green' },
+    { value: 'billed', label: 'Billed separately', color: 'amber' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
  * Whether a `payment_gateway` rail is still taking charges
  * (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §5.1). A rail
  * is not permanent - Authorize.Net closed May 2026 with a clearing balance
