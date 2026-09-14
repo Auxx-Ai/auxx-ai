@@ -255,11 +255,11 @@ export function ReturnIntakeDialog({ open, onOpenChange }: ReturnIntakeDialogPro
                         : 'Add another label'
                     }
                     showFilePicker={false}
-                    className={
-                      files.length === 0
-                        ? 'min-h-[180px] rounded-xl border border-dashed'
-                        : 'min-h-[120px] rounded-xl border border-dashed'
-                    }
+                    // 🛑 Height only. `FileSelectDropZone` draws its OWN
+                    // `border-1 border-dashed rounded-lg` on its root, so adding
+                    // a dashed border here renders a visible double ring.
+                    // (`quote-intake-dialog.tsx:205` has the same bug.)
+                    className={files.length === 0 ? 'min-h-[180px]' : 'min-h-[120px]'}
                   />
                 )}
 
