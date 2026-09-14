@@ -17,6 +17,7 @@ import {
   getCachedMembers,
   getOrgCache,
 } from '../cache'
+import { listObservedGatewayHandles } from '../payment-gateways'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../postings/provider'
 import { ENABLED_POSTING_TYPES, INVENTORY_ROLES_BY_POSTING_TYPE } from '../postings/regime'
 import { resolveSetupReadiness } from '../postings/setup-readiness'
@@ -244,6 +245,37 @@ async function hasRequiredRoleAssignments(ctx: GettingStartedContext): Promise<b
   return true
 }
 
+/**
+ * Every payment gateway handle seen on this org's own orders is claimed by a
+ * `payment_gateway` record.
+ *
+ * 🛑 **A row fact, not a settings fact**, which is why it lives here rather than
+ * in `setup-readiness.ts` - the same reason `map-accounts` and
+ * `post-first-entry` do.
+ *
+ * ⚠️ **An empty census is MET, not unmet.** An org with no card orders, or one
+ * whose `order_payment_gateways` field is not provisioned, has nothing to route
+ * and must not be shown a permanently red goal it cannot act on. The census
+ * already drops `manual` and `bogus`, which are unroutable by design.
+ *
+ * An unrouted handle still posts - `resolveFulfillmentDebit` falls back to
+ * `clearing_card` - so this goal is a nudge, never a gate. That is exactly the
+ * failure it exists to surface: the fallback is silent, and this list is one of
+ * the two places that says so out loud.
+ */
+async function hasRoutedPaymentRails(ctx: GettingStartedContext): Promise<boolean> {
+  // 🛑 The singleton, NOT `ctx.db`, and this is the one signal here that ignores
+  // it. `listObservedGatewayHandles` takes a `Database` and so does every read
+  // beneath it; widening that chain to `Transaction` for one checklist signal
+  // is a module-wide signature change for no gain. The question this asks is
+  // about COMMITTED org state - which handles the synced orders carry, and
+  // which gateway records claim them - never about rows a caller's open
+  // transaction has not written yet.
+  const observed = await listObservedGatewayHandles(database, ctx.organizationId)
+  if (observed.isErr()) return false
+  return observed.value.every((row) => row.claimedBy !== null)
+}
+
 /** At least one `posted` month-end entry exists. The books have started. */
 async function hasPostedEntry(ctx: GettingStartedContext): Promise<boolean> {
   const db = ctx.db ?? database
@@ -281,9 +313,10 @@ const AUTO_SIGNALS: Record<ChecklistId, Partial<Record<GoalKey, Signal>>> = {
   },
   accounting: {
     'set-accounting-period': hasAccountingPeriod,
-    'set-opening-balances': hasOpeningBalances,
     'set-costing': hasCostingRates,
     'map-accounts': hasRequiredRoleAssignments,
+    'route-payment-rails': hasRoutedPaymentRails,
+    'set-opening-balances': hasOpeningBalances,
     'finalize-setup': isSetupFinalized,
     'post-first-entry': hasPostedEntry,
   },

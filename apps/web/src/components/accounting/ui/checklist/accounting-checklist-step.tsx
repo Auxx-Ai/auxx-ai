@@ -59,11 +59,11 @@ export function AccountingChecklistStep({
         </a>
       </div>
 
-      <Button
-        variant={completed ? 'ghost' : 'outline'}
-        size='sm'
-        className='shrink-0'
-        onClick={() => onCTA(goal)}>
+      {/* Ghost in BOTH states. The variant used to follow `completed`, which
+          made one list render two button weights down its right edge and read
+          as though the outlined rows were the actionable ones. Every row here
+          is actionable: a done goal still opens its page to review. */}
+      <Button variant='ghost' size='sm' className='shrink-0' onClick={() => onCTA(goal)}>
         {completed ? 'Review' : goal.ctaText}
         <ArrowUpRight />
       </Button>
