@@ -1444,17 +1444,17 @@
       "import": "./dist/returns/intake/client.mjs",
       "default": "./src/returns/intake/client.ts"
     },
-    "./returns/intake/group": {
-      "types": "./src/returns/intake/group.ts",
-      "source": "./src/returns/intake/group.ts",
-      "import": "./dist/returns/intake/group.mjs",
-      "default": "./src/returns/intake/group.ts"
-    },
     "./returns/intake/draft-queries": {
       "types": "./src/returns/intake/draft-queries.ts",
       "source": "./src/returns/intake/draft-queries.ts",
       "import": "./dist/returns/intake/draft-queries.mjs",
       "default": "./src/returns/intake/draft-queries.ts"
+    },
+    "./returns/intake/group": {
+      "types": "./src/returns/intake/group.ts",
+      "source": "./src/returns/intake/group.ts",
+      "import": "./dist/returns/intake/group.mjs",
+      "default": "./src/returns/intake/group.ts"
     },
     "./seed": {
       "types": "./src/seed/index.ts",
