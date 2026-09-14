@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.238](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.237...auxx-v0.1.238) (2026-09-14)
+
+
+### Features
+
+* **accounting:** a clearing account per rail, and the fees that come with it ([#2153](https://github.com/Auxx-Ai/auxx-ai/issues/2153)) ([b11e32f](https://github.com/Auxx-Ai/auxx-ai/commit/b11e32f4bd358334cb7dce227c56eaa53b157512))
+* **accounting:** the connected system is its own settings page ([#2156](https://github.com/Auxx-Ai/auxx-ai/issues/2156)) ([557c396](https://github.com/Auxx-Ai/auxx-ai/commit/557c396498bce4b4c910ce2696b547dd9cae2412))
+* **attachments:** render PDFs in-app, loaded only when a PDF is on screen ([#2161](https://github.com/Auxx-Ai/auxx-ai/issues/2161)) ([5ba8471](https://github.com/Auxx-Ai/auxx-ai/commit/5ba8471a911a241f3f53f4ff6c0c5e6efd2642eb))
+* **relief:** a sync-free books reset and the record-driven relief door ([#2158](https://github.com/Auxx-Ai/auxx-ai/issues/2158)) ([297255e](https://github.com/Auxx-Ai/auxx-ai/commit/297255e011a05521b6096aaf97f9943e626cd9ba))
+* **shipments:** a Parcels section on the shipment drawer overview ([#2155](https://github.com/Auxx-Ai/auxx-ai/issues/2155)) ([7f71b78](https://github.com/Auxx-Ai/auxx-ai/commit/7f71b78bfbc9e95e075abea6fef2af46c3640646))
+
+
+### Bug Fixes
+
+* **accounting:** route your payment rails on the checklist, in the wizard's order ([#2157](https://github.com/Auxx-Ai/auxx-ai/issues/2157)) ([363ac1f](https://github.com/Auxx-Ai/auxx-ai/commit/363ac1f14473138920383e05509e5fa32563965e))
+* **intake:** read the vendor's own precision, and say which line disagrees ([#2160](https://github.com/Auxx-Ai/auxx-ai/issues/2160)) ([12ea1ff](https://github.com/Auxx-Ai/auxx-ai/commit/12ea1ff5ad1be315dbced2bf5a82e30ca6174bb9))
+* **purchasing:** let a typed total reach the rate, on the PO line and in the quote intake ([#2159](https://github.com/Auxx-Ai/auxx-ai/issues/2159)) ([033bd35](https://github.com/Auxx-Ai/auxx-ai/commit/033bd3519bd5e9b0c3abae4080465d5364787826))
+* **web:** stage pdf.js assets on the Docker build path, not just `build` ([#2162](https://github.com/Auxx-Ai/auxx-ai/issues/2162)) ([b20af20](https://github.com/Auxx-Ai/auxx-ai/commit/b20af20be7f58e3c8159e14eca793b628d76ad4d))
+
 ## [0.1.237](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.236...auxx-v0.1.237) (2026-09-14)
 
 
