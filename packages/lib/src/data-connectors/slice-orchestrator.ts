@@ -31,6 +31,7 @@ import {
 } from './data-connector-queue'
 import { materializeConnectorTargets } from './provisioning'
 import { publishConnectorSync } from './realtime'
+import { requestConnectorPause } from './run-control'
 import {
   claimForSync,
   finalizeConnector,
@@ -284,7 +285,12 @@ async function startConnectorSyncInner(
     throw new Error(`unresolved target field refs: ${unresolvedRefs.join(', ')}`)
   }
 
-  const claimed = await claimForSync(db, dataConnectorId)
+  const trigger = options.trigger ?? 'manual'
+  const claimed = await claimForSync(
+    db,
+    dataConnectorId,
+    trigger === 'manual' || trigger === 'backfill'
+  )
   if (!claimed) {
     logger.info('startConnectorSync: already syncing, skipping', { dataConnectorId })
     return false
@@ -537,6 +543,10 @@ export async function runBackfillSlice(
     logger.warn('runBackfillSlice: connector gone, stopping', { connectorId })
     return
   }
+  // Covers a pause between claiming the connector and opening this run.
+  if (connector.status === 'paused') {
+    await db.transaction((tx) => requestConnectorPause(tx, organizationId, connectorId))
+  }
 
   const { definition, credential } = await prepareConnectorFetch(
     db,
@@ -565,6 +575,11 @@ export async function runBackfillSlice(
     // natural-completion path; thread the cap so it parks instead of going live.
     sampleLimit: run.sampleLimit,
   })
+
+  if (await source.finalizePause()) {
+    await publishConnectorSync(db, organizationId, connectorId, 'run-finished')
+    return
+  }
 
   // Trial-sync §4.2: bound a sample slice's per-slice record budget to the cap, so the
   // FIRST slice stops near `sampleLimit` (a page boundary's overshoot) instead of
@@ -610,6 +625,11 @@ export async function runBackfillSlice(
     signal: sliceSignal,
   })
 
+  if (await source.finalizePause()) {
+    await publishConnectorSync(db, organizationId, connectorId, 'run-finished')
+    return
+  }
+
   if (outcome.action === 'reenqueue') {
     // A cancelled chain (worker shutdown / connector delete) — leave the cursor
     // checkpointed and stop; a later trigger or the sweep resumes it.
@@ -638,6 +658,7 @@ export async function runBackfillSlice(
         })
         await parkConnectorSampleIfLastStream(db, {
           runId,
+          streamId,
           dataConnectorId: connectorId,
           sampleLimit: run.sampleLimit,
           startedAt: run.startedAt,
@@ -715,6 +736,7 @@ export async function runBackfillSlice(
   if (outcome.completedPhase === 'steady') {
     await source.finalizeSteady()
   }
+  await source.finalizePause()
   // A stream finished. For the LAST stream the connector is now live/finalized; for
   // an earlier one it's still syncing with this stream done. Either way the snapshot
   // tells the truth — emit a lifecycle frame so the history panel + freshness refetch.

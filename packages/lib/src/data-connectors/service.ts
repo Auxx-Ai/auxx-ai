@@ -12,6 +12,7 @@ import type { SyncChangeManifest, SyncChangeManifestV1 } from '../record-rules/s
 import type { SyncRunErrorSample } from '../sync-core/contracts'
 import { hashCatalogConnectorSection, selectCatalogConnector } from './catalog-shape'
 import { maxLevel } from './edit-impact'
+import { completeRunStream, isRunPauseRequested } from './run-control'
 import type {
   FieldMapping,
   LinkMode,
@@ -159,12 +160,21 @@ export async function loadConnector(
  * if it isn't already syncing. Returns true on claim, false when another run
  * holds it. Manual-click and scheduled-fire dedup.
  */
-export async function claimForSync(db: Database, dataConnectorId: string): Promise<boolean> {
+export async function claimForSync(
+  db: Database,
+  dataConnectorId: string,
+  allowPaused = false
+): Promise<boolean> {
   const [claimed] = await db
     .update(schema.DataConnector)
     .set({ status: 'syncing', updatedAt: new Date() })
     .where(
-      and(eq(schema.DataConnector.id, dataConnectorId), ne(schema.DataConnector.status, 'syncing'))
+      and(
+        eq(schema.DataConnector.id, dataConnectorId),
+        ne(schema.DataConnector.status, 'syncing'),
+        allowPaused ? undefined : ne(schema.DataConnector.status, 'paused'),
+        sql`not exists (select 1 from ${schema.DataConnectorRun} where ${schema.DataConnectorRun.dataConnectorId} = ${dataConnectorId} and ${schema.DataConnectorRun.status} = 'running')`
+      )
     )
     .returning({ id: schema.DataConnector.id })
   return !!claimed
@@ -206,8 +216,10 @@ export async function initConnectorBackfillLatch(
  */
 export async function decrementConnectorBackfillLatch(
   db: Database,
-  dataConnectorId: string
+  dataConnectorId: string,
+  scope?: { runId: string; streamId: string }
 ): Promise<number | null> {
+  if (scope) return completeRunStream(db, dataConnectorId, scope)
   const T = schema.DataConnector
   const [row] = await db
     .update(T)
@@ -562,7 +574,13 @@ export async function finalizeConnector(
         error: null,
         updatedAt: new Date(),
       })
-      .where(eq(schema.DataConnector.id, dataConnectorId))
+      .where(
+        and(
+          eq(schema.DataConnector.id, dataConnectorId),
+          ne(schema.DataConnector.status, 'paused'),
+          sql`not exists (select 1 from ${schema.DataConnectorRun} where ${schema.DataConnectorRun.dataConnectorId} = ${dataConnectorId} and ${schema.DataConnectorRun.status} = 'running' and ${schema.DataConnectorRun.progress}->'paused'->>'reason' = 'manual')`
+        )
+      )
   } else {
     // A crashed/swept/failed run never ran the success bookkeeping, so the connector
     // would report `itemCount: 0` / "never synced" even when records DID land (a stale
@@ -579,7 +597,13 @@ export async function finalizeConnector(
         ...(itemCount > 0 ? { lastSyncedAt: new Date() } : {}),
         updatedAt: new Date(),
       })
-      .where(eq(schema.DataConnector.id, dataConnectorId))
+      .where(
+        and(
+          eq(schema.DataConnector.id, dataConnectorId),
+          ne(schema.DataConnector.status, 'paused'),
+          sql`not exists (select 1 from ${schema.DataConnectorRun} where ${schema.DataConnectorRun.dataConnectorId} = ${dataConnectorId} and ${schema.DataConnectorRun.status} = 'running' and ${schema.DataConnectorRun.progress}->'paused'->>'reason' = 'manual')`
+        )
+      )
   }
 }
 
@@ -719,6 +743,7 @@ export async function parkConnectorSampleIfLastStream(
   db: Database,
   input: {
     runId: string
+    streamId: string
     dataConnectorId: string
     sampleLimit: number
     startedAt: Date
@@ -730,8 +755,15 @@ export async function parkConnectorSampleIfLastStream(
     beforePark?: () => Promise<void>
   }
 ): Promise<void> {
-  const remaining = await decrementConnectorBackfillLatch(db, input.dataConnectorId)
-  if (remaining !== null && remaining > 0) return
+  if (
+    await parkConnectorIfManuallyPaused(db, {
+      ...input,
+      beforePark: input.beforePark ?? (async () => {}),
+    })
+  )
+    return
+  const remaining = await decrementConnectorBackfillLatch(db, input.dataConnectorId, input)
+  if (remaining !== 0) return
   await input.beforePark?.()
   const fetched = await getRunFetched(db, input.runId)
   await parkBackfillAtSample(db, {
@@ -741,6 +773,57 @@ export async function parkConnectorSampleIfLastStream(
     startedAt: input.startedAt,
     fetched,
   })
+}
+
+/** Stop this stream for a manual pause; the last stream publishes and parks the run. */
+export async function parkConnectorIfManuallyPaused(
+  db: Database,
+  input: {
+    runId: string
+    streamId: string
+    dataConnectorId: string
+    startedAt: Date
+    beforePark: () => Promise<void>
+  }
+): Promise<boolean> {
+  if (!(await isRunPauseRequested(db, input.runId))) return false
+  const remaining = await decrementConnectorBackfillLatch(db, input.dataConnectorId, input)
+  if (remaining !== 0) return true
+  await input.beforePark()
+  const itemCount = await countConnectorItems(db, input.dataConnectorId)
+  await db.transaction(async (tx) => {
+    const C = schema.DataConnector
+    await tx.select({ id: C.id }).from(C).where(eq(C.id, input.dataConnectorId)).for('update')
+    const T = schema.DataConnectorRun
+    const [parked] = await tx
+      .update(T)
+      .set({
+        status: 'partial',
+        finishedAt: new Date(),
+        durationMs: Date.now() - input.startedAt.getTime(),
+      })
+      .where(
+        and(
+          eq(T.id, input.runId),
+          eq(T.dataConnectorId, input.dataConnectorId),
+          eq(T.status, 'running'),
+          sql`${T.progress}->'paused'->>'reason' = 'manual'`
+        )
+      )
+      .returning({ id: T.id })
+    if (!parked) return
+    await tx
+      .update(C)
+      .set({
+        status: 'paused',
+        itemCount,
+        error: null,
+        updatedAt: new Date(),
+        ...(itemCount > 0 ? { lastSyncedAt: new Date() } : {}),
+      })
+      .where(eq(C.id, input.dataConnectorId))
+  })
+  return true
 }
 
 /** Persist a stream's incremental cursor after the stream completes. */
@@ -821,7 +904,13 @@ export async function clearResyncPending(db: DbOrTx, dataConnectorId: string): P
   await db
     .update(schema.DataConnector)
     .set({ resyncPending: null, updatedAt: new Date() })
-    .where(eq(schema.DataConnector.id, dataConnectorId))
+    .where(
+      and(
+        eq(schema.DataConnector.id, dataConnectorId),
+        ne(schema.DataConnector.status, 'paused'),
+        sql`not exists (select 1 from ${schema.DataConnectorRun} where ${schema.DataConnectorRun.dataConnectorId} = ${dataConnectorId} and ${schema.DataConnectorRun.status} = 'running' and ${schema.DataConnectorRun.progress}->'paused'->>'reason' = 'manual')`
+      )
+    )
 }
 
 /** Exact-bind lookup: (dataConnectorId, mappingId, externalId) → item row. */

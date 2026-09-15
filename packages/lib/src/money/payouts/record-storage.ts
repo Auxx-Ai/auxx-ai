@@ -13,6 +13,7 @@ import {
   payoutRecordEvidenceSchema,
   processorRecordEvidenceSchema,
 } from './record-contracts'
+import { FinancialSourceIdentityConflictError } from './source-write-errors'
 
 type Db = Database | Transaction
 /** Canonical entity header plus typed financial extension; every intake uses these fields. */
@@ -37,6 +38,7 @@ export interface FinancialRecordWriteResult {
   instance: typeof schema.EntityInstance.$inferSelect
   created: boolean
   changed: boolean
+  disposition: ReturnType<typeof financialObservationDisposition>
   observationId: string
   previousEvidence?: unknown
   evidence: FinancialRecordEvidence
@@ -287,9 +289,7 @@ export async function writeFinancialRecords(
       )!
       const existing = canonicalByObject.get(object.id) ?? batchCanonical.get(object.id)
       if (existing && item.record.recordId && existing !== item.record.recordId)
-        throw new ConflictError(
-          'Source identity already belongs to another canonical financial record'
-        )
+        throw new FinancialSourceIdentityConflictError(existing)
       const assigned = item.record.recordId
         ? [...transfers, ...entries].find((r) => r.id === item.record.recordId)
         : undefined
@@ -540,6 +540,7 @@ export async function writeFinancialRecords(
         instance: headers.get(p.id)!,
         created: newHeaders.some((h) => h.id === p.id),
         changed,
+        disposition,
         observationId: observation.id,
         previousEvidence: prior?.payload ?? null,
         evidence: p.evidence,

@@ -1,9 +1,14 @@
 // packages/lib/src/money/reconciliation/stored-source-records.int.test.ts
 import { type Database, schema } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
+import { toResourceFieldId } from '@auxx/types/field'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { makeSyncCtx } from '../../data-connectors/__test-helpers'
+import type { DecodedMapping } from '../../data-connectors/service'
+import { entitySink } from '../../data-connectors/sinks/entity-sink'
+import type { ProjectedRecord } from '../../data-connectors/sinks/types'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { createManifestCollector } from '../../record-rules/sync-manifest-collector'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
@@ -13,6 +18,9 @@ import { createAllFields } from '../../seed/entity-seeder/create-fields'
 import type { EntityDefMap } from '../../seed/entity-seeder/types'
 
 vi.mock('../../events', () => ({ publisher: { publishLater: vi.fn(), publish: vi.fn() } }))
+vi.mock('../../agents/bindings/resolve', () => ({
+  resolveConnectorFieldRef: async (ref: string) => ref,
+}))
 const db = () => getTestDb() as unknown as Database
 let organizationId: string
 let userId: string
@@ -196,5 +204,226 @@ describe('financial facts through standard record and field writers', () => {
         )
       )
     expect(fields.length).toBeGreaterThan(5)
+  })
+})
+
+/** Two mappings of the same processor source, using real CRUD, fields, bindings and PostgreSQL. */
+async function processorSinkFixture() {
+  const entityDefinitionId = defs.get('processor_balance_entry')!.id
+  const [connector] = await db()
+    .insert(schema.DataConnector)
+    .values({
+      organizationId,
+      type: 'generic-rest',
+      name: 'Financial source replay',
+    })
+    .returning()
+  const [run] = await db()
+    .insert(schema.DataConnectorRun)
+    .values({
+      organizationId,
+      dataConnectorId: connector!.id,
+      status: 'running',
+      trigger: 'manual',
+      mode: 'snapshot',
+    })
+    .returning()
+  const facts = (acquisitionId: string, acquiredAt: string, gross = '100.00') => ({
+    processor_balance_source_key: JSON.stringify([
+      'gateway_b',
+      'merchant-b',
+      'live',
+      'transaction-1',
+    ]),
+    processor_balance_provider_key: 'gateway_b',
+    processor_balance_account_id: 'merchant-b',
+    processor_balance_environment: 'live',
+    processor_balance_external_id: 'transaction-1',
+    processor_balance_acquisition_id: acquisitionId,
+    processor_balance_acquired_at: acquiredAt,
+    processor_balance_type: 'charge',
+    processor_balance_gross: gross,
+    processor_balance_fee: '3.00',
+    processor_balance_net: '97.00',
+    processor_balance_currency: 'USD',
+    processor_balance_currency_exponent: 2,
+  })
+  const projected = (
+    acquisitionId: string,
+    acquiredAt: string,
+    gross?: string
+  ): ProjectedRecord => {
+    const fields = Object.fromEntries(
+      Object.entries(facts(acquisitionId, acquiredAt, gross)).map(([key, value]) => [
+        toResourceFieldId(entityDefinitionId, fieldIds.get(key)!),
+        value,
+      ])
+    )
+    const sourceRef = toResourceFieldId(
+      entityDefinitionId,
+      fieldIds.get('processor_balance_source_key')!
+    )
+    return {
+      externalId: 'transaction-1',
+      displayName: 'Transaction',
+      fields,
+      identityCandidates: [{ targetFieldRef: sourceRef, value: fields[sourceRef] }],
+      pendingRelations: [],
+    }
+  }
+  const mapping = async (streamKey: string): Promise<DecodedMapping> => {
+    const [stream] = await db()
+      .insert(schema.DataConnectorStream)
+      .values({
+        organizationId,
+        dataConnectorId: connector!.id,
+        streamKey,
+      })
+      .returning()
+    const fieldMappings = Object.keys(facts('scan', '2026-09-15T00:00:00Z')).map((key) => ({
+      id: key,
+      targetFieldRef: toResourceFieldId(entityDefinitionId, fieldIds.get(key)!),
+      expression: '{value}',
+      sourceFields: { value: key },
+    }))
+    const [row] = await db()
+      .insert(schema.DataConnectorMapping)
+      .values({
+        organizationId,
+        dataConnectorStreamId: stream!.id,
+        entityDefinitionId,
+        targetMode: 'contributing',
+        fieldMappings,
+      })
+      .returning()
+    return {
+      row: row!,
+      rootPath: '',
+      linkMode: 'upsert',
+      targetMode: 'contributing',
+      entityDefinitionId,
+      parentMappingId: null,
+      relationshipFieldKey: null,
+      orphanBehavior: 'ignore',
+      fieldMappings,
+    }
+  }
+  const context = () => {
+    const manifest = createManifestCollector({})
+    const crud = new UnifiedCrudHandler(organizationId, userId, db(), undefined, {
+      session: {
+        depth: 0,
+        origin: { kind: 'sync', source: 'import', ref: run!.id, collector: manifest },
+      },
+    })
+    return makeSyncCtx({
+      db: db(),
+      orgId: organizationId,
+      connector: connector!,
+      runId: run!.id,
+      crud,
+      ownedCrud: crud,
+      manifest,
+    })
+  }
+  return { projected, mapping, context }
+}
+
+describe('processor observations arriving through two ordinary connector mappings', () => {
+  it('keeps newer fields and typed money when the older payout scan arrives last, including replay', async () => {
+    const f = await processorSinkFixture()
+    const balance = await f.mapping('balance')
+    const payout = await f.mapping('payout-child')
+    const current = f.context()
+    await entitySink.upsertRecord(current, balance, f.projected('new', '2026-09-15T02:00:00Z'))
+    expect(current.counters).toMatchObject({ created: 1, failed: 0 })
+    const older = f.context()
+    await entitySink.upsertRecord(
+      older,
+      payout,
+      f.projected('old', '2026-09-15T01:00:00Z', '90.00')
+    )
+    expect(older.counters).toMatchObject({ skipped: 1, failed: 0, created: 0 })
+    const entries = await db().select().from(schema.ProcessorBalanceEntry)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]!.grossMinor).toBe(10000n)
+    expect(
+      await service.getValue({
+        recordId: toRecordId(defs.get('processor_balance_entry')!.id, entries[0]!.id),
+        fieldId: fieldIds.get('processor_balance_gross')!,
+      })
+    ).toMatchObject({ value: '100.00' })
+    const items = await db().select().from(schema.DataConnectorItem)
+    expect(items).toHaveLength(2)
+    expect(new Set(items.map((item) => item.entityInstanceId)).size).toBe(1)
+    expect(await db().select().from(schema.FinancialSourceObservation)).toHaveLength(2)
+    await entitySink.upsertRecord(
+      f.context(),
+      payout,
+      f.projected('old', '2026-09-15T01:00:00Z', '90.00')
+    )
+    expect(await db().select().from(schema.FinancialSourceObservation)).toHaveLength(2)
+  })
+
+  it('converges concurrent first creates into one record and two bindings', async () => {
+    const f = await processorSinkFixture()
+    const mappings = await Promise.all([f.mapping('balance'), f.mapping('payout-child')])
+    const contexts = [f.context(), f.context()]
+    // Hold both creates until each sink has independently found no matching record.
+    let arrived = 0
+    let release!: () => void
+    const ready = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    for (const ctx of contexts) {
+      const create = ctx.crud.create.bind(ctx.crud)
+      vi.spyOn(ctx.crud, 'create').mockImplementation(async (...args) => {
+        if (++arrived === 2) release()
+        await ready
+        return create(...args)
+      })
+    }
+    await Promise.all(
+      contexts.map((ctx, i) =>
+        entitySink.upsertRecord(
+          ctx,
+          mappings[i]!,
+          f.projected(i ? 'old' : 'new', i ? '2026-09-15T01:00:00Z' : '2026-09-15T02:00:00Z')
+        )
+      )
+    )
+    expect(contexts.map((ctx) => ctx.counters.failed)).toEqual([0, 0])
+    expect(contexts.reduce((sum, ctx) => sum + ctx.counters.created, 0)).toBe(1)
+    const entries = await db().select().from(schema.ProcessorBalanceEntry)
+    const items = await db().select().from(schema.DataConnectorItem)
+    expect(entries).toHaveLength(1)
+    expect(items).toHaveLength(2)
+    expect(items.every((item) => item.entityInstanceId === entries[0]!.id)).toBe(true)
+    const instances = await db()
+      .select()
+      .from(schema.EntityInstance)
+      .where(eq(schema.EntityInstance.entityDefinitionId, defs.get('processor_balance_entry')!.id))
+    expect(instances).toHaveLength(1)
+  })
+
+  it('rejects contradictory facts from the same acquisition without changing ordinary fields', async () => {
+    const f = await processorSinkFixture()
+    const mapping = await f.mapping('balance')
+    await entitySink.upsertRecord(f.context(), mapping, f.projected('scan', '2026-09-15T02:00:00Z'))
+    const conflict = f.context()
+    await entitySink.upsertRecord(
+      conflict,
+      mapping,
+      f.projected('scan', '2026-09-15T02:00:00Z', '999.00')
+    )
+    expect(conflict.counters.failed).toBe(1)
+    const [entry] = await db().select().from(schema.ProcessorBalanceEntry)
+    expect(entry!.grossMinor).toBe(10000n)
+    expect(
+      await service.getValue({
+        recordId: toRecordId(defs.get('processor_balance_entry')!.id, entry!.id),
+        fieldId: fieldIds.get('processor_balance_gross')!,
+      })
+    ).toMatchObject({ value: '100.00' })
   })
 })

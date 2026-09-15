@@ -19,7 +19,7 @@ import {
   getEntityInstanceRow,
   updateEntityInstance,
 } from '../../entity-instances'
-import { AuxxError, UnprocessableEntityError } from '../../errors'
+import { AuxxError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import type { RecordFieldChange } from '../../events/types'
 import {
   getEntityPostDeleteHooks,
@@ -628,7 +628,7 @@ export async function updateEntity(
     { id: entityInstanceId, organizationId: ctx.organizationId },
     ctx.db
   )
-  if (!instance) throw new Error(`Entity not found: ${entityInstanceId}`)
+  if (!instance) throw new NotFoundError(`Entity not found: ${entityInstanceId}`)
 
   const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
 

@@ -36,6 +36,9 @@ export function GatewaySettlementFields({ gateway }: { gateway: PaymentGatewayRo
     value: account.processorAccountId,
     label: `${account.providerKey} · ${account.externalAccountId}`,
   }))
+  if (gateway.processorAccountId && !selectedAccount) {
+    options.push({ value: gateway.processorAccountId, label: 'Saved merchant account' })
+  }
   const currencyOptions = [
     ...new Set([
       ...(selectedAccount?.currencies ?? []),
@@ -44,18 +47,7 @@ export function GatewaySettlementFields({ gateway }: { gateway: PaymentGatewayRo
   ].map((currency) => ({ value: currency, label: currency }))
   const disabled =
     update.isPending || !can(PermissionKey.ledgerControl) || gateway.status === 'closed'
-  if (query.isPending)
-    return <p className='text-muted-foreground text-xs'>Loading settlement settings…</p>
-  if (query.error)
-    return (
-      <div className='text-destructive text-sm'>
-        {query.error.message}
-        <Button variant='ghost' size='sm' onClick={() => void query.refetch()}>
-          Retry
-        </Button>
-      </div>
-    )
-  if (!data) return null
+  const discoveryUnavailable = query.isPending || !!query.error || !data
   const save = (patch: {
     processorAccountId?: string | null
     settlementCurrency?: string | null
@@ -85,7 +77,7 @@ export function GatewaySettlementFields({ gateway }: { gateway: PaymentGatewayRo
               fieldType={FieldType.SINGLE_SELECT}
               fieldOptions={{ options }}
               value={gateway.processorAccountId}
-              disabled={disabled}
+              disabled={disabled || discoveryUnavailable}
               placeholder='Select merchant account'
               onChange={(value) => {
                 const processorAccountId = selectValue(value)
@@ -152,7 +144,16 @@ export function GatewaySettlementFields({ gateway }: { gateway: PaymentGatewayRo
           />
         </FieldPanelRow>
       </FieldPanel>
-      {selectedAccount?.connections.length ? (
+      {query.isPending ? (
+        <p className='text-muted-foreground text-xs'>Checking settlement readiness…</p>
+      ) : query.error ? (
+        <div role='alert' className='text-destructive text-sm'>
+          Could not load merchant accounts or check settlement readiness.
+          <Button variant='ghost' size='sm' onClick={() => void query.refetch()}>
+            Retry
+          </Button>
+        </div>
+      ) : selectedAccount?.connections.length ? (
         <div className='flex flex-col gap-1'>
           {selectedAccount.connections.map((connection) => (
             <p key={connection.connectorId} className='text-muted-foreground text-xs'>
@@ -169,7 +170,7 @@ export function GatewaySettlementFields({ gateway }: { gateway: PaymentGatewayRo
             </p>
           ))}
         </div>
-      ) : (
+      ) : data ? (
         <p className='text-muted-foreground text-xs'>
           {selectedAccount
             ? 'No current connection is linked to this account. Imported activity remains available.'
@@ -178,13 +179,13 @@ export function GatewaySettlementFields({ gateway }: { gateway: PaymentGatewayRo
             Open connectors
           </Link>
         </p>
-      )}
+      ) : null}
       <div className='text-muted-foreground text-xs'>
         {update.isPending
           ? 'Saving…'
-          : data.configured
+          : !discoveryUnavailable && data.configured
             ? 'Settlement mappings configured.'
-            : data.issues.map((issue) => <p key={issue}>{issue}</p>)}
+            : !discoveryUnavailable && data.issues.map((issue) => <p key={issue}>{issue}</p>)}
       </div>
     </div>
   )

@@ -9,6 +9,7 @@
 
 import { stableHash } from '@auxx/utils/hash'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { NotFoundError } from '../../errors'
 import { makeSyncCtx } from '../__test-helpers'
 import type { DecodedMapping } from '../service'
 import type { ProjectedRecord } from './types'
@@ -190,6 +191,30 @@ describe('upsertRecord restores a record this connector archived', () => {
 })
 
 describe('upsertRecord never restores what the connector did not archive', () => {
+  it('skips a changed payload for a human-archived record without recreating it', async () => {
+    findItem.mockResolvedValue(boundItem({ contentHash: 'old' }))
+    const { c, ownedRestore } = ctx({ instanceArchived: true })
+    vi.mocked(c.ownedCrud.update).mockRejectedValue(new NotFoundError('Entity not found: inst1'))
+
+    await entitySink.upsertRecord(c, mapping(), record())
+
+    expect(c.counters).toMatchObject({ skipped: 1, failed: 0, created: 0 })
+    expect(ownedRestore).not.toHaveBeenCalled()
+    expect(upsertItem).not.toHaveBeenCalled()
+    expect(touchItem).toHaveBeenCalledTimes(1)
+  })
+
+  it('still fails an update whose target is missing rather than archived', async () => {
+    findItem.mockResolvedValue(boundItem({ contentHash: 'old' }))
+    const { c, findFirst } = ctx()
+    findFirst.mockResolvedValue(undefined)
+    vi.mocked(c.ownedCrud.update).mockRejectedValue(new NotFoundError('Entity not found: inst1'))
+
+    await entitySink.upsertRecord(c, mapping(), record())
+
+    expect(c.counters).toMatchObject({ skipped: 0, failed: 1 })
+    expect(touchItem).not.toHaveBeenCalled()
+  })
   it('a binding with only removedUpstreamAt is touched, not restored', async () => {
     findItem.mockResolvedValue(boundItem({ removedUpstreamAt: ARCHIVED_AT }))
     const { c, ownedRestore, findFirst } = ctx({ instanceArchived: false })

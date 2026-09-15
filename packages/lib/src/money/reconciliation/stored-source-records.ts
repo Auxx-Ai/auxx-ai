@@ -1,4 +1,5 @@
 // packages/lib/src/money/reconciliation/stored-source-records.ts
+
 import { schema, type Transaction } from '@auxx/database'
 import { readEnvelope } from '@auxx/types/field-value'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
@@ -12,6 +13,7 @@ import {
   type FinancialWriteProvenance,
   writeFinancialRecords,
 } from '../payouts/record-storage'
+import { StaleFinancialSourceRevisionError } from '../payouts/source-write-errors'
 
 export const FINANCIAL_SOURCE_TYPES = new Set([
   'payout',
@@ -228,6 +230,19 @@ export async function stageStoredFinancialRecordsInTx(
       provenance: input.provenance,
     })
     for (const [index, result] of results.entries()) {
+      if (result.disposition === 'stale') {
+        const observation = await tx.query.FinancialSourceObservation.findFirst({
+          where: and(
+            eq(schema.FinancialSourceObservation.id, result.observationId),
+            eq(schema.FinancialSourceObservation.organizationId, input.organizationId)
+          ),
+        })
+        if (!observation) throw new Error('Stale financial observation was not staged')
+        throw new StaleFinancialSourceRevisionError(observation)
+      }
+      if (result.disposition === 'conflict') {
+        throw new ConflictError('Financial source revision conflicts with the stored observation')
+      }
       const previous = result.previousEvidence
       if (
         !result.changed &&

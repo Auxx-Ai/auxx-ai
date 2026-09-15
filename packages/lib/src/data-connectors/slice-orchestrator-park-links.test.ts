@@ -263,7 +263,10 @@ vi.mock('./service', async (importOriginal) => {
         mappings: [mapping(s.streamKey as 'customers' | 'orders')],
       })),
     }),
-    claimForSync: async () => true,
+    claimForSync: async () => {
+      world.connector.status = 'syncing'
+      return true
+    },
     initConnectorBackfillLatch: async (_db: unknown, _id: string, n: number) => {
       world.latch = n
     },

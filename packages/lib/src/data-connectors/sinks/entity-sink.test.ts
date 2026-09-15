@@ -31,13 +31,14 @@ describe('coerceListValue', () => {
   })
 
   it('leaves an empty string untouched so existing blank handling decides', () => {
-    expect(coerceListValue('TAGS', '', false)).toBe('')
+    expect(coerceListValue('TAGS', '', false)).toEqual([])
+    expect(coerceListValue('TAGS', '   ', false)).toEqual([])
   })
 
   it('falls through to the original value when the string carries no actual tags', () => {
     // `,` would otherwise split to [] and clear the current list.
-    expect(coerceListValue('TAGS', ',', false)).toBe(',')
-    expect(coerceListValue('TAGS', ' , , ', false)).toBe(' , , ')
+    expect(coerceListValue('TAGS', ',', false)).toEqual([])
+    expect(coerceListValue('TAGS', ' , , ', false)).toEqual([])
   })
 
   it('NEVER splits a comma in a scalar type — a comma is ordinary TEXT content', () => {

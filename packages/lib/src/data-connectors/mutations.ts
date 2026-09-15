@@ -52,6 +52,7 @@ import {
 } from './edit-impact'
 import { materializeConnectorTargets } from './provisioning'
 import { assertRecordFilterCompiles } from './record-filter'
+import { requestConnectorPause } from './run-control'
 import {
   countConnectorItems,
   countMappingItems,
@@ -937,8 +938,8 @@ export interface UpdateConnectorInput {
   appInstallationId?: string | null
   syncBehavior?: 'manual' | 'scheduled' | 'webhook'
   scheduleConfig?: ScheduledTriggerConfig | null
-  // Lifecycle toggle. 'paused' stops scheduled fires (cadence retained); 'live'
-  // resumes. Other states are engine-owned and not settable here.
+  // Lifecycle toggle. 'paused' stops scheduling and requests that active slices
+  // checkpoint and stop. 'live' resumes scheduling after the prior run drains.
   status?: 'paused' | 'live'
 }
 
@@ -982,6 +983,7 @@ export async function updateConnector(
       .where(eq(schema.DataConnector.id, id))
       .returning()
     if (!row) throw new Error('Failed to update data connector')
+    if (patch.status === 'paused') await requestConnectorPause(tx, organizationId, id)
 
     // A credential/config change invalidates the cursor against the source → stamp
     // rebackfill across the connector's streams (never-synced ⇒ skipped). The

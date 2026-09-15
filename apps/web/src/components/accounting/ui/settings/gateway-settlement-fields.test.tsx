@@ -7,7 +7,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({
   canEdit: true,
   mutate: vi.fn(),
-  data: {} as Record<string, unknown>,
+  refetch: vi.fn(),
+  isPending: false,
+  error: null as Error | null,
+  data: {} as Record<string, unknown> | undefined,
 }))
 vi.mock('next/link', () => ({ default: (props: ComponentProps<'a'>) => <a {...props} /> }))
 vi.mock('~/providers/capabilities-provider', () => ({
@@ -55,8 +58,8 @@ vi.mock('~/components/fields/inputs/field-input-adapter', () => ({
     ),
 }))
 vi.mock('~/components/accounting/ui/bank-account-picker', () => ({
-  BankAccountPicker: ({ disabled }: { disabled: boolean }) => (
-    <button type='button' disabled={disabled}>
+  BankAccountPicker: ({ disabled, value }: { disabled: boolean; value: string }) => (
+    <button type='button' disabled={disabled} data-value={value}>
       Pick bank
     </button>
   ),
@@ -67,7 +70,14 @@ vi.mock('~/trpc/react', () => ({
       paymentGateway: { settlementReadiness: { setData: vi.fn() }, list: { invalidate: vi.fn() } },
     }),
     paymentGateway: {
-      settlementReadiness: { useQuery: () => ({ data: state.data, isPending: false }) },
+      settlementReadiness: {
+        useQuery: () => ({
+          data: state.data,
+          isPending: state.isPending,
+          error: state.error,
+          refetch: state.refetch,
+        }),
+      },
       updateSettlementSettings: { useMutation: () => ({ mutate: state.mutate, isPending: false }) },
     },
   },
@@ -86,6 +96,9 @@ const gateway = {
 beforeEach(() => {
   state.canEdit = true
   state.mutate.mockClear()
+  state.refetch.mockClear()
+  state.isPending = false
+  state.error = null
   state.data = {
     processorAccountId: 'merchant-one',
     settlementCurrency: 'USD',
@@ -136,7 +149,7 @@ describe('gateway settlement fields', () => {
     expect(screen.getByText('Settlement mappings configured.')).toBeInTheDocument()
   })
   it('shows every reporting connection and its independent acquisition health', () => {
-    const accounts = state.data.accounts as { connections: Record<string, unknown>[] }[]
+    const accounts = state.data!.accounts as { connections: Record<string, unknown>[] }[]
     accounts[0]!.connections = [
       {
         connectorId: 'one',
@@ -168,5 +181,57 @@ describe('gateway settlement fields', () => {
     render(<GatewaySettlementFields gateway={gateway} />)
     expect(screen.getByLabelText('Settlement account')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Receiving bank' })).toBeDisabled()
+  })
+  it('keeps saved fields visible while merchant discovery loads and recovers', () => {
+    const ready = state.data
+    state.data = undefined
+    state.isPending = true
+    const { rerender } = render(<GatewaySettlementFields gateway={gateway} />)
+    expect(screen.getByLabelText('Settlement account')).toHaveValue('merchant-one')
+    expect(screen.getByLabelText('Settlement account')).toBeDisabled()
+    expect(screen.getByLabelText('Settlement currency')).toHaveValue('USD')
+    expect(screen.getByRole('button', { name: 'Receiving bank' })).toHaveAttribute(
+      'data-value',
+      'bank-one'
+    )
+    expect(screen.getByText('Checking settlement readiness…')).toBeInTheDocument()
+    expect(screen.queryByText(/Import payout or balance activity/)).not.toBeInTheDocument()
+    state.data = ready
+    state.isPending = false
+    rerender(<GatewaySettlementFields gateway={gateway} />)
+    expect(screen.getByLabelText('Settlement account')).toBeEnabled()
+    expect(screen.getByRole('option', { name: 'processor-a · merchant/one' })).toBeInTheDocument()
+    expect(screen.getByText('Settlement mappings configured.')).toBeInTheDocument()
+  })
+  it('keeps saved fields visible on discovery failure and offers an independent retry', () => {
+    state.data = undefined
+    state.error = new Error('relation "MoneyTransfer" does not exist')
+    render(<GatewaySettlementFields gateway={gateway} />)
+    expect(screen.getByLabelText('Settlement account')).toHaveValue('merchant-one')
+    expect(screen.getByLabelText('Settlement account')).toBeDisabled()
+    expect(screen.getByLabelText('Settlement currency')).toHaveValue('USD')
+    expect(screen.getByRole('button', { name: 'Receiving bank' })).toHaveAttribute(
+      'data-value',
+      'bank-one'
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load merchant accounts')
+    expect(screen.queryByText(/MoneyTransfer/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Import payout or balance activity/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(state.refetch).toHaveBeenCalledOnce()
+    fireEvent.change(screen.getByLabelText('Settlement currency'), { target: { value: 'CAD' } })
+    expect(state.mutate).toHaveBeenCalledWith({
+      gatewayId: gateway.id,
+      patch: { settlementCurrency: 'CAD', bankAccountId: null },
+    })
+  })
+  it('does not claim readiness from cached data after a failed refresh', () => {
+    state.error = new Error('Failed to refresh')
+    render(<GatewaySettlementFields gateway={gateway} />)
+    expect(screen.getByLabelText('Settlement account')).toHaveValue('merchant-one')
+    expect(screen.getByLabelText('Settlement currency')).toHaveValue('USD')
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByText('Settlement mappings configured.')).not.toBeInTheDocument()
+    expect(screen.queryByText(/No current connection is linked/)).not.toBeInTheDocument()
   })
 })
