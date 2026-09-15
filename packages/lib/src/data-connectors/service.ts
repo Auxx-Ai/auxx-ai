@@ -95,7 +95,7 @@ export function decodeMapping(row: DataConnectorMappingRow): DecodedMapping {
 /**
  * Load a connector plus its enabled streams and their mappings. Returns null
  * when the connector doesn't exist (or belongs to another org). Streams with no
- * mappings are dropped — a fetch with nowhere to land is a no-op.
+ * mappings are dropped unless the stream has a dedicated financial evidence sink.
  */
 export async function loadConnector(
   db: DbOrTx,

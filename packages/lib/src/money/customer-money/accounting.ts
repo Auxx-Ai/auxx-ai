@@ -152,7 +152,7 @@ async function prepareReceipt(tx: Transaction, input: Command, basisVersion: num
   })
   if (basis.status !== 'ready') throw new Error('Expected ready receipt basis')
   const dimensions = {
-    sourceProvider: 'shopify',
+    sourceProvider: source.sourceProvider,
     ...(facts.channel ? { channel: facts.channel } : {}),
     sourceStoreId: source.sourceStoreId,
     processorAccountId: source.processorAccountId,

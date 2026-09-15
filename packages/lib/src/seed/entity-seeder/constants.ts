@@ -7,6 +7,24 @@ import type { DisplayFieldConfig, SystemEntityConfig } from './types'
  */
 export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
   {
+    entityType: 'customer_transaction',
+    apiSlug: 'customer-transactions',
+    singular: 'Customer transaction',
+    plural: 'Customer transactions',
+    icon: 'banknote',
+    color: 'teal',
+    isVisible: false,
+  },
+  {
+    entityType: 'processor_balance_entry',
+    apiSlug: 'processor-balance-entries',
+    singular: 'Processor transaction',
+    plural: 'Processor transactions',
+    icon: 'banknote',
+    color: 'teal',
+    isVisible: false,
+  },
+  {
     entityType: 'contact',
     apiSlug: 'contacts',
     singular: 'Contact',

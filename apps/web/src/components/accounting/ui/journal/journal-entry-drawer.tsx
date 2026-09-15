@@ -145,6 +145,10 @@ export function JournalEntryDrawer({
     blockers.push({
       status: draft.postResult.status,
       error: draft.postResult.error ?? 'The post was refused.',
+      // Carried through so a refused post gets the same row-per-role card a
+      // refused PREVIEW gets. Dropping it here would make the two paths to the
+      // same refusal render differently for no reason a reader could see.
+      ...(draft.postResult.items?.length ? { items: draft.postResult.items } : {}),
     })
   }
 

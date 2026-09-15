@@ -47,6 +47,9 @@ const RAIL: PaymentGatewayRow = {
   feeTreatment: 'netted',
   status: 'active',
   lastSettlementAt: null,
+  processorAccountId: null,
+  settlementCurrency: null,
+  bankAccountId: null,
   lastFeeBookedAt: null,
   createdAt: null,
   updatedAt: null,
@@ -343,6 +346,10 @@ describe('SHOPIFY_PAYMENTS_PAYOUT_SOURCE.resolveContexts', () => {
         rail: RAIL,
         conflictingRails: [],
         handle: APP_CONTEXT,
+        ownership: {
+          appInstallationId: APP_CONTEXT.installationId,
+          credentialId: APP_CONTEXT.connectionId,
+        },
       },
     ])
   })

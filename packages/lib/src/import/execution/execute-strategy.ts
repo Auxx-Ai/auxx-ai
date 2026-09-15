@@ -12,6 +12,7 @@ import { buildRecordData } from './build-record-data'
 import {
   type BatchRecord,
   type BatchRecordData,
+  type BulkCreateRecordResult,
   type ExecuteBatchContext,
   executeBatch,
 } from './execute-batch'
@@ -44,6 +45,8 @@ export interface ExecuteStrategyContext {
   identifierKeys?: string[]
   /** Function to create a single record */
   createRecord: (data: BatchRecordData) => Promise<{ id: string }>
+  /** Optional batch create supplied by the common record storage binding. */
+  bulkCreate?: (records: BatchRecordData[]) => Promise<BulkCreateRecordResult[]>
   /** Function to update a single record */
   updateRecord: (id: string, data: BatchRecordData) => Promise<{ id: string }>
   /** Progress callback */
@@ -323,6 +326,7 @@ export async function executeStrategy(
       strategy: strategy.strategy,
       identifierKeys: ctx.identifierKeys,
       createRecord,
+      bulkCreate: ctx.bulkCreate,
       updateRecord,
     }
 

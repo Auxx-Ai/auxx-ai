@@ -206,21 +206,25 @@ const setTags = (ctx: FieldValueContext, f: Fixture, vals: string[]) =>
  */
 function failingCtx(f: Fixture, failOn: 'insert' | 'update'): FieldValueContext {
   const real = db()
+  const failInside = (tx: object): object =>
+    new Proxy(tx, {
+      get(target, prop) {
+        if (prop === failOn) throw new Error(`simulated crash before ${String(prop)}`)
+        if (prop === 'transaction') {
+          const transaction = Reflect.get(target, prop)
+          return (fn: (nested: object) => unknown) =>
+            transaction.call(target, (nested: object) => fn(failInside(nested)))
+        }
+        const value = Reflect.get(target, prop)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
   const failingDb = new Proxy(real, {
     get(target, prop, receiver) {
       if (prop === 'transaction') {
         return (fn: (tx: unknown) => unknown) =>
           target.transaction(async (tx) => {
-            const failingTx = new Proxy(tx as object, {
-              get(t, p) {
-                if (p === failOn) {
-                  throw new Error(`simulated crash before ${String(p)}`)
-                }
-                const v = Reflect.get(t, p)
-                return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(t) : v
-              },
-            })
-            return await fn(failingTx)
+            return await fn(failInside(tx))
           })
       }
       const v = Reflect.get(target, prop, receiver)

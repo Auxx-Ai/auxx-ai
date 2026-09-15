@@ -118,6 +118,16 @@ export interface PayoutSourceCtx {
    * context is the one that reads it back, and it narrows.
    */
   handle: unknown
+  /** Adapter-declared identity used to prevent another writer claiming the same feed. */
+  ownership?: {
+    sourceAccount?: {
+      providerKey: string
+      externalAccountId: string
+      environment?: 'live' | 'test'
+    }
+    appInstallationId?: string
+    credentialId?: string
+  }
 }
 
 /**

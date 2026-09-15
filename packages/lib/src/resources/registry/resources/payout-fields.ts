@@ -6,6 +6,7 @@ import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { PayoutSource } from '../enum-values'
 import type { ResourceField } from '../field-types'
+import { PAYOUT_SOURCE_FIELDS } from './payout-source-fields'
 
 /**
  * A payout's life. `paid` is the only status that carries a posting.
@@ -62,6 +63,30 @@ export const PAYOUT_STATUS_OPTIONS = [
  * ever created by the sync - there is no create dialog to reach.
  */
 export const PAYOUT_FIELDS: Record<string, ResourceField> = {
+  ...Object.fromEntries(
+    Object.entries(PAYOUT_SOURCE_FIELDS).map(([key, field]) => [`source_${key}`, field])
+  ),
+  evidence: {
+    id: toFieldId('evidence'),
+    key: 'evidence',
+    label: 'Source evidence',
+    type: BaseType.JSON,
+    fieldType: FieldType.JSON,
+    isSystem: true,
+    systemAttribute: 'payout_evidence',
+    systemSortOrder: 'z1',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'Original payout header and processor membership evidence.',
+  },
   id: {
     id: toFieldId('id'),
     key: 'id',

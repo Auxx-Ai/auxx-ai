@@ -12,7 +12,7 @@ import {
 } from '@auxx/types'
 import { isSelfReferentialRelationship, type RelationshipConfig } from '@auxx/types/custom-field'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
-import { mergeMeta, readEnvelope, writeEnvelope } from '@auxx/types/field-value'
+import { readEnvelope, writeEnvelope } from '@auxx/types/field-value'
 import type { RecordId } from '@auxx/types/resource'
 import { isSystemAttribute } from '@auxx/types/system-attribute'
 import { generateId } from '@auxx/utils'
@@ -22,7 +22,6 @@ import {
   nextKeyAfter,
   nKeysAfter,
 } from '@auxx/utils/fractional-indexing'
-import { stableStringify } from '@auxx/utils/json'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { getCachedFieldMap, getCachedResource } from '../cache'
 import {
@@ -105,8 +104,6 @@ import {
 } from './field-value-helpers'
 import { getValue, getValueFromStoredRows } from './field-value-queries'
 import { formatToTypedInput } from './formatter'
-import { getExistingFieldValue } from './get-existing-value'
-import { insertFieldValue } from './insert-value'
 import {
   type EntityInstanceRow,
   flushInstanceDerived,
@@ -122,11 +119,7 @@ import {
   syncInverseRelationshipsBulk,
 } from './relationship-sync'
 import { type ValidationContext, validateSelfReferentialChange } from './relationship-validators'
-import {
-  isSearchTextIndexedFieldType,
-  updateSearchText,
-  updateSearchTextForInstances,
-} from './search-text'
+import { isSearchTextIndexedFieldType, updateSearchTextForInstances } from './search-text'
 import {
   existingRowMatchesInsert,
   type FieldValueInsertRow,
@@ -160,7 +153,6 @@ import type {
   SetValueWithBuiltInInput,
   SetValueWithTypeInput,
 } from './types'
-import { updateFieldValue } from './update-value'
 
 const logger = createScopedLogger('field-value-mutations')
 
@@ -4869,8 +4861,7 @@ export function extractRelatedIdsFromRaw(value: unknown): string[] {
 }
 
 /**
- * Set single-value field using UPSERT strategy.
- * Checks if row exists, then UPDATE or INSERT.
+ * Reconcile a single value using the caller transaction and shared row lock.
  */
 async function setSingleValue(
   ctx: FieldValueContext,
@@ -4880,54 +4871,11 @@ async function setSingleValue(
   value: TypedFieldValueInput | TypedFieldValueInput[],
   currencyOptions?: CurrencyPrecisionOptions
 ): Promise<TypedFieldValue[]> {
-  const { entityInstanceId } = parseRecordId(recordId)
   const singleValue = Array.isArray(value) ? value[0] : value
   if (!singleValue) return []
-
-  // Check if row exists
-  const existingResult = await getExistingFieldValue({
-    entityId: entityInstanceId,
-    fieldId,
-    organizationId: ctx.organizationId,
-  })
-
-  if (existingResult.isErr()) {
-    throw new Error(existingResult.error.message)
-  }
-
-  const existing = existingResult.value
-
-  if (existing) {
-    // UPDATE existing row
-    const updateData = buildUpdateData(fieldType, singleValue, currencyOptions)
-    const updatedResult = await updateFieldValue({
-      id: existing.id,
-      organizationId: ctx.organizationId,
-      ...updateData,
-    })
-
-    if (updatedResult.isErr()) {
-      throw new Error(updatedResult.error.message)
-    }
-
-    return [rowToTypedValue(updatedResult.value as unknown as FieldValueRow, fieldType)]
-  } else {
-    // INSERT new row - pass recordId to buildInsertData
-    const insertData = buildInsertData(fieldType, singleValue, currencyOptions)
-    const insertedResult = await insertFieldValue({
-      recordId,
-      fieldId,
-      organizationId: ctx.organizationId,
-      sortKey: generateKeyBetween(null, null),
-      ...insertData,
-    })
-
-    if (insertedResult.isErr()) {
-      throw new Error(insertedResult.error.message)
-    }
-
-    return [rowToTypedValue(insertedResult.value as unknown as FieldValueRow, fieldType)]
-  }
+  // Use the caller's transaction for single values as well as multiple values.
+  // Evidence validation after this write must be able to roll back the stored row.
+  return setMultiValue(ctx, recordId, fieldId, fieldType, singleValue, currencyOptions)
 }
 
 /**
@@ -4981,7 +4929,7 @@ async function setMultiValue(
 /**
  * `field.options`, narrowed to the two keys the CURRENCY precision guard
  * reads. Shared by every `buildFieldValueRow`/`buildInsertData`/
- * `buildUpdateData` call site so a rate field's `decimals: RATE_DECIMALS`
+ * `buildFieldValueRow` call site so a rate field's `decimals: RATE_DECIMALS`
  * reaches the guard instead of falling back to the whole-minor-unit default.
  */
 type CurrencyPrecisionOptions = { decimals?: number; currencyCode?: string } | undefined
@@ -5051,72 +4999,6 @@ function buildInsertData(
         return { relatedEntityId: value.id, relatedEntityDefinitionId: 'worker' }
       }
       // Group actor — relatedEntityId; relatedEntityDefinitionId set from field options.
-      return { relatedEntityId: value.id }
-    }
-  }
-}
-
-/**
- * Build update data from typed value input (for service layer).
- * Converts recordId back to two DB columns for relationship type.
- */
-function buildUpdateData(
-  fieldType: FieldType,
-  value: TypedFieldValueInput,
-  currencyOptions?: CurrencyPrecisionOptions
-): {
-  valueText?: string | null
-  valueNumber?: number | null
-  valueBoolean?: boolean | null
-  valueDate?: string | null
-  valueJson?: unknown | null
-  optionId?: string | null
-  relatedEntityId?: string | null
-  relatedEntityDefinitionId?: string | null
-  actorId?: string | null
-} {
-  // Same structure as insert data
-  switch (value.type) {
-    case 'text':
-      return { valueText: value.value }
-    case 'number':
-      // CURRENCY stores its amount in valueNumber exactly like NUMBER — the
-      // denomination is the field's, so nothing rides the envelope.
-      if (fieldType === 'CURRENCY')
-        assertCurrencyAtFieldPrecision(
-          value.value,
-          currencyOptions?.decimals,
-          currencyOptions?.currencyCode
-        )
-      return { valueNumber: value.value }
-    case 'boolean':
-      return { valueBoolean: value.value }
-    case 'date':
-      return {
-        valueDate: value.value instanceof Date ? value.value.toISOString() : value.value,
-      }
-    case 'json':
-      return { valueJson: writeEnvelope(value.value) }
-    case 'option':
-      return { optionId: value.optionId }
-    case 'relationship': {
-      // Parse recordId back to two DB columns
-      const { entityDefinitionId, entityInstanceId } = parseRecordId(value.recordId)
-      return {
-        relatedEntityId: entityInstanceId,
-        relatedEntityDefinitionId: entityDefinitionId,
-      }
-    }
-    case 'actor': {
-      if (value.actorType === 'user') {
-        return { actorId: value.id }
-      }
-      if (value.actorType === 'agent') {
-        return { actorId: value.id, relatedEntityDefinitionId: 'agent' }
-      }
-      if (value.actorType === 'worker') {
-        return { relatedEntityId: value.id, relatedEntityDefinitionId: 'worker' }
-      }
       return { relatedEntityId: value.id }
     }
   }

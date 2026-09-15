@@ -191,6 +191,22 @@ export {
   planChartImport,
   ROLE_IMPORT_MATCH,
 } from './chart-import-plan'
+// ── One refusal, as the pieces of work it is made of ────────────────────────
+// PURE - no database, no logger, no clock. On this surface because the close
+// console renders the items as rows and the counts as badges, and a
+// count-to-sentence function that ran only on the server would have to be
+// written a second time in the browser. See close-blockers.ts's own header for
+// why the sentence is derived from the items rather than beside them.
+export {
+  type CloseBlockerItem,
+  type CloseBlockerItemKey,
+  closeBlockerMessage,
+  describeIncompleteRevenue,
+  describeUnmappedRoles,
+  type IncompleteRevenueCounts,
+  incompleteRevenueLead,
+  monthLabel,
+} from './close-blockers'
 export {
   type AccountCodeBand,
   CHART_PACK_KEYS,

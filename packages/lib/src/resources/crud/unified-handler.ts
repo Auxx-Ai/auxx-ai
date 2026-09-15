@@ -46,6 +46,7 @@ import type { RecordPickerItem } from '../picker/types'
 import { isSystemResourceId } from '../registry'
 import type { TableId } from '../registry/field-registry'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
+import { assertFinancialRecordCanDelete } from './financial-record-binding'
 import { assertRecordRowsEditable } from './record-row-access'
 import { flushTxWriteScope } from './tx-write-flush'
 import { runInTxWrite } from './tx-write-scope'
@@ -746,6 +747,7 @@ export class UnifiedCrudHandler {
    * @param options - Optional CRUD options (skipEvents)
    */
   async archive(recordId: RecordId, options: CrudOptions = {}) {
+    await assertFinancialRecordCanDelete(this.db, this.organizationId, recordId)
     return this.inWriteSession(async () => {
       const { entityDefinitionId } = parseRecordId(recordId)
       // Soft delete is an edit (§0.1) — judged at the row, not the def (§5.3).
@@ -777,6 +779,7 @@ export class UnifiedCrudHandler {
    * @param options - Optional CRUD options (skipEvents)
    */
   async delete(recordId: RecordId, options: CrudOptions = {}): Promise<void> {
+    await assertFinancialRecordCanDelete(this.db, this.organizationId, recordId)
     return this.inWriteSession(async () => {
       const { entityDefinitionId } = parseRecordId(recordId)
       // Record delete is a write (§0.1); the router additionally asserts the
@@ -800,6 +803,12 @@ export class UnifiedCrudHandler {
    * @param items - Array of field value maps to create
    * @param options - Optional CRUD options (skipEvents)
    */
+  async supportsBulkCreate(entityDefinitionId: string): Promise<boolean> {
+    await this.resolveEntityDefinition(entityDefinitionId)
+    return false
+  }
+
+  /** Create records using the registered storage binding's batching behavior. */
   async bulkCreate(
     entityDefinitionId: string,
     items: Record<string, unknown>[],

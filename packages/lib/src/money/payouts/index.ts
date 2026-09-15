@@ -12,6 +12,13 @@ export {
   splitPayout,
   totalsOnlySplit,
 } from './client'
+export {
+  getPayoutEvidence,
+  listPayoutEvidence,
+  listPayoutEvidenceHistory,
+  listProcessorBalanceEntries,
+  listRejectedProcessorEvidence,
+} from './evidence-reads'
 export { type GatheredPayout, gatherPayout } from './gather'
 export { listRailStrip, type RailStripRow } from './rails'
 export {
@@ -22,6 +29,7 @@ export {
   requirePayoutFieldContext,
 } from './reads'
 export { readRecognisedChargeIds, readRecognisedOrderIds, recognise } from './recognise'
+export { reconcileFinancialRecords } from './reconcile-records'
 export { type ResolvedPayoutGateway, resolvePayoutRail } from './routing'
 export type {
   PayoutSource,

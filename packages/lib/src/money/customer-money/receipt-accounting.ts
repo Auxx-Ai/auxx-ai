@@ -5,9 +5,10 @@ import { UnprocessableEntityError } from '../../errors'
 import { getPaymentGateway } from '../../payment-gateways/reads'
 import { accountingBasisHash } from '../../postings/effect-basis'
 import { periodKeyForDate } from '../../postings/periods'
-import { confirmedShopifyMovement, shopifyMoneyObservationSchema } from './contracts'
+import { confirmedCustomerMovement } from './contracts'
+import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
 
-/** Read the canonical movement and its accepted Shopify evidence under the commit lock. */
+/** Read the canonical movement and its accepted source evidence under the commit lock. */
 export async function readCustomerReceiptAccountingSource(
   tx: Transaction,
   organizationId: string,
@@ -80,16 +81,14 @@ export async function readCustomerReceiptAccountingSource(
           eq(schema.FinancialSourceAccount.id, object.sourceAccountId)
         ),
       }))
-    if (account?.providerKey !== 'shopify') continue
+    if (!account) continue
     if (
       acceptance.state !== 'accepted' ||
       acceptance.orderInstanceId !== orderId ||
       account.environment !== 'live' ||
       account.archivedAt
     )
-      throw new UnprocessableEntityError(
-        'Shopify receipt source is unresolved, changed, or test data'
-      )
+      throw new UnprocessableEntityError('Receipt source is unresolved, changed, or test data')
     const observation = await tx.query.FinancialSourceObservation.findFirst({
       where: and(
         eq(schema.FinancialSourceObservation.organizationId, organizationId),
@@ -97,12 +96,12 @@ export async function readCustomerReceiptAccountingSource(
         eq(schema.FinancialSourceObservation.sourceObjectId, object!.id)
       ),
     })
-    const parsed = shopifyMoneyObservationSchema.safeParse(observation?.payload)
+    const parsed = readStoredCustomerMoneyObservation(observation?.payload)
     if (!parsed.success || parsed.data.test)
       throw new UnprocessableEntityError('Receipt source observation is incomplete or test data')
-    let fact: ReturnType<typeof confirmedShopifyMovement>
+    let fact: ReturnType<typeof confirmedCustomerMovement>
     try {
-      fact = confirmedShopifyMovement(parsed.data)
+      fact = confirmedCustomerMovement(parsed.data)
     } catch (error) {
       throw new UnprocessableEntityError(
         `Receipt source is not a confirmed movement: ${error instanceof Error ? error.message : String(error)}`
@@ -126,9 +125,7 @@ export async function readCustomerReceiptAccountingSource(
     evidence.push({ object: object!, account, observation: observation! })
   }
   if (evidence.length !== 1)
-    throw new UnprocessableEntityError(
-      'Receipt needs one unambiguous accepted Shopify transaction source'
-    )
+    throw new UnprocessableEntityError('Receipt needs one unambiguous accepted transaction source')
   const route =
     money.paymentRouteId &&
     (await tx.query.PaymentRoute.findFirst({
@@ -172,6 +169,7 @@ export async function readCustomerReceiptAccountingSource(
     route,
     processorAccountId: processor.id,
     sourceStoreId: source.account.id,
+    sourceProvider: source.account.providerKey,
     sourceObjectId: source.object.id,
     sourceExternalId: source.object.externalId,
     sourceRevision: source.observation.id,

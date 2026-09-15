@@ -496,6 +496,32 @@ export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       'linkNewRelationships skips the pair with a debug line',
   },
 
+  settlementGateways: {
+    id: toFieldId('settlementGateways'),
+    key: 'settlementGateways',
+    label: 'Settlement gateways',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'bank_account_settlement_gateways',
+    systemSortOrder: 'aCX',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'payment_gateway:settlementBankAccount' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'unlink',
+      isInverse: true,
+    },
+    description: 'Payment gateways that send settlements to this account.',
+  },
+
   hasPosted: {
     id: toFieldId('hasPosted'),
     key: 'hasPosted',

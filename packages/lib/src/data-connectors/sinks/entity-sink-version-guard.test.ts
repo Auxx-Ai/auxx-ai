@@ -27,6 +27,11 @@ vi.mock('../service', () => ({
 vi.mock('../../agents/bindings/resolve', () => ({ resolveConnectorFieldRef: vi.fn() }))
 vi.mock('../field-id-resolver', () => ({ buildWriteKeyToFieldId: vi.fn() }))
 
+const { legacyMoneyWrite } = vi.hoisted(() => ({ legacyMoneyWrite: vi.fn() }))
+vi.mock('../../money/customer-money/ingest', () => ({ ingestShopifyOrderMoney: legacyMoneyWrite }))
+vi.mock('../reconciliation', () => ({ archiveExternalId: vi.fn() }))
+
+import { sinkSourceRecord } from '../sink-source-record'
 import { entitySink } from './entity-sink'
 
 /** Owned mapping with no field bindings — keeps the write set empty so the test
@@ -73,6 +78,7 @@ beforeEach(() => {
   touchItem.mockReset()
   upsertItem.mockReset()
   update.mockClear()
+  legacyMoneyWrite.mockClear()
 })
 
 describe('entitySink out-of-order guard (§9 Q7)', () => {
@@ -161,5 +167,60 @@ describe('entitySink out-of-order guard (§9 Q7)', () => {
     // Touched WITH the newer stamp so a later genuinely-older event is still caught.
     expect(touchItem).toHaveBeenCalledWith({}, 'item1', 'app-webhook:e1', T2)
     expect(ctx.counters.skipped).toBe(1)
+  })
+})
+
+describe('source financial facts obey ordinary record admission', () => {
+  const source = {
+    streamKey: 'order',
+    externalId: 'o1',
+    displayName: 'Order',
+    fields: {
+      updatedAt: T1.toISOString(),
+      financialTransactions: {
+        version: 2,
+        complete: true,
+        transactions: [{ id: 'capture', amount: '100.00' }],
+      },
+      allowed: false,
+    },
+  }
+  function financialContext() {
+    const ctx = makeCtx()
+    ctx.connector = {
+      ...ctx.connector,
+      type: 'app:shopify',
+      credentialId: 'credential',
+      appInstallationId: 'installation',
+    }
+    return ctx
+  }
+  it('a stale Shopify order cannot stage money before the version guard', async () => {
+    findItem.mockResolvedValue({
+      id: 'item1',
+      entityInstanceId: 'inst1',
+      upstreamUpdatedAt: T2,
+      contentHash: 'newer',
+      pendingRelations: [],
+    })
+    const ctx = financialContext()
+    await sinkSourceRecord(ctx, [mapping()], source, 'updatedAt')
+    expect(ctx.counters.skipped).toBe(1)
+    expect(update).not.toHaveBeenCalled()
+    expect(legacyMoneyWrite).not.toHaveBeenCalled()
+  })
+  it('a filtered Shopify order cannot stage money before the record filter', async () => {
+    const ctx = financialContext()
+    await sinkSourceRecord(ctx, [mapping()], source, 'updatedAt', [
+      {
+        id: 'filter',
+        logicalOperator: 'AND',
+        conditions: [{ id: 'allowed', fieldId: 'allowed', operator: 'is', value: true }],
+      },
+    ])
+    expect(ctx.counters.skipped).toBe(1)
+    expect(findItem).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    expect(legacyMoneyWrite).not.toHaveBeenCalled()
   })
 })

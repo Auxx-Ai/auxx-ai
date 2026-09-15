@@ -3,10 +3,12 @@ import { schema } from '@auxx/database'
 import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { z } from 'zod'
 import { accountingBasisHash } from '../../../postings/effect-basis'
 import { adoptNativeStripeMoney } from '../adopt-native-stripe'
-import type { ShopifyMoneyObservation } from '../contracts'
-import { ingestShopifyOrderMoney, materializeImportedMoneyInTx } from '../ingest'
+import type { customerMoneyObservationSchema } from '../contracts'
+import { materializeImportedMoneyInTx } from '../ingest'
+import { reconcileOrderPaymentEvidence, stageOrderPaymentEvidenceInTx } from '../record-evidence'
 
 vi.mock('../../payments/connect-client', () => ({
   getStripeConnectClient: () => ({
@@ -31,10 +33,12 @@ const db = () => getTestDb()
 let organizationId: string
 let orderId: string
 let accountId: string
-const sample: ShopifyMoneyObservation = {
+const sample: z.infer<typeof customerMoneyObservationSchema> = {
+  version: 2,
+  raw: {},
   id: 'capture1',
-  kind: 'CAPTURE',
-  status: 'SUCCESS',
+  kind: 'receipt',
+  status: 'confirmed',
   amount: '60.00',
   currency: 'USD',
   processedAt: '2026-09-01T01:30:00Z',
@@ -44,6 +48,46 @@ const sample: ShopifyMoneyObservation = {
   creditMemoExternalId: null,
   paymentId: null,
   test: false,
+}
+async function stageFixture(input: {
+  organizationId: string
+  credentialId: string
+  appInstallationId: string
+  connectorId: string
+  runId: string
+  orderExternalId: string
+  envelope: { version: number; complete: boolean; transactions: unknown[] }
+}) {
+  const credential = await db().query.Credential.findFirst({
+    where: eq(schema.Credential.id, input.credentialId),
+  })
+  await db().transaction((tx) =>
+    stageOrderPaymentEvidenceInTx(tx, {
+      organizationId,
+      orderInstanceId: orderId,
+      provenance: {
+        source: 'connector',
+        connectorId: input.connectorId,
+        credentialId: input.credentialId,
+        appInstallationId: input.appInstallationId,
+        credentialMetadataHash: accountingBasisHash(credential?.metadata),
+      },
+      evidence: {
+        version: 2,
+        sourceAccount: {
+          providerKey: 'shopify',
+          externalAccountId: 'fixture.myshopify.com',
+          environment: 'live',
+        },
+        orderExternalId: input.orderExternalId,
+        sourceUpdatedAt: null,
+        complete: input.envelope.complete,
+        transactions: input.envelope.transactions,
+      },
+    })
+  )
+  if (input.runId === 'reconnect')
+    await reconcileOrderPaymentEvidence(db(), { organizationId, orderInstanceIds: [orderId] })
 }
 beforeEach(async () => {
   organizationId = (await createTestOrganization()).id
@@ -281,11 +325,11 @@ describe('customer money source acceptance against PostgreSQL', () => {
       runId: 'run1',
       orderExternalId: 'order2',
     }
-    await ingestShopifyOrderMoney(db(), {
+    await stageFixture({
       ...input,
       envelope: { version: 1, complete: true, transactions: [sample] },
     })
-    await ingestShopifyOrderMoney(db(), {
+    await stageFixture({
       ...input,
       envelope: { version: 1, complete: true, transactions: [] },
     })
@@ -443,11 +487,21 @@ describe('customer money source acceptance against PostgreSQL', () => {
     })
     const refund = await staged({
       id: 'refund1',
-      kind: 'REFUND',
+      kind: 'refund',
       amount: '10.00',
       parentTransactionId: 'capture1',
       creditMemoExternalId: 'refund_document',
     })
+    await db()
+      .update(schema.FinancialSourceObservation)
+      .set({
+        reportingInstallationSnapshot: {
+          connectorId: connector!.id,
+          credentialId: credential!.id,
+          credentialMetadataHash: accountingBasisHash(credential!.metadata),
+        },
+      })
+      .where(eq(schema.FinancialSourceObservation.id, refund.observationId))
     await accept(refund.id)
     await accept(refund.id)
     expect(await db().select().from(schema.MoneyRefundSettlement)).toHaveLength(1)
@@ -475,12 +529,12 @@ describe('customer money source acceptance against PostgreSQL', () => {
     const payload = {
       ...sample,
       id: 'refund1',
-      kind: 'REFUND',
+      kind: 'refund',
       amount: '10.00',
       parentTransactionId: 'capture1',
       creditMemoExternalId: 'refund_document',
     }
-    await ingestShopifyOrderMoney(db(), {
+    await stageFixture({
       organizationId,
       credentialId: replacement!.id,
       appInstallationId: installation!.id,
@@ -492,5 +546,93 @@ describe('customer money source acceptance against PostgreSQL', () => {
     expect(await db().select().from(schema.MoneyTransaction)).toHaveLength(2)
     expect(await db().select().from(schema.MoneyRefundSettlement)).toHaveLength(1)
     expect(await db().select().from(schema.GlPosting)).toHaveLength(0)
+  })
+})
+
+describe('ordinary order evidence staging and shared events', () => {
+  it('stages without creating money, then reconciles without a connector and keeps replay idempotent', async () => {
+    const { stageOrderPaymentEvidenceInTx, reconcileOrderPaymentEvidence } = await import(
+      '../record-evidence'
+    )
+    const evidence = {
+      version: 2,
+      sourceAccount: {
+        providerKey: 'shopify',
+        externalAccountId: 'fixture.myshopify.com',
+        environment: 'live',
+      },
+      orderExternalId: 'order-fixture',
+      sourceUpdatedAt: '2026-09-01T00:00:00Z',
+      complete: true,
+      transactions: [{ ...sample, version: 2, kind: 'receipt', status: 'confirmed', raw: sample }],
+    }
+    await db().transaction((tx) =>
+      stageOrderPaymentEvidenceInTx(tx, {
+        organizationId,
+        orderInstanceId: orderId,
+        evidence,
+        provenance: { source: 'import' },
+      })
+    )
+    expect(
+      await db().query.MoneyTransaction.findMany({
+        where: eq(schema.MoneyTransaction.organizationId, organizationId),
+      })
+    ).toHaveLength(0)
+    await reconcileOrderPaymentEvidence(db(), {
+      organizationId,
+      orderInstanceIds: [orderId, orderId],
+    })
+    const first = await db().query.MoneyTransaction.findMany({
+      where: eq(schema.MoneyTransaction.organizationId, organizationId),
+    })
+    expect(first).toHaveLength(1)
+    expect(first[0]!.amountMinor).toBe(6000n)
+    await db().transaction((tx) =>
+      stageOrderPaymentEvidenceInTx(tx, {
+        organizationId,
+        orderInstanceId: orderId,
+        evidence,
+        provenance: { source: 'api' },
+      })
+    )
+    await reconcileOrderPaymentEvidence(db(), { organizationId, orderInstanceIds: [orderId] })
+    expect(
+      await db().query.MoneyTransaction.findMany({
+        where: eq(schema.MoneyTransaction.organizationId, organizationId),
+      })
+    ).toEqual(first)
+    const coverage = await db().query.FinancialSourceCoverage.findFirst({
+      where: eq(schema.FinancialSourceCoverage.organizationId, organizationId),
+    })
+    expect(coverage).toMatchObject({
+      streamKey: 'order_transactions',
+      complete: true,
+      acceptedCount: 1,
+    })
+  })
+  it('rejects cross-organization order ownership before financial writes', async () => {
+    const { stageOrderPaymentEvidenceInTx } = await import('../record-evidence')
+    const other = (await createTestOrganization()).id
+    await expect(
+      db().transaction((tx) =>
+        stageOrderPaymentEvidenceInTx(tx, {
+          organizationId: other,
+          orderInstanceId: orderId,
+          evidence: {
+            version: 2,
+            sourceAccount: {
+              providerKey: 'file',
+              externalAccountId: 'account',
+              environment: 'live',
+            },
+            orderExternalId: 'order-fixture',
+            sourceUpdatedAt: null,
+            complete: true,
+            transactions: [],
+          },
+        })
+      )
+    ).rejects.toThrow('active order')
   })
 })

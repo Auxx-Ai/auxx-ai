@@ -4,12 +4,15 @@ export { postCustomerReceiptAccounting, sweepCustomerReceiptAccounting } from '.
 export { type AdoptNativeStripeMoneyInput, adoptNativeStripeMoney } from './adopt-native-stripe'
 export type { OrderMoneyTransaction } from './client'
 export {
-  type IngestShopifyOrderMoneyInput,
-  ingestShopifyOrderMoney,
   materializeImportedMoneyInTx,
   sweepImportedCustomerMoney,
 } from './ingest'
 export { listOrderMoneyTransactions, readOrderMoneyCoverage } from './reads'
+export {
+  reconcileOrderPaymentEvidence,
+  refreshOrderPaymentCoverage,
+  stageOrderPaymentEvidenceInTx,
+} from './record-evidence'
 export {
   type ResolveImportedMoneyReferencesInput,
   resolveImportedMoneyReferences,

@@ -140,6 +140,11 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
     // own try/catch inside.
     const { creditMemoPostingTriggerPass } = await import('./passes/credit-memo-posting-pass')
     await creditMemoPostingTriggerPass(db, organizationId, manifest, resolveDef)
+
+    const { reconcileFinancialRecordsAfterBulk } = await import(
+      '../../money/reconciliation/record-events'
+    )
+    await reconcileFinancialRecordsAfterBulk(db, organizationId, manifest, resolveDef)
   } catch (error) {
     logger.error('integrity passes failed', {
       organizationId,

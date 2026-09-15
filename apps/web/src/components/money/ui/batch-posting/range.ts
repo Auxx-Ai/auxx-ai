@@ -42,6 +42,13 @@ export function firstDayOfMonth(monthKey: string): string {
   return `${monthKey}-01`
 }
 
+/** `'2026-03'` becomes `'2026-03-31'`. Day 0 of the next month is this one's last. */
+export function lastDayOfMonth(monthKey: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(monthKey)
+  if (!match) return monthKey
+  return new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).toISOString().slice(0, 10)
+}
+
 /**
  * A month range, both ends INCLUSIVE, as the half-open window the wire takes.
  *

@@ -2,11 +2,17 @@
 
 'use client'
 
-import type { PostResultStatus } from '@auxx/lib/postings/client'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import type {
+  CloseBlockerItem,
+  CloseBlockerItemKey,
+  PostResultStatus,
+} from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
+import { GridTreeRow } from '@auxx/ui/components/tree-row'
+import { cn } from '@auxx/ui/lib/utils'
 import {
   Ban,
+  BookOpenCheck,
   CircleSlash,
   CircleX,
   CloudOff,
@@ -16,14 +22,16 @@ import {
   Map as MapIcon,
   PackagePlus,
   PackageX,
+  ReceiptText,
   Scale,
   Settings2,
   Trash2,
   TriangleAlert,
+  Truck,
   Unlink,
 } from 'lucide-react'
 import Link from 'next/link'
-import type { ComponentType } from 'react'
+import { type ComponentType, useState } from 'react'
 
 /**
  * Every status this card can render a remedy for.
@@ -49,6 +57,20 @@ export type LedgerBlockerStatus =
 export interface LedgerBlocker {
   status: LedgerBlockerStatus
   error: string
+  /**
+   * The refusal as the separate pieces of work it is made of, for the refusals
+   * that HAVE pieces. Built in `packages/lib/src/postings/close-blockers.ts`,
+   * which also assembles {@link error} out of these same items.
+   *
+   * 🛑 When this is present the card renders ONE ROW PER ITEM with its own
+   * remedy, and does NOT also print `error` - the rows carry the same content,
+   * generated from the same place, so printing both says everything twice.
+   * That is only true because the items are DERIVED from the message rather
+   * than written alongside it; a screen that hand-wrote its own labels here
+   * would be paraphrasing a refusal, which is the one thing this card does not
+   * do (13-accounting-ui.md §5.2).
+   */
+  items?: CloseBlockerItem[]
 }
 
 interface BlockerRemedy {
@@ -273,14 +295,77 @@ const FALLBACK: BlockerRemedy = {
   guidance: 'The reason is below, verbatim, so it can be acted on without reading the logs.',
 }
 
-/** Neutral reads like the rest of the page; only a fault gets the destructive box. */
-const TONE_VARIANT: Record<BlockerRemedy['tone'], 'neutral' | 'destructive'> = {
-  neutral: 'neutral',
-  failure: 'destructive',
+/** What ONE outstanding piece of work offers, on its own row. */
+interface ItemRemedy {
+  icon: ComponentType<{ className?: string }>
+  /** The button's words. An imperative, and short enough not to wrap. */
+  actionLabel: string
+  /** A destination, when the work is done on another page. */
+  href?: (item: CloseBlockerItem) => string
+  /**
+   * The work is done in a control THIS page owns (a batch posting dialog), so
+   * the row reports the click through `onFix` and the host decides what opens.
+   * The card stays presentational: mounting a dialog from in here would put a
+   * preview query behind every refusal that merely mentions one.
+   */
+  fix?: boolean
+}
+
+/**
+ * The items whose remedy is a control the HOST page mounts, so the host can
+ * switch on the key it is handed without widening it back to every item.
+ *
+ * ⚠️ Written out rather than derived from {@link ITEM_REMEDIES}: that map is
+ * annotated `Record<CloseBlockerItemKey, ItemRemedy>`, which widens `fix: true`
+ * to `boolean` and leaves a conditional type nothing to select on. The two are
+ * held in step by `entry-blockers.test.ts`, which fails when a `fix: true` item
+ * is added here and not there.
+ */
+export type FixableBlockerItemKey = 'unposted_shipments' | 'unposted_credit_memos'
+
+/**
+ * Where each piece of work is actually done.
+ *
+ * 🛑 One destination per ITEM, not one per refusal. `revenue_incomplete` is
+ * three independent jobs fixed in three different places, and the card that
+ * offered a single "Open orders" button for all three sent an operator to the
+ * right screen for at most one of them.
+ */
+export const ITEM_REMEDIES: Record<CloseBlockerItemKey, ItemRemedy> = {
+  unposted_shipments: { icon: Truck, actionLabel: 'Post fulfillments', fix: true },
+  // ⚠️ The unfiltered list, deliberately. `RecordsView` reads only `create` and
+  // the selected row id from the query string, so a `?status=draft&month=…`
+  // here would look like a filter and do nothing. The row's own label says how
+  // many there are and its remedy says which month.
+  draft_channel_memos: {
+    icon: ReceiptText,
+    actionLabel: 'Review drafts',
+    href: () => '/app/credit-memos',
+  },
+  unposted_credit_memos: { icon: BookOpenCheck, actionLabel: 'Post credit memos', fix: true },
+  unmapped_role: {
+    icon: MapIcon,
+    actionLabel: 'Map role',
+    href: (item) =>
+      item.ref
+        ? `/app/accounting/settings/accounts?role=${encodeURIComponent(item.ref)}`
+        : '/app/accounting/settings/accounts',
+  },
 }
 
 interface EntryBlockersProps {
   blockers: LedgerBlocker[]
+  /**
+   * A row's own remedy was clicked, for the items whose remedy is a control on
+   * the HOST page rather than another page (the two batch posting dialogs).
+   *
+   * 🛑 The card never mounts a dialog itself. `BatchPostingDialog` runs a
+   * preview query as soon as it mounts, and this card appears on six surfaces -
+   * a deposit panel, a bank match panel, the journal entry drawer and the
+   * opening balance page among them - none of which should pay for a
+   * fulfillment preview because a refusal happened to mention one.
+   */
+  onFix?: (item: CloseBlockerItem) => void
   /** Invoked by the `period_closed` remedy's "Review the lock" button. */
   onReviewLock?: () => void
   /** Invoked by the `nothing_to_close` remedy. Absent on the newest month. */
@@ -297,75 +382,209 @@ interface EntryBlockersProps {
   onPostToNextPeriod?: () => void
 }
 
+/** Both levels share a grid, so every remedy button lands at the same x. */
+const COLUMNS = 'minmax(0,1fr) auto'
+
 /**
- * Why this month cannot be posted, at the SAME visual weight as the entry.
+ * Why this month cannot be posted, as a list of the work it is waiting on.
  *
  * ⚠️ Not a warning strip above the entry. When a close is refused, the refusal
  * IS the screen's content: an operator who has to hunt for a thin yellow bar to
  * find out why the Post button does nothing has been given a puzzle instead of a
  * task (13-accounting-ui.md §5.2).
+ *
+ * ## Why a tree and not a paragraph
+ *
+ * A refusal is frequently several jobs wearing one status. `revenue_incomplete`
+ * is up to three - unposted shipments, draft channel memos, issued memos nobody
+ * has posted - and `account_unmapped` is one per offending role. As one Alert
+ * they were one paragraph with one button, and the button could only ever point
+ * at one of them. Each is now its own row under the status it belongs to, with
+ * the remedy for THAT row next to it.
+ *
+ * A refusal that is genuinely one indivisible thing (`unbalanced`,
+ * `period_closed`, every banking refusal) carries no items and renders as it
+ * always did: one row, the server's sentence verbatim, one button.
  */
 export function EntryBlockers({
   blockers,
+  onFix,
   onReviewLock,
   onNextPeriod,
   onPostToNextPeriod,
 }: EntryBlockersProps) {
   if (blockers.length === 0) return null
 
+  // 🛑 The tone is the WORST blocker's, and it lives on the container rather
+  // than on each row. `neutral` is not a softer `failure`: an empty month and a
+  // day-one setup are the most ordinary things an organization meets, and a
+  // destructive box around either teaches an operator that this screen alarms
+  // about nothing (14-drive-the-close.md section 1.3).
+  const hasFailure = blockers.some(
+    (blocker) => (REMEDIES[blocker.status] ?? FALLBACK).tone === 'failure'
+  )
+
   return (
-    <div className='flex flex-col gap-3'>
-      {blockers.map((blocker) => {
-        const remedy = REMEDIES[blocker.status] ?? FALLBACK
-        const Icon = remedy.icon
-        const hasAction =
-          (!!remedy.href && !!remedy.actionLabel) ||
-          (remedy.action === 'unlock' && !!onReviewLock) ||
-          (blocker.status === 'period_closed' && !!onPostToNextPeriod) ||
-          (remedy.action === 'next-period' && !!onNextPeriod)
-        return (
-          <Alert key={`${blocker.status}-${blocker.error}`} variant={TONE_VARIANT[remedy.tone]}>
-            <Icon />
-            <AlertTitle className='flex-wrap'>
-              {remedy.title}
-              <span className='font-mono text-xs opacity-70'>{blocker.status}</span>
-            </AlertTitle>
-            {/* The server's own text, verbatim: on `account_unmapped` it names
-                every offending role, and on an uncosted movement it names the
-                row. Paraphrasing it here would throw away the only part that
-                identifies what to go and fix. */}
-            <p className='text-sm'>{blocker.error}</p>
-            <AlertDescription className='text-xs'>{remedy.guidance}</AlertDescription>
-            {/* One row, not one grid row each: `period_closed` offers BOTH
-                "review the lock" and "post to the next open period", and as
-                separate Alert children they would stack down the card. */}
-            {hasAction && (
-              <div className='mt-2 flex flex-wrap gap-2'>
-                {remedy.href && remedy.actionLabel && (
-                  <Button asChild variant='outline' size='sm'>
-                    <Link href={remedy.href}>{remedy.actionLabel}</Link>
-                  </Button>
-                )}
-                {remedy.action === 'unlock' && onReviewLock && (
-                  <Button variant='outline' size='sm' onClick={onReviewLock}>
-                    {remedy.actionLabel}
-                  </Button>
-                )}
-                {blocker.status === 'period_closed' && onPostToNextPeriod && (
-                  <Button variant='outline' size='sm' onClick={onPostToNextPeriod}>
-                    Post to the next open period
-                  </Button>
-                )}
-                {remedy.action === 'next-period' && onNextPeriod && (
-                  <Button variant='outline' size='sm' onClick={onNextPeriod}>
-                    {remedy.actionLabel}
-                  </Button>
-                )}
-              </div>
-            )}
-          </Alert>
-        )
-      })}
+    <div
+      role='alert'
+      className={cn(
+        'flex w-full flex-col rounded-2xl border px-1 py-1',
+        hasFailure
+          ? 'border-destructive/50 bg-destructive/5 dark:border-destructive'
+          : 'bg-muted/40'
+      )}>
+      {blockers.map((blocker) => (
+        <BlockerRows
+          key={`${blocker.status}-${blocker.error}`}
+          blocker={blocker}
+          onFix={onFix}
+          onReviewLock={onReviewLock}
+          onNextPeriod={onNextPeriod}
+          onPostToNextPeriod={onPostToNextPeriod}
+        />
+      ))}
     </div>
+  )
+}
+
+/**
+ * One refusal: a row naming it, and its work underneath.
+ *
+ * Open by default. A card whose entire purpose is to list what is outstanding
+ * has nothing to gain from hiding it behind a chevron; the collapse is there for
+ * a month refusing three different ways at once.
+ */
+function BlockerRows({
+  blocker,
+  onFix,
+  onReviewLock,
+  onNextPeriod,
+  onPostToNextPeriod,
+}: {
+  blocker: LedgerBlocker
+  onFix?: (item: CloseBlockerItem) => void
+  onReviewLock?: () => void
+  onNextPeriod?: () => void
+  onPostToNextPeriod?: () => void
+}) {
+  const [isOpen, setIsOpen] = useState(true)
+  const remedy = REMEDIES[blocker.status] ?? FALLBACK
+  const items = blocker.items ?? []
+  const Icon = remedy.icon
+
+  // The card-level remedy, for a refusal that is ONE thing. A refusal made of
+  // items has a button per item instead, and a second generic one beside the
+  // title would compete with every one of them.
+  const cardAction =
+    items.length > 0 ? null : (
+      <>
+        {remedy.href && remedy.actionLabel && (
+          <Button asChild variant='outline' size='sm'>
+            <Link href={remedy.href}>{remedy.actionLabel}</Link>
+          </Button>
+        )}
+        {remedy.action === 'unlock' && onReviewLock && (
+          <Button variant='outline' size='sm' onClick={onReviewLock}>
+            {remedy.actionLabel}
+          </Button>
+        )}
+        {blocker.status === 'period_closed' && onPostToNextPeriod && (
+          <Button variant='outline' size='sm' onClick={onPostToNextPeriod}>
+            Post to the next open period
+          </Button>
+        )}
+        {remedy.action === 'next-period' && onNextPeriod && (
+          <Button variant='outline' size='sm' onClick={onNextPeriod}>
+            {remedy.actionLabel}
+          </Button>
+        )}
+      </>
+    )
+
+  return (
+    <GridTreeRow
+      columns={COLUMNS}
+      expandable
+      isOpen={isOpen}
+      onToggleOpen={() => setIsOpen((open) => !open)}
+      icon={
+        <Icon
+          className={cn(
+            'size-4',
+            remedy.tone === 'failure' ? 'text-destructive' : 'text-muted-foreground'
+          )}
+        />
+      }
+      title={
+        <span className='flex min-w-0 items-center gap-2'>
+          <span className='truncate font-medium text-foreground'>{remedy.title}</span>
+          <span className='shrink-0 font-mono text-muted-foreground text-xs'>{blocker.status}</span>
+        </span>
+      }
+      cells={[
+        <div key='action' className='flex items-center justify-end gap-2 ps-2'>
+          {cardAction}
+        </div>,
+      ]}>
+      <div className='flex flex-col'>
+        {/* The server's own text, verbatim, for a refusal with no items: on an
+            uncosted movement it names the row and on `setup_incomplete` it names
+            every blank setting. Paraphrasing it would throw away the only part
+            that identifies what to go and fix. When there ARE items they are
+            that same text, already split into the jobs it describes. */}
+        {items.length === 0 && (
+          <p className='pe-2 pt-1 pb-2 ps-6 text-foreground text-sm'>{blocker.error}</p>
+        )}
+        {items.map((item) => (
+          <ItemRow key={`${item.key}-${item.ref ?? item.label}`} item={item} onFix={onFix} />
+        ))}
+        {/* `ps-6` clears the connector line `BaseTreeRow` draws at the parent
+            icon's center (1.125rem): at `px-2` the line ran straight through
+            the sentence. */}
+        <p className='pe-2 pt-1 pb-2 ps-6 text-muted-foreground text-xs'>{remedy.guidance}</p>
+      </div>
+    </GridTreeRow>
+  )
+}
+
+/** One piece of outstanding work, and the one button that does it. */
+function ItemRow({
+  item,
+  onFix,
+}: {
+  item: CloseBlockerItem
+  onFix?: (item: CloseBlockerItem) => void
+}) {
+  const remedy = ITEM_REMEDIES[item.key]
+  const Icon = remedy.icon
+
+  return (
+    <GridTreeRow
+      depth={1}
+      columns={COLUMNS}
+      icon={<Icon className='size-4 text-muted-foreground' />}
+      title={
+        // Two lines, both visible. The remedy is the sentence the refusal was
+        // stored with, and a tooltip would make an operator hover to find out
+        // what to do - the same puzzle §5.2 is about, in miniature.
+        <span className='flex min-w-0 flex-col py-1'>
+          <span className='truncate text-foreground'>{item.label}</span>
+          <span className='truncate text-muted-foreground text-xs'>{item.remedy}</span>
+        </span>
+      }
+      cells={[
+        <div key='action' className='flex items-center justify-end ps-2'>
+          {remedy.href ? (
+            <Button asChild variant='outline' size='sm'>
+              <Link href={remedy.href(item)}>{remedy.actionLabel}</Link>
+            </Button>
+          ) : remedy.fix && onFix ? (
+            <Button variant='outline' size='sm' onClick={() => onFix(item)}>
+              {remedy.actionLabel}
+            </Button>
+          ) : null}
+        </div>,
+      ]}
+    />
   )
 }

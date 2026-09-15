@@ -3,7 +3,8 @@ import { type Database, schema, withAccountingCommitLock } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
 import { accountingBasisHash } from '../../postings/effect-basis'
-import { confirmedShopifyMovement, shopifyMoneyObservationSchema } from './contracts'
+import { confirmedCustomerMovement } from './contracts'
+import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
 
 /** Explicit verified source association or processor resolution; similarity is never evidence. */
 export interface ResolveImportedMoneyReferencesInput {
@@ -124,13 +125,13 @@ export async function resolveImportedMoneyReferences(
       })
       let matched = false
       for (const observation of observations) {
-        const parsed = shopifyMoneyObservationSchema.safeParse(observation.payload)
+        const parsed = readStoredCustomerMoneyObservation(observation.payload)
         if (!parsed.success) continue
         if (parsed.data.test)
           throw new UnprocessableEntityError('Test source evidence cannot bind operational money')
-        let fact: ReturnType<typeof confirmedShopifyMovement>
+        let fact: ReturnType<typeof confirmedCustomerMovement>
         try {
-          fact = confirmedShopifyMovement(parsed.data)
+          fact = confirmedCustomerMovement(parsed.data)
         } catch {
           continue
         }

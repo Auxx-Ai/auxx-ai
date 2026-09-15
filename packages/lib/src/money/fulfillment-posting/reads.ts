@@ -339,14 +339,14 @@ export async function readUnpostedShipments(
         const order = orders.get(orderId)
         if (!order) continue
         const coverage = moneyCoverage.get(orderId)
-        // Shopify canonical money evidence is an explicit cutover gate. An
+        // Canonical source money evidence is an explicit cutover gate. An
         // order without a source account keeps the established arithmetic;
         // once evidence exists, incomplete coverage blocks rather than
         // silently falling back to financial status or gateway names.
-        if (!coverage?.shopifyBound) continue
+        if (!coverage?.sourceAvailable) continue
         if (!coverage.complete || !bookTimeZone) {
           throw new UnprocessableEntityError(
-            `Order ${orderId} Shopify money coverage or book time zone is incomplete; ` +
+            `Order ${orderId} source money coverage or book time zone is incomplete; ` +
               'fulfillment recognition is blocked.'
           )
         }

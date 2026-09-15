@@ -1,127 +1,70 @@
 // packages/lib/src/money/customer-money/ingest.ts
 import { type Database, schema, type Transaction, withAccountingCommitLock } from '@auxx/database'
 import { and, asc, eq, inArray, isNull, lte, or } from 'drizzle-orm'
-import { ConflictError, UnprocessableEntityError } from '../../errors'
+import { ConflictError } from '../../errors'
 import { accountingBasisHash } from '../../postings/effect-basis'
 import { captureCustomerReceiptWorkInTx } from '../../postings/effect-work'
 import { periodKeyForDate } from '../../postings/periods'
+import { confirmedCustomerMovement } from './contracts'
 import {
-  confirmedShopifyMovement,
-  shopifyMoneyEnvelopeSchema,
-  shopifyMoneyObservationSchema,
-  shopifySourceDomain,
-} from './contracts'
-
-/** Authenticated connector context. Stable store identity is read from its credential, not supplied. */
-export interface IngestShopifyOrderMoneyInput {
-  organizationId: string
-  credentialId: string
-  appInstallationId: string
-  connectorId: string
-  runId: string
-  orderExternalId: string
-  envelope: unknown
-}
-
-async function sourceAccountInTx(
-  tx: Transaction,
-  input: IngestShopifyOrderMoneyInput,
-  environment: 'live' | 'test'
-) {
-  const credential = await tx.query.Credential.findFirst({
-    where: and(
-      eq(schema.Credential.id, input.credentialId),
-      eq(schema.Credential.organizationId, input.organizationId)
-    ),
-    columns: { appId: true, appInstallationId: true, metadata: true },
-  })
-  if (!credential?.appId || credential.appInstallationId !== input.appInstallationId)
-    throw new UnprocessableEntityError(
-      'Shopify source connection does not match this organization and installation'
-    )
-  const app = await tx.query.App.findFirst({
-    where: eq(schema.App.id, credential.appId),
-    columns: { slug: true },
-  })
-  const installation = await tx.query.AppInstallation.findFirst({
-    where: and(
-      eq(schema.AppInstallation.id, input.appInstallationId),
-      eq(schema.AppInstallation.organizationId, input.organizationId),
-      eq(schema.AppInstallation.appId, credential.appId),
-      isNull(schema.AppInstallation.uninstalledAt)
-    ),
-  })
-  if (app?.slug !== 'shopify' || !installation)
-    throw new UnprocessableEntityError('Shopify source installation is unavailable')
-  const domain = shopifySourceDomain(credential.metadata)
-  const identity = {
-    organizationId: input.organizationId,
-    providerKey: 'shopify',
-    externalAccountId: domain.toLowerCase(),
-    environment,
-  }
-  const [account] = await tx
-    .insert(schema.FinancialSourceAccount)
-    .values(identity)
-    .onConflictDoUpdate({
-      target: [
-        schema.FinancialSourceAccount.organizationId,
-        schema.FinancialSourceAccount.providerKey,
-        schema.FinancialSourceAccount.externalAccountId,
-        schema.FinancialSourceAccount.environment,
-      ],
-      set: { externalAccountId: identity.externalAccountId },
-    })
-    .returning()
-  return account!
-}
+  readStoredCustomerMoneyObservation,
+  resolveSourceDocumentFromConnector,
+} from './source-observation-adapter'
 
 async function typedDocument(
   tx: Transaction,
   organizationId: string,
-  connectorId: string,
+  connectionId: string | undefined,
   externalId: string,
   kind: string,
-  sourceAccountId?: string
+  sourceAccountId?: string,
+  explicitRecordId?: string | null,
+  connectorId?: string
 ) {
-  if (sourceAccountId) {
-    const account = await tx.query.FinancialSourceAccount.findFirst({
-      where: and(
-        eq(schema.FinancialSourceAccount.organizationId, organizationId),
-        eq(schema.FinancialSourceAccount.id, sourceAccountId)
-      ),
-    })
-    const connector = await tx.query.DataConnector.findFirst({
-      where: and(
-        eq(schema.DataConnector.organizationId, organizationId),
-        eq(schema.DataConnector.id, connectorId)
-      ),
-      columns: { credentialId: true },
-    })
-    const credential = connector?.credentialId
-      ? await tx.query.Credential.findFirst({
-          where: and(
-            eq(schema.Credential.organizationId, organizationId),
-            eq(schema.Credential.id, connector.credentialId)
-          ),
-          columns: { metadata: true },
-        })
-      : undefined
-    if (!account || !credential) return null
-    try {
-      if (shopifySourceDomain(credential.metadata) !== account.externalAccountId) return null
-    } catch {
-      return null
-    }
+  if (explicitRecordId) {
+    const rows = await tx
+      .select({ id: schema.EntityInstance.id })
+      .from(schema.EntityInstance)
+      .innerJoin(
+        schema.EntityDefinition,
+        eq(schema.EntityDefinition.id, schema.EntityInstance.entityDefinitionId)
+      )
+      .where(
+        and(
+          eq(schema.EntityInstance.organizationId, organizationId),
+          eq(schema.EntityInstance.id, explicitRecordId),
+          eq(schema.EntityDefinition.entityType, kind),
+          isNull(schema.EntityInstance.archivedAt)
+        )
+      )
+      .limit(1)
+    return rows[0]?.id ?? null
   }
+  // A provider namespace alone cannot distinguish two connected merchant accounts.
+  const fromConnector = () =>
+    resolveSourceDocumentFromConnector(tx, {
+      organizationId,
+      connectorId: connectorId,
+      sourceAccountId,
+      externalId,
+      kind,
+    })
+  if (!connectionId || !sourceAccountId) return fromConnector()
+  const account = await tx.query.FinancialSourceAccount.findFirst({
+    where: and(
+      eq(schema.FinancialSourceAccount.organizationId, organizationId),
+      eq(schema.FinancialSourceAccount.id, sourceAccountId)
+    ),
+  })
+  if (!account) return null
   const rows = await tx
     .select({ id: schema.EntityInstance.id })
-    .from(schema.DataConnectorItem)
+    .from(schema.RecordIdentity)
     .innerJoin(
       schema.EntityInstance,
       and(
-        eq(schema.EntityInstance.organizationId, schema.DataConnectorItem.organizationId),
-        eq(schema.EntityInstance.id, schema.DataConnectorItem.entityInstanceId)
+        eq(schema.EntityInstance.id, schema.RecordIdentity.entityInstanceId),
+        eq(schema.EntityInstance.organizationId, schema.RecordIdentity.organizationId)
       )
     )
     .innerJoin(
@@ -130,16 +73,16 @@ async function typedDocument(
     )
     .where(
       and(
-        eq(schema.DataConnectorItem.organizationId, organizationId),
-        eq(schema.DataConnectorItem.dataConnectorId, connectorId),
-        eq(schema.DataConnectorItem.externalId, externalId),
+        eq(schema.RecordIdentity.organizationId, organizationId),
+        eq(schema.RecordIdentity.source, account.providerKey),
+        eq(schema.RecordIdentity.connectionId, connectionId),
+        eq(schema.RecordIdentity.externalId, externalId),
         eq(schema.EntityDefinition.entityType, kind),
         isNull(schema.EntityInstance.archivedAt)
       )
     )
     .limit(2)
-  if (rows.length !== 1) return null
-  return rows[0]!.id
+  return rows.length === 1 ? rows[0]!.id : rows.length === 0 ? fromConnector() : null
 }
 
 async function documentFacts(tx: Transaction, organizationId: string, entityId: string) {
@@ -201,24 +144,34 @@ export async function materializeImportedMoneyInTx(
   })
   if (!object) throw new Error('Source object is missing')
   const acquisition = {
-    ...(observation.reportingInstallationSnapshot as { connectorId?: string }),
-    ...(acceptance.unresolvedReferences as { connectorId?: string }),
+    ...(observation.reportingInstallationSnapshot as {
+      credentialId?: string
+      connectorId?: string
+      creditMemoInstanceId?: string
+    }),
+    ...(acceptance.unresolvedReferences as {
+      credentialId?: string
+      connectorId?: string
+      creditMemoInstanceId?: string
+    }),
   }
   const acquiredOrderId =
     acceptance.orderInstanceId ??
-    (acquisition.connectorId
+    (acquisition.credentialId || acquisition.connectorId
       ? await typedDocument(
           tx,
           organizationId,
-          acquisition.connectorId,
+          acquisition.credentialId,
           acceptance.orderExternalId,
           'order',
-          object.sourceAccountId
+          object.sourceAccountId,
+          undefined,
+          acquisition.connectorId
         )
       : null)
   if (acquiredOrderId && !acceptance.orderInstanceId)
     await updateAcceptance(tx, acceptance.id, { orderInstanceId: acquiredOrderId })
-  const source = shopifyMoneyObservationSchema.safeParse(observation.payload)
+  const source = readStoredCustomerMoneyObservation(observation.payload)
   if (!source.success) {
     await updateAcceptance(tx, acceptance.id, {
       state: 'rejected',
@@ -226,7 +179,26 @@ export async function materializeImportedMoneyInTx(
     })
     return
   }
-  if (source.data.test) {
+  if (
+    acceptance.moneyTransactionId &&
+    (source.data.status !== 'confirmed' || !['receipt', 'refund'].includes(source.data.kind))
+  ) {
+    await updateAcceptance(tx, acceptance.id, {
+      state: 'blocked',
+      reason:
+        'Accepted money source no longer reports the same confirmed movement; explicit correction required',
+    })
+    return
+  }
+  const sourceAccount = await tx.query.FinancialSourceAccount.findFirst({
+    where: and(
+      eq(schema.FinancialSourceAccount.organizationId, organizationId),
+      eq(schema.FinancialSourceAccount.id, object.sourceAccountId)
+    ),
+    columns: { environment: true },
+  })
+  if (!sourceAccount) throw new Error('Source account is outside this organization')
+  if (source.data.test || sourceAccount.environment === 'test') {
     await updateAcceptance(tx, acceptance.id, {
       state: 'accepted',
       reason: 'Test-mode observation; no operational money created',
@@ -234,10 +206,7 @@ export async function materializeImportedMoneyInTx(
     })
     return
   }
-  if (
-    ['AUTHORIZATION', 'VOID'].includes(source.data.kind.toUpperCase()) ||
-    ['FAILURE', 'ERROR'].includes(source.data.status.toUpperCase())
-  ) {
+  if (['authorization', 'void'].includes(source.data.kind) || source.data.status === 'failed') {
     await updateAcceptance(tx, acceptance.id, {
       state: 'accepted',
       reason: 'Source observation records no confirmed cash movement',
@@ -245,16 +214,16 @@ export async function materializeImportedMoneyInTx(
     })
     return
   }
-  if (source.data.status.toUpperCase() !== 'SUCCESS') {
+  if (source.data.status !== 'confirmed') {
     await updateAcceptance(tx, acceptance.id, {
       state: 'pending',
       reason: 'Transaction success is not yet confirmed',
     })
     return
   }
-  let movement: ReturnType<typeof confirmedShopifyMovement>
+  let movement: ReturnType<typeof confirmedCustomerMovement>
   try {
-    movement = confirmedShopifyMovement(source.data)
+    movement = confirmedCustomerMovement(source.data)
   } catch (error) {
     await updateAcceptance(tx, acceptance.id, {
       state: 'rejected',
@@ -263,10 +232,17 @@ export async function materializeImportedMoneyInTx(
     return
   }
   const snapshot = {
-    ...(observation.reportingInstallationSnapshot as { connectorId?: string }),
-    ...(acceptance.unresolvedReferences as { connectorId?: string }),
+    ...(observation.reportingInstallationSnapshot as {
+      credentialId?: string
+      connectorId?: string
+      creditMemoInstanceId?: string
+    }),
+    ...(acceptance.unresolvedReferences as {
+      credentialId?: string
+      connectorId?: string
+      creditMemoInstanceId?: string
+    }),
   }
-  if (!snapshot.connectorId) throw new Error('Source acquisition context is missing')
   let linked = await tx.query.MoneySourceLink.findFirst({
     where: and(
       eq(schema.MoneySourceLink.organizationId, organizationId),
@@ -299,10 +275,12 @@ export async function materializeImportedMoneyInTx(
     (await typedDocument(
       tx,
       organizationId,
-      snapshot.connectorId,
+      snapshot.credentialId,
       acceptance.orderExternalId,
       'order',
-      object.sourceAccountId
+      object.sourceAccountId,
+      undefined,
+      snapshot.connectorId
     ))
   const facts = orderId ? await documentFacts(tx, organizationId, orderId) : null
   const partyId = facts?.get('order_contact')?.related ?? null
@@ -329,7 +307,7 @@ export async function materializeImportedMoneyInTx(
         commandKey,
         kind: 'import_customer_money',
         payloadHash,
-        actorSnapshot: { kind: 'connector', ...snapshot },
+        actorSnapshot: { kind: 'source_record', ...snapshot },
       })
       .returning()
   if (!money) {
@@ -506,16 +484,21 @@ export async function materializeImportedMoneyInTx(
             ),
           })
         : undefined
-      const creditId = source.data.creditMemoExternalId
-        ? await typedDocument(
-            tx,
-            organizationId,
-            snapshot.connectorId,
-            source.data.creditMemoExternalId,
-            'credit_memo',
-            object.sourceAccountId
-          )
-        : null
+      const creditId =
+        source.data.creditMemoInstanceId ||
+        snapshot.creditMemoInstanceId ||
+        source.data.creditMemoExternalId
+          ? await typedDocument(
+              tx,
+              organizationId,
+              snapshot.credentialId,
+              source.data.creditMemoExternalId ?? '',
+              'credit_memo',
+              object.sourceAccountId,
+              source.data.creditMemoInstanceId ?? snapshot.creditMemoInstanceId,
+              snapshot.connectorId
+            )
+          : null
       if (!originalLink || !creditId) {
         await updateAcceptance(tx, acceptance.id, {
           ...base,
@@ -618,207 +601,6 @@ export async function materializeImportedMoneyInTx(
   })
 }
 
-/** Stage the entire fetched source envelope durably before the connector advances its cursor. */
-export async function ingestShopifyOrderMoney(
-  db: Database,
-  input: IngestShopifyOrderMoneyInput
-): Promise<void> {
-  const envelope = shopifyMoneyEnvelopeSchema.safeParse(input.envelope)
-  await db.transaction(async (tx) => {
-    await withAccountingCommitLock(tx, input.organizationId)
-    const raw = envelope.success ? envelope.data.transactions : []
-    const environments = new Set<'live' | 'test'>(
-      raw.map((item) =>
-        !!item && typeof item === 'object' && 'test' in item && item.test === true ? 'test' : 'live'
-      )
-    )
-    if (!environments.size) environments.add('live')
-    for (const environment of environments) {
-      const account = await sourceAccountInTx(tx, input, environment)
-      let fetched = 0
-      let accepted = 0
-      let rejected = 0
-      let pending = 0
-      for (const [index, payload] of raw.entries()) {
-        const recordEnvironment =
-          payload && typeof payload === 'object' && 'test' in payload && payload.test === true
-            ? 'test'
-            : 'live'
-        if (recordEnvironment !== environment) continue
-        fetched++
-        const parsed = shopifyMoneyObservationSchema.safeParse(payload)
-        const externalId = parsed.success
-          ? parsed.data.id
-          : `invalid:${input.orderExternalId}:${accountingBasisHash(payload)}:${index}`
-        const [object] = await tx
-          .insert(schema.FinancialSourceObject)
-          .values({
-            organizationId: input.organizationId,
-            sourceAccountId: account.id,
-            objectType: 'order_transaction',
-            externalId,
-            componentKey: '',
-          })
-          .onConflictDoUpdate({
-            target: [
-              schema.FinancialSourceObject.organizationId,
-              schema.FinancialSourceObject.sourceAccountId,
-              schema.FinancialSourceObject.objectType,
-              schema.FinancialSourceObject.externalId,
-              schema.FinancialSourceObject.componentKey,
-            ],
-            set: { externalId },
-          })
-          .returning()
-        const contentHash = accountingBasisHash(payload)
-        const [observation] = await tx
-          .insert(schema.FinancialSourceObservation)
-          .values({
-            organizationId: input.organizationId,
-            sourceObjectId: object!.id,
-            contentHash,
-            observedAt: new Date(),
-            payload,
-            reportingInstallationSnapshot: {
-              appInstallationId: input.appInstallationId,
-              connectorId: input.connectorId,
-              runId: input.runId,
-              orderExternalId: input.orderExternalId,
-            },
-          })
-          .onConflictDoUpdate({
-            target: [
-              schema.FinancialSourceObservation.organizationId,
-              schema.FinancialSourceObservation.sourceObjectId,
-              schema.FinancialSourceObservation.contentHash,
-            ],
-            set: { contentHash },
-          })
-          .returning()
-        const [acceptance] = await tx
-          .insert(schema.FinancialSourceAcceptance)
-          .values({
-            organizationId: input.organizationId,
-            sourceObjectId: object!.id,
-            observationId: observation!.id,
-            state: 'pending',
-            orderExternalId: input.orderExternalId,
-            unresolvedReferences: {
-              connectorId: input.connectorId,
-              parentTransactionId: parsed.success ? parsed.data.parentTransactionId : null,
-              gateway: parsed.success ? parsed.data.gateway : null,
-            },
-          })
-          .onConflictDoUpdate({
-            target: [
-              schema.FinancialSourceAcceptance.organizationId,
-              schema.FinancialSourceAcceptance.sourceObjectId,
-            ],
-            set: {
-              observationId: observation!.id,
-              unresolvedReferences: {
-                connectorId: input.connectorId,
-                parentTransactionId: parsed.success ? parsed.data.parentTransactionId : null,
-                gateway: parsed.success ? parsed.data.gateway : null,
-              },
-              updatedAt: new Date(),
-            },
-          })
-          .returning()
-        if (acceptance!.orderExternalId !== input.orderExternalId) {
-          await updateAcceptance(tx, acceptance!.id, {
-            state: 'blocked',
-            reason: 'Source transaction moved to another order; review required',
-          })
-          pending++
-          continue
-        }
-        await materializeImportedMoneyInTx(tx, input.organizationId, acceptance!.id)
-        const outcome = await tx.query.FinancialSourceAcceptance.findFirst({
-          where: eq(schema.FinancialSourceAcceptance.id, acceptance!.id),
-          columns: { state: true },
-        })
-        if (outcome?.state === 'accepted') accepted++
-        else if (outcome?.state === 'rejected') rejected++
-        else pending++
-      }
-      const currentFetched = fetched
-      const retained = await tx
-        .select({ state: schema.FinancialSourceAcceptance.state })
-        .from(schema.FinancialSourceAcceptance)
-        .innerJoin(
-          schema.FinancialSourceObject,
-          and(
-            eq(
-              schema.FinancialSourceObject.organizationId,
-              schema.FinancialSourceAcceptance.organizationId
-            ),
-            eq(schema.FinancialSourceObject.id, schema.FinancialSourceAcceptance.sourceObjectId)
-          )
-        )
-        .where(
-          and(
-            eq(schema.FinancialSourceAcceptance.organizationId, input.organizationId),
-            eq(schema.FinancialSourceObject.sourceAccountId, account.id),
-            eq(schema.FinancialSourceAcceptance.orderExternalId, input.orderExternalId)
-          )
-        )
-      fetched = retained.length
-      accepted = retained.filter((row) => row.state === 'accepted').length
-      rejected = retained.filter((row) => row.state === 'rejected').length
-      pending = fetched - accepted - rejected
-      const complete =
-        envelope.success &&
-        envelope.data.complete &&
-        currentFetched === fetched &&
-        pending === 0 &&
-        rejected === 0
-      await tx
-        .insert(schema.FinancialSourceCoverage)
-        .values({
-          organizationId: input.organizationId,
-          sourceAccountId: account.id,
-          streamKey: 'shopify_order_transactions',
-          windowKey: input.orderExternalId,
-          requestedBoundary: { orderExternalId: input.orderExternalId },
-          fetchedBoundary: {
-            runId: input.runId,
-            payloadVersion: envelope.success ? 1 : null,
-            sourceComplete:
-              envelope.success && envelope.data.complete && currentFetched === fetched,
-          },
-          fetchedCount: fetched,
-          acceptedCount: accepted,
-          rejectedCount: rejected,
-          pendingCount: pending,
-          complete,
-        })
-        .onConflictDoUpdate({
-          target: [
-            schema.FinancialSourceCoverage.organizationId,
-            schema.FinancialSourceCoverage.sourceAccountId,
-            schema.FinancialSourceCoverage.streamKey,
-            schema.FinancialSourceCoverage.windowKey,
-          ],
-          set: {
-            fetchedBoundary: {
-              runId: input.runId,
-              payloadVersion: envelope.success ? 1 : null,
-              sourceComplete:
-                envelope.success && envelope.data.complete && currentFetched === fetched,
-            },
-            fetchedCount: fetched,
-            acceptedCount: accepted,
-            rejectedCount: rejected,
-            pendingCount: pending,
-            complete,
-            updatedAt: new Date(),
-          },
-        })
-    }
-  })
-}
-
 /** Refresh acceptance coverage from durable states after relationship recovery. */
 async function refreshMoneyCoverageInTx(
   tx: Transaction,
@@ -843,8 +625,8 @@ async function refreshMoneyCoverageInTx(
     where: and(
       eq(schema.FinancialSourceCoverage.organizationId, organizationId),
       eq(schema.FinancialSourceCoverage.sourceAccountId, object.sourceAccountId),
-      eq(schema.FinancialSourceCoverage.streamKey, 'shopify_order_transactions'),
-      eq(schema.FinancialSourceCoverage.windowKey, acceptance.orderExternalId)
+      eq(schema.FinancialSourceCoverage.streamKey, 'order_transactions'),
+      eq(schema.FinancialSourceCoverage.windowKey, acceptance.orderInstanceId ?? '')
     ),
   })
   if (!coverage) return

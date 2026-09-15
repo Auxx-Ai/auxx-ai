@@ -64,6 +64,8 @@ import { BatchPostingResult } from './batch-posting-result'
 import { BatchRangeControl, type InclusiveDayRange } from './batch-range-control'
 import {
   dayRangeToWire,
+  firstDayOfMonth,
+  lastDayOfMonth,
   lastMonthKey,
   monthRangeToWire,
   startOfLastMonthDayKey,
@@ -89,6 +91,18 @@ function groupingLabel(value: BatchPostingGrouping): string {
 }
 
 /**
+ * The day window the dialog opens on: the named month, or the default sweep of
+ * last month through today when the caller named none.
+ *
+ * Both ends INCLUSIVE, like every other range on this screen - `range.ts` makes
+ * the window half-open on the wire.
+ */
+function openingDayRange(month: string | undefined): InclusiveDayRange {
+  if (!month) return { from: startOfLastMonthDayKey(), to: todayDayKey() }
+  return { from: firstDayOfMonth(month), to: lastDayOfMonth(month) }
+}
+
+/**
  * The org setting each source opens on (brief 28 §3.1): the dialog starts on
  * the organisation's default grouping and may change it for one run. Keyed on
  * `sourceKey`; a source with no setting here opens on its own `defaultGrouping`.
@@ -109,6 +123,20 @@ interface BatchPostingDialogProps<
   open: boolean
   onOpenChange: (open: boolean) => void
   onCompleted?: () => void
+  /**
+   * A MONTH key (`'2026-01'`) the dialog should open on, under either grouping.
+   *
+   * For a caller that already knows which month it is asking about - the close
+   * console, opening this from a refusal that names one. Without it the dialog
+   * opens on its own default window (last month through today), which on a
+   * console closing January would silently preview a different range than the
+   * refusal was about.
+   *
+   * ⚠️ Seeds the range, it does not PIN it. The picker is still live: a month
+   * that turns out to be the wrong one is one click away, and nothing here
+   * assumes the month is selectable.
+   */
+  initialMonth?: string
 }
 
 export function BatchPostingDialog<
@@ -121,6 +149,7 @@ export function BatchPostingDialog<
   open,
   onOpenChange,
   onCompleted,
+  initialMonth,
 }: BatchPostingDialogProps<Plan, Summary, Exclusion, Options>) {
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
@@ -141,11 +170,10 @@ export function BatchPostingDialog<
   // The source's own extra request state (§5.5's third axis). `undefined` for a
   // source that declares no options slot, which is every field it ever sees.
   const [options, setOptions] = useState<Options>(() => source.options?.defaultValue as Options)
-  const [monthRange, setMonthRange] = useState<MonthRangeValue | null>(null)
-  const [dayRange, setDayRange] = useState<InclusiveDayRange>(() => ({
-    from: startOfLastMonthDayKey(),
-    to: todayDayKey(),
-  }))
+  const [monthRange, setMonthRange] = useState<MonthRangeValue | null>(
+    initialMonth ? { from: initialMonth, to: initialMonth } : null
+  )
+  const [dayRange, setDayRange] = useState<InclusiveDayRange>(() => openingDayRange(initialMonth))
   const [result, setResult] = useState<Summary | null>(null)
 
   const { months, selectable, isLoading: monthsLoading } = usePostableMonths()
@@ -156,13 +184,16 @@ export function BatchPostingDialog<
     if (!open) return
     setPage('plan')
     setGrouping(initialGrouping)
-    setMonthRange(null)
-    setDayRange({ from: startOfLastMonthDayKey(), to: todayDayKey() })
+    // 🛑 Back to the CALLER's month, not to null. A console that opened this
+    // from January's refusal reopens on January; a caller that named no month
+    // gets the default window, which is what every list-level entry point is.
+    setMonthRange(initialMonth ? { from: initialMonth, to: initialMonth } : null)
+    setDayRange(openingDayRange(initialMonth))
     // 🛑 The options reset with it. An option that changes what the run WRITES
     // is opt-in on every open, never inherited from the last time.
     setOptions(source.options?.defaultValue as Options)
     setResult(null)
-  }, [open, initialGrouping, source.options])
+  }, [open, initialGrouping, initialMonth, source.options])
 
   // Derived rather than seeded: the period list is a query, so the month a
   // `useState` initialiser could name would be a month nothing had loaded yet.

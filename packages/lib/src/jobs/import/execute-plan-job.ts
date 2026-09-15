@@ -19,6 +19,7 @@ import {
   parseResolutionConfig,
   relationFieldWriteMode,
 } from '../../import'
+import { orderedBulkCreateResults } from '../../import/execution/execute-batch'
 import type { FieldWriteModes, ImportMappingProperty, ImportPlan } from '../../import/types'
 import { getRealtimeService, publishRecordsInvalidated, publishRunCompleted } from '../../realtime'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
@@ -351,6 +352,7 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
 
     // Ambient session for the whole plan execution (plan 03 §4b S1): any handler
     // constructed downstream without an explicit session inherits this one.
+    const supportsBulkCreate = await crudHandler.supportsBulkCreate(entityDefinitionId)
     const result = await runWithWriteSession(session, () =>
       executePlan({
         db,
@@ -364,6 +366,18 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
         fieldModes,
         identifierKeys,
         createRecord,
+        bulkCreate: supportsBulkCreate
+          ? async (records) => {
+              const result = await crudHandler.bulkCreate(
+                entityDefinitionId,
+                records.map((record) => ({
+                  ...record.standardFields,
+                  ...record.customFields,
+                }))
+              )
+              return orderedBulkCreateResults(records.length, result)
+            }
+          : undefined,
         updateRecord,
         onRowWarning: async (rowIndex, message) => {
           await publishEvent({ type: 'row:warning', rowIndex, message })

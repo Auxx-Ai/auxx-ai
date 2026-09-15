@@ -22,6 +22,7 @@
  */
 import type { GlAccountSubtypeValue } from './account-subtype'
 import type { AccountRole } from './build-entry'
+import type { CloseBlockerItem } from './close-blockers'
 import type { DefaultChartAccount, GlAccountTypeValue } from './default-chart'
 
 export const POSTING_TYPES = [
@@ -633,6 +634,13 @@ export interface PostResult {
   providerTenantId?: string
   /** Human-readable. On `account_unmapped` it names EVERY offending role. */
   error?: string
+  /**
+   * The same pieces of work {@link EntryPreview.blockedBy} carries, on the POST
+   * path. Present for the refusals that are made of several independent things,
+   * so the result callout can offer a remedy per thing rather than one button
+   * for all of them.
+   */
+  items?: CloseBlockerItem[]
   failureClass?: PostFailureClass
   /** `true` only for a transport failure. The retry decision, precomputed. */
   retryable?: boolean
@@ -714,7 +722,20 @@ export interface EntryPreview {
   lines: ResolvedPostingLine[]
   totalMinor: number
   /** Non-empty when the preview would refuse: the same statuses `postEntry` returns. */
-  blockedBy?: { status: PostResultStatus; error: string }
+  blockedBy?: {
+    status: PostResultStatus
+    error: string
+    /**
+     * The refusal broken into the individual pieces of work it is made of, for
+     * the refusals that HAVE pieces (`revenue_incomplete`'s three counts,
+     * `account_unmapped`'s roles). Absent on a refusal that is one indivisible
+     * thing, and the console renders those from `error` as it always has.
+     *
+     * 🛑 `error` is assembled FROM these by `closeBlockerMessage`. They are two
+     * renderings of one answer, never two answers.
+     */
+    items?: CloseBlockerItem[]
+  }
   /**
    * What this entry WOULD assert about the world on either side of itself.
    *
