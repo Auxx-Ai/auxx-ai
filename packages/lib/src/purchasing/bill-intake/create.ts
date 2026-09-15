@@ -76,7 +76,7 @@ function parseIntakeDate(text: string | null): string | null {
  * (§4.2). Read straight off `FieldValue`, the same trade `load-order-lines.ts`
  * and `duplicate.ts` make: no actor, no write, so no `UnifiedCrudHandler`.
  */
-async function loadPurchaseOrderCurrency(
+export async function loadPurchaseOrderCurrency(
   db: Database,
   organizationId: string,
   purchaseOrderRecordId: RecordId
@@ -256,6 +256,7 @@ export async function createBillFromIntake(
         vendorBillInstanceId,
         vendorBillRecordId,
         vendorBillLineRecordIds,
+        warnings,
       })
       if (marked.isErr()) throw marked.error
 

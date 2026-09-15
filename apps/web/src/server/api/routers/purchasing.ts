@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/purchasing.ts
 
+import { type Database, schema } from '@auxx/database'
 import {
   adoptTariffStarters,
   applyTariffResync,
@@ -11,8 +12,8 @@ import {
   planTariffResync,
   TARIFF_STARTERS_VERSION,
 } from '@auxx/lib/bom'
-import { getCachedEntityDefId } from '@auxx/lib/cache'
-import { NotFoundError } from '@auxx/lib/errors'
+import { getCachedEntityDefId, getOrgCache } from '@auxx/lib/cache'
+import { NotFoundError, UnprocessableEntityError } from '@auxx/lib/errors'
 import { markPurchaseOrderSent } from '@auxx/lib/money'
 import { PermissionKey } from '@auxx/lib/permissions'
 import {
@@ -23,8 +24,10 @@ import {
   createIntakeDraft,
   DEFAULT_MATCH_TOLERANCE,
   discardIntakeDraft,
+  failBillIntakeRun,
   findVendorPartForLine,
   findVendorPartsForParts,
+  foldBillLineIntoShipping,
   getBillIntakeRun,
   getBillIntakeRunForBill,
   getIntakeDraft,
@@ -34,6 +37,7 @@ import {
   previewExpenseBill,
   proposeBillLineLinks,
   resumeBillIntakeRun,
+  updateBillIntakeRun,
   updateIntakeDraftPayload,
   voidExpenseBill,
 } from '@auxx/lib/purchasing'
@@ -52,13 +56,44 @@ import {
   receiveStock,
   reverseMovement,
 } from '@auxx/lib/receiving'
-import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
+import { parseRecordId, type RecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
+import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
 /** An AMOUNT - money owed, paid or booked - is an integer minor unit everywhere in this subsystem. */
 const minorUnits = z.number().int()
+
+/** Verify the definition, organization and live row before passing a picker value to a worker. */
+async function requireBillIntakeRecord(
+  db: Database,
+  organizationId: string,
+  recordId: RecordId,
+  entityType:
+    | 'company'
+    | 'purchase_order'
+    | 'vendor_bill'
+    | 'vendor_bill_line'
+    | 'purchase_order_line'
+): Promise<RecordId> {
+  const defId = await requireDefId(organizationId, entityType)
+  const parsed = parseRecordId(recordId)
+  if (parsed.entityDefinitionId !== defId && parsed.entityDefinitionId !== entityType) {
+    throw new UnprocessableEntityError(`Expected a ${entityType.replaceAll('_', ' ')} record`)
+  }
+  const row = await db.query.EntityInstance.findFirst({
+    where: and(
+      eq(schema.EntityInstance.id, parsed.entityInstanceId),
+      eq(schema.EntityInstance.entityDefinitionId, defId),
+      eq(schema.EntityInstance.organizationId, organizationId),
+      isNull(schema.EntityInstance.archivedAt)
+    ),
+    columns: { id: true },
+  })
+  if (!row) throw new NotFoundError('The selected record is no longer available')
+  return toRecordId(defId, row.id)
+}
 
 /** A calendar day, the shape every accounting date crosses the wire in. */
 const calendarDaySchema = z.iso.date({ error: 'Expected YYYY-MM-DD' })
@@ -1314,15 +1349,69 @@ export const purchasingRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'vendor_bill'))
+      let vendorRecordId = input.vendorRecordId
+        ? await requireBillIntakeRecord(ctx.db, organizationId, input.vendorRecordId, 'company')
+        : null
+      let purchaseOrderRecordId: RecordId | null = null
       if (input.purchaseOrderRecordId) {
         ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'purchase_order'))
+        purchaseOrderRecordId = await requireBillIntakeRecord(
+          ctx.db,
+          organizationId,
+          input.purchaseOrderRecordId,
+          'purchase_order'
+        )
+        const vendorField = await getOrgCache()
+          .from(organizationId, 'customFields')
+          .bySystemAttribute('purchase_order_vendor')
+        const orderVendor = vendorField
+          ? await ctx.db.query.FieldValue.findFirst({
+              where: and(
+                eq(schema.FieldValue.organizationId, organizationId),
+                eq(
+                  schema.FieldValue.entityId,
+                  parseRecordId(purchaseOrderRecordId).entityInstanceId
+                ),
+                eq(schema.FieldValue.fieldId, vendorField.id)
+              ),
+              columns: { relatedEntityId: true },
+            })
+          : null
+        if (!orderVendor?.relatedEntityId) {
+          throw new UnprocessableEntityError('Choose a purchase order with a vendor')
+        }
+        if (
+          vendorRecordId &&
+          parseRecordId(vendorRecordId).entityInstanceId !== orderVendor.relatedEntityId
+        ) {
+          throw new UnprocessableEntityError('The vendor must match the purchase order')
+        }
+        vendorRecordId = await requireBillIntakeRecord(
+          ctx.db,
+          organizationId,
+          toRecordId(await requireDefId(organizationId, 'company'), orderVendor.relatedEntityId),
+          'company'
+        )
       }
 
-      const run = await createBillIntakeRun(organizationId, userId, input)
+      const run = await createBillIntakeRun(organizationId, userId, {
+        ...input,
+        vendorRecordId,
+        purchaseOrderRecordId,
+      })
       if (run.isErr()) throw run.error
 
       const { enqueueBillIntake } = await import('@auxx/lib/jobs')
-      await enqueueBillIntake({ organizationId, userId, runId: run.value.runId })
+      try {
+        await enqueueBillIntake({ organizationId, userId, runId: run.value.runId })
+      } catch (error) {
+        await failBillIntakeRun(
+          organizationId,
+          run.value.runId,
+          'The invoice could not be queued. Please try again.'
+        )
+        throw error
+      }
 
       return run.value
     }),
@@ -1344,11 +1433,26 @@ export const purchasingRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
       ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'vendor_bill'))
 
-      const resumed = await resumeBillIntakeRun(organizationId, input.runId, input.vendorRecordId)
+      const vendorRecordId = await requireBillIntakeRecord(
+        ctx.db,
+        organizationId,
+        input.vendorRecordId,
+        'company'
+      )
+      const resumed = await resumeBillIntakeRun(organizationId, input.runId, vendorRecordId)
       if (resumed.isErr()) throw resumed.error
 
       const { enqueueBillIntake } = await import('@auxx/lib/jobs')
-      await enqueueBillIntake({ organizationId, userId, runId: input.runId })
+      try {
+        await enqueueBillIntake({ organizationId, userId, runId: input.runId, resume: true })
+      } catch (error) {
+        // Keep Continue usable if the queue is unavailable after saving the pick.
+        const restored = await updateBillIntakeRun(organizationId, input.runId, {
+          status: 'needs_vendor',
+        })
+        if (restored.isErr()) throw restored.error
+        throw error
+      }
 
       return { ok: true as const }
     }),
@@ -1383,6 +1487,7 @@ export const purchasingRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'vendor_bill'))
 
+      await requireBillIntakeRecord(ctx.db, organizationId, input.billRecordId, 'vendor_bill')
       const { entityInstanceId } = parseRecordId(input.billRecordId)
       const result = await getBillIntakeRunForBill(organizationId, entityInstanceId)
       if (result.isErr()) throw result.error
@@ -1402,6 +1507,7 @@ export const purchasingRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'vendor_bill'))
 
+      await requireBillIntakeRecord(ctx.db, organizationId, input.billRecordId, 'vendor_bill')
       const result = await proposeBillLineLinks(ctx.db, organizationId, input.billRecordId)
       if (result.isErr()) throw result.error
       return result.value
@@ -1433,7 +1539,36 @@ export const purchasingRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
       ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'vendor_bill'))
 
+      await requireBillIntakeRecord(ctx.db, organizationId, input.billRecordId, 'vendor_bill')
+      const [billLineDefId, orderLineDefId] = await Promise.all([
+        requireDefId(organizationId, 'vendor_bill_line'),
+        requireDefId(organizationId, 'purchase_order_line'),
+      ])
+      for (const link of input.links) {
+        if (
+          ![billLineDefId, 'vendor_bill_line'].includes(
+            parseRecordId(link.lineRecordId).entityDefinitionId
+          ) ||
+          ![orderLineDefId, 'purchase_order_line'].includes(
+            parseRecordId(link.orderLineRecordId).entityDefinitionId
+          )
+        )
+          throw new UnprocessableEntityError('Choose bill lines and purchase order lines')
+      }
       const result = await linkBillLines(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /** Move a confirmed, unlinked line's printed total into shipping without changing other totals. */
+  foldBillLineIntoShipping: capabilityProcedure
+    .input(z.object({ billRecordId: recordIdSchema, lineRecordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'vendor_bill'))
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'vendor_bill_line'))
+      ctx.capabilities.assertDeleteEntity(await requireDefId(organizationId, 'vendor_bill_line'))
+      const result = await foldBillLineIntoShipping(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
       return result.value
     }),

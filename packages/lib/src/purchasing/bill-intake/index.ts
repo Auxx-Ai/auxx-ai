@@ -13,6 +13,7 @@
 export { assignBillLines, descriptionTokens, diceSimilarity, foldKey } from './assign'
 export { type ExistingBill, findExistingBill } from './duplicate'
 export { findOrderByReference } from './find-order'
+export { foldBillLineIntoShipping } from './fold'
 export {
   type LinkBillLineInput,
   type LinkBillLinesInput,

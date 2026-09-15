@@ -20,6 +20,7 @@
 // a spreadsheet to the PDF renderer and shows the person nothing.
 
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
 import Papa from 'papaparse'
 import type { ReactNode } from 'react'
@@ -33,6 +34,12 @@ interface RecordDocumentPaneProps {
   mimeType: string | null
   /** The converted text a model read. `null` for a PDF or an image, or when nothing was read. */
   extractedText: string | null
+  /** Show the two review tabs even when the converted source has no text. */
+  showTabs?: boolean
+  /** Select content directly when the parent owns the Document/As read tabs. */
+  view?: 'document' | 'read'
+  /** A readable transcription for the review tab (used for PDFs/images). */
+  asReadText?: string | null
   /** Which resource authorizes the preview — see `AttachmentPreview`'s `scope` prop. */
   scope?: React.ComponentProps<typeof AttachmentPreview>['scope']
   className?: string
@@ -58,19 +65,80 @@ export function RecordDocumentPane({
   fileName,
   mimeType,
   extractedText,
+  showTabs = false,
+  view,
+  asReadText,
   scope,
   className,
   emptyState,
 }: RecordDocumentPaneProps) {
-  const sections = useMemo(() => parseExtractedText(extractedText), [extractedText])
+  const document = (
+    <DocumentContent
+      documentRef={documentRef}
+      fileName={fileName}
+      mimeType={mimeType}
+      scope={scope}
+      className={className}
+      emptyState={emptyState}
+    />
+  )
+  const sourceSections = useMemo(() => parseExtractedText(extractedText), [extractedText])
+  const sourceContent = sourceSections ? (
+    <ExtractedGrid fileName={fileName} sections={sourceSections} />
+  ) : (
+    document
+  )
+  const readText = asReadText ?? extractedText
+  const readSections = useMemo(() => parseExtractedText(readText), [readText])
+  const readContent = readSections ? (
+    <ExtractedGrid
+      fileName={fileName}
+      sections={readSections}
+      transcription={showTabs || view === 'read'}
+    />
+  ) : (
+    <div className='flex h-full items-center justify-center p-6'>
+      <p className='text-sm text-muted-foreground'>No transcription is available yet.</p>
+    </div>
+  )
 
-  if (sections) {
-    return <ExtractedGrid fileName={fileName} sections={sections} />
-  }
+  // Converted quote/intake documents have no inline file renderer. Preserve the
+  // established behaviour for callers that do not need review tabs.
+  if (view === 'read') return readContent
+  if (view === 'document') return sourceContent
+  if (!showTabs) return readSections ? readContent : document
 
+  return (
+    <Tabs defaultValue='document' className='flex h-full min-h-0 flex-col'>
+      <TabsList
+        className='w-full shrink-0 justify-start rounded-b-none border-b bg-primary-100'
+        variant='outline'>
+        <TabsTrigger value='document' variant='outline'>
+          Document
+        </TabsTrigger>
+        <TabsTrigger value='read' variant='outline'>
+          As read
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value='document' className='min-h-0 flex-1'>
+        {document}
+      </TabsContent>
+      <TabsContent value='read' className='min-h-0 flex-1'>
+        {readContent}
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+function DocumentContent({
+  documentRef,
+  fileName,
+  mimeType,
+  scope,
+  className,
+  emptyState,
+}: Omit<RecordDocumentPaneProps, 'extractedText' | 'showTabs' | 'asReadText' | 'view'>) {
   if (!documentRef) {
-    // `undefined` (the prop simply omitted) is "use the default placeholder";
-    // `null` (passed explicitly) is "render nothing" — see the prop's doc.
     if (emptyState !== undefined) return <>{emptyState}</>
     return (
       <div className={cn('flex h-full items-center justify-center p-6', className)}>
@@ -80,12 +148,10 @@ export function RecordDocumentPane({
   }
 
   const { sourceType, id } = parseDocumentRef(documentRef)
-
   return (
     <AttachmentPreview
       type={sourceType}
       id={id}
-      preferredRenderer={rendererFor(mimeType)}
       interactive
       height='100%'
       className={className}
@@ -103,18 +169,6 @@ function parseDocumentRef(ref: string): { sourceType: 'asset' | 'file'; id: stri
     sourceType: (colonIdx < 0 ? 'asset' : ref.slice(0, colonIdx)) as 'asset' | 'file',
     id: colonIdx < 0 ? ref : ref.slice(colonIdx + 1),
   }
-}
-
-/**
- * Which `AttachmentPreview` renderer this MIME type wants.
- *
- * `'auto'` for anything else, so the component's own dispatch decides rather
- * than being overridden with a guess.
- */
-function rendererFor(mimeType: string | null): 'auto' | 'pdf' | 'image' {
-  if (mimeType === 'application/pdf') return 'pdf'
-  if (mimeType?.startsWith('image/')) return 'image'
-  return 'auto'
 }
 
 /**
@@ -140,7 +194,9 @@ function parseExtractedText(text: string | null): ExtractedSection[] | null {
     body = []
     if (!joined) return
     const parsed = Papa.parse<string[]>(joined, { skipEmptyLines: true })
-    const rows = (parsed.data ?? []).filter((row) => row.some((cell) => cell?.trim()))
+    const rows = (parsed.data ?? []).filter(
+      (row) => Array.isArray(row) && row.some((cell) => cell?.trim())
+    )
     if (rows.length > 0) sections.push({ title, rows })
   }
 
@@ -169,21 +225,28 @@ function parseExtractedText(text: string | null): ExtractedSection[] | null {
 function ExtractedGrid({
   fileName,
   sections,
+  transcription = false,
 }: {
   fileName: string | null
   sections: ExtractedSection[]
+  transcription?: boolean
 }) {
   return (
-    <div className='flex h-full flex-col gap-3'>
+    <div className='flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden p-3'>
       <p className='shrink-0 text-xs text-muted-foreground'>
-        {fileName ? <span className='font-medium'>{fileName}</span> : 'This document'} has no
-        preview of its own, so this is the text the model read.
+        {transcription ? 'Transcription from ' : ''}
+        {fileName ? <span className='font-medium'>{fileName}</span> : 'This document'}
+        {transcription ? '.' : ' has no preview of its own, so this is the text the model read.'}
       </p>
 
       {/* `noFade` because each section's title is `sticky top-0`: the default
           mask-image fade dims whatever sits at the viewport's edge, which is
           precisely the heading a person is reading down the sheet by. */}
-      <ScrollArea orientation='both' noFade className='min-h-0 flex-1' viewportClassName='h-full'>
+      <ScrollArea
+        orientation='both'
+        noFade
+        className='min-h-0 min-w-0 w-full flex-1'
+        viewportClassName='h-full'>
         {sections.map((section, index) => (
           <div key={section.title ?? index} className='mb-4'>
             {section.title && (
@@ -197,7 +260,6 @@ function ExtractedGrid({
                   <tr
                     // Row order IS the identity here — the grid is a snapshot and
                     // nothing reorders or filters it.
-                    // biome-ignore lint/suspicious/noArrayIndexKey: positional by nature
                     key={rowIndex}
                     className='border-b border-foreground/5 last:border-0'>
                     <td className='w-8 select-none pr-2 text-right align-top text-muted-foreground/60'>
@@ -205,7 +267,6 @@ function ExtractedGrid({
                     </td>
                     {row.map((cell, cellIndex) => (
                       <td
-                        // biome-ignore lint/suspicious/noArrayIndexKey: positional by nature
                         key={cellIndex}
                         className={cn(
                           // A cell may run long (a full item description), so it

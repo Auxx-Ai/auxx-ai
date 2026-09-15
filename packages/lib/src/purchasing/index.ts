@@ -23,6 +23,7 @@ export {
   failBillIntakeRun,
   findExistingBill,
   findOrderByReference,
+  foldBillLineIntoShipping,
   foldKey,
   getBillIntakeRun,
   getBillIntakeRunForBill,

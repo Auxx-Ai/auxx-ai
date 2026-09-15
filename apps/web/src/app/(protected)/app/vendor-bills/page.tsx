@@ -2,6 +2,7 @@
 
 'use client'
 
+import { AddBillButton } from '~/components/purchasing/vendor-bill/add-bill-button'
 import { RecordsView } from '~/components/records'
 
 /**
@@ -16,5 +17,7 @@ import { RecordsView } from '~/components/records'
  * bespoke row action.
  */
 export default function VendorBillsPage() {
-  return <RecordsView slug='vendor-bills' basePath='/app/vendor-bills' />
+  return (
+    <RecordsView slug='vendor-bills' basePath='/app/vendor-bills' pageActions={<AddBillButton />} />
+  )
 }

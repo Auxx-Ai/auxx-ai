@@ -1,6 +1,6 @@
 // apps/worker/src/workers/worker-definitions/purchase-intake-worker.ts
 
-import { purchaseIntakeJob } from '@auxx/lib/jobs'
+import { billIntakeJob, purchaseIntakeJob } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
 import { createWorker } from '../utils/createWorker'
@@ -14,6 +14,7 @@ const logger = createScopedLogger('worker:purchase-intake')
  */
 const purchaseIntakeJobMappings = {
   purchaseIntakeJob,
+  billIntakeJob,
 }
 
 /**

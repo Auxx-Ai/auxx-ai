@@ -431,16 +431,12 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
 
   vendor_bill: {
     entityType: 'vendor_bill',
-    // Also has a hand-written page (plans/money/tasks/58 §6.1), not a `DetailView`:
-    // a bill RECORDS something already settled, so it is not built or iterated the
-    // way a purchase order is. This config still backs the DRAWER (list clicks
-    // still open it) and the page replays the same overview cards through
-    // `TabCardSection`. The exception queue is a filtered list view, not a
-    // bespoke row action.
+    // The shared full-screen DetailView uses these same cards in its sidebar.
     additionalTabs: [],
     tabCards: {
       overview: [
         { value: 'lines', label: 'Lines', icon: 'receipt-text', fullBleed: true },
+        { value: 'link', label: 'Link to order', icon: 'link-2' },
         { value: 'match', label: 'Match', icon: 'scan-search' },
         // The vendor's own invoice, plus the packing slips and freight bills
         // that came with it (plan 08 P18/P21).

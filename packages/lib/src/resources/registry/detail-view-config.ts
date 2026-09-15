@@ -284,6 +284,26 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     ],
   },
 
+  vendor_bill: {
+    entityType: 'vendor_bill',
+    mainTabs: [
+      { value: 'document', label: 'Document', icon: 'file-text' },
+      { value: 'timeline', label: 'Timeline', icon: 'clock' },
+      { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
+    ],
+    sidebarTabs: DEFAULT_SIDEBAR_TABS,
+    defaultTab: 'document',
+    defaultSidebarTab: 'overview',
+    sidebarCards: [
+      { value: 'lines', label: 'Lines', icon: 'receipt-text', fullBleed: true },
+      { value: 'link', label: 'Link to order', icon: 'link-2' },
+      { value: 'match', label: 'Match', icon: 'scan-search' },
+      { value: 'documents', label: 'Documents', icon: 'paperclip' },
+      { value: 'vendor', label: 'Vendor', icon: 'store' },
+      { value: 'payment', label: 'Payment', icon: 'credit-card' },
+    ],
+  },
+
   work_order: {
     entityType: 'work_order',
     // Sections mode (dispatch M2 build spec §F.1/§F.2, 04-ui.md §6): the job view

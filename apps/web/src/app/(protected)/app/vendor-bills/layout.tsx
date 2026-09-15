@@ -12,7 +12,7 @@ const BASE_PATH = '/app/vendor-bills'
 /**
  * Vendor bills layout, the companies recipe: the shared entity route shell
  * (List | Dashboard) for the list and dashboard routes only. `[vendorBillId]`
- * (plans/money/tasks/58 §6.1) renders its own `MainPage` via `VendorBillPage`
+ * (plans/money/tasks/58 §6.1) renders its own `MainPage` via the shared `DetailView`
  * and must bypass the shell, or two `MainPage` trees nest — same reason
  * `import/[jobId]` already does.
  */

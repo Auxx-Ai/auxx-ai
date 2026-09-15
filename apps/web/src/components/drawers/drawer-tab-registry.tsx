@@ -317,6 +317,10 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('../purchasing/vendor-bill/vendor-bill-match-card').then((m) => ({
       default: m.VendorBillMatchCard,
     })),
+  'vendor_bill:link': () =>
+    import('../purchasing/vendor-bill/vendor-bill-link-card').then((m) => ({
+      default: m.VendorBillLinkCard,
+    })),
   // `receiving` is the ONLY read-back of `purchase_order_line_quantity_received`,
   // and `bills` the only surface for `purchase_order_bills` (`showInPanel: false`).
   'purchase_order:receiving': () =>

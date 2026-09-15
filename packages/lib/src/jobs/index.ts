@@ -338,6 +338,10 @@ export {
 } from './polling'
 // Purchasing (quote → draft purchase order intake; plans/money/tasks/38 §3.3)
 export {
+  BILL_INTAKE_JOB_NAME,
+  type BillIntakeJobData,
+  billIntakeJob,
+  enqueueBillIntake,
   enqueuePurchaseIntake,
   PURCHASE_INTAKE_DAILY_LIMIT,
   PURCHASE_INTAKE_JOB_NAME,

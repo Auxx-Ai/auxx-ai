@@ -41,13 +41,14 @@ import { useFieldValueStore } from '~/components/resources/store/field-value-sto
 import { RecordIcon } from '~/components/resources/ui/record-icon'
 import { useSettings } from '~/hooks/use-settings'
 import { numberValue, PurchasingSummaryStrip, unwrapValue } from '../purchasing-summary-strip'
+import { AddBillDialog } from '../vendor-bill/add-bill-dialog'
 import { MarkBillPaidDialog } from '../vendor-bill/mark-bill-paid-dialog'
-import { CreateBillFromPurchaseOrderDialog } from './create-bill-from-purchase-order-dialog'
 
 const PO_ATTRS = [
   'purchase_order_bills',
   'purchase_order_total',
   'purchase_order_currency',
+  'purchase_order_vendor',
 ] as const
 
 const BILL_ATTRS = [
@@ -113,10 +114,11 @@ export function PurchaseOrderBillsCard({ recordId }: DrawerTabProps) {
           Add bill
         </Button>
       </DrawerCardActions>
-      <CreateBillFromPurchaseOrderDialog
+      <AddBillDialog
         open={addOpen}
         onOpenChange={setAddOpen}
         purchaseOrderRecordId={recordId}
+        vendorRecordId={extractRelationshipRecordIds(values.purchase_order_vendor)[0]}
         onCreated={(billRecordId) => {
           // No invalidation. The card lists the PO's `purchase_order_bills`
           // inverse, and since D-11 that mirror announces its own rewrite
