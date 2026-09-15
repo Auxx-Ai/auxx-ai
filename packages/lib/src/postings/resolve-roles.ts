@@ -58,15 +58,25 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { PgTransaction } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, type AuxxErrorDetails, UnprocessableEntityError } from '../errors'
 import { accountLabel } from './account-label'
-import { ACCOUNT_ROLE_LABELS, type AccountRole, ROLE_ACCOUNT_TYPES } from './build-entry'
+import {
+  ACCOUNT_ROLE_LABELS,
+  type AccountRole,
+  ROLE_ACCOUNT_TYPES,
+  roleScopeAxis,
+} from './build-entry'
 import { loadChartAccountFields, loadChartAccountsById } from './chart-accounts'
 import { CHART_PACKS, type GlAccountTypeValue, packForRole } from './default-chart'
-import type { GlPostingLineInput } from './types'
+import { readLiveSourceAccountIds, readManualSourceAccountId } from './source-scope'
+import type { GlPostingLineInput, RoleSourceScope } from './types'
+
+// Declared in `types.ts` (client-safe) because a posting LINE carries one; the
+// resolver is where it is consulted, so it is re-exported from here too.
+export type { RoleSourceScope } from './types'
 
 const logger = createScopedLogger('postings:resolve-roles')
 
@@ -80,6 +90,9 @@ const logger = createScopedLogger('postings:resolve-roles')
  */
 const NOT_PROVISIONED =
   'The chart of accounts is not provisioned for this organization - gl_account_code / gl_account_type are missing. Run the entity migrations before posting.'
+
+/** Key for the scoped-assignment lookup. A NUL byte cannot appear in either half. */
+const scopedKey = (role: string, sourceAccountId: string) => `${role}\u0000${sourceAccountId}`
 
 /** One role's account, as it stands right now. Snapshot it onto the line; do not re-read. */
 export interface ResolvedAccount {
@@ -114,11 +127,32 @@ export interface ResolvedAccount {
  * | account missing or archived | the chart moved under the mapping; repoint it |
  * | `isActive = false` | reactivate the account, or repoint the role |
  * | `accountType` incompatible | the mapping is to the wrong KIND of account |
+ *
+ * ## The scope chain (task 47 §5)
+ *
+ * ```
+ * axis 'store',     scope.store set        ->  (role, that id)      ->  (role, null)
+ * axis 'store',     scope.store null       ->  (role, manual id)    ->  (role, null)
+ * axis 'processor', scope.processor set    ->  (role, that id)      ->  (role, null)
+ * ```
+ *
+ * Two lookups, one fallback, and the five refusals above apply unchanged to
+ * whichever row wins.
+ *
+ * 🛑 **A miss falls back, it does not fail.** Connecting a second store must
+ * never stop the books, so an unmapped source posts to the org default and is
+ * surfaced by the settings screen rather than by a refusal (decision D6). The
+ * same is true of a source ARCHIVED since somebody mapped it: the assignment
+ * row survives the archive and must not be used (§12.5).
+ *
+ * ⚠️ An org with no scoped rows runs the query it ran before this brief and
+ * takes the same decisions. That is the acceptance test for the whole brief.
  */
 export async function resolveRoles(
   db: Database | Transaction,
   organizationId: string,
-  roles: string[]
+  roles: string[],
+  scope?: RoleSourceScope
 ): Promise<Result<Map<string, ResolvedAccount>, Error>> {
   const wanted = [...new Set(roles)]
   if (wanted.length === 0) return ok(new Map())
@@ -129,6 +163,7 @@ export async function resolveRoles(
         role: schema.GlRoleAssignment.role,
         glAccountId: schema.GlRoleAssignment.glAccountId,
         markedUnused: schema.GlRoleAssignment.markedUnused,
+        sourceAccountId: schema.GlRoleAssignment.sourceAccountId,
       })
       .from(schema.GlRoleAssignment)
       .where(
@@ -139,23 +174,53 @@ export async function resolveRoles(
       )
 
     // ── The impossible case, asserted anyway ──────────────────────────────
-    // `GlRoleAssignment_org_role_key` is a Postgres unique index on
-    // (organizationId, role), so this cannot fire. It is here because the ONE
+    // The two partial unique indexes on this table - one over
+    // (organizationId, role) WHERE sourceAccountId IS NULL, one over
+    // (organizationId, role, sourceAccountId) WHERE it IS NOT NULL - make both
+    // of the collisions below unreachable. They are asserted because the ONE
     // failure this module must never have is picking arbitrarily between two
     // accounts, and an assertion is cheaper than the audit that would follow.
     const byRole = new Map<string, (typeof assignments)[number]>()
+    const byScope = new Map<string, (typeof assignments)[number]>()
     for (const row of assignments) {
-      if (byRole.has(row.role)) {
+      // `== null` catches BOTH null and undefined, deliberately. The column is
+      // nullable, and "absent" has to read as the ORG DEFAULT whether a driver
+      // hands back `null` or omits the key - misreading it as a scope would
+      // file every default row under a source nothing will ever ask for, and
+      // every role would then resolve to nothing.
+      const scoped = row.sourceAccountId != null
+      const bucket = scoped ? byScope : byRole
+      const lookup = scoped ? scopedKey(row.role, row.sourceAccountId as string) : row.role
+      if (bucket.has(lookup)) {
         throw new UnprocessableEntityError(
-          `Organization ${organizationId} has more than one account mapped to role '${row.role}'. ` +
-            'Refusing to choose. This should be impossible - GlRoleAssignment_org_role_key is a unique index.',
+          `Organization ${organizationId} has more than one account mapped to role '${row.role}'` +
+            `${scoped ? ` for source ${row.sourceAccountId}` : ''}. Refusing to choose. This ` +
+            'should be impossible - GlRoleAssignment_org_role_default_key and ' +
+            'GlRoleAssignment_org_role_source_key are unique indexes.',
           { organizationId, role: row.role }
         )
       }
-      byRole.set(row.role, row)
+      bucket.set(lookup, row)
     }
 
-    const accountIds = [...new Set(assignments.map((row) => row.glAccountId))]
+    // Which source each role reads, for the whole batch at once. Costs no query
+    // at all on an org with no overrides for these roles, which is every org
+    // until somebody writes one.
+    const scopeIdByRole = await resolveScopeIds(db, organizationId, wanted, scope, byScope.size > 0)
+
+    /**
+     * The row each role resolves through: its override when the source it came
+     * from has one, the org default otherwise.
+     */
+    const chosen = new Map<string, (typeof assignments)[number]>()
+    for (const role of wanted) {
+      const scopeId = scopeIdByRole.get(role)
+      const override = scopeId === undefined ? undefined : byScope.get(scopedKey(role, scopeId))
+      const assignment = override ?? byRole.get(role)
+      if (assignment) chosen.set(role, assignment)
+    }
+
+    const accountIds = [...new Set([...chosen.values()].map((row) => row.glAccountId))]
     const accounts = await loadAccounts(db, organizationId, accountIds)
 
     const resolved = new Map<string, ResolvedAccount>()
@@ -168,7 +233,7 @@ export async function resolveRoles(
     const unresolvedRoles: string[] = []
 
     for (const role of wanted) {
-      const assignment = byRole.get(role)
+      const assignment = chosen.get(role)
       /** Record one role's refusal, keeping the two arrays in step. */
       const refuse = (reason: string) => {
         problems.push(reason)
@@ -260,6 +325,75 @@ export async function resolveRoles(
 }
 
 /**
+ * The `FinancialSourceAccount` each wanted role resolves through, or nothing.
+ *
+ * A role is absent from the answer whenever it is not scopable, the caller
+ * supplied no scope, the caller does not know the axis that role reads, or the
+ * source it names is not a live account in this org - and absent means "use the
+ * org default", which is what every role did before task 47.
+ *
+ * ⚠️ Runs inside {@link resolveRoles}' existing batch rather than as a separate
+ * round trip per line, and does nothing at all unless the org actually holds a
+ * scoped row for one of the roles being resolved (`hasOverrides`). That is what
+ * keeps the no-op guarantee literal: an org that maps nothing issues exactly the
+ * query it issued before. Do NOT add a cache key here - `resolve-roles.ts`'s own
+ * "Not cached" argument is unchanged by this brief (§5).
+ *
+ * 🛑 The NULL-to-manual translation lives here and nowhere else. The sentinel
+ * is a mapping key, never an effect value (§3.2).
+ */
+async function resolveScopeIds(
+  db: Database | Transaction,
+  organizationId: string,
+  wanted: readonly string[],
+  scope: RoleSourceScope | undefined,
+  hasOverrides: boolean
+): Promise<Map<string, string>> {
+  const answer = new Map<string, string>()
+  if (!scope || !hasOverrides) return answer
+
+  const axes = new Map(wanted.map((role) => [role, roleScopeAxis(role)]))
+  const wantsStore = [...axes.values()].includes('store')
+  const wantsProcessor = [...axes.values()].includes('processor')
+  if (!wantsStore && !wantsProcessor) return answer
+
+  // The ids the caller named, checked for liveness in one go. An archived
+  // source falls back to the default rather than posting to the account
+  // somebody chose for a store that is gone (§12.5).
+  const named = [
+    ...(wantsStore && typeof scope.store === 'string' ? [scope.store] : []),
+    ...(wantsProcessor && typeof scope.processor === 'string' ? [scope.processor] : []),
+  ]
+  const [live, manualId] = await Promise.all([
+    readLiveSourceAccountIds(db, organizationId, named),
+    // Only when a store-axis role is in play AND this record had no connected
+    // source. `readManualSourceAccountId` already filters live and archived.
+    wantsStore && scope.store === null
+      ? readManualSourceAccountId(db, organizationId)
+      : Promise.resolve(null),
+  ])
+
+  for (const [role, axis] of axes) {
+    if (axis === 'store') {
+      // `undefined` is "this caller does not know"; `null` is "there was no
+      // connected source". Only the second reaches the manual bucket.
+      if (scope.store === undefined) continue
+      const id = scope.store === null ? manualId : scope.store
+      if (id && (id === manualId || live.has(id))) answer.set(role, id)
+      continue
+    }
+    if (axis === 'processor') {
+      // No manual counterpart: a manual order has no processor, so a null here
+      // reads exactly like an absent key (§4).
+      const id = scope.processor
+      if (id && live.has(id)) answer.set(role, id)
+    }
+  }
+
+  return answer
+}
+
+/**
  * The named accounts, shaped as {@link ResolvedAccount}.
  *
  * A thin re-key of the shared chart read in `chart-accounts.ts` - `id` becomes
@@ -332,14 +466,12 @@ async function loadAccounts(
 export async function resolveAccountLines(
   db: Database | Transaction,
   organizationId: string,
-  lines: readonly GlPostingLineInput[]
+  lines: readonly GlPostingLineInput[],
+  scope?: RoleSourceScope
 ): Promise<Result<ResolvedAccount[], Error>> {
   if (lines.length === 0) return ok([])
 
   try {
-    const roles = [
-      ...new Set(lines.map((line) => line.accountRole).filter((r): r is string => !!r)),
-    ]
     const codes = [
       ...new Set(lines.map((line) => line.accountCode).filter((c): c is string => !!c)),
     ]
@@ -347,25 +479,56 @@ export async function resolveAccountLines(
 
     const problems: string[] = []
 
-    // Roles go through the existing door unchanged, so the two shapes cannot
-    // drift apart on what a role means. Its message already names every role.
-    let byRole = new Map<string, ResolvedAccount>()
+    // ── Roles, bucketed by the SOURCE each line resolves through ─────────
+    //
+    // Precedence is `line.sourceScope ?? scope`, applied HERE and nowhere else
+    // (task 47 §5). One entry can span two stores - the fulfillment group merges
+    // a day's shipments - so two `revenue_product` lines with different scopes
+    // must resolve to different accounts and stay two lines.
+    //
+    // ⚠️ One `resolveRoles` call PER DISTINCT SCOPE, not per line. An entry from
+    // a single source is one call, exactly as before; a two-store group is two.
+    // Each call keeps the batch property the resolver's header insists on - it
+    // answers for its whole set at once and names every offending role.
+    const buckets = new Map<string, { scope?: RoleSourceScope; roles: Set<string> }>()
+    for (const line of lines) {
+      if (!line.accountRole) continue
+      const effective = line.sourceScope ?? scope
+      const key = scopeBucketKey(effective)
+      const bucket = buckets.get(key)
+      if (bucket) bucket.roles.add(line.accountRole)
+      else buckets.set(key, { scope: effective, roles: new Set([line.accountRole]) })
+    }
+
+    // Scope bucket key -> role -> account.
+    const byScopeKey = new Map<string, Map<string, ResolvedAccount>>()
     // Forwarded verbatim from the role door so a line-level refusal can still
     // offer a remedy per ROLE. Only roles carry this: a bad code or a dead id
     // names a ROW, and the row is fixed on the entry rather than in the chart.
     let roleDetails: AuxxErrorDetails = {}
-    if (roles.length > 0) {
-      const resolved = await resolveRoles(db, organizationId, roles)
+    for (const [key, bucket] of buckets) {
+      const resolved = await resolveRoles(db, organizationId, [...bucket.roles], bucket.scope)
       if (resolved.isErr()) {
         problems.push(resolved.error.message)
         if (resolved.error instanceof AuxxError) {
           const { unresolvedRoles, unresolvedReasons } = resolved.error.details
-          if (unresolvedRoles && unresolvedReasons) {
+          // ⚠️ The FIRST bucket's remedies, not the last one's. Two buckets can
+          // name the same role - the remedy is the same sentence about the same
+          // role map either way - so the screen renders one set rather than
+          // flickering between two identical ones.
+          if (unresolvedRoles && unresolvedReasons && !roleDetails.unresolvedRoles) {
             roleDetails = { unresolvedRoles, unresolvedReasons }
           }
         }
-      } else byRole = resolved.value
+      } else byScopeKey.set(key, resolved.value)
     }
+    /** How many of `problems` came from the role door. See the refusal below. */
+    const roleRefusals = problems.length
+    /** The account a ROLE line resolves to, through its own line's scope. */
+    const roleAccount = (line: GlPostingLineInput): ResolvedAccount | undefined =>
+      line.accountRole
+        ? byScopeKey.get(scopeBucketKey(line.sourceScope ?? scope))?.get(line.accountRole)
+        : undefined
 
     const byCode =
       codes.length > 0 ? await loadAccountsByCode(db, organizationId, codes) : new Map()
@@ -434,12 +597,12 @@ export async function resolveAccountLines(
         new UnprocessableEntityError(
           `Cannot post: ${problems.length} line(s) do not resolve to a usable account. ${problems.join(' ')}`,
           // 🛑 Only when the roles were the ONLY thing wrong. The role door
-          // contributes exactly one entry to `problems` (its own joined
-          // message), so anything more means a ROW failed too - a dead id, an
-          // unknown code, a line naming neither. A screen that rendered the
-          // role rows would then be hiding those sentences behind a list that
-          // does not mention them.
-          { organizationId, ...(problems.length === 1 ? roleDetails : {}) }
+          // contributes one entry to `problems` per SCOPE BUCKET (each its own
+          // joined message), so anything beyond that means a ROW failed too - a
+          // dead id, an unknown code, a line naming neither. A screen that
+          // rendered the role rows would then be hiding those sentences behind a
+          // list that does not mention them.
+          { organizationId, ...(problems.length === roleRefusals ? roleDetails : {}) }
         )
       )
     }
@@ -450,7 +613,7 @@ export async function resolveAccountLines(
         ? byId.get(line.glAccountId)
         : line.accountCode
           ? byCode.get(line.accountCode)?.[0]
-          : byRole.get(line.accountRole as string)
+          : roleAccount(line)
       if (!account) {
         // Unreachable: every line either resolved above or produced a problem.
         // Asserted because the alternative is a ledger line with no account.
@@ -470,6 +633,21 @@ export async function resolveAccountLines(
     logger.error('Failed to resolve posting lines', { error, organizationId })
     return err(new AuxxError('Internal error'))
   }
+}
+
+/**
+ * A stable key for one {@link RoleSourceScope}, so lines that resolve through
+ * the same source share a single {@link resolveRoles} call.
+ *
+ * ⚠️ `undefined`, `{}` and `{ store: undefined }` all key the same, because
+ * they mean the same thing - "no axis is known, use the org default". `null` and
+ * an id do not, because they do not.
+ */
+function scopeBucketKey(scope: RoleSourceScope | undefined): string {
+  if (!scope) return '-'
+  const part = (value: string | null | undefined) =>
+    value === undefined ? '-' : value === null ? 'manual' : value
+  return `${part(scope.store)}|${part(scope.processor)}`
 }
 
 /**
@@ -511,7 +689,13 @@ export async function loadRoleAccountCodes(
     .where(
       and(
         eq(schema.GlRoleAssignment.organizationId, organizationId),
-        inArray(schema.GlRoleAssignment.role, wanted)
+        inArray(schema.GlRoleAssignment.role, wanted),
+        // 🛑 The ORG DEFAULT only. This answer is compared against account IDS
+        // by its caller, and a per-source override would add an account to the
+        // guarded set without the caller ever having asked about that source.
+        // None of the roles it is called with is scopable today (§4), so this
+        // is a statement of intent as much as a filter.
+        isNull(schema.GlRoleAssignment.sourceAccountId)
       )
     )
 

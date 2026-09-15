@@ -483,6 +483,22 @@ export interface BuildFulfillmentEntryInput {
   /** `order_currency`, verbatim. Anything but `ledgerCurrency` REFUSES. */
   currency: string | null | undefined
   /**
+   * The `FinancialSourceAccount` the sale came from, stamped on the REVENUE
+   * lines so the org may point them at a per-store account (task 47 §5).
+   *
+   * 🛑 Three values, three meanings. An id is the storefront; `null` is "this
+   * record had no connected source", which resolves through the MANUAL bucket;
+   * OMITTING it is "the caller does not know", which resolves to the org
+   * default exactly as every fulfillment did before this brief. A test or an
+   * older caller that leaves it off therefore changes nothing.
+   *
+   * ⚠️ Only the revenue roles read it. A/R, tax and COGS are pooled - the first
+   * is settled by cash rather than by store, the second is one obligation per
+   * jurisdiction, and the third is blocked until L3 puts COGS on this entry
+   * at all (47 §4.2, §4.3).
+   */
+  sourceStoreId?: string | null
+  /**
    * The one currency the books are kept in.
    *
    * Passed in rather than imported so this file stays pure and client-safe:
@@ -792,6 +808,13 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     lines.push({ ...line, sortOrder: sortOrder++ } as GlPostingLineInput)
   }
 
+  /**
+   * Spread onto the revenue lines only. Empty when the caller named no store,
+   * which leaves those lines byte-for-byte what they were before task 47.
+   */
+  const revenueScope =
+    input.sourceStoreId === undefined ? {} : { sourceScope: { store: input.sourceStoreId } }
+
   if (recognitionAllocation?.depositMinor) {
     push({
       ...source,
@@ -823,7 +846,13 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     direction: 'credit',
     amount: subtotalMinor,
     memo: `${shipmentLabel} - ${shippedLines.length} line${shippedLines.length === 1 ? '' : 's'}`,
+    // Both axes on one line, and they are not the same question. `channel`
+    // (DTC vs dealer) is an ATTRIBUTE of this sale and stays a dimension on one
+    // account; the store is a different BUSINESS and may have an account of its
+    // own. Decision D10 keeps them separate rather than collapsing either into
+    // the other.
     dimensions: { channel: channelDimension },
+    ...revenueScope,
   })
 
   // Zero legs are DROPPED rather than posted at zero. An org that charges no
@@ -888,6 +917,7 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
       direction: 'credit',
       amount: shippingMinor,
       memo: `${orderNumber} - shipping, recognised once on the first fulfillment`,
+      ...revenueScope,
     })
   }
 

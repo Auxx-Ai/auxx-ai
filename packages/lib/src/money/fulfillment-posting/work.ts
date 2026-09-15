@@ -394,6 +394,12 @@ export async function readFulfillmentAccountingSourceInTx(
         orderShippingTotalMinor: shipment.orderShippingTotalMinor,
         priorShipmentsSubtotalMinor: shipment.priorShipmentsSubtotalMinor,
         includeShipping: shipment.includeShipping,
+        // Task 47 §5. The same value the effect already freezes on its
+        // calculation (`calculation.sourceStoreId` above), so the entry and the
+        // basis cannot disagree about which store this shipment came from.
+        // `null` is "no connected source" and resolves through the manual
+        // bucket - it is NOT backfilled into the effect (§3.2).
+        sourceStoreId: shipment.sourceStoreId ?? null,
         contactInstanceId: shipment.contactId,
         taxLines: shipment.taxLines,
         recognitionAllocation: shipment.recognitionAllocation,

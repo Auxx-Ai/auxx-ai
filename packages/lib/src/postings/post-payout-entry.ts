@@ -37,6 +37,20 @@ export interface PostPayoutEntryOptions extends BuildPayoutEntryInput {
   actorUserId?: string
   /** Source ownership is checked inside the ledger acceptance transaction. */
   beforeCommit?: (tx: Transaction) => Promise<void>
+  /**
+   * The `FinancialSourceAccount` this payout settled through - the rail's
+   * `payment_gateway.settlementAccount` (task 47 §4).
+   *
+   * 🛑 The PROCESSOR axis, never the store. A store on two processors would
+   * pool both processors' fees into one account; two stores sharing one Stripe
+   * account would split fees that arrive on a single statement and reconcile as
+   * one number. Fees belong to the merchant account the money came through.
+   *
+   * ⚠️ Only reaches `payment_processing_fees`, and only when the rail names no
+   * `feeGlAccountId` of its own - a rail with one emits an id line, which names
+   * its account outright and ignores every scope (brief 26).
+   */
+  processorAccountId?: string | null
 }
 
 /**
@@ -77,7 +91,7 @@ export async function postPayoutEntry(
   db: Database,
   options: PostPayoutEntryOptions
 ): Promise<PostResult> {
-  const { organizationId, actorUserId, beforeCommit, ...input } = options
+  const { organizationId, actorUserId, beforeCommit, processorAccountId, ...input } = options
 
   if (!(await isAccountingEnabled(db, organizationId))) {
     return { status: 'not_enabled' }
@@ -93,6 +107,9 @@ export async function postPayoutEntry(
       beforeCommit,
       lock,
       memo: input.memo ?? `Payout ${built.periodKey}`,
+      // A payout is wholly one merchant account's, so the ENTRY-level door is
+      // the right one - there is no second processor on it to disagree with.
+      ...(processorAccountId ? { scope: { processor: processorAccountId } } : {}),
     })
 
     logger.info('Posted a payout entry', {

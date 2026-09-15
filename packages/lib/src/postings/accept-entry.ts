@@ -18,7 +18,7 @@ import {
 import { insertPostingInTx, type PostingDeliveryIntent, type PreparedLine } from './insert-posting'
 import { resolvePeriodLock } from './period-lock'
 import { prepareEntry, uniqueViolationConstraint } from './post-entry'
-import { resolveRoles } from './resolve-roles'
+import { type RoleSourceScope, resolveRoles } from './resolve-roles'
 import type { BuiltEntry } from './types'
 
 type ReadyBasis = Extract<AccountingWorkBasisInputV1, { status: 'ready' }>
@@ -156,6 +156,28 @@ function assertExactContributions(
     throw new ConflictError(
       'Journal lines do not equal the exact member contributions, accounts and dimensions'
     )
+}
+
+/**
+ * The role scope frozen on one member's calculation (task 47 §5).
+ *
+ * Both effect contracts already carry the source - `sourceStoreId` on the
+ * fulfillment effect (nullable: a record with no connected source) and
+ * `sourceStoreId` plus `processorAccountId` on the receipt - so acceptance needs
+ * no new read to re-resolve a role the way preparation did.
+ *
+ * ⚠️ An absent `sourceStoreId` reads as "not known", which resolves to the org
+ * default - which is exactly what a calculation written before this brief
+ * posted to when it was prepared.
+ */
+function effectRoleScope(basis: ReadyBasis): RoleSourceScope {
+  const calculation = (basis as { calculation?: Record<string, unknown> }).calculation ?? {}
+  const store = calculation.sourceStoreId
+  const processor = calculation.processorAccountId
+  return {
+    ...(store === undefined ? {} : { store: (store as string | null) ?? null }),
+    ...(typeof processor === 'string' ? { processor } : {}),
+  }
 }
 
 async function assertDeliveryIntent(tx: Transaction, input: PreparedEffectPosting) {
@@ -537,10 +559,17 @@ export async function acceptEntryInTx(
     const roles = acceptedBasis.accountResolution.filter(
       (r) => r.selectedBy === 'org_role' && r.accountRole !== null
     )
+    // 🛑 Re-resolved through the SAME scope the preparation used, off the
+    // frozen calculation rather than off anything read again (task 47 §5). A
+    // per-store revenue account resolved at prepare time and re-checked against
+    // the ORG DEFAULT here would report "an account role changed after
+    // preparation" on every scoped shipment - a refusal describing a change
+    // nobody made.
     const resolved = await resolveRoles(
       tx,
       input.organizationId,
-      roles.map((r) => r.accountRole!)
+      roles.map((r) => r.accountRole!),
+      effectRoleScope(basis)
     )
     if (resolved.isErr()) throw new UnprocessableEntityError(resolved.error.message)
     if (roles.some((r) => resolved.value.get(r.accountRole!)?.glAccountId !== r.glAccountId))

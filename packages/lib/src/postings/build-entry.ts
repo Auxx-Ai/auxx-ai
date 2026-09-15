@@ -429,6 +429,83 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   bad_debt_expense: 'Bad Debt Expense',
 }
 
+/**
+ * Which axis of a posted event a SCOPABLE role reads its source from
+ * (task 47 §4).
+ *
+ * `FinancialSourceAccount` holds two kinds of row - a storefront and a merchant
+ * account at a processor - and the effect contract already distinguishes them
+ * (`effect-types.ts`: a receipt carries `sourceStoreId` AND `processorAccountId`,
+ * with a consistency check between them). Both axes key the SAME
+ * `GlRoleAssignment.sourceAccountId` column against the SAME table; only the
+ * selector differs.
+ *
+ * | axis | reads | answers |
+ * | --- | --- | --- |
+ * | `store` | `sourceStoreId`, null -> the manual row | which storefront sold it |
+ * | `processor` | `processorAccountId` | which merchant account the money came through |
+ */
+export type ScopeAxis = 'store' | 'processor'
+
+/**
+ * The roles an org may answer DIFFERENTLY PER SOURCE, and the axis each reads.
+ *
+ * 🔑 **The vocabulary stays closed.** No role is added by scoping and no builder
+ * changes: a fulfillment still emits `revenue_product`. What changes is that the
+ * org may point `revenue_product` at `4001 Revenue - Auxx-Lift US` for one store
+ * and leave every other store on the org-wide default (task 47 §1.2).
+ *
+ * 🛑 **Fees are NOT a store axis.** A store using two processors would pool both
+ * processors' fees, and two stores sharing one Stripe account would split fees
+ * that arrive on a single statement and reconcile as one number. The model
+ * already says so: `payment_gateway.settlementAccount` stores a
+ * `FinancialSourceAccount.id` beside `settlementBankAccount`.
+ *
+ * 🛑 **`cogs_product_cost` is WANTED and BLOCKED, not excluded** (47 §4.2).
+ * Splitting revenue per store while COGS pools makes gross margin per store
+ * uncomputable. It cannot be added today for a mechanical reason: both
+ * `buildFulfillmentEntry` call sites pass `includeCogs: false`, so COGS is
+ * emitted only by `build-month-end-inventory.ts` - an org-wide plug against a
+ * subledger total, which has no `sourceStoreId` and by construction cannot have
+ * one. Scoped now, every COGS line would resolve through the manual bucket while
+ * the per-store accounts sat at zero forever. It joins this table in the pass
+ * that flips `includeCogs` true under L3.
+ *
+ * Everything else is deliberately out, and 47 §4.3 carries the reasoning per
+ * role: `clearing_card` is already id-routed per gateway (brief 26), a bank
+ * account is not a role at all, `accounts_receivable` is settled by cash rather
+ * than by store, `sales_tax_payable` is one obligation per jurisdiction,
+ * inventory is one physical pool, `unidentified_receipts` wants ONE place to
+ * look, and `revenue_service` is credited on an invoice, which is always manual.
+ *
+ * A write naming any other role with a `sourceAccountId` is refused by
+ * `setRoleAssignment`, and `__tests__/build-entry.test.ts` pins this set the
+ * same way it pins {@link ROLE_ACCOUNT_TYPES}.
+ */
+export const SCOPABLE_ROLES: Readonly<Partial<Record<AccountRole, ScopeAxis>>> = {
+  [ACCOUNT_ROLES.REVENUE_PRODUCT]: 'store',
+  [ACCOUNT_ROLES.REVENUE_SHIPPING]: 'store',
+  [ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES]: 'store',
+  [ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES]: 'processor',
+}
+
+/** The axis `role` resolves its source from, or null when it is not scopable. */
+export function roleScopeAxis(role: string): ScopeAxis | null {
+  return SCOPABLE_ROLES[role as AccountRole] ?? null
+}
+
+/**
+ * Whether the MANUAL bucket is a meaningful source for this role.
+ *
+ * ⚠️ Derived from the axis rather than declared in a second table, which would
+ * be a copy that drifts. A manual order has no processor, so
+ * `payment_processing_fees` is never emitted for one and the settings tree greys
+ * that cell rather than offering it (47 §4.3).
+ */
+export function roleAcceptsManualSource(role: string): boolean {
+  return roleScopeAxis(role) === 'store'
+}
+
 export interface BuildEntryInput {
   postingType: PostingType
   periodKey: string

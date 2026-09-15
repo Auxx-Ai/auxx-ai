@@ -42,20 +42,34 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, count, eq, isNull } from 'drizzle-orm'
+import { and, count, eq, isNotNull, isNull } from 'drizzle-orm'
 import { PgTransaction } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError, NotFoundError, UnprocessableEntityError } from '../errors'
 import { accountLabel, compareAccountsByCodeThenName } from './account-label'
 import { withAccountingCommitLock } from './accounting-commit-lock'
-import { ACCOUNT_ROLES, type AccountRole, ROLE_ACCOUNT_TYPES } from './build-entry'
+import {
+  ACCOUNT_ROLES,
+  type AccountRole,
+  ROLE_ACCOUNT_TYPES,
+  roleScopeAxis,
+  type ScopeAxis,
+} from './build-entry'
 import {
   type ChartAccountsRead,
   loadChartAccountFields,
   loadChartAccountsById as readChartAccountsById,
   readChartAccountValues,
 } from './chart-accounts'
-import type { ChartAccountRow, RoleAssignmentRow, RoleAssignmentState } from './types'
+import { listRoleSources, type RoleSourceRow } from './source-scope'
+import type {
+  ChartAccountRow,
+  RoleAssignmentRow,
+  RoleAssignmentState,
+  RoleSourceAssignmentRow,
+} from './types'
+
+export type { RoleSourceRow } from './source-scope'
 
 const logger = createScopedLogger('postings:role-map')
 
@@ -122,11 +136,26 @@ export async function listRoleMap(
         source: schema.GlRoleAssignment.source,
         confirmedAt: schema.GlRoleAssignment.confirmedAt,
         markedUnused: schema.GlRoleAssignment.markedUnused,
+        sourceAccountId: schema.GlRoleAssignment.sourceAccountId,
       })
       .from(schema.GlRoleAssignment)
       .where(eq(schema.GlRoleAssignment.organizationId, organizationId))
 
-    const byRole = new Map(assignments.map((row) => [row.role, row]))
+    // The org DEFAULT per role, and the per-source overrides beside it. Both
+    // come out of the one query - the same partition `resolveRoles` makes, so
+    // the screen and the resolver cannot disagree about which row is which.
+    // `== null` catches BOTH null and undefined - see `resolve-roles.ts` on why
+    // "absent" has to read as the org default however the driver spells it.
+    const byRole = new Map(
+      assignments.filter((row) => row.sourceAccountId == null).map((row) => [row.role, row])
+    )
+    const overridesByRole = new Map<string, typeof assignments>()
+    for (const row of assignments) {
+      if (row.sourceAccountId == null) continue
+      const list = overridesByRole.get(row.role) ?? []
+      list.push(row)
+      overridesByRole.set(row.role, list)
+    }
 
     // Only the accounts a mapping actually names. An org with no assignments
     // reads no chart at all, which is what keeps a fresh org's role map a list
@@ -134,8 +163,28 @@ export async function listRoleMap(
     const accountIds = [...new Set(assignments.map((row) => row.glAccountId))]
     const accounts = await loadChartAccountsById(db, organizationId, accountIds)
 
+    /**
+     * One role's overrides, ordered by source id so the list is stable between
+     * reads. The SCREEN orders them by source NAME - it is the side that holds
+     * the names - and pins Manual first; this only has to be deterministic.
+     */
+    const overridesFor = (role: string): RoleSourceAssignmentRow[] =>
+      (overridesByRole.get(role) ?? [])
+        .slice()
+        .sort((a, b) => (a.sourceAccountId ?? '').localeCompare(b.sourceAccountId ?? ''))
+        .map((row) => ({
+          sourceAccountId: row.sourceAccountId as string,
+          state: row.confirmedAt ? ('confirmed' as const) : ('suggested' as const),
+          accountId: row.glAccountId,
+          account: accounts.get(row.glAccountId) ?? null,
+          source: row.source,
+          confirmedAt: toIso(row.confirmedAt),
+        }))
+
     const rows: RoleAssignmentRow[] = ALL_ROLES.map((role) => {
       const assignment = byRole.get(role)
+      const axis = roleScopeAxis(role)
+      const overrides = overridesFor(role)
       if (!assignment) {
         return {
           role,
@@ -144,6 +193,8 @@ export async function listRoleMap(
           account: null,
           source: null,
           confirmedAt: null,
+          axis,
+          overrides,
         }
       }
 
@@ -165,6 +216,8 @@ export async function listRoleMap(
           account: null,
           source: assignment.source,
           confirmedAt: toIso(assignment.confirmedAt),
+          axis,
+          overrides,
         }
       }
 
@@ -175,6 +228,8 @@ export async function listRoleMap(
         account: accounts.get(assignment.glAccountId) ?? null,
         source: assignment.source,
         confirmedAt: toIso(assignment.confirmedAt),
+        axis,
+        overrides,
       }
     })
 
@@ -341,6 +396,28 @@ export interface SetRoleAssignmentOptions {
   glAccountId?: string | null
   /** `true` marks the role unused; `false` clears that mark. */
   markedUnused?: boolean
+  /**
+   * Scope this edit to ONE source instead of the org default (task 47 §7.3).
+   *
+   * A `FinancialSourceAccount.id`, including the MANUAL bucket, which is a real
+   * row like any other. Absent edits the org-wide default, which is what every
+   * call meant before this brief.
+   *
+   * 🛑 Refused on a role outside `SCOPABLE_ROLES`, naming the role. The
+   * vocabulary of what may be scoped is as closed as the role vocabulary itself,
+   * and for the same reason: a scope only means something if the posting path
+   * reads that axis.
+   */
+  sourceAccountId?: string | null
+  /**
+   * Drop this source's override and go back to the org default ("Use the
+   * default account"). Requires {@link sourceAccountId}.
+   *
+   * ⚠️ A DELETE, not a write of the default's account id. Inheriting is the
+   * absence of a row, so an override copied from the default would silently stop
+   * following it the next time somebody repointed the role.
+   */
+  useDefault?: boolean
   /** Who is doing this. Stamped as `confirmedByUserId` when a mapping is set. */
   actorUserId?: string
 }
@@ -401,6 +478,7 @@ async function setRoleAssignmentInTx(
   const { organizationId, role, actorUserId } = options
   const glAccountId = options.glAccountId?.trim() || null
   const markedUnused = options.markedUnused
+  const sourceAccountId = options.sourceAccountId?.trim() || null
 
   try {
     if (!isAccountRole(role)) {
@@ -413,6 +491,39 @@ async function setRoleAssignmentInTx(
     if (glAccountId && markedUnused === true) {
       throw new BadRequestError(
         `Cannot both map '${role}' to an account and mark it unused. Send one or the other.`,
+        { organizationId, role }
+      )
+    }
+
+    if (sourceAccountId) {
+      // 🛑 Every scoped refusal is checked BEFORE anything is written, and
+      // each names the role: a scope that only fails at a close fails on the
+      // night of the close, which is `setRoleAssignment`'s whole argument.
+      const axis = await assertScopableSource(db, organizationId, role, sourceAccountId)
+      if (markedUnused !== undefined) {
+        throw new BadRequestError(
+          `'${role}' can only be marked unused for the whole organization, not for one connection. ` +
+            '"We do not sell shipping" is a fact about the business, not about one store.',
+          { organizationId, role }
+        )
+      }
+      if (options.useDefault) {
+        return ok(await clearScopedRole(db, organizationId, role, sourceAccountId))
+      }
+      if (!glAccountId) {
+        throw new BadRequestError(
+          `Nothing to set for '${role}' on this connection. Send an account, or useDefault.`,
+          { organizationId, role }
+        )
+      }
+      return ok(
+        await mapRole(db, organizationId, role, glAccountId, actorUserId, sourceAccountId, axis)
+      )
+    }
+
+    if (options.useDefault) {
+      throw new BadRequestError(
+        `'${role}' has no connection to clear. useDefault needs the connection it applies to.`,
         { organizationId, role }
       )
     }
@@ -450,7 +561,9 @@ async function mapRole(
   organizationId: string,
   role: AccountRole,
   glAccountId: string,
-  actorUserId: string | undefined
+  actorUserId: string | undefined,
+  sourceAccountId?: string,
+  axis?: ScopeAxis
 ): Promise<RoleAssignmentRow> {
   const accounts = await loadChartAccountsById(db, organizationId, [glAccountId])
   const account = accounts.get(glAccountId)
@@ -490,26 +603,76 @@ async function mapRole(
       confirmedAt,
       confirmedByUserId: actorUserId ?? null,
       markedUnused: false,
+      sourceAccountId: sourceAccountId ?? null,
     })
-    .onConflictDoUpdate({
-      target: [schema.GlRoleAssignment.organizationId, schema.GlRoleAssignment.role],
-      set: {
-        glAccountId,
-        source: 'human',
-        confirmedAt,
-        confirmedByUserId: actorUserId ?? null,
-        // Mapping a role IS using it. Leaving a stale `markedUnused` would make
-        // `resolveRoles` refuse the account somebody just chose.
-        markedUnused: false,
-        updatedAt: new Date(),
-      },
-    })
+    // 🛑 The unique index this upsert rides became TWO partial indexes in
+    // task 47, so the target has to name which one. The default half is
+    // `(organizationId, role) WHERE sourceAccountId IS NULL`; the scoped half
+    // adds the source and inverts the predicate. Naming the wrong one, or
+    // neither, turns a concurrent editor's second write into a duplicate row -
+    // the ONE state `resolveRoles` refuses outright rather than choosing
+    // between.
+    .onConflictDoUpdate(
+      sourceAccountId
+        ? {
+            target: [
+              schema.GlRoleAssignment.organizationId,
+              schema.GlRoleAssignment.role,
+              schema.GlRoleAssignment.sourceAccountId,
+            ],
+            targetWhere: isNotNull(schema.GlRoleAssignment.sourceAccountId),
+            set: {
+              glAccountId,
+              source: 'human',
+              confirmedAt,
+              confirmedByUserId: actorUserId ?? null,
+              markedUnused: false,
+              updatedAt: new Date(),
+            },
+          }
+        : {
+            target: [schema.GlRoleAssignment.organizationId, schema.GlRoleAssignment.role],
+            targetWhere: isNull(schema.GlRoleAssignment.sourceAccountId),
+            set: {
+              glAccountId,
+              source: 'human',
+              confirmedAt,
+              confirmedByUserId: actorUserId ?? null,
+              // Mapping a role IS using it. Leaving a stale `markedUnused` would
+              // make `resolveRoles` refuse the account somebody just chose.
+              markedUnused: false,
+              updatedAt: new Date(),
+            },
+          }
+    )
     .returning({
       glAccountId: schema.GlRoleAssignment.glAccountId,
       source: schema.GlRoleAssignment.source,
       confirmedAt: schema.GlRoleAssignment.confirmedAt,
       markedUnused: schema.GlRoleAssignment.markedUnused,
     })
+
+  // ⚠️ A SCOPED write returns the role's row with this override folded in, not
+  // a row describing the override alone. The caller asked "what does this role
+  // look like now", and the default it still falls back to is half the answer.
+  if (sourceAccountId) {
+    const current = await readRoleRow(db, organizationId, role)
+    return {
+      ...current,
+      axis: axis ?? current.axis,
+      overrides: [
+        ...current.overrides.filter((row) => row.sourceAccountId !== sourceAccountId),
+        {
+          sourceAccountId,
+          state: 'confirmed' as const,
+          accountId: written?.glAccountId ?? glAccountId,
+          account,
+          source: written?.source ?? 'human',
+          confirmedAt: toIso(written?.confirmedAt ?? confirmedAt),
+        },
+      ].sort((a, b) => a.sourceAccountId.localeCompare(b.sourceAccountId)),
+    }
+  }
 
   return {
     role,
@@ -518,7 +681,171 @@ async function mapRole(
     account,
     source: written?.source ?? 'human',
     confirmedAt: toIso(written?.confirmedAt ?? confirmedAt),
+    axis: roleScopeAxis(role),
+    // ⚠️ Read rather than assumed empty. Repointing the DEFAULT leaves every
+    // override standing - that is what an override is - and a row that came back
+    // claiming none would make the settings tree drop them until the next
+    // refetch.
+    overrides: await readRoleOverrides(db, organizationId, role),
   }
+}
+
+/**
+ * One role's per-source overrides, resolved for display.
+ *
+ * 🛑 Its own narrow read rather than {@link listRoleMap}: a write already holds
+ * the row it wrote, and re-deriving the whole checklist to answer "what else
+ * does this role carry" would be a second pass over every role in the org.
+ * `clearScopedRole` and the scoped branch of `mapRole` are the exceptions - they
+ * need the role's DEFAULT too, which only the list read has.
+ */
+async function readRoleOverrides(
+  db: Database | Transaction,
+  organizationId: string,
+  role: AccountRole
+): Promise<RoleSourceAssignmentRow[]> {
+  const rows = await db
+    .select({
+      glAccountId: schema.GlRoleAssignment.glAccountId,
+      source: schema.GlRoleAssignment.source,
+      confirmedAt: schema.GlRoleAssignment.confirmedAt,
+      sourceAccountId: schema.GlRoleAssignment.sourceAccountId,
+    })
+    .from(schema.GlRoleAssignment)
+    .where(
+      and(
+        eq(schema.GlRoleAssignment.organizationId, organizationId),
+        eq(schema.GlRoleAssignment.role, role),
+        isNotNull(schema.GlRoleAssignment.sourceAccountId)
+      )
+    )
+  const scoped = rows.filter((row) => row.sourceAccountId != null)
+  if (scoped.length === 0) return []
+  const accounts = await loadChartAccountsById(
+    db,
+    organizationId,
+    scoped.map((row) => row.glAccountId)
+  )
+  return scoped
+    .map((row) => ({
+      sourceAccountId: row.sourceAccountId as string,
+      state: row.confirmedAt ? ('confirmed' as const) : ('suggested' as const),
+      accountId: row.glAccountId,
+      account: accounts.get(row.glAccountId) ?? null,
+      source: row.source,
+      confirmedAt: toIso(row.confirmedAt),
+    }))
+    .sort((a, b) => a.sourceAccountId.localeCompare(b.sourceAccountId))
+}
+
+/**
+ * Validate a scoped edit before anything is written, and answer the role's axis.
+ *
+ * Four refusals, each with its own sentence, because they send four different
+ * people to four different places (task 47 §4, §7.4):
+ *
+ * | Condition | What the reader has to do about it |
+ * | --- | --- |
+ * | the role is not scopable | nothing - `accounts_receivable` is settled by cash, not by store |
+ * | the source is not this org's, or is archived | pick a live connection |
+ * | the source is not `live` | a test store's revenue must not reach the live account |
+ * | the source does not carry the role's AXIS | 🛑 a revenue role pointed at a merchant account, or the fee role at a storefront |
+ *
+ * The last is the one that matters, and it is why this returns the axis rather
+ * than a boolean: a settings screen offers only the sources on a role's axis, but
+ * that filter is a CONVENIENCE, and a write pairing a Stripe account with
+ * `revenue_product` has to be refused by the server that would otherwise store
+ * it.
+ */
+async function assertScopableSource(
+  db: Database | Transaction,
+  organizationId: string,
+  role: AccountRole,
+  sourceAccountId: string
+): Promise<ScopeAxis> {
+  const axis = roleScopeAxis(role)
+  if (!axis) {
+    throw new BadRequestError(
+      `'${role}' is answered once for the whole organization and cannot be set per connection. ` +
+        'Only product revenue, shipping revenue, returns and allowances, and payment processing ' +
+        'fees can differ by connection.',
+      { organizationId, role }
+    )
+  }
+
+  const sources = await listRoleSources(db, organizationId)
+  const source = sources.find((row) => row.id === sourceAccountId)
+  if (!source) {
+    throw new UnprocessableEntityError(
+      `Cannot set '${role}' for that connection: it is not a live connection of this organization, ` +
+        'or it has been removed.',
+      { organizationId, role, sourceAccountId }
+    )
+  }
+  if (!source.axes.includes(axis)) {
+    throw new UnprocessableEntityError(
+      axis === 'store'
+        ? `Cannot set '${role}' for ${source.name}: revenue belongs to the storefront that sold it, ` +
+            'and nothing has ever been sold through that connection.'
+        : `Cannot set '${role}' for ${source.name}: processing fees belong to the merchant account ` +
+            'the money settled through, and nothing has ever settled through that connection.',
+      { organizationId, role, sourceAccountId }
+    )
+  }
+  return axis
+}
+
+/**
+ * Delete one source's override, so it inherits the org default again.
+ *
+ * 🛑 Absent, not blank. A row carrying the default's account id would read as
+ * an override for as long as the default stayed put and then quietly stop
+ * following it - which is precisely the drift "use the default" is being pressed
+ * to end.
+ *
+ * Deleting an override that is not there is a no-op rather than a `NotFoundError`:
+ * the button is pressed on a screen, and the state it asks for is the state that
+ * already holds.
+ */
+async function clearScopedRole(
+  db: Database | Transaction,
+  organizationId: string,
+  role: AccountRole,
+  sourceAccountId: string
+): Promise<RoleAssignmentRow> {
+  await db
+    .delete(schema.GlRoleAssignment)
+    .where(
+      and(
+        eq(schema.GlRoleAssignment.organizationId, organizationId),
+        eq(schema.GlRoleAssignment.role, role),
+        eq(schema.GlRoleAssignment.sourceAccountId, sourceAccountId)
+      )
+    )
+  return readRoleRow(db, organizationId, role)
+}
+
+/**
+ * One role's row as {@link listRoleMap} renders it.
+ *
+ * Through `listRoleMap` itself rather than a second query, so a write's answer
+ * and the list the screen refetches cannot disagree about the same role - the
+ * same reason `loadChartAccountsById` is shared with the resolver.
+ */
+async function readRoleRow(
+  db: Database | Transaction,
+  organizationId: string,
+  role: AccountRole
+): Promise<RoleAssignmentRow> {
+  const rows = await listRoleMap(db, organizationId)
+  if (rows.isErr()) throw rows.error
+  const row = rows.value.find((item) => item.role === role)
+  if (!row) {
+    // Unreachable: `listRoleMap` returns a row for every declared role, and
+    // `isAccountRole` already refused anything else.
+    throw new NotFoundError(`'${role}' has no row in the role map.`, { organizationId, role })
+  }
+  return row
 }
 
 /**
@@ -542,7 +869,12 @@ async function setUnusedFlag(
     .where(
       and(
         eq(schema.GlRoleAssignment.organizationId, organizationId),
-        eq(schema.GlRoleAssignment.role, role)
+        eq(schema.GlRoleAssignment.role, role),
+        // 🛑 The org DEFAULT row. Marking a role unused says "we do not sell
+        // shipping", which is a fact about the BUSINESS - it cannot be true of
+        // one store and false of another, so there is no per-source version of
+        // it and the settings tree offers none (task 47 §7.1).
+        isNull(schema.GlRoleAssignment.sourceAccountId)
       )
     )
     .returning({
@@ -559,6 +891,12 @@ async function setUnusedFlag(
     )
   }
 
+  // 🛑 Built from what the UPDATE returned, never re-read. The row in hand is
+  // the row that was just written; a second read would be one more query for an
+  // answer that cannot differ.
+  const overrides = await readRoleOverrides(db, organizationId, role)
+  const axis = roleScopeAxis(role)
+
   if (updated.markedUnused) {
     return {
       role,
@@ -567,6 +905,8 @@ async function setUnusedFlag(
       account: null,
       source: updated.source,
       confirmedAt: toIso(updated.confirmedAt),
+      axis,
+      overrides,
     }
   }
 
@@ -578,6 +918,8 @@ async function setUnusedFlag(
     account: accounts.get(updated.glAccountId) ?? null,
     source: updated.source,
     confirmedAt: toIso(updated.confirmedAt),
+    axis,
+    overrides,
   }
 }
 

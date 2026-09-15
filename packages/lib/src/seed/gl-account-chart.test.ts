@@ -38,7 +38,7 @@
 // `ai-category-tags.test.ts` set - so the assertions are about the values this
 // module hands the write path.
 
-import type { Database } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../postings/accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
@@ -109,6 +109,11 @@ const CORE_INVENTORY_PURCHASING_ROLES = CORE_INVENTORY_PURCHASING_ACCOUNTS.flatM
  *
  * WHERE clauses are ignored: the module scopes in SQL and picks in JS, and
  * evaluating Drizzle conditions is not what this file is about.
+ *
+ * ⚠️ `FinancialSourceAccount` is answered by TABLE rather than by call order,
+ * because the manual-bucket mint (task 47 §6.3) runs before both of those
+ * selects and would otherwise shift every one of them by a query. The two chart
+ * reads stay positional; nothing else in this file depends on the sentinel.
  */
 function stubDb(
   existingCodes: string[],
@@ -129,7 +134,9 @@ function stubDb(
       return fn(this)
     },
     select: () => ({
-      from: () => {
+      from: (table: unknown) => {
+        // The manual bucket's own read-back. Off the positional count.
+        if (table === schema.FinancialSourceAccount) return chain([{ id: 'fsa_manual' }])
         call++
         // Query 1 is the `gl_account_code` field, query 2 is the held codes.
         if (call === 1) {
@@ -140,8 +147,14 @@ function stubDb(
         )
       },
     }),
-    insert: () => ({
-      values: (rows: Record<string, unknown>[]) => {
+    insert: (table: unknown) => ({
+      values: (rows: Record<string, unknown> | Record<string, unknown>[]) => {
+        // The manual bucket is a single row on another table, and it is
+        // idempotent by the identity unique - it records nothing and returns
+        // nothing. Only the ASSIGNMENT batch is what this file is about.
+        if (table === schema.FinancialSourceAccount || !Array.isArray(rows)) {
+          return { onConflictDoNothing: async () => [] }
+        }
         h.assignmentBatches.push(rows)
         return {
           onConflictDoNothing: (config: unknown) => {

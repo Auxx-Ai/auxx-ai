@@ -10,6 +10,7 @@
 // idempotency the writer promises on top of it.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { roleScopeAxis } from '../build-entry'
 
 vi.mock('../accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
 
@@ -77,6 +78,8 @@ function roleMapRows(
     account: null,
     source: null,
     confirmedAt: null,
+    axis: roleScopeAxis(role),
+    overrides: [],
   }))
 }
 

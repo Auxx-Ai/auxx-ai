@@ -1,6 +1,7 @@
 // packages/lib/src/money/customer-money/reads.ts
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import type { RoleSourceScope } from '../../postings/types'
 import type { OrderMoneyTransaction } from './client'
 import { exactSourceMoney } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
@@ -187,4 +188,89 @@ export async function readOrderMoneyCoverage(
     pending: 0,
     rejected: 0,
   }
+}
+
+/**
+ * Which SOURCE STORE an order's revenue belongs to, as a {@link RoleSourceScope}
+ * (task 47 §5).
+ *
+ * The one predicate for the question, shared by every door that posts an order's
+ * revenue, so two doors cannot come to different answers about one order:
+ *
+ * | coverage | answer | why |
+ * | --- | --- | --- |
+ * | no source evidence at all | `{ store: null }` - the MANUAL bucket | a hand-keyed order genuinely has no connected source, and `fulfillment-posting/reads.ts` takes the same branch (`if (!coverage?.sourceAvailable) continue`) |
+ * | one live source account | `{ store: <id> }` | the storefront that sold it |
+ * | evidence spanning two | `{}` - the ORG DEFAULT | 🛑 ambiguity falls back, it never guesses. `recognition-source.ts` BLOCKS this case for a posting that has to be exact; here the entry still has to post, so it posts to the account every store shared before this brief |
+ *
+ * 🛑 **`order_channel` is NOT consulted, and must not be.** It carries
+ * `defaultValue: 'manual'` and is documented HUMAN-SET, never derived, so an
+ * unlabelled Shopify order reads `manual` - keying on it would send most of a
+ * store's revenue to the manual account (decision D4).
+ */
+export async function readOrderSourceScope(
+  db: Database | Transaction,
+  organizationId: string,
+  orderId: string | null | undefined
+): Promise<RoleSourceScope> {
+  // No order at all is not evidence of a manual sale, it is the absence of the
+  // question. Falls back to the org default rather than to the manual bucket.
+  if (!orderId) return {}
+  return (await readOrderSourceScopes(db, organizationId, [orderId])).get(orderId) ?? {}
+}
+
+/**
+ * {@link readOrderSourceScope} for many orders in ONE query.
+ *
+ * What a batch posting reads. A day's credit memos or a month's shipments name
+ * tens to thousands of orders, and asking per order is the N+1 this exists to
+ * avoid. Same three answers, same rules; an order with no row in the result is
+ * one with no coverage at all, which the caller reads as the manual bucket
+ * through the map's own default.
+ */
+export async function readOrderSourceScopes(
+  db: Database | Transaction,
+  organizationId: string,
+  orderIds: readonly string[]
+): Promise<Map<string, RoleSourceScope>> {
+  const wanted = [...new Set(orderIds.filter(Boolean))]
+  const answer = new Map<string, RoleSourceScope>()
+  if (wanted.length === 0) return answer
+
+  const rows = await db
+    .select({
+      orderId: schema.FinancialSourceCoverage.windowKey,
+      sourceAccountId: schema.FinancialSourceCoverage.sourceAccountId,
+    })
+    .from(schema.FinancialSourceCoverage)
+    .innerJoin(
+      schema.FinancialSourceAccount,
+      eq(schema.FinancialSourceAccount.id, schema.FinancialSourceCoverage.sourceAccountId)
+    )
+    .where(
+      and(
+        eq(schema.FinancialSourceCoverage.organizationId, organizationId),
+        eq(schema.FinancialSourceCoverage.streamKey, 'order_transactions'),
+        inArray(schema.FinancialSourceCoverage.windowKey, wanted),
+        eq(schema.FinancialSourceAccount.environment, 'live'),
+        isNull(schema.FinancialSourceAccount.archivedAt)
+      )
+    )
+
+  const byOrder = new Map<string, Set<string>>()
+  for (const row of rows) {
+    const bucket = byOrder.get(row.orderId) ?? new Set<string>()
+    bucket.add(row.sourceAccountId)
+    byOrder.set(row.orderId, bucket)
+  }
+  for (const orderId of wanted) {
+    const accounts = byOrder.get(orderId)
+    // No coverage row is "no connected source": the manual bucket. One account
+    // is the store. Two is ambiguous and falls back to the org default rather
+    // than picking one - see the table above.
+    if (!accounts) answer.set(orderId, { store: null })
+    else if (accounts.size === 1) answer.set(orderId, { store: [...accounts][0]! })
+    else answer.set(orderId, {})
+  }
+  return answer
 }

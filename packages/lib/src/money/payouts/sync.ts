@@ -432,6 +432,10 @@ async function ingestOne(
       // no `payment_gateway` record gets, which is bit for bit what every org
       // got before brief 26.
       clearingRole: ACCOUNT_ROLES.CLEARING_CARD,
+      // The merchant account the money settled through (task 47 §4). Null
+      // when no gateway record claims this rail, which is the role fallback
+      // and resolves to the org-wide fee account exactly as it always has.
+      processorAccountId: ctx.rail?.processorAccountId ?? null,
       ...(gateway.clearingGlAccountId ? { clearingGlAccountId: gateway.clearingGlAccountId } : {}),
       ...(gateway.feeGlAccountId ? { feeGlAccountId: gateway.feeGlAccountId } : {}),
       feeTreatment: gateway.feeTreatment,

@@ -114,7 +114,7 @@ export function WizardAccountsPage() {
     await Promise.all([utils.ledger.chartAccounts.invalidate(), utils.ledger.roleMap.invalidate()])
   }
 
-  const rows = [...(roleMap.data ?? [])].sort(
+  const rows = [...(roleMap.data?.roles ?? [])].sort(
     (a, b) =>
       STATE_ORDER[a.state] - STATE_ORDER[b.state] ||
       (ACCOUNT_ROLE_LABELS[a.role as AccountRole] ?? a.role).localeCompare(

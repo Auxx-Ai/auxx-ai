@@ -45,6 +45,7 @@ import {
   CREDIT_MEMO_BATCH_SOURCE_TYPE,
   CREDIT_MEMO_GL_POSTING_ATTRIBUTE,
 } from '../credit-memo-posting/types'
+import { readOrderSourceScope } from '../customer-money/reads'
 import { roundCents } from '../totals'
 import { recomputeTotals } from '../totals-hooks'
 import type { CreditMemoLineInput, CreditMemoReason, CreditMemoSource } from './client'
@@ -686,6 +687,11 @@ export async function issueCreditMemo(
       actorUserId: userId,
       lock,
       memo: `Credit memo ${memo.number} issued`,
+      // Task 47 §5. A memo belongs to at most one order, so one scope covers
+      // the whole entry and `revenue_returns_allowances` lands in the store's
+      // own contra-revenue account when the org keeps one. Everything else on
+      // the entry - tax, A/R, clearing - ignores it.
+      scope: await readOrderSourceScope(db, organizationId, memo.orderInstanceId),
     })
   } else {
     // Nothing was asked of the ledger, either because the org keeps no books or

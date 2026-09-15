@@ -72,6 +72,10 @@ export {
   buildVendorBillEntry,
   type ReceiptEntryInput,
   ROLE_ACCOUNT_TYPES,
+  roleAcceptsManualSource,
+  roleScopeAxis,
+  SCOPABLE_ROLES,
+  type ScopeAxis,
   type VendorBillEntryInput,
 } from './build-entry'
 // ── plans/accounting/tasks/21 §3.2: the standalone company's A/P bill ───────
@@ -457,6 +461,7 @@ export {
 // this slot appended, per HANDOFF §9a, instead of editing another slot's lines.
 export {
   ABSORPTION_RATE_SETTING_KEYS,
+  describeUnscopedSources,
   FINALIZED_SETUP_STATE,
   isValidTimeZone,
   isWholeMinorUnits,
@@ -475,6 +480,9 @@ export {
   type SetupReadiness,
   type SetupReadinessContext,
   summariseOpeningTrialBalance,
+  type UnscopedSourceConnection,
+  type UnscopedSourceRole,
+  type UnscopedSourceWarning,
 } from './setup-readiness'
 export {
   type AccountSuggestion,
@@ -521,4 +529,7 @@ export {
   type ResolvedPostingLine,
   type RoleAssignmentRow,
   type RoleAssignmentState,
+  type RoleSourceAssignmentRow,
+  type RoleSourceRow,
+  type RoleSourceScope,
 } from './types'

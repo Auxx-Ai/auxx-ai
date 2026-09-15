@@ -96,7 +96,9 @@ export function WizardRailsPage() {
   // this role" is a claim about the organization, and making it while the query
   // is still in flight is a false one on the page whose whole job is telling
   // somebody what is left to do.
-  const feeRole = roleMap.data?.find((row) => row.role === ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)
+  const feeRole = roleMap.data?.roles.find(
+    (row) => row.role === ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES
+  )
   const warnsFeeFallback =
     roleMap.data !== undefined &&
     warnsAboutFeeFallback({

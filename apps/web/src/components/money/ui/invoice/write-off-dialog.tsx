@@ -87,7 +87,9 @@ export function WriteOffDialog({
 
   const roleMapQuery = api.ledger.roleMap.useQuery(undefined, { enabled: open })
   const badDebtDefaultId = useMemo(
-    () => roleMapQuery.data?.find((row) => row.role === BAD_DEBT_EXPENSE_ROLE)?.account?.id ?? null,
+    () =>
+      roleMapQuery.data?.roles.find((row) => row.role === BAD_DEBT_EXPENSE_ROLE)?.account?.id ??
+      null,
     [roleMapQuery.data]
   )
   // The picker shows the explicit override once the bookkeeper makes one;

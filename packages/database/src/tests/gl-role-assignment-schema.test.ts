@@ -33,13 +33,46 @@ describe('GlRoleAssignment', () => {
   })
 
   // ── THE CONSTRAINT ────────────────────────────────────────────────────────
-  it('claims (organizationId, role) uniquely — one role, one account, per org', () => {
-    const unique = config.indexes.find((i) => i.config.unique)
-    expect(unique?.config.name).toBe('GlRoleAssignment_org_role_key')
+  //
+  // 🛑 TWO PARTIAL indexes since task 47, never one three-column unique.
+  // Postgres treats NULLs as DISTINCT, so a single
+  // `(organizationId, role, sourceAccountId)` unique would happily accept two
+  // org defaults for the same role - and `resolveRoles` refuses to choose
+  // between two rows rather than picking one, so that state takes the whole
+  // ledger down instead of being caught by the database.
+  it('claims one ORG DEFAULT per role, under a predicate on the null scope', () => {
+    const unique = config.indexes.find(
+      (i) => i.config.name === 'GlRoleAssignment_org_role_default_key'
+    )
+    expect(unique?.config.unique).toBe(true)
     expect(unique?.config.columns.map((c) => ('name' in c ? c.name : ''))).toEqual([
       'organizationId',
       'role',
     ])
+    // The predicate is what makes it partial. Without it this index would
+    // forbid the overrides outright.
+    expect(unique?.config.where).toBeDefined()
+  })
+
+  it('claims one override per (role, connection), under the opposite predicate', () => {
+    const unique = config.indexes.find(
+      (i) => i.config.name === 'GlRoleAssignment_org_role_source_key'
+    )
+    expect(unique?.config.unique).toBe(true)
+    expect(unique?.config.columns.map((c) => ('name' in c ? c.name : ''))).toEqual([
+      'organizationId',
+      'role',
+      'sourceAccountId',
+    ])
+    expect(unique?.config.where).toBeDefined()
+  })
+
+  // The two predicates must PARTITION the table. An unqualified unique index
+  // would be one of the two shapes above applied to every row, which is the
+  // exact collision the split exists to avoid.
+  it('leaves no unique index over the whole table', () => {
+    const unqualified = config.indexes.filter((i) => i.config.unique && !i.config.where)
+    expect(unqualified.map((i) => i.config.name)).toEqual([])
   })
 
   // 🛑 The converse must NOT be constrained. An index on (organizationId,
@@ -67,8 +100,42 @@ describe('GlRoleAssignment', () => {
 
     const fkColumns = config.foreignKeys.flatMap((fk) => fk.reference().columns.map((c) => c.name))
     expect(fkColumns).not.toContain('glAccountId')
-    // Only the org (cascade) and the confirming user (set null) are keyed.
-    expect(fkColumns.sort()).toEqual(['confirmedByUserId', 'organizationId'])
+    // The org (cascade), the confirming user (set null), and the composite
+    // (organizationId, sourceAccountId) key added by task 47.
+    expect([...new Set(fkColumns)].sort()).toEqual([
+      'confirmedByUserId',
+      'organizationId',
+      'sourceAccountId',
+    ])
+  })
+
+  // ⚠️ A real foreign key, and it does NOT contradict the rule above. That
+  // argument is about a bookkeeper archiving an ACCOUNT out from under a posting
+  // configuration. `FinancialSourceAccount` is soft-archived (`archivedAt`) and
+  // never deleted, and the four sibling money tables already carry exactly this
+  // composite key.
+  it('keys the scope to (organizationId, FinancialSourceAccount.id), nullable', () => {
+    const scope = config.columns.find((c) => c.name === 'sourceAccountId')
+    expect(scope?.getSQLType()).toBe('text')
+    // 🛑 NULLABLE, and null means "no override" and nothing else. The MANUAL
+    // bucket is a real `FinancialSourceAccount` row, not a second meaning for
+    // this null - see task 47 §3.
+    expect(scope?.notNull).toBe(false)
+
+    const composite = config.foreignKeys.find((fk) =>
+      fk
+        .reference()
+        .columns.map((c) => c.name)
+        .includes('sourceAccountId')
+    )
+    expect(composite?.reference().columns.map((c) => c.name)).toEqual([
+      'organizationId',
+      'sourceAccountId',
+    ])
+    expect(composite?.reference().foreignColumns.map((c) => c.name)).toEqual([
+      'organizationId',
+      'id',
+    ])
   })
 
   // Plain `text`, not a pgEnum: the role vocabulary is `ACCOUNT_ROLES` in

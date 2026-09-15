@@ -22,6 +22,7 @@ import {
   type ChartAccountRow,
   ROLE_ACCOUNT_TYPES,
   type RoleAssignmentRow,
+  type RoleSourceRow,
 } from '@auxx/lib/postings/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
@@ -46,13 +47,24 @@ import {
 interface RoleMapEditorProps {
   role: AccountRole | null
   assignment: RoleAssignmentRow | undefined
+  /**
+   * The connection being edited, or null for the role's org-wide default
+   * (task 47 §7.3).
+   *
+   * ⚠️ The SHAPE of the pane is unchanged either way - same picker, same
+   * `ROLE_ACCOUNT_TYPES` filter, same server-side re-check. What changes is the
+   * heading, one sentence of copy, and the button that gives the override back.
+   */
+  source: RoleSourceRow | null
   accounts: ChartAccountRow[]
   /** True while `ledger.chartAccounts` is in flight. */
   accountsLoading: boolean
   /** True while a `setRoleAssignment` write is in flight. */
   pending: boolean
-  onAssign: (role: AccountRole, accountId: string) => void
+  onAssign: (role: AccountRole, accountId: string, sourceAccountId?: string | null) => void
   onToggleUnused: (role: AccountRole) => void
+  /** Drop this connection's override so it follows the default again. */
+  onUseDefault: (role: AccountRole, sourceAccountId: string) => void
   /** `PermissionKey.ledgerControl`. False hides the account picker and the
    *  mark-unused / mark-used-again button - the role's current mapping and
    *  status stay visible. */
@@ -62,11 +74,13 @@ interface RoleMapEditorProps {
 export function RoleMapEditor({
   role,
   assignment,
+  source,
   accounts,
   accountsLoading,
   pending,
   onAssign,
   onToggleUnused,
+  onUseDefault,
   canControl,
 }: RoleMapEditorProps) {
   const [search, setSearch] = useState('')
@@ -80,8 +94,18 @@ export function RoleMapEditor({
   }
 
   const expectedType = ROLE_ACCOUNT_TYPES[role]
-  const state = assignment?.state ?? 'unmapped'
-  const currentId = assignment?.accountId ?? null
+  // 🛑 A connection's row reads its OWN override, never the role's state. A
+  // connection that inherits is not `unmapped` - the role behind it may be
+  // perfectly mapped - so the two questions get two answers.
+  const override = source
+    ? assignment?.overrides.find((row) => row.sourceAccountId === source.id)
+    : undefined
+  const state = source
+    ? override
+      ? override.state
+      : 'unmapped'
+    : (assignment?.state ?? 'unmapped')
+  const currentId = source ? (override?.accountId ?? null) : (assignment?.accountId ?? null)
 
   const eligible = accounts.filter((account) => account.accountType === expectedType)
   const filtered = search
@@ -100,7 +124,9 @@ export function RoleMapEditor({
         resizeId='accounting-role-map'
         defaultLabelWidth={140}>
         <FieldPanelRow title='Role' type={BaseType.STRING} showIcon>
-          <div className='flex min-h-8 items-center text-sm'>{ACCOUNT_ROLE_LABELS[role]}</div>
+          <div className='flex min-h-8 items-center text-sm'>
+            {source ? `${ACCOUNT_ROLE_LABELS[role]} · ${source.name}` : ACCOUNT_ROLE_LABELS[role]}
+          </div>
         </FieldPanelRow>
         <FieldPanelRow
           title='Account type'
@@ -119,23 +145,31 @@ export function RoleMapEditor({
         </FieldPanelRow>
         <FieldPanelRow title='Status' type={BaseType.ENUM} showIcon>
           <div className='flex min-h-8 flex-wrap items-center gap-2 text-sm'>
-            {state === 'confirmed' && (
+            {/* A connection with no override of its own is not "not mapped" -
+                it is following the account the role already names. Saying
+                otherwise would send somebody to fix a setup that is finished. */}
+            {source && !override && (
+              <Badge variant='outline' size='xs'>
+                Uses the default
+              </Badge>
+            )}
+            {(!source || override) && state === 'confirmed' && (
               <Badge variant='green' size='xs'>
                 Confirmed
               </Badge>
             )}
-            {state === 'suggested' && (
+            {(!source || override) && state === 'suggested' && (
               <Badge variant='amber' size='xs'>
                 <Sparkles className='size-3' />
                 Suggested
               </Badge>
             )}
-            {state === 'unmapped' && (
+            {!source && state === 'unmapped' && (
               <Badge variant='destructive' size='xs'>
                 Not mapped
               </Badge>
             )}
-            {state === 'unused' && (
+            {!source && state === 'unused' && (
               <Badge variant='outline' size='xs'>
                 Unused
               </Badge>
@@ -144,9 +178,36 @@ export function RoleMapEditor({
         </FieldPanelRow>
       </FieldPanel>
 
+      {source && (
+        <Alert variant='neutral'>
+          <AlertTitle>{`Sales from ${source.name}`}</AlertTitle>
+          <AlertDescription>
+            {override
+              ? `Post to this account instead of ${
+                  assignment?.account ? formatAccount(assignment.account) : 'the default account'
+                }. Every other connection is unaffected.`
+              : `Post to ${
+                  assignment?.account ? formatAccount(assignment.account) : 'the default account'
+                }, the same as every other connection. Pick an account below to give this
+                connection one of its own.`}
+          </AlertDescription>
+          {canControl && override && (
+            <Button
+              variant='outline'
+              size='sm'
+              loading={pending}
+              className='mt-2 justify-self-start'
+              onClick={() => onUseDefault(role, source.id)}>
+              <RotateCcw />
+              Use the default account
+            </Button>
+          )}
+        </Alert>
+      )}
+
       {/* ⚠️ Chosen, then the account vanished. Not the same as unmapped, and the
           only state where a `confirmed` role still refuses a close. */}
-      {state !== 'unmapped' && state !== 'unused' && !assignment?.account && (
+      {!source && state !== 'unmapped' && state !== 'unused' && !assignment?.account && (
         <Alert variant='destructive'>
           <AlertTitle>The account this role names is gone</AlertTitle>
           <AlertDescription>
@@ -157,7 +218,7 @@ export function RoleMapEditor({
         </Alert>
       )}
 
-      {state === 'suggested' && (
+      {!source && state === 'suggested' && (
         <Alert variant='warning'>
           <AlertTitle>Why this was suggested</AlertTitle>
           <AlertDescription>
@@ -168,7 +229,7 @@ export function RoleMapEditor({
         </Alert>
       )}
 
-      {isDefaultUnused && state !== 'unused' && (
+      {!source && isDefaultUnused && state !== 'unused' && (
         <Alert variant='neutral'>
           <AlertTitle>Nothing emits this role today</AlertTitle>
           <AlertDescription>
@@ -183,7 +244,7 @@ export function RoleMapEditor({
         </Alert>
       )}
 
-      {state === 'unused' ? (
+      {!source && state === 'unused' ? (
         <Alert variant='neutral'>
           <AlertDescription>This role is excused. Previews will not ask for it.</AlertDescription>
           {canControl && (
@@ -234,7 +295,7 @@ export function RoleMapEditor({
                     key={account.id}
                     type='button'
                     disabled={pending}
-                    onClick={() => onAssign(role, account.id)}
+                    onClick={() => onAssign(role, account.id, source?.id ?? null)}
                     className={cn(
                       'flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm',
                       'hover:bg-primary-100 disabled:opacity-60',
@@ -265,7 +326,11 @@ export function RoleMapEditor({
               exactly three modes (map / mark unused / clear the mark) and unset is
               not among them, because a role with no account is precisely the state
               a close refuses on. Repoint it, or excuse it. */}
-          <div className='flex flex-col gap-2 border-t pt-3'>
+          {/* 🛑 "Mark unused" is absent on a CONNECTION's row. "We do not sell
+              shipping" is a fact about the business, not about one store, so the
+              server refuses a per-connection unused mark and the affordance
+              stays where the claim is true. */}
+          <div className={cn('flex flex-col gap-2 border-t pt-3', source && 'hidden')}>
             <Button
               variant='outline'
               size='sm'
@@ -276,7 +341,7 @@ export function RoleMapEditor({
               <Ban />
               Mark unused
             </Button>
-            {state === 'unmapped' && (
+            {!source && state === 'unmapped' && (
               <p className='text-muted-foreground text-xs'>
                 A role can only be excused once it names an account. Pick one above first, then mark
                 it unused.

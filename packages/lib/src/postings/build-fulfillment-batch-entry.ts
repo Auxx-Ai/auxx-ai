@@ -706,6 +706,15 @@ function assertWholeMinor(value: number, label: string, context: Record<string, 
  *   currency, a frozen amount that is not whole minor units or does not sum to
  *   its own total, or a period key that would not survive a reversal.
  */
+/**
+ * A stable bucket key for a shipment's source store, keeping the three states
+ * apart: an id, `null` (no connected source - the manual bucket) and `undefined`
+ * (the caller named no store at all, so the org default applies).
+ */
+function storeScopeKey(store: string | null | undefined): string {
+  return store === undefined ? '-' : store === null ? 'manual' : store
+}
+
 export function buildFulfillmentBatchEntry(
   input: BuildFulfillmentBatchEntryInput
 ): BuiltFulfillmentBatchEntry {
@@ -752,12 +761,33 @@ export function buildFulfillmentBatchEntry(
     byReason.set(reason, orders)
     debitReasons.set(accountKey, byReason)
   }
-  /** `dimensions.channel` value -> summarised revenue_product credit. */
-  const revenueByChannel = new Map<string, number>()
+  /**
+   * `(source store, dimensions.channel)` -> summarised revenue_product credit.
+   *
+   * 🛑 The STORE is in the key and it is not the same question as the channel
+   * (task 47 decision D10). A channel is an ATTRIBUTE of one sale - DTC or
+   * dealer - and stays a dimension on one account. A store is a different
+   * BUSINESS and may have a revenue account of its own, so two storefronts in
+   * one day's group have to stay two lines: `prepareEntry` resolves each line
+   * through its own `sourceScope`, and `assertExactContributions` compares the
+   * result against each member's own resolution account by account.
+   *
+   * Keyed on {@link storeScopeKey} so `undefined` (the caller named no store)
+   * and `null` (there was no connected source) stay distinguishable.
+   */
+  const revenueByStoreChannel = new Map<
+    string,
+    { store: string | null | undefined; channel: string; amountMinor: number }
+  >()
   /** `dimensions.jurisdiction` value -> summarised sales_tax_payable credit. */
   const taxByJurisdiction = new Map<string, number>()
   /** Tax that could not be tied to a jurisdiction - one undimensioned line. */
   let taxWithoutJurisdictionMinor = 0
+  /** Source store -> summarised revenue_shipping credit. Same split as revenue. */
+  const shippingByStore = new Map<
+    string,
+    { store: string | null | undefined; amountMinor: number }
+  >()
   const sources: FulfillmentBatchSource[] = []
   let subtotalMinor = 0
   let taxMinor = 0
@@ -878,10 +908,16 @@ export function buildFulfillmentBatchEntry(
     }
 
     const channelDimension = CHANNEL_KEYS[toChannelKey(shipment.channel)]
-    revenueByChannel.set(
-      channelDimension,
-      (revenueByChannel.get(channelDimension) ?? 0) + amounts.subtotalMinor
-    )
+    const store = shipment.sourceStoreId
+    const revenueKey = `${storeScopeKey(store)}|${channelDimension}`
+    const revenueBucket = revenueByStoreChannel.get(revenueKey)
+    if (revenueBucket) revenueBucket.amountMinor += amounts.subtotalMinor
+    else
+      revenueByStoreChannel.set(revenueKey, {
+        store,
+        channel: channelDimension,
+        amountMinor: amounts.subtotalMinor,
+      })
 
     if (amounts.taxByJurisdiction && amounts.taxByJurisdiction.length > 0) {
       for (const { jurisdiction, amountMinor } of amounts.taxByJurisdiction) {
@@ -892,6 +928,12 @@ export function buildFulfillmentBatchEntry(
       }
     } else {
       taxWithoutJurisdictionMinor += amounts.taxMinor
+    }
+
+    if (amounts.shippingMinor !== 0) {
+      const shippingBucket = shippingByStore.get(storeScopeKey(store))
+      if (shippingBucket) shippingBucket.amountMinor += amounts.shippingMinor
+      else shippingByStore.set(storeScopeKey(store), { store, amountMinor: amounts.shippingMinor })
     }
 
     subtotalMinor += amounts.subtotalMinor
@@ -990,17 +1032,19 @@ export function buildFulfillmentBatchEntry(
     explainSummarised(line, `id:${glAccountId}`)
   }
 
-  // 3. Revenue, summarised PER CHANNEL - the channel is a dimension on one
-  //    `revenue_product` account, never a second account (brief 13 §5).
-  for (const [channel, amount] of revenueByChannel) {
-    if (amount === 0) continue
+  // 3. Revenue, summarised PER CHANNEL and PER SOURCE STORE. The channel stays
+  //    a dimension on ONE account (brief 13 §5); the store may resolve that
+  //    account differently (task 47 §4). Two axes, two mechanisms, decision D10.
+  for (const { store, channel, amountMinor } of revenueByStoreChannel.values()) {
+    if (amountMinor === 0) continue
     push({
       ...summarised,
       accountRole: ACCOUNT_ROLES.REVENUE_PRODUCT,
       direction: 'credit',
-      amount,
+      amount: amountMinor,
       memo: describe(`product revenue, ${channel === 'dealer' ? 'dealer' : 'direct to consumer'}`),
       dimensions: { channel },
+      ...(store === undefined ? {} : { sourceScope: { store } }),
     })
   }
 
@@ -1028,14 +1072,16 @@ export function buildFulfillmentBatchEntry(
     })
   }
 
-  // 5. Shipping, summarised.
-  if (shippingMinor !== 0) {
+  // 5. Shipping, summarised - per source store, for revenue's own reason.
+  for (const { store, amountMinor } of shippingByStore.values()) {
+    if (amountMinor === 0) continue
     push({
       ...summarised,
       accountRole: ACCOUNT_ROLES.REVENUE_SHIPPING,
       direction: 'credit',
-      amount: shippingMinor,
+      amount: amountMinor,
       memo: describe('shipping revenue'),
+      ...(store === undefined ? {} : { sourceScope: { store } }),
     })
   }
 

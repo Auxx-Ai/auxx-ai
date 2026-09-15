@@ -11,6 +11,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { isNull } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UniqueValueConflictError, UnprocessableEntityError } from '../errors'
 import type { GlAccountSubtypeValue } from './account-subtype'
@@ -232,6 +233,14 @@ async function insertRoleAssignment(
       .values({ organizationId, role, glAccountId, source })
       .onConflictDoNothing({
         target: [schema.GlRoleAssignment.organizationId, schema.GlRoleAssignment.role],
+        // 🛑 `GlRoleAssignment_org_role_key` became two PARTIAL indexes in task
+        // 47, so a bare `(organizationId, role)` target no longer names one.
+        // `targetWhere` picks the ORG DEFAULT half - the only half an import
+        // ever writes; a per-source override is a human's decision, made in
+        // settings.
+        // `where` is `onConflictDoNothing`'s spelling of the index predicate;
+        // `onConflictDoUpdate` spells the same thing `targetWhere`.
+        where: isNull(schema.GlRoleAssignment.sourceAccountId),
       })
       .returning({ id: schema.GlRoleAssignment.id })
 

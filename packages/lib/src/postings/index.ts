@@ -91,6 +91,10 @@ export {
   buildVendorBillEntry,
   type ReceiptEntryInput,
   ROLE_ACCOUNT_TYPES,
+  roleAcceptsManualSource,
+  roleScopeAxis,
+  SCOPABLE_ROLES,
+  type ScopeAxis,
   type VendorBillEntryInput,
 } from './build-entry'
 // ── plans/accounting/tasks/21 §3.2: the standalone company's A/P bill ───────
@@ -611,6 +615,7 @@ export {
 export {
   loadRoleAccountCodes,
   type ResolvedAccount,
+  type RoleSourceScope,
   resolveAccountLines,
   resolveRoles,
 } from './resolve-roles'
@@ -633,6 +638,16 @@ export {
   type SetupReadinessContext,
   summariseOpeningTrialBalance,
 } from './setup-readiness'
+// ── task 47: the sources a role map may be scoped to ────────────────────────
+export {
+  ensureManualSourceAccount,
+  listRoleSources,
+  MANUAL_SOURCE_EXTERNAL_ID,
+  MANUAL_SOURCE_LABEL,
+  MANUAL_SOURCE_PROVIDER_KEY,
+  type RoleSourceRow,
+  readManualSourceAccountId,
+} from './source-scope'
 export { listOrderAccountingWork } from './source-work'
 export {
   type AccountSuggestion,

@@ -56,7 +56,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError } from '../errors'
 import type { PaymentGatewayFeeTreatmentValue, PaymentGatewayRow } from '../payment-gateways/client'
@@ -268,7 +268,12 @@ async function readFallbackFeeAccountId(
     .where(
       and(
         eq(schema.GlRoleAssignment.organizationId, organizationId),
-        eq(schema.GlRoleAssignment.role, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)
+        eq(schema.GlRoleAssignment.role, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES),
+        // 🛑 The ORG DEFAULT only (task 47). "Which account does a rail with no
+        // fee account of its own book into" has exactly one answer per org; a
+        // per-processor override is a different row, and `.limit(1)` over both
+        // would pick between them arbitrarily.
+        isNull(schema.GlRoleAssignment.sourceAccountId)
       )
     )
     .limit(1)

@@ -4,6 +4,7 @@
 // hands it plain arrays and a map and reads the plan back.
 
 import { describe, expect, it } from 'vitest'
+import { roleScopeAxis } from '../build-entry'
 import {
   PROVIDER_ACCOUNT_TYPE_SUBTYPE,
   planChartImport,
@@ -39,6 +40,8 @@ function roleMap(overrides: Record<string, RoleAssignmentRow['state']> = {}): Ro
     account: null,
     source: null,
     confirmedAt: null,
+    axis: roleScopeAxis(role),
+    overrides: [],
   }))
 }
 

@@ -36,6 +36,14 @@
 // rows, not settings, and each belongs to a page that already loads them:
 // the standard-cost roll (part rows), the role map (`GlRoleAssignment` rows),
 // and whether a first entry is posted (`GlPosting` rows).
+//
+// ⚠️ {@link describeUnscopedSources} is the one exception, and it is not a
+// requirement - it is an ADVISORY (task 47 §8). It never joins `requirements`
+// and never moves `settingsReady`, because connecting a second store must not
+// stop the books (decision D6). It lives here because it is the same kind of
+// thing every other export in this file is - a pure predicate over what a screen
+// already holds - and because the alternative was a second copy of the sentence
+// in the one screen that renders it.
 
 /**
  * The settings the opening baseline is read from.
@@ -417,4 +425,83 @@ export function openingDifferenceRows(settings: SettingsRecord): Array<{
       difference: auxx === null || qbo === null ? null : auxx - qbo,
     }
   })
+}
+
+/**
+ * Connections that are following the org default on a role the org has ALREADY
+ * split (task 47 §8).
+ *
+ * > Amazon US has no revenue account of its own. Sales from this connection post
+ * > to 4000 Product Revenue.
+ *
+ * 🛑 **Only once a role carries at least one override.** An org that has never
+ * scoped anything is not misconfigured - it is the ordinary org, and warning it
+ * that three roles are unscoped on its one store would put a sentence on every
+ * row of a finished setup. The interesting state is the HALF-SPLIT one: somebody
+ * gave one storefront its own revenue account and left another on the shared
+ * one, which is a decision nobody made and which no report can distinguish from
+ * one that was.
+ *
+ * ⚠️ This is the thing Synder does NOT do, and it is worth being better at:
+ * their role map advertises a `Sales` account that receives zero postings while
+ * every sale credits `Shopify sales`, and nothing in their API exposes why. Our
+ * fallback is data, so we can name the account a connection is actually using.
+ *
+ * Per `feedback_no_internal_jargon_in_ui_strings` the copy says "connection" and
+ * "account", never "role scope", "sentinel" or "source account id".
+ *
+ * PURE. The caller holds both lists already - they arrive on one `ledger.roleMap`
+ * read - so this adds no query.
+ */
+export function describeUnscopedSources(
+  roles: readonly UnscopedSourceRole[],
+  sources: readonly UnscopedSourceConnection[]
+): UnscopedSourceWarning[] {
+  const warnings: UnscopedSourceWarning[] = []
+  for (const role of roles) {
+    // A role nobody has split has nothing to be inconsistent with, and a role
+    // marked unused posts nothing at all.
+    if (!role.axis || role.overrides.length === 0) continue
+    const scoped = new Set(role.overrides)
+    for (const source of sources) {
+      if (!source.axes.includes(role.axis) || scoped.has(source.id)) continue
+      warnings.push({
+        role: role.role,
+        sourceId: source.id,
+        message:
+          `${source.name} has no ${role.label.toLowerCase()} account of its own. ` +
+          (role.accountLabel
+            ? `Sales from this connection post to ${role.accountLabel}.`
+            : 'Sales from this connection post to the default account.'),
+      })
+    }
+  }
+  return warnings
+}
+
+/** One role as {@link describeUnscopedSources} needs it. A subset of `RoleAssignmentRow`. */
+export interface UnscopedSourceRole {
+  role: string
+  /** `ACCOUNT_ROLE_LABELS[role]`. Passed in so this file stays free of the role table. */
+  label: string
+  /** `'store' | 'processor' | null`. Null is a role that cannot be scoped at all. */
+  axis: 'store' | 'processor' | null
+  /** The account the role itself names, already formatted, or null when unmapped. */
+  accountLabel: string | null
+  /** The `FinancialSourceAccount` ids that already carry an override. */
+  overrides: readonly string[]
+}
+
+/** One connection as {@link describeUnscopedSources} needs it. A subset of `RoleSourceRow`. */
+export interface UnscopedSourceConnection {
+  id: string
+  name: string
+  axes: readonly ('store' | 'processor')[]
+}
+
+/** One advisory sentence, addressed to one connection on one role. */
+export interface UnscopedSourceWarning {
+  role: string
+  sourceId: string
+  message: string
 }

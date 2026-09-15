@@ -62,6 +62,19 @@ export interface TreeRowProps {
   /** Click on the title text — useful for "click row to toggle checkbox" UX. */
   onTitleClick?: () => void
 
+  /**
+   * Click anywhere on the row BODY, taking precedence over `onToggleOpen`.
+   *
+   * Without it a row has one handler for two gestures: `onToggleOpen` fires from
+   * the chevron AND from the body, which is right for a pure container and wrong
+   * for a row that both selects and expands. Supply this with `chevronOnHover`
+   * and the chevron expands (it already stops the bubble) while the body does
+   * whatever the row is really for.
+   *
+   * Omitted, behaviour is exactly as before: the body fires `onToggleOpen`.
+   */
+  onRowClick?: () => void
+
   // ---- selection (bulk mode) ----
   /**
    * Surface supports selection → reveal a checkbox in the LEADING slot on row
@@ -261,6 +274,7 @@ export function TreeRow({
   isOpen,
   onToggleOpen,
   onTitleClick,
+  onRowClick,
   selectable = false,
   selecting = false,
   selected = false,
@@ -274,8 +288,9 @@ export function TreeRow({
   const paddingLeftRem = depth * INDENT_REM
   // The whole row is clickable whenever a toggle/drill handler is supplied —
   // `expandable` only controls the chevron, not whether clicking does something.
-  // A toggle (expand children) wins the row click; the drill chevron owns `onDrill`.
-  const rowClick = onToggleOpen ?? onDrill
+  // An explicit `onRowClick` wins; otherwise a toggle (expand children) takes the
+  // row click and the drill chevron owns `onDrill`.
+  const rowClick = onRowClick ?? onToggleOpen ?? onDrill
   const rowClickable = rowClick !== undefined
 
   // Leading-slot checkbox: pinned while selecting, hover-revealed otherwise (and

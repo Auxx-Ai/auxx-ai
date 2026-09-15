@@ -62,7 +62,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../cache'
 import {
   createPaymentGateway,
@@ -76,6 +76,7 @@ import {
   type ChartPackKey,
   type DefaultChartAccount,
 } from '../postings/default-chart'
+import { ensureManualSourceAccount } from '../postings/source-scope'
 import { seedSession, UnifiedCrudHandler } from '../resources/crud'
 import { SystemUserService } from '../users/system-user-service'
 
@@ -204,6 +205,14 @@ export async function seedChartAccounts(
 ): Promise<ChartAccountSeedResult> {
   const empty: ChartAccountSeedResult = { created: 0, skipped: 0, rolesAssigned: 0 }
   if (!glAccountDefId || accounts.length === 0) return empty
+
+  // 🔑 The MANUAL bucket, minted where the chart is provisioned and never
+  // lazily on the first manual order (task 47 §6.3): lazy creation races with
+  // itself, and the settings page needs the row to exist before anybody posts.
+  // The 0382 migration covers every org that already existed; this covers every
+  // org provisioned after it. Idempotent, so pressing "Add accounts" twice is a
+  // no-op rather than a second bucket.
+  await ensureManualSourceAccount(db, organizationId)
 
   // The `code` field has to exist before its values can be read or written. On
   // the very first pass `ensureCustomFields` has just created it; on an org
@@ -348,6 +357,14 @@ async function assignSeededRoles(
       .values(rows)
       .onConflictDoNothing({
         target: [schema.GlRoleAssignment.organizationId, schema.GlRoleAssignment.role],
+        // 🛑 `GlRoleAssignment_org_role_key` became two PARTIAL indexes in task
+        // 47, so a bare `(organizationId, role)` target no longer names one.
+        // `targetWhere` picks the ORG DEFAULT half - which is the only half a
+        // seed or an import ever writes; a per-source override is a human's
+        // decision, made in settings.
+        // `where` is `onConflictDoNothing`'s spelling of the index predicate;
+        // `onConflictDoUpdate` spells the same thing `targetWhere`.
+        where: isNull(schema.GlRoleAssignment.sourceAccountId),
       })
       .returning({ id: schema.GlRoleAssignment.id })
 
@@ -422,7 +439,12 @@ export async function seedDefaultPaymentGateways(
     .where(
       and(
         eq(schema.GlRoleAssignment.organizationId, organizationId),
-        inArray(schema.GlRoleAssignment.role, ['clearing_card', 'payment_processing_fees'])
+        inArray(schema.GlRoleAssignment.role, ['clearing_card', 'payment_processing_fees']),
+        // 🛑 The ORG DEFAULT only (task 47). A seeded gateway record names the
+        // account the org uses when nothing more specific applies; picking a
+        // per-processor override here would hand one processor's fee account to
+        // a gateway that settles through another.
+        isNull(schema.GlRoleAssignment.sourceAccountId)
       )
     )
   const byRole = new Map(roleRows.map((row) => [row.role, row.glAccountId]))
