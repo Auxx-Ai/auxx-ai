@@ -271,7 +271,10 @@ describe('registry layout blocks', () => {
     const detail = byEntityType('detail')
 
     // Only entity types the detail registry actually knows about are compared:
-    // a drawer-only entity (invoice, vendor_bill) has no page to keep in step.
+    // a drawer-only entity (invoice) has no page to keep in step, and
+    // `vendor_bill` has a hand-written page (plans/money/tasks/58 §6.1) that
+    // replays this same config outside `TabCardSection` rather than being a
+    // `DetailView`, so it is not in `DETAIL_VIEW_CONFIG_REGISTRY` either.
     const detailEntityTypes = new Set(
       Object.values(DETAIL_VIEW_CONFIG_REGISTRY).map((config) => config.entityType)
     )

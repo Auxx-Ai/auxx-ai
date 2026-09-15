@@ -163,6 +163,33 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Enter description',
   },
 
+  // The strongest match signal a line has — the vendor's own code for it, as
+  // printed on their invoice. Never the part's SKU: this is what the matcher
+  // reads (plans/money/tasks/58-vendor-bill-from-the-invoice.md §7.1), and the
+  // bill-side twin of the quote intake's write-back to `vendor_part.vendorSku`.
+  vendorCode: {
+    id: toFieldId('vendorCode'),
+    key: 'vendorCode',
+    label: 'Vendor Code',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'vendor_bill_line_vendor_code',
+    systemSortOrder: 'a4a',
+    nullable: true,
+    showInTable: false,
+    showInPanel: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      "The vendor's own code for this line as printed on their invoice. What the matcher reads, never the part's SKU.",
+  },
+
   quantityBilled: {
     id: toFieldId('quantityBilled'),
     key: 'quantityBilled',

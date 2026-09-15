@@ -14,6 +14,7 @@ import { migration153FulfillmentLines } from './migrations/153-fulfillment-lines
 import { migration154Returns } from './migrations/154-returns'
 import { migration155ReturnInboundTrackingMulti } from './migrations/155-return-inbound-tracking-multi'
 import { migration156PaymentGatewayFeeTreatment } from './migrations/156-payment-gateway-fee-treatment'
+import { migration159VendorBillLineVendorCode } from './migrations/159-vendor-bill-line-vendor-code'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -95,6 +96,11 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // options arrive with the field, because a select seeded without them renders
   // blank (plans/accounting/tasks/26-a-clearing-account-per-rail.md §10).
   migration156PaymentGatewayFeeTreatment,
+  // One TEXT field on `vendor_bill_line`, nothing stamped: the pure widen
+  // shape (plans/money/tasks/58-vendor-bill-from-the-invoice.md §7.1). The
+  // vendor's own printed code for the line, never the same field as the
+  // part's SKU, and never backfilled because nothing has ever written it.
+  migration159VendorBillLineVendorCode,
 ]
 
 /**

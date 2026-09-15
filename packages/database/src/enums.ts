@@ -567,8 +567,8 @@ export const ModelTypeMeta: Record<
     color: 'red',
     apiSlug: 'vendor-bills',
     dbTable: 'EntityInstance',
-    // Records something already settled — the invoice's drawer-only shape.
-    hasDetailPage: false,
+    // The bill has its own page (document left, cards right) — plans/money/tasks/58 §6.1.
+    hasDetailPage: true,
   },
   vendor_bill_line: {
     label: 'Vendor Bill Line',

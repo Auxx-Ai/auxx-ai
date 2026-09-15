@@ -13,10 +13,12 @@ import type { ResourceField } from '../field-types'
  * purchase order (what we agreed to buy) and the stock movement (what actually
  * turned up on the dock).
  *
- * Visible system def with `hasDetailPage: false` — the **invoice** shape, drawer
- * only. A bill *records* something already settled elsewhere; it is not built or
- * iterated the way a purchase order is, and the exception queue is a filtered
- * list view rather than a page per bill.
+ * Visible system def with `hasDetailPage: true` (plans/money/tasks/58 §6.1) — a
+ * hand-written page at `/app/vendor-bills/[vendorBillId]`, document left, cards
+ * right. A bill *records* something already settled elsewhere; it is not built
+ * or iterated the way a purchase order is, so the page is not a `DetailView`,
+ * and the exception queue is a filtered list view rather than a page per bill.
+ * List clicks still open the drawer.
  *
  * Money is stored in **integer minor units** throughout.
  *
