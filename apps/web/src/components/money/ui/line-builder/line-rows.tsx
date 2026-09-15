@@ -2147,6 +2147,17 @@ export function LineRow({
   const showOptional = schema.capabilities.optional
   const { values } = useSystemValues(recordId, lineAttributesFor(schema), { autoFetch: false })
   const line = lineValuesFromSystemValues(values, schema)
+  const vendorCode =
+    documentType === 'vendor_bill' && typeof values.vendor_bill_line_vendor_code === 'string'
+      ? values.vendor_bill_line_vendor_code.trim()
+      : ''
+  const vendorCodeChip = vendorCode ? (
+    <SimpleTooltip content='Vendor code'>
+      <span className='max-w-28 truncate font-mono text-muted-foreground text-xs'>
+        {vendorCode}
+      </span>
+    </SimpleTooltip>
+  ) : undefined
   const partUnit = usePartUnit(schema.capabilities.partPicker ? line.partRecordId : null)
   // `schema.attrs.vendorPartRecordId` is only set on the purchase order - a bill
   // line has no offer link, so this is null there too (§2.9 item 2).
@@ -2224,6 +2235,7 @@ export function LineRow({
               onCommitWeight={(weight) => onUpdateLine(recordId, { weight })}
               onRevealWeight={onRevealWeight}
               onDelete={() => deleteLine(record.id)}
+              chips={vendorCodeChip}
             />
           ) : (
             <LineNameCellView

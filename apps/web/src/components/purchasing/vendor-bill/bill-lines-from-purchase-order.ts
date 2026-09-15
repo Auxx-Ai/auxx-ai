@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // 🛑 THE RULE THIS FILE OBEYS
 //
-// `create-bill-from-purchase-order-dialog.tsx` settled it for the header total,
+// `add-bill-dialog.tsx` settled it for the header total,
 // and the reasoning transfers verbatim:
 //
 //   *"It is safe here because the header total is NOT a match input: `matchBill`

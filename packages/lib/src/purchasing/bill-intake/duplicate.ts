@@ -38,7 +38,7 @@ export interface ExistingBill {
  * the printed number and the stored one, so "INV-88213" and " inv-88213 "
  * and "INV -  88213" are recognised as the same invoice.
  */
-function foldInvoiceNumber(value: string): string {
+export function foldInvoiceNumber(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 

@@ -356,6 +356,8 @@ interface UseFieldFileUploadReturn {
    * gates the camera-capture affordance (37b-scouting-quote-photos.md §4/§8). */
   supportsCameraCapture: boolean
   openNativeFilePicker: () => void
+  /** Upload files supplied by a drop zone through the same field-value pipeline. */
+  uploadFiles: (files: File[]) => Promise<void>
   /** Same picker, opened with `capture='environment'` so mobile browsers default to the
    * device camera instead of the file/photo chooser. */
   openCameraCapture: () => void
@@ -811,6 +813,44 @@ export function useFieldFileUpload({
     void openPicker()
   }, [openPicker])
 
+  const uploadFiles = useCallback(
+    async (rawFiles: File[]) => {
+      if (rawFiles.length === 0 || !canOpenPicker) return
+      try {
+        const store = useUploadStore.getState()
+        const sessionId = await store.createSessionWithGuard(uploaderId, {
+          entityType: 'CUSTOM_FIELD',
+          entityId: `field-${fieldRef}`,
+          behaviorConfig: { allowMultiple: fileOptions.allowMultiple, autoStart: false },
+          metadata: { fieldId: fieldRef },
+        })
+        subscribeSettled()
+        const files = isImagesOnly ? await convertHeicFiles(rawFiles) : rawFiles
+        const added = await store.addFilesWithValidation(files, uploaderId, {
+          maxFiles: effectiveSlots,
+        })
+        if (added.addedFileIds.length === 0) {
+          throw new Error(added.validationErrors[0] ?? 'The selected file could not be added.')
+        }
+        await store.startUpload(sessionId)
+      } catch (error) {
+        toastError({
+          title: 'Upload failed',
+          description: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    },
+    [
+      canOpenPicker,
+      uploaderId,
+      fieldRef,
+      fileOptions.allowMultiple,
+      subscribeSettled,
+      isImagesOnly,
+      effectiveSlots,
+    ]
+  )
+
   const openCameraCapture = useCallback(() => {
     void openPicker('environment')
   }, [openPicker])
@@ -946,6 +986,7 @@ export function useFieldFileUpload({
     remainingSlots: effectiveSlots,
     supportsCameraCapture: isImagesOnly,
     openNativeFilePicker,
+    uploadFiles,
     openCameraCapture,
     handleBrowseFilesSelected,
     removeFile,

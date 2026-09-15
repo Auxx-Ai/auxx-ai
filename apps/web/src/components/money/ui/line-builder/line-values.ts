@@ -711,6 +711,10 @@ export function lineSchemaFor(documentType: DocumentType): LineSchema {
  */
 export function lineAttributesFor(schema: LineSchema): string[] {
   const attrs = Object.values(schema.attrs).filter((a): a is string => a !== null)
+  // The bill's printed vendor code is display-only in the shared builder, so it
+  // rides beside the part/description chips rather than becoming a LineValues
+  // editing key. It still belongs in the same batched read as the other row data.
+  if (schema.billingPrefix === 'vendor_bill') attrs.push('vendor_bill_line_vendor_code')
   // Photos are not part of `LineValues`/`linePatchToFieldValues` — the popover
   // (line-photo-popover.tsx) reads and writes the field directly via
   // `useFieldFileUpload`. Riding along in the same prefetch batch just gives the

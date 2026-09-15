@@ -172,7 +172,7 @@ export function NewSectionForm({
     // bordered, tinted card that already carries its own internal `px-1.5
     // py-0.5`, so a `p-3` on it overrides that gutter and inflates the inside of
     // the card while the card itself still sits flush against the dialog edge.
-    // `intake-header-panel.tsx` and `create-bill-from-purchase-order-dialog.tsx`
+    // `intake-header-panel.tsx` and `add-bill-dialog.tsx`
     // both pad from outside for the same reason.
     //
     // No bottom gutter: `DialogFooter` already carries `pt-4`, so one here would

@@ -111,6 +111,7 @@ export type DetailViewEntityType =
   | 'work_order'
   | 'order'
   | 'purchase_order'
+  | 'vendor_bill'
   | 'build'
 
 /** Registry type mapping entity types to their configurations */

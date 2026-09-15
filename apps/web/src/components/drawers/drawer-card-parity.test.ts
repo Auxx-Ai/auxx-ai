@@ -103,6 +103,14 @@ const ALL_SYSTEM_ATTRIBUTES = new Set(
 )
 
 describe('drawer card declarations', () => {
+  it('keeps every vendor bill review card on its shared detail sidebar', () => {
+    const detail = DETAIL_VIEW_CONFIG_REGISTRY.vendor_bill
+    expect(detail.defaultTab).toBe('document')
+    expect(detail.mainTabs.map((tab) => tab.value)).toEqual(['document', 'timeline', 'tasks'])
+    expect(detail.sidebarTabs.map((tab) => tab.value)).toEqual(['overview', 'comments'])
+    expect(detail.sidebarCards).toEqual(DRAWER_CONFIG_REGISTRY.vendor_bill.tabCards?.overview)
+  })
+
   // Non-vacuity guard: both walks read a nested config shape, so a shape change that
   // silently yielded zero keys would make every assertion below pass while checking
   // nothing. These floors are well under the current counts, not a snapshot.

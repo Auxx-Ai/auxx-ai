@@ -39,7 +39,7 @@ import type { Result } from 'neverthrow'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import type { IntakeCandidate } from '../intake/client'
 import { INTAKE_DRAFT_TTL_SECONDS } from '../intake/draft-queries'
-import type { BillIntakePhase, BillIntakeRunView } from './client'
+import type { BillIntakePhase, BillIntakeRunView, BillIntakeWarning } from './client'
 import { guard } from './guard'
 
 /** The one run key shape, org id first. Both parts are required. */
@@ -347,6 +347,8 @@ export interface BillIntakeRunCreatedResult {
   vendorBillInstanceId: string
   vendorBillRecordId: RecordId
   vendorBillLineRecordIds: RecordId[]
+  /** Warnings discovered while creating the bill, shown by the bill page. */
+  warnings?: BillIntakeWarning[]
 }
 
 /**
@@ -370,6 +372,7 @@ export async function markBillIntakeRunCreated(
     vendorBillInstanceId: result.vendorBillInstanceId,
     vendorBillRecordId: result.vendorBillRecordId,
     vendorBillLineRecordIds: result.vendorBillLineRecordIds,
+    ...(result.warnings ? { warnings: result.warnings } : {}),
   })
   if (updated.isErr()) return updated
 

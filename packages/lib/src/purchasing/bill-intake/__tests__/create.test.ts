@@ -458,7 +458,13 @@ describe('createBillFromIntake - ordering', () => {
       'user_1',
       run({ proposals: [proposal({ linkedOrderLineRecordId: null, tier: 'none' })] })
     )
-    expect(h.order).toEqual(['create:vendor_bill', 'create:vendor_bill_line', 'mark', 'rematch'])
+    expect(h.order).toEqual([
+      'create:vendor_bill',
+      'create:vendor_bill_line',
+      'mark',
+      'convert',
+      'rematch',
+    ])
   })
 })
 

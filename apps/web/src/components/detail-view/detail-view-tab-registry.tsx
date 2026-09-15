@@ -21,6 +21,10 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
   // ─────────────────────────────────────────────────────────────────
   // UNIVERSAL TABS (available for all entity types via wildcard)
   // ─────────────────────────────────────────────────────────────────
+  'vendor_bill:document': () =>
+    import('../purchasing/vendor-bill/vendor-bill-document-tab').then((m) => ({
+      default: m.VendorBillDocumentTab,
+    })),
   '*:timeline': () => import('./tabs/timeline-tab').then((m) => ({ default: m.TimelineTab })),
   '*:tasks': () => import('./tabs/tasks-tab').then((m) => ({ default: m.TasksTab })),
 

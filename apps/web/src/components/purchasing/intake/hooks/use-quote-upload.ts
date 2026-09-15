@@ -1,35 +1,35 @@
 // apps/web/src/components/purchasing/intake/hooks/use-quote-upload.ts
 'use client'
 
-// Push one vendor quote through the existing CUSTOM_FIELD temp-upload door and
-// hand back the `asset:<mediaAssetId>` FileRef that `startQuoteIntake` takes
+// Push one purchasing document through the existing CUSTOM_FIELD temp-upload
+// door and hand back the `asset:<mediaAssetId>` FileRef that an intake start
+// procedure takes
 // (plans/money/tasks/38 §1.3 / §6.2).
 //
-// 🛑 The `fieldRef` is the REAL `purchase_order.attachments` field id, not a
-// synthetic string. The door narrows accepted MIME types from the field's own
+// 🛑 The `fieldRef` is the REAL owning document field id, not a synthetic string.
+// The door narrows accepted MIME types from the field's own
 // options and stamps `metadata.fieldId` onto the upload; a made-up ref resolves
 // to no field, so the narrowing silently does not apply and a person can upload
 // something the transcriber then refuses to read.
 //
-// ⚠️ Unlike `useFieldFileUpload`, nothing here writes a FIELD VALUE. The draft is
-// not a record yet — the asset is linked into `purchase_order.attachments` only
-// by `commitIntakeDraft`, which is also where the asset stops being a
-// `TEMP_UPLOAD` on a 24-hour fuse.
+// ⚠️ Unlike `useFieldFileUpload`, nothing here writes a FIELD VALUE. The draft
+// or intake run owns the asset and converts it from a `TEMP_UPLOAD` after its
+// own commit path succeeds.
 
 import { useCallback, useId, useState } from 'react'
 import type { FileState } from '~/components/file-upload/stores'
 import { useUploadStore } from '~/components/file-upload/stores'
 
-export interface QuoteUploadResult {
-  /** `asset:<mediaAssetId>` — what `startQuoteIntake` takes as `assetRef`. */
+export interface DocumentUploadResult {
+  /** `asset:<mediaAssetId>` — what an intake start procedure takes as `assetRef`. */
   assetRef: string
   fileName: string
   mimeType: string | null
   size: number | null
 }
 
-interface UseQuoteUploadOptions {
-  /** The `purchase_order.attachments` field id. Empty until the resource loads. */
+interface UseDocumentUploadOptions {
+  /** The owning document field id. Empty until the resource loads. */
   fieldRef: string
 }
 
@@ -42,14 +42,14 @@ interface UseQuoteUploadOptions {
  * value still has to land. Here the dialog stays mounted for the whole run and
  * the caller wants the ref back.
  */
-export function useQuoteUpload({ fieldRef }: UseQuoteUploadOptions) {
+export function useDocumentUpload({ fieldRef }: UseDocumentUploadOptions) {
   const uploaderId = useId()
   const [isUploading, setIsUploading] = useState(false)
 
   const upload = useCallback(
-    async (file: File): Promise<QuoteUploadResult> => {
+    async (file: File): Promise<DocumentUploadResult> => {
       if (!fieldRef) {
-        throw new Error('Purchase orders have no attachments field in this organization yet.')
+        throw new Error('The document upload field is not available in this organization yet.')
       }
       setIsUploading(true)
 
@@ -114,3 +114,6 @@ export function useQuoteUpload({ fieldRef }: UseQuoteUploadOptions) {
 
   return { upload, cancel, isUploading }
 }
+
+/** Backwards-compatible name used by the purchase-order quote intake dialog. */
+export const useQuoteUpload = useDocumentUpload
