@@ -56,7 +56,7 @@ import { resolvePeriodLock } from './period-lock'
 import { assertPeriodOpen, type PeriodLock, parsePeriodKey, postingLockKey } from './periods'
 import { NONE_ACCOUNTING_PROVIDER, resolveAccountingProvider } from './provider'
 import { EXPORT_ROUTE_BY_POSTING_TYPE, INVENTORY_ROLES } from './regime'
-import { loadRoleAccountCodes, resolveAccountLines } from './resolve-roles'
+import { loadRoleAccountCodes, type RoleSourceScope, resolveAccountLines } from './resolve-roles'
 import type {
   BuiltEntry,
   PostEntryInput,
@@ -138,12 +138,40 @@ export interface PostEntryOptions {
   assertions?: PostingAssertions
   /** Recheck a caller-owned source constraint under the accounting lock before accepting the entry. */
   beforeCommit?: (tx: Transaction) => Promise<void>
+  /**
+   * Which SOURCE this entry's money came from, for the roles that read one
+   * (task 47 §5).
+   *
+   * Absent on every caller that cannot know - a month-end plug, a hand-keyed
+   * journal, a vendor bill - and absent means "the org default", which is what
+   * every role resolved to before this brief. Supplied by the revenue and
+   * settlement paths, which do know: a shipment carries its store, a payout
+   * carries the merchant account it settled through.
+   *
+   * 🛑 A miss falls back rather than failing. Connecting a second store must
+   * never stop the books (decision D6).
+   */
+  scope?: RoleSourceScope
 }
 
 export interface PreviewEntryOptions {
   organizationId: string
   entry: BuiltEntry
   lock: PeriodLock
+  /**
+   * Which SOURCE this entry's money came from, for the roles that read one
+   * (task 47 §5).
+   *
+   * Absent on every caller that cannot know - a month-end plug, a hand-keyed
+   * journal, a vendor bill - and absent means "the org default", which is what
+   * every role resolved to before this brief. Supplied by the revenue and
+   * settlement paths, which do know: a shipment carries its store, a payout
+   * carries the merchant account it settled through.
+   *
+   * 🛑 A miss falls back rather than failing. Connecting a second store must
+   * never stop the books (decision D6).
+   */
+  scope?: RoleSourceScope
 }
 
 // `EntryPreview` moved to `types.ts` (client-safe) so a browser can hold the
@@ -303,9 +331,16 @@ export interface PreparedEntry {
  */
 export async function prepareEntry(
   db: Database | Transaction,
-  options: { organizationId: string; entry: BuiltEntry; lock: PeriodLock; revision: number }
+  options: {
+    organizationId: string
+    entry: BuiltEntry
+    lock: PeriodLock
+    revision: number
+    /** See {@link PostEntryOptions.scope}. Absent means the org default. */
+    scope?: RoleSourceScope
+  }
 ): Promise<PreparedEntry> {
-  const { organizationId, entry, lock, revision } = options
+  const { organizationId, entry, lock, revision, scope } = options
   let refusal: Refusal | undefined
 
   // ── 1. The period ────────────────────────────────────────────────────────
@@ -344,7 +379,7 @@ export async function prepareEntry(
   // bookkeeper reads them in. The sort happens BEFORE resolution so the row
   // numbers in a refusal message match the rows a bookkeeper is looking at.
   const ordered = [...entry.lines].sort((a, b) => a.sortOrder - b.sortOrder)
-  const resolved = await resolveAccountLines(db, organizationId, ordered)
+  const resolved = await resolveAccountLines(db, organizationId, ordered, scope)
 
   const lines: PreparedLine[] = []
   if (resolved.isErr()) {
@@ -562,10 +597,10 @@ export async function previewEntry(
   db: Database,
   options: PreviewEntryOptions
 ): Promise<EntryPreview> {
-  const { organizationId, entry, lock } = options
+  const { organizationId, entry, lock, scope } = options
   // A preview is always of an original. A reversal is previewed by reading the
   // posting it reverses, which is `reverseEntry`'s job, not a fresh draft's.
-  const prepared = await prepareEntry(db, { organizationId, entry, lock, revision: 0 })
+  const prepared = await prepareEntry(db, { organizationId, entry, lock, revision: 0, scope })
 
   return {
     postingType: entry.postingType,
@@ -667,6 +702,7 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
           entry,
           lock: authoritativeLock,
           revision,
+          scope: options.scope,
         })
         docNumber = prepared.docNumber
         if (prepared.refusal) return

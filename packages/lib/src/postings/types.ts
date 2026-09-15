@@ -180,6 +180,55 @@ export interface GlPostingLineBase {
    * a separate piece of work and is not done here. Absent on most lines.
    */
   dimensions?: Record<string, string>
+  /**
+   * Which SOURCE this line's ROLE resolves through (task 47 §5). Ignored on a
+   * code line and on an id line, which name their account outright.
+   *
+   * 🛑 **On the LINE, not only on the entry, because one entry can span two
+   * stores.** The fulfillment group merges a day's shipments into one journal;
+   * two shipments from two storefronts credit two different revenue accounts and
+   * have to stay two lines. `run.ts`'s merge key already includes everything
+   * that splits a line, and this joins it.
+   *
+   * ⚠️ An entry-level scope (`prepareEntry`/`postEntry`'s `scope`) is the
+   * convenient door for an entry that is wholly from one source - a payout, a
+   * credit memo. Precedence is `line.sourceScope ?? options.scope`, resolved in
+   * exactly one place, `resolveAccountLines`.
+   */
+  sourceScope?: RoleSourceScope
+}
+
+/**
+ * WHICH SOURCE a posted event came from, for the roles that read one
+ * (task 47 §5).
+ *
+ * Consulted only for the roles in `SCOPABLE_ROLES` - the three revenue roles and
+ * the processor fee. Every other role ignores it entirely, which is what keeps
+ * an org that maps nothing byte-for-byte identical to how it behaved before
+ * task 47, and that no-op is the acceptance test for the whole brief.
+ *
+ * 🛑 **`undefined` and `null` mean different things, and the difference is the
+ * manual bucket.**
+ *
+ * | value | meaning |
+ * | --- | --- |
+ * | the key is absent | this caller does not know the axis. Use the ORG DEFAULT |
+ * | `null` on `store` | this record had NO connected source. Use the MANUAL bucket |
+ * | an id | that `FinancialSourceAccount` |
+ *
+ * `processor` has no manual counterpart: a manual order has no processor, so
+ * `payment_processing_fees` is never emitted for one and a `null` there reads
+ * the same as an absent key (§4).
+ *
+ * Declared HERE rather than in `resolve-roles.ts` because a LINE carries one
+ * ({@link GlPostingLineBase.sourceScope}) and this file is client-safe, while
+ * the resolver reaches a database. `resolve-roles.ts` re-exports it.
+ */
+export interface RoleSourceScope {
+  /** `effect.sourceStoreId`. Null means the manual bucket; see the table above. */
+  store?: string | null
+  /** `effect.processorAccountId`. */
+  processor?: string | null
 }
 
 /**
@@ -839,6 +888,12 @@ export interface PostingDetail {
  */
 export type RoleAssignmentState = 'confirmed' | 'suggested' | 'unmapped' | 'unused'
 
+// Re-exported through this file's own graph rather than imported by every
+// consumer: `RoleAssignmentRow.axis` is the only reason a screen needs it.
+import type { ScopeAxis } from './build-entry'
+
+export type { ScopeAxis } from './build-entry'
+
 /**
  * One row of the org's editable chart. Mirrors the `gl_account` EntityInstance.
  *
@@ -875,6 +930,60 @@ export interface ChartAccountRow {
   isArchived?: boolean
 }
 
+/** One source a scopable role may be pointed at, as a settings screen renders it. */
+export interface RoleSourceRow {
+  /** `FinancialSourceAccount.id` - what `GlRoleAssignment.sourceAccountId` holds. */
+  id: string
+  providerKey: string
+  externalAccountId: string
+  /**
+   * The name to show.
+   *
+   * ⚠️ `FinancialSourceAccount` has no name column and this brief does not add
+   * one (47 §13.6). For a connected source the external id already IS the
+   * human-readable identity - Shopify's is the shop domain, which
+   * `receipt-accounting.ts` already renders as `storeDomain` - so the fallback
+   * 47 §7.4 describes is what every row gets, paired with `providerKey` so a
+   * screen can qualify it.
+   */
+  name: string
+  /**
+   * Which axes the EVIDENCE says this source carries, in
+   * `['store', 'processor']` order.
+   *
+   * 🛑 Derived from evidence, never from `providerKey`: Shopify is both a store
+   * and a processor (Shopify Payments), so the key cannot settle it. A row
+   * reached through `FinancialSourceObject` is a store; a row carrying
+   * `ProcessorBalanceEntry` or `MoneyTransfer` rows is a processor account. A
+   * row can be BOTH and then appears under both axes (47 §7.4).
+   */
+  axes: ScopeAxis[]
+  /** The manual bucket. Pinned first by {@link listRoleSources}. */
+  isManual: boolean
+}
+
+/**
+ * One SOURCE's override of a role, as the settings tree renders it (task 47 §7).
+ *
+ * 🛑 An override exists only when somebody wrote one. There is no "inherit"
+ * row: a source with no override is rendered from the role's own assignment
+ * ("Uses 4000 Product Revenue"), which is the same fact stated once rather than
+ * copied per source. That is also why `state` has only two values here - a
+ * scoped row cannot be `unmapped` (it would not exist) and cannot be `unused`
+ * (marking a role unused is a fact about the BUSINESS, so it stays on the role).
+ */
+export interface RoleSourceAssignmentRow {
+  /** `FinancialSourceAccount.id`. Matches a `RoleSourceRow.id` on the same read. */
+  sourceAccountId: string
+  state: Extract<RoleAssignmentState, 'confirmed' | 'suggested'>
+  /** The `gl_account` id this source's revenue lands in. */
+  accountId: string
+  /** Resolved for display. Null when the account has been archived or deleted. */
+  account: ChartAccountRow | null
+  source: string | null
+  confirmedAt: string | null
+}
+
 /**
  * One role, its mapping, and the account it currently resolves to.
  *
@@ -899,6 +1008,26 @@ export interface RoleAssignmentRow {
    */
   source: string | null
   confirmedAt: string | null
+  /**
+   * Which axis of a posted event this role reads its SOURCE from, or null when
+   * the role is not scopable at all (task 47 §4).
+   *
+   * Drives the affordance: only a role with an axis gets a chevron in the
+   * settings tree, and it expands to the sources on ITS axis only - a revenue
+   * role lists the storefronts and Manual, the fee role lists the merchant
+   * accounts. Showing every source under every role would offer a bookkeeper a
+   * Stripe account to book product revenue to.
+   */
+  axis: ScopeAxis | null
+  /**
+   * The per-source overrides this role carries, ordered by source. Always empty
+   * for a role with no axis.
+   *
+   * ⚠️ The role's OWN `account` above is the default every source without an
+   * override falls back to - it is not a separate "Default" entry. That is what
+   * makes the settings tree a role row that expands rather than a mode to be in.
+   */
+  overrides: RoleSourceAssignmentRow[]
 }
 
 /**

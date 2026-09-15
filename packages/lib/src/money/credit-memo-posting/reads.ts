@@ -56,6 +56,7 @@ import { resolvePeriodLock } from '../../postings/period-lock'
 import { LEDGER_CURRENCY } from '../../postings/post-entry'
 import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { readOrderSourceScopes } from '../customer-money/reads'
 import { isLiveFulfillment } from '../fulfillments/client'
 import { readFulfillmentsForOrders } from '../fulfillments/reads'
 import { guard } from './guard'
@@ -299,6 +300,8 @@ export async function readUnpostedCreditMemos(
         if (orderId) orderIds.add(orderId)
       }
       const orders = await readOrderFacts(db, organizationId, [...orderIds])
+      // One query for every order in the window, not one per memo (task 47 §5).
+      const sourceScopes = await readOrderSourceScopes(db, organizationId, [...orderIds])
 
       const memos: UnpostedCreditMemo[] = []
       for (const id of ids) {
@@ -332,6 +335,11 @@ export async function readUnpostedCreditMemos(
           amountRefundedMinor: amount(cell('credit_memo_amount_refunded')?.valueNumber),
           contactId: cell('credit_memo_contact')?.relatedEntityId ?? null,
           orderId,
+          // `undefined` for a NATIVE memo with no order: not resolved, so the
+          // org default applies. A memo whose order has no coverage reads
+          // `{ store: null }` and goes to the manual bucket, which is the same
+          // branch the fulfillment path takes for the same order.
+          ...(orderId ? { sourceStoreId: sourceScopes.get(orderId)?.store ?? null } : {}),
           reverseRevenue: resolveReverseRevenue(source, order, issuedAt),
         })
       }

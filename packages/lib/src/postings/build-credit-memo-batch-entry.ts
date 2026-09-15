@@ -337,6 +337,19 @@ export function buildCreditMemoBatchEntry(
   const settlementByAccount = new Map<string, number>()
   /** Contact id, or null for the unattributed remainder -> `Σ (total - settled)`. */
   const receivableByContact = new Map<string | null, number>()
+  /**
+   * Source store -> summarised `revenue_returns_allowances` debit (task 47 §4).
+   *
+   * Keyed on the store rather than accumulated into one figure so two
+   * storefronts in one day's group stay two lines, each resolving through its
+   * own `sourceScope`. `undefined` (the memo names no order) and `null` (the
+   * order had no connected source) key differently, because they mean different
+   * things: the org default and the manual bucket.
+   */
+  const returnsByStore = new Map<
+    string,
+    { store: string | null | undefined; amountMinor: number }
+  >()
   const sources: CreditMemoBatchSource[] = []
   let clearingCardMinor = 0
   let subtotalMinor = 0
@@ -422,6 +435,14 @@ export function buildCreditMemoBatchEntry(
     const unsettled = amounts.totalMinor - amounts.settlementMinor
     receivableByContact.set(contactId, (receivableByContact.get(contactId) ?? 0) + unsettled)
 
+    if (amounts.subtotalMinor !== 0) {
+      const store = planned.sourceStoreId
+      const key = store === undefined ? '-' : store === null ? 'manual' : store
+      const bucket = returnsByStore.get(key)
+      if (bucket) bucket.amountMinor += amounts.subtotalMinor
+      else returnsByStore.set(key, { store, amountMinor: amounts.subtotalMinor })
+    }
+
     sources.push({
       creditMemoId: planned.creditMemoId,
       number: planned.number,
@@ -438,15 +459,20 @@ export function buildCreditMemoBatchEntry(
     lines.push({ ...line, sortOrder: lines.length } as GlPostingLineInput)
   }
 
-  // 1. Contra-revenue, summarised. Always 4090 and never the original revenue
-  //    account: a reversal netted into 4000 leaves a return rate nobody can see.
-  if (subtotalMinor !== 0) {
+  // 1. Contra-revenue, summarised PER SOURCE STORE. Always 4090 and never the
+  //    original revenue account: a reversal netted into 4000 leaves a return
+  //    rate nobody can see. An org that splits revenue by store wants its
+  //    returns split the same way (task 47 §4.1), so a day's memos from two
+  //    storefronts stay two lines and each resolves through its own scope.
+  for (const { store, amountMinor } of returnsByStore.values()) {
+    if (amountMinor === 0) continue
     push({
       ...summarised,
       accountRole: ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES,
       direction: 'debit',
-      amount: subtotalMinor,
+      amount: amountMinor,
       memo: describe('returns and allowances'),
+      ...(store === undefined ? {} : { sourceScope: { store } }),
     })
   }
 

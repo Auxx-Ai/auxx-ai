@@ -22,6 +22,7 @@ import { flushTxWriteScope } from '../../resources/crud/tx-write-flush'
 import { runInTxWrite } from '../../resources/crud/tx-write-scope'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
+import { readOrderSourceScope } from '../customer-money/reads'
 import { acceptFulfillmentWorkGroup } from '../fulfillment-posting/run'
 import { captureFulfillmentAccountingWorkInTx } from '../fulfillment-posting/work'
 import { createFulfillment, defaultFulfillmentName, type Fulfillment } from '../fulfillments'
@@ -219,7 +220,12 @@ export async function previewFulfillment(
 
       const { built } = buildForOrder(order, shippedLines, shippedAt)
       const lock = await resolvePeriodLock(organizationId)
-      const preview = await previewEntry(db, { organizationId, entry: built.entry, lock })
+      // Task 47 §5. The ENTRY-level door rather than the line-level one: a
+      // preview is of one order, so every revenue line on it shares one store.
+      // The same predicate the effect path takes, so what the dialog shows is
+      // the account the acceptance will actually credit.
+      const scope = await readOrderSourceScope(db, organizationId, orderId)
+      const preview = await previewEntry(db, { organizationId, entry: built.entry, lock, scope })
       return { ...preview, order }
     },
     'Failed to preview a fulfillment',

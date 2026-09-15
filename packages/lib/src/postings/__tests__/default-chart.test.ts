@@ -26,7 +26,14 @@
 
 import { describe, expect, it } from 'vitest'
 import { GlAccountType } from '../../resources/registry/enum-values'
-import { ACCOUNT_ROLE_LABELS, ACCOUNT_ROLES, ROLE_ACCOUNT_TYPES } from '../build-entry'
+import {
+  ACCOUNT_ROLE_LABELS,
+  ACCOUNT_ROLES,
+  ROLE_ACCOUNT_TYPES,
+  roleAcceptsManualSource,
+  roleScopeAxis,
+  SCOPABLE_ROLES,
+} from '../build-entry'
 import {
   CHART_PACK_KEYS,
   CHART_PACKS,
@@ -70,6 +77,65 @@ describe('the role vocabulary is one vocabulary', () => {
     for (const [role, label] of Object.entries(ACCOUNT_ROLE_LABELS)) {
       expect(label.trim(), `role ${role}`).toBeTruthy()
     }
+  })
+})
+
+// Task 47 §4. The set of roles an org may answer DIFFERENTLY PER SOURCE is as
+// closed as the role vocabulary itself, and it is pinned here for the reason
+// `ROLE_ACCOUNT_TYPES` is: the cost of getting it wrong is invisible. A role
+// scoped by mistake sends one store's money to an account nobody chose, and the
+// entry balances either way.
+describe('the roles that may be scoped to a source', () => {
+  it('names only declared roles', () => {
+    for (const role of Object.keys(SCOPABLE_ROLES)) {
+      expect(CODE_ROLE_VALUES, `SCOPABLE_ROLES names '${role}'`).toContain(role)
+    }
+  })
+
+  // 🛑 Exact, both directions. Adding a role to `ACCOUNT_ROLES` must not
+  // silently make it scopable, and dropping one from this list must be a
+  // deliberate edit rather than a merge artifact.
+  it('is exactly the four roles brief 47 decides on', () => {
+    expect(Object.keys(SCOPABLE_ROLES).sort()).toEqual([
+      'payment_processing_fees',
+      'revenue_product',
+      'revenue_returns_allowances',
+      'revenue_shipping',
+    ])
+  })
+
+  // 🛑 Fees are NOT a store axis. A store on two processors would pool both
+  // processors' fees; two stores sharing one Stripe account would split fees
+  // that arrive on a single statement and reconcile as one number.
+  it('reads revenue from the store and fees from the processor', () => {
+    expect(SCOPABLE_ROLES.revenue_product).toBe('store')
+    expect(SCOPABLE_ROLES.revenue_shipping).toBe('store')
+    expect(SCOPABLE_ROLES.revenue_returns_allowances).toBe('store')
+    expect(SCOPABLE_ROLES.payment_processing_fees).toBe('processor')
+  })
+
+  // 🛑 `cogs_product_cost` is WANTED and BLOCKED (47 §4.2), not merely
+  // absent. Both `buildFulfillmentEntry` call sites pass `includeCogs: false`,
+  // so COGS is emitted only by the org-wide month-end plug, which has no
+  // `sourceStoreId` and cannot have one. Scoped today, every COGS line would
+  // resolve through the manual bucket while the per-store accounts sat at zero.
+  // This assertion is the tripwire on the pass that flips `includeCogs` true.
+  it('leaves COGS pooled until L3 puts it on the fulfillment effect', () => {
+    expect(SCOPABLE_ROLES.cogs_product_cost).toBeUndefined()
+  })
+
+  // The manual bucket is a STORE, so a role that reads the processor axis has no
+  // manual counterpart - a manual order has no processor, and the settings tree
+  // greys that cell rather than offering it.
+  it('accepts the manual bucket on the store axis only', () => {
+    expect(roleAcceptsManualSource('revenue_product')).toBe(true)
+    expect(roleAcceptsManualSource('payment_processing_fees')).toBe(false)
+    expect(roleAcceptsManualSource('accounts_receivable')).toBe(false)
+  })
+
+  it('answers no axis at all for a role that is not scopable', () => {
+    expect(roleScopeAxis('accounts_receivable')).toBeNull()
+    expect(roleScopeAxis('invented')).toBeNull()
   })
 })
 

@@ -2675,6 +2675,13 @@
       "when": 1789497073945,
       "tag": "0381_financial_record_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 382,
+      "version": "7",
+      "when": 1789505248231,
+      "tag": "0382_role_assignment_source_scope",
+      "breakpoints": true
     }
   ]
 }

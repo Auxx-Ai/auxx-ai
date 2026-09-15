@@ -120,6 +120,10 @@ export function AccountingAccountsSettingsPage() {
   // people are sent to ("map 1100 to a QuickBooks account") - one param per tab,
   // so switching tabs and coming back keeps each side's selection.
   const [roleParam, setSelectedRole] = useQueryState('role')
+  // 🛑 In the URL beside the role, for the reason the role is: "why does Amazon
+  // credit 4003" is a question somebody sends a link about. Null is the role's
+  // own org-wide default, which is the row the parent already shows.
+  const [sourceParam, setSelectedSourceId] = useQueryState('connection')
   const [accountParam, setSelectedAccountId] = useQueryState('account')
   // The phantom draft for the Chart tab. The full field set lives inside the
   // draft form instance (keyed by `draftId`); this page tracks only enough to
@@ -138,7 +142,9 @@ export function AccountingAccountsSettingsPage() {
   // chart pack without going back through the wizard.
   const [addAccountsOpen, setAddAccountsOpen] = useState(false)
 
-  const roleRows = useMemo<RoleAssignmentRow[]>(() => roleMap.data ?? [], [roleMap.data])
+  const roleRows = useMemo<RoleAssignmentRow[]>(() => roleMap.data?.roles ?? [], [roleMap.data])
+  /** Every live connection a scopable role may be pointed at, plus Manual (task 47 §7.4). */
+  const roleSources = useMemo(() => roleMap.data?.sources ?? [], [roleMap.data])
   const accounts = useMemo(() => chart.data ?? [], [chart.data])
 
   const rowsByRole = useMemo(() => new Map(roleRows.map((row) => [row.role, row])), [roleRows])
@@ -157,6 +163,30 @@ export function AccountingAccountsSettingsPage() {
     roleParam && (roleMap.isPending || rowsByRole.has(roleParam as AccountRole))
       ? (roleParam as AccountRole)
       : null
+
+  /**
+   * The selected connection, validated the same way the role is.
+   *
+   * ⚠️ Also dropped when the role it belongs to is gone, and when the connection
+   * is not on that role's AXIS - a `?connection=` naming a Stripe account beside
+   * `?role=revenue_product` is a link that was true for another role, and
+   * honouring it would open an editor the server would refuse to save.
+   */
+  const selectedSource = useMemo(() => {
+    if (!sourceParam || !selectedRole) return null
+    const axis = rowsByRole.get(selectedRole)?.axis
+    const source = roleSources.find((row) => row.id === sourceParam)
+    return source && axis && source.axes.includes(axis) ? source : null
+  }, [sourceParam, selectedRole, rowsByRole, roleSources])
+
+  /** Selecting a role clears the connection unless one is named in the same act. */
+  const handleSelectRole = useCallback(
+    (role: AccountRole | null, sourceAccountId?: string | null) => {
+      void setSelectedRole(role)
+      void setSelectedSourceId(sourceAccountId ?? null)
+    },
+    [setSelectedRole, setSelectedSourceId]
+  )
 
   const isDraftSelected =
     !!chartDraft && (accountParam === chartDraft.draftId || accountParam === chartDraft.recordId)
@@ -222,10 +252,24 @@ export function AccountingAccountsSettingsPage() {
     },
   })
 
-  function handleAssignRole(role: AccountRole, accountId: string) {
+  function handleAssignRole(role: AccountRole, accountId: string, sourceAccountId?: string | null) {
     // Picking an account is what turns a suggestion into a confirmation; that is
     // the whole point of `G19` step 4. The server stamps `confirmedAt`.
-    setRole.mutate({ role, glAccountId: accountId })
+    //
+    // A `sourceAccountId` scopes the edit to one connection (task 47 §7.3);
+    // without one this is the org-wide default, which is what it always was.
+    setRole.mutate({ role, glAccountId: accountId, sourceAccountId: sourceAccountId ?? null })
+  }
+
+  /**
+   * Give one connection's override back, so it follows the org default again.
+   *
+   * 🛑 A DELETE on the server, not a write of the default's account id.
+   * Inheriting is the ABSENCE of a row - an override copied from the default
+   * would silently stop following it the next time somebody repointed the role.
+   */
+  function handleUseDefault(role: AccountRole, sourceAccountId: string) {
+    setRole.mutate({ role, sourceAccountId, useDefault: true })
   }
 
   /**
@@ -560,11 +604,13 @@ export function AccountingAccountsSettingsPage() {
       <RoleMapEditor
         role={selectedRole}
         assignment={selectedRole ? rowsByRole.get(selectedRole) : undefined}
+        source={selectedSource}
         accounts={accounts}
         accountsLoading={chart.isPending}
         pending={setRole.isPending}
         onAssign={handleAssignRole}
         onToggleUnused={handleToggleUnused}
+        onUseDefault={handleUseDefault}
         canControl={canControl}
       />
     ) : (
@@ -603,20 +649,23 @@ export function AccountingAccountsSettingsPage() {
         paneTitle={activeTab === 'roles' ? 'Map role' : 'Account'}
         paneOpen={!!selectedId}
         onPaneClose={() => {
-          setSelectedRole(null)
+          handleSelectRole(null)
           handleSelectAccount(null)
         }}>
         {activeTab === 'roles' ? (
           <RoleMapList
             rows={roleRows}
+            sources={roleSources}
             // 🛑 Gate on the query, never on an empty array. Every role
             // reading "Not mapped - every preview refuses until this is set"
             // is a CLAIM about the org, and rendering it mid-load makes it a
             // false one.
             isLoading={roleMap.isPending}
             selectedRole={selectedRole}
-            onSelect={setSelectedRole}
+            selectedSourceId={selectedSource?.id ?? null}
+            onSelect={handleSelectRole}
             onToggleUnused={handleToggleUnused}
+            onUseDefault={handleUseDefault}
             onAddAccounts={() => setAddAccountsOpen(true)}
             canControl={canControl}
           />

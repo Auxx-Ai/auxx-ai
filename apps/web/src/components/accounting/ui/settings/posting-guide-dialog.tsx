@@ -78,7 +78,7 @@ export function PostingGuideDialog({
   const roleMap = api.ledger.roleMap.useQuery(undefined, { enabled: open })
   const accountsByRole = useMemo(() => {
     const map = new Map<string, RoleAssignmentRow>()
-    for (const row of roleMap.data ?? []) map.set(row.role, row)
+    for (const row of roleMap.data?.roles ?? []) map.set(row.role, row)
     return map
   }, [roleMap.data])
 

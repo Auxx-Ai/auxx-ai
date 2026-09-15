@@ -37,10 +37,13 @@
 import {
   ACCOUNT_ROLE_LABELS,
   type AccountRole,
+  describeUnscopedSources,
   type GlAccountTypeValue,
   ROLE_ACCOUNT_TYPES,
   type RoleAssignmentRow,
+  type RoleSourceRow,
 } from '@auxx/lib/postings/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
@@ -48,7 +51,7 @@ import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { Ban, Coins, Pencil, Plus, RotateCcw, Sparkles } from 'lucide-react'
+import { Ban, Coins, Pencil, Plus, RotateCcw, Sparkles, Store } from 'lucide-react'
 import { useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { AccountLabel } from '../account-label'
@@ -56,11 +59,20 @@ import { ACCOUNT_TYPE_OPTIONS, accountTypeIcon, formatAccount } from './accounts
 
 interface RoleMapListProps {
   rows: RoleAssignmentRow[]
+  /**
+   * Every live connection the org sells or settles through, plus Manual
+   * (task 47 §7.4). A role expands to the ones on ITS axis only.
+   */
+  sources: RoleSourceRow[]
   /** True while `ledger.roleMap` is in flight. */
   isLoading: boolean
   selectedRole: AccountRole | null
-  onSelect: (role: AccountRole) => void
+  /** Which connection's row is selected, or null for the role's own default. */
+  selectedSourceId: string | null
+  onSelect: (role: AccountRole, sourceAccountId?: string | null) => void
   onToggleUnused: (role: AccountRole) => void
+  /** Drop a connection's override so it follows the default again. */
+  onUseDefault: (role: AccountRole, sourceAccountId: string) => void
   /** Opens `chart-packs-dialog.tsx` (brief 16 §3.2). */
   onAddAccounts: () => void
   /** `PermissionKey.ledgerControl`. False hides the inline "Change account" /
@@ -71,14 +83,25 @@ interface RoleMapListProps {
 
 export function RoleMapList({
   rows,
+  sources,
   isLoading,
   selectedRole,
+  selectedSourceId,
   onSelect,
   onToggleUnused,
+  onUseDefault,
   onAddAccounts,
   canControl,
 }: RoleMapListProps) {
   const [search, setSearch] = useState('')
+  // Which scopable roles are expanded. Collapsed is the default and stays that
+  // way: four scopable roles x (Manual + N connections) is sixteen child rows on
+  // three stores, and the role map's job on open is still the checklist.
+  const [expandedRoles, setExpandedRoles] = useState<string[]>([])
+  const toggleRole = (role: string) =>
+    setExpandedRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
+    )
   // Collapsed groups by statement type. Open is the default: a role that needs
   // an account is the whole point of this screen, and a group that starts shut
   // hides the "Not mapped" badge the list exists to surface.
@@ -115,6 +138,19 @@ export function RoleMapList({
       })
     : rows
 
+  // The half-split state, in words (task 47 §8). Computed off the two lists the
+  // page already holds, so it costs no read.
+  const unscoped = describeUnscopedSources(
+    rows.map((row) => ({
+      role: row.role,
+      label: ACCOUNT_ROLE_LABELS[row.role as AccountRole] ?? row.role,
+      axis: row.axis,
+      accountLabel: row.account ? formatAccount(row.account) : null,
+      overrides: row.overrides.map((o) => o.sourceAccountId),
+    })),
+    sources
+  )
+
   return (
     <div className='flex flex-col gap-4 p-3'>
       {/* The Chart tab's toolbar exactly: search fills the row, the one button
@@ -134,6 +170,27 @@ export function RoleMapList({
           </Button>
         )}
       </div>
+
+      {/* ⚠️ A WARNING, never a block (task 47 §8, decision D6). It fires only
+          once a role has been split and a connection was left behind, so an org
+          that scopes nothing never sees it - a sentence on every row of a
+          finished setup is how the sentences that matter become wallpaper. */}
+      {unscoped.length > 0 && (
+        <Alert variant='warning'>
+          <AlertTitle>
+            {unscoped.length === 1
+              ? 'One connection is using a shared account'
+              : `${unscoped.length} connections are using a shared account`}
+          </AlertTitle>
+          <AlertDescription>
+            <ul className='flex list-disc flex-col gap-1 pl-4'>
+              {unscoped.map((warning) => (
+                <li key={`${warning.role}:${warning.sourceId}`}>{warning.message}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* 🛑 Gate on the SEARCH, not on the row count. An empty result from a
           search and an org with no roles are different answers, and the second
@@ -185,9 +242,14 @@ export function RoleMapList({
                 renderRow={(row: RoleAssignmentRow) => (
                   <RoleRow
                     row={row}
+                    sources={sources}
                     selected={selectedRole === row.role}
+                    selectedSourceId={selectedRole === row.role ? selectedSourceId : null}
+                    isOpen={expandedRoles.includes(row.role)}
+                    onToggleOpen={() => toggleRole(row.role)}
                     onSelect={onSelect}
                     onToggleUnused={onToggleUnused}
+                    onUseDefault={onUseDefault}
                     canControl={canControl}
                   />
                 )}
@@ -202,19 +264,37 @@ export function RoleMapList({
 
 function RoleRow({
   row,
+  sources,
   selected,
+  selectedSourceId,
+  isOpen,
+  onToggleOpen,
   onSelect,
   onToggleUnused,
+  onUseDefault,
   canControl,
 }: {
   row: RoleAssignmentRow
+  sources: RoleSourceRow[]
   selected: boolean
-  onSelect: (role: AccountRole) => void
+  selectedSourceId: string | null
+  isOpen: boolean
+  onToggleOpen: () => void
+  onSelect: (role: AccountRole, sourceAccountId?: string | null) => void
   onToggleUnused: (role: AccountRole) => void
+  onUseDefault: (role: AccountRole, sourceAccountId: string) => void
   canControl: boolean
 }) {
   const role = row.role as AccountRole
   const Icon = accountTypeIcon(ROLE_ACCOUNT_TYPES[role])
+
+  // 🛑 A role expands to the connections on ITS axis only (task 47 §7.4).
+  // Listing every connection under every role would offer a bookkeeper a Stripe
+  // account to book product revenue to. A role with no axis is not scopable and
+  // gets no chevron at all - the affordance is what does the explaining.
+  const scopedSources = row.axis ? sources.filter((s) => s.axes.includes(row.axis!)) : []
+  const expandable = scopedSources.length > 0 && row.state !== 'unused'
+  const overridesBySource = new Map(row.overrides.map((o) => [o.sourceAccountId, o]))
 
   return (
     <TreeRow
@@ -222,10 +302,19 @@ function RoleRow({
       icon={<Icon className='size-4 text-muted-foreground' />}
       title={ACCOUNT_ROLE_LABELS[role] ?? row.role}
       secondaryFill
-      onToggleOpen={() => onSelect(role)}
+      // 🛑 Select and expand are two gestures on one row, so they need two
+      // handlers. `chevronOnHover` puts a dedicated chevron in the icon slot
+      // that stops the bubble, and `onRowClick` takes precedence over
+      // `onToggleOpen` for the body - so the chevron expands and the row still
+      // selects, which is what it has always done.
+      expandable={expandable}
+      chevronOnHover={expandable}
+      isOpen={isOpen}
+      onToggleOpen={onToggleOpen}
+      onRowClick={() => onSelect(role)}
       rowClassName={cn(
         'bg-primary-100/50 hover:bg-primary-100',
-        selected && 'bg-primary-100 ring-1 ring-primary-200',
+        selected && !selectedSourceId && 'bg-primary-100 ring-1 ring-primary-200',
         row.state === 'unused' && 'opacity-60'
       )}
       secondary={<AssignmentSecondary row={row} />}
@@ -260,6 +349,105 @@ function RoleRow({
             )}
           </div>
         )
+      }>
+      {/* ⚠️ EVERY connection on the axis gets a row, including the ones that
+          inherit. A store nobody has configured must be VISIBLE rather than
+          absent - "Amazon US is using 4000 Product Revenue" is the fact this
+          level exists to surface, and a list of only the overrides could never
+          state it. */}
+      {scopedSources.map((source) => (
+        <SourceRow
+          key={source.id}
+          role={role}
+          source={source}
+          override={overridesBySource.get(source.id)}
+          fallback={row.account}
+          selected={selectedSourceId === source.id}
+          onSelect={onSelect}
+          onUseDefault={onUseDefault}
+          canControl={canControl}
+        />
+      ))}
+    </TreeRow>
+  )
+}
+
+/**
+ * One connection under one role: its own account, or the default it inherits.
+ *
+ * ⚠️ There is no "Mark unused" here and there never will be. "We do not sell
+ * shipping" is a fact about the BUSINESS, not about one store, so the affordance
+ * stays on the role (task 47 §7.1). `↺` appears only on a real override, because
+ * "go back to the default" is meaningless on a row that is already following it.
+ */
+function SourceRow({
+  role,
+  source,
+  override,
+  fallback,
+  selected,
+  onSelect,
+  onUseDefault,
+  canControl,
+}: {
+  role: AccountRole
+  source: RoleSourceRow
+  override: RoleAssignmentRow['overrides'][number] | undefined
+  /** The role's own account - what this connection posts to without an override. */
+  fallback: RoleAssignmentRow['account']
+  selected: boolean
+  onSelect: (role: AccountRole, sourceAccountId?: string | null) => void
+  onUseDefault: (role: AccountRole, sourceAccountId: string) => void
+  canControl: boolean
+}) {
+  return (
+    <TreeRow
+      depth={2}
+      icon={<Store className='size-4 text-muted-foreground' />}
+      title={source.name}
+      secondaryFill
+      onToggleOpen={() => onSelect(role, source.id)}
+      rowClassName={cn(selected && 'bg-primary-100 ring-1 ring-primary-200')}
+      secondary={
+        override ? (
+          override.account ? (
+            <AccountLabel
+              account={override.account}
+              density='compact'
+              className='text-muted-foreground text-xs'
+            />
+          ) : (
+            <span className='flex items-center gap-1.5 text-xs'>
+              <Tooltip content='The account this connection names is archived or gone. Pick another.'>
+                <div className='p-[1px]'>
+                  <Badge variant='destructive' size='xs'>
+                    Account missing
+                  </Badge>
+                </div>
+              </Tooltip>
+            </span>
+          )
+        ) : (
+          <span className='truncate text-muted-foreground text-xs'>
+            {fallback ? `Uses ${formatAccount(fallback)}` : 'Uses the default account'}
+          </span>
+        )
+      }
+      actions={
+        canControl && (
+          <div className='flex items-center gap-1'>
+            <TreeRowButton tooltipText='Change account' onClick={() => onSelect(role, source.id)}>
+              <Pencil />
+            </TreeRowButton>
+            {override && (
+              <TreeRowButton
+                tooltipText='Use the default account'
+                onClick={() => onUseDefault(role, source.id)}>
+                <RotateCcw />
+              </TreeRowButton>
+            )}
+          </div>
+        )
       }
     />
   )
@@ -278,6 +466,20 @@ function RoleRow({
  * is the repair `resolveRoles` would otherwise refuse a close over.
  */
 function AssignmentSecondary({ row }: { row: RoleAssignmentRow }) {
+  // ⚠️ The collapsed parent advertises the split with a count, so a role whose
+  // stores disagree does not read as a single answer. It goes in the `secondary`
+  // slot as a `Badge`: this file's own header warns that slot off SENTENCES,
+  // because it turns truncation into a wide row - a badge is the shape it
+  // permits.
+  const overrides = row.overrides.length > 0 && (
+    <Tooltip content={`${row.overrides.length} connection(s) post to an account of their own`}>
+      <div className='p-[1px]'>
+        <Badge variant='outline' size='xs'>
+          {row.overrides.length} override{row.overrides.length === 1 ? '' : 's'}
+        </Badge>
+      </div>
+    </Tooltip>
+  )
   // 🛑 EVERY state's consequence lives in its badge's tooltip, never beside it.
   // The badge already says the state and its colour already says the severity;
   // what a badge cannot carry is WHY, which is what a tooltip is for. Spelling
@@ -300,6 +502,7 @@ function AssignmentSecondary({ row }: { row: RoleAssignmentRow }) {
             </Badge>
           </div>
         </Tooltip>
+        {overrides}
       </span>
     )
   }
@@ -314,6 +517,7 @@ function AssignmentSecondary({ row }: { row: RoleAssignmentRow }) {
             </Badge>
           </div>
         </Tooltip>
+        {overrides}
       </span>
     )
   }
@@ -328,6 +532,7 @@ function AssignmentSecondary({ row }: { row: RoleAssignmentRow }) {
             </Badge>
           </div>
         </Tooltip>
+        {overrides}
       </span>
     )
   }
@@ -344,15 +549,19 @@ function AssignmentSecondary({ row }: { row: RoleAssignmentRow }) {
           density='compact'
           className='text-amber-700 dark:text-amber-400'
         />
+        {overrides}
       </span>
     )
   }
 
   return (
-    <AccountLabel
-      account={row.account}
-      density='compact'
-      className='text-muted-foreground text-xs'
-    />
+    <span className='flex min-w-0 items-center gap-1.5 text-xs'>
+      <AccountLabel
+        account={row.account}
+        density='compact'
+        className='min-w-0 text-muted-foreground text-xs'
+      />
+      {overrides}
+    </span>
   )
 }

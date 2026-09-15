@@ -272,6 +272,12 @@ describe('the netting read', () => {
         amountRefundedMinor: 10_000,
         contactId: 'ct_1',
         orderId: 'ord_1',
+        // Task 47 §5. The order names no live source account in this fixture, so
+        // the memo reads as having no connected source and its contra-revenue
+        // resolves through the MANUAL bucket - the same branch the fulfillment
+        // path takes for the same order. `undefined` would mean something else
+        // ("not resolved"), and only a memo with no order at all gets that.
+        sourceStoreId: null,
         reverseRevenue: true,
       } satisfies UnpostedCreditMemo,
     ])

@@ -37,6 +37,7 @@ import {
   listPostings,
   listPostingsForSource,
   listRoleMap,
+  listRoleSources,
   mintRailAccounts,
   POSTING_TYPES,
   postEntry,
@@ -576,9 +577,17 @@ export const ledgerRouter = createTRPCRouter({
    * could never show what is missing.
    */
   roleMap: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
-    const result = await listRoleMap(ctx.db, ctx.session.organizationId)
+    const { organizationId } = ctx.session
+    const [result, sources] = await Promise.all([
+      listRoleMap(ctx.db, organizationId),
+      // The connections a scopable role may be pointed at (task 47 §7.4). On the
+      // same read as the roles because the tree renders them together, and a
+      // second round trip would let the two arrive out of step - a role showing
+      // an override for a connection the picker has not heard of yet.
+      listRoleSources(ctx.db, organizationId),
+    ])
     if (result.isErr()) throw result.error
-    return result.value
+    return { roles: result.value, sources }
   }),
 
   /**
@@ -595,6 +604,15 @@ export const ledgerRouter = createTRPCRouter({
         role: z.enum(Object.values(ACCOUNT_ROLES) as [string, ...string[]]),
         glAccountId: z.string().min(1).nullish(),
         markedUnused: z.boolean().optional(),
+        /**
+         * Scope this edit to one connection (task 47 §7.3). Every refusal that
+         * belongs to it - a role that cannot be scoped, a connection that is not
+         * this org's, a revenue role pointed at a merchant account - is
+         * `setRoleAssignment`'s, and its sentence is what reaches the screen.
+         */
+        sourceAccountId: z.string().min(1).nullish(),
+        /** Drop this connection's override so it follows the default again. */
+        useDefault: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -605,6 +623,8 @@ export const ledgerRouter = createTRPCRouter({
         role: input.role,
         glAccountId: input.glAccountId,
         markedUnused: input.markedUnused,
+        sourceAccountId: input.sourceAccountId,
+        useDefault: input.useDefault,
         actorUserId: userId,
       })
       if (result.isErr()) throw result.error

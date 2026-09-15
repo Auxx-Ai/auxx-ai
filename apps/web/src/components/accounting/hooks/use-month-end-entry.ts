@@ -85,7 +85,7 @@ export function useMonthEndEntry({
   const roleMapQuery = api.ledger.roleMap.useQuery()
 
   const accountByRole: Partial<Record<AccountRole, { code: string | null; name: string }>> = {}
-  for (const row of roleMapQuery.data ?? []) {
+  for (const row of roleMapQuery.data?.roles ?? []) {
     if (row.account)
       accountByRole[row.role as AccountRole] = { code: row.account.code, name: row.account.name }
   }

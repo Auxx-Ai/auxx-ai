@@ -114,6 +114,18 @@ export interface UnpostedCreditMemo {
   /** The memo's order, if any. Resolves the settlement account. */
   orderId: string | null
   /**
+   * The `FinancialSourceAccount` the memo's ORDER was sold through, so a return
+   * lands in the same store's contra-revenue account its revenue was credited to
+   * (task 47 §4, §5).
+   *
+   * Three values, three meanings: an id is the storefront, `null` is "no
+   * connected source" (the manual bucket), and `undefined` is "not resolved",
+   * which posts to the org default exactly as every memo did before this brief.
+   * Answered by `readOrderSourceScopes`, so this door and the revenue door
+   * cannot come to different conclusions about one order.
+   */
+  sourceStoreId?: string | null
+  /**
    * Whether this memo reverses revenue (§3.1 item 3).
    *
    * Decided by `orderHadFulfillmentBefore` on the READ, not in the planner,
