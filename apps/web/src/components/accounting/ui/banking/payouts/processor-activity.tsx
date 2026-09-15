@@ -5,7 +5,6 @@
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   Table,
   TableBody,
@@ -14,6 +13,9 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
+import { TreeRowSkeleton } from '@auxx/ui/components/tree-row'
+import { Receipt } from 'lucide-react'
+import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'
 import { formatEvidenceAmount, formatEvidenceDate } from './evidence-format'
 
@@ -42,13 +44,21 @@ export function ProcessorActivity({
         </Alert>
       )}
       {query.isPending ? (
-        <Skeleton className='h-28 w-full' />
+        <div className='flex flex-col'>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <TreeRowSkeleton key={i} />
+          ))}
+        </div>
       ) : !query.error && entries.length === 0 ? (
-        <p className='text-sm text-muted-foreground'>
-          {unassignedOnly
-            ? 'No unassigned activity has been imported.'
-            : 'No processor activity has been imported for this payout. Check evidence completeness before treating it as an empty payout.'}
-        </p>
+        <EmptyState
+          icon={Receipt}
+          title={unassignedOnly ? 'No unassigned activity' : 'No processor activity'}
+          description={
+            unassignedOnly
+              ? 'No unassigned activity has been imported.'
+              : 'No processor activity has been imported for this payout. Check evidence completeness before treating it as an empty payout.'
+          }
+        />
       ) : entries.length > 0 ? (
         <Table>
           <TableHeader>

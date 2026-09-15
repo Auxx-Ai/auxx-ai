@@ -2,7 +2,12 @@
 'use client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { Skeleton } from '@auxx/ui/components/skeleton'
+import { CollapsedJson } from '@auxx/ui/components/collapsed-json'
+import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
+import { History } from 'lucide-react'
+import { useState } from 'react'
+import { EmptyState } from '~/components/global/empty-state'
 import { SettingsSection } from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 import { formatEvidenceDate } from './evidence-format'
@@ -14,6 +19,22 @@ export function PayoutSourceHistory({ payoutId }: { payoutId: string }) {
     { getNextPageParam: (page) => page.nextCursor ?? undefined }
   )
   const observations = query.data?.pages.flatMap((page) => page.items) ?? []
+
+  // Each row starts open (its reason/rejections are the point of this list),
+  // and collapsing one is tracked as an exception rather than the default —
+  // so a fresh page of history never needs its own entry here to read as open.
+  const [closedIds, setClosedIds] = useState<ReadonlySet<string>>(new Set())
+  const toggleOpen = (id: string) =>
+    setClosedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+
   return (
     <SettingsSection
       title='Import history'
@@ -24,28 +45,37 @@ export function PayoutSourceHistory({ payoutId }: { payoutId: string }) {
           <AlertDescription>{query.error.message}</AlertDescription>
         </Alert>
       )}
-      {query.isPending ? (
-        <Skeleton className='h-24 w-full' />
-      ) : observations.length === 0 && !query.error ? (
-        <p className='text-muted-foreground text-sm'>No source pages have been imported.</p>
-      ) : null}
-      {observations.map((observation) => (
-        <details key={observation.id} className='border-b pb-3 text-sm'>
-          <summary className='cursor-pointer font-medium'>
-            {formatEvidenceDate(observation.createdAt)} · {observation.entryCount} entries
-            {observation.pageIndex !== null ? ` · Page ${observation.pageIndex + 1}` : ''}
-          </summary>
-          {observation.reason && <p className='mt-2 text-destructive'>{observation.reason}</p>}
-          {observation.rejections.map((rejection) => (
-            <p key={rejection.index} className='mt-2 text-destructive'>
-              Row {rejection.index + 1}: {rejection.reason}
-            </p>
-          ))}
-          <pre className='mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-3 text-xs'>
-            {JSON.stringify(observation.rawEvidence, null, 2)}
-          </pre>
-        </details>
-      ))}
+      {!query.isPending && observations.length === 0 && !query.error ? (
+        <EmptyState icon={History} title='No source pages have been imported' />
+      ) : (
+        <TreeRowList
+          items={observations}
+          loading={query.isPending}
+          skeletonCount={3}
+          getKey={(observation) => observation.id}
+          renderRow={(observation) => (
+            <TreeRow
+              icon={<History className='size-4' />}
+              title={formatEvidenceDate(observation.createdAt)}
+              secondary={`${observation.entryCount} entries${
+                observation.pageIndex !== null ? ` · Page ${observation.pageIndex + 1}` : ''
+              }`}
+              expandable
+              isOpen={!closedIds.has(observation.id)}
+              onToggleOpen={() => toggleOpen(observation.id)}>
+              <div className='flex flex-col gap-2 pt-1 pb-2 ps-6 pe-2 text-sm'>
+                {observation.reason && <p className='text-destructive'>{observation.reason}</p>}
+                {observation.rejections.map((rejection) => (
+                  <p key={rejection.index} className='text-destructive'>
+                    Row {rejection.index + 1}: {rejection.reason}
+                  </p>
+                ))}
+                <CollapsedJson title='Raw evidence' value={observation.rawEvidence} />
+              </div>
+            </TreeRow>
+          )}
+        />
+      )}
       {query.hasNextPage && (
         <Button
           variant='outline'

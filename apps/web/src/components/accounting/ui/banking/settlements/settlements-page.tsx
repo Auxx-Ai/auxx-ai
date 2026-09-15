@@ -1,8 +1,8 @@
-// apps/web/src/components/accounting/ui/banking/payouts/settlement-history.tsx
+// apps/web/src/components/accounting/ui/banking/settlements/settlements-page.tsx
 
 'use client'
 
-// Accounting > Banking > Payouts (HANDOFF §11.5 item 1; brief 27 §8.2, §9).
+// Accounting > Banking > Settlements (brief 49 §1, §7; brief 27 §8.2, §9).
 //
 // ## What this screen is for
 //
@@ -47,6 +47,8 @@
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
+import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { StatCards } from '@auxx/ui/components/stat-card'
 import { TreeRow } from '@auxx/ui/components/tree-row'
@@ -65,7 +67,7 @@ import { RailStrip } from './rail-strip'
 const BREADCRUMBS = [
   { title: 'Accounting', href: '/app/accounting' },
   { title: 'Banking' },
-  { title: 'Payouts' },
+  { title: 'Settlements' },
 ]
 
 const PAGE_DESCRIPTION =
@@ -89,7 +91,7 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 /** Inspect settlements recorded through the existing payout workflow. */
-export function SettlementHistory({ onEvidence }: { onEvidence: () => void }) {
+export function SettlementsPage() {
   const { can } = useAccess()
   useRequireCapability(PermissionKey.ledgerView)
 
@@ -103,17 +105,16 @@ export function SettlementHistory({ onEvidence }: { onEvidence: () => void }) {
     ...(onlyUnidentified ? { onlyUnidentified: true } : {}),
     limit: 200,
   })
-  // The gateway named on the row's `secondary` (brief 18 §1.1 b). Payout
-  // ingestion is Stripe Connect only today (HANDOFF §0.3), so the settlement
-  // source is what picks the row rather than a field on the payout itself;
-  // 'Stripe' is the fallback for an org with no gateway record yet.
+  // The gateway named on the row's `secondary` (brief 18 §1.1 b), attributed
+  // per row through the payout's own `paymentGatewayId` (brief 27 unit 1;
+  // brief 49 §7.1) rather than a single org-wide rail. An org running two
+  // rails - or Shopify Payments instead of Stripe - reads its own name per
+  // row, not one name repeated down the column.
   const gatewaysQuery = api.paymentGateway.list.useQuery()
-  const stripeGatewayName = useMemo(() => {
-    const stripeGateway = (gatewaysQuery.data ?? []).find(
-      (gateway) => gateway.settlementSource === 'stripe'
-    )
-    return stripeGateway?.name ?? 'Stripe'
-  }, [gatewaysQuery.data])
+  const gatewayById = useMemo(
+    () => new Map((gatewaysQuery.data ?? []).map((gateway) => [gateway.id, gateway])),
+    [gatewaysQuery.data]
+  )
   const utils = api.useUtils()
   const syncNow = api.money.payout.syncNow.useMutation({
     onSuccess: () => {
@@ -155,21 +156,11 @@ export function SettlementHistory({ onEvidence }: { onEvidence: () => void }) {
 
   return (
     <SettingsPage
-      title='Settlement history'
+      title='Settlements'
       description={PAGE_DESCRIPTION}
       breadcrumbs={BREADCRUMBS}
       button={
         <div className='flex flex-wrap items-center gap-2'>
-          <Button variant='outline' size='sm' onClick={onEvidence}>
-            Payout evidence
-          </Button>
-          <Button
-            variant={onlyUnidentified ? 'default' : 'outline'}
-            size='sm'
-            onClick={() => void setOnlyUnidentified(!onlyUnidentified)}>
-            <CircleHelp />
-            Unidentified only
-          </Button>
           {can(PermissionKey.ledgerPost) && (
             <Button
               variant='outline'
@@ -235,6 +226,28 @@ export function SettlementHistory({ onEvidence }: { onEvidence: () => void }) {
 
         {blockers.length > 0 && <EntryBlockers blockers={blockers} />}
 
+        {/* Brief 49 §7.3: a filter narrows the list, so it lives in a
+            `ListToolbar` above it, not beside "Sync settlements" in the page
+            action slot - that button changes the data, this one doesn't.
+            `sticky={false}`: Settlements has no inner scroll frame (§1), so a
+            sticky row here would pin against the `SettingsPage` header instead
+            of a list viewport, the same call `review-toolbar.tsx` and
+            `entries-list.tsx` make for the identical shape. */}
+        <ListToolbar sticky={false}>
+          <ListToolbarGroup className='shrink-0'>
+            <RadioTab
+              value={onlyUnidentified ? 'unidentified' : 'all'}
+              onValueChange={(value) => void setOnlyUnidentified(value === 'unidentified')}
+              size='sm'>
+              <RadioTabItem value='all'>All payouts</RadioTabItem>
+              <RadioTabItem value='unidentified'>
+                <CircleHelp />
+                Unidentified
+              </RadioTabItem>
+            </RadioTab>
+          </ListToolbarGroup>
+        </ListToolbar>
+
         {payoutsQuery.isPending ? (
           <div className='flex flex-col gap-2'>
             <Skeleton className='h-10 w-full' />
@@ -255,54 +268,77 @@ export function SettlementHistory({ onEvidence }: { onEvidence: () => void }) {
           <TreeRowList
             items={payouts}
             getKey={(payout) => payout.payoutId}
-            renderRow={(payout) => (
-              <div className='flex flex-col gap-1.5'>
-                <TreeRow
-                  title={payout.number ?? EMPTY_CELL}
-                  secondary={`${stripeGatewayName} · ${payout.paidAt ?? 'Not settled yet'}`}
-                  icon={<Landmark />}
-                  trailing={
-                    <div className='flex items-center gap-3'>
-                      {payout.unrecognisedNetMinor > 0 && (
-                        <Badge variant='outline' size='sm'>
-                          {formatMinor(payout.unrecognisedNetMinor, DISPLAY_CURRENCY)} unidentified
-                          {payout.unrecognisedCount > 0 ? ` (${payout.unrecognisedCount})` : ''}
+            renderRow={(payout) => {
+              // 🛑 Brief 49 §7.1: fail closed on a null `paymentGatewayId`. That
+              // payout is unrouted - raised before the pointer existed, or by a
+              // rail no gateway record claims - and saying "Stripe" over it is
+              // the defect, not the fallback. `EMPTY_CELL`'s em-dash is the
+              // codebase's generic "no value" glyph and would read as missing
+              // data here, not as the finding it actually is - a payout with no
+              // rail at all - so this says it in a word instead.
+              const rail = payout.paymentGatewayId
+                ? gatewayById.get(payout.paymentGatewayId)
+                : undefined
+              const railName = rail?.name ?? 'Unrouted'
+              return (
+                <div className='flex flex-col gap-1.5'>
+                  <TreeRow
+                    title={payout.number ?? EMPTY_CELL}
+                    secondary={`${railName} · ${payout.paidAt ?? 'Not settled yet'}`}
+                    icon={<Landmark />}
+                    trailing={
+                      <div className='flex items-center gap-3'>
+                        {/* Brief 49 §7.2: an `imported` payout has no itemisation,
+                          so its structural zero in `unrecognisedNetMinor` means
+                          "nothing to split", never "everything recognised" -
+                          27-a §4 rule 2's own wording. */}
+                        {payout.source === 'imported' && (
+                          <Badge variant='outline' size='sm'>
+                            No itemisation
+                          </Badge>
+                        )}
+                        {payout.unrecognisedNetMinor > 0 && (
+                          <Badge variant='outline' size='sm'>
+                            {formatMinor(payout.unrecognisedNetMinor, DISPLAY_CURRENCY)}{' '}
+                            unidentified
+                            {payout.unrecognisedCount > 0 ? ` (${payout.unrecognisedCount})` : ''}
+                          </Badge>
+                        )}
+                        <span className='font-mono text-sm tabular-nums'>
+                          {formatMinor(payout.depositedMinor, DISPLAY_CURRENCY)}
+                        </span>
+                        <Badge variant={STATUS_TONE[payout.status] ?? 'secondary'} size='sm'>
+                          {STATUS_LABEL[payout.status] ?? payout.status}
                         </Badge>
-                      )}
-                      <span className='font-mono text-sm tabular-nums'>
-                        {formatMinor(payout.depositedMinor, DISPLAY_CURRENCY)}
-                      </span>
-                      <Badge variant={STATUS_TONE[payout.status] ?? 'secondary'} size='sm'>
-                        {STATUS_LABEL[payout.status] ?? payout.status}
-                      </Badge>
-                      {/* 🛑 Brief 18 §1: a `paid` payout with no bank line is a
+                        {/* 🛑 Brief 18 §1: a `paid` payout with no bank line is a
                           real signal - either the deposit has not landed or
                           somebody coded it by hand instead of matching it. */}
-                      {payout.bankTransactionId ? (
-                        <Badge variant='green' size='sm'>
-                          matched
-                        </Badge>
-                      ) : (
-                        payout.status === 'paid' && (
-                          <Badge variant='outline' size='sm'>
-                            unmatched
+                        {payout.bankTransactionId ? (
+                          <Badge variant='green' size='sm'>
+                            matched
                           </Badge>
-                        )
-                      )}
-                    </div>
-                  }
-                />
-                {/* 🛑 Brief 13 §2.3: a payout debits a bank account, not a role, and
+                        ) : (
+                          payout.status === 'paid' && (
+                            <Badge variant='outline' size='sm'>
+                              unmatched
+                            </Badge>
+                          )
+                        )}
+                      </div>
+                    }
+                  />
+                  {/* 🛑 Brief 13 §2.3: a payout debits a bank account, not a role, and
                     refuses to post until its Stripe destination is confirmed on
                     one. `bank_account_unmapped` is the same shape the deposit's
                     own unmapped-account refusal uses (`deposits-page.tsx`). */}
-                {payout.blockedReason && (
-                  <EntryBlockers
-                    blockers={[{ status: 'bank_account_unmapped', error: payout.blockedReason }]}
-                  />
-                )}
-              </div>
-            )}
+                  {payout.blockedReason && (
+                    <EntryBlockers
+                      blockers={[{ status: 'bank_account_unmapped', error: payout.blockedReason }]}
+                    />
+                  )}
+                </div>
+              )
+            }}
           />
         )}
       </div>
