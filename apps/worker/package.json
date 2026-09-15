@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsdown",
     "start": "node --env-file ../../.env --env-file .env dist/server.mjs",
-    "dev": "node --conditions source --env-file ../../.env --env-file .env --import tsx/esm --watch src/server.ts",
+    "dev": "node --conditions source --env-file ../../.env --env-file .env --import tsx/esm --watch --watch-path=src --watch-path=../../packages/lib/src --watch-path=../../packages/database/src --watch-path=../../packages/services/src --watch-path=../../packages/credentials/src --watch-path=../../packages/email/src --watch-path=../../packages/billing/src src/server.ts",
     "tc": "tsc --noEmit",
     "clean": "rm -rf node_modules dist .turbo"
   },

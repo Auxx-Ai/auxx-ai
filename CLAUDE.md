@@ -227,171 +227,41 @@ Short version: exported `async function`s with `db` first (no service classes),
 reads and writes in separate files, explicit named exports, and zero access
 checks in lib — the router asserts and list scopes are applied in SQL.
 
-## Agents, Procedures & Evals
+## Architecture Guides
 
-**Before touching an agent's persona, toolsets, knowledge scope, triggers,
-permissions, procedures, or evals, read `docs/agents-architecture-guide.md`.**
-It documents the draft-row-vs-`AgentVersion` model (the `Agent` row IS the
-draft — there is no `draftVersionId`), the versioned six behavior fields, the
-prompt-section registry and its stability tiers, the compiled procedure step
-tree + selection/stepper contract, the tool filter chain through
-`buildEffectiveAgentRuntime`, the published permission policy and its
-`policy ∩ run-as ∩ invoker` run-time intersection, and the eval
-case/run/suite model.
+Each guide below is the controlling reference for its subsystem and encodes
+invariants that are not obvious from the code. **Read the guide before you touch
+the area**, not after review catches it.
 
-Short version: behavior and authorization are versioned together and always
-resolved from the same view (`active` vs `draft` — never mixed); production
-never reads the mutable draft row or the live permission profile; procedure
-frames pin a `procedureVersionId` for the whole run; `buildEffectiveAgentRuntime`
-is the single construction site for production, builder, chat, and eval
-runtimes. `docs/kopilot-architecture-guide.md` covers the engine underneath.
+| Read it before touching | Guide |
+| --- | --- |
+| Agent persona, toolsets, knowledge scope, triggers, permissions, procedures, evals | `docs/agents-architecture-guide.md` |
+| The Kopilot engine underneath agents: turn loop, page-scoped tools, `auxx:*` fences | `docs/kopilot-architecture-guide.md` |
+| Channels, inboxes, threads/messages, mail sync, any path that reads mail | `docs/channels-mail-architecture-guide.md` |
+| Mined mail suggestions, bulk-sender columns, proposed filter conditions, unsubscribe | `docs/mail-suggestions-architecture-guide.md` |
+| Relationship fields in the registry, owned child defs, `deleteEntity`/`bulkDeleteEntities`, pre-delete hooks | `docs/record-delete-architecture-guide.md` |
+| Upload routes and handlers, `StorageManager`, storage adapters, `MediaAsset`/`FolderFile`/`Attachment`/`StorageLocation`, thumbnail and cleanup jobs, the uploader UI | `docs/files-upload-architecture-guide.md` |
+| Purchase orders, vendor bills, the three-way match, receiving, `stock_movement`, builds, standard cost, QoH, GL postings | `docs/inventory-costing-architecture-guide.md` |
+| Workflow node schemas, output variables, the engine's preprocess/execute contract, draft mutations, Kopilot graph edits | `docs/core-workflow-architecture-guide.md` |
+| Workflow blocks contributed by **installed apps** (a different subsystem from the row above) | `docs/workflow-architecture-guide.md` |
+| Records, custom fields, field values, field resolution and rendering | `docs/entity-architecture-guide.md` |
+| Record rules, entity events, dispatch doors, `skipEvents` | `docs/entity-events-architecture-guide.md`, `docs/skip-events-history.md` |
+| Quick actions and the action catalog | `docs/actions-architecture-guide.md` |
+| OAuth connections, credentials, provider clients | `docs/connections-architecture-guide.md` |
+| `DataConnector` sync (Shopify, REST/JSON, apps), the sync engine, mapping, the entity sink | `docs/data-connectors-architecture-guide.md` |
+| Duplicate record detection | `docs/duplicate-detection-architecture-guide.md` |
+| Knowledge base authoring, the public reader site, article embeddings | `docs/knowledge-base-architecture-guide.md` |
+| `KnowledgeSource` ingestion, crawling, embedding for retrieval | `docs/knowledge-sources-architecture-guide.md` |
+| Live browser updates: field values, records, mail, presence, chat widget | `docs/realtime-architecture-guide.md` |
+| The Today suggestion/approvals triage lane | `docs/today-architecture-guide.md` |
+| A module in `packages/lib/src/<feature>/` | `docs/lib-module-guide.md` |
+| Settings pages, detail pages, dialogs, tree lists | `docs/ui-design-guide.md` |
+| Installed-app runtime, app fields and entities, app implementation | `docs/app-runtime-loading-v1.md`, `docs/app-fields-and-entities-guide.md`, `docs/app-implementation-template-v3.md` |
+| Deploys, prod logs, infra debugging | `docs/ops-reference.md`, `docs/log-history.md`, `docs/deploy.md`, `docs/disaster-recovery.md` |
 
-## Channels & Mail
-
-**Before touching channels, inboxes, threads/messages, mail sync, or anything
-that reads mail, read `docs/channels-mail-architecture-guide.md`.** It documents
-that a "channel" IS the `Integration` row (there is no `Channel` table), the
-three inbound doors (webhook push, two-phase polling, SES forwarding) and how
-they converge on one ingest path, the thread-resolution ladder, the outbound
-composer→sender→reconciler path, and the four-rung **mail lens**.
-
-Short version: an inbox is an `EntityInstance` on either the `inbox` (shared) or
-`personal_inbox` def, and one channel links to exactly one inbox; visibility is
-`none < metadata < identity < read` derived per viewer — **never gate mail on
-admin rank**; every list path must apply `buildMailVisibilityPredicate`, and its
-answer must match `getThreadLens`'s for the same thread; channel manage-authority
-is per-channel (`requireChannelManageAccess`), not the coarse `channelsManage`
-key; ingest must never throw and disconnect is a soft delete, so every channel
-query needs `isNull(Integration.deletedAt)`.
-
-## Mail Suggestions & Unsubscribe
-
-**Before touching mined mail suggestions, the bulk-sender columns derived at
-ingest, proposed filter conditions, or unsubscribe, read
-`docs/mail-suggestions-architecture-guide.md`.** It documents the two producers
-(seeded `templateKey` starters vs mined, evidence-carrying `MailSuggestion`
-rows), the `list:`/`domain:` **`subjectKey` keyspace defined once** in
-`mail-suggestions/client.ts`, the weekly miner's thresholds and four suppression
-rules, and the three unsubscribe tiers with their safety gate.
-
-Short version: `proposedConditions` are validated with
-`assertFilterConditionsCompile` **when the job writes the row**, because an
-all-dropped condition set reduces to the bare org scope and matches every thread
-in the inbox; unsubscribe is a one-shot command, never a `MailFilterAction`, is
-gated on inbox write alone (not `automationRules.manage`), treats
-`senderAuthenticated IS NULL` as *not* authenticated, and must never be recorded
-as `contact:unsubscribed`; dismissal is a status write, never a delete.
-
-## Record Deletes & Relationship Ownership
-
-**Before adding a relationship field to the registry, adding an owned child
-def, or touching `deleteEntity` / `bulkDeleteEntities` or a pre-delete hook,
-read `docs/record-delete-architecture-guide.md`.** It documents the
-`onDelete: 'cascade' | 'unlink' | 'restrict'` declaration on the has_many side,
-which edges may not declare it (table-backed defs and `dbColumn` parents), the
-three-phase engine (collect the closure, refuse over the whole closure, write
-survivors deepest first), and the short list of guards that stay imperative.
-
-Short version: a relationship is two mirror `FieldValue` rows and nothing in the
-database cascades, so the has_many field declares the answer and the engine
-executes it set-based; a `belongs_to` never declares anything; the engine reads
-the **stored** `CustomField.options.relationship.onDelete`, so a registry edit
-needs an entity migration stamp to reach existing orgs; a pre-delete hook is
-only for a refusal the enum cannot express (settled period, status, a Drizzle
-table, a permission) and never cascades by hand; post-delete hooks do not fire
-for cascaded records; the coverage test in
-`resources/registry/__tests__/relationship-on-delete.test.ts` fails when a new
-owned child is added without a declaration.
-
-## Files, Uploads & Storage
-
-**Before touching the upload routes, the upload handler records, `StorageManager`,
-the adapters, `MediaAsset`/`FolderFile`/`Attachment`/`StorageLocation`, the
-thumbnail or cleanup jobs, or the front-end uploader, read
-`docs/files-upload-architecture-guide.md`.** It documents the three-round-trip
-presigned browser flow, the `EntityType` → handler dispatch, the five tables a
-file actually occupies, the two parallel upload doors that bypass the main path,
-and the read paths. §11 records what was fixed and when; **§12 is what is still
-open** — read that before assuming a sharp edge has been dealt with.
-
-Short version: a file is **`StorageLocation` (the bytes) + `MediaAsset`+version
-or `FolderFile`+version + optionally an `Attachment`** — which combination you
-get is decided by the `EntityType` the client sends, and picking the wrong one
-silently produces the wrong record; **`bucket` is never optional** anywhere in
-the storage layer, because S3 answers **204** for deleting a key that is not in
-the bucket you named, so a wrong bucket leaks objects with no error (this caused
-three separate production bugs); `MediaAsset` and `FolderFile` are different
-tables and the legacy **`File` table is empty and unused** — joining it is a
-silent no-op that once made the storage quota read zero forever; and post-commit
-work (thumbnails, cache busts) must be enqueued **after** `COMMIT`, never from
-inside the persist step, because the enqueue resolves its source on a different
-connection and cannot see uncommitted rows.
-
-**New code in `packages/lib/src/files/**` uses the functional contract in
-`packages/lib/src/files/ctx.ts`** — `ctx: FilesCtx` first for db-touching
-functions, `tx: Transaction` positional-first for transaction-only ones, a
-narrowed `Pick<FilesDeps, …>` for collaborators, and never a service class.
-`assets/`, `folder-files/`, `folders/`, `filesystem/`, `thumbnails/` and
-`upload/` are all written this way; the test doubles in `files/__tests__/support/`
-mean a new test needs **zero `vi.mock`**. `folders/tree.ts` is the model for pure
-logic — 113 tests, no doubles of any kind. Upload dispatch is a declarative
-record per `EntityType` in `upload/handlers/`, not a class hierarchy: the
-`BaseProcessor` chain, `ProcessorRegistry`, `FilesystemService` and
-`ThumbnailService` were all deleted. The remaining service classes in
-`files/core/` are `@deprecated` facades with a scheduled deletion; do not add
-call sites to them. History and the open items are in `plans/attachments/`
-(untracked).
-
-## Inventory, Purchasing & Costing
-
-**Before touching purchase orders, vendor bills, the three-way match, receiving,
-`stock_movement`, builds, standard cost, QoH, or GL postings, read
-`docs/inventory-costing-architecture-guide.md`.** It documents the thirteen
-entities this subsystem adds (all `EntityInstance`-backed — **no new Drizzle
-tables**), the buy→receive→bill→match path, the costing model and where each
-number comes from, the movement writers and their doors, the L1/L3 posting
-regimes, and §12's list of places the plans and the code currently disagree.
-
-Short version: the movement ledger is **append-only** (`updatable: false`
-everywhere) and a mistake is corrected by **reversing**, never editing; cost is
-**frozen onto the movement at write time** and a standard-cost change revalues
-on-hand inventory to 5090 rather than restating history — so `part_cost` (live
-replacement cost, rewritten on every vendor-price change) must never value a
-movement; `part_quantity_on_hand` is a **full re-SUM of the ledger** that only
-`recalculatePartQoH` may write, which is also why FIFO and lot *costing* are
-ruled out; the match's variance must use `quantityReceived × unitPriceExpected`
-or an over-billed quantity nets out against an under-billed price to zero;
-receiving part-first sets no `purchaseOrderLineId`, so it moves QoH and leaves
-the match with no receipt leg; a bill's totals are **transcribed, never
-computed**, because recomputing them silently corrects the vendor's arithmetic;
-`skipEvents` is insufficient for a silent ledger write (use `quietSession`, and
-remember a quiet lane also silences the QoH recalc); and **a balance assertion
-and per-event postings may never both drive 1310/1320/1330** — L1 or L3, never
-both. Status and open work live in `plans/money/` (untracked).
-
-## Workflows
-
-**Before touching node schemas, output variables, the engine's
-preprocess/execute contract, draft mutations, or anything Kopilot does to a
-workflow graph, read `docs/core-workflow-architecture-guide.md`.** It documents
-the four layers (catalog / engine / `graph-edit` / Kopilot builder capability),
-the `NodeManifest` contract and the per-node migration pattern, output
-resolution's one-contract-two-orchestrations design, the eight draft mutations
-behind `runGraphMutation`, and the parity harness that keeps builder and engine
-honest.
-
-Short version: a node's **data** contract lives in `catalog/nodes/<type>.ts` and
-its **React** stays in web (zero-diff panels is enforced by review);
-`defaultData` must parse its own `configSchema`; `NOT_YET_MIGRATED` and the
-`NodeType` enum are coupled by an exact-set-equality test, so migrating or
-retiring a type is always one atomic change; catalog modules that touch the org
-cache get a **leaf subpath** export and must never go through `client.ts` or the
-`workflow-engine` index barrel; `persistDraft` is the single write seam and
-every write carries `expectedGraphHash` for CAS; and output handles are what
-`node.tsx` renders, never what a manifest declares.
-
-*(`docs/workflow-architecture-guide.md` is a different subsystem — third-party
-workflow blocks contributed by installed apps.)*
+Untracked status and open work for a build in flight lives in `plans/<area>/`.
+`ls docs/` for the rest (provider setup guides, `docs/accounting-walkthrough.md`,
+`docs/tsconfig.md`).
 
 ## Database Models — LEGACY
 

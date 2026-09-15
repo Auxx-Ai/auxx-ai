@@ -14,7 +14,7 @@
     "build:opennext": "open-next build",
     "check:opennext": "pnpm run build:opennext",
     "predev": "tsx scripts/copy-pdfjs-assets.ts",
-    "dev": "NODE_OPTIONS='--max-old-space-size=6144' next dev --turbopack",
+    "dev": "WATCHPACK_POLLING=1000 NODE_OPTIONS='--max-old-space-size=6144' next dev --turbopack",
     "clean": "rm -rf .next .open-next .turbo node_modules *.tsbuildinfo",
     "preview": "next build --turbopack && next start",
     "start": "PORT=3000 node .next/standalone/apps/web/server.js",
