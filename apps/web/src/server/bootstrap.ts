@@ -8,6 +8,7 @@ import { configService } from '@auxx/credentials'
 import { registerChannelHooks } from '@auxx/lib/channels'
 import { createScopedLogger } from '@auxx/logger'
 import { registerAccountingProviders } from '~/server/accounting-providers'
+import { registerPayoutSources } from '~/server/payout-sources'
 
 const logger = createScopedLogger('web-bootstrap')
 let initPromise: Promise<void> | null = null
@@ -27,6 +28,10 @@ export async function ensureWebAppInitialized(): Promise<void> {
     // must never import an accounting adapter itself (decision P1), so without this
     // every organization resolves to the null provider and nothing is exported.
     registerAccountingProviders()
+    // Same shape, one registry over: the payout pipeline knows only the
+    // `PayoutSource` interface, and the `payout.paid` webhook and "Sync now"
+    // both run it in this process (brief 27 §4, §7).
+    registerPayoutSources()
     logger.info('Web app initialization completed successfully')
   })()
 

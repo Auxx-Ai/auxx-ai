@@ -14,6 +14,10 @@
  * poster.
  */
 
+import type {
+  PaymentGatewayFeeTreatmentValue,
+  PaymentGatewayRow,
+} from '../../payment-gateways/client'
 import type { PostResultStatus } from '../../postings/types'
 import { daysBetween } from '../client'
 
@@ -558,6 +562,65 @@ function closestFirst<T extends { id: string; postedAt: string | null }>(
       return aDays - bDays || a.id.localeCompare(b.id)
     })[0] ?? null
   )
+}
+
+/**
+ * One rail a deposit line can be coded as the settlement of
+ * (`plans/accounting/tasks/27-a-settlement-from-anywhere.md` §8.1).
+ *
+ * Choosing an offer CODES the line to `clearingGlAccountId` through the
+ * ordinary code treatment - `Dr bank / Cr clearing`, one entry, B5 intact. It
+ * creates no payout record and splits no fee: on a `billed` rail the deposit
+ * already equals the gross the fulfillments debited, and on a `netted` rail
+ * with no source yet the fee is the monthly true-up (27 §8.3), not a number
+ * the person reading the bank line has.
+ */
+export interface SettlementOffer {
+  paymentGatewayId: string
+  /** The record's own name - `'Authorize.net'`. What the offer is labelled. */
+  railName: string
+  /**
+   * The `gl_account` id the line is coded to. Never a role: a rail with no
+   * clearing account of its own is not offered at all, because "settlement of
+   * X" posted to a shared default would relieve nothing X put there.
+   */
+  clearingGlAccountId: string
+  feeTreatment: PaymentGatewayFeeTreatmentValue
+}
+
+/**
+ * Which rails a bank line may be coded as the settlement of.
+ *
+ * PURE, so the picker and the tests share one answer. Money ARRIVING on a
+ * non-void line, every ACTIVE rail whose clearing account is set. A closed rail
+ * is excluded from the OFFER only - its history still routes
+ * (`matchGatewayRoute`), but a deposit arriving today on a rail marked closed
+ * is a question for a person, not a one-click default. Sorted by name so the
+ * list is stable between renders.
+ */
+export function settlementOffers(
+  gateways: readonly Pick<
+    PaymentGatewayRow,
+    'id' | 'name' | 'clearingGlAccountId' | 'feeTreatment' | 'status'
+  >[],
+  line: Pick<BankTransactionRow, 'amountMinor' | 'bankStatus'>
+): SettlementOffer[] {
+  if (line.bankStatus === 'void') return []
+  if (line.amountMinor === 0 || bankLineFlow(line.amountMinor) !== 'in') return []
+  return gateways
+    .filter((gateway) => gateway.status === 'active' && !!gateway.clearingGlAccountId.trim())
+    .map((gateway) => ({
+      paymentGatewayId: gateway.id,
+      railName: gateway.name || gateway.id,
+      clearingGlAccountId: gateway.clearingGlAccountId.trim(),
+      feeTreatment: gateway.feeTreatment,
+    }))
+    .sort((a, b) => a.railName.localeCompare(b.railName))
+}
+
+/** `'Settlement of Shopify Payments'` - the offer's label and the rule's name, spelled once. */
+export function settlementLabel(railName: string): string {
+  return `Settlement of ${railName}`
 }
 
 /** What a treatment write answers with. */

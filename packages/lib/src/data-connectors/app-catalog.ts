@@ -150,6 +150,11 @@ export const CONNECTOR_WRITABLE_TOTALS_ALLOWLIST = new Set([
   'order_shipping_total',
   'order_total',
   'line_item_line_total',
+  // The allocated net (29 §2.3): the Shopify connector transcribes
+  // `price x qty - discount_allocations` here, and the totals engine writes it
+  // for native orders. Engine-owned like `line_item_line_total`, so it needs
+  // the same exception or the unit 7 remap resolves no target for it.
+  'line_item_net_total',
   'quote_subtotal',
   'quote_discount_type',
   'quote_discount_value',

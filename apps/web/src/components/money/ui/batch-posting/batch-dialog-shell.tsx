@@ -35,7 +35,8 @@ import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
 import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { TriangleAlert } from 'lucide-react'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
+import { CircleHelp, TriangleAlert } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 /** Which of the two pages a batch dialog is showing. */
@@ -64,6 +65,11 @@ interface BatchDialogShellProps {
   planFooter: ReactNode
   /** The result page, which owns its own scroller - see {@link BatchDialogResultPage}. */
   result: ReactNode
+  /**
+   * Opens the posting guide on this source's page (brief 28 §4). A `?` in the
+   * nav bar when given; both posting sources pass it through the frame.
+   */
+  onHelp?: () => void
 }
 
 /**
@@ -83,6 +89,7 @@ export function BatchDialogShell({
   planBody,
   planFooter,
   result,
+  onHelp,
 }: BatchDialogShellProps) {
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
@@ -94,6 +101,15 @@ export function BatchDialogShell({
             { label: title, onClick: page === 'result' ? onBackToPlan : undefined },
             ...(page === 'result' ? [{ label: 'Result' }] : []),
           ]}
+          actions={
+            onHelp && (
+              <SimpleTooltip content='How this posts'>
+                <Button variant='ghost' size='icon-sm' aria-label='How this posts' onClick={onHelp}>
+                  <CircleHelp />
+                </Button>
+              </SimpleTooltip>
+            )
+          }
         />
 
         <DialogNavPages value={page}>

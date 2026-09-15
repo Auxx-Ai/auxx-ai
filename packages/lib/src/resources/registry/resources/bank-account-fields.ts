@@ -463,6 +463,39 @@ export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       'linkNewRelationships skips the pair with a debug line',
   },
 
+  payouts: {
+    id: toFieldId('payouts'),
+    key: 'payouts',
+    label: 'Payouts',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'bank_account_payouts',
+    systemSortOrder: 'aCW',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'payout:bankAccount' as ResourceFieldId,
+      relationshipType: 'has_many',
+      // Same answer as `deposits`: the payout survives with an empty cell. Its
+      // entry already debited the account's gl_account by id, so the ledger
+      // keeps the truth the pointer only mirrored. `deleteBankAccount` in
+      // banking/writes.ts still owns the actual teardown.
+      onDelete: 'unlink',
+      isInverse: true,
+    },
+    description:
+      'The gateway payouts that landed in this account (brief 27 §6.1). The INVERSE half - the ' +
+      'owning side is payout.bankAccount, and both halves must exist in one migration or ' +
+      'linkNewRelationships skips the pair with a debug line',
+  },
+
   hasPosted: {
     id: toFieldId('hasPosted'),
     key: 'hasPosted',

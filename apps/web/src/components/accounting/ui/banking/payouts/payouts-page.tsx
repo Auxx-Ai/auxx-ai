@@ -2,31 +2,43 @@
 
 'use client'
 
-// Accounting > Banking > Payouts (HANDOFF §11.5 item 1).
+// Accounting > Banking > Payouts (HANDOFF §11.5 item 1; brief 27 §8.2, §9).
 //
 // ## What this screen is for
 //
-// A card sale DEBITS `1200 Card Clearing` gross the moment it is taken. The
-// gateway pays out days later, net of its fee, and THAT is what credits clearing
-// again. Without the payout side, `1200` grew without bound and the processor's
-// fee was never expensed - which is what this screen exists to show is no longer
-// happening: a clearing balance here is a list of sales the gateway has not paid
-// out yet, and a settled batch should leave it at zero.
+// A shipment DEBITS the rail's clearing account gross (26: one account per
+// rail, `1200 Card Clearing` for anything unrouted). The rail settles days
+// later, and THAT is what credits clearing again: a payout record on a `netted`
+// rail, or a bank line coded "Settlement of <rail>" on a `billed` one (27 §3).
+// Without the settlement side, clearing grew without bound and the processor's
+// fee was never expensed. The per-rail strip below the totals is where each
+// account's balance is read.
+//
+// 🛑 "Clearing balance", never "unsettled" (27 §10.3). Until brief 29 moves the
+// clearing debit to the payment date the balance is a NET of two queues -
+// shipped-not-settled less settled-not-shipped - and a payout routinely exceeds
+// it (27 §1.7). Nothing on this page may describe it as what the processor
+// holds; the wording changes only in brief 29's own change.
 //
 // ## 🛑 The Unidentified column is the one somebody has to work
 //
 // A payout settles every charge the merchant took, INCLUDING charges taken
 // outside auxx - a payment link sent from the Stripe dashboard, a subscription
 // on the same account, a terminal. Those were never debited to clearing, so
-// crediting the payout's full gross would drive `1200` permanently negative.
+// crediting the payout's full gross would drive clearing permanently negative.
 // Instead cash takes the whole deposit, clearing is relieved of exactly what
 // auxx put in it, and the remainder is credited to `2450 Unidentified Receipts`.
 // That balance is real money whose revenue has never been recognised, and only a
 // person can say what it was for.
 //
-// ⚠️ There is no create, edit or delete affordance anywhere on this page, on
-// purpose. A payout is a TRANSCRIPTION of what the gateway did; the only writer
-// is the sync, and a failed payout is corrected by REVERSAL.
+// ⚠️ There is no edit and no delete affordance anywhere on this page, for any
+// row, on purpose - and no dialog that types a payout in by hand (27 §2: 250
+// forms a year, and the three numbers can only ever agree). A payout is a
+// TRANSCRIPTION of what the provider did, and the writers are the SOURCES
+// (27 §4): the Stripe Connect sync today, statement imports next ("Import
+// statement" on the strip is the door, disabled until unit 3 lands). An
+// imported row is as immutable as a synced one; a wrong payout, from either
+// writer, is corrected by REVERSAL.
 //
 // 🛑 Refusals are `EntryBlockers` cards, never toasts (HANDOFF ground rule 9). A
 // payout the builder refused names which payout and why, and that sentence has
@@ -48,6 +60,7 @@ import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
 import { EMPTY_CELL, formatMinor } from '../../ledger/format'
+import { RailStrip } from './rail-strip'
 
 const BREADCRUMBS = [
   { title: 'Accounting', href: '/app/accounting' },
@@ -56,7 +69,7 @@ const BREADCRUMBS = [
 ]
 
 const PAGE_DESCRIPTION =
-  'What the card processor actually paid into the bank, and what each payout relieved from card clearing. A clearing balance is sales the gateway has not settled yet; an unidentified balance is money that arrived whose revenue nobody has recognised.'
+  'What each payment rail actually paid into the bank, and what each payout relieved from its clearing account. A clearing balance is what the account holds today: shipments debited, settlements credited. An unidentified balance is money that arrived whose revenue nobody has recognised.'
 
 /** The ledger is pinned to USD for the cutover (`LEDGER_CURRENCY`). */
 const DISPLAY_CURRENCY = 'USD'
@@ -208,6 +221,11 @@ export function PayoutsPage() {
           is what lets the empty state center itself. No `min-h-0` - a long list
           keeps its content height and the page scrolls as it always did. */}
       <div className='flex flex-1 flex-col gap-3 p-4'>
+        {/* Brief 27 §8.2: one row per rail with a clearing account, below the
+            totals and above the payout list. The strip is where a billed rail
+            - which never gets a payout record - is visible at all. */}
+        <RailStrip currencyCode={DISPLAY_CURRENCY} />
+
         {blockers.length > 0 && <EntryBlockers blockers={blockers} />}
 
         {payoutsQuery.isPending ? (

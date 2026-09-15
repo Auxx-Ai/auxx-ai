@@ -86,6 +86,7 @@ export {
 // can be written against one name.
 export {
   BATCH_POSTING_EXCLUSION_REASONS,
+  BATCH_POSTING_GROUPING_SETTING_OPTIONS,
   BATCH_POSTING_GROUPINGS,
   type BatchPostingExclusionReason,
   type BatchPostingGrouping,
@@ -96,12 +97,16 @@ export {
 export {
   CREDIT_MEMO_BATCH_SOURCE_TYPE,
   CREDIT_MEMO_GL_POSTING_ATTRIBUTE,
+  CREDIT_MEMO_GROUPING_SETTING_KEY,
   CREDIT_MEMO_POSTING_EXCLUSION_REASONS,
+  CREDIT_MEMO_POSTING_MODES,
+  CREDIT_MEMO_POSTING_SETTING_KEY,
   type CreditMemoAmounts,
   type CreditMemoPostingExclusion,
   type CreditMemoPostingExclusionReason,
   type CreditMemoPostingGroup,
   type CreditMemoPostingGrouping,
+  type CreditMemoPostingMode,
   type CreditMemoPostingPlan,
   type CreditMemoPostingPlanInput,
   type CreditMemoPostingRef,
@@ -148,6 +153,7 @@ export {
 // Appended as one block, per HANDOFF §9a's rule for shared barrels.
 export {
   FULFILLMENT_BATCH_SOURCE_TYPE,
+  FULFILLMENT_GROUPING_SETTING_KEY,
   FULFILLMENT_POSTING_EXCLUSION_REASONS,
   FULFILLMENT_POSTING_GROUPINGS,
   FULFILLMENT_POSTING_MODES,

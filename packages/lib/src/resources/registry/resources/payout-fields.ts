@@ -1,9 +1,10 @@
 // packages/lib/src/resources/registry/resources/payout-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
-import { toFieldId } from '@auxx/types/field'
+import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
+import { PayoutSource } from '../enum-values'
 import type { ResourceField } from '../field-types'
 
 /**
@@ -433,6 +434,103 @@ export const PAYOUT_FIELDS: Record<string, ResourceField> = {
     description:
       'The imported bank statement line this payout matches. Same name and semantics as the ' +
       'bank_deposit and vendor payment twins, so the feed matcher has ONE shape to look for',
+  },
+
+  paymentGateway: {
+    id: toFieldId('paymentGateway'),
+    key: 'paymentGateway',
+    label: 'Payment Gateway',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'payout_payment_gateway',
+    systemSortOrder: 'aG',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'payment_gateway:payouts' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'payment_gateway',
+      relationshipType: 'belongs_to',
+      inverseName: 'Payouts',
+      inverseSystemAttribute: 'payment_gateway_payouts',
+    },
+    description:
+      'The rail this payout settled (brief 27 §6.1) - THE routing key. The source stamps the ' +
+      'record it read for, and the entry reads clearing and fee accounts off that record. Null ' +
+      'on a payout raised while no gateway record claimed the rail: the entry fell back to the ' +
+      'roles, and the idempotency check falls back to the gateway payout id alone',
+  },
+
+  bankAccount: {
+    id: toFieldId('bankAccount'),
+    key: 'bankAccount',
+    label: 'Bank Account',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'payout_bank_account',
+    systemSortOrder: 'aH',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'bank_account:payouts' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'bank_account',
+      relationshipType: 'belongs_to',
+      inverseName: 'Payouts',
+      inverseSystemAttribute: 'bank_account_payouts',
+    },
+    description:
+      'The bank account the money landed in (brief 27 §6.1). `destination` is a Stripe ' +
+      'external-account id that only a Stripe resolver can read; every other source names the ' +
+      'account directly, and this is where the resolved answer lives for all of them. Stamped ' +
+      'when the entry posts, so a blocked payout carries none',
+  },
+
+  source: {
+    id: toFieldId('source'),
+    key: 'source',
+    label: 'Source',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'payout_source',
+    systemSortOrder: 'aI',
+    nullable: false,
+    options: { options: PayoutSource.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+    placeholder: 'Select source',
+    defaultValue: 'synced',
+    description:
+      'Where this record came from (brief 27 §6.1): `synced` from the provider API with its ' +
+      'balance transactions, `imported` from a statement with totals only. An imported payout ' +
+      'has no itemisation, so its zero unrecognised remainder means "nothing to split", not ' +
+      '"everything recognised" - the screen must say which. Provenance, never edited',
   },
 
   createdBy: CREATED_BY_FIELD,

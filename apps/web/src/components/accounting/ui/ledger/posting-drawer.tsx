@@ -13,14 +13,14 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { BookOpenCheck, Info, Layers, Undo2 } from 'lucide-react'
+import { BookOpenCheck, CircleHelp, Info, Layers, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
 import { EntryJournal, journalLinesFromDetail } from './entry-journal'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatAuditTimestamp, formatPeriodLabel } from './format'
 import { PostResultCallout } from './post-result-callout'
-import { readStoredAssertions } from './stored-draft'
+import { readStoredAssertions, readStoredReasons } from './stored-draft'
 
 interface PostingDrawerProps {
   /** From `?posting=<id>`. `null` closes the drawer. */
@@ -88,6 +88,7 @@ export function PostingDrawer({
   const detail = postingQuery.data
 
   const assertions = detail ? readStoredAssertions(detail.draft) : null
+  const reasons = detail ? readStoredReasons(detail.draft) : []
   const isReversal = !!detail?.reversesId
 
   function handleReverse() {
@@ -189,6 +190,32 @@ export function PostingDrawer({
                   currencyCode={currencyCode}
                 />
               </Section>
+
+              {reasons.length > 0 && (
+                <Section
+                  title='Why these accounts'
+                  icon={<CircleHelp className='size-4' />}
+                  description='Which branch chose each account, recorded when the entry posted. Lines a plain role resolved are not listed.'
+                  collapsible={false}>
+                  <ul className='flex flex-col gap-1.5 text-sm'>
+                    {reasons.map((reason, index) => {
+                      const line = detail.lines.find((row) => row.lineNumber === reason.line)
+                      const account = line
+                        ? [line.accountCode, line.accountName].filter(Boolean).join(' ')
+                        : `Line ${reason.line}`
+                      return (
+                        <li key={`${reason.line}-${index}`} className='flex flex-col'>
+                          <span className='font-mono text-xs text-muted-foreground'>{account}</span>
+                          <span>
+                            {isReversal ? 'Reversing: ' : ''}
+                            {reason.sentence}
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </Section>
+              )}
 
               {assertions && (
                 <Section

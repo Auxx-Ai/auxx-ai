@@ -1065,3 +1065,71 @@ describe('🛑 bank_account_has_posted - the write-once removal gate', () => {
     expect(updateFor('def_ba:acct_1')).toBeUndefined()
   })
 })
+
+describe('settlement of a rail (brief 27 §8.1, test 5)', () => {
+  // A billed rail's deposit is coded to its clearing account through the SAME
+  // code treatment as any other line. Nothing new posts; what is pinned here is
+  // that the ordinary path produces exactly the entry §8.1 promises - one entry,
+  // two lines, Dr bank / Cr clearing - and that the OTHER door to the same
+  // deposit, matching it to a payout record, still posts nothing (B5).
+  const DEPOSIT = {
+    id: 'txn_dep',
+    recordId: 'def_bt:txn_dep',
+    externalId: 'AUTHNET-0914',
+    description: 'AUTHNET SETTLEMENT 0914',
+    matchKey: 'authnet settlement',
+    amountMinor: 191_240,
+  }
+
+  it('🛑 codes the deposit as ONE two-line entry, debit bank and credit clearing', async () => {
+    row(DEPOSIT)
+    const result = await codeTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_dep',
+      glAccountId: 'gl_1205',
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.postEntry).toHaveBeenCalledTimes(1)
+    const lines = h.postEntry.mock.calls[0]?.[1].entry.lines as {
+      direction: string
+      glAccountId: string
+      amount: number
+    }[]
+    expect(lines).toHaveLength(2)
+    expect(lines.find((line) => line.direction === 'debit')).toMatchObject({
+      glAccountId: '1000',
+      amount: 191_240,
+    })
+    expect(lines.find((line) => line.direction === 'credit')).toMatchObject({
+      glAccountId: 'gl_1205',
+      amount: 191_240,
+    })
+    // No fee split: both legs carry the whole deposit.
+    expect(lines.every((line) => line.amount === 191_240)).toBe(true)
+    expect(updateFor('def_bt:txn_dep')).toMatchObject({
+      bank_transaction_review_status: 'coded',
+      bank_transaction_gl_account: 'gl_1205',
+    })
+  })
+
+  it('🛑 matching the same deposit to a payout record still posts NOTHING', async () => {
+    row(DEPOSIT)
+    const result = await matchTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_dep',
+      recordType: 'payout',
+      recordId: 'payout_1',
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.postEntry).not.toHaveBeenCalled()
+    if (result.isOk()) expect(result.value.post).toBeNull()
+    expect(updateFor('def_bt:txn_dep')).toMatchObject({
+      bank_transaction_review_status: 'matched',
+      bank_transaction_matched_record_type: 'payout',
+    })
+  })
+})

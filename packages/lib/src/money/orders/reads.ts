@@ -35,6 +35,8 @@ import {
   requireFulfillmentFieldContext,
 } from '../fulfillments'
 import {
+  netLineTotalMinor,
+  netUnitPriceMinor,
   nextFulfillmentSequence,
   type OrderLineRemaining,
   shippedByLine,
@@ -68,11 +70,23 @@ const ORDER_ATTRIBUTES = [
   'order_contact',
 ] as const
 
-/** Every `line_item` attribute a fulfillment reads. */
+/**
+ * Every `line_item` attribute a fulfillment reads.
+ *
+ * 🛑 `line_item_net_total` is the line NET and the basis of the rate a
+ * shipment recognises at; `line_item_line_total` is the GROSS total and its
+ * fallback for a line with no net yet, and `line_item_unit_price` is the gross
+ * price and the last resort (`netUnitPriceMinor`, 29 §1.7, §2.3). Dropping
+ * either total from this list would not fail anything: every line would
+ * silently fall back a rung and the discount would be recognised as revenue
+ * again.
+ */
 const LINE_ATTRIBUTES = [
   'line_item_name',
   'line_item_qty',
   'line_item_unit_price',
+  'line_item_line_total',
+  'line_item_net_total',
   'line_item_tax_total',
   'line_item_sort_order',
 ] as const
@@ -147,6 +161,22 @@ export async function requireOrderFieldContext(organizationId: string): Promise<
   return ctx
 }
 
+/**
+ * {@link OrderLineRemaining} plus the whole-line NET amount, which the builder
+ * allocates by units across a split line (29 §12 item 6) - the derived
+ * `unitPriceMinor` alone cannot do that, because 181 over 2 units is a 90.5
+ * rate and two shipments of one unit each extend to 182.
+ */
+export interface OrderLineForFulfillment extends OrderLineRemaining {
+  /**
+   * The line NET for the WHOLE line, minor units: `line_item_net_total` when
+   * the line has one, else `line_item_line_total`, else null
+   * (`netLineTotalMinor`, 29 §2.3). The same column `unitPriceMinor` was
+   * derived from, so the split allocation and the rate agree.
+   */
+  lineTotalMinor: number | null
+}
+
 /** One order, everything the fulfillment builder and the dialog need, in one shape. */
 export interface OrderForFulfillment {
   orderId: string
@@ -164,7 +194,7 @@ export interface OrderForFulfillment {
   /** Every `fulfillment` record, oldest first. Empty when nothing has shipped. */
   fulfillments: Fulfillment[]
   /** The order's lines with what is still to ship on each, in display order. */
-  lines: OrderLineRemaining[]
+  lines: OrderLineForFulfillment[]
   /** The sequence the next fulfillment claims. */
   nextSequence: number
   /** Whether the next posting carries the order's shipping revenue. */
@@ -384,7 +414,7 @@ async function readOrderLines(
   ctx: OrderFieldContext,
   lineIds: string[],
   shipped: Map<string, number>
-): Promise<OrderLineRemaining[]> {
+): Promise<OrderLineForFulfillment[]> {
   if (lineIds.length === 0) return []
 
   const fieldIds = Object.values(ctx.line)
@@ -402,13 +432,26 @@ async function readOrderLines(
     }
     const quantity = cell('line_item_qty')?.valueNumber ?? 0
     const shippedQuantity = shipped.get(lineId) ?? 0
+    const totals = {
+      netTotalMinor: cell('line_item_net_total')?.valueNumber ?? null,
+      lineTotalMinor: cell('line_item_line_total')?.valueNumber ?? null,
+    }
     return {
       lineId,
       name: cell('line_item_name')?.valueText ?? 'Line item',
       quantity,
       shippedQuantity,
       remainingQuantity: Math.max(0, quantity - shippedQuantity),
-      unitPriceMinor: cell('line_item_unit_price')?.valueNumber ?? 0,
+      // The line NET per unit, never the gross price on its own (29 §1.7).
+      unitPriceMinor: netUnitPriceMinor({
+        ...totals,
+        unitPriceMinor: cell('line_item_unit_price')?.valueNumber,
+        orderedQuantity: quantity,
+      }),
+      // The whole line's NET (net_total, else line_total), so `fulfill.ts` can
+      // hand the builder the allocation basis rather than only the derived
+      // rate (29 §12 item 6) - and the same column the rate came from.
+      lineTotalMinor: netLineTotalMinor(totals),
       // 🛑 `?? null`, never `?? 0`. An absent row and a zero row are different
       // facts, and the builder branches on the difference: every line carrying
       // a number switches the entry to per-line tax, one null falls back to

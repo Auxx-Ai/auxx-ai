@@ -393,10 +393,12 @@ const instances = new Map<string, AccountingProvider>()
 /**
  * Register an adapter.
  *
- * Adapters register themselves from the app layer rather than being imported
- * here, so `packages/lib` never depends on a specific accounting integration -
- * which is the dependency direction decision P1 is about. The QuickBooks adapter
- * is build plan phase 7 and lives in the apps repo.
+ * Adapters are registered by a caller rather than imported here, so this seam
+ * never depends on a specific accounting integration - which is the dependency
+ * direction decision P1 is about. The QuickBooks adapter lives in
+ * `packages/lib/src/money/quickbooks/`, and `registerAccountingProviders` in
+ * `@auxx/lib/money/accounting-providers` is the one registration site, called
+ * from both the web app's server bootstrap and the worker's.
  */
 export function registerAccountingProvider(id: string, factory: AccountingProviderFactory): void {
   if (id === NONE_PROVIDER_ID) {

@@ -982,17 +982,29 @@
       "import": "./dist/money/index.mjs",
       "default": "./src/money/index.ts"
     },
+    "./money/accounting-providers": {
+      "types": "./src/money/accounting-providers.ts",
+      "source": "./src/money/accounting-providers.ts",
+      "import": "./dist/money/accounting-providers.mjs",
+      "default": "./src/money/accounting-providers.ts"
+    },
     "./money/client": {
       "types": "./src/money/client.ts",
       "source": "./src/money/client.ts",
       "import": "./dist/money/client.mjs",
       "default": "./src/money/client.ts"
     },
-    "./money/quickbooks/quickbooks-accounting-provider": {
-      "types": "./src/money/quickbooks/quickbooks-accounting-provider.ts",
-      "source": "./src/money/quickbooks/quickbooks-accounting-provider.ts",
-      "import": "./dist/money/quickbooks/quickbooks-accounting-provider.mjs",
-      "default": "./src/money/quickbooks/quickbooks-accounting-provider.ts"
+    "./money/payout-sources": {
+      "types": "./src/money/payout-sources.ts",
+      "source": "./src/money/payout-sources.ts",
+      "import": "./dist/money/payout-sources.mjs",
+      "default": "./src/money/payout-sources.ts"
+    },
+    "./money/payouts": {
+      "types": "./src/money/payouts/index.ts",
+      "source": "./src/money/payouts/index.ts",
+      "import": "./dist/money/payouts/index.mjs",
+      "default": "./src/money/payouts/index.ts"
     },
     "./notifications": {
       "types": "./src/notifications/index.ts",

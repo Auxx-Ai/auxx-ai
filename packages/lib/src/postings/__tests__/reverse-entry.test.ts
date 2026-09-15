@@ -695,3 +695,80 @@ describe('refusals', () => {
     expect(fake.postings).toHaveLength(1)
   })
 })
+
+// ── The per-line why (brief 28 §5) ──────────────────────────────────────────
+
+describe('the reasons', () => {
+  it('carries the original reasons onto the reversal unchanged', async () => {
+    const reasons = [
+      {
+        line: 1,
+        sentence: '3 orders paid through shopify_payments, so the card clearing fallback.',
+      },
+      {
+        line: 2,
+        sentence: 'Order #1 not yet paid (financial status pending), so accounts receivable.',
+      },
+    ]
+    const fake = createFakeDb({
+      postings: [
+        original({ draft: { v: 1, docNumber: 'AUXX-RCP-20260818', revision: 0, reasons } }),
+      ],
+      lines: originalLines(),
+      chart: CHART,
+    })
+
+    const result = await reverseEntry(fake.db, {
+      organizationId: ORG,
+      glPostingId: 'post_1',
+      lock: OPEN,
+    })
+
+    expect(result.status).toBe('not_connected')
+    const reversal = fake.postings[1]!.draft as { reasons?: unknown; entry: { reasons?: unknown } }
+    // Verbatim: same line numbers, same words. The reversed lines were built in
+    // `lineNumber` order, so line N of the reversal backs out line N of the
+    // original. The drawer prefixes "Reversing:" at render time, never here.
+    expect(reversal.reasons).toEqual(reasons)
+    expect(reversal.entry.reasons).toEqual(reasons)
+  })
+
+  it('reverses an entry with no reasons, and writes none', async () => {
+    const fake = createFakeDb({ postings: [original()], lines: originalLines(), chart: CHART })
+    const result = await reverseEntry(fake.db, {
+      organizationId: ORG,
+      glPostingId: 'post_1',
+      lock: OPEN,
+    })
+
+    expect(result.status).toBe('not_connected')
+    const reversal = fake.postings[1]!.draft as { reasons?: unknown }
+    expect(reversal.reasons).toBeUndefined()
+  })
+
+  it('drops a malformed reason rather than refusing the reversal', async () => {
+    const fake = createFakeDb({
+      postings: [
+        original({
+          draft: {
+            v: 1,
+            reasons: [{ line: 1, sentence: 'kept' }, { line: 'one', sentence: 'dropped' }, null],
+          },
+        }),
+      ],
+      lines: originalLines(),
+      chart: CHART,
+    })
+
+    const result = await reverseEntry(fake.db, {
+      organizationId: ORG,
+      glPostingId: 'post_1',
+      lock: OPEN,
+    })
+
+    expect(result.status).toBe('not_connected')
+    expect((fake.postings[1]!.draft as { reasons?: unknown }).reasons).toEqual([
+      { line: 1, sentence: 'kept' },
+    ])
+  })
+})

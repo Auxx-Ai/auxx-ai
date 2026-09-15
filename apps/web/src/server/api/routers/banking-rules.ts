@@ -169,13 +169,19 @@ export const bankingRulesRouter = createTRPCRouter({
       return { ok: true as const }
     }),
 
-  /** "Create rule from this" - the code panel's toggle (ui-plan.md §2.8 item 4). */
+  /**
+   * "Create rule from this" - the code panel's toggle (ui-plan.md §2.8 item 4)
+   * and the settlement offer after a deposit is coded to a rail's clearing
+   * account (brief 27 §8.1). `autoApply` is always off: the rule suggests.
+   */
   createFromTransaction: permissionProcedure(PermissionKey.ledgerPost)
     .input(
       z.object({
         transactionId: z.string().min(1),
         glAccountId: z.string().min(1).max(64),
         name: z.string().max(200).optional(),
+        direction: z.enum(BANK_RULE_DIRECTIONS).optional(),
+        memo: z.string().max(4000).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

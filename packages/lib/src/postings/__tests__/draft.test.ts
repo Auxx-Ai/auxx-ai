@@ -14,6 +14,7 @@ import {
   POSTING_DRAFT_VERSION,
   type PostingAssertions,
   parsePostingDraft,
+  readDraftReasons,
   requiresAssertions,
   reverseAssertions,
 } from '../draft'
@@ -173,5 +174,51 @@ describe('parsePostingDraft - failing loudly', () => {
       parsePostingDraft({ ...draft(), assertions: shrink }).assertions?.after.activityTotals
         .inventoryAdjustments
     ).toBe(-5_000)
+  })
+})
+
+describe('reasons (brief 28 §5)', () => {
+  const REASONS = [{ line: 1, sentence: '3 orders routed by the Affirm gateway record.' }]
+
+  it('rides into the envelope and back out through the parser', () => {
+    const built = buildPostingDraft({
+      docNumber: 'AUXX-FUL-20260706',
+      revision: 0,
+      entry: { ...ENTRY, reasons: REASONS },
+      resolvedLines: [],
+      reasons: REASONS,
+    })
+    expect(built.v).toBe(POSTING_DRAFT_VERSION)
+    expect(parsePostingDraft(JSON.parse(JSON.stringify(built))).reasons).toEqual(REASONS)
+  })
+
+  it('stores an empty list as absent, so there is one spelling of "no forks"', () => {
+    expect(
+      buildPostingDraft({
+        docNumber: 'X',
+        revision: 0,
+        entry: ENTRY,
+        resolvedLines: [],
+        reasons: [],
+      }).reasons
+    ).toBeUndefined()
+  })
+
+  it('reads leniently: a missing field, a non-array, or a malformed item never throws', () => {
+    expect(readDraftReasons(undefined)).toBeUndefined()
+    expect(readDraftReasons({ reasons: 'nope' })).toBeUndefined()
+    expect(readDraftReasons({ reasons: [] })).toBeUndefined()
+    expect(
+      readDraftReasons({
+        reasons: [
+          { line: 0, sentence: 'line numbers are 1-based' },
+          { line: 1.5, sentence: 'and whole' },
+          { line: 2, sentence: '' },
+          { line: 2 },
+          'text',
+          { line: 3, sentence: 'kept' },
+        ],
+      })
+    ).toEqual([{ line: 3, sentence: 'kept' }])
   })
 })

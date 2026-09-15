@@ -262,6 +262,8 @@ export {
   type UpdateJournalEntryInput,
   updateJournalEntry,
 } from './journal-entries'
+// ── plans/accounting/tasks/28 §3.2: the newest posting of each type ─────────
+export { type LatestPostingByType, readLatestPostingsByType } from './latest-by-type'
 export { didLedgerAccept, isExpectedPostOutcome } from './ledger-accepted'
 export { listPostings, listPostingsForSource } from './list-postings'
 // ── plans/accounting/tasks/26 §7: a clearing account per rail ───────────────
@@ -270,6 +272,13 @@ export {
   type MintRailAccountsInput,
   mintRailAccounts,
 } from './mint-rail-accounts'
+// ── plans/accounting/tasks/28 §6: the ledger sidebar's "This month" group ────
+export {
+  type MonthActivity,
+  type PostingTypeActivity,
+  type ReadMonthActivityOptions,
+  readMonthActivity,
+} from './month-activity'
 export { type CodedAccount, nextAccountCode } from './next-account-code'
 export {
   FINALIZED_SETUP_STATE,
@@ -318,6 +327,18 @@ export {
   periodKeyForDate,
   periodMonth,
 } from './periods'
+// ── plans/accounting/tasks/28 §2: the declared posting policy ────────────────
+export {
+  LEDGER_WIDE_SETTING_KEYS,
+  POSTING_POLICIES,
+  POSTING_POLICY,
+  type PostingParameter,
+  type PostingPolicy,
+  type PostingRecordLink,
+  type PostingSettingCopy,
+  type PostingTemplateLine,
+  type PostingTrigger,
+} from './policy'
 export {
   type EntryPreview,
   LEDGER_CURRENCY,

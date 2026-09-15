@@ -14,6 +14,8 @@ export {
   type SendScheduledMessageJobData,
   sendScheduledMessageJob,
 } from '../mail-schedule'
+// Money (bulk credit memo posting, plans/accounting/tasks/28-how-your-books-post.md §3.1).
+export { CREDIT_MEMO_POSTING_JOB_NAME } from '../money/credit-memo-posting/auto'
 // Money (bulk fulfillment posting, plans/money/tasks/49-bulk-fulfillment-posting.md §2.4).
 // The job NAME comes from the module that enqueues it, so the worker's job map
 // and the enqueue cannot drift into "Job function not found".
@@ -315,6 +317,10 @@ export {
   type ThreadProviderStatusSyncJobData,
   threadProviderStatusSyncJob,
 } from './messages/thread-provider-status-sync-job'
+export {
+  type CreditMemoPostingJobData,
+  creditMemoPostingJob,
+} from './money/credit-memo-posting-job'
 export {
   type FulfillmentPostingJobData,
   fulfillmentPostingJob,

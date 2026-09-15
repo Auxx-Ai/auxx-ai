@@ -15,24 +15,29 @@
  * unsubscribed in the Stripe dashboard, dropped, or arrive while the worker is
  * down, and a payout that is never ingested leaves clearing overstated with
  * nothing to say so. Both doors run the same idempotent `syncPayouts`, which
- * keys on the gateway id, so a payout reached twice is a no-op the second time.
+ * keys on the (rail, gateway id) pair, so a payout reached twice is a no-op the
+ * second time.
  *
- * ## Which orgs it walks
+ * ## Which orgs it walks (brief 27 §7)
  *
- * Every org holding a connected, non-disconnected `PaymentAccount`. That is a
- * small set - one row per org that ever ran Stripe Connect - so this is a table
- * scan of a few hundred rows rather than a sweep over documents.
+ * Every org some registered `api` {@link PayoutSource} says it can poll,
+ * de-duplicated across sources. Discovery is the source's to answer: Stripe
+ * Connect names the orgs holding a connected, non-disconnected `PaymentAccount`
+ * (a few hundred rows), and a rail-backed source names the orgs whose
+ * `payment_gateway` records declare its `settlementSource`. Within an org,
+ * `syncPayouts` builds one context per rail and runs each, so one rail's
+ * failure stops neither the next rail nor the next org.
  *
- * 🛑 A DISCONNECTED account is skipped, and that is a deliberate difference from
- * `applyStripeEvent`'s `payout.paid` case, which does not skip. A payout event
- * that arrives for a disconnected account is real money that settled and needs
- * booking; polling an account whose authorization auxx no longer holds would
- * just 401 on every run forever.
+ * 🛑 **The sweep runs in the worker, which must register the accounting
+ * providers before it** (27 §1.5). `apps/worker/src/server.ts` calls
+ * `registerAccountingProviders()` and `registerPayoutSources()` before
+ * `startWorkers()`; without the first every entry lands as `not_required`,
+ * without the second there is nothing to poll.
  */
 
-import { database, schema } from '@auxx/database'
+import { type Database, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, isNull } from 'drizzle-orm'
+import { listPayoutSources } from './source-registry'
 import { syncPayouts } from './sync'
 
 const logger = createScopedLogger('payouts:sweep')
@@ -47,14 +52,15 @@ export interface PayoutSweepSummary {
 }
 
 /**
- * Run the payout sync for every org with a live Stripe connection.
+ * Run the payout sync for every org a registered source can poll.
  *
  * **One org's failure never stops the walk.** A 401 from a revoked key, an org
  * short of entity migration 133, a payout whose arithmetic the builder refuses -
  * each is logged against its org and the sweep moves on, because the twelve orgs
- * behind it have books to keep too.
+ * behind it have books to keep too. A source whose org discovery itself fails
+ * is one failure and the other sources still walk.
  */
-export async function sweepPayouts(): Promise<PayoutSweepSummary> {
+export async function sweepPayouts(db: Database = database): Promise<PayoutSweepSummary> {
   const summary: PayoutSweepSummary = {
     organizations: 0,
     seen: 0,
@@ -64,29 +70,31 @@ export async function sweepPayouts(): Promise<PayoutSweepSummary> {
     failures: 0,
   }
 
-  const accounts = await database
-    .select({
-      organizationId: schema.PaymentAccount.organizationId,
-      stripeAccountId: schema.PaymentAccount.stripeAccountId,
-    })
-    .from(schema.PaymentAccount)
-    .where(
-      and(
-        eq(schema.PaymentAccount.provider, 'stripe'),
-        isNull(schema.PaymentAccount.disconnectedAt)
-      )
-    )
-
-  summary.organizations = accounts.length
-
-  for (const account of accounts) {
-    if (!account.stripeAccountId) continue
+  const organizations = new Set<string>()
+  for (const source of listPayoutSources()) {
+    if (source.kind !== 'api' || !source.listOrganizations) continue
     try {
-      const result = await syncPayouts(database, { organizationId: account.organizationId })
+      for (const organizationId of await source.listOrganizations(db)) {
+        organizations.add(organizationId)
+      }
+    } catch (error) {
+      summary.failures += 1
+      logger.error('A payout source could not list its organizations', {
+        sourceId: source.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  summary.organizations = organizations.size
+
+  for (const organizationId of organizations) {
+    try {
+      const result = await syncPayouts(db, { organizationId })
       if (result.isErr()) {
         summary.failures += 1
         logger.error('Payout sync failed for organization', {
-          organizationId: account.organizationId,
+          organizationId,
           error: result.error.message,
         })
         continue
@@ -95,20 +103,29 @@ export async function sweepPayouts(): Promise<PayoutSweepSummary> {
       summary.created += result.value.created
       summary.posted += result.value.posted
       summary.refused += result.value.refused.length
+      summary.failures += result.value.failed.length
       for (const refusal of result.value.refused) {
         // 🛑 Logged at ERROR, not info. A payout auxx could not post leaves
         // clearing overstated by that payout for as long as nobody looks, and
         // the sweep is the only thing that will ever notice.
         logger.error('A payout could not be posted', {
-          organizationId: account.organizationId,
+          organizationId,
           payoutId: refusal.payoutId,
           reason: refusal.reason,
+        })
+      }
+      for (const failure of result.value.failed) {
+        logger.error('A payout source failed for organization', {
+          organizationId,
+          sourceId: failure.sourceId,
+          paymentGatewayId: failure.paymentGatewayId,
+          reason: failure.reason,
         })
       }
     } catch (error) {
       summary.failures += 1
       logger.error('Payout sweep failed for organization', {
-        organizationId: account.organizationId,
+        organizationId,
         error: error instanceof Error ? error.message : String(error),
       })
     }

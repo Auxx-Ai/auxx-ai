@@ -985,6 +985,30 @@ export const PaymentGatewayStatus = {
 } as const
 
 /**
+ * Where a `payout` record came from
+ * (`plans/accounting/tasks/27-a-settlement-from-anywhere.md` §6.1).
+ *
+ * - `synced`: read from the provider's API, with the balance transactions that
+ *   let auxx split recognised from unrecognised money.
+ * - `imported`: transcribed from the provider's statement (a CSV row, or a row
+ *   typed into the import preview). Totals only, no itemisation, so
+ *   `payout_unrecognised_net` is zero by construction and the screen must say
+ *   "no itemisation" rather than "everything recognised" (§4 rule 2).
+ *
+ * `synced` is the default because it is what every record written before the
+ * field existed is: the Stripe sync was the only writer.
+ */
+export const PayoutSource = {
+  SYNCED: 'synced',
+  IMPORTED: 'imported',
+
+  values: [
+    { value: 'synced', label: 'Synced', color: 'green' },
+    { value: 'imported', label: 'Imported', color: 'blue' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
  * Parcel Tracking Status - one physical box, one tracking number
  * `plans/apps/shipstation/shared-shipment-entities-proposal.md` §6.
  *

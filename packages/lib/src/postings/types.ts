@@ -283,6 +283,31 @@ export interface BuiltEntry {
    * dependency on `money/` to say so.
    */
   sources?: unknown
+  /**
+   * Why a line landed on the account it did, in words, for every line whose
+   * account was chosen by a FORK rather than a plain role (brief 28 §5). Lines a
+   * role resolved carry none; an entry with no forks carries no list at all.
+   *
+   * Captured by the builder at build time and frozen into `GlPosting.draft`
+   * beside `sources`, never reconstructed at read time: the fork's inputs (a
+   * gateway record, a bank account's confirmed identity) move later, and a
+   * reason derived from today's records is not the reason the entry was posted
+   * with.
+   */
+  reasons?: PostingReason[]
+}
+
+/**
+ * One sentence explaining one line's account (brief 28 §5).
+ *
+ * `line` is the 1-based line number the stored `GlPostingLine` carries, which
+ * is the line's position once the entry's lines are ordered by `sortOrder`.
+ * Every builder that emits reasons computes it from its own line order, and the
+ * drawer joins on `PostingDetailLine.lineNumber` to prefix the account.
+ */
+export interface PostingReason {
+  line: number
+  sentence: string
 }
 
 /**

@@ -143,17 +143,21 @@ export function WizardAccountsPage() {
           real account in your chart. This organization has no chart yet.
         </p>
 
-        <div className='flex flex-col gap-4 sm:flex-row'>
-          <div className='flex-1'>
-            <ImportChartButton
-              mode='wizard'
-              connected={provider.connected}
-              chartIsEmpty
-              onImported={() => void handleImported()}
-            />
-          </div>
+        {/* Stacked, never side by side: the default-chart card carries eight
+            pack rows with their own descriptions, so in a column it sits at
+            roughly twice the height of the import card and the pair reads as
+            two ragged columns of small text. One above the other keeps each
+            card the full width of the step and gives the pack list a single
+            reading order. */}
+        <div className='flex flex-col gap-4'>
+          <ImportChartButton
+            mode='wizard'
+            connected={provider.connected}
+            chartIsEmpty
+            onImported={() => void handleImported()}
+          />
 
-          <div className='flex flex-1 flex-col gap-2 rounded-xl border p-3'>
+          <div className='flex flex-col gap-2 rounded-xl border p-3'>
             <p className='font-medium text-sm'>Create the default chart of accounts</p>
             <p className='text-muted-foreground text-xs'>
               A starting template, not a standard - rename, renumber and add your own afterwards,

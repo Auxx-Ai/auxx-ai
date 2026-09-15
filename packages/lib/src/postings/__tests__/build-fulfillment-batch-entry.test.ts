@@ -181,7 +181,10 @@ describe('resolveFulfillmentDebit', () => {
     // One gateway repeated is one gateway.
     ['paid', ['shopify_payments', 'Shopify_Payments'], 'clearing_card'],
   ])('%s through %j debits %s', (financialStatus, gateways, role) => {
-    expect(resolveFulfillmentDebit({ financialStatus, gateways })).toEqual({ kind: 'debit', role })
+    expect(resolveFulfillmentDebit({ financialStatus, gateways })).toMatchObject({
+      kind: 'debit',
+      role,
+    })
   })
 
   it.each([
@@ -219,7 +222,7 @@ describe('resolveFulfillmentDebit', () => {
     // it paid outside a rail, so the receivable is the honest leg.
     expect(
       resolveFulfillmentDebit({ financialStatus: 'paid', gateways: ['manual', 'shopify_payments'] })
-    ).toEqual({ kind: 'debit', role: 'accounts_receivable' })
+    ).toMatchObject({ kind: 'debit', role: 'accounts_receivable' })
   })
 
   it('maps every debit answer to a declared posting role', () => {
@@ -252,7 +255,7 @@ describe('resolveFulfillmentDebit', () => {
           { handles: ['Affirm', 'affirm'], clearingGlAccountId: 'acct_affirm', active: true },
         ],
       })
-    ).toEqual({ kind: 'debit', glAccountId: 'acct_affirm' })
+    ).toMatchObject({ kind: 'debit', glAccountId: 'acct_affirm' })
   })
 
   it('matches a route handle case- and whitespace-insensitively', () => {
@@ -264,7 +267,7 @@ describe('resolveFulfillmentDebit', () => {
           { handles: ['  Affirm  '], clearingGlAccountId: 'acct_affirm', active: true },
         ],
       })
-    ).toEqual({ kind: 'debit', glAccountId: 'acct_affirm' })
+    ).toMatchObject({ kind: 'debit', glAccountId: 'acct_affirm' })
   })
 
   it('routes a CLOSED gateway too - its past shipments still have to reconcile', () => {
@@ -276,7 +279,7 @@ describe('resolveFulfillmentDebit', () => {
           { handles: ['authorize_net'], clearingGlAccountId: 'acct_authnet', active: false },
         ],
       })
-    ).toEqual({ kind: 'debit', glAccountId: 'acct_authnet' })
+    ).toMatchObject({ kind: 'debit', glAccountId: 'acct_authnet' })
   })
 
   it('falls back to the role table when no route names the gateway', () => {
@@ -288,7 +291,7 @@ describe('resolveFulfillmentDebit', () => {
           { handles: ['authorize_net'], clearingGlAccountId: 'acct_authnet', active: true },
         ],
       })
-    ).toEqual({ kind: 'debit', role: 'clearing_card' })
+    ).toMatchObject({ kind: 'debit', role: 'clearing_card' })
   })
 
   it('refuses to choose when two routes claim the same handle', () => {
@@ -303,7 +306,7 @@ describe('resolveFulfillmentDebit', () => {
           { handles: ['Affirm'], clearingGlAccountId: 'acct_b', active: true },
         ],
       })
-    ).toEqual({ kind: 'debit', role: 'clearing_card' })
+    ).toMatchObject({ kind: 'debit', role: 'clearing_card' })
   })
 
   it('never routes an unpaid order, however well its gateway matches', () => {
@@ -315,7 +318,7 @@ describe('resolveFulfillmentDebit', () => {
         gateways: ['affirm'],
         gatewayRoutes: [{ handles: ['affirm'], clearingGlAccountId: 'acct_affirm', active: true }],
       })
-    ).toEqual({ kind: 'debit', role: 'accounts_receivable' })
+    ).toMatchObject({ kind: 'debit', role: 'accounts_receivable' })
   })
 })
 
@@ -910,5 +913,191 @@ describe('fulfillmentBatchPeriodKey', () => {
     expect(() => fulfillmentBatchPeriodKey('2026-07-06-12', 0)).toThrowError(/compacts to/)
     // A day key at the very top of the budget still refuses the attempt char.
     expect(() => fulfillmentBatchPeriodKey('2026-07-061', 1)).toThrowError(/compacts to/)
+  })
+})
+
+// ── 5. The per-line why (brief 28 §5) ───────────────────────────────────────
+//
+// The fork already knows which branch chose the account; until brief 28 that
+// knowledge lived for one stack frame. Now it is a sentence on the `debit`
+// arm, carried through `computeShipmentAmounts` onto the summarised debit line
+// per ACCOUNT with an order count, and per order on the receivable lines.
+
+describe('the debit reason', () => {
+  it('names the fallback when no gateway record claims the handle', () => {
+    const answer = resolveFulfillmentDebit({
+      financialStatus: 'paid',
+      gateways: ['shopify_payments'],
+      gatewayRoutes: [{ handles: ['affirm'], clearingGlAccountId: AFFIRM_ACCOUNT, active: true }],
+    })
+    expect(answer).toEqual({
+      kind: 'debit',
+      role: 'clearing_card',
+      reason:
+        'paid through shopify_payments, which no gateway record claims, so the card clearing fallback',
+    })
+  })
+
+  it('names the record when one claims the handle', () => {
+    const answer = resolveFulfillmentDebit({
+      financialStatus: 'paid',
+      gateways: ['Affirm'],
+      gatewayRoutes: [
+        { handles: ['affirm'], clearingGlAccountId: AFFIRM_ACCOUNT, active: true, name: 'Affirm' },
+      ],
+    })
+    expect(answer).toEqual({
+      kind: 'debit',
+      glAccountId: AFFIRM_ACCOUNT,
+      reason: 'routed by the Affirm gateway record',
+    })
+  })
+
+  it('names the handle when the matching record has no name', () => {
+    const answer = resolveFulfillmentDebit({
+      financialStatus: 'paid',
+      gateways: ['authorize_net'],
+      gatewayRoutes: [
+        { handles: ['authorize_net'], clearingGlAccountId: 'acct_authnet', active: false },
+      ],
+    })
+    expect(answer).toMatchObject({ reason: 'routed by the authorize_net gateway record' })
+  })
+
+  it('says why a receivable is a receivable, per branch', () => {
+    expect(
+      resolveFulfillmentDebit({ financialStatus: 'pending', gateways: ['affirm'] })
+    ).toMatchObject({
+      reason: 'not yet paid (financial status pending), so accounts receivable',
+    })
+    expect(resolveFulfillmentDebit({ financialStatus: null, gateways: [] })).toMatchObject({
+      reason: 'not yet paid (financial status blank), so accounts receivable',
+    })
+    expect(
+      resolveFulfillmentDebit({ financialStatus: 'paid', gateways: ['manual'] })
+    ).toMatchObject({
+      reason: 'paid through the manual gateway, off any rail auxx can see, so accounts receivable',
+    })
+    expect(resolveFulfillmentDebit({ financialStatus: 'paid', gateways: [] })).toMatchObject({
+      reason: 'paid with no gateway recorded, so accounts receivable',
+    })
+  })
+
+  it('rides through computeShipmentAmounts, and is absent for a bare role', () => {
+    const base = shipment()
+    const debit = resolveFulfillmentDebit({ ...base, gatewayRoutes: [] })
+    if (debit.kind !== 'debit') throw new Error('fixture excluded')
+    const { kind: _kind, ...rest } = debit
+    expect(computeShipmentAmounts(base, rest).debitReason).toBe(debit.reason)
+    expect(computeShipmentAmounts(base, 'clearing_card').debitReason).toBeUndefined()
+  })
+})
+
+describe('buildFulfillmentBatchEntry reasons', () => {
+  it('writes one sentence per debit ACCOUNT with an order count, on the line it explains', () => {
+    const cardOne = planned({ orderId: 'o-1', orderNumber: '#7001' })
+    const cardTwo = planned({ orderId: 'o-2', orderNumber: '#7002' })
+    // The same order shipping twice counts ONCE - the sentence counts orders.
+    const cardTwoAgain = planned({ orderId: 'o-2', orderNumber: '#7002', sequence: 2 })
+    const paypal = planned({ orderId: 'o-3', orderNumber: '#7003', gateways: ['paypal'] })
+    const affirm = planned({ orderId: 'o-4', orderNumber: '#7004', gateways: ['Affirm'] }, [
+      { handles: ['affirm'], clearingGlAccountId: AFFIRM_ACCOUNT, active: true, name: 'Affirm' },
+    ])
+    const terms = planned({
+      orderId: 'o-5',
+      orderNumber: '#7005',
+      financialStatus: 'pending',
+      gateways: ['manual'],
+    })
+
+    const { entry } = buildFulfillmentBatchEntry({
+      group: group([cardOne, cardTwo, cardTwoAgain, paypal, affirm, terms]),
+      ledgerCurrency: 'USD',
+      attempt: 0,
+    })
+
+    const lineNumberOf = (predicate: (line: Entry['lines'][number]) => boolean): number => {
+      const index = entry.lines.findIndex(predicate)
+      if (index < 0) throw new Error('no such line')
+      // `sortOrder` is the index, so the stored `lineNumber` is index + 1.
+      expect(entry.lines[index]?.sortOrder).toBe(index)
+      return index + 1
+    }
+    const receivable = lineNumberOf(
+      (line) => line.accountRole === ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE
+    )
+    const clearing = lineNumberOf((line) => line.accountRole === ACCOUNT_ROLES.CLEARING_CARD)
+    const routed = lineNumberOf((line) => line.glAccountId === AFFIRM_ACCOUNT)
+
+    expect(entry.reasons).toEqual([
+      {
+        line: receivable,
+        sentence: 'Order #7005 not yet paid (financial status pending), so accounts receivable.',
+      },
+      {
+        line: clearing,
+        sentence:
+          '2 orders paid through shopify_payments, which no gateway record claims, so the card clearing fallback.',
+      },
+      {
+        line: clearing,
+        sentence:
+          '1 order paid through paypal, which no gateway record claims, so the card clearing fallback.',
+      },
+      { line: routed, sentence: '1 order routed by the Affirm gateway record.' },
+    ])
+  })
+
+  it('carries no reasons at all when the amounts were built from bare roles', () => {
+    const bare: PlannedShipment = {
+      ...shipment({ orderId: 'o-bare', orderNumber: '#7100' }),
+      amounts: computeShipmentAmounts(shipment(), 'clearing_card'),
+    }
+    const { entry } = buildFulfillmentBatchEntry({
+      group: group([bare]),
+      ledgerCurrency: 'USD',
+      attempt: 0,
+    })
+    expect(entry.reasons).toBeUndefined()
+    expect('reasons' in entry).toBe(false)
+  })
+})
+
+describe('computeShipmentAmounts carries the line total through (29 §12 item 6)', () => {
+  // The same 181-over-2 line the single builder pins: the batch path must hand
+  // `computeShipmentTotals` the line total, the ordered quantity and the prior
+  // units, or a split line posts a cent over across its two shipments.
+  const line = (prior: number) => ({
+    lineId: 'l1',
+    quantity: 1,
+    unitPriceMinor: 181 / 2,
+    lineTaxMinor: null,
+    orderedQuantity: 2,
+    lineTotalMinor: 181,
+    priorShippedQuantity: prior,
+  })
+  const order = {
+    orderSubtotalMinor: 181,
+    orderTaxTotalMinor: 0,
+    orderShippingTotalMinor: 0,
+    includeShipping: false,
+  }
+
+  it('two shipments of one unit each sum to the line total', () => {
+    const one = computeShipmentAmounts(shipment({ ...order, lines: [line(0)] }), 'clearing_card')
+    const two = computeShipmentAmounts(
+      shipment({ ...order, sequence: 2, lines: [line(1)], priorShipmentsSubtotalMinor: 91 }),
+      'clearing_card'
+    )
+    expect([one.subtotalMinor, two.subtotalMinor]).toEqual([91, 90])
+    expect(one.subtotalMinor + two.subtotalMinor).toBe(181)
+  })
+
+  it('is unchanged for a line without a stored total - the rate is extended as before', () => {
+    const without = computeShipmentAmounts(
+      shipment({ ...order, lines: [{ ...line(1), lineTotalMinor: null }] }),
+      'clearing_card'
+    )
+    expect(without.subtotalMinor).toBe(91)
   })
 })

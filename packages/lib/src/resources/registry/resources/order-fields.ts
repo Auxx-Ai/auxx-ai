@@ -195,6 +195,35 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
       'cancel or reverse the builds this order caused',
   },
 
+  paidAt: {
+    id: toFieldId('paidAt'),
+    key: 'paidAt',
+    label: 'Paid',
+    type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemAttribute: 'order_paid_at',
+    systemSortOrder: 'a4b',
+    nullable: true,
+    // Meaningful when set, so it stays in the panel; you do not pay an order by
+    // typing a date into a dialog. The connector writes it from the order's
+    // successful sale or capture transaction
+    // (plans/accounting/tasks/29-clearing-at-the-payment-date.md §3.1).
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Select date paid',
+    description:
+      'When the customer paid: the processed_at of the successful sale or capture transaction. ' +
+      'Empty until the connector binding fills it; an order paid at checkout falls back to ' +
+      'order_placed_at, which is the same instant',
+  },
+
   financialStatus: {
     id: toFieldId('financialStatus'),
     key: 'financialStatus',
@@ -290,6 +319,31 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Add payment gateways',
     description: 'Gateways that took money for this order — one order can use several',
     showInPanel: false,
+  },
+
+  paidGateway: {
+    id: toFieldId('paidGateway'),
+    key: 'paidGateway',
+    label: 'Paid Gateway',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'order_paid_gateway',
+    systemSortOrder: 'a8a',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'The gateway of the successful sale or capture transaction. order_payment_gateways also ' +
+      'lists gateways from FAILED attempts, so the clearing fork reads this when present and ' +
+      'falls back to the single-gateway rule when not (brief 29 §3.1)',
   },
 
   currency: {
@@ -902,6 +956,46 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     description:
       'Physical dispatches of this order - one per shipment, each carrying its own parcels ' +
       'and tracking numbers',
+  },
+
+  /**
+   * The `GlPosting` this order's PAYMENT entry became
+   * (plans/accounting/tasks/29-clearing-at-the-payment-date.md §4.3). Written by
+   * the order payment run after `postEntry` returns, one stamp per order, never
+   * inside the posting transaction.
+   *
+   * TEXT and not a RELATIONSHIP, exactly as `fulfillment_gl_posting` is:
+   * `GlPosting` is a Drizzle table with no `EntityDefinition` to point at (the
+   * `gl_posting` EntityRefKind was removed on 2026-08-28 for that reason).
+   *
+   * This stamp is also the `paymentPosted` boolean the fulfillment fork reads
+   * (29 §2.2): a set stamp means the shipment debits `customer_deposits`, an
+   * empty one means the legacy fork or the `payment-unposted` exclusion. One
+   * fact, one column, two readers.
+   */
+  paymentGlPosting: {
+    id: toFieldId('paymentGlPosting'),
+    key: 'paymentGlPosting',
+    label: 'Payment GL Posting',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'order_payment_gl_posting',
+    systemSortOrder: 'aQ',
+    showInPanel: false,
+    showInDialogs: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      "The posting this order's payment entry became. TEXT and not a RELATIONSHIP because " +
+      'GlPosting is a Drizzle table with no EntityDefinition to point at; fulfillment_gl_posting ' +
+      'is the precedent. Also what the fulfillment fork reads as paymentPosted',
   },
 
   createdAt: {

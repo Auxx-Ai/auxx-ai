@@ -116,7 +116,7 @@ import { UnprocessableEntityError } from '../errors'
 import type { PaymentGatewayFeeTreatmentValue } from '../payment-gateways/client'
 import { ACCOUNT_ROLES, type AccountRole, buildEntry } from './build-entry'
 import { DOC_NUMBER_MAX_LENGTH } from './doc-number'
-import type { BuiltEntry, GlPostingLineInput } from './types'
+import type { BuiltEntry, GlPostingLineInput, PostingReason } from './types'
 
 /** The `sourceType` every payout line carries. */
 export const PAYOUT_SOURCE_TYPE = 'payout'
@@ -240,6 +240,19 @@ export interface BuildPayoutEntryInput {
   /** `YYYY-MM-DD`. The date the money reached the bank. */
   paidAt: string
   memo?: string
+  /**
+   * Why {@link bankAccountGlAccountId} is the account it is, in words, from the
+   * caller that resolved it (`resolvePayoutBankAccount`). Written onto the bank
+   * line as `BuiltEntry.reasons` and frozen into the draft (brief 28 §5). Absent
+   * on a caller that has no sentence; the line is then unexplained, not wrong.
+   */
+  bankAccountReason?: string
+  /**
+   * Why the clearing credit lands where it does - the gateway record that named
+   * it, or the role fallback because none claims the Stripe rail - from
+   * `resolvePayoutGateway`. Same contract as {@link bankAccountReason}.
+   */
+  clearingReason?: string
 }
 
 export interface BuiltPayoutEntry {
@@ -386,6 +399,14 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
   const depositedMinor = netMinor + unrecognisedNetMinor
 
   const source = { sourceType: PAYOUT_SOURCE_TYPE, sourceId: payoutId }
+  /**
+   * The per-line "why" (brief 28 §5), for the two legs a resolver chose: the
+   * bank account and the clearing account. `line` is the 1-based position in
+   * `lines`, which is what `postEntry` stores as `lineNumber` - the `sortOrder`
+   * values below have a gap when the fee leg is dropped, so the position is
+   * read off the array rather than derived from `sortOrder`.
+   */
+  const reasons: PostingReason[] = []
   const lines: GlPostingLineInput[] = [
     {
       ...source,
@@ -400,6 +421,7 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       sortOrder: 0,
     },
   ]
+  if (input.bankAccountReason) reasons.push({ line: 1, sentence: input.bankAccountReason })
   // Dropped when zero rather than posted at zero: an org whose processor
   // withheld nothing has no reason to have mapped `payment_processing_fees`.
   // Dropped ENTIRELY on a billed rail, which is a different statement: there is
@@ -421,6 +443,7 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       sortOrder: 1,
     })
   }
+  if (input.clearingReason) reasons.push({ line: lines.length + 1, sentence: input.clearingReason })
   lines.push({
     ...source,
     // 🔑 The id when the caller resolved a `payment_gateway` record, the role
@@ -446,12 +469,15 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
     })
   }
 
-  const entry = buildEntry({
+  const built = buildEntry({
     postingType: 'payout',
     periodKey: number,
     txnDate: paidAt,
     lines,
   })
+  // The reasons ride into `GlPosting.draft` with the entry (brief 28 §5), only
+  // when a caller supplied any - an entry with none is bit for bit what it was.
+  const entry: BuiltEntry = reasons.length > 0 ? { ...built, reasons } : built
 
   return {
     entry,

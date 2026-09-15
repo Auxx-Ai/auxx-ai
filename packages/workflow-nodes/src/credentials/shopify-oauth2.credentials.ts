@@ -48,6 +48,7 @@ export class ShopifyOAuth2Api implements ICredentialType {
       'write_products', // Modify product data
       'read_inventory', // Read inventory data
       'write_inventory', // Modify inventory data
+      'read_shopify_payments_payouts', // Read Shopify Payments payouts and balance transactions
     ],
 
     // Shopify-specific OAuth parameters

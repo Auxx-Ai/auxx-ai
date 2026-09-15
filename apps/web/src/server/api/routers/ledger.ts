@@ -43,6 +43,8 @@ import {
   previewEntry,
   previewJournalEntry,
   previewMonthEnd,
+  readLatestPostingsByType,
+  readMonthActivity,
   readRailFeeStatus,
   readTrialBalance,
   removeChartAccount,
@@ -1347,6 +1349,20 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
+   * The newest posting of every type the organization has ever posted, one
+   * row per type (brief 28 §3.2). The Posting settings page prints each
+   * section's "Last posted" line from this; a type with no row has never
+   * posted. One grouped read rather than a `listPostings` per section.
+   */
+  latestPostingsByType: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+    const result = await readLatestPostingsByType(ctx.db, {
+      organizationId: ctx.session.organizationId,
+    })
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
+
+  /**
    * The journal-entry DRAFT - the record a bookkeeper types a posting into, and
    * the holder of the opening trial balance (HANDOFF decision 6.7).
    *
@@ -1647,4 +1663,29 @@ export const ledgerRouter = createTRPCRouter({
         return { ok: true }
       }),
   }),
+
+  /**
+   * What posted in the month on screen, per posting type, and what the month
+   * still owes the two bulk dialogs (plans/accounting/tasks/28-how-your-books-
+   * post.md §6) - the ledger sidebar's "This month" group.
+   *
+   * 🛑 A fact per row, never an alarm, the same shape as {@link railFeeStatus}:
+   * a count and a date per type, and the person draws the conclusion.
+   * `BooksGroup` stays the place for what did not tie. The two waiting counts
+   * are the same reads {@link verifyBalance} makes, so the two groups cannot
+   * disagree about what is waiting for a dialog.
+   *
+   * ⚠️ The month is REQUIRED, like {@link railFeeStatus}: every number here is
+   * about one month, and the group gates the query on having resolved one.
+   */
+  monthActivity: permissionProcedure(PermissionKey.ledgerView)
+    .input(monthKey)
+    .query(async ({ ctx, input }) => {
+      const result = await readMonthActivity(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        month: input.periodKey,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
 })
