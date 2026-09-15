@@ -44,6 +44,7 @@ export async function listSettlementSourceAccounts(
       externalAccountId: account.externalAccountId,
       providerKey: account.providerKey,
       environment: account.environment,
+      name: account.name,
     })
     .from(account)
     .where(

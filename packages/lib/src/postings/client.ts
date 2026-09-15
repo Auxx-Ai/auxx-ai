@@ -484,6 +484,17 @@ export {
   type UnscopedSourceRole,
   type UnscopedSourceWarning,
 } from './setup-readiness'
+// The shared `FinancialSourceAccount` label: `name` first, then a
+// provider-aware derivation, so every renderer - and `source-scope.ts`'s
+// `RoleSourceRow.name` - agrees on one answer instead of five copies of
+// `providerKey · externalAccountId`.
+export {
+  isManualSource,
+  type SourceAccountSubject,
+  sourceAccountLabel,
+  sourceAccountTooltip,
+  sourceProviderLabel,
+} from './source-account-label'
 export {
   type AccountSuggestion,
   isMappableTo,
