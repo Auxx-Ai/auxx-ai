@@ -1,10 +1,12 @@
 // packages/lib/src/money/customer-money/ingest.ts
+
 import { type Database, schema, type Transaction, withAccountingCommitLock } from '@auxx/database'
 import { and, asc, eq, inArray, isNull, lte, or } from 'drizzle-orm'
 import { ConflictError } from '../../errors'
 import { accountingBasisHash } from '../../postings/effect-basis'
 import { captureCustomerReceiptWorkInTx } from '../../postings/effect-work'
 import { periodKeyForDate } from '../../postings/periods'
+import { sumCreditMemoApplications, sumReservedCreditMemoRefunds } from '../credit-memos/reads'
 import { confirmedCustomerMovement } from './contracts'
 import {
   readStoredCustomerMoneyObservation,
@@ -527,9 +529,16 @@ export async function materializeImportedMoneyInTx(
       const originalUsed = settlements
         .filter((row) => row.originalTransactionId === originalLink.moneyTransactionId)
         .reduce((sum, row) => sum + row.amountMinor, 0n)
-      const creditUsed = settlements
-        .filter((row) => row.customerCreditMemoInstanceId === creditId)
-        .reduce((sum, row) => sum + row.amountMinor, 0n)
+      const [creditApplied, creditReserved] = await Promise.all([
+        sumCreditMemoApplications(tx as unknown as Database, organizationId, creditId),
+        // The current imported refund is not a settlement yet. Its source projection
+        // can already include it, so this gate uses actual reservations only.
+        sumReservedCreditMemoRefunds(tx as unknown as Database, organizationId, {
+          id: creditId,
+          source: 'native',
+          amountRefundedMinor: 0,
+        }),
+      ])
       if (
         !original ||
         original.purpose !== 'customer_receipt' ||
@@ -538,7 +547,7 @@ export async function materializeImportedMoneyInTx(
         originalUsed + money.amountMinor > original.amountMinor ||
         typeof creditTotal !== 'number' ||
         !Number.isSafeInteger(creditTotal) ||
-        creditUsed + money.amountMinor > BigInt(creditTotal) ||
+        BigInt(creditApplied) + BigInt(creditReserved) + money.amountMinor > BigInt(creditTotal) ||
         creditFacts.get('credit_memo_currency')?.text !== money.currency ||
         creditFacts.get('credit_memo_contact')?.related !== partyId
       ) {

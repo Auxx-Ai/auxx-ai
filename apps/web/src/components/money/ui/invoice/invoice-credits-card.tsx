@@ -73,6 +73,7 @@ const APPLICATION_ATTRS = [
   'credit_memo_application_credit_memo',
   'credit_memo_application_amount',
   'credit_memo_application_applied_at',
+  'credit_memo_application_operation',
 ] as const
 
 /** One `credit_memo_application` row: the memo it drew on, the amount, and when. */
@@ -107,7 +108,10 @@ function CreditApplicationRow({
               {format(new Date(appliedAt), 'MMM d, yyyy')}
             </span>
           ) : null}
-          <span className='text-sm tabular-nums'>{formatCurrency(amount ?? 0, currencyCode)}</span>
+          <span className='text-sm tabular-nums'>
+            {values.credit_memo_application_operation === 'unapply' ? 'Restored ' : ''}
+            {formatCurrency(amount ?? 0, currencyCode)}
+          </span>
         </span>
       }
     />

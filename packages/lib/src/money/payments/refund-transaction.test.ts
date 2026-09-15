@@ -24,6 +24,9 @@ const h = vi.hoisted(() => ({
   synced: [] as string[],
 }))
 
+vi.mock('../credit-memos/command', () => ({
+  runCreditCommand: async (db: unknown, _input: unknown, run: (tx: unknown) => unknown) => run(db),
+}))
 vi.mock('@auxx/database', () => {
   const tableName = (table: unknown) => (table as { __table: string }).__table
   const chain: Record<string, unknown> = {}
@@ -34,9 +37,16 @@ vi.mock('@auxx/database', () => {
     database: {
       query: {
         PaymentTransaction: {
-          findFirst: async () => h.charge,
+          findFirst: async () =>
+            h.inserts.some(([table]) => table === 'PaymentTransaction')
+              ? {
+                  id: 'refund-row',
+                  ...(h.inserts.find(([table]) => table === 'PaymentTransaction')![1] as object),
+                }
+              : h.charge,
           findMany: async () => h.existingRefunds,
         },
+        PaymentAccount: { findFirst: async () => ({ stripeAccountId: 'acct_123' }) },
         PaymentAllocation: { findMany: async () => h.allocationAnswers.shift() ?? [] },
       },
       insert: (table: unknown) => ({
@@ -99,7 +109,8 @@ vi.mock('./fees', () => ({ resolveApplicationFee: () => 0 }))
 vi.mock('./receipt-email', () => ({ sendPaymentReceipt: async () => {} }))
 vi.mock('./ledger', () => ({
   readCreditMemoForRefund: async (params: Record<string, unknown>) => {
-    h.memoChecks.push(params)
+    const { db: _db, ...checked } = params
+    h.memoChecks.push(checked)
     return h.memo
   },
   syncInvoicePaymentState: async (params: { invoiceInstanceId: string }) => {
@@ -113,7 +124,12 @@ const { BadRequestError } = await import('../../errors')
 
 const ORG = 'org-1'
 const USER = 'user-1'
-const input = { organizationId: ORG, userId: USER, transactionId: 'charge-1' }
+const input = {
+  organizationId: ORG,
+  userId: USER,
+  transactionId: 'charge-1',
+  commandKey: 'stripe-refund-test',
+}
 
 function allocationInserts(): Array<{ invoiceInstanceId: string; amount: number }> {
   return h.inserts

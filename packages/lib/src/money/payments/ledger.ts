@@ -11,13 +11,19 @@ import { and, asc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
-import { readFieldScalars } from '../../field-values/read-field-scalars'
 import { extractRelationshipRecordIds } from '../../field-values/relationship-field'
 import { didLedgerAccept } from '../../postings/ledger-accepted'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { reverseEntry } from '../../postings/reverse-entry'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { runCreditCommand } from '../credit-memos/command'
+import {
+  requireCreditMemo,
+  sumCreditMemoApplications,
+  sumInvoiceCreditApplications,
+  sumReservedCreditMemoRefunds,
+} from '../credit-memos/reads'
 import type {
   DeleteManualPaymentInput,
   ListWorkOrderPaymentsInput,
@@ -78,63 +84,6 @@ async function computeAmountPaid(
       )
     )
   return rows.reduce((sum, row) => sum + (row.kind === 'refund' ? -row.amount : row.amount), 0)
-}
-
-/**
- * Sum `credit_memo_application_amount` over every `credit_memo_application` whose
- * `credit_memo_application_invoice` is this invoice, in integer minor units
- * (plans/accounting/tasks/10-credit-memos.md §2.3).
- *
- * An application is not money and has no `PaymentAllocation`: it is an entity row,
- * listed here the way every parent lists its children by a belongs_to field
- * (`listFiltered` on the child def, `is` on the relationship key). It is subledger
- * truth only, and this is exactly why the invoice balance must subtract it: the memo
- * entry already credited `1100` for the whole memo, so an invoice that did not
- * subtract its applied credit would show a balance the ledger no longer carries.
- *
- * `0` for an org whose registry has no application field yet, because the def and
- * its fields arrive together and there is nothing to sum.
- */
-async function computeAmountCredited(
-  organizationId: string,
-  handler: UnifiedCrudHandler,
-  invoiceInstanceId: string,
-  db: Database
-): Promise<number> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['credit_memo_application_amount'] as const)
-  const amountField = cf.credit_memo_application_amount
-  if (!amountField) return 0
-
-  const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
-  const { ids } = await handler.listFiltered({
-    entityDefinitionId: 'credit_memo_application',
-    filters: [
-      {
-        id: 'invoice-credit-applications',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'invoice-credit-applications-invoice',
-            fieldId: 'credit_memo_application:invoice',
-            operator: 'is',
-            value: invoiceRecordId,
-          },
-        ],
-      },
-    ],
-    limit: 1000,
-  })
-  if (ids.length === 0) return 0
-
-  const scalars = await readFieldScalars(db, organizationId, ids, [amountField.id])
-  let sum = 0
-  for (const values of scalars.values()) {
-    const amount = values.get(amountField.id)
-    if (typeof amount === 'number' && Number.isFinite(amount)) sum += amount
-  }
-  return sum
 }
 
 /**
@@ -342,7 +291,7 @@ export async function syncInvoicePaymentState(
 
   const [amountPaid, amountCredited] = await Promise.all([
     computeAmountPaid(organizationId, invoiceInstanceId, db),
-    computeAmountCredited(organizationId, handler, invoiceInstanceId, db),
+    sumInvoiceCreditApplications(db, organizationId, invoiceInstanceId),
   ])
   const settled = amountPaid + amountCredited
   const balance = total - settled
@@ -763,71 +712,33 @@ export async function readCreditMemoForRefund(params: {
   userId: string
   creditMemoInstanceId: string
   amount: number
+  db?: Database
 }): Promise<CreditMemoForRefund> {
-  const { organizationId, userId, creditMemoInstanceId, amount } = params
-  if (!Number.isInteger(amount) || amount <= 0) {
+  const { organizationId, creditMemoInstanceId, amount } = params
+  const db = params.db ?? database
+  if (!Number.isSafeInteger(amount) || amount <= 0)
     throw new BadRequestError('Refund amount must be a whole number of minor units above zero')
-  }
-
-  const handler = new UnifiedCrudHandler(organizationId, userId)
-  const memoRecordId = toRecordId('credit_memo', creditMemoInstanceId)
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'credit_memo_status',
-      'credit_memo_balance',
-      'credit_memo_contact',
-      'credit_memo_invoice',
-    ] as const)
-  const fieldIds = [
-    cf.credit_memo_status,
-    cf.credit_memo_balance,
-    cf.credit_memo_contact,
-    cf.credit_memo_invoice,
-  ]
-    .filter(Boolean)
-    .map((f) => f!.id)
-  const values = await handler.getFieldValues(memoRecordId, fieldIds)
-
-  const statusTyped = cf.credit_memo_status
-    ? firstTyped(values.get(cf.credit_memo_status.id))
-    : undefined
-  const status = statusTyped ? (extractValue(statusTyped) as string) : undefined
-  if (!status) {
-    throw new NotFoundError('Credit memo not found')
-  }
-  if (status !== 'issued') {
-    throw new BadRequestError(`Cannot refund a credit memo in status '${status}'`)
-  }
-
-  const balanceTyped = cf.credit_memo_balance
-    ? firstTyped(values.get(cf.credit_memo_balance.id))
-    : undefined
-  const balance = balanceTyped ? (extractValue(balanceTyped) as number) : 0
-  if (amount > balance) {
+  const memo = await requireCreditMemo(db, organizationId, creditMemoInstanceId)
+  if (memo.status !== 'issued')
+    throw new BadRequestError(`Cannot refund a credit memo in status '${memo.status}'`)
+  const [applied, reserved] = await Promise.all([
+    sumCreditMemoApplications(db, organizationId, creditMemoInstanceId),
+    sumReservedCreditMemoRefunds(db, organizationId, memo),
+  ])
+  const balance = memo.totalMinor - applied - reserved
+  if (amount > balance)
     throw new BadRequestError(`Refund amount exceeds the credit memo balance of ${balance}`)
-  }
-
-  const instanceIdOf = (entry: TypedFieldValue | TypedFieldValue[] | undefined) => {
-    const typed = firstTyped(entry)
-    const recordId = typed?.type === 'relationship' ? typed.recordId : undefined
-    return recordId ? parseRecordId(recordId).entityInstanceId : null
-  }
-
   return {
-    status,
+    status: memo.status,
     balance,
-    contactInstanceId: cf.credit_memo_contact
-      ? instanceIdOf(values.get(cf.credit_memo_contact.id))
-      : null,
-    invoiceInstanceId: cf.credit_memo_invoice
-      ? instanceIdOf(values.get(cf.credit_memo_invoice.id))
-      : null,
+    contactInstanceId: memo.contactInstanceId,
+    invoiceInstanceId: memo.invoiceInstanceId,
   }
 }
 
 /** Input for `recordManualRefund` (10-credit-memos.md §5.3, §10.7). */
 export interface RecordManualRefundInput extends MoneyMutationInput {
+  commandKey: string
   /** EntityInstance id of the `issued` credit memo this refund settles (not the RecordId). */
   creditMemoInstanceId: string
   /** Integer minor units, at most the memo's balance. */
@@ -862,38 +773,72 @@ export async function recordManualRefund(
   const { organizationId, userId, creditMemoInstanceId, amount, date, method, reference, note } =
     input
 
-  const memo = await readCreditMemoForRefund({
-    organizationId,
-    userId,
-    creditMemoInstanceId,
-    amount,
+  const saved = await runCreditCommand(
+    database,
+    {
+      ...input,
+      kind: 'credit_manual_refund',
+      payload: {
+        creditMemoInstanceId,
+        amount,
+        date,
+        method,
+        reference: reference ?? null,
+        note: note ?? null,
+      },
+    },
+    async (tx) => {
+      const memo = await readCreditMemoForRefund({
+        organizationId,
+        userId,
+        creditMemoInstanceId,
+        amount,
+        db: tx as unknown as Database,
+      })
+
+      const currency = (await getOrganizationSetting({
+        organizationId,
+        key: 'organization.currency',
+        db: tx,
+      })) as string
+
+      const [transaction] = await tx
+        .insert(schema.PaymentTransaction)
+        .values({
+          organizationId,
+          provider: 'manual',
+          kind: 'refund',
+          status: 'succeeded',
+          amount,
+          currency,
+          creditMemoInstanceId,
+          invoiceInstanceId: memo.invoiceInstanceId,
+          contactInstanceId: memo.contactInstanceId,
+          method,
+          reference: reference ?? null,
+          note: note ?? null,
+          createdByUserId: userId,
+          metadata: { date },
+          updatedAt: new Date(),
+        })
+        .returning()
+
+      const { settleCreditMemo } = await import('../credit-memos/settle')
+      await settleCreditMemo(tx as unknown as Database, {
+        organizationId,
+        userId,
+        creditMemoInstanceId,
+      })
+      return { transactionId: transaction!.id }
+    }
+  )
+  const transaction = await database.query.PaymentTransaction.findFirst({
+    where: and(
+      eq(schema.PaymentTransaction.organizationId, organizationId),
+      eq(schema.PaymentTransaction.id, saved.transactionId)
+    ),
   })
-
-  const currency = (await getOrganizationSetting({
-    organizationId,
-    key: 'organization.currency',
-  })) as string
-
-  const [transaction] = await database
-    .insert(schema.PaymentTransaction)
-    .values({
-      organizationId,
-      provider: 'manual',
-      kind: 'refund',
-      status: 'succeeded',
-      amount,
-      currency,
-      creditMemoInstanceId,
-      invoiceInstanceId: memo.invoiceInstanceId,
-      contactInstanceId: memo.contactInstanceId,
-      method,
-      reference: reference ?? null,
-      note: note ?? null,
-      createdByUserId: userId,
-      metadata: { date },
-      updatedAt: new Date(),
-    })
-    .returning()
+  if (!transaction) throw new NotFoundError('Saved refund transaction not found')
 
   await syncTransaction({ organizationId, userId, transaction: transaction! })
 

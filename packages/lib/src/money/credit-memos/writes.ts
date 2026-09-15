@@ -49,6 +49,7 @@ import { readOrderSourceScope } from '../customer-money/reads'
 import { roundCents } from '../totals'
 import { recomputeTotals } from '../totals-hooks'
 import type { CreditMemoLineInput, CreditMemoReason, CreditMemoSource } from './client'
+import { runCreditCommand } from './command'
 import {
   type CreditMemoLineRecord,
   type CreditMemoRecord,
@@ -60,7 +61,7 @@ import {
   readOrderGateways,
   requireCreditMemo,
   sumCreditMemoApplications,
-  sumSucceededCreditMemoRefunds,
+  sumReservedCreditMemoRefunds,
 } from './reads'
 import { CREDIT_MEMO_STATUS_BYPASS, settleCreditMemo } from './settle'
 
@@ -908,89 +909,100 @@ async function assertNotInsideBatchEntry(
  * {@link assertNotInsideBatchEntry}.
  */
 export async function voidCreditMemo(db: Database, input: CreditMemoLifecycleInput): Promise<void> {
-  const { organizationId, userId, creditMemoInstanceId } = input
-  const memo = await requireCreditMemo(db, organizationId, creditMemoInstanceId)
+  await runCreditCommand(
+    db,
+    {
+      ...input,
+      commandKey: `credit-void:${input.creditMemoInstanceId}`,
+      kind: 'credit_void',
+      payload: { creditMemoInstanceId: input.creditMemoInstanceId },
+    },
+    async (tx) => {
+      const db = tx as unknown as Database
+      const { organizationId, userId, creditMemoInstanceId } = input
+      const memo = await requireCreditMemo(db, organizationId, creditMemoInstanceId)
 
-  if (memo.status === 'void') {
-    throw new BadRequestError('This credit memo is already void', { creditMemoInstanceId })
-  }
-  const writer = await statusWriter(db, organizationId, userId)
+      if (memo.status === 'void') {
+        throw new BadRequestError('This credit memo is already void', { creditMemoInstanceId })
+      }
+      const writer = await statusWriter(db, organizationId, userId)
 
-  if (memo.status === 'draft') {
-    if (memo.source !== 'channel') {
-      throw new BadRequestError('Discard a draft credit memo instead of voiding it', {
-        creditMemoInstanceId,
-      })
-    }
-    await writer.write(creditMemoInstanceId, [{ fieldId: 'credit_memo_status', value: 'void' }])
-    return
-  }
+      if (memo.status === 'draft') {
+        if (memo.source !== 'channel') {
+          throw new BadRequestError('Discard a draft credit memo instead of voiding it', {
+            creditMemoInstanceId,
+          })
+        }
+        await writer.write(creditMemoInstanceId, [{ fieldId: 'credit_memo_status', value: 'void' }])
+        return { creditMemoInstanceId }
+      }
 
-  const [applied, refunded] = await Promise.all([
-    sumCreditMemoApplications(db, organizationId, creditMemoInstanceId),
-    memo.source === 'channel'
-      ? Promise.resolve(memo.amountRefundedMinor)
-      : sumSucceededCreditMemoRefunds(db, organizationId, creditMemoInstanceId),
-  ])
-  if (applied > 0) {
-    throw new BadRequestError('Unapply this credit memo from its invoices before voiding it', {
-      creditMemoInstanceId,
-      appliedMinor: String(applied),
-    })
-  }
-  if (refunded > 0) {
-    throw new BadRequestError(
-      'This credit memo has been refunded and cannot be voided - the money has already moved',
-      { creditMemoInstanceId, refundedMinor: String(refunded) }
-    )
-  }
-
-  const postings = await listPostingsForSource(db, {
-    organizationId,
-    sourceType: CREDIT_MEMO_SOURCE_TYPE,
-    sourceId: creditMemoInstanceId,
-  })
-  const live = postings.isOk()
-    ? postings.value.filter(
-        // `PostingStatus` is `posted | reversed` since the export split; a
-        // reversed original has already left the books.
-        (posting) =>
-          posting.postingType === CREDIT_MEMO_POSTING_TYPE && posting.status !== 'reversed'
-      )
-    : []
-
-  // No line names this memo, so either it was never posted or its entry
-  // summarises it. The stamp is the only thing that can tell the two apart, and
-  // a summarised entry is refused rather than reversed (§2.1). Checked here,
-  // AFTER the applied and refunded refusals: a memo whose money has already
-  // moved is unvoidable whatever shape its entry has, and pointing the person at
-  // a period repost would be the wrong remedy.
-  if (live.length === 0) {
-    await assertNotInsideBatchEntry(db, organizationId, memo)
-  }
-
-  if (live.length > 0) {
-    const lock = await resolvePeriodLock(organizationId)
-    for (const posting of live) {
-      const result = await reverseEntry(db, {
-        organizationId,
-        glPostingId: posting.id,
-        actorUserId: userId,
-        lock,
-        memo: `Reversal of ${posting.docNumber} - credit memo ${memo.number} voided`,
-      })
-      if (!isExpectedPostOutcome(result)) {
+      const [applied, refunded] = await Promise.all([
+        sumCreditMemoApplications(db, organizationId, creditMemoInstanceId),
+        sumReservedCreditMemoRefunds(db, organizationId, memo),
+      ])
+      if (applied > 0) {
+        throw new BadRequestError('Unapply this credit memo from its invoices before voiding it', {
+          creditMemoInstanceId,
+          appliedMinor: String(applied),
+        })
+      }
+      if (refunded > 0) {
         throw new BadRequestError(
-          `This credit memo has a general ledger entry (${posting.docNumber}) that could not be ` +
-            `reversed${result.error ? `: ${result.error}` : ` (${result.status})`}. Voiding it ` +
-            'would leave the credit in the books with no document behind it.',
-          { creditMemoInstanceId, docNumber: posting.docNumber, status: result.status }
+          'This credit memo has a completed or pending refund and cannot be voided',
+          { creditMemoInstanceId, refundedMinor: String(refunded) }
         )
       }
-    }
-  }
 
-  await writer.write(creditMemoInstanceId, [{ fieldId: 'credit_memo_status', value: 'void' }])
+      const postings = await listPostingsForSource(db, {
+        organizationId,
+        sourceType: CREDIT_MEMO_SOURCE_TYPE,
+        sourceId: creditMemoInstanceId,
+      })
+      const live = postings.isOk()
+        ? postings.value.filter(
+            // `PostingStatus` is `posted | reversed` since the export split; a
+            // reversed original has already left the books.
+            (posting) =>
+              posting.postingType === CREDIT_MEMO_POSTING_TYPE && posting.status !== 'reversed'
+          )
+        : []
+
+      // No line names this memo, so either it was never posted or its entry
+      // summarises it. The stamp is the only thing that can tell the two apart, and
+      // a summarised entry is refused rather than reversed (§2.1). Checked here,
+      // AFTER the applied and refunded refusals: a memo whose money has already
+      // moved is unvoidable whatever shape its entry has, and pointing the person at
+      // a period repost would be the wrong remedy.
+      if (live.length === 0) {
+        await assertNotInsideBatchEntry(db, organizationId, memo)
+      }
+
+      if (live.length > 0) {
+        const lock = await resolvePeriodLock(organizationId)
+        for (const posting of live) {
+          const result = await reverseEntry(db, {
+            organizationId,
+            glPostingId: posting.id,
+            actorUserId: userId,
+            lock,
+            memo: `Reversal of ${posting.docNumber} - credit memo ${memo.number} voided`,
+          })
+          if (!isExpectedPostOutcome(result)) {
+            throw new BadRequestError(
+              `This credit memo has a general ledger entry (${posting.docNumber}) that could not be ` +
+                `reversed${result.error ? `: ${result.error}` : ` (${result.status})`}. Voiding it ` +
+                'would leave the credit in the books with no document behind it.',
+              { creditMemoInstanceId, docNumber: posting.docNumber, status: result.status }
+            )
+          }
+        }
+      }
+
+      await writer.write(creditMemoInstanceId, [{ fieldId: 'credit_memo_status', value: 'void' }])
+      return { creditMemoInstanceId }
+    }
+  )
 }
 
 /**

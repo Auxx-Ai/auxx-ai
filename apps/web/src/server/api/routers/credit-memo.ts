@@ -97,6 +97,7 @@ export const creditMemoRouter = createTRPCRouter({
       z.object({
         creditMemoRecordId: recordIdSchema,
         invoiceRecordId: recordIdSchema,
+        commandKey: z.string().min(1).max(200),
         /** Integer minor units. */
         amount: z.number().int().positive(),
       })
@@ -108,6 +109,7 @@ export const creditMemoRouter = createTRPCRouter({
         creditMemoInstanceId: parseRecordId(input.creditMemoRecordId).entityInstanceId,
         invoiceInstanceId: parseRecordId(input.invoiceRecordId).entityInstanceId,
         amount: input.amount,
+        commandKey: input.commandKey,
       })
     }),
 
@@ -134,6 +136,7 @@ export const creditMemoRouter = createTRPCRouter({
     .input(
       z.object({
         creditMemoRecordId: recordIdSchema,
+        commandKey: z.string().min(1).max(200),
         /** Integer minor units, at most the memo's balance. */
         amount: z.number().int().positive(),
         rail: z.enum(['manual', 'stripe']),
@@ -159,6 +162,7 @@ export const creditMemoRouter = createTRPCRouter({
           userId,
           creditMemoInstanceId,
           amount: input.amount,
+          commandKey: input.commandKey,
           date: input.date ?? new Date().toISOString().slice(0, 10),
           method: input.method ?? 'other',
           reference: input.reference,
@@ -174,6 +178,7 @@ export const creditMemoRouter = createTRPCRouter({
           userId,
           transactionId: input.chargeTransactionId,
           amount: input.amount,
+          commandKey: input.commandKey,
           creditMemoInstanceId,
         })
         transactionId = id

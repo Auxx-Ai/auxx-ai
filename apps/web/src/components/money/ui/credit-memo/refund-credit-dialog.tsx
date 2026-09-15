@@ -25,7 +25,7 @@ import { RadioGroup, RadioGroupItemCard } from '@auxx/ui/components/radio-group'
 import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
 import { Banknote, CreditCard } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import {
@@ -108,6 +108,19 @@ export function RefundCreditDialog({
     setReference('')
   }, [open, hasStripeCharge])
 
+  const refundKeys = useRef(new Map<string, string>())
+  useEffect(() => {
+    if (!open) refundKeys.current.clear()
+  }, [open])
+  const refundCommandKey = (payload: unknown) => {
+    const signature = JSON.stringify(payload)
+    const previous = refundKeys.current.get(signature)
+    if (previous) return previous
+    const key = crypto.randomUUID()
+    refundKeys.current.set(signature, key)
+    return key
+  }
+
   const refund = api.creditMemo.refund.useMutation({
     onError: (error) => toastError({ title: 'Error refunding credit', description: error.message }),
   })
@@ -123,12 +136,30 @@ export function RefundCreditDialog({
       await refund.mutateAsync(
         rail === 'stripe'
           ? {
+              commandKey: refundCommandKey([
+                creditMemoRecordId,
+                amount,
+                rail,
+                selectedCharge?.id,
+                method,
+                reference,
+                date,
+              ]),
               creditMemoRecordId,
               amount,
               rail,
               chargeTransactionId: selectedCharge?.id,
             }
           : {
+              commandKey: refundCommandKey([
+                creditMemoRecordId,
+                amount,
+                rail,
+                selectedCharge?.id,
+                method,
+                reference,
+                date,
+              ]),
               creditMemoRecordId,
               amount,
               rail,

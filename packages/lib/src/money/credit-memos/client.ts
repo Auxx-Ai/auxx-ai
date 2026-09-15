@@ -86,6 +86,8 @@ export interface CreditMemoLineInput {
 
 /** One application row as the settlement card lists it. */
 export interface CreditMemoApplicationRow {
+  operation?: 'apply' | 'unapply'
+  reversed?: boolean
   applicationInstanceId: string
   invoiceInstanceId: string
   invoiceNumber: string

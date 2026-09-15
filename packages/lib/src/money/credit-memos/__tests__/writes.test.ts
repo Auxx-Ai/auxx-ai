@@ -70,6 +70,13 @@ vi.mock('../../../field-values/field-value-service', () => ({
   },
 }))
 vi.mock('../../totals-hooks', () => ({ recomputeTotals: h.recomputeTotals }))
+vi.mock('../command', () => ({
+  runCreditCommand: async (
+    db: unknown,
+    _input: unknown,
+    execute: (tx: unknown) => Promise<unknown>
+  ) => execute(db),
+}))
 vi.mock('../reads', () => ({
   requireCreditMemo: async () => h.memo,
   loadCreditMemoLines: async () => h.lines,
@@ -79,6 +86,8 @@ vi.mock('../reads', () => ({
   readOrderGateways: vi.fn(async () => []),
   sumCreditMemoApplications: h.sumCreditMemoApplications,
   sumSucceededCreditMemoRefunds: h.sumSucceededCreditMemoRefunds,
+  sumReservedCreditMemoRefunds: async () =>
+    h.memo.source === 'channel' ? h.memo.amountRefundedMinor : h.sumSucceededCreditMemoRefunds(),
 }))
 vi.mock('../settle', () => ({
   CREDIT_MEMO_STATUS_BYPASS: new Set(['credit_memo_status']),
@@ -460,7 +469,7 @@ describe('voidCreditMemo, the refusal ladder above the batch check', () => {
 
     await expect(
       voidCreditMemo(fake, { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID })
-    ).rejects.toThrow('has been refunded and cannot be voided')
+    ).rejects.toThrow('has a completed or pending refund and cannot be voided')
 
     expect(select).not.toHaveBeenCalled()
   })

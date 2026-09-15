@@ -3,10 +3,10 @@
 // reducer, and admin refunds. Composes `ledger.ts`'s `syncTransaction`/`syncInvoicePaymentState`
 // (the sole converging writer of entity mirrors + invoice state) rather than duplicating them.
 // Kept as a sibling to `ledger.ts` (not inline) so the manual-payment path stays free of any
-// `stripe` import — `ledger.ts` itself never imports `stripe`.
+// Stripe-specific provider operations live here.
 
 import type { PaymentTransactionEntity } from '@auxx/database'
-import { database, schema } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
@@ -18,6 +18,7 @@ import { BadRequestError, NotFoundError } from '../../errors'
 import { extractRelationshipRecordIds } from '../../field-values/relationship-field'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { runCreditCommand } from '../credit-memos/command'
 import { buildPayUrl, ensureInvoicePublicToken } from '../public-token'
 import { buildQuoteViewUrl, ensureQuotePublicToken } from '../quote-public-token'
 import { getPaymentAccount, syncAccountState, upsertPaymentAccount } from './account-state'
@@ -895,6 +896,7 @@ export async function applyStripeEvent(event: Stripe.Event): Promise<void> {
 
 /** Input for `refundTransaction`. */
 export interface RefundTransactionInput {
+  commandKey?: string
   organizationId: string
   userId: string
   /** `PaymentTransaction.id` of the `succeeded` `stripe` `charge` row to refund. */
@@ -940,183 +942,232 @@ export async function refundTransaction(
   input: RefundTransactionInput
 ): Promise<RefundTransactionResult> {
   const { organizationId, userId, transactionId, creditMemoInstanceId } = input
-
-  const charge = await database.query.PaymentTransaction.findFirst({
-    where: and(
-      eq(schema.PaymentTransaction.id, transactionId),
-      eq(schema.PaymentTransaction.organizationId, organizationId)
-    ),
-  })
-  if (!charge) {
-    throw new NotFoundError('Payment not found')
-  }
-  if (charge.provider !== 'stripe' || charge.kind !== 'charge') {
-    throw new BadRequestError('Only Stripe charges can be refunded')
-  }
-  if (charge.status !== 'succeeded' && charge.status !== 'disputed') {
-    throw new BadRequestError(`Cannot refund a payment in status '${charge.status}'`)
-  }
-  if (!charge.stripeChargeId) {
-    throw new BadRequestError('This payment has no Stripe charge to refund')
-  }
-
-  // Every refund still in flight or done counts against what is left. A `failed` or
-  // `canceled` refund gave nothing back and frees its amount again.
-  const existingRefunds = await database.query.PaymentTransaction.findMany({
-    where: and(
-      eq(schema.PaymentTransaction.refundedTransactionId, charge.id),
-      eq(schema.PaymentTransaction.kind, 'refund'),
-      inArray(schema.PaymentTransaction.status, ['pending', 'processing', 'succeeded'])
-    ),
-  })
-  const refundedSoFar = existingRefunds.reduce((sum, row) => sum + row.amount, 0)
-  const refundable = charge.amount - refundedSoFar
-  if (refundable <= 0) {
-    throw new BadRequestError('This payment has already been refunded in full')
-  }
-
-  const refundAmount = input.amount ?? refundable
-  if (!Number.isInteger(refundAmount) || refundAmount <= 0 || refundAmount > refundable) {
-    throw new BadRequestError(
-      `Refund amount must be a whole number of minor units between 1 and ${refundable}`
-    )
-  }
-  // A deposit charge is refunded whole or not at all. `collectRefundedChargeIds`
-  // (allocation-reads.ts) reads any refund of a deposit charge as the whole deposit
-  // returned, so a partial one would understate what is still held. Widening that read
-  // is its own change; until then the door stays shut here.
-  if (charge.quoteInstanceId && refundAmount !== charge.amount) {
-    throw new BadRequestError('A deposit can only be refunded in full')
-  }
-
-  // The memo side of the same checks the manual rail makes: `issued`, within balance, and
-  // the same customer as the charge (a memo raised on one contact cannot be paid back out of
-  // another's card).
-  if (creditMemoInstanceId) {
-    const memo = await readCreditMemoForRefund({
+  if (creditMemoInstanceId && !input.commandKey)
+    throw new BadRequestError('A credit refund needs a retry key')
+  const saved = await runCreditCommand(
+    database,
+    {
       organizationId,
       userId,
-      creditMemoInstanceId,
-      amount: refundAmount,
-    })
-    if (
-      memo.contactInstanceId &&
-      charge.contactInstanceId &&
-      memo.contactInstanceId !== charge.contactInstanceId
-    ) {
-      throw new BadRequestError('The credit memo belongs to a different contact than this payment')
-    }
-  }
-
-  const account = await getPaymentAccount(organizationId)
-  if (!account?.stripeAccountId) {
-    throw new NotFoundError('No Stripe account connected for this organization')
-  }
-
-  const [refundRow] = await database
-    .insert(schema.PaymentTransaction)
-    .values({
-      organizationId,
-      paymentAccountId: charge.paymentAccountId,
-      provider: 'stripe',
-      kind: 'refund',
-      status: 'pending',
-      amount: refundAmount,
-      currency: charge.currency,
-      invoiceInstanceId: charge.invoiceInstanceId,
-      creditMemoInstanceId: creditMemoInstanceId ?? null,
-      // MP2 §B.10 — carry a deposit's quote/work-order linkage onto its refund row too, so a
-      // refunded deposit stays queryable by the same `listWorkOrderPayments` extension.
-      quoteInstanceId: charge.quoteInstanceId,
-      workOrderInstanceId: charge.workOrderInstanceId,
-      // money 16-deposit-accounting.md §C.5 — carry the charge's denormalized contact linkage
-      // onto its refund row too (same posture as the quote/work-order copy above).
-      contactInstanceId: charge.contactInstanceId,
-      refundedTransactionId: charge.id,
-      createdByUserId: userId,
-      updatedAt: new Date(),
-    })
-    .returning()
-
-  // money 16-deposit-accounting.md §C.5 — copy the charge's allocations onto the refund row
-  // (same invoices, capped at the refund amount, net of what earlier refunds of this charge
-  // already copied) so `computeAmountPaid` nets the refunded part off each invoice once this
-  // refund succeeds. A full refund with no earlier refunds copies the allocations exactly, as
-  // before. No mirrors for refund allocations (mirrors stay charge-only; refunds already
-  // render from the ledger row). Refunding a held deposit (zero allocations) copies nothing
-  // and touches no invoice. The refund row is still `pending` here (the `charge.refunded`
-  // webhook is what flips it to `succeeded` and calls `syncTransaction`), so
-  // `computeAmountPaid` won't count these allocations until then: this sync is a harmless,
-  // correctly-computed no-op today, kept for parity with every other allocation-mutating
-  // writer in this module.
-  //
-  // 🛑 A refund that settles a CREDIT MEMO copies NOTHING. The memo already took its amount
-  // off the customer's debt (its issue entry credited `1100`), and the invoice the charge paid
-  // stays exactly as paid as it was: an allocation here would make `computeAmountPaid` read
-  // the invoice as partly unpaid for money the memo, not the invoice, is giving back. The
-  // receivable debit is carried by the memo link instead (`syncTransaction`'s `allocatedMinor`
-  // rule), and `settleCreditMemo` sums the row into `credit_memo_amount_refunded`.
-  const chargeAllocations = creditMemoInstanceId
-    ? []
-    : await database.query.PaymentAllocation.findMany({
-        where: eq(schema.PaymentAllocation.paymentTransactionId, charge.id),
+      commandKey: input.commandKey ?? crypto.randomUUID(),
+      kind: creditMemoInstanceId ? 'credit_stripe_refund' : 'stripe_refund',
+      payload: {
+        transactionId,
+        creditMemoInstanceId: creditMemoInstanceId ?? null,
+        amount: input.amount ?? null,
+      },
+    },
+    async (tx) => {
+      const charge = await tx.query.PaymentTransaction.findFirst({
+        where: and(
+          eq(schema.PaymentTransaction.id, transactionId),
+          eq(schema.PaymentTransaction.organizationId, organizationId)
+        ),
       })
-  if (chargeAllocations.length > 0) {
-    const priorRefundAllocations =
-      existingRefunds.length > 0
-        ? await database.query.PaymentAllocation.findMany({
-            where: inArray(
-              schema.PaymentAllocation.paymentTransactionId,
-              existingRefunds.map((row) => row.id)
+      if (!charge) {
+        throw new NotFoundError('Payment not found')
+      }
+      if (charge.provider !== 'stripe' || charge.kind !== 'charge') {
+        throw new BadRequestError('Only Stripe charges can be refunded')
+      }
+      if (charge.status !== 'succeeded' && charge.status !== 'disputed') {
+        throw new BadRequestError(`Cannot refund a payment in status '${charge.status}'`)
+      }
+      if (!charge.stripeChargeId) {
+        throw new BadRequestError('This payment has no Stripe charge to refund')
+      }
+
+      // Every refund still in flight or done counts against what is left. A `failed` or
+      // `canceled` refund gave nothing back and frees its amount again.
+      const existingRefunds = await tx.query.PaymentTransaction.findMany({
+        where: and(
+          eq(schema.PaymentTransaction.organizationId, organizationId),
+          eq(schema.PaymentTransaction.refundedTransactionId, charge.id),
+          eq(schema.PaymentTransaction.kind, 'refund'),
+          inArray(schema.PaymentTransaction.status, ['pending', 'processing', 'succeeded'])
+        ),
+      })
+      const refundedSoFar = existingRefunds.reduce((sum, row) => sum + row.amount, 0)
+      const refundable = charge.amount - refundedSoFar
+      if (refundable <= 0) {
+        throw new BadRequestError('This payment has already been refunded in full')
+      }
+
+      const refundAmount = input.amount ?? refundable
+      if (!Number.isSafeInteger(refundAmount) || refundAmount <= 0 || refundAmount > refundable) {
+        throw new BadRequestError(
+          `Refund amount must be a whole number of minor units between 1 and ${refundable}`
+        )
+      }
+      // A deposit charge is refunded whole or not at all. `collectRefundedChargeIds`
+      // (allocation-reads.ts) reads any refund of a deposit charge as the whole deposit
+      // returned, so a partial one would understate what is still held. Widening that read
+      // is its own change; until then the door stays shut here.
+      if (charge.quoteInstanceId && refundAmount !== charge.amount) {
+        throw new BadRequestError('A deposit can only be refunded in full')
+      }
+
+      // The memo side of the same checks the manual rail makes: `issued`, within balance, and
+      // the same customer as the charge (a memo raised on one contact cannot be paid back out of
+      // another's card).
+      if (creditMemoInstanceId) {
+        const memo = await readCreditMemoForRefund({
+          organizationId,
+          userId,
+          creditMemoInstanceId,
+          amount: refundAmount,
+          db: tx as unknown as Database,
+        })
+        if (
+          !memo.contactInstanceId ||
+          !charge.contactInstanceId ||
+          memo.contactInstanceId !== charge.contactInstanceId
+        ) {
+          throw new BadRequestError(
+            'The credit memo belongs to a different contact than this payment'
+          )
+        }
+      }
+
+      const account = charge.paymentAccountId
+        ? await tx.query.PaymentAccount.findFirst({
+            where: and(
+              eq(schema.PaymentAccount.organizationId, organizationId),
+              eq(schema.PaymentAccount.id, charge.paymentAccountId)
             ),
           })
-        : []
-    const alreadyCopiedByInvoice = new Map<string, number>()
-    for (const allocation of priorRefundAllocations) {
-      alreadyCopiedByInvoice.set(
-        allocation.invoiceInstanceId,
-        (alreadyCopiedByInvoice.get(allocation.invoiceInstanceId) ?? 0) + allocation.amount
-      )
-    }
+        : null
+      if (!account?.stripeAccountId)
+        throw new NotFoundError('No Stripe account connected for the original payment')
 
-    let remaining = refundAmount
-    const copies: Array<{ invoiceInstanceId: string; amount: number }> = []
-    for (const allocation of chargeAllocations) {
-      if (remaining <= 0) break
-      const left =
-        allocation.amount - (alreadyCopiedByInvoice.get(allocation.invoiceInstanceId) ?? 0)
-      if (left <= 0) continue
-      const slice = Math.min(left, remaining)
-      copies.push({ invoiceInstanceId: allocation.invoiceInstanceId, amount: slice })
-      remaining -= slice
-    }
-
-    if (copies.length > 0) {
-      await database.insert(schema.PaymentAllocation).values(
-        copies.map((copy) => ({
+      const [refundRow] = await database
+        .insert(schema.PaymentTransaction)
+        .values({
           organizationId,
-          paymentTransactionId: refundRow!.id,
-          invoiceInstanceId: copy.invoiceInstanceId,
-          amount: copy.amount,
+          paymentAccountId: charge.paymentAccountId,
+          provider: 'stripe',
+          kind: 'refund',
+          status: 'pending',
+          amount: refundAmount,
+          currency: charge.currency,
+          invoiceInstanceId: charge.invoiceInstanceId,
+          creditMemoInstanceId: creditMemoInstanceId ?? null,
+          // MP2 §B.10 — carry a deposit's quote/work-order linkage onto its refund row too, so a
+          // refunded deposit stays queryable by the same `listWorkOrderPayments` extension.
+          quoteInstanceId: charge.quoteInstanceId,
+          workOrderInstanceId: charge.workOrderInstanceId,
+          // money 16-deposit-accounting.md §C.5 — carry the charge's denormalized contact linkage
+          // onto its refund row too (same posture as the quote/work-order copy above).
+          contactInstanceId: charge.contactInstanceId,
+          refundedTransactionId: charge.id,
           createdByUserId: userId,
-        }))
-      )
-      for (const invoiceInstanceId of new Set(copies.map((copy) => copy.invoiceInstanceId))) {
-        await syncInvoicePaymentState({ organizationId, userId, invoiceInstanceId })
+          updatedAt: new Date(),
+        })
+        .returning()
+
+      // money 16-deposit-accounting.md §C.5 — copy the charge's allocations onto the refund row
+      // (same invoices, capped at the refund amount, net of what earlier refunds of this charge
+      // already copied) so `computeAmountPaid` nets the refunded part off each invoice once this
+      // refund succeeds. A full refund with no earlier refunds copies the allocations exactly, as
+      // before. No mirrors for refund allocations (mirrors stay charge-only; refunds already
+      // render from the ledger row). Refunding a held deposit (zero allocations) copies nothing
+      // and touches no invoice. The refund row is still `pending` here (the `charge.refunded`
+      // webhook is what flips it to `succeeded` and calls `syncTransaction`), so
+      // `computeAmountPaid` won't count these allocations until then: this sync is a harmless,
+      // correctly-computed no-op today, kept for parity with every other allocation-mutating
+      // writer in this module.
+      //
+      // 🛑 A refund that settles a CREDIT MEMO copies NOTHING. The memo already took its amount
+      // off the customer's debt (its issue entry credited `1100`), and the invoice the charge paid
+      // stays exactly as paid as it was: an allocation here would make `computeAmountPaid` read
+      // the invoice as partly unpaid for money the memo, not the invoice, is giving back. The
+      // receivable debit is carried by the memo link instead (`syncTransaction`'s `allocatedMinor`
+      // rule), and `settleCreditMemo` sums the row into `credit_memo_amount_refunded`.
+      const chargeAllocations = creditMemoInstanceId
+        ? []
+        : await tx.query.PaymentAllocation.findMany({
+            where: eq(schema.PaymentAllocation.paymentTransactionId, charge.id),
+          })
+      if (chargeAllocations.length > 0) {
+        const priorRefundAllocations =
+          existingRefunds.length > 0
+            ? await tx.query.PaymentAllocation.findMany({
+                where: inArray(
+                  schema.PaymentAllocation.paymentTransactionId,
+                  existingRefunds.map((row) => row.id)
+                ),
+              })
+            : []
+        const alreadyCopiedByInvoice = new Map<string, number>()
+        for (const allocation of priorRefundAllocations) {
+          alreadyCopiedByInvoice.set(
+            allocation.invoiceInstanceId,
+            (alreadyCopiedByInvoice.get(allocation.invoiceInstanceId) ?? 0) + allocation.amount
+          )
+        }
+
+        let remaining = refundAmount
+        const copies: Array<{ invoiceInstanceId: string; amount: number }> = []
+        for (const allocation of chargeAllocations) {
+          if (remaining <= 0) break
+          const left =
+            allocation.amount - (alreadyCopiedByInvoice.get(allocation.invoiceInstanceId) ?? 0)
+          if (left <= 0) continue
+          const slice = Math.min(left, remaining)
+          copies.push({ invoiceInstanceId: allocation.invoiceInstanceId, amount: slice })
+          remaining -= slice
+        }
+
+        if (copies.length > 0) {
+          await tx.insert(schema.PaymentAllocation).values(
+            copies.map((copy) => ({
+              organizationId,
+              paymentTransactionId: refundRow!.id,
+              invoiceInstanceId: copy.invoiceInstanceId,
+              amount: copy.amount,
+              createdByUserId: userId,
+            }))
+          )
+          for (const invoiceInstanceId of new Set(copies.map((copy) => copy.invoiceInstanceId))) {
+            await syncInvoicePaymentState({
+              organizationId,
+              userId,
+              invoiceInstanceId,
+              db: tx as unknown as Database,
+            })
+          }
+        }
+      }
+
+      return {
+        transactionId: refundRow!.id,
+        stripeAccountId: account.stripeAccountId,
+        stripeChargeId: charge.stripeChargeId,
+        amount: String(refundAmount),
       }
     }
-  }
-
-  const stripe = getStripeConnectClient()
-  const refund = await stripe.refunds.create(
-    { charge: charge.stripeChargeId, amount: refundAmount, refund_application_fee: true },
-    { stripeAccount: account.stripeAccountId, idempotencyKey: refundRow!.id }
   )
-
+  const existing = await database.query.PaymentTransaction.findFirst({
+    where: and(
+      eq(schema.PaymentTransaction.organizationId, organizationId),
+      eq(schema.PaymentTransaction.id, saved.transactionId)
+    ),
+  })
+  if (!existing) throw new NotFoundError('Saved refund transaction not found')
+  if (existing.stripeRefundId || ['succeeded', 'failed', 'canceled'].includes(existing.status))
+    return { transactionId: existing.id }
+  const refund = await getStripeConnectClient().refunds.create(
+    { charge: saved.stripeChargeId, amount: Number(saved.amount), refund_application_fee: true },
+    { stripeAccount: saved.stripeAccountId, idempotencyKey: saved.transactionId }
+  )
   await database
     .update(schema.PaymentTransaction)
     .set({ stripeRefundId: refund.id })
-    .where(eq(schema.PaymentTransaction.id, refundRow!.id))
-
-  return { transactionId: refundRow!.id }
+    .where(
+      and(
+        eq(schema.PaymentTransaction.organizationId, organizationId),
+        eq(schema.PaymentTransaction.id, saved.transactionId)
+      )
+    )
+  return { transactionId: saved.transactionId }
 }
