@@ -17,45 +17,17 @@ function method(overrides: Partial<DetailMethod> = {}): DetailMethod {
 }
 
 describe('shouldOfferOptionalScopes', () => {
-  it('is false for a non-oauth2 method even with optional scopes declared', () => {
-    const secret = method({ connectionType: 'secret', requiresOwnClient: true })
-    expect(shouldOfferOptionalScopes(secret, true)).toBe(false)
-    expect(shouldOfferOptionalScopes(secret, false)).toBe(false)
+  it('excludes non-OAuth methods', () => {
+    expect(shouldOfferOptionalScopes(method({ connectionType: 'secret' }))).toBe(false)
   })
-
-  it('is false when the optional list is empty, missing or null', () => {
-    expect(
-      shouldOfferOptionalScopes(method({ oauth2OptionalScopes: [], requiresOwnClient: true }), true)
-    ).toBe(false)
-    expect(
-      shouldOfferOptionalScopes(
-        method({ oauth2OptionalScopes: null, requiresOwnClient: true }),
-        true
-      )
-    ).toBe(false)
-    expect(
-      shouldOfferOptionalScopes(
-        method({ oauth2OptionalScopes: undefined, requiresOwnClient: true }),
-        true
-      )
-    ).toBe(false)
+  it.each([[], null, undefined])('excludes an empty optional vocabulary: %s', (scopes) => {
+    expect(shouldOfferOptionalScopes(method({ oauth2OptionalScopes: scopes }))).toBe(false)
   })
-
-  it('is true for requiresOwnClient regardless of the disclosure state', () => {
-    const mandatory = method({ requiresOwnClient: true })
-    expect(shouldOfferOptionalScopes(mandatory, false)).toBe(true)
-    expect(shouldOfferOptionalScopes(mandatory, true)).toBe(true)
-  })
-
-  it('follows the disclosure for an ownClientOptional method', () => {
-    const optionalByo = method({ ownClientOptional: true })
-    expect(shouldOfferOptionalScopes(optionalByo, false)).toBe(false)
-    expect(shouldOfferOptionalScopes(optionalByo, true)).toBe(true)
-  })
-
-  it('is false on the platform client when BYO is not offered at all', () => {
-    const platformOnly = method()
-    expect(shouldOfferOptionalScopes(platformOnly, false)).toBe(false)
-    expect(shouldOfferOptionalScopes(platformOnly, true)).toBe(false)
+  it.each([
+    {},
+    { requiresOwnClient: true },
+    { ownClientOptional: true },
+  ])('offers permissions regardless of OAuth client ownership: %s', (client) => {
+    expect(shouldOfferOptionalScopes(method(client))).toBe(true)
   })
 })

@@ -116,24 +116,13 @@ export function optionalScopesHeld(
 /**
  * Does a **fresh** `oauth2-code` connect need the connect dialog?
  *
- * Historically the answer was just "does it declare connection variables" — a bare OAuth
- * definition kicked the popup straight from the card. §4.3: a definition with optional scopes
- * and no variables then has nowhere to render the picker, so it never gets one.
- *
- * `shouldOfferOptionalScopes` (the render-time gate) also takes `byoOpen`, which is state that
- * lives *inside* the dialog and cannot exist before it opens. So this uses the reachable form:
- * BYO is either mandatory (`requiresOwnClient` — the picker shows the moment the dialog opens)
- * or offered (`ownClientOptional` — `byoOpen` can become true once the user expands the
- * disclosure). Erring open is the only safe direction: refusing to open the dialog for an
- * `ownClientOptional` method would make the disclosure, and therefore the picker, unreachable.
- * A method whose BYO is neither required nor offered can never show the picker, so it keeps
- * the one-click connect.
+ * Connection variables and optional OAuth scopes both need a form, regardless of
+ * whether the connection uses the platform's OAuth client or the user's own client.
  */
 export function shouldOpenConnectDialog(def: ConnectFlowDefinition): boolean {
   if ((def.connectionVariables?.length ?? 0) > 0) return true
   if (def.connectionType !== 'oauth2-code') return false
-  if ((def.oauth2OptionalScopes?.length ?? 0) === 0) return false
-  return !!def.requiresOwnClient || !!def.ownClientOptional
+  return (def.oauth2OptionalScopes?.length ?? 0) > 0
 }
 
 /** The definition a target connects under for the given scope. */

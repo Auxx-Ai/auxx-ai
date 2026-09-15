@@ -109,12 +109,8 @@ describe('shouldOpenConnectDialog — the fresh-connect trigger', () => {
     ).toBe(true)
   })
 
-  it('stays one-click when optional scopes exist but BYO is neither required nor offered', () => {
-    // `shouldOfferOptionalScopes` could never be true for this method, so the dialog would be
-    // an empty extra click.
-    expect(shouldOpenConnectDialog(oauth({ oauth2OptionalScopes: ['read_all_orders'] }))).toBe(
-      false
-    )
+  it('opens the optional-scope picker for the platform OAuth client', () => {
+    expect(shouldOpenConnectDialog(oauth({ oauth2OptionalScopes: ['read_all_orders'] }))).toBe(true)
   })
 
   it('ignores optional scopes on a non-OAuth definition', () => {

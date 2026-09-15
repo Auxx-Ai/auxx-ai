@@ -12,6 +12,7 @@ import {
 import type { Database } from '@auxx/database'
 import { getOrgCache } from '@auxx/lib/cache'
 import {
+  effectiveConnectionVariables,
   gateConnectionVariables,
   mintClientCredentialToken,
   NO_OWN_CLIENT_GATE,
@@ -373,7 +374,8 @@ export const connectionsRouter = createTRPCRouter({
 
   /**
    * Load a connection's values for the edit/reconnect form, masked so no secret ever leaves the
-   * server. Projects **strictly** through the resolved ConnectionDefinition's `connectionVariables`:
+   * server. Projects through the resolved definition's effective connection variables,
+   * including the own-client fields injected for OAuth connections:
    * plain vars come back real, secret vars come back as the `HIDDEN_VALUE` sentinel when set (a
    * boolean "is set" marker, never the value), and any key not declared as a user variable
    * (`accessToken`, `refreshToken`, `client_id`, `client_secret`, …) is structurally excluded.
@@ -422,7 +424,10 @@ export const connectionsRouter = createTRPCRouter({
             })
           : null
 
-      const vars = def?.connectionVariables ?? []
+      const vars =
+        def?.connectionType === 'oauth2-code'
+          ? effectiveConnectionVariables(def, await resolveOwnClientGateForOrg(organizationId, def))
+          : (def?.connectionVariables ?? [])
       if (vars.length > 0) {
         // Multi-field: project through declared variables only. Plain values live in
         // `metadata.connectionVariables`; secret presence in the nested `secrets.fields` bag.

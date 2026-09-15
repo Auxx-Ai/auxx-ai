@@ -137,20 +137,11 @@ export function methodIsBareSecret(method: DetailMethod): boolean {
 }
 
 /**
- * Should the optional-scope picker be offered for this method
- * (plans/connections/optional-oauth-scopes.md §4.1)?
- *
- * It is BYO-only: a merchant on the platform OAuth client never sees it, because the platform
- * client generally cannot be granted the extra scope anyway. The gate is **presentation, not
- * enforcement** — the server re-validates `scope_add` against the definition's optional list
- * regardless of which client is used.
+ * Offer declared optional scopes for either OAuth client. The authorize route
+ * validates selections against the definition, and the provider decides the grant.
  */
-export function shouldOfferOptionalScopes(method: DetailMethod, byoOpen: boolean): boolean {
-  return (
-    method.connectionType === 'oauth2-code' &&
-    (method.oauth2OptionalScopes?.length ?? 0) > 0 &&
-    (!!method.requiresOwnClient || (methodOffersOwnClient(method) && byoOpen))
-  )
+export function shouldOfferOptionalScopes(method: DetailMethod): boolean {
+  return method.connectionType === 'oauth2-code' && (method.oauth2OptionalScopes?.length ?? 0) > 0
 }
 
 /**
@@ -182,9 +173,8 @@ interface OptionalScopePickerProps {
 /**
  * The additive-scope picker (§4.2): unchecked-by-default boxes for the method's optional
  * scopes, plus the full resulting scope string a BYO user must copy into their own OAuth
- * app's configuration. Default-off is load-bearing — a silently pre-ticked scope the
- * provider will not grant makes the authorize fail outright. Self-gates on
- * {@link shouldOfferOptionalScopes}, so both BYO render sites can call it unconditionally.
+ * app's configuration when using their own client. New permissions start unchecked;
+ * reconnect preserves the optional scopes already granted.
  */
 function OptionalScopePicker({
   method,
@@ -194,7 +184,7 @@ function OptionalScopePicker({
   disabled,
 }: OptionalScopePickerProps) {
   const idPrefix = useId()
-  if (!shouldOfferOptionalScopes(method, byoOpen)) return null
+  if (!shouldOfferOptionalScopes(method)) return null
 
   const optional = method.oauth2OptionalScopes ?? []
   const picked = new Set(selected)
@@ -225,7 +215,7 @@ function OptionalScopePicker({
           </div>
         ))}
       </div>
-      {requested && (
+      {requested && (method.requiresOwnClient || byoOpen) && (
         <>
           <p className='text-xs text-muted-foreground'>
             Set your OAuth app's scopes to match this list before connecting:
@@ -320,9 +310,7 @@ export function ConnectionDetailPage({
           <OwnClientCallbackNotice callbackUrl={chosen.oauthCallbackUrl} />
         </div>
       )}
-      {/* Mandatory BYO renders its client fields inline with no disclosure, so the picker sits
-          on its own here; the optional-BYO path renders it inside the disclosure below. */}
-      {chosen?.requiresOwnClient && (
+      {chosen && (
         <OptionalScopePicker
           method={chosen}
           byoOpen={!!byoOpen}
@@ -351,13 +339,6 @@ export function ConnectionDetailPage({
             </Button>
           )}
           {byoOpen && <OwnClientCallbackNotice callbackUrl={chosen.oauthCallbackUrl} />}
-          <OptionalScopePicker
-            method={chosen}
-            byoOpen={!!byoOpen}
-            selected={selectedOptionalScopes}
-            onChange={onOptionalScopesChange}
-            disabled={disabled}
-          />
         </div>
       )}
       {chosen && methodNeedsFields(chosen) && (

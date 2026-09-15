@@ -189,8 +189,7 @@ export function ConnectionsSection() {
     ? isPlainSecret(editRow) || editProvider?.connectionType === 'secret'
     : false
 
-  // The definition backing the row being edited — supplies the OAuth scope vocabulary and the
-  // BYO gate the optional-scope picker hangs off (§4.1).
+  // The definition backing the row being edited supplies its OAuth scope vocabulary.
   const editSource = editRow ? scopeSourceForRow(editRow) : undefined
 
   // Synthetic method backing the unified edit dialog. Plain secrets expose a bare API-key row;
@@ -206,10 +205,7 @@ export function ConnectionsSection() {
         global: editRow.scope !== 'user',
         connectionVariables:
           editProvider?.connectionType === 'secret' ? (editProvider.connectionVariables ?? []) : [],
-        // The BYO gate rides along because `shouldOfferOptionalScopes` reads it — the picker
-        // lives inside the "use your own OAuth client" disclosure. It adds no credential fields
-        // here: `connectionVariables` above stays empty for OAuth rows, so the dialog keeps its
-        // name-only Save and the disclosure only reveals the callback notice and the picker.
+        // Preserve client configuration and scope choices while Save remains a rename.
         ...(editInlineSecret
           ? {}
           : {
