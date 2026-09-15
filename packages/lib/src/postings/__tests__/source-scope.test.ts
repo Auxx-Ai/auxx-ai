@@ -53,6 +53,9 @@ function stubDb(input: {
   storeIds?: string[]
   balanceIds?: string[]
   transferIds?: string[]
+  /** Filled with the `where` clause each table's query was given, so a test can
+   *  assert on a predicate this stub is too dumb to evaluate. */
+  captured?: Map<unknown, unknown>
 }) {
   const rowsFor = (table: unknown): unknown[] => {
     if (table === schema.FinancialSourceAccount) return input.accounts
@@ -67,7 +70,10 @@ function stubDb(input: {
   const chainFor = (table: unknown): any => {
     // biome-ignore lint/suspicious/noExplicitAny: a hand-written query stub
     const chain: any = {
-      where: () => chain,
+      where: (clause: unknown) => {
+        input.captured?.set(table, clause)
+        return chain
+      },
       limit: () => chain,
       orderBy: () => chain,
       // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
@@ -111,6 +117,30 @@ describe('listRoleSources - the axis comes from the evidence', () => {
       ORG
     )
     expect(rows[0]?.axes).toEqual(['store', 'processor'])
+  })
+
+  // 🛑 The regression this filter exists for. `FinancialSourceObject` holds BOTH
+  // sides of the business: a Shopify Payments account carries 1,749
+  // `balance_transaction` rows and 262 `payout` rows and not one order. An
+  // unfiltered lookup therefore read it as a storefront and offered a payment
+  // processor under Product Revenue - which 47 §7.4 forbids outright, and which
+  // was worse than cosmetic: a fulfillment's `sourceStoreId` resolves to the
+  // STORE account, so any override saved against the payments account could
+  // never match and the revenue silently kept using the org default.
+  //
+  // The stub cannot evaluate a predicate, so this asserts the predicate itself.
+  it('asks only for STOREFRONT evidence, never a processor object type', async () => {
+    const captured = new Map<unknown, unknown>()
+    await listRoleSources(stubDb({ accounts: [SHOPIFY], captured }), ORG)
+
+    const where = JSON.stringify(captured.get(schema.FinancialSourceObject) ?? null)
+    expect(where).toContain('order_transaction')
+    // Native Stripe writes these for customer money - still the store side.
+    expect(where).toContain('charge')
+    expect(where).toContain('refund')
+    // The processor side must not be able to earn a store axis.
+    expect(where).not.toContain('balance_transaction')
+    expect(where).not.toContain('payout')
   })
 
   // A live account nothing has ever flowed through carries no axis, so there is
