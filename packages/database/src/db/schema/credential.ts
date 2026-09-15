@@ -12,6 +12,7 @@ import {
   sql,
   text,
   timestamp,
+  unique,
   uniqueIndex,
 } from './_shared'
 import { App } from './app'
@@ -119,6 +120,7 @@ export const Credential = pgTable(
     requiresReauth: boolean('requiresReauth').notNull().default(false),
   },
   (table) => [
+    unique('Credential_org_id_key').on(table.organizationId, table.id),
     index('Credential_createdById_idx').using('btree', table.createdById.asc().nullsLast()),
     index('Credential_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
     index('Credential_organizationId_kind_idx').using(

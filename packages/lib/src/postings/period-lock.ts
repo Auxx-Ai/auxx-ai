@@ -26,6 +26,7 @@
 // that difference belongs to the writer, not to every reader. This is the point
 // `periods.ts` makes in the JSDoc on `PeriodLock.lockedThroughMonth`.
 
+import type { Database, Transaction } from '@auxx/database'
 import { UnprocessableEntityError } from '../errors'
 import { getOrganizationSetting } from '../settings/settings-service'
 import { type PeriodLock, parsePeriodKey } from './periods'
@@ -73,10 +74,14 @@ export const PERIOD_LOCK_SETTING_KEY = 'ledger.lockedThroughMonth' as const
  * @throws {UnprocessableEntityError} when the stored value is present but is not
  * a `YYYY-MM` month naming a real calendar month.
  */
-export async function resolvePeriodLock(organizationId: string): Promise<PeriodLock> {
+export async function resolvePeriodLock(
+  organizationId: string,
+  db?: Database | Transaction
+): Promise<PeriodLock> {
   const raw = await getOrganizationSetting({
     organizationId,
     key: PERIOD_LOCK_SETTING_KEY,
+    ...(db ? { db } : {}),
   })
 
   // Unset, cleared, or whitespace. A settings form that clears a text input

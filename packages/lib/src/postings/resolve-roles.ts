@@ -56,9 +56,10 @@
  * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
  */
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
+import { PgTransaction } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UnprocessableEntityError } from '../errors'
 import { accountLabel } from './account-label'
@@ -115,7 +116,7 @@ export interface ResolvedAccount {
  * | `accountType` incompatible | the mapping is to the wrong KIND of account |
  */
 export async function resolveRoles(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   roles: string[]
 ): Promise<Result<Map<string, ResolvedAccount>, Error>> {
@@ -255,7 +256,7 @@ export async function resolveRoles(
  * the same fact a second time.
  */
 async function loadAccounts(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   accountIds: string[]
 ): Promise<Map<string, ResolvedAccount>> {
@@ -309,7 +310,7 @@ async function loadAccounts(
  * the person is looking at.
  */
 export async function resolveAccountLines(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   lines: readonly GlPostingLineInput[]
 ): Promise<Result<ResolvedAccount[], Error>> {
@@ -456,7 +457,7 @@ export async function resolveAccountLines(
  * and refusing every manual entry over it would be absurd.
  */
 export async function loadRoleAccountCodes(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   roles: readonly string[]
 ): Promise<Map<string, ResolvedAccount>> {
@@ -517,11 +518,15 @@ export async function loadRoleAccountCodes(
  * rather than bucketed under a key nothing will ever ask for.
  */
 async function loadAccountsByCode(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   codes: string[]
 ): Promise<Map<string, ResolvedAccount[]>> {
-  const fields = await loadChartAccountFields(organizationId, NOT_PROVISIONED)
+  const fields = await loadChartAccountFields(
+    organizationId,
+    NOT_PROVISIONED,
+    db instanceof PgTransaction ? db : undefined
+  )
 
   const rows = await db
     .select({ entityId: schema.FieldValue.entityId })

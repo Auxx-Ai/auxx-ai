@@ -13,6 +13,12 @@ export {
   type GlAccountTypeMeta,
   glAccountTypeMeta,
 } from '../resources/registry/gl-account-type-meta'
+export type {
+  AcceptedPostingResult,
+  PostingReplanResult,
+  PreparedEffectMember,
+  PreparedEffectPosting,
+} from './accept-entry'
 export { accountLabel, compareAccountsByCodeThenName, type NamedAccount } from './account-label'
 export {
   accountSubtypeLabel,
@@ -218,6 +224,15 @@ export {
 // Types only - the read touches `@auxx/database` and stays server-only,
 // exported from `./index`. The close console's card renders this shape.
 export type { DuplicateMovementEntry, DuplicateMovementFinding } from './duplicate-movements'
+export {
+  type AcceptedFulfillmentEffectBasisV1,
+  type AccountingWorkBasisInput,
+  acceptedFulfillmentEffectBasisSchema,
+  accountingWorkBasisSchema,
+  type FulfillmentAccountingBasisV1,
+  fulfillmentAccountingBasisSchema,
+} from './effect-types'
+export type { PostingDeliveryIntent } from './insert-posting'
 export {
   JOURNAL_ENTRY_POSTING_TYPE,
   type JournalEntryKindValue,

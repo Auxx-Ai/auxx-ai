@@ -2,11 +2,12 @@
 //
 // PURE. `periodKey` derivation and the period lock.
 //
-// A `periodKey` is the summarization window of a posting: a day for a
+// Calendar `periodKey`s identify the summarization window of a posting: a day for a
 // per-event entry (`'2026-08-18'`), a month for a month-end one (`'2026-08'`).
 // Together with the posting type it is what makes a double-post unrepresentable
 // at the source rather than merely detected at the destination - see the JSDoc
 // on `GL_POSTING_FIELDS` in resources/registry/resources/gl-posting-fields.ts.
+// Document and fulfillment membership keys instead use `txnDate` for period checks.
 
 import { BadRequestError, UnprocessableEntityError } from '../errors'
 
@@ -120,6 +121,22 @@ function assertRealDate(periodKey: string, year: number, month: number, day: num
 export function periodMonth(periodKey: string): string {
   const parsed = parsePeriodKey(periodKey)
   return `${String(parsed.year).padStart(4, '0')}-${String(parsed.month).padStart(2, '0')}`
+}
+
+/** Use the accounting date for document/group identities and the period for calendar keys. */
+export function postingLockKey(entry: { periodKey: string; txnDate: string }): string {
+  if (!entry.periodKey.startsWith('fg_')) {
+    try {
+      parsePeriodKey(entry.periodKey)
+      return entry.periodKey
+    } catch {
+      // Document identities do not encode a calendar period.
+    }
+  }
+  if (parsePeriodKey(entry.txnDate).granularity !== 'day') {
+    throw new BadRequestError('A posting transaction date must be YYYY-MM-DD')
+  }
+  return entry.txnDate
 }
 
 /**

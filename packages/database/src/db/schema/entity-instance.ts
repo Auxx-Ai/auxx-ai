@@ -2,7 +2,7 @@
 // Drizzle table for EntityInstance
 
 import { createId } from '@paralleldrive/cuid2'
-import { type AnyPgColumn, index, jsonb, pgTable, sql, text, timestamp } from './_shared'
+import { type AnyPgColumn, index, jsonb, pgTable, sql, text, timestamp, unique } from './_shared'
 import { EntityDefinition } from './entity-definition'
 import { Organization } from './organization'
 import { User } from './user'
@@ -142,6 +142,7 @@ export const EntityInstance = pgTable(
     lastInteractionMessageId: text(),
   },
   (table) => [
+    unique('EntityInstance_org_id_key').on(table.organizationId, table.id),
     // Index for entity definition lookups
     index('EntityInstance_entityDefinitionId_idx').using(
       'btree',

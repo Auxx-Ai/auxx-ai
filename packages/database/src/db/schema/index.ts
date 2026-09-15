@@ -3,6 +3,9 @@
 
 export * from './_shared'
 export * from './account'
+export { AccountingEffect, type AccountingEffectEntity } from './accounting-effect'
+export { AccountingWork, type AccountingWorkEntity } from './accounting-work'
+export { AccountingWorkBasis, type AccountingWorkBasisEntity } from './accounting-work-basis'
 export * from './agent'
 export * from './agent-procedure'
 export * from './agent-trigger'
@@ -78,6 +81,14 @@ export * from './eval-run'
 export * from './eval-suite-run'
 export * from './event'
 export * from './export-job'
+export {
+  ExternalAccountingBook,
+  type ExternalAccountingBookEntity,
+} from './external-accounting-book'
+export {
+  ExternalBookConnection,
+  type ExternalBookConnectionEntity,
+} from './external-book-connection'
 export * from './external-knowledge-source'
 export * from './favorite'
 export * from './field-value'

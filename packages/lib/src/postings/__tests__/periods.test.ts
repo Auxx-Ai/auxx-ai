@@ -9,7 +9,29 @@ import {
   parsePeriodKey,
   periodKeyForDate,
   periodMonth,
+  postingLockKey,
 } from '../periods'
+
+describe('postingLockKey', () => {
+  it('checks fulfillment membership groups against the actual accounting date', () => {
+    const key = postingLockKey({ periodKey: 'fg_abcdef012', txnDate: '2026-08-18' })
+    expect(key).toBe('2026-08-18')
+    expect(isPeriodLocked(key, { lockedThroughMonth: '2026-08' })).toBe(true)
+    expect(isPeriodLocked(key, { lockedThroughMonth: '2026-07' })).toBe(false)
+  })
+
+  it('preserves calendar period keys and resolves document keys to their accounting date', () => {
+    expect(postingLockKey({ periodKey: '2026-08', txnDate: '2026-08-31' })).toBe('2026-08')
+    expect(postingLockKey({ periodKey: 'BLD-0007', txnDate: '2026-08-18' })).toBe('2026-08-18')
+  })
+
+  it('requires a real day for non-calendar posting identities even before any period is closed', () => {
+    for (const txnDate of ['2026-08', '2026-02-30', 'not-a-date']) {
+      expect(() => postingLockKey({ periodKey: 'fg_abcdef012', txnDate })).toThrow(BadRequestError)
+    }
+    expect(() => parsePeriodKey('fg_abcdef012')).toThrow(BadRequestError)
+  })
+})
 
 describe('periodKeyForDate', () => {
   it('derives a day key in UTC by default', () => {

@@ -107,6 +107,7 @@ function createFakeDb(chart: Chart[]) {
     chain.where = () => chain
     chain.limit = () => chain
     chain.orderBy = () => chain
+    chain.for = () => chain
     // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
     chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
       Promise.resolve()
@@ -117,6 +118,7 @@ function createFakeDb(chart: Chart[]) {
 
   const db = {
     transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
+    execute: async () => ({ rows: [] }),
 
     select: () => ({
       from: (table: unknown) => {

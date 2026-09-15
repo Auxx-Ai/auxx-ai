@@ -43,7 +43,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ── The two queue-backed externals, mocked OFF ───────────────────────────────
@@ -68,7 +68,7 @@ vi.mock('../../dedup/enqueue-scan', async (importOriginal) => {
 import { createEntityDefinitions } from '../../seed/entity-seeder/create-entity-defs'
 import { createAllFields } from '../../seed/entity-seeder/create-fields'
 import type { EntityDefMap } from '../../seed/entity-seeder/types'
-import { seedDefaultChartOfAccounts } from '../../seed/gl-account-chart'
+import { seedChartPacks } from '../../seed/gl-account-chart'
 import { postEntry } from '../post-entry'
 import { loadRoleAccountCodes } from '../resolve-roles'
 import { reverseEntry } from '../reverse-entry'
@@ -111,7 +111,11 @@ async function seedLedgerOrg(): Promise<LedgerFixture> {
   const narrowed: EntityDefMap = new Map([['gl_account', glAccountDef]])
   await createAllFields(db(), org.id, narrowed)
 
-  const seeded = await seedDefaultChartOfAccounts(db(), org.id, glAccountDef.id)
+  const seeded = await seedChartPacks(db(), org.id, glAccountDef.id, [
+    'inventory',
+    'purchasing',
+    'payroll',
+  ])
   if (seeded.created === 0) throw new Error('fixture: the default chart seeded no accounts')
   if (seeded.rolesAssigned === 0) throw new Error('fixture: no posting roles were assigned')
 
@@ -316,12 +320,13 @@ function rawPosting(overrides: Record<string, unknown>) {
     totalMinor: 1,
     draft: { v: 1 },
     requestId: 'raw-request-id',
+    postedAt: new Date(),
     ...overrides,
   }
 }
 
 describe('GlPosting_posted_check', () => {
-  it('is satisfied because markPosted sets status and postedAt in ONE update', async () => {
+  it('accepts status and postedAt together with the journal', async () => {
     const result = await postEntry(db(), {
       organizationId: f.organizationId,
       entry: receiptEntry(),
@@ -336,23 +341,14 @@ describe('GlPosting_posted_check', () => {
     expect(row!.postedByUserId).toBe(f.userId)
   })
 
-  it('rejects the two-statement version of that same update', async () => {
-    // The proof that the single UPDATE is not merely tidy. This is exactly what
-    // `markPosted` would issue first if it were split in two, and Postgres
-    // refuses it - so a split implementation cannot reach production quietly.
-    const [claimed] = await db()
-      .insert(schema.GlPosting)
-      .values(rawPosting({ status: 'pending' }))
-      .returning({ id: schema.GlPosting.id })
-
+  it('rejects a posted journal without its acceptance timestamp', async () => {
     await expectConstraintViolation(
-      db().execute(sql`update "GlPosting" set "status" = 'posted' where "id" = ${claimed!.id}`),
+      db()
+        .insert(schema.GlPosting)
+        .values(rawPosting({ status: 'posted', postedAt: null })),
       'GlPosting_posted_check'
     )
-
-    // And the row is untouched, so a caller cannot half-apply it either.
-    const [row] = await postings()
-    expect(row!.status).toBe('pending')
+    expect(await postings()).toHaveLength(0)
   })
 })
 
@@ -519,6 +515,12 @@ describe('a reversal pair', () => {
       lock: OPEN,
     })
 
+    await db().insert(schema.OrganizationSetting).values({
+      organizationId: f.organizationId,
+      key: 'ledger.lockedThroughMonth',
+      value: '2026-08',
+      updatedAt: new Date(),
+    })
     const refused = await reverseEntry(db(), {
       organizationId: f.organizationId,
       glPostingId: original.glPostingId as string,

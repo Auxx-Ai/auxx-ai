@@ -255,7 +255,7 @@ export type GlPostingLineInput =
  */
 export interface BuiltEntry {
   postingType: PostingType
-  /** `'2026-08-18'` for a day, `'2026-08'` for a month. See `periods.ts`. */
+  /** Calendar, document or membership identity; `txnDate` is the actual book date. */
   periodKey: string
   /** `YYYY-MM-DD`. Always explicit - providers default to their own server date. */
   txnDate: string

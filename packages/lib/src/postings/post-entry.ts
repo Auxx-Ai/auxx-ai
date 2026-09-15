@@ -35,15 +35,24 @@
 // No permission checks here. The router asserts (docs/lib-module-guide.md §6).
 
 import { createHash } from 'node:crypto'
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { formatCurrency } from '@auxx/utils'
 import { and, eq, sql } from 'drizzle-orm'
-import { databaseErrorCodes, UnprocessableEntityError } from '../errors'
+import { BadRequestError, databaseErrorCodes, UnprocessableEntityError } from '../errors'
 import { accountLabel } from './account-label'
+import { withAccountingCommitLock } from './accounting-commit-lock'
 import { buildDocNumber } from './doc-number'
-import { buildPostingDraft, type PostingAssertions, requiresAssertions } from './draft'
-import { assertPeriodOpen, type PeriodLock, parsePeriodKey } from './periods'
+import { type PostingAssertions, requiresAssertions } from './draft'
+import {
+  assertPostingReversalAllowedInTx,
+  type ClaimOutcome,
+  insertPostingInTx,
+  type PreparedLine,
+} from './insert-posting'
+import { LEDGER_CURRENCY } from './ledger-currency'
+import { resolvePeriodLock } from './period-lock'
+import { assertPeriodOpen, type PeriodLock, parsePeriodKey, postingLockKey } from './periods'
 import { NONE_ACCOUNTING_PROVIDER, resolveAccountingProvider } from './provider'
 import { EXPORT_ROUTE_BY_POSTING_TYPE, INVENTORY_ROLES } from './regime'
 import { loadRoleAccountCodes, resolveAccountLines } from './resolve-roles'
@@ -52,11 +61,9 @@ import type {
   PostEntryInput,
   PostEntryStatus,
   PostFailureClass,
-  PostingExportStatus,
   PostingType,
   PostResult,
   PostResultStatus,
-  ResolvedPostingLine,
 } from './types'
 import { ProviderPostError } from './types'
 
@@ -71,7 +78,7 @@ const logger = createScopedLogger('postings:post-entry')
  * line of SQL nobody is reading. When `BuiltEntry` grows a currency this
  * constant becomes a comparison, and a mismatch becomes a refusal.
  */
-export const LEDGER_CURRENCY = 'USD'
+export { LEDGER_CURRENCY } from './ledger-currency'
 
 /**
  * QuickBooks caps `requestid` at 50 characters, and we adopt that as ours for
@@ -100,9 +107,8 @@ export interface PostEntryOptions {
   actorUserId?: string
   memo?: string
   /**
-   * The period lock, resolved by the caller. `periods.ts` deliberately takes it
-   * as an argument so it stays pure and so the lock can mean the same thing in
-   * ledger mode (ours) and in subledger mode (the provider's closed book).
+   * Preview context only. The commit re-reads the authoritative period setting through
+   * its transaction; neither a stale open nor a stale closed value controls acceptance.
    */
   lock: PeriodLock
   /**
@@ -143,22 +149,6 @@ export interface PreviewEntryOptions {
 export type { EntryPreview } from './types'
 
 import type { EntryPreview } from './types'
-
-/** One line after resolution, paired with the role it was resolved FROM. */
-interface PreparedLine {
-  /**
-   * The role the builder emitted. Stored on the `GlPostingLine` row (decision
-   * G8) so a posted line can still answer "which account was this SUPPOSED to
-   * be" after the chart is renumbered - and never handed to a provider.
-   *
-   * `null` on a CODE line (a manual or opening entry), because there is no role
-   * to record: the human named the account itself. `GlPostingLine.accountRole`
-   * is nullable for exactly this, and `read-posting.ts` already reads it back as
-   * `string | null`.
-   */
-  accountRole: string | null
-  resolved: ResolvedPostingLine
-}
 
 interface Refusal {
   status: PostResultStatus
@@ -248,7 +238,7 @@ const CODE_ENTRY_TYPES = new Set<PostingType>([
  * account called "WIP adjustment" and posting there instead.
  */
 async function findInventoryAccountRefusal(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   lines: PreparedLine[]
 ): Promise<Refusal | undefined> {
@@ -279,46 +269,13 @@ async function findInventoryAccountRefusal(
   }
 }
 
-interface PreparedEntry {
+export interface PreparedEntry {
   docNumber: string
   requestId: string
   lines: PreparedLine[]
   totalMinor: number
   /** Set when the entry must not be claimed. Everything above is best-effort. */
   refusal?: Refusal
-}
-
-/**
- * The key the PERIOD LOCK is evaluated against, which is not always
- * `entry.periodKey`.
- *
- * 🛑 **Two posting types key on an id rather than a date.** `build` keys on
- * `build.number` (`'BLD-0007'`) and `payout` on the payout id, both deliberately
- * - two builds or two payouts in one day would otherwise collide into one entry
- * (see `DocNumberInput`). `parsePeriodKey` throws `BadRequestError` on either,
- * and `isPeriodLocked` short-circuits to `false` while `lockedThroughMonth` is
- * null, so the throw is invisible until an organization closes its FIRST month
- * - at which point every build and payout posting starts failing at once. That
- * is the worst possible moment to discover it.
- *
- * The honest resolution is that those entries do have a month: `txnDate` is the
- * accounting date, it is `YYYY-MM-DD` by contract, and it is the date whose
- * financial statements a lock is protecting. So the lock is evaluated against
- * the period key when the key IS a period, and against the transaction date
- * when it is an id. For every other posting type the two agree by construction,
- * because the period key is derived from the same date.
- *
- * This is not a fallback that guesses. It is the lock reading the field that
- * actually carries the accounting month, and it does not invent a mapping from
- * a payout id to a period.
- */
-function lockKeyFor(entry: BuiltEntry): string {
-  try {
-    parsePeriodKey(entry.periodKey)
-    return entry.periodKey
-  } catch {
-    return entry.txnDate
-  }
 }
 
 /**
@@ -330,8 +287,8 @@ function lockKeyFor(entry: BuiltEntry): string {
  * posted. So each stage records its refusal and the caller reads the first one,
  * in the order the poster refuses: period, roles, balance, document number.
  */
-async function prepareEntry(
-  db: Database,
+export async function prepareEntry(
+  db: Database | Transaction,
   options: { organizationId: string; entry: BuiltEntry; lock: PeriodLock; revision: number }
 ): Promise<PreparedEntry> {
   const { organizationId, entry, lock, revision } = options
@@ -345,7 +302,10 @@ async function prepareEntry(
   // all. Reporting the second as `period_closed` sends a bookkeeper to reopen a
   // month that was never the problem.
   try {
-    assertPeriodOpen(lockKeyFor(entry), lock)
+    postingLockKey(entry)
+    if (parsePeriodKey(entry.txnDate).granularity !== 'day')
+      throw new BadRequestError('A journal requires a valid calendar book date')
+    assertPeriodOpen(entry.txnDate, lock)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     refusal =
@@ -463,6 +423,30 @@ async function prepareEntry(
     if (line.direction === 'debit') totalDebit += line.amount
     else totalCredit += line.amount
   }
+  if (
+    entry.lines.length === 0 ||
+    entry.lines.some(
+      (line) =>
+        !Number.isSafeInteger(line.amount) ||
+        line.amount <= 0 ||
+        !['debit', 'credit'].includes(line.direction)
+    ) ||
+    !Number.isSafeInteger(totalDebit) ||
+    !Number.isSafeInteger(totalCredit)
+  ) {
+    refusal ??= {
+      status: 'error',
+      failureClass: 'data',
+      error: 'Posting lines and totals must be positive safe integer minor units.',
+    }
+  }
+  if (entry.totalDebit !== totalDebit || entry.totalCredit !== totalCredit) {
+    refusal ??= {
+      status: 'unbalanced',
+      failureClass: 'data',
+      error: 'Posting totals differ from the supplied journal lines.',
+    }
+  }
   if (totalDebit !== totalCredit) {
     const difference = Math.abs(totalDebit - totalCredit)
     refusal ??= {
@@ -527,7 +511,8 @@ export function buildRequestId(input: {
 }
 
 /** Postgres `unique_violation`, however Drizzle happens to have wrapped it. */
-function uniqueViolationConstraint(error: unknown): string | null {
+/** Read a PostgreSQL unique violation without mistaking another database failure for a collision. */
+export function uniqueViolationConstraint(error: unknown): string | null {
   const candidates = [error, (error as { cause?: unknown } | null)?.cause]
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== 'object') continue
@@ -599,7 +584,7 @@ export async function previewEntry(
  *    cannot be two statements.
  */
 export async function postEntry(db: Database, options: PostEntryOptions): Promise<PostResult> {
-  const { organizationId, entry, actorUserId, memo, lock, reversesId, assertions } = options
+  const { organizationId, entry, actorUserId, memo, reversesId, assertions } = options
   const revision = options.revision ?? 0
 
   try {
@@ -640,43 +625,35 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
       }
     }
 
-    const prepared = await prepareEntry(db, { organizationId, entry, lock, revision })
-    if (prepared.refusal) {
-      logger.warn('Refusing to post', {
-        organizationId,
-        postingType: entry.postingType,
-        periodKey: entry.periodKey,
-        status: prepared.refusal.status,
-        error: prepared.refusal.error,
-      })
-      return {
-        status: prepared.refusal.status,
-        failureClass: prepared.refusal.failureClass,
-        // A configuration or data refusal is never retried: retrying cannot
-        // change the answer, and the operator has to change something first.
-        retryable: false,
-        error: prepared.refusal.error,
-        docNumber: prepared.docNumber || undefined,
-      }
-    }
-
-    const { docNumber, requestId, lines, totalMinor } = prepared
-
-    // ── The claim, plus its lines, in one transaction ──────────────────────
-    let claim: ClaimOutcome
+    let prepared: PreparedEntry | undefined
+    let docNumber = ''
+    let claim: ClaimOutcome | undefined
     try {
-      claim = await claimPeriod(db, {
-        organizationId,
-        entry,
-        revision,
-        reversesId,
-        docNumber,
-        requestId,
-        totalMinor,
-        lines,
-        memo,
-        actorUserId,
-        assertions,
+      await db.transaction(async (tx) => {
+        await withAccountingCommitLock(tx, organizationId)
+        if (reversesId) await assertPostingReversalAllowedInTx(tx, organizationId, reversesId)
+        const authoritativeLock = await resolvePeriodLock(organizationId, tx)
+        prepared = await prepareEntry(tx, {
+          organizationId,
+          entry,
+          lock: authoritativeLock,
+          revision,
+        })
+        docNumber = prepared.docNumber
+        if (prepared.refusal) return
+        claim = await insertPostingInTx(tx, {
+          organizationId,
+          entry,
+          revision,
+          reversesId,
+          docNumber: prepared.docNumber,
+          requestId: prepared.requestId,
+          totalMinor: prepared.totalMinor,
+          lines: prepared.lines,
+          memo,
+          actorUserId,
+          assertions,
+        })
       })
     } catch (error) {
       // 🛑 `ON CONFLICT (organizationId, postingType, periodKey, revision) DO
@@ -707,6 +684,28 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
       }
       throw error
     }
+
+    if (!prepared) throw new Error('Posting preparation returned no result')
+    if (prepared.refusal) {
+      logger.warn('Refusing to post', {
+        organizationId,
+        postingType: entry.postingType,
+        periodKey: entry.periodKey,
+        status: prepared.refusal.status,
+        error: prepared.refusal.error,
+      })
+      return {
+        status: prepared.refusal.status,
+        failureClass: prepared.refusal.failureClass,
+        // A configuration or data refusal is never retried: retrying cannot
+        // change the answer, and the operator has to change something first.
+        retryable: false,
+        error: prepared.refusal.error,
+        docNumber: prepared.docNumber || undefined,
+      }
+    }
+    if (!claim) throw new Error('Posting claim returned no result')
+    const { lines } = prepared
 
     if (claim.kind === 'existing') {
       // A SUCCESS, and since the export split it is a HONEST one: the row that
@@ -939,210 +938,6 @@ async function stampOutcome(
       error: error instanceof Error ? error.message : String(error),
     })
   }
-}
-
-type ClaimOutcome =
-  | { kind: 'claimed'; row: { id: string; docNumber: string; requestId: string } }
-  | {
-      kind: 'existing'
-      row: {
-        id: string
-        docNumber: string
-        status: string
-        exportStatus: PostingExportStatus
-        providerId: string | null
-        providerEntryId: string | null
-      }
-    }
-
-/**
- * Claim `(organizationId, postingType, periodKey, revision)` and write the
- * lines, in one transaction.
- *
- * The lines are here rather than after the commit because a claimed header with
- * no lines is a ledger row that balances to nothing - and it holds the period,
- * so no later run can repair it.
- */
-async function claimPeriod(
-  db: Database,
-  input: {
-    organizationId: string
-    entry: BuiltEntry
-    revision: number
-    reversesId?: string
-    docNumber: string
-    requestId: string
-    totalMinor: number
-    lines: PreparedLine[]
-    memo?: string
-    actorUserId?: string
-    assertions?: PostingAssertions
-  }
-): Promise<ClaimOutcome> {
-  const { organizationId, entry, revision, reversesId, docNumber, requestId, totalMinor, lines } =
-    input
-
-  return db.transaction(async (tx) => {
-    const claimed = await tx
-      .insert(schema.GlPosting)
-      .values({
-        organizationId,
-        postingType: entry.postingType,
-        periodKey: entry.periodKey,
-        revision,
-        // 🛑 `posted` HERE, not after the provider answers. Every ledger-side
-        // question is settled before this INSERT runs - the period lock (step
-        // 1), the roles (2), the balance (3) - and the lines go in below in the
-        // same transaction. There is no moment at which this row legitimately
-        // exists un-posted, and stamping it later is what let an EXPORT fault
-        // take an entry out of the books. See
-        // plans/accounting/export-state-split.md.
-        status: 'posted',
-        // `GlPosting_posted_check` is `status <> 'posted' OR postedAt IS NOT
-        // NULL`, so the timestamp is part of the same INSERT rather than a
-        // later UPDATE.
-        postedAt: new Date(),
-        // The push has not run yet. `markExported` / `recordExportFailure`
-        // move it, and NOTHING they do may touch `status`.
-        exportStatus: 'pending',
-        txnDate: entry.txnDate,
-        docNumber,
-        // Explicit, never the column default - see LEDGER_CURRENCY.
-        currency: LEDGER_CURRENCY,
-        totalMinor,
-        // The audit record of WHAT WAS POSTED. The built entry verbatim PLUS
-        // the resolved lines, not a hint for reconstructing them: rebuilding
-        // from the subledger later gives a different answer once the subledger
-        // moves, which is the one property a ledger must not have.
-        // One construction site, in `draft.ts`, because this shape is no longer
-        // written-and-never-read: the L1 month-end reader reads the previous
-        // month's envelope to learn what balance was last asserted.
-        draft: buildPostingDraft({
-          docNumber,
-          revision,
-          memo: input.memo,
-          entry,
-          resolvedLines: lines.map((line) => ({
-            accountRole: line.accountRole,
-            ...line.resolved,
-          })),
-          assertions: input.assertions,
-          // The builder's per-line "why", frozen beside `sources` (brief 28
-          // §5). Only builders with a fork emit one; everything else is absent.
-          reasons: entry.reasons,
-        }),
-        requestId,
-        // A reversal names its original in the INSERT. `GlPosting_reversal_check`
-        // makes inserting-then-linking impossible.
-        reversesId: reversesId ?? null,
-        // Who claimed is who posted: decision G5's trigger is a person clicking
-        // Post, synchronously, and recording the actor now keeps the attribution
-        // even if the push then fails.
-        postedByUserId: input.actorUserId ?? null,
-      })
-      .onConflictDoNothing({
-        target: [
-          schema.GlPosting.organizationId,
-          schema.GlPosting.postingType,
-          schema.GlPosting.periodKey,
-          schema.GlPosting.revision,
-        ],
-      })
-      .returning({
-        id: schema.GlPosting.id,
-        docNumber: schema.GlPosting.docNumber,
-        requestId: schema.GlPosting.requestId,
-      })
-
-    const row = claimed[0]
-    if (!row) {
-      // Someone owns the period. Under genuine concurrency this statement
-      // BLOCKED on the winner's uncommitted index tuple and resumed once it
-      // committed, so the row is visible to this read.
-      const existing = await tx
-        .select({
-          id: schema.GlPosting.id,
-          docNumber: schema.GlPosting.docNumber,
-          status: schema.GlPosting.status,
-          exportStatus: schema.GlPosting.exportStatus,
-          providerId: schema.GlPosting.providerId,
-          providerEntryId: schema.GlPosting.providerEntryId,
-        })
-        .from(schema.GlPosting)
-        .where(
-          and(
-            eq(schema.GlPosting.organizationId, organizationId),
-            eq(schema.GlPosting.postingType, entry.postingType),
-            eq(schema.GlPosting.periodKey, entry.periodKey),
-            eq(schema.GlPosting.revision, revision)
-          )
-        )
-        .limit(1)
-
-      const found = existing[0]
-      if (!found) {
-        // The insert wrote nothing and the read found nothing. That is not a
-        // conflict, it is a broken claim, and swallowing it would report a
-        // double-post defence that is not running.
-        throw new Error(
-          `Claim for ${docNumber} returned no row and no conflicting posting exists. ` +
-            'The ON CONFLICT target may no longer match GlPosting_org_type_period_revision_key.'
-        )
-      }
-      return { kind: 'existing', row: found }
-    }
-
-    if (lines.length > 0) {
-      await tx.insert(schema.GlPostingLine).values(
-        lines.map((line, index) => ({
-          organizationId,
-          glPostingId: row.id,
-          // 1-based and derived from the built order, which `prepareEntry`
-          // sorted by `sortOrder`. Unique per posting
-          // (`GlPostingLine_posting_lineNumber_key`).
-          lineNumber: index + 1,
-          glAccountId: line.resolved.glAccountId,
-          accountCode: line.resolved.accountCode,
-          accountRole: line.accountRole,
-          accountName: line.resolved.accountName ?? null,
-          direction: line.resolved.direction,
-          amountMinor: line.resolved.amount,
-          memo: line.resolved.memo ?? null,
-          sourceType: line.resolved.sourceType,
-          sourceId: line.resolved.sourceId,
-          // FROZEN here (brief 13 §1.1): a retry replays this column, never a
-          // re-resolve, so an entry booked under one counterparty stays under
-          // it even if the record is later merged or renamed.
-          counterpartyType: line.resolved.counterpartyType ?? null,
-          counterpartyId: line.resolved.counterpartyId ?? null,
-          // Reporting dimensions (brief 13 §5) - `{ channel: 'dealer' }` and
-          // the like. Never a lookup key, never resolved, just stored.
-          dimensions: line.resolved.dimensions ?? null,
-        }))
-      )
-    }
-
-    // 🛑 The original flips to `reversed` HERE, in the claim transaction, not
-    // when the reversal's export succeeds. The reversal is `posted` the moment
-    // this transaction commits, so an original left `posted` alongside it would
-    // be double-counted by every report until a push that may never succeed
-    // says otherwise. Guarded on `posted` so a second reversal of the same
-    // entry cannot re-flip a row that has already moved.
-    if (reversesId) {
-      await tx
-        .update(schema.GlPosting)
-        .set({ status: 'reversed' })
-        .where(
-          and(
-            eq(schema.GlPosting.id, reversesId),
-            eq(schema.GlPosting.organizationId, organizationId),
-            eq(schema.GlPosting.status, 'posted')
-          )
-        )
-    }
-
-    return { kind: 'claimed', row }
-  })
 }
 
 /**

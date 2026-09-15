@@ -34,8 +34,9 @@
  * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
  */
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { PgTransaction } from 'drizzle-orm/pg-core'
 import { getOrgCache } from '../cache'
 import { UnprocessableEntityError } from '../errors'
 import type { GlAccountSubtypeValue } from './account-subtype'
@@ -107,11 +108,30 @@ export interface ChartAccountsRead {
  */
 export async function loadChartAccountFields(
   organizationId: string,
-  notProvisionedMessage: string
+  notProvisionedMessage: string,
+  db?: Database | Transaction
 ): Promise<ChartAccountFields> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...ACCOUNT_ATTRIBUTES])
+  const fields = db
+    ? Object.fromEntries(
+        (
+          await db
+            .select({
+              id: schema.CustomField.id,
+              entityDefinitionId: schema.CustomField.entityDefinitionId,
+              systemAttribute: schema.CustomField.systemAttribute,
+            })
+            .from(schema.CustomField)
+            .where(
+              and(
+                eq(schema.CustomField.organizationId, organizationId),
+                inArray(schema.CustomField.systemAttribute, [...ACCOUNT_ATTRIBUTES])
+              )
+            )
+        ).map((field) => [field.systemAttribute, field])
+      )
+    : await getOrgCache()
+        .from(organizationId, 'customFields')
+        .bySystemAttributes([...ACCOUNT_ATTRIBUTES])
 
   const code = fields.gl_account_code
   const type = fields.gl_account_type
@@ -140,7 +160,7 @@ export async function loadChartAccountFields(
  * An empty id list short-circuits without touching the database.
  */
 export async function readChartAccountValues(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   instanceIds: string[],
   fields: ChartAccountFields
@@ -257,14 +277,18 @@ export function decodeChartAccounts(
  * @param notProvisionedMessage see {@link loadChartAccountFields}.
  */
 export async function loadChartAccountsById(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   accountIds: string[],
   notProvisionedMessage: string
 ): Promise<ChartAccountsRead> {
   if (accountIds.length === 0) return { accounts: new Map(), malformed: [] }
 
-  const fields = await loadChartAccountFields(organizationId, notProvisionedMessage)
+  const fields = await loadChartAccountFields(
+    organizationId,
+    notProvisionedMessage,
+    db instanceof PgTransaction ? db : undefined
+  )
 
   const live = await db
     .select({ id: schema.EntityInstance.id })
