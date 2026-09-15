@@ -5,6 +5,7 @@ import {
   getPayoutEvidence,
   listPayoutEvidence,
   listPayoutEvidenceHistory,
+  listPayoutSourceAccounts,
   listProcessorBalanceEntries,
   listRejectedProcessorEvidence,
 } from '@auxx/lib/money/payouts'
@@ -17,17 +18,47 @@ const pagination = z.object({
   cursor: z.string().min(1).nullish(),
 })
 
+/**
+ * The evidence list's filters. Each one narrows in SQL, never after the read —
+ * the list pages, so a post-read filter would answer about one page rather than
+ * about the org.
+ *
+ * ⚠️ No amount range, unlike the bank review queue. That queue is pinned to a
+ * single display currency; `MoneyTransfer` carries a per-row `sourceCurrency`,
+ * so one min/max here would compare 100 JPY against 100 USD.
+ */
+const listInput = pagination.extend({
+  search: z.string().max(200).optional(),
+  sourceAccountId: z.string().min(1).optional(),
+  status: z.string().min(1).max(64).optional(),
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
+})
+
 /** Read persisted processor evidence without triggering source sync or accounting. */
 export const payoutEvidenceRouter = createTRPCRouter({
   list: permissionProcedure(PermissionKey.ledgerView)
-    .input(pagination)
+    .input(listInput)
     .query(({ ctx, input }) =>
       listPayoutEvidence(ctx.db, {
         organizationId: ctx.session.organizationId,
         limit: input.limit,
         cursor: input.cursor ?? undefined,
+        // `|| undefined` rather than `??`: a cleared toolbar field arrives as
+        // `''`, and an empty string is a filter that matches nothing useful
+        // (`status = ''`) rather than the absence of a filter.
+        search: input.search?.trim() || undefined,
+        sourceAccountId: input.sourceAccountId || undefined,
+        status: input.status || undefined,
+        from: input.from || undefined,
+        to: input.to || undefined,
       })
     ),
+
+  /** The source accounts the filter picker may offer — only ones with payouts. */
+  sourceAccounts: permissionProcedure(PermissionKey.ledgerView).query(({ ctx }) =>
+    listPayoutSourceAccounts(ctx.db, { organizationId: ctx.session.organizationId })
+  ),
 
   detail: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ id: z.string().min(1) }))

@@ -930,6 +930,27 @@ export interface ChartAccountRow {
   isArchived?: boolean
 }
 
+/**
+ * The manual bucket's provider namespace.
+ *
+ * ⚠️ The honest cost, stated once: the table is called `FinancialSourceAccount`
+ * and a manual bucket is not an account at a financial source. `'auxx'` reads as
+ * "the source is us", which mostly carries it. The row earns its place by making
+ * every other layer uniform - one FK, one picker, one renderer.
+ *
+ * 🛑 Lives HERE rather than in `source-scope.ts`, which mints the row: this file
+ * is client-safe and that one reaches `@auxx/database`. A badge naming a source
+ * account has to recognise the manual bucket without pulling a database driver
+ * into the browser bundle. `source-scope.ts` re-exports all three.
+ */
+export const MANUAL_SOURCE_PROVIDER_KEY = 'auxx'
+
+/** The manual bucket's external id within {@link MANUAL_SOURCE_PROVIDER_KEY}. */
+export const MANUAL_SOURCE_EXTERNAL_ID = 'manual'
+
+/** What a person sees where a connected source would show its own name. */
+export const MANUAL_SOURCE_LABEL = 'Manual'
+
 /** One source a scopable role may be pointed at, as a settings screen renders it. */
 export interface RoleSourceRow {
   /** `FinancialSourceAccount.id` - what `GlRoleAssignment.sourceAccountId` holds. */

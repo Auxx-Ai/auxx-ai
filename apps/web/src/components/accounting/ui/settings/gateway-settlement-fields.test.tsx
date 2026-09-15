@@ -133,8 +133,8 @@ beforeEach(() => {
 describe('gateway settlement fields', () => {
   it('exposes all explicit identities independently of the legacy reader and saves the chosen merchant', () => {
     render(<GatewaySettlementFields gateway={gateway} />)
-    expect(screen.getByRole('option', { name: 'processor-a · merchant/one' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'processor-b · merchant/one' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Processor-a · merchant/one' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Processor-b · merchant/one' })).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Settlement account'), {
       target: { value: 'merchant-two' },
     })
@@ -200,7 +200,7 @@ describe('gateway settlement fields', () => {
     state.isPending = false
     rerender(<GatewaySettlementFields gateway={gateway} />)
     expect(screen.getByLabelText('Settlement account')).toBeEnabled()
-    expect(screen.getByRole('option', { name: 'processor-a · merchant/one' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Processor-a · merchant/one' })).toBeInTheDocument()
     expect(screen.getByText('Settlement mappings configured.')).toBeInTheDocument()
   })
   it('keeps saved fields visible on discovery failure and offers an independent retry', () => {

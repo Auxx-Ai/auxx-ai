@@ -8,6 +8,7 @@ import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import Link from 'next/link'
 import { BankAccountPicker } from '~/components/accounting/ui/bank-account-picker'
+import { sourceAccountLabel } from '~/components/accounting/ui/source-account-label'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
@@ -32,9 +33,12 @@ export function GatewaySettlementFields({ gateway }: { gateway: PaymentGatewayRo
   const selectedAccount = sourceAccounts.find(
     (account) => account.processorAccountId === gateway.processorAccountId
   )
+  // A `Select` option label is a plain STRING, so this site takes the shared
+  // label helper but NOT `SourceAccountBadge` (task 50 §7.8). Discovery only
+  // returns `live` accounts, so the environment is not worth a column here.
   const options = sourceAccounts.map((account) => ({
     value: account.processorAccountId,
-    label: `${account.providerKey} · ${account.externalAccountId}`,
+    label: sourceAccountLabel(account),
   }))
   if (gateway.processorAccountId && !selectedAccount) {
     options.push({ value: gateway.processorAccountId, label: 'Saved merchant account' })

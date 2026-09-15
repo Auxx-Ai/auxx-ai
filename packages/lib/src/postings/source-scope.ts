@@ -51,27 +51,32 @@ import type { ScopeAxis } from './build-entry'
 // 🛑 `RoleSourceRow` lives in `types.ts`, which is client-safe: a settings
 // screen holds the shape and this file reaches a database. Re-exported so a
 // server caller still gets it from the module that produces it.
-import type { RoleSourceRow } from './types'
+import {
+  MANUAL_SOURCE_EXTERNAL_ID,
+  MANUAL_SOURCE_LABEL,
+  MANUAL_SOURCE_PROVIDER_KEY,
+  type RoleSourceRow,
+} from './types'
 
 export type { RoleSourceRow } from './types'
 
 /**
- * The manual bucket's provider namespace.
+ * The manual bucket's identity and label.
  *
- * ⚠️ The honest cost, stated once: the table is called
- * `FinancialSourceAccount` and a manual bucket is not an account at a financial
- * source. `'auxx'` reads as "the source is us", which mostly carries it. The row
- * earns its place by making every other layer uniform - one FK, one picker, one
- * renderer - and Synder made the same call: their provider enum carries
+ * 🛑 DEFINED in `types.ts`, not here, and re-exported for the same reason
+ * `RoleSourceRow` is: this file reaches a database and `types.ts` is client-safe.
+ * A badge naming a source account has to recognise the manual bucket in the
+ * browser. A server caller still gets all three from the module that mints the
+ * row, which is what this line is for.
+ *
+ * Synder made the same call on the namespace itself: their provider enum carries
  * `CUSTOM`, `SYNDER` and `EXTERNAL_URL` beside `SHOPIFY` and `STRIPE`.
  */
-export const MANUAL_SOURCE_PROVIDER_KEY = 'auxx'
-
-/** The manual bucket's external id within {@link MANUAL_SOURCE_PROVIDER_KEY}. */
-export const MANUAL_SOURCE_EXTERNAL_ID = 'manual'
-
-/** What a person sees where a connected source would show its own name. */
-export const MANUAL_SOURCE_LABEL = 'Manual'
+export {
+  MANUAL_SOURCE_EXTERNAL_ID,
+  MANUAL_SOURCE_LABEL,
+  MANUAL_SOURCE_PROVIDER_KEY,
+} from './types'
 
 /**
  * The org's manual bucket, minted if it is not there yet.
