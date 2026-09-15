@@ -51,7 +51,12 @@ export interface SystemEntityConfig {
   plural: string
   icon: string
   color: string
-  /** Whether this entity should appear in the sidebar (default: true) */
+  /** Seeds `EntityDefinition.isVisible` (default: true). 🛑 Does NOT control
+   *  the sidebar any more — that is the `sidebar` axis of
+   *  `SYSTEM_ENTITY_BEHAVIOR` (`../../resources/registry/system-entity-behavior.ts`).
+   *  The two are kept in agreement by the no-op test in
+   *  `resources/registry/__tests__/system-entity-behavior.test.ts`, so a new
+   *  hidden def needs BOTH: `isVisible: false` here and `sidebar: 'never'` there. */
   isVisible?: boolean
 }
 

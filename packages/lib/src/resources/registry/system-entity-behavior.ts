@@ -85,7 +85,7 @@ export const DEFAULTS: Omit<SystemEntityBehavior, 'creatable'> = {
 }
 
 /**
- * Per-`entityType` overrides for the 36 system defs that differ from
+ * Per-`entityType` overrides for the 38 system defs that differ from
  * {@link DEFAULTS}. The other 14 system defs (`contact`, `ticket`, `part`,
  * `company`, `product`, `order`, `quote`, `invoice`, `credit_memo`,
  * `purchase_order`, `vendor_bill`, `work_order`, `service_request`, `build`)
@@ -207,6 +207,25 @@ export const SYSTEM_ENTITY_BEHAVIOR: Record<string, Partial<SystemEntityBehavior
     sidebar: 'never',
     fieldsSettings: false,
   }, // private by construction
+  // The two money-mirror ledgers behind reconciliation: `customer_transaction`
+  // is the customer-side money fact, `processor_balance_entry` the gateway-side
+  // one. Both are minted by the reconciliation writers, never by a person, and
+  // neither has a route folder - `sidebar: 'never'` is what that requires
+  // (migration 110: a visible def with no route folder 404s its nav entry).
+  // `aiVisible: false` because the model should answer money questions from the
+  // records these mirror (`payment`, `payout`, `bank_transaction`), not from the
+  // raw mirror rows; `inPromptCatalog` is omitted because it is ignored once
+  // `aiVisible` is false, matching `subpart` / `bank_rule` above.
+  customer_transaction: {
+    searchable: false,
+    aiVisible: false,
+    sidebar: 'never',
+  },
+  processor_balance_entry: {
+    searchable: false,
+    aiVisible: false,
+    sidebar: 'never',
+  },
 
   // §5.2 - own door, not the sidebar: real records with a dedicated page.
   gl_account: {
