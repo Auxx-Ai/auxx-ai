@@ -42,7 +42,7 @@ describe('the shipped behavior map is exactly the curated set', () => {
   // One settled array, no provisional half — forces every new def to be an
   // explicit decision in review. Modeled on
   // ai-entity-visibility.test.ts:236.
-  it('SYSTEM_ENTITY_BEHAVIOR keys are exactly the 36 defs that differ from DEFAULTS', () => {
+  it('SYSTEM_ENTITY_BEHAVIOR keys are exactly the 38 defs that differ from DEFAULTS', () => {
     expect(Object.keys(SYSTEM_ENTITY_BEHAVIOR).sort()).toEqual([
       'article',
       'bank_account',
@@ -53,6 +53,7 @@ describe('the shipped behavior map is exactly the curated set', () => {
       'catalog_item',
       'credit_memo_application',
       'credit_memo_line',
+      'customer_transaction',
       'entity_group',
       'fulfillment',
       'fulfillment_line',
@@ -66,6 +67,7 @@ describe('the shipped behavior map is exactly the curated set', () => {
       'payment_gateway',
       'payout',
       'personal_inbox',
+      'processor_balance_entry',
       'purchase_order_line',
       'return_line',
       'return_part_line',

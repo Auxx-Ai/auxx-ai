@@ -68,7 +68,14 @@ export const EntityDefinition = pgTable(
       onDelete: 'set null',
     }),
 
-    /** Whether this entity should appear in the sidebar (default: true) */
+    /** 🛑 No longer drives sidebar placement, despite the name. Nav reads the
+     *  `sidebar` axis of `SYSTEM_ENTITY_BEHAVIOR`
+     *  (`lib/resources/registry/system-entity-behavior.ts`), which replaced this
+     *  column for every visibility decision; per-user toggles live in the
+     *  sidebar-visibility preference, not here. Still written at seed time and
+     *  still read by two error-message hint lists (`workflows/graph-edit` and
+     *  `dashboards/draft-edit` `normalize/`), so it is vestigial, not unused.
+     *  Set a def's visibility in the behavior map, not here. */
     isVisible: boolean().notNull().default(true),
 
     /** Owning DataConnector that provisioned this def (owned-mode only). Stays
