@@ -45,6 +45,9 @@ export {
 export {
   checkIntakeModelCapability,
   type IntakeModelCapability,
+  type TranscribeDocumentOutput,
   type TranscribeQuoteInput,
+  type TranscribeSpec,
+  transcribeDocument,
   transcribeQuote,
 } from './transcribe'

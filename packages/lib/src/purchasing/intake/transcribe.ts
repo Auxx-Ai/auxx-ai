@@ -27,6 +27,7 @@ import type { Result } from 'neverthrow'
 import { LLMClient } from '../../ai/clients/base/llm-client'
 import type { MultiModalContent } from '../../ai/clients/base/types'
 import { LLMOrchestrator } from '../../ai/orchestrator/llm-orchestrator'
+import type { UsageSource } from '../../ai/orchestrator/types'
 import { ModelType } from '../../ai/providers/types'
 import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
 import { getCachedDefaultModel } from '../../cache/org-cache-helpers'
@@ -73,12 +74,40 @@ export interface TranscribeQuoteOutput {
   extractedText: string | null
 }
 
-/** What `transcribeQuote` was pointed at. */
+/** What `transcribeQuote` was pointed at. Also `transcribeDocument`'s input, for every caller. */
 export interface TranscribeQuoteInput {
   /** `asset:<mediaAssetId>` — the FileRef the temp upload produced. */
   assetRef: string
   fileName?: string | null
   mimeType?: string | null
+}
+
+/**
+ * What one document kind hands `transcribeDocument`: the prompt, the JSON
+ * schema the provider enforces, the parser that validates what comes back,
+ * and the {@link UsageSource} that spend is booked under.
+ *
+ * One `TranscribeSpec` per document kind (`QUOTE_TRANSCRIBE_SPEC`,
+ * `INVOICE_TRANSCRIBE_SPEC`) is the whole difference between reading a quote
+ * and reading an invoice; everything else in `transcribeDocument` — the asset
+ * load, the format conversion, the multimodal content build, the orchestrator
+ * invoke — is shared (plans/money/tasks/58 §2.3).
+ */
+export interface TranscribeSpec<T> {
+  prompt: string
+  schema: Record<string, unknown>
+  parse: (raw: unknown) => T
+  source: UsageSource
+}
+
+/** What one read of a document produced. */
+export interface TranscribeDocumentOutput<T> {
+  document: T
+  /**
+   * The converted text the model actually read, or `null` for a PDF or an
+   * image that went as bytes. See {@link TranscribeQuoteOutput.extractedText}.
+   */
+  extractedText: string | null
 }
 
 async function resolveModel(organizationId: string): Promise<{ provider: string; model: string }> {
@@ -284,17 +313,24 @@ function extractJson(structured: Record<string, unknown> | undefined, content: s
 }
 
 /**
- * Read one vendor quote into {@link TranscribedQuote}.
+ * Read one document into whatever `spec` says it should become.
+ *
+ * The one function every document-intake pipeline calls (plans/money/tasks/58
+ * §2.3): the asset load, the xlsx/csv/docx conversion, the multimodal content
+ * build, the orchestrator invoke and the JSON extraction are all here, once.
+ * What differs per document kind — the prompt, the schema, the parser, the
+ * usage bucket — is `spec`.
  *
  * @param userId The member whose upload this is, or `null` for a background run.
  *   Reaches credential resolution and the usage insert; never `''`.
  */
-export async function transcribeQuote(
+export async function transcribeDocument<T>(
   db: Database,
   organizationId: string,
   userId: string | null,
-  input: TranscribeQuoteInput
-): Promise<Result<TranscribeQuoteOutput, Error>> {
+  input: TranscribeQuoteInput,
+  spec: TranscribeSpec<T>
+): Promise<Result<TranscribeDocumentOutput<T>, Error>> {
   return guard(
     async () => {
       const capability = await checkIntakeModelCapability(organizationId)
@@ -329,7 +365,7 @@ export async function transcribeQuote(
       // Text part FIRST — both provider clients read the instruction as the
       // frame for the block that follows it.
       const content: MultiModalContent[] = [
-        { type: 'text', data: TRANSCRIBE_QUOTE_PROMPT },
+        { type: 'text', data: spec.prompt },
         document.kind === 'file'
           ? LLMClient.fileToMultiModalContent(
               document.buffer.toString('base64'),
@@ -348,18 +384,16 @@ export async function transcribeQuote(
         organizationId,
         userId,
         messages: [{ role: 'user', content }],
-        context: { source: 'purchase_intake' },
-        structuredOutput: { enabled: true, schema: TRANSCRIBED_QUOTE_JSON_SCHEMA },
+        context: { source: spec.source },
+        structuredOutput: { enabled: true, schema: spec.schema },
       })
 
-      const quote = parseTranscribedQuote(
-        extractJson(response.structured_output, response.content ?? '')
-      )
+      const parsed = spec.parse(extractJson(response.structured_output, response.content ?? ''))
 
-      logger.info('Transcribed a vendor quote', {
+      logger.info('Transcribed a document', {
         organizationId,
         model,
-        lines: quote.lines.length,
+        source: spec.source,
         sourceMimeType: input.mimeType ?? '',
         sentAs: document.kind,
         sentMimeType: document.mimeType,
@@ -367,11 +401,38 @@ export async function transcribeQuote(
       })
 
       return {
-        quote,
+        document: parsed,
         extractedText: document.kind === 'text' ? document.text : null,
       }
     },
-    'Failed to transcribe a vendor quote',
+    'Failed to transcribe a document',
     { organizationId, assetRef: input.assetRef }
   )
+}
+
+/** `transcribeQuote`'s spec: unchanged prompt, schema, parser and usage bucket. */
+const QUOTE_TRANSCRIBE_SPEC: TranscribeSpec<TranscribedQuote> = {
+  prompt: TRANSCRIBE_QUOTE_PROMPT,
+  schema: TRANSCRIBED_QUOTE_JSON_SCHEMA,
+  parse: parseTranscribedQuote,
+  source: 'purchase_intake',
+}
+
+/**
+ * Read one vendor quote into {@link TranscribedQuote}.
+ *
+ * A thin caller of {@link transcribeDocument}: same signature, same return
+ * shape (`{ quote, extractedText }`) its callers already depend on.
+ *
+ * @param userId The member whose upload this is, or `null` for a background run.
+ *   Reaches credential resolution and the usage insert; never `''`.
+ */
+export async function transcribeQuote(
+  db: Database,
+  organizationId: string,
+  userId: string | null,
+  input: TranscribeQuoteInput
+): Promise<Result<TranscribeQuoteOutput, Error>> {
+  const result = await transcribeDocument(db, organizationId, userId, input, QUOTE_TRANSCRIBE_SPEC)
+  return result.map(({ document, extractedText }) => ({ quote: document, extractedText }))
 }

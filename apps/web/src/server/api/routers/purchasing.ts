@@ -19,15 +19,21 @@ import {
   allocateLandedCost,
   checkIntakeModelCapability,
   commitIntakeDraft,
+  createBillIntakeRun,
   createIntakeDraft,
   DEFAULT_MATCH_TOLERANCE,
   discardIntakeDraft,
   findVendorPartForLine,
   findVendorPartsForParts,
+  getBillIntakeRun,
+  getBillIntakeRunForBill,
   getIntakeDraft,
+  linkBillLines,
   matchBill,
   postExpenseBill,
   previewExpenseBill,
+  proposeBillLineLinks,
+  resumeBillIntakeRun,
   updateIntakeDraftPayload,
   voidExpenseBill,
 } from '@auxx/lib/purchasing'
@@ -46,7 +52,7 @@ import {
   receiveStock,
   reverseMovement,
 } from '@auxx/lib/receiving'
-import { recordIdSchema } from '@auxx/types/resource'
+import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
@@ -293,6 +299,10 @@ async function requireDefId(organizationId: string, entityType: string): Promise
  * | `previewMatch`                     | edit on `vendor_bill`                 |
  * | `intakeModelCapability`, `startQuoteIntake`, `getIntakeDraft`, `saveIntakeDraft`, `discardIntakeDraft` | **view** on `purchase_order` |
  * | `commitIntakeDraft`                | edit on `purchase_order`              |
+ * | `startBillIntake`                  | **edit** on `vendor_bill`; also view on `purchase_order` when an order is given |
+ * | `resumeBillIntake`                 | edit on `vendor_bill`                 |
+ * | `getBillIntakeRun`, `getBillIntakeRunForBill`, `proposeBillLineLinks` | view on `vendor_bill` |
+ * | `linkBillLines`                    | edit on `vendor_bill`                 |
  *
  * 🛑 The quote-intake group gating on VIEW is deliberate, not an oversight. The
  * five read/draft procedures write an intake draft and nothing else - no
@@ -300,6 +310,18 @@ async function requireDefId(organizationId: string, entityType: string): Promise
  * what reading a supplier's PDF should cost. `commitIntakeDraft` is the moment
  * records appear, and it is the one that asks for edit
  * (plans/money/tasks/38-purchase-order-from-a-document.md §4.3, §6.3).
+ *
+ * 🛑 The bill-intake group inverts that call on purpose. `startBillIntake`
+ * gates on EDIT of `vendor_bill`, not view, because a bill has no draft stage
+ * to hide behind (plans/money/tasks/58-vendor-bill-from-the-invoice.md §1.3,
+ * "the bill IS the draft"): the worker job it enqueues writes a real
+ * `vendor_bill` the moment the read succeeds, with nothing left to commit
+ * afterward. Create authority is exactly what starting that read should cost.
+ * `resumeBillIntake` and `linkBillLines` are the same door for the same
+ * reason - one resumes the path to a created bill, the other writes the
+ * link a created bill's lines carry. The three read procedures stay on VIEW,
+ * matching the quote group: a poll of the run or a proposed match writes
+ * nothing.
  *
  * `assertEditEntity` (not the coarser `assertWriteEntity`) is deliberate: it is
  * the server mirror of the `canEditEntity(stockMovementDefId)` the part drawer's
@@ -1246,6 +1268,172 @@ export const purchasingRouter = createTRPCRouter({
       ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'purchase_order'))
 
       const result = await commitIntakeDraft(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  // ── Bill intake (plans/money/tasks/58-vendor-bill-from-the-invoice.md) ──────
+  //
+  // A vendor's invoice in, a draft `vendor_bill` out, its lines linked to the
+  // order's lines where the paper says so. Unlike the quote group above, there
+  // is no Redis draft standing between the read and the record: the bill IS
+  // the draft (§1.3), so the group's one create-shaped procedure gates on EDIT
+  // rather than VIEW - see the header comment's second 🛑 for the reasoning.
+
+  /**
+   * Take an uploaded invoice and start reading it (§4.1, §4.6).
+   *
+   * Two steps, the same shape `startQuoteIntake` uses: open the run, enqueue
+   * the job. The run exists before the enqueue so the job's stable id points
+   * at something real rather than racing it.
+   *
+   * 🛑 Gated on EDIT of `vendor_bill`, not view like the quote's start. The
+   * quote writes a Redis draft that becomes a `purchase_order` only at
+   * `commitIntakeDraft`; a bill has no such second step (§1.3, "the bill IS
+   * the draft") - the worker job this enqueues writes a real `vendor_bill`
+   * the moment the read succeeds. Create authority is exactly what starting
+   * that read should cost.
+   *
+   * Also asserts VIEW on `purchase_order` when `purchaseOrderRecordId` is
+   * given: the run reads that order's own lines to match the invoice against,
+   * so starting a read that leans on an order requires seeing it.
+   */
+  startBillIntake: capabilityProcedure
+    .input(
+      z.object({
+        /** `asset:<mediaAssetId>` - the temp upload the custom-field door left. */
+        assetRef: z.string().min(1).max(255),
+        fileName: z.string().max(500).nullish(),
+        mimeType: z.string().max(255).nullish(),
+        /** From the `choose` page's vendor picker, when the person set one. */
+        vendorRecordId: recordIdSchema.nullish(),
+        /** From the `choose` page's picker, or from an order's Bills card. */
+        purchaseOrderRecordId: recordIdSchema.nullish(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'vendor_bill'))
+      if (input.purchaseOrderRecordId) {
+        ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'purchase_order'))
+      }
+
+      const run = await createBillIntakeRun(organizationId, userId, input)
+      if (run.isErr()) throw run.error
+
+      const { enqueueBillIntake } = await import('@auxx/lib/jobs')
+      await enqueueBillIntake({ organizationId, userId, runId: run.value.runId })
+
+      return run.value
+    }),
+
+  /**
+   * Answer a run parked in `needs_vendor` with a person's pick, and let the
+   * job carry on from where it stopped (§4.1 step 2, §4.2, §5.1).
+   *
+   * Gated on EDIT of `vendor_bill`, the same door `startBillIntake` uses:
+   * this is still the path that ends in a created bill, only resumed rather
+   * than started. `resumeBillIntakeRun` itself refuses
+   * (`UnprocessableEntityError`) a run that is not actually `needs_vendor`,
+   * so a stale tab cannot redirect a `reading` or `failed` run onto a vendor
+   * nobody chose for it.
+   */
+  resumeBillIntake: capabilityProcedure
+    .input(z.object({ runId: z.string().min(1), vendorRecordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'vendor_bill'))
+
+      const resumed = await resumeBillIntakeRun(organizationId, input.runId, input.vendorRecordId)
+      if (resumed.isErr()) throw resumed.error
+
+      const { enqueueBillIntake } = await import('@auxx/lib/jobs')
+      await enqueueBillIntake({ organizationId, userId, runId: input.runId })
+
+      return { ok: true as const }
+    }),
+
+  /**
+   * The run as the reading page polls it (§5.1): phases ticking, the vendor
+   * picker on `needs_vendor`, the created bill's id on success.
+   *
+   * VIEW on `vendor_bill`: a read of the run, nothing written.
+   */
+  getBillIntakeRun: capabilityProcedure
+    .input(z.object({ runId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'vendor_bill'))
+
+      const result = await getBillIntakeRun(organizationId, input.runId)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * The run behind a bill, if one still exists (§4.3). A bill older than the
+   * run's 24 hour TTL simply has no run, and `null` is not an error - the
+   * page's read banner just has nothing to show.
+   *
+   * VIEW on `vendor_bill`, same as `getBillIntakeRun`.
+   */
+  getBillIntakeRunForBill: capabilityProcedure
+    .input(z.object({ billRecordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'vendor_bill'))
+
+      const { entityInstanceId } = parseRecordId(input.billRecordId)
+      const result = await getBillIntakeRunForBill(organizationId, entityInstanceId)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * The matcher run against a stored bill's own lines (§3.5, §6.5): the
+   * "Match lines" action on the link card, and the only door a manually
+   * entered bill or an expired intake run ever gets to the matcher through.
+   *
+   * Reads only, so VIEW on `vendor_bill` is enough.
+   */
+  proposeBillLineLinks: capabilityProcedure
+    .input(z.object({ billRecordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'vendor_bill'))
+
+      const result = await proposeBillLineLinks(ctx.db, organizationId, input.billRecordId)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Write the accepted links from the "Match lines" card (§6.5): one update
+   * per line, through `linkBillLineToOrderLine`, the one writer a manual
+   * link and a read's own create step both go through.
+   *
+   * 🛑 Gated on EDIT of `vendor_bill`, alongside `startBillIntake` and
+   * `resumeBillIntake` as the group's mutations. `linkBillLines` itself
+   * verifies every `lineRecordId` belongs to `billRecordId` and every
+   * `orderLineRecordId` belongs to that bill's own order before writing
+   * anything, so one bad row in a batch cannot cross-link two unrelated
+   * records.
+   */
+  linkBillLines: capabilityProcedure
+    .input(
+      z.object({
+        billRecordId: recordIdSchema,
+        links: z
+          .array(z.object({ lineRecordId: recordIdSchema, orderLineRecordId: recordIdSchema }))
+          .min(1)
+          .max(500),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'vendor_bill'))
+
+      const result = await linkBillLines(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
       return result.value
     }),

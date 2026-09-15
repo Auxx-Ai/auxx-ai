@@ -9,8 +9,8 @@ type Props = { params: Promise<{ purchaseOrderId: string }> }
  * (plans/purchasing/01-build-plan.md §4.4, the orders/[orderId] recipe).
  * `purchase_order` has `hasDetailPage: true` — a PO is BUILT: drafted, issued and
  * received against, which is page-shaped. The vendor bill, which only records
- * something already settled, is deliberately drawer-only (§5.1) and has no
- * counterpart to this file.
+ * something already settled, gets its own hand-written page rather than a
+ * `DetailView` counterpart to this file (plans/money/tasks/58 §6.1).
  */
 async function PurchaseOrderDetailPage({ params }: Props) {
   const { purchaseOrderId } = await params

@@ -1282,6 +1282,12 @@
       "import": "./dist/purchasing/intake/client.mjs",
       "default": "./src/purchasing/intake/client.ts"
     },
+    "./purchasing/bill-intake/client": {
+      "types": "./src/purchasing/bill-intake/client.ts",
+      "source": "./src/purchasing/bill-intake/client.ts",
+      "import": "./dist/purchasing/bill-intake/client.mjs",
+      "default": "./src/purchasing/bill-intake/client.ts"
+    },
     "./quick-actions": {
       "types": "./src/quick-actions/index.ts",
       "source": "./src/quick-actions/index.ts",

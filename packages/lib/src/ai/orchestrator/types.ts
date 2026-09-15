@@ -183,6 +183,10 @@ export type UsageSource =
   // return upload is N model calls, one per label, so a shared arm would make
   // "what does intake cost us" unanswerable for either half.
   | 'return_intake'
+  // Reading a vendor's invoice into a drafted vendor bill (plans/money/tasks/58).
+  // Its own arm because this spend scales with invoice volume, not seats, and
+  // must be separable from `purchase_intake` in cost reporting.
+  | 'bill_intake'
   | 'transcription'
   | 'other'
 

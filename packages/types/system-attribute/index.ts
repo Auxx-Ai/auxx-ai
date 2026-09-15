@@ -715,6 +715,10 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_bill_line_purchase_order_line', // the match key
   'vendor_bill_line_part',
   'vendor_bill_line_description',
+  // The vendor's own code for the line as printed on their invoice, never the
+  // part's SKU (entity migration 159,
+  // plans/money/tasks/58-vendor-bill-from-the-invoice.md §7.1).
+  'vendor_bill_line_vendor_code',
   'vendor_bill_line_quantity_billed',
   'vendor_bill_line_unit_price', // a BUY price
   'vendor_bill_line_line_total',

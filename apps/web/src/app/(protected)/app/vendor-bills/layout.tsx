@@ -11,10 +11,10 @@ const BASE_PATH = '/app/vendor-bills'
 
 /**
  * Vendor bills layout, the companies recipe: the shared entity route shell
- * (List | Dashboard) for the list and dashboard routes only. `vendor_bill` is
- * drawer-only (plans/purchasing/01-build-plan.md §5.1) so there is no detail
- * route, but `import/[jobId]` renders its own `MainPage` via `ImportPage`
- * and must bypass the shell, or two `MainPage` trees nest.
+ * (List | Dashboard) for the list and dashboard routes only. `[vendorBillId]`
+ * (plans/money/tasks/58 §6.1) renders its own `MainPage` via `VendorBillPage`
+ * and must bypass the shell, or two `MainPage` trees nest — same reason
+ * `import/[jobId]` already does.
  */
 export default function VendorBillsLayout({ children }: Props) {
   const pathname = usePathname()

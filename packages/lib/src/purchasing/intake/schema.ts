@@ -24,8 +24,15 @@ import { z } from 'zod'
 import { UnprocessableEntityError } from '../../errors'
 import type { TranscribedLine, TranscribedPriceBreak, TranscribedQuote } from './client'
 
-/** A string field the model may omit, may null, and may pad. */
-const text = z
+/**
+ * A string field the model may omit, may null, and may pad.
+ *
+ * Exported so `bill-intake/schema.ts` shares it by import rather than by copy
+ * (plans/money/tasks/58 §2.2): the invoice schema is the quote schema's
+ * sibling and every money field on it carries the same "transcribe, never
+ * compute" rule.
+ */
+export const intakeTextField = z
   .union([z.string(), z.number(), z.null()])
   .optional()
   .transform((value) => {
@@ -41,8 +48,10 @@ const text = z
  * numeric, so a lenient coercion is right here where it would be wrong on a
  * price: there is no currency, no separator ambiguity worth preserving, and a
  * quantity that will not parse is more useful as `null` than as `NaN`.
+ *
+ * Exported so `bill-intake/schema.ts` shares it (see {@link intakeTextField}).
  */
-const count = z
+export const intakeCountField = z
   .union([z.number(), z.string(), z.null()])
   .optional()
   .transform((value) => {
@@ -55,35 +64,35 @@ const count = z
   })
 
 const priceBreakSchema = z.object({
-  minQuantity: count,
-  unitPriceText: text,
+  minQuantity: intakeCountField,
+  unitPriceText: intakeTextField,
 })
 
 const lineSchema = z.object({
-  lineNumber: count,
-  vendorCode: text,
-  description: text,
-  quantity: count,
-  unit: text,
-  unitPriceText: text,
-  lineTotalText: text,
-  leadTime: text,
+  lineNumber: intakeCountField,
+  vendorCode: intakeTextField,
+  description: intakeTextField,
+  quantity: intakeCountField,
+  unit: intakeTextField,
+  unitPriceText: intakeTextField,
+  lineTotalText: intakeTextField,
+  leadTime: intakeTextField,
   priceBreaks: z.array(priceBreakSchema).optional(),
 })
 
 const quoteSchema = z.object({
-  vendorName: text,
-  vendorEmail: text,
-  vendorPhone: text,
-  vendorAddress: text,
-  quoteNumber: text,
-  quoteDate: text,
-  validUntil: text,
-  currency: text,
-  subtotalText: text,
-  shippingText: text,
-  taxText: text,
-  totalText: text,
+  vendorName: intakeTextField,
+  vendorEmail: intakeTextField,
+  vendorPhone: intakeTextField,
+  vendorAddress: intakeTextField,
+  quoteNumber: intakeTextField,
+  quoteDate: intakeTextField,
+  validUntil: intakeTextField,
+  currency: intakeTextField,
+  subtotalText: intakeTextField,
+  shippingText: intakeTextField,
+  taxText: intakeTextField,
+  totalText: intakeTextField,
   lines: z.array(lineSchema).optional(),
 })
 

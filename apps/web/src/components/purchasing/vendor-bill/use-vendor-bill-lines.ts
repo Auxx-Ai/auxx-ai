@@ -26,6 +26,7 @@ export const VENDOR_BILL_LINE_ATTRIBUTES = [
   'vendor_bill_line_purchase_order_line',
   'vendor_bill_line_part',
   'vendor_bill_line_description',
+  'vendor_bill_line_vendor_code',
   'vendor_bill_line_quantity_billed',
   'vendor_bill_line_unit_price',
   'vendor_bill_line_line_total',
@@ -38,6 +39,8 @@ export interface VendorBillLineValues {
   purchaseOrderLineRecordId?: RecordId
   partRecordId?: RecordId
   description: string
+  /** The vendor's own code for this line as printed on their invoice. Never the part's SKU. */
+  vendorCode: string | null
   quantityBilled: number | null
   /** Integer minor units. */
   unitPrice: number | null
@@ -65,6 +68,7 @@ export function toVendorBillLineValues(
     purchaseOrderLineRecordId: firstRecordId(values?.vendor_bill_line_purchase_order_line),
     partRecordId: firstRecordId(values?.vendor_bill_line_part),
     description: (values?.vendor_bill_line_description as string | undefined) ?? '',
+    vendorCode: (values?.vendor_bill_line_vendor_code as string | undefined) ?? null,
     quantityBilled: toNumber(values?.vendor_bill_line_quantity_billed),
     unitPrice: toNumber(values?.vendor_bill_line_unit_price),
     lineTotal: toNumber(values?.vendor_bill_line_line_total),
