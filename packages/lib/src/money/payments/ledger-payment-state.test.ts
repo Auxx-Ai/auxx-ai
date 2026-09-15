@@ -54,9 +54,8 @@ vi.mock('../../resources/crud', () => ({
     listFiltered = h.listFiltered
   },
 }))
-vi.mock('../../field-values/read-field-scalars', () => ({
-  readFieldScalars: async (_db: unknown, _org: string, instanceIds: string[], fieldIds: string[]) =>
-    new Map(instanceIds.map((id, index) => [id, new Map([[fieldIds[0]!, h.applications[index]]])])),
+vi.mock('../credit-memos/reads', () => ({
+  sumInvoiceCreditApplications: async () => h.applications.reduce((sum, amount) => sum + amount, 0),
 }))
 vi.mock('../../field-values/field-value-service', () => ({
   FieldValueService: class {
@@ -157,7 +156,6 @@ describe('syncInvoicePaymentState — clearing the wall it justifies', () => {
       '../../field-hooks/pre/lifecycle-status-guard'
     )
     await expect(
-      // biome-ignore lint/suspicious/noExplicitAny: partial FieldPreHookEvent for the guard
       guardManualInvoiceLifecycleStatus({ newValue: { type: 'option', optionId: 'paid' } } as any)
     ).rejects.toThrow()
   })
@@ -223,19 +221,12 @@ describe('syncInvoicePaymentState — what it derives', () => {
 // `PaymentAllocation`. The memo's issue entry already credited `1100` for it, so an invoice
 // that did not subtract its applied credit would carry a balance the ledger no longer does.
 describe('syncInvoicePaymentState - applied credit', () => {
-  it('lists the applications by the invoice they were applied to', async () => {
-    wireInvoice({ status: 'sent', total: 500, credits: [120] })
+  it('restores the invoice when its applied credit is fully reversed', async () => {
+    wireInvoice({ status: 'partially_paid', total: 500, amountCredited: 120, credits: [120, -120] })
     await syncInvoicePaymentState({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
-    const listArg = h.listFiltered.mock.calls[0]![0] as {
-      entityDefinitionId: string
-      filters: Array<{ conditions: Array<{ fieldId: string; operator: string; value: unknown }> }>
-    }
-    expect(listArg.entityDefinitionId).toBe('credit_memo_application')
-    expect(listArg.filters[0]!.conditions[0]).toMatchObject({
-      fieldId: 'credit_memo_application:invoice',
-      operator: 'is',
-      value: `invoice:${INVOICE}`,
-    })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_amount_credited', value: 0 })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_balance', value: 500 })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_status', value: 'sent' })
   })
 
   it('subtracts applied credit from the balance and writes invoice_amount_credited', async () => {

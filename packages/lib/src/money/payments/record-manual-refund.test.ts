@@ -36,6 +36,26 @@ const FIELDS = {
   credit_memo_application_amount: null,
 }
 
+vi.mock('../credit-memos/command', () => ({
+  runCreditCommand: async (db: unknown, _input: unknown, run: (tx: unknown) => unknown) => run(db),
+}))
+vi.mock('../credit-memos/reads', async () => {
+  const { NotFoundError } = await import('../../errors')
+  return {
+    requireCreditMemo: async () => {
+      if (!h.memo.status) throw new NotFoundError('Credit memo not found')
+      return {
+        id: 'memo-1',
+        status: h.memo.status,
+        totalMinor: h.memo.balance,
+        contactInstanceId: h.memo.contact ?? null,
+        invoiceInstanceId: h.memo.invoice ?? null,
+      }
+    },
+    sumCreditMemoApplications: async () => 0,
+    sumReservedCreditMemoRefunds: async () => 0,
+  }
+})
 vi.mock('@auxx/database', () => {
   const tableName = (table: unknown) => (table as { __table: string }).__table
   return {
@@ -52,6 +72,13 @@ vi.mock('@auxx/database', () => {
         },
       }),
       query: {
+        PaymentTransaction: {
+          findFirst: async () => ({
+            id: 'PaymentTransaction-1',
+            createdAt: new Date(),
+            ...h.inserts.find(([table]) => table === 'PaymentTransaction')?.[1],
+          }),
+        },
         PaymentAllocation: { findMany: async () => [] },
       },
     },
@@ -136,6 +163,7 @@ const MEMO = 'memo-1'
 const input = {
   organizationId: ORG,
   userId: USER,
+  commandKey: 'manual-refund-test',
   creditMemoInstanceId: MEMO,
   amount: 120,
   date: '2026-09-08',
@@ -190,7 +218,7 @@ describe('recordManualRefund - the row', () => {
 
   it('re-derives the memo after the row is written', async () => {
     await recordManualRefund(input)
-    expect(h.settled).toEqual([MEMO])
+    expect(h.settled).toEqual([MEMO, MEMO])
   })
 })
 

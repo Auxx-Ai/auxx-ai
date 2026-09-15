@@ -154,21 +154,28 @@ export function CreditMemoSettlementCard({ recordId }: DrawerTabProps) {
               actions={
                 <div className='flex items-center gap-3 text-xs text-muted-foreground'>
                   <span className='shrink-0 text-foreground text-sm tabular-nums'>
+                    {application.operation === 'unapply'
+                      ? 'Restored '
+                      : application.reversed
+                        ? 'Undone '
+                        : ''}
                     {formatCurrency(application.amountMinor, currencyCode)}
                   </span>
-                  {status !== 'void' && (
-                    <TreeRowButton
-                      variant='destructive'
-                      tooltipText='Unapply credit'
-                      disabled={unapply.isPending}
-                      onClick={() =>
-                        void handleUnapply(
-                          toRecordId('credit_memo_application', application.applicationInstanceId)
-                        )
-                      }>
-                      <Undo2 />
-                    </TreeRowButton>
-                  )}
+                  {status !== 'void' &&
+                    application.operation !== 'unapply' &&
+                    !application.reversed && (
+                      <TreeRowButton
+                        variant='destructive'
+                        tooltipText='Unapply credit'
+                        disabled={unapply.isPending}
+                        onClick={() =>
+                          void handleUnapply(
+                            toRecordId('credit_memo_application', application.applicationInstanceId)
+                          )
+                        }>
+                        <Undo2 />
+                      </TreeRowButton>
+                    )}
                 </div>
               }
             />

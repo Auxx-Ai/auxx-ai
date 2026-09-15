@@ -28,7 +28,7 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
@@ -151,6 +151,18 @@ export function RecordPaymentDialog({
     setAmount(remainder)
   }, [remainder])
 
+  const creditKeys = useRef(new Map<string, string>())
+  useEffect(() => {
+    if (!open) creditKeys.current.clear()
+  }, [open])
+  const creditCommandKey = (payload: string) => {
+    const existing = creditKeys.current.get(payload)
+    if (existing) return existing
+    const key = crypto.randomUUID()
+    creditKeys.current.set(payload, key)
+    return key
+  }
+
   const applyCreditMemo = api.creditMemo.applyCredit.useMutation({
     onError: (error) => toastError({ title: 'Error applying credit', description: error.message }),
   })
@@ -170,6 +182,9 @@ export function RecordPaymentDialog({
     try {
       for (const step of planApplications(memos, creditApplied)) {
         await applyCreditMemo.mutateAsync({
+          commandKey: creditCommandKey(
+            JSON.stringify([step.creditMemoRecordId, invoiceRecordId, step.amount])
+          ),
           creditMemoRecordId: step.creditMemoRecordId,
           invoiceRecordId,
           amount: step.amount,

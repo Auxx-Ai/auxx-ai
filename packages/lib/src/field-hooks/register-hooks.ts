@@ -79,6 +79,11 @@ import {
 } from './post/purchase-order-line-rollups'
 import { guardBuildDelete } from './pre/build-delete-guard'
 import { guardManualBuildLifecycleStatus } from './pre/build-status-guard'
+import {
+  guardCreditApplicationCreate,
+  guardCreditApplicationDelete,
+  guardCreditApplicationField,
+} from './pre/credit-application-guard'
 import { guardCreditMemoDelete } from './pre/credit-memo-delete-guard'
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
 import { guardInvoiceDelete } from './pre/invoice-delete-guard'
@@ -645,6 +650,20 @@ export function registerAllHooks(): void {
   // `credit_memo` is `isVisible: true`, so it carries an ordinary records table with an
   // ordinary delete button, and the drawer's Discard is the generic `record.delete`.
   registerEntityPreDeleteHooks('credit-memos', [guardCreditMemoDelete])
+  registerFieldPreHooks('invoices', 'invoice_credit_applications', [guardCreditApplicationField])
+  registerFieldPreHooks('credit-memos', 'credit_memo_applications', [guardCreditApplicationField])
+  registerEntityPreCreateHooks('credit-memo-applications', [guardCreditApplicationCreate])
+  registerEntityPreDeleteHooks('credit-memo-applications', [guardCreditApplicationDelete])
+  for (const attribute of [
+    'credit_memo_application_credit_memo',
+    'credit_memo_application_invoice',
+    'credit_memo_application_amount',
+    'credit_memo_application_applied_at',
+    'credit_memo_application_operation',
+    'credit_memo_application_reverses',
+    'credit_memo_application_reversals',
+  ] as const)
+    registerFieldPreHooks('credit-memo-applications', attribute, [guardCreditApplicationField])
 
   // Deletes fire no field-change hooks, so a removed line re-sums its memo here, the way
   // `syncBillingAfterLineDelete` does for an invoice line. Together with the field-change

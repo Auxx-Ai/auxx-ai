@@ -16,7 +16,7 @@ import { type Database, schema } from '@auxx/database'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { getOrgCache } from '../../cache'
-import { NotFoundError } from '../../errors'
+import { ConflictError, NotFoundError } from '../../errors'
 import { isLiveFulfillment } from '../fulfillments/client'
 import { readFulfillmentsForOrder } from '../fulfillments/reads'
 import type {
@@ -67,6 +67,8 @@ const CREDIT_MEMO_APPLICATION_ATTRIBUTES = [
   'credit_memo_application_invoice',
   'credit_memo_application_amount',
   'credit_memo_application_applied_at',
+  'credit_memo_application_operation',
+  'credit_memo_application_reverses',
 ] as const
 
 /** Every `invoice` attribute the module reads. */
@@ -408,6 +410,8 @@ export async function loadCreditMemoLines(
 
 /** One `credit_memo_application`, as the settlement and the un-apply read it. */
 export interface CreditMemoApplicationRecord {
+  operation: 'apply' | 'unapply'
+  reversesApplicationId: string | null
   id: string
   creditMemoInstanceId: string | null
   invoiceInstanceId: string | null
@@ -441,6 +445,9 @@ async function loadApplicationsById(
       id,
       creditMemoInstanceId: cell('credit_memo_application_credit_memo')?.relatedEntityId ?? null,
       invoiceInstanceId: cell('credit_memo_application_invoice')?.relatedEntityId ?? null,
+      operation:
+        cell('credit_memo_application_operation')?.valueText === 'unapply' ? 'unapply' : 'apply',
+      reversesApplicationId: cell('credit_memo_application_reverses')?.relatedEntityId ?? null,
       amountMinor: cell('credit_memo_application_amount')?.valueNumber ?? 0,
       appliedAt: cell('credit_memo_application_applied_at')?.valueDate ?? null,
     }
@@ -499,7 +506,10 @@ export async function sumInvoiceCreditApplications(
     invoiceId
   )
   const rows = await loadApplicationsById(db, organizationId, fields, ids)
-  return rows.reduce((sum, row) => sum + row.amountMinor, 0)
+  return rows.reduce(
+    (sum, row) => sum + (row.operation === 'unapply' ? -row.amountMinor : row.amountMinor),
+    0
+  )
 }
 
 /** Integer minor units: what has been applied off this memo, summed from the rows. */
@@ -509,7 +519,79 @@ export async function sumCreditMemoApplications(
   creditMemoId: string
 ): Promise<number> {
   const rows = await listCreditMemoApplications(db, organizationId, creditMemoId)
-  return rows.reduce((sum, row) => sum + row.amountMinor, 0)
+  return rows.reduce(
+    (sum, row) => sum + (row.operation === 'unapply' ? -row.amountMinor : row.amountMinor),
+    0
+  )
+}
+
+/** Credit consumed by confirmed or in-flight refunds. Called while holding the shared money lock. */
+export async function sumReservedCreditMemoRefunds(
+  db: Database,
+  organizationId: string,
+  memo: Pick<CreditMemoRecord, 'id' | 'source' | 'amountRefundedMinor'>
+): Promise<number> {
+  const [refunds, settlements] = await Promise.all([
+    listCreditMemoRefunds(db, organizationId, memo.id),
+    db.query.MoneyRefundSettlement.findMany({
+      where: and(
+        eq(schema.MoneyRefundSettlement.organizationId, organizationId),
+        eq(schema.MoneyRefundSettlement.customerCreditMemoInstanceId, memo.id)
+      ),
+    }),
+  ])
+  // Adoption records explicitly identify a legacy refund represented by canonical money.
+  // Never deduplicate separate movements merely because their amounts match.
+  const adoptedLegacyIds = new Set<string>()
+  if (settlements.length) {
+    const evidence = await db
+      .select({ payload: schema.FinancialSourceObservation.payload })
+      .from(schema.MoneySourceLink)
+      .innerJoin(
+        schema.FinancialSourceObservation,
+        and(
+          eq(
+            schema.FinancialSourceObservation.organizationId,
+            schema.MoneySourceLink.organizationId
+          ),
+          eq(
+            schema.FinancialSourceObservation.sourceObjectId,
+            schema.MoneySourceLink.sourceObjectId
+          )
+        )
+      )
+      .where(
+        and(
+          eq(schema.MoneySourceLink.organizationId, organizationId),
+          inArray(
+            schema.MoneySourceLink.moneyTransactionId,
+            settlements.map((row) => row.refundTransactionId)
+          )
+        )
+      )
+    for (const { payload } of evidence) {
+      if (
+        payload &&
+        typeof payload === 'object' &&
+        'legacyTransactionId' in payload &&
+        typeof payload.legacyTransactionId === 'string'
+      )
+        adoptedLegacyIds.add(payload.legacyTransactionId)
+    }
+  }
+  const canonical = settlements.reduce((sum, row) => sum + row.amountMinor, 0n)
+  const native = refunds
+    .filter(
+      (row) =>
+        ['pending', 'processing', 'succeeded'].includes(row.status) &&
+        !adoptedLegacyIds.has(row.transactionId)
+    )
+    .reduce((sum, row) => sum + BigInt(row.amountMinor), 0n)
+  const imported = memo.source === 'channel' ? BigInt(memo.amountRefundedMinor) : 0n
+  const reserved = (canonical > imported ? canonical : imported) + native
+  if (reserved > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new ConflictError('Credit refund balance exceeds the supported amount range')
+  return Number(reserved)
 }
 
 // ─── Refunds ────────────────────────────────────────────────────────────────
@@ -812,7 +894,10 @@ export async function readCreditMemoSettlement(
     }
   }
 
-  const amountAppliedMinor = applications.reduce((sum, row) => sum + row.amountMinor, 0)
+  const amountAppliedMinor = applications.reduce(
+    (sum, row) => sum + (row.operation === 'unapply' ? -row.amountMinor : row.amountMinor),
+    0
+  )
   // A channel memo's refunded figure is transcribed by the connector; only a
   // native memo's is summed from the ledger (section 2.1).
   const amountRefundedMinor =
@@ -824,6 +909,8 @@ export async function readCreditMemoSettlement(
 
   const applicationRows: CreditMemoApplicationRow[] = applications.map((row) => ({
     applicationInstanceId: row.id,
+    operation: row.operation,
+    reversed: applications.some((other) => other.reversesApplicationId === row.id),
     invoiceInstanceId: row.invoiceInstanceId ?? '',
     invoiceNumber: row.invoiceInstanceId ? (invoiceNumbers.get(row.invoiceInstanceId) ?? '') : '',
     amountMinor: row.amountMinor,

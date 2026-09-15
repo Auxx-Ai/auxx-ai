@@ -679,6 +679,9 @@ export const SYSTEM_ATTRIBUTES = [
   'credit_memo_application_invoice', // owning side; inverse of invoice_credit_applications
   'credit_memo_application_amount', // > 0, <= memo balance, <= invoice balance at the time
   'credit_memo_application_applied_at',
+  'credit_memo_application_operation',
+  'credit_memo_application_reverses',
+  'credit_memo_application_reversals',
 
   // ─── Receiving: cost, date and provenance on stock_movement ──────
   // plans/purchasing/01-build-plan.md §2. Every one of these is
