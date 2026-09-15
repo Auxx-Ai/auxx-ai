@@ -15,6 +15,14 @@ export {
   glAccountTypeMeta,
 } from '../resources/registry/gl-account-type-meta'
 export {
+  type AcceptedPostingResult,
+  acceptEntryInTx,
+  type EffectAcceptanceDependencies,
+  type PostingReplanResult,
+  type PreparedEffectMember,
+  type PreparedEffectPosting,
+} from './accept-entry'
+export {
   type AccountIdentityMap,
   confirmSuggestedIdentities,
   listAccountIdentities,
@@ -28,6 +36,7 @@ export {
   GL_ACCOUNT_SUBTYPES,
   type GlAccountSubtypeValue,
 } from './account-subtype'
+export { withAccountingCommitLock } from './accounting-commit-lock'
 // ── plans/accounting/tasks/25 4: one credit memo entry per period ───────────
 export {
   type BuildCreditMemoBatchEntryInput,
@@ -241,7 +250,29 @@ export {
   type FindDuplicateBankMovementsOptions,
   findDuplicateBankMovements,
 } from './duplicate-movements'
+export {
+  accountingBasisHash,
+  canonicalAccountingJson,
+  correctionAccountingEffectKey,
+  fromLedgerMinor,
+  fulfillmentAccountingEffectKey,
+  toLedgerMinor,
+} from './effect-basis'
+export {
+  type AcceptedFulfillmentEffectBasisV1,
+  type AccountingWorkBasisInput,
+  acceptedFulfillmentEffectBasisSchema,
+  accountingWorkBasisSchema,
+  type FulfillmentAccountingBasisV1,
+  fulfillmentAccountingBasisSchema,
+} from './effect-types'
+export {
+  appendFulfillmentWorkBasisInTx,
+  type CaptureFulfillmentWorkInput,
+  captureFulfillmentWorkInTx,
+} from './effect-work'
 export { gatherMonthEndInventoryInputs } from './gather-month-end-inventory'
+export type { PostingDeliveryIntent } from './insert-posting'
 export {
   type CreateJournalEntryInput,
   createJournalEntry,
@@ -561,6 +592,7 @@ export {
   type SetRoleAssignmentOptions,
   setRoleAssignment,
 } from './role-map'
+export { type SetLockedThroughInput, setLockedThrough } from './set-locked-through'
 export { assertAccountingSetupUnfrozen, FROZEN_SETUP_SETTING_KEYS } from './settled-periods'
 export {
   type OpeningTrialBalanceSummary,

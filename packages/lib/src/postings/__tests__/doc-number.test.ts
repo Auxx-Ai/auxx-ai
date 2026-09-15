@@ -12,8 +12,35 @@
 
 import { describe, expect, it } from 'vitest'
 import { UnprocessableEntityError } from '../../errors'
-import { buildDocNumber, DOC_NUMBER_MAX_LENGTH, DOC_NUMBER_PREFIX } from '../doc-number'
+import {
+  buildDocNumber,
+  DOC_NUMBER_MAX_LENGTH,
+  DOC_NUMBER_PREFIX,
+  fulfillmentGroupPeriodKey,
+} from '../doc-number'
 import { POSTING_TYPES } from '../types'
+
+describe('fulfillment membership document numbers', () => {
+  it('fits the provider cap without truncating the composed document number', () => {
+    const periodKey = fulfillmentGroupPeriodKey('abcdef0123456789'.repeat(4))
+    expect(periodKey).toBe('fg_abcdef012')
+    expect(buildDocNumber({ postingType: 'fulfillment', periodKey })).toBe('AUXX-FUL-fg_abcdef012')
+    expect(buildDocNumber({ postingType: 'fulfillment', periodKey })).toHaveLength(21)
+  })
+
+  it('requires a full canonical hash before shortening the group identity', () => {
+    for (const hash of ['', 'abcdef012', 'a'.repeat(63), 'A'.repeat(64), 'g'.repeat(64)]) {
+      expect(() => fulfillmentGroupPeriodKey(hash)).toThrow(UnprocessableEntityError)
+    }
+  })
+
+  it('exposes prefix collisions for the accepting transaction to compare in full', () => {
+    const first = 'abcdef012' + '0'.repeat(55)
+    const second = 'abcdef012' + '1'.repeat(55)
+    expect(first).not.toBe(second)
+    expect(fulfillmentGroupPeriodKey(first)).toBe(fulfillmentGroupPeriodKey(second))
+  })
+})
 
 describe('the prefix table covers the vocabulary', () => {
   // Exact-key equality, both directions. A subset assertion passes forever; only

@@ -21,6 +21,7 @@ import {
   bigint,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -29,8 +30,10 @@ import {
   sql,
   text,
   timestamp,
+  unique,
   uniqueIndex,
 } from './_shared'
+import { ExternalBookConnection } from './external-book-connection'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -137,6 +140,8 @@ export const glPostingDirection = pgEnum('GlPostingDirection', ['debit', 'credit
 export const GlPosting = pgTable(
   'GlPosting',
   {
+    deliveryIntent: text().$type<'not_required' | 'manual' | 'automatic'>(),
+    intendedBookConnectionId: text(),
     id: text()
       .$defaultFn(() => createId())
       .primaryKey()
@@ -270,6 +275,16 @@ export const GlPosting = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
+    unique('GlPosting_org_id_key').on(table.organizationId, table.id),
+    foreignKey({
+      name: 'GlPosting_intended_connection_scope_fk',
+      columns: [table.organizationId, table.intendedBookConnectionId],
+      foreignColumns: [ExternalBookConnection.organizationId, ExternalBookConnection.id],
+    }).onDelete('no action'),
+    check(
+      'GlPosting_delivery_intent_check',
+      sql`((${table.deliveryIntent} IS NULL AND ${table.intendedBookConnectionId} IS NULL) OR (${table.deliveryIntent} = 'not_required' AND ${table.intendedBookConnectionId} IS NULL) OR (${table.deliveryIntent} IN ('manual', 'automatic') AND ${table.intendedBookConnectionId} IS NOT NULL)) IS TRUE`
+    ),
     // ── THE CLAIM. Everything else in this file is bookkeeping around this line. ──
     uniqueIndex('GlPosting_org_type_period_revision_key').using(
       'btree',

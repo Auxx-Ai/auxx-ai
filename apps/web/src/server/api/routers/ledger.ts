@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/ledger.ts
 
-import { getCachedEntityDefId, getCachedInstalledApps, onCacheEvent } from '@auxx/lib/cache'
+import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
 import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
 import { getPaymentAccount } from '@auxx/lib/money'
 // The naming catalogue is PURE and client-safe (brief 26 §7.2), so it lives on
@@ -55,6 +55,7 @@ import {
   reverseEntry,
   reverseJournalEntry,
   setAccountIdentity,
+  setLockedThrough,
   setRoleAssignment,
   syncProviderLedger,
   updateChartAccount,
@@ -72,9 +73,8 @@ import {
 } from '@auxx/lib/postings/recurring-journals'
 import { recurrencePatternSchema } from '@auxx/lib/recurrence'
 import { seedChartAccounts, seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
-import { updateOrganizationSetting } from '@auxx/lib/settings'
 import { z } from 'zod'
-import { recordAuditFromCtx } from '~/server/api/audit-context'
+import { requestAuditContext } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trpc'
 
 /**
@@ -443,21 +443,12 @@ export const ledgerRouter = createTRPCRouter({
       // authority should apply if that ever changes.
       await assertAccountingSetupUnfrozen(organizationId, [key])
 
-      await updateOrganizationSetting({
+      await setLockedThrough(ctx.db, {
         organizationId,
-        key,
-        value: input.periodKey,
-        db: ctx.db,
-      })
-
-      await onCacheEvent('org.settings.changed', { orgId: organizationId, broadcastUserKeys: true })
-
-      await recordAuditFromCtx(ctx, {
-        category: 'settings',
-        action: 'setting.changed',
-        targetType: 'OrganizationSetting',
-        targetId: key,
-        newState: { value: input.periodKey },
+        periodKey: input.periodKey,
+        actorUserId: ctx.session.user.id,
+        ...requestAuditContext(ctx.headers),
+        sessionId: ctx.session.id ?? null,
       })
 
       return { success: true }

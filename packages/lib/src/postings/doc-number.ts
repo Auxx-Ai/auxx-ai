@@ -43,6 +43,19 @@ import type { PostingType } from './types'
 export const DOC_NUMBER_MAX_LENGTH = 21
 
 /**
+ * Compact fulfillment membership identity into the existing document-number budget.
+ * The accepting transaction must retain and compare the full SHA-256 hash on any
+ * conflict. The prefix alone never proves that two groups have the same members.
+ * Corrections receive their own membership key at revision zero.
+ */
+export function fulfillmentGroupPeriodKey(membershipHash: string): string {
+  if (!/^[a-f0-9]{64}$/.test(membershipHash)) {
+    throw new UnprocessableEntityError('Fulfillment membership requires a full SHA-256 hash')
+  }
+  return `fg_${membershipHash.slice(0, 9)}`
+}
+
+/**
  * Three letters per posting type. Every member of `POSTING_TYPES`, including
  * the two the L3 per-event regime writes and does not yet enable.
  *
@@ -152,7 +165,11 @@ export interface DocNumberInput {
    *   identity an entry we did not author has. It is the one key whose length
    *   somebody else chooses; see {@link DOC_NUMBER_PREFIX}'s note on it.
    *
-   * Everything else keys on a real period - `'2026-08-18'` for a day,
+   * Effect-backed fulfillment groups key on `fg_<membership hash prefix>`.
+   * Their accounting date remains in `txnDate`; the full hash is retained in
+   * the journal draft and compared on conflict by the acceptance boundary.
+   *
+   * Calendar-based entries key on a real period - `'2026-08-18'` for a day,
    * `'2026-08'` for a month. Hyphens are stripped, so both compact to 8 and 6.
    */
   periodKey: string

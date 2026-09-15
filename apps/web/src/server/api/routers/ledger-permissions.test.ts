@@ -32,6 +32,7 @@ vi.mock('@auxx/lib/postings', async () => {
   return {
     ...actual,
     assertAccountingSetupUnfrozen: vi.fn(async () => undefined),
+    setLockedThrough: vi.fn(async () => undefined),
     createChartAccount: vi.fn(async () => okResult({ id: 'acc_cuid000000000000000000000' })),
     setRoleAssignment: vi.fn(async () => okResult({ role: 'cash', glAccountId: 'acc_1' })),
     // Brief 20 §7.4. The inbound sync RESTATES prior months - it writes into
@@ -115,7 +116,10 @@ vi.mock('@auxx/lib/permissions', async () => {
   return { PermissionKey, requirePermission: vi.fn(async () => undefined) }
 })
 
-vi.mock('~/server/api/audit-context', () => ({ recordAuditFromCtx: vi.fn(async () => undefined) }))
+vi.mock('~/server/api/audit-context', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/server/api/audit-context')>()),
+  recordAuditFromCtx: vi.fn(async () => undefined),
+}))
 vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 vi.mock('~/server/api/trpc', async () => {

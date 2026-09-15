@@ -1,6 +1,13 @@
 // packages/database/src/db/relations/index.ts
 // Barrel export for grouped relations
 
+export {
+  accountingEffectRelations,
+  accountingWorkBasisRelations,
+  accountingWorkRelations,
+  externalAccountingBookRelations,
+  externalBookConnectionRelations,
+} from './accounting'
 export * from './build'
 export * from './commerce'
 export * from './core'

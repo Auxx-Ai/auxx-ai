@@ -6,6 +6,7 @@
 import { type Database, database as defaultDb, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
+import { UnprocessableEntityError } from '../errors'
 import { SETTINGS_CATALOG, type SettingConfig, type SettingKey } from './catalog'
 import { normalizeSettingValue } from './normalize-setting-value'
 import type { SettingScope, SettingValue } from './types'
@@ -349,6 +350,11 @@ export async function updateOrganizationSetting(params: {
   db?: Database | Transaction
 }): Promise<void> {
   const { organizationId, key, value, db = defaultDb } = params
+  if (key === 'ledger.lockedThroughMonth') {
+    throw new UnprocessableEntityError(
+      'Use the accounting setLockedThrough command to change the period lock'
+    )
+  }
 
   const settingConfig = SETTINGS_CATALOG[key]
   if (!settingConfig) {
@@ -481,6 +487,11 @@ export async function batchUpdateOrganizationSettings(params: {
   db?: Database | Transaction
 }): Promise<void> {
   const { organizationId, settings, db = defaultDb } = params
+  if (settings.some(({ key }) => key === 'ledger.lockedThroughMonth')) {
+    throw new UnprocessableEntityError(
+      'Use the accounting setLockedThrough command to change the period lock'
+    )
+  }
   let touchedInvoiceDefaultTiming = false
 
   await db.transaction(async (tx) => {

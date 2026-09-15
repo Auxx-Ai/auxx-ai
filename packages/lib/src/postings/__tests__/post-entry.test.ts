@@ -29,7 +29,10 @@
 import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const h = vi.hoisted(() => ({ fields: new Map<string, string>() }))
+const h = vi.hoisted(() => ({
+  fields: new Map<string, string>(),
+  lockedThroughMonth: null as string | null,
+}))
 
 vi.mock('../../cache', () => ({
   getOrgCache: () => ({
@@ -252,9 +255,14 @@ function createFakeDb(chart: Chart[]) {
 
   const db = {
     transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
+    // SQL lock semantics are covered by accept-entry.int.test.ts against PostgreSQL.
+    execute: async () => ({ rows: [] }),
 
     select: () => ({
       from: (table: unknown) => {
+        if (table === schema.OrganizationSetting) {
+          return thenable(() => (h.lockedThroughMonth ? [{ value: h.lockedThroughMonth }] : []))
+        }
         if (table === schema.GlRoleAssignment) {
           return thenable(() =>
             chart.map((entry) => ({
@@ -436,6 +444,7 @@ function receiptEntry(overrides: Partial<BuiltEntry> = {}): BuiltEntry {
 const OPEN = { lockedThroughMonth: null }
 
 beforeEach(() => {
+  h.lockedThroughMonth = null
   h.fields = new Map([
     ['gl_account_code', CODE_FIELD],
     ['gl_account_name', NAME_FIELD],
@@ -784,7 +793,32 @@ describe('refusals', () => {
     expect(draft.assertions?.kind).toBe('month_end_inventory')
   })
 
+  it('uses the persisted close when a caller supplies a stale open lock', async () => {
+    h.lockedThroughMonth = '2026-08'
+    const fake = createFakeDb(FULL_CHART)
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+    })
+    expect(result.status).toBe('period_closed')
+    expect(fake.postings).toHaveLength(0)
+    expect(fake.lines).toHaveLength(0)
+  })
+
+  it('uses an explicitly reopened database period instead of a stale closed preview', async () => {
+    const fake = createFakeDb(FULL_CHART)
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: { lockedThroughMonth: '2026-08' },
+    })
+    expect(result.status).toBe('not_connected')
+    expect(fake.postings).toHaveLength(1)
+  })
+
   it('refuses a closed period and writes nothing', async () => {
+    h.lockedThroughMonth = '2026-08'
     const fake = createFakeDb(FULL_CHART)
     const result = await postEntry(fake.db, {
       organizationId: ORG,
@@ -825,6 +859,8 @@ describe('refusals', () => {
     const unbalanced = receiptEntry()
     unbalanced.lines[0]!.amount = 1_234_000
     unbalanced.lines[1]!.amount = 1_230_000
+    unbalanced.totalDebit = 1_234_000
+    unbalanced.totalCredit = 1_230_000
 
     const result = await postEntry(fake.db, {
       organizationId: ORG,
@@ -875,6 +911,7 @@ describe('a posting whose period key is an id, not a date', () => {
     receiptEntry({ postingType: 'build', periodKey: 'BLD-0007', txnDate: '2026-09-04' })
 
   it('does not throw once a lock exists, and evaluates the lock against txnDate', async () => {
+    h.lockedThroughMonth = '2026-08'
     const fake = createFakeDb(FULL_CHART)
     const result = await postEntry(fake.db, {
       organizationId: ORG,
@@ -888,6 +925,7 @@ describe('a posting whose period key is an id, not a date', () => {
   })
 
   it('still refuses when the txnDate falls in a closed month', async () => {
+    h.lockedThroughMonth = '2026-08'
     const fake = createFakeDb(FULL_CHART)
     const result = await postEntry(fake.db, {
       organizationId: ORG,
@@ -900,6 +938,7 @@ describe('a posting whose period key is an id, not a date', () => {
   })
 
   it('refuses rather than posting blind when neither key can be read as a period', async () => {
+    h.lockedThroughMonth = '2026-08'
     const fake = createFakeDb(FULL_CHART)
     const result = await postEntry(fake.db, {
       organizationId: ORG,

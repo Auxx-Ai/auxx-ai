@@ -24,7 +24,10 @@
 import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const h = vi.hoisted(() => ({ fields: new Map<string, string>() }))
+const h = vi.hoisted(() => ({
+  fields: new Map<string, string>(),
+  lockedThroughMonth: null as string | null,
+}))
 
 vi.mock('../../cache', () => ({
   getOrgCache: () => ({
@@ -135,6 +138,7 @@ function createFakeDb(input: {
     }
     chain.limit = () => chain
     chain.orderBy = () => chain
+    chain.for = () => chain
     // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
     chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
       Promise.resolve()
@@ -145,9 +149,13 @@ function createFakeDb(input: {
 
   const db = {
     transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
+    execute: async () => ({ rows: [] }),
 
     select: () => ({
       from: (table: unknown) => {
+        if (table === schema.OrganizationSetting) {
+          return thenable(() => (h.lockedThroughMonth ? [{ value: h.lockedThroughMonth }] : []))
+        }
         if (table === schema.GlRoleAssignment) {
           return thenable(() =>
             input.chart.map((entry) => ({
@@ -339,6 +347,7 @@ function originalLines(overrides: Partial<LineRow>[] = [{}, {}]): LineRow[] {
 const OPEN = { lockedThroughMonth: null }
 
 beforeEach(() => {
+  h.lockedThroughMonth = null
   h.fields = new Map([
     ['gl_account_code', CODE_FIELD],
     ['gl_account_name', NAME_FIELD],
@@ -661,6 +670,7 @@ describe('refusals', () => {
   })
 
   it('refuses when the original period has since been closed', async () => {
+    h.lockedThroughMonth = '2026-08'
     const fake = createFakeDb({ postings: [original()], lines: originalLines(), chart: CHART })
     const result = await reverseEntry(fake.db, {
       organizationId: ORG,

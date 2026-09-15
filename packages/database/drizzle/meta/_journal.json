@@ -2640,6 +2640,20 @@
       "when": 1789153242642,
       "tag": "0376_one_live_app_installation_per_org",
       "breakpoints": true
+    },
+    {
+      "idx": 377,
+      "version": "7",
+      "when": 1789455072320,
+      "tag": "0377_accounting_scope_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 378,
+      "version": "7",
+      "when": 1789455087219,
+      "tag": "0378_accounting_effect_foundation",
+      "breakpoints": true
     }
   ]
 }
