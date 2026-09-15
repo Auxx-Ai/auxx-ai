@@ -1,46 +1,15 @@
 // apps/web/src/components/money/ui/order/order-fulfillment-ledger-card.tsx
 'use client'
 
-// The order drawer's ledger card, rebased onto `fulfillment` / `fulfillment_line`
-// records (entity migration 153, plans/money/tasks/55-shipment-lines.md §6). One
-// row per fulfillment record now, not per JSON log entry.
-//
-// 🛑 **Why the order cannot use the generic `LedgerCard`.** That card asks
-// "which postings have a line naming this record as their source?", which was
-// the right question while one order produced one entry. A bulk fulfillment
-// summarises a whole day into one entry whose revenue, tax and shipping lines
-// carry `sourceType: 'fulfillment_batch'` and the PERIOD KEY as their source, so
-// the source lookup finds nothing for the orders inside it. Worse, it does not
-// find nothing consistently: the A/R leg stays per order (aging has to name the
-// debtor), so a terms order would show a card and a card-paid order in the same
-// entry would show none, a difference with no meaning that reads as a bug.
-//
-// This card reads the ORDER's own fulfillment records (`orderForFulfillment`,
-// already used by the fulfill dialog and the line-items tab to prefill
-// remaining quantities) rather than the postings-only stamp, because a
-// fulfillment now exists - and is worth showing - before it is ever posted, and
-// a CANCELLED fulfillment never gets a posting at all. `orderFulfillmentPostings`
-// is read alongside it for exactly one thing the record itself cannot say: a
-// posting's CURRENT status. `fulfillment_gl_posting` is written once and a
-// reversal never clears it (`money/fulfillments/writes.ts`), so "is this
-// posting still standing" can only come from the posting itself.
-//
-// ⚠️ A REVERSED posting is kept and shown, never hidden - reversing is how a
-// fulfillment posting is undone, and an order whose entry was reversed is
-// unposted, it re-enters the next preview by construction.
-//
-// 🛑 A CANCELLED fulfillment is a real record, not an absence the connector
-// quietly drops (the JSON log's `deriveFulfillments` used to filter these out
-// entirely). It renders with its own badge rather than looking like a live
-// shipment, and rather than disappearing - `fulfillmentBadge` in the sibling
-// `.helpers.ts` file is what decides the priority between cancelled, reversed
-// and channel status.
+// Fulfillment postings come from accepted effect membership. Pending source work
+// remains visible even when its date or other accounting inputs are incomplete.
 
 import {
   defaultFulfillmentName,
   type Fulfillment,
   type OrderFulfillmentPostingRef,
 } from '@auxx/lib/money/client'
+import { LEDGER_CURRENCY } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
@@ -49,7 +18,6 @@ import { useMemo, useState } from 'react'
 import { PostingLinesDialog } from '~/components/accounting/ui/ledger-card'
 import { EmptyRow } from '~/components/drawers/cards/related-record-row'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
-import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import {
   formatShippedAt,
@@ -58,9 +26,6 @@ import {
 } from './order-fulfillment-ledger-card.helpers'
 
 export function OrderFulfillmentLedgerCard({ entityInstanceId }: DrawerTabProps) {
-  const { getSetting } = useSettings({})
-  const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
-
   const [openPostingId, setOpenPostingId] = useState<string | null>(null)
 
   const orderQuery = api.money.orderForFulfillment.useQuery(
@@ -76,9 +41,15 @@ export function OrderFulfillmentLedgerCard({ entityInstanceId }: DrawerTabProps)
     { enabled: !!entityInstanceId }
   )
 
+  const workQuery = api.money.orderAccountingWork.useQuery(
+    { orderId: entityInstanceId },
+    { enabled: !!entityInstanceId }
+  )
+  const pendingWork = (workQuery.data ?? []).filter((work) => work.state !== 'accepted')
+
   const fulfillments: Fulfillment[] = orderQuery.data?.fulfillments ?? []
   const orderNumber = orderQuery.data?.number ?? null
-  const loading = orderQuery.isPending
+  const loading = orderQuery.isPending || workQuery.isPending || postingsQuery.isPending
 
   const postingStatusByGlPosting = useMemo(() => {
     const map = new Map<string, OrderFulfillmentPostingRef['status']>()
@@ -86,12 +57,51 @@ export function OrderFulfillmentLedgerCard({ entityInstanceId }: DrawerTabProps)
     return map
   }, [postingsQuery.data])
 
-  if (!loading && fulfillments.length === 0) {
+  const error = orderQuery.error ?? workQuery.error ?? postingsQuery.error
+  if (error) return <EmptyRow label={error.message} />
+
+  if (!loading && fulfillments.length === 0 && pendingWork.length === 0) {
     return <EmptyRow label='Nothing shipped yet' />
   }
 
   return (
     <>
+      {pendingWork.map((work) => (
+        <TreeRow
+          key={work.id}
+          icon={<BookOpenCheck className='size-4' />}
+          title={
+            work.state === 'no_effect'
+              ? 'Shipment needs no accounting entry'
+              : work.state === 'canceled'
+                ? 'Shipment accounting canceled'
+                : work.operation === 'correction'
+                  ? 'Accounting correction awaiting review'
+                  : 'Shipment awaiting accounting'
+          }
+          description={
+            work.reason ??
+            (work.effectiveDate ? `Shipped ${work.effectiveDate}` : 'Shipment date is missing')
+          }
+          secondary={
+            <Badge
+              variant={
+                work.state === 'no_effect' || work.state === 'canceled' ? 'outline' : 'amber'
+              }
+              size='xs'>
+              {work.state === 'no_effect'
+                ? 'Not required'
+                : work.state === 'canceled'
+                  ? 'Canceled'
+                  : work.eligibility === 'excluded'
+                    ? 'Excluded'
+                    : work.state === 'blocked'
+                      ? 'Needs attention'
+                      : 'Pending'}
+            </Badge>
+          }
+        />
+      ))}
       <TreeRowList
         items={fulfillments}
         loading={loading}
@@ -152,7 +162,7 @@ export function OrderFulfillmentLedgerCard({ entityInstanceId }: DrawerTabProps)
       <PostingLinesDialog
         postingId={openPostingId}
         onOpenChange={(open) => !open && setOpenPostingId(null)}
-        currencyCode={currencyCode}
+        currencyCode={LEDGER_CURRENCY}
       />
     </>
   )

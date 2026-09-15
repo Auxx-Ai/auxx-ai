@@ -11,6 +11,8 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
+
 const listChartAccounts = vi.fn()
 const listRoleMap = vi.fn()
 vi.mock('../role-map', () => ({
@@ -102,6 +104,10 @@ function stubDb(alreadyAssigned: Set<string> = new Set()) {
     source: string
   }[] = []
   const db = {
+    execute: async () => undefined,
+    transaction: async function <T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
+      return fn(this)
+    },
     insert: () => ({
       values: (row: {
         organizationId: string

@@ -42,7 +42,11 @@ vi.mock('@auxx/database', () => {
       where: () => ({ returning: async () => state.writeReturning }),
     }),
   }
-  return { database, schema: { Credential: {}, User: {} } }
+  return {
+    database: { ...database, transaction: (fn: (tx: unknown) => unknown) => fn(database) },
+    withAccountingCommitLock: vi.fn(),
+    schema: { Credential: {}, User: {} },
+  }
 })
 
 import { decryptSecrets, encryptSecrets } from '../../crypto'

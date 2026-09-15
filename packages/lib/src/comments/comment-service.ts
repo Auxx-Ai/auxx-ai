@@ -104,7 +104,7 @@ type ResolvedCommentParent = {
 }
 
 export class CommentService {
-  private db: Database
+  private db: Database | Transaction
   private userId: string
   private organizationId: string
   private notificationService: NotificationService
@@ -117,7 +117,7 @@ export class CommentService {
   constructor(
     organizationId: string,
     userId: string,
-    db: Database,
+    db: Database | Transaction,
     capabilities: CapabilityView | null
   ) {
     this.organizationId = organizationId

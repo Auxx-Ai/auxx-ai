@@ -6,7 +6,9 @@
 import { type Database, database as defaultDb, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
+import { PgTransaction } from 'drizzle-orm/pg-core'
 import { UnprocessableEntityError } from '../errors'
+import { withAccountingCommitLock } from '../postings/accounting-commit-lock'
 import { SETTINGS_CATALOG, type SettingConfig, type SettingKey } from './catalog'
 import { normalizeSettingValue } from './normalize-setting-value'
 import type { SettingScope, SettingValue } from './types'
@@ -350,6 +352,16 @@ export async function updateOrganizationSetting(params: {
   db?: Database | Transaction
 }): Promise<void> {
   const { organizationId, key, value, db = defaultDb } = params
+  if (
+    key.startsWith('accounting.') ||
+    key.startsWith('ledger.') ||
+    key === 'quickbooks.postJournalEntries'
+  ) {
+    if (!(db instanceof PgTransaction)) {
+      return db.transaction((tx) => updateOrganizationSetting({ ...params, db: tx }))
+    }
+    await withAccountingCommitLock(db, organizationId)
+  }
   if (key === 'ledger.lockedThroughMonth') {
     throw new UnprocessableEntityError(
       'Use the accounting setLockedThrough command to change the period lock'
@@ -495,6 +507,15 @@ export async function batchUpdateOrganizationSettings(params: {
   let touchedInvoiceDefaultTiming = false
 
   await db.transaction(async (tx) => {
+    if (
+      settings.some(
+        ({ key }) =>
+          key.startsWith('accounting.') ||
+          key.startsWith('ledger.') ||
+          key === 'quickbooks.postJournalEntries'
+      )
+    )
+      await withAccountingCommitLock(tx, organizationId)
     for (const setting of settings) {
       const { key, value } = setting
 

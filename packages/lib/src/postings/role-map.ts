@@ -40,12 +40,14 @@
  * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
  */
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, eq, isNull } from 'drizzle-orm'
+import { PgTransaction } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError, NotFoundError, UnprocessableEntityError } from '../errors'
 import { accountLabel, compareAccountsByCodeThenName } from './account-label'
+import { withAccountingCommitLock } from './accounting-commit-lock'
 import { ACCOUNT_ROLES, type AccountRole, ROLE_ACCOUNT_TYPES } from './build-entry'
 import {
   type ChartAccountsRead,
@@ -109,7 +111,7 @@ function isAccountRole(role: string): role is AccountRole {
  * Two queries: the assignments, then the accounts they name. Never N+1.
  */
 export async function listRoleMap(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string
 ): Promise<Result<RoleAssignmentRow[], Error>> {
   try {
@@ -216,7 +218,7 @@ export interface ListChartAccountsOptions {
 }
 
 export async function listChartAccounts(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   options: ListChartAccountsOptions = {}
 ): Promise<Result<ChartAccountRow[], Error>> {
@@ -301,7 +303,7 @@ export async function listChartAccounts(
  * field only the settings screen renders does not belong on it.
  */
 export async function listChartAccountUsage(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string
 ): Promise<Result<Record<string, number>, Error>> {
   try {
@@ -383,9 +385,19 @@ export interface SetRoleAssignmentOptions {
  * @returns the role's row as {@link listRoleMap} would render it afterwards.
  */
 export async function setRoleAssignment(
-  db: Database,
+  db: Database | Transaction,
   options: SetRoleAssignmentOptions
 ): Promise<Result<RoleAssignmentRow, Error>> {
+  return db instanceof PgTransaction
+    ? setRoleAssignmentInTx(db, options)
+    : db.transaction((tx) => setRoleAssignmentInTx(tx, options))
+}
+
+async function setRoleAssignmentInTx(
+  db: Transaction,
+  options: SetRoleAssignmentOptions
+): Promise<Result<RoleAssignmentRow, Error>> {
+  await withAccountingCommitLock(db, options.organizationId)
   const { organizationId, role, actorUserId } = options
   const glAccountId = options.glAccountId?.trim() || null
   const markedUnused = options.markedUnused
@@ -434,7 +446,7 @@ export async function setRoleAssignment(
  * state `resolveRoles` refuses outright rather than choosing between.
  */
 async function mapRole(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   role: AccountRole,
   glAccountId: string,
@@ -519,7 +531,7 @@ async function mapRole(
  * to `resolveRoles` as "the account moved under the mapping".
  */
 async function setUnusedFlag(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   role: AccountRole,
   markedUnused: boolean
@@ -587,7 +599,7 @@ async function setUnusedFlag(
  * account is findable rather than merely invisible.
  */
 async function loadChartAccountsById(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   accountIds: string[]
 ): Promise<Map<string, ChartAccountRow>> {

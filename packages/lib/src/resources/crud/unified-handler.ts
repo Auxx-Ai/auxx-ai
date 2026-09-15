@@ -1,6 +1,6 @@
 // packages/lib/src/resources/crud/unified-handler.ts
 
-import type { Database } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import { database as defaultDatabase, schema } from '@auxx/database'
 import type { Rung } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
@@ -8,6 +8,7 @@ import { ModelTypes } from '@auxx/types/custom-field'
 import { isEntityDefinitionType } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq } from 'drizzle-orm'
+import { PgTransaction } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { findCachedResource, getCachedCustomFields, getCachedResources } from '../../cache'
 import { type ConditionGroup, resolveConditionContext } from '../../conditions'
@@ -28,6 +29,8 @@ import {
   resolveRecordVisibilityScope,
 } from '../../permissions/capabilities/record-visibility-scope'
 import { buildDefIdToSlug } from '../../permissions/capabilities/resolve-capability-inputs'
+import { withAccountingCommitLock } from '../../postings/accounting-commit-lock'
+import { accountingSourceType } from '../../postings/source-write-guard'
 import { runWithDirtyParents } from '../../reconcilers/dirty-parents'
 import { resolveResourceAccessGrantees } from '../../resource-access/grantee-resolution'
 import { getCommonHooks, getSystemHooks } from '../hooks'
@@ -44,6 +47,8 @@ import { isSystemResourceId } from '../registry'
 import type { TableId } from '../registry/field-registry'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
 import { assertRecordRowsEditable } from './record-row-access'
+import { flushTxWriteScope } from './tx-write-flush'
+import { runInTxWrite } from './tx-write-scope'
 import type { ResolvedEntityDefinition } from './types'
 import {
   archiveEntity,
@@ -77,7 +82,7 @@ import {
   querySystemResourceIdsPaged,
   resolveEntityIdFromCache,
 } from './unified-handler-queries'
-import { interactiveSession, type WriteSession } from './write-origin'
+import { interactiveSession, sessionLane, type WriteSession } from './write-origin'
 import {
   getAmbientWriteDb,
   getAmbientWriteSession,
@@ -185,7 +190,8 @@ export interface UnifiedCrudHandlerOptions {
 
 export class UnifiedCrudHandler {
   fieldValueService: FieldValueService
-  private db: Database
+  private accountingTransaction = false
+  private db: Database | Transaction
   private bypassFieldGuards: ReadonlySet<SystemAttribute>
   /** Request-scoped read enforcement; undefined for internal/system callers. */
   private capabilities?: CapabilityView
@@ -201,7 +207,7 @@ export class UnifiedCrudHandler {
   constructor(
     private organizationId: string,
     private userId: string,
-    db?: Database,
+    db?: Database | Transaction,
     private socketId?: string,
     options: UnifiedCrudHandlerOptions = {}
   ) {
@@ -210,7 +216,7 @@ export class UnifiedCrudHandler {
     // joins that transaction), then the pool.
     // The same `tx as Database` shape every transaction-scoped caller already
     // hands the constructor.
-    this.db = db ?? (getAmbientWriteDb() as Database | undefined) ?? defaultDatabase
+    this.db = db ?? getAmbientWriteDb() ?? defaultDatabase
     this.bypassFieldGuards = options.bypassFieldGuards ?? new Set()
     // S1 resolution: explicit option → ambient (hook re-entry inherits its
     // parent's session) → default interactive from the constructor identity.
@@ -233,6 +239,23 @@ export class UnifiedCrudHandler {
       // below already got them; that asymmetry was the bug.
       capabilities: this.capabilities,
     })
+  }
+
+  /** Bind this handler's identity, permissions and write session to an existing transaction. */
+  withDatabase(db: Database | Transaction): UnifiedCrudHandler {
+    const ambientMode = getAmbientWriteSession()?.mode
+    const session =
+      ambientMode?.kind === 'buffered' && sessionLane(this.session) !== 'silent'
+        ? { ...this.session, mode: ambientMode }
+        : this.session
+    if (db === this.db && session === this.session) return this
+    const handler = new UnifiedCrudHandler(this.organizationId, this.userId, db, this.socketId, {
+      bypassFieldGuards: this.bypassFieldGuards,
+      capabilities: this.capabilities,
+      session,
+    })
+    handler.accountingTransaction = this.accountingTransaction
+    return handler
   }
 
   /**
@@ -269,6 +292,31 @@ export class UnifiedCrudHandler {
     return runWithDirtyParents(this.organizationId, this.userId, () =>
       runWithWriteSession(this.session, () => runWithWriteDb(this.db, fn))
     )
+  }
+
+  private async accountingWrite<T>(fn: (handler: UnifiedCrudHandler) => Promise<T>): Promise<T> {
+    const execute = async (tx: Transaction) => {
+      await withAccountingCommitLock(tx, this.organizationId)
+      const ambientMode = getAmbientWriteSession()?.mode
+      const handler = new UnifiedCrudHandler(this.organizationId, this.userId, tx, this.socketId, {
+        bypassFieldGuards: this.bypassFieldGuards,
+        capabilities: this.capabilities,
+        session:
+          ambientMode?.kind === 'buffered' && sessionLane(this.session) !== 'silent'
+            ? { ...this.session, mode: ambientMode }
+            : this.session,
+      })
+      handler.accountingTransaction = true
+      return fn(handler)
+    }
+    if (this.db instanceof PgTransaction) return execute(this.db)
+    const completed = await this.db.transaction((tx) =>
+      runInTxWrite({ organizationId: this.organizationId, actorUserId: this.userId }, () =>
+        execute(tx)
+      )
+    )
+    if (completed.owned) await flushTxWriteScope(completed.scope)
+    return completed.result
   }
 
   /**
@@ -456,6 +504,12 @@ export class UnifiedCrudHandler {
     values: Record<string, unknown>,
     options: CrudOptions = {}
   ): Promise<CreateEntityResult> {
+    if (
+      !this.accountingTransaction &&
+      (await accountingSourceType(this.db, this.organizationId, entityDefinitionId))
+    ) {
+      return this.accountingWrite((handler) => handler.create(entityDefinitionId, values, options))
+    }
     return this.inWriteSession(async () => {
       // Write enforcement (§2): absent capabilities ⇒ internal caller ⇒ unrestricted.
       this.capabilities?.assertEditEntity(entityDefinitionId)
@@ -529,7 +583,17 @@ export class UnifiedCrudHandler {
     values: Record<string, unknown>,
     modes?: Record<string, 'set' | 'add' | 'remove'>,
     options: CrudOptions = {}
-  ) {
+  ): Promise<EntityInstanceEntity> {
+    if (
+      !this.accountingTransaction &&
+      (await accountingSourceType(
+        this.db,
+        this.organizationId,
+        parseRecordId(recordId).entityDefinitionId
+      ))
+    ) {
+      return this.accountingWrite((handler) => handler.update(recordId, values, modes, options))
+    }
     return this.inWriteSession(async () => {
       const { entityDefinitionId } = parseRecordId(recordId)
       await this.assertEditRows([recordId])

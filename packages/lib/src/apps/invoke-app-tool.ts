@@ -11,7 +11,7 @@
 // Generalised from `money/quickbooks/invoke-quickbooks-tool.ts` (brief 27 §5), which is now
 // a thin wrapper pinning the `quickbooks` slug.
 
-import { database } from '@auxx/database'
+import { type CatalogTool, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getCachedInstalledApps, getOrgCache } from '../cache'
 
@@ -42,6 +42,9 @@ export interface AppToolContext {
   userId: string
   /** The connection's stored `metadata`, when any. Provider-specific (QuickBooks keeps `realmId` here). */
   connectionMetadata: Record<string, unknown> | undefined
+  /** Tool contracts from the resolved deployment, for capability checks before writes. */
+  tools?: CatalogTool[]
+  serverBundleSha?: string
   /** Invoke one app tool by id, returning its unwrapped `execution_result.data`. */
   callTool: (toolId: string, inputs: Record<string, unknown>) => Promise<any>
 }
@@ -63,6 +66,9 @@ export interface ResolveAppToolContextInput {
    * an existing `auxxContactId` that way). Off unless the caller's tools need it.
    */
   includeEntitiesScope?: boolean
+  /** Bind this exact credential without falling back to another connection. */
+  pinnedCredentialId?: string
+  expectedCompanyId?: string
 }
 
 /**
@@ -124,6 +130,7 @@ export async function resolveAppToolContext(
     appId: install.app.id,
     organizationId,
     userId,
+    ...(input.pinnedCredentialId ? { connectionId: input.pinnedCredentialId } : {}),
   })
   if (connectionsResult.isErr()) {
     logger.warn(`Failed to resolve ${appLabel} connection`, {
@@ -136,6 +143,12 @@ export async function resolveAppToolContext(
   const { organizationConnection, userConnection } = connectionsResult.value
   const connection = organizationConnection ?? userConnection
   if (!connection) return { connected: false }
+  if (input.pinnedCredentialId && connection.id !== input.pinnedCredentialId) {
+    throw new Error('The runtime credential does not match the pinned accounting connection')
+  }
+  if (input.expectedCompanyId && connection.metadata?.realmId !== input.expectedCompanyId) {
+    throw new Error('The runtime credential does not match the pinned QuickBooks company')
+  }
 
   const baseContext = prepareLambdaContext({
     appId: install.app.id,
@@ -208,6 +221,8 @@ export async function resolveAppToolContext(
       installationId: installation.id,
       connectionId: connection.id,
       userId,
+      tools: deploymentResult.value.deployment.catalog?.tools,
+      serverBundleSha,
       connectionMetadata: isRecord(connection.metadata) ? connection.metadata : undefined,
       callTool,
     },

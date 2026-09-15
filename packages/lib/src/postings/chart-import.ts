@@ -14,6 +14,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UniqueValueConflictError, UnprocessableEntityError } from '../errors'
 import type { GlAccountSubtypeValue } from './account-subtype'
+import { withAccountingCommitLock } from './accounting-commit-lock'
 import type { AccountRole } from './build-entry'
 import { planChartImport } from './chart-import-plan'
 import { createChartAccount } from './chart-write'
@@ -224,13 +225,16 @@ async function insertRoleAssignment(
   glAccountId: string,
   source: 'import' | 'seed'
 ): Promise<boolean> {
-  const inserted = await db
-    .insert(schema.GlRoleAssignment)
-    .values({ organizationId, role, glAccountId, source })
-    .onConflictDoNothing({
-      target: [schema.GlRoleAssignment.organizationId, schema.GlRoleAssignment.role],
-    })
-    .returning({ id: schema.GlRoleAssignment.id })
+  return db.transaction(async (tx) => {
+    await withAccountingCommitLock(tx, organizationId)
+    const inserted = await tx
+      .insert(schema.GlRoleAssignment)
+      .values({ organizationId, role, glAccountId, source })
+      .onConflictDoNothing({
+        target: [schema.GlRoleAssignment.organizationId, schema.GlRoleAssignment.role],
+      })
+      .returning({ id: schema.GlRoleAssignment.id })
 
-  return inserted.length > 0
+    return inserted.length > 0
+  })
 }

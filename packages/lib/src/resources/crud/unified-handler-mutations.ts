@@ -1,6 +1,6 @@
 // packages/lib/src/resources/crud/unified-handler-mutations.ts
 
-import type { Database, schema } from '@auxx/database'
+import type { Database, schema, Transaction } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
@@ -126,7 +126,7 @@ type CustomFieldEntity = typeof schema.CustomField.$inferSelect
  * Provides access to common services and organization context
  */
 export interface MutationContext {
-  db: Database
+  db: Database | Transaction
   organizationId: string
   userId: string
   /** Pusher socket ID of the originating client — used for self-event exclusion in realtime sync. */

@@ -19,7 +19,7 @@
  * boundary is all the atomicity this needs.
  */
 
-import type { Database } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import { UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
@@ -40,7 +40,7 @@ import type { CreatedFulfillment, CreateFulfillmentInput, FulfillmentPostingStam
  *   with it - there is no partial fulfillment left behind.
  */
 export async function createFulfillment(
-  db: Database,
+  db: Database | Transaction,
   input: CreateFulfillmentInput
 ): Promise<CreatedFulfillment> {
   const { organizationId, actorUserId } = input
@@ -87,18 +87,9 @@ export async function createFulfillment(
   }
 }
 
-/**
- * Write a posting's identity - and, when the poster recomputed them, its
- * amounts - onto one fulfillment record.
- *
- * 🛑 An ORDINARY scalar field write, not a JSON cell: no lock, no envelope, no
- * read-modify-write. Entity migration 153's whole point was to make this
- * true - see `credit-memo-posting/run.ts`'s `creditMemoStampWriter`, which
- * made the identical move for `credit_memo_gl_posting` and is the precedent
- * this copies.
- */
+/** Optional display projection. Accounting eligibility and subsequent arithmetic read accepted effects. */
 export async function stampFulfillmentPosting(
-  db: Database,
+  db: Database | Transaction,
   params: {
     organizationId: string
     /** Who the write is attributed to. The `systemUser` for an unattended run. */
@@ -121,22 +112,9 @@ export async function stampFulfillmentPosting(
   await handler.update(recordId, values)
 }
 
-/**
- * Delete a fulfillment record outright, taking its lines with it.
- *
- * `fulfillment_lines` declares `onDelete: 'cascade'`
- * (`resources/registry/resources/fulfillment-fields.ts`), so the delete
- * engine removes every `fulfillment_line` row itself - this never touches
- * them by hand.
- *
- * The rollback path for a shipment whose posting the ledger refused
- * (`money/orders/fulfill.ts`'s `rollbackFulfillment`, brief §6.1): the record
- * was already committed by the time `postEntry`'s network round trip returns,
- * so undoing it is a second, compensating write - not something the original
- * transaction can roll back for free.
- */
+/** Delete an unaccepted fulfillment through the guarded resource boundary. */
 export async function deleteFulfillment(
-  db: Database,
+  db: Database | Transaction,
   params: { organizationId: string; actorUserId: string; fulfillmentInstanceId: string }
 ): Promise<void> {
   const { organizationId, actorUserId, fulfillmentInstanceId } = params
@@ -150,7 +128,7 @@ export async function deleteFulfillment(
   // revenue with no posting behind it, and nothing downstream would notice.
   if (count === 0 || errors.length > 0) {
     throw new UnprocessableEntityError(
-      `Failed to roll back fulfillment ${fulfillmentInstanceId}: ` +
+      `Failed to delete fulfillment ${fulfillmentInstanceId}: ` +
         (errors[0]?.message ?? 'nothing was deleted'),
       { fulfillmentInstanceId }
     )

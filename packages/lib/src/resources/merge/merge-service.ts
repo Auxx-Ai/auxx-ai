@@ -26,7 +26,7 @@ function asOptionsObject(value: unknown): Record<string, unknown> | null {
  */
 export class EntityMergeService {
   constructor(
-    private readonly db: Database,
+    private readonly db: Database | Transaction,
     private readonly organizationId: string,
     private readonly userId: string
   ) {}

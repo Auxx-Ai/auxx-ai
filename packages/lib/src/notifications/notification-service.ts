@@ -1,5 +1,7 @@
 // packages/lib/src/notifications/notification-service.ts
 
+import type { Database, Transaction } from '@auxx/database'
+
 import { database as db, schema } from '@auxx/database'
 import type { NotificationType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
@@ -47,7 +49,7 @@ function escapeLikePattern(value: string): string {
 export class NotificationService {
   private realTimeService: RealtimeService
 
-  constructor(private database = db) {
+  constructor(private database: Database | Transaction = db) {
     this.realTimeService = getRealtimeService()
   }
 

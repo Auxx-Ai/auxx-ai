@@ -622,6 +622,19 @@ export async function setupSchedules() {
     }
   )
 
+  await maintenanceQueue.upsertJobScheduler(
+    'accountingRecoveryJob',
+    { every: 60_000 },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 30_000 },
+        removeOnComplete: { count: 10 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Recurring journal templates, daily at 03:45 UTC (accounting task 21 §1.2), fifteen
   // minutes after the invoice-draft sweep and forty-five after the visit one so the three
   // `RecurrenceRule` consumers never contend. Generates DRAFTS only; a template whose next

@@ -51,13 +51,12 @@ function allFields(): Record<string, { id: string }> {
 /** A `db` whose `.select().from().where()` resolves the next queued row set. */
 function stubDb(queue: unknown[][]): Database {
   let index = 0
-  return {
-    select: () => ({
-      from: () => ({
-        where: () => Promise.resolve(queue[index++] ?? []),
-      }),
-    }),
-  } as unknown as Database
+  const chain = {
+    from: () => chain,
+    innerJoin: () => chain,
+    where: () => Promise.resolve(queue[index++] ?? []),
+  }
+  return { select: () => chain } as unknown as Database
 }
 
 beforeEach(() => {

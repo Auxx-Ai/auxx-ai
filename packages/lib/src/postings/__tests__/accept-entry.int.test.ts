@@ -114,7 +114,7 @@ beforeEach(async () => {
   vi.mocked(resolveAccountingProvider).mockClear()
 })
 
-async function member(): Promise<PreparedEffectMember> {
+async function member(effectiveDate = '2026-09-14'): Promise<PreparedEffectMember> {
   const [source] = await db()
     .insert(schema.EntityInstance)
     .values({
@@ -124,15 +124,20 @@ async function member(): Promise<PreparedEffectMember> {
     })
     .returning()
   const id = source!.id
+  const sourceBasis = readyBasis(id)
+  sourceBasis.effectiveDate = effectiveDate
+  sourceBasis.calculation.shippedOn = effectiveDate
   const { work } = await db().transaction((tx) =>
     captureFulfillmentWorkInTx(tx, {
       organizationId,
       fulfillmentInstanceId: id,
       eligibility: 'manual',
-      basis: readyBasis(id),
+      basis: sourceBasis,
     })
   )
   const basis = acceptedBasis(id)
+  basis.effectiveDate = effectiveDate
+  basis.calculation = sourceBasis.calculation
   for (const line of basis.contribution)
     line.glAccountId = line.direction === 'debit' ? clearingId : revenueId
   for (const line of basis.accountResolution) {
@@ -262,6 +267,52 @@ async function connection(org = organizationId, state: 'active' | 'disconnected'
 }
 
 describe('atomic accounting acceptance against PostgreSQL', () => {
+  it('groups different fulfillment dates in one month using the latest date while retaining each effect date', async () => {
+    const members = [await member('2026-09-03'), await member('2026-09-14')]
+    expect(await accept(members)).toMatchObject({ status: 'accepted' })
+    expect((await db().select().from(schema.GlPosting))[0]!.txnDate).toBe('2026-09-14')
+    expect(
+      (await db().select().from(schema.AccountingEffect))
+        .map((effect) => effect.effectiveDate)
+        .sort()
+    ).toEqual(['2026-09-03', '2026-09-14'])
+  })
+  it('refuses a monthly journal dated later than its latest member', async () => {
+    const members = [await member('2026-09-03'), await member('2026-09-14')]
+    await expect(
+      accept(members, { entry: { ...entry(members), txnDate: '2026-09-15' } })
+    ).rejects.toThrow('latest member date')
+    await assertNoAcceptance()
+  })
+  it('refuses a journal spanning two accounting months', async () => {
+    const members = [await member('2026-08-31'), await member('2026-09-14')]
+    await expect(accept(members)).rejects.toThrow('one accounting month')
+    await assertNoAcceptance()
+  })
+  it('checks the external opening boundary for every grouped effect, not only the journal date', async () => {
+    const members = [await member('2026-09-09'), await member('2026-09-14')]
+    const destination = await connection()
+    await db()
+      .update(schema.ExternalBookConnection)
+      .set({ exportFromDate: '2026-09-10' })
+      .where(eq(schema.ExternalBookConnection.id, destination.id))
+    await expect(
+      accept(members, { deliveryIntent: { kind: 'automatic', connectionId: destination.id } })
+    ).rejects.toThrow('opening boundary')
+    await assertNoAcceptance()
+  })
+  it('accepts a monthly group whose first source date equals the export boundary', async () => {
+    const members = [await member('2026-09-10'), await member('2026-09-14')]
+    const destination = await connection()
+    await db()
+      .update(schema.ExternalBookConnection)
+      .set({ exportFromDate: '2026-09-10' })
+      .where(eq(schema.ExternalBookConnection.id, destination.id))
+    expect(
+      await accept(members, { deliveryIntent: { kind: 'automatic', connectionId: destination.id } })
+    ).toMatchObject({ status: 'accepted' })
+  })
+
   it('commits the journal, contributions, effects, work and pinned intent together without provider work', async () => {
     const members = [await member(), await member()]
     const destination = await connection()

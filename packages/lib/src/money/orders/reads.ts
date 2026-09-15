@@ -22,11 +22,10 @@
  * (`plans/money/tasks/55-shipment-lines.md` §6).
  */
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import type { CustomFieldEntity } from '@auxx/database/types'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { NotFoundError, UnprocessableEntityError } from '../../errors'
 import { toRecordId } from '../../resources/resource-id'
 import {
@@ -34,6 +33,7 @@ import {
   readFulfillmentsForOrder,
   requireFulfillmentFieldContext,
 } from '../fulfillments'
+import { financialEntityDefId, financialFields } from '../fulfillments/field-context'
 import {
   netLineTotalMinor,
   netUnitPriceMinor,
@@ -82,6 +82,7 @@ const ORDER_ATTRIBUTES = [
  * again.
  */
 const LINE_ATTRIBUTES = [
+  'line_item_order',
   'line_item_name',
   'line_item_qty',
   'line_item_unit_price',
@@ -135,13 +136,16 @@ export interface OrderFieldContext {
  * separately. This function is about the ORDER's own fields only.
  */
 export async function loadOrderFieldContext(
-  organizationId: string
+  organizationId: string,
+  db?: Database | Transaction
 ): Promise<OrderFieldContext | null> {
-  const orderDefId = await getCachedEntityDefId(organizationId, 'order')
+  const orderDefId = await financialEntityDefId(organizationId, 'order', db)
   if (!orderDefId) return null
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...ORDER_ATTRIBUTES, ...LINE_ATTRIBUTES])
+  const fields = await financialFields(
+    organizationId,
+    [...ORDER_ATTRIBUTES, ...LINE_ATTRIBUTES],
+    db
+  )
   const order: Record<OrderAttribute, CustomFieldEntity | null> = fields
   const line: Record<LineAttribute, CustomFieldEntity | null> = fields
   // Without the number there is no period key to post against.
@@ -150,8 +154,11 @@ export async function loadOrderFieldContext(
 }
 
 /** {@link loadOrderFieldContext}, as the refusal a write path needs. */
-export async function requireOrderFieldContext(organizationId: string): Promise<OrderFieldContext> {
-  const ctx = await loadOrderFieldContext(organizationId)
+export async function requireOrderFieldContext(
+  organizationId: string,
+  db?: Database | Transaction
+): Promise<OrderFieldContext> {
+  const ctx = await loadOrderFieldContext(organizationId, db)
   if (!ctx) {
     throw new UnprocessableEntityError(
       'Fulfilling an order is not available until the order entity is provisioned ' +
@@ -226,16 +233,14 @@ export interface OrderForFulfillment {
  * tax lines at all".
  */
 export async function readOrderTaxLines(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   orderIds: readonly string[]
 ): Promise<Map<string, OrderTaxLine[]>> {
   const byOrder = new Map<string, OrderTaxLine[]>()
   if (orderIds.length === 0) return byOrder
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...TAX_LINE_ATTRIBUTES])
+  const fields = await financialFields(organizationId, TAX_LINE_ATTRIBUTES, db)
   const attrs = fields as Record<TaxLineAttribute, CustomFieldEntity | null>
   const titleField = attrs.tax_line_title
   const priceField = attrs.tax_line_price
@@ -327,24 +332,25 @@ interface ValueRow {
  * builder is where that stops being true, and it is the only rounding boundary.
  */
 export async function readOrderForFulfillment(
-  db: Database,
+  db: Database | Transaction,
   params: { organizationId: string; orderId: string }
 ): Promise<Result<OrderForFulfillment, Error>> {
   const { organizationId, orderId } = params
 
   return guard(
     async () => {
-      const ctx = await requireOrderFieldContext(organizationId)
+      const ctx = await requireOrderFieldContext(organizationId, db)
       // Provisioning of the fulfillment entities is a separate concern from
       // the order's own fields (money/fulfillments/reads.ts owns it) - both
       // are required for a fulfillment to have anywhere to be recorded.
-      await requireFulfillmentFieldContext(organizationId)
+      await requireFulfillmentFieldContext(organizationId, db)
 
       const instance = await db.query.EntityInstance.findFirst({
         where: and(
           eq(schema.EntityInstance.id, orderId),
           eq(schema.EntityInstance.organizationId, organizationId),
-          eq(schema.EntityInstance.entityDefinitionId, ctx.orderDefId)
+          eq(schema.EntityInstance.entityDefinitionId, ctx.orderDefId),
+          isNull(schema.EntityInstance.archivedAt)
         ),
         columns: { id: true },
       })
@@ -370,9 +376,30 @@ export async function readOrderForFulfillment(
       const fulfillments = await readFulfillmentsForOrder(db, { organizationId, orderId })
       const shipped = shippedByLine(fulfillments)
 
-      const lineIds = cells('order_line_items')
-        .map((row) => row.relatedEntityId)
-        .filter((id): id is string => !!id)
+      const lineIds = ctx.line.line_item_order
+        ? (
+            await db
+              .select({ id: schema.FieldValue.entityId })
+              .from(schema.FieldValue)
+              .innerJoin(
+                schema.EntityInstance,
+                and(
+                  eq(schema.EntityInstance.id, schema.FieldValue.entityId),
+                  eq(schema.EntityInstance.organizationId, organizationId),
+                  isNull(schema.EntityInstance.archivedAt)
+                )
+              )
+              .where(
+                and(
+                  eq(schema.FieldValue.organizationId, organizationId),
+                  eq(schema.FieldValue.fieldId, ctx.line.line_item_order.id),
+                  eq(schema.FieldValue.relatedEntityId, orderId)
+                )
+              )
+          ).map((row) => row.id)
+        : cells('order_line_items')
+            .map((row) => row.relatedEntityId)
+            .filter((id): id is string => !!id)
       const lines = await readOrderLines(db, organizationId, ctx, lineIds, shipped)
       const taxLines = (await readOrderTaxLines(db, organizationId, [orderId])).get(orderId) ?? []
 
@@ -409,7 +436,7 @@ export async function readOrderForFulfillment(
  * `postings/journal-entries/reads.ts`'s `hydrate` uses.
  */
 async function readOrderLines(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   ctx: OrderFieldContext,
   lineIds: string[],
@@ -473,7 +500,7 @@ async function readOrderLines(
  * would silently keep only the last line.
  */
 async function selectValues(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   entityIds: string[],
   fieldIds: string[]

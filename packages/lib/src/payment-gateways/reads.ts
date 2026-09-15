@@ -12,13 +12,14 @@
  * or `ledgerControl` and hands the narrowed filters down.
  */
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../cache'
+import { getOrgCache } from '../cache'
 import { UnprocessableEntityError } from '../errors'
 import type { FieldOptions } from '../field-values/converters'
+import { financialEntityDefId, financialFields } from '../money/fulfillments/field-context'
 import { buildOptionIndex, resolveOptionId } from '../resources/registry/option-helpers'
 import { toRecordId } from '../resources/resource-id'
 import {
@@ -65,13 +66,16 @@ export interface PaymentGatewayFieldContext {
  * {@link requirePaymentGatewayFieldContext} instead.
  */
 export async function loadPaymentGatewayFieldContext(
-  organizationId: string
+  organizationId: string,
+  db?: Database | Transaction
 ): Promise<PaymentGatewayFieldContext | null> {
-  const paymentGatewayDefId = await getCachedEntityDefId(organizationId, 'payment_gateway')
+  const paymentGatewayDefId = await financialEntityDefId(organizationId, 'payment_gateway', db)
   if (!paymentGatewayDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...PAYMENT_GATEWAY_ATTRIBUTES])) as PaymentGatewayFields
+  const fields = (await financialFields(
+    organizationId,
+    PAYMENT_GATEWAY_ATTRIBUTES,
+    db
+  )) as PaymentGatewayFields
   // Without `name` and `clearingAccount` there is no gateway at all: the
   // display value and the one thing this entity exists to say are both gone.
   if (!fields.payment_gateway_name || !fields.payment_gateway_clearing_account) return null
@@ -80,9 +84,10 @@ export async function loadPaymentGatewayFieldContext(
 
 /** {@link loadPaymentGatewayFieldContext}, as the refusal a write path needs. */
 export async function requirePaymentGatewayFieldContext(
-  organizationId: string
+  organizationId: string,
+  db?: Database | Transaction
 ): Promise<PaymentGatewayFieldContext> {
-  const ctx = await loadPaymentGatewayFieldContext(organizationId)
+  const ctx = await loadPaymentGatewayFieldContext(organizationId, db)
   if (!ctx) {
     throw new UnprocessableEntityError(
       'Payment gateways are not available until the payment_gateway entity and its fields are ' +
@@ -100,14 +105,14 @@ export async function requirePaymentGatewayFieldContext(
  * this should degrade linearly for the org that adds a tenth.
  */
 export async function listPaymentGateways(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   params: { includeArchived?: boolean } = {}
 ): Promise<Result<PaymentGatewayRow[], Error>> {
   const { includeArchived = false } = params
   return guard(
     async () => {
-      const ctx = await loadPaymentGatewayFieldContext(organizationId)
+      const ctx = await loadPaymentGatewayFieldContext(organizationId, db)
       if (!ctx) return []
 
       const instances = await db
@@ -139,7 +144,7 @@ export async function listPaymentGateways(
  * belongs to another org.
  */
 export async function getPaymentGateway(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   paymentGatewayId: string,
   params: { includeArchived?: boolean } = {}
@@ -147,7 +152,7 @@ export async function getPaymentGateway(
   const { includeArchived = false } = params
   return guard(
     async () => {
-      const ctx = await loadPaymentGatewayFieldContext(organizationId)
+      const ctx = await loadPaymentGatewayFieldContext(organizationId, db)
       if (!ctx) return null
 
       const [instance] = await db
@@ -214,7 +219,7 @@ export async function getPaymentGateway(
  * {@link listGatewayHandleCensus} for the setup-screen read that pays for them.
  */
 export async function listObservedGatewayHandles(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string
 ): Promise<Result<ObservedGatewayHandle[], Error>> {
   return guard(
@@ -284,7 +289,7 @@ export async function listObservedGatewayHandles(
  * to say less on a setup page, never a reason to hide the census.
  */
 export async function listGatewayHandleCensus(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string
 ): Promise<Result<GatewayHandleCensusRow[], Error>> {
   return guard(
@@ -378,7 +383,7 @@ export async function listGatewayHandleCensus(
  * the other reported it routed, over the same database.
  */
 async function readHandleClaims(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string
 ): Promise<Map<string, string>> {
   const gateways = await listPaymentGateways(db, organizationId, { includeArchived: true })
@@ -440,7 +445,7 @@ function handleReader(
  * `readOrderFacts` in `money/fulfillment-posting/reads.ts`.
  */
 async function hydratePaymentGateways(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   ctx: PaymentGatewayFieldContext,
   page: { id: string; createdAt: Date | null; updatedAt: Date | null }[]

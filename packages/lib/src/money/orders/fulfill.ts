@@ -1,89 +1,30 @@
 // packages/lib/src/money/orders/fulfill.ts
 
-/**
- * Fulfilling an order: recording what shipped, flipping the fulfillment status,
- * and posting the revenue entry that goes with it.
- *
- * Writes only; the reads live in `reads.ts`. No permission checks - the router
- * asserts `ledgerPost` (`docs/lib-module-guide.md` §6).
- *
- * ## Why this is an ACTION and not a status hook
- *
- * `order` has no lifecycle hook (`resources/hooks/order-hooks.ts`: "neither
- * `order_financial_status` nor `order_fulfillment_status` has a sanctioned
- * action that carries side effects"), so a fulfillment builder has nothing to
- * hang on. The two candidates were a field pre-hook on
- * `order_fulfillment_status` moving to `fulfilled | partial`, and a sanctioned
- * action. Handoff decision 6.6 takes the action, and the reason is partial
- * fulfillment: a status flip cannot carry WHAT shipped, and without that the
- * entry can only ever recognise the whole order.
- *
- * ## Order of operations, and why it is this order
- *
- * The `fulfillment` record and the status flip are written in ONE transaction,
- * then the entry is posted AFTER it commits - a provider call inside an open
- * transaction holds the claim's index tuple for an HTTP round trip.
- * `createBankDeposit` is the same shape, and for the same reason.
- *
- * 🛑 **A refused post is rolled back**, exactly as a refused deposit is: the
- * `fulfillment` record just created is DELETED and the status is restored, so
- * a locked period or an unmapped role leaves no half-state and the same units
- * can be shipped again once the operator has fixed what the message names.
- * That is NOT a correct-by-editing exception - nothing was posted, so there is
- * nothing to reverse.
- *
- * ## Entity migration 153 (`plans/money/tasks/55-shipment-lines.md` §6.1)
- *
- * The shipment used to be one JSON cell on `order`, and every write of it was
- * a whole-cell replace under a `SELECT ... FOR UPDATE` lock - the log had to
- * be re-read inside the transaction because appending to a stale copy would
- * silently drop a concurrent shipment. Real `fulfillment` / `fulfillment_line`
- * records have none of that hazard: creating a row and creating another row
- * cannot stomp on each other the way two whole-cell replaces can, so the lock,
- * the re-read and the compare-and-set are gone, and the rollback path is now a
- * plain delete instead of a hand-rolled "remove this entry from the array"
- * rewrite. `money/fulfillments/writes.ts` is where all three writes live now.
- *
- * ⚠️ **What is NOT closed by this simplification**: two fulfillments of the
- * same order created within the same read-then-write window can still both
- * compute the same `nextSequence` from {@link readOrderForFulfillment}'s
- * snapshot, since nothing here re-checks it under a lock before writing (the
- * brief calls this out as the intended trade - see its §6.1 and this
- * function's own read of `order.nextSequence` below). A duplicate sequence is
- * a cosmetic defect, not a books one: `fulfillment_gl_posting IS NULL` is what
- * the poster's idempotency actually keys on, not the sequence number.
- *
- * @see plans/accounting/tasks/01-post-revenue-to-the-ledger.md
- * @see plans/money/tasks/55-shipment-lines.md
- */
+/** Native shipment creation commits operational quantities and durable accounting work together. */
 
-import type { Database } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq, sql } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
+import { withAccountingCommitLock } from '../../postings/accounting-commit-lock'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import {
   type BuiltFulfillmentEntry,
   buildFulfillmentEntry,
   computeShipmentTotals,
-  type ShipmentTotals,
 } from '../../postings/build-fulfillment-entry'
-import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { resolvePeriodLock } from '../../postings/period-lock'
-import { LEDGER_CURRENCY, postEntry, previewEntry } from '../../postings/post-entry'
+import { LEDGER_CURRENCY, previewEntry } from '../../postings/post-entry'
 import type { EntryPreview, PostResult } from '../../postings/types'
 import { type FulfillmentLineToRelieve, relieveFulfillmentLines } from '../../relief'
+import { flushTxWriteScope } from '../../resources/crud/tx-write-flush'
+import { runInTxWrite } from '../../resources/crud/tx-write-scope'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
-import {
-  type CreatedFulfillment,
-  type CreateFulfillmentLineInput,
-  createFulfillment,
-  defaultFulfillmentName,
-  deleteFulfillment,
-  type Fulfillment,
-  stampFulfillmentPosting,
-} from '../fulfillments'
+import { acceptFulfillmentWorkGroup } from '../fulfillment-posting/run'
+import { captureFulfillmentAccountingWorkInTx } from '../fulfillment-posting/work'
+import { createFulfillment, defaultFulfillmentName, type Fulfillment } from '../fulfillments'
 import { fulfillmentStatusFor, type OrderLineRemaining, shippedSubtotalMinor } from './client'
 import { guard } from './guard'
 import { type OrderForFulfillment, readOrderForFulfillment } from './reads'
@@ -110,23 +51,11 @@ export interface FulfillOrderInput {
 }
 
 export interface FulfillOrderResult {
-  /** The `fulfillment` record this call created (and possibly then rolled back). */
+  /** The `fulfillment` record this call created. */
   fulfillment: Fulfillment
-  /**
-   * The order's `order_fulfillment_status` AFTER this call - and therefore the
-   * status it had before, unchanged, when the ledger refused and the shipment
-   * was rolled back.
-   */
+  /** Operational status after the recorded shipment, including when accounting is pending. */
   fulfillmentStatus: string
-  /**
-   * What the ledger did.
-   *
-   * 🛑 A refusal arrives HERE, as a status, not as an `Err`. `postEntry` never
-   * throws, and a locked period or an unmapped role is a card the screen renders
-   * (`EntryBlockers`), not an exception. An `Err` from this function means the
-   * shipment itself was refused - a quantity over the remainder, a foreign
-   * currency, an unmapped channel - and nothing was written at all.
-   */
+  /** Local accounting outcome; a refusal retains the shipment and its recoverable work. */
   post: PostResult
 }
 
@@ -352,192 +281,135 @@ export async function fulfillOrder(
   input: FulfillOrderInput
 ): Promise<Result<FulfillOrderResult, Error>> {
   const { organizationId, actorUserId, orderId, shippedLines, memo } = input
-
   return guard(
     async () => {
       const shippedAt = input.shippedAt ?? new Date().toISOString().slice(0, 10)
       assertIsoDate(shippedAt, 'Shipped date')
-
-      const read = await readOrderForFulfillment(db, { organizationId, orderId })
-      if (read.isErr()) throw read.error
-      const order = read.value
-
-      // The quantities are validated regardless of accounting: shipping more
-      // than remains is a business error, not a ledger one.
-      const shipped = resolveShippedLines(order, shippedLines)
-      const sequence = order.nextSequence
-
-      // 🛑 The org's own accounting-off case is checked FIRST, before the
-      // ledger entry is built (task 17 section 3): `buildFulfillmentEntry`
-      // refuses a foreign-currency order and resolves a revenue role, both of
-      // which are ledger-only concerns that must not block a shipment for an
-      // org this module does nothing for. `computeShipmentTotals` is the same
-      // arithmetic with none of that - the shared implementation the batch
-      // builder also calls - so the fulfillment record still carries real
-      // amounts.
       const accountingEnabled = await isAccountingEnabled(db, organizationId)
-      const built = accountingEnabled
-        ? buildFulfillmentEntry({
-            orderId: order.orderId,
-            orderNumber: order.number ?? '',
-            sequence,
-            channel: order.channel,
-            currency: order.currency,
-            ledgerCurrency: LEDGER_CURRENCY,
-            txnDate: shippedAt,
-            shippedLines: shipped,
+      const committed = await db.transaction((tx) =>
+        runInTxWrite({ organizationId, actorUserId }, async () => {
+          await withAccountingCommitLock(tx, organizationId)
+          // Quantity checks follow the shared lock so two shipments cannot consume the same remainder.
+          const read = await readOrderForFulfillment(tx, { organizationId, orderId })
+          if (read.isErr()) throw read.error
+          const order = read.value
+          const shipped = resolveShippedLines(order, shippedLines)
+          const sequence = order.nextSequence
+          const amounts = computeShipmentTotals({
+            label: `order ${order.number ?? orderId}`,
+            lines: shipped,
             orderSubtotalMinor: order.subtotalMinor,
             orderTaxTotalMinor: order.taxTotalMinor,
-            orderShippingTotalMinor: order.shippingTotalMinor,
             priorShipmentsSubtotalMinor: shippedSubtotalMinor(order.fulfillments),
+            orderShippingTotalMinor: order.shippingTotalMinor,
             includeShipping: order.shippingOwed,
-            includeCogs: false,
-            contactInstanceId: order.contactInstanceId,
-            taxLines: order.taxLines,
+            context: { orderId },
           })
-        : undefined
-      const amounts: ShipmentTotals =
-        built ??
-        computeShipmentTotals({
-          label: `order ${order.number ?? order.orderId}`,
-          lines: shipped,
-          orderSubtotalMinor: order.subtotalMinor,
-          orderTaxTotalMinor: order.taxTotalMinor,
-          priorShipmentsSubtotalMinor: shippedSubtotalMinor(order.fulfillments),
-          orderShippingTotalMinor: order.shippingTotalMinor,
-          includeShipping: order.shippingOwed,
-          context: { orderId: order.orderId },
+          const shippedAtInstant = calendarDayToInstant(shippedAt)
+          const recordedAt = new Date().toISOString()
+          const name = defaultFulfillmentName(order.number, sequence)
+          const created = await createFulfillment(tx, {
+            organizationId,
+            actorUserId,
+            orderInstanceId: orderId,
+            sequence,
+            shippedAt: shippedAtInstant,
+            status: 'success',
+            name,
+            subtotalMinor: amounts.subtotalMinor,
+            totalMinor: amounts.totalMinor,
+            shippingRecognised: amounts.shippingMinor > 0,
+            recordedAt,
+            lines: shipped.map((line) => ({
+              lineItemInstanceId: line.lineId,
+              quantity: line.quantity,
+            })),
+          })
+          await tx
+            .update(schema.EntityInstance)
+            .set({
+              metadata: sql`COALESCE(${schema.EntityInstance.metadata}, '{}'::jsonb) || '{"accountingFulfillmentLane":"native"}'::jsonb`,
+            })
+            .where(
+              and(
+                eq(schema.EntityInstance.organizationId, organizationId),
+                eq(schema.EntityInstance.id, created.fulfillmentInstanceId)
+              )
+            )
+          await captureFulfillmentAccountingWorkInTx(tx, {
+            organizationId,
+            fulfillmentInstanceId: created.fulfillmentInstanceId,
+            ...(accountingEnabled ? {} : { eligibility: 'excluded' as const }),
+          })
+          const remainingAfter = order.lines.map((line) => ({
+            ...line,
+            remainingQuantity: Math.max(
+              0,
+              line.remainingQuantity -
+                (shipped.find((row) => row.lineId === line.lineId)?.quantity ?? 0)
+            ),
+          }))
+          const fulfillmentStatus = fulfillmentStatusFor(remainingAfter)
+          const crud = new UnifiedCrudHandler(organizationId, actorUserId, tx)
+          await crud.update(order.recordId, { order_fulfillment_status: fulfillmentStatus })
+          const fulfillment: Fulfillment = {
+            id: created.fulfillmentInstanceId,
+            recordId: created.recordId,
+            orderId,
+            sequence,
+            shippedAt: shippedAtInstant,
+            status: 'success',
+            cancelledAt: null,
+            name,
+            trackingNumber: null,
+            trackingCompany: null,
+            trackingUrl: null,
+            subtotalMinor: amounts.subtotalMinor,
+            totalMinor: amounts.totalMinor,
+            shippingRecognised: amounts.shippingMinor > 0,
+            glPosting: null,
+            docNumber: null,
+            recordedAt,
+            lines: created.lineInstanceIds.map((id, index) => ({
+              id,
+              recordId: toRecordId('fulfillment_line', id),
+              lineItemId: shipped[index]!.lineId,
+              quantity: shipped[index]!.quantity,
+              quantityRelieved: null,
+            })),
+          }
+          return { fulfillment, fulfillmentStatus, created, shipped, shippedAtInstant }
         })
-
-      const shippedAtInstant = calendarDayToInstant(shippedAt)
-      const recordedAt = new Date().toISOString()
-      const shippingRecognised = amounts.shippingMinor > 0
-      const name = defaultFulfillmentName(order.number, sequence)
-      const createLines: CreateFulfillmentLineInput[] = shipped.map((line) => ({
-        lineItemInstanceId: line.lineId,
-        quantity: line.quantity,
-      }))
-
-      // What the order's lines look like AFTER this shipment - the status is a
-      // consequence of the remainder, never a caller's assertion.
-      const remainingAfter = order.lines.map((line) => {
-        const now = shipped.find((row) => row.lineId === line.lineId)?.quantity ?? 0
-        return { ...line, remainingQuantity: Math.max(0, line.remainingQuantity - now) }
-      })
-      const fulfillmentStatus = fulfillmentStatusFor(remainingAfter)
-
-      // ── The record and the status, in one transaction ──────────────────
-      let created!: CreatedFulfillment
-      await db.transaction(async (tx) => {
-        const txDb = tx as unknown as Database
-        created = await createFulfillment(txDb, {
-          organizationId,
-          actorUserId,
-          orderInstanceId: orderId,
-          sequence,
-          shippedAt: shippedAtInstant,
-          status: 'success',
-          name,
-          subtotalMinor: amounts.subtotalMinor,
-          totalMinor: amounts.totalMinor,
-          shippingRecognised,
-          recordedAt,
-          lines: createLines,
-        })
-
-        const txCrud = new UnifiedCrudHandler(organizationId, actorUserId, txDb)
-        await txCrud.update(order.recordId, { order_fulfillment_status: fulfillmentStatus })
-      })
-
-      const fulfillment: Fulfillment = {
-        id: created.fulfillmentInstanceId,
-        recordId: created.recordId,
-        orderId,
-        sequence,
-        shippedAt: shippedAtInstant,
-        status: 'success',
-        cancelledAt: null,
-        name,
-        trackingNumber: null,
-        trackingCompany: null,
-        trackingUrl: null,
-        subtotalMinor: amounts.subtotalMinor,
-        totalMinor: amounts.totalMinor,
-        shippingRecognised,
-        glPosting: null,
-        docNumber: null,
-        recordedAt,
-        lines: created.lineInstanceIds.map((id, index) => ({
-          id,
-          recordId: toRecordId('fulfillment_line', id),
-          lineItemId: shipped[index]!.lineId,
-          quantity: shipped[index]!.quantity,
-          quantityRelieved: null,
-        })),
-      }
-
-      // ── The posting, after the commit ──────────────────────────────────
-      let post: PostResult
-      if (accountingEnabled && built) {
-        const lock = await resolvePeriodLock(organizationId)
-        post = await postEntry(db, {
-          organizationId,
-          entry: built.entry,
-          actorUserId,
-          lock,
-          memo: memo ?? `Fulfilled ${order.number ?? orderId} shipment ${sequence}`,
-        })
-      } else {
-        post = { status: 'not_enabled' }
-      }
-
-      if (!isExpectedPostOutcome(post)) {
-        await rollbackFulfillment(
-          db,
-          organizationId,
-          actorUserId,
-          order,
-          created.fulfillmentInstanceId
-        )
-        logger.warn('Fulfillment rolled back - the ledger refused the entry', {
-          organizationId,
-          orderId,
-          sequence,
-          status: post.status,
-          error: post.error,
-        })
-        // The status the order is back on, not the one this attempt wanted.
-        return {
-          fulfillment,
-          fulfillmentStatus: order.fulfillmentStatus ?? 'unfulfilled',
-          post,
+      )
+      if (committed.owned) await flushTxWriteScope(committed.scope)
+      const { fulfillment, fulfillmentStatus, created, shipped, shippedAtInstant } =
+        committed.result
+      let post: PostResult = { status: 'not_enabled' }
+      if (accountingEnabled) {
+        try {
+          const accepted = await acceptFulfillmentWorkGroup(db, {
+            organizationId,
+            actorUserId,
+            fulfillmentIds: [created.fulfillmentInstanceId],
+            groupKey: shippedAt,
+            memo,
+          })
+          post = accepted
+            ? { status: 'posted', glPostingId: accepted.glPostingId, docNumber: accepted.docNumber }
+            : { status: 'error', error: 'The shipment is recorded; accounting is pending review' }
+        } catch (error) {
+          post = { status: 'error', error: error instanceof Error ? error.message : String(error) }
+          logger.warn('Shipment recorded with accounting work pending', {
+            organizationId,
+            orderId,
+            fulfillmentInstanceId: created.fulfillmentInstanceId,
+            error: post.error,
+          })
         }
       }
-
-      // Stamp the posting onto the fulfillment it belongs to, so the order can
-      // name its entry without a join.
-      const glPosting = post.glPostingId ?? null
-      const docNumber = post.docNumber ?? null
-      await stampFulfillmentPosting(db, {
-        organizationId,
-        actorUserId,
-        fulfillmentInstanceId: created.fulfillmentInstanceId,
-        patch: { glPosting, docNumber },
-      })
-      const settled: Fulfillment = { ...fulfillment, glPosting, docNumber }
-
-      // ── Inventory relief (plans/money/tasks/50-batch-inventory-relief.md §1.4) ──
-      // 🛑 AFTER `isExpectedPostOutcome(post)`, never before: a refused post
-      // rolls the fulfillment record back above, and relief has no record
-      // left to point at. Also never gated on `accountingEnabled` - on-hand
-      // is an inventory fact, and `not_enabled` reaches here too (it is an
-      // EXPECTED outcome), so the accounting-off org still gets a correct
-      // shelf. Relief writes on its OWN lane (§1.7), not inside the
-      // transaction above, so its failure must not undo a shipment the
-      // ledger already accepted - logged and swallowed, matching this
-      // function's own "@throws nothing" contract. A freshly created line has
-      // never been relieved (`quantityRelieved: null`), so every line here
-      // owes its full quantity.
+      fulfillment.glPosting = post.glPostingId ?? null
+      fulfillment.docNumber = post.docNumber ?? null
+      // Inventory follows the shipment even when bookkeeping refuses; its independent retry owns failures.
       const reliefLines: FulfillmentLineToRelieve[] = created.lineInstanceIds.map((id, index) => ({
         fulfillmentLineId: id,
         lineItemId: shipped[index]!.lineId,
@@ -550,67 +422,16 @@ export async function fulfillOrder(
         userId: actorUserId,
         lines: reliefLines,
       })
-      if (relief.isErr()) {
-        logger.error('Inventory relief failed for a fulfillment - on-hand is stale until retried', {
+      if (relief.isErr())
+        logger.error('Inventory relief remains due for a recorded shipment', {
           organizationId,
           orderId,
           fulfillmentInstanceId: created.fulfillmentInstanceId,
           error: relief.error.message,
         })
-      }
-
-      logger.info('Fulfilled an order', {
-        organizationId,
-        orderId,
-        number: order.number,
-        sequence,
-        totalMinor: settled.totalMinor,
-        revenueRole: built?.revenueRole ?? null,
-        status: post.status,
-      })
-
-      return { fulfillment: settled, fulfillmentStatus, post }
+      return { fulfillment, fulfillmentStatus, post }
     },
     'Failed to fulfil an order',
     { organizationId, orderId }
   )
-}
-
-/**
- * Undo a fulfillment whose posting was refused: delete the record and restore
- * the order's status.
- *
- * A compensating write rather than one transaction with the post, because
- * `postEntry` opens its own transaction and makes a network call - by the time
- * it returns, the fulfillment record has already committed. Failures here are
- * logged and swallowed: the caller is already carrying a refusal, and
- * replacing it with a rollback error would hide the thing that actually went
- * wrong.
- */
-async function rollbackFulfillment(
-  db: Database,
-  organizationId: string,
-  actorUserId: string,
-  order: OrderForFulfillment,
-  fulfillmentInstanceId: string
-): Promise<void> {
-  try {
-    await db.transaction(async (tx) => {
-      const txDb = tx as unknown as Database
-      await deleteFulfillment(txDb, { organizationId, actorUserId, fulfillmentInstanceId })
-      const txCrud = new UnifiedCrudHandler(organizationId, actorUserId, txDb)
-      await txCrud.update(order.recordId, {
-        // Back to whatever it was, including `unfulfilled` - restoring it to the
-        // status this attempt would have set would leave the order claiming a
-        // shipment the ledger refused.
-        order_fulfillment_status: order.fulfillmentStatus ?? 'unfulfilled',
-      })
-    })
-  } catch (error) {
-    logger.error('Failed to roll back a refused fulfillment', {
-      orderId: order.orderId,
-      fulfillmentInstanceId,
-      error,
-    })
-  }
 }

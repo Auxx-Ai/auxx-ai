@@ -30,6 +30,10 @@ vi.mock('../../custom-fields/delete-field', () => ({
   deleteAppFields: (...args: unknown[]) => deleteAppFields(...args),
 }))
 
+vi.mock('../../postings/book-connections', () => ({
+  disconnectAccountingInstallationInTx: vi.fn().mockResolvedValue(undefined),
+}))
+
 import { uninstallApp } from './uninstall-app'
 import { getLeftoverAppFields } from './uninstall-impact'
 

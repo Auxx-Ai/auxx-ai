@@ -1,10 +1,13 @@
 // packages/lib/src/entity-instances/delete-entity-instance.ts
 
-import { type Database, database, schema } from '@auxx/database'
+import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { fromDatabase } from '@auxx/services/shared/utils'
+import { toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { sweepEntityFieldValues } from '../field-values/sweep-entity-references'
+import { withAccountingCommitLock } from '../postings/accounting-commit-lock'
+import { assertAccountingSourcesMutableInTx } from '../postings/source-write-guard'
 import { sweepResourceAccessForInstances } from '../resource-access/sweep-instances'
 
 /** Parameters for deleting an entity instance */
@@ -16,7 +19,7 @@ export interface DeleteEntityInstanceParams {
    * caller used before this parameter existed — pass `ctx.db` to keep a delete
    * on the caller's connection (see {@link deleteEntityInstances}).
    */
-  db?: Database
+  db?: Database | Transaction
 }
 
 /** Parameters for {@link deleteEntityInstances}. */
@@ -24,7 +27,7 @@ export interface DeleteEntityInstancesParams {
   /** Ids to remove. Duplicates are tolerated; unknown / other-org ids are no-ops. */
   ids: readonly string[]
   organizationId: string
-  db?: Database
+  db?: Database | Transaction
 }
 
 /**
@@ -94,6 +97,19 @@ export async function deleteEntityInstances(params: DeleteEntityInstancesParams)
 
     const result = await fromDatabase(
       db.transaction(async (tx) => {
+        await withAccountingCommitLock(tx, organizationId)
+        const accountingSources = await tx.query.EntityInstance.findMany({
+          where: and(
+            eq(schema.EntityInstance.organizationId, organizationId),
+            inArray(schema.EntityInstance.id, chunk)
+          ),
+          columns: { id: true, entityDefinitionId: true },
+        })
+        await assertAccountingSourcesMutableInTx(
+          tx,
+          organizationId,
+          accountingSources.map((row) => toRecordId(row.entityDefinitionId, row.id))
+        )
         // The dead records' `entityType` drives the dependent display-name
         // cascade inside the sweep. Read before the delete; an id that resolves
         // to nothing (wrong org, or already gone) still joins the `null` group

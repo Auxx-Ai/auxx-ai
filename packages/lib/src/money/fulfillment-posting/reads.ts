@@ -1,69 +1,10 @@
 // packages/lib/src/money/fulfillment-posting/reads.ts
 
-/**
- * The netting read behind the bulk fulfillment poster: every shipment in a
- * range that carries no LIVE posting.
- *
- * `plans/money/tasks/49-bulk-fulfillment-posting.md` §2.2, §2.5 and §8.2.
- * `plans/money/tasks/55-shipment-lines.md` §6 (entity migration 153).
- *
- * Reads only, no permission checks - the router asserts and hands the range
- * down (`docs/lib-module-guide.md` §5 and §6). The pure decision over what this
- * returns is `plan.ts`; the writes are `run.ts`.
- *
- * ## 🛑 "Unposted" is the ABSENCE OF A LIVE POSTING, not a null stamp
- *
- * §2.6 rule 1 and decision 9: reversing a day's entry has to put its shipments
- * back into the next preview, and the run un-stamps nothing. So a shipment is
- * unposted when its `fulfillment_gl_posting` is null, OR names a posting whose
- * status is `reversed`, OR names a posting that no longer exists at all.
- * Reading only the null case would strand every shipment of a reversed run: the
- * ledger would hold no entry for them and the netting read would never offer
- * them again.
- *
- * ## 🔑 Entity migration 153: the shipment log is real records now
- *
- * A shipment used to be one entry inside the `order_fulfillments` JSON array,
- * expanded with `jsonb_array_elements` and windowed for
- * `priorShipmentsSubtotalMinor` in one statement. `order_fulfillments` is a
- * has_many RELATIONSHIP to real `fulfillment` / `fulfillment_line` records now
- * (`plans/money/tasks/55-shipment-lines.md`), and the has_many (inverse) side
- * of a relationship carries no `FieldValue` row of its own to expand - there is
- * nothing left to `jsonb_array_elements` over.
- *
- * `money/fulfillments` is the shared contract for reading a `fulfillment`
- * record, but it exposes only "every fulfillment of these orders"
- * ({@link readFulfillmentsForOrders}) - there is no bulk "every unposted
- * fulfillment in a date range across the whole org" reader, because nothing
- * else needed one before this file did. 🛑 **That is a gap in the contract,
- * not a shortcut taken here**: discovering the CANDIDATE set for a range still
- * has to query `fulfillment_shipped_at` / `fulfillment_gl_posting`
- * `FieldValue` rows directly ({@link readUnpostedFulfillmentCandidates}), the
- * same way `credit-memo-posting/reads.ts` queries `credit_memo`'s own fields
- * directly for the identical reason - a poster is the one place that legitimately
- * owns ITS entity's netting query, the way `money/fulfillments` owns assembling
- * a full record. Once the candidate ids (and the orders they belong to) are
- * known, every further read goes through the shared bulk reader.
- *
- * ## One netting query, then BOUNDED reads for the rest
- *
- * The backlog this exists for is hundreds of orders (§5), so a read per order
- * is the shape batching exists to escape - the same rule
- * `builds/backfill-queries.ts` states. So: one statement finds the candidate
- * `(fulfillmentId, orderId)` pairs in the range; {@link readFulfillmentsForOrders}
- * then reads EVERY fulfillment of those orders (live or not, in range or not)
- * in four more queries regardless of how many orders that is; and two more
- * pivot the order and line-item fields for whatever came back.
- *
- * `priorShipmentsSubtotalMinor` is computed from that same bulk read, as a
- * running sum in sequence order over EVERY fulfillment of the order - not just
- * the candidates - because it is what makes the builder's cumulative tax
- * allocation true itself up on the shipment that completes an order, and an
- * earlier shipment is usually already posted and therefore not itself a
- * candidate.
+/** Fulfillment eligibility is the absence of accepted original membership.
+ * Legacy stamps are retained as repair blockers, never treated as a new claim.
  */
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, gte, inArray, isNull, lt, or } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
@@ -150,32 +91,19 @@ function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
-/** One `fulfillment` in the range that no live posting claims, and the order it belongs to. */
+/** One `fulfillment` in the range with no accepted original effect, and the order it belongs to. */
 interface FulfillmentCandidate {
   fulfillmentId: string
   orderId: string
 }
 
-/**
- * THE netting statement: the `(fulfillment, order)` pairs in the range with no
- * LIVE posting.
- *
- * 🛑 The three predicates in the final `or` are the whole netting contract
- * (49 §2.6 rule 1) - a null stamp, a stamp naming a posting that is gone, or one
- * naming a `reversed` posting. Dropping any of them would silently strand a
- * reversed period's shipments: they would simply never be offered again.
- *
- * ⚠️ An org with no `fulfillment_gl_posting` field (entity migration 153 has
- * not reached it - unreachable in practice, since {@link loadFulfillmentFieldContext}
- * already refused before this runs) would join on a field id no row can carry,
- * so every candidate in range reads as unposted, which is the truth for such an
- * org (nothing has ever been stamped).
- */
+/** Find dated original obligations with no accepted effect, independent of mutable posting stamps. */
 async function readUnpostedFulfillmentCandidates(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   ctx: FulfillmentFieldContext,
-  range: UnpostedShipmentRange
+  range: UnpostedShipmentRange,
+  fulfillmentIds?: readonly string[]
 ): Promise<FulfillmentCandidate[]> {
   const shippedAtField = ctx.fulfillment.fulfillment_shipped_at
   const orderField = ctx.fulfillment.fulfillment_order
@@ -215,10 +143,18 @@ async function readUnpostedFulfillmentCandidates(
       )
     )
     .leftJoin(
-      schema.GlPosting,
+      schema.AccountingWork,
       and(
-        eq(schema.GlPosting.id, stamp.valueText),
-        eq(schema.GlPosting.organizationId, organizationId)
+        eq(schema.AccountingWork.organizationId, organizationId),
+        eq(schema.AccountingWork.entityInstanceId, schema.FieldValue.entityId),
+        eq(schema.AccountingWork.operation, 'original')
+      )
+    )
+    .leftJoin(
+      schema.AccountingEffect,
+      and(
+        eq(schema.AccountingEffect.organizationId, organizationId),
+        eq(schema.AccountingEffect.workId, schema.AccountingWork.id)
       )
     )
     .where(
@@ -227,11 +163,8 @@ async function readUnpostedFulfillmentCandidates(
         eq(schema.FieldValue.fieldId, shippedAtField.id),
         gte(schema.FieldValue.valueDate, dayStart(range.from)),
         lt(schema.FieldValue.valueDate, dayStart(range.to)),
-        or(
-          isNull(stamp.valueText),
-          isNull(schema.GlPosting.id),
-          eq(schema.GlPosting.status, 'reversed')
-        )
+        isNull(schema.AccountingEffect.id),
+        ...(fulfillmentIds ? [inArray(schema.FieldValue.entityId, [...fulfillmentIds])] : [])
       )
     )
     .orderBy(asc(schema.FieldValue.valueDate), asc(schema.FieldValue.entityId))
@@ -250,7 +183,7 @@ async function readUnpostedFulfillmentCandidates(
 }
 
 /**
- * Every shipment in the range that no live posting claims, with everything the
+ * Every shipment in the range with no accepted original effect, with everything the
  * builder needs riding on it.
  *
  * An org with no provisioned `fulfillment` def reads as no shipments rather
@@ -261,8 +194,12 @@ async function readUnpostedFulfillmentCandidates(
  * @param range half-open on `shippedAt`, both `YYYY-MM-DD` in the book zone.
  */
 export async function readUnpostedShipments(
-  db: Database,
-  params: { organizationId: string; range: UnpostedShipmentRange }
+  db: Database | Transaction,
+  params: {
+    organizationId: string
+    range: UnpostedShipmentRange
+    fulfillmentIds?: readonly string[]
+  }
 ): Promise<Result<UnpostedShipment[], Error>> {
   const { organizationId, range } = params
 
@@ -271,22 +208,29 @@ export async function readUnpostedShipments(
       assertIsoDate(range.from, 'The range start')
       assertIsoDate(range.to, 'The range end')
 
-      const fulfillmentCtx = await loadFulfillmentFieldContext(organizationId)
+      const fulfillmentCtx = await loadFulfillmentFieldContext(organizationId, db)
       if (!fulfillmentCtx) return []
 
       const candidates = await readUnpostedFulfillmentCandidates(
         db,
         organizationId,
         fulfillmentCtx,
-        range
+        range,
+        params.fulfillmentIds
       )
       if (candidates.length === 0) return []
 
-      const candidateIds = new Set(candidates.map((row) => row.fulfillmentId))
+      const candidateIds = new Set(
+        candidates
+          .filter(
+            (row) => !params.fulfillmentIds || params.fulfillmentIds.includes(row.fulfillmentId)
+          )
+          .map((row) => row.fulfillmentId)
+      )
       const orderIds = [...new Set(candidates.map((row) => row.orderId))]
 
       const [ctx, byOrder] = await Promise.all([
-        requireOrderFieldContext(organizationId),
+        requireOrderFieldContext(organizationId, db),
         readFulfillmentsForOrders(db, { organizationId, orderIds }),
       ])
 
@@ -403,7 +347,9 @@ function buildShipment(
     fulfillmentInstanceId: fulfillment.id,
     sequence: fulfillment.sequence,
     shippedAt,
+    legacyPostingId: fulfillment.glPosting,
     lines: fulfillment.lines.map((line) => ({
+      fulfillmentLineId: line.id,
       lineId: line.lineItemId,
       quantity: line.quantity,
       ...(lineFacts.get(line.lineItemId) ?? UNKNOWN_LINE),
@@ -455,7 +401,7 @@ export function countCloseBlockingShipments(plan: FulfillmentPostingPlan): numbe
  * that: one zero-value order kept July unclosable after every day had posted.
  */
 export async function countUnpostedShipments(
-  db: Database,
+  db: Database | Transaction,
   params: { organizationId: string; month: string }
 ): Promise<Result<number, Error>> {
   const { organizationId, month } = params
@@ -505,7 +451,7 @@ export async function countUnpostedShipments(
  * rendered as a broken link.
  */
 export async function listOrderFulfillmentPostings(
-  db: Database,
+  db: Database | Transaction,
   params: { organizationId: string; orderId: string }
 ): Promise<Result<OrderFulfillmentPostingRef[], Error>> {
   const { organizationId, orderId } = params
@@ -581,20 +527,15 @@ export interface FulfillmentPostingSettings {
  * a bulk run is the last place to fall back to "nothing is closed".
  */
 export async function readFulfillmentPostingSettings(
-  _db: Database,
+  db: Database | Transaction,
   organizationId: string
 ): Promise<Result<FulfillmentPostingSettings, Error>> {
-  // `_db` is unused: every value here is an organization SETTING, and
-  // `settings-service` owns its own connection. It stays in the signature so
-  // every export of this module reads `db` first (`docs/lib-module-guide.md`
-  // §4) and so a future read that does need the connection is not a signature
-  // change for every caller.
   return guard(
     async () => {
       const [cutoffPeriod, timeZone, lock] = await Promise.all([
-        readTextSetting(organizationId, OPENING_BASELINE_SETTING_KEYS.cutoffPeriod),
-        readTextSetting(organizationId, OPENING_BASELINE_SETTING_KEYS.bookTimeZone),
-        resolvePeriodLock(organizationId),
+        readTextSetting(db, organizationId, OPENING_BASELINE_SETTING_KEYS.cutoffPeriod),
+        readTextSetting(db, organizationId, OPENING_BASELINE_SETTING_KEYS.bookTimeZone),
+        resolvePeriodLock(organizationId, db),
       ])
       return {
         cutoffPeriod,
@@ -610,10 +551,11 @@ export async function readFulfillmentPostingSettings(
 
 /** One organization setting as a trimmed string, or null for unset or blank. */
 async function readTextSetting(
+  db: Database | Transaction,
   organizationId: string,
   key: Parameters<typeof getOrganizationSetting>[0]['key']
 ): Promise<string | null> {
-  const value = await getOrganizationSetting({ organizationId, key })
+  const value = await getOrganizationSetting({ organizationId, key, db })
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : null
 }
 
@@ -648,7 +590,7 @@ interface OrderFacts {
  * right for a connector-provisioned option set, where the key IS the name.
  */
 async function readOrderFacts(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   ctx: OrderFieldContext,
   orderIds: string[]
@@ -705,7 +647,7 @@ async function readOrderFacts(
 
 /** The line fields for every line the shipments name, in ONE query. */
 async function readLineFacts(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   ctx: OrderFieldContext,
   lineIds: string[]
@@ -785,7 +727,7 @@ interface ValueRow {
  * ambiguity rule is decided from.
  */
 async function selectValues(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   entityIds: string[],
   fieldIds: string[]

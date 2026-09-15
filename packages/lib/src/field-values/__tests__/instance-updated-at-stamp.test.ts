@@ -288,3 +288,8 @@ describe('setValuesForEntity D-7 updatedAt stamp', () => {
     expect(stampWrites(state)).toHaveLength(1)
   })
 })
+
+vi.mock('../../postings/source-write-guard', () => ({
+  withAccountingFieldMutation: (ctx: unknown, _input: unknown, fn: (ctx: unknown) => unknown) =>
+    fn(ctx),
+}))

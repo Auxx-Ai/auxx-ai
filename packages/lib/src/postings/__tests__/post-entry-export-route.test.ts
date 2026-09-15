@@ -20,6 +20,8 @@
 import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
+
 const h = vi.hoisted(() => ({ fields: new Map<string, string>() }))
 
 vi.mock('../../cache', () => ({

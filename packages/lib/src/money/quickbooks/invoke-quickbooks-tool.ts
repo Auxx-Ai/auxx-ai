@@ -7,6 +7,7 @@
 // deployment -> connection -> Lambda) lives in the slug-parameterised resolver, shared with
 // the Shopify Payments payout source (brief 27 §5).
 
+import type { CatalogTool } from '@auxx/database'
 import { type AppToolContext, resolveAppToolContext } from '../../apps/invoke-app-tool'
 
 const QUICKBOOKS_APP_SLUG = 'quickbooks'
@@ -26,6 +27,8 @@ export interface QuickbooksToolContext {
   userId: string
   /** `connection.metadata.realmId`, when present. Informational, not required by callers. */
   realmId?: string
+  tools?: CatalogTool[]
+  serverBundleSha?: string
   /** Invoke one QuickBooks app tool by id, returning its unwrapped `execution_result.data`. */
   callTool: AppToolContext['callTool']
 }
@@ -46,12 +49,16 @@ export type ResolveQuickbooksContextResult =
 export async function resolveQuickbooksContext(input: {
   organizationId: string
   actorUserId?: string
+  pinnedCredentialId?: string
+  expectedCompanyId?: string
 }): Promise<ResolveQuickbooksContextResult> {
   const resolved = await resolveAppToolContext({
     organizationId: input.organizationId,
     appSlug: QUICKBOOKS_APP_SLUG,
     appLabel: QUICKBOOKS_APP_LABEL,
     actorUserId: input.actorUserId,
+    pinnedCredentialId: input.pinnedCredentialId,
+    expectedCompanyId: input.expectedCompanyId,
     // The customer/item tools call back into entities (e.g. resolving an existing
     // auxxContactId) via the SDK's entity value-I/O, which requires the `entities` scope.
     includeEntitiesScope: true,
@@ -69,6 +76,8 @@ export async function resolveQuickbooksContext(input: {
       userId: context.userId,
       ...(typeof realmId === 'string' ? { realmId } : {}),
       callTool: context.callTool,
+      tools: context.tools,
+      serverBundleSha: context.serverBundleSha,
     },
   }
 }

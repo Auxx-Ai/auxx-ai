@@ -22,6 +22,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { ConflictError, NotFoundError } from '../errors'
+import { deliverAccountingPosting } from './delivery'
 import { resolveAccountingProvider } from './provider'
 import { EXPORT_ROUTE_BY_POSTING_TYPE } from './regime'
 import type {
@@ -74,6 +75,7 @@ export async function retryExport(
         requestId: schema.GlPosting.requestId,
         exportStatus: schema.GlPosting.exportStatus,
         draft: schema.GlPosting.draft,
+        deliveryIntent: schema.GlPosting.deliveryIntent,
       })
       .from(schema.GlPosting)
       .where(
@@ -86,6 +88,10 @@ export async function retryExport(
 
     if (!row) {
       return err(new NotFoundError('Posting not found', { glPostingId, organizationId }))
+    }
+
+    if (row.deliveryIntent != null) {
+      return ok(await deliverAccountingPosting(db, { ...input, manual: true }))
     }
 
     // `exported` is a no-op success rather than a refusal: two people pressing

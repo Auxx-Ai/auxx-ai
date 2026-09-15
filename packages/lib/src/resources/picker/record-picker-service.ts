@@ -1,6 +1,6 @@
 // packages/lib/src/resources/picker/record-picker-service.ts
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import type { Rung } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
@@ -150,7 +150,7 @@ interface DynamicQueryBuilder {
 }
 
 /** Resolve a registry `dbName` to its relational query builder. */
-function resolveQueryBuilder(db: Database, dbName: string): DynamicQueryBuilder {
+function resolveQueryBuilder(db: Database | Transaction, dbName: string): DynamicQueryBuilder {
   const builder = (db.query as Record<string, unknown>)[dbName]
   if (!builder) {
     throw new Error(`No relational query builder for table: ${dbName}`)
@@ -183,7 +183,7 @@ function resolveEntityDisplay(
  * Handles both direct and join-based organization scoping
  */
 export class RecordPickerService {
-  private db: Database
+  private db: Database | Transaction
   private organizationId: string
   private userId?: string
   private cache: RecordPickerCacheService
@@ -195,7 +195,7 @@ export class RecordPickerService {
   constructor(
     organizationId: string,
     userId: string | undefined,
-    db: Database,
+    db: Database | Transaction,
     capabilities?: CapabilityView
   ) {
     this.db = db

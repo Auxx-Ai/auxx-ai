@@ -40,6 +40,9 @@
 
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('../postings/accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
+
 import { ACCOUNT_ROLES } from '../postings/build-entry'
 import { CHART_PACKS } from '../postings/default-chart'
 
@@ -121,6 +124,10 @@ function stubDb(
       Promise.resolve(rows).then(resolve, reject),
   })
   return {
+    execute: async () => undefined,
+    transaction: async function <T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
+      return fn(this)
+    },
     select: () => ({
       from: () => {
         call++

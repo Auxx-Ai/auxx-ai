@@ -10,6 +10,8 @@ import { suggestRail } from '@auxx/lib/payment-gateways/rail-catalogue'
 import { PermissionKey } from '@auxx/lib/permissions'
 import {
   ACCOUNT_ROLES,
+  accountingOpeningPolicySchema,
+  activateAccountingBookConnection,
   assertAccountingSetupUnfrozen,
   buildEntry,
   CHART_PACK_KEYS,
@@ -43,11 +45,13 @@ import {
   previewEntry,
   previewJournalEntry,
   previewMonthEnd,
+  readAccountingBookConnectionStatus,
   readLatestPostingsByType,
   readMonthActivity,
   readRailFeeStatus,
   readTrialBalance,
   removeChartAccount,
+  repairAccountingBookConnection,
   resolveAccountingProvider,
   resolvePeriodLock,
   restoreChartAccount,
@@ -304,6 +308,44 @@ const journalEntryLine = z.object({
 })
 
 export const ledgerRouter = createTRPCRouter({
+  bookConnectionStatus: permissionProcedure(PermissionKey.ledgerControl).query(({ ctx }) =>
+    readAccountingBookConnectionStatus(ctx.db, ctx.session.organizationId)
+  ),
+  repairBookConnection: permissionProcedure(PermissionKey.ledgerControl)
+    .input(
+      z.object({
+        connectionId: z.string().min(1),
+        credentialId: z.string().min(1),
+        expectedActiveConnectionId: z.string().min(1).nullable(),
+        reason: z.string().trim().min(1).max(2000),
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      repairAccountingBookConnection(ctx.db, {
+        ...input,
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+      })
+    ),
+  activateBookConnection: permissionProcedure(PermissionKey.ledgerControl)
+    .input(
+      z.object({
+        credentialId: z.string().min(1),
+        expectedActiveConnectionId: z.string().min(1).nullable(),
+        openingPolicy: accountingOpeningPolicySchema,
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      activateAccountingBookConnection(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+        credentialId: input.credentialId,
+        expectedActiveConnectionId: input.expectedActiveConnectionId,
+        exportFromDate: input.openingPolicy.exportFromDate,
+        openingPolicy: input.openingPolicy,
+      })
+    ),
+
   /**
    * What an entry WOULD look like, resolved against the org's own chart.
    *

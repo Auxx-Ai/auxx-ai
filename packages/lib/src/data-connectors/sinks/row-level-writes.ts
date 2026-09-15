@@ -29,6 +29,12 @@ import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValueInput } from '@auxx/types'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import { UniqueValueConflictError } from '../../errors'
+import { createFieldValueContext } from '../../field-values/field-value-helpers'
+import {
+  AcceptedAccountingSourceError,
+  recordRejectedAccountingObservation,
+  withAccountingFieldMutation,
+} from '../../postings/source-write-guard'
 import type { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
 import type { SyncCtx } from './types'
@@ -261,6 +267,49 @@ export async function planRowLevelWrites(
  */
 export async function executeRowLevelWrites(
   ctx: SyncCtx,
+  entityDefinitionId: string,
+  handler: UnifiedCrudHandler,
+  instanceId: string,
+  actions: RowLevelAction[]
+): Promise<void> {
+  try {
+    return await withAccountingFieldMutation(
+      createFieldValueContext(ctx.orgId, undefined, ctx.db),
+      [
+        {
+          recordId: toRecordId(entityDefinitionId, instanceId),
+          fields: actions.map((action) => ({
+            fieldId: action.write.fieldUuid,
+            value: action.write.value,
+          })),
+          operation: 'change',
+        },
+      ],
+      (scoped) =>
+        executeRowLevelWritesUnguarded(
+          { ...ctx, db: scoped.db },
+          entityDefinitionId,
+          handler.withDatabase(scoped.db),
+          instanceId,
+          actions
+        )
+    )
+  } catch (error) {
+    if (error instanceof AcceptedAccountingSourceError) {
+      await recordRejectedAccountingObservation(ctx.db, ctx.orgId, error, {
+        connectorId: ctx.connector.id,
+        instanceId,
+        fields: actions.map((action) => action.write),
+      })
+    }
+    throw error
+  }
+}
+
+async function executeRowLevelWritesUnguarded(
+  ctx: Omit<SyncCtx, 'db'> & {
+    db: import('@auxx/database').Database | import('@auxx/database').Transaction
+  },
   entityDefinitionId: string,
   handler: UnifiedCrudHandler,
   instanceId: string,
