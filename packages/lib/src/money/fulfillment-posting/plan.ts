@@ -43,9 +43,9 @@
 
 import type { Database } from '@auxx/database'
 import { listPaymentGateways, toGatewayRoutes } from '../../payment-gateways'
-import type { GatewayRoute } from '../../payment-gateways/client'
 import {
   computeShipmentAmounts,
+  type FulfillmentGatewayRoute,
   resolveFulfillmentDebit,
 } from '../../postings/build-fulfillment-batch-entry'
 import type {
@@ -76,13 +76,20 @@ import type {
  * `payment_gateway` yet (entity migration 146) - `resolveFulfillmentDebit`'s
  * `gatewayRoutes` is optional and an empty table falls every gateway back to
  * its role default, which is exactly today's behaviour.
+ *
+ * Each route also carries the record's `name`, which routing never reads: it is
+ * what the debit's reason sentence names (brief 28 §5, *"routed by the Affirm
+ * gateway record"*). `toGatewayRoutes` is a one-to-one map, so the name is
+ * zipped back on by index.
  */
 export async function loadGatewayRoutesForPlan(
   db: Database,
   organizationId: string
-): Promise<readonly GatewayRoute[]> {
+): Promise<readonly FulfillmentGatewayRoute[]> {
   const result = await listPaymentGateways(db, organizationId)
-  return result.isOk() ? toGatewayRoutes(result.value) : []
+  if (result.isErr()) return []
+  const rows = result.value
+  return toGatewayRoutes(rows).map((route, index) => ({ ...route, name: rows[index]?.name }))
 }
 
 /**
@@ -105,7 +112,7 @@ export async function loadGatewayRoutesForPlan(
  * role-only behaviour. Load it once per plan with {@link loadGatewayRoutesForPlan}.
  */
 export function planFulfillmentPosting(
-  input: FulfillmentPostingPlanInput & { gatewayRoutes?: readonly GatewayRoute[] }
+  input: FulfillmentPostingPlanInput & { gatewayRoutes?: readonly FulfillmentGatewayRoute[] }
 ): FulfillmentPostingPlan {
   const { grouping, cutoffPeriod, lockedThroughMonth, ledgerCurrency, gatewayRoutes } = input
 
@@ -142,9 +149,13 @@ export function planFulfillmentPosting(
     }
 
     // Strip the `kind` discriminant `resolveFulfillmentDebit` adds -
-    // `computeShipmentAmounts` takes the bare `FulfillmentDebit` union.
+    // `computeShipmentAmounts` takes the bare `FulfillmentDebit` union. The
+    // `reason` rides along (brief 28 §5): it is what the batch builder writes
+    // onto the debit line, and this is its only way there.
     const debitInput: FulfillmentDebit =
-      'glAccountId' in debit ? { glAccountId: debit.glAccountId } : { role: debit.role }
+      'glAccountId' in debit
+        ? { glAccountId: debit.glAccountId, reason: debit.reason }
+        : { role: debit.role, reason: debit.reason }
     const computed = computeAmounts(shipment, debitInput)
     if (!computed.ok) {
       // 🛑 Classified as `zero-value` on purpose. The reason set is CLOSED

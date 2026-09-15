@@ -174,6 +174,16 @@ interface ResolvedShippedLine {
   lineId: string
   quantity: number
   unitPriceMinor: number
+  /**
+   * The line's whole NET total, its ordered quantity and what earlier
+   * fulfillments already took of it - the builder allocates the total by units
+   * across a split line so a fractional rate still sums to the line
+   * (29 §12 item 6). `lineTotalMinor` is null for a line with no stored total,
+   * and the builder then extends the rate as before.
+   */
+  lineTotalMinor: number | null
+  orderedQuantity: number
+  priorShippedQuantity: number
   /** Present only when the line carries `line_item_tax_total`. */
   taxMinor?: number
   name: string
@@ -231,6 +241,11 @@ function resolveShippedLines(
       lineId: line.lineId,
       quantity: request.quantity,
       unitPriceMinor: line.unitPriceMinor,
+      lineTotalMinor: line.lineTotalMinor ?? null,
+      orderedQuantity: line.quantity,
+      // Every earlier fulfillment of the order, the same population
+      // `shippedSubtotalMinor` sums for the tax allocation's prior.
+      priorShippedQuantity: line.shippedQuantity,
       ...(taxMinor === undefined ? {} : { taxMinor }),
       name: line.name,
     })

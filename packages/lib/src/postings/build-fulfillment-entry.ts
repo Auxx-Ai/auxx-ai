@@ -197,8 +197,38 @@ export interface ShipmentTotalsLine {
   lineId: string
   /** Units shipped in THIS shipment. */
   quantity: number
-  /** Minor units per unit. A RATE, so it may be fractional - see {@link extendRateToAmount}. */
+  /**
+   * Minor units per unit at the line NET - `line_item_net_total / line_item_qty`
+   * (falling back to `line_item_line_total`), not `line_item_unit_price` (see
+   * {@link computeShipmentTotals}). A RATE, so it may be fractional - see
+   * {@link extendRateToAmount}.
+   *
+   * The FALLBACK basis: read only when {@link lineTotalMinor} and
+   * {@link orderedQuantity} are not both supplied.
+   */
   unitPriceMinor: number
+  /**
+   * The line NET for the WHOLE line, whole minor units, not this shipment's
+   * share of it. Despite the name this carries `line_item_net_total`, with
+   * `line_item_line_total` (the GROSS since 29 §2.3) only as the readers'
+   * fallback for a line that has no net yet - `money/orders/client.ts`'s
+   * `netLineTotalMinor` decides, once, for both this and `unitPriceMinor`, so
+   * the allocation and the rate never disagree about the column. Together with
+   * {@link orderedQuantity} it switches the subtotal to the cumulative
+   * allocation ({@link shippedLineAmount}), which is what makes the shipments
+   * of a line sum to its total exactly. `null` and `undefined` both mean NOT
+   * SUPPLIED, and the rate above is extended instead.
+   */
+  lineTotalMinor?: number | null
+  /** `line_item_qty`, the ordered quantity. The denominator of the allocation. */
+  orderedQuantity?: number | null
+  /**
+   * Units of this line shipped by EARLIER shipments of the order. `0` (or
+   * absent) on the first, which makes the allocation collapse to
+   * `round(lineTotal x quantity / orderedQuantity)` - the same number the rate
+   * path produces.
+   */
+  priorShippedQuantity?: number | null
   /**
    * This shipment's tax on this line, whole minor units, when it is known per
    * line. `null` and `undefined` both mean NOT SUPPLIED, which is not zero.
@@ -219,6 +249,54 @@ export interface ShipmentTotals {
   totalMinor: number
   /** How `taxMinor` was arrived at. A screen says which. */
   taxBasis: 'per_line' | 'allocated'
+}
+
+/**
+ * What THIS shipment recognises of one line, whole minor units.
+ *
+ * Two bases, and the caller decides which by what it supplies:
+ *
+ * - **The line total, allocated cumulatively** when `lineTotalMinor` and a
+ *   positive `orderedQuantity` are both present:
+ *   `alloc(prior + this) - alloc(prior)`, with
+ *   `alloc(q) = round(lineTotalMinor x q / orderedQuantity)`. This is the tax
+ *   allocation's own trick (see {@link computeShipmentTotals}) applied to the
+ *   line: a total that does not divide by its quantity - 181 over 2 units is a
+ *   90.5 rate - extends per shipment to 91 + 91 = 182 under `Math.round`, one
+ *   cent over what the customer paid, and the payout can never bring clearing
+ *   back to zero by that cent (29 §12 item 6). The difference of two running
+ *   allocations hands the odd cent to exactly one shipment - 91 then 90 - with
+ *   no "is this the last one" flag to get wrong. A first shipment (`prior` 0)
+ *   gets `round(lineTotal x quantity / orderedQuantity)`, which is the number
+ *   the rate path produces, so a single-shipment order is unchanged.
+ * - **The rate, extended** ({@link extendRateToAmount}) otherwise - bit for bit
+ *   what every caller got before the line total travelled with the line.
+ *
+ * @throws {UnprocessableEntityError} on a non-finite rate or quantity, or a
+ *   line total that is not whole minor units.
+ */
+export function shippedLineAmount(line: ShipmentTotalsLine, label: string): number {
+  const ordered = line.orderedQuantity
+  if (
+    line.lineTotalMinor != null &&
+    ordered != null &&
+    Number.isFinite(ordered) &&
+    ordered > 0 &&
+    Number.isFinite(line.quantity)
+  ) {
+    const lineTotalMinor = toAmountMinor(line.lineTotalMinor, `${label} line total`)
+    const prior = line.priorShippedQuantity ?? 0
+    if (!Number.isFinite(prior) || prior < 0) {
+      throw new UnprocessableEntityError(
+        `${label} has ${String(prior)} units shipped before this shipment, which cannot be.`,
+        { label, priorShippedQuantity: String(prior) }
+      )
+    }
+    const allocateThrough = (units: number): number =>
+      Math.round((lineTotalMinor * units) / ordered)
+    return allocateThrough(prior + line.quantity) - allocateThrough(prior)
+  }
+  return extendRateToAmount(line.unitPriceMinor, line.quantity, label)
 }
 
 export interface ShipmentTotalsInput {
@@ -249,9 +327,27 @@ export interface ShipmentTotalsInput {
  * per-order entry and the summarised one would both balance and disagree about
  * what a day recognised.
  *
- * - **Subtotal** is `Σ round(quantity x unitPriceMinor)` over the lines. From
- *   the LINES, never sliced off `order_subtotal`, because the lines are what
- *   actually left the building.
+ * - **Subtotal** is Σ {@link shippedLineAmount} over the lines: the line total
+ *   allocated cumulatively by units when the caller supplies it, and
+ *   `round(quantity x unitPriceMinor)` otherwise. From the LINES, never sliced
+ *   off `order_subtotal`, because the lines are what actually left the building.
+ *
+ *   🛑 **`unitPriceMinor` is the line NET per unit, not the list price.** The
+ *   readers derive it as `line_item_net_total / line_item_qty`
+ *   (`money/orders/client.ts`'s `netUnitPriceMinor`, falling back to
+ *   `line_item_line_total` for a line with no net yet), because
+ *   `line_item_unit_price` is the PRE-discount price, `line_item_line_total` is
+ *   the GROSS `price x qty` (29 §2.3), and `line_item_net_total` is the gross
+ *   minus every discount allocated to the line. Measured on the reference org,
+ *   the nets sum to `order_subtotal` on all 6,500 orders and `price x qty`
+ *   does not on 3,073 of them
+ *   (`plans/accounting/tasks/29-clearing-at-the-payment-date.md` §1.7). Fed the
+ *   gross price, this function credits revenue and debits the money leg at an
+ *   amount nobody was charged, the entry balances, and the payout can never
+ *   bring clearing back to zero - which is why 29 §2.3 makes the NET the one
+ *   basis every entry over an order is computed on. Revenue is credited at the
+ *   net directly: there is no contra-discount role, and Shopify's own
+ *   `subtotal_price` is net, so this is what ties to the store's reports.
  * - **Tax** is per line when EVERY line carries `taxMinor`, and otherwise
  *   allocated pro rata CUMULATIVELY:
  *   `alloc(prior + this) - alloc(prior)`, where
@@ -293,11 +389,7 @@ export function computeShipmentTotals(input: ShipmentTotalsInput): ShipmentTotal
         { ...context, lineId: line.lineId, row: String(row) }
       )
     }
-    subtotalMinor += extendRateToAmount(
-      line.unitPriceMinor,
-      line.quantity,
-      `Row ${row} of ${label}`
-    )
+    subtotalMinor += shippedLineAmount(line, `Row ${row} of ${label}`)
     if (line.taxMinor != null) {
       perLineTaxMinor += toAmountMinor(line.taxMinor, `Row ${row} tax on ${label}`)
       linesWithTax++
@@ -344,10 +436,24 @@ export interface FulfillmentShippedLine {
   /** Units shipped in this fulfillment. > 0 - a zero line is dropped by the caller. */
   quantity: number
   /**
-   * The line's unit price in minor units. A RATE, so it may be fractional - see
-   * {@link extendRateToAmount}, which is where it stops being one.
+   * The line NET per unit in minor units (`line_item_net_total / line_item_qty`,
+   * see {@link computeShipmentTotals}), not the list price. A RATE, so it may
+   * be fractional - see {@link extendRateToAmount}, which is where it stops
+   * being one. The fallback basis when the three fields below are not supplied.
    */
   unitPriceMinor: number
+  /**
+   * The line NET for the WHOLE line, whole minor units - `line_item_net_total`,
+   * or `line_item_line_total` for a line with no net yet (see
+   * {@link ShipmentTotalsLine.lineTotalMinor}). With `orderedQuantity`, the
+   * subtotal is allocated cumulatively by units so a split line's shipments
+   * sum to its total exactly - see {@link shippedLineAmount}.
+   */
+  lineTotalMinor?: number | null
+  /** `line_item_qty`. */
+  orderedQuantity?: number | null
+  /** Units of this line shipped by EARLIER fulfillments. `0` on the first. */
+  priorShippedQuantity?: number | null
   /**
    * This shipment's tax on this line, in whole minor units, when the caller
    * knows it per line. Omitted on every line means the order's `taxTotal` is
@@ -530,9 +636,13 @@ export function fulfillmentPeriodKey(orderNumber: string, sequence: number): str
  *
  * ## The proportional rules, stated once
  *
- * - **Subtotal** is `Σ round(quantity x unitPriceMinor)` over the shipped lines.
- *   It is computed from the lines, never sliced off `order_subtotal`, because
- *   the lines are what actually left the building.
+ * - **Subtotal** is Σ {@link shippedLineAmount} over the shipped lines: the
+ *   line's NET total allocated cumulatively by units when the caller supplies
+ *   `lineTotalMinor` / `orderedQuantity` / `priorShippedQuantity`, and
+ *   `round(quantity x unitPriceMinor)` at the NET rate otherwise (29 §1.7 -
+ *   see {@link computeShipmentTotals}). It is computed from the lines, never
+ *   sliced off `order_subtotal`, because the lines are what actually left the
+ *   building.
  * - **Tax** is per-line when EVERY shipped line carries `taxMinor`, and
  *   otherwise allocated pro rata CUMULATIVELY: this shipment's tax is
  *   `round(orderTaxTotal x (prior + this) / orderSubtotal)` minus

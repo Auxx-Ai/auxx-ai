@@ -12,7 +12,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, desc, eq, gt, inArray, isNull, type SQL } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNull, or, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
@@ -20,7 +20,7 @@ import { UnprocessableEntityError } from '../../errors'
 import { toRecordId } from '../../resources/resource-id'
 import { resolvePayoutStatus } from './client'
 import { guard } from './guard'
-import type { ListPayoutsFilters, PayoutRecord } from './types'
+import type { ListPayoutsFilters, PayoutRecord, PayoutSourceValue } from './types'
 
 /** Every `payout` attribute a {@link PayoutRecord} is assembled from. */
 const PAYOUT_ATTRIBUTES = [
@@ -38,6 +38,9 @@ const PAYOUT_ATTRIBUTES = [
   'payout_gl_posting_id',
   'payout_blocked_reason',
   'payout_bank_transaction_id',
+  'payout_payment_gateway',
+  'payout_bank_account',
+  'payout_source',
 ] as const
 
 type PayoutAttribute = (typeof PAYOUT_ATTRIBUTES)[number]
@@ -90,23 +93,51 @@ export async function requirePayoutFieldContext(
 }
 
 /**
- * The payout row for one gateway id, or `null`.
+ * The payout row for one gateway payout id on one rail, or `null`.
  *
  * 🛑 THE idempotency check for the sync, which is a poll and sees every payout
- * again on every run. It reads `payout_gateway_id` rather than trusting a
- * watermark alone: a watermark can be re-run, reset, or overlap a boundary, and
- * a second posting of the same payout would relieve clearing twice.
+ * again on every run. It reads the record rather than trusting a watermark
+ * alone: a watermark can be re-run, reset, or overlap a boundary, and a second
+ * posting of the same payout would relieve clearing twice.
+ *
+ * ## The key is the PAIR (brief 27 §6.4)
+ *
+ * `paymentGatewayId` is the `payment_gateway` record the caller is reading for.
+ * Two providers can reuse an id format, so the same `providerPayoutId` on two
+ * rails is two rows, and this matches `payout_gateway_id` AND
+ * `payout_payment_gateway` together.
+ *
+ * ⚠️ **A row whose pointer is NULL still matches.** Every payout written before
+ * migration 157, and every payout raised while no gateway record claimed the
+ * rail (the role fallback), carries no pointer. Refusing those would make the
+ * first run after the migration create a SECOND record for every payout it had
+ * already posted and relieve clearing twice - the exact defect this function
+ * exists to prevent. So an unstamped row is adopted: the sync's next
+ * `crud.update` writes the rail onto it. A row stamped with a DIFFERENT rail is
+ * never matched. When two rows qualify, the stamped one wins over the unstamped.
+ *
+ * `paymentGatewayId: null` is the id-only lookup. It is what a caller with no
+ * rail in hand uses (the role fallback, `reverseFailedPayout` on a webhook that
+ * names only the Stripe id), and it is exactly what this function was before
+ * the pair existed.
  */
 export async function findPayoutByGatewayId(
   db: Database,
   organizationId: string,
-  gatewayId: string
+  gatewayId: string,
+  paymentGatewayId: string | null = null
 ): Promise<PayoutRecord | null> {
   const ctx = await loadPayoutFieldContext(organizationId)
   if (!ctx?.fields.payout_gateway_id) return null
 
   const value = alias(schema.FieldValue, 'payout_gateway_id_v')
-  const [row] = await db
+  const rail = alias(schema.FieldValue, 'payout_payment_gateway_v')
+  const railField = ctx.fields.payout_payment_gateway
+  // An org short of migration 157 has no pointer field at all; its rows are
+  // all unstamped, so the id-only lookup is the right answer there too.
+  const byPair = paymentGatewayId !== null && railField !== null
+
+  let query = db
     .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
     .from(schema.EntityInstance)
     .innerJoin(
@@ -118,14 +149,35 @@ export async function findPayoutByGatewayId(
         eq(value.valueText, gatewayId)
       )
     )
-    .where(
+    .$dynamic()
+
+  const where: SQL[] = [
+    eq(schema.EntityInstance.organizationId, organizationId),
+    eq(schema.EntityInstance.entityDefinitionId, ctx.payoutDefId),
+    isNull(schema.EntityInstance.archivedAt),
+  ]
+
+  if (byPair) {
+    // LEFT join: a row with no pointer at all must still come back.
+    query = query.leftJoin(
+      rail,
       and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.payoutDefId),
-        isNull(schema.EntityInstance.archivedAt)
+        eq(rail.entityId, schema.EntityInstance.id),
+        eq(rail.organizationId, schema.EntityInstance.organizationId),
+        eq(rail.fieldId, railField.id)
       )
     )
-    .limit(1)
+    const pointerMatches = or(
+      isNull(rail.relatedEntityId),
+      eq(rail.relatedEntityId, paymentGatewayId)
+    )
+    if (pointerMatches) where.push(pointerMatches)
+    // `false` sorts before `true`, so a row stamped with THIS rail comes
+    // before an unstamped one.
+    query = query.orderBy(sql`${rail.relatedEntityId} IS NULL`)
+  }
+
+  const [row] = await query.where(and(...where)).limit(1)
 
   if (!row) return null
   const [record] = await hydrate(db, organizationId, ctx, [row])
@@ -150,6 +202,8 @@ type PayoutBankAccountFields = Record<PayoutBankAccountAttribute, { id: string }
 /** What a payout's Stripe destination resolves to. */
 export interface PayoutBankAccountMatch {
   bankAccountId: string
+  /** `<defId>:<instanceId>`, the shape a RELATIONSHIP write takes. */
+  recordId: string
   /** Null when the matched account carries no chart mapping. */
   glAccountId: string | null
 }
@@ -212,7 +266,11 @@ export async function findBankAccountByStripeExternalAccountId(
     glAccountId = value?.valueText?.trim() || null
   }
 
-  return { bankAccountId: match.entityId, glAccountId }
+  return {
+    bankAccountId: match.entityId,
+    recordId: toRecordId(bankAccountDefId, match.entityId),
+    glAccountId,
+  }
 }
 
 /** One page of payouts, newest first. */
@@ -302,6 +360,7 @@ async function hydrate(
       valueNumber: schema.FieldValue.valueNumber,
       valueDate: schema.FieldValue.valueDate,
       optionId: schema.FieldValue.optionId,
+      relatedEntityId: schema.FieldValue.relatedEntityId,
     })
     .from(schema.FieldValue)
     .where(
@@ -345,6 +404,9 @@ async function hydrate(
       glPostingId: read('payout_gl_posting_id')?.valueText ?? null,
       blockedReason: read('payout_blocked_reason')?.valueText ?? null,
       bankTransactionId: read('payout_bank_transaction_id')?.valueText ?? null,
+      paymentGatewayId: read('payout_payment_gateway')?.relatedEntityId ?? null,
+      bankAccountId: read('payout_bank_account')?.relatedEntityId ?? null,
+      source: resolvePayoutSource(read('payout_source')?.optionId),
       createdAt: row.createdAt,
     }
   })
@@ -353,4 +415,16 @@ async function hydrate(
 function toIsoDay(value: string | Date | null | undefined): string | null {
   if (!value) return null
   return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10)
+}
+
+/**
+ * Narrow a stored option to a {@link PayoutSourceValue}.
+ *
+ * Unset reads as `synced`: a row written before migration 157 carries no
+ * option, and the Stripe sync was the only writer there has ever been. The
+ * migration stamps the same answer onto the row so the read is not the only
+ * thing holding it.
+ */
+function resolvePayoutSource(value: string | null | undefined): PayoutSourceValue {
+  return value === 'imported' ? 'imported' : 'synced'
 }

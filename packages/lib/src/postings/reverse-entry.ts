@@ -27,7 +27,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq } from 'drizzle-orm'
 import { buildEntry } from './build-entry'
-import { parsePostingDraft, requiresAssertions, reverseAssertions } from './draft'
+import { parsePostingDraft, readDraftReasons, requiresAssertions, reverseAssertions } from './draft'
 import type { PeriodLock } from './periods'
 import { postEntry } from './post-entry'
 import type { CounterpartyType, GlPostingLineInput, PostingType, PostResult } from './types'
@@ -198,7 +198,7 @@ export async function reverseEntry(
       dimensions: (line.dimensions as Record<string, string> | null) ?? undefined,
     }))
 
-    const entry = buildEntry({
+    const built = buildEntry({
       postingType: original.postingType as PostingType,
       // The SAME period. `revision` is what distinguishes the pair; the period
       // key is the claim's third column and must not move, or the reversal
@@ -209,6 +209,15 @@ export async function reverseEntry(
       txnDate: original.txnDate,
       lines: reversedLines,
     })
+
+    // ── The reasons, verbatim ──────────────────────────────────────────────
+    // The original's per-line "why" (brief 28 §5) is copied unchanged: the
+    // reversed lines were built in `lineNumber` order with `sortOrder: index`,
+    // so line N of the reversal backs out line N of the original and the same
+    // sentence explains both. The drawer prefixes it with "Reversing:". Read
+    // leniently - an envelope without the field is an ordinary older entry.
+    const reasons = readDraftReasons(original.draft)
+    const entry = reasons ? { ...built, reasons } : built
 
     // ── The assertions, swapped ────────────────────────────────────────────
     // A posting that ASSERTS a balance (month-end inventory) records the state

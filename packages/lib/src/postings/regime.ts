@@ -35,60 +35,28 @@
 // builder. This constant does.
 
 import { ACCOUNT_ROLES, type AccountRole } from './build-entry'
+import { type ExportRoute, POSTING_POLICIES } from './policy'
 import type { PostingType } from './types'
+
+export type { ExportRoute } from './policy'
 
 /**
  * The posting types a production close may actually emit today.
  *
- * 🛑 **Turning L3 on is ONE change, never two.** Adding `receipt` and
- * `vendor_bill` here while leaving `month_end_inventory` is the exact
+ * A DERIVED VIEW of {@link POSTING_POLICY} since brief 28 unit 1: every policy
+ * with `enabled: true`, in the order the policies are declared, which is the
+ * wave order the ledger was switched on in. `__tests__/policy.test.ts` pins
+ * that derived list byte for byte to the literal this constant used to hold.
+ * To enable a type, flip `enabled` on its policy; do not add a list here.
+ *
+ * 🛑 **Turning L3 on is ONE change, never two.** Enabling `receipt` and
+ * `vendor_bill` while leaving `month_end_inventory` enabled is the exact
  * both-regimes-live state {@link findWriterConflicts} refuses. Swap the
  * contents; do not extend them.
- *
- * The wave-1 types (`manual_journal`, `opening_balance`, `bank_deposit`) and
- * the wave-2 ones (`fulfillment`, `payout`, `write_off`) are flipped on here by
- * the coordinator once their slots are driven, per the handoff §9.
  */
-export const ENABLED_POSTING_TYPES: readonly PostingType[] = [
-  'month_end_inventory',
-  // Wave 1, flipped 2026-09-04 once every slot was driven (HANDOFF §9).
-  'manual_journal',
-  'opening_balance',
-  'bank_deposit',
-  // Wave 2. `fulfillment` posts the revenue legs only; its COGS leg stays dark
-  // under L1 and is the L3 switch. `payout` has a builder and no trigger yet.
-  'fulfillment',
-  'payment',
-  'payout',
-  'write_off',
-  // Wave 3. A CODED bank line posts by account code against the bank account's
-  // own GL code; a matched line posts nothing (bank plan B5).
-  'bank_transaction',
-  // plans/accounting/tasks/08 and /07. `invoice_issued` raises the receivable
-  // every payment entry already relieved and nothing raised; the deposit
-  // application reclasses a held prepayment out of `2350` and onto that
-  // receivable. Neither drives a single-writer role, and the two are enabled
-  // together because a deposit applied to an invoice with no issuance entry
-  // relieves a receivable that was never raised - the same error one document
-  // along.
-  'invoice_issued',
-  'deposit_application',
-  // plans/accounting/tasks/10-credit-memos.md. The issue entry reverses revenue
-  // through 4090 against the receivable the issuance entry raised. Drives no
-  // single-writer role.
-  'credit_memo',
-  // `receipt` and `vendor_bill` are the L3 buy side and wait for the same
-  // switch as the COGS leg.
-  //
-  // brief 21 §3.2. `Dr <expense> / Cr A/P` for rent, insurance, a legal
-  // invoice: a DIFFERENT story from `vendor_bill`, which is L3 purchasing and
-  // stays off. Enabled because our own writer emits it on a bill's Post, the
-  // way `invoice_issued` is emitted on an invoice's Send - and because
-  // `completeness.ts` renders every unlisted type as "posting is off" on every
-  // statement, which would be false the moment this shipped. Drives no
-  // single-writer role, so it cannot conflict with `month_end_inventory`.
-  'expense_bill',
-]
+export const ENABLED_POSTING_TYPES: readonly PostingType[] = POSTING_POLICIES.filter(
+  (policy) => policy.enabled
+).map((policy) => policy.type)
 
 /** The three inventory accounts that may only ever have one writer. */
 export const INVENTORY_ROLES: readonly AccountRole[] = [
@@ -123,68 +91,23 @@ export const SINGLE_WRITER_ROLES: readonly AccountRole[] = INVENTORY_ROLES
 /**
  * Which single-writer roles each posting type can put on a line.
  *
- * DECLARED, not derived from the builders. Deriving it would make the assertion
+ * DECLARED on each type's {@link POSTING_POLICY} record as `singleWriterRoles`,
+ * and never derived from the builders. Deriving it would make the assertion
  * tautological - a builder that started emitting an inventory role would simply
  * be reflected here and the check would keep passing. The point is that a human
- * has to come to this file and say so.
+ * has to come to the policy and say so.
+ *
+ * Only `month_end_inventory` (all three, the L1 assertion) and `receipt` (raw
+ * materials and finished goods, the L3 debit, built and not enabled) declare
+ * any. Every other type names its money accounts by id or drives no inventory
+ * account at all, so `[]` is what each builder emits, not an exemption. The
+ * bank-account gap this guard cannot see is watched by `duplicate-movements.ts`
+ * instead - see the header.
  */
-export const SINGLE_WRITER_ROLES_BY_POSTING_TYPE: Record<PostingType, readonly AccountRole[]> = {
-  // Asserts all three to the subledger's computed balance. The L1 regime.
-  month_end_inventory: INVENTORY_ROLES,
-  // L3. `buildReceiptEntry` debits raw materials or finished goods at landed
-  // cost - built, tested, and not enabled.
-  receipt: [ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS, ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS],
-  // L3. Moves GRNI to A/P with a PPV residual; touches no inventory account.
-  vendor_bill: [],
-  // Revenue legs only while the COGS leg is dark. When the leg turns on this
-  // becomes `[INVENTORY_FINISHED_GOODS]`, in the SAME change that swaps
-  // `month_end_inventory` out of `ENABLED_POSTING_TYPES`.
-  fulfillment: [],
-  payout: [],
-  build: [],
-  month_end_deferral: [],
-  month_end_reversal: [],
-  // Code-based entries: no role on any line, so nothing to declare. The
-  // inventory refusal for these two lives in the manual builder, by name.
-  manual_journal: [],
-  opening_balance: [],
-  // `Dr <the chosen bank account> Cr undeposited_funds`, one line per bank run.
-  // Names the bank account by its own `glAccountId`, never a role (brief 13
-  // §2), so this guard cannot see it on the wire at all - `[]` is now exactly
-  // what the builder emits, not an exemption. See the header's note on
-  // `duplicate-movements.ts`, which is what watches bank accounts instead.
-  bank_deposit: [],
-  // A matched bank line posts nothing (B5). A CODED line drives the
-  // `bank_account`'s own GL account by code, never a role - the bank feed's
-  // wave re-plans this entry if that changes.
-  bank_transaction: [],
-  write_off: [],
-  // The `cash` route names a bank account by id (brief 13 §2.4), never a role,
-  // so this stays `[]` for the same reason `bank_deposit` above does.
-  payment: [],
-  // Revenue, receivables and sales tax. No inventory account and no cash: an
-  // invoice is issued long before its money arrives, and the payment entry is
-  // what moves the money when it does.
-  invoice_issued: [],
-  // A reclass between two liabilities-and-receivables accounts. No money moves,
-  // so nothing here can be a cash or inventory writer.
-  deposit_application: [],
-  // Returns and allowances, sales tax and the receivable, plus the card
-  // clearing account on a channel refund. No inventory account (a `returned`
-  // line is recorded, not restocked) and no cash: a native refund is a payment
-  // entry, and a channel refund drains through the payout entry.
-  credit_memo: [],
-  // A synced entry names accounts by the `gl_account` its `providerAccountId`
-  // maps to, never a role - it is the accountant's line, not a builder's, so
-  // there is no role for this guard to see. `[]` is what the writer emits, not
-  // an exemption. And it is not in `ENABLED_POSTING_TYPES` either: that list is
-  // what a production CLOSE emits, and nothing about a close writes this type.
-  provider_sync: [],
-  // Both name accounts by ID, the way a manual journal does, so neither drives
-  // a single-writer role and neither can conflict with `month_end_inventory`.
-  recurring_journal: [],
-  expense_bill: [],
-}
+export const SINGLE_WRITER_ROLES_BY_POSTING_TYPE: Record<PostingType, readonly AccountRole[]> =
+  Object.fromEntries(
+    POSTING_POLICIES.map((policy) => [policy.type, policy.singleWriterRoles])
+  ) as Record<PostingType, readonly AccountRole[]>
 
 /**
  * @deprecated Since slot 0C the map is {@link SINGLE_WRITER_ROLES_BY_POSTING_TYPE}.
@@ -193,18 +116,13 @@ export const SINGLE_WRITER_ROLES_BY_POSTING_TYPE: Record<PostingType, readonly A
 export const INVENTORY_ROLES_BY_POSTING_TYPE = SINGLE_WRITER_ROLES_BY_POSTING_TYPE
 
 /**
- * `journal`  auxx composes the entry and pushes it.
- * `none`     nothing is exported for this type at all.
- */
-export type ExportRoute = 'journal' | 'none'
-
-/**
  * How each posting type reaches the connected accounting system.
  *
- * DECLARED, never derived from "does a mirror exist for this type". Deriving it
- * would mean that adding a document mirror silently switched a posting type's
- * route, which is the change most likely to double-book, and the check that
- * should have caught it would move with it. A human comes here and says so.
+ * DECLARED on each type's {@link POSTING_POLICY} record as `exportRoute`, never
+ * derived from "does a mirror exist for this type". Deriving it would mean that
+ * adding a document mirror silently switched a posting type's route, which is
+ * the change most likely to double-book, and the check that should have caught
+ * it would move with it. A human comes to the policy and says so.
  *
  * plans/accounting/tasks/14-one-quickbooks-two-write-paths.md originally scoped
  * a third value, `document` (a document mirror owns the transaction; the entry
@@ -217,50 +135,21 @@ export type ExportRoute = 'journal' | 'none'
  * `postEntry` reads this table (brief 19 §5.1, since 2026-09-10).
  * `opening_balance` and `provider_sync` are the two `'none'` routes today, and
  * both for the same class of reason: an entry that CAME FROM the provider must
- * never be pushed back at it. Every other type still routes `journal`. The table
- * exists so a future second accounting provider (one with no invoice API, say)
- * has a named place to declare the split it would force, rather than that split
- * arriving quietly through a derived check.
+ * never be pushed back at it. Every other type still routes `journal`.
+ *
+ * 🛑🛑 THE LOOP GUARD is `provider_sync: 'none'`. A `provider_sync` entry was
+ * authored by the accountant IN the provider and read back off their general
+ * ledger; pushing it back is handing them their own entry a second time. Both
+ * copies would balance, every statement would still tie, and nothing downstream
+ * could detect it. It is declared on the policy, in the record a person has to
+ * come to and edit, rather than implied by `providerEntryId` being non-null on
+ * the row: a column value on every row is a rule nobody reads, and this one may
+ * never quietly become `journal`. `__tests__/regime.test.ts` pins it (brief 20
+ * §6).
  */
-export const EXPORT_ROUTE_BY_POSTING_TYPE: Record<PostingType, ExportRoute> = {
-  fulfillment: 'journal',
-  payout: 'journal',
-  build: 'journal',
-  month_end_deferral: 'journal',
-  month_end_reversal: 'journal',
-  month_end_inventory: 'journal',
-  receipt: 'journal',
-  vendor_bill: 'journal',
-  manual_journal: 'journal',
-  // An opening balance IS the position the books were in before auxx started
-  // posting. If an accounting provider is connected, it is either where those
-  // balances came from or the system the firm has been running, and neither
-  // case wants them pushed back - a fill sourced from the provider and pushed
-  // back would double every balance in it. Brief 19 §5.1, MK's decision (a).
-  opening_balance: 'none',
-  bank_transaction: 'journal',
-  bank_deposit: 'journal',
-  write_off: 'journal',
-  payment: 'journal',
-  invoice_issued: 'journal',
-  deposit_application: 'journal',
-  credit_memo: 'journal',
-  // 🛑🛑 THE LOOP GUARD. A `provider_sync` entry was authored by the accountant
-  // IN the provider and read back off their general ledger; pushing it back is
-  // handing them their own entry a second time. Both copies would balance, every
-  // statement would still tie, and nothing downstream could detect it - brief 19
-  // §5.1's failure with the arrows reversed, which is the same reason
-  // `opening_balance` above is `'none'`.
-  //
-  // It is declared HERE, in the table a person has to come to and edit, rather
-  // than implied by `providerEntryId` being non-null on the row: a column value
-  // on every row is a rule nobody reads, and this one may never quietly become
-  // `journal`. `__tests__/regime.test.ts` pins it (brief 20 §6).
-  provider_sync: 'none',
-  // Both are real entries the firm should see in their register. brief 21.
-  recurring_journal: 'journal',
-  expense_bill: 'journal',
-}
+export const EXPORT_ROUTE_BY_POSTING_TYPE: Record<PostingType, ExportRoute> = Object.fromEntries(
+  POSTING_POLICIES.map((policy) => [policy.type, policy.exportRoute])
+) as Record<PostingType, ExportRoute>
 
 /** One posting type paired with the single-writer roles it would drive. */
 export interface WriterConflict {

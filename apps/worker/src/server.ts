@@ -7,6 +7,8 @@ import { configService } from '@auxx/credentials'
 import { closePools } from '@auxx/database'
 import { registerChannelHooks } from '@auxx/lib/channels'
 import { closeAllQueues, closeFlowProducer } from '@auxx/lib/jobs/queues'
+import { registerAccountingProviders } from '@auxx/lib/money/accounting-providers'
+import { registerPayoutSources } from '@auxx/lib/money/payout-sources'
 import { warmPhoneGeo } from '@auxx/lib/phone-geo'
 import { shutdownPostHog } from '@auxx/lib/posthog/posthog-client'
 import { serve } from '@hono/node-server'
@@ -32,6 +34,17 @@ let inboundEmailPoller: InboundEmailPoller | null = null
 async function initializeApp() {
   await configService.init()
   registerChannelHooks()
+  // Populates the `postings` provider registry, exactly as web's bootstrap does.
+  // The worker POSTS - `payoutSyncJob`, the fulfillment and credit-memo posting
+  // workers - and without this every entry it posts resolves to the null
+  // provider, lands as `not_required` and never reaches QuickBooks
+  // (plans/accounting/tasks/27-a-settlement-from-anywhere.md §1.5). Before the
+  // workers start, so no job can run ahead of it.
+  registerAccountingProviders()
+  // And the settlement feeds `payoutSyncJob` polls: the pipeline knows only the
+  // `PayoutSource` interface, and an empty registry syncs nothing for any org
+  // (brief 27 §4, §7). Same boot step, same reason.
+  registerPayoutSources()
   // Deserialize the phone geocoding tables (~13ms) up front. The worker runs mail/SMS ingest,
   // which is the heaviest producer of phone writes, so paying this at boot keeps it off the
   // first inbound message. Idempotent and never throws.

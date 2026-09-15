@@ -61,7 +61,7 @@ import type {
   UnpostedShipmentLine,
 } from '../money/fulfillment-posting/types'
 import { FULFILLMENT_BATCH_SOURCE_TYPE } from '../money/fulfillment-posting/types'
-import { matchGatewayRoute } from '../payment-gateways/client'
+import { matchGatewayRoute, normaliseGatewayHandle } from '../payment-gateways/client'
 import { ACCOUNT_ROLES, type AccountRole, buildEntry } from './build-entry'
 import {
   CHANNEL_KEYS,
@@ -72,7 +72,7 @@ import {
 } from './build-fulfillment-entry'
 import { DOC_NUMBER_MAX_LENGTH, DOC_NUMBER_PREFIX } from './doc-number'
 import { splitTaxByJurisdiction } from './split-tax-by-jurisdiction'
-import type { BuiltEntry, GlPostingLineInput } from './types'
+import type { BuiltEntry, GlPostingLineInput, PostingReason } from './types'
 
 // ── The debit fork ──────────────────────────────────────────────────────────
 
@@ -166,6 +166,13 @@ export interface FulfillmentGatewayRoute {
   handles: readonly string[]
   clearingGlAccountId: string
   active: boolean
+  /**
+   * The record's display name, for the reason sentence a routed debit carries
+   * (brief 28 §5: *"routed by the Affirm gateway record"*). Optional: nothing
+   * about the ROUTING reads it, and a caller that has only the handle set gets
+   * the handle named instead.
+   */
+  name?: string
 }
 
 /** The exclusions the debit fork itself can produce. A subset of lane B's closed set. */
@@ -181,10 +188,13 @@ export type FulfillmentDebitExclusionReason = Extract<
  * The `debit` branch is {@link FulfillmentDebit} widened with the `kind`
  * discriminant every posting-plan answer in this file carries - a role for the
  * three declared accounts, or a `payment_gateway` record's own id when exactly
- * one route named the gateway (brief 13 §5.3).
+ * one route named the gateway (brief 13 §5.3) - and it ALWAYS carries a
+ * `reason`: which branch of the fork chose the account, in words (brief 28 §5).
+ * The exclude branch's `reason` is the closed enum; the debit branch's is a
+ * sentence. Same field name, two meanings, told apart by `kind`.
  */
 export type FulfillmentDebitResolution =
-  | ({ kind: 'debit' } & FulfillmentDebit)
+  | ({ kind: 'debit'; reason: string } & FulfillmentDebit)
   | { kind: 'exclude'; reason: FulfillmentDebitExclusionReason; detail: string }
 
 /** Trim, lower-case and de-duplicate a gateway list, preserving first-seen order. */
@@ -256,21 +266,55 @@ export function resolveFulfillmentDebit(input: {
     return { kind: 'exclude', reason: 'test-gateway', detail: listed }
   }
 
+  // Each `reason` below is a predicate on the order(s) it describes, so the
+  // builder can prefix `Order #2003 ` or `41 orders ` and read it as a sentence
+  // (brief 28 §5). Captured HERE, the one place the branch is known, and frozen
+  // into the entry: the gateway records this fork reads move later.
   const status = input.financialStatus?.trim().toLowerCase() ?? ''
   if (!SETTLED_FINANCIAL_STATUSES.has(status)) {
-    return { kind: 'debit', role: 'accounts_receivable' }
+    return {
+      kind: 'debit',
+      role: 'accounts_receivable',
+      reason: `not yet paid (financial status ${status || 'blank'}), so accounts receivable`,
+    }
   }
 
   // Paid, but not through a rail that settles into a clearing account.
-  if (gateways.includes(MANUAL_GATEWAY) || gateways.length === 0) {
-    return { kind: 'debit', role: 'accounts_receivable' }
+  if (gateways.includes(MANUAL_GATEWAY)) {
+    return {
+      kind: 'debit',
+      role: 'accounts_receivable',
+      reason: 'paid through the manual gateway, off any rail auxx can see, so accounts receivable',
+    }
+  }
+  if (gateways.length === 0) {
+    return {
+      kind: 'debit',
+      role: 'accounts_receivable',
+      reason: 'paid with no gateway recorded, so accounts receivable',
+    }
   }
 
   if (gateways.length === 1) {
     const gateway = gateways[0] as string
     const glAccountId = matchGatewayRoute(gateway, input.gatewayRoutes)
-    if (glAccountId) return { kind: 'debit', glAccountId }
-    return { kind: 'debit', role: FULFILLMENT_GATEWAY_DEBIT[gateway] ?? 'clearing_card' }
+    if (glAccountId) {
+      // `matchGatewayRoute` answers with the account alone; the record that
+      // named it is found again here for its NAME. Exactly one route matched,
+      // so this is the same route the matcher chose.
+      const route = input.gatewayRoutes?.find(
+        (candidate) =>
+          candidate.clearingGlAccountId === glAccountId &&
+          candidate.handles.some((handle) => normaliseGatewayHandle(handle) === gateway)
+      )
+      const recordName = route?.name?.trim() || gateway
+      return { kind: 'debit', glAccountId, reason: `routed by the ${recordName} gateway record` }
+    }
+    return {
+      kind: 'debit',
+      role: FULFILLMENT_GATEWAY_DEBIT[gateway] ?? 'clearing_card',
+      reason: `paid through ${gateway}, which no gateway record claims, so the card clearing fallback`,
+    }
   }
 
   return { kind: 'exclude', reason: 'gateway-ambiguous', detail: listed }
@@ -332,6 +376,12 @@ export function computeShipmentAmounts(
       lineId: line.lineId,
       quantity: line.quantity,
       unitPriceMinor: line.unitPriceMinor,
+      // The line's whole NET total and how much of it earlier shipments took,
+      // so a split line's shipments sum to its total exactly (29 §12 item 6).
+      // Absent on a line the reader could not reach, and the rate is extended.
+      lineTotalMinor: line.lineTotalMinor,
+      orderedQuantity: line.orderedQuantity,
+      priorShippedQuantity: line.priorShippedQuantity,
       taxMinor: scaleLineTax(line, label),
     })),
     orderSubtotalMinor: shipment.orderSubtotalMinor,
@@ -357,12 +407,12 @@ export function computeShipmentAmounts(
   // answer through (brief 13 §5.3's contract). Widening the parameter rather
   // than requiring the wrapped shape means plan.ts's RUNTIME behaviour is
   // unchanged even though its TYPECHECK is red until that update lands.
-  const debitFields: { debitRole: FulfillmentDebitRole; debitGlAccountId?: string } =
+  const debitFields: Pick<ShipmentAmounts, 'debitRole' | 'debitGlAccountId' | 'debitReason'> =
     typeof debit === 'string'
       ? { debitRole: debit }
       : 'glAccountId' in debit
-        ? { debitRole: 'gateway', debitGlAccountId: debit.glAccountId }
-        : { debitRole: debit.role }
+        ? { debitRole: 'gateway', debitGlAccountId: debit.glAccountId, debitReason: debit.reason }
+        : { debitRole: debit.role, debitReason: debit.reason }
 
   return { ...debitFields, ...totals, taxByJurisdiction }
 }
@@ -594,7 +644,7 @@ export function buildFulfillmentBatchEntry(
   // ── Accumulate ───────────────────────────────────────────────────────────
   const receivableByOrder = new Map<
     string,
-    { orderNumber: string; amountMinor: number; contactId: string | null }
+    { orderNumber: string; amountMinor: number; contactId: string | null; reason?: string }
   >()
   const byDebitRole: Record<FulfillmentDebitRole, number> = {
     clearing_card: 0,
@@ -603,6 +653,21 @@ export function buildFulfillmentBatchEntry(
   }
   /** A `payment_gateway` route's own clearing account id -> its summarised debit. */
   const byGatewayAccount = new Map<string, number>()
+  /**
+   * Why each SUMMARISED debit line holds what it holds (brief 28 §5): per
+   * debit account, per distinct reason sentence, the orders it applies to. A
+   * day's clearing line summarises many orders, so the sentence is per account
+   * with an order count, not per order - the per-order answer is in `sources`.
+   * Keyed `role:clearing_card` or `id:<glAccountId>`.
+   */
+  const debitReasons = new Map<string, Map<string, Set<string>>>()
+  const noteDebitReason = (accountKey: string, reason: string, orderId: string): void => {
+    const byReason = debitReasons.get(accountKey) ?? new Map<string, Set<string>>()
+    const orders = byReason.get(reason) ?? new Set<string>()
+    orders.add(orderId)
+    byReason.set(reason, orders)
+    debitReasons.set(accountKey, byReason)
+  }
   /** `dimensions.channel` value -> summarised revenue_product credit. */
   const revenueByChannel = new Map<string, number>()
   /** `dimensions.jurisdiction` value -> summarised sales_tax_payable credit. */
@@ -657,7 +722,18 @@ export function buildFulfillmentBatchEntry(
         amountMinor: (existing?.amountMinor ?? 0) + amounts.totalMinor,
         // One order, one contact - every shipment of it carries the same id.
         contactId: existing?.contactId ?? shipment.contactId,
+        // And one reason: the fork reads the order's status and gateways, which
+        // every shipment of the order shares.
+        reason: existing?.reason ?? amounts.debitReason,
       })
+    } else if (amounts.debitReason) {
+      noteDebitReason(
+        amounts.debitRole === 'gateway'
+          ? `id:${amounts.debitGlAccountId ?? ''}`
+          : `role:${amounts.debitRole}`,
+        amounts.debitReason,
+        shipment.orderId
+      )
     }
     byDebitRole[amounts.debitRole] += amounts.totalMinor
     if (amounts.debitRole === 'gateway') {
@@ -713,15 +789,29 @@ export function buildFulfillmentBatchEntry(
   const describe = (what: string): string =>
     memo ? `${memo} - ${what}` : `${group.groupKey} - ${what}`
   const lines: GlPostingLineInput[] = []
-  const push = (line: Omit<GlPostingLineInput, 'sortOrder'>): void => {
+  /** Append a line and answer its 1-based line number - `sortOrder + 1`, since `sortOrder` is the index. */
+  const push = (line: Omit<GlPostingLineInput, 'sortOrder'>): number => {
     lines.push({ ...line, sortOrder: lines.length } as GlPostingLineInput)
+    return lines.length
+  }
+  /**
+   * The per-line "why" (brief 28 §5), for the DEBIT lines only - every credit
+   * is a plain role and carries none. Line numbers are the ones `postEntry`
+   * stores, because `sortOrder` here is the index.
+   */
+  const reasons: PostingReason[] = []
+  const explainSummarised = (line: number, accountKey: string): void => {
+    for (const [reason, orders] of debitReasons.get(accountKey) ?? []) {
+      const count = orders.size
+      reasons.push({ line, sentence: `${count} ${count === 1 ? 'order' : 'orders'} ${reason}.` })
+    }
   }
 
   // 1. The receivable, ONE LINE PER ORDER. Aging needs the debtor, so this leg
   //    alone stays at order grain (49 §2.5).
   for (const [orderId, receivable] of receivableByOrder) {
     if (receivable.amountMinor === 0) continue
-    push({
+    const line = push({
       sourceType: FULFILLMENT_SOURCE_TYPE,
       sourceId: orderId,
       accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
@@ -732,28 +822,33 @@ export function buildFulfillmentBatchEntry(
         ? { counterpartyType: 'customer' as const, counterpartyId: receivable.contactId }
         : {}),
     })
+    if (receivable.reason) {
+      reasons.push({ line, sentence: `Order ${receivable.orderNumber} ${receivable.reason}.` })
+    }
   }
 
   // 2. The clearing accounts, summarised - by ROLE, or by a gateway route's
   //    own account id (brief 13 §5.3).
   if (byDebitRole.clearing_card !== 0) {
-    push({
+    const line = push({
       ...summarised,
       accountRole: ACCOUNT_ROLES.CLEARING_CARD,
       direction: 'debit',
       amount: byDebitRole.clearing_card,
       memo: describe('card clearing'),
     })
+    explainSummarised(line, 'role:clearing_card')
   }
   for (const [glAccountId, amount] of byGatewayAccount) {
     if (amount === 0) continue
-    push({
+    const line = push({
       ...summarised,
       glAccountId,
       direction: 'debit',
       amount,
       memo: describe('gateway clearing'),
     })
+    explainSummarised(line, `id:${glAccountId}`)
   }
 
   // 3. Revenue, summarised PER CHANNEL - the channel is a dimension on one
@@ -814,8 +909,9 @@ export function buildFulfillmentBatchEntry(
 
   return {
     // The frozen slice rides into `GlPosting.draft` with the entry - see
-    // `BuiltEntry.sources` and `buildPostingDraft`.
-    entry: { ...built, sources },
+    // `BuiltEntry.sources` and `buildPostingDraft`. So does the per-line "why"
+    // (brief 28 §5), when any debit carried one.
+    entry: { ...built, sources, ...(reasons.length > 0 ? { reasons } : {}) },
     periodKey,
     totals: { subtotalMinor, taxMinor, shippingMinor, totalMinor, byDebitRole },
   }

@@ -1,7 +1,7 @@
 // packages/lib/src/resources/registry/resources/payment-gateway-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
-import { toFieldId } from '@auxx/types/field'
+import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import {
@@ -302,6 +302,40 @@ export const PAYMENT_GATEWAY_FIELDS: Record<string, ResourceField> = {
       'lastSettlementAt - nothing in posting reads it. A billed rail has no statement auxx can ' +
       'read, so the close console shows this DATE rather than a checkmark or a refusal: a rail ' +
       'that bills quarterly would nag two months in three and teach everyone to ignore it.',
+  },
+
+  payouts: {
+    id: toFieldId('payouts'),
+    key: 'payouts',
+    label: 'Payouts',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'payment_gateway_payouts',
+    systemSortOrder: 'a8',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'payout:paymentGateway' as ResourceFieldId,
+      relationshipType: 'has_many',
+      // A payout is posting history and its rail is the routing key the entry
+      // was built from. A gateway is retired with `status: 'closed'`, never
+      // deleted (writes.ts header), so the generic delete door refusing while
+      // any payout still names the record is the only answer that keeps the
+      // history attributable.
+      onDelete: 'restrict',
+      isInverse: true,
+    },
+    description:
+      'The settlements this rail produced (brief 27 §6.1). The INVERSE half - the owning side ' +
+      'is payout.paymentGateway, and both halves must exist in one migration or ' +
+      'linkNewRelationships skips the pair with a debug line',
   },
 
   createdAt: {

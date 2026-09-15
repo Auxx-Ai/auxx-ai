@@ -19,6 +19,8 @@
 
 export {
   fulfillmentStatusFor,
+  type NetUnitPriceInput,
+  netUnitPriceMinor,
   nextFulfillmentSequence,
   ORDER_FULFILLMENT_SOURCE_TYPE,
   type OrderLineRemaining,

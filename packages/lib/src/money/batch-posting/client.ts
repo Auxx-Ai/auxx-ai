@@ -11,6 +11,7 @@
  * the directive would turn every export into a client-reference proxy there.
  */
 
+export { BATCH_POSTING_GROUPING_SETTING_OPTIONS } from './setting-options'
 export {
   BATCH_POSTING_EXCLUSION_REASONS,
   BATCH_POSTING_GROUPINGS,

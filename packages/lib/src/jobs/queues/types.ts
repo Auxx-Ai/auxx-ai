@@ -65,6 +65,12 @@ export enum Queues {
   // race for the same day's period key. The `auto` lane coalesces on a per-org
   // `jobId`, which only de-dupes against a job that is still QUEUED.
   fulfillmentPostingQueue = 'fulfillment-posting',
+  // Bulk credit memo posting (plans/accounting/tasks/28-how-your-books-post.md §3.1).
+  // Its OWN queue at concurrency 1 for the same reason as the one above: one job
+  // posts every unposted channel memo in an org as one entry per issue day, and
+  // the day's period key is claimed by attempt number, so two runs side by side
+  // would compute the same attempt and race for the same key.
+  creditMemoPostingQueue = 'credit-memo-posting',
   // Purchase-order intake: read a vendor's quote into a draft purchase order
   // (plans/money/tasks/38-purchase-order-from-a-document.md §3.3). Its own queue
   // because one job is a multimodal LLM read of a whole document — 10 to 40

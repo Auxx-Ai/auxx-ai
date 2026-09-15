@@ -257,6 +257,16 @@ export async function deleteRule(
  * `matchKey` rather than raw `description` because that is the whole point of
  * normalising it at ingest - a stable pattern that will match the NEXT line
  * from the same payee, not just this one.
+ *
+ * `autoApply` is always OFF here: the rule SUGGESTS and a person accepts. This
+ * is the door 26 §13 decision 3 asked for ("prompt on first manual
+ * categorisation"), and a rule minted from one line has exactly one line of
+ * evidence behind it.
+ *
+ * ⚠️ `direction` defaults to `any`, the shape the panel's toggle has always
+ * written. The settlement offer (27 §8.1) passes `in`: a rail's payee
+ * descriptor can also appear on a chargeback or a fee debit, and coding THOSE
+ * to the clearing account would relieve it of money that never arrived.
  */
 export async function createRuleFromTransaction(
   db: Database,
@@ -266,6 +276,8 @@ export async function createRuleFromTransaction(
     transactionId: string
     glAccountId: string
     name?: string
+    direction?: BankRuleDirection
+    memo?: string
   }
 ): Promise<Result<BankRuleRecord, Error>> {
   const { organizationId, actorUserId, transactionId, glAccountId } = params
@@ -288,10 +300,11 @@ export async function createRuleFromTransaction(
         matchField: 'matchKey',
         matchOperator: 'contains',
         matchValue: row.matchKey,
-        direction: 'any',
+        direction: params.direction ?? 'any',
         bankAccountId: row.bankAccountId ?? undefined,
         action: 'code',
         glAccountId: accountId,
+        memo: params.memo,
       })
       if (created.isErr()) throw created.error
       return created.value

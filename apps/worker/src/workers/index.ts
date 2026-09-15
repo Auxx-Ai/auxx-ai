@@ -9,6 +9,7 @@ import { startAiAutofillWorker } from './worker-definitions/ai-autofill-worker'
 import { startAppTriggerWorker } from './worker-definitions/app-trigger-worker'
 import { startCalendarSyncWorker } from './worker-definitions/calendar-sync-worker'
 import { startChatAgentWorker } from './worker-definitions/chat-agent-worker'
+import { startCreditMemoPostingWorker } from './worker-definitions/credit-memo-posting-worker'
 import { startDataConnectorWorker } from './worker-definitions/data-connector-worker'
 import { startDataExportWorker } from './worker-definitions/data-export-worker'
 import { startDataImportWorker } from './worker-definitions/data-import-worker'
@@ -135,6 +136,11 @@ export async function startWorkers() {
   // the worker definition for why that is a correctness cap, not a throttle.
   const fulfillmentPostingWorker = startFulfillmentPostingWorker()
 
+  // Bulk credit memo posting worker: the `auto` lane of
+  // plans/accounting/tasks/28-how-your-books-post.md §3.1. Same concurrency-1
+  // cap as the fulfillment one, for the same period-key reason.
+  const creditMemoPostingWorker = startCreditMemoPostingWorker()
+
   // Inbound-mail AI categorisation worker (mail-classification plan §4)
   const mailClassificationWorker = startMailClassificationWorker()
 
@@ -184,6 +190,7 @@ export async function startWorkers() {
     dataConnectorWorker,
     documentPdfWorker,
     fulfillmentPostingWorker,
+    creditMemoPostingWorker,
     mailClassificationWorker,
     purchaseIntakeWorker,
     returnIntakeWorker,

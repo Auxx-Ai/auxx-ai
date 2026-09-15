@@ -172,6 +172,43 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     },
   },
 
+  // The line NET: `lineTotal` minus every discount allocated to the line
+  // (plans/accounting/tasks/29-clearing-at-the-payment-date.md §2.3, MK's
+  // 2026-09-14 decision). `unitPrice` and `lineTotal` stay GROSS, which is what
+  // Shopify's admin shows per line and what a customer expects to match; the
+  // header discount a native order carries is pushed down into THIS column by
+  // the totals engine, and a connector writes it from its own allocations. The
+  // ledger reads it first and falls back to `lineTotal` when it is null, so an
+  // org that has not run entity migration 157 keeps posting the total it has.
+  // Hidden from the panel and the dialogs, offered as a records-table column,
+  // never in a line builder.
+  netTotal: {
+    id: toFieldId('netTotal'),
+    key: 'netTotal',
+    label: 'Line total after discount',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'line_item_net_total',
+    systemSortOrder: 'a6a',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false, // totals engine (order spec) and the connector are the writers
+      updatable: false,
+      configurable: false,
+    },
+  },
+
   taxable: {
     id: toFieldId('taxable'),
     key: 'taxable',

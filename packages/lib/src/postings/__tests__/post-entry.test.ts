@@ -1361,3 +1361,28 @@ describe('code-based entries', () => {
     expect(result.status).toBe('not_connected')
   })
 })
+
+// ── The per-line why (brief 28 §5) ──────────────────────────────────────────
+
+describe('the reasons on the draft', () => {
+  it('freezes the builder reasons into the envelope beside the entry', async () => {
+    const fake = createFakeDb(FULL_CHART)
+    const reasons = [{ line: 1, sentence: 'Order #1 not yet paid, so accounts receivable.' }]
+    await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: { ...receiptEntry(), reasons },
+      lock: OPEN,
+    })
+
+    const draft = fake.postings[0]!.draft as { reasons?: unknown; entry: { reasons?: unknown } }
+    expect(draft.reasons).toEqual(reasons)
+    expect(draft.entry.reasons).toEqual(reasons)
+  })
+
+  it('writes no reasons field for an entry whose builder emitted none', async () => {
+    const fake = createFakeDb(FULL_CHART)
+    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
+
+    expect((fake.postings[0]!.draft as { reasons?: unknown }).reasons).toBeUndefined()
+  })
+})

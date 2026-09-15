@@ -720,6 +720,40 @@ async function main() {
       console.log(
         mappings.length === 0 ? '  empty' : `  ${mappings.length} mapped account(s) -> cleared`
       )
+
+      // An EMPTY map beside a populated chart means some OTHER connection owns
+      // the identities on these accounts.
+      //
+      // Swapping sandboxes on its own does NOT cause this. `qboAccountId` is
+      // `scope: 'connection'`, and disconnecting is a HARD delete, so
+      // `CustomField.connectionId` (ON DELETE CASCADE) takes the column, every
+      // `FieldValue` under it, and every `RecordIdentity` on that connection,
+      // with the credential. Disconnect the old realm and connect a new one and
+      // the map is genuinely empty, which is what this will say.
+      //
+      // 🛑 The case this catches is TWO live QuickBooks credentials at once -
+      // the new sandbox connected without disconnecting the old. This script's
+      // `resolveQuickbooksConnection` takes `.limit(1)` with no ordering, so it
+      // picks one ARBITRARILY and the other's map is invisible to it. Those
+      // identities then cascade away with the chart wipe unexamined, which is
+      // the one thing `reset-gl-chart.ts` refuses to do.
+      if (mappings.length === 0 && chartIds.length > 0) {
+        const [stale] = await db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(schema.RecordIdentity)
+          .where(inArray(schema.RecordIdentity.entityInstanceId, chartIds))
+        const staleIdentities = stale?.n ?? 0
+        if (staleIdentities > 0) {
+          console.log(
+            `\n  ⚠️  ${staleIdentities} RecordIdentity row(s) on the chart that THIS connection\n` +
+              '      cannot see, so another live credential owns them - most likely a second\n' +
+              '      QuickBooks connected without disconnecting the first.\n' +
+              '      They will cascade away with the chart rather than be cleared through the\n' +
+              '      connection that owns them. Disconnect the one you are abandoning first\n' +
+              '      (a hard delete, which clears its own map) and re-run.'
+          )
+        }
+      }
     }
   }
 
@@ -864,6 +898,25 @@ async function main() {
   }
   console.log('quantity on hand zeroed, stock status out_of_stock, has_posted false')
 
+  // 🛑 BEFORE the chart wipe, never after. The map lives in a `qboAccountId`
+  // cell ON the `gl_account` instance, mirrored into `RecordIdentity`, and
+  // `RecordIdentity.entityInstanceId` is ON DELETE CASCADE. Clearing it after
+  // the wipe means the cascade already did it: every call is a no-op against a
+  // row that no longer exists, and the count printed below is fiction. The end
+  // state happens to be identical, which is exactly what makes it a bad thing
+  // to rely on - under `--keep-chart` there is no cascade to fall back on.
+  if (connection) {
+    for (const m of mappings) {
+      await clearQuickbooksAccountMapping({
+        organizationId: org.id,
+        installationId: connection.installationId,
+        connectionId: connection.connectionId,
+        glAccountId: m.glAccountId,
+      })
+    }
+    console.log(`cleared ${mappings.length} QuickBooks account mapping(s)`)
+  }
+
   if (!KEEP_CHART) {
     const pointerFieldIds = [...pointerFields.values()]
     if (pointerFieldIds.length > 0) {
@@ -905,18 +958,6 @@ async function main() {
       `deleted ${chartIds.length} account(s), ${roleAssignments} role assignment(s), ` +
         `${pointerRows} pointer(s)`
     )
-  }
-
-  if (connection) {
-    for (const m of mappings) {
-      await clearQuickbooksAccountMapping({
-        organizationId: org.id,
-        installationId: connection.installationId,
-        connectionId: connection.connectionId,
-        glAccountId: m.glAccountId,
-      })
-    }
-    console.log(`cleared ${mappings.length} QuickBooks account mapping(s)`)
   }
 
   await db

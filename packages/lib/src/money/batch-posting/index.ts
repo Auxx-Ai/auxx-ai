@@ -9,6 +9,7 @@
 
 export {
   BATCH_POSTING_EXCLUSION_REASONS,
+  BATCH_POSTING_GROUPING_SETTING_OPTIONS,
   BATCH_POSTING_GROUPINGS,
   type BatchPostingExclusionReason,
   type BatchPostingGrouping,

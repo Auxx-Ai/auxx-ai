@@ -333,6 +333,11 @@ export const SYSTEM_ATTRIBUTES = [
   'line_item_unit',
   'line_item_unit_price',
   'line_item_line_total',
+  // plans/accounting/tasks/29-clearing-at-the-payment-date.md §2.3: the line
+  // NET after every allocated discount. `line_item_line_total` stays GROSS
+  // (qty x unit price, what Shopify shows per line); this is what the ledger
+  // recognises revenue at, falling back to the gross total when null.
+  'line_item_net_total',
   'line_item_taxable',
   // plans/money/tasks/48-shopify-tax-data.md §4.2. Deliberately a SCALAR and
   // not a fan-out: this is what lets `buildFulfillmentEntry` use exact per-line
@@ -469,6 +474,17 @@ export const SYSTEM_ATTRIBUTES = [
   'order_fulfillment_status',
   'order_channel', // human-set, never derived (08 §4, D18)
   'order_payment_gateways',
+  // Brief 29 (plans/accounting/tasks/29-clearing-at-the-payment-date.md §3.1,
+  // §4.3), entity migration 157 (merged with 27 unit 1's). The paid date and
+  // gateway come from the order's SUCCESSFUL sale or capture transaction,
+  // written by the connector; both stay empty until that binding lands, and an
+  // order paid at checkout falls back to `order_placed_at`. The stamp is the
+  // GlPosting the order's payment entry became: TEXT, not a RELATIONSHIP, as
+  // `fulfillment_gl_posting` is, and the `paymentPosted` boolean the
+  // fulfillment fork reads.
+  'order_paid_at',
+  'order_paid_gateway',
+  'order_payment_gl_posting',
   'order_currency',
   'order_shipping_address',
   // Added by migration 122 (money plan 37 §8) — a merchant delivery note and a
@@ -885,6 +901,12 @@ export const SYSTEM_ATTRIBUTES = [
   // bank-account identity. Never a role; naming the payout, the destination and
   // the remedy (brief 13 §2.3).
   'payout_blocked_reason',
+  // Brief 27 §6.1. The rail this payout settled - THE routing key, and half of
+  // the idempotency pair with `payout_gateway_id`. Null when no gateway record
+  // claimed the rail (the role fallback).
+  'payout_payment_gateway',
+  'payout_bank_account', // the resolved bank_account record, for every source
+  'payout_source', // synced | imported
 
   // ─── Bank feed (plans/bank-connection/02-connection-architecture.md §6) ──
   // Entity migration 125. `bank_account` is where the feed meets the chart of
@@ -915,6 +937,7 @@ export const SYSTEM_ATTRIBUTES = [
   'bank_account_stripe_external_account_id',
   'bank_account_transactions', // inverse of bank_transaction_bank_account
   'bank_account_deposits', // inverse of bank_deposit_bank_account_record
+  'bank_account_payouts', // inverse of payout_bank_account
 
   // ─── Payment gateway (task 13 §5.3) ──────────────────────────────
   // A record carrying its clearing account, never a role. Entity migration
@@ -936,6 +959,7 @@ export const SYSTEM_ATTRIBUTES = [
   // Informational, derived: when a fee was last booked to this rail's own fee
   // account. The close console reads it as a date, never as an alarm (26 §6).
   'payment_gateway_last_fee_booked_at',
+  'payment_gateway_payouts', // inverse of payout_payment_gateway
 
   // Connector-owned (raw). The feed may correct any of these.
   'bank_transaction_external_id', // the dedupe key, across BOTH the feed and file import

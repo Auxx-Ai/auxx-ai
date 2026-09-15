@@ -293,3 +293,23 @@ export const CREDIT_MEMO_BATCH_SOURCE_TYPE = 'credit_memo_batch'
 
 /** The registry field holding the `GlPosting` id a memo was posted into (§4.1). */
 export const CREDIT_MEMO_GL_POSTING_ATTRIBUTE = 'credit_memo_gl_posting'
+
+/**
+ * `accounting.creditMemoPosting` (accounting brief 28 §3.1).
+ *
+ * The same two values as `accounting.fulfillmentPosting`, kept under this
+ * module's own name rather than shared through `batch-posting/types.ts`: that
+ * file is pinned to the two vocabularies a PLAN needs, and a mode is a trigger,
+ * not a plan input. `auto.ts` is the one reader.
+ */
+export type CreditMemoPostingMode = 'manual' | 'auto'
+export const CREDIT_MEMO_POSTING_MODES: readonly CreditMemoPostingMode[] = ['manual', 'auto']
+export const CREDIT_MEMO_POSTING_SETTING_KEY = 'accounting.creditMemoPosting'
+
+/**
+ * `accounting.creditMemoGrouping` (28 §3.1): the grouping the posting dialog
+ * opens on. A default, not a rule - the dialog may change it for one run, and
+ * the `auto` lane posts per day regardless (see
+ * `jobs/money/credit-memo-posting-job.ts`).
+ */
+export const CREDIT_MEMO_GROUPING_SETTING_KEY = 'accounting.creditMemoGrouping'

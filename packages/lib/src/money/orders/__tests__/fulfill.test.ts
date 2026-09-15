@@ -281,6 +281,45 @@ describe('fulfillOrder', () => {
     ])
   })
 
+  it('hands the builder the line total, the ordered quantity and what shipped before (29 §12 item 6)', async () => {
+    h.order.lines = [
+      {
+        lineId: 'li_1',
+        name: 'Widget',
+        quantity: 5,
+        shippedQuantity: 2,
+        remainingQuantity: 3,
+        unitPriceMinor: 10_00,
+        lineTotalMinor: 50_00,
+        lineTaxMinor: null,
+        sortOrder: 0,
+      },
+    ]
+    await fulfillOrder(stubDb(), input)
+
+    expect(h.built[0]?.shippedLines).toEqual([
+      expect.objectContaining({
+        lineId: 'li_1',
+        quantity: 3,
+        lineTotalMinor: 50_00,
+        orderedQuantity: 5,
+        priorShippedQuantity: 2,
+      }),
+    ])
+  })
+
+  it('passes a null line total when the line carries none, so the builder extends the rate', async () => {
+    await fulfillOrder(stubDb(), input)
+
+    expect(h.built[0]?.shippedLines).toEqual([
+      expect.objectContaining({
+        lineTotalMinor: null,
+        orderedQuantity: 5,
+        priorShippedQuantity: 0,
+      }),
+    ])
+  })
+
   describe('inventory relief (50 §1.4)', () => {
     it('relieves every line the shipment created, unrelieved, at the dispatch date', async () => {
       await fulfillOrder(stubDb(), input)

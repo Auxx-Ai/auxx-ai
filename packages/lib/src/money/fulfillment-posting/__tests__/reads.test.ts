@@ -72,6 +72,8 @@ const ORDER_FIELD_IDS = {
   line_item_name: 'f_line_name',
   line_item_qty: 'f_line_qty',
   line_item_unit_price: 'f_line_price',
+  line_item_line_total: 'f_line_total',
+  line_item_net_total: 'f_line_net',
   line_item_tax_total: 'f_line_tax',
   line_item_sort_order: 'f_line_sort',
 } as const
@@ -391,6 +393,10 @@ describe('readUnpostedShipments', () => {
             unitPriceMinor: 5_000,
             lineTaxMinor: null,
             orderedQuantity: 4,
+            // No stored total on this fixture line; the builder extends the rate.
+            lineTotalMinor: null,
+            // First shipment of the line: nothing shipped before it.
+            priorShippedQuantity: 0,
             name: 'Widget',
           },
         ],
@@ -514,6 +520,85 @@ describe('readUnpostedShipments', () => {
     expect(shipments[0]?.includeShipping).toBe(false)
   })
 
+  // 29 §12 item 6: the builder allocates each line's total by units, so a
+  // candidate has to know how many units of the line EARLIER shipments took -
+  // under the same live-or-posted rule the prior subtotal follows.
+  describe('the prior shipped units per line (29 §12 item 6)', () => {
+    it('counts the units earlier live shipments took of the same line, and carries the line total', async () => {
+      const values = [
+        ...orderValues(),
+        value('li_1', ORDER_FIELD_IDS.line_item_line_total, { valueNumber: 18_100 }),
+      ]
+      h.selects = [[{ fulfillmentId: 'ff_3', orderId: 'ord_1' }], values, values]
+      h.fulfillmentsByOrder = {
+        ord_1: [
+          fulfillment({
+            id: 'ff_1',
+            sequence: 1,
+            glPosting: 'gl_1',
+            lines: [{ lineItemId: 'li_1', quantity: 1 }],
+          }),
+          fulfillment({
+            id: 'ff_2',
+            sequence: 2,
+            glPosting: 'gl_2',
+            lines: [{ lineItemId: 'li_1', quantity: 1 }],
+          }),
+          fulfillment({ id: 'ff_3', sequence: 3, lines: [{ lineItemId: 'li_1', quantity: 2 }] }),
+        ],
+      }
+
+      const shipments = (
+        await readUnpostedShipments(stubDb(), { organizationId: ORG, range: RANGE })
+      )._unsafeUnwrap()
+
+      expect(shipments).toHaveLength(1)
+      const line = shipments[0]?.lines[0]
+      expect(line?.priorShippedQuantity).toBe(2)
+      expect(line?.lineTotalMinor).toBe(18_100)
+      expect(line?.orderedQuantity).toBe(4)
+    })
+
+    it('ignores a cancelled, never-posted shipment but counts a posted-then-cancelled one', async () => {
+      queue([{ fulfillmentId: 'ff_live', orderId: 'ord_1' }], {
+        ord_1: [
+          fulfillment({
+            id: 'ff_cancelled',
+            sequence: 1,
+            status: 'cancelled',
+            glPosting: null,
+            lines: [{ lineItemId: 'li_1', quantity: 1 }],
+          }),
+          fulfillment({
+            id: 'ff_posted_then_cancelled',
+            sequence: 2,
+            status: 'cancelled',
+            glPosting: 'gl_old',
+            lines: [{ lineItemId: 'li_1', quantity: 3 }],
+          }),
+          fulfillment({ id: 'ff_live', sequence: 3, lines: [{ lineItemId: 'li_1', quantity: 1 }] }),
+        ],
+      })
+
+      const shipments = (
+        await readUnpostedShipments(stubDb(), { organizationId: ORG, range: RANGE })
+      )._unsafeUnwrap()
+
+      expect(shipments.map((row) => row.fulfillmentInstanceId)).toEqual(['ff_live'])
+      expect(shipments[0]?.lines[0]?.priorShippedQuantity).toBe(3)
+    })
+
+    it('never counts a shipment toward its own prior', async () => {
+      queue([{ fulfillmentId: 'ff_1', orderId: 'ord_1' }], { ord_1: [fulfillment()] })
+
+      const shipments = (
+        await readUnpostedShipments(stubDb(), { organizationId: ORG, range: RANGE })
+      )._unsafeUnwrap()
+
+      expect(shipments[0]?.lines[0]?.priorShippedQuantity).toBe(0)
+    })
+  })
+
   it('reads every candidate fulfillment of the same order in one pass', async () => {
     h.selects = [
       [
@@ -602,6 +687,93 @@ describe('readUnpostedShipments', () => {
     const result = await readUnpostedShipments(stubDb(), { organizationId: ORG, range: RANGE })
 
     expect(result._unsafeUnwrap()[0]?.lines[0]?.lineTaxMinor).toBe(0)
+  })
+
+  // 29 §1.7: the rate a shipment recognises at is the line NET.
+  // `line_item_unit_price` is the PRE-discount price; `line_item_line_total`
+  // is what the customer was charged for the line, and it is what sums to
+  // `order_subtotal`.
+  describe('the line NET rate (29 §1.7)', () => {
+    async function readRate(extra: ReturnType<typeof value>[]): Promise<number | undefined> {
+      const values = [...orderValues(), ...extra]
+      h.selects = [[{ fulfillmentId: 'ff_1', orderId: 'ord_1' }], values, values]
+      h.fulfillmentsByOrder = { ord_1: [fulfillment()] }
+      const result = await readUnpostedShipments(stubDb(), { organizationId: ORG, range: RANGE })
+      return result._unsafeUnwrap()[0]?.lines[0]?.unitPriceMinor
+    }
+
+    it('derives the rate from line_item_line_total over line_item_qty, not the list price', async () => {
+      // Four units listed at 5_000 with 2_000 off the line: 18_000 / 4.
+      const rate = await readRate([
+        value('li_1', ORDER_FIELD_IDS.line_item_line_total, { valueNumber: 18_000 }),
+      ])
+      expect(rate).toBe(4_500)
+    })
+
+    it('absorbs the double noise on the stored TOTAL and leaves the RATE unrounded', async () => {
+      const rate = await readRate([
+        value('li_1', ORDER_FIELD_IDS.line_item_line_total, {
+          valueNumber: 18_000.999_999_999_996,
+        }),
+      ])
+      expect(rate).toBe(4_500.25)
+    })
+
+    it('keeps a zero total at zero - a fully discounted line is not an unpriced one', async () => {
+      const rate = await readRate([
+        value('li_1', ORDER_FIELD_IDS.line_item_line_total, { valueNumber: 0 }),
+      ])
+      expect(rate).toBe(0)
+    })
+
+    it('falls back to line_item_unit_price only when the line carries no total at all', async () => {
+      expect(await readRate([])).toBe(5_000)
+    })
+  })
+
+  // 29 §2.3: `line_item_line_total` is GROSS; the allocated net is
+  // `line_item_net_total`. The rate and the allocation basis the builder gets
+  // (`lineTotalMinor`) must come from the same column.
+  describe('the net column wins over the gross total (29 §2.3)', () => {
+    async function readLine(extra: ReturnType<typeof value>[]) {
+      const values = [...orderValues(), ...extra]
+      h.selects = [[{ fulfillmentId: 'ff_1', orderId: 'ord_1' }], values, values]
+      h.fulfillmentsByOrder = { ord_1: [fulfillment()] }
+      const result = await readUnpostedShipments(stubDb(), { organizationId: ORG, range: RANGE })
+      return result._unsafeUnwrap()[0]?.lines[0]
+    }
+
+    it('reads the rate AND lineTotalMinor from line_item_net_total when it is present', async () => {
+      const line = await readLine([
+        value('li_1', ORDER_FIELD_IDS.line_item_line_total, { valueNumber: 20_000 }),
+        value('li_1', ORDER_FIELD_IDS.line_item_net_total, { valueNumber: 18_000 }),
+      ])
+      expect(line?.unitPriceMinor).toBe(4_500)
+      expect(line?.lineTotalMinor).toBe(18_000)
+    })
+
+    it('keeps a zero net at zero rather than falling back to the gross', async () => {
+      const line = await readLine([
+        value('li_1', ORDER_FIELD_IDS.line_item_line_total, { valueNumber: 20_000 }),
+        value('li_1', ORDER_FIELD_IDS.line_item_net_total, { valueNumber: 0 }),
+      ])
+      expect(line?.unitPriceMinor).toBe(0)
+      expect(line?.lineTotalMinor).toBe(0)
+    })
+
+    it('falls back to line_item_line_total for both when the net is null', async () => {
+      const line = await readLine([
+        value('li_1', ORDER_FIELD_IDS.line_item_line_total, { valueNumber: 18_000 }),
+      ])
+      expect(line?.unitPriceMinor).toBe(4_500)
+      expect(line?.lineTotalMinor).toBe(18_000)
+    })
+
+    it('falls back to the price, with no allocation basis, when both totals are null', async () => {
+      const line = await readLine([])
+      expect(line?.unitPriceMinor).toBe(5_000)
+      expect(line?.lineTotalMinor).toBeNull()
+    })
   })
 })
 
