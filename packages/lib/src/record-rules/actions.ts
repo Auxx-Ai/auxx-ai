@@ -28,6 +28,10 @@ const CREATE_TASK_COOLDOWN_DAYS = 7
 export interface NativeRuleHandlerEvent {
   recordIds: RecordId[]
   organizationId: string
+  /** Bulk replay can defer work requiring final integrity passes until finalization. */
+  source?: 'interactive' | 'sync'
+  /** Previous field values for resolving both owners when a relationship moves. */
+  previousValuesByRecordId?: Record<RecordId, unknown>
   userId?: string
   /** Lifecycle transition for entity rules (`created`/`deleted`); absent for field firings. */
   action?: 'created' | 'deleted'

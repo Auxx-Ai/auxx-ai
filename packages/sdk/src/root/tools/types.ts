@@ -196,6 +196,9 @@ export type EntityRefKind =
   | 'parcel'
   | 'fulfillment'
   | 'fulfillment_line'
+  | 'payout'
+  | 'processor_balance_entry'
+  | 'customer_transaction'
 
 /**
  * Per-tool configuration. See plans/kopilot/apps/README.md §4.2.

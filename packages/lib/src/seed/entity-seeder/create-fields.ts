@@ -17,6 +17,7 @@ import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-field
 import { CREDIT_MEMO_APPLICATION_FIELDS } from '../../resources/registry/resources/credit-memo-application-fields'
 import { CREDIT_MEMO_FIELDS } from '../../resources/registry/resources/credit-memo-fields'
 import { CREDIT_MEMO_LINE_FIELDS } from '../../resources/registry/resources/credit-memo-line-fields'
+import { CUSTOMER_TRANSACTION_FIELDS } from '../../resources/registry/resources/customer-transaction-fields'
 import { FULFILLMENT_FIELDS } from '../../resources/registry/resources/fulfillment-fields'
 import { FULFILLMENT_LINE_FIELDS } from '../../resources/registry/resources/fulfillment-line-fields'
 import { GL_ACCOUNT_FIELDS } from '../../resources/registry/resources/gl-account-fields'
@@ -32,6 +33,7 @@ import { PAYMENT_FIELDS } from '../../resources/registry/resources/payment-field
 import { PAYMENT_GATEWAY_FIELDS } from '../../resources/registry/resources/payment-gateway-fields'
 import { PAYOUT_FIELDS } from '../../resources/registry/resources/payout-fields'
 import { PERSONAL_INBOX_FIELDS } from '../../resources/registry/resources/personal-inbox-fields'
+import { PROCESSOR_BALANCE_ENTRY_FIELDS } from '../../resources/registry/resources/processor-balance-entry-fields'
 import { PRODUCT_FIELDS } from '../../resources/registry/resources/product-fields'
 import { PURCHASE_ORDER_FIELDS } from '../../resources/registry/resources/purchase-order-fields'
 import { PURCHASE_ORDER_LINE_FIELDS } from '../../resources/registry/resources/purchase-order-line-fields'
@@ -106,6 +108,8 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   build: BUILD_FIELDS,
   bank_deposit: BANK_DEPOSIT_FIELDS,
   payout: PAYOUT_FIELDS,
+  processor_balance_entry: PROCESSOR_BALANCE_ENTRY_FIELDS,
+  customer_transaction: CUSTOMER_TRANSACTION_FIELDS,
   bank_account: BANK_ACCOUNT_FIELDS,
   bank_transaction: BANK_TRANSACTION_FIELDS,
   bank_rule: BANK_RULE_FIELDS,

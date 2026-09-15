@@ -89,6 +89,8 @@ describe('fireRecordRulesBatch — native actions', () => {
     expect(h.nativeHandler).toHaveBeenCalledWith({
       recordIds: ['def_1:i1', 'def_1:i2', 'def_1:i3'],
       organizationId: 'org_1',
+      source: 'sync',
+      previousValuesByRecordId: { 'def_1:i1': 'a', 'def_1:i2': 'a', 'def_1:i3': 'a' },
       userId: undefined,
     })
     // Per D11: one run row PER record, written as ONE batch insert.

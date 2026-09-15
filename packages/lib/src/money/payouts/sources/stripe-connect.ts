@@ -30,6 +30,7 @@
  * stream, and quietly preferring the active one would be guessing.
  */
 
+import { configService } from '@auxx/credentials'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -159,6 +160,15 @@ async function resolveContexts(
       sourceId: STRIPE_CONNECT_SOURCE_ID,
       ...resolveStripeRails(rails),
       handle: stripeAccountId,
+      ownership: {
+        sourceAccount: {
+          providerKey: 'stripe',
+          externalAccountId: stripeAccountId,
+          environment: configService.get<string>('STRIPE_SECRET_KEY')?.startsWith('sk_test_')
+            ? 'test'
+            : 'live',
+        },
+      },
     },
   ]
 }

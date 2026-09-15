@@ -42,3 +42,25 @@ describe('UnifiedCrudHandler.findOrCreate return shape', () => {
     expect((result.instance as { instance?: unknown }).instance).toBeUndefined()
   })
 })
+
+describe('UnifiedCrudHandler bulk storage capability', () => {
+  it.each([
+    ['payout', false],
+    ['processor_balance_entry', false],
+    ['order', false],
+    ['contact', false],
+    [null, false],
+  ] as const)('resolves definition type %s before advertising batch support', async (entityType, expected) => {
+    const handler = new UnifiedCrudHandler('org_1', 'user_1', {} as never)
+    const resolve = vi
+      .spyOn(
+        handler as unknown as {
+          resolveEntityDefinition(id: string): Promise<{ entityType: string | null }>
+        },
+        'resolveEntityDefinition'
+      )
+      .mockResolvedValue({ entityType })
+    expect(await handler.supportsBulkCreate('canonical-definition-id')).toBe(expected)
+    expect(resolve).toHaveBeenCalledWith('canonical-definition-id')
+  })
+})

@@ -1,28 +1,31 @@
 // packages/lib/src/jobs/maintenance/payout-sync-job.ts
 
+import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { recoverPayoutReconciliationPage } from '../../money/payouts/reconcile-records'
 import { sweepPayouts } from '../../money/payouts/sweep'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('payout-sync-job')
 
 /**
- * Daily payout sync for every org with a live Stripe connection (HANDOFF §11.5
- * item 1).
- *
- * `postPayoutEntry` shipped with no caller, so `1200 Card Clearing` was debited
- * gross at every card sale and never credited: the account grew without bound
- * and the processor's fee was never expensed. `payout.paid` in `applyStripeEvent`
- * is the fast door; this is the guarantee behind it, because a webhook can be
- * unsubscribed, dropped, or arrive while the worker is down, and a payout that
- * is never ingested leaves clearing overstated with nothing to say so.
- *
- * Scheduled nightly via `upsertJobScheduler` — see `apps/worker/src/workers/index.ts`.
- * Idempotent: `syncPayouts` keys on the gateway payout id, so a payout already
- * carrying a posting is skipped rather than posted twice.
+ * Recover persisted financial records in bounded pages, then run legacy payout sources
+ * whose processor accounts have not moved to the shared financial record path.
+ * Scheduled nightly; each recovery page saves its cursor for job retries.
  */
 export async function payoutSyncJob(ctx: JobContext): Promise<void> {
   logger.info('Running payout sync sweep', { jobId: ctx.jobId })
+  let cursor =
+    typeof ctx.data?.reconciliationCursor === 'string' ? ctx.data.reconciliationCursor : undefined
+  let changed = 0
+  do {
+    ctx.throwIfCancelled()
+    const page = await recoverPayoutReconciliationPage(database, cursor)
+    changed += page.changed
+    cursor = page.nextCursor ?? undefined
+    await ctx.job.updateData({ ...ctx.job.data, reconciliationCursor: cursor ?? null })
+  } while (cursor)
+  logger.info('Persisted payout reconciliation recovered', { jobId: ctx.jobId, changed })
   const summary = await sweepPayouts()
   logger.info('Payout sync sweep finished', { jobId: ctx.jobId, ...summary })
 }

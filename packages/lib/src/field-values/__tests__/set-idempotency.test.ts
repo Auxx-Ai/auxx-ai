@@ -11,7 +11,6 @@
 // INSERT/DELETE only on count changes — so the shape pins here assert
 // updates, not DELETE+INSERT.
 
-import type { FieldId } from '@auxx/types/field'
 import { toRecordId } from '@auxx/types/resource'
 
 // ⚠️ Mock '../../realtime/publish-helpers' directly — NOT the '../../realtime'
@@ -27,6 +26,7 @@ vi.mock('../../realtime/publish-helpers', () => ({
 // `getCachedRecordRules` (collectTriggeredFields — reached on the changed path
 // because `ctx.userId` is set so the post-hook/trigger branches run).
 vi.mock('../../cache', () => ({
+  findCachedResource: vi.fn(async () => undefined),
   getCachedFieldMap: vi.fn(),
   getCachedResource: vi.fn(),
   getOrgCache: vi.fn(),
@@ -155,6 +155,7 @@ function makeFakeDb(existingRows: any[] = []) {
   }
   const chain: any = {}
   Object.assign(chain, {
+    query: { EntityDefinition: { findFirst: async () => undefined } },
     delete: () => {
       state.deleteCalls++
       return chain

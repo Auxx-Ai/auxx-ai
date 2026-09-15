@@ -42,6 +42,11 @@ const h = vi.hoisted(() => ({
   gateways: [] as unknown[],
 }))
 
+vi.mock('@auxx/database', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  withAccountingCommitLock: async () => {},
+}))
+vi.mock('../../../resources/crud/tx-write-flush', () => ({ flushTxWriteScope: async () => {} }))
 vi.mock('../../../postings/accounting-enabled', () => ({ isAccountingEnabled: async () => true }))
 vi.mock('../reads', () => ({
   requirePayoutFieldContext: async () => ({
@@ -76,6 +81,9 @@ vi.mock('../../../postings/post-payout-entry', async (importOriginal) => ({
 }))
 vi.mock('../../../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
+    withDatabase() {
+      return this
+    }
     create = h.create
     update = h.update
   },
@@ -103,7 +111,11 @@ function stubDb(rows: unknown[] = []): Database {
     chain[method] = () => chain
   }
   chain.limit = () => Promise.resolve(rows)
-  return { select: () => chain } as unknown as Database
+  const db = {
+    select: () => chain,
+    transaction: async <T>(run: (tx: unknown) => Promise<T>) => run(db),
+  }
+  return db as unknown as Database
 }
 
 const RAIL: PaymentGatewayRow = {
@@ -117,6 +129,9 @@ const RAIL: PaymentGatewayRow = {
   feeTreatment: 'netted',
   status: 'active',
   lastSettlementAt: null,
+  processorAccountId: null,
+  settlementCurrency: null,
+  bankAccountId: null,
   lastFeeBookedAt: null,
   createdAt: null,
   updatedAt: null,
@@ -219,7 +234,7 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
 
     expect(h.postPayoutEntry).toHaveBeenCalledTimes(1)
     const [, input] = h.postPayoutEntry.mock.calls[0] as [unknown, Record<string, unknown>]
-    expect(input).toEqual(EXPECTED_ENTRY_INPUT)
+    expect(input).toEqual({ ...EXPECTED_ENTRY_INPUT, beforeCommit: expect.any(Function) })
     // `feeGlAccountId` is spread in only when the rail names one; the fixture's
     // rail does not, and the key must be ABSENT rather than undefined.
     expect('feeGlAccountId' in input).toBe(false)

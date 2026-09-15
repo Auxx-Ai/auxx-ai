@@ -22,7 +22,7 @@
  * settles into.
  */
 
-import type { Database } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { isAccountingEnabled } from './accounting-enabled'
 import { type BuildPayoutEntryInput, buildPayoutEntry } from './build-payout-entry'
@@ -35,6 +35,8 @@ const logger = createScopedLogger('postings:payout')
 export interface PostPayoutEntryOptions extends BuildPayoutEntryInput {
   organizationId: string
   actorUserId?: string
+  /** Source ownership is checked inside the ledger acceptance transaction. */
+  beforeCommit?: (tx: Transaction) => Promise<void>
 }
 
 /**
@@ -75,7 +77,7 @@ export async function postPayoutEntry(
   db: Database,
   options: PostPayoutEntryOptions
 ): Promise<PostResult> {
-  const { organizationId, actorUserId, ...input } = options
+  const { organizationId, actorUserId, beforeCommit, ...input } = options
 
   if (!(await isAccountingEnabled(db, organizationId))) {
     return { status: 'not_enabled' }
@@ -88,6 +90,7 @@ export async function postPayoutEntry(
       organizationId,
       entry: built.entry,
       actorUserId,
+      beforeCommit,
       lock,
       memo: input.memo ?? `Payout ${built.periodKey}`,
     })

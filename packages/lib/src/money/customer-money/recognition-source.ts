@@ -235,23 +235,22 @@ export async function readOrderRecognitionSource(
       (account) =>
         account.environment !== 'live' ||
         account.archivedAt !== null ||
-        account.providerKey !== 'shopify' ||
         !coverage.sourceStoreIds.includes(account.id)
     )
   )
-    blockers.push('Shopify transaction evidence is not from one live source account')
+    blockers.push('Source transaction evidence is not from one live source account')
   const sourceStoreIds = [...new Set(sourceObjects.map((row) => row.sourceAccountId))]
   if (sourceStoreIds.length > 1)
-    blockers.push('Shopify transaction evidence spans multiple source stores')
-  if (!coverage.complete) blockers.push('Shopify transaction coverage is incomplete or unresolved')
+    blockers.push('Source transaction evidence spans multiple source stores')
+  if (!coverage.complete) blockers.push('Source transaction coverage is incomplete or unresolved')
   if (coverage.sourceStoreIds.length > 1)
-    blockers.push('Shopify transaction evidence spans multiple source stores')
+    blockers.push('Source transaction evidence spans multiple source stores')
   if (
     accepted.some(
       (row) => row.state === 'pending' || row.state === 'blocked' || row.state === 'rejected'
     )
   )
-    blockers.push('Shopify transaction evidence is pending, blocked, or rejected')
+    blockers.push('Source transaction evidence is pending, blocked, or rejected')
 
   const allApplications = await db.query.MoneyApplication.findMany({
     where: and(

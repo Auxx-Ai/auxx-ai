@@ -31,7 +31,7 @@ const { getBatchRowData } = await import('../raw-data/get-row-data')
 const { executeStrategy } = await import('../execution/execute-strategy')
 
 import { UniqueValueConflictError } from '../../errors'
-import type { BatchRecordData } from '../execution/execute-batch'
+import type { BatchRecordData, BulkCreateRecordResult } from '../execution/execute-batch'
 import type { ImportMappingProperty } from '../types/mapping'
 import type { ImportPlanStrategy, StrategyType } from '../types/plan'
 
@@ -124,6 +124,7 @@ function run(
     fieldValueRows?: Array<Record<string, unknown>>
     rowData?: Map<number, Record<number, string>>
     createRecord?: (data: BatchRecordData) => Promise<{ id: string }>
+    bulkCreate?: (records: BatchRecordData[]) => Promise<BulkCreateRecordResult[]>
   } = {}
 ) {
   const planRows = options.rows ?? [{ id: 'pr-1', rowIndex: 0, existingRecordId: 'inst-1' }]
@@ -150,6 +151,7 @@ function run(
       mappings: options.mappings ?? MAPPINGS,
       resolutions: new Map(),
       createRecord,
+      bulkCreate: options.bulkCreate,
       updateRecord,
     }),
   }
@@ -430,5 +432,33 @@ describe('executeStrategy, batched ImportPlanRow write-back', () => {
     expect(text).toContain('"errorMessage" = COALESCE(v."errorMessage", r."errorMessage")')
     expect(text).toContain('FROM (VALUES')
     expect(text).toContain('WHERE r.id = v.id')
+  })
+})
+
+describe('executeStrategy shared storage batch creation', () => {
+  it('passes prepared source values to bulk storage and records sparse failures without replaying committed rows', async () => {
+    const bulkCreate = vi.fn(async (_records: BatchRecordData[]) => [
+      { id: 'created-A' },
+      { error: 'Invalid source amount' },
+      { id: 'created-C' },
+    ])
+    const { createRecord, executed, result } = run('create', {
+      bulkCreate,
+      rows: [0, 1, 2].map((rowIndex) => ({
+        id: `plan-${rowIndex}`,
+        rowIndex,
+        existingRecordId: null,
+      })),
+      rowData: new Map([0, 1, 2].map((i) => [i, { 0: `SKU-${i}`, 1: 'evidence', 2: '2' }])),
+    })
+    const outcome = await result
+    expect(bulkCreate).toHaveBeenCalledTimes(1)
+    expect(bulkCreate.mock.calls[0]![0][2]!.customFields[SKU_FIELD_ID]).toBe('SKU-2')
+    expect(createRecord).not.toHaveBeenCalled()
+    expect(outcome).toMatchObject({ executed: 2, failed: 1 })
+    const params = executed.flatMap((statement) => statement.params)
+    expect(params).toContain('created-A')
+    expect(params).toContain('created-C')
+    expect(params).toContain('Invalid source amount')
   })
 })

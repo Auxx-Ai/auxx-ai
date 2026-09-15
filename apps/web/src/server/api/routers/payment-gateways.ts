@@ -17,6 +17,7 @@
 import {
   archivePaymentGateway,
   createPaymentGateway,
+  getGatewaySettlementReadiness,
   listGatewayHandleCensus,
   listObservedGatewayHandles,
   listPaymentGateways,
@@ -24,6 +25,7 @@ import {
   PAYMENT_GATEWAY_SETTLEMENT_SOURCES,
   PAYMENT_GATEWAY_STATUSES,
   readClearingAccountBalance,
+  updateGatewaySettlementSettings,
   updatePaymentGateway,
 } from '@auxx/lib/payment-gateways'
 import { suggestRail } from '@auxx/lib/payment-gateways/rail-catalogue'
@@ -55,6 +57,36 @@ const paymentGatewayFields = {
 }
 
 export const paymentGatewaysRouter = createTRPCRouter({
+  settlementReadiness: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ gatewayId: z.string().min(1) }))
+    .query(({ ctx, input }) =>
+      getGatewaySettlementReadiness(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        ...input,
+      })
+    ),
+  updateSettlementSettings: permissionProcedure(PermissionKey.ledgerControl)
+    .input(
+      z.object({
+        gatewayId: z.string().min(1),
+        patch: z.object({
+          processorAccountId: z.string().min(1).nullable().optional(),
+          settlementCurrency: z
+            .string()
+            .regex(/^[A-Z]{3}$/)
+            .nullable()
+            .optional(),
+          bankAccountId: z.string().min(1).nullable().optional(),
+        }),
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      updateGatewaySettlementSettings(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+        ...input,
+      })
+    ),
   /** Every payment gateway in the org, oldest first. */
   list: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ includeArchived: z.boolean().optional() }).optional())

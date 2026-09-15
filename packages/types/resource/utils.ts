@@ -126,6 +126,8 @@ export function normalizeToRecordIds(values: unknown[], fallbackEntityDefId: str
  * Custom (user-created) entities also use EntityDefinition but with entityType = null.
  */
 export const ENTITY_DEFINITION_TYPES = [
+  'processor_balance_entry',
+  'customer_transaction',
   'contact',
   'entity_group',
   'inbox',

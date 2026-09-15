@@ -2668,6 +2668,13 @@
       "when": 1789487111880,
       "tag": "0380_shopify_receipt_accounting",
       "breakpoints": true
+    },
+    {
+      "idx": 381,
+      "version": "7",
+      "when": 1789497073945,
+      "tag": "0381_financial_record_evidence",
+      "breakpoints": true
     }
   ]
 }

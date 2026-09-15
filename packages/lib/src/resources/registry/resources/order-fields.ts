@@ -6,6 +6,7 @@ import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { OrderChannel, OrderFinancialStatus, OrderFulfillmentStatus } from '../enum-values'
 import type { ResourceField } from '../field-types'
+import { financialSourceField, financialSourceRelationship } from './financial-source-fields'
 
 /**
  * Percent-of-subtotal vs flat-amount discount — the same two values the quote
@@ -36,6 +37,72 @@ const ORDER_DISCOUNT_TYPE_OPTIONS = [
  * and written only by the totals engine.
  */
 export const ORDER_FIELDS: Record<string, ResourceField> = {
+  paymentSourceProvider: financialSourceField(
+    'paymentSourceProvider',
+    'Payment source provider',
+    'order_payment_source_provider'
+  ),
+  paymentSourceAccount: financialSourceField(
+    'paymentSourceAccount',
+    'Payment source account',
+    'order_payment_source_account'
+  ),
+  paymentSourceEnvironment: financialSourceField(
+    'paymentSourceEnvironment',
+    'Payment environment',
+    'order_payment_source_environment'
+  ),
+  paymentSourceOrderId: financialSourceField(
+    'paymentSourceOrderId',
+    'Source order ID',
+    'order_payment_source_order_id'
+  ),
+  paymentSourceUpdatedAt: financialSourceField(
+    'paymentSourceUpdatedAt',
+    'Payment source updated at',
+    'order_payment_source_updated_at'
+  ),
+  paymentSourceComplete: financialSourceField(
+    'paymentSourceComplete',
+    'Payment source complete',
+    'order_payment_source_complete',
+    'boolean'
+  ),
+  paymentSourceCount: financialSourceField(
+    'paymentSourceCount',
+    'Source transaction count',
+    'order_payment_source_count',
+    'number'
+  ),
+  paymentTransactions: financialSourceRelationship(
+    'paymentTransactions',
+    'Payment transactions',
+    'order_payment_transactions',
+    'customer_transaction',
+    'order',
+    true
+  ),
+  paymentEvidence: {
+    id: toFieldId('paymentEvidence'),
+    key: 'paymentEvidence',
+    label: 'Payment evidence',
+    type: BaseType.JSON,
+    fieldType: FieldType.JSON,
+    isSystem: true,
+    systemAttribute: 'order_payment_evidence',
+    systemSortOrder: 'z9',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'Original transaction evidence for customer receipts and refunds.',
+  },
   id: {
     id: toFieldId('id'),
     key: 'id',

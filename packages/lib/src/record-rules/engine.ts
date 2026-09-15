@@ -331,6 +331,12 @@ export async function fireRecordRulesBatch(
         await handler({
           recordIds,
           organizationId: ctx.organizationId,
+          source: ctx.source,
+          previousValuesByRecordId: Object.fromEntries(
+            [...eventByInstance]
+              .filter(([, event]) => event.oldValue !== undefined)
+              .map(([id, event]) => [toRecordId(ctx.entityDefinitionId, id), event.oldValue])
+          ),
           userId: ctx.userId,
           action: lifecycleAction,
           eventDataByRecordId: hasEventData ? eventDataByRecordId : undefined,

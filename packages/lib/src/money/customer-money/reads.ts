@@ -2,7 +2,8 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import type { OrderMoneyTransaction } from './client'
-import { exactSourceMoney, shopifyMoneyObservationSchema, shopifySourceDomain } from './contracts'
+import { exactSourceMoney } from './contracts'
+import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
 
 /** Read canonical movements and durable unresolved source outcomes beside an order. */
 export async function listOrderMoneyTransactions(
@@ -101,7 +102,7 @@ export async function listOrderMoneyTransactions(
     : []
   const accountingByMoney = new Map(accountingRows.map((row) => [row.moneyTransactionId, row]))
   for (const { acceptance, money, object, account, observation } of rows) {
-    const source = shopifyMoneyObservationSchema.safeParse(observation.payload)
+    const source = readStoredCustomerMoneyObservation(observation.payload)
     let amount: { amountMinor: bigint; currency: string; currencyExponent: number } | null = null
     if (source.success) {
       try {
@@ -146,77 +147,44 @@ export async function readOrderMoneyCoverage(
   organizationId: string,
   orderId: string
 ) {
-  const bindings = await db
-    .select({
-      externalId: schema.DataConnectorItem.externalId,
-      metadata: schema.Credential.metadata,
-    })
-    .from(schema.DataConnectorItem)
+  const stored = await db
+    .select({ coverage: schema.FinancialSourceCoverage })
+    .from(schema.FinancialSourceCoverage)
     .innerJoin(
-      schema.DataConnector,
-      eq(schema.DataConnector.id, schema.DataConnectorItem.dataConnectorId)
-    )
-    .innerJoin(
-      schema.Credential,
-      and(
-        eq(schema.Credential.organizationId, schema.DataConnectorItem.organizationId),
-        eq(schema.Credential.id, schema.DataConnector.credentialId)
-      )
+      schema.FinancialSourceAccount,
+      eq(schema.FinancialSourceAccount.id, schema.FinancialSourceCoverage.sourceAccountId)
     )
     .where(
       and(
-        eq(schema.DataConnectorItem.organizationId, organizationId),
-        eq(schema.DataConnectorItem.entityInstanceId, orderId),
-        eq(schema.DataConnector.type, 'app:shopify')
-      )
-    )
-  const rows: Array<typeof schema.FinancialSourceCoverage.$inferSelect> = []
-  let sourceAvailable = false
-  const sourceStoreIds = new Set<string>()
-  for (const binding of bindings) {
-    let domain: string
-    try {
-      domain = shopifySourceDomain(binding.metadata)
-    } catch {
-      continue
-    }
-    const accounts = await db.query.FinancialSourceAccount.findMany({
-      where: and(
-        eq(schema.FinancialSourceAccount.organizationId, organizationId),
-        eq(schema.FinancialSourceAccount.providerKey, 'shopify'),
-        eq(schema.FinancialSourceAccount.externalAccountId, domain.toLowerCase()),
+        eq(schema.FinancialSourceCoverage.organizationId, organizationId),
+        eq(schema.FinancialSourceCoverage.streamKey, 'order_transactions'),
+        eq(schema.FinancialSourceCoverage.windowKey, orderId),
         eq(schema.FinancialSourceAccount.environment, 'live'),
         isNull(schema.FinancialSourceAccount.archivedAt)
-      ),
-      columns: { id: true },
-    })
-    if (!accounts.length) continue
-    sourceAvailable = true
-    for (const account of accounts) sourceStoreIds.add(account.id)
-    rows.push(
-      ...(await db.query.FinancialSourceCoverage.findMany({
-        where: and(
-          eq(schema.FinancialSourceCoverage.organizationId, organizationId),
-          inArray(
-            schema.FinancialSourceCoverage.sourceAccountId,
-            accounts.map((account) => account.id)
-          ),
-          eq(schema.FinancialSourceCoverage.streamKey, 'shopify_order_transactions'),
-          eq(schema.FinancialSourceCoverage.windowKey, binding.externalId)
-        ),
-      }))
+      )
     )
+  if (stored.length) {
+    const rows = stored.map((row) => row.coverage),
+      accounts = [...new Set(rows.map((row) => row.sourceAccountId))]
+    return {
+      sourceAvailable: true,
+      sourceStoreId: accounts.length === 1 ? accounts[0]! : null,
+      sourceStoreIds: accounts,
+      complete: rows.every((row) => row.complete),
+      fetched: rows.reduce((n, row) => n + row.fetchedCount, 0),
+      accepted: rows.reduce((n, row) => n + row.acceptedCount, 0),
+      pending: rows.reduce((n, row) => n + row.pendingCount, 0),
+      rejected: rows.reduce((n, row) => n + row.rejectedCount, 0),
+    }
   }
-  const unique = [...new Map(rows.map((row) => [row.id, row])).values()]
   return {
-    sourceAvailable,
-    sourceStoreId: sourceStoreIds.size === 1 ? [...sourceStoreIds][0]! : null,
-    shopifyBound: bindings.length > 0,
-    sourceStoreIds: [...sourceStoreIds],
-    complete: sourceAvailable && unique.length > 0 && unique.every((row) => row.complete),
-    fetched: unique.reduce((sum, row) => sum + row.fetchedCount, 0),
-    accepted: unique.reduce((sum, row) => sum + row.acceptedCount, 0),
-    pending: unique.reduce((sum, row) => sum + row.pendingCount, 0),
-    rejected: unique.reduce((sum, row) => sum + row.rejectedCount, 0),
+    sourceAvailable: false,
+    sourceStoreId: null,
+    sourceStoreIds: [],
+    complete: false,
+    fetched: 0,
+    accepted: 0,
+    pending: 0,
+    rejected: 0,
   }
 }

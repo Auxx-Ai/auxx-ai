@@ -1,4 +1,7 @@
 // packages/lib/src/money/payouts/sync.ts
+import { withAccountingCommitLock } from '@auxx/database'
+import { flushTxWriteScope } from '../../resources/crud/tx-write-flush'
+import { runInTxWrite } from '../../resources/crud/tx-write-scope'
 
 /**
  * The WRITE half of the payout sync: raise a `payout` record for each settled
@@ -98,6 +101,7 @@ import { toRecordId } from '../../resources/resource-id'
 import { SystemUserService } from '../../users/system-user-service'
 import { type GatheredPayout, gatherPayout } from './gather'
 import { guard } from './guard'
+import { assertLegacyPayoutIngestionOwner } from './ingestion-owner'
 import {
   findBankAccountByStripeExternalAccountId,
   findPayoutByGatewayId,
@@ -254,6 +258,7 @@ async function runSource(
   ctx: PayoutSourceCtx,
   params: RunParams
 ): Promise<SyncPayoutsResult> {
+  await assertLegacyPayoutIngestionOwner(db, ctx)
   const source = getPayoutSource(ctx.sourceId)
   if (source.isErr()) throw source.error
 
@@ -327,22 +332,33 @@ async function ingestOne(
   }
 
   const gathered = await gatherPayout(db, { ctx, source, header })
+  // A previously resolved context must stand down if evidence streams were
+  // enabled while the provider read was in flight.
+  await assertLegacyPayoutIngestionOwner(db, ctx)
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
 
   let instanceId = existing?.payoutId
   let created = false
-  if (!instanceId) {
-    const record = await crud.create(fieldCtx.payoutDefId, payoutValues(gathered, ctx))
-    instanceId = record.instance.id
-    created = true
-  } else {
-    // A record raised while the payout was in transit: refresh the numbers,
-    // which can move as the provider settles more into the same batch. This is
-    // also where a row written before migration 157 (or while no record
-    // claimed the rail) ADOPTS its rail: the pair lookup accepted its null
-    // pointer above, and this write fills it.
-    await crud.update(toRecordId(fieldCtx.payoutDefId, instanceId), payoutValues(gathered, ctx))
-  }
+  const write = await db.transaction((tx) =>
+    runInTxWrite({ organizationId, actorUserId }, async () => {
+      await withAccountingCommitLock(tx, organizationId)
+      await assertLegacyPayoutIngestionOwner(tx, ctx)
+      const scopedCrud = crud.withDatabase(tx)
+      if (!instanceId) {
+        const record = await scopedCrud.create(fieldCtx.payoutDefId, payoutValues(gathered, ctx))
+        instanceId = record.instance.id
+        created = true
+      } else {
+        await scopedCrud.update(
+          toRecordId(fieldCtx.payoutDefId, instanceId),
+          payoutValues(gathered, ctx)
+        )
+      }
+    })
+  )
+  if (write.owned) await flushTxWriteScope(write.scope)
+  if (!instanceId) throw new Error('Payout record write returned no identity')
+  const payoutInstanceId = instanceId
 
   if (gathered.gatewayStatus !== 'paid') {
     return { created, posted: false, alreadyPosted: false }
@@ -388,7 +404,7 @@ async function ingestOne(
       destination: gathered.destination,
       reason,
     })
-    await crud.update(toRecordId(fieldCtx.payoutDefId, instanceId), {
+    await crud.update(toRecordId(fieldCtx.payoutDefId, payoutInstanceId), {
       payout_blocked_reason: reason,
     })
     return payoutAccountUnmappedResult(reason)
@@ -400,7 +416,9 @@ async function ingestOne(
   } else if (gateway.blockedReason !== null) {
     post = await block(gateway.blockedReason)
   } else {
+    await assertLegacyPayoutIngestionOwner(db, ctx)
     post = await postPayoutEntry(db, {
+      beforeCommit: (tx) => assertLegacyPayoutIngestionOwner(tx, ctx),
       organizationId,
       actorUserId,
       payoutId: providerPayoutId,
@@ -442,7 +460,7 @@ async function ingestOne(
     }
   }
 
-  await crud.update(toRecordId(fieldCtx.payoutDefId, instanceId), {
+  await crud.update(toRecordId(fieldCtx.payoutDefId, payoutInstanceId), {
     payout_status: 'paid',
     // Cleared on success: a payout that was blocked on a prior run and has
     // since been confirmed must not keep showing the blocker banner.

@@ -181,6 +181,10 @@ export interface PaymentGatewayRow {
   /** The `gl_account` id the processor withholds its fee into, or null (`6100` is the fallback). */
   feeGlAccountId: string | null
   settlementSource: PaymentGatewaySettlementSourceValue
+  /** Explicit merchant identity for settlement matching. */
+  processorAccountId: string | null
+  settlementCurrency: string | null
+  bankAccountId: string | null
   /**
    * Whether the processor withholds its cut from the deposit or bills for it
    * later. Read by `buildPayoutEntry` through `postPayoutEntry`: a `billed`

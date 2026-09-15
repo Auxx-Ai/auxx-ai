@@ -43,7 +43,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ── The two queue-backed externals, mocked OFF ───────────────────────────────
@@ -630,4 +630,28 @@ describe('an organization with no accounting provider', () => {
     expect(result.glPostingId).toBeUndefined()
     expect(await postings()).toHaveLength(0)
   })
+})
+
+/** A source cutover is checked at the same lock boundary as financial acceptance. */
+it('rechecks source ownership under the accounting lock before accepting a posting', async () => {
+  let guarded = false
+  const result = await postEntry(db(), {
+    organizationId: f.organizationId,
+    actorUserId: f.userId,
+    entry: receiptEntry(),
+    lock: OPEN,
+    beforeCommit: async (tx) => {
+      const locks = await tx.execute(
+        sql`SELECT 1 FROM pg_locks WHERE pid = pg_backend_pid() AND locktype = 'advisory' AND granted`
+      )
+      expect(locks.rows.length).toBeGreaterThan(0)
+      guarded = true
+      throw new Error('Source ownership changed before acceptance')
+    },
+  })
+  expect(guarded).toBe(true)
+  expect(result.status).toBe('error')
+  expect(result.error).toContain('Source ownership changed')
+  expect(await postings()).toHaveLength(0)
+  expect(await lines()).toHaveLength(0)
 })

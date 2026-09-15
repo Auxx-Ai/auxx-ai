@@ -15,6 +15,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
+  assertLegacyPayoutIngestionOwner: vi.fn(async () => {}),
+  gatherPayout: vi.fn(async () => ({})),
   isAccountingEnabled: vi.fn(async () => true),
   requirePayoutFieldContext: vi.fn(
     async () =>
@@ -31,6 +33,10 @@ const h = vi.hoisted(() => ({
   paymentGateways: [] as unknown[],
 }))
 
+vi.mock('../ingestion-owner', () => ({
+  assertLegacyPayoutIngestionOwner: h.assertLegacyPayoutIngestionOwner,
+}))
+vi.mock('../gather', () => ({ gatherPayout: h.gatherPayout }))
 vi.mock('../../../postings/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
@@ -79,6 +85,7 @@ function stubDb(rows: { createdAt: Date }[] = []): Database {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  h.assertLegacyPayoutIngestionOwner.mockReset().mockResolvedValue(undefined)
   __resetPayoutSourcesForTests()
   registerPayoutSources()
   h.isAccountingEnabled.mockResolvedValue(true)
@@ -99,6 +106,9 @@ function gateway(overrides: Partial<PaymentGatewayRow> = {}): PaymentGatewayRow 
     feeTreatment: 'netted',
     status: 'active',
     lastSettlementAt: null,
+    processorAccountId: null,
+    settlementCurrency: null,
+    bankAccountId: null,
     lastFeeBookedAt: null,
     createdAt: null,
     updatedAt: null,
@@ -479,6 +489,69 @@ function ctxFor(rail: PaymentGatewayRow | null): PayoutSourceCtx {
     handle: 'x',
   }
 }
+
+describe('connector evidence owns Shopify payout ingestion', () => {
+  it('blocks a direct legacy sync before fetching or writing payouts', async () => {
+    const source = recordingSource()
+    registerPayoutSource(source)
+    h.assertLegacyPayoutIngestionOwner.mockRejectedValue(
+      new Error('Connector owns payout evidence')
+    )
+
+    const result = await syncPayoutSource(stubDb(), ctxFor(null), { now: NOW })
+
+    expect(result.isErr()).toBe(true)
+    expect(source.since).toEqual([])
+    expect(h.gatherPayout).not.toHaveBeenCalled()
+  })
+
+  it('reports the selected owner to scheduled/manual org sync without running Shopify tools', async () => {
+    const source = recordingSource()
+    source.resolveContexts = async () => [ctxFor(null)]
+    __resetPayoutSourcesForTests()
+    registerPayoutSource(source)
+    h.assertLegacyPayoutIngestionOwner.mockRejectedValue(
+      new Error('Connector owns payout evidence')
+    )
+
+    const result = await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
+
+    expect(result._unsafeUnwrap()).toEqual({
+      ...EMPTY,
+      failed: [
+        {
+          sourceId: 'shopify_payments',
+          paymentGatewayId: null,
+          reason: 'Connector owns payout evidence',
+        },
+      ],
+    })
+    expect(source.since).toEqual([])
+  })
+
+  it('rechecks ownership after provider reads before creating a legacy payout', async () => {
+    const source = recordingSource()
+    source.listPayouts = async () => [
+      {
+        providerPayoutId: 'payout-1',
+        paidAt: '2026-09-14',
+        currency: 'usd',
+        status: 'paid',
+        depositedMinor: 9700,
+      },
+    ]
+    registerPayoutSource(source)
+    h.assertLegacyPayoutIngestionOwner
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('Connector enabled during provider fetch'))
+
+    const result = await syncPayoutSource(stubDb(), ctxFor(null), { now: NOW })
+
+    expect(result.isErr()).toBe(true)
+    expect(h.gatherPayout).toHaveBeenCalledTimes(1)
+    expect(h.assertLegacyPayoutIngestionOwner).toHaveBeenCalledTimes(2)
+  })
+})
 
 describe('the per-rail floor (resolveSince)', () => {
   it('reads from now on a rail that has never synced and carries no watermark', async () => {

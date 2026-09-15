@@ -1,3 +1,5 @@
+// apps/web/src/server/api/root.ts
+
 import type { inferRouterOutputs } from '@trpc/server'
 import { createCallerFactory, createTRPCRouter } from '~/server/api/trpc'
 import { actorRouter } from './routers/actor'
@@ -75,6 +77,7 @@ import { notificationRouter } from './routers/notification'
 import { organizationRouter } from './routers/organization'
 import { participantRouter } from './routers/participant'
 import { paymentGatewaysRouter } from './routers/payment-gateways'
+import { payoutEvidenceRouter } from './routers/payout-evidence'
 import { permissionsRouter } from './routers/permissions'
 import { procedureRouter } from './routers/procedure'
 import { promptTemplateRouter } from './routers/promptTemplate'
@@ -188,6 +191,7 @@ export const appRouter = createTRPCRouter({
   organization: organizationRouter,
   participant: participantRouter,
   paymentGateway: paymentGatewaysRouter,
+  payoutEvidence: payoutEvidenceRouter,
   permissions: permissionsRouter,
   procedure: procedureRouter,
   promptTemplate: promptTemplateRouter,

@@ -154,6 +154,10 @@ async function resolveContexts(
       rail: shopifyRails.length === 1 ? (shopifyRails[0] ?? null) : null,
       conflictingRails: shopifyRails.length > 1 ? shopifyRails : [],
       handle: resolved.context,
+      ownership: {
+        appInstallationId: resolved.context.installationId,
+        credentialId: resolved.context.connectionId,
+      },
     },
   ]
 }

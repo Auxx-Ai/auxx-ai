@@ -48,6 +48,7 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
+import { GatewaySettlementFields } from './gateway-settlement-fields'
 
 const SETTLEMENT_SOURCE_OPTIONS = PAYMENT_GATEWAY_SETTLEMENT_SOURCES.map((value) => ({
   value,
@@ -294,7 +295,7 @@ function PaymentGatewayForm({
           title='Settlement source'
           type={BaseType.ENUM}
           showIcon
-          description='Automatic reads a real payout feed. By hand is what Affirm and every historical rail correctly are.'>
+          description='The source used to retrieve settlement history.'>
           <FieldInputAdapter
             fieldType={FieldType.SINGLE_SELECT}
             fieldOptions={{ options: SETTLEMENT_SOURCE_OPTIONS }}
@@ -353,6 +354,8 @@ function PaymentGatewayForm({
           />
         </FieldPanelRow>
       </FieldPanel>
+
+      <GatewaySettlementFields gateway={gateway} />
 
       <div className='min-h-4 text-muted-foreground text-xs'>{pending ? 'Saving…' : null}</div>
 

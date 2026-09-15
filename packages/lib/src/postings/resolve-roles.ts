@@ -61,7 +61,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
 import { PgTransaction } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
-import { AuxxError, UnprocessableEntityError } from '../errors'
+import { AuxxError, type AuxxErrorDetails, UnprocessableEntityError } from '../errors'
 import { accountLabel } from './account-label'
 import { ACCOUNT_ROLE_LABELS, type AccountRole, ROLE_ACCOUNT_TYPES } from './build-entry'
 import { loadChartAccountFields, loadChartAccountsById } from './chart-accounts'
@@ -160,9 +160,20 @@ export async function resolveRoles(
 
     const resolved = new Map<string, ResolvedAccount>()
     const problems: string[] = []
+    // ⚠️ Parallel to `problems`, index for index, and it MUST stay that way:
+    // `describeUnmappedRoles` pairs them to render one actionable row per role
+    // and refuses to render any row at all if the two arrays disagree in
+    // length. Two arrays rather than one array of objects because
+    // `AuxxErrorDetails` values may only be `string | string[]`.
+    const unresolvedRoles: string[] = []
 
     for (const role of wanted) {
       const assignment = byRole.get(role)
+      /** Record one role's refusal, keeping the two arrays in step. */
+      const refuse = (reason: string) => {
+        problems.push(reason)
+        unresolvedRoles.push(role)
+      }
 
       if (!assignment) {
         // A DECLARED role gets the rich sentence naming its label and the pack
@@ -170,7 +181,7 @@ export async function resolveRoles(
         // below as "not a declared posting role") has neither, so it falls back
         // to the plain sentence rather than indexing `CHART_PACKS` with nothing.
         const label = ACCOUNT_ROLE_LABELS[role as AccountRole]
-        problems.push(
+        refuse(
           label
             ? `'${role}' (${label}) is not mapped to any account. Add the ${CHART_PACKS[packForRole(role as AccountRole)].label} accounts under Accounting > Settings > Accounts > Roles, or map it to an account of your own there.`
             : `'${role}' is not mapped to any account. Map it in the chart of accounts before posting.`
@@ -179,7 +190,7 @@ export async function resolveRoles(
       }
 
       if (assignment.markedUnused) {
-        problems.push(
+        refuse(
           `'${role}' is marked as unused by this organization, but a posting was built that uses it. ` +
             'Either map it to an account or find out why the entry names it.'
         )
@@ -188,14 +199,14 @@ export async function resolveRoles(
 
       const account = accounts.get(assignment.glAccountId)
       if (!account) {
-        problems.push(
+        refuse(
           `'${role}' is mapped to account ${assignment.glAccountId}, which no longer exists or has been archived. Repoint the role.`
         )
         continue
       }
 
       if (!account.isActive) {
-        problems.push(
+        refuse(
           `'${role}' is mapped to ${accountLabel(account)}, which is not active. Reactivate the account or repoint the role.`
         )
         continue
@@ -206,14 +217,14 @@ export async function resolveRoles(
       // a closed vocabulary violation, not a mapping problem, so it gets its own
       // sentence rather than being folded into the type mismatch below.
       if (!expectedType) {
-        problems.push(
+        refuse(
           `'${role}' is not a declared posting role. The role vocabulary is closed - see ACCOUNT_ROLES.`
         )
         continue
       }
 
       if (account.accountType !== expectedType) {
-        problems.push(
+        refuse(
           `'${role}' must be mapped to a ${expectedType} account, but ${accountLabel(account)} is a ${account.accountType} account.`
         )
         continue
@@ -226,7 +237,16 @@ export async function resolveRoles(
       return err(
         new UnprocessableEntityError(
           `Cannot post: ${problems.length} posting role(s) do not resolve to a usable account. ${problems.join(' ')}`,
-          { organizationId, roles: wanted.join(',') }
+          // 🛑 `unresolvedRoles` / `unresolvedReasons` are the SAME refusal the
+          // message carries, split so a screen can offer one remedy per role
+          // instead of one button under a paragraph. The message is unchanged
+          // and stays the only thing a log or a non-console caller has to read.
+          {
+            organizationId,
+            roles: wanted.join(','),
+            unresolvedRoles,
+            unresolvedReasons: problems,
+          }
         )
       )
     }
@@ -330,10 +350,21 @@ export async function resolveAccountLines(
     // Roles go through the existing door unchanged, so the two shapes cannot
     // drift apart on what a role means. Its message already names every role.
     let byRole = new Map<string, ResolvedAccount>()
+    // Forwarded verbatim from the role door so a line-level refusal can still
+    // offer a remedy per ROLE. Only roles carry this: a bad code or a dead id
+    // names a ROW, and the row is fixed on the entry rather than in the chart.
+    let roleDetails: AuxxErrorDetails = {}
     if (roles.length > 0) {
       const resolved = await resolveRoles(db, organizationId, roles)
-      if (resolved.isErr()) problems.push(resolved.error.message)
-      else byRole = resolved.value
+      if (resolved.isErr()) {
+        problems.push(resolved.error.message)
+        if (resolved.error instanceof AuxxError) {
+          const { unresolvedRoles, unresolvedReasons } = resolved.error.details
+          if (unresolvedRoles && unresolvedReasons) {
+            roleDetails = { unresolvedRoles, unresolvedReasons }
+          }
+        }
+      } else byRole = resolved.value
     }
 
     const byCode =
@@ -402,7 +433,13 @@ export async function resolveAccountLines(
       return err(
         new UnprocessableEntityError(
           `Cannot post: ${problems.length} line(s) do not resolve to a usable account. ${problems.join(' ')}`,
-          { organizationId }
+          // 🛑 Only when the roles were the ONLY thing wrong. The role door
+          // contributes exactly one entry to `problems` (its own joined
+          // message), so anything more means a ROW failed too - a dead id, an
+          // unknown code, a line naming neither. A screen that rendered the
+          // role rows would then be hiding those sentences behind a list that
+          // does not mention them.
+          { organizationId, ...(problems.length === 1 ? roleDetails : {}) }
         )
       )
     }

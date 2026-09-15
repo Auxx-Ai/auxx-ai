@@ -40,6 +40,7 @@ import {
   recomputePriceOnMarkupChange,
   syncCatalogCostOnPartChange,
 } from '../money/catalog-pricing'
+import { registerFinancialRecordRules } from '../money/reconciliation/record-events'
 import {
   recomputeCreditMemoAfterLineDelete,
   recomputeOnCreditMemoLineChange,
@@ -141,6 +142,7 @@ export function registerAllHooks(): void {
   // dispatch through door 2 (`handleRecordRules`) + the manifest consumer, so they gain
   // sync/import visibility for free. Replaces the deleted ENTITY_TRIGGERS registry.
   registerEntitySystemRules()
+  registerFinancialRecordRules()
 
   // The order-triggered build (plans/products/12-order-triggered-build.md, AB2/AB6): two
   // more code-declared system rules on the NATIVE `orders` def — one lifecycle rule that

@@ -14,12 +14,15 @@ interface PostCreditMemosDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCompleted?: () => void
+  /** A MONTH key to open the range on. See `BatchPostingDialog`'s own prop. */
+  initialMonth?: string
 }
 
 export function PostCreditMemosDialog({
   open,
   onOpenChange,
   onCompleted,
+  initialMonth,
 }: PostCreditMemosDialogProps) {
   return (
     <BatchPostingDialog
@@ -27,6 +30,7 @@ export function PostCreditMemosDialog({
       open={open}
       onOpenChange={onOpenChange}
       onCompleted={onCompleted}
+      initialMonth={initialMonth}
     />
   )
 }

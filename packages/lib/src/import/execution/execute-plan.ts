@@ -8,7 +8,7 @@ import type { ImportMappingProperty } from '../types/mapping'
 import type { ImportPlan, ImportPlanStrategy } from '../types/plan'
 import type { ValueResolution } from '../types/resolution'
 import { classifyImportOutcome } from './classify-outcome'
-import type { BatchRecordData } from './execute-batch'
+import type { BatchRecordData, BulkCreateRecordResult } from './execute-batch'
 import { type ExecuteStrategyContext, executeStrategy } from './execute-strategy'
 
 /** Options for executing a plan */
@@ -31,6 +31,8 @@ export interface ExecutePlanOptions {
   identifierKeys?: string[]
   /** Function to create a single record */
   createRecord: (data: BatchRecordData) => Promise<{ id: string }>
+  /** Optional storage-backed batch operation; failures retain the ordinary row retry path. */
+  bulkCreate?: (records: BatchRecordData[]) => Promise<BulkCreateRecordResult[]>
   /** Function to update a single record */
   updateRecord: (id: string, data: BatchRecordData) => Promise<{ id: string }>
   /** Progress callback */
@@ -93,6 +95,7 @@ export async function executePlan(options: ExecutePlanOptions): Promise<Executio
       fieldModes: options.fieldModes,
       identifierKeys: options.identifierKeys,
       createRecord: options.createRecord,
+      bulkCreate: options.bulkCreate,
       updateRecord: options.updateRecord,
       onProgress,
       onRowWarning: options.onRowWarning,

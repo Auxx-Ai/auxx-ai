@@ -20,6 +20,23 @@ export interface BatchRecordData {
   modes?: FieldWriteModes
 }
 
+/** Ordered per-row outcome: a failed neighbor never causes a committed success to be replayed. */
+export type BulkCreateRecordResult = { id: string } | { error: string }
+
+/** Restore input ordering when shared CRUD returns successes plus indexed failures. */
+export function orderedBulkCreateResults(
+  count: number,
+  result: { created: Array<{ id: string }>; errors: Array<{ index: number; error: string }> }
+): BulkCreateRecordResult[] {
+  const errors = new Map(result.errors.map((row) => [row.index, row.error]))
+  let createdIndex = 0
+  return Array.from({ length: count }, (_, index) => {
+    const error = errors.get(index)
+    if (error !== undefined) return { error }
+    return result.created[createdIndex++] ?? { error: 'Bulk create returned no result' }
+  })
+}
+
 /** Record to execute in a batch */
 export interface BatchRecord {
   rowIndex: number
@@ -42,7 +59,7 @@ export interface ExecuteBatchContext {
    */
   identifierKeys?: string[]
   /** Function to create records in bulk (if available) */
-  bulkCreate?: (records: Array<BatchRecordData>) => Promise<Array<{ id: string }>>
+  bulkCreate?: (records: Array<BatchRecordData>) => Promise<BulkCreateRecordResult[]>
   /** Function to create a single record */
   createRecord: (data: BatchRecordData) => Promise<{ id: string }>
   /** Function to update a single record */
@@ -198,16 +215,19 @@ export async function executeBatch(
       : null,
   })
 
-  // For create strategy with bulk support, use it
+  // A thrown callback promises the batch did not commit; committed per-row errors
+  // are returned explicitly so successful neighbors never run a second time.
   if (strategy === 'create' && ctx.bulkCreate && records.length > 1) {
+    let createdRecords: BulkCreateRecordResult[] | undefined
     try {
-      const createdRecords = await ctx.bulkCreate(records.map((r) => r.data))
-
-      for (let i = 0; i < records.length; i++) {
-        const record = records[i]!
-        const created = createdRecords[i]
-
-        if (created) {
+      createdRecords = await ctx.bulkCreate(records.map((record) => record.data))
+    } catch {
+      /* Atomic batch failure uses ordinary row conflict recovery below. */
+    }
+    if (createdRecords) {
+      for (const [index, record] of records.entries()) {
+        const created = createdRecords[index]
+        if (created && 'id' in created) {
           results.push({
             rowIndex: record.rowIndex,
             success: true,
@@ -219,16 +239,13 @@ export async function executeBatch(
           results.push({
             rowIndex: record.rowIndex,
             success: false,
-            error: 'Bulk create returned no result',
+            error: created && 'error' in created ? created.error : 'Bulk create returned no result',
           })
           failed++
         }
       }
-
       onProgress?.(records.length, records.length)
       return { succeeded, failed, results }
-    } catch {
-      // Bulk failed, fall back to sequential
     }
   }
 

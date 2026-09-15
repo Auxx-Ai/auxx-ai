@@ -97,6 +97,12 @@ import {
   buildMonthEndInventoryEntry,
   type MonthEndInventoryInputs,
 } from './build-month-end-inventory'
+import {
+  type CloseBlockerItem,
+  closeBlockerMessage,
+  describeIncompleteRevenue,
+  incompleteRevenueLead,
+} from './close-blockers'
 import { gatherMonthEndInventoryInputs } from './gather-month-end-inventory'
 import { resolvePeriodLock } from './period-lock'
 import type { PeriodLock } from './periods'
@@ -131,6 +137,13 @@ interface CloseRefusal {
   error: string
   failureClass?: PostFailureClass
   txnDate?: string
+  /**
+   * The refusal broken into the pieces of work it is made of, when it HAS
+   * pieces. `error` above is assembled from exactly these by
+   * `closeBlockerMessage`, so a console rendering one row per item and a log
+   * line reading the sentence are reading the same answer.
+   */
+  items?: CloseBlockerItem[]
 }
 
 /** Everything a preview or a post needs, once nothing has refused. */
@@ -358,54 +371,24 @@ async function classifyIncompleteRevenue(
 
   if (shipments === 0 && memos === 0 && unpostedMemos === 0) return null
 
-  const month = monthLabel(periodKey)
-  const sentences: string[] = []
-  if (shipments > 0) {
-    sentences.push(
-      `${shipments} ${shipments === 1 ? 'shipment is' : 'shipments are'} not posted. ` +
-        `Post the fulfillments for ${month} with the posting dialog.`
-    )
-  }
-  if (memos > 0) {
-    sentences.push(
-      `${memos} channel credit ${memos === 1 ? 'memo is' : 'memos are'} still a draft. ` +
-        `Issue or void the channel credit memos dated in ${month}.`
-    )
-  }
-  if (unpostedMemos > 0) {
-    sentences.push(
-      `${unpostedMemos} issued credit ${unpostedMemos === 1 ? 'memo is' : 'memos are'} ` +
-        `not posted. Post the credit memos for ${month} with the posting dialog.`
-    )
-  }
+  // 🛑 The items are the answer and the sentence is derived from them, not the
+  // other way round. See `close-blockers.ts` for why that direction is load
+  // bearing: the console renders one actionable row per item, and a screen that
+  // re-worded any of these labels would disagree with the message stored on the
+  // refusal while looking perfectly reasonable.
+  const items = describeIncompleteRevenue({
+    periodKey,
+    shipments,
+    draftChannelMemos: memos,
+    unpostedCreditMemos: unpostedMemos,
+  })
 
   return {
     status: 'revenue_incomplete',
-    error: `${month} still holds revenue that is not in the books. ${sentences.join(' ')}`,
+    error: closeBlockerMessage(incompleteRevenueLead(periodKey), items),
     failureClass: 'data',
+    items,
   }
-}
-
-/**
- * `'2026-07'` becomes `'July 2026'`, for the refusal sentence.
- *
- * The year is carried deliberately: a close console can be looking at any month
- * of any year, and "Post the fulfillments for July" is ambiguous the moment an
- * organization is more than a year old. A key that is not a month is returned
- * unchanged rather than mangled - `GlPosting` documents keys that are not dates
- * at all.
- */
-function monthLabel(periodKey: string): string {
-  const match = /^(\d{4})-(\d{2})$/.exec(periodKey)
-  if (!match) return periodKey
-  const year = Number(match[1])
-  const month = Number(match[2])
-  if (!Number.isFinite(year) || month < 1 || month > 12) return periodKey
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(new Date(Date.UTC(year, month - 1, 1)))
 }
 
 // ── Classification ─────────────────────────────────────────────────────────
@@ -566,7 +549,11 @@ function refusalPreview(periodKey: string, refusal: CloseRefusal): EntryPreview 
     docNumber: '',
     lines: [],
     totalMinor: 0,
-    blockedBy: { status: refusal.status, error: refusal.error },
+    blockedBy: {
+      status: refusal.status,
+      error: refusal.error,
+      ...(refusal.items?.length ? { items: refusal.items } : {}),
+    },
   }
 }
 
@@ -581,5 +568,6 @@ function refusalResult(refusal: CloseRefusal): PostResult {
     status: refusal.status,
     error: refusal.error,
     ...(refusal.failureClass ? { failureClass: refusal.failureClass } : {}),
+    ...(refusal.items?.length ? { items: refusal.items } : {}),
   }
 }

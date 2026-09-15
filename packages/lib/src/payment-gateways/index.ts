@@ -43,6 +43,7 @@ export {
 } from './reads'
 export type { ClearingAccountBalance } from './repoint'
 export { readClearingAccountBalance } from './repoint'
+export { getGatewaySettlementReadiness, updateGatewaySettlementSettings } from './settlement'
 export type {
   ArchivePaymentGatewayInput,
   CreatePaymentGatewayInput,

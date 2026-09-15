@@ -8,7 +8,7 @@ import { PgTransaction } from 'drizzle-orm/pg-core'
 import { ConflictError } from '../errors'
 import type { FieldValueContext } from '../field-values/field-value-helpers'
 import { runInTxWrite } from '../resources/crud/tx-write-scope'
-import { runWithWriteDb } from '../resources/crud/write-session-als'
+import { getAmbientWriteSession, runWithWriteDb } from '../resources/crud/write-session-als'
 import { withAccountingCommitLock } from './accounting-commit-lock'
 
 const guardedWrites = new AsyncLocalStorage<Set<string>>()
@@ -62,6 +62,9 @@ const financialFields = new Set([
   'tax_line_order',
 ])
 const guardedTypes = new Set([
+  'payout',
+  'processor_balance_entry',
+  'customer_transaction',
   'fulfillment',
   'fulfillment_line',
   'order',
@@ -112,6 +115,8 @@ export async function affectedFulfillmentsInTx(
   const type = await accountingSourceType(tx, organizationId, entityDefinitionId)
   if (!type || (configurationTypes.has(type) && type !== 'contact')) return []
   if (type === 'fulfillment') return [entityInstanceId]
+  if (type === 'payout' || type === 'processor_balance_entry' || type === 'customer_transaction')
+    return []
   const edges = async (ids: string[], attributes: string[], inverse = false): Promise<string[]> => {
     if (!ids.length) return []
     const rows = await tx
@@ -305,6 +310,8 @@ export async function withAccountingFieldMutation<T>(
     .filter((item) => item.fields.length)
   if (!remaining.length) return fn(ctx)
   const relevant: AccountingFieldMutation[] = []
+  const sourceRecords = new Map<RecordId, string>()
+  const sourceFieldIds = new Set<string>()
   for (const item of remaining) {
     const type = await accountingSourceType(
       ctx.db,
@@ -328,7 +335,14 @@ export async function withAccountingFieldMutation<T>(
       const attr =
         fields.find((row) => row.id === field.fieldId || row.systemAttribute === field.fieldId)
           ?.systemAttribute ?? field.fieldId
-      return configurationTypes.has(type) || financialFields.has(attr)
+      return (
+        configurationTypes.has(type) ||
+        financialFields.has(attr) ||
+        attr.startsWith('payout_source_') ||
+        attr.startsWith('processor_balance_') ||
+        attr.startsWith('customer_transaction_') ||
+        attr.startsWith('order_payment_source_')
+      )
     })
     const resolved = financial
       .map((field) => ({
@@ -338,6 +352,19 @@ export async function withAccountingFieldMutation<T>(
             ?.id ?? field.fieldId,
       }))
       .filter((field) => !active?.has(`${item.recordId}:${field.fieldId}`))
+    const sourceFields = resolved.filter((field) => {
+      const attr = fields.find((row) => row.id === field.fieldId)?.systemAttribute ?? field.fieldId
+      return (
+        attr.startsWith('payout_source_') ||
+        attr.startsWith('processor_balance_') ||
+        attr.startsWith('customer_transaction_') ||
+        attr.startsWith('order_payment_source_')
+      )
+    })
+    if (sourceFields.length) {
+      sourceRecords.set(item.recordId, type)
+      for (const field of sourceFields) sourceFieldIds.add(`${item.recordId}:${field.fieldId}`)
+    }
     if (resolved.length) relevant.push({ ...item, fields: resolved })
   }
   if (!relevant.length) return fn(ctx)
@@ -345,9 +372,13 @@ export async function withAccountingFieldMutation<T>(
     await withAccountingCommitLock(tx, ctx.organizationId)
     const before = new Set<string>()
     for (const item of relevant) {
+      const economicFields = item.fields.filter(
+        (field) => !sourceFieldIds.has(`${item.recordId}:${field.fieldId}`)
+      )
+      if (!economicFields.length) continue
       let changed = item.operation !== 'set'
       const related: string[] = []
-      for (const field of item.fields) {
+      for (const field of economicFields) {
         const requested = rawValue(field.value)
         for (const value of Array.isArray(requested) ? requested : [requested])
           if (typeof value === 'string') related.push(value)
@@ -398,11 +429,39 @@ export async function withAccountingFieldMutation<T>(
       () =>
         runWithWriteDb(tx, async () => {
           const result = await fn({ ...ctx, db: tx })
+          if (sourceRecords.size) {
+            const { stageStoredFinancialRecordsInTx } = await import(
+              '../money/reconciliation/stored-source-records'
+            )
+            const { resolveFinancialWriteProvenance } = await import(
+              '../resources/crud/financial-record-binding'
+            )
+            const provenance = await resolveFinancialWriteProvenance({
+              db: tx,
+              organizationId: ctx.organizationId,
+              session: ctx.session ??
+                getAmbientWriteSession() ?? {
+                  origin: { kind: 'automation', actor: ctx.userId ?? 'system' },
+                  depth: 0,
+                },
+            })
+            await stageStoredFinancialRecordsInTx(tx, {
+              organizationId: ctx.organizationId,
+              actorUserId: ctx.userId ?? '',
+              records: [...sourceRecords].map(([recordId, entityType]) => ({
+                recordId,
+                entityType,
+              })),
+              provenance,
+            })
+          }
           const { captureFulfillmentAccountingWorkInTx } = await import(
             '../money/fulfillment-posting/work'
           )
           const discovered = new Set<string>()
-          for (const item of relevant)
+          for (const item of relevant.filter((item) =>
+            item.fields.some((field) => !sourceFieldIds.has(`${item.recordId}:${field.fieldId}`))
+          ))
             for (const id of await affectedFulfillmentsInTx(tx, ctx.organizationId, item.recordId))
               if (!before.has(id)) discovered.add(id)
           if (discovered.size)

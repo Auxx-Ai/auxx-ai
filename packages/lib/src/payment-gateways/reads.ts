@@ -45,6 +45,9 @@ const PAYMENT_GATEWAY_ATTRIBUTES = [
   'payment_gateway_status',
   'payment_gateway_last_settlement_at',
   'payment_gateway_last_fee_booked_at',
+  'payment_gateway_settlement_account',
+  'payment_gateway_settlement_currency',
+  'payment_gateway_settlement_bank_account',
 ] as const
 
 type PaymentGatewayAttribute = (typeof PAYMENT_GATEWAY_ATTRIBUTES)[number]
@@ -462,6 +465,7 @@ async function hydratePaymentGateways(
           fieldId: schema.FieldValue.fieldId,
           valueText: schema.FieldValue.valueText,
           valueDate: schema.FieldValue.valueDate,
+          relatedEntityId: schema.FieldValue.relatedEntityId,
           optionId: schema.FieldValue.optionId,
         })
         .from(schema.FieldValue)
@@ -520,6 +524,10 @@ async function hydratePaymentGateways(
       status: resolvePaymentGatewayStatus(readOne(row.id, 'payment_gateway_status')?.optionId),
       lastSettlementAt: lastSettlementAt ? lastSettlementAt.slice(0, 10) : null,
       lastFeeBookedAt: lastFeeBookedAt ? lastFeeBookedAt.slice(0, 10) : null,
+      processorAccountId: readOne(row.id, 'payment_gateway_settlement_account')?.valueText ?? null,
+      settlementCurrency: readOne(row.id, 'payment_gateway_settlement_currency')?.valueText ?? null,
+      bankAccountId:
+        readOne(row.id, 'payment_gateway_settlement_bank_account')?.relatedEntityId ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     } satisfies PaymentGatewayRow

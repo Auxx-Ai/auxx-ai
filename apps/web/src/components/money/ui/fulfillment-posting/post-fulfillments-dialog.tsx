@@ -14,12 +14,15 @@ interface PostFulfillmentsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCompleted?: () => void
+  /** A MONTH key to open the range on. See `BatchPostingDialog`'s own prop. */
+  initialMonth?: string
 }
 
 export function PostFulfillmentsDialog({
   open,
   onOpenChange,
   onCompleted,
+  initialMonth,
 }: PostFulfillmentsDialogProps) {
   return (
     <BatchPostingDialog
@@ -27,6 +30,7 @@ export function PostFulfillmentsDialog({
       open={open}
       onOpenChange={onOpenChange}
       onCompleted={onCompleted}
+      initialMonth={initialMonth}
     />
   )
 }

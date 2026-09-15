@@ -39,9 +39,10 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { formatCurrency } from '@auxx/utils'
 import { and, eq, sql } from 'drizzle-orm'
-import { BadRequestError, databaseErrorCodes, UnprocessableEntityError } from '../errors'
+import { AuxxError, BadRequestError, databaseErrorCodes, UnprocessableEntityError } from '../errors'
 import { accountLabel } from './account-label'
 import { withAccountingCommitLock } from './accounting-commit-lock'
+import { type CloseBlockerItem, describeUnmappedRoles } from './close-blockers'
 import { buildDocNumber } from './doc-number'
 import { type PostingAssertions, requiresAssertions } from './draft'
 import {
@@ -135,6 +136,8 @@ export interface PostEntryOptions {
    * is untyped.
    */
   assertions?: PostingAssertions
+  /** Recheck a caller-owned source constraint under the accounting lock before accepting the entry. */
+  beforeCommit?: (tx: Transaction) => Promise<void>
 }
 
 export interface PreviewEntryOptions {
@@ -154,6 +157,17 @@ interface Refusal {
   status: PostResultStatus
   failureClass: PostFailureClass
   error: string
+  /**
+   * The refusal as the individual pieces of work it is made of, when it has
+   * several. Today that is `account_unmapped`, whose message names every
+   * offending role: the console renders one row with its own "Map role" button
+   * per role instead of one button under the whole list.
+   *
+   * 🛑 Derived from the refusing error's own `details`, never by re-splitting
+   * `error`. Parsing prose back into structure is how a card ends up naming a
+   * role that was never the problem.
+   */
+  items?: CloseBlockerItem[]
 }
 
 /**
@@ -339,10 +353,20 @@ export async function prepareEntry(
     // account" send two different people to two different screens, and the
     // remedy card branches on the status.
     const hasCodeLine = ordered.some((line) => !!line.accountCode)
+    // ⚠️ Roles only, and only on `account_unmapped`. `account_invalid` is about
+    // a ROW naming an account the chart does not hold, and a card listing role
+    // names under that title would send somebody to remap a role that resolved
+    // perfectly well.
+    const items = hasCodeLine
+      ? []
+      : describeUnmappedRoles(
+          resolved.error instanceof AuxxError ? resolved.error.details : undefined
+        )
     refusal ??= {
       status: hasCodeLine ? 'account_invalid' : 'account_unmapped',
       failureClass: 'configuration',
       error: resolved.error.message,
+      ...(items.length ? { items } : {}),
     }
   } else {
     for (const [index, line] of ordered.entries()) {
@@ -551,7 +575,11 @@ export async function previewEntry(
     lines: prepared.lines.map((line) => line.resolved),
     totalMinor: prepared.totalMinor,
     blockedBy: prepared.refusal
-      ? { status: prepared.refusal.status, error: prepared.refusal.error }
+      ? {
+          status: prepared.refusal.status,
+          error: prepared.refusal.error,
+          ...(prepared.refusal.items?.length ? { items: prepared.refusal.items } : {}),
+        }
       : undefined,
   }
 }
@@ -631,6 +659,7 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
     try {
       await db.transaction(async (tx) => {
         await withAccountingCommitLock(tx, organizationId)
+        await options.beforeCommit?.(tx)
         if (reversesId) await assertPostingReversalAllowedInTx(tx, organizationId, reversesId)
         const authoritativeLock = await resolvePeriodLock(organizationId, tx)
         prepared = await prepareEntry(tx, {
@@ -701,6 +730,7 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
         // change the answer, and the operator has to change something first.
         retryable: false,
         error: prepared.refusal.error,
+        ...(prepared.refusal.items?.length ? { items: prepared.refusal.items } : {}),
         docNumber: prepared.docNumber || undefined,
       }
     }

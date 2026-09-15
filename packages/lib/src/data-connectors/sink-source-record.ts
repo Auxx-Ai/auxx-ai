@@ -22,7 +22,6 @@ import {
 import { getCachedResourceFields } from '../cache'
 import type { ConditionDiagnostic } from '../conditions/evaluate'
 import type { ConditionGroup } from '../conditions/types'
-import { ingestShopifyOrderMoney } from '../money/customer-money/ingest'
 import { type ResourceField, resolveFieldRef } from '../resources'
 import { ConnectorRateLimitError, type ConnectorRecord } from './connectors/types'
 import type { MappedWrite } from './map-record'
@@ -188,33 +187,8 @@ export async function sinkSourceRecord(
   updatedAtPath?: string,
   recordFilter?: ConditionGroup[] | null
 ): Promise<void> {
-  const financialInput =
-    ctx.connector.type === 'app:shopify' &&
-    source.streamKey === 'order' &&
-    !source.deleted &&
-    source.externalId &&
-    ctx.connector.credentialId &&
-    ctx.connector.appInstallationId
-      ? {
-          organizationId: ctx.orgId,
-          credentialId: ctx.connector.credentialId,
-          appInstallationId: ctx.connector.appInstallationId,
-          connectorId: ctx.connector.id,
-          runId: ctx.runId,
-          orderExternalId: source.externalId,
-          envelope:
-            source.fields &&
-            typeof source.fields === 'object' &&
-            'financialTransactions' in source.fields
-              ? source.fields.financialTransactions
-              : null,
-        }
-      : null
-  // A failed durable source write must stop this slice before cursor advancement.
-  if (financialInput) await ingestShopifyOrderMoney(ctx.db, financialInput)
   try {
     await sinkOneSourceRecord(ctx, mappings, source, updatedAtPath, recordFilter)
-    if (financialInput) await ingestShopifyOrderMoney(ctx.db, financialInput)
     tallySuccess(ctx.failureTally)
   } catch (error) {
     // The abort signal and a throttle are the SLICE's business, not this record's —

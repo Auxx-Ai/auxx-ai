@@ -2,34 +2,20 @@
 import { minorUnitExponent } from '@auxx/utils/currency'
 import { z } from 'zod'
 
-/** Source data at the actual transaction grain; no order-total payment inference. */
-export const shopifyMoneyObservationSchema = z
-  .object({
-    id: z.string().min(1),
-    kind: z.string().min(1),
-    status: z.string().min(1),
-    amount: z.string(),
-    currency: z.string(),
-    processedAt: z.string().nullable(),
-    gateway: z.string().nullable(),
-    settlementCurrency: z.string().nullable(),
-    parentTransactionId: z.string().nullable(),
-    creditMemoExternalId: z.string().nullable(),
-    paymentId: z.string().nullable(),
-    test: z.boolean(),
-  })
-  .strict()
-
-/** Versioned wire contract emitted by the installed Shopify connector. */
-export const shopifyMoneyEnvelopeSchema = z
-  .object({
-    version: z.literal(1),
-    complete: z.boolean(),
-    transactions: z.array(z.unknown()).max(250),
-  })
-  .strict()
-
-export type ShopifyMoneyObservation = z.infer<typeof shopifyMoneyObservationSchema>
+const transactionIdentityFields = {
+  id: z.string().min(1),
+  kind: z.string().min(1),
+  status: z.string().min(1),
+  amount: z.string(),
+  currency: z.string(),
+  processedAt: z.string().nullable(),
+  gateway: z.string().nullable(),
+  settlementCurrency: z.string().nullable(),
+  parentTransactionId: z.string().nullable(),
+  creditMemoExternalId: z.string().nullable(),
+  paymentId: z.string().nullable(),
+  test: z.boolean(),
+}
 
 /** Exact decimal-to-minor conversion; preserve foreign currency while its GL remains blocked. */
 export function exactSourceMoney(amount: string, currency: string) {
@@ -48,13 +34,42 @@ export function exactSourceMoney(amount: string, currency: string) {
   return { amountMinor: minor, currency, currencyExponent: exponent }
 }
 
-/** Only confirmed captures/sales/refunds create actual movements. */
-export function confirmedShopifyMovement(observation: ShopifyMoneyObservation) {
-  if (observation.status.toUpperCase() !== 'SUCCESS')
-    throw new Error('Transaction success is not confirmed')
-  const kind = observation.kind.toUpperCase()
-  if (!['SALE', 'CAPTURE', 'REFUND'].includes(kind))
-    throw new Error('Transaction is not an actual receipt or refund')
+/** Provider-independent transaction facts persisted by ordinary order record writes. */
+export const customerMoneyObservationSchema = z
+  .object({
+    ...transactionIdentityFields,
+    version: z.literal(2),
+    kind: z.enum(['receipt', 'refund', 'authorization', 'void', 'unknown']),
+    status: z.enum(['confirmed', 'failed', 'pending']),
+    creditMemoInstanceId: z.string().min(1).nullable().optional(),
+    raw: z.unknown().optional(),
+  })
+  .strict()
+
+/** Shared record evidence; absent source revision cannot overwrite a conflicting prior observation. */
+export const orderPaymentEvidenceSchema = z
+  .object({
+    version: z.literal(2),
+    sourceAccount: z
+      .object({
+        providerKey: z.string().min(1),
+        externalAccountId: z.string().min(1),
+        environment: z.enum(['live', 'test']),
+      })
+      .strict(),
+    orderExternalId: z.string().min(1),
+    sourceUpdatedAt: z.string().datetime({ offset: true }).nullable(),
+    complete: z.boolean(),
+    transactions: z.array(z.unknown()).max(250),
+  })
+  .strict()
+
+/** Resolve exact money only after a normalized source confirms an actual receipt or refund. */
+export function confirmedCustomerMovement(
+  observation: z.infer<typeof customerMoneyObservationSchema>
+) {
+  if (observation.status !== 'confirmed' || !['receipt', 'refund'].includes(observation.kind))
+    throw new Error('Transaction is not a confirmed receipt or refund')
   if (
     !observation.processedAt ||
     !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(observation.processedAt)
@@ -65,19 +80,8 @@ export function confirmedShopifyMovement(observation: ShopifyMoneyObservation) {
     throw new Error('Transaction occurrence instant is invalid')
   return {
     ...exactSourceMoney(observation.amount, observation.currency),
-    purpose: kind === 'REFUND' ? ('customer_refund' as const) : ('customer_receipt' as const),
+    purpose:
+      observation.kind === 'refund' ? ('customer_refund' as const) : ('customer_receipt' as const),
     occurredAt,
   }
-}
-
-/** Stable Shopify store identity from the same connection variable the installed adapter uses. */
-export function shopifySourceDomain(metadata: Record<string, unknown>): string {
-  const variables = metadata.connectionVariables as Record<string, unknown> | undefined
-  const shop = variables?.shop
-  if (typeof shop !== 'string' || !shop.trim())
-    throw new Error('Shopify source store identity is missing')
-  const domain = shop.includes('.') ? shop.toLowerCase() : `${shop.toLowerCase()}.myshopify.com`
-  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain))
-    throw new Error('Shopify source store identity is invalid')
-  return domain
 }

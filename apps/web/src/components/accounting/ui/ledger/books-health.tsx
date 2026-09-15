@@ -7,6 +7,7 @@ import type {
   DuplicateMovementFinding,
   FailedExport,
 } from '@auxx/lib/postings/client'
+import { describeIncompleteRevenue } from '@auxx/lib/postings/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -87,7 +88,7 @@ export function BooksBalanceLine({ report }: BooksBalanceLineProps) {
 }
 
 /**
- * What the month on screen still owes the ledger: one sentence per count.
+ * What the month on screen still owes the ledger: one line per outstanding job.
  *
  * 🛑 This sits under the balance sweep because the two answer different
  * questions and the first one alone is misleading. Every entry can tie perfectly
@@ -97,6 +98,12 @@ export function BooksBalanceLine({ report }: BooksBalanceLineProps) {
  * would report green books that are incomplete. These are the same three counts
  * the close refuses on, shown before somebody presses Post rather than after.
  *
+ * ⚠️ The words come from `describeIncompleteRevenue`, the same function that
+ * builds the refusal the close console renders and the sentence the refusal is
+ * stored with. They used to be written out again here, and the page therefore
+ * told an operator about the same fourteen draft memos twice, in two different
+ * voices, a few hundred pixels apart.
+ *
  * ⚠️ `null` means the question was not asked (no month on screen), and renders
  * nothing. It is NOT zero: asserting completeness that was never checked is the
  * one thing this line must not do. A zero renders nothing either - a clean month
@@ -104,36 +111,23 @@ export function BooksBalanceLine({ report }: BooksBalanceLineProps) {
  * books.
  */
 function CompletenessLines({ report }: BooksBalanceLineProps) {
-  const shipments = report.unpostedShipments ?? 0
-  const memos = report.unissuedChannelCreditMemos ?? 0
-  const unpostedMemos = report.unpostedCreditMemos ?? 0
-  if (shipments === 0 && memos === 0 && unpostedMemos === 0) return null
+  if (!report.month) return null
 
-  const month = report.month ? formatPeriodLabel(report.month) : 'this month'
+  const items = describeIncompleteRevenue({
+    periodKey: report.month,
+    shipments: report.unpostedShipments ?? 0,
+    draftChannelMemos: report.unissuedChannelCreditMemos ?? 0,
+    unpostedCreditMemos: report.unpostedCreditMemos ?? 0,
+  })
+  if (items.length === 0) return null
 
   return (
     <div className='flex flex-col gap-1'>
-      {shipments > 0 && (
-        <p className='text-xs text-amber-600'>
-          {shipments} {shipments === 1 ? 'shipment in' : 'shipments in'} {month}{' '}
-          {shipments === 1 ? 'has' : 'have'} not been posted, so that revenue is not in the books
-          yet.
+      {items.map((item) => (
+        <p key={item.key} className='text-amber-600 text-xs'>
+          {item.label}. {item.remedy}
         </p>
-      )}
-      {memos > 0 && (
-        <p className='text-xs text-amber-600'>
-          {memos} channel credit {memos === 1 ? 'memo' : 'memos'} dated in {month}{' '}
-          {memos === 1 ? 'is' : 'are'} still a draft. Issue or void {memos === 1 ? 'it' : 'them'}{' '}
-          before closing.
-        </p>
-      )}
-      {unpostedMemos > 0 && (
-        <p className='text-xs text-amber-600'>
-          {unpostedMemos} issued credit {unpostedMemos === 1 ? 'memo' : 'memos'} dated in {month}{' '}
-          {unpostedMemos === 1 ? 'has' : 'have'} not been posted, so{' '}
-          {unpostedMemos === 1 ? 'that refund is' : 'those refunds are'} not in the books yet.
-        </p>
-      )}
+      ))}
     </div>
   )
 }

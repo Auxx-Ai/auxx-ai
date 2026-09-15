@@ -57,6 +57,7 @@ import {
   type DeleteClosureRecord,
   findRestrictViolations,
 } from './delete-closure'
+import { assertFinancialRecordCanDelete, financialRecordType } from './financial-record-binding'
 import { publishRecordLifecycleEvent } from './publish-record-event'
 import {
   getAmbientTxWriteScope,
@@ -1038,6 +1039,9 @@ export async function bulkArchiveEntities(
 
   for (const [entityDefinitionId, items] of byDef) {
     const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
+    if (financialRecordType(entityDef.entityType))
+      for (const recordId of items)
+        await assertFinancialRecordCanDelete(ctx.db, ctx.organizationId, recordId)
 
     for (let offset = 0; offset < items.length; offset += BULK_CHUNK) {
       const chunk = items.slice(offset, offset + BULK_CHUNK)
@@ -1369,6 +1373,8 @@ async function deleteRecords(
         (requested && postDeleteHooks.length > 0)
 
       try {
+        if (financialRecordType(entityDef.entityType))
+          await assertFinancialRecordCanDelete(ctx.db, ctx.organizationId, record.recordId)
         let eventData: Record<string, unknown> = { hardDelete: true }
         if (needsCapture) {
           eventData = {

@@ -19,7 +19,7 @@ import {
   Plus,
 } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useAccountingMonth } from '~/components/accounting/hooks/use-accounting-month'
 import {
   UNKNOWN_PROVIDER_LABEL,
@@ -39,6 +39,8 @@ import {
   ProviderAgreementPanel,
   useProviderAgreement,
 } from '~/components/accounting/ui/provider-agreement/provider-agreement-panel'
+import { PostCreditMemosDialog } from '~/components/money/ui/credit-memo-posting'
+import { PostFulfillmentsDialog } from '~/components/money/ui/fulfillment-posting'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
 import { useSettings } from '~/hooks/use-settings'
@@ -51,7 +53,7 @@ import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 
 import { type CountAdjustmentRow, CountEvidenceSection } from './count-evidence-section'
-import { EntryBlockers } from './entry-blockers'
+import { EntryBlockers, type FixableBlockerItemKey } from './entry-blockers'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatPeriodLabel, lockRefusalReason } from './format'
 import { type LateArrivalRow, LateArrivalsSection } from './late-arrivals-section'
@@ -258,6 +260,27 @@ export function LedgerPage() {
   // `settingsManage` - handing whoever closes the books every organization
   // setting in the product. `ledger.setLockedThrough` is now the only door.
   const setLockedThrough = api.ledger.setLockedThrough.useMutation()
+
+  // ── The remedies that are a DIALOG on this page (not another screen) ───────
+  //
+  // 🛑 Mounted only while open. `BatchPostingDialog` previews as soon as it
+  // mounts, and that preview is a full plan over the month: rendering both
+  // unconditionally would run two of them on every visit to a console that is
+  // usually not refusing anything at all.
+  //
+  // ⚠️ Scoped to `activePeriodKey`, the month the refusal is ABOUT. The dialog's
+  // own default window is last month through today, so an unscoped open would
+  // offer to post a range the card never mentioned.
+  const [fixing, setFixing] = useState<FixableBlockerItemKey | null>(null)
+  const closeFixDialog = useCallback((open: boolean) => {
+    if (!open) setFixing(null)
+  }, [])
+  // The refusal was raised by a read of the same rows the run just changed, so
+  // the preview has to be asked again before the card can claim to be current.
+  const onFixCompleted = useCallback(() => {
+    void utils.ledger.previewMonthEnd.invalidate()
+    void utils.ledger.verifyBalance.invalidate()
+  }, [utils])
 
   function goToPeriod(next: string) {
     // `?posting=` deliberately does NOT survive: a posting id belongs to one
@@ -480,6 +503,7 @@ export function LedgerPage() {
                       collapsible={false}>
                       <EntryBlockers
                         blockers={entry.blockers}
+                        onFix={(item) => setFixing(item.key as FixableBlockerItemKey)}
                         onReviewLock={revealLock}
                         onNextPeriod={
                           period.nextPeriodKey
@@ -643,6 +667,23 @@ export function LedgerPage() {
           way; this is the mobile half of the same rule. */}
       {!isDesktop && !!postingId && postingDrawer}
       {!isDesktop && !!journalEntryParam && journalEntryDrawer}
+
+      {fixing === 'unposted_shipments' && (
+        <PostFulfillmentsDialog
+          open
+          onOpenChange={closeFixDialog}
+          onCompleted={onFixCompleted}
+          initialMonth={activePeriodKey || undefined}
+        />
+      )}
+      {fixing === 'unposted_credit_memos' && (
+        <PostCreditMemosDialog
+          open
+          onOpenChange={closeFixDialog}
+          onCompleted={onFixCompleted}
+          initialMonth={activePeriodKey || undefined}
+        />
+      )}
 
       <ConfirmDialog />
     </>

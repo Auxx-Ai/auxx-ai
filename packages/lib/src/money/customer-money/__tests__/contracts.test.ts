@@ -1,15 +1,16 @@
 // packages/lib/src/money/customer-money/__tests__/contracts.test.ts
 import { describe, expect, it } from 'vitest'
 import {
-  confirmedShopifyMovement,
+  confirmedCustomerMovement,
+  customerMoneyObservationSchema,
   exactSourceMoney,
-  shopifyMoneyObservationSchema,
 } from '../contracts'
 
 const observation = {
+  version: 2 as const,
   id: 'capture1',
-  kind: 'CAPTURE',
-  status: 'SUCCESS',
+  kind: 'receipt' as const,
+  status: 'confirmed' as const,
   amount: '10.01',
   currency: 'USD',
   processedAt: '2026-09-01T01:30:00Z',
@@ -38,15 +39,19 @@ describe('exact customer money source contracts', () => {
     expect(() => exactSourceMoney(amount, 'USD')).toThrow())
   it('refuses invented currency codes', () => expect(() => exactSourceMoney('1', 'XYZ')).toThrow())
   it('distinguishes capture from authorization and pending/failed movements', () => {
-    expect(confirmedShopifyMovement(observation).purpose).toBe('customer_receipt')
-    for (const patch of [{ kind: 'AUTHORIZATION' }, { status: 'PENDING' }, { status: 'FAILURE' }])
-      expect(() => confirmedShopifyMovement({ ...observation, ...patch })).toThrow()
+    expect(confirmedCustomerMovement(observation).purpose).toBe('customer_receipt')
+    for (const patch of [
+      { kind: 'authorization' as const },
+      { status: 'pending' as const },
+      { status: 'failed' as const },
+    ])
+      expect(() => confirmedCustomerMovement({ ...observation, ...patch })).toThrow()
   })
   it('preserves refund as a separate positive movement', () => {
-    const result = confirmedShopifyMovement({
+    const result = confirmedCustomerMovement({
       ...observation,
       id: 'refund1',
-      kind: 'REFUND',
+      kind: 'refund',
       amount: '2.00',
       parentTransactionId: 'capture1',
     })
@@ -54,11 +59,11 @@ describe('exact customer money source contracts', () => {
     expect(result.amountMinor).toBe(200n)
   })
   it('never accepts order-total summaries as actual transaction evidence', () =>
-    expect(shopifyMoneyObservationSchema.safeParse({ amount: '10', currency: 'USD' }).success).toBe(
-      false
-    ))
+    expect(
+      customerMoneyObservationSchema.safeParse({ amount: '10', currency: 'USD' }).success
+    ).toBe(false))
   it('refuses a timestamp without a timezone', () =>
     expect(() =>
-      confirmedShopifyMovement({ ...observation, processedAt: '2026-09-01T10:00:00' })
+      confirmedCustomerMovement({ ...observation, processedAt: '2026-09-01T10:00:00' })
     ).toThrow())
 })

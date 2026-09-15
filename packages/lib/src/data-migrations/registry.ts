@@ -16,6 +16,10 @@ import { migration155ReturnInboundTrackingMulti } from './migrations/155-return-
 import { migration156PaymentGatewayFeeTreatment } from './migrations/156-payment-gateway-fee-treatment'
 import { migration157PayoutRailAndOrderPaymentFields } from './migrations/157-payout-rail-and-order-payment-fields'
 import { migration159VendorBillLineVendorCode } from './migrations/159-vendor-bill-line-vendor-code'
+import { migration160GatewaySettlementFields } from './migrations/160-gateway-settlement-fields'
+import { migration161FinancialRecordFields } from './migrations/161-financial-record-fields'
+import { migration162OrderPaymentEvidence } from './migrations/162-order-payment-evidence'
+import { migration163FinancialSourceFields } from './migrations/163-financial-source-fields'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -56,6 +60,10 @@ const RETIRED_ID_NUMBERS: ReadonlySet<string> = new Set(
  * ./migrations/README.md.
  */
 export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
+  migration160GatewaySettlementFields,
+  migration161FinancialRecordFields,
+  migration162OrderPaymentEvidence,
+  migration163FinancialSourceFields,
   // Re-seeds the default entity dashboards. The one entry here that is NOT just an
   // example: `apps/worker/scripts/reseed-default-dashboard.ts` re-runs its ensure
   // after a `DEFAULT_DASHBOARD_CONFIGS` template change, so it is a live routine.
