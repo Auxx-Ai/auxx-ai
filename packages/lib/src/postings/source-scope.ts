@@ -142,6 +142,30 @@ export async function readManualSourceAccountId(
 }
 
 /**
+ * The `FinancialSourceObject.objectType`s that prove an account is a STOREFRONT.
+ *
+ * 🛑 A whitelist, not "everything that is not a processor type". The same table
+ * holds both sides: a Shopify Payments account carries `balance_transaction` and
+ * `payout` rows and NOT ONE order, so an unfiltered `FinancialSourceObject`
+ * lookup reads it as a storefront and offers a bookkeeper a payment processor to
+ * book product revenue to - exactly what task 47 §7.4 forbids. Worse, the
+ * override it lets somebody save is DEAD: a fulfillment's `sourceStoreId`
+ * resolves to the store account, never the payments account, so the scoped row
+ * can never match and the revenue quietly keeps using the org default.
+ *
+ * ⚠️ Fail closed. A new object type is not a storefront until it is named here,
+ * because the cost of a missing row (a store that has to be mapped by someone
+ * noticing) is smaller than the cost of an extra one (a mapping that silently
+ * does nothing).
+ *
+ * Written by `customer-money/record-evidence.ts` (`order_transaction`) and
+ * `customer-money/adopt-native-stripe.ts` (`charge`, `refund`). The processor
+ * side - `balance_transaction`, `payout`, from `payouts/record-storage.ts` - is
+ * deliberately absent and is what the `processor` axis reads instead.
+ */
+const STORE_EVIDENCE_OBJECT_TYPES = ['order_transaction', 'charge', 'refund'] as const
+
+/**
  * Every live source this org's role map may be scoped to, manual pinned first.
  *
  * 🛑 **Every live source gets a row, always**, including the ones that inherit
@@ -180,7 +204,12 @@ export async function listRoleSources(
     db
       .selectDistinct({ id: schema.FinancialSourceObject.sourceAccountId })
       .from(schema.FinancialSourceObject)
-      .where(eq(schema.FinancialSourceObject.organizationId, organizationId)),
+      .where(
+        and(
+          eq(schema.FinancialSourceObject.organizationId, organizationId),
+          inArray(schema.FinancialSourceObject.objectType, [...STORE_EVIDENCE_OBJECT_TYPES])
+        )
+      ),
     db
       .selectDistinct({ id: schema.ProcessorBalanceEntry.sourceAccountId })
       .from(schema.ProcessorBalanceEntry)

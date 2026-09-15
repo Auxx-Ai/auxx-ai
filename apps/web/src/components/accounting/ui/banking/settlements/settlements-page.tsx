@@ -54,6 +54,7 @@ import { StatCards } from '@auxx/ui/components/stat-card'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { CircleHelp, Landmark, RefreshCw, TrendingDown, Wallet } from 'lucide-react'
+import Link from 'next/link'
 import { useQueryState } from 'nuqs'
 import { useMemo } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
@@ -62,7 +63,9 @@ import { useAccess, useRequireCapability } from '~/providers/capabilities-provid
 import { api } from '~/trpc/react'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
 import { EMPTY_CELL, formatMinor } from '../../ledger/format'
+import { formatEvidenceAmount, formatEvidenceDate } from '../payouts/evidence-format'
 import { RailStrip } from './rail-strip'
+import { settlementDepositTotals, settlementDisplay } from './settlement-display'
 
 const BREADCRUMBS = [
   { title: 'Accounting', href: '/app/accounting' },
@@ -71,7 +74,7 @@ const BREADCRUMBS = [
 ]
 
 const PAGE_DESCRIPTION =
-  'What each payment rail actually paid into the bank, and what each payout relieved from its clearing account. A clearing balance is what the account holds today: shipments debited, settlements credited. An unidentified balance is money that arrived whose revenue nobody has recognised.'
+  'Payout amounts and status reported by your payment providers, with gateway setup and accounting progress.'
 
 /** The ledger is pinned to USD for the cutover (`LEDGER_CURRENCY`). */
 const DISPLAY_CURRENCY = 'USD'
@@ -128,22 +131,26 @@ export function SettlementsPage() {
   // than queried: the page is capped at 200 and a running total that disagreed
   // with the rows under it would be worse than no total at all.
   const totals = useMemo(() => {
-    let deposited = 0
-    let fees = 0
-    let unidentified = 0
-    for (const payout of payouts) {
-      if (payout.status !== 'paid') continue
-      deposited += payout.depositedMinor
-      fees += payout.feesMinor
-      unidentified += payout.unrecognisedNetMinor
+    const deposits = settlementDepositTotals(payouts)
+    const accounted = payouts.filter((payout) => !payout.sourceSummary || payout.glPostingId)
+    const paid = accounted.filter((payout) => payout.status === 'paid')
+    return {
+      deposits,
+      fees: paid.reduce((sum, payout) => sum + payout.feesMinor, 0),
+      unidentified: paid.reduce((sum, payout) => sum + payout.unrecognisedNetMinor, 0),
+      incompleteAmounts: payouts.some((payout) => {
+        const value = settlementDisplay(payout)
+        return value.status === 'paid' && value.amountMinor === null
+      }),
+      pending: payouts.some((payout) => payout.sourceSummary && !payout.glPostingId),
     }
-    return { deposited, fees, unidentified }
   }, [payouts])
 
   // 🛑 A refusal from the sync is a CARD, not a toast. `syncNow` returns its
   // run summary including the payouts it could not post, because one refused
   // payout must not present as "the sync failed" when eleven others posted.
   const blockers: LedgerBlocker[] = []
+  if (payoutsQuery.error) blockers.push({ status: 'error', error: payoutsQuery.error.message })
   if (syncNow.error) {
     blockers.push({ status: 'error', error: syncNow.error.message })
   }
@@ -184,10 +191,21 @@ export function SettlementsPage() {
             color: 'text-good-500',
             body: (
               <span className='font-mono tabular-nums'>
-                {formatMinor(totals.deposited, DISPLAY_CURRENCY)}
+                {totals.deposits.map((total) => (
+                  <span className='block' key={total.currency}>
+                    {formatEvidenceAmount(
+                      total.amountMinor,
+                      total.currency,
+                      total.currencyExponent
+                    )}
+                  </span>
+                ))}
+                {totals.deposits.length === 0 && 'Not available'}
               </span>
             ),
-            description: 'What the processor actually paid into the bank',
+            description: totals.incompleteAmounts
+              ? 'Known paid amounts only. Some payout amounts are unavailable.'
+              : 'Paid payouts reported by the processor',
           },
           {
             title: 'Processor fees',
@@ -195,7 +213,7 @@ export function SettlementsPage() {
             color: 'text-bad-500',
             body: (
               <span className='font-mono tabular-nums'>
-                {formatMinor(totals.fees, DISPLAY_CURRENCY)}
+                {totals.pending ? 'Pending accounting' : formatMinor(totals.fees, DISPLAY_CURRENCY)}
               </span>
             ),
             description: 'Withheld on the charges auxx recognised',
@@ -206,7 +224,9 @@ export function SettlementsPage() {
             color: 'text-comparison-500',
             body: (
               <span className='font-mono tabular-nums'>
-                {formatMinor(totals.unidentified, DISPLAY_CURRENCY)}
+                {totals.pending
+                  ? 'Pending accounting'
+                  : formatMinor(totals.unidentified, DISPLAY_CURRENCY)}
               </span>
             ),
             description: 'Settled charges auxx has no payment for. Someone has to code these',
@@ -260,8 +280,8 @@ export function SettlementsPage() {
             title={onlyUnidentified ? 'Nothing unidentified' : 'No payouts yet'}
             description={
               onlyUnidentified
-                ? 'Every payout auxx has ingested is fully accounted for against a payment.'
-                : 'Payouts appear once the card processor settles a batch into the bank. Connect a Stripe account under Settings, or use Sync now to pull the last month.'
+                ? 'No posted settlements have unidentified amounts. Imported payouts may still be awaiting accounting.'
+                : 'Payouts appear when your connected payment provider imports them.'
             }
           />
         ) : (
@@ -269,22 +289,20 @@ export function SettlementsPage() {
             items={payouts}
             getKey={(payout) => payout.payoutId}
             renderRow={(payout) => {
-              // 🛑 Brief 49 §7.1: fail closed on a null `paymentGatewayId`. That
-              // payout is unrouted - raised before the pointer existed, or by a
-              // rail no gateway record claims - and saying "Stripe" over it is
-              // the defect, not the fallback. `EMPTY_CELL`'s em-dash is the
-              // codebase's generic "no value" glyph and would read as missing
-              // data here, not as the finding it actually is - a payout with no
-              // rail at all - so this says it in a word instead.
+              const display = settlementDisplay(payout)
               const rail = payout.paymentGatewayId
                 ? gatewayById.get(payout.paymentGatewayId)
                 : undefined
-              const railName = rail?.name ?? 'Unrouted'
+              const source = payout.sourceSummary
+              const railName = source
+                ? (source.gatewayName ??
+                  `${source.provider === 'shopify_payments' ? 'Shopify Payments' : (source.provider ?? 'Unknown provider')} · Setup required`)
+                : (rail?.name ?? 'Unrouted')
               return (
                 <div className='flex flex-col gap-1.5'>
                   <TreeRow
                     title={payout.number ?? EMPTY_CELL}
-                    secondary={`${railName} · ${payout.paidAt ?? 'Not settled yet'}`}
+                    secondary={`${railName} · ${source ? formatEvidenceDate(source.issuedOn) : (payout.paidAt ?? 'Not settled yet')}`}
                     icon={<Landmark />}
                     trailing={
                       <div className='flex items-center gap-3'>
@@ -292,7 +310,12 @@ export function SettlementsPage() {
                           so its structural zero in `unrecognisedNetMinor` means
                           "nothing to split", never "everything recognised" -
                           27-a §4 rule 2's own wording. */}
-                        {payout.source === 'imported' && (
+                        {source && !payout.glPostingId && (
+                          <Badge variant='outline' size='sm'>
+                            Pending accounting
+                          </Badge>
+                        )}
+                        {!source && payout.source === 'imported' && (
                           <Badge variant='outline' size='sm'>
                             No itemisation
                           </Badge>
@@ -305,10 +328,18 @@ export function SettlementsPage() {
                           </Badge>
                         )}
                         <span className='font-mono text-sm tabular-nums'>
-                          {formatMinor(payout.depositedMinor, DISPLAY_CURRENCY)}
+                          {display.amountMinor !== null &&
+                          display.currency &&
+                          display.currencyExponent !== null
+                            ? formatEvidenceAmount(
+                                display.amountMinor,
+                                display.currency,
+                                display.currencyExponent
+                              )
+                            : 'Amount unavailable'}
                         </span>
-                        <Badge variant={STATUS_TONE[payout.status] ?? 'secondary'} size='sm'>
-                          {STATUS_LABEL[payout.status] ?? payout.status}
+                        <Badge variant={STATUS_TONE[display.status] ?? 'secondary'} size='sm'>
+                          {STATUS_LABEL[display.status] ?? display.status}
                         </Badge>
                         {/* 🛑 Brief 18 §1: a `paid` payout with no bank line is a
                           real signal - either the deposit has not landed or
@@ -318,7 +349,7 @@ export function SettlementsPage() {
                             matched
                           </Badge>
                         ) : (
-                          payout.status === 'paid' && (
+                          display.status === 'paid' && (
                             <Badge variant='outline' size='sm'>
                               unmatched
                             </Badge>
@@ -331,6 +362,17 @@ export function SettlementsPage() {
                     refuses to post until its Stripe destination is confirmed on
                     one. `bank_account_unmapped` is the same shape the deposit's
                     own unmapped-account refusal uses (`deposits-page.tsx`). */}
+                  {source?.amountIssue && (
+                    <p className='text-sm text-bad-500'>{source.amountIssue}</p>
+                  )}
+                  {source?.routingIssue && (
+                    <p className='text-sm text-muted-foreground'>
+                      {source.routingIssue}{' '}
+                      <Link className='underline' href='/app/accounting/settings/payment-gateways'>
+                        Review payment gateways
+                      </Link>
+                    </p>
+                  )}
                   {payout.blockedReason && (
                     <EntryBlockers
                       blockers={[{ status: 'bank_account_unmapped', error: payout.blockedReason }]}

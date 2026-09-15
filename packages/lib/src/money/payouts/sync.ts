@@ -432,10 +432,16 @@ async function ingestOne(
       // no `payment_gateway` record gets, which is bit for bit what every org
       // got before brief 26.
       clearingRole: ACCOUNT_ROLES.CLEARING_CARD,
-      // The merchant account the money settled through (task 47 §4). Null
-      // when no gateway record claims this rail, which is the role fallback
-      // and resolves to the org-wide fee account exactly as it always has.
-      processorAccountId: ctx.rail?.processorAccountId ?? null,
+      // The merchant account the money settled through (task 47 §4).
+      //
+      // 🛑 Spread only when the rail names one, exactly like the two account ids
+      // below. An unconditional `?? null` puts the KEY on every input, including
+      // a rail that has no merchant account - and `stripe-connect.test.ts` pins
+      // this object bit for bit against what the pre-brief-26 pipeline produced,
+      // so an always-present key reads there as a behaviour change. Absent means
+      // "no scope", which resolves to the org-wide fee account exactly as it
+      // always has; `null` would mean the same thing while looking deliberate.
+      ...(ctx.rail?.processorAccountId ? { processorAccountId: ctx.rail.processorAccountId } : {}),
       ...(gateway.clearingGlAccountId ? { clearingGlAccountId: gateway.clearingGlAccountId } : {}),
       ...(gateway.feeGlAccountId ? { feeGlAccountId: gateway.feeGlAccountId } : {}),
       feeTreatment: gateway.feeTreatment,

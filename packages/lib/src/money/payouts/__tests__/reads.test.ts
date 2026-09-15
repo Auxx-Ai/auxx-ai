@@ -13,12 +13,15 @@
 //  - `null` glAccountId (not a crash) when the matched account carries no
 //    chart mapping at all.
 
+import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   getCachedEntityDefId: vi.fn(async () => null as string | null),
   bySystemAttributes: vi.fn(async () => ({}) as Record<string, { id: string } | null>),
 }))
+
+vi.mock('../../../payment-gateways/reads', () => ({ listPaymentGateways: async () => ok([]) }))
 
 vi.mock('../../../cache', () => ({
   getCachedEntityDefId: h.getCachedEntityDefId,
@@ -298,6 +301,40 @@ describe('listPayouts', () => {
     h.bySystemAttributes.mockResolvedValue(
       Object.fromEntries(Object.entries(FIELD_IDS).map(([attr, id]) => [attr, { id }]))
     )
+  })
+
+  it('hydrates ordinary source fields into the settlement summary without changing posting values', async () => {
+    const sourceFields = {
+      payout_source_amount: { valueText: '105.67' },
+      payout_source_currency: { valueText: 'USD' },
+      payout_source_currency_exponent: { valueNumber: 2 },
+      payout_source_status: { valueText: 'paid' },
+    }
+    h.bySystemAttributes.mockResolvedValue({
+      ...Object.fromEntries(Object.entries(FIELD_IDS).map(([attr, id]) => [attr, { id }])),
+      ...Object.fromEntries(Object.keys(sourceFields).map((attr) => [attr, { id: attr }])),
+    })
+    const db = stubPayoutsDb({
+      entityInstance: [{ id: 'payout_1', createdAt: new Date('2026-09-15') }],
+      fieldValue: Object.entries(sourceFields).map(([fieldId, value]) => ({
+        entityId: 'payout_1',
+        fieldId,
+        ...value,
+      })),
+    })
+    const result = await listPayouts(db, { organizationId: ORG })
+    expect(result.isOk()).toBe(true)
+    if (result.isOk())
+      expect(result.value[0]).toMatchObject({
+        depositedMinor: 0,
+        paymentGatewayId: null,
+        sourceSummary: {
+          amountMinor: '10567',
+          currency: 'USD',
+          currencyExponent: 2,
+          status: 'paid',
+        },
+      })
   })
 
   it('carries bankTransactionId through from payout_bank_transaction_id', async () => {

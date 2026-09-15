@@ -20,10 +20,12 @@ import { UnprocessableEntityError } from '../../errors'
 import { toRecordId } from '../../resources/resource-id'
 import { resolvePayoutStatus } from './client'
 import { guard } from './guard'
+import { loadPayoutSourceSummaries, PAYOUT_SOURCE_ATTRIBUTES } from './source-reads'
 import type { ListPayoutsFilters, PayoutRecord, PayoutSourceValue } from './types'
 
 /** Every `payout` attribute a {@link PayoutRecord} is assembled from. */
 const PAYOUT_ATTRIBUTES = [
+  ...PAYOUT_SOURCE_ATTRIBUTES,
   'payout_number',
   'payout_gateway_id',
   'payout_status',
@@ -333,7 +335,12 @@ export async function listPayouts(
         .offset(offset ?? 0)
 
       if (rows.length === 0) return []
-      return hydrate(db, organizationId, ctx, rows)
+      const records = await hydrate(db, organizationId, ctx, rows)
+      const summaries = await loadPayoutSourceSummaries(db, organizationId, records)
+      return records.map((record) => ({
+        ...record,
+        sourceSummary: summaries.get(record.payoutId) ?? null,
+      }))
     },
     'Failed to list payouts',
     { organizationId }
@@ -388,6 +395,12 @@ async function hydrate(
     }
     const money = (attr: PayoutAttribute) => Number(read(attr)?.valueNumber ?? 0)
     return {
+      reportedFields: Object.fromEntries(
+        PAYOUT_SOURCE_ATTRIBUTES.map((attr) => [
+          attr,
+          read(attr)?.valueText ?? read(attr)?.valueNumber ?? null,
+        ])
+      ),
       payoutId: row.id,
       recordId: toRecordId(ctx.payoutDefId, row.id),
       number: read('payout_number')?.valueText ?? null,

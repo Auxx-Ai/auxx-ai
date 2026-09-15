@@ -1,11 +1,15 @@
 // packages/lib/src/money/payouts/types.ts
 
 import type { PayoutSourceValue, PayoutStatus } from './client'
+import type { PayoutSourceSummary } from './source-reads'
 
 export type { PayoutSourceValue } from './client'
 
 /** One payout row as every read path returns it. */
 export interface PayoutRecord {
+  /** Ordinary mapped source fields, kept separate from accepted accounting values. */
+  reportedFields?: Record<string, string | number | null>
+  sourceSummary?: PayoutSourceSummary | null
   payoutId: string
   /** `<defId>:<instanceId>`, for a record link. */
   recordId: string
