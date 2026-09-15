@@ -1,12 +1,12 @@
 // packages/lib/src/money/customer-money/reads.ts
-import { type Database, schema } from '@auxx/database'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { type Database, schema, type Transaction } from '@auxx/database'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import type { OrderMoneyTransaction } from './client'
 import { exactSourceMoney, shopifyMoneyObservationSchema, shopifySourceDomain } from './contracts'
 
 /** Read canonical movements and durable unresolved source outcomes beside an order. */
 export async function listOrderMoneyTransactions(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   orderId: string
 ): Promise<OrderMoneyTransaction[]> {
@@ -64,6 +64,42 @@ export async function listOrderMoneyTransactions(
     )
     .orderBy(desc(schema.FinancialSourceAcceptance.createdAt))
   const result = new Map<string, OrderMoneyTransaction>()
+  const moneyIds = [...new Set(rows.flatMap(({ money }) => (money ? [money.id] : [])))]
+  const accountingRows = moneyIds.length
+    ? await db
+        .select({
+          moneyTransactionId: schema.AccountingWork.moneyTransactionId,
+          state: schema.AccountingWork.state,
+          reason: schema.AccountingWork.blockedReason,
+          effectiveDate: schema.AccountingWorkBasis.effectiveDate,
+          glPostingId: schema.AccountingEffect.glPostingId,
+        })
+        .from(schema.AccountingWork)
+        .leftJoin(
+          schema.AccountingWorkBasis,
+          and(
+            eq(schema.AccountingWorkBasis.organizationId, organizationId),
+            eq(schema.AccountingWorkBasis.workId, schema.AccountingWork.id),
+            eq(schema.AccountingWorkBasis.version, schema.AccountingWork.basisVersion)
+          )
+        )
+        .leftJoin(
+          schema.AccountingEffect,
+          and(
+            eq(schema.AccountingEffect.organizationId, organizationId),
+            eq(schema.AccountingEffect.workId, schema.AccountingWork.id)
+          )
+        )
+        .where(
+          and(
+            eq(schema.AccountingWork.organizationId, organizationId),
+            inArray(schema.AccountingWork.moneyTransactionId, moneyIds),
+            eq(schema.AccountingWork.effectKind, 'customer_receipt'),
+            eq(schema.AccountingWork.operation, 'original')
+          )
+        )
+    : []
+  const accountingByMoney = new Map(accountingRows.map((row) => [row.moneyTransactionId, row]))
   for (const { acceptance, money, object, account, observation } of rows) {
     const source = shopifyMoneyObservationSchema.safeParse(observation.payload)
     let amount: { amountMinor: bigint; currency: string; currencyExponent: number } | null = null
@@ -97,7 +133,8 @@ export async function listOrderMoneyTransactions(
       processorRouteId: money?.paymentRouteId ?? null,
       sourceExternalId: object.externalId,
       status: acceptance.state,
-      reason: acceptance.reason,
+      reason: acceptance.state === 'accepted' ? null : acceptance.reason,
+      accounting: accountingByMoney.get(id) ?? null,
     })
   }
   return [...result.values()]
@@ -105,7 +142,7 @@ export async function listOrderMoneyTransactions(
 
 /** Source acquisition and acceptance are separate; an old connector cannot claim empty completion. */
 export async function readOrderMoneyCoverage(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   orderId: string
 ) {
@@ -134,6 +171,8 @@ export async function readOrderMoneyCoverage(
       )
     )
   const rows: Array<typeof schema.FinancialSourceCoverage.$inferSelect> = []
+  let sourceAvailable = false
+  const sourceStoreIds = new Set<string>()
   for (const binding of bindings) {
     let domain: string
     try {
@@ -145,11 +184,15 @@ export async function readOrderMoneyCoverage(
       where: and(
         eq(schema.FinancialSourceAccount.organizationId, organizationId),
         eq(schema.FinancialSourceAccount.providerKey, 'shopify'),
-        eq(schema.FinancialSourceAccount.externalAccountId, domain.toLowerCase())
+        eq(schema.FinancialSourceAccount.externalAccountId, domain.toLowerCase()),
+        eq(schema.FinancialSourceAccount.environment, 'live'),
+        isNull(schema.FinancialSourceAccount.archivedAt)
       ),
       columns: { id: true },
     })
     if (!accounts.length) continue
+    sourceAvailable = true
+    for (const account of accounts) sourceStoreIds.add(account.id)
     rows.push(
       ...(await db.query.FinancialSourceCoverage.findMany({
         where: and(
@@ -166,8 +209,11 @@ export async function readOrderMoneyCoverage(
   }
   const unique = [...new Map(rows.map((row) => [row.id, row])).values()]
   return {
-    sourceAvailable: unique.length > 0,
-    complete: unique.length > 0 && unique.every((row) => row.complete),
+    sourceAvailable,
+    sourceStoreId: sourceStoreIds.size === 1 ? [...sourceStoreIds][0]! : null,
+    shopifyBound: bindings.length > 0,
+    sourceStoreIds: [...sourceStoreIds],
+    complete: sourceAvailable && unique.length > 0 && unique.every((row) => row.complete),
     fetched: unique.reduce((sum, row) => sum + row.fetchedCount, 0),
     accepted: unique.reduce((sum, row) => sum + row.acceptedCount, 0),
     pending: unique.reduce((sum, row) => sum + row.pendingCount, 0),

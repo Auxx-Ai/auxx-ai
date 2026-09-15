@@ -181,6 +181,38 @@ export interface UnpostedShipment {
    * `postings/split-tax-by-jurisdiction.ts`.
    */
   taxLines: readonly { title: string; priceMinor: number }[]
+  /** Shopify source provenance selected by the canonical money timeline. */
+  sourceStoreId?: string | null
+  /** Processor route selected by the canonical receipt timeline. */
+  processorRouteId?: string | null
+  /** Conserved tax components for this recognition event. */
+  recognitionTaxComponents?: readonly FulfillmentRecognitionTaxComponent[]
+  /**
+   * Numeric ownership calculated by the canonical receipt and shipment
+   * timeline. When present, this shipment is on the switched customer-money
+   * policy and must never fall back to the legacy gateway fork.
+   */
+  recognitionAllocation?: FulfillmentRecognitionAllocation
+}
+
+/** One conserved tax component share for a recognition event. */
+export interface FulfillmentRecognitionTaxComponent {
+  componentKey: string
+  amountMinor: number
+  jurisdiction: string | null
+  collector: 'merchant' | 'marketplace'
+  remitter: 'merchant' | 'marketplace'
+  withholdingEvidenceId: string | null
+}
+
+/** One shipment's frozen deposit, receivable and newly recognized tax split. */
+export interface FulfillmentRecognitionAllocation {
+  /** Helper event amount, including pretax shipment revenue and new tax. */
+  amountMinor: number
+  depositMinor: number
+  receivableMinor: number
+  taxMinor: number
+  historyHash: string
 }
 
 /** Everything the pure plan is allowed to see. No db, no clock, no settings. */
@@ -225,6 +257,16 @@ export interface ShipmentAmounts {
   shippingMinor: number
   totalMinor: number
   taxBasis: 'per_line' | 'allocated'
+  /** Debit released from customer deposits under the switched policy. */
+  depositDebitMinor?: number
+  /** Debit raised to accounts receivable under the switched policy. */
+  receivableDebitMinor?: number
+  /** Tax credit newly recognized by this shipment under the switched policy. */
+  newlyRecognizedTaxMinor?: number
+  /** Source shipment tax, retained separately from the journal tax credit. */
+  sourceTaxMinor?: number
+  /** Cumulative recognition history used to freeze the numeric allocation. */
+  recognitionHistoryHash?: string
 }
 
 /** One shipment inside a group, with what it will post. */

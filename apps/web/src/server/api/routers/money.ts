@@ -67,6 +67,7 @@ import type { CreditMemoPostingGrouping, FulfillmentPostingGrouping } from '@aux
 import {
   adoptNativeStripeMoney,
   listOrderMoneyTransactions,
+  postCustomerReceiptAccounting,
   readOrderMoneyCoverage,
   resolveImportedMoneyReferences,
 } from '@auxx/lib/money/customer-money'
@@ -863,6 +864,16 @@ export const moneyRouter = createTRPCRouter({
     .input(z.object({ orderId: z.string().min(1) }))
     .query(({ ctx, input }) =>
       listOrderMoneyTransactions(ctx.db, ctx.session.organizationId, input.orderId)
+    ),
+
+  postCustomerReceipt: permissionProcedure(PermissionKey.ledgerControl)
+    .input(z.object({ moneyTransactionId: z.string().min(1) }))
+    .mutation(({ ctx, input }) =>
+      postCustomerReceiptAccounting(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+        moneyTransactionId: input.moneyTransactionId,
+      })
     ),
 
   orderForFulfillment: permissionProcedure(PermissionKey.ledgerView)

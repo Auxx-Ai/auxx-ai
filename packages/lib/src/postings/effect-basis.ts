@@ -34,6 +34,12 @@ export function fulfillmentAccountingEffectKey(fulfillmentInstanceId: string): s
   return 'fulfillment_accounting:' + JSON.stringify([fulfillmentInstanceId, 'original'])
 }
 
+/** Stable original identity for one confirmed customer receipt movement. */
+export function customerReceiptAccountingEffectKey(moneyTransactionId: string): string {
+  if (!moneyTransactionId) throw new UnprocessableEntityError('A money transaction ID is required')
+  return 'customer_receipt:' + JSON.stringify([moneyTransactionId, 'original'])
+}
+
 /** Corrections have a command identity against the frozen original, never another original. */
 export function correctionAccountingEffectKey(
   originalEffectId: string,
@@ -45,6 +51,19 @@ export function correctionAccountingEffectKey(
   return (
     'fulfillment_accounting:correction:' +
     JSON.stringify([originalEffectId, commandKey, componentKey])
+  )
+}
+
+/** Stable correction identity for a customer receipt effect. */
+export function customerReceiptCorrectionAccountingEffectKey(
+  originalEffectId: string,
+  commandKey: string,
+  componentKey: string
+): string {
+  if (![originalEffectId, commandKey, componentKey].every(Boolean))
+    throw new UnprocessableEntityError('Correction identity is incomplete')
+  return (
+    'customer_receipt:correction:' + JSON.stringify([originalEffectId, commandKey, componentKey])
   )
 }
 

@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { readEnvelope } from '@auxx/types/field-value'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq, inArray, or } from 'drizzle-orm'
+import { and, eq, inArray, or, sql } from 'drizzle-orm'
 import { PgTransaction } from 'drizzle-orm/pg-core'
 import { ConflictError } from '../errors'
 import type { FieldValueContext } from '../field-values/field-value-helpers'
@@ -172,6 +172,7 @@ export async function assertAccountingSourcesMutableInTx(
   recordIds: RecordId[],
   relatedIds: string[] = []
 ) {
+  await assertReceiptSourcesMutableInTx(tx, organizationId, recordIds, relatedIds)
   const fulfillmentIds = new Set<string>()
   for (const recordId of recordIds)
     for (const id of await affectedFulfillmentsInTx(tx, organizationId, recordId, relatedIds))
@@ -194,7 +195,72 @@ export async function assertAccountingSourcesMutableInTx(
       )
     )
   if (accepted.length)
-    throw new AcceptedAccountingSourceError([...new Set(accepted.map((row) => row.id))])
+    throw new AcceptedAccountingSourceError([
+      ...new Set(accepted.flatMap((row) => (row.id ? [row.id] : []))),
+    ])
+}
+
+/** Receipt acceptance freezes its order basis even before the first shipment exists. */
+async function assertReceiptSourcesMutableInTx(
+  tx: Transaction,
+  organizationId: string,
+  recordIds: RecordId[],
+  relatedIds: string[]
+) {
+  const orderIds = new Set<string>()
+  for (const recordId of recordIds) {
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+    const type = await accountingSourceType(tx, organizationId, entityDefinitionId)
+    if (type === 'order') orderIds.add(entityInstanceId)
+    if (!type || !['line_item', 'tax_line', 'contact'].includes(type)) continue
+    const contact = type === 'contact'
+    const edges = await tx
+      .select({ id: contact ? schema.FieldValue.entityId : schema.FieldValue.relatedEntityId })
+      .from(schema.FieldValue)
+      .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
+      .where(
+        and(
+          eq(schema.FieldValue.organizationId, organizationId),
+          eq(schema.CustomField.organizationId, organizationId),
+          eq(
+            schema.CustomField.systemAttribute,
+            contact ? 'order_contact' : type === 'line_item' ? 'line_item_order' : 'tax_line_order'
+          ),
+          eq(
+            contact ? schema.FieldValue.relatedEntityId : schema.FieldValue.entityId,
+            entityInstanceId
+          )
+        )
+      )
+    for (const row of edges) if (row.id) orderIds.add(row.id)
+    if (!contact) for (const id of relatedIds) orderIds.add(id)
+  }
+  if (!orderIds.size) return
+  const [accepted] = await tx
+    .select({ id: schema.AccountingEffect.id })
+    .from(schema.AccountingEffect)
+    .innerJoin(
+      schema.AccountingWork,
+      and(
+        eq(schema.AccountingWork.organizationId, organizationId),
+        eq(schema.AccountingWork.id, schema.AccountingEffect.workId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.AccountingEffect.organizationId, organizationId),
+        eq(schema.AccountingWork.effectKind, 'customer_receipt'),
+        inArray(
+          sql<string>`${schema.AccountingEffect.acceptedBasis}->'calculation'->>'orderInstanceId'`,
+          [...orderIds]
+        )
+      )
+    )
+    .limit(1)
+  if (accepted)
+    throw new ConflictError(
+      'This change affects accepted payment accounting. Record an accounting correction first.'
+    )
 }
 
 function rawValue(value: unknown): unknown {

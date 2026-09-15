@@ -19,7 +19,15 @@ import { acceptEntryInTx, type PreparedEffectMember } from '../accept-entry'
 import { withAccountingCommitLock } from '../accounting-commit-lock'
 import * as docNumbers from '../doc-number'
 import { correctionAccountingEffectKey } from '../effect-basis'
-import { appendFulfillmentWorkBasisInTx, captureFulfillmentWorkInTx } from '../effect-work'
+import type {
+  AcceptedCustomerReceiptEffectBasisV1,
+  CustomerReceiptWorkBasisInput,
+} from '../effect-types'
+import {
+  appendFulfillmentWorkBasisInTx,
+  captureCustomerReceiptWorkInTx,
+  captureFulfillmentWorkInTx,
+} from '../effect-work'
 import { resolveAccountingProvider } from '../provider'
 import { reverseEntry } from '../reverse-entry'
 import { setLockedThrough } from '../set-locked-through'
@@ -146,6 +154,170 @@ async function member(effectiveDate = '2026-09-14'): Promise<PreparedEffectMembe
   }
   return { workId: work.id, expectedBasisVersion: 1, acceptedBasis: basis }
 }
+
+async function receiptMember(
+  effectiveDate = '2026-09-15'
+): Promise<PreparedEffectMember<AcceptedCustomerReceiptEffectBasisV1>> {
+  const [command] = await db()
+    .insert(schema.MoneyCommand)
+    .values({
+      organizationId,
+      commandKey: `accept-test-receipt-${Date.now()}-${Math.random()}`,
+      kind: 'acceptance_test',
+      payloadHash: SOURCE_HASH,
+      actorSnapshot: { kind: 'test' },
+    })
+    .returning()
+  const [money] = await db()
+    .insert(schema.MoneyTransaction)
+    .values({
+      organizationId,
+      purpose: 'customer_receipt',
+      amountMinor: 120n,
+      currency: 'USD',
+      currencyExponent: 2,
+      datePrecision: 'instant',
+      occurredAt: new Date(`${effectiveDate}T10:00:00.000Z`),
+      recordedByCommandId: command!.id,
+    })
+    .returning()
+  const calculation = {
+    version: 1 as const,
+    moneyTransactionId: money!.id,
+    orderInstanceId: 'order',
+    sourceObjectId: null,
+    sourceExternalId: 'gid://shopify/OrderTransaction/test',
+    sourceRevision: 'revision1',
+    sourceHash: SOURCE_HASH,
+    historyHash: 'b'.repeat(64),
+    occurredAt: `${effectiveDate}T10:00:00.000Z`,
+    effectiveDate,
+    currency: 'USD' as const,
+    currencyExponent: 2 as const,
+    amountMinor: '120',
+    orderSubtotalMinor: '100',
+    orderTaxMinor: '10',
+    orderShippingMinor: '10',
+    orderTotalMinor: '120',
+    receiptAmountMinor: '120',
+    receivableMinor: '0',
+    depositMinor: '110',
+    taxMinor: '10',
+    allocation: { amountMinor: '120', depositMinor: '110', receivableMinor: '0', taxMinor: '10' },
+    paymentRouteId: 'route-test',
+    sourceStoreId: 'store-test',
+    processorAccountId: 'processor-test',
+    route: {
+      paymentRouteId: 'route-test',
+      processorAccountId: 'processor-test',
+      glAccountId: clearingId,
+      reason: 'acceptance test route',
+    },
+    applications: [
+      {
+        applicationId: 'application-test',
+        orderInstanceId: 'order',
+        amountMinor: '120',
+        effectiveDate,
+      },
+    ],
+    taxComponents: [
+      {
+        componentKey: 'sales-tax',
+        amountMinor: '10',
+        jurisdiction: 'US-CA',
+        collector: 'merchant' as const,
+        remitter: 'merchant' as const,
+        withholdingEvidenceId: null,
+      },
+    ],
+  }
+  const workBasis: CustomerReceiptWorkBasisInput = {
+    version: 1,
+    status: 'ready',
+    moneyTransactionId: money!.id,
+    sourceHash: SOURCE_HASH,
+    effectiveDate,
+    calculation,
+  }
+  const { work } = await db().transaction((tx) =>
+    captureCustomerReceiptWorkInTx(tx, {
+      organizationId,
+      moneyTransactionId: money!.id,
+      eligibility: 'manual',
+      basis: workBasis,
+    })
+  )
+  const acceptedBasis: AcceptedCustomerReceiptEffectBasisV1 = {
+    version: 1,
+    sourceBasisVersion: 1,
+    sourceHash: SOURCE_HASH,
+    policyKey: 'shopify_receipt_v1',
+    policyVersion: 1,
+    effectiveDate,
+    bookTimeZone: 'UTC',
+    currency: 'USD',
+    currencyExponent: 2,
+    documentRefs: [
+      { resourceKind: 'order', entityInstanceId: 'order' },
+      { resourceKind: 'money_transaction', entityInstanceId: money!.id },
+    ],
+    calculation,
+    accountResolution: [
+      {
+        lineKey: 'clearing',
+        glAccountId: clearingId,
+        accountRole: null,
+        selectedBy: 'document',
+        configurationHash: SOURCE_HASH,
+      },
+      {
+        lineKey: 'deposit',
+        glAccountId: revenueId,
+        accountRole: null,
+        selectedBy: 'document',
+        configurationHash: SOURCE_HASH,
+      },
+      {
+        lineKey: 'tax',
+        glAccountId: revenueId,
+        accountRole: null,
+        selectedBy: 'document',
+        configurationHash: SOURCE_HASH,
+      },
+    ],
+    contribution: [
+      {
+        lineKey: 'clearing',
+        glAccountId: clearingId,
+        direction: 'debit',
+        amountMinor: '120',
+        counterpartyType: null,
+        counterpartyId: null,
+        dimensions: {},
+      },
+      {
+        lineKey: 'deposit',
+        glAccountId: revenueId,
+        direction: 'credit',
+        amountMinor: '110',
+        counterpartyType: 'customer',
+        counterpartyId: 'customer',
+        dimensions: {},
+      },
+      {
+        lineKey: 'tax',
+        glAccountId: revenueId,
+        direction: 'credit',
+        amountMinor: '10',
+        counterpartyType: null,
+        counterpartyId: null,
+        dimensions: {},
+      },
+    ],
+  }
+  return { workId: work.id, expectedBasisVersion: 1, acceptedBasis }
+}
 async function correction(
   original: PreparedEffectMember,
   originalEffectId: string,
@@ -188,6 +360,7 @@ async function correction(
   }
 }
 type Member = Awaited<ReturnType<typeof member>>
+type ReceiptMember = Awaited<ReturnType<typeof receiptMember>>
 type Input = Parameters<typeof acceptEntryInTx>[1]
 
 function entry(members: Member[]): BuiltEntry {
@@ -213,12 +386,48 @@ function entry(members: Member[]): BuiltEntry {
     ),
   }
 }
+
+function receiptEntry(
+  members: Array<PreparedEffectMember<AcceptedCustomerReceiptEffectBasisV1>>
+): BuiltEntry {
+  return {
+    postingType: 'payment',
+    periodKey: '2026-09-15',
+    txnDate: '2026-09-15',
+    totalDebit: members.length * 120,
+    totalCredit: members.length * 120,
+    lines: members.flatMap((member, i) =>
+      member.acceptedBasis.contribution.map((line, j) => ({
+        glAccountId: line.glAccountId,
+        direction: line.direction,
+        amount: Number(line.amountMinor),
+        sourceType: 'customer_receipt',
+        sourceId: member.acceptedBasis.calculation.moneyTransactionId,
+        sortOrder: i * 3 + j,
+        dimensions: line.dimensions,
+        ...(line.counterpartyType
+          ? { counterpartyType: line.counterpartyType, counterpartyId: line.counterpartyId! }
+          : {}),
+      }))
+    ),
+  }
+}
 function input(members: Member[], overrides: Partial<Input> = {}): Input {
   return {
     organizationId,
     actorUserId: userId,
     members,
     entry: entry(members),
+    deliveryIntent: { kind: 'not_required' },
+    ...overrides,
+  }
+}
+function receiptInput(members: ReceiptMember[], overrides: Partial<Input> = {}): Input {
+  return {
+    organizationId,
+    actorUserId: userId,
+    members,
+    entry: receiptEntry(members),
     deliveryIntent: { kind: 'not_required' },
     ...overrides,
   }
@@ -234,6 +443,22 @@ function dependencies(members: Member[]) {
 }
 function accept(members: Member[], overrides: Partial<Input> = {}, deps = dependencies(members)) {
   return db().transaction((tx) => acceptEntryInTx(tx, input(members, overrides), deps))
+}
+function receiptDependencies(members: ReceiptMember[]) {
+  return {
+    revalidateMemberInTx: vi.fn(async (_tx: Transaction, work: { id: string }) => {
+      const found = members.find((member) => member.workId === work.id)
+      if (!found) throw new Error('Missing receipt fixture member')
+      return found.acceptedBasis
+    }),
+  }
+}
+function acceptReceipts(
+  members: ReceiptMember[],
+  overrides: Partial<Input> = {},
+  deps = receiptDependencies(members)
+) {
+  return db().transaction((tx) => acceptEntryInTx(tx, receiptInput(members, overrides), deps))
 }
 async function assertNoAcceptance() {
   expect(await db().select().from(schema.GlPosting)).toHaveLength(0)
@@ -267,6 +492,60 @@ async function connection(org = organizationId, state: 'active' | 'disconnected'
 }
 
 describe('atomic accounting acceptance against PostgreSQL', () => {
+  it('accepts a customer receipt through the payment posting owner', async () => {
+    const receipt = await receiptMember()
+    expect(await acceptReceipts([receipt])).toMatchObject({ status: 'accepted', existing: false })
+    const [journal] = await db().select().from(schema.GlPosting)
+    expect(journal).toMatchObject({
+      postingType: 'payment',
+      txnDate: '2026-09-15',
+      totalMinor: 120,
+    })
+    const [work] = await db().select().from(schema.AccountingWork)
+    expect(work).toMatchObject({
+      effectKind: 'customer_receipt',
+      moneyTransactionId: receipt.acceptedBasis.calculation.moneyTransactionId,
+      entityInstanceId: null,
+      state: 'accepted',
+    })
+    expect(await db().select().from(schema.AccountingEffect)).toHaveLength(1)
+  })
+
+  it('refuses monthly regrouping for daily receipt effects', async () => {
+    const receipts = [await receiptMember('2026-09-14'), await receiptMember('2026-09-15')]
+    await expect(acceptReceipts(receipts)).rejects.toThrow('Daily accounting effects')
+    await assertNoAcceptance()
+  })
+
+  it('refuses monthly regrouping for payment-date fulfillment effects', async () => {
+    const shipments = [await member('2026-09-14'), await member('2026-09-15')]
+    for (const shipment of shipments) {
+      shipment.acceptedBasis.policyKey = 'shopify_payment_date_v1'
+      shipment.acceptedBasis.calculation.recognitionHistoryHash = SOURCE_HASH
+      shipment.acceptedBasis.calculation.recognitionAllocation = {
+        amountMinor: '100',
+        depositDebitMinor: '100',
+        receivableDebitMinor: '0',
+        newlyRecognizedTaxMinor: '0',
+        historyHash: SOURCE_HASH,
+      }
+    }
+    await expect(
+      accept(shipments, { entry: { ...entry(shipments), txnDate: '2026-09-15' } })
+    ).rejects.toThrow('Daily accounting effects')
+    await assertNoAcceptance()
+  })
+
+  it('refuses a fulfillment owner under the payment posting type', async () => {
+    const fulfillment = await member()
+    await expect(
+      accept([fulfillment], {
+        entry: { ...entry([fulfillment]), postingType: 'payment' },
+      })
+    ).rejects.toThrow('posting type does not match')
+    await assertNoAcceptance()
+  })
+
   it('groups different fulfillment dates in one month using the latest date while retaining each effect date', async () => {
     const members = [await member('2026-09-03'), await member('2026-09-14')]
     expect(await accept(members)).toMatchObject({ status: 'accepted' })

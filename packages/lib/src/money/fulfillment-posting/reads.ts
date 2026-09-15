@@ -5,16 +5,19 @@
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, asc, eq, gte, inArray, isNull, lt, or } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
 import type { FieldOptions } from '../../field-values/converters'
+import { computeShipmentAmounts } from '../../postings/build-fulfillment-batch-entry'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { LEDGER_CURRENCY } from '../../postings/post-entry'
 import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
 import { buildOptionIndex, resolveOptionId } from '../../resources/registry/option-helpers'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { readOrderMoneyCoverage } from '../customer-money/reads'
+import { readOrderRecognitionSource } from '../customer-money/recognition-source'
 import {
   type Fulfillment,
   type FulfillmentFieldContext,
@@ -68,23 +71,19 @@ function monthRange(month: string): UnpostedShipmentRange {
   return { from: `${month}-01`, to: `${nextYear}-${String(nextIndex).padStart(2, '0')}-01` }
 }
 
-/**
- * A calendar day as the instant a `DATETIME` cell is compared against.
- *
- * 🛑 Midnight UTC, and the comparison is deliberately on the RAW instant rather
- * than on a re-zoned day - `credit-memo-posting/reads.ts`'s `dayStart` states
- * the same rule for the same reason: everything here reads an accounting date
- * by SLICING the first ten characters of the stored ISO string
- * ({@link toCalendarDay}), and `instant >= ${from}T00:00:00Z` selects exactly
- * the rows whose slice is `>= from`.
- */
-function dayStart(day: string): string {
-  return `${day}T00:00:00.000Z`
-}
-
 /** `fulfillment_shipped_at` is an ISO instant; the accounting date is its day. */
-function toCalendarDay(raw: string | null | undefined): string | null {
-  return typeof raw === 'string' && raw.length >= 10 ? raw.slice(0, 10) : null
+export function toCalendarDay(raw: string | null | undefined, timeZone = 'UTC'): string | null {
+  if (typeof raw !== 'string') return null
+  const instant = new Date(raw)
+  if (!Number.isFinite(instant.getTime())) return null
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(instant)
+  const values = new Map(parts.map((part) => [part.type, part.value]))
+  return `${values.get('year')}-${values.get('month')}-${values.get('day')}`
 }
 
 function compareStrings(a: string, b: string): number {
@@ -109,6 +108,9 @@ async function readUnpostedFulfillmentCandidates(
   const orderField = ctx.fulfillment.fulfillment_order
   if (!shippedAtField || !orderField) return []
   const glPostingFieldId = ctx.fulfillment.fulfillment_gl_posting?.id ?? ''
+  const zone =
+    (await readTextSetting(db, organizationId, OPENING_BASELINE_SETTING_KEYS.bookTimeZone)) ?? 'UTC'
+  const bookDay = sql`(${schema.FieldValue.valueDate} AT TIME ZONE ${zone})::date`
 
   const orderEdge = alias(schema.FieldValue, 'fulfillment_order_edge')
   const stamp = alias(schema.FieldValue, 'fulfillment_gl_posting_stamp')
@@ -147,6 +149,7 @@ async function readUnpostedFulfillmentCandidates(
       and(
         eq(schema.AccountingWork.organizationId, organizationId),
         eq(schema.AccountingWork.entityInstanceId, schema.FieldValue.entityId),
+        eq(schema.AccountingWork.effectKind, 'fulfillment_accounting'),
         eq(schema.AccountingWork.operation, 'original')
       )
     )
@@ -161,8 +164,8 @@ async function readUnpostedFulfillmentCandidates(
       and(
         eq(schema.FieldValue.organizationId, organizationId),
         eq(schema.FieldValue.fieldId, shippedAtField.id),
-        gte(schema.FieldValue.valueDate, dayStart(range.from)),
-        lt(schema.FieldValue.valueDate, dayStart(range.to)),
+        sql`${bookDay} >= ${range.from}::date`,
+        sql`${bookDay} < ${range.to}::date`,
         isNull(schema.AccountingEffect.id),
         ...(fulfillmentIds ? [inArray(schema.FieldValue.entityId, [...fulfillmentIds])] : [])
       )
@@ -245,11 +248,22 @@ export async function readUnpostedShipments(
         }
       }
 
-      const [orders, lines, taxLinesByOrder] = await Promise.all([
+      const bookTimeZone = await readTextSetting(
+        db,
+        organizationId,
+        OPENING_BASELINE_SETTING_KEYS.bookTimeZone
+      )
+      const [orders, lines, taxLinesByOrder, moneyCoverage] = await Promise.all([
         readOrderFacts(db, organizationId, ctx, orderIds),
         readLineFacts(db, organizationId, ctx, [...lineIds]),
         // ONE bulk read for the whole batch, never per order (brief 13 §5).
         readOrderTaxLines(db, organizationId, orderIds),
+        Promise.all(
+          orderIds.map(
+            async (orderId) =>
+              [orderId, await readOrderMoneyCoverage(db, organizationId, orderId)] as const
+          )
+        ).then((rows) => new Map(rows)),
       ])
 
       const shipments: UnpostedShipment[] = []
@@ -289,7 +303,8 @@ export async function readUnpostedShipments(
               priorSubtotalMinor,
               priorShippedByLine,
               lines,
-              taxLinesByOrder.get(orderId) ?? []
+              taxLinesByOrder.get(orderId) ?? [],
+              bookTimeZone ?? 'UTC'
             )
             if (shipment) shipments.push(shipment)
           }
@@ -307,6 +322,85 @@ export async function readUnpostedShipments(
               )
             }
           }
+        }
+      }
+
+      // The switched policy replays one canonical timeline per order. Current
+      // candidates are included beside accepted history before any allocation
+      // is attached, so a partial receipt or split shipment gets numeric
+      // ownership rather than a paid-status fork.
+      const shipmentsByOrder = new Map<string, UnpostedShipment[]>()
+      for (const shipment of shipments) {
+        const list = shipmentsByOrder.get(shipment.orderId) ?? []
+        list.push(shipment)
+        shipmentsByOrder.set(shipment.orderId, list)
+      }
+      for (const [orderId, current] of shipmentsByOrder) {
+        const order = orders.get(orderId)
+        if (!order) continue
+        const coverage = moneyCoverage.get(orderId)
+        // Shopify canonical money evidence is an explicit cutover gate. An
+        // order without a source account keeps the established arithmetic;
+        // once evidence exists, incomplete coverage blocks rather than
+        // silently falling back to financial status or gateway names.
+        if (!coverage?.shopifyBound) continue
+        if (!coverage.complete || !bookTimeZone) {
+          throw new UnprocessableEntityError(
+            `Order ${orderId} Shopify money coverage or book time zone is incomplete; ` +
+              'fulfillment recognition is blocked.'
+          )
+        }
+        for (const shipment of current) {
+          const source = await readOrderRecognitionSource(db, {
+            organizationId,
+            orderId,
+            orderNetMinor: String(order.subtotalMinor + order.shippingTotalMinor),
+            orderTaxMinor: String(order.taxTotalMinor),
+            bookTimeZone,
+            target: { kind: 'fulfillment', id: shipment.fulfillmentInstanceId },
+            targetEvent: (() => {
+              const sourceAmounts = computeShipmentAmounts(shipment, 'accounts_receivable')
+              return {
+                id: shipment.fulfillmentInstanceId,
+                kind: 'fulfillment' as const,
+                effectiveDate: shipment.shippedAt,
+                occurredAt: new Date(
+                  byOrder.get(orderId)!.find((row) => row.id === shipment.fulfillmentInstanceId)!
+                    .shippedAt
+                ).toISOString(),
+                netMinor: String(
+                  sourceAmounts.subtotalMinor +
+                    (shipment.includeShipping ? sourceAmounts.shippingMinor : 0)
+                ),
+                taxMinor: String(sourceAmounts.taxMinor),
+              }
+            })(),
+          })
+          if (source.blockers.length || !source.target) {
+            throw new UnprocessableEntityError(
+              `Order ${orderId} recognition timeline is incomplete: ` +
+                (source.blockers.join('; ') ||
+                  `no allocation for fulfillment ${shipment.fulfillmentInstanceId}`)
+            )
+          }
+          shipment.recognitionAllocation = {
+            amountMinor: Number(source.target.amountMinor),
+            depositMinor: Number(source.target.depositMinor),
+            receivableMinor: Number(source.target.receivableMinor),
+            taxMinor: Number(source.target.taxMinor),
+            historyHash: source.target.historyHash,
+          }
+          shipment.sourceStoreId = source.sourceStoreId
+          shipment.processorRouteId = source.processorRouteId
+          shipment.recognitionTaxComponents =
+            source.targetTaxComponents?.map((component) => ({
+              componentKey: component.componentKey,
+              amountMinor: Number(component.amountMinor),
+              jurisdiction: component.jurisdiction,
+              collector: component.collector,
+              remitter: component.remitter,
+              withholdingEvidenceId: component.withholdingEvidenceId,
+            })) ?? []
         }
       }
 
@@ -333,9 +427,10 @@ function buildShipment(
     string,
     Omit<UnpostedShipmentLine, 'lineId' | 'quantity' | 'priorShippedQuantity'>
   >,
-  taxLines: readonly { title: string; priceMinor: number }[]
+  taxLines: readonly { title: string; priceMinor: number }[],
+  timeZone: string
 ): UnpostedShipment | null {
-  const shippedAt = toCalendarDay(fulfillment.shippedAt)
+  const shippedAt = toCalendarDay(fulfillment.shippedAt, timeZone)
   // Unreachable by contract (the netting query is itself anchored on this
   // field), but dropped rather than defaulted: a shipment with no date has no
   // period to post into and guessing one recognises revenue in the wrong month.
@@ -550,7 +645,7 @@ export async function readFulfillmentPostingSettings(
 }
 
 /** One organization setting as a trimmed string, or null for unset or blank. */
-async function readTextSetting(
+export async function readTextSetting(
   db: Database | Transaction,
   organizationId: string,
   key: Parameters<typeof getOrganizationSetting>[0]['key']

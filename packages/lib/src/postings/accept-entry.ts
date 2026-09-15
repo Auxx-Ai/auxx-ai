@@ -7,10 +7,13 @@ import { fulfillmentGroupPeriodKey } from './doc-number'
 import { type PostingAccountingMembership, parsePostingAccountingMembership } from './draft'
 import { accountingBasisHash, canonicalAccountingJson } from './effect-basis'
 import {
+  type AcceptedAccountingEffectBasisV1,
+  type AcceptedCustomerReceiptEffectBasisV1,
   type AcceptedFulfillmentEffectBasisV1,
-  type AccountingWorkBasisInput,
+  type AccountingWorkBasisInputV1,
+  acceptedCustomerReceiptEffectBasisSchema,
   acceptedFulfillmentEffectBasisSchema,
-  accountingWorkBasisSchema,
+  accountingWorkBasisSchemaV1,
 } from './effect-types'
 import { insertPostingInTx, type PostingDeliveryIntent, type PreparedLine } from './insert-posting'
 import { resolvePeriodLock } from './period-lock'
@@ -18,13 +21,15 @@ import { prepareEntry, uniqueViolationConstraint } from './post-entry'
 import { resolveRoles } from './resolve-roles'
 import type { BuiltEntry } from './types'
 
-type ReadyBasis = Extract<AccountingWorkBasisInput, { status: 'ready' }>
+type ReadyBasis = Extract<AccountingWorkBasisInputV1, { status: 'ready' }>
 
 /** A prepared domain member; identity comes from its persisted work, never grouping metadata. */
-export interface PreparedEffectMember {
+export interface PreparedEffectMember<
+  TBasis extends AcceptedAccountingEffectBasisV1 = AcceptedFulfillmentEffectBasisV1,
+> {
   workId: string
   expectedBasisVersion: number
-  acceptedBasis: AcceptedFulfillmentEffectBasisV1
+  acceptedBasis: TBasis
   /** Required for corrections; null means there have been no accepted corrections. */
   expectedCorrectionHeadId?: string | null
 }
@@ -34,7 +39,7 @@ export interface PreparedEffectPosting {
   organizationId: string
   actorUserId?: string
   memo?: string
-  members: PreparedEffectMember[]
+  members: PreparedEffectMember<AcceptedAccountingEffectBasisV1>[]
   entry: BuiltEntry
   deliveryIntent: PostingDeliveryIntent
 }
@@ -45,7 +50,30 @@ export interface EffectAcceptanceDependencies {
     tx: Transaction,
     work: AccountingWorkEntity,
     basis: ReadyBasis
-  ): Promise<AcceptedFulfillmentEffectBasisV1>
+  ): Promise<AcceptedAccountingEffectBasisV1>
+}
+
+function isReceiptBasis(
+  basis: AcceptedAccountingEffectBasisV1
+): basis is AcceptedCustomerReceiptEffectBasisV1 {
+  return basis.policyKey === 'shopify_receipt_v1'
+}
+
+function isFulfillmentBasis(
+  basis: AcceptedAccountingEffectBasisV1
+): basis is AcceptedFulfillmentEffectBasisV1 {
+  return (
+    basis.policyKey === 'fulfillment_current_v1' || basis.policyKey === 'shopify_payment_date_v1'
+  )
+}
+
+function parseAcceptedBasis(
+  effectKind: AccountingWorkEntity['effectKind'],
+  basis: unknown
+): AcceptedAccountingEffectBasisV1 {
+  return effectKind === 'customer_receipt'
+    ? acceptedCustomerReceiptEffectBasisSchema.parse(basis)
+    : acceptedFulfillmentEffectBasisSchema.parse(basis)
 }
 
 /** Saved acceptance can span more than one journal after a caller regroups existing members. */
@@ -89,7 +117,7 @@ function contributionKey(line: {
 }
 
 function assertExactContributions(
-  members: PreparedEffectMember[],
+  members: PreparedEffectMember<AcceptedAccountingEffectBasisV1>[],
   lines: PreparedLine[],
   entry: BuiltEntry
 ) {
@@ -167,6 +195,7 @@ async function assertCorrectionHead(
     .select({
       effectId: schema.AccountingEffect.id,
       entityInstanceId: schema.AccountingWork.entityInstanceId,
+      moneyTransactionId: schema.AccountingWork.moneyTransactionId,
       operation: schema.AccountingWork.operation,
     })
     .from(schema.AccountingEffect)
@@ -185,9 +214,11 @@ async function assertCorrectionHead(
     )
   if (
     original[0]?.operation !== 'original' ||
-    original[0]?.entityInstanceId !== work.entityInstanceId
+    (work.effectKind === 'fulfillment_accounting'
+      ? original[0]?.entityInstanceId !== work.entityInstanceId
+      : original[0]?.moneyTransactionId !== work.moneyTransactionId)
   )
-    throw new ConflictError('A correction must name the original effect of this fulfillment')
+    throw new ConflictError('A correction must name the original effect of this owner')
   const prior = await tx
     .select({
       effectId: schema.AccountingEffect.id,
@@ -254,14 +285,14 @@ export async function acceptEntryInTx(
     new Set(input.members.map((m) => m.workId)).size !== input.members.length
   )
     throw new UnprocessableEntityError('Choose a nonempty set of distinct accounting work members')
-  if (input.entry.postingType !== 'fulfillment')
+  if (input.entry.postingType !== 'fulfillment' && input.entry.postingType !== 'payment')
     throw new UnprocessableEntityError(
-      'This acceptance policy supports fulfillment accounting only'
+      'This acceptance policy supports fulfillment and customer receipt accounting only'
     )
-  const members = input.members
+  let members = input.members
     .map((member) => ({
       ...member,
-      acceptedBasis: acceptedFulfillmentEffectBasisSchema.parse(member.acceptedBasis),
+      acceptedBasis: member.acceptedBasis,
     }))
     .sort((a, b) => a.workId.localeCompare(b.workId))
   await withAccountingCommitLock(tx, input.organizationId)
@@ -280,6 +311,34 @@ export async function acceptEntryInTx(
   if (works.length !== members.length)
     throw new ConflictError('Accounting work is missing or belongs to another organization')
   const workById = new Map(works.map((w) => [w.id, w]))
+  const expectedEffectKind =
+    input.entry.postingType === 'payment' ? 'customer_receipt' : 'fulfillment_accounting'
+  if (works.some((work) => work.effectKind !== expectedEffectKind))
+    throw new ConflictError('Journal posting type does not match every accounting work owner')
+  members = members.map((member) => {
+    const work = workById.get(member.workId)
+    if (!work) return member
+    return { ...member, acceptedBasis: parseAcceptedBasis(work.effectKind, member.acceptedBasis) }
+  })
+  const sourceDates = members.map((member) => member.acceptedBasis.effectiveDate).sort()
+  if (
+    sourceDates.at(-1) !== input.entry.txnDate ||
+    sourceDates.some((date) => date.slice(0, 7) !== input.entry.txnDate.slice(0, 7))
+  ) {
+    throw new ConflictError(
+      'Journal date must be the latest member date within one accounting month'
+    )
+  }
+  if (
+    members.some(
+      (member) =>
+        isReceiptBasis(member.acceptedBasis) ||
+        member.acceptedBasis.policyKey === 'shopify_payment_date_v1'
+    ) &&
+    sourceDates.some((date) => date !== input.entry.txnDate)
+  ) {
+    throw new ConflictError('Daily accounting effects must all use the journal date')
+  }
   const effects = await tx
     .select()
     .from(schema.AccountingEffect)
@@ -373,20 +432,11 @@ export async function acceptEntryInTx(
   }
   const lock = await resolvePeriodLock(input.organizationId, tx)
   await assertDeliveryIntent(tx, input)
-  const sourceDates = members.map((member) => member.acceptedBasis.effectiveDate).sort()
-  if (
-    sourceDates.at(-1) !== input.entry.txnDate ||
-    sourceDates.some((date) => date.slice(0, 7) !== input.entry.txnDate.slice(0, 7))
-  ) {
-    throw new ConflictError(
-      'Fulfillment journal date must be the latest member date within one accounting month'
-    )
-  }
   const corrections = new Set<string>()
   for (const member of members) {
     const work = workById.get(member.workId)!
     if (
-      work.effectKind !== 'fulfillment_accounting' ||
+      !['fulfillment_accounting', 'customer_receipt'].includes(work.effectKind) ||
       !['pending', 'blocked'].includes(work.state) ||
       work.eligibility === 'excluded'
     )
@@ -405,55 +455,86 @@ export async function acceptEntryInTx(
       ),
     })
     if (!saved) throw new ConflictError('The selected accounting input basis is missing')
-    const basis = accountingWorkBasisSchema.parse(saved.basis)
+    const basis = accountingWorkBasisSchemaV1.parse(saved.basis)
     if (basis.status !== 'ready')
       throw new UnprocessableEntityError('Accounting dependencies are incomplete')
-    if (
+    const acceptedBasis = parseAcceptedBasis(work.effectKind, member.acceptedBasis)
+    const commonMismatch =
       saved.sourceHash !== basis.sourceHash ||
       saved.effectiveDate !== basis.effectiveDate ||
-      basis.fulfillmentInstanceId !== work.entityInstanceId ||
-      member.acceptedBasis.sourceBasisVersion !== work.basisVersion ||
-      member.acceptedBasis.sourceHash !== basis.sourceHash ||
-      member.acceptedBasis.effectiveDate !== basis.effectiveDate ||
-      accountingBasisHash(member.acceptedBasis.calculation) !==
-        accountingBasisHash(basis.calculation)
-    )
+      acceptedBasis.sourceBasisVersion !== work.basisVersion ||
+      acceptedBasis.sourceHash !== basis.sourceHash ||
+      acceptedBasis.effectiveDate !== basis.effectiveDate
+    let ownerMismatch = basis.status !== 'ready'
+    if (!ownerMismatch && work.effectKind === 'fulfillment_accounting') {
+      const fulfillmentBasis = basis as Extract<ReadyBasis, { fulfillmentInstanceId: string }>
+      ownerMismatch =
+        fulfillmentBasis.fulfillmentInstanceId !== work.entityInstanceId ||
+        !isFulfillmentBasis(acceptedBasis) ||
+        accountingBasisHash(acceptedBasis.calculation) !==
+          accountingBasisHash(fulfillmentBasis.calculation)
+    }
+    if (!ownerMismatch && work.effectKind === 'customer_receipt') {
+      const receiptBasis = basis as Extract<ReadyBasis, { moneyTransactionId: string }>
+      ownerMismatch =
+        receiptBasis.moneyTransactionId !== work.moneyTransactionId ||
+        !isReceiptBasis(acceptedBasis) ||
+        accountingBasisHash(acceptedBasis.calculation) !==
+          accountingBasisHash(receiptBasis.calculation)
+    }
+    if (commonMismatch || ownerMismatch)
       throw new ConflictError('Accepted calculation differs from the selected source basis')
-    const [source] = await tx
-      .select({ id: schema.EntityInstance.id })
-      .from(schema.EntityInstance)
-      .innerJoin(
-        schema.EntityDefinition,
-        and(
-          eq(schema.EntityDefinition.id, schema.EntityInstance.entityDefinitionId),
-          eq(schema.EntityDefinition.organizationId, input.organizationId)
+    if (work.effectKind === 'fulfillment_accounting') {
+      const [source] = await tx
+        .select({ id: schema.EntityInstance.id })
+        .from(schema.EntityInstance)
+        .innerJoin(
+          schema.EntityDefinition,
+          and(
+            eq(schema.EntityDefinition.id, schema.EntityInstance.entityDefinitionId),
+            eq(schema.EntityDefinition.organizationId, input.organizationId)
+          )
         )
-      )
-      .where(
-        and(
-          eq(schema.EntityInstance.organizationId, input.organizationId),
-          eq(schema.EntityInstance.id, work.entityInstanceId),
-          eq(schema.EntityDefinition.entityType, 'fulfillment'),
-          isNull(schema.EntityInstance.archivedAt),
-          isNull(schema.EntityDefinition.archivedAt)
+        .where(
+          and(
+            eq(schema.EntityInstance.organizationId, input.organizationId),
+            eq(schema.EntityInstance.id, work.entityInstanceId!),
+            eq(schema.EntityDefinition.entityType, 'fulfillment'),
+            isNull(schema.EntityInstance.archivedAt),
+            isNull(schema.EntityDefinition.archivedAt)
+          )
         )
-      )
-      .limit(1)
-    if (!source) throw new ConflictError('The accounting source is not a live fulfillment')
-    const revalidated = acceptedFulfillmentEffectBasisSchema.parse(
+        .limit(1)
+      if (!source) throw new ConflictError('The accounting source is not a live fulfillment')
+    } else {
+      const [source] = await tx
+        .select({ id: schema.MoneyTransaction.id })
+        .from(schema.MoneyTransaction)
+        .where(
+          and(
+            eq(schema.MoneyTransaction.organizationId, input.organizationId),
+            eq(schema.MoneyTransaction.id, work.moneyTransactionId!),
+            eq(schema.MoneyTransaction.purpose, 'customer_receipt')
+          )
+        )
+        .limit(1)
+      if (!source) throw new ConflictError('The accounting source is not a live customer receipt')
+    }
+    const revalidated = parseAcceptedBasis(
+      work.effectKind,
       await dependencies.revalidateMemberInTx(tx, work, basis)
     )
-    if (accountingBasisHash(revalidated) !== accountingBasisHash(member.acceptedBasis))
+    if (accountingBasisHash(revalidated) !== accountingBasisHash(acceptedBasis))
       throw new ConflictError('The source or accounting configuration changed after preparation')
     if (
-      member.acceptedBasis.accountResolution.some(
+      acceptedBasis.accountResolution.some(
         (resolution) => resolution.selectedBy === 'org_role' && resolution.accountRole === null
       )
     )
       throw new UnprocessableEntityError(
         'An organization-role selection must name its account role'
       )
-    const roles = member.acceptedBasis.accountResolution.filter(
+    const roles = acceptedBasis.accountResolution.filter(
       (r) => r.selectedBy === 'org_role' && r.accountRole !== null
     )
     const resolved = await resolveRoles(

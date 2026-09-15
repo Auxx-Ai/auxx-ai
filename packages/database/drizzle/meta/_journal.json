@@ -2661,6 +2661,13 @@
       "when": 1789458038772,
       "tag": "0379_accounting_delivery_and_money_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 380,
+      "version": "7",
+      "when": 1789487111880,
+      "tag": "0380_shopify_receipt_accounting",
+      "breakpoints": true
     }
   ]
 }

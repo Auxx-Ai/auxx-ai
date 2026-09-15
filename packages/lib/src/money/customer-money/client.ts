@@ -14,4 +14,10 @@ export interface OrderMoneyTransaction {
   sourceExternalId: string
   status: 'pending' | 'accepted' | 'rejected' | 'blocked'
   reason: string | null
+  accounting: {
+    state: 'pending' | 'blocked' | 'accepted' | 'no_effect' | 'canceled'
+    reason: string | null
+    effectiveDate: string | null
+    glPostingId: string | null
+  } | null
 }

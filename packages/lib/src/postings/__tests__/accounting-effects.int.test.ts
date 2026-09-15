@@ -21,7 +21,11 @@ import {
 } from '../../settings/settings-service'
 import { withAccountingCommitLock } from '../accounting-commit-lock'
 import { accountingBasisHash } from '../effect-basis'
-import { appendFulfillmentWorkBasisInTx, captureFulfillmentWorkInTx } from '../effect-work'
+import {
+  appendFulfillmentWorkBasisInTx,
+  captureCustomerReceiptWorkInTx,
+  captureFulfillmentWorkInTx,
+} from '../effect-work'
 import { resolvePeriodLock } from '../period-lock'
 import { resolveRoles } from '../resolve-roles'
 import { setLockedThrough } from '../set-locked-through'
@@ -614,5 +618,116 @@ describe('financial source mutation guards', () => {
     await first
     await write
     expect(mutated).toBe(true)
+  })
+})
+
+describe('accepted receipt source protection', () => {
+  it('freezes order and line tax evidence before any fulfillment is accepted', async () => {
+    const ids: Record<string, string> = {}
+    const defs: Record<string, string> = {}
+    for (const kind of ['order', 'line_item', 'tax_line']) {
+      const [def] = await db()
+        .insert(schema.EntityDefinition)
+        .values({ organizationId, apiSlug: kind, singular: kind, plural: kind, entityType: kind })
+        .returning()
+      defs[kind] = def!.id
+      const [row] = await db()
+        .insert(schema.EntityInstance)
+        .values({ organizationId, entityDefinitionId: def!.id, updatedAt: new Date() })
+        .returning()
+      ids[kind] = row!.id
+    }
+    for (const kind of ['line_item', 'tax_line']) {
+      const [field] = await db()
+        .insert(schema.CustomField)
+        .values({
+          organizationId,
+          entityDefinitionId: defs[kind]!,
+          name: `${kind}_order`,
+          systemAttribute: `${kind}_order`,
+          type: 'RELATIONSHIP',
+          updatedAt: new Date(),
+        })
+        .returning()
+      await db().insert(schema.FieldValue).values({
+        organizationId,
+        entityDefinitionId: defs[kind]!,
+        entityId: ids[kind]!,
+        fieldId: field!.id,
+        relatedEntityId: ids.order!,
+      })
+    }
+    const [command] = await db()
+      .insert(schema.MoneyCommand)
+      .values({
+        organizationId,
+        commandKey: 'guard-fixture',
+        kind: 'import_receipt',
+        payloadHash: SOURCE_HASH,
+        actorSnapshot: {},
+        resultIds: {},
+      })
+      .returning()
+    const [money] = await db()
+      .insert(schema.MoneyTransaction)
+      .values({
+        organizationId,
+        purpose: 'customer_receipt',
+        amountMinor: 100n,
+        currency: 'USD',
+        currencyExponent: 2,
+        datePrecision: 'instant',
+        occurredAt: new Date('2026-09-14T12:00:00Z'),
+        recordedByCommandId: command!.id,
+      })
+      .returning()
+    const captured = await db().transaction((tx) =>
+      captureCustomerReceiptWorkInTx(tx, {
+        organizationId,
+        moneyTransactionId: money!.id,
+        eligibility: 'manual',
+        basis: {
+          version: 1,
+          status: 'incomplete',
+          moneyTransactionId: money!.id,
+          sourceHash: SOURCE_HASH,
+          effectiveDate: '2026-09-14',
+          missingDependencies: ['fixture'],
+          observed: {},
+        },
+      })
+    )
+    const journal = await posting({ postingType: 'payment' })
+    const basis = { calculation: { orderInstanceId: ids.order! } }
+    await db()
+      .insert(schema.AccountingEffect)
+      .values({
+        organizationId,
+        workId: captured.work.id,
+        basisVersion: 1,
+        glPostingId: journal.id,
+        effectiveDate: '2026-09-14',
+        currency: 'USD',
+        currencyExponent: 2,
+        acceptedBasis: basis,
+        basisHash: accountingBasisHash(basis),
+      })
+    for (const kind of ['order', 'line_item', 'tax_line']) {
+      await expect(
+        db().transaction((tx) =>
+          assertAccountingSourcesMutableInTx(tx, organizationId, [
+            toRecordId(defs[kind]!, ids[kind]!),
+          ])
+        )
+      ).rejects.toThrow('accepted payment accounting')
+    }
+    // A newly recorded shipment may consume this deposit without changing the frozen order.
+    await expect(
+      db().transaction((tx) =>
+        assertAccountingSourcesMutableInTx(tx, organizationId, [
+          toRecordId('fulfillment', fulfillmentId),
+        ])
+      )
+    ).resolves.toBeUndefined()
   })
 })

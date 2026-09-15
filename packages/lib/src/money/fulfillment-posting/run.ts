@@ -400,7 +400,7 @@ export async function acceptFulfillmentWorkGroup(
       // Configuration or source edits after initial capture select another immutable basis version.
       const refreshed = await captureFulfillmentAccountingWorkInTx(tx, {
         organizationId: input.organizationId,
-        fulfillmentInstanceId: work.entityInstanceId,
+        fulfillmentInstanceId: work.entityInstanceId!,
       })
       if (refreshed.state === 'blocked')
         throw new UnprocessableEntityError(
@@ -556,7 +556,7 @@ export async function sweepFulfillmentAccountingWork(
       continue
     }
     const ids = groups.get(basis.effectiveDate) ?? []
-    ids.push(work.entityInstanceId)
+    ids.push(work.entityInstanceId!)
     groups.set(basis.effectiveDate, ids)
   }
   for (const [groupKey, fulfillmentIds] of groups) {

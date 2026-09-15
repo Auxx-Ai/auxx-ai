@@ -1,0 +1,6 @@
+ALTER TABLE "AccountingWork" DROP CONSTRAINT "AccountingWork_kind_check";--> statement-breakpoint
+ALTER TABLE "AccountingWork" ALTER COLUMN "entityInstanceId" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "AccountingWork" ADD COLUMN "moneyTransactionId" text;--> statement-breakpoint
+ALTER TABLE "AccountingWork" ADD CONSTRAINT "AccountingWork_money_scope_fk" FOREIGN KEY ("organizationId","moneyTransactionId") REFERENCES "public"."MoneyTransaction"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "AccountingWork_money_original_key" ON "AccountingWork" USING btree ("organizationId","moneyTransactionId","effectKind") WHERE "AccountingWork"."operation" = 'original';--> statement-breakpoint
+ALTER TABLE "AccountingWork" ADD CONSTRAINT "AccountingWork_kind_check" CHECK (("AccountingWork"."effectKind" = 'fulfillment_accounting' AND "AccountingWork"."entityInstanceId" IS NOT NULL AND "AccountingWork"."moneyTransactionId" IS NULL) OR ("AccountingWork"."effectKind" = 'customer_receipt' AND "AccountingWork"."moneyTransactionId" IS NOT NULL AND "AccountingWork"."entityInstanceId" IS NULL));

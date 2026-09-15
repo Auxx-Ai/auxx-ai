@@ -2,12 +2,18 @@
 'use client'
 
 import type { OrderMoneyTransaction } from '@auxx/lib/money/customer-money/client'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react'
+import { useState } from 'react'
+import { PostingLinesDialog } from '~/components/accounting/ui/ledger-card'
 import { EmptyRow } from '~/components/drawers/cards/related-record-row'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 
 function amountLabel(transaction: OrderMoneyTransaction): string {
@@ -22,6 +28,20 @@ function amountLabel(transaction: OrderMoneyTransaction): string {
 
 /** Actual imported receipts and refunds, including source records awaiting resolution. */
 export function OrderPaymentsCard({ entityInstanceId }: DrawerTabProps) {
+  const [openPostingId, setOpenPostingId] = useState<string | null>(null)
+  const { can } = useAccess()
+  const utils = api.useUtils()
+  const postReceipt = api.money.postCustomerReceipt.useMutation({
+    onSuccess: async (result) => {
+      if (result.status !== 'accepted' && result.reason)
+        toastError({ title: 'Payment accounting needs attention', description: result.reason })
+      await Promise.all([
+        utils.money.orderMoneyTransactions.invalidate({ orderId: entityInstanceId }),
+        utils.money.orderAccountingWork.invalidate({ orderId: entityInstanceId }),
+      ])
+    },
+    onError: (error) => toastError({ title: 'Could not post payment', description: error.message }),
+  })
   const query = api.money.orderMoneyTransactions.useQuery(
     { orderId: entityInstanceId },
     { enabled: !!entityInstanceId }
@@ -62,6 +82,11 @@ export function OrderPaymentsCard({ entityInstanceId }: DrawerTabProps) {
         getKey={(transaction) => transaction.id}
         renderRow={(transaction) => (
           <TreeRow
+            onToggleOpen={
+              transaction.accounting?.glPostingId
+                ? () => setOpenPostingId(transaction.accounting!.glPostingId!)
+                : undefined
+            }
             icon={
               transaction.purpose === 'customer_refund' ? (
                 <ArrowUpRight className='size-4' />
@@ -71,15 +96,33 @@ export function OrderPaymentsCard({ entityInstanceId }: DrawerTabProps) {
             }
             title={`${!transaction.hasMoneyTransaction ? 'Observation' : transaction.purpose === 'customer_refund' ? 'Refund' : transaction.purpose === 'customer_receipt' ? 'Payment' : 'Transaction'} · ${amountLabel(transaction)}`}
             description={
+              transaction.accounting?.reason ??
               transaction.reason ??
-              [transaction.occurredOn, transaction.reportingProvider].filter(Boolean).join(' · ')
+              [
+                transaction.accounting?.effectiveDate ?? transaction.occurredOn,
+                transaction.reportingProvider,
+              ]
+                .filter(Boolean)
+                .join(' · ')
             }
             secondary={
-              <Badge variant={transaction.status === 'accepted' ? 'outline' : 'amber'} size='xs'>
+              <Badge
+                variant={
+                  transaction.accounting?.state === 'blocked' || transaction.status !== 'accepted'
+                    ? 'amber'
+                    : 'outline'
+                }
+                size='xs'>
                 {transaction.status === 'accepted'
-                  ? transaction.hasMoneyTransaction
-                    ? 'Recorded'
-                    : 'Observed'
+                  ? transaction.accounting?.state === 'accepted'
+                    ? 'Posted'
+                    : transaction.accounting?.state === 'blocked'
+                      ? 'Accounting blocked'
+                      : transaction.accounting?.state === 'pending'
+                        ? 'Awaiting posting'
+                        : transaction.hasMoneyTransaction
+                          ? 'Recorded'
+                          : 'Observed'
                   : transaction.status === 'pending'
                     ? 'Pending'
                     : transaction.status === 'blocked'
@@ -87,8 +130,32 @@ export function OrderPaymentsCard({ entityInstanceId }: DrawerTabProps) {
                       : 'Not recorded'}
               </Badge>
             }
+            actions={
+              can(PermissionKey.ledgerControl) &&
+              transaction.hasMoneyTransaction &&
+              transaction.status === 'accepted' &&
+              transaction.purpose === 'customer_receipt' &&
+              transaction.accounting?.state !== 'accepted' ? (
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  loading={
+                    postReceipt.isPending &&
+                    postReceipt.variables?.moneyTransactionId === transaction.id
+                  }
+                  disabled={postReceipt.isPending}
+                  onClick={() => postReceipt.mutate({ moneyTransactionId: transaction.id })}>
+                  {transaction.accounting?.state === 'blocked' ? 'Retry posting' : 'Post payment'}
+                </Button>
+              ) : undefined
+            }
           />
         )}
+      />
+      <PostingLinesDialog
+        postingId={openPostingId}
+        onOpenChange={(open) => !open && setOpenPostingId(null)}
+        currencyCode='USD'
       />
     </>
   )

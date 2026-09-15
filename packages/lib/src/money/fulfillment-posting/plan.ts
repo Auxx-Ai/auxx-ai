@@ -138,11 +138,17 @@ export function planFulfillmentPosting(
       continue
     }
 
-    const debit = resolveFulfillmentDebit({
-      financialStatus: shipment.financialStatus,
-      gateways: shipment.gateways,
-      gatewayRoutes,
-    })
+    const debit = shipment.recognitionAllocation
+      ? {
+          kind: 'debit' as const,
+          role: 'accounts_receivable' as const,
+          reason: 'Canonical Shopify receipt timeline owns deposit and receivable allocation',
+        }
+      : resolveFulfillmentDebit({
+          financialStatus: shipment.financialStatus,
+          gateways: shipment.gateways,
+          gatewayRoutes,
+        })
     if (debit.kind === 'exclude') {
       exclusions.push(exclude(shipment, debit.reason, debit.detail))
       continue
@@ -172,7 +178,12 @@ export function planFulfillmentPosting(
       continue
     }
 
-    const key = groupKeyFor(shipment.shippedAt, grouping)
+    // Canonical customer-money recognition is always posted by book day. A
+    // month grouping request may still contain legacy shipments, but it must
+    // never combine switched recognition events into a monthly effect.
+    const key = shipment.recognitionAllocation
+      ? shipment.shippedAt
+      : groupKeyFor(shipment.shippedAt, grouping)
     const bucket = byGroupKey.get(key)
     if (bucket) bucket.push({ ...shipment, amounts })
     else byGroupKey.set(key, [{ ...shipment, amounts }])
@@ -236,7 +247,8 @@ function toGroup(groupKey: string, shipments: PlannedShipment[]): FulfillmentPos
     taxMinor += shipment.amounts.taxMinor
     shippingMinor += shipment.amounts.shippingMinor
     totalMinor += shipment.amounts.totalMinor
-    byDebitRole[shipment.amounts.debitRole] += shipment.amounts.totalMinor
+    byDebitRole[shipment.amounts.debitRole] +=
+      shipment.amounts.receivableDebitMinor ?? shipment.amounts.totalMinor
     orders.add(shipment.orderId)
     // 🛑 The LATEST ship date in the group, never the group key's own start. A
     // month bucket posted on the first would date the whole month's revenue
