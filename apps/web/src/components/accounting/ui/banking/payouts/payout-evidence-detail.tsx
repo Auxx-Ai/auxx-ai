@@ -3,174 +3,179 @@
 'use client'
 
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
 import { CollapsedJson } from '@auxx/ui/components/collapsed-json'
+import { MetricCell, MetricGrid } from '@auxx/ui/components/metric-grid'
+import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { StatCards } from '@auxx/ui/components/stat-card'
-import { FileCheck, Landmark, Scale } from 'lucide-react'
-import Link from 'next/link'
-import { SettingsSection } from '~/components/global/settings-page'
+import {
+  Banknote,
+  Braces,
+  CalendarClock,
+  Clock,
+  FileCheck,
+  Landmark,
+  Receipt,
+  Scale,
+} from 'lucide-react'
 import { api } from '~/trpc/react'
 import { formatEvidenceAmount, formatEvidenceDate } from './evidence-format'
 import { PayoutSourceHistory } from './payout-source-history'
 import { ProcessorActivity } from './processor-activity'
 
-/** Show independent payout totals, source completeness and the actions needed to resolve gaps. */
+/**
+ * The body of the payout drawer: independent totals, source completeness and
+ * the actions needed to resolve gaps.
+ *
+ * 🛑 It renders NO identity. The external id, the source account, the status
+ * badges and the "Open connector" link live in `payout-evidence-drawer.tsx`'s
+ * `DrawerHeader`, and repeating any of them here is what made the first block a
+ * second header. Everything below is a flush `Section` or a self-padded child -
+ * the scroll wrapper supplies neither padding nor gap.
+ */
 export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
   const query = api.payoutEvidence.detail.useQuery({ id: payoutId })
   const payout = query.data
 
   if (query.error) {
     return (
-      <Alert variant='destructive'>
-        <AlertTitle>Could not load payout</AlertTitle>
-        <AlertDescription>
-          {query.error.message} Use Refresh evidence to try again.
-        </AlertDescription>
-      </Alert>
+      <div className='p-3'>
+        <Alert variant='destructive'>
+          <AlertTitle>Could not load payout</AlertTitle>
+          <AlertDescription>
+            {query.error.message} Use Refresh evidence to try again.
+          </AlertDescription>
+        </Alert>
+      </div>
     )
   }
-  if (!payout) return <Skeleton className='h-64 w-full' />
+  if (!payout) {
+    return (
+      <div className='p-3'>
+        <Skeleton className='h-64 w-full' />
+      </div>
+    )
+  }
 
   const sourceAmount = (amount: string) =>
     formatEvidenceAmount(amount, payout.sourceCurrency, payout.sourceCurrencyExponent)
 
   return (
     <>
-      <SettingsSection
-        title={payout.externalId}
-        description={`${payout.providerKey} · ${payout.externalAccountId}`}
-        action={
-          <Button variant='outline' size='sm' asChild>
-            <Link
-              href={
-                payout.sourceConnectionId
-                  ? `/app/connectors/${payout.sourceConnectionId}`
-                  : '/app/connectors'
-              }>
-              Open connector
-            </Link>
-          </Button>
-        }>
-        <div className='flex flex-wrap items-center gap-2'>
-          <Badge variant='secondary'>Provider: {payout.status.replaceAll('_', ' ')}</Badge>
-          <Badge variant='outline'>Evidence: {payout.membershipState}</Badge>
-          <Badge variant='outline'>
-            {payout.reconciliationState === 'pending'
-              ? 'Provider readiness not assessed'
-              : payout.providerReady
-                ? 'Provider ready'
-                : 'Provider pending'}
-          </Badge>
-          <Badge variant='outline'>Posting not enabled</Badge>
-          {payout.reconciliationState === 'pending' && (
-            <Badge variant='secondary'>Reconciliation pending</Badge>
-          )}
-        </div>
-        <dl className='grid gap-3 text-sm sm:grid-cols-2'>
-          <div>
-            <dt className='text-muted-foreground'>Provider date</dt>
-            <dd>{formatEvidenceDate(payout.occurredOn ?? payout.occurredAt)}</dd>
-          </div>
-          <div>
-            <dt className='text-muted-foreground'>Last imported</dt>
-            <dd>{formatEvidenceDate(payout.updatedAt)}</dd>
-          </div>
-          <div>
-            <dt className='text-muted-foreground'>Reported destination amount</dt>
-            <dd className='font-mono tabular-nums'>
+      {/* 🛑 The dates and the destination amount are CELLS here, not a `Details`
+          section under the grid. They were a `<dl>` of six rows that restated
+          what the three money cards above it already said, and a reader had to
+          cross a section border to compare a payout's amount with its date. Six
+          cells, two complete rows: the reconciliation story (reported, less
+          constituent, equals difference) on the first, what the provider filed
+          on the second. `MetricGrid` leaves a divider-coloured gap on a partial
+          row, so the count is deliberate. */}
+      <MetricGrid columns={3}>
+        <MetricCell
+          label='Reported payout'
+          icon={<Landmark className='size-4 text-muted-foreground' />}
+          value={
+            <span className='font-mono tabular-nums'>{sourceAmount(payout.sourceAmountMinor)}</span>
+          }
+          description='The amount independently reported by the provider'
+        />
+        <MetricCell
+          label='Constituent net'
+          icon={<FileCheck className='size-4 text-muted-foreground' />}
+          value={
+            <span className='font-mono tabular-nums'>
+              {payout.constituentNetMinor === null
+                ? 'Not assessed'
+                : sourceAmount(payout.constituentNetMinor)}
+            </span>
+          }
+          description='Processor activity, excluding the outgoing payout'
+        />
+        <MetricCell
+          label='Difference'
+          icon={<Scale className='size-4 text-muted-foreground' />}
+          value={
+            <span className='font-mono tabular-nums'>
+              {payout.differenceMinor === null
+                ? 'Not assessed'
+                : sourceAmount(payout.differenceMinor)}
+            </span>
+          }
+          description='Reported payout less constituent net; incomplete evidence cannot establish agreement'
+        />
+        <MetricCell
+          label='Reported destination'
+          icon={<Banknote className='size-4 text-muted-foreground' />}
+          value={
+            <span className='font-mono tabular-nums'>
               {formatEvidenceAmount(
                 payout.destinationAmountMinor,
                 payout.destinationCurrency,
                 payout.destinationCurrencyExponent
               )}
-            </dd>
-          </div>
-          <div>
-            <dt className='text-muted-foreground'>Bank confirmation</dt>
-            <dd>Not assessed</dd>
-          </div>
-        </dl>
-      </SettingsSection>
+            </span>
+          }
+          description='What the provider says landed, in the destination currency'
+        />
+        <MetricCell
+          label='Provider date'
+          icon={<CalendarClock className='size-4 text-muted-foreground' />}
+          value={formatEvidenceDate(payout.occurredOn ?? payout.occurredAt)}
+          description='When the provider filed the payout'
+        />
+        <MetricCell
+          label='Last imported'
+          icon={<Clock className='size-4 text-muted-foreground' />}
+          value={formatEvidenceDate(payout.updatedAt)}
+          description='When this evidence was last read from the source'
+        />
+      </MetricGrid>
 
-      <StatCards
-        columns={{ default: 'grid-cols-1', md: 'md:grid-cols-3' }}
-        cards={[
-          {
-            title: 'Reported payout',
-            icon: <Landmark className='size-4' />,
-            body: (
-              <span className='font-mono tabular-nums'>
-                {sourceAmount(payout.sourceAmountMinor)}
-              </span>
-            ),
-            description: 'The amount independently reported by the provider',
-          },
-          {
-            title: 'Constituent net',
-            icon: <FileCheck className='size-4' />,
-            body: (
-              <span className='font-mono tabular-nums'>
-                {payout.constituentNetMinor === null
-                  ? 'Not assessed'
-                  : sourceAmount(payout.constituentNetMinor)}
-              </span>
-            ),
-            description: 'Processor activity, excluding the outgoing payout',
-          },
-          {
-            title: 'Difference',
-            icon: <Scale className='size-4' />,
-            body: (
-              <span className='font-mono tabular-nums'>
-                {payout.differenceMinor === null
-                  ? 'Not assessed'
-                  : sourceAmount(payout.differenceMinor)}
-              </span>
-            ),
-            description:
-              'Reported payout less constituent net; incomplete evidence cannot establish agreement',
-          },
-        ]}
-      />
-
-      {(payout.blockers.length > 0 || payout.nextActions.length > 0) && (
-        <SettingsSection title='What needs attention'>
-          {payout.blockers.length > 0 && (
-            <Alert variant='warning'>
-              <AlertTitle>Evidence needs review</AlertTitle>
-              <AlertDescription>
-                <ul className='list-disc space-y-1 pl-4'>
-                  {payout.blockers.map((blocker) => (
-                    <li key={blocker}>{blocker}</li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
-          {payout.nextActions.length > 0 && (
-            <div className='text-sm'>
-              <p className='mb-2 font-medium'>Next actions</p>
+      {/* Not a `Section`, so it carries its own padding - see the drawer's 🛑. */}
+      <div className='flex flex-col gap-3 border-b p-3'>
+        {payout.blockers.length > 0 && (
+          <Alert variant='warning'>
+            <AlertTitle>Evidence needs review</AlertTitle>
+            <AlertDescription>
               <ul className='list-disc space-y-1 pl-4'>
-                {payout.nextActions.map((action) => (
-                  <li key={action}>{action}</li>
+                {payout.blockers.map((blocker) => (
+                  <li key={blocker}>{blocker}</li>
                 ))}
               </ul>
-            </div>
-          )}
-        </SettingsSection>
-      )}
+            </AlertDescription>
+          </Alert>
+        )}
+        {/* 🛑 No "Next actions" list. It restated the blockers as imperatives -
+            "10 entries have no matching customer movement" paired with "import
+            the related payment evidence, then refresh" - so every payout said
+            the same thing twice, once as a finding and once as an instruction,
+            and the instruction was generic enough to be true of every payout on
+            the page. The blocker is the sentence worth keeping. `nextActions`
+            is still on the DTO; nothing reads it now.
 
-      <SettingsSection
+            The line below is the two CONSTANTS the Details section used to
+            spend a labelled row each on. Neither varies by payout - they are
+            facts about the feature, not about this row - so they are one muted
+            sentence rather than two cells reading "Not assessed". */}
+        <p className='text-muted-foreground text-xs'>
+          Bank confirmation is not assessed, and settlement posting is not enabled for these
+          payouts.
+        </p>
+      </div>
+
+      <Section
         title='Processor activity'
-        description={`${payout.entryCount} imported entries. The outgoing payout is retained here and excluded from the constituent net.`}>
+        icon={<Receipt className='size-4' />}
+        secondary={`${payout.entryCount} imported`}
+        description='The outgoing payout is retained here and excluded from the constituent net.'
+        collapsible={false}>
         <ProcessorActivity transferId={payout.id} />
-      </SettingsSection>
+      </Section>
 
       <PayoutSourceHistory payoutId={payout.id} />
 
-      <CollapsedJson title='Provider details' value={payout.sourceObservation} />
+      <Section title='Provider details' icon={<Braces className='size-4' />} collapsible={false}>
+        <CollapsedJson title='Source observation' value={payout.sourceObservation} />
+      </Section>
     </>
   )
 }

@@ -16,6 +16,7 @@ export {
   getPayoutEvidence,
   listPayoutEvidence,
   listPayoutEvidenceHistory,
+  listPayoutSourceAccounts,
   listProcessorBalanceEntries,
   listRejectedProcessorEvidence,
 } from './evidence-reads'

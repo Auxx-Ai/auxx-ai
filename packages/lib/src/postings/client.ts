@@ -491,6 +491,8 @@ export {
   suggestAccountIdentities,
   validateProviderMapping,
 } from './suggest-account-identities'
+// The manual bucket's identity, for screens that render a source account and
+// have to tell the sentinel row apart from a connected one (`source-scope.ts`).
 export {
   type AccountIdentityRow,
   type AccountIdentityState,
@@ -506,6 +508,9 @@ export {
   type EntryPreview,
   type FailedExport,
   type GlPostingLineInput,
+  MANUAL_SOURCE_EXTERNAL_ID,
+  MANUAL_SOURCE_LABEL,
+  MANUAL_SOURCE_PROVIDER_KEY,
   NON_FAILURE_REFUSALS,
   POSTING_EXPORT_STATUSES,
   POSTING_STATUSES,

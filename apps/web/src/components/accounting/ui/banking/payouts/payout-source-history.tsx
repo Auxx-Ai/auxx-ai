@@ -3,12 +3,12 @@
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { CollapsedJson } from '@auxx/ui/components/collapsed-json'
+import { Section } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { History } from 'lucide-react'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
-import { SettingsSection } from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 import { formatEvidenceDate } from './evidence-format'
 
@@ -36,9 +36,11 @@ export function PayoutSourceHistory({ payoutId }: { payoutId: string }) {
     })
 
   return (
-    <SettingsSection
+    <Section
       title='Import history'
-      description='Each source page retains its original details. Current evidence completeness is shown above.'>
+      icon={<History className='size-4' />}
+      description='Each source page retains its original details. Current evidence completeness is shown above.'
+      collapsible={false}>
       {query.error && (
         <Alert variant='destructive'>
           <AlertTitle>Could not load import history</AlertTitle>
@@ -85,6 +87,6 @@ export function PayoutSourceHistory({ payoutId }: { payoutId: string }) {
           Load more history
         </Button>
       )}
-    </SettingsSection>
+    </Section>
   )
 }

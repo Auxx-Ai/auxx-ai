@@ -1,7 +1,8 @@
 // apps/web/src/components/accounting/ui/banking/payouts/payout-evidence-detail.test.tsx
 
+import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import { fireEvent, render, screen } from '@testing-library/react'
-import type { ComponentProps } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({
@@ -15,6 +16,13 @@ const state = vi.hoisted(() => ({
 
 vi.mock('next/link', () => ({
   default: (props: ComponentProps<'a'>) => <a {...props} />,
+}))
+
+// base-ui's scroll area calls `new IntersectionObserver(...)` on mount and the
+// shared jsdom setup stubs that as a plain function. Nothing here is about
+// scrolling.
+vi.mock('@auxx/ui/components/scroll-area', () => ({
+  ScrollArea: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
 
 vi.mock('~/trpc/react', () => ({
@@ -41,6 +49,7 @@ vi.mock('~/trpc/react', () => ({
 }))
 
 import { PayoutEvidenceDetail } from './payout-evidence-detail'
+import { PayoutEvidenceDrawer } from './payout-evidence-drawer'
 
 beforeEach(() => {
   state.detailError = null
@@ -53,6 +62,7 @@ beforeEach(() => {
     externalId: 'payout-123',
     externalAccountId: 'shop-123',
     providerKey: 'shopify_payments',
+    environment: 'live',
     sourceConnectionId: 'connector-123',
     status: 'paid',
     membershipState: 'incomplete',
@@ -87,19 +97,60 @@ beforeEach(() => {
   }
 })
 
+/** Every surface here sits inside the app's tooltip provider in production. */
+function withTooltips(ui: ReactNode) {
+  return render(<TooltipProvider>{ui}</TooltipProvider>)
+}
+
+function detail() {
+  return withTooltips(<PayoutEvidenceDetail payoutId='transfer-1' />)
+}
+
+/**
+ * Docked, which is how the Banking layout renders it — `DockableDrawer` then
+ * renders its children inline rather than through a vaul portal, so no stub is
+ * needed for the drawer itself.
+ */
+function drawer() {
+  return withTooltips(
+    <PayoutEvidenceDrawer
+      payoutId='transfer-1'
+      onOpenChange={vi.fn()}
+      isDocked
+      width={480}
+      onWidthChange={vi.fn()}
+    />
+  )
+}
+
 describe('payout evidence inspection', () => {
+  // 🛑 Asserted against the DRAWER, not the detail. The identity and the status
+  // badges live in `DrawerHeader` (task 50 §3.1) — rendering the body alone
+  // would prove nothing about what a person actually sees, and the point of the
+  // case is that three different "is it done" answers stay apart on one screen.
   it('keeps a paid provider status separate from incomplete evidence and bank confirmation', () => {
-    render(<PayoutEvidenceDetail payoutId='transfer-1' />)
+    drawer()
     expect(screen.getByText('Provider: paid')).toBeInTheDocument()
-    expect(screen.getByText('Evidence: incomplete')).toBeInTheDocument()
-    expect(screen.getByText('Provider pending')).toBeInTheDocument()
-    expect(screen.getAllByText('Not assessed')).toHaveLength(3)
-    expect(screen.getByText('Posting not enabled')).toBeInTheDocument()
+    // 🛑 The provider's own status is the ONLY badge. `Evidence: <state>` and
+    // the provider-readiness badge are gone on purpose: they printed an
+    // internal vocabulary, and "Provider ready" sat above a blockers list
+    // saying the opposite. Asserted as absent so neither comes back as chrome.
+    expect(screen.queryByText(/^Evidence:/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Provider pending')).not.toBeInTheDocument()
+    expect(screen.queryByText('Provider ready')).not.toBeInTheDocument()
+    // Two, not three: `Constituent net` and `Difference`. The third used to be
+    // a `Bank confirmation` row in a `Details` section, which is now one muted
+    // sentence with the posting constant - neither varies by payout.
+    expect(screen.getAllByText('Not assessed')).toHaveLength(2)
+    expect(
+      screen.getByText(/Bank confirmation is not assessed, and settlement posting is not enabled/)
+    ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /post|sync/i })).not.toBeInTheDocument()
     expect(screen.getByText('Membership fetch interrupted')).toBeInTheDocument()
-    expect(
-      screen.getByText('Run the payout stream again after the provider finishes processing.')
-    ).toBeInTheDocument()
+    // 🛑 The blocker survives; the "Next actions" list that restated it as an
+    // imperative does not. Asserted as absent so it does not come back.
+    expect(screen.queryByText(/Run the payout stream again/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Next actions')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open connector' })).toHaveAttribute(
       'href',
       '/app/connectors/connector-123'
@@ -109,7 +160,7 @@ describe('payout evidence inspection', () => {
   it('displays exact independent source amounts and a reported mismatch without rounding', () => {
     state.payout.constituentNetMinor = '9007199254741093'
     state.payout.differenceMinor = '-100'
-    render(<PayoutEvidenceDetail payoutId='transfer-1' />)
+    detail()
     expect(screen.getAllByText('USD 90,071,992,547,409.93')).toHaveLength(2)
     expect(screen.getByText('USD 90,071,992,547,410.93')).toBeInTheDocument()
     expect(screen.getByText('USD -1.00')).toBeInTheDocument()
@@ -123,6 +174,7 @@ describe('payout evidence inspection', () => {
         externalId: 'balance-1',
         providerKey: 'shopify_payments',
         externalAccountId: 'shop-123',
+        environment: 'live',
         type: 'payout',
         grossMinor: '-9700',
         feeMinor: '0',
@@ -138,7 +190,7 @@ describe('payout evidence inspection', () => {
         matchedMoneyTransactionId: null,
       },
     ]
-    render(<PayoutEvidenceDetail payoutId='transfer-1' />)
+    detail()
     expect(screen.getByText('Outgoing payout')).toBeInTheDocument()
     expect(screen.getByText('Not applicable')).toBeInTheDocument()
     expect(screen.queryByText(/An order reference alone/)).not.toBeInTheDocument()
@@ -148,14 +200,16 @@ describe('payout evidence inspection', () => {
 
   it('shows activity read failures instead of an empty payout', () => {
     state.entriesError = { message: 'Evidence temporarily unavailable' }
-    render(<PayoutEvidenceDetail payoutId='transfer-1' />)
+    detail()
     expect(screen.getByText(/Evidence temporarily unavailable/)).toBeInTheDocument()
     expect(screen.queryByText(/No processor activity has been imported/)).not.toBeInTheDocument()
   })
 
+  // Through the drawer, because the header is now the other place a stale
+  // payout could leak onto the screen: it reads the same query.
   it('shows a missing payout error without displaying stale evidence', () => {
     state.detailError = { message: 'Payout not found' }
-    render(<PayoutEvidenceDetail payoutId='transfer-1' />)
+    drawer()
     expect(screen.getByText(/Payout not found/)).toBeInTheDocument()
     expect(screen.queryByText('payout-123')).not.toBeInTheDocument()
   })

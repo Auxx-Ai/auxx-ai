@@ -1,6 +1,6 @@
 // packages/lib/src/money/payouts/evidence-reads.ts
 import { type Database, schema } from '@auxx/database'
-import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { BadRequestError, ConflictError } from '../../errors'
 import { exactEvidenceMinor } from './evidence-contracts'
@@ -8,6 +8,26 @@ import { matchProcessorEntries } from './match-entries'
 import { payoutRecordEvidenceSchema } from './record-contracts'
 
 type PageInput = { organizationId: string; limit: number; cursor?: string }
+/**
+ * Optional narrowing for the payout evidence list. Every filter is an extra
+ * `WHERE` term on the same keyset page, so paging is unaffected by them.
+ *
+ * ⚠️ No amount range, deliberately. `MoneyTransfer` carries a per-row
+ * `sourceCurrency` and `sourceCurrencyExponent`, so a single min/max across the
+ * list would compare 100 JPY against 100 USD against 100 EUR. The bank review
+ * queue can offer one only because it is pinned to a single display currency.
+ */
+type EvidenceFilters = {
+  /** `MoneyTransfer.externalId`, case-insensitive contains. Trimmed; blank is unset. */
+  search?: string
+  /** `FinancialSourceAccount.id` — narrows to one source account. */
+  sourceAccountId?: string
+  /** `MoneyTransfer.status`, exact. Omit for every status. */
+  status?: string
+  /** `YYYY-MM-DD`, inclusive. Both optional and independently usable. */
+  from?: string
+  to?: string
+}
 type Transfer = typeof schema.MoneyTransfer.$inferSelect
 type Account = Pick<
   typeof schema.FinancialSourceAccount.$inferSelect,
@@ -67,6 +87,10 @@ function transferDto(row: Transfer, account: Account, snapshot: unknown) {
     providerKey: account.providerKey,
     sourceAccountId: row.sourceAccountId,
     externalAccountId: account.externalAccountId,
+    // The third leg of `FinancialSourceAccount`'s identity tuple. Already
+    // selected for the drift check below; carried out so a badge can say `test`
+    // rather than letting a sandbox payout look like a real one.
+    environment: account.environment,
     status: row.status,
     sourceAmountMinor: row.sourceAmountMinor.toString(),
     sourceCurrency: row.sourceCurrency,
@@ -124,14 +148,41 @@ function transferQuery(db: Database) {
     )
 }
 
+/**
+ * The calendar day a transfer is filed under, whichever precision it arrived at.
+ *
+ * 🛑 A row never carries both dates. `MoneyTransfer_date_check` ties
+ * `datePrecision` to exactly one of `occurredOn` (a `date`) and `occurredAt` (a
+ * `timestamptz`), so ranging on `occurredOn` alone would drop every `instant`
+ * row out of every dated range — and a payout that vanishes from a date filter
+ * reads as missing evidence, not as a filtered row. Collapsing both to one UTC
+ * calendar day gives the range a single comparable value. `unknown` rows have
+ * neither date, so they fall outside a dated range by construction, which is
+ * the honest answer rather than a guessed one.
+ *
+ * Built per call rather than at module scope: under the unit-test config
+ * `@auxx/database` is mocked and schema columns are `undefined`, and nothing
+ * here should run at import time.
+ */
+const occurredDay = () =>
+  sql`COALESCE(${schema.MoneyTransfer.occurredOn}, (${schema.MoneyTransfer.occurredAt} AT TIME ZONE 'UTC')::date)`
+
 /** Read persisted assessments in one joined query; listing never reruns financial reconciliation. */
-export async function listPayoutEvidence(db: Database, input: PageInput) {
+export async function listPayoutEvidence(db: Database, input: PageInput & EvidenceFilters) {
   const limit = pageSize(input.limit)
+  const search = input.search?.trim()
   const rows = await transferQuery(db)
     .where(
       and(
         eq(schema.MoneyTransfer.organizationId, input.organizationId),
-        input.cursor ? lt(schema.MoneyTransfer.id, input.cursor) : undefined
+        input.cursor ? lt(schema.MoneyTransfer.id, input.cursor) : undefined,
+        search ? sql`${schema.MoneyTransfer.externalId} ILIKE ${`%${search}%`}` : undefined,
+        input.sourceAccountId
+          ? eq(schema.MoneyTransfer.sourceAccountId, input.sourceAccountId)
+          : undefined,
+        input.status ? eq(schema.MoneyTransfer.status, input.status) : undefined,
+        input.from ? sql`${occurredDay()} >= ${input.from}::date` : undefined,
+        input.to ? sql`${occurredDay()} <= ${input.to}::date` : undefined
       )
     )
     .orderBy(desc(schema.MoneyTransfer.id))
@@ -142,6 +193,44 @@ export async function listPayoutEvidence(db: Database, input: PageInput) {
       .map(({ transfer, account, snapshot }) => transferDto(transfer, account, snapshot)),
     nextCursor: rows.length > limit ? rows[limit - 1]!.transfer.id : null,
   }
+}
+
+/**
+ * The source accounts a payout picker may offer: only those with a
+ * `MoneyTransfer` behind them in this organization.
+ *
+ * Built from the transfers rather than from `FinancialSourceAccount` itself, so
+ * the picker cannot offer an account that answers with an empty list — a
+ * connected-but-never-synced account looks like a broken filter, not an empty
+ * one. Archived accounts stay listed while their payouts do; hiding the option
+ * would hide rows that are still in the list.
+ */
+export async function listPayoutSourceAccounts(
+  db: Database,
+  input: { organizationId: string }
+): Promise<
+  Array<{ id: string; providerKey: string; externalAccountId: string; environment: string }>
+> {
+  return db
+    .selectDistinct({
+      id: schema.FinancialSourceAccount.id,
+      providerKey: schema.FinancialSourceAccount.providerKey,
+      externalAccountId: schema.FinancialSourceAccount.externalAccountId,
+      environment: schema.FinancialSourceAccount.environment,
+    })
+    .from(schema.FinancialSourceAccount)
+    .innerJoin(
+      schema.MoneyTransfer,
+      and(
+        eq(schema.MoneyTransfer.organizationId, schema.FinancialSourceAccount.organizationId),
+        eq(schema.MoneyTransfer.sourceAccountId, schema.FinancialSourceAccount.id)
+      )
+    )
+    .where(eq(schema.FinancialSourceAccount.organizationId, input.organizationId))
+    .orderBy(
+      asc(schema.FinancialSourceAccount.providerKey),
+      asc(schema.FinancialSourceAccount.externalAccountId)
+    )
 }
 
 /** Inspect the current header and persisted assessment without loading all membership history. */
@@ -257,6 +346,7 @@ async function entryDtos(
       sourceAccountId: row.sourceAccountId,
       externalAccountId: account.externalAccountId,
       providerKey: account.providerKey,
+      environment: account.environment,
     }
   })
 }
@@ -517,6 +607,8 @@ export async function listRejectedProcessorEvidence(db: Database, input: PageInp
       rawEvidence: observation.payload,
       externalAccountId: account.externalAccountId,
       providerKey: account.providerKey,
+      environment: account.environment,
+      sourceAccountId: account.id,
     })),
     nextCursor: rows.length > limit ? rows[limit - 1]!.observation.id : null,
   }
