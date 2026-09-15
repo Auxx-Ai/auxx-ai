@@ -2,7 +2,10 @@
 'use client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { Skeleton } from '@auxx/ui/components/skeleton'
+import { CollapsedJson } from '@auxx/ui/components/collapsed-json'
+import { TreeRowSkeleton } from '@auxx/ui/components/tree-row'
+import { ShieldCheck } from 'lucide-react'
+import { EmptyState } from '~/components/global/empty-state'
 import { SettingsSection } from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 import { formatEvidenceDate } from './evidence-format'
@@ -25,9 +28,13 @@ export function RejectedProcessorEvidence() {
         </Alert>
       )}
       {query.isPending ? (
-        <Skeleton className='h-24 w-full' />
+        <div className='flex flex-col'>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <TreeRowSkeleton key={i} />
+          ))}
+        </div>
       ) : observations.length === 0 && !query.error ? (
-        <p className='text-muted-foreground text-sm'>No rejected source rows.</p>
+        <EmptyState icon={ShieldCheck} title='No rejected source rows' />
       ) : null}
       {observations.map((observation) => (
         <div key={observation.observationId} className='border-b pb-3 text-sm'>
@@ -40,12 +47,9 @@ export function RejectedProcessorEvidence() {
           <p className='mt-2 text-muted-foreground'>
             Correct the source evidence and import it again.
           </p>
-          <details className='mt-2'>
-            <summary className='cursor-pointer'>Source details</summary>
-            <pre className='mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-3 text-xs'>
-              {JSON.stringify(observation.rawEvidence, null, 2)}
-            </pre>
-          </details>
+          <div className='mt-2'>
+            <CollapsedJson title='Source details' value={observation.rawEvidence} />
+          </div>
         </div>
       ))}
       {query.hasNextPage && (

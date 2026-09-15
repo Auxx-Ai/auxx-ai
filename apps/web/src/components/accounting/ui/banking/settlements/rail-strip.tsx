@@ -1,4 +1,4 @@
-// apps/web/src/components/accounting/ui/banking/payouts/rail-strip.tsx
+// apps/web/src/components/accounting/ui/banking/settlements/rail-strip.tsx
 
 'use client'
 

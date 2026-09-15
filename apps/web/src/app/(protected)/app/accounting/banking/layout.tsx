@@ -3,7 +3,7 @@
 'use client'
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
-import { Banknote, FileUp, Inbox, Landmark, ListChecks } from 'lucide-react'
+import { Banknote, FileUp, HandCoins, Inbox, Landmark, ListChecks } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import {
   DockedPanelsOutletProvider,
@@ -52,8 +52,20 @@ const ACCOUNTING_BANKING: SidebarProps[] = [
         label: 'Payouts',
         slug: 'payouts',
         icon: <Banknote />,
-        description: 'What the card processor settled, and what it relieved from card clearing',
-        keywords: ['stripe', 'settlement', 'clearing', 'processor fees', 'unidentified'],
+        description: 'Payouts and processor activity as the provider reported them',
+        keywords: ['evidence', 'processor', 'unassigned', 'import issues'],
+      },
+      {
+        // Brief 49 §1, §2: what auxx POSTED from a payout, split out of the
+        // same folder so one sidebar entry no longer renders three page
+        // headers. `HandCoins` because `Landmark` is Deposits and `Banknote`
+        // is Payouts.
+        id: 'accounting-banking-settlements',
+        label: 'Settlements',
+        slug: 'settlements',
+        icon: <HandCoins />,
+        description: 'What each rail settled into the bank, and what it relieved from clearing',
+        keywords: ['settlement', 'clearing', 'processor fees', 'unidentified', 'rails'],
       },
       {
         // Slot 3D. The ingest path a vendor cannot switch off: the API reaches

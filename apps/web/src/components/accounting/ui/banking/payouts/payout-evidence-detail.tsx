@@ -5,6 +5,7 @@
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { CollapsedJson } from '@auxx/ui/components/collapsed-json'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { StatCards } from '@auxx/ui/components/stat-card'
 import { FileCheck, Landmark, Scale } from 'lucide-react'
@@ -169,12 +170,7 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
 
       <PayoutSourceHistory payoutId={payout.id} />
 
-      <details className='text-sm'>
-        <summary className='cursor-pointer font-medium'>Provider details</summary>
-        <pre className='mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-3 text-xs'>
-          {JSON.stringify(payout.sourceObservation, null, 2)}
-        </pre>
-      </details>
+      <CollapsedJson title='Provider details' value={payout.sourceObservation} />
     </>
   )
 }
