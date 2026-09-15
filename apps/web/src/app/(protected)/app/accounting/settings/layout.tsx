@@ -4,6 +4,7 @@
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import {
+  BookOpenCheck,
   Building2,
   CalendarClock,
   CreditCard,
@@ -26,12 +27,16 @@ import type { SidebarProps } from '~/constants/menu'
  * Costing folds into General: four sections in a two-column grid is exactly
  * `scheduling-settings-page.tsx`'s shape, so General is not overloaded.
  *
- * 🛑 `Connected system` is SECOND, not last (brief 27 §2). Opening balances
- * reads the provider's trial balance and Accounts maps the provider's chart -
- * both presuppose a connection, and putting the connection after the two pages
- * that depend on it reads as an afterthought. It is still not a setup gate:
- * `setup-readiness.ts` has no provider requirement and `P1` makes "nothing
- * connected" first class.
+ * `Posting` sits between General and Connected system (brief 28 §3): it is
+ * where the fulfillment mode and the payment routes moved to from General, and
+ * the one page that says what posts, when, and what changes it.
+ *
+ * `Connected system` comes right after that, not last (brief 27 §2). Opening
+ * balances reads the provider's trial balance and Accounts maps the provider's
+ * chart - both presuppose a connection, and putting the connection after the
+ * two pages that depend on it reads as an afterthought. It is still not a setup
+ * gate: `setup-readiness.ts` has no provider requirement and `P1` makes
+ * "nothing connected" first class.
  */
 const ACCOUNTING_SETTINGS: SidebarProps[] = [
   {
@@ -45,6 +50,14 @@ const ACCOUNTING_SETTINGS: SidebarProps[] = [
         slug: 'general',
         icon: <SlidersHorizontal />,
         description: 'Period, timezone, absorption rates and the standard-cost roll',
+      },
+      {
+        id: 'accounting-settings-posting',
+        label: 'Posting',
+        slug: 'posting',
+        icon: <BookOpenCheck />,
+        description: 'What posts to the ledger, when, and the settings that change it.',
+        keywords: ['automatic', 'schedule', 'fulfillment', 'payout', 'routes', 'bulk'],
       },
       {
         id: 'accounting-settings-provider',

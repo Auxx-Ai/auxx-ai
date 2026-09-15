@@ -188,7 +188,12 @@ export interface PaymentGatewayRow {
    */
   feeTreatment: PaymentGatewayFeeTreatmentValue
   status: PaymentGatewayStatusValue
-  /** `YYYY-MM-DD`, or null. Informational only - nothing in posting reads it. */
+  /**
+   * `YYYY-MM-DD`, or null. Informational only - nothing in posting reads it.
+   * Since brief 27 §6.5 the payout sync ADVANCES it after each entry it posts
+   * (`stampPaymentGatewayLastSettlement`), so it is a watermark per rail and no
+   * longer only hand-entered.
+   */
   lastSettlementAt: string | null
   /**
    * `YYYY-MM-DD`, or null. Informational only, exactly like

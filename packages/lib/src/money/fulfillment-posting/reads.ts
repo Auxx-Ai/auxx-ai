@@ -82,6 +82,7 @@ import {
   readFulfillmentsForOrder,
   readFulfillmentsForOrders,
 } from '../fulfillments'
+import { netLineTotalMinor, netUnitPriceMinor } from '../orders/client'
 import {
   type OrderFieldContext,
   readOrderTaxLines,
@@ -321,6 +322,11 @@ export async function readUnpostedShipments(
         // counts toward its own prior total - the same "1 PRECEDING" the old
         // window function enforced.
         let priorSubtotalMinor = 0
+        // And per line, the UNITS those same earlier shipments took, for the
+        // builder's cumulative allocation of each line's total (29 §12 item 6).
+        // Same predicate as the subtotal below, so the two priors describe the
+        // same set of shipments.
+        const priorShippedByLine = new Map<string, number>()
         for (const fulfillment of fulfillments) {
           // 🛑 A CANCELLED fulfillment is never posted. This is new state the
           // JSON log could not carry: the connector's old `deriveFulfillments`
@@ -337,6 +343,7 @@ export async function readUnpostedShipments(
               fulfillment,
               order,
               priorSubtotalMinor,
+              priorShippedByLine,
               lines,
               taxLinesByOrder.get(orderId) ?? []
             )
@@ -349,6 +356,12 @@ export async function readUnpostedShipments(
           // reversal never clears the stamp, so it still counts.
           if (live || fulfillment.glPosting !== null) {
             priorSubtotalMinor += fulfillment.subtotalMinor
+            for (const line of fulfillment.lines) {
+              priorShippedByLine.set(
+                line.lineItemId,
+                (priorShippedByLine.get(line.lineItemId) ?? 0) + line.quantity
+              )
+            }
           }
         }
       }
@@ -371,7 +384,11 @@ function buildShipment(
   fulfillment: Fulfillment,
   order: OrderFacts,
   priorShipmentsSubtotalMinor: number,
-  lineFacts: Map<string, Omit<UnpostedShipmentLine, 'lineId' | 'quantity'>>,
+  priorShippedByLine: ReadonlyMap<string, number>,
+  lineFacts: Map<
+    string,
+    Omit<UnpostedShipmentLine, 'lineId' | 'quantity' | 'priorShippedQuantity'>
+  >,
   taxLines: readonly { title: string; priceMinor: number }[]
 ): UnpostedShipment | null {
   const shippedAt = toCalendarDay(fulfillment.shippedAt)
@@ -390,6 +407,7 @@ function buildShipment(
       lineId: line.lineItemId,
       quantity: line.quantity,
       ...(lineFacts.get(line.lineItemId) ?? UNKNOWN_LINE),
+      priorShippedQuantity: priorShippedByLine.get(line.lineItemId) ?? 0,
     })),
     channel: order.channel,
     currency: order.currency,
@@ -604,7 +622,8 @@ const UNKNOWN_LINE = {
   unitPriceMinor: 0,
   lineTaxMinor: null,
   orderedQuantity: 0,
-} satisfies Omit<UnpostedShipmentLine, 'lineId' | 'quantity'>
+  lineTotalMinor: null,
+} satisfies Omit<UnpostedShipmentLine, 'lineId' | 'quantity' | 'priorShippedQuantity'>
 
 /** One order's facts, as the shipments on it need them. */
 interface OrderFacts {
@@ -690,8 +709,13 @@ async function readLineFacts(
   organizationId: string,
   ctx: OrderFieldContext,
   lineIds: string[]
-): Promise<Map<string, Omit<UnpostedShipmentLine, 'lineId' | 'quantity'>>> {
-  const facts = new Map<string, Omit<UnpostedShipmentLine, 'lineId' | 'quantity'>>()
+): Promise<
+  Map<string, Omit<UnpostedShipmentLine, 'lineId' | 'quantity' | 'priorShippedQuantity'>>
+> {
+  const facts = new Map<
+    string,
+    Omit<UnpostedShipmentLine, 'lineId' | 'quantity' | 'priorShippedQuantity'>
+  >()
   if (lineIds.length === 0) return facts
 
   const fieldIds = Object.values(ctx.line)
@@ -706,15 +730,36 @@ async function readLineFacts(
       return field ? bucket?.get(field.id)?.[0] : undefined
     }
     const taxTotal = cell('line_item_tax_total')?.valueNumber
+    const netTotal = cell('line_item_net_total')?.valueNumber
+    const lineTotal = cell('line_item_line_total')?.valueNumber
+    const totals = {
+      netTotalMinor: netTotal == null ? null : amount(netTotal),
+      lineTotalMinor: lineTotal == null ? null : amount(lineTotal),
+    }
+    const orderedQuantity = cell('line_item_qty')?.valueNumber ?? 0
     facts.set(lineId, {
-      // 🛑 A RATE, left unrounded. `extendRateToAmount` in the builder is the
-      // one boundary that turns a rate into an amount.
-      unitPriceMinor: cell('line_item_unit_price')?.valueNumber ?? 0,
+      // 🛑 The line NET per unit, never `line_item_unit_price` on its own: that
+      // is the PRE-discount price, and `line_item_net_total` is what the
+      // customer was actually charged for the line (29 §1.7, §2.3), with the
+      // gross `line_item_line_total` as the fallback for a line that has no
+      // net yet. An absent total of either kind falls back to the price; a
+      // zero total is a fully discounted line and stays zero. A RATE, left
+      // unrounded - `extendRateToAmount` in the builder is the one boundary
+      // that turns a rate into an amount.
+      unitPriceMinor: netUnitPriceMinor({
+        ...totals,
+        unitPriceMinor: cell('line_item_unit_price')?.valueNumber,
+        orderedQuantity,
+      }),
+      // The whole line's NET travels too (the same column the rate came from),
+      // so the builder can allocate it by units across a split line instead of
+      // extending a fractional rate (29 §12 item 6).
+      lineTotalMinor: netLineTotalMinor(totals),
       // 🛑 `?? null`, never `?? 0`: an absent row means the channel said
       // nothing about this line's tax, which is what makes the builder allocate
       // the order's total instead of trusting a zero (48 §8.2).
       lineTaxMinor: taxTotal == null ? null : amount(taxTotal),
-      orderedQuantity: cell('line_item_qty')?.valueNumber ?? 0,
+      orderedQuantity,
       name: cell('line_item_name')?.valueText ?? undefined,
     })
   }

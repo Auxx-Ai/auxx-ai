@@ -96,3 +96,114 @@ export function computeDocumentTotals(
 
   return { subtotal, discountAmount, taxTotal, total }
 }
+
+/** A line's total is in the header discount's base when it contributes to the subtotal. */
+function contributes(line: LineForTotals): line is LineForTotals & { lineTotal: number } {
+  return (
+    line.lineTotal !== null &&
+    line.lineTotal > 0 &&
+    !(line.optional === true && line.optionalSelected === false)
+  )
+}
+
+/**
+ * Push a header discount DOWN onto the lines, pro rata by line total, so that
+ * Σ net line totals is the discounted subtotal to the cent. The input
+ * `lineTotal` is the GROSS (`line_item_line_total`); the output `lineTotal` is
+ * the NET the `order` spec stores in `line_item_net_total` (29 §2.3). The
+ * gross column itself is never rewritten.
+ *
+ * Largest remainder: each contributing line takes the floor of its exact share
+ * (`discountAmount x lineTotal / subtotal`), and the cents the floors leave
+ * over go one each to the lines with the largest fractional parts, earliest
+ * line first on a tie. So 100.00 and 50.00 with 7.00 off split 4.67 / 2.33
+ * (exact shares 4.666 / 2.333, the odd cent to the first) and net to
+ * 95.33 / 47.67, which is 143.00 exactly. A percent discount that divides
+ * evenly, 10% off the same two lines, is 90.00 / 45.00 with nothing to hand
+ * out.
+ *
+ * Lines that do not contribute to the subtotal - unpriced (`null`), zero, or a
+ * deselected option - carry no share and come back as they went in. The
+ * discount itself is `computeDocumentTotals`' own figure (percent of the
+ * subtotal or a flat amount, clamped to `[0, subtotal]`), so the two never
+ * disagree about how much is being allocated.
+ *
+ * Generic over the line shape so a caller's own fields (an instance id, the
+ * stored total) survive the round trip.
+ *
+ * @see plans/accounting/tasks/29-clearing-at-the-payment-date.md §12 item 7
+ */
+export function allocateDiscountToLines<L extends LineForTotals>(
+  lines: L[],
+  billing: Pick<DocumentBillingInputs, 'discountType' | 'discountValue'>
+): { lines: L[]; discountAmount: number } {
+  const subtotal = roundCents(
+    lines.reduce((sum, line) => (contributes(line) ? sum + line.lineTotal : sum), 0)
+  )
+  const discountAmount = computeDiscountAmount(
+    subtotal,
+    billing.discountType,
+    billing.discountValue
+  )
+  if (discountAmount === 0 || subtotal <= 0) return { lines: [...lines], discountAmount }
+
+  const shares = lines.map((line) => {
+    if (!contributes(line)) return null
+    const exact = (discountAmount * line.lineTotal) / subtotal
+    const floor = Math.floor(exact)
+    return { floor, fraction: exact - floor }
+  })
+  let remainder = discountAmount - shares.reduce((sum, share) => sum + (share?.floor ?? 0), 0)
+
+  // The odd cents, to the largest fractional parts first. A stable sort on the
+  // index keeps a tie deterministic: the earlier line takes the cent.
+  const byFraction = shares
+    .map((share, index) => ({ share, index }))
+    .filter((entry) => entry.share !== null)
+    .sort((a, b) => (b.share?.fraction ?? 0) - (a.share?.fraction ?? 0) || a.index - b.index)
+  const bumped = new Set<number>()
+  for (const entry of byFraction) {
+    if (remainder <= 0) break
+    bumped.add(entry.index)
+    remainder--
+  }
+
+  return {
+    discountAmount,
+    lines: lines.map((line, index) => {
+      const share = shares[index]
+      if (share === null || share === undefined || !contributes(line)) return line
+      const allocated = share.floor + (bumped.has(index) ? 1 : 0)
+      return { ...line, lineTotal: line.lineTotal - allocated }
+    }),
+  }
+}
+
+/**
+ * {@link computeDocumentTotals} for a document whose header discount lives ON
+ * THE LINES: the discount is allocated first ({@link allocateDiscountToLines}),
+ * and the totals are then computed over the NET lines with no header discount
+ * left to subtract. `discountAmount` still reports what was allocated, so a
+ * footer can show it.
+ *
+ * The consequence, and the reason this exists: `subtotal` is Σ net line totals,
+ * the tax base is the net taxable lines directly (no `(1 - discount/subtotal)`
+ * factor, because the discount is already in the lines), and
+ * `total = subtotal + tax + shipping`. That is the shape a connector-synced
+ * order already has - Shopify's `subtotal_price` is net of every discount and
+ * its `line_item_net_total` carries each line's allocations - so a native
+ * order with a header discount stops being the one document family whose
+ * Σ line nets differs from its subtotal (29 §1.7, §2.3, §12 item 7).
+ */
+export function computeAllocatedDocumentTotals<L extends LineForTotals>(
+  lines: L[],
+  billing: DocumentBillingInputs
+): { totals: DocumentTotals; lines: L[] } {
+  const allocated = allocateDiscountToLines(lines, billing)
+  const totals = computeDocumentTotals(allocated.lines, {
+    ...billing,
+    discountType: null,
+    discountValue: null,
+  })
+  return { totals: { ...totals, discountAmount: allocated.discountAmount }, lines: allocated.lines }
+}

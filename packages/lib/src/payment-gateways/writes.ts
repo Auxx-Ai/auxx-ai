@@ -80,6 +80,15 @@ export interface ArchivePaymentGatewayInput {
   paymentGatewayId: string
 }
 
+/** What `stampPaymentGatewayLastSettlement` accepts. */
+export interface StampPaymentGatewayLastSettlementInput {
+  organizationId: string
+  actorUserId: string
+  paymentGatewayId: string
+  /** `YYYY-MM-DD`: the paid-at date of the payout that just posted. */
+  settledAt: string
+}
+
 /**
  * Add a gateway by hand.
  *
@@ -289,6 +298,55 @@ export async function archivePaymentGateway(
     },
     'Failed to close payment gateway',
     { organizationId, paymentGatewayId }
+  )
+}
+
+/**
+ * Advance a rail's `lastSettlementAt` watermark to `settledAt`, when that is
+ * later than what the record holds
+ * (`plans/accounting/tasks/27-a-settlement-from-anywhere.md` §6.5).
+ *
+ * The payout source calls this after each entry it posts, which is the "real
+ * write moment" brief 26 §6 owed for this field - until now it was hand-entered
+ * and nothing derived it. Monotonic: a re-run over an older payout, or a source
+ * that lists oldest-first and is interrupted, can never move the watermark
+ * BACK, so `advanced: false` is an ordinary answer and not a fault.
+ *
+ * A `YYYY-MM-DD` string compares as a date, which is why no `Date` is parsed
+ * here; anything else is refused rather than coerced.
+ */
+export async function stampPaymentGatewayLastSettlement(
+  db: Database,
+  input: StampPaymentGatewayLastSettlementInput
+): Promise<Result<{ advanced: boolean }, Error>> {
+  const { organizationId, actorUserId, paymentGatewayId, settledAt } = input
+  return guard(
+    async () => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(settledAt)) {
+        throw new BadRequestError(`"${settledAt}" is not a YYYY-MM-DD date`)
+      }
+
+      const ctx = await requirePaymentGatewayFieldContext(organizationId)
+      // A closed rail still settles its last payouts, so archived rows are read too.
+      const existing = await getPaymentGateway(db, organizationId, paymentGatewayId, {
+        includeArchived: true,
+      })
+      if (existing.isErr()) throw existing.error
+      if (!existing.value) {
+        throw new NotFoundError(`Payment gateway ${paymentGatewayId} was not found`)
+      }
+
+      const held = existing.value.lastSettlementAt
+      if (held && held >= settledAt) return { advanced: false }
+
+      const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
+      await crud.update(toRecordId(ctx.paymentGatewayDefId, paymentGatewayId), {
+        payment_gateway_last_settlement_at: settledAt,
+      })
+      return { advanced: true }
+    },
+    'Failed to stamp payment gateway last settlement',
+    { organizationId, paymentGatewayId, settledAt }
   )
 }
 

@@ -14,6 +14,7 @@ import { migration153FulfillmentLines } from './migrations/153-fulfillment-lines
 import { migration154Returns } from './migrations/154-returns'
 import { migration155ReturnInboundTrackingMulti } from './migrations/155-return-inbound-tracking-multi'
 import { migration156PaymentGatewayFeeTreatment } from './migrations/156-payment-gateway-fee-treatment'
+import { migration157PayoutRailAndOrderPaymentFields } from './migrations/157-payout-rail-and-order-payment-fields'
 import { migration159VendorBillLineVendorCode } from './migrations/159-vendor-bill-line-vendor-code'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
@@ -96,6 +97,16 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // options arrive with the field, because a select seeded without them renders
   // blank (plans/accounting/tasks/26-a-clearing-account-per-rail.md §10).
   migration156PaymentGatewayFeeTreatment,
+  // Two halves that skip independently, in one id: two relationship pairs
+  // across THREE existing defs in one field map plus a select stamped onto every
+  // existing payout (the widen-and-link shape,
+  // plans/accounting/tasks/27-a-settlement-from-anywhere.md §6.1), and three
+  // fields on the order def with NOTHING stamped (the pure widen shape; the paid
+  // date of an existing order is not knowable from anything the platform holds,
+  // plans/accounting/tasks/29-clearing-at-the-payment-date.md §4.3). Supersedes
+  // the two same-day drafts 157-payout-rail-and-source and
+  // 158-order-payment-stamp-and-paid-fields.
+  migration157PayoutRailAndOrderPaymentFields,
   // One TEXT field on `vendor_bill_line`, nothing stamped: the pure widen
   // shape (plans/money/tasks/58-vendor-bill-from-the-invoice.md §7.1). The
   // vendor's own printed code for the line, never the same field as the

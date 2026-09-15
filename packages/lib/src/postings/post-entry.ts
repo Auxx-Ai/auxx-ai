@@ -1027,6 +1027,9 @@ async function claimPeriod(
             ...line.resolved,
           })),
           assertions: input.assertions,
+          // The builder's per-line "why", frozen beside `sources` (brief 28
+          // §5). Only builders with a fork emit one; everything else is absent.
+          reasons: entry.reasons,
         }),
         requestId,
         // A reversal names its original in the INSERT. `GlPosting_reversal_check`

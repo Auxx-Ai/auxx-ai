@@ -12,6 +12,7 @@ import { useLedgerSidebarStore } from '~/components/accounting/stores/ledger-sid
 import { BooksGroup } from './books-group'
 import { CloseMonthGroup } from './close-month-group'
 import { RailFeesGroup } from './rail-fees-group'
+import { ThisMonthGroup } from './this-month-group'
 
 interface LedgerSidebarProps {
   periodLabel: string
@@ -117,6 +118,12 @@ export function LedgerSidebar({
         currencyCode={currencyCode}
         bookTimeZone={bookTimeZone}
       />
+
+      {/* The fourth group: what posted this month, per type, as a fact (brief
+          28 §6). Gated on a month like the rails, since every number in it is
+          about one month. It runs its own read; the month key is its only
+          input. */}
+      {hasPeriod && <ThisMonthGroup monthKey={periodKey} />}
     </ModuleSidebar>
   )
 }

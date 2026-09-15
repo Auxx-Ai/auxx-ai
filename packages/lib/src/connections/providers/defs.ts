@@ -265,6 +265,10 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       'write_products',
       'read_inventory',
       'write_inventory',
+      // Shopify Payments payouts and balance transactions, read by the payout sync
+      // (brief 27 §5). Adding a scope forces merchant re-consent on the next connect;
+      // the row reaches the database through `ensurePlatformProviders` (reseed).
+      'read_shopify_payments_payouts',
     ],
     systemClientIdEnv: 'SHOPIFY_CLIENT_ID',
     systemClientSecretEnv: 'SHOPIFY_CLIENT_SECRET',

@@ -46,9 +46,12 @@ describe('migration 156 registration', () => {
     expect(numbers.filter((n) => n === '156')).toHaveLength(1)
   })
 
-  it('claims the next free number, not a retired one', () => {
+  it('claims a number past the retired range', () => {
+    // Was `Math.max(...) === 156` - true for exactly as long as 156 was the
+    // newest migration. 157 is the one that made it a one-shot assertion.
+    expect(Number(MIGRATION_ID.split('-')[0])).toBeGreaterThan(150)
     const numbers = ALL_DATA_MIGRATIONS.map((m) => Number(m.id.split('-')[0]))
-    expect(Math.max(...numbers)).toBe(156)
+    expect(numbers).toContain(156)
   })
 
   it('carries the id the module exports', () => {

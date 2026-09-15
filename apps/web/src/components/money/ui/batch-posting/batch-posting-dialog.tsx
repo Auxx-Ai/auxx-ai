@@ -36,10 +36,17 @@
 // that changes identity between renders, or building one inside a component,
 // breaks the rules of hooks. Every registration is a `const` at module scope.
 
+import {
+  BATCH_POSTING_GROUPING_SETTING_OPTIONS,
+  CREDIT_MEMO_GROUPING_SETTING_KEY,
+  FULFILLMENT_GROUPING_SETTING_KEY,
+} from '@auxx/lib/money/client'
 import type { MonthRangeValue } from '@auxx/ui/components/month-range-picker'
 import { toastError } from '@auxx/ui/components/toast'
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { formatMinor } from '~/components/accounting/ui/ledger/format'
+import { PostingGuideDialog } from '~/components/accounting/ui/settings/posting-guide-dialog'
+import { guidePageForSource } from '~/components/accounting/ui/settings/posting-page-model'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { useSettings } from '~/hooks/use-settings'
@@ -71,15 +78,24 @@ import type {
 import { usePostableMonths } from './use-postable-months'
 
 /**
- * How much one posting summarises.
- *
- * Entity-neutral, so it lives in the frame; WHICH of them a source offers is on
- * the descriptor (§5.1). A total `Record` over the closed union, so a third
- * grouping stops this file compiling rather than rendering an empty option.
+ * What each grouping is called: the same list the two `accounting.*Grouping`
+ * settings render on the Posting page (brief 28 §3.1), so the dialog and the
+ * setting row can never offer different words for the same day or month.
  */
-const GROUPING_LABELS: Record<BatchPostingGrouping, string> = {
-  day: 'One entry per day',
-  month: 'One entry per month',
+function groupingLabel(value: BatchPostingGrouping): string {
+  return (
+    BATCH_POSTING_GROUPING_SETTING_OPTIONS.find((option) => option.value === value)?.label ?? value
+  )
+}
+
+/**
+ * The org setting each source opens on (brief 28 §3.1): the dialog starts on
+ * the organisation's default grouping and may change it for one run. Keyed on
+ * `sourceKey`; a source with no setting here opens on its own `defaultGrouping`.
+ */
+const GROUPING_SETTING_KEY_BY_SOURCE: Readonly<Record<string, string>> = {
+  fulfillment: FULFILLMENT_GROUPING_SETTING_KEY,
+  credit_memo: CREDIT_MEMO_GROUPING_SETTING_KEY,
 }
 
 interface BatchPostingDialogProps<
@@ -106,8 +122,22 @@ export function BatchPostingDialog<
   onOpenChange,
   onCompleted,
 }: BatchPostingDialogProps<Plan, Summary, Exclusion, Options>) {
+  const { getSetting } = useSettings({})
+  const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
+
+  // The organisation's default grouping for this source, when it has one and
+  // the source offers it; otherwise the descriptor's own default.
+  const settingKey = GROUPING_SETTING_KEY_BY_SOURCE[source.sourceKey]
+  const storedGrouping = settingKey ? (getSetting(settingKey) as string | null) : null
+  const initialGrouping: BatchPostingGrouping = source.groupings.includes(
+    storedGrouping as BatchPostingGrouping
+  )
+    ? (storedGrouping as BatchPostingGrouping)
+    : source.defaultGrouping
+
   const [page, setPage] = useState<'plan' | 'result'>('plan')
-  const [grouping, setGrouping] = useState<BatchPostingGrouping>(source.defaultGrouping)
+  const [grouping, setGrouping] = useState<BatchPostingGrouping>(initialGrouping)
+  const [guideOpen, setGuideOpen] = useState(false)
   // The source's own extra request state (§5.5's third axis). `undefined` for a
   // source that declares no options slot, which is every field it ever sees.
   const [options, setOptions] = useState<Options>(() => source.options?.defaultValue as Options)
@@ -118,9 +148,6 @@ export function BatchPostingDialog<
   }))
   const [result, setResult] = useState<Summary | null>(null)
 
-  const { getSetting } = useSettings({})
-  const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
-
   const { months, selectable, isLoading: monthsLoading } = usePostableMonths()
 
   // A fresh dialog on every open. A range somebody abandoned yesterday would
@@ -128,14 +155,14 @@ export function BatchPostingDialog<
   useEffect(() => {
     if (!open) return
     setPage('plan')
-    setGrouping(source.defaultGrouping)
+    setGrouping(initialGrouping)
     setMonthRange(null)
     setDayRange({ from: startOfLastMonthDayKey(), to: todayDayKey() })
     // 🛑 The options reset with it. An option that changes what the run WRITES
     // is opt-in on every open, never inherited from the last time.
     setOptions(source.options?.defaultValue as Options)
     setResult(null)
-  }, [open, source.defaultGrouping, source.options])
+  }, [open, initialGrouping, source.options])
 
   // Derived rather than seeded: the period list is a query, so the month a
   // `useState` initialiser could name would be a month nothing had loaded yet.
@@ -183,7 +210,7 @@ export function BatchPostingDialog<
   }, [gatewaysQuery.data])
 
   const groupingOptions = useMemo(
-    () => source.groupings.map((value) => ({ value, label: GROUPING_LABELS[value] })),
+    () => source.groupings.map((value) => ({ value, label: groupingLabel(value) })),
     [source.groupings]
   )
 
@@ -221,8 +248,19 @@ export function BatchPostingDialog<
       description={source.description}
       page={page}
       onBackToPlan={() => setPage('plan')}
+      onHelp={() => setGuideOpen(true)}
       planBody={
         <>
+          {/* The posting guide on this source's page (brief 28 §4). Rendered
+              inside the shell so it stacks over the dialog that opened it. */}
+          {guideOpen && (
+            <PostingGuideDialog
+              open={guideOpen}
+              onOpenChange={setGuideOpen}
+              initialPage={guidePageForSource(source.sourceKey)}
+            />
+          )}
+
           <BatchDialogPanel resizeId='batch-posting'>
             {/* 🛑 Frequency FIRST (§6.2). The range control below is chosen by
                 this answer. */}
@@ -232,7 +270,7 @@ export function BatchPostingDialog<
               options={groupingOptions}
               value={grouping}
               onChange={setGrouping}
-              fallback={source.defaultGrouping}
+              fallback={initialGrouping}
               disabled={runner.isPending}
             />
 

@@ -60,8 +60,20 @@ export type FulfillmentDebitRole = 'clearing_card' | 'accounts_receivable' | 'ga
  * "a gateway does not get a role").
  */
 export type FulfillmentDebit =
-  | { role: Exclude<FulfillmentDebitRole, 'gateway'> }
-  | { glAccountId: string }
+  | { role: Exclude<FulfillmentDebitRole, 'gateway'>; reason?: string }
+  | { glAccountId: string; reason?: string }
+
+/**
+ * Why the debit fork chose what it chose, as a predicate on the order(s) it
+ * describes (brief 28 §5). Optional so a hand-built debit and every caller that
+ * predates the field are unaffected; `resolveFulfillmentDebit` always sets it.
+ *
+ * Phrased to follow a subject: the builder prefixes `Order #2003 ` on a
+ * per-order receivable line and `41 orders ` on a summarised one, so a sentence
+ * reads *"41 orders paid through shopify_payments, which no gateway record
+ * claims, so the card clearing fallback."*
+ */
+export type FulfillmentDebitReason = string
 
 /**
  * Why a shipment in the range produces no posting.
@@ -101,6 +113,21 @@ export interface UnpostedShipmentLine {
   lineTaxMinor: number | null
   /** `line_item_qty`, so a partial-line shipment can scale `lineTaxMinor`. */
   orderedQuantity: number
+  /**
+   * `line_item_line_total` for the WHOLE line, integer minor units, or null
+   * when the line carries none. With `orderedQuantity` and
+   * `priorShippedQuantity` the builder allocates the line total cumulatively
+   * by units, so a fractional net rate (181 over 2) still sums to the line
+   * across its shipments (29 §12 item 6). Absent falls back to extending
+   * `unitPriceMinor`.
+   */
+  lineTotalMinor?: number | null
+  /**
+   * Units of this line shipped by EARLIER fulfillments of the order that
+   * recognised revenue - the same live-or-posted rule
+   * `priorShipmentsSubtotalMinor` follows. `0` on the first shipment.
+   */
+  priorShippedQuantity?: number
   name?: string
 }
 
@@ -190,6 +217,13 @@ export interface ShipmentAmounts {
    * roles.
    */
   debitGlAccountId?: string
+  /**
+   * The fork's reason for `debitRole` / `debitGlAccountId`, carried from
+   * `resolveFulfillmentDebit` through `computeShipmentAmounts` so the batch
+   * builder can write it onto the debit line per account, with an order count
+   * (brief 28 §5). Absent when the caller passed a bare role.
+   */
+  debitReason?: FulfillmentDebitReason
   subtotalMinor: number
   taxMinor: number
   /**
@@ -292,3 +326,11 @@ export const FULFILLMENT_BATCH_SOURCE_TYPE = 'fulfillment_batch'
 export type FulfillmentPostingMode = 'manual' | 'auto'
 export const FULFILLMENT_POSTING_MODES: readonly FulfillmentPostingMode[] = ['manual', 'auto']
 export const FULFILLMENT_POSTING_SETTING_KEY = 'accounting.fulfillmentPosting'
+
+/**
+ * `accounting.fulfillmentGrouping` (accounting brief 28 §3.1): the grouping the
+ * posting dialog opens on. A default, not a rule - the dialog may change it for
+ * one run, and the `auto` lane posts per day regardless (see
+ * `jobs/money/fulfillment-posting-job.ts`).
+ */
+export const FULFILLMENT_GROUPING_SETTING_KEY = 'accounting.fulfillmentGrouping'

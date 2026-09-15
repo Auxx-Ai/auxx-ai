@@ -11,10 +11,14 @@ import type { FieldOptions } from '../custom-fields/field-options'
 // copy of the three destinations would let a form offer a value the resolver
 // does not recognise, which falls back silently.
 import { PAYMENT_ROUTE_SETTING_OPTIONS } from '../money/bank-deposits/route'
-// Same rule for `accounting.fulfillmentPosting`: the two modes are declared once,
-// beside the mode union the runner reads, rather than restated here. The list is
-// in its own client-safe file because the READER (`auto.ts`) enqueues a BullMQ
-// job and this catalog is imported by the settings form.
+// The same one-list rule for the two default groupings and the credit memo mode
+// (accounting brief 28 §3.1), and for `accounting.fulfillmentPosting`: each value
+// list is declared once, beside the union its reader reads, rather than restated
+// here. The lists live in their own client-safe files because the READERS (the
+// two `auto.ts` modules) enqueue BullMQ jobs and this catalog is imported by the
+// settings form.
+import { BATCH_POSTING_GROUPING_SETTING_OPTIONS } from '../money/batch-posting/setting-options'
+import { CREDIT_MEMO_POSTING_SETTING_OPTIONS } from '../money/credit-memo-posting/setting-options'
 import { FULFILLMENT_POSTING_SETTING_OPTIONS } from '../money/fulfillment-posting/setting-options'
 import type { SettingScope, SettingValue } from './types'
 
@@ -980,6 +984,55 @@ export const SETTINGS_CATALOG = {
       'When a shipment becomes a ledger entry. Automatic posts one fulfillment entry per ship ' +
       'day after every connector sync; manual waits for the posting dialog, where the preview ' +
       'is the review.',
+  },
+  // The grouping the fulfillment posting dialog opens on (accounting brief 28
+  // §3.1). A default, not a rule: the dialog may change it for one run, and the
+  // `auto` lane above posts per day regardless. Editable at any time for the
+  // same reason the mode is.
+  'accounting.fulfillmentGrouping': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'day',
+    options: { options: [...BATCH_POSTING_GROUPING_SETTING_OPTIONS] },
+    description:
+      'How many shipments one fulfillment entry summarises when the posting dialog opens. ' +
+      'The dialog can change it for a single run.',
+  },
+
+  // When a channel credit memo reaches the ledger (accounting brief 28 §3.1).
+  //
+  // Native memos post on issue and are not governed by this. Channel memos
+  // arrive from a connector as drafts and post only through the bulk dialog, or
+  // - with `auto` - through the same run after every sync, which also ISSUES
+  // those drafts. `manual` is the default for the reason the fulfillment mode
+  // gives, and one more: `auto` here flips document state, not only the ledger.
+  // Changing it runs nothing; it takes effect at the next sync.
+  'accounting.creditMemoPosting': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'manual',
+    options: { options: [...CREDIT_MEMO_POSTING_SETTING_OPTIONS] },
+    description:
+      'When a channel credit memo becomes a ledger entry. Automatic issues and posts one ' +
+      'credit memo entry per issue day after every connector sync; manual waits for the ' +
+      'posting dialog, where the preview is the review. Native memos post on issue either way.',
+  },
+  // `month`, not `day` like fulfillments: brief 25 §6 chose one entry per
+  // month for channel memos and the dialog opened on month before this setting
+  // existed (brief 28 §10 decision 6). The `auto` lane posts per day regardless
+  // of this value; a month entry re-minted after every sync would be one
+  // attempt-suffixed entry per sync.
+  'accounting.creditMemoGrouping': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'month',
+    options: { options: [...BATCH_POSTING_GROUPING_SETTING_OPTIONS] },
+    description:
+      'How many credit memos one entry summarises when the posting dialog opens. The dialog ' +
+      'can change it for a single run.',
   },
 
   // The frozen auxx.ai snapshot: the December 31 physical count valued at

@@ -1,7 +1,13 @@
 // packages/lib/src/money/totals.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { computeDocumentTotals, computeLineTotal, roundCents } from './totals'
+import {
+  allocateDiscountToLines,
+  computeAllocatedDocumentTotals,
+  computeDocumentTotals,
+  computeLineTotal,
+  roundCents,
+} from './totals'
 import type { LineForTotals } from './types'
 
 // All amounts are integer cents (the FieldType.CURRENCY storage convention) —
@@ -294,5 +300,167 @@ describe('computeDocumentTotals — optional lines (money plan 18)', () => {
     const result = computeDocumentTotals(lines, {})
     expect(result.subtotal).toBe(8000)
     expect(result.total).toBe(8000)
+  })
+})
+
+describe('allocateDiscountToLines (29 §12 item 7)', () => {
+  const two: LineForTotals[] = [
+    { lineTotal: 10_000, taxable: true },
+    { lineTotal: 5_000, taxable: true },
+  ]
+
+  it('splits a percent discount that divides evenly, with nothing left to hand out', () => {
+    const { lines, discountAmount } = allocateDiscountToLines(two, {
+      discountType: 'percent',
+      discountValue: 10,
+    })
+    expect(discountAmount).toBe(1_500)
+    expect(lines.map((line) => line.lineTotal)).toEqual([9_000, 4_500])
+  })
+
+  it('hands the odd cent of a flat discount to the largest fractional share, earliest first', () => {
+    // 700 x 10000/15000 = 466.67, 700 x 5000/15000 = 233.33: floors 466 + 233 leave one
+    // cent, and the first line's .67 beats the second's .33.
+    const { lines, discountAmount } = allocateDiscountToLines(two, {
+      discountType: 'amount',
+      discountValue: 700,
+    })
+    expect(discountAmount).toBe(700)
+    expect(lines.map((line) => line.lineTotal)).toEqual([9_533, 4_767])
+    expect(lines.reduce((sum, line) => sum + (line.lineTotal ?? 0), 0)).toBe(14_300)
+  })
+
+  it('breaks a tie on the fraction in line order', () => {
+    // 1 cent over two equal lines: .5 and .5, the first line takes it.
+    const equal: LineForTotals[] = [
+      { lineTotal: 100, taxable: true },
+      { lineTotal: 100, taxable: true },
+    ]
+    const { lines } = allocateDiscountToLines(equal, { discountType: 'amount', discountValue: 1 })
+    expect(lines.map((line) => line.lineTotal)).toEqual([99, 100])
+  })
+
+  it('always sums to the discounted subtotal exactly, whatever the shares', () => {
+    const odd: LineForTotals[] = [
+      { lineTotal: 3_333, taxable: true },
+      { lineTotal: 1_111, taxable: true },
+      { lineTotal: 7_777, taxable: false },
+      { lineTotal: 1, taxable: true },
+    ]
+    for (const discountValue of [1, 7, 333, 1_234, 12_221]) {
+      const { lines, discountAmount } = allocateDiscountToLines(odd, {
+        discountType: 'amount',
+        discountValue,
+      })
+      expect(lines.reduce((sum, line) => sum + (line.lineTotal ?? 0), 0)).toBe(
+        12_222 - discountAmount
+      )
+      for (const line of lines) expect(line.lineTotal).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('returns the lines untouched when there is no discount to allocate', () => {
+    expect(allocateDiscountToLines(two, {}).lines).toEqual(two)
+    expect(allocateDiscountToLines(two, { discountValue: 500 }).lines).toEqual(two)
+    expect(
+      allocateDiscountToLines(two, { discountType: 'percent', discountValue: 0 }).lines
+    ).toEqual(two)
+  })
+
+  it('gives no share to an unpriced, zero or deselected line and leaves it as it was', () => {
+    const mixed: LineForTotals[] = [
+      { lineTotal: 10_000, taxable: true },
+      { lineTotal: null, taxable: true },
+      { lineTotal: 0, taxable: true },
+      { lineTotal: 5_000, taxable: true, optional: true, optionalSelected: false },
+    ]
+    const { lines, discountAmount } = allocateDiscountToLines(mixed, {
+      discountType: 'percent',
+      discountValue: 10,
+    })
+    // The base is the 10_000 that contributes; the other three are not discounted.
+    expect(discountAmount).toBe(1_000)
+    expect(lines.map((line) => line.lineTotal)).toEqual([9_000, null, 0, 5_000])
+  })
+
+  it('clamps a discount over the subtotal so every contributing line nets to zero', () => {
+    const { lines, discountAmount } = allocateDiscountToLines(two, {
+      discountType: 'amount',
+      discountValue: 99_999,
+    })
+    expect(discountAmount).toBe(15_000)
+    expect(lines.map((line) => line.lineTotal)).toEqual([0, 0])
+  })
+
+  it('keeps the caller extra fields on every line', () => {
+    const tagged = [
+      { lineTotal: 10_000, taxable: true, lineInstanceId: 'a' },
+      { lineTotal: 5_000, taxable: true, lineInstanceId: 'b' },
+    ]
+    const { lines } = allocateDiscountToLines(tagged, {
+      discountType: 'percent',
+      discountValue: 10,
+    })
+    expect(lines.map((line) => line.lineInstanceId)).toEqual(['a', 'b'])
+  })
+})
+
+describe('computeAllocatedDocumentTotals (29 §12 item 7)', () => {
+  const two: LineForTotals[] = [
+    { lineTotal: 10_000, taxable: true },
+    { lineTotal: 5_000, taxable: true },
+  ]
+
+  it('a 10% header discount on 100 and 50: lines 90 and 45, subtotal 135, total 135', () => {
+    const { totals, lines } = computeAllocatedDocumentTotals(two, {
+      discountType: 'percent',
+      discountValue: 10,
+    })
+    expect(lines.map((line) => line.lineTotal)).toEqual([9_000, 4_500])
+    expect(totals).toEqual({ subtotal: 13_500, discountAmount: 1_500, taxTotal: 0, total: 13_500 })
+  })
+
+  it('a flat 7 off: lines 95.33 and 47.67, subtotal 143', () => {
+    const { totals, lines } = computeAllocatedDocumentTotals(two, {
+      discountType: 'amount',
+      discountValue: 700,
+    })
+    expect(lines.map((line) => line.lineTotal)).toEqual([9_533, 4_767])
+    expect(totals.subtotal).toBe(14_300)
+    expect(totals.discountAmount).toBe(700)
+    expect(totals.total).toBe(14_300)
+  })
+
+  it('subtotal is Σ the net lines and total is subtotal + tax + shipping, with no discount left to subtract', () => {
+    const { totals, lines } = computeAllocatedDocumentTotals(two, {
+      discountType: 'percent',
+      discountValue: 10,
+      taxRate: 10,
+      shipping: 500,
+    })
+    const sum = lines.reduce((acc, line) => acc + (line.lineTotal ?? 0), 0)
+    expect(totals.subtotal).toBe(sum)
+    // Tax is on the NET lines directly: 13500 x 10% = 1350.
+    expect(totals.taxTotal).toBe(1_350)
+    expect(totals.total).toBe(13_500 + 1_350 + 500)
+  })
+
+  it('agrees with the header formula on the total when the shares divide evenly', () => {
+    const billing = {
+      discountType: 'percent' as const,
+      discountValue: 10,
+      taxRate: 10,
+      shipping: 500,
+    }
+    expect(computeAllocatedDocumentTotals(two, billing).totals.total).toBe(
+      computeDocumentTotals(two, billing).total
+    )
+  })
+
+  it('is computeDocumentTotals byte for byte when there is no discount', () => {
+    const billing = { taxRate: 7.25, shipping: 250 }
+    expect(computeAllocatedDocumentTotals(two, billing).totals).toEqual(
+      computeDocumentTotals(two, billing)
+    )
   })
 })

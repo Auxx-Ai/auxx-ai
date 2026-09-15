@@ -70,12 +70,35 @@ export function formatShortPeriodLabel(periodKey: string): string {
   return formatPeriodLabel(periodKey).replace(/^(\w{3})\w*/, '$1')
 }
 
+const CALENDAR_DAY = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
+
 /**
  * An ACCOUNTING date: the date that decides which period a row belongs to.
- * Rendered in the org's book time zone, because that is the zone the period
- * boundary was drawn in.
+ *
+ * Two shapes reach here and they are formatted differently on purpose:
+ *
+ * - A bare `YYYY-MM-DD` key (`txnDate`, a report range end, a rail's
+ *   `lastBookedAt`) is ALREADY a calendar day in the book zone. It is formatted
+ *   as that day and the zone is not consulted. `new Date('2026-09-01')` is UTC
+ *   midnight, and reading that instant in `America/Los_Angeles` is Aug 31, so
+ *   the old single path printed the previous day for every org west of
+ *   Greenwich (brief 28 §6, found in the build).
+ * - A real timestamp (`occurredAt`) is an instant, and the day it falls on
+ *   depends on the zone the period boundary was drawn in, so it is rendered in
+ *   the org's book time zone.
  */
 export function formatAccountingDate(iso: string, timeZone: string): string {
+  const dayKey = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  if (dayKey) {
+    return CALENDAR_DAY.format(
+      new Date(Date.UTC(Number(dayKey[1]), Number(dayKey[2]) - 1, Number(dayKey[3])))
+    )
+  }
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso
   return new Intl.DateTimeFormat('en-US', {

@@ -538,3 +538,180 @@ describe('the money conversions', () => {
     )
   })
 })
+
+describe('the line NET basis (29 §1.7)', () => {
+  // Two units listed at $1.00 each with $0.20 off the line. The connector
+  // stores `line_item_line_total = 180` and `order_subtotal = 180`; the reader
+  // hands the builder the NET rate, 180 / 2 = 90, never the list price of 100.
+  const NET_RATE = 180 / 2
+  const discounted = {
+    ...BASE,
+    orderSubtotalMinor: 180,
+    orderTaxTotalMinor: 14,
+    orderShippingTotalMinor: 0,
+  }
+
+  it('credits revenue at what the customer was charged, which ties to order_subtotal', () => {
+    const built = buildFulfillmentEntry({
+      ...discounted,
+      shippedLines: [{ lineId: 'l1', quantity: 2, unitPriceMinor: NET_RATE }],
+    })
+
+    expect(built.subtotalMinor).toBe(180)
+    expect(built.subtotalMinor).toBe(discounted.orderSubtotalMinor)
+    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_PRODUCT)).toBe(180)
+    expect(amountFor(built.entry, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBe(14)
+    // 🛑 Fed the list price the same entry reads 200 / 14 / 214 and still
+    // balances, which is why the discount was recognised as revenue on 3,073
+    // orders without anything objecting.
+    expect(amountFor(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBe(194)
+  })
+
+  it('sums to order_subtotal to the cent over a split shipment, tax included', () => {
+    const one = buildFulfillmentEntry({
+      ...discounted,
+      sequence: 1,
+      shippedLines: [{ lineId: 'l1', quantity: 1, unitPriceMinor: NET_RATE }],
+    })
+    const two = buildFulfillmentEntry({
+      ...discounted,
+      sequence: 2,
+      includeShipping: false,
+      priorShipmentsSubtotalMinor: one.subtotalMinor,
+      shippedLines: [{ lineId: 'l1', quantity: 1, unitPriceMinor: NET_RATE }],
+    })
+
+    expect(one.subtotalMinor).toBe(90)
+    expect(two.subtotalMinor).toBe(90)
+    expect(one.subtotalMinor + two.subtotalMinor).toBe(180)
+    // The cumulative allocation is over the NET subtotal too: 7 + 7 = 14.
+    expect(one.taxMinor + two.taxMinor).toBe(14)
+    expect(one.totalMinor + two.totalMinor).toBe(194)
+  })
+})
+
+describe('the line total allocated by units (29 §12 item 6)', () => {
+  // A line of two units that the customer paid 181 for is a 90.5 rate.
+  // Extending that per shipment rounds to 91 twice, one cent over the line.
+  const order = {
+    ...BASE,
+    orderSubtotalMinor: 181,
+    orderTaxTotalMinor: 0,
+    orderShippingTotalMinor: 0,
+    includeShipping: false,
+  }
+  const split = (prior: number) => ({
+    lineId: 'l1',
+    quantity: 1,
+    unitPriceMinor: 181 / 2,
+    lineTotalMinor: 181,
+    orderedQuantity: 2,
+    priorShippedQuantity: prior,
+  })
+
+  it('a 181 line over 2 units split 1 + 1 sums to 181, not 182', () => {
+    const one = buildFulfillmentEntry({ ...order, sequence: 1, shippedLines: [split(0)] })
+    const two = buildFulfillmentEntry({
+      ...order,
+      sequence: 2,
+      priorShipmentsSubtotalMinor: one.subtotalMinor,
+      shippedLines: [split(1)],
+    })
+
+    // The odd cent lands on exactly one shipment, whichever the running
+    // rounding puts it on - what matters is the sum.
+    expect([one.subtotalMinor, two.subtotalMinor]).toEqual([91, 90])
+    expect(one.subtotalMinor + two.subtotalMinor).toBe(181)
+    // 🛑 The rate path alone gives 91 + 91 = 182.
+    expect(extendRateToAmount(181 / 2, 1, 'x') + extendRateToAmount(181 / 2, 1, 'x')).toBe(182)
+  })
+
+  it('a 100 line over 3 units split 1 + 1 + 1 sums to 100', () => {
+    const line = (prior: number) => ({
+      lineId: 'l1',
+      quantity: 1,
+      unitPriceMinor: 100 / 3,
+      lineTotalMinor: 100,
+      orderedQuantity: 3,
+      priorShippedQuantity: prior,
+    })
+    const three = [0, 1, 2].map((prior, index) =>
+      buildFulfillmentEntry({
+        ...order,
+        orderSubtotalMinor: 100,
+        sequence: index + 1,
+        shippedLines: [line(prior)],
+      })
+    )
+
+    expect(three.map((built) => built.subtotalMinor)).toEqual([33, 34, 33])
+    expect(three.reduce((sum, built) => sum + built.subtotalMinor, 0)).toBe(100)
+  })
+
+  it('produces byte-identical lines without the three fields - the rate path is untouched', () => {
+    const withoutFields = buildFulfillmentEntry({
+      ...BASE,
+      shippedLines: [{ lineId: 'l1', quantity: 3, unitPriceMinor: 1_594 / 1_000 }],
+    })
+    const withUndefined = buildFulfillmentEntry({
+      ...BASE,
+      shippedLines: [
+        {
+          lineId: 'l1',
+          quantity: 3,
+          unitPriceMinor: 1_594 / 1_000,
+          lineTotalMinor: undefined,
+          orderedQuantity: undefined,
+          priorShippedQuantity: undefined,
+        },
+      ],
+    })
+    const withNull = buildFulfillmentEntry({
+      ...BASE,
+      shippedLines: [
+        {
+          lineId: 'l1',
+          quantity: 3,
+          unitPriceMinor: 1_594 / 1_000,
+          lineTotalMinor: null,
+          orderedQuantity: null,
+          priorShippedQuantity: null,
+        },
+      ],
+    })
+
+    expect(withoutFields.subtotalMinor).toBe(extendRateToAmount(1_594 / 1_000, 3, 'x'))
+    expect(withUndefined.entry).toEqual(withoutFields.entry)
+    expect(withNull.entry).toEqual(withoutFields.entry)
+  })
+
+  it('a first or only shipment gets the same number the rate path gives', () => {
+    const allocated = buildFulfillmentEntry({ ...order, shippedLines: [split(0)] })
+    const extended = buildFulfillmentEntry({
+      ...order,
+      shippedLines: [{ lineId: 'l1', quantity: 1, unitPriceMinor: 181 / 2 }],
+    })
+    expect(allocated.subtotalMinor).toBe(extended.subtotalMinor)
+
+    // Shipping the whole line at once is the line total, exactly.
+    const whole = buildFulfillmentEntry({ ...order, shippedLines: [{ ...split(0), quantity: 2 }] })
+    expect(whole.subtotalMinor).toBe(181)
+  })
+
+  it('falls back to the rate when the ordered quantity is zero or missing', () => {
+    const zeroOrdered = buildFulfillmentEntry({
+      ...order,
+      shippedLines: [{ ...split(0), orderedQuantity: 0 }],
+    })
+    expect(zeroOrdered.subtotalMinor).toBe(extendRateToAmount(181 / 2, 1, 'x'))
+  })
+
+  it('refuses a fractional line total and a negative prior rather than absorbing them', () => {
+    expect(() =>
+      buildFulfillmentEntry({ ...order, shippedLines: [{ ...split(0), lineTotalMinor: 180.5 }] })
+    ).toThrowError(UnprocessableEntityError)
+    expect(() => buildFulfillmentEntry({ ...order, shippedLines: [split(-1)] })).toThrowError(
+      UnprocessableEntityError
+    )
+  })
+})

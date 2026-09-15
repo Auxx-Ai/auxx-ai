@@ -60,6 +60,14 @@ export {
   type UninstallImpact,
   type UninstallImpactConnector,
 } from './installations/uninstall-impact'
+export {
+  APP_TOOL_CALLER,
+  APP_TOOL_TIMEOUT_MS,
+  type AppToolContext,
+  type ResolveAppToolContextInput,
+  type ResolveAppToolContextResult,
+  resolveAppToolContext,
+} from './invoke-app-tool'
 export type {
   ConsoleLog,
   LambdaExecutionError,

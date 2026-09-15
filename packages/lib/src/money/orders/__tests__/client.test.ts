@@ -11,6 +11,8 @@ import { toRecordId } from '../../../resources/resource-id'
 import type { Fulfillment } from '../../fulfillments/client'
 import {
   fulfillmentStatusFor,
+  netLineTotalMinor,
+  netUnitPriceMinor,
   nextFulfillmentSequence,
   type OrderLineRemaining,
   shippedByLine,
@@ -170,5 +172,122 @@ describe('fulfillmentStatusFor', () => {
 
   it('treats an order with no lines as fulfilled rather than stuck', () => {
     expect(fulfillmentStatusFor([])).toBe('fulfilled')
+  })
+})
+
+describe('netLineTotalMinor (29 §2.3)', () => {
+  it('prefers the net total when the line has one', () => {
+    expect(netLineTotalMinor({ netTotalMinor: 180, lineTotalMinor: 200 })).toBe(180)
+  })
+
+  it('keeps a zero net at zero: a fully discounted line does not fall through to the gross', () => {
+    expect(netLineTotalMinor({ netTotalMinor: 0, lineTotalMinor: 200 })).toBe(0)
+  })
+
+  it('falls back to the gross total only when the net is null or absent', () => {
+    // A connector org before its remap: the net it wrote sits in line_total.
+    expect(netLineTotalMinor({ netTotalMinor: null, lineTotalMinor: 180 })).toBe(180)
+    expect(netLineTotalMinor({ netTotalMinor: undefined, lineTotalMinor: 180 })).toBe(180)
+    expect(netLineTotalMinor({ lineTotalMinor: 180 })).toBe(180)
+  })
+
+  it('is null when the line carries no total of either kind', () => {
+    expect(netLineTotalMinor({ netTotalMinor: null, lineTotalMinor: null })).toBeNull()
+    expect(netLineTotalMinor({ lineTotalMinor: undefined })).toBeNull()
+  })
+})
+
+describe('netUnitPriceMinor (29 §1.7)', () => {
+  it('derives the rate from the line total, not the list price', () => {
+    // Two units listed at 100 with 20 off the line: the customer paid 180.
+    expect(
+      netUnitPriceMinor({ lineTotalMinor: 180, unitPriceMinor: 100, orderedQuantity: 2 })
+    ).toBe(90)
+  })
+
+  it('prefers the net total over the gross total when both are present (29 §2.3)', () => {
+    // The gross column is qty x price; the net carries the allocated discount.
+    expect(
+      netUnitPriceMinor({
+        netTotalMinor: 180,
+        lineTotalMinor: 200,
+        unitPriceMinor: 100,
+        orderedQuantity: 2,
+      })
+    ).toBe(90)
+  })
+
+  it('a zero net wins over a non-zero gross total', () => {
+    expect(
+      netUnitPriceMinor({
+        netTotalMinor: 0,
+        lineTotalMinor: 200,
+        unitPriceMinor: 100,
+        orderedQuantity: 2,
+      })
+    ).toBe(0)
+  })
+
+  it('a null net falls back to the gross total, and both null to the price', () => {
+    expect(
+      netUnitPriceMinor({
+        netTotalMinor: null,
+        lineTotalMinor: 180,
+        unitPriceMinor: 100,
+        orderedQuantity: 2,
+      })
+    ).toBe(90)
+    expect(
+      netUnitPriceMinor({
+        netTotalMinor: null,
+        lineTotalMinor: null,
+        unitPriceMinor: 100,
+        orderedQuantity: 2,
+      })
+    ).toBe(100)
+  })
+
+  it('leaves the rate unrounded - the builder is the one rounding boundary', () => {
+    expect(
+      netUnitPriceMinor({ lineTotalMinor: 181, unitPriceMinor: 100, orderedQuantity: 2 })
+    ).toBe(90.5)
+  })
+
+  it('keeps a zero total at zero rather than falling back to the price', () => {
+    // A fully discounted line is not an unpriced one.
+    expect(netUnitPriceMinor({ lineTotalMinor: 0, unitPriceMinor: 100, orderedQuantity: 2 })).toBe(
+      0
+    )
+  })
+
+  it('falls back to the list price only when the line carries no total at all', () => {
+    expect(
+      netUnitPriceMinor({ lineTotalMinor: null, unitPriceMinor: 100, orderedQuantity: 2 })
+    ).toBe(100)
+    expect(
+      netUnitPriceMinor({
+        lineTotalMinor: undefined,
+        unitPriceMinor: 1.594,
+        orderedQuantity: 1_500,
+      })
+    ).toBe(1.594)
+    expect(
+      netUnitPriceMinor({ lineTotalMinor: null, unitPriceMinor: null, orderedQuantity: 2 })
+    ).toBe(0)
+  })
+
+  it('falls back to the list price when there is no positive quantity to divide by', () => {
+    expect(
+      netUnitPriceMinor({ lineTotalMinor: 180, unitPriceMinor: 100, orderedQuantity: 0 })
+    ).toBe(100)
+    expect(
+      netUnitPriceMinor({ lineTotalMinor: 180, unitPriceMinor: 100, orderedQuantity: null })
+    ).toBe(100)
+  })
+
+  it('is the list price for a native line, whose total is qty x price with nothing allocated', () => {
+    expect(
+      netUnitPriceMinor({ lineTotalMinor: 5_000, unitPriceMinor: 1_000, orderedQuantity: 5 })
+    ).toBe(1_000)
   })
 })

@@ -354,3 +354,56 @@ describe('a billed rail', () => {
     expect(withDefault.entry.lines).toEqual(explicit.entry.lines)
   })
 })
+
+// ── The per-line why (brief 28 §5) ──────────────────────────────────────────
+
+describe('the reasons', () => {
+  const BANK_REASON =
+    'Debited because Stripe reported destination ba_1, confirmed on this bank account.'
+  const CLEARING_REASON =
+    'Credited because the Stripe gateway record settles through Stripe and names this as its clearing account.'
+
+  it('puts the bank reason on the bank line and the clearing reason on the clearing line', () => {
+    const built = buildPayoutEntry({
+      ...BASE,
+      clearingGlAccountId: 'gl-1200-stripe',
+      bankAccountReason: BANK_REASON,
+      clearingReason: CLEARING_REASON,
+    })
+    // Bank at sortOrder 0, fees at 1, clearing at 2: line numbers 1, 2, 3.
+    expect(built.entry.lines.map((row) => row.sortOrder)).toEqual([0, 1, 2])
+    expect(built.entry.reasons).toEqual([
+      { line: 1, sentence: BANK_REASON },
+      { line: 3, sentence: CLEARING_REASON },
+    ])
+  })
+
+  it('numbers the clearing line by POSITION when the fee leg is dropped', () => {
+    // `sortOrder` stays 2 on the clearing leg but it is the SECOND stored line,
+    // and `lineNumber` is what the drawer joins on.
+    const built = buildPayoutEntry({
+      ...BASE,
+      feesMinor: 0,
+      netMinor: 500_000,
+      bankAccountReason: BANK_REASON,
+      clearingReason: CLEARING_REASON,
+    })
+    expect(built.entry.lines).toHaveLength(2)
+    expect(built.entry.lines[1]?.sortOrder).toBe(2)
+    expect(built.entry.reasons).toEqual([
+      { line: 1, sentence: BANK_REASON },
+      { line: 2, sentence: CLEARING_REASON },
+    ])
+  })
+
+  it('carries only the reasons it was given', () => {
+    expect(buildPayoutEntry({ ...BASE, clearingReason: CLEARING_REASON }).entry.reasons).toEqual([
+      { line: 3, sentence: CLEARING_REASON },
+    ])
+  })
+
+  it('writes no reasons field at all when none were given - the entry is what it was', () => {
+    const built = buildPayoutEntry(BASE)
+    expect('reasons' in built.entry).toBe(false)
+  })
+})

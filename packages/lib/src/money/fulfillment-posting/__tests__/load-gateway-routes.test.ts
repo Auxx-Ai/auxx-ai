@@ -50,17 +50,24 @@ describe('loadGatewayRoutesForPlan', () => {
       isErr: () => false,
       value: [
         {
+          name: 'Authorize.Net',
           handles: ['authorize_net', 'authorize.net'],
           clearingGlAccountId: 'acct_1',
           status: 'closed',
         },
-        { handles: ['affirm'], clearingGlAccountId: 'acct_2', status: 'active' },
+        { name: 'Affirm', handles: ['affirm'], clearingGlAccountId: 'acct_2', status: 'active' },
       ],
     }
     const routes = await loadGatewayRoutesForPlan({} as never, 'org_1')
     expect(routes).toEqual([
-      { handles: ['authorize_net', 'authorize.net'], clearingGlAccountId: 'acct_1', active: false },
-      { handles: ['affirm'], clearingGlAccountId: 'acct_2', active: true },
+      // The record's NAME rides along for the debit's reason sentence (brief 28 §5).
+      {
+        handles: ['authorize_net', 'authorize.net'],
+        clearingGlAccountId: 'acct_1',
+        active: false,
+        name: 'Authorize.Net',
+      },
+      { handles: ['affirm'], clearingGlAccountId: 'acct_2', active: true, name: 'Affirm' },
     ])
   })
 })

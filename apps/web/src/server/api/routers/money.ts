@@ -64,6 +64,7 @@ import {
   writeOffInvoice,
 } from '@auxx/lib/money'
 import type { CreditMemoPostingGrouping, FulfillmentPostingGrouping } from '@auxx/lib/money/client'
+import { listRailStrip } from '@auxx/lib/money/payouts'
 import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import {
@@ -1195,10 +1196,26 @@ export const moneyRouter = createTRPCRouter({
    * 🛑 Gated on the LEDGER keys for `bankDeposit`'s reason: the sync produces
    * `GlPosting` rows, so it belongs with the people trusted to write to the
    * books. There is no create, update or delete procedure at all - a payout is
-   * a transcription of what the gateway did, and the only sanctioned writer is
-   * `syncPayouts`.
+   * a transcription of what the gateway did, and the only sanctioned writers
+   * are the SOURCES (brief 27 §4): the Stripe sync today, imports next. A wrong
+   * payout is corrected by reversal.
    */
   payout: createTRPCRouter({
+    /**
+     * The per-rail strip (brief 27 §8.2): every rail with a clearing account,
+     * the account, its balance, last settled, last fee booked, and how it is
+     * relieved. Closed rails stay while their account holds a balance.
+     *
+     * ⚠️ The balance answers for the ACCOUNT, not the rail (26 §9.1). A shared
+     * account comes back on every rail naming it with `sharedWith` set, and the
+     * screen must say so rather than present one number as two.
+     */
+    rails: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+      const result = await listRailStrip(ctx.db, { organizationId: ctx.session.organizationId })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
     /** Recorded payouts, newest first. */
     list: permissionProcedure(PermissionKey.ledgerView)
       .input(

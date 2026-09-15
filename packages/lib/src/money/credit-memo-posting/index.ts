@@ -16,14 +16,23 @@
  */
 
 export {
+  autoPostCreditMemosAfterSync,
+  CREDIT_MEMO_POSTING_JOB_NAME,
+  creditMemoPostingJobId,
+} from './auto'
+export {
   CREDIT_MEMO_BATCH_SOURCE_TYPE,
   CREDIT_MEMO_GL_POSTING_ATTRIBUTE,
+  CREDIT_MEMO_GROUPING_SETTING_KEY,
   CREDIT_MEMO_POSTING_EXCLUSION_REASONS,
+  CREDIT_MEMO_POSTING_MODES,
+  CREDIT_MEMO_POSTING_SETTING_KEY,
   type CreditMemoAmounts,
   type CreditMemoPostingExclusion,
   type CreditMemoPostingExclusionReason,
   type CreditMemoPostingGroup,
   type CreditMemoPostingGrouping,
+  type CreditMemoPostingMode,
   type CreditMemoPostingPlan,
   type CreditMemoPostingPlanInput,
   type CreditMemoPostingRef,

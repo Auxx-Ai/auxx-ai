@@ -17,14 +17,17 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleHelp,
   Lock,
   PanelLeft,
   Plug,
   PlugZap,
 } from 'lucide-react'
+import { useState } from 'react'
 import { useAccountingProviderStatus } from '~/components/accounting/hooks/use-accounting-provider-status'
 import type { LedgerPeriodOption } from '~/components/accounting/hooks/use-ledger-period'
 import { useLedgerSidebarStore } from '~/components/accounting/stores/ledger-sidebar-store'
+import { PostingGuideDialog } from '~/components/accounting/ui/settings/posting-guide-dialog'
 import { Tooltip } from '~/components/global/tooltip'
 import { formatPeriodLabel } from './format'
 
@@ -85,6 +88,7 @@ export function LedgerToolbar({
   const state = period?.state ?? 'open'
   const sidebarOpen = useLedgerSidebarStore((store) => store.open)
   const setSidebarOpen = useLedgerSidebarStore((store) => store.setOpen)
+  const [guideOpen, setGuideOpen] = useState(false)
 
   return (
     <div className='flex flex-wrap items-center gap-1 border-b p-1'>
@@ -183,6 +187,21 @@ export function LedgerToolbar({
       <ProviderPill />
 
       <div className='flex-1' />
+
+      {/* The posting guide's overview (brief 28 §4): what posts, when, and
+          what changes it. Last, like the records guide on the table toolbar. */}
+      <Tooltip content='How your books post'>
+        <Button
+          variant='ghost'
+          size='icon-sm'
+          aria-label='How your books post'
+          onClick={() => setGuideOpen(true)}>
+          <CircleHelp />
+        </Button>
+      </Tooltip>
+      {guideOpen && (
+        <PostingGuideDialog open={guideOpen} onOpenChange={setGuideOpen} initialPage='overview' />
+      )}
     </div>
   )
 }

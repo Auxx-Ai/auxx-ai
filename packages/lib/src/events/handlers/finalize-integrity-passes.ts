@@ -96,6 +96,11 @@ export interface IntegrityPassesInput {
  *    (`accounting.fulfillmentPosting = auto`). Gated on arrival so an idle re-sync
  *    enqueues nothing. This used to be two passes (derive, then post gated on what
  *    changed); with nothing left to derive, the gate and the enqueue collapse into one.
+ * 7. Credit memo posting trigger (`passes/credit-memo-posting-pass.ts`, accounting brief 28
+ *    §3.1): the same question for the other bulk source. The connector writes channel
+ *    credit memos as `credit_memo` records, so the pass asks whether one arrived in this
+ *    sync's manifest and, if so, hands off to `autoPostCreditMemosAfterSync`, which posts
+ *    only if the org asked for it (`accounting.creditMemoPosting = auto`).
  *
  * NEVER throws: each pass — and each record inside a pass — is individually guarded and
  * logged, so one bad record or one failing pass cannot starve the others (mirrors
@@ -130,6 +135,11 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
     // is needed here.
     const { fulfillmentPostingTriggerPass } = await import('./passes/fulfillment-log-pass')
     await fulfillmentPostingTriggerPass(db, organizationId, manifest, resolveDef)
+
+    // Pass 7: the same trigger for channel credit memos. Same module rule, same
+    // own try/catch inside.
+    const { creditMemoPostingTriggerPass } = await import('./passes/credit-memo-posting-pass')
+    await creditMemoPostingTriggerPass(db, organizationId, manifest, resolveDef)
   } catch (error) {
     logger.error('integrity passes failed', {
       organizationId,

@@ -2,7 +2,7 @@
 
 /**
  * The WRITE half of the payout sync: raise a `payout` record for each settled
- * payout the gateway reports, post its entry, and stamp the posting back.
+ * payout a source reports, post its entry, and stamp the posting back.
  *
  * This is the trigger `postPayoutEntry` shipped without in #2054, which is why
  * `1200` accumulated gross at every card sale and never drained
@@ -12,56 +12,80 @@
  * checks - the caller is a worker job or a router that has already asserted
  * `ledgerPost`.
  *
+ * ## Provider-neutral since brief 27 unit 2
+ *
+ * Nothing in this file names Stripe. A {@link PayoutSourceCtx} carries the org,
+ * the rail the source reads for and the handle it reaches its provider with;
+ * the {@link PayoutSource} registered under `ctx.sourceId` lists the payouts and
+ * their items; `gather.ts` splits them; this file writes. {@link syncPayouts}
+ * is the org-level door (the `payout.paid` webhook, the "Sync now" button, the
+ * nightly sweep): it asks every registered `api` source for the org's contexts
+ * and runs each. {@link syncPayoutSource} is the door for ONE context, which is
+ * what a file import hands over.
+ *
  * ## The three properties this file exists to keep
  *
- * **A payout is posted at most once.** `payout_gateway_id` is the idempotency
- * key and is checked before anything is written, because the sync is a POLL and
- * sees every payout again on every run. A watermark alone is not enough: it can
- * be re-run, reset, or overlap a boundary, and a second posting would relieve
- * clearing twice with both entries balancing.
+ * **A payout is posted at most once.** The PAIR (`payout_payment_gateway`,
+ * `payout_gateway_id`) is the idempotency key (brief 27 §6.4) and is checked
+ * before anything is written, because the sync is a POLL and sees every payout
+ * again on every run. A watermark alone is not enough: it can be re-run, reset,
+ * or overlap a boundary, and a second posting would relieve clearing twice with
+ * both entries balancing. When no gateway record claims the source's rail the
+ * pointer stays null and the lookup is by gateway id alone - see
+ * `findPayoutByGatewayId` for why an unstamped row is adopted rather than
+ * duplicated.
  *
  * **A payout still in transit gets a RECORD but no entry.** The money has not
  * reached the bank, so there is nothing for cash to be debited. The record is
  * raised anyway so the number is minted and the row is visible; the next run
- * posts it once the gateway says `paid`.
+ * posts it once the source says `paid`.
  *
- * 🛑 **The first run posts nothing older than its own start.** Payouts that
- * settled before the sync existed left a clearing balance that is already inside
- * the opening trial balance, and posting them now would relieve clearing twice
- * - the same double-count that `tasks/08` §3.6 avoids for invoices already sent.
- * `SYNC_LOOKBACK_DAYS` bounds an ordinary run; {@link syncPayouts} refuses to
- * reach further back than the org's first sync, recorded as the earliest payout
- * record it holds.
+ * 🛑 **The first run posts nothing older than its own start, per rail.** Payouts
+ * that settled before the sync existed left a clearing balance that is already
+ * inside the opening trial balance, and posting them now would relieve clearing
+ * twice - the same double-count that `tasks/08` §3.6 avoids for invoices already
+ * sent. `SYNC_LOOKBACK_DAYS` bounds an ordinary run; {@link resolveSince}
+ * refuses to reach further back than the rail's first sync, and a rail that has
+ * never synced starts from its hand-entered `lastSettlementAt` when it has one
+ * (brief 27 §6.5).
  *
  * 🛑 **A payout debits a bank account, never a role (brief 13 §2.3).**
- * `ingestOne` resolves the payout's own Stripe `destination` against the org's
+ * `ingestOne` resolves the payout's own destination hint against the org's
  * `bank_account` rows through a CONFIRMED `stripeExternalAccountId` identity -
  * never `last4`, which is strong evidence and not proof. Until a person
  * confirms that identity on exactly one bank account, the payout is raised
  * (so its number is minted and it is visible) but its entry refuses to post:
  * `payout_blocked_reason` names the payout, the destination and the remedy,
  * and `postPayoutEntry` is never even called - see `resolvePayoutBankAccount`.
+ * A source that reports NO destination blocks the same way: the rail record
+ * carries no bank-account field yet (27 §6.3, decision 3 owed), so there is
+ * nothing else to resolve against.
  *
  * 🛑 **And it credits a clearing account, never a role (brief 26 §3).** The same
- * argument one leg over. `resolvePayoutGateway` finds the `payment_gateway`
- * record that declares `settlementSource: 'stripe'` and passes its clearing
- * account, its fee account and its fee treatment down; NO record is the
- * ordinary fallback to the roles, and TWO is a refusal stamped the same way a
- * bad destination is. Line 266 used to read
+ * argument one leg over. The rail is IN the context: `resolvePayoutRail`
+ * (`routing.ts`) passes its clearing account, its fee account and its fee
+ * treatment down; NO record is the ordinary fallback to the roles, and TWO is a
+ * refusal stamped the same way a bad destination is. Line 266 used to read
  * `clearingRole: ACCOUNT_ROLES.CLEARING_CARD` unconditionally, which meant the
  * fulfillment debit (id-routed since brief 13 §5.3) and the payout credit
  * stopped meeting the moment any rail was routed to its own account - in
  * balanced entries nothing complains about.
+ *
+ * **And it leaves a watermark on the rail (brief 27 §6.5).** After an entry
+ * posts, the rail's `lastSettlementAt` is advanced to the payout's paid-at date
+ * when that is later - the field used to be hand-entered and nothing derived it.
+ * Informational; a failure to stamp it is logged and never fails the payout.
  */
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, isNull, or, type SQL } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import type Stripe from 'stripe'
 import { UnprocessableEntityError } from '../../errors'
-import type { PaymentGatewayFeeTreatmentValue } from '../../payment-gateways/client'
+import { PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS } from '../../payment-gateways/client'
 import { listPaymentGateways } from '../../payment-gateways/reads'
+import { stampPaymentGatewayLastSettlement } from '../../payment-gateways/writes'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { ACCOUNT_ROLES } from '../../postings/build-entry'
 import { didLedgerAccept } from '../../postings/ledger-accepted'
@@ -72,8 +96,6 @@ import type { PostResult } from '../../postings/types'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
 import { SystemUserService } from '../../users/system-user-service'
-import { getPaymentAccount } from '../payments/account-state'
-import { getStripeConnectClient } from '../payments/connect-client'
 import { type GatheredPayout, gatherPayout } from './gather'
 import { guard } from './guard'
 import {
@@ -82,6 +104,9 @@ import {
   type PayoutFieldContext,
   requirePayoutFieldContext,
 } from './reads'
+import { resolvePayoutRail } from './routing'
+import type { PayoutHeader, PayoutSource, PayoutSourceCtx } from './source'
+import { getPayoutSource, listPayoutSources } from './source-registry'
 import type { SyncPayoutsResult } from './types'
 
 const logger = createScopedLogger('payouts:sync')
@@ -92,17 +117,24 @@ const logger = createScopedLogger('payouts:sync')
  */
 const SYNC_LOOKBACK_DAYS = 30
 
-/** Stripe's page ceiling for `payouts.list`. */
-const PAGE_SIZE = 100
+/** What every door shares once the org's gate and def are settled. */
+interface RunParams {
+  actorUserId: string
+  fieldCtx: PayoutFieldContext
+  now: Date
+}
 
 /**
- * Walk one org's recent payouts, raising a record and posting an entry for each.
+ * Walk one org's recent payouts on every registered `api` source, raising a
+ * record and posting an entry for each.
  *
- * **Never throws for one bad payout.** A builder refusal - a gateway whose
- * arithmetic does not agree, a remainder that came out negative - is collected
- * into `refused` and the walk continues, because one unpostable payout must not
- * stop the twelve behind it. Only a failure to reach the gateway or the def
- * comes back as an `err`.
+ * **Never throws for one bad payout, and one rail's failure never stops the
+ * others.** A builder refusal - a gateway whose arithmetic does not agree, a
+ * remainder that came out negative - is collected into `refused` and the walk
+ * continues, because one unpostable payout must not stop the twelve behind it.
+ * A source that cannot be reached at all lands in `failed`, named by rail, and
+ * the next source still runs. Only a failure to read the org's own def or
+ * records comes back as an `err`.
  */
 export async function syncPayouts(
   db: Database,
@@ -112,27 +144,31 @@ export async function syncPayouts(
 
   return guard(
     async () => {
-      // 🛑 Checked ONCE per org, before the Stripe account lookup, the payout
-      // list and the payout record writes - none of which this sync has any
-      // use for when the org has never turned accounting on (task 17 section
-      // 3): a payout record exists to reconcile a clearing account this org
-      // does not have. The gate lives here rather than only in
-      // `postPayoutEntry` because `payoutSyncJob` runs this nightly for every
-      // org with a live Stripe connection, and that is the loop the brief
-      // means by "where it costs least" - skipping here also skips the Stripe
-      // API call and the `payout` entity write, not just the posting.
-      if (!(await isAccountingEnabled(db, organizationId))) {
-        return { seen: 0, created: 0, posted: 0, alreadyPosted: 0, refused: [] }
-      }
+      // 🛑 Checked ONCE per org, before the source lookups, the payout lists and
+      // the payout record writes - none of which this sync has any use for
+      // when the org has never turned accounting on (task 17 section 3): a
+      // payout record exists to reconcile a clearing account this org does not
+      // have. The gate lives here rather than only in `postPayoutEntry` because
+      // the sweep runs this nightly for every org a source can poll, and that
+      // is the loop the brief means by "where it costs least" - skipping here
+      // also skips the provider calls and the `payout` entity write.
+      if (!(await isAccountingEnabled(db, organizationId))) return emptyResult()
 
-      const ctx = await requirePayoutFieldContext(organizationId)
+      const fieldCtx = await requirePayoutFieldContext(organizationId)
 
-      const account = await getPaymentAccount(organizationId)
-      const stripeAccountId = account?.stripeAccountId
-      if (!stripeAccountId) {
-        logger.info('No connected Stripe account, nothing to sync', { organizationId })
-        return { seen: 0, created: 0, posted: 0, alreadyPosted: 0, refused: [] }
+      // Read ONCE per run, not once per source or payout: the rail is both half
+      // of every payout's idempotency key and the clearing side of every entry,
+      // and the records cannot change underneath a single run in any way this
+      // sync would want to honour half-way through.
+      const gateways = await listPaymentGateways(db, organizationId)
+      if (gateways.isErr()) throw gateways.error
+
+      const contexts: PayoutSourceCtx[] = []
+      for (const source of listPayoutSources()) {
+        if (source.kind !== 'api' || !source.resolveContexts) continue
+        contexts.push(...(await source.resolveContexts(db, organizationId, gateways.value)))
       }
+      if (contexts.length === 0) return emptyResult()
 
       // The sync runs from a worker with no signed-in person, so the writes are
       // attributed to the org's system user - the same actor
@@ -140,43 +176,112 @@ export async function syncPayouts(
       // (the "Sync now" button) passes theirs and it wins.
       const actor = actorUserId ?? (await SystemUserService.getSystemUserForActions(organizationId))
 
-      const since = await resolveSince(db, organizationId, ctx, now)
-      const payouts = await listGatewayPayouts(stripeAccountId, since)
-
-      const result: SyncPayoutsResult = {
-        seen: payouts.length,
-        created: 0,
-        posted: 0,
-        alreadyPosted: 0,
-        refused: [],
-      }
-
-      for (const payout of payouts) {
-        const outcome = await ingestOne(db, {
-          organizationId,
-          actorUserId: actor,
-          ctx,
-          stripeAccountId,
-          payout,
-        })
-        result.created += outcome.created ? 1 : 0
-        result.posted += outcome.posted ? 1 : 0
-        result.alreadyPosted += outcome.alreadyPosted ? 1 : 0
-        if (outcome.refusal) {
-          result.refused.push({ payoutId: payout.id, reason: outcome.refusal })
+      const result = emptyResult()
+      for (const ctx of contexts) {
+        let run: SyncPayoutsResult
+        try {
+          run = await runSource(db, ctx, { actorUserId: actor, fieldCtx, now })
+        } catch (error) {
+          // 🛑 Caught, named and carried - not rethrown. A provider that 401s
+          // must not stop the rail behind it (brief 27 §7), and the sentence the
+          // provider gave is the one a person needs, so it is kept verbatim
+          // rather than flattened to `guard`'s "Internal error".
+          const reason = error instanceof Error ? error.message : String(error)
+          logger.error('Payout sync failed for one source', {
+            organizationId,
+            sourceId: ctx.sourceId,
+            paymentGatewayId: ctx.rail?.id ?? null,
+            error: reason,
+          })
+          result.failed.push({
+            sourceId: ctx.sourceId,
+            paymentGatewayId: ctx.rail?.id ?? null,
+            reason,
+          })
+          continue
         }
+        result.seen += run.seen
+        result.created += run.created
+        result.posted += run.posted
+        result.alreadyPosted += run.alreadyPosted
+        result.refused.push(...run.refused)
       }
 
       logger.info('Payout sync finished', {
         organizationId,
         ...result,
         refused: result.refused.length,
+        failed: result.failed.length,
       })
       return result
     },
     'Failed to sync payouts',
     { organizationId }
   )
+}
+
+/**
+ * Run ONE source context: the door a caller holding a context takes, which is
+ * a file import (unit 3) or a test. The same gate and def refusal as
+ * {@link syncPayouts}, for one rail.
+ */
+export async function syncPayoutSource(
+  db: Database,
+  ctx: PayoutSourceCtx,
+  params: { actorUserId?: string; now?: Date } = {}
+): Promise<Result<SyncPayoutsResult, Error>> {
+  const { actorUserId, now = new Date() } = params
+  return guard(
+    async () => {
+      if (!(await isAccountingEnabled(db, ctx.organizationId))) return emptyResult()
+      const fieldCtx = await requirePayoutFieldContext(ctx.organizationId)
+      const actor =
+        actorUserId ?? (await SystemUserService.getSystemUserForActions(ctx.organizationId))
+      return runSource(db, ctx, { actorUserId: actor, fieldCtx, now })
+    },
+    'Failed to sync payouts from one source',
+    { organizationId: ctx.organizationId, sourceId: ctx.sourceId }
+  )
+}
+
+function emptyResult(): SyncPayoutsResult {
+  return { seen: 0, created: 0, posted: 0, alreadyPosted: 0, refused: [], failed: [] }
+}
+
+/** List one context's payouts and ingest each. Throws only for the source itself. */
+async function runSource(
+  db: Database,
+  ctx: PayoutSourceCtx,
+  params: RunParams
+): Promise<SyncPayoutsResult> {
+  const source = getPayoutSource(ctx.sourceId)
+  if (source.isErr()) throw source.error
+
+  const since = await resolveSince(db, ctx, params.fieldCtx, params.now)
+  const payouts = await source.value.listPayouts(ctx, since)
+
+  const result = emptyResult()
+  result.seen = payouts.length
+
+  for (const header of payouts) {
+    const outcome = await ingestOne(db, { ctx, source: source.value, header, ...params })
+    result.created += outcome.created ? 1 : 0
+    result.posted += outcome.posted ? 1 : 0
+    result.alreadyPosted += outcome.alreadyPosted ? 1 : 0
+    if (outcome.refusal) {
+      result.refused.push({ payoutId: header.providerPayoutId, reason: outcome.refusal })
+    }
+  }
+
+  logger.info('Payout source run finished', {
+    organizationId: ctx.organizationId,
+    sourceId: ctx.sourceId,
+    paymentGatewayId: ctx.rail?.id ?? null,
+    ...result,
+    refused: result.refused.length,
+    failed: undefined,
+  })
+  return result
 }
 
 interface IngestOutcome {
@@ -198,43 +303,52 @@ interface IngestOutcome {
  */
 async function ingestOne(
   db: Database,
-  params: {
-    organizationId: string
-    actorUserId: string
-    ctx: PayoutFieldContext
-    stripeAccountId: string
-    payout: Stripe.Payout
-  }
+  params: RunParams & { ctx: PayoutSourceCtx; source: PayoutSource; header: PayoutHeader }
 ): Promise<IngestOutcome> {
-  const { organizationId, actorUserId, ctx, stripeAccountId, payout } = params
+  const { ctx, source, header, actorUserId, fieldCtx } = params
+  const { organizationId, rail } = ctx
+  const providerPayoutId = header.providerPayoutId
 
-  const existing = await findPayoutByGatewayId(db, organizationId, payout.id)
+  // The rail this payout is read FOR is in the context. Half of the idempotency
+  // key (brief 27 §6.4) and what the record is stamped with; null is the role
+  // fallback and an id-only lookup. A conflict is not decided here -
+  // `resolvePayoutRail` refuses it once the record exists and has a number to
+  // name in the refusal.
+  const existing = await findPayoutByGatewayId(
+    db,
+    organizationId,
+    providerPayoutId,
+    rail?.id ?? null
+  )
   // 🛑 Already posted is a SUCCESS and a full stop. The sync is a poll; this is
   // the branch every steady-state run takes.
   if (existing?.glPostingId) {
     return { created: false, posted: false, alreadyPosted: true }
   }
 
-  const gathered = await gatherPayout(db, { organizationId, stripeAccountId, payout })
+  const gathered = await gatherPayout(db, { ctx, source, header })
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
 
   let instanceId = existing?.payoutId
   let created = false
   if (!instanceId) {
-    const record = await crud.create(ctx.payoutDefId, payoutValues(gathered))
+    const record = await crud.create(fieldCtx.payoutDefId, payoutValues(gathered, ctx))
     instanceId = record.instance.id
     created = true
   } else {
     // A record raised while the payout was in transit: refresh the numbers,
-    // which can move as the gateway settles more into the same batch.
-    await crud.update(toRecordId(ctx.payoutDefId, instanceId), payoutValues(gathered))
+    // which can move as the provider settles more into the same batch. This is
+    // also where a row written before migration 157 (or while no record
+    // claimed the rail) ADOPTS its rail: the pair lookup accepted its null
+    // pointer above, and this write fills it.
+    await crud.update(toRecordId(fieldCtx.payoutDefId, instanceId), payoutValues(gathered, ctx))
   }
 
   if (gathered.gatewayStatus !== 'paid') {
     return { created, posted: false, alreadyPosted: false }
   }
 
-  const record = await findPayoutByGatewayId(db, organizationId, payout.id)
+  const record = await findPayoutByGatewayId(db, organizationId, providerPayoutId, rail?.id ?? null)
   const number = record?.number
   if (!number) {
     // The number hook is the only writer and runs on create, so this cannot
@@ -248,27 +362,35 @@ async function ingestOne(
   }
 
   // 🛑 Resolved and refused BEFORE the build (brief 13 §2.3): a bank account is
-  // not a role, so the payout's own Stripe destination has to name one of the
-  // org's `bank_account` rows through a CONFIRMED `stripeExternalAccountId`
-  // identity - never `last4`. No entry is built and nothing is claimed when it
-  // cannot.
-  const resolved = await resolvePayoutBankAccount(db, organizationId, gathered.destination, number)
+  // not a role, so the payout's own destination has to name one of the org's
+  // `bank_account` rows through a CONFIRMED `stripeExternalAccountId` identity
+  // - never `last4`. No entry is built and nothing is claimed when it cannot.
+  const resolved = await resolvePayoutBankAccount(
+    db,
+    organizationId,
+    gathered.destination,
+    number,
+    PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS[ctx.sourceId]
+  )
   // 🛑 And the CLEARING side, resolved the same way and refused the same way
   // (brief 26 §3). A fulfillment debits the gateway record's clearing account by
   // id, so crediting the `clearing_card` role here would relieve a different
   // account the moment any rail is routed to its own - and nothing downstream
   // could detect it, because the entry balances either way.
-  const gateway = await resolvePayoutGateway(db, organizationId, number)
+  const gateway = resolvePayoutRail(ctx, number)
 
   /** Stamp the reason on the record and return the pre-claim result. Nothing is built. */
   const block = async (reason: string): Promise<PostResult> => {
     logger.warn('Payout blocked before its entry was built', {
       organizationId,
-      payoutId: payout.id,
+      sourceId: ctx.sourceId,
+      payoutId: providerPayoutId,
       destination: gathered.destination,
       reason,
     })
-    await crud.update(toRecordId(ctx.payoutDefId, instanceId), { payout_blocked_reason: reason })
+    await crud.update(toRecordId(fieldCtx.payoutDefId, instanceId), {
+      payout_blocked_reason: reason,
+    })
     return payoutAccountUnmappedResult(reason)
   }
 
@@ -281,7 +403,7 @@ async function ingestOne(
     post = await postPayoutEntry(db, {
       organizationId,
       actorUserId,
-      payoutId: payout.id,
+      payoutId: providerPayoutId,
       payoutNumber: number,
       bankAccountGlAccountId: resolved.glAccountId,
       grossMinor: gathered.split.grossMinor,
@@ -297,6 +419,11 @@ async function ingestOne(
       feeTreatment: gateway.feeTreatment,
       paidAt: gathered.paidAt,
       memo: `Payout ${number}`,
+      // Why each resolver answered as it did, in words, frozen onto the bank
+      // and clearing lines (brief 28 §5). Captured now, because the records
+      // both resolvers read can change before anyone opens the entry.
+      bankAccountReason: resolved.reason,
+      clearingReason: gateway.reason,
     })
   }
 
@@ -315,13 +442,38 @@ async function ingestOne(
     }
   }
 
-  await crud.update(toRecordId(ctx.payoutDefId, instanceId), {
+  await crud.update(toRecordId(fieldCtx.payoutDefId, instanceId), {
     payout_status: 'paid',
     // Cleared on success: a payout that was blocked on a prior run and has
     // since been confirmed must not keep showing the blocker banner.
     payout_blocked_reason: null,
+    // The bank account the entry actually debited (brief 27 §6.1). Stamped
+    // here and not at create, because until this point it was not resolved -
+    // a blocked payout carries none, by construction.
+    payout_bank_account: resolved.bankAccountRecordId,
     ...(post.glPostingId ? { payout_gl_posting_id: post.glPostingId } : {}),
   })
+
+  // The watermark (brief 27 §6.5), advanced AFTER the entry is in the ledger
+  // and the record says so. Informational: a rail whose date did not move is
+  // still a rail whose payout posted, so a failure here is logged, never
+  // surfaced as a refusal.
+  if (gateway.paymentGatewayId) {
+    const stamped = await stampPaymentGatewayLastSettlement(db, {
+      organizationId,
+      actorUserId,
+      paymentGatewayId: gateway.paymentGatewayId,
+      settledAt: gathered.paidAt,
+    })
+    if (stamped.isErr()) {
+      logger.warn('Payout posted but the rail watermark could not be advanced', {
+        organizationId,
+        payoutId: providerPayoutId,
+        paymentGatewayId: gateway.paymentGatewayId,
+        error: stamped.error.message,
+      })
+    }
+  }
 
   return {
     created,
@@ -330,29 +482,51 @@ async function ingestOne(
   }
 }
 
-/** Either the resolved `gl_account` id, or the sentence a blocked payout carries. Never both. */
+/**
+ * Either the resolved `gl_account` id with the sentence that explains it, or
+ * the sentence a blocked payout carries. Never both.
+ *
+ * `reason` (brief 28 §5) is the unblocked arm's counterpart to `blockedReason`:
+ * a refusal always said WHY, and an answer used to say nothing, so the reason an
+ * entry hit the account it hit existed for one stack frame and was gone before
+ * the row was written. It rides through `postPayoutEntry` onto the bank line.
+ */
 export type ResolvedPayoutBankAccount =
-  | { blockedReason: null; glAccountId: string }
-  | { blockedReason: string; glAccountId?: never }
+  | {
+      blockedReason: null
+      glAccountId: string
+      /** The `bank_account` record, as `<defId>:<id>`, for the payout's own pointer (brief 27 §6.1). */
+      bankAccountRecordId: string
+      reason: string
+    }
+  | { blockedReason: string; glAccountId?: never; bankAccountRecordId?: never; reason?: never }
 
 /**
- * Resolve a payout's Stripe `destination` to the org's own `bank_account`, or
- * name why it cannot be posted.
+ * Resolve a payout's destination hint to the org's own `bank_account`, or name
+ * why it cannot be posted.
+ *
+ * `sourceLabel` names the provider in the sentence (`Stripe` unless told
+ * otherwise, which keeps every existing message byte-identical). A source that
+ * reports NO destination is blocked here too: the rail record has no
+ * bank-account field yet (27 §6.3, decision 3 owed), so there is nothing else to
+ * resolve against, and a blocked payout is visible where a guessed account is
+ * not.
  *
  * Exported for direct testing - `ingestOne` is not, because reaching it
- * exercises the whole Stripe-backed gatherer this function is deliberately
+ * exercises the whole source-backed gatherer this function is deliberately
  * factored out of.
  */
 export async function resolvePayoutBankAccount(
   db: Database,
   organizationId: string,
   destination: string | null,
-  payoutNumber: string
+  payoutNumber: string,
+  sourceLabel = 'Stripe'
 ): Promise<ResolvedPayoutBankAccount> {
   if (!destination) {
     return {
       blockedReason:
-        `Payout ${payoutNumber} settled with no destination reported by Stripe, so there is no ` +
+        `Payout ${payoutNumber} settled with no destination reported by ${sourceLabel}, so there is no ` +
         'bank account to debit. Confirm its bank account on Accounting > Settings > Bank accounts.',
     }
   }
@@ -364,105 +538,31 @@ export async function resolvePayoutBankAccount(
         'account. Confirm it on Accounting > Settings > Bank accounts.',
     }
   }
-  return { blockedReason: null, glAccountId: match.glAccountId }
-}
-
-/**
- * What a payout's own `payment_gateway` record contributes, or the sentence a
- * blocked payout carries. Never both.
- *
- * ⚠️ `clearingGlAccountId` and `feeGlAccountId` are OPTIONAL on the unblocked
- * branch on purpose: "no record claims this rail" is an ordinary, supported
- * answer, and it means the builder falls back to the roles exactly as it always
- * has. Only an AMBIGUOUS answer blocks.
- */
-export type ResolvedPayoutGateway =
-  | {
-      blockedReason: null
-      clearingGlAccountId?: string
-      feeGlAccountId?: string
-      feeTreatment: PaymentGatewayFeeTreatmentValue
-    }
-  | {
-      blockedReason: string
-      clearingGlAccountId?: never
-      feeGlAccountId?: never
-      feeTreatment?: never
-    }
-
-/**
- * Resolve the `payment_gateway` record this Stripe payout settles, or name why
- * it cannot be posted (brief 26 §3, §13 decision 2).
- *
- * ## Why `settlementSource`, and not the payout itself
- *
- * A Stripe payout knows its Connect account, not a Shopify gateway handle.
- * There is nothing on the payout to join to `payment_gateway.handles`, so the
- * only honest key is the record's own declaration of how it drains:
- * `settlementSource: 'stripe'` means "this rail is the one the payouts API
- * reports", and normally exactly one record says that.
- *
- * ## The three answers
- *
- * - **none.** No record claims the Stripe rail. Not a refusal - the builder
- *   falls back to {@link ACCOUNT_ROLES.CLEARING_CARD} and
- *   `payment_processing_fees`, which is precisely what every org did before
- *   brief 26. An org with zero `payment_gateway` records is bit-for-bit
- *   unaffected by this function.
- * - **exactly one.** Its clearing account, its fee account (when it names one)
- *   and its fee treatment.
- * - **two or more.** 🛑 A REFUSAL, stamped as `payout_blocked_reason` the same
- *   way an unresolvable destination is. Never a silent fall back to the role: a
- *   wrong clearing account is invisible and permanent, a blocked payout is
- *   visible and fixable. ⚠️ "For now" is MK's own framing in §13 decision 2 - if
- *   two Connect accounts on one org turn out to be ordinary rather than a
- *   mistake, this becomes a picker.
- *
- * ⚠️ **`status` is deliberately not filtered.** A closed rail is still a record
- * claiming the Stripe stream, and quietly preferring the active one would be
- * this function guessing - which is the one thing §13 decision 2 rules out.
- *
- * Exported for direct testing, like {@link resolvePayoutBankAccount}.
- */
-export async function resolvePayoutGateway(
-  db: Database,
-  organizationId: string,
-  payoutNumber: string
-): Promise<ResolvedPayoutGateway> {
-  const gateways = await listPaymentGateways(db, organizationId)
-  if (gateways.isErr()) throw gateways.error
-
-  const stripeRails = gateways.value.filter((row) => row.settlementSource === 'stripe')
-
-  if (stripeRails.length === 0) {
-    return { blockedReason: null, feeTreatment: 'netted' }
-  }
-  if (stripeRails.length > 1) {
-    const named = stripeRails.map((row) => row.name || row.id).join(', ')
-    return {
-      blockedReason:
-        `Payout ${payoutNumber} cannot name a clearing account: ${stripeRails.length} payment ` +
-        `gateways settle through Stripe (${named}), so there is no single rail this deposit ` +
-        'drains. Leave one of them on Stripe on Accounting > Settings > Payment gateways.',
-    }
-  }
-
-  const rail = stripeRails[0] as (typeof stripeRails)[number]
   return {
     blockedReason: null,
-    // ⚠️ A record with a blank clearing account falls back to the role rather
-    // than posting to ''. `assertClearingAccount` makes that unreachable from
-    // the write path; it is reachable from a hand-edited row.
-    ...(rail.clearingGlAccountId ? { clearingGlAccountId: rail.clearingGlAccountId } : {}),
-    ...(rail.feeGlAccountId ? { feeGlAccountId: rail.feeGlAccountId } : {}),
-    feeTreatment: rail.feeTreatment,
+    glAccountId: match.glAccountId,
+    bankAccountRecordId: match.recordId,
+    reason:
+      `Debited because ${sourceLabel} reported destination ${destination}, which is confirmed on this ` +
+      'bank account.',
   }
 }
 
-/** The field payload a payout record carries, from one gathered payout. */
-function payoutValues(gathered: GatheredPayout): Record<string, unknown> {
+/**
+ * The field payload a payout record carries, from one gathered payout and the
+ * context it was read in.
+ *
+ * `payout_source` is what the gatherer decided: `synced` for an itemised
+ * source, `imported` for totals only (§4 rule 2). The rail pointer is written
+ * on create AND on every refresh, which is how a row that predates the pointer
+ * adopts it (see `findPayoutByGatewayId`); `undefined` on the role fallback
+ * leaves the cell as it was rather than clearing it.
+ */
+function payoutValues(gathered: GatheredPayout, ctx: PayoutSourceCtx): Record<string, unknown> {
   return {
     payout_gateway_id: gathered.payoutId,
+    payout_payment_gateway: ctx.rail?.recordId ?? undefined,
+    payout_source: gathered.source,
     payout_status: gathered.gatewayStatus === 'paid' ? 'paid' : 'in_transit',
     payout_paid_at: gathered.paidAt,
     payout_destination: gathered.destination ?? undefined,
@@ -477,75 +577,103 @@ function payoutValues(gathered: GatheredPayout): Record<string, unknown> {
 }
 
 /**
- * How far back this run reads.
+ * How far back this run reads, per rail (brief 27 §6.5).
  *
- * 🛑 On an org's FIRST run this is `now`, not `now - 30 days`. Payouts that
- * settled before the sync existed left a clearing balance the opening trial
- * balance already carries; posting them now would relieve clearing twice. Once
- * the org holds at least one payout record the ordinary lookback applies, so a
- * worker that missed a few days catches up.
+ * The floor is the rail's FIRST sync: the earliest payout record stamped with
+ * this rail (or unstamped, which the pair lookup adopts - every pre-157 row and
+ * every role-fallback row). Everything before it is in the opening balances.
+ * Bounded by `SYNC_LOOKBACK_DAYS`, so a worker that missed a few days catches
+ * up and a re-run never walks an account's whole history.
+ *
+ * 🛑 A rail that has NEVER synced starts from its hand-entered
+ * `lastSettlementAt` when it has one - "this rail last settled on D" is exactly
+ * the floor a person onboarding a rail means - and from `now` when it has none,
+ * so the first run posts nothing older than itself.
+ *
+ * ⚠️ **The stamped watermark is deliberately NOT the `since` of a steady-state
+ * run.** It advances to the latest POSTED payout, so reading only from it would
+ * never re-read a payout that arrived earlier and was REFUSED - an unconfirmed
+ * bank account, a conflict of rails, a builder refusal - and the remedy a person
+ * applies would never be retried. The 30-day lookback is what retries it, as it
+ * always has.
  */
 async function resolveSince(
   db: Database,
-  organizationId: string,
-  ctx: PayoutFieldContext,
+  ctx: PayoutSourceCtx,
+  fieldCtx: PayoutFieldContext,
   now: Date
 ): Promise<Date> {
-  const [earliest] = await db
-    .select({ createdAt: schema.EntityInstance.createdAt })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.payoutDefId)
-      )
-    )
-    .orderBy(asc(schema.EntityInstance.createdAt))
-    .limit(1)
-
   const lookback = new Date(now.getTime() - SYNC_LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
-  if (!earliest) return now
-  // Never reach further back than the org's first sync, however long the
-  // lookback is: everything before it is in the opening balances.
-  return lookback > earliest.createdAt ? lookback : earliest.createdAt
-}
 
-/** Every payout the gateway settled since `since`, oldest first. */
-async function listGatewayPayouts(stripeAccountId: string, since: Date): Promise<Stripe.Payout[]> {
-  const stripe = getStripeConnectClient()
-  const payouts: Stripe.Payout[] = []
-  let startingAfter: string | undefined
+  const earliest = await readEarliestPayoutCreatedAt(db, ctx, fieldCtx)
+  if (earliest) return lookback > earliest ? lookback : earliest
 
-  for (;;) {
-    const page: Stripe.ApiList<Stripe.Payout> = await stripe.payouts.list(
-      {
-        limit: PAGE_SIZE,
-        arrival_date: { gte: Math.floor(since.getTime() / 1000) },
-        ...(startingAfter ? { starting_after: startingAfter } : {}),
-      },
-      { stripeAccount: stripeAccountId }
-    )
-    payouts.push(...page.data)
-    if (!page.has_more) break
-    const last = page.data.at(-1)
-    if (!last) break
-    startingAfter = last.id
+  const watermark = ctx.rail?.lastSettlementAt
+  if (watermark) {
+    const floor = new Date(`${watermark}T00:00:00.000Z`)
+    return lookback > floor ? lookback : floor
   }
-
-  // Oldest first, so a run that is interrupted leaves the OLDER payouts posted
-  // and the gap at the recent end, which is the end the next run reaches first.
-  return payouts.reverse()
+  return now
 }
 
 /**
- * A payout the gateway announced and then took back: reverse the entry that
+ * When this rail's first payout record was written, or `null` for none.
+ *
+ * The pointer predicate is `findPayoutByGatewayId`'s: a row stamped with THIS
+ * rail, or with no rail at all. With `ctx.rail` null (the role fallback) every
+ * payout in the org counts, which is the pre-unit-2 org-wide rule verbatim.
+ */
+async function readEarliestPayoutCreatedAt(
+  db: Database,
+  ctx: PayoutSourceCtx,
+  fieldCtx: PayoutFieldContext
+): Promise<Date | null> {
+  const railField = fieldCtx.fields.payout_payment_gateway
+  const byRail = ctx.rail !== null && railField !== null
+
+  let query = db
+    .select({ createdAt: schema.EntityInstance.createdAt })
+    .from(schema.EntityInstance)
+    .$dynamic()
+
+  const where: SQL[] = [
+    eq(schema.EntityInstance.organizationId, ctx.organizationId),
+    eq(schema.EntityInstance.entityDefinitionId, fieldCtx.payoutDefId),
+  ]
+
+  if (byRail && ctx.rail) {
+    const pointer = alias(schema.FieldValue, 'payout_payment_gateway_v')
+    query = query.leftJoin(
+      pointer,
+      and(
+        eq(pointer.entityId, schema.EntityInstance.id),
+        eq(pointer.organizationId, schema.EntityInstance.organizationId),
+        eq(pointer.fieldId, railField.id)
+      )
+    )
+    const pointerMatches = or(
+      isNull(pointer.relatedEntityId),
+      eq(pointer.relatedEntityId, ctx.rail.id)
+    )
+    if (pointerMatches) where.push(pointerMatches)
+  }
+
+  const [earliest] = await query
+    .where(and(...where))
+    .orderBy(asc(schema.EntityInstance.createdAt))
+    .limit(1)
+  return earliest?.createdAt ?? null
+}
+
+/**
+ * A payout the provider announced and then took back: reverse the entry that
  * said the money arrived, and mark the record `reversed`.
  *
  * 🛑 **Reversed, never edited and never deleted.** The entry was true when it
- * posted - the gateway said the payout was paid - and the correction is a second
- * entry that backs it out, which is the rule the whole ledger keeps. Deleting it
- * would leave the bank line matched to nothing and `1200` relieved of money that
- * came back.
+ * posted - the provider said the payout was paid - and the correction is a
+ * second entry that backs it out, which is the rule the whole ledger keeps.
+ * Deleting it would leave the bank line matched to nothing and `1200` relieved
+ * of money that came back.
  *
  * ⚠️ **The bank feed will show the reversal too**, as a debit against the same
  * account. That line is matched by the bank-review queue against the reversing
@@ -564,6 +692,9 @@ export async function reverseFailedPayout(
   return guard(
     async () => {
       const ctx = await requirePayoutFieldContext(organizationId)
+      // Id-only: a `payout.failed` webhook names the Stripe id and nothing
+      // else, and the row it undoes was written by this same sync, so there is
+      // one candidate per org today (Stripe is the only source that writes).
       const record = await findPayoutByGatewayId(db, organizationId, gatewayPayoutId)
       if (!record) {
         logger.info('A payout failed that auxx never ingested, nothing to reverse', {

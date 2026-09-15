@@ -25,6 +25,7 @@ import type {
   BuiltEntry,
   MonthEndInventorySnapshot,
   PostingAssertions,
+  PostingReason,
   PostingType,
   ResolvedPostingLine,
 } from './types'
@@ -72,6 +73,16 @@ export interface PostingDraftV1 {
   resolvedLines: Array<ResolvedPostingLine & { accountRole: string | null }>
   /** Present only for posting types that assert a balance. See {@link PostingAssertions}. */
   assertions?: PostingAssertions
+  /**
+   * Why each forked line landed where it did, in words (brief 28 §5). Copied
+   * from `BuiltEntry.reasons` at claim time, the same way `sources` rides in,
+   * and absent on every entry whose builder emitted none. No version bump: an
+   * optional field a reader may ignore is not a shape readers must branch on.
+   *
+   * A reversal copies the original's list verbatim - the reversed lines keep
+   * their line numbers - and the drawer prefixes it with "Reversing:".
+   */
+  reasons?: PostingReason[]
 }
 
 /**
@@ -100,6 +111,7 @@ export function buildPostingDraft(input: {
   entry: BuiltEntry
   resolvedLines: Array<ResolvedPostingLine & { accountRole: string | null }>
   assertions?: PostingAssertions
+  reasons?: PostingReason[]
 }): PostingDraftV1 {
   return {
     v: POSTING_DRAFT_VERSION,
@@ -109,7 +121,32 @@ export function buildPostingDraft(input: {
     entry: input.entry,
     resolvedLines: input.resolvedLines,
     assertions: input.assertions,
+    // Only ever present with content: `[]` and `undefined` both mean "no forks",
+    // and storing one spelling keeps the jsonb honest about it.
+    reasons: input.reasons && input.reasons.length > 0 ? input.reasons : undefined,
   }
+}
+
+/**
+ * Read the reasons off a stored envelope, LENIENTLY.
+ *
+ * Unlike {@link parsePostingDraft} this never throws: a reason is an explanation
+ * beside the entry, not a number the next close computes from, so an envelope
+ * that predates the field, or one somebody hand-edited, reads as "no reasons"
+ * rather than stopping a reversal. Every entry is checked for shape and the
+ * malformed ones are dropped one by one.
+ */
+export function readDraftReasons(value: unknown): PostingReason[] | undefined {
+  if (!isRecord(value) || !Array.isArray(value.reasons)) return undefined
+  const reasons: PostingReason[] = []
+  for (const item of value.reasons) {
+    if (!isRecord(item)) continue
+    const { line, sentence } = item
+    if (typeof line !== 'number' || !Number.isInteger(line) || line < 1) continue
+    if (typeof sentence !== 'string' || sentence.length === 0) continue
+    reasons.push({ line, sentence })
+  }
+  return reasons.length > 0 ? reasons : undefined
 }
 
 /**
@@ -232,5 +269,6 @@ export function parsePostingDraft(value: unknown): PostingDraftV1 {
       ? (value.resolvedLines as PostingDraftV1['resolvedLines'])
       : [],
     assertions: parsedAssertions,
+    reasons: readDraftReasons(value),
   }
 }

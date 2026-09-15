@@ -1,15 +1,24 @@
 // packages/lib/src/money/payouts/__tests__/split.test.ts
 //
-// The load-bearing property here is that recognition is keyed on the CHARGE ID
-// and never on the amount. Two charges for the same amount on one day are
-// ordinary, and matching on the number would pair the wrong one while both
+// The load-bearing property here is that recognition is keyed on the item's
+// `ref.id` and never on the amount. Two charges for the same amount on one day
+// are ordinary, and matching on the number would pair the wrong one while both
 // sides still balanced - so nothing downstream would ever surface it.
+//
+// Since brief 27 unit 2 the split does not know WHICH lookup produced an id
+// (`recognise.ts` does, per `ref.kind`); it only asks whether the id is in the
+// set, and a `none` ref is never in it.
 
 import { describe, expect, it } from 'vitest'
-import { type PayoutItem, resolvePayoutStatus, splitPayout } from '../client'
+import { type PayoutItem, resolvePayoutStatus, splitPayout, totalsOnlySplit } from '../client'
 
 function charge(id: string, gross: number, fee: number): PayoutItem {
-  return { id: `txn_${id}`, chargeId: `ch_${id}`, grossMinor: gross, feeMinor: fee }
+  return {
+    externalId: `txn_${id}`,
+    grossMinor: gross,
+    feeMinor: fee,
+    ref: { kind: 'stripe_charge', id: `ch_${id}` },
+  }
 }
 
 describe('splitPayout', () => {
@@ -42,15 +51,16 @@ describe('splitPayout', () => {
     expect(split.unrecognisedCount).toBe(1)
   })
 
-  it('treats a balance transaction with no charge as unrecognised', () => {
+  it('treats an item with a `none` ref as unrecognised, whatever the set holds', () => {
     // A Stripe monthly fee, an adjustment, a transfer - nothing auxx could hold
-    // a PaymentTransaction for.
+    // a record for. Not even a set that somehow contained its external id
+    // would recognise it: there is no `ref.id` to look up.
     const split = splitPayout(
       [
         charge('a', 100_000, 3_200),
-        { id: 'txn_fee', chargeId: null, grossMinor: -2_500, feeMinor: 0 },
+        { externalId: 'txn_fee', grossMinor: -2_500, feeMinor: 0, ref: { kind: 'none' } },
       ],
-      new Set(['ch_a'])
+      new Set(['ch_a', 'txn_fee'])
     )
 
     expect(split.unrecognisedNetMinor).toBe(-2_500)
@@ -61,13 +71,45 @@ describe('splitPayout', () => {
     const split = splitPayout(
       [
         charge('a', 100_000, 3_200),
-        { id: 'txn_r', chargeId: 'ch_a', grossMinor: -40_000, feeMinor: 0 },
+        {
+          externalId: 'txn_r',
+          grossMinor: -40_000,
+          feeMinor: 0,
+          ref: { kind: 'stripe_charge', id: 'ch_a' },
+        },
       ],
       new Set(['ch_a'])
     )
 
     expect(split.grossMinor).toBe(60_000)
     expect(split.unrecognisedNetMinor).toBe(0)
+  })
+
+  it('recognises an `order` ref by its id exactly as it does a charge', () => {
+    // brief 27 §4 rule 1: the split is kind-blind. Which lookup put `1001` in
+    // the set is `recognise.ts`'s business.
+    const split = splitPayout(
+      [
+        {
+          externalId: 'bt_1',
+          grossMinor: 30_000,
+          feeMinor: 900,
+          ref: { kind: 'order', id: '1001' },
+        },
+        {
+          externalId: 'bt_2',
+          grossMinor: 20_000,
+          feeMinor: 600,
+          ref: { kind: 'order', id: '1002' },
+        },
+      ],
+      new Set(['1001'])
+    )
+
+    expect(split.grossMinor).toBe(30_000)
+    expect(split.feesMinor).toBe(900)
+    expect(split.unrecognisedNetMinor).toBe(19_400)
+    expect(split.unrecognisedCount).toBe(1)
   })
 
   it('recognises nothing, without erroring, on an org that just connected', () => {
@@ -99,6 +141,34 @@ describe('splitPayout', () => {
       unrecognisedNetMinor: 0,
       unrecognisedCount: 0,
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// brief 27 §4 rule 2 / §13 test 3: a source with totals and no items posts
+// recognition equal to gross, with nothing on the unrecognised side.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('totalsOnlySplit', () => {
+  it('fills gross and fees from the totals and leaves the remainder at zero by construction', () => {
+    expect(totalsOnlySplit({ grossMinor: 150_000, feesMinor: 4_950 })).toEqual({
+      grossMinor: 150_000,
+      feesMinor: 4_950,
+      netMinor: 145_050,
+      unrecognisedNetMinor: 0,
+      unrecognisedCount: 0,
+    })
+  })
+
+  it('agrees with splitPayout over the same numbers when every item is recognised', () => {
+    // The two paths must land on the same four numbers for the entry, or an
+    // imported statement and a synced feed of the same payout would post
+    // differently.
+    const itemised = splitPayout(
+      [charge('a', 100_000, 3_200), charge('b', 50_000, 1_750)],
+      new Set(['ch_a', 'ch_b'])
+    )
+    expect(totalsOnlySplit({ grossMinor: 150_000, feesMinor: 4_950 })).toEqual(itemised)
   })
 })
 

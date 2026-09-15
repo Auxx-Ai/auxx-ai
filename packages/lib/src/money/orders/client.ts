@@ -30,7 +30,10 @@ export interface OrderLineRemaining {
   shippedQuantity: number
   /** `quantity - shippedQuantity`, floored at zero. What the dialog prefills. */
   remainingQuantity: number
-  /** Minor units per unit. A RATE - it may be fractional. */
+  /**
+   * Minor units per unit at the line NET - see {@link netUnitPriceMinor}. A
+   * RATE, so it may be fractional.
+   */
   unitPriceMinor: number
   /**
    * This line's own tax for the WHOLE line (`line_item_tax_total`), integer
@@ -43,6 +46,91 @@ export interface OrderLineRemaining {
    */
   lineTaxMinor: number | null
   sortOrder: number
+}
+
+/** The line cells {@link netUnitPriceMinor} and {@link netLineTotalMinor} are decided from. */
+export interface NetUnitPriceInput {
+  /**
+   * `line_item_net_total`, minor units: the line total after every allocated
+   * discount. Null when the line has never been given one (an org before
+   * entity migration 157, a connector org before its remap, a quote line).
+   * Optional so an older caller that only knows the total keeps compiling.
+   */
+  netTotalMinor?: number | null | undefined
+  /** `line_item_line_total`, the GROSS `qty x unit price`, minor units. Null when the line carries no total at all. */
+  lineTotalMinor: number | null | undefined
+  /** `line_item_unit_price`, the GROSS per-unit rate, minor units. */
+  unitPriceMinor: number | null | undefined
+  /** `line_item_qty`, the ordered quantity. */
+  orderedQuantity: number | null | undefined
+}
+
+/**
+ * The whole-line amount the ledger recognises a line at, minor units: the NET
+ * (`line_item_net_total`) when the line has one, else the gross total
+ * (`line_item_line_total`), else null when the line carries no total at all.
+ *
+ * The preference order is the decision in 29 §2.3 (MK, 2026-09-14): `unit_price`
+ * and `line_total` stay GROSS so a line matches what Shopify's admin shows, and
+ * the allocated net lives in its own column. A connector org that has not run
+ * its remap still holds the net in `line_total` (the connector used to write it
+ * there) and no `net_total` at all, so the fallback keeps it posting the number
+ * it already stored. A native org whose order was recomputed since migration
+ * 157 has a `net_total` on every line (equal to the gross where there is no
+ * discount) and the fallback is never consulted.
+ *
+ * 🛑 **Only null falls through, never zero.** A zero net is a fully discounted
+ * line, and recognising it at the gross would book revenue nobody was charged.
+ * This is the one place the preference is decided; `netUnitPriceMinor` and the
+ * readers that hand `shippedLineAmount` its allocation basis both go through it,
+ * so the rate and the split allocation cannot disagree about which column a
+ * line is recognised from.
+ */
+export function netLineTotalMinor(
+  line: Pick<NetUnitPriceInput, 'netTotalMinor' | 'lineTotalMinor'>
+): number | null {
+  if (line.netTotalMinor != null && Number.isFinite(line.netTotalMinor)) return line.netTotalMinor
+  if (line.lineTotalMinor != null && Number.isFinite(line.lineTotalMinor))
+    return line.lineTotalMinor
+  return null
+}
+
+/**
+ * The rate a fulfillment recognises one unit of a line at: the line NET per
+ * unit, in minor units.
+ *
+ * `line_item_unit_price` is the PRE-discount price, `line_item_line_total` is
+ * the GROSS `qty x price`, and `line_item_net_total` is `line_total - every
+ * discount allocated to the line` - the totals engine writes it for a native
+ * order and the connector for a synced one (29 §2.3). On the reference org the
+ * nets sum to `order_subtotal` on every one of 6,500 orders and `price x qty`
+ * does not on 3,073 of them, so the net is the basis, the gross total is the
+ * fallback for a line that has no net yet (see {@link netLineTotalMinor}), and
+ * the price is the fallback for a line with no total of either kind
+ * (`plans/accounting/tasks/29-clearing-at-the-payment-date.md` §1.7, §2.3).
+ *
+ * 🛑 **The fallback is for an ABSENT total (null), never a zero one.** A zero
+ * total is a fully discounted line; recognising it at the gross price books
+ * revenue nobody was charged, and the entry balances.
+ *
+ * A RATE, left unrounded: `180 / 3` is `60` and `181 / 2` is `90.5`, and
+ * `extendRateToAmount` in the builder is the one boundary that turns it into an
+ * amount. A total with no positive ordered quantity has nothing to divide by
+ * and falls back to the gross price, which is exactly what such a line
+ * recognised before the net basis existed.
+ */
+export function netUnitPriceMinor(line: NetUnitPriceInput): number {
+  const { unitPriceMinor, orderedQuantity } = line
+  const totalMinor = netLineTotalMinor(line)
+  if (
+    totalMinor != null &&
+    orderedQuantity != null &&
+    Number.isFinite(orderedQuantity) &&
+    orderedQuantity > 0
+  ) {
+    return totalMinor / orderedQuantity
+  }
+  return unitPriceMinor ?? 0
 }
 
 /**

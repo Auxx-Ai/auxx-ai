@@ -33,6 +33,37 @@ export function readStoredAssertions(draft: unknown): PostingAssertions | null {
   return { kind: 'month_end_inventory', before, after }
 }
 
+/** One stored reason: which line, and why its account (brief 28 §5). Mirrors lib's `PostingReason`. */
+export interface StoredReason {
+  line: number
+  sentence: string
+}
+
+/**
+ * Read the per-line "why these accounts" list off a stored envelope.
+ *
+ * Same contract as {@link readStoredAssertions}: the STORED sentences, verbatim,
+ * and never a re-derivation. A reason names the gateway record or the bank
+ * identity that decided a line WHEN IT POSTED; re-deriving it from today's
+ * records would name whatever claims the handle now (brief 28 §11 R4). A
+ * reversal stores the original's list unchanged and the drawer prefixes it.
+ *
+ * Lenient, like the assertions reader: an envelope without the field, or one
+ * with a malformed entry, reads as fewer reasons rather than a blank drawer.
+ */
+export function readStoredReasons(draft: unknown): StoredReason[] {
+  if (!isRecord(draft) || !Array.isArray(draft.reasons)) return []
+  const reasons: StoredReason[] = []
+  for (const item of draft.reasons) {
+    if (!isRecord(item)) continue
+    const { line, sentence } = item
+    if (typeof line !== 'number' || !Number.isInteger(line) || line < 1) continue
+    if (typeof sentence !== 'string' || sentence.length === 0) continue
+    reasons.push({ line, sentence })
+  }
+  return reasons
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

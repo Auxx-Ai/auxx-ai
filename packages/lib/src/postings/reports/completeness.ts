@@ -13,6 +13,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../errors'
 import { periodMonth } from '../periods'
+import { POSTING_POLICIES } from '../policy'
 import { ENABLED_POSTING_TYPES } from '../regime'
 import { POSTING_TYPES, type PostingType } from '../types'
 import { type FailedExport, listFailedExports } from '../verify-balance'
@@ -63,37 +64,23 @@ const NEVER_CLOSE_EMITTED = new Set<PostingType>(['provider_sync'])
 /**
  * One sentence per disabled posting type, naming what is consequently missing
  * from a statement - the brief's own example ("fulfillment posting is off, so
- * COGS is the monthly assertion"), generalised to every type in the union so a
- * newly added type never falls through with no sentence.
+ * COGS is the monthly assertion").
+ *
+ * A DERIVED VIEW of `POSTING_POLICY` since brief 28 unit 1: each policy's
+ * `disabledSentence`, the OFF-state pair of its `sentence`. Edit the policy,
+ * not this table. `__tests__/policy.test.ts` pins every currently-disabled
+ * type's sentence to the words this table held before it was derived.
+ *
+ * 🛑 `expense_bill` is deliberately NOT in `NEVER_CLOSE_EMITTED`. It is written
+ * by auxx's own writer on a bill's Post action, exactly as `invoice_issued` is
+ * written on an invoice's Send - so it belongs enabled on its policy, not
+ * exempted from the subtraction here. `provider_sync` is exempt because NOTHING
+ * in auxx ever emits it; that is not true of this one, and exempting it would
+ * hide a real "the payable side of the books is switched off" from every
+ * statement the day it is.
  */
-const DISABLED_POSTING_TYPE_SENTENCES: Partial<Record<PostingType, string>> = {
-  fulfillment:
-    'Fulfillment posting is off, so revenue and COGS come only from the monthly inventory assertion.',
-  payout:
-    'Payout posting is off, so Shopify and processor clearing accounts are not reconciled per payout.',
-  receipt:
-    'Per-event receipt posting is off, so inventory moves only through the monthly assertion.',
-  vendor_bill:
-    'Per-event vendor bill posting is off, so goods received not invoiced is not relieved per bill.',
-  // 🛑 Deliberately NOT in `NEVER_CLOSE_EMITTED`. `expense_bill` is written by
-  // auxx's own writer on a bill's Post action, exactly as `invoice_issued` is
-  // written on an invoice's Send - so it belongs in `ENABLED_POSTING_TYPES`
-  // (a one-line edit in `regime.ts`), not exempted from the subtraction here.
-  // `provider_sync` is exempt because NOTHING in auxx ever emits it; that is
-  // not true of this one, and exempting it would hide a real "the payable side
-  // of the books is switched off" from every statement the day it is.
-  expense_bill:
-    'Expense bill posting is off, so a vendor bill for rent, insurance or a subscription raises ' +
-    'no payable and its expense never reaches the profit and loss.',
-  build: 'Build posting is off.',
-  month_end_deferral: 'Month-end deferral posting is off.',
-  month_end_reversal: 'Month-end reversal posting is off.',
-  manual_journal: 'Manual journal entries are off, so a bookkeeper cannot post an adjusting entry.',
-  opening_balance: 'The opening trial balance is off, so this ledger has no starting position.',
-  bank_transaction: 'Bank feed posting is off, so no bank line has been coded to the books.',
-  bank_deposit: 'Deposit posting is off, so undeposited funds is never cleared to cash.',
-  write_off: 'Write-off posting is off.',
-}
+export const DISABLED_POSTING_TYPE_SENTENCES: Partial<Record<PostingType, string>> =
+  Object.fromEntries(POSTING_POLICIES.map((policy) => [policy.type, policy.disabledSentence]))
 
 /**
  * Every completeness item the org's statements currently carry: unposted

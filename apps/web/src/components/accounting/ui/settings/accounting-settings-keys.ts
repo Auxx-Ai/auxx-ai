@@ -46,15 +46,12 @@ export const ACCOUNTING_KEYS = {
  * from the whole record would write back unrelated settings, so each section
  * narrows its draft to one of these arrays and diffs only against it.
  */
+// `fulfillmentPosting` used to ride in this slice; it is a MODE, not a period
+// fact, and brief 28 §3 moved it (with the payment routes) to the Posting page,
+// which renders every posting-type setting straight off `POSTING_POLICY`.
 export const PERIOD_DRAFT_KEYS = [
   ACCOUNTING_KEYS.cutoffPeriod,
   ACCOUNTING_KEYS.bookTimeZone,
-  // 🛑 In this slice but NOT frozen. The two keys above rewrite the arithmetic
-  // behind entries that have already posted, so they lock at the first claim;
-  // `fulfillmentPosting` is a MODE that decides what happens next and rewrites
-  // nothing, so freezing it would strand an organization on whichever answer it
-  // happened to have when it posted for the first time.
-  ACCOUNTING_KEYS.fulfillmentPosting,
 ] as const
 
 export const ABSORPTION_DRAFT_KEYS = [

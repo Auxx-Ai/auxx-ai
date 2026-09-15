@@ -15,7 +15,12 @@ import { readFieldScalars } from '../field-values/read-field-scalars'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { unwrapRelationId } from '../resources/events/captured-values'
 import { syncInvoicePaymentState } from './payments/ledger'
-import { computeDocumentTotals, computeLineTotal, roundCents } from './totals'
+import {
+  computeAllocatedDocumentTotals,
+  computeDocumentTotals,
+  computeLineTotal,
+  roundCents,
+} from './totals'
 import {
   MONEY_TOTALS_LINE_ITEM,
   MONEY_TOTALS_PURCHASE_ORDER_LINE,
@@ -25,6 +30,7 @@ import {
 import type {
   DiscountType,
   DocumentBillingInputs,
+  DocumentTotals,
   LineForTotals,
   RecomputeTotalsInput,
 } from './types'
@@ -177,6 +183,13 @@ interface LineTotalsSpec {
    * (plans/accounting/tasks/10 section 3.1).
    */
   lineTaxAttr?: SystemAttribute
+  /**
+   * The line NET after every allocated discount, written ONLY by a document spec with
+   * `allocatesHeaderDiscount` (29 §2.3). `lineTotalAttr` stays GROSS (`qty x unitPrice`)
+   * for every document; this is where the `order` spec puts each line's share of the
+   * header discount. A quote or invoice never writes it.
+   */
+  netTotalAttr?: SystemAttribute
 }
 
 /** Every sell-side document's lines are `line_item`s, so the four share one spec. */
@@ -185,6 +198,7 @@ const LINE_ITEM_TOTALS_SPEC: LineTotalsSpec = {
   qtyAttr: 'line_item_qty',
   unitPriceAttr: 'line_item_unit_price',
   lineTotalAttr: 'line_item_line_total',
+  netTotalAttr: 'line_item_net_total',
   taxableAttr: 'line_item_taxable',
   optionalAttr: 'line_item_optional',
   optionalSelectedAttr: 'line_item_optional_selected',
@@ -306,6 +320,26 @@ interface DocumentTotalsSpec {
     documentInstanceId: string
     db?: Database
   }) => Promise<void>
+  /**
+   * The header discount is pushed DOWN onto the lines (29 §12 item 7, §2.3):
+   * each line's share of it is subtracted from its GROSS `lineTotalAttr` and
+   * the result written to `netTotalAttr` (`computeAllocatedDocumentTotals`),
+   * `_subtotal` is Σ of those nets, and `_total` is `subtotal + tax + shipping`
+   * with no discount left to subtract.
+   *
+   * `lineTotalAttr` itself is never touched by this: it stays `qty x unitPrice`
+   * (the line hook's own write) on every document, which is what Shopify's
+   * admin shows per line and what a customer expects the line to match (MK,
+   * 2026-09-14). With no discount the allocation of zero makes the net EQUAL
+   * the gross, so `netTotalAttr` always carries a value on an allocating
+   * document once it has been recomputed, and the ledger can read it first
+   * and fall back to the gross total only where it is null.
+   *
+   * Only `order` sets it. A quote or invoice keeps the discount on the header,
+   * where `build-invoice-entry.ts` derives it from the stored total, and
+   * never writes `netTotalAttr` at all.
+   */
+  allocatesHeaderDiscount?: boolean
 }
 
 const DOCUMENT_TOTALS_SPECS: Record<TotalledDocumentType, DocumentTotalsSpec> = {
@@ -348,10 +382,17 @@ const DOCUMENT_TOTALS_SPECS: Record<TotalledDocumentType, DocumentTotalsSpec> = 
     line: LINE_ITEM_TOTALS_SPEC,
     billing: rateBilling('order'),
     lineRelFieldId: 'line_item:order',
-    // The plainest of the three: no work-order exclusion (that invariant is about an
-    // invoice's own lines) and no payment ledger (08 §5.4).
+    // No work-order exclusion (that invariant is about an invoice's own lines) and no
+    // payment ledger (08 §5.4).
     extraLineConditions: [],
     publishEvents: true,
+    // A native order's header discount lands on its lines as `line_item_net_total`, so
+    // `order_subtotal` is Σ net and `order_total = subtotal + tax + shipping` - the shape
+    // the fulfillment and payment entries are computed on, and the shape a connector
+    // order already has (29 §2.3, §12 item 7). `line_item_line_total` stays gross. A
+    // connector-managed order never reaches the write: the stand-down below covers the
+    // line writes too.
+    allocatesHeaderDiscount: true,
   },
   purchase_order: {
     attrPrefix: 'purchase_order',
@@ -475,6 +516,9 @@ async function recomputeDocumentTotals(params: {
     spec.line.optionalAttr,
     spec.line.optionalSelectedAttr,
     spec.line.lineTaxAttr,
+    // The stored net is compared against the allocation when the discount lives on
+    // the lines - see `allocatesHeaderDiscount`. Same query, one more id.
+    ...(spec.allocatesHeaderDiscount ? [spec.line.netTotalAttr] : []),
   ].filter((a): a is SystemAttribute => a !== undefined)
 
   const cf = await cache
@@ -565,7 +609,33 @@ async function recomputeDocumentTotals(params: {
     ? await readLinesForTotals(db, organizationId, spec, cf, lineInstanceIds)
     : []
 
-  const computed = computeDocumentTotals(lines, billing)
+  /**
+   * The header discount, on the header or on the lines (29 §12 item 7). When it is on
+   * the lines, `lineWrites` is every line whose stored NET is not its allocated net -
+   * which sets the net back to the gross too, on the recompute that follows a discount
+   * being removed, because the allocation of zero is the gross. The gross column is
+   * never in this list.
+   *
+   * An org that has not run entity migration 157 has no `netTotalAttr` field to write:
+   * the header mirrors still land, the net writes are dropped, and the ledger falls
+   * back to the gross total for that org (29 §2.3).
+   */
+  let computed: DocumentTotals
+  let lineWrites: Array<{ lineInstanceId: string; value: number | null }> = []
+  const netTotalAttr = spec.allocatesHeaderDiscount ? spec.line.netTotalAttr : undefined
+  if (spec.allocatesHeaderDiscount) {
+    const allocated = computeAllocatedDocumentTotals(lines, billing)
+    computed = allocated.totals
+    if (netTotalAttr && cf[netTotalAttr]) {
+      lineWrites = allocated.lines.flatMap((line) =>
+        line.lineTotal === line.storedNetTotal
+          ? []
+          : [{ lineInstanceId: line.lineInstanceId, value: line.lineTotal }]
+      )
+    }
+  } else {
+    computed = computeDocumentTotals(lines, billing)
+  }
 
   // Transcribed line tax replaces the rate-derived figure wholesale: the two are never
   // combined, and with no rate on the header `computed.taxTotal` is zero anyway.
@@ -610,10 +680,12 @@ async function recomputeDocumentTotals(params: {
    * `paid` <-> `partially_paid` with the totals unchanged — and `money.recomputeTotals`
    * is documented as the manual drift escape, so it must stay a real refresh.
    */
-  const unchanged = values.every((v) => {
-    const current = readNumber(cf[v.fieldId as SystemAttribute]?.id)
-    return current !== null && current === v.value
-  })
+  const unchanged =
+    lineWrites.length === 0 &&
+    values.every((v) => {
+      const current = readNumber(cf[v.fieldId as SystemAttribute]?.id)
+      return current !== null && current === v.value
+    })
 
   if (!unchanged) {
     /**
@@ -645,6 +717,20 @@ async function recomputeDocumentTotals(params: {
       })
     } else {
       const fieldValueService = new FieldValueService(organizationId, userId, db)
+      // The lines first, so anything reading them off the header's realtime event
+      // sees the nets the header was summed from. `netTotalAttr` is in no trigger
+      // set (`LINE_TRIGGER_ATTRS`, the billing hooks, the finalize passes), so these
+      // writes re-enter nothing - `recomputeOnLineChange` exits on its filter.
+      // `lineWrites` is empty unless `netTotalAttr` resolved above.
+      if (netTotalAttr) {
+        for (const write of lineWrites) {
+          await fieldValueService.setValuesForEntity({
+            recordId: toRecordId(spec.line.lineEntityType, write.lineInstanceId),
+            values: [{ fieldId: netTotalAttr, value: write.value }],
+            publishEvents: true,
+          })
+        }
+      }
       await fieldValueService.setValuesForEntity({
         recordId: documentRecordId,
         values,
@@ -673,8 +759,18 @@ async function recomputeDocumentTotals(params: {
  * stored values at all — the previous loop pushed an entry per id unconditionally
  * and `computeDocumentTotals` counts a null `lineTotal` as a zero contribution.
  */
-/** A line's contribution plus, for a document with `lineTaxAttr`, its transcribed tax. */
-type LineForTotalsWithTax = LineForTotals & { lineTax?: number | null }
+/**
+ * A line's contribution plus, for a document with `lineTaxAttr`, its transcribed tax -
+ * and, for one with `allocatesHeaderDiscount`, the identity and stored NET the net write
+ * is compared against. `lineTotal` is always the stored GROSS (`lineTotalAttr`, the line
+ * hook's own `qty x unitPrice`); `storedNetTotal` is what `netTotalAttr` holds today, or
+ * null on a document that does not allocate or a line never recomputed since 157.
+ */
+type LineForTotalsWithTax = LineForTotals & {
+  lineTax?: number | null
+  lineInstanceId: string
+  storedNetTotal: number | null
+}
 
 async function readLinesForTotals(
   db: Database | undefined,
@@ -693,6 +789,7 @@ async function readLinesForTotals(
   const optionalFieldId = idFor(spec.line.optionalAttr)
   const optionalSelectedFieldId = idFor(spec.line.optionalSelectedAttr)
   const lineTaxFieldId = idFor(spec.line.lineTaxAttr)
+  const netTotalFieldId = spec.allocatesHeaderDiscount ? idFor(spec.line.netTotalAttr) : undefined
 
   const fieldIds = [
     lineTotalFieldId,
@@ -700,26 +797,34 @@ async function readLinesForTotals(
     optionalFieldId,
     optionalSelectedFieldId,
     lineTaxFieldId,
+    netTotalFieldId,
   ].filter((id): id is string => !!id)
-  if (fieldIds.length === 0) return lineInstanceIds.map(() => emptyLineForTotals())
+  if (fieldIds.length === 0) return lineInstanceIds.map(emptyLineForTotals)
 
   const byLine = await readFieldScalars(db, organizationId, lineInstanceIds, fieldIds)
 
   return lineInstanceIds.map((lineInstanceId) => {
     const values = byLine.get(lineInstanceId)
-    if (!values) return emptyLineForTotals()
+    if (!values) return emptyLineForTotals(lineInstanceId)
 
     const read = (fieldId: string | undefined): unknown =>
       fieldId && values.has(fieldId) ? values.get(fieldId) : undefined
 
-    const lineTotal = read(lineTotalFieldId)
+    const stored = read(lineTotalFieldId)
+    const storedNet = read(netTotalFieldId)
     const taxable = read(taxableFieldId)
     const optional = read(optionalFieldId)
     const optionalSelected = read(optionalSelectedFieldId)
     const lineTax = read(lineTaxFieldId)
 
     return {
-      lineTotal: lineTotal == null ? null : (lineTotal as number),
+      lineInstanceId,
+      // The GROSS as the line hook wrote it (`qty x unitPrice`). On an allocating
+      // document the engine subtracts each line's discount share from this and
+      // writes the result to `netTotalAttr`; the gross column is never rewritten
+      // here, so it is always safe to read as the allocation's input.
+      lineTotal: stored == null ? null : (stored as number),
+      storedNetTotal: storedNet == null ? null : (storedNet as number),
       // A line entity with no `taxable` field is wholly taxable as far as the math is
       // concerned — with `taxRate` null (the buy side) that distinction never surfaces.
       taxable: taxable == null ? true : (taxable as boolean),
@@ -731,8 +836,15 @@ async function readLinesForTotals(
 }
 
 /** A line the query returned nothing for — the previous loop's all-absent case. */
-function emptyLineForTotals(): LineForTotals {
-  return { lineTotal: null, taxable: true, optional: undefined, optionalSelected: undefined }
+function emptyLineForTotals(lineInstanceId: string): LineForTotalsWithTax {
+  return {
+    lineInstanceId,
+    storedNetTotal: null,
+    lineTotal: null,
+    taxable: true,
+    optional: undefined,
+    optionalSelected: undefined,
+  }
 }
 
 /**
@@ -874,8 +986,8 @@ export async function resolveLineParentDocument(params: {
  * 2. Resolve the line's parent document ({@link resolveLineParentDocument}: quote first,
  *    else invoice-without-work-order) and recompute+write its mirrored totals.
  *
- * No recursion: the fields this hook writes (`line_total`, `subtotal`/`tax_total`/
- * `total`) are not in {@link LINE_TRIGGER_ATTRS}, {@link QUOTE_TRIGGER_ATTRS}, or
+ * No recursion: the fields this hook writes (`line_total`, `net_total`, `subtotal`/
+ * `tax_total`/`total`) are not in {@link LINE_TRIGGER_ATTRS}, {@link QUOTE_TRIGGER_ATTRS}, or
  * {@link INVOICE_TRIGGER_ATTRS}, so re-entry exits immediately on the systemAttribute filter.
  */
 export const recomputeOnLineChange: EntityFieldChangeHandler = async (event) => {

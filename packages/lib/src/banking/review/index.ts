@@ -49,7 +49,10 @@ export {
   type ReviewQueueState,
   type ReviewQueueStats,
   type ReviewStatus,
+  type SettlementOffer,
   scoreCandidate,
+  settlementLabel,
+  settlementOffers,
 } from './client'
 export {
   getBankTransaction,
