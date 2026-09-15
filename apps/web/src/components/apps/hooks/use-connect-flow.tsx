@@ -2,6 +2,7 @@
 
 'use client'
 
+import { isMasked } from '@auxx/credentials/crypto/client'
 import type { ConnectionVariable } from '@auxx/database'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { type ReactNode, useCallback, useMemo, useState } from 'react'
@@ -300,7 +301,8 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       if (a.returnTo) params.set('returnTo', a.returnTo)
       if (a.personal) params.set('personal', '1')
       for (const [key, value] of Object.entries(vars)) {
-        if (value) params.set(`var_${key}`, value)
+        // Omit unchanged secret placeholders so the authorize route reuses stored values.
+        if (value && !(a.connectionId && isMasked(value))) params.set(`var_${key}`, value)
       }
       // Post-connect context (e.g. channels-v2 inbox-first `{ inboxId }`) → `pc_<key>` params,
       // which the authorize route folds into the OAuth state and the callback hands to the hook.
@@ -439,15 +441,9 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         return
       }
       if (def.connectionType === 'oauth2-code') {
-        // Reconnect reuses the stored variables (e.g. the Shopify shop) server-side,
-        // so only prompt for them on a fresh connect — and try a silent token refresh
-        // before falling back to the full OAuth flow.
+        // Reconnect preserves existing permissions and offers newly declared optional scopes.
         if (next.connectionId) {
-          // §4.4 — a reconnect must not silently downgrade the grant. It never opens a dialog,
-          // so without a seed a full re-auth of a connection holding an optional scope comes
-          // back with the floor alone and nothing says so. Re-request exactly what the
-          // connection already holds. An explicit `scopeAdd` (the Edit dialog's picker) wins:
-          // it was itself seeded from the grant, and the user's edits to it are deliberate.
+          // Explicit picks from the Edit dialog win; otherwise seed from the existing grant.
           const seeded =
             next.scopeAdd !== undefined
               ? next
@@ -457,10 +453,14 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
                 }
           setArgs(seeded)
           setPickedScopes(seeded.scopeAdd ?? [])
-          // The silent refresh keeps the existing token and never re-authorizes, so the seed is
-          // inert on that leg — it only matters on the fallback to `kickOauth`, which
-          // `attemptRefreshThenOAuth` reaches with this same object.
-          void attemptRefreshThenOAuth(seeded)
+          if (next.scopeAdd !== undefined) {
+            // A token refresh cannot grant selected permissions. Request consent directly.
+            kickOauth(seeded)
+          } else if ((def.oauth2OptionalScopes?.length ?? 0) > 0) {
+            setFormOpen(true)
+          } else {
+            void attemptRefreshThenOAuth(seeded)
+          }
         } else if (shouldOpenConnectDialog(def)) {
           setFormOpen(true)
         } else {

@@ -188,7 +188,7 @@ export function ConnectionDetailDialog({
     } = {}
     if (showName) payload.name = name.trim()
     // Only report picks the user could actually see and change.
-    if (shouldOfferOptionalScopes(method, byoOpen)) payload.optionalScopes = optionalScopes
+    if (shouldOfferOptionalScopes(method)) payload.optionalScopes = optionalScopes
     // Only the currently-visible fields ride along; a bare API-key method submits the token.
     if (hasFields) {
       if (bareSecret) payload.secret = token

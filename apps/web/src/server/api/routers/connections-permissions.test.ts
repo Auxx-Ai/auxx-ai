@@ -64,6 +64,7 @@ const {
   findCredential,
   findConnectionDefinition,
   findDataConnectors,
+  resolveOwnClientGateForOrg,
 } = vi.hoisted(() => ({
   listCredentials: vi.fn(),
   revealSecrets: vi.fn(),
@@ -81,6 +82,7 @@ const {
   findCredential: vi.fn(),
   findConnectionDefinition: vi.fn(),
   findDataConnectors: vi.fn(),
+  resolveOwnClientGateForOrg: vi.fn(),
 }))
 
 vi.mock('@auxx/credentials/store', () => ({
@@ -92,24 +94,31 @@ vi.mock('@auxx/credentials/store', () => ({
   splitSensitiveFields: (data: Record<string, unknown>) => ({ secrets: {}, metadata: data }),
 }))
 
-vi.mock('@auxx/credentials/crypto', () => ({
-  isMasked: () => false,
-  projectCredentialForEdit: () => ({}),
-  splitConnectionValues: () => ({ secretFields: {}, plainVariables: {} }),
-}))
+vi.mock('@auxx/credentials/crypto', async () => {
+  const { projectCredentialForEdit } = await import('@auxx/credentials/crypto/client')
+  return {
+    isMasked: () => false,
+    projectCredentialForEdit,
+    splitConnectionValues: () => ({ secretFields: {}, plainVariables: {} }),
+  }
+})
 
 vi.mock('@auxx/lib/cache', () => ({ getOrgCache: () => ({ get: orgCacheGet }) }))
 
-vi.mock('@auxx/lib/connections', () => ({
-  gateConnectionVariables: (_t: unknown, vars: unknown[]) => vars,
-  mintClientCredentialToken: vi.fn(),
-  NO_OWN_CLIENT_GATE: { requiresOwnClient: false, ownClientOptional: false, reason: null },
-  providerOAuthCallbackUrl: () => 'https://example.test/cb',
-  refreshCredentialTokens,
-  resolveOwnClientGateForOrg: vi.fn(),
-  runPostConnectHook,
-  saveConnection,
-}))
+vi.mock('@auxx/lib/connections', async () => {
+  const { effectiveConnectionVariables } = await import('@auxx/credentials/connections')
+  return {
+    effectiveConnectionVariables,
+    gateConnectionVariables: (_t: unknown, vars: unknown[]) => vars,
+    mintClientCredentialToken: vi.fn(),
+    NO_OWN_CLIENT_GATE: { requiresOwnClient: false, ownClientOptional: false, reason: null },
+    providerOAuthCallbackUrl: () => 'https://example.test/cb',
+    refreshCredentialTokens,
+    resolveOwnClientGateForOrg,
+    runPostConnectHook,
+    saveConnection,
+  }
+})
 
 vi.mock('@auxx/lib/connections/providers', () => ({
   getAllProviders: () => [],
@@ -207,6 +216,11 @@ const manage = () => capabilitiesFor({ [Area.integrations]: Level.Full })
 
 beforeEach(() => {
   vi.clearAllMocks()
+  resolveOwnClientGateForOrg.mockResolvedValue({
+    requiresOwnClient: false,
+    ownClientOptional: true,
+    reason: 'byo-entitled',
+  })
   listCredentials.mockResolvedValue(okResult([]))
   revealSecrets.mockResolvedValue(okResult({ record: { metadata: {} }, secrets: {} }))
   deleteCredential.mockResolvedValue(okResult(undefined))
@@ -288,6 +302,55 @@ describe('connections.list', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('connections.getForEdit', () => {
+  it('returns masked saved OAuth client fields injected outside the stored definition', async () => {
+    findCredential.mockResolvedValue({ userId: null })
+    findConnectionDefinition.mockResolvedValue({
+      connectionType: 'oauth2-code',
+      connectionVariables: [{ key: 'shop', label: 'Shop' }],
+    })
+    revealSecrets.mockResolvedValue(
+      okResult({
+        record: {
+          connectionDefinitionId: 'shopify-definition',
+          metadata: { connectionVariables: { shop: 'fixture', clientId: 'stored-client' } },
+        },
+        secrets: {
+          accessToken: 'private-access-token',
+          refreshToken: 'private-refresh-token',
+          fields: { clientSecret: 'private-client-secret', unrelatedSecret: 'private-other' },
+        },
+      })
+    )
+
+    const result = await caller(view()).getForEdit({ connectionId: ORG_CRED })
+    expect(result).toEqual({
+      values: { shop: 'fixture', clientId: 'stored-client', clientSecret: '__HIDDEN__' },
+      tokenSet: false,
+    })
+    expect(JSON.stringify(result)).not.toContain('private-')
+  })
+
+  it('leaves the injected secret empty when this connection has no saved client secret', async () => {
+    findCredential.mockResolvedValue({ userId: null })
+    findConnectionDefinition.mockResolvedValue({
+      connectionType: 'oauth2-code',
+      connectionVariables: [{ key: 'shop', label: 'Shop' }],
+    })
+    revealSecrets.mockResolvedValue(
+      okResult({
+        record: {
+          connectionDefinitionId: 'shopify-definition',
+          metadata: { connectionVariables: { shop: 'fixture' } },
+        },
+        secrets: { accessToken: 'private-access-token' },
+      })
+    )
+    expect(await caller(view()).getForEdit({ connectionId: ORG_CRED })).toEqual({
+      values: { shop: 'fixture', clientId: '', clientSecret: '' },
+      tokenSet: false,
+    })
+  })
+
   it('refuses a workspace connection to a caller with no integrations keys', async () => {
     credentialIs({ userId: null })
     await expect(caller(noKeys()).getForEdit({ connectionId: ORG_CRED })).rejects.toMatchObject(
