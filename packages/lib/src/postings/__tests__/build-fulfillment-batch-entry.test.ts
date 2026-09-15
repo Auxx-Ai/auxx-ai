@@ -1101,3 +1101,103 @@ describe('computeShipmentAmounts carries the line total through (29 §12 item 6)
     expect(without.subtotalMinor).toBe(91)
   })
 })
+
+describe('computeShipmentAmounts allocates line tax cumulatively', () => {
+  const line = (prior: number) => ({
+    lineId: 'l-tax',
+    quantity: 1,
+    unitPriceMinor: 100,
+    lineTaxMinor: 100,
+    orderedQuantity: 3,
+    lineTotalMinor: 300,
+    priorShippedQuantity: prior,
+  })
+  const order = {
+    orderSubtotalMinor: 300,
+    orderTaxTotalMinor: 100,
+    orderShippingTotalMinor: 0,
+    includeShipping: false,
+  }
+
+  it('conserves the odd cent across three equal shipments', () => {
+    const amounts = [0, 1, 2].map((prior) =>
+      computeShipmentAmounts(
+        shipment({
+          ...order,
+          priorShipmentsSubtotalMinor: prior * 100,
+          lines: [line(prior)],
+        }),
+        'clearing_card'
+      )
+    )
+
+    expect(amounts.map((item) => item.taxMinor)).toEqual([33, 34, 33])
+    expect(amounts.reduce((sum, item) => sum + item.taxMinor, 0)).toBe(100)
+  })
+})
+
+describe('canonical customer-money fulfillment allocation', () => {
+  const allocation = (
+    overrides: Partial<NonNullable<UnpostedShipment['recognitionAllocation']>>
+  ) => ({
+    amountMinor: 12_300,
+    depositMinor: 0,
+    receivableMinor: 12_300,
+    taxMinor: 800,
+    historyHash: 'a'.repeat(64),
+    ...overrides,
+  })
+
+  it('posts an unpaid shipment to A/R with its newly recognized tax', () => {
+    const item = planned({ recognitionAllocation: allocation({}) })
+    const { entry } = buildFulfillmentBatchEntry({
+      group: group([item]),
+      ledgerCurrency: 'USD',
+      attempt: 0,
+    })
+    expect(amountFor(entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)).toBeUndefined()
+    expect(amountFor(entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBe(12_300)
+    expect(amountFor(entry, ACCOUNT_ROLES.REVENUE_PRODUCT)).toBe(10_000)
+    expect(amountFor(entry, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBe(800)
+    expect(amountFor(entry, ACCOUNT_ROLES.CLEARING_CARD)).toBeUndefined()
+  })
+
+  it('splits a partial receipt between deposit release, A/R and unpaid tax', () => {
+    const item = planned({
+      recognitionAllocation: allocation({
+        amountMinor: 11_900,
+        depositMinor: 5_750,
+        receivableMinor: 6_150,
+        taxMinor: 400,
+      }),
+    })
+    const { entry } = buildFulfillmentBatchEntry({
+      group: group([item]),
+      ledgerCurrency: 'USD',
+      attempt: 0,
+    })
+    expect(amountFor(entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)).toBe(5_750)
+    expect(amountFor(entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBe(6_150)
+    expect(amountFor(entry, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBe(400)
+    expect(amountFor(entry, ACCOUNT_ROLES.CLEARING_CARD)).toBeUndefined()
+  })
+
+  it('fully funded shipment releases the deposit without an A/R or tax line', () => {
+    const item = planned({
+      recognitionAllocation: allocation({
+        amountMinor: 11_500,
+        depositMinor: 11_500,
+        receivableMinor: 0,
+        taxMinor: 0,
+      }),
+    })
+    const { entry } = buildFulfillmentBatchEntry({
+      group: group([item]),
+      ledgerCurrency: 'USD',
+      attempt: 0,
+    })
+    expect(amountFor(entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)).toBe(11_500)
+    expect(amountFor(entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBeUndefined()
+    expect(amountFor(entry, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBeUndefined()
+  })
+})

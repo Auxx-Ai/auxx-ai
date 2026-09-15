@@ -271,21 +271,35 @@ export {
   accountingBasisHash,
   canonicalAccountingJson,
   correctionAccountingEffectKey,
+  customerReceiptAccountingEffectKey,
+  customerReceiptCorrectionAccountingEffectKey,
   fromLedgerMinor,
   fulfillmentAccountingEffectKey,
   toLedgerMinor,
 } from './effect-basis'
 export {
+  type AcceptedAccountingEffectBasisV1,
+  type AcceptedCustomerReceiptEffectBasisV1,
   type AcceptedFulfillmentEffectBasisV1,
   type AccountingWorkBasisInput,
+  type AccountingWorkBasisInputV1,
+  acceptedCustomerReceiptEffectBasisSchema,
   acceptedFulfillmentEffectBasisSchema,
   accountingWorkBasisSchema,
+  accountingWorkBasisSchemaV1,
+  type CustomerReceiptAccountingBasisV1,
+  type CustomerReceiptWorkBasisInput,
+  customerReceiptAccountingBasisSchema,
+  customerReceiptWorkBasisSchema,
   type FulfillmentAccountingBasisV1,
   fulfillmentAccountingBasisSchema,
 } from './effect-types'
 export {
+  appendCustomerReceiptWorkBasisInTx,
   appendFulfillmentWorkBasisInTx,
+  type CaptureCustomerReceiptWorkInput,
   type CaptureFulfillmentWorkInput,
+  captureCustomerReceiptWorkInTx,
   captureFulfillmentWorkInTx,
 } from './effect-work'
 export { gatherMonthEndInventoryInputs } from './gather-month-end-inventory'

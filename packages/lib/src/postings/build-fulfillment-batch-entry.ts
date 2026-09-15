@@ -325,19 +325,35 @@ export function resolveFulfillmentDebit(input: {
 /**
  * This shipment's share of a line's tax.
  *
- * `line_item_tax_total` is the tax on the WHOLE line, so a line shipped in two
- * halves must not book it twice: `round(lineTaxMinor x quantity /
- * orderedQuantity)`. A missing ordered quantity cannot scale anything, so the
- * line's tax is taken in full rather than divided by zero - the line shipped,
- * and under-recognising sales tax owed is the worse of the two errors.
+ * `line_item_tax_total` is the tax on the WHOLE line, so a line shipped in
+ * multiple parts must allocate it cumulatively: `round(lineTaxMinor x
+ * (priorQuantity + quantity) / orderedQuantity) - round(lineTaxMinor x
+ * priorQuantity / orderedQuantity)`. A missing ordered quantity cannot scale
+ * anything, so the line's tax is taken in full rather than divided by zero -
+ * the line shipped, and under-recognising sales tax owed is the worse of the
+ * two errors.
  */
-function scaleLineTax(line: UnpostedShipmentLine, label: string): number | null {
+export function scaleLineTax(
+  line: Pick<
+    UnpostedShipmentLine,
+    'lineId' | 'lineTaxMinor' | 'quantity' | 'orderedQuantity' | 'priorShippedQuantity'
+  >,
+  label: string
+): number | null {
   if (line.lineTaxMinor == null) return null
   const lineTax = toAmountMinor(line.lineTaxMinor, `Line ${line.lineId} tax on ${label}`)
   const ordered = line.orderedQuantity
   if (!Number.isFinite(ordered) || ordered <= 0) return lineTax
-  if (line.quantity >= ordered) return lineTax
-  return Math.round((lineTax * line.quantity) / ordered)
+  const prior = line.priorShippedQuantity ?? 0
+  if (!Number.isFinite(prior) || prior < 0) {
+    throw new UnprocessableEntityError(
+      `${label} line ${line.lineId} has ${String(prior)} units shipped before this shipment, which cannot be.`,
+      { label, priorShippedQuantity: String(prior) }
+    )
+  }
+  const allocateThrough = (units: number): number =>
+    Math.round((lineTax * Math.min(ordered, units)) / ordered)
+  return allocateThrough(prior + line.quantity) - allocateThrough(prior)
 }
 
 /**
@@ -414,7 +430,71 @@ export function computeShipmentAmounts(
         ? { debitRole: 'gateway', debitGlAccountId: debit.glAccountId, debitReason: debit.reason }
         : { debitRole: debit.role, debitReason: debit.reason }
 
-  return { ...debitFields, ...totals, taxByJurisdiction }
+  const allocation = shipment.recognitionAllocation
+  if (!allocation) return { ...debitFields, ...totals, taxByJurisdiction }
+
+  const allocationAmounts = [
+    allocation.amountMinor,
+    allocation.depositMinor,
+    allocation.receivableMinor,
+    allocation.taxMinor,
+  ]
+  if (
+    !allocation.historyHash ||
+    allocationAmounts.some((amount) => !Number.isSafeInteger(amount) || amount < 0) ||
+    allocation.taxMinor > totals.taxMinor ||
+    allocation.amountMinor !== totals.subtotalMinor + totals.shippingMinor + allocation.taxMinor
+  ) {
+    throw new UnprocessableEntityError(
+      `Recognition allocation for shipment ${shipment.sequence} of order ${shipment.orderNumber} ` +
+        'is incomplete, exceeds the shipment source components, or has a stale event amount.',
+      { orderId: shipment.orderId, sequence: String(shipment.sequence) }
+    )
+  }
+
+  // Keep source tax in the frozen calculation while the journal credits only
+  // tax newly recognized by this shipment. Canonical recognition also ignores
+  // the legacy gateway debit fork entirely.
+  const recognizedTotal = totals.subtotalMinor + allocation.taxMinor + totals.shippingMinor
+  const conservedTaxByJurisdiction = shipment.recognitionTaxComponents?.length
+    ? (() => {
+        const shares = new Map<string, number>()
+        for (const component of shipment.recognitionTaxComponents!) {
+          if (!component.jurisdiction) return undefined
+          shares.set(
+            component.jurisdiction,
+            (shares.get(component.jurisdiction) ?? 0) + component.amountMinor
+          )
+        }
+        const total = [...shares.values()].reduce((sum, value) => sum + value, 0)
+        return total === allocation.taxMinor
+          ? [...shares.entries()].map(([jurisdiction, amountMinor]) => ({
+              jurisdiction,
+              amountMinor,
+            }))
+          : undefined
+      })()
+    : undefined
+  return {
+    debitRole: 'accounts_receivable',
+    ...totals,
+    taxMinor: allocation.taxMinor,
+    totalMinor: recognizedTotal,
+    taxByJurisdiction:
+      conservedTaxByJurisdiction ??
+      (allocation.taxMinor !== 0
+        ? (splitTaxByJurisdiction({
+            taxMinor: allocation.taxMinor,
+            taxLines: shipment.taxLines ?? [],
+            orderTaxTotalMinor: shipment.orderTaxTotalMinor,
+          }) ?? undefined)
+        : undefined),
+    depositDebitMinor: allocation.depositMinor,
+    receivableDebitMinor: allocation.receivableMinor,
+    newlyRecognizedTaxMinor: allocation.taxMinor,
+    sourceTaxMinor: totals.taxMinor,
+    recognitionHistoryHash: allocation.historyHash,
+  }
 }
 
 // ── The period key ──────────────────────────────────────────────────────────
@@ -646,6 +726,10 @@ export function buildFulfillmentBatchEntry(
     string,
     { orderNumber: string; amountMinor: number; contactId: string | null; reason?: string }
   >()
+  const depositByOrder = new Map<
+    string,
+    { orderNumber: string; amountMinor: number; contactId: string | null }
+  >()
   const byDebitRole: Record<FulfillmentDebitRole, number> = {
     clearing_card: 0,
     accounts_receivable: 0,
@@ -715,7 +799,46 @@ export function buildFulfillmentBatchEntry(
       )
     }
 
-    if (amounts.debitRole === 'accounts_receivable') {
+    const switchedRecognition = amounts.depositDebitMinor != null
+    if (switchedRecognition) {
+      const deposit = amounts.depositDebitMinor!
+      const receivable = amounts.receivableDebitMinor!
+      const expectedNet = deposit + receivable - amounts.taxMinor
+      if (
+        !Number.isSafeInteger(deposit) ||
+        !Number.isSafeInteger(receivable) ||
+        deposit < 0 ||
+        receivable < 0 ||
+        expectedNet !== amounts.subtotalMinor + amounts.shippingMinor
+      ) {
+        throw new UnprocessableEntityError(
+          `Recognition debit components for shipment ${shipment.sequence} of order ` +
+            `${shipment.orderNumber} do not tie to its shipped net.`,
+          {
+            ...context,
+            expectedNet: String(expectedNet),
+            netAndShippingMinor: String(amounts.subtotalMinor + amounts.shippingMinor),
+          }
+        )
+      }
+      if (deposit !== 0) {
+        const existing = depositByOrder.get(shipment.orderId)
+        depositByOrder.set(shipment.orderId, {
+          orderNumber: shipment.orderNumber,
+          amountMinor: (existing?.amountMinor ?? 0) + deposit,
+          contactId: existing?.contactId ?? shipment.contactId,
+        })
+      }
+      if (receivable !== 0) {
+        const existing = receivableByOrder.get(shipment.orderId)
+        receivableByOrder.set(shipment.orderId, {
+          orderNumber: shipment.orderNumber,
+          amountMinor: (existing?.amountMinor ?? 0) + receivable,
+          contactId: existing?.contactId ?? shipment.contactId,
+          reason: existing?.reason,
+        })
+      }
+    } else if (amounts.debitRole === 'accounts_receivable') {
       const existing = receivableByOrder.get(shipment.orderId)
       receivableByOrder.set(shipment.orderId, {
         orderNumber: shipment.orderNumber,
@@ -735,8 +858,8 @@ export function buildFulfillmentBatchEntry(
         shipment.orderId
       )
     }
-    byDebitRole[amounts.debitRole] += amounts.totalMinor
-    if (amounts.debitRole === 'gateway') {
+    if (!switchedRecognition) byDebitRole[amounts.debitRole] += amounts.totalMinor
+    if (!switchedRecognition && amounts.debitRole === 'gateway') {
       const glAccountId = amounts.debitGlAccountId
       if (!glAccountId) {
         // Unreachable through `computeShipmentAmounts`, which always sets one
@@ -809,6 +932,22 @@ export function buildFulfillmentBatchEntry(
 
   // 1. The receivable, ONE LINE PER ORDER. Aging needs the debtor, so this leg
   //    alone stays at order grain (49 §2.5).
+  // Canonical recognition releases a receipt funded deposit before raising any
+  // unpaid balance. Keep this per order so the counterparty remains visible.
+  for (const [orderId, deposit] of depositByOrder) {
+    if (deposit.amountMinor === 0) continue
+    push({
+      sourceType: FULFILLMENT_SOURCE_TYPE,
+      sourceId: orderId,
+      accountRole: ACCOUNT_ROLES.CUSTOMER_DEPOSITS,
+      direction: 'debit',
+      amount: deposit.amountMinor,
+      memo: deposit.orderNumber,
+      ...(deposit.contactId
+        ? { counterpartyType: 'customer' as const, counterpartyId: deposit.contactId }
+        : {}),
+    })
+  }
   for (const [orderId, receivable] of receivableByOrder) {
     if (receivable.amountMinor === 0) continue
     const line = push({

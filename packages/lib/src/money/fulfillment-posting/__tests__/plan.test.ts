@@ -133,6 +133,27 @@ describe('grouping', () => {
       '#2/2',
     ])
   })
+
+  it('keeps canonical recognition daily and bypasses payment-status routing', () => {
+    const result = plan(
+      [
+        shipment({
+          financialStatus: 'paid',
+          gateways: ['shopify_payments', 'manual'],
+          recognitionAllocation: {
+            amountMinor: 10_000,
+            depositMinor: 0,
+            receivableMinor: 10_000,
+            taxMinor: 0,
+            historyHash: 'a'.repeat(64),
+          },
+        }),
+      ],
+      { grouping: 'month' }
+    )
+    expect(result.groups.map((group) => group.groupKey)).toEqual(['2026-07-06'])
+    expect(result.groups[0]?.shipments[0]?.amounts.debitRole).toBe('accounts_receivable')
+  })
 })
 
 describe('groupKeyFor', () => {

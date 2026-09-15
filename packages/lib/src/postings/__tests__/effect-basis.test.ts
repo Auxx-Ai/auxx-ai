@@ -4,11 +4,16 @@ import {
   accountingBasisHash,
   canonicalAccountingJson,
   correctionAccountingEffectKey,
+  customerReceiptAccountingEffectKey,
   fromLedgerMinor,
   fulfillmentAccountingEffectKey,
   toLedgerMinor,
 } from '../effect-basis'
-import { acceptedFulfillmentEffectBasisSchema, accountingWorkBasisSchema } from '../effect-types'
+import {
+  acceptedCustomerReceiptEffectBasisSchema,
+  acceptedFulfillmentEffectBasisSchema,
+  accountingWorkBasisSchema,
+} from '../effect-types'
 import { acceptedBasis, readyBasis } from './fixtures/accounting-effect-basis'
 
 describe('durable accounting basis', () => {
@@ -22,9 +27,156 @@ describe('durable accounting basis', () => {
   })
   it('keeps original identity independent of policies and unambiguously encodes correction components', () => {
     expect(fulfillmentAccountingEffectKey('f1')).toBe('fulfillment_accounting:["f1","original"]')
+    expect(customerReceiptAccountingEffectKey('m1')).toBe('customer_receipt:["m1","original"]')
     expect(correctionAccountingEffectKey('a:b', 'c', 'd')).not.toBe(
       correctionAccountingEffectKey('a', 'b:c', 'd')
     )
+  })
+
+  it('requires a receipt basis to freeze its route, allocation, timeline and journal balance', () => {
+    const hash = 'a'.repeat(64)
+    const basis = {
+      version: 1 as const,
+      sourceBasisVersion: 1,
+      sourceHash: hash,
+      policyKey: 'shopify_receipt_v1' as const,
+      policyVersion: 1 as const,
+      effectiveDate: '2026-09-15',
+      bookTimeZone: 'America/Los_Angeles',
+      currency: 'USD' as const,
+      currencyExponent: 2 as const,
+      documentRefs: [
+        { resourceKind: 'order', entityInstanceId: 'o1' },
+        { resourceKind: 'money_transaction', entityInstanceId: 'm1' },
+      ],
+      calculation: {
+        version: 1 as const,
+        moneyTransactionId: 'm1',
+        orderInstanceId: 'o1',
+        sourceObjectId: null,
+        sourceExternalId: 'gid://shopify/OrderTransaction/1',
+        sourceRevision: 'revision-1',
+        sourceHash: hash,
+        historyHash: 'b'.repeat(64),
+        occurredAt: '2026-09-15T10:00:00.000Z',
+        effectiveDate: '2026-09-15',
+        currency: 'USD' as const,
+        currencyExponent: 2 as const,
+        amountMinor: '120',
+        orderSubtotalMinor: '100',
+        orderTaxMinor: '10',
+        orderShippingMinor: '10',
+        orderTotalMinor: '120',
+        receiptAmountMinor: '120',
+        receivableMinor: '0',
+        depositMinor: '110',
+        taxMinor: '10',
+        allocation: {
+          amountMinor: '120',
+          depositMinor: '110',
+          receivableMinor: '0',
+          taxMinor: '10',
+        },
+        paymentRouteId: 'route-1',
+        sourceStoreId: 'store-1',
+        processorAccountId: 'processor-1',
+        route: {
+          paymentRouteId: 'route-1',
+          processorAccountId: 'processor-1',
+          glAccountId: 'gl-clearing',
+          reason: 'configured payment route',
+        },
+        applications: [
+          {
+            applicationId: 'application-1',
+            orderInstanceId: 'o1',
+            amountMinor: '120',
+            effectiveDate: '2026-09-15',
+          },
+        ],
+        taxComponents: [
+          {
+            componentKey: 'sales-tax',
+            amountMinor: '10',
+            jurisdiction: 'US-CA',
+            collector: 'merchant' as const,
+            remitter: 'merchant' as const,
+            withholdingEvidenceId: null,
+          },
+        ],
+      },
+      accountResolution: [
+        {
+          lineKey: 'clearing',
+          glAccountId: 'gl-clearing',
+          accountRole: 'clearing_card',
+          selectedBy: 'route' as const,
+          configurationHash: hash,
+        },
+        {
+          lineKey: 'deposit',
+          glAccountId: 'gl-deposit',
+          accountRole: 'customer_deposits',
+          selectedBy: 'org_role' as const,
+          configurationHash: hash,
+        },
+        {
+          lineKey: 'tax',
+          glAccountId: 'gl-tax',
+          accountRole: 'sales_tax_payable',
+          selectedBy: 'tax_mapping' as const,
+          configurationHash: hash,
+        },
+      ],
+      contribution: [
+        {
+          lineKey: 'clearing',
+          glAccountId: 'gl-clearing',
+          direction: 'debit' as const,
+          amountMinor: '120',
+          counterpartyType: null,
+          counterpartyId: null,
+          dimensions: {},
+        },
+        {
+          lineKey: 'deposit',
+          glAccountId: 'gl-deposit',
+          direction: 'credit' as const,
+          amountMinor: '110',
+          counterpartyType: 'customer' as const,
+          counterpartyId: 'customer-1',
+          dimensions: {},
+        },
+        {
+          lineKey: 'tax',
+          glAccountId: 'gl-tax',
+          direction: 'credit' as const,
+          amountMinor: '10',
+          counterpartyType: null,
+          counterpartyId: null,
+          dimensions: {},
+        },
+      ],
+    }
+    expect(acceptedCustomerReceiptEffectBasisSchema.safeParse(basis).success).toBe(true)
+    expect(
+      acceptedCustomerReceiptEffectBasisSchema.safeParse({
+        ...basis,
+        calculation: {
+          ...basis.calculation,
+          route: { kind: 'role', role: 'clearing_card', reason: 'x' },
+        },
+      }).success
+    ).toBe(false)
+    expect(
+      acceptedCustomerReceiptEffectBasisSchema.safeParse({
+        ...basis,
+        calculation: {
+          ...basis.calculation,
+          allocation: { ...basis.calculation.allocation, taxMinor: '9' },
+        },
+      }).success
+    ).toBe(false)
   })
   it('refuses fractional, unsafe and unsupported-currency money before conversion', () => {
     expect(toLedgerMinor('9007199254740991', 'USD', 2)).toBe(Number.MAX_SAFE_INTEGER)

@@ -28,17 +28,18 @@ import {
   captureFulfillmentWorkInTx,
 } from '../../postings/effect-work'
 import { resolveAccountLines } from '../../postings/resolve-roles'
+import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
 import type { BuiltEntry } from '../../postings/types'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { readOrderRecognitionFactsInTx } from '../customer-money/recognition-facts'
 import { financialFields } from '../fulfillments/field-context'
 import { loadFulfillmentFieldContext } from '../fulfillments/reads'
 import { loadGatewayRoutesForPlan } from './plan'
-import { readFulfillmentPostingSettings, readUnpostedShipments } from './reads'
+import { readFulfillmentPostingSettings, readUnpostedShipments, toCalendarDay } from './reads'
 import {
   FULFILLMENT_POSTING_SETTING_KEY,
   type FulfillmentPostingGroup,
   type PlannedShipment,
-  type UnpostedShipment,
 } from './types'
 
 type Eligibility = 'automatic' | 'manual' | 'excluded'
@@ -80,7 +81,10 @@ export function singleShipmentGroup(shipment: PlannedShipment): FulfillmentPosti
       ...amounts,
       byDebitRole: {
         clearing_card: amounts.debitRole === 'clearing_card' ? amounts.totalMinor : 0,
-        accounts_receivable: amounts.debitRole === 'accounts_receivable' ? amounts.totalMinor : 0,
+        accounts_receivable:
+          amounts.debitRole === 'accounts_receivable'
+            ? (amounts.receivableDebitMinor ?? amounts.totalMinor)
+            : 0,
         gateway: amounts.debitRole === 'gateway' ? amounts.totalMinor : 0,
       },
     },
@@ -112,7 +116,16 @@ export async function readFulfillmentAccountingSourceInTx(
       eq(schema.FieldValue.fieldId, ctx.fulfillment.fulfillment_shipped_at?.id ?? '')
     ),
   })
-  const shippedOn = date?.valueDate?.slice(0, 10)
+  const configuredTimeZone = await getOrganizationSetting({
+    organizationId,
+    key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
+    db: tx,
+  })
+  const bookTimeZone =
+    typeof configuredTimeZone === 'string' && configuredTimeZone.trim()
+      ? configuredTimeZone.trim()
+      : null
+  const shippedOn = toCalendarDay(date?.valueDate, bookTimeZone ?? 'UTC')
   if (!shippedOn || !z.iso.date().safeParse(shippedOn).success)
     throw new UnprocessableEntityError('Fulfillment ship date is unresolved')
   const tomorrow = new Date(`${shippedOn}T00:00:00.000Z`)
@@ -211,21 +224,40 @@ export async function readFulfillmentAccountingSourceInTx(
   const routes = await loadGatewayRoutesForPlan(tx, organizationId)
   const metadata = z.record(z.string(), z.unknown()).safeParse(instance.metadata)
   const native = metadata.success && metadata.data.accountingFulfillmentLane === 'native'
-  const route = native
+  const route = shipment.recognitionAllocation
     ? {
         kind: 'debit' as const,
         role: 'accounts_receivable' as const,
-        reason: 'Native fulfillment current policy recognizes an order receivable',
+        reason: 'Canonical Shopify receipt timeline owns deposit and receivable allocation',
       }
-    : resolveFulfillmentDebit({
-        financialStatus: shipment.financialStatus,
-        gateways: shipment.gateways,
-        gatewayRoutes: routes,
-      })
+    : native
+      ? {
+          kind: 'debit' as const,
+          role: 'accounts_receivable' as const,
+          reason: 'Native fulfillment current policy recognizes an order receivable',
+        }
+      : resolveFulfillmentDebit({
+          financialStatus: shipment.financialStatus,
+          gateways: shipment.gateways,
+          gatewayRoutes: routes,
+        })
   if (route.kind === 'exclude')
     throw new UnprocessableEntityError(`Unresolved debit route: ${route.reason}`)
   if (shipment.currency && shipment.currency.toUpperCase() !== 'USD')
     throw new UnprocessableEntityError('Foreign currency requires accounting review')
+  const recognitionFacts = shipment.recognitionAllocation
+    ? await readOrderRecognitionFactsInTx(tx, organizationId, shipment.orderId)
+    : null
+  if (
+    recognitionFacts &&
+    (recognitionFacts.subtotal !== BigInt(shipment.orderSubtotalMinor) ||
+      recognitionFacts.tax !== BigInt(shipment.orderTaxTotalMinor) ||
+      recognitionFacts.shipping !== BigInt(shipment.orderShippingTotalMinor))
+  ) {
+    throw new UnprocessableEntityError(
+      'Canonical recognition facts changed after the fulfillment source was read'
+    )
+  }
   const amounts = computeShipmentAmounts(shipment, route)
   if (amounts.totalMinor <= 0)
     throw new UnprocessableEntityError('Fulfillment has no positive accounting contribution')
@@ -245,8 +277,8 @@ export async function readFulfillmentAccountingSourceInTx(
     sourceHash,
     shippedOn,
     channel: shipment.channel,
-    sourceStoreId: null,
-    processorRouteId: null,
+    sourceStoreId: shipment.sourceStoreId ?? null,
+    processorRouteId: shipment.processorRouteId ?? null,
     shippingRegion: null,
     dimensions: {},
     lines: shipment.lines.map((line) => ({
@@ -267,15 +299,55 @@ export async function readFulfillmentAccountingSourceInTx(
     priorShipmentSubtotalMinor: fromLedgerMinor(shipment.priorShipmentsSubtotalMinor),
     shippingAllocationMinor: fromLedgerMinor(amounts.shippingMinor),
     includeShipping: shipment.includeShipping,
-    taxComponents: shipment.taxLines.map((tax, index) => ({
-      componentKey: `tax:${index}`,
-      title: tax.title,
-      amountMinor: fromLedgerMinor(tax.priceMinor),
-      jurisdiction: tax.title || null,
-      collector: 'unknown' as const,
-      remitter: 'unknown' as const,
-      withholdingEvidenceId: null,
-    })),
+    ...(shipment.recognitionAllocation
+      ? {
+          recognitionAllocation: {
+            amountMinor: fromLedgerMinor(shipment.recognitionAllocation.amountMinor),
+            depositDebitMinor: fromLedgerMinor(shipment.recognitionAllocation.depositMinor),
+            receivableDebitMinor: fromLedgerMinor(shipment.recognitionAllocation.receivableMinor),
+            newlyRecognizedTaxMinor: fromLedgerMinor(shipment.recognitionAllocation.taxMinor),
+            historyHash: shipment.recognitionAllocation.historyHash,
+          },
+          recognitionHistoryHash: shipment.recognitionAllocation.historyHash,
+        }
+      : {}),
+    taxComponents:
+      recognitionFacts && shipment.recognitionTaxComponents
+        ? shipment.recognitionTaxComponents.map((share) => {
+            const tax = recognitionFacts.taxComponents.find(
+              (component) => component.componentKey === share.componentKey
+            )
+            if (!tax)
+              throw new UnprocessableEntityError('Recognition tax component evidence changed')
+            return {
+              componentKey: share.componentKey,
+              title: tax.jurisdiction ?? share.componentKey,
+              amountMinor: fromLedgerMinor(share.amountMinor),
+              jurisdiction: tax.jurisdiction,
+              collector: tax.collector,
+              remitter: tax.remitter,
+              withholdingEvidenceId: tax.withholdingEvidenceId,
+            }
+          })
+        : recognitionFacts
+          ? recognitionFacts.taxComponents.map((tax) => ({
+              componentKey: tax.componentKey,
+              title: tax.jurisdiction ?? tax.componentKey,
+              amountMinor: fromLedgerMinor(Number(tax.amountMinor)),
+              jurisdiction: tax.jurisdiction,
+              collector: tax.collector,
+              remitter: tax.remitter,
+              withholdingEvidenceId: tax.withholdingEvidenceId,
+            }))
+          : shipment.taxLines.map((tax, index) => ({
+              componentKey: `tax:${index}`,
+              title: tax.title,
+              amountMinor: fromLedgerMinor(tax.priceMinor),
+              jurisdiction: tax.title || null,
+              collector: 'unknown' as const,
+              remitter: 'unknown' as const,
+              withholdingEvidenceId: null,
+            })),
     debitRoute:
       'glAccountId' in route
         ? {
@@ -324,6 +396,8 @@ export async function readFulfillmentAccountingSourceInTx(
         includeShipping: shipment.includeShipping,
         contactInstanceId: shipment.contactId,
         taxLines: shipment.taxLines,
+        recognitionAllocation: shipment.recognitionAllocation,
+        recognitionTaxComponents: shipment.recognitionTaxComponents,
         includeCogs: false,
       }).entry
     : buildFulfillmentBatchEntry({
@@ -432,6 +506,8 @@ export async function prepareFulfillmentEffectMemberInTx(
     ),
   })
   if (!work) throw new ConflictError('Accounting work is missing')
+  if (!work.entityInstanceId)
+    throw new ConflictError('Fulfillment accounting work has no source entity')
   const source = await readFulfillmentAccountingSourceInTx(
     tx,
     organizationId,
@@ -469,7 +545,9 @@ export async function prepareFulfillmentEffectMemberInTx(
     version: 1,
     sourceBasisVersion: work.basisVersion,
     sourceHash: source.basis.sourceHash,
-    policyKey: 'fulfillment_current_v1',
+    policyKey: source.shipment.recognitionAllocation
+      ? 'shopify_payment_date_v1'
+      : 'fulfillment_current_v1',
     policyVersion: 1,
     effectiveDate: source.basis.effectiveDate,
     bookTimeZone: settings.value.timeZone,

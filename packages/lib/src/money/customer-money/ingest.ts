@@ -3,6 +3,7 @@ import { type Database, schema, type Transaction, withAccountingCommitLock } fro
 import { and, asc, eq, inArray, isNull, lte, or } from 'drizzle-orm'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
 import { accountingBasisHash } from '../../postings/effect-basis'
+import { captureCustomerReceiptWorkInTx } from '../../postings/effect-work'
 import { periodKeyForDate } from '../../postings/periods'
 import {
   confirmedShopifyMovement,
@@ -577,12 +578,42 @@ export async function materializeImportedMoneyInTx(
       })
     }
   }
+  if (money.purpose === 'customer_receipt') {
+    const work = await tx.query.AccountingWork.findFirst({
+      where: and(
+        eq(schema.AccountingWork.organizationId, organizationId),
+        eq(schema.AccountingWork.moneyTransactionId, money.id),
+        eq(schema.AccountingWork.effectKind, 'customer_receipt'),
+        eq(schema.AccountingWork.operation, 'original')
+      ),
+    })
+    if (!work) {
+      const mode = await tx.query.OrganizationSetting.findFirst({
+        where: and(
+          eq(schema.OrganizationSetting.organizationId, organizationId),
+          eq(schema.OrganizationSetting.key, 'accounting.fulfillmentPosting')
+        ),
+      })
+      await captureCustomerReceiptWorkInTx(tx, {
+        organizationId,
+        moneyTransactionId: money.id,
+        eligibility: mode?.value === 'auto' ? 'automatic' : 'manual',
+        basis: {
+          version: 1,
+          status: 'incomplete',
+          moneyTransactionId: money.id,
+          sourceHash: observation.contentHash,
+          effectiveDate,
+          missingDependencies: ['Receipt accounting awaits source and route validation'],
+          observed: { orderInstanceId: orderId, amountMinor: money.amountMinor.toString() },
+        },
+      })
+    }
+  }
   await updateAcceptance(tx, acceptance.id, {
     ...base,
     state: 'accepted',
-    reason: money.paymentRouteId
-      ? 'Payment accounting is not enabled yet'
-      : 'Payment processor needs to be linked; payment accounting is not enabled yet',
+    reason: money.paymentRouteId ? null : 'Payment processor needs to be linked',
     nextAttemptAt: null,
   })
 }

@@ -139,6 +139,28 @@ describe('the channel keyspace', () => {
   })
 })
 
+describe('canonical customer-money allocation', () => {
+  it('posts a partial receipt as deposit, A/R and only newly recognized tax', () => {
+    const built = buildFulfillmentEntry({
+      ...BASE,
+      shippedLines: [{ lineId: 'l1', quantity: 1, unitPriceMinor: 100_000 }],
+      recognitionAllocation: {
+        amountMinor: 106_500,
+        depositMinor: 52_500,
+        receivableMinor: 54_000,
+        taxMinor: 5_000,
+        historyHash: 'a'.repeat(64),
+      },
+    })
+    expect(amountFor(built.entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)).toBe(52_500)
+    expect(amountFor(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBe(54_000)
+    expect(amountFor(built.entry, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBe(5_000)
+    expect(built.entry.lines.some((line) => line.accountRole === ACCOUNT_ROLES.CLEARING_CARD)).toBe(
+      false
+    )
+  })
+})
+
 describe('the entry', () => {
   it('debits A/R the total and credits revenue, tax and shipping', () => {
     const built = buildFulfillmentEntry({ ...BASE, shippedLines: WHOLE_ORDER })

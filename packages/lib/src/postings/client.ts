@@ -225,10 +225,19 @@ export {
 // exported from `./index`. The close console's card renders this shape.
 export type { DuplicateMovementEntry, DuplicateMovementFinding } from './duplicate-movements'
 export {
+  type AcceptedAccountingEffectBasisV1,
+  type AcceptedCustomerReceiptEffectBasisV1,
   type AcceptedFulfillmentEffectBasisV1,
   type AccountingWorkBasisInput,
+  type AccountingWorkBasisInputV1,
+  acceptedCustomerReceiptEffectBasisSchema,
   acceptedFulfillmentEffectBasisSchema,
   accountingWorkBasisSchema,
+  accountingWorkBasisSchemaV1,
+  type CustomerReceiptAccountingBasisV1,
+  type CustomerReceiptWorkBasisInput,
+  customerReceiptAccountingBasisSchema,
+  customerReceiptWorkBasisSchema,
   type FulfillmentAccountingBasisV1,
   fulfillmentAccountingBasisSchema,
 } from './effect-types'
