@@ -1,18 +1,23 @@
 // packages/lib/src/entity-instances/update-entity-instance.ts
 
-import { type Database, database, schema } from '@auxx/database'
+import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { fromDatabase } from '@auxx/services/shared/utils'
+import { toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { PgTransaction } from 'drizzle-orm/pg-core'
 import { err, ok } from 'neverthrow'
+import { withAccountingCommitLock } from '../postings/accounting-commit-lock'
+import { assertAccountingSourcesMutableInTx } from '../postings/source-write-guard'
 // Leaf-file import on purpose: the crud barrel pulls in UnifiedCrudHandler,
 // which imports this package's barrel — write-session-als itself only touches
 // node:async_hooks, so no runtime cycle this way.
-import { getAmbientWriteSession } from '../resources/crud/write-session-als'
+import { getAmbientWriteDb, getAmbientWriteSession } from '../resources/crud/write-session-als'
 
 /** Parameters for updating an entity instance */
 export interface UpdateEntityInstanceParams {
   id: string
   organizationId: string
+  db?: Database | Transaction
   data: {
     /** `EntityInstance.archivedAt` is a `timestamp` column — a `Date`, never a string. */
     archivedAt?: Date | null
@@ -24,7 +29,25 @@ export interface UpdateEntityInstanceParams {
  * Field values should be updated separately using the custom field value service
  */
 export async function updateEntityInstance(params: UpdateEntityInstanceParams) {
-  const { id, organizationId, data } = params
+  const db = params.db ?? getAmbientWriteDb() ?? database
+  if (db instanceof PgTransaction) return updateEntityInstanceInTx({ ...params, db })
+  return db.transaction((tx) => updateEntityInstanceInTx({ ...params, db: tx }))
+}
+
+async function updateEntityInstanceInTx(params: UpdateEntityInstanceParams & { db: Transaction }) {
+  const { id, organizationId, data, db } = params
+  await withAccountingCommitLock(db, organizationId)
+  const source = await db.query.EntityInstance.findFirst({
+    where: and(
+      eq(schema.EntityInstance.id, id),
+      eq(schema.EntityInstance.organizationId, organizationId)
+    ),
+    columns: { entityDefinitionId: true },
+  })
+  if (source)
+    await assertAccountingSourcesMutableInTx(db, organizationId, [
+      toRecordId(source.entityDefinitionId, id),
+    ])
 
   const now = new Date()
   const updateData: Record<string, unknown> = {
@@ -45,7 +68,7 @@ export async function updateEntityInstance(params: UpdateEntityInstanceParams) {
   }
 
   const dbResult = await fromDatabase(
-    database
+    db
       .update(schema.EntityInstance)
       .set(updateData)
       .where(
@@ -79,7 +102,7 @@ export interface ArchiveEntityInstancesParams {
   /** Ids to archive. Duplicates tolerated; unknown ids are no-ops. */
   ids: readonly string[]
   organizationId: string
-  db?: Database
+  db?: Database | Transaction
 }
 
 /**
@@ -102,9 +125,30 @@ export interface ArchiveEntityInstancesParams {
  * rows that actually moved.
  */
 export async function archiveEntityInstances(params: ArchiveEntityInstancesParams) {
-  const { organizationId, db = database } = params
+  const db = params.db ?? getAmbientWriteDb() ?? database
+  if (db instanceof PgTransaction) return archiveEntityInstancesInTx({ ...params, db })
+  return db.transaction((tx) => archiveEntityInstancesInTx({ ...params, db: tx }))
+}
+
+async function archiveEntityInstancesInTx(
+  params: ArchiveEntityInstancesParams & { db: Transaction }
+) {
+  const { organizationId, db } = params
   const ids = [...new Set(params.ids)]
   if (ids.length === 0) return ok([] as string[])
+  await withAccountingCommitLock(db, organizationId)
+  const sources = await db.query.EntityInstance.findMany({
+    where: and(
+      eq(schema.EntityInstance.organizationId, organizationId),
+      inArray(schema.EntityInstance.id, ids)
+    ),
+    columns: { id: true, entityDefinitionId: true },
+  })
+  await assertAccountingSourcesMutableInTx(
+    db,
+    organizationId,
+    sources.map((row) => toRecordId(row.entityDefinitionId, row.id))
+  )
 
   const now = new Date()
   const updateData: Record<string, unknown> = { updatedAt: now, archivedAt: now }

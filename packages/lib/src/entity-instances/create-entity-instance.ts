@@ -1,6 +1,6 @@
 // packages/lib/src/entity-instances/create-entity-instance.ts
 
-import { type Database, database, schema } from '@auxx/database'
+import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { fromDatabase } from '@auxx/services/shared/utils'
 import { err, ok } from 'neverthrow'
 
@@ -25,7 +25,10 @@ export interface CreateEntityInstanceParams {
  * @param params - Creation parameters
  * @param tx - Optional transaction context
  */
-export async function createEntityInstance(params: CreateEntityInstanceParams, tx?: Database) {
+export async function createEntityInstance(
+  params: CreateEntityInstanceParams,
+  tx?: Database | Transaction
+) {
   const {
     entityDefinitionId,
     organizationId,

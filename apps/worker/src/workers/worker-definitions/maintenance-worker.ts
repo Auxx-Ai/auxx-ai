@@ -3,6 +3,7 @@ import { dataConnectorRunRetentionJob, dataConnectorStaleSweepJob } from '@auxx/
 import { isDemoEnabled } from '@auxx/lib/demo'
 import { evalRunWatchdog } from '@auxx/lib/evals/worker'
 import {
+  accountingRecoveryJob,
   agentDraftCleanupJob,
   applyScheduledSubscriptionChangesJob,
   approvalOrphanSweeperJob,
@@ -266,6 +267,7 @@ export const jobMappings = {
   // consumer of `RecurrenceRule`, and the only one that reads `materializedUntil`
   // BACKWARD on purpose - a depreciation entry for March may not exist in January.
   recurringJournalsJob,
+  accountingRecoveryJob,
 
   // Money P24 vendor-bill aging daily sweep. THE ONLY time-driven trigger in the
   // three-way match: every other one is an edit or a receipt. Without it a prepaid

@@ -23,12 +23,13 @@
  * its own to read.
  */
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import type { CustomFieldEntity } from '@auxx/database/types'
 import { and, eq, inArray } from 'drizzle-orm'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
+import { acceptedFulfillmentEffectBasisSchema } from '../../postings/effect-types'
 import { toRecordId } from '../../resources/resource-id'
+import { financialEntityDefId, financialFields } from './field-context'
 import type { Fulfillment, FulfillmentLine, FulfillmentStatusValue } from './types'
 
 /** Every `fulfillment` attribute this module reads or writes. */
@@ -79,17 +80,20 @@ export interface FulfillmentFieldContext {
  * calls {@link requireFulfillmentFieldContext} instead.
  */
 export async function loadFulfillmentFieldContext(
-  organizationId: string
+  organizationId: string,
+  db?: Database | Transaction
 ): Promise<FulfillmentFieldContext | null> {
   const [fulfillmentDefId, fulfillmentLineDefId] = await Promise.all([
-    getCachedEntityDefId(organizationId, 'fulfillment'),
-    getCachedEntityDefId(organizationId, 'fulfillment_line'),
+    financialEntityDefId(organizationId, 'fulfillment', db),
+    financialEntityDefId(organizationId, 'fulfillment_line', db),
   ])
   if (!fulfillmentDefId || !fulfillmentLineDefId) return null
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...FULFILLMENT_ATTRIBUTES, ...FULFILLMENT_LINE_ATTRIBUTES])
+  const fields = await financialFields(
+    organizationId,
+    [...FULFILLMENT_ATTRIBUTES, ...FULFILLMENT_LINE_ATTRIBUTES],
+    db
+  )
   const fulfillment: Record<FulfillmentAttribute, CustomFieldEntity | null> = fields
   const line: Record<FulfillmentLineAttribute, CustomFieldEntity | null> = fields
   // Without the order edge or the line edge there is nothing to join on -
@@ -100,9 +104,10 @@ export async function loadFulfillmentFieldContext(
 
 /** {@link loadFulfillmentFieldContext}, as the refusal a write path needs. */
 export async function requireFulfillmentFieldContext(
-  organizationId: string
+  organizationId: string,
+  db?: Database | Transaction
 ): Promise<FulfillmentFieldContext> {
-  const ctx = await loadFulfillmentFieldContext(organizationId)
+  const ctx = await loadFulfillmentFieldContext(organizationId, db)
   if (!ctx) {
     throw new UnprocessableEntityError(
       'Fulfilling an order is not available until the fulfillment entities are provisioned ' +
@@ -135,7 +140,7 @@ interface ValueRow {
  * is read from a has_many side, so the last row wins and there is only ever one.
  */
 async function selectValues(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   entityIds: string[],
   fieldIds: string[]
@@ -188,14 +193,14 @@ async function selectValues(
  * Empty at any hop short-circuits the rest.
  */
 export async function readFulfillmentsForOrders(
-  db: Database,
+  db: Database | Transaction,
   params: { organizationId: string; orderIds: readonly string[] }
 ): Promise<Map<string, Fulfillment[]>> {
   const { organizationId, orderIds } = params
   const byOrder = new Map<string, Fulfillment[]>()
   if (orderIds.length === 0) return byOrder
 
-  const ctx = await loadFulfillmentFieldContext(organizationId)
+  const ctx = await loadFulfillmentFieldContext(organizationId, db)
   if (!ctx) return byOrder
 
   // Hop 1: which fulfillment instances belong to these orders.
@@ -278,6 +283,38 @@ export async function readFulfillmentsForOrders(
     }
   }
 
+  // Accepted membership, including a reversed journal, remains the financial authority.
+  const accepted = await db
+    .select({
+      fulfillmentId: schema.AccountingWork.entityInstanceId,
+      basis: schema.AccountingEffect.acceptedBasis,
+      glPostingId: schema.AccountingEffect.glPostingId,
+      docNumber: schema.GlPosting.docNumber,
+    })
+    .from(schema.AccountingEffect)
+    .innerJoin(
+      schema.AccountingWork,
+      and(
+        eq(schema.AccountingWork.id, schema.AccountingEffect.workId),
+        eq(schema.AccountingWork.organizationId, organizationId),
+        eq(schema.AccountingWork.operation, 'original')
+      )
+    )
+    .innerJoin(
+      schema.GlPosting,
+      and(
+        eq(schema.GlPosting.id, schema.AccountingEffect.glPostingId),
+        eq(schema.GlPosting.organizationId, organizationId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.AccountingEffect.organizationId, organizationId),
+        inArray(schema.AccountingWork.entityInstanceId, fulfillmentIds)
+      )
+    )
+  const acceptedById = new Map(accepted.map((row) => [row.fulfillmentId, row]))
+
   for (const fulfillmentId of fulfillmentIds) {
     const bucket = fulfillmentRows.get(fulfillmentId)
     const cell = (attribute: FulfillmentAttribute): ValueRow | undefined => {
@@ -290,6 +327,7 @@ export async function readFulfillmentsForOrders(
     const lines = (lineIdsByFulfillment.get(fulfillmentId) ?? [])
       .map(buildLine)
       .filter((line): line is FulfillmentLine => line !== null)
+      .sort((a, b) => a.id.localeCompare(b.id))
 
     const fulfillment: Fulfillment = {
       id: fulfillmentId,
@@ -313,6 +351,24 @@ export async function readFulfillmentsForOrders(
       lines,
     }
 
+    const effect = acceptedById.get(fulfillmentId)
+    if (effect) {
+      const basis = acceptedFulfillmentEffectBasisSchema.parse(effect.basis)
+      const productKeys = new Set(
+        basis.accountResolution
+          .filter((line) => line.accountRole === 'revenue_product')
+          .map((line) => line.lineKey)
+      )
+      fulfillment.subtotalMinor = basis.contribution
+        .filter((line) => line.direction === 'credit' && productKeys.has(line.lineKey))
+        .reduce((total, line) => total + Number(line.amountMinor), 0)
+      fulfillment.totalMinor = basis.contribution
+        .filter((line) => line.direction === 'debit')
+        .reduce((total, line) => total + Number(line.amountMinor), 0)
+      fulfillment.glPosting = effect.glPostingId
+      fulfillment.docNumber = effect.docNumber
+    }
+
     const list = byOrder.get(orderId)
     if (list) list.push(fulfillment)
     else byOrder.set(orderId, [fulfillment])
@@ -334,7 +390,7 @@ export async function readFulfillmentsForOrders(
  * assembly paths that could disagree about a row.
  */
 export async function readFulfillmentsForOrder(
-  db: Database,
+  db: Database | Transaction,
   params: { organizationId: string; orderId: string }
 ): Promise<Fulfillment[]> {
   const byOrder = await readFulfillmentsForOrders(db, {

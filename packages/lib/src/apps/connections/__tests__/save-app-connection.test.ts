@@ -154,9 +154,10 @@ describe('saveAppConnection — secret/plain split', () => {
       'cred-1',
       'org-1',
       { accessToken: 'fresh-access', refreshToken: 'fresh-refresh' },
-      { expiresAt: null }
+      expect.objectContaining({ expiresAt: null })
     )
-    expect(updateCredential).toHaveBeenCalledWith('cred-1', 'org-1', {
+    expect(rotateSecrets).toHaveBeenCalledWith('cred-1', 'org-1', expect.any(Object), {
+      expiresAt: null,
       metadata: { scope: 'read' },
     })
     expect(mergeSecretFields).not.toHaveBeenCalled()
@@ -250,11 +251,12 @@ describe('saveAppConnection — connection-identify dedup', () => {
       'cred-existing',
       'org-1',
       expect.objectContaining({ accessToken: 'fresh-tok' }),
-      { expiresAt: null }
+      expect.objectContaining({ expiresAt: null })
     )
     expect(recordRefreshSuccess).toHaveBeenCalledWith('cred-existing', 'org-1', { expiresAt: null })
     // __identity survives the metadata replacement so future connects keep matching.
-    expect(updateCredential).toHaveBeenCalledWith('cred-existing', 'org-1', {
+    expect(rotateSecrets).toHaveBeenCalledWith('cred-existing', 'org-1', expect.any(Object), {
+      expiresAt: null,
       metadata: expect.objectContaining({ __identity: 'realm-1' }),
     })
     // connection-added must NOT re-fire — setup already ran for this account.
@@ -375,11 +377,12 @@ describe('saveAppConnection — reconnect identity guard', () => {
       'cred-1',
       'org-1',
       expect.objectContaining({ accessToken: 'fresh-access' }),
-      { expiresAt: null }
+      expect.objectContaining({ expiresAt: null })
     )
     // An OAuth mint REPLACES metadata wholesale, so without the re-stamp `__identity` is
     // deleted here - and a later fresh connect to the same account mints a duplicate row.
-    expect(updateCredential).toHaveBeenCalledWith('cred-1', 'org-1', {
+    expect(rotateSecrets).toHaveBeenCalledWith('cred-1', 'org-1', expect.any(Object), {
+      expiresAt: null,
       metadata: { scope: 'read', __identity: 'realm-1' },
     })
   })
@@ -392,7 +395,8 @@ describe('saveAppConnection — reconnect identity guard', () => {
     const res = await saveAppConnection(...ARGS, { ...FRESH_TOKENS }, RECONNECT)
 
     expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-1', matchedExisting: false })
-    expect(updateCredential).toHaveBeenCalledWith('cred-1', 'org-1', {
+    expect(rotateSecrets).toHaveBeenCalledWith('cred-1', 'org-1', expect.any(Object), {
+      expiresAt: null,
       metadata: { __identity: 'realm-1' },
     })
   })
@@ -476,6 +480,9 @@ describe('saveAppConnection — reconnect identity guard', () => {
     const res = await saveAppConnection(...ARGS, { ...FRESH_TOKENS }, RECONNECT)
 
     expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-1', matchedExisting: false })
-    expect(updateCredential).toHaveBeenCalledWith('cred-1', 'org-1', { metadata: {} })
+    expect(rotateSecrets).toHaveBeenCalledWith('cred-1', 'org-1', expect.any(Object), {
+      expiresAt: null,
+      metadata: {},
+    })
   })
 })

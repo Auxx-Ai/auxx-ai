@@ -19,6 +19,10 @@ import { getCachedFieldMap } from '../../cache'
 import { UniqueValueConflictError } from '../../errors'
 import { fieldValueSchemas } from '../../field-values/field-value-validator'
 import { upsertRecordIdentity } from '../../identity'
+import {
+  AcceptedAccountingSourceError,
+  recordRejectedAccountingObservation,
+} from '../../postings/source-write-guard'
 import { toRecordId } from '../../resources/resource-id'
 import { buildWriteKeyToFieldId } from '../field-id-resolver'
 import {
@@ -1197,6 +1201,14 @@ export const entitySink: EntitySink = {
         }
         break
       } catch (error) {
+        if (error instanceof AcceptedAccountingSourceError) {
+          await recordRejectedAccountingObservation(ctx.db, ctx.orgId, error, {
+            connectorId: ctx.connector.id,
+            externalId: record.externalId,
+            fields: record.fields,
+            pendingRelations: record.pendingRelations,
+          })
+        }
         if (error instanceof UniqueValueConflictError && conflictDrops < maxConflictDrops) {
           const droppedKey = dropConflictingKey(writeSet, error)
           if (droppedKey) {

@@ -182,7 +182,7 @@ describe('deleteFulfillment', () => {
         actorUserId: 'user_1',
         fulfillmentInstanceId: 'ful_1',
       })
-    ).rejects.toThrow(/failed to roll back/i)
+    ).rejects.toThrow(/failed to delete/i)
   })
 
   it('throws when the engine reports a per-row error', async () => {

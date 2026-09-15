@@ -49,7 +49,7 @@ function stubDb(): Database {
   let index = 0
   const chain = (): Record<string, unknown> => {
     const self: Record<string, unknown> = {}
-    for (const method of ['from', 'where', 'orderBy']) {
+    for (const method of ['from', 'where', 'orderBy', 'innerJoin']) {
       self[method] = () => self
     }
     // biome-ignore lint/suspicious/noThenProperty: chainable drizzle query-builder stub
@@ -107,7 +107,7 @@ function lineRows(extra: ReturnType<typeof value>[]) {
 async function readLine(extra: ReturnType<typeof value>[]) {
   // Two selects: the order pivot, then the line pivot. The fulfillments come
   // from the mocked reader and the tax-line read returns before selecting.
-  h.selects = [orderRows(), lineRows(extra)]
+  h.selects = [orderRows(), [{ id: 'li_1' }], lineRows(extra)]
   const result = await readOrderForFulfillment(stubDb(), { organizationId: ORG, orderId: 'ord_1' })
   return result._unsafeUnwrap().lines[0]
 }
@@ -125,6 +125,7 @@ describe('readOrderForFulfillment', () => {
     expect(h.requested).toContain('line_item_line_total')
     expect(h.requested).toContain('line_item_qty')
     expect(h.requested).toContain('line_item_unit_price')
+    expect(h.requested).toContain('line_item_order')
   })
 
   it('recognises a line at its NET rate: the line total over the ordered quantity', async () => {

@@ -31,6 +31,7 @@ import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel
 import { SettingsSection } from '~/components/global/settings-page'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
+import { AccountingDestinationPanel } from './accounting-destination-panel'
 
 /** What "none connected" actually means, spelled the same way everywhere. */
 const NOT_CONNECTED_COPY =
@@ -141,7 +142,7 @@ export function QuickbooksSettingsSection() {
 
             <FieldPanelRow
               title='Company'
-              description='The QuickBooks company id (realm) this organization is authorized against. Every posted entry lands in this company.'>
+              description='The QuickBooks company this authorization can access. The accounting company below controls where new fulfillment journals are assigned.'>
               <div className='flex min-h-8 items-center gap-2 text-sm'>
                 <span className='tabular-nums'>{connection?.label ?? '-'}</span>
                 {connection?.global && (
@@ -165,11 +166,13 @@ export function QuickbooksSettingsSection() {
             <SettingsFieldRow
               settingKey='quickbooks.postJournalEntries'
               title='Export posted entries'
-              description='When on, a posted entry is also pushed to QuickBooks as a journal entry. Off, the entry is still built, balanced and stored here - the close is unaffected.'
+              description='When on, new fulfillment journals are exported automatically. When off, they wait for manual export. Previously assigned exports keep their saved setting.'
             />
           </>
         )}
       </FieldPanel>
+
+      {installed && <AccountingDestinationPanel />}
 
       {!connected && <p className='text-muted-foreground text-xs'>{NOT_CONNECTED_COPY}</p>}
 

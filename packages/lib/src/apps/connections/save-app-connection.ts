@@ -7,7 +7,6 @@ import {
   listCredentials,
   recordRefreshSuccess,
   rotateSecrets,
-  updateCredential,
 } from '@auxx/credentials/store'
 import { database } from '@auxx/database'
 import {
@@ -525,15 +524,12 @@ async function updateExistingConnection(
     connectionData.accessToken !== undefined || connectionData.refreshToken !== undefined
 
   if (isOAuthMint) {
-    const rotated = await rotateSecrets(connectionId, organizationId, secrets, { expiresAt })
+    const rotated = await rotateSecrets(connectionId, organizationId, secrets, {
+      expiresAt,
+      metadata,
+    })
     if (rotated.isErr()) {
       return err(rotated.error)
-    }
-
-    // Refresh the plaintext companion metadata alongside the rotated secrets.
-    const metaUpdated = await updateCredential(connectionId, organizationId, { metadata })
-    if (metaUpdated.isErr()) {
-      return err(metaUpdated.error)
     }
   } else {
     const reconnected = await mergeManualConnectionEdit(connectionId, organizationId, {

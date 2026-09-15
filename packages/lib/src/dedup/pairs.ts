@@ -51,7 +51,7 @@ const conflictKey = (p: ScoredPair) =>
  * @returns how many rows were written (a row skipped by `setWhere` counts zero).
  */
 export async function upsertPairs(
-  db: Database,
+  db: Database | Transaction,
   pairs: ScoredPair[]
 ): Promise<Result<number, Error>> {
   const unique = new Map<string, ScoredPair>()
@@ -152,7 +152,7 @@ export interface RescorePairsParams {
  * @returns how many stale pairs were closed.
  */
 export async function rescoreOpenPairsForRecord(
-  db: Database,
+  db: Database | Transaction,
   params: RescorePairsParams
 ): Promise<Result<number, Error>> {
   const { organizationId, entityDefinitionId, instanceId, pairs } = params
@@ -231,7 +231,7 @@ export async function rescoreOpenPairsForRecord(
  * @returns how many open pairs were deleted.
  */
 export async function deleteOpenPairsForRecord(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   instanceId: string
 ): Promise<Result<number, Error>> {
@@ -249,7 +249,7 @@ export async function deleteOpenPairsForRecord(
  * @returns how many open pairs were deleted across the whole set.
  */
 export async function deleteOpenPairsForRecords(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   instanceIds: readonly string[]
 ): Promise<Result<number, Error>> {
@@ -306,7 +306,7 @@ export interface DismissPairParams {
  *          eligible (already merged, or not in this org).
  */
 export async function dismissPair(
-  db: Database,
+  db: Database | Transaction,
   params: DismissPairParams
 ): Promise<Result<boolean, Error>> {
   const { organizationId, pairId, userId, snoozeUntil } = params

@@ -64,9 +64,16 @@ import {
   writeOffInvoice,
 } from '@auxx/lib/money'
 import type { CreditMemoPostingGrouping, FulfillmentPostingGrouping } from '@auxx/lib/money/client'
+import {
+  adoptNativeStripeMoney,
+  listOrderMoneyTransactions,
+  readOrderMoneyCoverage,
+  resolveImportedMoneyReferences,
+} from '@auxx/lib/money/customer-money'
 import { listRailStrip } from '@auxx/lib/money/payouts'
 import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
+import { listOrderAccountingWork } from '@auxx/lib/postings'
 import {
   describeRecurrence,
   type RecurrencePattern,
@@ -805,6 +812,59 @@ export const moneyRouter = createTRPCRouter({
    * `ledgerView` rather than a dispatch key: the shipment log exists to answer
    * a ledger question, and the dialog that reads it is about to post revenue.
    */
+  resolveImportedMoneyReferences: permissionProcedure(PermissionKey.ledgerControl)
+    .input(
+      z.object({
+        moneyTransactionId: z.string().min(1),
+        paymentRouteId: z.string().min(1).optional(),
+        sourceObjectIds: z.array(z.string().min(1)).max(100),
+        commandKey: z.string().min(1).max(200),
+        evidence: z.string().trim().min(1).max(4000),
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      resolveImportedMoneyReferences(ctx.db, {
+        ...input,
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+      })
+    ),
+
+  adoptNativeStripeMoney: permissionProcedure(PermissionKey.ledgerControl)
+    .input(
+      z.object({
+        legacyTransactionId: z.string().min(1),
+        shopifySourceObjectId: z.string().min(1),
+        commandKey: z.string().min(1).max(200),
+        evidence: z.string().trim().min(1).max(4000),
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      adoptNativeStripeMoney(ctx.db, {
+        ...input,
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+      })
+    ),
+
+  orderAccountingWork: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ orderId: z.string().min(1) }))
+    .query(({ ctx, input }) =>
+      listOrderAccountingWork(ctx.db, ctx.session.organizationId, input.orderId)
+    ),
+
+  orderMoneyCoverage: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ orderId: z.string().min(1) }))
+    .query(({ ctx, input }) =>
+      readOrderMoneyCoverage(ctx.db, ctx.session.organizationId, input.orderId)
+    ),
+
+  orderMoneyTransactions: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ orderId: z.string().min(1) }))
+    .query(({ ctx, input }) =>
+      listOrderMoneyTransactions(ctx.db, ctx.session.organizationId, input.orderId)
+    ),
+
   orderForFulfillment: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ orderId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {

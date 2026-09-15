@@ -3,6 +3,7 @@
 import { database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
+import { guardAccountingCredentialInTx } from './accounting-identity'
 import { fromDb, notFound } from './internal'
 import type { CredentialStoreError } from './types'
 
@@ -15,12 +16,15 @@ export async function deleteCredential(
   organizationId: string
 ): Promise<Result<void, CredentialStoreError>> {
   const deleteResult = await fromDb(
-    database
-      .delete(schema.Credential)
-      .where(
-        and(eq(schema.Credential.id, id), eq(schema.Credential.organizationId, organizationId))
-      )
-      .returning({ id: schema.Credential.id }),
+    database.transaction(async (tx) => {
+      await guardAccountingCredentialInTx(tx, organizationId, id, { kind: 'delete' })
+      return tx
+        .delete(schema.Credential)
+        .where(
+          and(eq(schema.Credential.id, id), eq(schema.Credential.organizationId, organizationId))
+        )
+        .returning({ id: schema.Credential.id })
+    }),
     'delete-credential'
   )
 

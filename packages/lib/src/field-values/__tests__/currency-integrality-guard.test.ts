@@ -297,3 +297,8 @@ describe('setValueWithType — CURRENCY integrality guard', () => {
     ).rejects.toThrow(BadRequestError)
   })
 })
+
+vi.mock('../../postings/source-write-guard', () => ({
+  withAccountingFieldMutation: (ctx: unknown, _input: unknown, fn: (ctx: unknown) => unknown) =>
+    fn(ctx),
+}))

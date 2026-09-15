@@ -994,6 +994,18 @@
       "import": "./dist/money/client.mjs",
       "default": "./src/money/client.ts"
     },
+    "./money/customer-money": {
+      "types": "./src/money/customer-money/index.ts",
+      "source": "./src/money/customer-money/index.ts",
+      "import": "./dist/money/customer-money/index.mjs",
+      "default": "./src/money/customer-money/index.ts"
+    },
+    "./money/customer-money/client": {
+      "types": "./src/money/customer-money/client.ts",
+      "source": "./src/money/customer-money/client.ts",
+      "import": "./dist/money/customer-money/client.mjs",
+      "default": "./src/money/customer-money/client.ts"
+    },
     "./money/payout-sources": {
       "types": "./src/money/payout-sources.ts",
       "source": "./src/money/payout-sources.ts",

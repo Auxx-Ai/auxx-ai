@@ -59,7 +59,7 @@ vi.mock('../../identity', () => ({ upsertRecordIdentity: vi.fn() }))
 const maybeUpdateDisplayValue = vi.fn()
 const updateSearchText = vi.fn()
 vi.mock('../../field-values/field-value-helpers', () => ({
-  createFieldValueContext: vi.fn(() => ({})),
+  createFieldValueContext: vi.fn((_org: string, _user: unknown, db: unknown) => ({ db })),
   validateAndConvertValue: vi.fn(async (_ctx: unknown, value: unknown) => ({
     type: 'text',
     value: String(value).trim().toLowerCase(),
@@ -196,8 +196,24 @@ const lookupByField = vi.fn()
 
 function makeCtx(over: Partial<SyncCtx> = {}): SyncCtx {
   return makeSyncCtx({
-    crud: { update, create, getFieldValues, lookupByField } as never,
-    ownedCrud: { update, create, getFieldValues, lookupByField } as never,
+    crud: {
+      update,
+      create,
+      getFieldValues,
+      lookupByField,
+      withDatabase() {
+        return this
+      },
+    } as never,
+    ownedCrud: {
+      update,
+      create,
+      getFieldValues,
+      lookupByField,
+      withDatabase() {
+        return this
+      },
+    } as never,
     ...over,
   })
 }
@@ -798,3 +814,10 @@ describe('entitySink — PHONE_INTL values (E.164)', () => {
     expect(update.mock.calls[0]?.[1]).toEqual({ [PHONE_KEY]: '+14155551234' })
   })
 })
+
+vi.mock('../../postings/source-write-guard', () => ({
+  withAccountingFieldMutation: (ctx: unknown, _input: unknown, fn: (ctx: unknown) => unknown) =>
+    fn(ctx),
+  AcceptedAccountingSourceError: class extends Error {},
+  recordRejectedAccountingObservation: vi.fn(),
+}))

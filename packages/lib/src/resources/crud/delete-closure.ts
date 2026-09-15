@@ -12,7 +12,7 @@
 // now a property of the relationship, read from the org cache, and the write
 // order falls out of the closure's depth.
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { FieldType } from '@auxx/database/enums'
 import type { CustomFieldEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
@@ -241,7 +241,7 @@ function asError(error: unknown): Error {
  * @returns groups sorted deepest first, so children precede their parents.
  */
 export async function collectDeleteClosure(
-  db: Database,
+  db: Database | Transaction,
   params: CollectDeleteClosureParams
 ): Promise<Result<DeleteClosure, Error>> {
   const { organizationId } = params
@@ -446,7 +446,7 @@ export function restrictViolationMessage(
  * the children first, as the message says, is one more request away.
  */
 export async function findRestrictViolations(
-  db: Database,
+  db: Database | Transaction,
   params: FindRestrictViolationsParams
 ): Promise<Result<Map<RecordId, RestrictViolation>, Error>> {
   const { organizationId, groups } = params

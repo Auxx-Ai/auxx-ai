@@ -41,7 +41,7 @@
  * shipment moves a day and lands in the wrong month.
  */
 
-import type { Database } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import { listPaymentGateways, toGatewayRoutes } from '../../payment-gateways'
 import {
   computeShipmentAmounts,
@@ -83,11 +83,11 @@ import type {
  * zipped back on by index.
  */
 export async function loadGatewayRoutesForPlan(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string
 ): Promise<readonly FulfillmentGatewayRoute[]> {
   const result = await listPaymentGateways(db, organizationId)
-  if (result.isErr()) return []
+  if (result.isErr()) throw result.error
   const rows = result.value
   return toGatewayRoutes(rows).map((route, index) => ({ ...route, name: rows[index]?.name }))
 }

@@ -1257,3 +1257,55 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
 export function createQuickbooksAccountingProvider(): AccountingProvider {
   return new QuickbooksAccountingProvider()
 }
+
+/** Resolve a journal against an explicitly pinned context; remote writes are delegated to its durable tool wrapper. */
+export async function prepareQuickbooksJournal(
+  ctx: QuickbooksToolContext,
+  input: PostEntryInput
+): Promise<{ toolInput: Record<string, unknown>; mappingBasis: Record<string, unknown> }> {
+  if (!ctx.realmId) throw new Error('QuickBooks company identity is missing')
+  const accounts = await resolveMappedAccounts(
+    ctx,
+    input.lines.map((line) => line.glAccountId)
+  )
+  if (accounts.isErr()) throw accounts.error
+  const chart = await listChartAccounts(database, input.organizationId)
+  if (chart.isErr()) throw chart.error
+  const parties = await resolveOrCreateCounterparties(ctx, input, chart.value)
+  if (parties.isErr()) throw parties.error
+  const lines = [...input.lines]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((line) => {
+      const account = accounts.value.get(line.glAccountId)
+      if (!account) throw new Error(`Unmapped account ${line.glAccountId}`)
+      if (!Number.isSafeInteger(line.amount) || line.amount <= 0)
+        throw new Error('Unsafe journal amount')
+      const entity =
+        line.counterpartyType && line.counterpartyId
+          ? parties.value.get(counterpartyKey(line.counterpartyType, line.counterpartyId))
+          : undefined
+      return {
+        amountMinor: line.amount,
+        postingType: line.direction === 'debit' ? 'Debit' : 'Credit',
+        accountId: account.id,
+        ...(line.memo ? { description: line.memo } : {}),
+        ...(entity ? { entity } : {}),
+      }
+    })
+  return {
+    toolInput: {
+      lines,
+      txnDate: input.txnDate,
+      docNumber: input.docNumber,
+      privateNote: buildPrivateNote(input),
+      requestId: input.idempotencyKey,
+      currency: 'USD',
+    },
+    mappingBasis: {
+      companyId: ctx.realmId,
+      credentialId: ctx.connectionId,
+      accounts: Object.fromEntries([...accounts.value].map(([id, account]) => [id, account.id])),
+      counterparties: Object.fromEntries(parties.value),
+    },
+  }
+}

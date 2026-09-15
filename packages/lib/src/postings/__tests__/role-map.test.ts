@@ -21,6 +21,9 @@
 
 import { type Database, schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('../accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
+
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { ACCOUNT_ROLES } from '../build-entry'
 
@@ -159,6 +162,9 @@ function stubDb(assignments: Assignment[], accounts: Account[]): Stub {
   }
 
   const db = {
+    transaction: async function <T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
+      return fn(this)
+    },
     select: () => ({
       from: (table: unknown) => {
         let params: string[] = []

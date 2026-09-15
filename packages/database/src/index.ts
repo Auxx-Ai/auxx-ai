@@ -1,6 +1,7 @@
 // packages/database/src/index.ts
 // Public exports for the database package: schema and (future) client
 
+export { withAccountingCommitLock } from './db/accounting-commit-lock'
 // Audit-log row builder + types (shared across all write paths)
 export {
   type AuditContext,

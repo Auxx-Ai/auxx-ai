@@ -14,20 +14,24 @@
 
 'use client'
 
+import { Section } from '@auxx/ui/components/section'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { OrderFulfillmentLedgerCard } from '~/components/money/ui/order/order-fulfillment-ledger-card'
+import { OrderPaymentsCard } from '~/components/money/ui/order/order-payments-card'
 import { LedgerCard } from './ledger-card'
 
-/**
- * 🛑 The ORDER is the exception: it reads its shipment stamps, not its source
- * lines (plans/money/tasks/49 §2.5). A bulk fulfillment summarises a day into
- * one entry filed under `fulfillment_batch` and the period key, so the source
- * lookup finds nothing for the orders inside it. The registration keeps its name
- * and its slot; only what it reads changed. See
- * `money/ui/order/order-fulfillment-ledger-card.tsx` for the whole argument.
- */
+/** Order accounting combines actual money observations with durable fulfillment effect membership. */
 export function OrderLedgerCard(props: DrawerTabProps) {
-  return <OrderFulfillmentLedgerCard {...props} />
+  return (
+    <>
+      <Section title='Payments and refunds' collapsible={false}>
+        <OrderPaymentsCard {...props} />
+      </Section>
+      <Section title='Fulfillment accounting' collapsible={false}>
+        <OrderFulfillmentLedgerCard {...props} />
+      </Section>
+    </>
+  )
 }
 
 export function InvoiceLedgerCard(props: DrawerTabProps) {

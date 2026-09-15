@@ -1,6 +1,6 @@
 // packages/lib/src/resources/lookup/lookup-entities-by-field-value.ts
 
-import type { Database } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import { schema } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
@@ -287,7 +287,7 @@ function recordIdentityExists(
  * pick arbitrarily. Absent ⇒ `'first'`.
  */
 export async function lookupEntitiesByFieldValue(
-  db: Database,
+  db: Database | Transaction,
   params: LookupEntitiesByFieldValueParams
 ): Promise<Result<LookupByFieldResult, Error>> {
   const { organizationId, entityDefinitionId, candidates, limit } = params

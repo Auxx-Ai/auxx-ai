@@ -101,6 +101,7 @@ export const FULFILLMENT_POSTING_EXCLUSION_REASONS: readonly FulfillmentPostingE
 
 /** One shipped line inside an unposted shipment, as the builder needs it. */
 export interface UnpostedShipmentLine {
+  fulfillmentLineId?: string
   lineId: string
   quantity: number
   /** Minor units per unit. A RATE, may be fractional. */
@@ -131,22 +132,10 @@ export interface UnpostedShipmentLine {
   name?: string
 }
 
-/**
- * One shipment with no LIVE posting stamped (49 §2.2, §2.6 rule 1): the
- * `fulfillment` record's `fulfillment_gl_posting` is null, or names a posting
- * whose status is `reversed`.
- *
- * Everything the builder needs travels on it, so `plan.ts` and the builder see
- * no database.
- *
- * 🔑 Entity migration 153 (`plans/money/tasks/55-shipment-lines.md` §6): this
- * used to be one entry inside the `order_fulfillments` JSON array, and the
- * stamp was written back by `(orderId, sequence)` because nothing else
- * identified an entry. A shipment is a real `fulfillment` EntityInstance now -
- * see {@link fulfillmentInstanceId} - and `sequence` is kept only as the
- * business-meaning ordinal the doc numbers and the screen render.
- */
+/** One source with no accepted original membership. Legacy stamps require explicit repair. */
 export interface UnpostedShipment {
+  /** Historical journals require explicit membership repair before another original can post. */
+  legacyPostingId?: string | null
   orderId: string
   orderNumber: string
   /**

@@ -3,6 +3,7 @@
 import { database, schema } from '@auxx/database'
 import { and, eq, isNull, ne } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
+import { guardAccountingCredentialInTx } from './accounting-identity'
 import { fromDb, notFound } from './internal'
 import type { CredentialStoreError } from './types'
 
@@ -97,6 +98,10 @@ export async function setDefaultCredential(
 
   const txResult = await fromDb(
     database.transaction(async (tx) => {
+      await guardAccountingCredentialInTx(tx, organizationId, credentialId, {
+        kind: 'default',
+        appId,
+      })
       await tx
         .update(schema.Credential)
         .set({ isDefault: false, updatedAt: new Date() })

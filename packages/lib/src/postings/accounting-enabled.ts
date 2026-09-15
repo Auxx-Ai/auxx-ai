@@ -1,6 +1,6 @@
 // packages/lib/src/postings/accounting-enabled.ts
 
-import type { Database } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import { FeaturePermissionService } from '../permissions/feature-permission-service'
 import { FeatureKey } from '../permissions/types'
 
@@ -21,6 +21,9 @@ import { FeatureKey } from '../permissions/types'
  * org cache's `features` key (30-day TTL, invalidated on plan events) and
  * answers `true` on a self-hosted install, where every feature is on.
  */
-export async function isAccountingEnabled(db: Database, organizationId: string): Promise<boolean> {
+export async function isAccountingEnabled(
+  db: Database | Transaction,
+  organizationId: string
+): Promise<boolean> {
   return new FeaturePermissionService(db).hasAccess(organizationId, FeatureKey.accounting)
 }

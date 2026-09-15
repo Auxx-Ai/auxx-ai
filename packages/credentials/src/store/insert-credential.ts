@@ -1,8 +1,9 @@
 // packages/credentials/src/store/insert-credential.ts
 
-import { database, schema } from '@auxx/database'
+import { database, schema, withAccountingCommitLock } from '@auxx/database'
 import { err, ok, type Result } from 'neverthrow'
 import { encryptSecrets } from '../crypto'
+import { guardAccountingCredentialInTx } from './accounting-identity'
 import { encryptionError, fromDb, toRecord } from './internal'
 import type { CredentialKind, CredentialRecord, CredentialStoreError } from './types'
 
@@ -44,28 +45,38 @@ export async function insertCredential(
 
   const now = new Date()
   const insertResult = await fromDb(
-    database
-      .insert(schema.Credential)
-      .values({
-        organizationId: input.organizationId,
-        createdById: input.createdById ?? null,
-        kind: input.kind,
-        type: input.type ?? null,
-        userId: input.userId ?? null,
-        appId: input.appId ?? null,
-        appInstallationId: input.appInstallationId ?? null,
-        mcpServerId: input.mcpServerId ?? null,
-        connectionDefinitionId: input.connectionDefinitionId ?? null,
-        isDefault: input.isDefault ?? false,
-        name: input.name,
-        label: input.label ?? null,
-        encryptedSecrets,
-        metadata: input.metadata ?? {},
-        expiresAt: input.expiresAt ?? null,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning(),
+    database.transaction(async (tx) => {
+      if (input.kind === 'app') {
+        await withAccountingCommitLock(tx, input.organizationId)
+        if (input.isDefault && input.appId)
+          await guardAccountingCredentialInTx(tx, input.organizationId, '', {
+            kind: 'default',
+            appId: input.appId,
+          })
+      }
+      return tx
+        .insert(schema.Credential)
+        .values({
+          organizationId: input.organizationId,
+          createdById: input.createdById ?? null,
+          kind: input.kind,
+          type: input.type ?? null,
+          userId: input.userId ?? null,
+          appId: input.appId ?? null,
+          appInstallationId: input.appInstallationId ?? null,
+          mcpServerId: input.mcpServerId ?? null,
+          connectionDefinitionId: input.connectionDefinitionId ?? null,
+          isDefault: input.isDefault ?? false,
+          name: input.name,
+          label: input.label ?? null,
+          encryptedSecrets,
+          metadata: input.metadata ?? {},
+          expiresAt: input.expiresAt ?? null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+    }),
     'insert-credential'
   )
 

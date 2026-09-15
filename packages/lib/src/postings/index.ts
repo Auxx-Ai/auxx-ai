@@ -37,6 +37,18 @@ export {
   type GlAccountSubtypeValue,
 } from './account-subtype'
 export { withAccountingCommitLock } from './accounting-commit-lock'
+export {
+  type ActivateAccountingBookConnectionInput,
+  accountingOpeningPolicySchema,
+  activateAccountingBookConnection,
+  activateAccountingBookConnectionInTx,
+  type PinnedAccountingConnection,
+  readAccountingBookConnectionStatus,
+  readPinnedAccountingConnection,
+  readPinnedAccountingConnectionInTx,
+  repairAccountingBookConnection,
+  resolveFulfillmentDeliveryIntentInTx,
+} from './book-connections'
 // ── plans/accounting/tasks/25 4: one credit memo entry per period ───────────
 export {
   type BuildCreditMemoBatchEntryInput,
@@ -227,6 +239,11 @@ export {
   packForRole,
   packState,
 } from './default-chart'
+export {
+  deliverAccountingPosting,
+  planAccountingDeliveryInTx,
+  sweepAccountingDeliveries,
+} from './delivery'
 export {
   buildDocNumber,
   DOC_NUMBER_MAX_LENGTH,
@@ -602,6 +619,7 @@ export {
   type SetupReadinessContext,
   summariseOpeningTrialBalance,
 } from './setup-readiness'
+export { listOrderAccountingWork } from './source-work'
 export {
   type AccountSuggestion,
   isMappableTo,

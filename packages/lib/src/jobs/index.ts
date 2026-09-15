@@ -150,6 +150,7 @@ export {
 export { type ExecutePlanJobProps, executePlanJob } from './import/execute-plan-job'
 export { type GeneratePlanJobProps, generatePlanJob } from './import/generate-plan-job'
 export { type ResolveValuesJobProps, resolveValuesJob } from './import/resolve-values-job'
+export { accountingRecoveryJob } from './maintenance/accounting-recovery-job'
 // Maintenance
 export {
   type AgentDraftCleanupStats,

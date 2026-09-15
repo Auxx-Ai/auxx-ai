@@ -1,8 +1,14 @@
 // packages/lib/src/postings/__tests__/accounting-effects.int.test.ts
 import { schema } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
+import { toRecordId } from '@auxx/types/resource'
 import { eq, sql } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createFieldValueContext } from '../../field-values/field-value-helpers'
+import {
+  assertAccountingSourcesMutableInTx,
+  withAccountingFieldMutation,
+} from '../source-write-guard'
 
 vi.mock('../../cache', async (original) => ({
   ...(await original<Record<string, unknown>>()),
@@ -494,5 +500,119 @@ describe('accounting foundation against PostgreSQL', () => {
       expect(result.isOk()).toBe(true)
       if (result.isOk()) expect(result.value.get('clearing_card')?.glAccountId).toBe(account!.id)
     })
+  })
+})
+
+describe('financial source mutation guards', () => {
+  it('rejects accepted fulfillment changes before entering the mutation', async () => {
+    await acceptFixture()
+    const source = await db().query.EntityInstance.findFirst({
+      where: eq(schema.EntityInstance.id, fulfillmentId),
+    })
+    const mutate = vi.fn()
+    await expect(
+      withAccountingFieldMutation(
+        createFieldValueContext(organizationId, userId, db()),
+        [
+          {
+            recordId: toRecordId(source!.entityDefinitionId, fulfillmentId),
+            fields: [{ fieldId: 'fulfillment_shipped_at', value: '2026-09-15' }],
+            operation: 'set',
+          },
+        ],
+        mutate
+      )
+    ).rejects.toThrow('correction')
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
+  it('allows tracking updates after acceptance', async () => {
+    await acceptFixture()
+    const source = await db().query.EntityInstance.findFirst({
+      where: eq(schema.EntityInstance.id, fulfillmentId),
+    })
+    const mutate = vi.fn(async () => 'updated')
+    const result = await withAccountingFieldMutation(
+      createFieldValueContext(organizationId, userId, db()),
+      [
+        {
+          recordId: toRecordId(source!.entityDefinitionId, fulfillmentId),
+          fields: [{ fieldId: 'fulfillment_tracking_number', value: 'TRACK123' }],
+          operation: 'set',
+        },
+      ],
+      mutate
+    )
+    expect(result).toBe('updated')
+    expect(mutate).toHaveBeenCalledOnce()
+  })
+
+  it('refuses inserting a child into an already accepted fulfillment', async () => {
+    await acceptFixture()
+    const [definition] = await db()
+      .insert(schema.EntityDefinition)
+      .values({
+        organizationId,
+        entityType: 'fulfillment_line',
+        apiSlug: 'fulfillment_lines',
+        singular: 'Line',
+        plural: 'Lines',
+      })
+      .returning()
+    const [line] = await db()
+      .insert(schema.EntityInstance)
+      .values({ organizationId, entityDefinitionId: definition!.id, updatedAt: new Date() })
+      .returning()
+    await expect(
+      db().transaction(async (tx) => {
+        await withAccountingCommitLock(tx, organizationId)
+        await assertAccountingSourcesMutableInTx(
+          tx,
+          organizationId,
+          [toRecordId(definition!.id, line!.id)],
+          [fulfillmentId]
+        )
+      })
+    ).rejects.toThrow('correction')
+  })
+
+  it('waits for acceptance ownership before deciding source mutability', async () => {
+    const source = await db().query.EntityInstance.findFirst({
+      where: eq(schema.EntityInstance.id, fulfillmentId),
+    })
+    let unlock!: () => void
+    let acquired!: () => void
+    const held = new Promise<void>((resolve) => {
+      acquired = resolve
+    })
+    const release = new Promise<void>((resolve) => {
+      unlock = resolve
+    })
+    const first = db().transaction(async (tx) => {
+      await withAccountingCommitLock(tx, organizationId)
+      acquired()
+      await release
+    })
+    await held
+    let mutated = false
+    const write = withAccountingFieldMutation(
+      createFieldValueContext(organizationId, userId, db()),
+      [
+        {
+          recordId: toRecordId(source!.entityDefinitionId, fulfillmentId),
+          fields: [{ fieldId: 'fulfillment_shipped_at', value: null }],
+          operation: 'set',
+        },
+      ],
+      async () => {
+        mutated = true
+      }
+    )
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(mutated).toBe(false)
+    unlock()
+    await first
+    await write
+    expect(mutated).toBe(true)
   })
 })

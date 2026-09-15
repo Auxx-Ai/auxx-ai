@@ -1,65 +1,26 @@
 // packages/lib/src/money/fulfillment-posting/run.ts
 
-/**
- * Phase 3 of the bulk fulfillment poster: EXECUTE a {@link FulfillmentPostingPlan}.
- *
- * `plans/money/tasks/49-bulk-fulfillment-posting.md` §2.3 item 5, §2.4 and §8.2.
- *
- * `plan.ts` decides what to post with no database, no clock and no settings;
- * this file writes it, one `GlPosting` per group and one stamp per shipment.
- * The split, and the never-throws discipline below, are
- * `builds/backfill-builds.ts` again.
- *
- * ## 🛑 It is NOT atomic, and the summary is what says so
- *
- * A group is `postEntry` followed by N stamps, and those are separate
- * transactions - `postEntry` opens its own and makes a provider call, so
- * holding the claim's index tuple across the stamps would hold it across an
- * HTTP round trip. So a group can end up posted-with-unstamped-shipments, which
- * is the one state in this whole feature that a person MUST look at: an
- * unstamped shipment reads as unposted to the netting read, and the next run
- * would recognise its revenue a second time under the next attempt key, where
- * the claim's unique index cannot catch it. That outcome is reported in BOTH
- * `posted` (the ledger truth) and `failed` (the thing that needs a person).
- *
- * ## 🛑 `already_posted` is a SKIP here, never a success
- *
- * It is a success everywhere else in the poster - a converged re-run. Here it
- * means the group's period key was already claimed by a posting this run did
- * not make, so the entry it holds is NOT this group's entry and stamping this
- * group's shipments onto it would attach them to somebody else's numbers. The
- * attempt counter exists to make it unreachable (§8.2); reaching it anyway
- * means the count and the claim disagree, and the honest answer is to write
- * nothing and say so.
- *
- * ## 🛑 Never throws
- *
- * Three layers, matching `backfill-builds.ts`: every STAMP inside its own `try`
- * so one order's lock contention does not lose the rest of the group; every
- * GROUP inside its own `try` so one refused build does not lose the run; and the
- * whole body inside one final `try` so a caller (a worker job, the `auto` lane)
- * always gets a summary.
- *
- * No permission checks. The router asserts `ledgerPost`
- * (`docs/lib-module-guide.md` §6).
- */
+/** Preview and execute fulfillment accounting through immutable source membership. */
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, like, ne, or } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
+import { UnprocessableEntityError } from '../../errors'
+import { acceptEntryInTx } from '../../postings/accept-entry'
+import { withAccountingCommitLock } from '../../postings/accounting-commit-lock'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
-import { buildFulfillmentBatchEntry } from '../../postings/build-fulfillment-batch-entry'
-import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
-import { resolvePeriodLock } from '../../postings/period-lock'
-import { postEntry } from '../../postings/post-entry'
+import { resolveFulfillmentDeliveryIntentInTx } from '../../postings/book-connections'
+import { buildEntry } from '../../postings/build-entry'
+import { deliverAccountingPosting, planAccountingDeliveryInTx } from '../../postings/delivery'
+import { canonicalAccountingJson } from '../../postings/effect-basis'
 import {
   FINALIZED_SETUP_STATE,
   OPENING_BASELINE_SETTING_KEYS,
 } from '../../postings/setup-readiness'
+import type { GlPostingLineInput } from '../../postings/types'
 import { getOrganizationSetting } from '../../settings/settings-service'
-import { stampFulfillmentPosting } from '../fulfillments'
 import { guard } from './guard'
 import { loadGatewayRoutesForPlan, planFulfillmentPosting } from './plan'
 import { readFulfillmentPostingSettings, readUnpostedShipments } from './reads'
@@ -69,6 +30,13 @@ import type {
   FulfillmentPostingRequest,
   FulfillmentPostingRunSummary,
 } from './types'
+import { FULFILLMENT_POSTING_SETTING_KEY } from './types'
+import {
+  captureFulfillmentAccountingWorkInTx,
+  discoverFulfillmentAccountingWork,
+  prepareFulfillmentEffectMemberInTx,
+  revalidateFulfillmentMemberInTx,
+} from './work'
 
 const logger = createScopedLogger('money-fulfillment-posting')
 
@@ -141,6 +109,15 @@ export async function runFulfillmentPosting(
       return summary
     }
 
+    if (
+      request.actorUserId === null &&
+      (await getOrganizationSetting({
+        organizationId,
+        key: FULFILLMENT_POSTING_SETTING_KEY,
+        db,
+      })) !== 'auto'
+    )
+      return summary
     const prepared = await prepare(db, request)
     if (prepared.refusal) {
       // 🛑 A run-level refusal has no group to hang on, and the summary type is
@@ -242,6 +219,7 @@ async function prepare(db: Database, request: FulfillmentPostingRequest): Promis
     getOrganizationSetting({
       organizationId,
       key: OPENING_BASELINE_SETTING_KEYS.setupState,
+      db,
     }),
   ])
   if (settingsResult.isErr()) throw settingsResult.error
@@ -310,164 +288,209 @@ function resolveRefusal(setupState: unknown, timeZone: string | null): string | 
   return null
 }
 
-/** Build, post and stamp one group. Throws only what the group layer records. */
+/** Capture survives bookkeeping refusal; acceptance and its delivery intent share one commit. */
 async function executeGroup(
   db: Database,
   request: FulfillmentPostingRequest,
   context: { group: FulfillmentPostingGroup; ledgerCurrency: string; actorUserId: string },
   summary: FulfillmentPostingRunSummary
 ): Promise<void> {
-  const { organizationId } = request
-  const { group, ledgerCurrency, actorUserId } = context
-
-  // 🛑 The attempt is counted BEFORE the build, off the ledger itself. A day
-  // key claims the day once, and a late order backfilled into an already-posted
-  // day needs the next attempt (§8.2). A reversed run leaves its reversal
-  // standing at the same key, which is why the count includes it - so the day
-  // that was reversed comes back as attempt N+1 rather than colliding with the
-  // reversed original's tuple and converging to `already_posted`.
-  const attempt = await countLiveGroupPostings(db, organizationId, group.groupKey)
-  const built = buildFulfillmentBatchEntry({
-    group,
-    ledgerCurrency,
-    attempt,
-    ...(request.memo ? { memo: request.memo } : {}),
+  const result = await acceptFulfillmentWorkGroup(db, {
+    organizationId: request.organizationId,
+    actorUserId: context.actorUserId,
+    fulfillmentIds: context.group.shipments.map((shipment) => shipment.fulfillmentInstanceId),
+    groupKey: context.group.groupKey,
+    automatic: request.actorUserId === null,
+    memo: request.memo,
   })
-
-  const lock = await resolvePeriodLock(organizationId)
-  const post = await postEntry(db, {
-    organizationId,
-    entry: built.entry,
-    actorUserId,
-    lock,
-    memo: request.memo ?? `Fulfillments shipped ${group.groupKey}`,
-  })
-
-  // 🛑 `already_posted` is excluded DELIBERATELY and is the one place this
-  // differs from a plain acceptance check: the claim was made by some other
-  // run, so this run must not stamp shipments onto numbers it did not compute.
-  if (post.status === 'already_posted' || !isExpectedPostOutcome(post)) {
+  if (!result) {
     summary.skipped.push({
-      groupKey: group.groupKey,
-      status: post.status,
-      reason:
-        post.status === 'already_posted'
-          ? `Period key ${built.periodKey} is already claimed by ${post.docNumber ?? 'another entry'}. ` +
-            'Nothing was posted and no shipment was stamped - stamping them onto an entry this run ' +
-            'did not make would attach them to numbers this run did not compute.'
-          : (post.error ?? `The ledger declined the entry (${post.status})`),
+      groupKey: context.group.groupKey,
+      status: 'already_posted',
+      reason: 'The selected fulfillments are already accepted or no longer automatically eligible',
     })
     return
   }
-
-  const glPostingId = post.glPostingId
-  if (!glPostingId) {
-    // Unreachable by contract - every accepted status carries the claimed row -
-    // and recorded rather than asserted, because a run that threw here would
-    // lose the groups after it.
-    summary.skipped.push({
-      groupKey: group.groupKey,
-      status: post.status,
-      reason: 'The ledger accepted the entry but named no posting, so nothing could be stamped',
-    })
-    return
-  }
-
   summary.posted.push({
-    groupKey: group.groupKey,
-    postingId: glPostingId,
-    docNumber: post.docNumber ?? '',
-    shipments: group.shipments.length,
+    groupKey: context.group.groupKey,
+    postingId: result.glPostingId,
+    docNumber: result.docNumber,
+    shipments: result.shipments,
   })
+}
 
-  const unstamped: string[] = []
-  for (const shipment of group.shipments) {
-    // 🛑 One order's lock contention must not lose the rest of the group's
-    // stamps: every shipment left unstamped is a shipment the next run would
-    // post a SECOND time.
+/** Shared native/manual/automatic command; rereads and recomputes exact remaining members under lock. */
+export async function acceptFulfillmentWorkGroup(
+  db: Database,
+  input: {
+    organizationId: string
+    actorUserId: string
+    fulfillmentIds: readonly string[]
+    groupKey: string
+    automatic?: boolean
+    memo?: string
+  }
+): Promise<{ glPostingId: string; docNumber: string; shipments: number } | null> {
+  const workIds: string[] = []
+  for (const fulfillmentInstanceId of [...new Set(input.fulfillmentIds)]) {
+    const work = await db.transaction((tx) =>
+      captureFulfillmentAccountingWorkInTx(tx, {
+        organizationId: input.organizationId,
+        fulfillmentInstanceId,
+      })
+    )
+    workIds.push(work.id)
+  }
+  if (!workIds.length) return null
+  const result = await db.transaction(async (tx) => {
+    await withAccountingCommitLock(tx, input.organizationId)
+    if (
+      input.automatic &&
+      (await getOrganizationSetting({
+        organizationId: input.organizationId,
+        key: FULFILLMENT_POSTING_SETTING_KEY,
+        db: tx,
+      })) !== 'auto'
+    )
+      return null
+    const works = await tx.query.AccountingWork.findMany({
+      where: and(
+        eq(schema.AccountingWork.organizationId, input.organizationId),
+        inArray(schema.AccountingWork.id, workIds)
+      ),
+    })
+    const accepted = await tx.query.AccountingEffect.findMany({
+      where: and(
+        eq(schema.AccountingEffect.organizationId, input.organizationId),
+        inArray(schema.AccountingEffect.workId, workIds)
+      ),
+    })
+    const claimed = new Set(accepted.map((effect) => effect.workId))
+    const pending = works.filter(
+      (work) =>
+        !claimed.has(work.id) &&
+        ['pending', 'blocked'].includes(work.state) &&
+        work.eligibility !== 'excluded' &&
+        (!input.automatic || work.eligibility === 'automatic')
+    )
+    if (!pending.length) {
+      if (accepted.length === 1) {
+        const posting = await tx.query.GlPosting.findFirst({
+          where: and(
+            eq(schema.GlPosting.organizationId, input.organizationId),
+            eq(schema.GlPosting.id, accepted[0]!.glPostingId)
+          ),
+        })
+        if (posting)
+          return { glPostingId: posting.id, docNumber: posting.docNumber ?? '', shipments: 1 }
+      }
+      return null
+    }
+    const setupState = await getOrganizationSetting({
+      organizationId: input.organizationId,
+      key: OPENING_BASELINE_SETTING_KEYS.setupState,
+      db: tx,
+    })
+    const settings = await readFulfillmentPostingSettings(tx, input.organizationId)
+    if (settings.isErr()) throw settings.error
+    const refusal = resolveRefusal(setupState, settings.value.timeZone)
+    if (refusal) throw new UnprocessableEntityError(refusal)
+    const prepared = []
+    for (const work of pending) {
+      // Configuration or source edits after initial capture select another immutable basis version.
+      const refreshed = await captureFulfillmentAccountingWorkInTx(tx, {
+        organizationId: input.organizationId,
+        fulfillmentInstanceId: work.entityInstanceId,
+      })
+      if (refreshed.state === 'blocked')
+        throw new UnprocessableEntityError(
+          refreshed.blockedReason ?? 'Fulfillment accounting is blocked'
+        )
+      const member = await prepareFulfillmentEffectMemberInTx(tx, input.organizationId, work.id)
+      if (
+        settings.value.cutoffPeriod &&
+        member.shipment.shippedAt.slice(0, 7) <= settings.value.cutoffPeriod
+      )
+        throw new UnprocessableEntityError('Fulfillment is before the opening cutoff')
+      prepared.push(member)
+    }
+    const lines = new Map<string, GlPostingLineInput>()
+    for (const item of prepared)
+      for (const line of item.entry.lines) {
+        const key = canonicalAccountingJson([
+          line.glAccountId ?? null,
+          line.accountRole ?? null,
+          line.direction,
+          line.counterpartyType ?? null,
+          line.counterpartyId ?? null,
+          line.dimensions ?? {},
+        ])
+        const previous = lines.get(key)
+        if (previous) previous.amount += line.amount
+        else lines.set(key, { ...line })
+      }
+    const txnDate = prepared
+      .map((item) => item.entry.txnDate)
+      .sort()
+      .at(-1)!
+    const entry = buildEntry({
+      postingType: 'fulfillment',
+      periodKey: input.groupKey,
+      txnDate,
+      lines: [...lines.values()],
+    })
+    entry.sources = prepared.map((item) => ({
+      fulfillmentInstanceId: item.shipment.fulfillmentInstanceId,
+      orderId: item.shipment.orderId,
+      orderNumber: item.shipment.orderNumber,
+      sequence: item.shipment.sequence,
+      amounts: item.shipment.amounts,
+    }))
+    const result = await acceptEntryInTx(
+      tx,
+      {
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        entry,
+        members: prepared.map((item) => item.member),
+        memo: input.memo,
+        deliveryIntent: await resolveFulfillmentDeliveryIntentInTx(
+          tx,
+          input.organizationId,
+          txnDate
+        ),
+      },
+      { revalidateMemberInTx: revalidateFulfillmentMemberInTx }
+    )
+    if (result.status === 'replan')
+      throw new Error('Membership changed while holding the accounting lock')
+    const glPostingId = result.glPostingId
+    if (!glPostingId) throw new Error('New acceptance must produce exactly one journal')
+    const posting = await tx.query.GlPosting.findFirst({
+      where: and(
+        eq(schema.GlPosting.organizationId, input.organizationId),
+        eq(schema.GlPosting.id, glPostingId)
+      ),
+    })
+    if (!posting) throw new Error('Accepted journal is missing')
+    await planAccountingDeliveryInTx(tx, { organizationId: input.organizationId, glPostingId })
+    return { glPostingId, docNumber: posting.docNumber ?? '', shipments: prepared.length }
+  })
+  if (result) {
     try {
-      await stampFulfillmentPosting(db, {
-        organizationId,
-        actorUserId,
-        fulfillmentInstanceId: shipment.fulfillmentInstanceId,
-        patch: {
-          glPosting: glPostingId,
-          docNumber: post.docNumber ?? null,
-          // The amounts the BATCH builder computed, not whatever the record was
-          // carrying. `subtotalMinor` goes back too, because it is what the
-          // next shipment of this order allocates its tax against.
-          totalMinor: shipment.amounts.totalMinor,
-          subtotalMinor: shipment.amounts.subtotalMinor,
-        },
+      await deliverAccountingPosting(db, {
+        organizationId: input.organizationId,
+        glPostingId: result.glPostingId,
       })
     } catch (error) {
-      unstamped.push(`${shipment.orderNumber || shipment.orderId} shipment ${shipment.sequence}`)
-      logger.error('A posted shipment could not be stamped', {
-        organizationId,
-        groupKey: group.groupKey,
-        orderId: shipment.orderId,
-        sequence: shipment.sequence,
-        glPostingId,
-        error,
+      logger.warn('Accepted fulfillment journal awaits delivery recovery', {
+        organizationId: input.organizationId,
+        glPostingId: result.glPostingId,
+        error: error instanceof Error ? error.message : String(error),
       })
     }
   }
-
-  if (unstamped.length > 0) {
-    // ⚠️ In `posted` AND in `failed`. The entry is in the books, so `posted` is
-    // the truth about the ledger; `failed` is the only channel that says a
-    // person has to act, and this is the one outcome in the feature that
-    // genuinely needs one - an unstamped shipment reads as unposted and would
-    // be recognised again by the next run.
-    summary.failed.push({
-      groupKey: group.groupKey,
-      reason:
-        `${post.docNumber ?? glPostingId} posted, but ${unstamped.length} shipment(s) could not ` +
-        `be stamped with it: ${unstamped.join(', ')}. They will be offered again by the next ` +
-        'preview and must NOT be posted a second time - stamp them by hand or reverse the entry.',
-    })
-  }
-}
-
-/**
- * How many LIVE `fulfillment` postings already claim this group's key - the
- * `attempt` `fulfillmentBatchPeriodKey` appends.
- *
- * Counted off `GlPosting` rather than off a source line, because a batch
- * entry's clearing, revenue, tax and shipping legs summarise under
- * `fulfillment_batch` and only a terms order leaves an `order`-sourced line
- * (§2.5) - so a source-line count would read zero for a day of card orders and
- * re-claim the same key forever.
- *
- * `status <> 'reversed'` is what makes a reversed run come back cleanly: the
- * reversed ORIGINAL stops counting, its reversal (an ordinary `posted` entry at
- * the same key) keeps counting, so the next attempt is one higher and the run
- * cannot collide with the tuple the original still occupies.
- *
- * The `LIKE` matches the key plus exactly one appended attempt character, which
- * is the shape `writeOffPeriodKey` established: `buildDocNumber` strips hyphens
- * and nothing else, so there is no separator to match on.
- */
-async function countLiveGroupPostings(
-  db: Database,
-  organizationId: string,
-  groupKey: string
-): Promise<number> {
-  const rows = await db
-    .select({ id: schema.GlPosting.id })
-    .from(schema.GlPosting)
-    .where(
-      and(
-        eq(schema.GlPosting.organizationId, organizationId),
-        eq(schema.GlPosting.postingType, 'fulfillment'),
-        ne(schema.GlPosting.status, 'reversed'),
-        or(
-          eq(schema.GlPosting.periodKey, groupKey),
-          like(schema.GlPosting.periodKey, `${groupKey}_`)
-        )
-      )
-    )
-  return rows.length
+  return result
 }
 
 /** A setting value, rendered short enough to put in a refusal. */
@@ -476,4 +499,84 @@ function describe(value: unknown): string {
   if (typeof value === 'string') return JSON.stringify(value)
   if (typeof value === 'object') return Array.isArray(value) ? 'an array' : 'an object'
   return `${typeof value} ${JSON.stringify(value)}`
+}
+
+/** Recover bounded discovered obligations; queue jobs are only optional wake-ups. */
+export async function sweepFulfillmentAccountingWork(
+  db: Database,
+  input: {
+    organizationId: string
+    actorUserId?: string
+    afterId?: string
+    limit?: number
+  }
+): Promise<{ scanned: number; nextCursor: string | null; accepted: number; blocked: number }> {
+  if (!(await isAccountingEnabled(db, input.organizationId)))
+    return { scanned: 0, nextCursor: null, accepted: 0, blocked: 0 }
+  const discovered = await discoverFulfillmentAccountingWork(db, input)
+  const result = {
+    scanned: discovered.scanned,
+    nextCursor: discovered.nextCursor,
+    accepted: 0,
+    blocked: 0,
+  }
+  if (
+    !discovered.workIds.length ||
+    (await getOrganizationSetting({
+      organizationId: input.organizationId,
+      key: FULFILLMENT_POSTING_SETTING_KEY,
+      db,
+    })) !== 'auto'
+  )
+    return result
+  const works = await db.query.AccountingWork.findMany({
+    where: and(
+      eq(schema.AccountingWork.organizationId, input.organizationId),
+      inArray(schema.AccountingWork.id, discovered.workIds)
+    ),
+  })
+  const actorUserId =
+    input.actorUserId ?? (await getOrgCache().get(input.organizationId, 'systemUser'))
+  const groups = new Map<string, string[]>()
+  for (const work of works) {
+    if (work.state === 'blocked') {
+      result.blocked++
+      continue
+    }
+    if (work.state !== 'pending' || work.eligibility !== 'automatic') continue
+    const basis = await db.query.AccountingWorkBasis.findFirst({
+      where: and(
+        eq(schema.AccountingWorkBasis.organizationId, input.organizationId),
+        eq(schema.AccountingWorkBasis.workId, work.id),
+        eq(schema.AccountingWorkBasis.version, work.basisVersion)
+      ),
+    })
+    if (!basis?.effectiveDate) {
+      result.blocked++
+      continue
+    }
+    const ids = groups.get(basis.effectiveDate) ?? []
+    ids.push(work.entityInstanceId)
+    groups.set(basis.effectiveDate, ids)
+  }
+  for (const [groupKey, fulfillmentIds] of groups) {
+    try {
+      const accepted = await acceptFulfillmentWorkGroup(db, {
+        organizationId: input.organizationId,
+        actorUserId,
+        fulfillmentIds,
+        groupKey,
+        automatic: true,
+      })
+      result.accepted += accepted?.shipments ?? 0
+    } catch (error) {
+      result.blocked += fulfillmentIds.length
+      logger.warn('Fulfillment accounting remains pending after recovery', {
+        organizationId: input.organizationId,
+        groupKey,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+  return result
 }

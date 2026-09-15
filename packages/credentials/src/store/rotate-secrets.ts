@@ -4,6 +4,7 @@ import { database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { encryptSecrets } from '../crypto'
+import { guardAccountingCredentialInTx } from './accounting-identity'
 import { encryptionError, fromDb, notFound } from './internal'
 import type { CredentialStoreError } from './types'
 
@@ -15,7 +16,7 @@ export async function rotateSecrets(
   id: string,
   organizationId: string,
   secrets: Record<string, unknown>,
-  options?: { expiresAt?: Date | null }
+  options?: { expiresAt?: Date | null; metadata?: Record<string, unknown> }
 ): Promise<Result<void, CredentialStoreError>> {
   let encryptedSecrets: string
   try {
@@ -27,14 +28,23 @@ export async function rotateSecrets(
   const set: Record<string, unknown> = { encryptedSecrets, updatedAt: new Date() }
   if (options && 'expiresAt' in options) set.expiresAt = options.expiresAt ?? null
 
+  if (options?.metadata !== undefined) set.metadata = options.metadata
+
   const updateResult = await fromDb(
-    database
-      .update(schema.Credential)
-      .set(set)
-      .where(
-        and(eq(schema.Credential.id, id), eq(schema.Credential.organizationId, organizationId))
-      )
-      .returning({ id: schema.Credential.id }),
+    database.transaction(async (tx) => {
+      if (options?.metadata !== undefined)
+        await guardAccountingCredentialInTx(tx, organizationId, id, {
+          kind: 'metadata',
+          metadata: options.metadata,
+        })
+      return tx
+        .update(schema.Credential)
+        .set(set)
+        .where(
+          and(eq(schema.Credential.id, id), eq(schema.Credential.organizationId, organizationId))
+        )
+        .returning({ id: schema.Credential.id })
+    }),
     'rotate-secrets'
   )
 

@@ -3,6 +3,7 @@
 import { database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
+import { guardAccountingCredentialInTx } from './accounting-identity'
 import { fromDb, notFound } from './internal'
 import type { CredentialStoreError } from './types'
 
@@ -30,13 +31,20 @@ export async function updateCredential(
   if ('expiresAt' in input) set.expiresAt = input.expiresAt ?? null
 
   const updateResult = await fromDb(
-    database
-      .update(schema.Credential)
-      .set(set)
-      .where(
-        and(eq(schema.Credential.id, id), eq(schema.Credential.organizationId, organizationId))
-      )
-      .returning({ id: schema.Credential.id }),
+    database.transaction(async (tx) => {
+      if (input.metadata !== undefined)
+        await guardAccountingCredentialInTx(tx, organizationId, id, {
+          kind: 'metadata',
+          metadata: input.metadata,
+        })
+      return tx
+        .update(schema.Credential)
+        .set(set)
+        .where(
+          and(eq(schema.Credential.id, id), eq(schema.Credential.organizationId, organizationId))
+        )
+        .returning({ id: schema.Credential.id })
+    }),
     'update-credential'
   )
 

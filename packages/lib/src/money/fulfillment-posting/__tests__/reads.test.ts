@@ -292,15 +292,15 @@ beforeEach(() => {
 })
 
 describe('the netting read', () => {
-  it('nets on a null stamp, a posting that is gone, AND a reversed posting', async () => {
+  it('nets on absence of accepted membership regardless of posting reversal status', async () => {
     queue([{ fulfillmentId: 'ff_1', orderId: 'ord_1' }], { ord_1: [fulfillment()] })
 
     await readUnpostedShipments(stubDb(), { organizationId: ORG, range: RANGE })
 
     // Two `is null`s - the stamp's own cell and the LEFT JOIN's miss on the
     // posting it names - and one `reversed`.
-    expect(nettingWhere().match(/is null/g)).toHaveLength(2)
-    expect(nettingWhere()).toContain('reversed')
+    expect(nettingWhere().match(/is null/g)).toHaveLength(1)
+    expect(nettingWhere()).not.toContain('reversed')
   })
 
   it('joins the stamp on the declared field rather than scanning a JSON cell', async () => {
@@ -386,8 +386,10 @@ describe('readUnpostedShipments', () => {
         fulfillmentInstanceId: 'ff_1',
         sequence: 1,
         shippedAt: '2026-07-06',
+        legacyPostingId: null,
         lines: [
           {
+            fulfillmentLineId: undefined,
             lineId: 'li_1',
             quantity: 2,
             unitPriceMinor: 5_000,

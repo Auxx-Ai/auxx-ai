@@ -146,7 +146,7 @@ async function assertDeliveryIntent(tx: Transaction, input: PreparedEffectPostin
     throw new ConflictError(
       'The intended external book connection changed or is not active in this organization'
     )
-  if (input.entry.txnDate < active.exportFromDate)
+  if (input.members.some((member) => member.acceptedBasis.effectiveDate < active.exportFromDate))
     throw new ConflictError('The journal predates the intended external book opening boundary')
 }
 
@@ -373,6 +373,15 @@ export async function acceptEntryInTx(
   }
   const lock = await resolvePeriodLock(input.organizationId, tx)
   await assertDeliveryIntent(tx, input)
+  const sourceDates = members.map((member) => member.acceptedBasis.effectiveDate).sort()
+  if (
+    sourceDates.at(-1) !== input.entry.txnDate ||
+    sourceDates.some((date) => date.slice(0, 7) !== input.entry.txnDate.slice(0, 7))
+  ) {
+    throw new ConflictError(
+      'Fulfillment journal date must be the latest member date within one accounting month'
+    )
+  }
   const corrections = new Set<string>()
   for (const member of members) {
     const work = workById.get(member.workId)!
@@ -406,7 +415,6 @@ export async function acceptEntryInTx(
       member.acceptedBasis.sourceBasisVersion !== work.basisVersion ||
       member.acceptedBasis.sourceHash !== basis.sourceHash ||
       member.acceptedBasis.effectiveDate !== basis.effectiveDate ||
-      member.acceptedBasis.effectiveDate !== input.entry.txnDate ||
       accountingBasisHash(member.acceptedBasis.calculation) !==
         accountingBasisHash(basis.calculation)
     )

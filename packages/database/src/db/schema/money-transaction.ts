@@ -1,0 +1,79 @@
+// packages/database/src/db/schema/money-transaction.ts
+import { createId } from '@paralleldrive/cuid2'
+import {
+  type AnyPgColumn,
+  bigint,
+  check,
+  date,
+  foreignKey,
+  integer,
+  pgTable,
+  sql,
+  text,
+  timestamp,
+  unique,
+} from './_shared'
+import { EntityInstance } from './entity-instance'
+import { MoneyCommand } from './money-command'
+import { Organization } from './organization'
+import { PaymentRoute } from './payment-route'
+
+/** Durable MoneyTransaction owner; organization deletion cascades, scoped financial references preserve history. */
+export const MoneyTransaction = pgTable(
+  'MoneyTransaction',
+  {
+    id: text()
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    organizationId: text()
+      .notNull()
+      .references((): AnyPgColumn => Organization.id, { onDelete: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    purpose: text()
+      .notNull()
+      .$type<'customer_receipt' | 'customer_refund' | 'vendor_payment' | 'vendor_refund'>(),
+    amountMinor: bigint({ mode: 'bigint' }).notNull(),
+    currency: text().notNull(),
+    currencyExponent: integer().notNull(),
+    datePrecision: text().notNull().$type<'instant' | 'date'>(),
+    occurredAt: timestamp({ withTimezone: true }),
+    occurredOn: date(),
+    partyInstanceId: text(),
+    paymentRouteId: text(),
+    cashAccountInstanceId: text(),
+    recordedByCommandId: text().notNull(),
+    reference: text(),
+    note: text(),
+  },
+  (t) => [
+    unique('MoneyTransaction_org_id_key').on(t.organizationId, t.id),
+    foreignKey({
+      name: 'MoneyTransaction_partyInstanceId_fk',
+      columns: [t.organizationId, t.partyInstanceId],
+      foreignColumns: [EntityInstance.organizationId, EntityInstance.id],
+    }).onDelete('no action'),
+    foreignKey({
+      name: 'MoneyTransaction_paymentRouteId_fk',
+      columns: [t.organizationId, t.paymentRouteId],
+      foreignColumns: [PaymentRoute.organizationId, PaymentRoute.id],
+    }).onDelete('no action'),
+    foreignKey({
+      name: 'MoneyTransaction_cashAccountInstanceId_fk',
+      columns: [t.organizationId, t.cashAccountInstanceId],
+      foreignColumns: [EntityInstance.organizationId, EntityInstance.id],
+    }).onDelete('no action'),
+    foreignKey({
+      name: 'MoneyTransaction_recordedByCommandId_fk',
+      columns: [t.organizationId, t.recordedByCommandId],
+      foreignColumns: [MoneyCommand.organizationId, MoneyCommand.id],
+    }).onDelete('no action'),
+    check(
+      'MoneyTransaction_money_check',
+      sql`${t.amountMinor} > 0 AND ${t.currency} ~ '^[A-Z]{3}$' AND ${t.currencyExponent} BETWEEN 0 AND 4 AND ${t.purpose} IN ('customer_receipt','customer_refund','vendor_payment','vendor_refund')`
+    ),
+    check(
+      'MoneyTransaction_date_check',
+      sql`(${t.datePrecision} = 'instant' AND ${t.occurredAt} IS NOT NULL AND ${t.occurredOn} IS NULL) OR (${t.datePrecision} = 'date' AND ${t.occurredAt} IS NULL AND ${t.occurredOn} IS NOT NULL)`
+    ),
+  ]
+)

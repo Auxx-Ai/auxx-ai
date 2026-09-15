@@ -1,6 +1,6 @@
 // packages/lib/src/threads/thread-action-access.ts
 
-import type { Database } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import { ForbiddenError } from '../errors'
 import type { MailViewer } from '../permissions/visibility/context'
 import { isSystemViewer } from '../permissions/visibility/context'
@@ -39,7 +39,7 @@ import { getThreadLensBatch } from '../permissions/visibility/thread-lens'
  * apart is precisely the bug §5.5 exists to fix.
  */
 export async function assertCanActOnThreads(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   viewer: MailViewer,
   threadIds: string[]

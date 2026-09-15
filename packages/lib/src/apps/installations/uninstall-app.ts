@@ -12,6 +12,8 @@ import {
   disconnectConnectors,
 } from '../../data-connectors/mutations'
 
+import { disconnectAccountingInstallationInTx } from '../../postings/book-connections'
+
 /**
  * Input parameters for uninstallApp
  */
@@ -173,6 +175,7 @@ export async function uninstallApp(input: UninstallAppInput) {
 
   const transactionResult = await fromDatabase(
     database.transaction(async (tx: Transaction) => {
+      await disconnectAccountingInstallationInTx(tx, organizationId, installation.id)
       // Preserve AppSettings and Credential on uninstall so they survive
       // reinstall (Approach A: stable installation identity). OAuth tokens may expire
       // but refresh logic or re-auth flow handles that without destroying the row.

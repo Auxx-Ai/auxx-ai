@@ -243,6 +243,7 @@ export {
   type PostingSummary,
 } from './journal-entries/client'
 export { didLedgerAccept, isExpectedPostOutcome } from './ledger-accepted'
+export { LEDGER_CURRENCY } from './ledger-currency'
 // ── plans/accounting/tasks/26 §7.1: the code allocator ──────────────────────
 // PURE - reaches `errors` and the band constants in `default-chart`, both of
 // which are already on this surface. `mint-rail-accounts.ts` is the write half

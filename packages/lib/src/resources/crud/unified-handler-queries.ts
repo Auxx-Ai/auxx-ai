@@ -1,6 +1,6 @@
 // packages/lib/src/resources/crud/unified-handler-queries.ts
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
@@ -650,7 +650,7 @@ function describeFilterProblems(
  * @returns `ids` (length ≤ limit), `hasMore`, and `total` only when `includeTotal`.
  */
 export async function queryEntityInstanceIdsPaged(params: {
-  db: Database
+  db: Database | Transaction
   entityDefinitionId: string
   organizationId: string
   filters: ConditionGroup[]
@@ -749,7 +749,7 @@ export async function queryEntityInstanceIdsPaged(params: {
  * must not answer wider (the AI tools) refuse on `allConditionsDropped`.
  */
 export async function countEntityInstances(params: {
-  db: Database
+  db: Database | Transaction
   entityDefinitionId: string
   organizationId: string
   filters: ConditionGroup[]
@@ -805,7 +805,7 @@ export async function countEntityInstances(params: {
  * Pass at most a handful of ids — this is a UI affordance, not a bulk API.
  */
 export async function matchEntityInstanceIds(params: {
-  db: Database
+  db: Database | Transaction
   entityDefinitionId: string
   organizationId: string
   filters: ConditionGroup[]
@@ -880,7 +880,7 @@ function assertNotMailLensTable(tableId: TableId): void {
  * Refuses `thread` / `message` — see {@link assertNotMailLensTable}.
  */
 export async function querySystemResourceIdsPaged(params: {
-  db: Database
+  db: Database | Transaction
   tableId: TableId
   organizationId: string
   filters: ConditionGroup[]
@@ -1005,7 +1005,7 @@ export async function querySystemResourceIdsPaged(params: {
  * whole org is exactly what the lens exists to prevent.
  */
 export async function countSystemResource(params: {
-  db: Database
+  db: Database | Transaction
   tableId: TableId
   organizationId: string
   filters: ConditionGroup[]
@@ -1311,7 +1311,7 @@ export async function resolveEntityId(
  */
 export async function listAll(
   ctx: {
-    db: Database
+    db: Database | Transaction
     organizationId: string
     userId: string
     /**

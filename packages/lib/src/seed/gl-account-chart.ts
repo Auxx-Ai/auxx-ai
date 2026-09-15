@@ -69,6 +69,7 @@ import {
   listPaymentGateways,
   normaliseGatewayHandle,
 } from '../payment-gateways'
+import { withAccountingCommitLock } from '../postings/accounting-commit-lock'
 import {
   CHART_PACK_KEYS,
   CHART_PACKS,
@@ -340,15 +341,18 @@ async function assignSeededRoles(
 
   if (rows.length === 0) return 0
 
-  const inserted = await db
-    .insert(schema.GlRoleAssignment)
-    .values(rows)
-    .onConflictDoNothing({
-      target: [schema.GlRoleAssignment.organizationId, schema.GlRoleAssignment.role],
-    })
-    .returning({ id: schema.GlRoleAssignment.id })
+  return db.transaction(async (tx) => {
+    await withAccountingCommitLock(tx, organizationId)
+    const inserted = await tx
+      .insert(schema.GlRoleAssignment)
+      .values(rows)
+      .onConflictDoNothing({
+        target: [schema.GlRoleAssignment.organizationId, schema.GlRoleAssignment.role],
+      })
+      .returning({ id: schema.GlRoleAssignment.id })
 
-  return inserted.length
+    return inserted.length
+  })
 }
 
 // ─── The two default payment gateways (task 13 §5.3, §5.1's census) ────────
