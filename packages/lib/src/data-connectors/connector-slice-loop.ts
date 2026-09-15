@@ -30,6 +30,8 @@ export interface RunConnectorSliceArgs {
   ctx: SyncSliceCtx
   /** Injectable clock (tests pass a fake to exercise the `maxMs` budget). */
   now: () => number
+  /** Consulted at page boundaries so a user pause never loses half a page. */
+  shouldStop?: () => Promise<boolean>
 }
 
 /**
@@ -92,7 +94,7 @@ export async function runConnectorSlice(
           pages >= ctx.budget.maxPages ||
           recordsProcessed >= ctx.budget.maxRecords ||
           now() - started >= ctx.budget.maxMs
-        if (budgetHit) {
+        if (budgetHit || (await args.shouldStop?.())) {
           return {
             recordsProcessed,
             pagesProcessed: pages,

@@ -44,6 +44,39 @@ function ctx(over: Partial<SyncSliceCtx> = {}): SyncSliceCtx {
 }
 
 describe('runConnectorSlice', () => {
+  it('finishes the current page after a pause, saves its cursor, and does not fetch the next page', async () => {
+    let paused = false
+    const nextPage = vi.fn()
+    const sink = vi.fn(async () => {
+      paused = true
+    })
+    const result = await runConnectorSlice({
+      fetch: async () => ({
+        nextState: {},
+        records: (async function* () {
+          yield rec('a')
+          yield rec('b')
+          yield checkpoint('page-2', 'W2')
+          nextPage()
+          yield rec('c')
+        })(),
+      }),
+      sink,
+      ctx: ctx(),
+      now: () => 0,
+      shouldStop: async () => paused,
+    })
+    expect(sink).toHaveBeenCalledTimes(2)
+    expect(nextPage).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      recordsProcessed: 2,
+      pagesProcessed: 1,
+      nextCursor: { kind: 'token', value: 'page-2' },
+      watermark: 'W2',
+      hasMore: true,
+      commit: 'all',
+    })
+  })
   it('drains to exhaustion: counts records + pages, no more', async () => {
     const sink = vi.fn(async () => {})
     const result = await runConnectorSlice({

@@ -169,6 +169,37 @@ describe('getConnectorCatalogUpdate', () => {
     expect(update.entries).toEqual([])
   })
 
+  it('can remove a historical binding whose target is now read-only', async () => {
+    const { db } = buildDb(seededState())
+    vi.mocked(getCachedCustomFields).mockImplementation(
+      async (_org, defId) =>
+        (FIXTURE_DEF_FIELDS[defId] ?? []).map((field) =>
+          field.id === 'f_phone' ? { ...field, isCreatable: false, isUpdatable: false } : field
+        ) as never
+    )
+    const update = (await getConnectorCatalogUpdate(db, ORG, DC))._unsafeUnwrap()
+    expect(update.available).toBe(true)
+    expect(
+      update.entries.find(
+        (entry) =>
+          entry.change.kind === 'binding' &&
+          entry.change.op === 'remove' &&
+          entry.change.target === 'def_contact:f_phone'
+      )
+    ).toMatchObject({ conflict: false })
+  })
+
+  it('still refuses read-only targets in the new catalog', async () => {
+    const { db } = buildDb(seededState())
+    vi.mocked(getCachedCustomFields).mockImplementation(
+      async (_org, defId) =>
+        (FIXTURE_DEF_FIELDS[defId] ?? []).map((field) =>
+          field.id === 'f_email' ? { ...field, isCreatable: false, isUpdatable: false } : field
+        ) as never
+    )
+    await expect(getConnectorCatalogUpdate(db, ORG, DC)).rejects.toThrow('read-only or computed')
+  })
+
   it('is a NotFoundError for an unknown connector', async () => {
     const state = seededState()
     const { db } = buildDb(state)

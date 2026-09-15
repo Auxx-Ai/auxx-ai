@@ -157,8 +157,20 @@ export async function computeConnectorCatalogUpdate(
     ...(oldCatalog?.streams ?? []),
   ])
   const derivedNew = deriveConnectorShape(newCatalog, newEntities, appSlug, resolver)
+  // The old catalog describes historical bindings, including targets that became
+  // read-only since installation. Only the new shape must pass today's write guard.
+  const historicalResolver: ShapeResolver = {
+    ...resolver,
+    fieldsByDefId: (defId) =>
+      resolver.fieldsByDefId(defId).map((field) => ({
+        ...field,
+        isCreatable: true,
+        isUpdatable: true,
+        isComputed: false,
+      })),
+  }
   const derivedOld = oldCatalog
-    ? deriveConnectorShape(oldCatalog, oldEntities, appSlug, resolver)
+    ? deriveConnectorShape(oldCatalog, oldEntities, appSlug, historicalResolver)
     : null
 
   const streams = await listStreams(db, organizationId, connectorId)

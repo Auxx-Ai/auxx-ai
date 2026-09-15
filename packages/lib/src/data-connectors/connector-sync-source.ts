@@ -33,6 +33,7 @@ import { resolveCrossConnectorLinks } from './cross-connector-links'
 import { listBackfillRunIds, reconcileManagedMarkers, reconcileOrphans } from './reconciliation'
 import { newRecordFailureTally } from './record-failure-tally'
 import { resolveRelationships } from './relationship-pass'
+import { isRunPauseRequested } from './run-control'
 import {
   clearResyncPending,
   countConnectorItems,
@@ -44,6 +45,7 @@ import {
   getRunManifest,
   markRunManifestDegraded,
   newRunCounters,
+  parkConnectorIfManuallyPaused,
   parkConnectorSampleIfLastStream,
   publishSyncRecordsChanged,
   type RunCounters,
@@ -195,6 +197,8 @@ export interface ConnectorSyncSource extends SyncSource {
    * is no second chance to include them.
    */
   finalizeAtPark(): Promise<void>
+  /** Checkpointed streams acknowledge a manual pause before continuing or finalizing. */
+  finalizePause(): Promise<boolean>
 }
 
 class ConnectorStreamSyncSource implements ConnectorSyncSource {
@@ -272,6 +276,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     const result = await runConnectorSlice({
       ctx,
       now: this.now,
+      shouldStop: () => isRunPauseRequested(this.deps.db, this.deps.run.id),
       fetch: ({ backfillCursor, watermark }) =>
         this.deps.definition.fetch({
           streamKey,
@@ -357,6 +362,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
    * last stream knows the whole multi-stream chain is done.
    */
   async finalizeBackfill(): Promise<void> {
+    if (await this.finalizePause()) return
     // Sample run: a stream that exhausted before its cap still parks for review (the
     // sample IS everything for this stream, but the run stays paused so the user
     // confirms before any capped sibling's remainder is pulled). No reconcile — a
@@ -364,6 +370,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     if (this.deps.sampleLimit != null) {
       await parkConnectorSampleIfLastStream(this.deps.db, {
         runId: this.deps.run.id,
+        streamId: this.deps.stream.streamId,
         dataConnectorId: this.deps.connector.id,
         sampleLimit: this.deps.sampleLimit,
         startedAt: this.deps.run.startedAt,
@@ -451,6 +458,16 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     })
   }
 
+  async finalizePause(): Promise<boolean> {
+    return parkConnectorIfManuallyPaused(this.deps.db, {
+      runId: this.deps.run.id,
+      streamId: this.deps.stream.streamId,
+      dataConnectorId: this.deps.connector.id,
+      startedAt: this.deps.run.startedAt,
+      beforePark: () => this.finalizeAtPark(),
+    })
+  }
+
   /**
    * Connector-level finalize, gated on the LAST stream (B1 atomic latch). Runs the
    * relationship two-pass + orphan reconciliation across ALL streams, folds the
@@ -464,8 +481,12 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     clearResync: boolean
     phase: 'backfill' | 'steady'
   }): Promise<void> {
-    const remaining = await decrementConnectorBackfillLatch(this.deps.db, this.deps.connector.id)
-    if (remaining !== null && remaining > 0) {
+    if (await this.finalizePause()) return
+    const remaining = await decrementConnectorBackfillLatch(this.deps.db, this.deps.connector.id, {
+      runId: this.deps.run.id,
+      streamId: this.deps.stream.streamId,
+    })
+    if (remaining === null || remaining > 0) {
       logger.info('stream done; siblings still running — deferring finalize', {
         sourceId: this.id,
         phase: opts.phase,
@@ -522,6 +543,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     // The last stream closes the run, in BOTH phases — the handler no-ops the runner's
     // close for every multi-stream run, so this is the only place it happens. Then
     // release the connector claim + stamp the item count.
+    if (await this.finalizePause()) return
     if (opts.closeRun) await ledger.finalize()
     await finalizeConnector(this.deps.db, this.deps.connector.id, {
       ok: true,

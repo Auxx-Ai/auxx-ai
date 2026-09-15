@@ -187,22 +187,29 @@ class ConnectorRunLedger implements RunLedger {
     await this.db
       .update(T)
       .set({ status, finishedAt: new Date(), durationMs: Date.now() - this.startedAt.getTime() })
-      .where(eq(T.id, this.runId))
+      .where(
+        and(
+          eq(T.id, this.runId),
+          eq(T.status, 'running'),
+          sql`coalesce(${T.progress}->'paused'->>'reason', '') <> 'manual'`
+        )
+      )
   }
 
   async fail(error: Error): Promise<void> {
     const T = schema.DataConnectorRun
+    const pausing = sql`${T.progress}->'paused'->>'reason' = 'manual'`
     await this.db
       .update(T)
       .set({
-        status: 'failed',
+        status: sql`case when ${pausing} then ${T.status} else 'failed' end`,
         errorSample: sql`coalesce(${T.errorSample}, '[]'::jsonb) || ${JSON.stringify([
           { externalId: '', error: error.message },
         ])}::jsonb`,
-        finishedAt: new Date(),
+        finishedAt: sql`case when ${pausing} then ${T.finishedAt} else now() end`,
         durationMs: Date.now() - this.startedAt.getTime(),
       })
-      .where(eq(T.id, this.runId))
+      .where(and(eq(T.id, this.runId), eq(T.status, 'running')))
   }
 }
 

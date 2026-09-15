@@ -16,9 +16,14 @@ import { stableHash } from '@auxx/utils/hash'
 import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../../agents/bindings/resolve'
 import { getCachedFieldMap } from '../../cache'
-import { UniqueValueConflictError } from '../../errors'
+import { NotFoundError, UniqueValueConflictError } from '../../errors'
 import { fieldValueSchemas } from '../../field-values/field-value-validator'
 import { upsertRecordIdentity } from '../../identity'
+import {
+  FinancialSourceIdentityConflictError,
+  recordStaleFinancialObservation,
+  StaleFinancialSourceRevisionError,
+} from '../../money/payouts/source-write-errors'
 import {
   AcceptedAccountingSourceError,
   recordRejectedAccountingObservation,
@@ -134,8 +139,8 @@ const LIST_VALUED_TYPES = new Set(['TAGS', 'MULTI_SELECT'])
  *   destroyed by splitting.
  * - Non-`isMulti` only. The row-level multi path is per-row by construction and
  *   explicitly refuses arrays; leave it exactly as it was.
- * - A value with no comma is returned untouched, so the overwhelmingly common
- *   single-tag case keeps its existing behaviour byte for byte.
+ * - Blank strings represent an empty selection, including delimiter-only strings.
+ *   A nonblank single tag keeps its existing representation.
  */
 export function coerceListValue(
   fieldType: string | undefined,
@@ -143,14 +148,14 @@ export function coerceListValue(
   isMulti: boolean
 ): unknown {
   if (isMulti || !fieldType || !LIST_VALUED_TYPES.has(fieldType)) return value
-  if (typeof value !== 'string' || !value.includes(',')) return value
+  if (typeof value !== 'string') return value
+  if (!value.trim()) return []
+  if (!value.includes(',')) return value
   const parts = value
     .split(',')
     .map((v) => v.trim())
     .filter(Boolean)
-  // `,` / `, ,` carries no tags — fall through to the original value so the existing
-  // blank handling decides, rather than writing an empty array over the current list.
-  return parts.length > 0 ? parts : value
+  return parts
 }
 
 /**
@@ -1140,7 +1145,7 @@ export const entitySink: EntitySink = {
 
     // 3. Build the write set with per-field merge strategy. Multi fields on an
     //    existing instance divert to `rowWrites` (row-level own-row upserts).
-    const { writeSet, rowWrites, managedFields, identityFieldKeys } = await buildWriteSet(
+    let { writeSet, rowWrites, managedFields, identityFieldKeys } = await buildWriteSet(
       ctx,
       mapping,
       record,
@@ -1153,7 +1158,7 @@ export const entitySink: EntitySink = {
     // 3b. Plan the row-level writes BEFORE the write: the plan reads the field's
     //     current rows to decide per value between no-op / in-place update /
     //     append, so its reads must be pre-write.
-    const rowPlan =
+    let rowPlan =
       instanceId && rowWrites.length > 0
         ? await planRowLevelWrites(ctx, mapping.entityDefinitionId, instanceId, rowWrites)
         : { actions: [], captureSet: {} }
@@ -1166,6 +1171,8 @@ export const entitySink: EntitySink = {
     //    (replaces the retired `EntityInstance.integrationSource` stamp).
     const handler = mapping.targetMode === 'owned' ? ctx.ownedCrud : ctx.crud
     let justCreated = false
+    let ignoredRevision = false
+    let retriedIdentity = false
     // Per-value uniqueness tolerance (B1): a `UniqueValueConflictError` thrown from
     // inside the write (A1's pre-hooks / unique-field validation) fails ONE value,
     // not the record — drop the conflicting key from the write set and retry, so
@@ -1201,6 +1208,56 @@ export const entitySink: EntitySink = {
         }
         break
       } catch (error) {
+        if (instanceId && error instanceof NotFoundError) {
+          const instance = await ctx.db.query.EntityInstance.findFirst({
+            where: and(
+              eq(schema.EntityInstance.id, instanceId),
+              eq(schema.EntityInstance.organizationId, ctx.orgId)
+            ),
+            columns: { archivedAt: true },
+          })
+          if (instance?.archivedAt) {
+            if (bound) await touchItem(ctx.db, bound.id, ctx.runId)
+            ctx.counters.skipped += 1
+            return
+          }
+        }
+        if (
+          !instanceId &&
+          !retriedIdentity &&
+          error instanceof FinancialSourceIdentityConflictError
+        ) {
+          // The failed create rolled back. Re-check the normal match field after
+          // the competing transaction committed; never redirect an existing record.
+          retriedIdentity = true
+          const resolved = await resolveIdentity(ctx, mapping, record, refToConcrete)
+          if (resolved.instanceId === error.canonicalRecordId) {
+            instanceId = resolved.instanceId
+            matched = resolved.matched
+            ;({ writeSet, rowWrites, managedFields, identityFieldKeys } = await buildWriteSet(
+              ctx,
+              mapping,
+              record,
+              instanceId,
+              refToConcrete,
+              bound?.pinnedFields ?? [],
+              matched
+            ))
+            rowPlan = await planRowLevelWrites(
+              ctx,
+              mapping.entityDefinitionId,
+              instanceId,
+              rowWrites
+            )
+            continue
+          }
+        }
+        if (instanceId && error instanceof StaleFinancialSourceRevisionError) {
+          await recordStaleFinancialObservation(ctx.db, ctx.orgId, error)
+          ctx.counters.skipped += 1
+          ignoredRevision = true
+          break
+        }
         if (error instanceof AcceptedAccountingSourceError) {
           await recordRejectedAccountingObservation(ctx.db, ctx.orgId, error, {
             connectorId: ctx.connector.id,
@@ -1243,7 +1300,7 @@ export const entitySink: EntitySink = {
     // 4a. Execute the planned row-level writes (multi fields): in-place own-row
     //     updates + end-appends, each stamping only its own row. Per-value
     //     failures are logged inside — they never fail the record.
-    if (instanceId && rowPlan.actions.length > 0) {
+    if (!ignoredRevision && instanceId && rowPlan.actions.length > 0) {
       await executeRowLevelWrites(
         ctx,
         mapping.entityDefinitionId,
@@ -1258,7 +1315,7 @@ export const entitySink: EntitySink = {
     //     skips this (column-grain provenance lives on CustomField.dataConnectorId).
     //     Identity fields are excluded — no false "synced by connector" badge
     //     over a value that may be chat-verified.
-    if (mapping.targetMode === 'contributing' && instanceId) {
+    if (!ignoredRevision && mapping.targetMode === 'contributing' && instanceId) {
       const stampableKeys = Object.keys(writeSet).filter((key) => !identityFieldKeys.includes(key))
       await stampContributingProvenance(ctx, mapping.entityDefinitionId, instanceId, stampableKeys)
     }
@@ -1266,13 +1323,15 @@ export const entitySink: EntitySink = {
     // 4c. Mirror identity-flagged fields into RecordIdentity, regardless of
     //     whether fill-blank actually wrote this run — the mirror stays in
     //     sync with the (already-established) cell value either way.
-    if (instanceId) {
+    if (!ignoredRevision && instanceId) {
       await mirrorIdentityWrites(ctx, mapping, instanceId, record.externalId, identityFieldKeys)
     }
 
     // 5. Upsert the binding — merge any new managed fields with prior ones
     //    (contributing records are co-owned field-by-field across connectors).
-    const mergedManaged = Array.from(new Set([...(bound?.managedFields ?? []), ...managedFields]))
+    const mergedManaged = Array.from(
+      new Set([...(bound?.managedFields ?? []), ...(ignoredRevision ? [] : managedFields)])
+    )
     await upsertItem(ctx.db, {
       dataConnectorId: ctx.connector.id,
       organizationId: ctx.orgId,
