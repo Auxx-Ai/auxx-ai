@@ -104,6 +104,7 @@ export function ProfitAndLossReportPage() {
         onSelectCompare={(next) => void setCompareParam(next === 'none' ? null : next)}
         onDownloadPdf={handleDownloadPdf}
         onDownloadCsv={handleDownloadCsv}
+        through={to}
         isDownloadingPdf={renderPdf.isPending}
         disabled={!from || !to}
       />

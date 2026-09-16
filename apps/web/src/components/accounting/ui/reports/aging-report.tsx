@@ -96,6 +96,7 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
         onSelectPeriod={(key) => void setAsOfParam(periodEndDate(key))}
         onDownloadPdf={handleDownloadPdf}
         onDownloadCsv={handleDownloadCsv}
+        through={asOf}
         isDownloadingPdf={renderPdf.isPending}
         disabled={!asOf}
       />

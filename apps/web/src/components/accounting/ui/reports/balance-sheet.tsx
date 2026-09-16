@@ -93,6 +93,7 @@ export function BalanceSheetReportPage() {
         onSelectCompare={(next) => void setCompareParam(next === 'none' ? null : next)}
         onDownloadPdf={handleDownloadPdf}
         onDownloadCsv={handleDownloadCsv}
+        through={asOf}
         isDownloadingPdf={renderPdf.isPending}
         disabled={!asOf}
       />

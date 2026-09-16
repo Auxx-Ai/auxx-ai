@@ -153,28 +153,28 @@ export function AccountingGeneralSettingsPage() {
           `Accounting period` is two fields, so the left side grew a large hole
           under it before `Absorption rates` could start.
 
-          🛑 THE SPLIT IS A HEIGHT DECISION, and the old one is gone. It used to
-          be "left is what you fill in, right is what the page does or reports" -
-          which worked while the right column held the three provider sections.
-          Brief 27 moved all three to Settings > Connected system, leaving
-          `Setup status` alone in it, so the principle no longer had the material
-          to be a principle. Two of the three sections here are draft-backed and
-          feed the one save bar below; they are laid out so neither column
-          strands, and that is the whole of the rule now.
+          🛑 THE SPLIT IS NOW WHAT THE SAVE BAR COVERS. The height rule it used
+          to be is gone, and so is the "left is what you fill in, right is what
+          the page does or reports" one before it - that one worked while the
+          right column held the three provider sections, and brief 27 moved all
+          three to Settings > Connected system. Left is the two draft-backed
+          sections that feed the one save bar below, in the order you fill them;
+          right is `Setup status`, the only section that is not draft-backed.
 
-          ⚠️ `Standard cost` is the one that crossed over, and it is the right
-          one to move: it is the longer of the two drafts and `Setup status`
-          is the shortest thing on the page, so pairing them balances against
-          the period on the left. Do NOT read its position as meaning it is
-          not draft-backed - it is, through `absorption`. Brief 28 moved the
-          payment routes off the left column to Settings > Posting.
+          ⚠️ This costs the height balance on purpose. `Standard cost` is the
+          tallest section and `Setup status` is the shortest, so the right
+          column ends well above the left and the page bottoms out one-sided.
+          The columns are independent flex stacks, so that is trailing space,
+          not a hole between sections - but do not "fix" it by sending a
+          draft-backed section back across. Brief 28 moved the payment routes
+          off the left column to Settings > Posting.
 
           ⚠️ Nothing may be placed AFTER both columns. Observed 2026-08-28 on
           `abgwpa1l81reht2zmwrcihfu` with the provider section there: it sat alone
           off the bottom of the page and read as missing.
 
           ⚠️ On mobile the columns stack, so the reading order is
-          period -> setup -> absorption. That is the trade for column-major flow.
+          period -> absorption -> setup. That is the trade for column-major flow.
         */}
         <div className='grid grid-cols-1 items-start gap-8 lg:grid-cols-2'>
           <div className='flex flex-col gap-8'>
@@ -224,17 +224,6 @@ export function AccountingGeneralSettingsPage() {
                 .
               </p>
             </SettingsSection>
-          </div>
-
-          <div className='flex flex-col gap-8'>
-            <SetupStatusSection
-              readiness={readiness}
-              finalizedAt={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedAt))}
-              finalizedByUserId={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedByUserId))}
-              hasUnsavedChanges={dirty}
-              isFinalizing={isBatchUpdatingOrgSettings}
-              onFinalize={handleFinalize}
-            />
 
             <SettingsSection
               icon={Scale}
@@ -312,6 +301,17 @@ export function AccountingGeneralSettingsPage() {
                 .
               </p>
             </SettingsSection>
+          </div>
+
+          <div className='flex flex-col gap-8'>
+            <SetupStatusSection
+              readiness={readiness}
+              finalizedAt={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedAt))}
+              finalizedByUserId={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedByUserId))}
+              hasUnsavedChanges={dirty}
+              isFinalizing={isBatchUpdatingOrgSettings}
+              onFinalize={handleFinalize}
+            />
           </div>
         </div>
 

@@ -21,6 +21,7 @@ import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period
 import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
+import { ProviderSyncStatus } from './provider-sync-status'
 import { ReportErrorCard } from './report-error-card'
 import { toStatementTableRows } from './report-helpers'
 import { StatementNotices } from './statement-notices'
@@ -95,6 +96,8 @@ export function Vendor1099ReportPage() {
         </DropdownMenu>
 
         <div className='flex-1' />
+
+        <ProviderSyncStatus through={`${year}-12-31`} />
 
         <Separator orientation='vertical' className='h-6' />
         <Button variant='ghost' size='sm' loading={renderPdf.isPending} onClick={handleDownloadPdf}>

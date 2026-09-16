@@ -101,8 +101,42 @@ Tier 5 (apps):  web, worker, api, lambda, build (can import anything)
 - Use TypeScript for all code.
 - Implement responsive designs for all components.
 - This is an early-stage startup. Prioritize simple, readable code with minimal abstraction. Strive for elegant, minimal solutions. No premature optimization. No backward compatibility unless specifically requested.
-- Add JSDoc to exported public APIs. Prefer self-documenting code over inline comments.
 - At the top of each file, comment the file-path/file-name.
+
+## Comments
+
+Comments carry what the code cannot: a non-obvious constraint, a deliberate choice a
+reader would otherwise "fix", an external quirk. Everything else is noise that goes
+stale the first time someone edits around it.
+
+**Budget: one line.** A JSDoc on an exported symbol is one sentence saying what it is
+and what a caller must uphold. An inline comment is one line saying why. Three lines
+needs a reason you could defend in review. Past six lines it is not a comment, it is a
+document — put it in `docs/` or `plans/` and link to it from one line of code.
+
+**Do not write:**
+
+- Design-rationale essays, or history — "this used to be X", "brief 27 moved it",
+  dated observations, what a previous layout did wrong.
+- `🛑` / `⚠️` markers, ALL-CAPS mandates, or `##` headings inside a comment block.
+- Instructions aimed at the next editor: "do NOT move this", "nothing may be placed
+  after this", "the next person should".
+- Restatements of the code below, or prose describing the JSX/props a reader can see.
+- Summaries of a spec or plan file. Link it instead:
+  `// see plans/accounting/tasks/04-statements.md §3`
+- File-level overviews of what a component renders.
+
+**Do write, in a line or two:**
+
+- Why a surprising line exists — a workaround, an ordering requirement, a perf or
+  security constraint, a bug it fixes.
+- An invariant or precondition a caller cannot infer from the signature.
+- `TODO(owner):` with a concrete next step.
+
+The file-path comment on line 1 stays.
+
+When editing an existing file, match the surrounding density rather than raising it —
+and trimming an essay in a block you are already touching is welcome, not scope creep.
 
 ## Client vs Server Imports
 
