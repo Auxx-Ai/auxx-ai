@@ -181,7 +181,7 @@ export function AccountingGeneralSettingsPage() {
             <SettingsSection
               icon={CalendarRange}
               title='Accounting period'
-              description='The month the previous system last closed, and the timezone every period key is derived in.'>
+              description='The month the previous system last closed, the timezone every period key is derived in, and the month the fiscal year turns over.'>
               <FieldPanel
                 className='mt-1 p-0'
                 resizeId='accounting-general-period'
@@ -209,10 +209,32 @@ export function AccountingGeneralSettingsPage() {
                     }
                   />
                 </SettingsFieldRow>
+
+                {/*
+                  🛑 NOT gated on `frozen`, unlike the two rows above. They are
+                  frozen because changing them rewrites a posted entry's
+                  `txnDate`/`periodKey`; this one writes nothing to the ledger at
+                  all. It moves where a READ splits prior years from this year,
+                  so an org that picked the wrong month can still correct it.
+                  The catalog renders the twelve months off `FISCAL_YEAR_START_MONTH_OPTIONS`.
+                */}
+                <SettingsFieldRow
+                  settingKey={ACCOUNTING_KEYS.fiscalYearStartMonth}
+                  title='Fiscal year starts'
+                  value={periodDraft[ACCOUNTING_KEYS.fiscalYearStartMonth]}
+                  onChange={(value) =>
+                    patchPeriod({
+                      [ACCOUNTING_KEYS.fiscalYearStartMonth]: value as SettingValue,
+                    })
+                  }
+                />
               </FieldPanel>
 
               <p className='text-muted-foreground text-xs'>
-                Every entry is dated in this timezone and nothing before the cutoff is kept. What
+                Every entry is dated in this timezone and nothing before the cutoff is kept. At the
+                fiscal year&apos;s first day every report resets revenue and expense accounts and
+                rolls what came before into retained earnings — no closing entry is posted, so
+                changing the month re-frames the reports without touching a booked entry. What
                 posts, when, and the settings that change each type, including where payments land
                 and whether fulfillments post automatically, are under{' '}
                 <Link

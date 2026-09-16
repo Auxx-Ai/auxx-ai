@@ -21,6 +21,7 @@ export const ACCOUNTING_KEYS = {
   setupState: 'accounting.setupState',
   cutoffPeriod: 'accounting.cutoffPeriod',
   bookTimeZone: 'accounting.bookTimeZone',
+  fiscalYearStartMonth: 'accounting.fiscalYearStartMonth',
   fulfillmentPosting: 'accounting.fulfillmentPosting',
   setupFinalizedAt: 'accounting.setupFinalizedAt',
   setupFinalizedByUserId: 'accounting.setupFinalizedByUserId',
@@ -52,6 +53,7 @@ export const ACCOUNTING_KEYS = {
 export const PERIOD_DRAFT_KEYS = [
   ACCOUNTING_KEYS.cutoffPeriod,
   ACCOUNTING_KEYS.bookTimeZone,
+  ACCOUNTING_KEYS.fiscalYearStartMonth,
 ] as const
 
 export const ABSORPTION_DRAFT_KEYS = [

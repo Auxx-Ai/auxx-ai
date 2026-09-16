@@ -18,6 +18,10 @@ vi.mock('../../resolve-roles', () => ({ loadRoleAccountCodes: vi.fn() }))
 // The chart is read ONCE per balance sheet and handed to every trial-balance
 // read, so this reader now touches `role-map` directly.
 vi.mock('../../role-map', () => ({ listChartAccounts: vi.fn() }))
+// The fiscal-year month is one settings read, and `settings-service` reaches
+// `@auxx/database`. January keeps these fixtures on the calendar-year boundary
+// they were written against; `fiscal-year.test.ts` covers the other eleven.
+vi.mock('../fiscal-year-setting', () => ({ resolveFiscalYearStartMonth: vi.fn(async () => 1) }))
 
 import { loadRoleAccountCodes } from '../../resolve-roles'
 import { listChartAccounts } from '../../role-map'

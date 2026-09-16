@@ -38,7 +38,11 @@ export function TrialBalanceReportPage() {
   // range has been carried in from another report.
   const cutoff = period.options[0] ? periodStartDate(period.options[0].periodKey) : null
 
-  const { asOf, from, setAsOf } = useReportAsOf(period.bookTimeZone, !!period.resolvedPeriodKey)
+  const { asOf, from, setAsOf } = useReportAsOf(
+    period.bookTimeZone,
+    !!period.resolvedPeriodKey,
+    period.fiscalYearStartMonth
+  )
   // The carried range start when another report set one, else the books' floor.
   // Either way the ledger's own "Opening balance" row absorbs what came before,
   // so the drill-down still ties to the figure that was clicked.

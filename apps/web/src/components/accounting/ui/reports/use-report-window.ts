@@ -30,8 +30,15 @@ export interface ReportAsOfWindow {
  * `hasPeriods` gates the empty `asOf` that the pages' "nothing has posted yet"
  * branch keys on — without it a brand-new org would render a statement as of
  * today over a ledger that was never set up.
+ *
+ * `fiscalYearStartMonth` comes off `useLedgerPeriod`, the same place
+ * `bookTimeZone` does.
  */
-export function useReportAsOf(bookTimeZone: string, hasPeriods: boolean): ReportAsOfWindow {
+export function useReportAsOf(
+  bookTimeZone: string,
+  hasPeriods: boolean,
+  fiscalYearStartMonth: number
+): ReportAsOfWindow {
   const [toParam, setToParam] = useQueryState('to')
   const [fromParam, setFromParam] = useQueryState('from')
 
@@ -44,9 +51,10 @@ export function useReportAsOf(bookTimeZone: string, hasPeriods: boolean): Report
       // inverted window for the next range report to open with. Pull the start
       // back to the fiscal year the new date falls in rather than dropping it,
       // so the P&L still lands on a range somebody would have chosen.
-      if (fromParam && fromParam > day) void setFromParam(fiscalYearStart(day))
+      if (fromParam && fromParam > day)
+        void setFromParam(fiscalYearStart(day, fiscalYearStartMonth))
     },
-    [fromParam, setFromParam, setToParam]
+    [fiscalYearStartMonth, fromParam, setFromParam, setToParam]
   )
 
   return { asOf, from: fromParam, setAsOf }
