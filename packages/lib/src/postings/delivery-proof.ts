@@ -65,12 +65,23 @@ const remoteJournalSchema = z.object({
 export type PreparedJournal = z.infer<typeof preparedJournalSchema>
 export type VerifiedJournal = z.infer<typeof remoteJournalSchema>
 
-/** Match the full accounting basis; a document-number match alone is never ownership proof. */
+/**
+ * Match the full accounting basis; a document-number match alone is never
+ * ownership proof.
+ *
+ * 🔌 `toNeutralParty` is the adapter's translation of its own journal-line party
+ * vocabulary into the platform's (decision D14b). It is REQUIRED rather than
+ * defaulted to identity: the delivery tables stopped speaking any provider's
+ * object names, so a comparison that silently passed a provider spelling
+ * through would be comparing two vocabularies and calling it a match. The one
+ * caller passes `money/quickbooks/object-types.ts`'s map.
+ */
 export function verifyDeliveredJournal(input: {
   prepared: unknown
   remote: unknown
   intendedCompanyId: string
   actualCompanyId: string
+  toNeutralParty: (providerPartyType: string) => string
 }): VerifiedJournal {
   const expected = preparedJournalSchema.parse(input.prepared)
   const actual = remoteJournalSchema.parse(input.remote)
@@ -96,15 +107,16 @@ export function verifyDeliveredJournal(input: {
     }>
   ) =>
     rows
-      .map((l) =>
-        canonicalAccountingJson({
+      .map((l) => {
+        const partyType = l.entity?.type ?? l.entityType ?? null
+        return canonicalAccountingJson({
           amount: String(l.amountMinor),
           direction: l.postingType,
           accountId: l.accountId,
-          partyType: l.entity?.type ?? l.entityType ?? null,
+          partyType: partyType === null ? null : input.toNeutralParty(partyType),
           partyId: l.entity?.id ?? l.entityId ?? null,
         })
-      )
+      })
       .sort()
   if (
     canonicalAccountingJson(lines(expected.lines)) !== canonicalAccountingJson(lines(actual.lines))

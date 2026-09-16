@@ -13,9 +13,11 @@ import {
   type QuickbooksToolContext,
   resolveQuickbooksContext,
 } from '../money/quickbooks/invoke-quickbooks-tool'
+import { toNeutralPartyType } from '../money/quickbooks/object-types'
 import { prepareQuickbooksJournal } from '../money/quickbooks/quickbooks-accounting-provider'
 import { withAccountingCommitLock } from './accounting-commit-lock'
 import { readPinnedAccountingConnection } from './book-connections'
+import { assertCoveragePartitionsInTx } from './delivery-coverage'
 import {
   preparedJournalSchema,
   quickbooksJournalWirePayload,
@@ -106,7 +108,7 @@ export async function planAccountingDeliveryInTx(
       organizationId,
       deliveryId: delivery!.id,
       operationKey: 'journal',
-      objectType: 'JournalEntry',
+      objectType: 'journal',
       requestId: posting.requestId,
       state: 'pending',
     })
@@ -118,6 +120,22 @@ export async function planAccountingDeliveryInTx(
       .returning()
   }
   if (!delivery) throw new Error('Delivery creation returned no row')
+  // 🛑 Brief 44 §7: coverage must PARTITION each effect's contribution before
+  // anything is sent. The commit lock above is already held, so this read sees a
+  // settled picture of every plan claiming these effects in this book - including
+  // plans this transaction did not write.
+  //
+  // 🔑 This runs on EVERY delivery attempt, not only the one that creates the
+  // plan: `deliverAccountingPosting` re-plans first, and the assertion sits
+  // after the create/release branches deliberately. So a plan that sat `blocked`
+  // for a week while its coverage was replaced is re-proved, inside the lock,
+  // immediately before the send - which is why no second check is needed at the
+  // send site.
+  await assertCoveragePartitionsInTx(tx, {
+    organizationId,
+    bookId: connection.bookId,
+    effectIds: effects.map((effect) => effect.id),
+  })
   return { posting, delivery }
 }
 
@@ -314,7 +332,7 @@ async function saveSuccess(
       organizationId: operation.organizationId,
       bookId: input.bookId,
       operationId: operation.id,
-      objectType: 'JournalEntry',
+      objectType: 'journal',
       externalId: input.externalId,
       author: 'auxx',
       remoteVersion: typeof input.remote.syncToken === 'string' ? input.remote.syncToken : null,
@@ -472,7 +490,7 @@ export async function deliverAccountingPosting(
           and(
             eq(schema.AccountingDeliveryOperation.organizationId, input.organizationId),
             eq(schema.AccountingDeliveryOperation.deliveryId, delivery.id),
-            eq(schema.AccountingDeliveryOperation.objectType, 'Customer')
+            eq(schema.AccountingDeliveryOperation.objectType, 'customer')
           )
         )
       if (dependencies.some((d) => d.state !== 'succeeded'))
@@ -523,6 +541,7 @@ export async function deliverAccountingPosting(
       remote,
       intendedCompanyId: pinned.companyId,
       actualCompanyId: ctx.realmId ?? '',
+      toNeutralParty: toNeutralPartyType,
     })
     await saveSuccess(db, operation, token, {
       bookId: pinned.bookId,
@@ -673,7 +692,7 @@ async function saveCustomerSuccess(
       organizationId: operation.organizationId,
       bookId,
       operationId: operation.id,
-      objectType: 'Customer',
+      objectType: 'customer',
       externalId: String(remote.customerId),
       author: 'auxx',
       remoteVersion: typeof remote.syncToken === 'string' ? remote.syncToken : null,
@@ -700,7 +719,7 @@ async function recoverCustomerDependencies(
       and(
         eq(schema.AccountingDeliveryOperation.organizationId, journal.organizationId),
         eq(schema.AccountingDeliveryOperation.deliveryId, journal.deliveryId),
-        eq(schema.AccountingDeliveryOperation.objectType, 'Customer'),
+        eq(schema.AccountingDeliveryOperation.objectType, 'customer'),
         inArray(schema.AccountingDeliveryOperation.state, ['sending', 'uncertain'])
       )
     )
@@ -775,7 +794,7 @@ async function createCustomerDependency(
         organizationId: journal.organizationId,
         deliveryId: journal.deliveryId,
         operationKey,
-        objectType: 'Customer',
+        objectType: 'customer',
         requestId,
         payload,
         payloadHash: accountingBasisHash(payload),

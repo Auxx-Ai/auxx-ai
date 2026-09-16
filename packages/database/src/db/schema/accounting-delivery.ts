@@ -29,6 +29,27 @@ const identity = () => ({
   createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
 })
 
+/**
+ * The NEUTRAL object vocabulary of the delivery tables (decision D14b).
+ *
+ * 🛑 These are platform names, not any provider's. `JournalEntry` and `Customer`
+ * are Intuit's spellings; Xero calls the same two things `ManualJournal` and
+ * `Contact`. Storing a provider's own vocabulary in a provider-agnostic table
+ * means a second adapter cannot describe its own objects at all, which is the
+ * leak decision D14a forbids.
+ *
+ * The ADAPTER owns the translation in both directions — see
+ * `packages/lib/src/money/quickbooks/object-types.ts`, whose
+ * `satisfies Record<DeliveryObjectType, string>` is what proves the map stays
+ * exhaustive against this union. Nothing above the `AccountingProvider` seam
+ * may hold a provider spelling.
+ *
+ * ⚠️ Type only, and the CHECK constraints below spell the same five values
+ * inline on purpose: `packages/lib` mocks the whole of `@auxx/database` in unit
+ * tests, so a RUNTIME export from this file is unreachable there.
+ */
+export type DeliveryObjectType = 'journal' | 'customer' | 'invoice' | 'payment' | 'credit_memo'
+
 /** Immutable journal representation and its pinned external destination. */
 export const AccountingDelivery = pgTable(
   'AccountingDelivery',
@@ -37,7 +58,7 @@ export const AccountingDelivery = pgTable(
     bookId: text().notNull(),
     connectionId: text().notNull(),
     glPostingId: text().notNull(),
-    representation: text().notNull().$type<'journal'>(),
+    representation: text().notNull().$type<'journal' | 'invoice' | 'payment' | 'credit_memo'>(),
     state: text().notNull().$type<'pending' | 'blocked' | 'delivered'>(),
     completedAt: timestamp({ withTimezone: true }),
     releasedAt: timestamp({ withTimezone: true }),
@@ -62,12 +83,32 @@ export const AccountingDelivery = pgTable(
     }).onDelete('no action'),
     check(
       'AccountingDelivery_shape_check',
-      sql`${t.representation} = 'journal' AND ${t.state} IN ('pending','blocked','delivered')`
+      sql`${t.representation} IN ('journal','invoice','payment','credit_memo') AND ${t.state} IN ('pending','blocked','delivered')`
     ),
   ]
 )
 
-/** Exclusive complete-effect coverage, retained even while export is blocked. */
+/**
+ * Exclusive effect coverage, retained even while export is blocked.
+ *
+ * 🔑 One row is one COMPONENT of one effect in one book, and the unique key is
+ * what makes coverage exclusive: two delivery plans can never claim the same
+ * `(book, effect, component)`, so the same accounting contribution cannot be
+ * sent twice.
+ *
+ * 🛑 `componentKey` used to be pinned to `'whole_effect'`, which made a native
+ * object covering PART of an effect unrepresentable (plan 53 §5.1). It is now
+ * open, and the discipline that replaces the pin is a PARTITION rule: the
+ * components of one effect in one book must cover its accepted contribution
+ * exactly once — no gaps, no overlap. The CHECK below can only police one row,
+ * so the cross-row half is asserted in
+ * `packages/lib/src/postings/delivery-coverage.ts` under the accounting commit
+ * lock, before anything is sent.
+ *
+ * `lineKeys` names the `acceptedBasis.contribution[].lineKey`s a partial
+ * component carries, and is NULL exactly when the component is the whole
+ * effect — the whole-effect path therefore never has to read the basis.
+ */
 export const AccountingDeliveryCoverage = pgTable(
   'AccountingDeliveryCoverage',
   {
@@ -76,9 +117,15 @@ export const AccountingDeliveryCoverage = pgTable(
     deliveryId: text().notNull(),
     effectId: text().notNull(),
     componentKey: text().notNull().default('whole_effect'),
+    lineKeys: jsonb().$type<string[]>(),
   },
   (t) => [
-    unique('AccountingDeliveryCoverage_book_effect_key').on(t.organizationId, t.bookId, t.effectId),
+    unique('AccountingDeliveryCoverage_book_effect_component_key').on(
+      t.organizationId,
+      t.bookId,
+      t.effectId,
+      t.componentKey
+    ),
     foreignKey({
       name: 'AccountingDeliveryCoverage_book_scope_fk',
       columns: [t.organizationId, t.bookId],
@@ -94,7 +141,10 @@ export const AccountingDeliveryCoverage = pgTable(
       columns: [t.organizationId, t.effectId],
       foreignColumns: [AccountingEffect.organizationId, AccountingEffect.id],
     }).onDelete('no action'),
-    check('AccountingDeliveryCoverage_component_check', sql`${t.componentKey} = 'whole_effect'`),
+    check(
+      'AccountingDeliveryCoverage_component_check',
+      sql`${t.componentKey} ~ '^[a-z0-9][a-z0-9_.:-]{0,63}$' AND ((${t.componentKey} = 'whole_effect' AND ${t.lineKeys} IS NULL) OR (${t.componentKey} <> 'whole_effect' AND jsonb_typeof(${t.lineKeys}) = 'array' AND jsonb_array_length(${t.lineKeys}) > 0))`
+    ),
   ]
 )
 
@@ -105,7 +155,7 @@ export const AccountingDeliveryOperation = pgTable(
     ...identity(),
     deliveryId: text().notNull(),
     operationKey: text().notNull(),
-    objectType: text().notNull().$type<'JournalEntry' | 'Customer'>(),
+    objectType: text().notNull().$type<DeliveryObjectType>(),
     requestId: text().notNull(),
     state: text()
       .notNull()
@@ -133,7 +183,7 @@ export const AccountingDeliveryOperation = pgTable(
     }).onDelete('no action'),
     check(
       'AccountingDeliveryOperation_state_check',
-      sql`${t.state} IN ('pending','prepared','sending','uncertain','blocked','succeeded') AND ${t.objectType} IN ('JournalEntry','Customer') AND ${t.attempts} >= 0`
+      sql`${t.state} IN ('pending','prepared','sending','uncertain','blocked','succeeded') AND ${t.objectType} IN ('journal','customer','invoice','payment','credit_memo') AND ${t.attempts} >= 0`
     ),
     check(
       'AccountingDeliveryOperation_payload_check',
@@ -150,7 +200,7 @@ export const ExternalAccountingObject = pgTable(
     ...identity(),
     bookId: text().notNull(),
     operationId: text().notNull(),
-    objectType: text().notNull().$type<'JournalEntry' | 'Customer'>(),
+    objectType: text().notNull().$type<DeliveryObjectType>(),
     externalId: text().notNull(),
     author: text().notNull().$type<'auxx'>(),
     remoteVersion: text(),
@@ -177,10 +227,11 @@ export const ExternalAccountingObject = pgTable(
     }).onDelete('no action'),
     check(
       'ExternalAccountingObject_shape_check',
-      sql`${t.author} = 'auxx' AND ${t.objectType} IN ('JournalEntry','Customer')`
+      sql`${t.author} = 'auxx' AND ${t.objectType} IN ('journal','customer','invoice','payment','credit_memo')`
     ),
   ]
 )
 
 export type AccountingDeliveryEntity = typeof AccountingDelivery.$inferSelect
+export type AccountingDeliveryCoverageEntity = typeof AccountingDeliveryCoverage.$inferSelect
 export type AccountingDeliveryOperationEntity = typeof AccountingDeliveryOperation.$inferSelect

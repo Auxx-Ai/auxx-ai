@@ -1,5 +1,6 @@
 // packages/lib/src/postings/effect-types.ts
 import { z } from 'zod'
+import { reservedAccountingBasis } from './basis-dimension'
 import {
   type AcceptedCustomerCreditEffectBasisV1,
   customerCreditWorkBasisSchema,
@@ -172,6 +173,8 @@ export const acceptedFulfillmentEffectBasisSchema = z
     sourceHash: hash,
     policyKey: z.enum(['fulfillment_current_v1', 'shopify_payment_date_v1']),
     policyVersion: z.literal(1),
+    /** Reserved (D13). Absent everywhere today; see `basis-dimension.ts`. */
+    basis: reservedAccountingBasis,
     effectiveDate: date,
     bookTimeZone,
     currency: z.literal('USD'),
@@ -386,6 +389,8 @@ export const acceptedCustomerReceiptEffectBasisSchema = z
     sourceHash: hash,
     policyKey: z.literal('shopify_receipt_v1'),
     policyVersion: z.literal(1),
+    /** Reserved (D13). Absent everywhere today; see `basis-dimension.ts`. */
+    basis: reservedAccountingBasis,
     effectiveDate: date,
     bookTimeZone,
     currency: z.literal('USD'),

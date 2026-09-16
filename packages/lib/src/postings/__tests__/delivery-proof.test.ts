@@ -1,5 +1,6 @@
 // packages/lib/src/postings/__tests__/delivery-proof.test.ts
 import { describe, expect, it } from 'vitest'
+import { toNeutralPartyType } from '../../money/quickbooks/object-types'
 import {
   preparedJournalSchema,
   quickbooksJournalWirePayload,
@@ -43,6 +44,7 @@ function verify(value: unknown) {
     remote: value,
     intendedCompanyId: 'companyA',
     actualCompanyId: 'companyA',
+    toNeutralParty: toNeutralPartyType,
   })
 }
 describe('complete journal delivery proof', () => {
@@ -78,8 +80,35 @@ describe('complete journal delivery proof', () => {
         remote: remote(),
         intendedCompanyId: 'A',
         actualCompanyId: 'B',
+        toNeutralParty: toNeutralPartyType,
       })
     ).toThrow()
+  })
+  it('compares the party the adapter translated, not the raw provider spelling', () => {
+    // D14b: the delivery tables speak a neutral vocabulary, so the readback
+    // comparison runs on what the adapter's map returned. Two spellings the
+    // adapter calls the same party compare equal; the real map does not, which
+    // is why the same readback is refused under it.
+    const value = remote()
+    value.lines[0]!.entityType = 'Vendor'
+    expect(() => verify(value)).toThrow()
+    expect(() =>
+      verifyDeliveredJournal({
+        prepared,
+        remote: value,
+        intendedCompanyId: 'companyA',
+        actualCompanyId: 'companyA',
+        toNeutralParty: () => 'customer',
+      })
+    ).not.toThrow()
+  })
+  it('translates every known QuickBooks party spelling both ways', () => {
+    expect(['Customer', 'Vendor', 'Employee'].map(toNeutralPartyType)).toEqual([
+      'customer',
+      'vendor',
+      'employee',
+    ])
+    expect(() => toNeutralPartyType('Contact')).toThrow()
   })
   it('rejects incomplete ID-only readback', () => {
     expect(() => verify({ journalEntryId: '123' })).toThrow()

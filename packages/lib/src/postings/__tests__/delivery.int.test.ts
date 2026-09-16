@@ -25,6 +25,7 @@ import {
   planAccountingDeliveryInTx,
   sweepAccountingDeliveries,
 } from '../delivery'
+import { saveComponentCoverageInTx } from '../delivery-coverage'
 import { captureFulfillmentWorkInTx } from '../effect-work'
 import type { BuiltEntry, PostEntryInput } from '../types'
 import { acceptedBasis, readyBasis } from './fixtures/accounting-effect-basis'
@@ -344,7 +345,7 @@ describe('durable pinned journal delivery against PostgreSQL', () => {
       if (tool === 'create_quickbooks_customer') {
         customerCreates++
         const operations = await db().select().from(schema.AccountingDeliveryOperation)
-        const dependency = operations.find((op) => op.objectType === 'Customer')!
+        const dependency = operations.find((op) => op.objectType === 'customer')!
         expect(dependency).toMatchObject({ payload, state: 'sending' })
         expect(dependency.firstSentAt).not.toBeNull()
         customer = { ...payload, customerId: 'customer-1', syncToken: '0' }
@@ -364,8 +365,8 @@ describe('durable pinned journal delivery against PostgreSQL', () => {
     const operations = await db().select().from(schema.AccountingDeliveryOperation)
     expect(operations.every((operation) => operation.state === 'succeeded')).toBe(true)
     expect(
-      operations.find((operation) => operation.objectType === 'JournalEntry')!.dependencies
-    ).toEqual([operations.find((operation) => operation.objectType === 'Customer')!.id])
+      operations.find((operation) => operation.objectType === 'journal')!.dependencies
+    ).toEqual([operations.find((operation) => operation.objectType === 'customer')!.id])
   })
 
   it('plans unique complete effect coverage idempotently', async () => {
@@ -494,5 +495,167 @@ describe('durable pinned journal delivery against PostgreSQL', () => {
     vi.mocked(resolveQuickbooksContext).mockResolvedValue(resolved)
     expect(await deliverAccountingPosting(db(), fixture)).toMatchObject({ exportStatus: 'failed' })
     expect(callTool).not.toHaveBeenCalled()
+  })
+})
+
+describe('component coverage partitions one effect against real constraints', () => {
+  async function planned() {
+    const fixture = await accepted('manual')
+    const plan = await db().transaction((tx) => planAccountingDeliveryInTx(tx, fixture))
+    if (!plan) throw new Error('Fixture plan failed')
+    const [effect] = await db().select().from(schema.AccountingEffect)
+    return { fixture, delivery: plan.delivery, effectId: effect!.id }
+  }
+  async function replaceWithComponents(
+    delivery: { id: string; bookId: string },
+    components: Array<{ effectId: string; componentKey: string; lineKeys: string[] }>
+  ) {
+    await db()
+      .delete(schema.AccountingDeliveryCoverage)
+      .where(eq(schema.AccountingDeliveryCoverage.deliveryId, delivery.id))
+    await db().transaction((tx) =>
+      saveComponentCoverageInTx(tx, {
+        organizationId,
+        bookId: delivery.bookId,
+        deliveryId: delivery.id,
+        components,
+      })
+    )
+  }
+
+  it('accepts two native components that together partition the effect, and sends once', async () => {
+    const { fixture, delivery, effectId } = await planned()
+    await replaceWithComponents(delivery, [
+      { effectId, componentKey: 'invoice', lineKeys: ['revenue'] },
+      { effectId, componentKey: 'payment', lineKeys: ['clearing'] },
+    ])
+    expect(await db().select().from(schema.AccountingDeliveryCoverage)).toHaveLength(2)
+    expect(await deliverAccountingPosting(db(), { ...fixture, manual: true })).toMatchObject({
+      exportStatus: 'exported',
+    })
+    expect(createCount).toBe(1)
+  })
+
+  it.each([
+    [
+      'covers one contribution line twice',
+      [
+        { componentKey: 'invoice', lineKeys: ['revenue'] },
+        { componentKey: 'payment', lineKeys: ['revenue', 'clearing'] },
+      ],
+      /covered twice/,
+    ],
+    [
+      'leaves a contribution line uncovered',
+      [{ componentKey: 'invoice', lineKeys: ['revenue'] }],
+      /is not covered/,
+    ],
+    [
+      'names a line the effect does not have',
+      [{ componentKey: 'invoice', lineKeys: ['revenue', 'clearing', 'shipping'] }],
+      /unknown line/,
+    ],
+  ])('refuses coverage that %s', async (_name, components, expected) => {
+    const { delivery, effectId } = await planned()
+    await expect(
+      replaceWithComponents(
+        delivery,
+        components.map((component) => ({ ...component, effectId }))
+      )
+    ).rejects.toThrow(expected)
+    expect(await db().select().from(schema.AccountingDeliveryCoverage)).toHaveLength(0)
+  })
+
+  it('refuses a component beside the whole-effect coverage that already claims the effect', async () => {
+    const { delivery, effectId } = await planned()
+    await expect(
+      db().transaction((tx) =>
+        saveComponentCoverageInTx(tx, {
+          organizationId,
+          bookId: delivery.bookId,
+          deliveryId: delivery.id,
+          components: [{ effectId, componentKey: 'invoice', lineKeys: ['revenue'] }],
+        })
+      )
+    ).rejects.toThrow(/cannot coexist/)
+    const coverage = await db().select().from(schema.AccountingDeliveryCoverage)
+    expect(coverage).toHaveLength(1)
+    expect(coverage[0]).toMatchObject({ componentKey: 'whole_effect', lineKeys: null })
+  })
+
+  it('refuses any second claim on the same component of one effect in one book', async () => {
+    const { delivery, effectId } = await planned()
+    await replaceWithComponents(delivery, [
+      { effectId, componentKey: 'invoice', lineKeys: ['revenue'] },
+      { effectId, componentKey: 'payment', lineKeys: ['clearing'] },
+    ])
+    // 🔑 `deliveryId` is deliberately NOT in this key, so the refusal below is
+    // the same refusal a SECOND delivery plan would get: one component of one
+    // effect can be claimed once per book, and never sent twice.
+    const failure = await db()
+      .insert(schema.AccountingDeliveryCoverage)
+      .values({
+        organizationId,
+        bookId: delivery.bookId,
+        deliveryId: delivery.id,
+        effectId,
+        componentKey: 'invoice',
+        lineKeys: ['revenue'],
+      })
+      .catch((error: { cause?: { constraint?: string } }) => error)
+    expect(failure).toMatchObject({
+      cause: { constraint: 'AccountingDeliveryCoverage_book_effect_component_key' },
+    })
+  })
+
+  it('refuses a partial component that names no lines, at the database', async () => {
+    const { delivery, effectId } = await planned()
+    const failure = await db()
+      .insert(schema.AccountingDeliveryCoverage)
+      .values({
+        organizationId,
+        bookId: delivery.bookId,
+        deliveryId: delivery.id,
+        effectId,
+        componentKey: 'invoice',
+        lineKeys: [],
+      })
+      .catch((error: { cause?: { constraint?: string } }) => error)
+    expect(failure).toMatchObject({
+      cause: { constraint: 'AccountingDeliveryCoverage_component_check' },
+    })
+  })
+
+  it('re-proves the partition on every attempt and refuses to send a broken one', async () => {
+    const { fixture, delivery, effectId } = await planned()
+    // Written straight to the table, bypassing `saveComponentCoverageInTx`: the
+    // point is that a plan already committed is re-proved before the NEXT send,
+    // not only when its coverage is first saved.
+    await db()
+      .insert(schema.AccountingDeliveryCoverage)
+      .values({
+        organizationId,
+        bookId: delivery.bookId,
+        deliveryId: delivery.id,
+        effectId,
+        componentKey: 'invoice',
+        lineKeys: ['revenue'],
+      })
+    await expect(deliverAccountingPosting(db(), { ...fixture, manual: true })).rejects.toThrow(
+      /cannot coexist/
+    )
+    expect(callTool).not.toHaveBeenCalled()
+    expect(createCount).toBe(0)
+  })
+
+  it('stores the neutral object vocabulary, never the provider spelling', async () => {
+    const fixture = await accepted()
+    await deliverAccountingPosting(db(), fixture)
+    expect(
+      (await db().select().from(schema.AccountingDeliveryOperation)).map((o) => o.objectType)
+    ).toEqual(['journal'])
+    expect(
+      (await db().select().from(schema.ExternalAccountingObject)).map((o) => o.objectType)
+    ).toEqual(['journal'])
   })
 })

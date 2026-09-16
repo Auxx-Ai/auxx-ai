@@ -1,6 +1,7 @@
 // packages/lib/src/postings/credit-effect-types.ts
 
 import { z } from 'zod'
+import { reservedAccountingBasis } from './basis-dimension'
 
 const id = z.string().min(1)
 const hash = z.string().regex(/^[0-9a-f]{64}$/)
@@ -188,6 +189,8 @@ export const acceptedCustomerCreditEffectBasisSchema = z
     sourceHash: hash,
     policyKey: z.literal('customer_credit_issued_v1'),
     policyVersion: z.literal(1),
+    /** Reserved (D13). Absent everywhere today; see `basis-dimension.ts`. */
+    basis: reservedAccountingBasis,
     effectiveDate: date,
     bookTimeZone,
     currency: z.literal('USD'),

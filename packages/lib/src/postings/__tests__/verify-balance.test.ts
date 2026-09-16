@@ -305,7 +305,13 @@ describe('verifyBooksBalance', () => {
   })
 })
 
-/** One `GlPosting` row as the owed-export read selects it. */
+/**
+ * One joined row as the owed-export read selects it.
+ *
+ * The last three fields come from the LEFT-joined `AccountingDelivery` and are
+ * null by default, which is the shape of a posting the delivery worker has not
+ * planned yet - the ordinary state of anything just accepted.
+ */
 function unpostedRow(overrides: {
   glPostingId: string
   periodKey: string
@@ -314,6 +320,12 @@ function unpostedRow(overrides: {
   docNumber?: string
   attempts?: number
   failureReason?: string | null
+  txnDate?: string
+  totalMinor?: number
+  currency?: string
+  deliveryIntent?: 'not_required' | 'manual' | 'automatic' | null
+  releasedAt?: Date | null
+  deliveryState?: 'pending' | 'blocked' | 'delivered' | null
 }) {
   return {
     glPostingId: overrides.glPostingId,
@@ -323,6 +335,12 @@ function unpostedRow(overrides: {
     docNumber: overrides.docNumber ?? `GL-ME-${overrides.periodKey}`,
     attempts: overrides.attempts ?? 0,
     failureReason: overrides.failureReason ?? null,
+    txnDate: overrides.txnDate ?? '2026-08-31',
+    totalMinor: overrides.totalMinor ?? 500,
+    currency: overrides.currency ?? 'USD',
+    deliveryIntent: overrides.deliveryIntent ?? 'manual',
+    releasedAt: overrides.releasedAt ?? null,
+    deliveryState: overrides.deliveryState ?? null,
   }
 }
 
@@ -359,6 +377,12 @@ describe('listFailedExports', () => {
         docNumber: 'GL-ME-2026-07',
         attempts: 0,
         failureReason: null,
+        txnDate: '2026-08-31',
+        totalMinor: 500,
+        currency: 'USD',
+        deliveryIntent: 'manual',
+        releasedAt: null,
+        deliveryState: null,
       },
       {
         glPostingId: 'gl_f',
@@ -368,8 +392,39 @@ describe('listFailedExports', () => {
         docNumber: 'GL-ME-2026-08',
         attempts: 3,
         failureReason: 'QuickBooks rate limit',
+        txnDate: '2026-08-31',
+        totalMinor: 500,
+        currency: 'USD',
+        deliveryIntent: 'manual',
+        releasedAt: null,
+        deliveryState: null,
       },
     ])
+  })
+
+  // 🛑 The delivery join is on `(organizationId, glPostingId)` and the unique
+  // key underneath it is `(organizationId, bookId, glPostingId)`, so a second
+  // pinned book fans one journal into two rows. A queue that listed the same
+  // entry twice would bulk-sync it twice, and the checkbox on the second copy
+  // would be acting on a row that is not there.
+  it('collapses a posting that two books have a delivery for, preferring the released one', async () => {
+    const result = await listFailedExports(
+      stubDb([
+        unpostedRow({ glPostingId: 'gl_x', periodKey: '2026-08', releasedAt: null }),
+        unpostedRow({
+          glPostingId: 'gl_x',
+          periodKey: '2026-08',
+          releasedAt: new Date('2026-09-01T00:00:00.000Z'),
+          deliveryState: 'pending',
+        }),
+      ]),
+      ORG
+    )
+
+    const rows = result._unsafeUnwrap()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.releasedAt).toBe('2026-09-01T00:00:00.000Z')
+    expect(rows[0]?.deliveryState).toBe('pending')
   })
 
   describe('the `through` bound', () => {
