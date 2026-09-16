@@ -167,6 +167,49 @@ function transferQuery(db: Database) {
 const occurredDay = () =>
   sql`COALESCE(${schema.MoneyTransfer.occurredOn}, (${schema.MoneyTransfer.occurredAt} AT TIME ZONE 'UTC')::date)`
 
+/** The same day {@link occurredDay} computes, read off a row already in hand. */
+function evidenceDay(row: Pick<Transfer, 'occurredOn' | 'occurredAt'>): string | null {
+  if (row.occurredOn) return row.occurredOn
+  return row.occurredAt ? row.occurredAt.toISOString().slice(0, 10) : null
+}
+
+/**
+ * The list's page cursor: `YYYY-MM-DD|<transfer id>`, the day left blank for an
+ * undated payout.
+ *
+ * 🛑 It has to carry the DAY as well as the id. The list is ordered by the
+ * payout's own date, and `MoneyTransfer.id` is a cuid2 — no time component and
+ * no relation to that order — so an id-only cursor cannot say where in the sort
+ * the previous page stopped.
+ */
+const encodeCursor = (row: Pick<Transfer, 'id' | 'occurredOn' | 'occurredAt'>) =>
+  `${evidenceDay(row) ?? ''}|${row.id}`
+
+function decodeCursor(raw: string): { day: string | null; id: string } {
+  const split = raw.indexOf('|')
+  const day = split === -1 ? '' : raw.slice(0, split)
+  const id = split === -1 ? '' : raw.slice(split + 1)
+  if (!id || (day && !/^\d{4}-\d{2}-\d{2}$/.test(day))) {
+    throw new BadRequestError('Invalid payout cursor')
+  }
+  return { day: day || null, id }
+}
+
+/**
+ * Everything that sorts after the cursor row, in the list's own order.
+ *
+ * Undated rows sit at the very end (`NULLS LAST` below), so they are still
+ * ahead of a cursor that is itself dated, and a cursor already among them pages
+ * on the id alone.
+ */
+function afterCursor(cursor: { day: string | null; id: string }) {
+  const day = occurredDay()
+  const id = schema.MoneyTransfer.id
+  return cursor.day
+    ? sql`(${day} IS NULL OR ${day} < ${cursor.day}::date OR (${day} = ${cursor.day}::date AND ${id} < ${cursor.id}))`
+    : sql`(${day} IS NULL AND ${id} < ${cursor.id})`
+}
+
 /** Read persisted assessments in one joined query; listing never reruns financial reconciliation. */
 export async function listPayoutEvidence(db: Database, input: PageInput & EvidenceFilters) {
   const limit = pageSize(input.limit)
@@ -175,7 +218,7 @@ export async function listPayoutEvidence(db: Database, input: PageInput & Eviden
     .where(
       and(
         eq(schema.MoneyTransfer.organizationId, input.organizationId),
-        input.cursor ? lt(schema.MoneyTransfer.id, input.cursor) : undefined,
+        input.cursor ? afterCursor(decodeCursor(input.cursor)) : undefined,
         search ? sql`${schema.MoneyTransfer.externalId} ILIKE ${`%${search}%`}` : undefined,
         input.sourceAccountId
           ? eq(schema.MoneyTransfer.sourceAccountId, input.sourceAccountId)
@@ -185,13 +228,18 @@ export async function listPayoutEvidence(db: Database, input: PageInput & Eviden
         input.to ? sql`${occurredDay()} <= ${input.to}::date` : undefined
       )
     )
-    .orderBy(desc(schema.MoneyTransfer.id))
+    /* Newest payout first, by the PROVIDER's date — the date the row leads
+       with — with the id only as a tiebreaker inside a day. `NULLS LAST` keeps
+       undated (`datePrecision = 'unknown'`) payouts at the bottom: Postgres
+       sorts nulls FIRST under `DESC`, which would otherwise open the list on
+       the rows that have no date at all. */
+    .orderBy(sql`${occurredDay()} DESC NULLS LAST`, desc(schema.MoneyTransfer.id))
     .limit(limit + 1)
   return {
     items: rows
       .slice(0, limit)
       .map(({ transfer, account, snapshot }) => transferDto(transfer, account, snapshot)),
-    nextCursor: rows.length > limit ? rows[limit - 1]!.transfer.id : null,
+    nextCursor: rows.length > limit ? encodeCursor(rows[limit - 1]!.transfer) : null,
   }
 }
 

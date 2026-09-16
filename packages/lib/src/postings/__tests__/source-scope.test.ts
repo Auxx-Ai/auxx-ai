@@ -33,6 +33,8 @@ interface Row {
   id: string
   providerKey: string
   externalAccountId: string
+  /** `FinancialSourceAccount.name` (#2178). Null until somebody names the account. */
+  name?: string | null
 }
 
 const SHOPIFY: Row = {
@@ -173,21 +175,45 @@ describe('listRoleSources - the axis comes from the evidence', () => {
     )
     expect(rows.map((row) => row.name)).toEqual([
       MANUAL_SOURCE_LABEL,
-      AMAZON.externalAccountId,
+      'Amazon · A1B2C3',
       SHOPIFY.externalAccountId,
     ])
   })
 
-  // The external id IS the human-readable identity for a connected source -
-  // Shopify's is the shop domain, which `receipt-accounting.ts` already renders
-  // as `storeDomain`. No name column is added by this brief (§13.6).
-  it('names a connection by its own external id, and carries the provider beside it', async () => {
+  // 🔑 The row's label comes from `sourceAccountLabel`, the same helper the
+  // settlement list and the processor activity row use, so one account reads the
+  // same everywhere. 47 §13.6 predates the `name` column (#2178) and no longer
+  // describes this: the derivation is now the FALLBACK, not the only rule.
+  //
+  // For Shopify the derivation is still the external id verbatim - a shop domain
+  // already IS the account's name, which is why `receipt-accounting.ts` renders
+  // it as `storeDomain`.
+  it('names an unnamed Shopify connection by its shop domain', async () => {
     const rows = await listRoleSources(stubDb({ accounts: [SHOPIFY], storeIds: [SHOPIFY.id] }), ORG)
     expect(rows[0]).toMatchObject({
       name: 'auxx-lift.myshopify.com',
       providerKey: 'shopify',
       externalAccountId: 'auxx-lift.myshopify.com',
       isManual: false,
+    })
+  })
+
+  // Every other provider gets the key beside the id, so `acct_1ABC` is not left
+  // to stand on its own as though it were a word.
+  it('qualifies an unnamed non-Shopify connection with its provider', async () => {
+    const rows = await listRoleSources(stubDb({ accounts: [STRIPE], balanceIds: [STRIPE.id] }), ORG)
+    expect(rows[0]?.name).toBe('Stripe · acct_1ABC')
+  })
+
+  // 🛑 A name somebody typed wins over every derivation, including the
+  // shop-domain case above: showing the domain instead would revert their
+  // choice. `externalAccountId` is untouched - it stays the machine identity.
+  it('prefers the name somebody gave the account over the derivation', async () => {
+    const named = { ...SHOPIFY, name: 'Main US store' }
+    const rows = await listRoleSources(stubDb({ accounts: [named], storeIds: [named.id] }), ORG)
+    expect(rows[0]).toMatchObject({
+      name: 'Main US store',
+      externalAccountId: 'auxx-lift.myshopify.com',
     })
   })
 })

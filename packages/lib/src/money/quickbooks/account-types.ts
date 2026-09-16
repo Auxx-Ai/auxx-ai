@@ -120,6 +120,21 @@ const SUBTYPE_CLASSIFICATION: Partial<Record<GlAccountSubtypeValue, GlAccountTyp
   inventory: 'asset',
   fixed_asset: 'asset',
   cost_of_goods_sold: 'expense',
+  // 🛑 These three are in THIS map but deliberately absent from
+  // {@link BY_SUBTYPE}, which is what makes them fall through to the generic
+  // asset pair. QuickBooks has no detail type for a clearing, reserve or
+  // stored balance - the closest is `OtherCurrentAssets`, which is already what
+  // `BY_CLASSIFICATION.asset` sends. Inventing a specific one (`EmployeeCashAdvances`
+  // is what Intuit picks unprompted) would be the "wrong specific subtype" this
+  // file's header argues against: invisible, and wrong on their reports.
+  //
+  // They are recorded here anyway rather than left out entirely, so the
+  // classification each belongs to is stated once - and so that an adapter for a
+  // provider that DOES have a clearing detail type can add its own `BY_SUBTYPE`
+  // row without first having to decide what half of the balance sheet it is.
+  clearing: 'asset',
+  reserve_balances: 'asset',
+  stored_balances: 'asset',
 }
 
 /**

@@ -765,6 +765,22 @@ export const GlAccountSubtype = {
   INVENTORY: 'inventory',
   FIXED_ASSET: 'fixed_asset',
   COST_OF_GOODS_SOLD: 'cost_of_goods_sold',
+  // ── Money a processor is holding, added 2026-09-15 ────────────────────────
+  // Three asset subtypes for the three states money sits in between "the
+  // customer paid" and "it is in our bank". First-class subtypes rather than
+  // conventions on top of `BANK`, so the chart itself says what the account is
+  // and a report can group by it - the shape Synder uses (`ASSETS/CLEARING`,
+  // `RESERVE_BALANCES`, `STORED_BALANCES`).
+  //
+  // 🛑 None of the three maps to a QuickBooks detail type, because QuickBooks
+  // has none for them. All three fall through to the generic asset pair in
+  // `money/quickbooks/account-types.ts`, deliberately - see the note there.
+  /** A settlement stream's holding account, drained to zero by its payout. */
+  CLEARING: 'clearing',
+  /** Money the processor is withholding against future chargebacks. */
+  RESERVE_BALANCES: 'reserve_balances',
+  /** A balance held ON the platform that has not been paid out at all. */
+  STORED_BALANCES: 'stored_balances',
   OTHER: 'other',
 
   values: [
@@ -775,6 +791,9 @@ export const GlAccountSubtype = {
     { value: 'inventory', label: 'Inventory', color: 'purple' },
     { value: 'fixed_asset', label: 'Fixed asset', color: 'purple' },
     { value: 'cost_of_goods_sold', label: 'Cost of goods sold', color: 'red' },
+    { value: 'clearing', label: 'Clearing', color: 'teal' },
+    { value: 'reserve_balances', label: 'Reserve balances', color: 'teal' },
+    { value: 'stored_balances', label: 'Stored balances', color: 'teal' },
     { value: 'other', label: 'Other', color: 'gray' },
   ] satisfies FieldOptionItem[],
 } as const
