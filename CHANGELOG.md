@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.1.239](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.238...auxx-v0.1.239) (2026-09-16)
+
+
+### Features
+
+* **accounting:** add atomic effect acceptance foundation ([#2168](https://github.com/Auxx-Ai/auxx-ai/issues/2168)) ([d9a9bb2](https://github.com/Auxx-Ai/auxx-ai/commit/d9a9bb2a6f4bc6118d9d0b49815fe1ffa2c337ce))
+* **accounting:** add credit and refund effect commands ([#2179](https://github.com/Auxx-Ai/auxx-ai/issues/2179)) ([eb31b31](https://github.com/Auxx-Ai/auxx-ai/commit/eb31b3190beb3c2973481ed6aeaef835c68f1d21))
+* **accounting:** add posting controls and payout source support ([#2164](https://github.com/Auxx-Ai/auxx-ai/issues/2164)) ([1db0743](https://github.com/Auxx-Ai/auxx-ai/commit/1db0743c2fbc7142a4813ee110554e3fe752d79b))
+* **accounting:** an account per source ([#2174](https://github.com/Auxx-Ai/auxx-ai/issues/2174)) ([f7ac10e](https://github.com/Auxx-Ai/auxx-ai/commit/f7ac10e4888c4527a8daae0a43a53cfb0594d636))
+* **accounting:** clearing subtypes, source account labels, payout paging ([#2180](https://github.com/Auxx-Ai/auxx-ai/issues/2180)) ([214c365](https://github.com/Auxx-Ai/auxx-ai/commit/214c3659a54a3a9030405b2effe5300be7fc4c42))
+* **accounting:** recognize shopify receipts and shipments ([#2170](https://github.com/Auxx-Ai/auxx-ai/issues/2170)) ([738ea37](https://github.com/Auxx-Ai/auxx-ai/commit/738ea37658de2a53ef154f5405dde30b7763100d))
+* add accounting delivery and customer money tracking ([#2169](https://github.com/Auxx-Ai/auxx-ai/issues/2169)) ([9049c94](https://github.com/Auxx-Ai/auxx-ai/commit/9049c947f9c10bf65d7196022919e34821b2ee45))
+* **banking:** payout drawer and list in the app's own idiom ([#2177](https://github.com/Auxx-Ai/auxx-ai/issues/2177)) ([04e4210](https://github.com/Auxx-Ai/auxx-ai/commit/04e421016a2cbf54a9e082b6a01f7a5346e626a8))
+* **banking:** payouts and settlements are two pages ([#2173](https://github.com/Auxx-Ai/auxx-ai/issues/2173)) ([4d31c6f](https://github.com/Auxx-Ai/auxx-ai/commit/4d31c6f3fa4b7973956d1628f286db24190f4a42))
+* **connections:** offer optional OAuth scopes on the platform client ([#2167](https://github.com/Auxx-Ai/auxx-ai/issues/2167)) ([cdcb87f](https://github.com/Auxx-Ai/auxx-ai/commit/cdcb87fa7a0315dc85799ee4e03a18711c4fb519))
+* preserve credit application history and retry identity ([#2176](https://github.com/Auxx-Ai/auxx-ai/issues/2176)) ([a9c5afa](https://github.com/Auxx-Ai/auxx-ai/commit/a9c5afacf9fc487d50c89ff2047829701d88af5d))
+* **purchasing:** add invoice intake foundation and vendor bill page ([#2163](https://github.com/Auxx-Ai/auxx-ai/issues/2163)) ([a17b08e](https://github.com/Auxx-Ai/auxx-ai/commit/a17b08e9fb440bd187dfd6757b6dc6a2fa5caa66))
+* **purchasing:** complete vendor bill invoice intake and review ([#2166](https://github.com/Auxx-Ai/auxx-ai/issues/2166)) ([be3ba98](https://github.com/Auxx-Ai/auxx-ai/commit/be3ba98b886099237d4df069711cc7e0cef054c2))
+
+
+### Bug Fixes
+
+* **accounting:** reconcile financial records through standard fields ([#2171](https://github.com/Auxx-Ai/auxx-ai/issues/2171)) ([448cdfc](https://github.com/Auxx-Ai/auxx-ai/commit/448cdfce6723fa31db42aa992fb35951244c535d))
+* **accounting:** store-axis scoping, a named source account, and the settlements page ([#2178](https://github.com/Auxx-Ai/auxx-ai/issues/2178)) ([cf07c2e](https://github.com/Auxx-Ai/auxx-ai/commit/cf07c2eedd94d873f91e84f81a2ce4d404996e86))
+* **connectors:** preserve financial facts and pause active syncs ([#2175](https://github.com/Auxx-Ai/auxx-ai/issues/2175)) ([9d789bc](https://github.com/Auxx-Ai/auxx-ai/commit/9d789bc8ddc47ea31a36b315017b285cecda795c))
+* **entity:** hide customer and processor transaction defs ([#2172](https://github.com/Auxx-Ai/auxx-ai/issues/2172)) ([6513a83](https://github.com/Auxx-Ai/auxx-ai/commit/6513a83dca4cdea746c18391584316dac50b2a96))
+
 ## [0.1.238](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.237...auxx-v0.1.238) (2026-09-14)
 
 
