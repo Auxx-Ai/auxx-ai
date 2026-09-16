@@ -22,6 +22,7 @@ import {
   totalRow,
 } from './rows'
 import type { TrialBalance } from './trial-balance'
+import type { TrialBalanceStatement } from './trial-balance-statement'
 
 /** The trial balance's own columns, in the order `toTrialBalanceRows` fills them. */
 export const TRIAL_BALANCE_COLUMNS: StatementColumn[] = [
@@ -64,6 +65,59 @@ export function toTrialBalanceRows(tb: TrialBalance): StatementRow[] {
         : 'This account has posted lines but has been deleted from the current chart of accounts.',
     },
   }))
+
+  return [...lines, totalRow('total', 'Total', [tb.totalDebitMinor, tb.totalCreditMinor, null])]
+}
+
+/**
+ * The trial balance AS A STATEMENT: {@link toTrialBalanceRows}' account lines,
+ * plus the computed retained-earnings row that makes it balance once revenue
+ * and expense have been reset at the fiscal year.
+ *
+ * The computed row is placed after the last EQUITY line rather than at the
+ * bottom, so a flat type-ordered report still reads asset, liability, equity -
+ * and the reader meets retained earnings where retained earnings belongs.
+ */
+export function toTrialBalanceStatementRows(tb: TrialBalanceStatement): StatementRow[] {
+  const lines = toTrialBalanceRows({
+    organizationId: tb.organizationId,
+    from: tb.fiscalYearStart,
+    to: tb.asOf,
+    rows: tb.rows,
+    totalDebitMinor: tb.totalDebitMinor,
+    totalCreditMinor: tb.totalCreditMinor,
+    balanced: tb.balanced,
+  }).slice(0, -1)
+
+  // 🛑 Omitted when zero, unlike the balance sheet's `re-current`. A first-year
+  // org has no prior years to roll up, and a zero row here would read as an
+  // account somebody posted nothing to rather than as a boundary that has not
+  // been crossed yet. QBO drops it under All Dates for the same reason (57 §2.3).
+  if (tb.retainedEarnings.priorYearsMinor !== 0) {
+    const label = tb.retainedEarnings.accountCode
+      ? `${tb.retainedEarnings.accountCode} Retained earnings (prior years)`
+      : 'Retained earnings (prior years)'
+    const re = computedRow(
+      're-prior',
+      label,
+      [
+        tb.retainedEarnings.plugDebitMinor || null,
+        tb.retainedEarnings.plugCreditMinor || null,
+        tb.retainedEarnings.priorYearsMinor,
+      ],
+      'Computed from prior-period activity, not a posted balance.'
+    )
+    // Last equity line, or the end of the report when the chart has no equity
+    // accounts at all - never the top, which is where a -1 would put it.
+    let insertAt = lines.length
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i]?.meta?.accountType === 'equity') {
+        insertAt = i + 1
+        break
+      }
+    }
+    lines.splice(insertAt, 0, re)
+  }
 
   return [...lines, totalRow('total', 'Total', [tb.totalDebitMinor, tb.totalCreditMinor, null])]
 }

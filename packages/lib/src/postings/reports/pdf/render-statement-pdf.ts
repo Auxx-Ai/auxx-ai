@@ -32,7 +32,7 @@ import {
   toBalanceSheetRows,
   toGeneralLedgerRows,
   toProfitAndLossRows,
-  toTrialBalanceRows,
+  toTrialBalanceStatementRows,
 } from '../adapters'
 import { AGING_COLUMNS, readAging, toAgingRows } from '../aging'
 import { readBalanceSheet } from '../balance-sheet'
@@ -40,7 +40,7 @@ import { readCompleteness } from '../completeness'
 import { GENERAL_LEDGER_MAX_LINES, readGeneralLedger } from '../general-ledger'
 import { readProfitAndLoss } from '../profit-and-loss'
 import type { StatementColumn, StatementRow } from '../rows'
-import { readTrialBalance } from '../trial-balance'
+import { readTrialBalanceStatement } from '../trial-balance-statement'
 import { readVendor1099Summary, toVendor1099Rows, VENDOR_1099_COLUMNS } from '../vendor-1099'
 import { StatementPdfDocument } from './statement-document'
 
@@ -58,7 +58,7 @@ export type StatementKind =
 
 /** One kind's own parameter shape - each report's own `from`/`to`/`asOf`/`compare`. */
 export interface RenderStatementPdfParamsByKind {
-  'trial-balance': { from?: string; to: string }
+  'trial-balance': { to: string }
   'balance-sheet': { asOf: string; compareAsOf?: string }
   'profit-and-loss': { from: string; to: string; compare?: { from: string; to: string } }
   'ar-aging': { asOf: string }
@@ -119,14 +119,16 @@ async function buildPayload<K extends StatementKind>(
   params: RenderStatementPdfParamsByKind[K]
 ): Promise<StatementPayload> {
   if (kind === 'trial-balance') {
-    const { from, to } = params as RenderStatementPdfParamsByKind['trial-balance']
-    const result = await readTrialBalance(db, { organizationId, from, to })
+    const { to } = params as RenderStatementPdfParamsByKind['trial-balance']
+    // 🛑 The same reader the screen uses. A PDF built off the cumulative
+    // primitive would disagree with the report it was printed from (57 §5.4).
+    const result = await readTrialBalanceStatement(db, { organizationId, asOf: to })
     if (result.isErr()) throw result.error
     return {
-      rangeLabel: from ? `${from} to ${to}` : `As of ${to}`,
+      rangeLabel: `As of ${to}`,
       asOfForKey: to,
       columns: TRIAL_BALANCE_COLUMNS,
-      rows: toTrialBalanceRows(result.value),
+      rows: toTrialBalanceStatementRows(result.value),
       statementThrough: to,
     }
   }

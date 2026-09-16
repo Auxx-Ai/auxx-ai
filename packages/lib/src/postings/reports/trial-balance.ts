@@ -114,6 +114,25 @@ export interface ReadTrialBalanceOptions {
 }
 
 /**
+ * The 15.2 default order: statement type first (asset, liability, equity,
+ * revenue, expense; a deleted account's `null` type sorts last), then
+ * code-then-name within a type - `compareAccountsByCodeThenName` is null-safe
+ * over `accountCode` since task 15 §5.
+ *
+ * Exported because `trial-balance-statement.ts` re-sorts a UNION of two reads
+ * and must not grow a second opinion about the order.
+ */
+export function compareTrialBalanceRows(a: TrialBalanceRow, b: TrialBalanceRow): number {
+  const orderA = a.accountType ? STATEMENT_ORDER.get(a.accountType)! : STATEMENT_ORDER.size
+  const orderB = b.accountType ? STATEMENT_ORDER.get(b.accountType)! : STATEMENT_ORDER.size
+  if (orderA !== orderB) return orderA - orderB
+  return compareAccountsByCodeThenName(
+    { code: a.accountCode, name: a.accountName },
+    { code: b.accountCode, name: b.accountName }
+  )
+}
+
+/**
  * `SUM(amountMinor) FILTER (WHERE direction = 'debit')` / `'credit'`, grouped by
  * `glAccountId`, over posted `GlPostingLine`s in `[from, to]` - `verifyBooksBalance`'s
  * own query with `GROUP BY glAccountId` in place of `GROUP BY postingId`.
@@ -186,19 +205,7 @@ export async function readTrialBalance(
           inChart: Boolean(account),
         }
       })
-      // 15.2 default: statement type order first (asset, liability, equity,
-      // revenue, expense; a deleted account's `null` type sorts last), then
-      // code-then-name within a type - `compareAccountsByCodeThenName` is
-      // null-safe over `accountCode` since task 15 §5.
-      .sort((a, b) => {
-        const orderA = a.accountType ? STATEMENT_ORDER.get(a.accountType)! : STATEMENT_ORDER.size
-        const orderB = b.accountType ? STATEMENT_ORDER.get(b.accountType)! : STATEMENT_ORDER.size
-        if (orderA !== orderB) return orderA - orderB
-        return compareAccountsByCodeThenName(
-          { code: a.accountCode, name: a.accountName },
-          { code: b.accountCode, name: b.accountName }
-        )
-      })
+      .sort(compareTrialBalanceRows)
 
     const totalDebitMinor = rows.reduce((sum, row) => sum + row.debitMinor, 0)
     const totalCreditMinor = rows.reduce((sum, row) => sum + row.creditMinor, 0)
