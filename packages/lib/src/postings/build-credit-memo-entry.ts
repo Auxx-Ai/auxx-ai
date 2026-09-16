@@ -98,6 +98,33 @@ export type CreditMemoSettlement = { amount: number } & (
   | { glAccountId: string; role?: never }
 )
 
+/** One explicit entitlement component. Cash refunds are separate effects. */
+export interface CreditMemoEntitlementComponent {
+  componentKey: 'earned_revenue' | 'customer_deposit' | 'sales_tax'
+  accountRole: 'revenue_returns_allowances' | 'customer_deposits' | 'sales_tax_payable'
+  direction: 'debit'
+  amount: number
+}
+
+export interface BuildCreditMemoEntitlementEntryInput {
+  creditMemoId: string
+  number: string
+  issuedAt: string
+  currency: string
+  ledgerCurrency?: string
+  total: number
+  components: CreditMemoEntitlementComponent[]
+  creditControlGlAccountId: string
+  contactInstanceId?: string | null
+  memo?: string
+}
+
+export interface BuiltCreditMemoEntitlementEntry {
+  entry: BuiltEntry
+  periodKey: string
+  totalMinor: number
+}
+
 /** What one memo's arithmetic needs, and nothing else. See {@link computeCreditMemoAmounts}. */
 export interface CreditMemoAmountsInput {
   /** The `credit_memo` EntityInstance id. Rides on every refusal's context. */
@@ -217,6 +244,98 @@ export function computeCreditMemoAmounts(input: CreditMemoAmountsInput): CreditM
     settlementMinor,
     ...(settlement?.glAccountId ? { settlementGlAccountId: settlement.glAccountId } : {}),
     reverseRevenue,
+  }
+}
+
+/**
+ * Build only the credit entitlement entry. A provider refund or channel clearing leg must never
+ * be folded into this entry: those facts belong to a separate customer-refund effect.
+ */
+export function buildCreditMemoEntitlementEntry(
+  input: BuildCreditMemoEntitlementEntryInput
+): BuiltCreditMemoEntitlementEntry {
+  const number = assertCompactablePeriodKey({
+    value: input.number,
+    label: 'Credit memo number',
+    remedy: 'Shorten the credit memo number before posting the entitlement.',
+    context: { creditMemoId: input.creditMemoId },
+  })
+  const currency = input.currency?.trim() || input.ledgerCurrency
+  if (input.ledgerCurrency && currency !== input.ledgerCurrency)
+    throw new UnprocessableEntityError(
+      `Credit memo ${number} is in ${currency} and the ledger is kept in ${input.ledgerCurrency}. ` +
+        'Posting it would use an implied 1.0 rate, so it is refused rather than mis-stated.',
+      { creditMemoId: input.creditMemoId, number, currency: String(currency) }
+    )
+  if (!input.creditControlGlAccountId.trim())
+    throw new UnprocessableEntityError('A credit entitlement needs a resolved control account', {
+      creditMemoId: input.creditMemoId,
+    })
+  if (!Number.isSafeInteger(input.total) || input.total <= 0)
+    throw new UnprocessableEntityError(
+      'A credit entitlement total must be a positive safe integer',
+      {
+        creditMemoId: input.creditMemoId,
+      }
+    )
+  if (input.components.length === 0)
+    throw new UnprocessableEntityError('A credit entitlement needs at least one component', {
+      creditMemoId: input.creditMemoId,
+    })
+  const keys = new Set<string>()
+  let debit = 0
+  const lines: GlPostingLineInput[] = []
+  const source = { sourceType: CREDIT_MEMO_SOURCE_TYPE, sourceId: input.creditMemoId }
+  const counterparty = input.contactInstanceId
+    ? { counterpartyType: 'customer' as const, counterpartyId: input.contactInstanceId }
+    : {}
+  for (const component of input.components) {
+    if (keys.has(component.componentKey))
+      throw new UnprocessableEntityError('Credit entitlement component keys must be unique', {
+        creditMemoId: input.creditMemoId,
+      })
+    keys.add(component.componentKey)
+    if (!Number.isSafeInteger(component.amount) || component.amount <= 0)
+      throw new UnprocessableEntityError(
+        'Credit entitlement components must be positive integers',
+        {
+          creditMemoId: input.creditMemoId,
+        }
+      )
+    lines.push({
+      ...source,
+      accountRole: component.accountRole,
+      direction: component.direction,
+      amount: component.amount,
+      memo: input.memo ?? `Credit memo ${number}`,
+      sortOrder: lines.length,
+    })
+    debit += component.amount
+  }
+  if (debit !== input.total)
+    throw new UnprocessableEntityError(
+      'Credit entitlement components must total the memo and leave a control balance',
+      { creditMemoId: input.creditMemoId, debit: String(debit) }
+    )
+  const controlAmount = debit
+  lines.push({
+    ...source,
+    glAccountId: input.creditControlGlAccountId,
+    direction: 'credit',
+    amount: controlAmount,
+    memo: `${input.memo ?? `Credit memo ${number}`} control`,
+    sortOrder: lines.length,
+    ...counterparty,
+  })
+  return {
+    entry: buildEntry({
+      postingType: CREDIT_MEMO_POSTING_TYPE,
+      periodKey: number,
+      txnDate: input.issuedAt,
+      lines,
+    }),
+    periodKey: number,
+    totalMinor: input.total,
   }
 }
 

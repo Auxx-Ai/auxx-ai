@@ -62,12 +62,16 @@ export {
 } from './build-credit-memo-batch-entry'
 // ── plans/accounting/tasks/10: credit memos, one document for "you owe us less" ──
 export {
+  type BuildCreditMemoEntitlementEntryInput,
   type BuildCreditMemoEntryInput,
+  type BuiltCreditMemoEntitlementEntry,
   type BuiltCreditMemoEntry,
+  buildCreditMemoEntitlementEntry,
   buildCreditMemoEntry,
   CREDIT_MEMO_POSTING_TYPE,
   CREDIT_MEMO_SOURCE_TYPE,
   type CreditMemoAmountsInput,
+  type CreditMemoEntitlementComponent,
   type CreditMemoSettlement,
   computeCreditMemoAmounts,
 } from './build-credit-memo-entry'

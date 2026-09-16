@@ -57,7 +57,7 @@ import {
   type DeleteClosureRecord,
   findRestrictViolations,
 } from './delete-closure'
-import { assertFinancialRecordCanDelete, financialRecordType } from './financial-record-binding'
+import { assertFinancialRecordCanDelete, hasAccountingHistory } from './financial-record-binding'
 import { publishRecordLifecycleEvent } from './publish-record-event'
 import {
   getAmbientTxWriteScope,
@@ -1039,7 +1039,7 @@ export async function bulkArchiveEntities(
 
   for (const [entityDefinitionId, items] of byDef) {
     const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
-    if (financialRecordType(entityDef.entityType))
+    if (hasAccountingHistory(entityDef.entityType))
       for (const recordId of items)
         await assertFinancialRecordCanDelete(ctx.db, ctx.organizationId, recordId)
 
@@ -1373,7 +1373,7 @@ async function deleteRecords(
         (requested && postDeleteHooks.length > 0)
 
       try {
-        if (financialRecordType(entityDef.entityType))
+        if (hasAccountingHistory(entityDef.entityType))
           await assertFinancialRecordCanDelete(ctx.db, ctx.organizationId, record.recordId)
         let eventData: Record<string, unknown> = { hardDelete: true }
         if (needsCapture) {

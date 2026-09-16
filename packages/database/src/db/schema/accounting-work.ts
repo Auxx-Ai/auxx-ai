@@ -33,7 +33,11 @@ export const AccountingWork = pgTable(
     createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
     entityInstanceId: text(),
     moneyTransactionId: text(),
-    effectKind: text().notNull().$type<'fulfillment_accounting' | 'customer_receipt'>(),
+    effectKind: text()
+      .notNull()
+      .$type<
+        'fulfillment_accounting' | 'customer_receipt' | 'customer_credit_issued' | 'customer_refund'
+      >(),
     componentKey: text().notNull().default('original'),
     effectKey: text().notNull(),
     operation: text().notNull().$type<'original' | 'correction'>(),
@@ -74,7 +78,7 @@ export const AccountingWork = pgTable(
     }).onDelete('no action'),
     check(
       'AccountingWork_kind_check',
-      sql`(${t.effectKind} = 'fulfillment_accounting' AND ${t.entityInstanceId} IS NOT NULL AND ${t.moneyTransactionId} IS NULL) OR (${t.effectKind} = 'customer_receipt' AND ${t.moneyTransactionId} IS NOT NULL AND ${t.entityInstanceId} IS NULL)`
+      sql`(${t.effectKind} IN ('fulfillment_accounting', 'customer_credit_issued') AND ${t.entityInstanceId} IS NOT NULL AND ${t.moneyTransactionId} IS NULL) OR (${t.effectKind} IN ('customer_receipt', 'customer_refund') AND ${t.moneyTransactionId} IS NOT NULL AND ${t.entityInstanceId} IS NULL)`
     ),
     check(
       'AccountingWork_correction_check',

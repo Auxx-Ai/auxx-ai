@@ -12,6 +12,25 @@ import { getAmbientWriteSession, runWithWriteDb } from '../resources/crud/write-
 import { withAccountingCommitLock } from './accounting-commit-lock'
 
 const guardedWrites = new AsyncLocalStorage<Set<string>>()
+type TrustedCreditWriteScope = {
+  creditMemoIds: ReadonlySet<string>
+  fields: ReadonlySet<string>
+}
+
+const trustedCreditWrites = new AsyncLocalStorage<TrustedCreditWriteScope>()
+
+const creditProjectionFields = new Set([
+  'credit_memo_status',
+  'credit_memo_amount_applied',
+  'credit_memo_amount_refunded',
+  'credit_memo_balance',
+])
+const creditIssueFields = new Set([
+  'credit_memo_number',
+  'credit_memo_status',
+  'credit_memo_issued_at',
+  'credit_memo_gl_posting',
+])
 const financialFields = new Set([
   'fulfillment_order',
   'fulfillment_sequence',
@@ -60,6 +79,35 @@ const financialFields = new Set([
   'tax_line_price',
   'tax_line_channel_liable',
   'tax_line_order',
+  // An accepted credit memo freezes the issued document and every line that
+  // determines its entitlement.  The application and settlement commands have
+  // their own guards; these are the memo inputs and derived accounting values.
+  'credit_memo_number',
+  'credit_memo_status',
+  'credit_memo_source',
+  'credit_memo_reason',
+  'credit_memo_issued_at',
+  'credit_memo_contact',
+  'credit_memo_invoice',
+  'credit_memo_order',
+  'credit_memo_subtotal',
+  'credit_memo_tax_total',
+  'credit_memo_total',
+  'credit_memo_amount_applied',
+  'credit_memo_amount_refunded',
+  'credit_memo_balance',
+  'credit_memo_lines',
+  'credit_memo_applications',
+  'credit_memo_gl_posting',
+  'credit_memo_line_credit_memo',
+  'credit_memo_line_description',
+  'credit_memo_line_qty',
+  'credit_memo_line_unit_price',
+  'credit_memo_line_subtotal',
+  'credit_memo_line_tax_total',
+  'credit_memo_line_disposition',
+  'credit_memo_line_line_item',
+  'credit_memo_line_sort_order',
 ])
 const guardedTypes = new Set([
   'payout',
@@ -73,6 +121,8 @@ const guardedTypes = new Set([
   'gl_account',
   'payment_gateway',
   'contact',
+  'credit_memo',
+  'credit_memo_line',
 ])
 const configurationTypes = new Set(['gl_account', 'payment_gateway', 'contact'])
 
@@ -83,6 +133,38 @@ export class AcceptedAccountingSourceError extends ConflictError {
       'This change affects accepted fulfillment accounting. Record an accounting correction first.'
     )
   }
+}
+
+/** A credit memo edit is refused after its customer-credit effect is accepted. */
+export class AcceptedAccountingCreditError extends ConflictError {
+  constructor(readonly creditMemoIds: string[]) {
+    super('This change affects accepted credit accounting. Record an accounting correction first.')
+  }
+}
+
+/**
+ * Run the settlement projection's narrowly scoped writes past the source wall.
+ * The scope is keyed to the memo IDs and cannot authorize memo lines or inputs.
+ */
+export function runWithCreditAccountingProjection<T>(
+  creditMemoIds: readonly string[],
+  work: () => T
+): T {
+  return trustedCreditWrites.run(
+    { creditMemoIds: new Set(creditMemoIds), fields: creditProjectionFields },
+    work
+  )
+}
+
+/** Run trusted issue lifecycle stamps past the source wall for specific memos. */
+export function runWithCreditAccountingIssue<T>(
+  creditMemoIds: readonly string[],
+  work: () => T
+): T {
+  return trustedCreditWrites.run(
+    { creditMemoIds: new Set(creditMemoIds), fields: creditIssueFields },
+    work
+  )
 }
 
 /** Resolve canonical resource definitions without cached commit-time authority. */
@@ -102,6 +184,54 @@ export async function accountingSourceType(
     columns: { entityType: true },
   })
   return row?.entityType && guardedTypes.has(row.entityType) ? row.entityType : null
+}
+
+/** Find credit memos whose issued entitlement includes these source records. */
+export async function affectedCreditMemosInTx(
+  tx: Transaction,
+  organizationId: string,
+  recordId: RecordId,
+  relatedIds: string[] = []
+) {
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+  const type = await accountingSourceType(tx, organizationId, entityDefinitionId)
+  if (type === 'credit_memo') return [entityInstanceId]
+  if (type !== 'credit_memo_line') return []
+
+  const parentRows = await tx
+    .select({ id: schema.FieldValue.relatedEntityId })
+    .from(schema.FieldValue)
+    .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.CustomField.organizationId, organizationId),
+        eq(schema.CustomField.systemAttribute, 'credit_memo_line_credit_memo'),
+        eq(schema.FieldValue.entityId, entityInstanceId)
+      )
+    )
+  const candidateIds = [...parentRows.flatMap((row) => (row.id ? [row.id] : [])), ...relatedIds]
+  if (!candidateIds.length) return []
+
+  // `relatedIds` contains raw relationship targets.  Resolve the entity type
+  // before treating one as a memo so an unrelated relationship cannot freeze a
+  // credit memo by id collision.
+  const rows = await tx
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .innerJoin(
+      schema.EntityDefinition,
+      eq(schema.EntityDefinition.id, schema.EntityInstance.entityDefinitionId)
+    )
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityDefinition.organizationId, organizationId),
+        eq(schema.EntityDefinition.entityType, 'credit_memo'),
+        inArray(schema.EntityInstance.id, candidateIds)
+      )
+    )
+  return [...new Set(rows.map((row) => row.id))]
 }
 
 /** Find all fulfillment obligations whose source inputs include these records. */
@@ -178,6 +308,33 @@ export async function assertAccountingSourcesMutableInTx(
   relatedIds: string[] = []
 ) {
   await assertReceiptSourcesMutableInTx(tx, organizationId, recordIds, relatedIds)
+  const creditMemoIds = new Set<string>()
+  for (const recordId of recordIds)
+    for (const id of await affectedCreditMemosInTx(tx, organizationId, recordId, relatedIds))
+      creditMemoIds.add(id)
+  if (creditMemoIds.size) {
+    const accepted = await tx
+      .select({ id: schema.AccountingWork.entityInstanceId })
+      .from(schema.AccountingWork)
+      .innerJoin(
+        schema.AccountingEffect,
+        and(
+          eq(schema.AccountingEffect.workId, schema.AccountingWork.id),
+          eq(schema.AccountingEffect.organizationId, organizationId)
+        )
+      )
+      .where(
+        and(
+          eq(schema.AccountingWork.organizationId, organizationId),
+          eq(schema.AccountingWork.effectKind, 'customer_credit_issued'),
+          inArray(schema.AccountingWork.entityInstanceId, [...creditMemoIds])
+        )
+      )
+    if (accepted.length)
+      throw new AcceptedAccountingCreditError([
+        ...new Set(accepted.flatMap((row) => (row.id ? [row.id] : []))),
+      ])
+  }
   const fulfillmentIds = new Set<string>()
   for (const recordId of recordIds)
     for (const id of await affectedFulfillmentsInTx(tx, organizationId, recordId, relatedIds))
@@ -312,6 +469,7 @@ export async function withAccountingFieldMutation<T>(
   const relevant: AccountingFieldMutation[] = []
   const sourceRecords = new Map<RecordId, string>()
   const sourceFieldIds = new Set<string>()
+  const trustedCreditFieldIdsByRecord = new Map<RecordId, Set<string>>()
   for (const item of remaining) {
     const type = await accountingSourceType(
       ctx.db,
@@ -352,6 +510,23 @@ export async function withAccountingFieldMutation<T>(
             ?.id ?? field.fieldId,
       }))
       .filter((field) => !active?.has(`${item.recordId}:${field.fieldId}`))
+    const trustedCreditFieldIds = new Set(
+      resolved
+        .filter((field) => {
+          const attr =
+            fields.find((row) => row.id === field.fieldId)?.systemAttribute ?? field.fieldId
+          return (
+            type === 'credit_memo' &&
+            trustedCreditWrites
+              .getStore()
+              ?.creditMemoIds.has(parseRecordId(item.recordId).entityInstanceId) &&
+            trustedCreditWrites.getStore()?.fields.has(attr)
+          )
+        })
+        .map((field) => field.fieldId)
+    )
+    if (trustedCreditFieldIds.size)
+      trustedCreditFieldIdsByRecord.set(item.recordId, trustedCreditFieldIds)
     const sourceFields = resolved.filter((field) => {
       const attr = fields.find((row) => row.id === field.fieldId)?.systemAttribute ?? field.fieldId
       return (
@@ -373,7 +548,9 @@ export async function withAccountingFieldMutation<T>(
     const before = new Set<string>()
     for (const item of relevant) {
       const economicFields = item.fields.filter(
-        (field) => !sourceFieldIds.has(`${item.recordId}:${field.fieldId}`)
+        (field) =>
+          !sourceFieldIds.has(`${item.recordId}:${field.fieldId}`) &&
+          !trustedCreditFieldIdsByRecord.get(item.recordId)?.has(field.fieldId)
       )
       if (!economicFields.length) continue
       let changed = item.operation !== 'set'

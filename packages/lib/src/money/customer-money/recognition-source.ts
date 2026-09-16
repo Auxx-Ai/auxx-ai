@@ -1,7 +1,7 @@
 // packages/lib/src/money/customer-money/recognition-source.ts
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../errors'
 import { scaleLineTax } from '../../postings/build-fulfillment-batch-entry'
 import { computeShipmentTotals } from '../../postings/build-fulfillment-entry'
@@ -186,6 +186,31 @@ export async function readOrderRecognitionSource(
   }
 ): Promise<OrderRecognitionSource> {
   const blockers: string[] = []
+  const [credit] = await db
+    .select({ id: schema.AccountingEffect.id })
+    .from(schema.AccountingEffect)
+    .innerJoin(
+      schema.AccountingWork,
+      and(
+        eq(schema.AccountingWork.organizationId, input.organizationId),
+        eq(schema.AccountingWork.id, schema.AccountingEffect.workId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.AccountingEffect.organizationId, input.organizationId),
+        eq(schema.AccountingWork.effectKind, 'customer_credit_issued'),
+        eq(
+          sql<string>`${schema.AccountingEffect.acceptedBasis}->'calculation'->>'orderInstanceId'`,
+          input.orderId
+        )
+      )
+    )
+    .limit(1)
+  if (credit)
+    blockers.push(
+      'Order recognition must include its accepted credit components before further posting'
+    )
   let recognitionFacts: Awaited<ReturnType<typeof readOrderRecognitionFactsInTx>> | null = null
   try {
     recognitionFacts = await readOrderRecognitionFactsInTx(db, input.organizationId, input.orderId)

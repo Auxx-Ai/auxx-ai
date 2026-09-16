@@ -6,7 +6,9 @@ import { eq, sql } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import {
+  AcceptedAccountingCreditError,
   assertAccountingSourcesMutableInTx,
+  runWithCreditAccountingProjection,
   withAccountingFieldMutation,
 } from '../source-write-guard'
 
@@ -15,11 +17,13 @@ vi.mock('../../cache', async (original) => ({
   onCacheEvent: vi.fn(),
 }))
 
+import { assertFinancialRecordCanDelete } from '../../resources/crud/financial-record-binding'
 import {
   batchUpdateOrganizationSettings,
   updateOrganizationSetting,
 } from '../../settings/settings-service'
 import { withAccountingCommitLock } from '../accounting-commit-lock'
+import { captureCustomerCreditWorkInTx } from '../credit-effect-work'
 import { accountingBasisHash } from '../effect-basis'
 import {
   appendFulfillmentWorkBasisInTx,
@@ -729,5 +733,202 @@ describe('accepted receipt source protection', () => {
         ])
       )
     ).resolves.toBeUndefined()
+  })
+})
+
+describe('accepted credit source protection', () => {
+  async function acceptedCreditMemoFixture() {
+    const [memoDefinition] = await db()
+      .insert(schema.EntityDefinition)
+      .values({
+        organizationId,
+        apiSlug: 'credit-memos',
+        singular: 'Credit memo',
+        plural: 'Credit memos',
+        entityType: 'credit_memo',
+      })
+      .returning()
+    const [memo] = await db()
+      .insert(schema.EntityInstance)
+      .values({
+        organizationId,
+        entityDefinitionId: memoDefinition!.id,
+        updatedAt: new Date(),
+      })
+      .returning()
+    const [lineDefinition] = await db()
+      .insert(schema.EntityDefinition)
+      .values({
+        organizationId,
+        apiSlug: 'credit-memo-lines',
+        singular: 'Credit memo line',
+        plural: 'Credit memo lines',
+        entityType: 'credit_memo_line',
+      })
+      .returning()
+    const [line] = await db()
+      .insert(schema.EntityInstance)
+      .values({
+        organizationId,
+        entityDefinitionId: lineDefinition!.id,
+        updatedAt: new Date(),
+      })
+      .returning()
+    const [parentField] = await db()
+      .insert(schema.CustomField)
+      .values({
+        organizationId,
+        entityDefinitionId: lineDefinition!.id,
+        name: 'Credit memo',
+        systemAttribute: 'credit_memo_line_credit_memo',
+        type: 'RELATIONSHIP',
+        updatedAt: new Date(),
+      })
+      .returning()
+    await db().insert(schema.FieldValue).values({
+      organizationId,
+      entityDefinitionId: lineDefinition!.id,
+      entityId: line!.id,
+      fieldId: parentField!.id,
+      relatedEntityId: memo!.id,
+    })
+
+    const captured = await db().transaction((tx) =>
+      captureCustomerCreditWorkInTx(tx, {
+        organizationId,
+        creditMemoInstanceId: memo!.id,
+        eligibility: 'manual',
+        basis: {
+          version: 1,
+          status: 'incomplete',
+          creditMemoInstanceId: memo!.id,
+          sourceHash: SOURCE_HASH,
+          effectiveDate: null,
+          missingDependencies: ['fixture'],
+          observed: {},
+        },
+      })
+    )
+    const journal = await posting({ postingType: 'credit_memo' })
+    const acceptedBasis = { calculation: { creditMemoInstanceId: memo!.id } }
+    await db()
+      .insert(schema.AccountingEffect)
+      .values({
+        organizationId,
+        workId: captured.work.id,
+        basisVersion: 1,
+        glPostingId: journal.id,
+        effectiveDate: '2026-09-14',
+        currency: 'USD',
+        currencyExponent: 2,
+        acceptedBasis,
+        basisHash: accountingBasisHash(acceptedBasis),
+      })
+    return {
+      memo: memo!,
+      memoDefinition: memoDefinition!,
+      line: line!,
+      lineDefinition: lineDefinition!,
+    }
+  }
+
+  it('freezes credit memo headers and lines with a credit-specific error', async () => {
+    const fixture = await acceptedCreditMemoFixture()
+    const mutate = vi.fn()
+    await expect(
+      withAccountingFieldMutation(
+        createFieldValueContext(organizationId, userId, db()),
+        [
+          {
+            recordId: toRecordId(fixture.memoDefinition.id, fixture.memo.id),
+            fields: [{ fieldId: 'credit_memo_total', value: 125 }],
+            operation: 'set',
+          },
+        ],
+        mutate
+      )
+    ).rejects.toBeInstanceOf(AcceptedAccountingCreditError)
+    expect(mutate).not.toHaveBeenCalled()
+
+    await expect(
+      db().transaction((tx) =>
+        assertAccountingSourcesMutableInTx(tx, organizationId, [
+          toRecordId(fixture.lineDefinition.id, fixture.line.id),
+        ])
+      )
+    ).rejects.toMatchObject({
+      creditMemoIds: [fixture.memo.id],
+      message: expect.stringContaining('accepted credit accounting'),
+    })
+  })
+
+  it('freezes parent relation changes and generic archive/delete paths', async () => {
+    const fixture = await acceptedCreditMemoFixture()
+    await expect(
+      db().transaction((tx) =>
+        assertAccountingSourcesMutableInTx(
+          tx,
+          organizationId,
+          [toRecordId(fixture.lineDefinition.id, fixture.line.id)],
+          [fixture.memo.id]
+        )
+      )
+    ).rejects.toBeInstanceOf(AcceptedAccountingCreditError)
+
+    await expect(
+      assertFinancialRecordCanDelete(
+        db(),
+        organizationId,
+        toRecordId(fixture.memoDefinition.id, fixture.memo.id)
+      )
+    ).rejects.toThrow('cannot be archived or deleted')
+    await expect(
+      assertFinancialRecordCanDelete(
+        db(),
+        organizationId,
+        toRecordId(fixture.lineDefinition.id, fixture.line.id)
+      )
+    ).rejects.toThrow('cannot be archived or deleted')
+  })
+
+  it('allows only the memo projection inside its trusted scope', async () => {
+    const fixture = await acceptedCreditMemoFixture()
+    const context = createFieldValueContext(organizationId, userId, db())
+    const projection = vi.fn(async () => 'projected')
+    await expect(
+      runWithCreditAccountingProjection([fixture.memo.id], () =>
+        withAccountingFieldMutation(
+          context,
+          [
+            {
+              recordId: toRecordId(fixture.memoDefinition.id, fixture.memo.id),
+              fields: [{ fieldId: 'credit_memo_balance', value: 0 }],
+              operation: 'set',
+            },
+          ],
+          projection
+        )
+      )
+    ).resolves.toBe('projected')
+    expect(projection).toHaveBeenCalledOnce()
+
+    await expect(
+      runWithCreditAccountingProjection([fixture.memo.id], () =>
+        withAccountingFieldMutation(
+          context,
+          [
+            {
+              recordId: toRecordId(fixture.memoDefinition.id, fixture.memo.id),
+              fields: [
+                { fieldId: 'credit_memo_balance', value: 0 },
+                { fieldId: 'credit_memo_total', value: 125 },
+              ],
+              operation: 'set',
+            },
+          ],
+          projection
+        )
+      )
+    ).rejects.toBeInstanceOf(AcceptedAccountingCreditError)
   })
 })

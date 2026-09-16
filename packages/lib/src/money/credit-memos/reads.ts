@@ -12,7 +12,7 @@
 //
 // No permission checks anywhere in this file. The router asserts (section 6).
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { getOrgCache } from '../../cache'
@@ -126,7 +126,7 @@ interface ValueRow {
  * field has one row per related record.
  */
 async function selectValues(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   entityIds: readonly string[],
   fieldIds: readonly string[]
@@ -206,7 +206,7 @@ function toCalendarDay(raw: string | null | undefined): string | null {
 
 /** The ids of every non-archived instance among `ids`, in the order given. */
 async function liveInstanceIds(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   ids: readonly string[]
 ): Promise<string[]> {
@@ -232,7 +232,7 @@ async function liveInstanceIds(
  * invoices of a contact".
  */
 async function childIdsPointingAt(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   field: { id: string } | null,
   targetId: string
@@ -295,7 +295,7 @@ export interface CreditMemoRecord {
  * the org has not seeded the `credit_memo` def.
  */
 export async function loadCreditMemo(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   creditMemoId: string
 ): Promise<CreditMemoRecord | null> {
@@ -350,7 +350,7 @@ export async function loadCreditMemo(
 
 /** {@link loadCreditMemo}, as the refusal a writer needs. */
 export async function requireCreditMemo(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   creditMemoId: string
 ): Promise<CreditMemoRecord> {
@@ -376,7 +376,7 @@ export interface CreditMemoLineRecord {
 
 /** The memo's lines, in display order. */
 export async function loadCreditMemoLines(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   lineIds: readonly string[]
 ): Promise<CreditMemoLineRecord[]> {
@@ -432,7 +432,7 @@ async function applicationFields(
 }
 
 async function loadApplicationsById(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   fields: FieldMap<CreditMemoApplicationAttribute>,
   ids: readonly string[]
@@ -460,7 +460,7 @@ async function loadApplicationsById(
  * has_many, so a stale inverse row can neither hide nor invent an application.
  */
 export async function listCreditMemoApplications(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   creditMemoId: string
 ): Promise<CreditMemoApplicationRecord[]> {
@@ -476,7 +476,7 @@ export async function listCreditMemoApplications(
 
 /** One application by id, or `null`. */
 export async function loadCreditMemoApplication(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   applicationId: string
 ): Promise<CreditMemoApplicationRecord | null> {
@@ -494,7 +494,7 @@ export async function loadCreditMemoApplication(
  * only when it is next run.
  */
 export async function sumInvoiceCreditApplications(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   invoiceId: string
 ): Promise<number> {
@@ -514,7 +514,7 @@ export async function sumInvoiceCreditApplications(
 
 /** Integer minor units: what has been applied off this memo, summed from the rows. */
 export async function sumCreditMemoApplications(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   creditMemoId: string
 ): Promise<number> {
@@ -527,7 +527,7 @@ export async function sumCreditMemoApplications(
 
 /** Credit consumed by confirmed or in-flight refunds. Called while holding the shared money lock. */
 export async function sumReservedCreditMemoRefunds(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   memo: Pick<CreditMemoRecord, 'id' | 'source' | 'amountRefundedMinor'>
 ): Promise<number> {
@@ -602,7 +602,7 @@ export async function sumReservedCreditMemoRefunds(
  * the `succeeded` rows.
  */
 export async function listCreditMemoRefunds(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   creditMemoId: string
 ): Promise<CreditMemoRefundRow[]> {
@@ -627,7 +627,7 @@ export async function listCreditMemoRefunds(
 
 /** Integer minor units: the `succeeded` refunds carrying this memo, summed. */
 export async function sumSucceededCreditMemoRefunds(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   creditMemoId: string
 ): Promise<number> {
@@ -710,7 +710,7 @@ function invoiceFromBucket(
 
 /** One invoice's header, or `null`. */
 export async function loadInvoiceForCredit(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   invoiceId: string
 ): Promise<InvoiceForCredit | null> {

@@ -17,6 +17,8 @@ vi.mock('../provider', async (original) => ({
 
 import { acceptEntryInTx, type PreparedEffectMember } from '../accept-entry'
 import { withAccountingCommitLock } from '../accounting-commit-lock'
+import { acceptedCustomerCreditEffectBasisSchema } from '../credit-effect-types'
+import { captureCustomerCreditWorkInTx } from '../credit-effect-work'
 import * as docNumbers from '../doc-number'
 import { correctionAccountingEffectKey } from '../effect-basis'
 import type {
@@ -492,6 +494,144 @@ async function connection(org = organizationId, state: 'active' | 'disconnected'
 }
 
 describe('atomic accounting acceptance against PostgreSQL', () => {
+  it('accepts credit entitlement separately from money and preserves its owner on replay', async () => {
+    const [definition] = await db()
+      .insert(schema.EntityDefinition)
+      .values({
+        organizationId,
+        apiSlug: 'credit-memos',
+        singular: 'Credit memo',
+        plural: 'Credit memos',
+        entityType: 'credit_memo',
+      })
+      .returning()
+    const [memo] = await db()
+      .insert(schema.EntityInstance)
+      .values({
+        organizationId,
+        entityDefinitionId: definition!.id,
+        updatedAt: new Date(),
+      })
+      .returning()
+    const calculation = {
+      version: 1 as const,
+      creditMemoInstanceId: memo!.id,
+      sourceHash: SOURCE_HASH,
+      source: 'native' as const,
+      number: 'CM-TEST',
+      contactInstanceId: null,
+      invoiceInstanceId: null,
+      orderInstanceId: null,
+      sourceStoreId: null,
+      creditControlGlAccountId: clearingId,
+      issuedAt: '2026-09-15',
+      effectiveDate: '2026-09-15',
+      currency: 'USD' as const,
+      currencyExponent: 2 as const,
+      subtotalMinor: '100',
+      taxTotalMinor: '0',
+      totalMinor: '100',
+      reverseRevenue: true,
+      sourceAllocations: [],
+      components: [
+        {
+          componentKey: 'earned_revenue' as const,
+          accountRole: 'revenue_returns_allowances' as const,
+          direction: 'debit' as const,
+          amountMinor: '100',
+        },
+      ],
+    }
+    const source = {
+      version: 1 as const,
+      status: 'ready' as const,
+      creditMemoInstanceId: memo!.id,
+      sourceHash: SOURCE_HASH,
+      effectiveDate: '2026-09-15',
+      calculation,
+    }
+    const { work } = await db().transaction((tx) =>
+      captureCustomerCreditWorkInTx(tx, {
+        organizationId,
+        creditMemoInstanceId: memo!.id,
+        eligibility: 'manual',
+        basis: source,
+      })
+    )
+    const contribution = [
+      { lineKey: 'earned_revenue', glAccountId: revenueId, direction: 'debit' as const },
+      { lineKey: 'credit_control', glAccountId: clearingId, direction: 'credit' as const },
+    ].map((line) => ({
+      ...line,
+      amountMinor: '100',
+      counterpartyType: null,
+      counterpartyId: null,
+      dimensions: {},
+    }))
+    const basis = acceptedCustomerCreditEffectBasisSchema.parse({
+      version: 1,
+      sourceBasisVersion: 1,
+      sourceHash: SOURCE_HASH,
+      policyKey: 'customer_credit_issued_v1',
+      policyVersion: 1,
+      effectiveDate: '2026-09-15',
+      bookTimeZone: 'UTC',
+      currency: 'USD',
+      currencyExponent: 2,
+      documentRefs: [{ resourceKind: 'credit_memo', entityInstanceId: memo!.id }],
+      calculation,
+      contribution,
+      accountResolution: contribution.map((line) => ({
+        lineKey: line.lineKey,
+        glAccountId: line.glAccountId,
+        accountRole: null,
+        selectedBy: 'document',
+        configurationHash: SOURCE_HASH,
+      })),
+    })
+    const built: BuiltEntry = {
+      postingType: 'credit_memo',
+      periodKey: '2026-09-15',
+      txnDate: '2026-09-15',
+      totalDebit: 100,
+      totalCredit: 100,
+      lines: contribution.map((line, sortOrder) => ({
+        glAccountId: line.glAccountId,
+        direction: line.direction,
+        amount: 100,
+        sourceType: 'credit_memo',
+        sourceId: memo!.id,
+        sortOrder,
+      })),
+    }
+    const request = {
+      organizationId,
+      members: [{ workId: work.id, expectedBasisVersion: 1, acceptedBasis: basis }],
+      entry: built,
+      deliveryIntent: { kind: 'not_required' as const },
+    }
+    const deps = { revalidateMemberInTx: async () => basis }
+    await expect(
+      db().transaction((tx) =>
+        acceptEntryInTx(
+          tx,
+          {
+            ...request,
+            entry: { ...built, postingType: 'payment' },
+          },
+          deps
+        )
+      )
+    ).rejects.toThrow('posting type does not match')
+    expect(await db().transaction((tx) => acceptEntryInTx(tx, request, deps))).toMatchObject({
+      existing: false,
+    })
+    expect(await db().transaction((tx) => acceptEntryInTx(tx, request, deps))).toMatchObject({
+      existing: true,
+    })
+    expect(await db().select().from(schema.AccountingEffect)).toHaveLength(1)
+    expect(await db().select().from(schema.MoneyTransaction)).toHaveLength(0)
+  })
   it('accepts a customer receipt through the payment posting owner', async () => {
     const receipt = await receiptMember()
     expect(await acceptReceipts([receipt])).toMatchObject({ status: 'accepted', existing: false })

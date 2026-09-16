@@ -1,5 +1,5 @@
 // packages/lib/src/money/credit-memos/credit-application.int.test.ts
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -121,6 +121,35 @@ const apply = (amount: number, commandKey: string) =>
   })
 
 describe('credit applications using existing entities', () => {
+  it('creates the command before canonical money and replays the same saved movement', async () => {
+    const execute = vi.fn(async (tx: Transaction, commandId: string) => {
+      const [money] = await tx
+        .insert(schema.MoneyTransaction)
+        .values({
+          organizationId,
+          purpose: 'customer_refund',
+          amountMinor: 100n,
+          currency: 'USD',
+          currencyExponent: 2,
+          datePrecision: 'date',
+          occurredOn: '2026-09-15',
+          recordedByCommandId: commandId,
+        })
+        .returning({ id: schema.MoneyTransaction.id })
+      return { moneyTransactionId: money!.id }
+    })
+    const input = {
+      organizationId,
+      userId,
+      commandKey: 'canonical-refund',
+      kind: 'test-canonical-refund',
+      payload: { amountMinor: '100' },
+    }
+    const first = await runCreditCommand(db(), input, execute)
+    expect(await runCreditCommand(db(), input, execute)).toEqual(first)
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(await db().query.MoneyTransaction.findMany()).toHaveLength(1)
+  })
   it('serializes competing applications against the same balance', async () => {
     const outcomes = await Promise.allSettled([apply(7000, 'one'), apply(7000, 'two')])
     expect(outcomes.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
