@@ -486,6 +486,12 @@ const CARD_RAIL_ACCOUNTS: readonly DefaultChartAccount[] = [
     code: '1200',
     name: 'Card Clearing',
     accountType: GlAccountType.ASSET,
+    // The one second fact worth carrying: `clearing` says this account's balance
+    // is expected to be ZERO once its payout lands, which no other asset subtype
+    // claims. Every account minted into `CLEARING_ACCOUNT_CODE_BAND` takes the
+    // same subtype - they carry no ROLE (see the band's docblock), so the subtype
+    // is the only thing that marks them as a settlement holding pen.
+    subtype: GlAccountSubtype.CLEARING,
     role: 'clearing_card',
   },
   {

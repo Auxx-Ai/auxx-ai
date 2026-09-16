@@ -191,14 +191,15 @@ describe('payout evidence list filters', () => {
     expect(await externalIds({ search: 'gamma', status: 'in_transit' })).toEqual([])
   })
 
-  it('keeps paging on the transfer id while filters are applied', async () => {
+  it('keeps paging in date order while filters are applied', async () => {
     const first = await listPayoutEvidence(getTestDb(), {
       organizationId,
       limit: 1,
       status: 'paid',
     })
     expect(first.items).toHaveLength(1)
-    expect(first.nextCursor).toBe(first.items[0]!.id)
+    expect(first.items[0]!.externalId).toBe('po_gamma_3')
+    expect(first.nextCursor).toBe(`2026-04-05|${first.items[0]!.id}`)
     const second = await listPayoutEvidence(getTestDb(), {
       organizationId,
       limit: 1,
@@ -206,8 +207,15 @@ describe('payout evidence list filters', () => {
       cursor: first.nextCursor!,
     })
     expect(second.items).toHaveLength(1)
-    expect(second.items[0]!.id < first.items[0]!.id).toBe(true)
+    expect(second.items[0]!.externalId).toBe('po_alpha_1')
     expect(second.items[0]!.status).toBe('paid')
+  })
+
+  it('rejects a cursor that does not carry a day', async () => {
+    const first = await listPayoutEvidence(getTestDb(), { organizationId, limit: 1 })
+    await expect(
+      listPayoutEvidence(getTestDb(), { organizationId, limit: 1, cursor: first.items[0]!.id })
+    ).rejects.toThrow('Invalid payout cursor')
   })
 
   it('does not leak another organization’s payouts through a filter', async () => {
@@ -216,6 +224,60 @@ describe('payout evidence list filters', () => {
       (await listPayoutEvidence(getTestDb(), { organizationId: other, limit: 100, status: 'paid' }))
         .items
     ).toEqual([])
+  })
+})
+
+describe('payout evidence list order', () => {
+  /** 🛑 Order-SENSITIVE, unlike `externalIds()` above, which sorts. */
+  async function orderedIds(filters: Record<string, string> = {}) {
+    const page = await listPayoutEvidence(getTestDb(), { organizationId, limit: 100, ...filters })
+    return page.items.map((item) => item.externalId)
+  }
+
+  it('puts the newest payout first and sinks the undated one to the bottom', async () => {
+    // `po_beta_2` is `instant` precision and `po_alpha_1` is `date` precision,
+    // so this also proves both kinds sort on one comparable day.
+    expect(await orderedIds()).toEqual(['po_gamma_3', 'po_beta_2', 'po_alpha_1', 'po_delta_4'])
+  })
+
+  it('holds the order across every page of a paged read', async () => {
+    const seen: string[] = []
+    let cursor: string | null = null
+    do {
+      const page = await listPayoutEvidence(getTestDb(), {
+        organizationId,
+        limit: 1,
+        cursor: cursor ?? undefined,
+      })
+      seen.push(...page.items.map((item) => item.externalId))
+      cursor = page.nextCursor
+    } while (cursor)
+    expect(seen).toEqual(['po_gamma_3', 'po_beta_2', 'po_alpha_1', 'po_delta_4'])
+  })
+
+  it('breaks a same-day tie on the id rather than returning a row twice', async () => {
+    await seed([
+      { id: 'po_eta_7', status: 'paid', sourceAccount: ALPHA, issuedOn: '2026-07-01' },
+      { id: 'po_theta_8', status: 'paid', sourceAccount: ALPHA, issuedOn: '2026-07-01' },
+    ])
+    const seen: string[] = []
+    let cursor: string | null = null
+    do {
+      const page = await listPayoutEvidence(getTestDb(), {
+        organizationId,
+        limit: 1,
+        cursor: cursor ?? undefined,
+      })
+      seen.push(...page.items.map((item) => item.externalId))
+      cursor = page.nextCursor
+    } while (cursor)
+    expect(seen.slice(0, 2).sort()).toEqual(['po_eta_7', 'po_theta_8'])
+    expect(new Set(seen).size).toBe(seen.length)
+    expect(seen).toHaveLength(6)
+  })
+
+  it('keeps the order under a filter', async () => {
+    expect(await orderedIds({ status: 'paid' })).toEqual(['po_gamma_3', 'po_alpha_1', 'po_delta_4'])
   })
 })
 

@@ -189,7 +189,9 @@ describe('bounded provider-independent payout reads', () => {
       providerKey: 'processor-other',
       entryCount: 7,
     })
-    expect(result.nextCursor).toBe(`transfer-${count - 1}`)
+    // The day the list sorts on, then the id — an id alone cannot place a page
+    // boundary in a date-ordered list.
+    expect(result.nextCursor).toBe(`2026-09-15|transfer-${count - 1}`)
     expect(select).toHaveBeenCalledOnce()
     expect(limits).toEqual([count + 1])
     expect(state.matches).not.toHaveBeenCalled()

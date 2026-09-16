@@ -51,12 +51,8 @@ import type { ScopeAxis } from './build-entry'
 // 🛑 `RoleSourceRow` lives in `types.ts`, which is client-safe: a settings
 // screen holds the shape and this file reaches a database. Re-exported so a
 // server caller still gets it from the module that produces it.
-import {
-  MANUAL_SOURCE_EXTERNAL_ID,
-  MANUAL_SOURCE_LABEL,
-  MANUAL_SOURCE_PROVIDER_KEY,
-  type RoleSourceRow,
-} from './types'
+import { sourceAccountLabel } from './source-account-label'
+import { MANUAL_SOURCE_EXTERNAL_ID, MANUAL_SOURCE_PROVIDER_KEY, type RoleSourceRow } from './types'
 
 export type { RoleSourceRow } from './types'
 
@@ -192,6 +188,7 @@ export async function listRoleSources(
         id: schema.FinancialSourceAccount.id,
         providerKey: schema.FinancialSourceAccount.providerKey,
         externalAccountId: schema.FinancialSourceAccount.externalAccountId,
+        name: schema.FinancialSourceAccount.name,
       })
       .from(schema.FinancialSourceAccount)
       .where(
@@ -245,7 +242,7 @@ export async function listRoleSources(
       id: account.id,
       providerKey: account.providerKey,
       externalAccountId: account.externalAccountId,
-      name: isManual ? MANUAL_SOURCE_LABEL : account.externalAccountId,
+      name: sourceAccountLabel(account),
       axes,
       isManual,
     })

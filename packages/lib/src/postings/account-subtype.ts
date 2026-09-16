@@ -8,13 +8,13 @@
 
 import { GlAccountSubtype } from '../resources/registry/enum-values'
 
-/** One of the eight subtypes, as a literal. */
+/** One of the eleven subtypes, as a literal. */
 export type GlAccountSubtypeValue = (typeof GlAccountSubtype)[Exclude<
   keyof typeof GlAccountSubtype,
   'values'
 >]
 
-/** The eight subtypes as a non-empty tuple, for a `z.enum`. */
+/** The eleven subtypes as a non-empty tuple, for a `z.enum`. */
 export const GL_ACCOUNT_SUBTYPES = [
   GlAccountSubtype.BANK,
   GlAccountSubtype.ACCOUNTS_RECEIVABLE,
@@ -23,6 +23,9 @@ export const GL_ACCOUNT_SUBTYPES = [
   GlAccountSubtype.INVENTORY,
   GlAccountSubtype.FIXED_ASSET,
   GlAccountSubtype.COST_OF_GOODS_SOLD,
+  GlAccountSubtype.CLEARING,
+  GlAccountSubtype.RESERVE_BALANCES,
+  GlAccountSubtype.STORED_BALANCES,
   GlAccountSubtype.OTHER,
 ] as const satisfies readonly GlAccountSubtypeValue[]
 

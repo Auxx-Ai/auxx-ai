@@ -21,6 +21,7 @@ import { migration161FinancialRecordFields } from './migrations/161-financial-re
 import { migration162OrderPaymentEvidence } from './migrations/162-order-payment-evidence'
 import { migration163FinancialSourceFields } from './migrations/163-financial-source-fields'
 import { migration164CreditApplicationHistory } from './migrations/164-credit-application-history'
+import { migration165AccountSubtypeClearing } from './migrations/165-account-subtype-clearing'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -66,6 +67,7 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   migration162OrderPaymentEvidence,
   migration163FinancialSourceFields,
   migration164CreditApplicationHistory,
+  migration165AccountSubtypeClearing,
   // Re-seeds the default entity dashboards. The one entry here that is NOT just an
   // example: `apps/worker/scripts/reseed-default-dashboard.ts` re-runs its ensure
   // after a `DEFAULT_DASHBOARD_CONFIGS` template change, so it is a live routine.

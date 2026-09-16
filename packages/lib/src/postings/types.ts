@@ -958,14 +958,14 @@ export interface RoleSourceRow {
   providerKey: string
   externalAccountId: string
   /**
-   * The name to show.
+   * The name to show, from `sourceAccountLabel` - the same helper the settlement
+   * list and the processor activity row use, so one account reads the same on
+   * every screen.
    *
-   * ⚠️ `FinancialSourceAccount` has no name column and this brief does not add
-   * one (47 §13.6). For a connected source the external id already IS the
-   * human-readable identity - Shopify's is the shop domain, which
-   * `receipt-accounting.ts` already renders as `storeDomain` - so the fallback
-   * 47 §7.4 describes is what every row gets, paired with `providerKey` so a
-   * screen can qualify it.
+   * ⚠️ 47 §13.6 said there was no name column and this row had to derive its
+   * label. `FinancialSourceAccount.name` landed later (#2178), so the helper
+   * prefers it and falls back to the derivation for the unnamed case: a shop
+   * domain verbatim, an opaque `gid://` shortened to `Shopify Payments ···3024`.
    */
   name: string
   /**
