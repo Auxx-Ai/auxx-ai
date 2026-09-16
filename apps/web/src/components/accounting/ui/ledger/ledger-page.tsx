@@ -10,7 +10,6 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import {
   ArrowLeftRight,
-  CircleSlash,
   ClipboardCheck,
   Clock3,
   FileText,
@@ -55,7 +54,7 @@ import { api } from '~/trpc/react'
 
 import { CloseMonthPanel } from './close-month-panel'
 import { type CountAdjustmentRow, CountEvidenceSection } from './count-evidence-section'
-import { EntryBlockers, type FixableBlockerItemKey } from './entry-blockers'
+import type { FixableBlockerItemKey } from './entry-blockers'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatPeriodLabel, lockRefusalReason } from './format'
 import { type LateArrivalRow, LateArrivalsSection } from './late-arrivals-section'
@@ -566,6 +565,15 @@ export function LedgerPage() {
                     exports={failedExportsQuery.data ?? []}
                     providerLabel={providerLabel}
                     onOpenSyncQueue={openSyncQueue}
+                    blockers={activePeriodKey ? entry.blockers : []}
+                    isSoftRefusal={entry.isSoftRefusal}
+                    onFix={setFixing}
+                    onReviewLock={revealLock}
+                    onNextPeriod={
+                      period.nextPeriodKey
+                        ? () => goToPeriod(period.nextPeriodKey as string)
+                        : undefined
+                    }
                   />
 
                   {!!activePeriodKey && (
@@ -575,35 +583,6 @@ export function LedgerPage() {
                       onSelect={(id) => void setPostingId(id)}
                       bookTimeZone={bookTimeZone}
                     />
-                  )}
-
-                  {!!activePeriodKey && entry.blockers.length > 0 && (
-                    <Section
-                      title={
-                        entry.isSoftRefusal
-                          ? `There is nothing to post for ${periodLabel}`
-                          : `${periodLabel} cannot be closed yet`
-                      }
-                      icon={
-                        entry.isSoftRefusal ? (
-                          <CircleSlash className='size-4' />
-                        ) : (
-                          <Lock className='size-4' />
-                        )
-                      }
-                      description='Every refusal names what is missing and where it is fixed.'
-                      collapsible={false}>
-                      <EntryBlockers
-                        blockers={entry.blockers}
-                        onFix={(item) => setFixing(item.key as FixableBlockerItemKey)}
-                        onReviewLock={revealLock}
-                        onNextPeriod={
-                          period.nextPeriodKey
-                            ? () => goToPeriod(period.nextPeriodKey as string)
-                            : undefined
-                        }
-                      />
-                    </Section>
                   )}
 
                   {!!activePeriodKey && (

@@ -7,10 +7,7 @@ import { TreeRow } from '@auxx/ui/components/tree-row'
 import { CloudOff, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
-
-/** The `warning` Alert's palette. Names the hover fill too, or the tint drops on hover. */
-const WARNING_ROW =
-  'bg-yellow-50 text-yellow-700 hover:bg-yellow-100 dark:bg-yellow-950/20 dark:text-yellow-500 dark:hover:bg-yellow-950/40'
+import { WARNING_ROW } from '../tone-rows'
 
 export interface ProviderSyncMarkerProps {
   /**
