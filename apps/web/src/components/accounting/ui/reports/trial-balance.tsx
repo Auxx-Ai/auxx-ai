@@ -16,11 +16,10 @@ import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { AccountLinesDialog, type AccountLinesDialogTarget } from './account-lines-dialog'
-import { CompletenessBanner } from './completeness-banner'
-import { ProviderSyncMarker } from './provider-sync-marker'
 import { ReportErrorCard } from './report-error-card'
 import { periodEndDate, periodKeyFromDate, toStatementTableRows } from './report-helpers'
 import { ReportToolbar } from './report-toolbar'
+import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
 
 /**
@@ -87,8 +86,7 @@ export function TrialBalanceReportPage() {
       />
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
-          <CompletenessBanner asOf={asOf} />
-          <ProviderSyncMarker through={asOf} />
+          <StatementNotices through={asOf} />
           {period.isLoading ? (
             <Skeleton className='h-64 w-full' />
           ) : !asOf ? (
@@ -127,7 +125,18 @@ export function TrialBalanceReportPage() {
               rows={rows}
               currency={period.currencyCode}
               verdict={
-                query.data ? { label: 'Debits = Credits', ok: query.data.balanced } : undefined
+                // The copy STATES the outcome rather than naming the test
+                // ("Debits = Credits" was ambiguous the moment it went red).
+                // The mark is read on hover, so its sentence has to stand alone.
+                query.data
+                  ? query.data.balanced
+                    ? { label: 'Balanced.', ok: true, detail: 'Debits equal credits.' }
+                    : {
+                        label: 'Out of balance.',
+                        ok: false,
+                        detail: 'Debits do not equal credits.',
+                      }
+                  : undefined
               }
               onRowClick={(row) =>
                 row.meta?.glAccountId

@@ -288,6 +288,20 @@ export interface ProviderSyncMarker {
   providerId: string
   /** `YYYY-MM-DD`, or null when the sync has never completed a chunk. */
   syncedThrough: string | null
+  /**
+   * Today, `YYYY-MM-DD`, in the organization's BOOK time zone.
+   *
+   * 🛑 Carried on the marker rather than taken from a clock where the sentence
+   * is rendered, and there are two reasons. One: the screen and the statement
+   * PDF must not disagree about what day it is, and one of them runs in a
+   * browser in whatever zone the reader is sitting in. Two: the day that
+   * matters is the accounting day - a statement read at 9pm on the 30th in
+   * Los Angeles is not yet reading October's books if the books are kept in
+   * New York.
+   *
+   * See {@link describeProviderSyncCoverage} for what it is compared against.
+   */
+  today: string
 }
 
 /**
@@ -297,6 +311,9 @@ export interface ProviderSyncMarker {
  * say: a balance sheet as of 31 December, read on an org synced through
  * 30 November, is missing every entry the accountant has authored in between
  * and will change once the sync passes over it.
+ *
+ * ⚠️ `behind` is about a gap that has ALREADY HAPPENED - see the horizon in
+ * {@link describeProviderSyncCoverage}.
  */
 export type ProviderSyncCoverage = 'not_connected' | 'never_synced' | 'behind' | 'current'
 
@@ -326,7 +343,26 @@ export function providerDisplayName(providerId: string): string {
  * parsing either into a `Date` here would re-introduce the timezone bug that
  * puts 31 December into November for half the world.
  *
- * @param marker what {@link ProviderSyncMarker} the org holds
+ * ## The horizon: the earlier of the statement's end and TODAY
+ *
+ * 🛑 A statement is behind only for days that have already happened. Every
+ * report page defaults to the CURRENT period, so `statementThrough` is the last
+ * day of this month - and compared against that alone, an org synced through
+ * this morning reads as "Incomplete after <today>" on the default view of every
+ * statement, all month, every month. The gap it named was the rest of the
+ * month: days on which the accountant cannot have authored anything yet,
+ * because they have not happened.
+ *
+ * A warning that is on by default and cannot be cleared teaches a reader to
+ * stop reading warnings, which is the same argument `syncQueueRailSentence`
+ * makes for saying nothing about an empty queue. So the marker is compared
+ * against `min(statementThrough, today)`: a September statement on an org
+ * synced through today is `current` and says so in one quiet line, and the
+ * moment the sync falls a day behind - or the reader opens a December statement
+ * in an org read through November - it is `behind` again.
+ *
+ * @param marker what {@link ProviderSyncMarker} the org holds, including its
+ *   own `today` (the book time zone's, not the reader's)
  * @param statementThrough the LAST date this statement covers - `asOf` for a
  *   balance sheet or an aging, `to` for a P&L or a general ledger. An empty
  *   string (no period resolved yet) reads as `current`, because a statement
@@ -352,7 +388,11 @@ export function describeProviderSyncCoverage(
     }
   }
 
-  if (statementThrough && statementThrough > marker.syncedThrough) {
+  // The earlier of the two ends, per the horizon above. Both are `YYYY-MM-DD`,
+  // so `<` is a date comparison.
+  const horizon = statementThrough < marker.today || !marker.today ? statementThrough : marker.today
+
+  if (statementThrough && horizon > marker.syncedThrough) {
     return {
       coverage: 'behind',
       headline: `Incomplete after ${marker.syncedThrough}`,

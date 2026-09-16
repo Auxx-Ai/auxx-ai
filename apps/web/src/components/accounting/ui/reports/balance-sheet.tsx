@@ -16,8 +16,6 @@ import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { AccountLinesDialog, type AccountLinesDialogTarget } from './account-lines-dialog'
-import { CompletenessBanner } from './completeness-banner'
-import { ProviderSyncMarker } from './provider-sync-marker'
 import { ReportErrorCard } from './report-error-card'
 import {
   type CompareOption,
@@ -27,6 +25,7 @@ import {
   toStatementTableRows,
 } from './report-helpers'
 import { ReportToolbar } from './report-toolbar'
+import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
 
 /**
@@ -35,7 +34,7 @@ import { StatementTable } from './statement-table'
  * The computed retained-earnings rows and their "computed from the P&L, not
  * a posted balance" tooltip already come from `toBalanceSheetRows` via
  * `StatementRow.meta.note`, which `StatementTable` renders on its own - this
- * page only adds the "Assets = Liabilities + Equity" verdict strip on top of
+ * page only adds the "Assets = Liabilities + Equity" verdict on top of
  * the read's own `verdict` boolean.
  */
 export function BalanceSheetReportPage() {
@@ -99,8 +98,7 @@ export function BalanceSheetReportPage() {
       />
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
-          <CompletenessBanner asOf={asOf} />
-          <ProviderSyncMarker through={asOf} />
+          <StatementNotices through={asOf} />
           {period.isLoading ? (
             <Skeleton className='h-64 w-full' />
           ) : !asOf ? (
@@ -137,8 +135,19 @@ export function BalanceSheetReportPage() {
               rows={rows}
               currency={period.currencyCode}
               verdict={
+                // States the outcome, not the test - see `trial-balance.tsx`.
                 query.data
-                  ? { label: 'Assets = Liabilities + Equity', ok: query.data.verdict }
+                  ? query.data.verdict
+                    ? {
+                        label: 'Balanced.',
+                        ok: true,
+                        detail: 'Assets equal liabilities plus equity.',
+                      }
+                    : {
+                        label: 'Out of balance.',
+                        ok: false,
+                        detail: 'Assets do not equal liabilities plus equity.',
+                      }
                   : undefined
               }
               onRowClick={(row) =>

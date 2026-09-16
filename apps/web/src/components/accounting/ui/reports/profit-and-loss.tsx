@@ -16,8 +16,6 @@ import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { AccountLinesDialog, type AccountLinesDialogTarget } from './account-lines-dialog'
-import { CompletenessBanner } from './completeness-banner'
-import { ProviderSyncMarker } from './provider-sync-marker'
 import { ReportErrorCard } from './report-error-card'
 import {
   type CompareOption,
@@ -29,6 +27,7 @@ import {
   toStatementTableRows,
 } from './report-helpers'
 import { ReportToolbar } from './report-toolbar'
+import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
 
 /**
@@ -110,8 +109,7 @@ export function ProfitAndLossReportPage() {
       />
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
-          <CompletenessBanner asOf={to} />
-          <ProviderSyncMarker through={to} />
+          <StatementNotices through={to} />
           {period.isLoading ? (
             <Skeleton className='h-64 w-full' />
           ) : !from || !to ? (

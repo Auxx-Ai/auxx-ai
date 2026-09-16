@@ -324,7 +324,7 @@ const STATUS_LABEL: Record<PostingDetail['status'], string> = {
  * somebody can flip, and a posting type that is never exported at all have
  * three different remedies, and merging them makes the remedy unguessable.
  *
- * 🛑 `not_exported` is checked FIRST among the three, because a `'none'`-routed
+ * 🛑 `not_exported` is checked FIRST of all, because a `'none'`-routed
  * row is indistinguishable from a disconnected org by `providerId` alone: both
  * store `'none'`. Only the posting type separates them, which is why this reads
  * the route table rather than guessing from the row (brief 22 §5).
@@ -350,6 +350,16 @@ function providerResultFromDetail(detail: {
   if (detail.exportStatus === 'failed') {
     return { ...base, status: 'error', error: detail.failureReason ?? undefined }
   }
+  // 🛑 BEFORE the `providerEntryId` check, not after it. On a `'none'`-routed
+  // type that id means the OPPOSITE of what it means everywhere else: for a
+  // `provider_sync` row it is THEIR transaction id, stamped on the way IN as
+  // provenance and as the re-read key (`provider-sync/writes.ts:153`), not an
+  // id the provider handed back on a create. Checked in the old order, every
+  // entry read off QuickBooks reported "recorded here and pushed to the
+  // accounting system" - the exact inversion of what happened to it.
+  if (EXPORT_ROUTE_BY_POSTING_TYPE[detail.postingType as PostingType] === 'none') {
+    return { ...base, status: 'not_exported' }
+  }
   if (detail.providerEntryId) {
     // The tenant travels WITH the id, always. An id handed on without the
     // company it belongs to is what the callout cannot tell apart from an id
@@ -360,9 +370,6 @@ function providerResultFromDetail(detail: {
       providerEntryId: detail.providerEntryId,
       providerTenantId: detail.providerTenantId ?? undefined,
     }
-  }
-  if (EXPORT_ROUTE_BY_POSTING_TYPE[detail.postingType as PostingType] === 'none') {
-    return { ...base, status: 'not_exported' }
   }
   if (detail.exportStatus === 'not_required' && (!providerId || providerId === 'none')) {
     return { ...base, status: 'not_connected' }

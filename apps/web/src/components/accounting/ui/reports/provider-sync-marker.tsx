@@ -3,9 +3,22 @@
 'use client'
 
 import { describeProviderSyncCoverage } from '@auxx/lib/postings/client'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { TreeRow } from '@auxx/ui/components/tree-row'
 import { CloudOff, RefreshCw, TriangleAlert } from 'lucide-react'
+import { useState } from 'react'
 import { api } from '~/trpc/react'
+
+/**
+ * The amber, on the row itself.
+ *
+ * `TreeRow`'s own line is `text-muted-foreground hover:bg-background`, so a
+ * tone has to name the resting fill, the hover fill and the text in both
+ * schemes or the row loses its tint the moment a cursor crosses it. The values
+ * are the `warning` `Alert` variant's, deliberately - this row replaced that
+ * Alert and must not read as a second, differently-yellow kind of warning.
+ */
+const WARNING_ROW =
+  'bg-yellow-50 text-yellow-700 hover:bg-yellow-100 dark:bg-yellow-950/20 dark:text-yellow-500 dark:hover:bg-yellow-950/40'
 
 export interface ProviderSyncMarkerProps {
   /**
@@ -47,6 +60,14 @@ export interface ProviderSyncMarkerProps {
  *     complete statement should not carry a box telling it so, the same
  *     argument `CompletenessBanner` makes by rendering nothing at all when
  *     there is nothing to say.
+ *
+ * 🛑 The two loud readings are a `TreeRow` ADJACENT to `CompletenessBanner`'s,
+ * not an `Alert`. The pair answer one question between them - "what should I
+ * know before reading these figures" - and as a tinted card above a bare row
+ * they read as two unrelated objects, the card shouting the smaller of the two
+ * facts. One row each, the detail under the chevron, and the amber lives in
+ * `WARNING_ROW` rather than in a box: the tone still separates it from the
+ * neutral row above at a glance without spending four lines to do it.
  */
 export function ProviderSyncMarker({ through }: ProviderSyncMarkerProps) {
   const { data } = api.ledgerReports.providerSyncMarker.useQuery(undefined, {
@@ -54,6 +75,7 @@ export function ProviderSyncMarker({ through }: ProviderSyncMarkerProps) {
     // this. One shared, long-lived entry rather than a request per page.
     staleTime: 60_000,
   })
+  const [isOpen, setIsOpen] = useState(false)
 
   if (!data?.connected || !through) return null
 
@@ -72,10 +94,23 @@ export function ProviderSyncMarker({ through }: ProviderSyncMarkerProps) {
   const Icon = reading.coverage === 'never_synced' ? CloudOff : TriangleAlert
 
   return (
-    <Alert variant='warning'>
-      <Icon />
-      <AlertTitle>{reading.headline}</AlertTitle>
-      {reading.detail && <AlertDescription>{reading.detail}</AlertDescription>}
-    </Alert>
+    <TreeRow
+      expandable={!!reading.detail}
+      isOpen={isOpen}
+      onToggleOpen={() => setIsOpen((open) => !open)}
+      rowClassName={WARNING_ROW}
+      icon={<Icon className='size-4 text-yellow-600 dark:text-yellow-500' />}
+      title={
+        <span className='truncate text-yellow-700 dark:text-yellow-500'>{reading.headline}</span>
+      }>
+      {/* The reading's own sentence, as prose rather than as a child row - it is
+          one explanation, not a list of items, which is the same split
+          `entry-blockers.tsx` makes between its rows and its guidance line.
+          `ps-6` clears the connector `BaseTreeRow` draws at the parent icon's
+          center; at `px-1` the line ran straight through the text. */}
+      {reading.detail && (
+        <p className='pe-2 pt-1 pb-2 ps-6 text-muted-foreground text-sm'>{reading.detail}</p>
+      )}
+    </TreeRow>
   )
 }

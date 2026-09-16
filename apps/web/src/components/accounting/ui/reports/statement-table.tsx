@@ -8,6 +8,7 @@ import { CurrencyInput, CurrencyInputField } from '@auxx/ui/components/input-cur
 import { InputGroup } from '@auxx/ui/components/input-group'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { CheckCircle2, Landmark, Search, TriangleAlert } from 'lucide-react'
@@ -72,11 +73,78 @@ export interface StatementColumn {
   signed?: boolean
 }
 
-/** The `entry-journal.tsx`-style verdict strip under the table. */
+/**
+ * The statement's own verdict - does it tie?
+ *
+ * 🛑 Rendered as a MARK ON THE TOTAL ROW (a check or a warning triangle beside
+ * its label, the text on hover), not as a strip under the table. The verdict is
+ * an assertion ABOUT the bottom line - "these two columns are equal", "assets
+ * equal liabilities plus equity" - and a banner floating below the frame made
+ * every statement in the app end in a coloured box restating a row that was
+ * already on screen. On the total row it is read where the figures it judges
+ * are read. See {@link StatementVerdictMark}.
+ *
+ * `label` is the verdict; `detail` is the follow-up sentence. Both land in the
+ * tooltip, so keep them short enough to read in one.
+ */
 export interface StatementVerdict {
   label: string
   ok: boolean
   detail?: string
+}
+
+/** `label` and `detail` as the one sentence the tooltip shows. PURE, exported for its tests. */
+export function verdictText(verdict: StatementVerdict): string {
+  return verdict.detail ? `${verdict.label} ${verdict.detail}` : verdict.label
+}
+
+/**
+ * The row the verdict rides on: the LAST top-level `total` row, which is a
+ * statement's bottom line (`Total liabilities and equity` on a balance sheet,
+ * `Totals` on a journal entry, `Total` on the trial balance and aging).
+ *
+ * Top level only, and last: a balance sheet carries a closing subtotal inside
+ * every section, and the assertion is about the figure the reader ends on.
+ *
+ * `undefined` when the statement has no total row at all - the provider
+ * agreement is a flat list of accounts - and `StatementTable` then falls back
+ * to the strip, because a verdict with nothing to attach to must not vanish.
+ *
+ * PURE and exported for its tests.
+ */
+export function verdictRowId(rows: readonly StatementRow[]): string | undefined {
+  for (let index = rows.length - 1; index >= 0; index--) {
+    const row = rows[index]
+    if (row?.kind === 'total') return row.id
+  }
+  return undefined
+}
+
+/**
+ * The verdict as one icon, for a total row's label.
+ *
+ * The text lives in the tooltip AND in `aria-label`, so the mark is never a
+ * colour-only signal: the shape differs (check vs triangle) and a screen reader
+ * reads the sentence off the trigger without opening anything.
+ */
+export function StatementVerdictMark({ verdict }: { verdict: StatementVerdict }) {
+  const text = verdictText(verdict)
+  return (
+    <SimpleTooltip content={text} variant={verdict.ok ? 'default' : 'destructive'}>
+      <span
+        aria-label={text}
+        role='img'
+        className='inline-flex shrink-0 cursor-default items-center align-middle'>
+        {verdict.ok ? (
+          // The `success` Alert's green, kept in step with it deliberately -
+          // this mark replaced that Alert and reads as the same verdict.
+          <CheckCircle2 className='size-4 text-green-600 dark:text-green-400' />
+        ) : (
+          <TriangleAlert className='size-4 text-destructive' />
+        )}
+      </span>
+    </SimpleTooltip>
+  )
 }
 
 export interface StatementTableProps {
@@ -175,6 +243,15 @@ export function StatementTable({
    * name left and right under the cursor.
    */
   const codeWidthCh = useMemo(() => maxAccountCodeLength(rows), [rows])
+
+  /**
+   * Which row wears the verdict, or `undefined` for the strip fallback.
+   *
+   * Measured on the WHOLE statement rather than the filtered rows only so the
+   * two answers cannot differ; while a search is active nothing is marked at
+   * all, for the reason the count below the table states.
+   */
+  const markedRowId = verdict && !query ? verdictRowId(rows) : undefined
 
   /**
    * Which parents are open.
@@ -289,6 +366,11 @@ export function StatementTable({
                 onCellChange={onCellChange}
                 onRowClick={onRowClick}
                 rowClassName={rowClassName}
+                verdictMark={
+                  verdict && row.id === markedRowId ? (
+                    <StatementVerdictMark verdict={verdict} />
+                  ) : undefined
+                }
               />
             ))
           )}
@@ -310,13 +392,15 @@ export function StatementTable({
         </p>
       )}
 
-      {verdict && !query && (
+      {/*
+        The FALLBACK, for a statement with no total row to mark (the provider
+        agreement, a flat list of accounts). Everything that ends in a bottom
+        line wears {@link StatementVerdictMark} on that row instead.
+      */}
+      {verdict && !query && !markedRowId && (
         <Alert variant={verdict.ok ? 'success' : 'destructive'}>
           {verdict.ok ? <CheckCircle2 /> : <TriangleAlert />}
-          <span>
-            {verdict.label}
-            {verdict.detail ? ` ${verdict.detail}` : ''}
-          </span>
+          <span>{verdictText(verdict)}</span>
         </Alert>
       )}
     </div>
@@ -338,6 +422,8 @@ interface StatementTableRowProps {
   onRowClick?: (row: StatementRow) => void
   /** Appended after the row's `kind` class. See `StatementTableProps`. */
   rowClassName?: string
+  /** The statement's verdict, on the one row that carries it. See {@link StatementVerdictMark}. */
+  verdictMark?: ReactNode
 }
 
 /**
@@ -361,6 +447,7 @@ function StatementTableRow({
   onCellChange,
   onRowClick,
   rowClassName,
+  verdictMark,
 }: StatementTableRowProps) {
   const editable = mode === 'edit' && EDITABLE_KINDS.has(row.kind)
   const clickable = !!onRowClick && row.kind !== 'section'
@@ -376,6 +463,17 @@ function StatementTableRow({
    */
   const showValues = row.kind !== 'section' || (hasChildren && !isOpen)
   const TypeIcon = row.meta?.accountType ? accountTypeIcon(row.meta.accountType) : Landmark
+
+  /** The label itself - an `AccountLabel` for an account row, the plain string otherwise. */
+  const labelNode = row.meta?.accountName ? (
+    <AccountLabel
+      account={{ code: row.meta.accountCode ?? null, name: row.meta.accountName }}
+      codeWidthCh={codeWidthCh}
+      className='min-w-0'
+    />
+  ) : (
+    row.label
+  )
 
   return (
     <TreeRow
@@ -410,14 +508,16 @@ function StatementTableRow({
         hasChildren ? () => onToggleOpen(row.id) : clickable ? () => onRowClick?.(row) : undefined
       }
       title={
-        row.meta?.accountName ? (
-          <AccountLabel
-            account={{ code: row.meta.accountCode ?? null, name: row.meta.accountName }}
-            codeWidthCh={codeWidthCh}
-            className='min-w-0'
-          />
+        verdictMark ? (
+          // Inline-flex, not flex: `TreeRow`'s title span truncates, and a
+          // block-level child inside it would take the full track and push the
+          // mark to the row's far edge instead of beside the word it judges.
+          <span className='inline-flex min-w-0 items-center gap-1.5'>
+            {labelNode}
+            {verdictMark}
+          </span>
         ) : (
-          row.label
+          labelNode
         )
       }
       secondary={row.meta?.badge}

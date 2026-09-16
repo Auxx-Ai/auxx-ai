@@ -4,7 +4,6 @@
 
 import type { ChartAccountRow, CounterpartyType, JournalEntryLine } from '@auxx/lib/postings/client'
 import { parseRecordId, toRecordId } from '@auxx/lib/resources/client'
-import { Alert } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -34,16 +33,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import {
-  CheckCircle2,
-  Ellipsis,
-  GripVertical,
-  Plus,
-  StickyNote,
-  Trash2,
-  TriangleAlert,
-  X,
-} from 'lucide-react'
+import { Ellipsis, GripVertical, Plus, StickyNote, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatAccountLabel } from '~/components/accounting/ui/account-label-format'
 import {
@@ -51,6 +41,7 @@ import {
   useChartAccounts,
 } from '~/components/accounting/ui/gl-account-picker'
 import { formatMinor } from '~/components/accounting/ui/ledger/format'
+import { StatementVerdictMark } from '~/components/accounting/ui/reports/statement-table'
 import { useLineNav } from '~/components/line-grid/hooks/use-line-nav'
 import { CurrencyCellInput } from '~/components/money/ui/line-builder/line-rows'
 import { RecordPicker } from '~/components/pickers/record-picker/record-picker'
@@ -757,8 +748,15 @@ export function JournalLines({ rows, onChange, currencyCode, disabled }: Journal
 }
 
 /**
- * The Debits / Credits / Difference verdict strip, copied from
- * `ledger/entry-journal.tsx`'s totals footer to match its look exactly.
+ * The totals line: the label, the verdict mark, the two figures.
+ *
+ * 🛑 Deliberately the same shape as `ledger/entry-journal.tsx`'s Totals row,
+ * which is a {@link StatementTable} `total` row wearing a
+ * {@link StatementVerdictMark}. The two are the SAME entry - one being typed,
+ * one already posted - and a reader who moves between them must not have to
+ * learn two ways of being told the thing balances. Which is also why the
+ * verdict is a mark beside the label and no longer an `Alert` under the grid:
+ * see `StatementVerdict`.
  */
 export function JournalLinesTotals({
   rows,
@@ -770,29 +768,30 @@ export function JournalLinesTotals({
   const totals = computeJournalLineTotals(rows)
 
   return (
-    <div className='flex flex-col gap-2'>
-      <div className='flex items-center justify-end gap-6 text-sm'>
+    <div className='flex items-center gap-1.5 px-1 text-sm'>
+      <span className='font-semibold text-foreground'>Totals</span>
+      <StatementVerdictMark
+        verdict={{
+          ok: totals.balanced,
+          label: totals.balanced
+            ? 'Balanced. Debits equal credits.'
+            : `Out of balance by ${formatMinor(totals.differenceMinor, currencyCode)}.`,
+        }}
+      />
+      <span className='ms-auto flex items-center gap-6'>
         <span className='text-muted-foreground'>
           Debits{' '}
-          <span className='font-mono tabular-nums text-foreground'>
+          <span className='font-mono text-foreground tabular-nums'>
             {formatMinor(totals.debitMinor, currencyCode)}
           </span>
         </span>
         <span className='text-muted-foreground'>
           Credits{' '}
-          <span className='font-mono tabular-nums text-foreground'>
+          <span className='font-mono text-foreground tabular-nums'>
             {formatMinor(totals.creditMinor, currencyCode)}
           </span>
         </span>
-      </div>
-      <Alert variant={totals.balanced ? 'success' : 'destructive'}>
-        {totals.balanced ? <CheckCircle2 /> : <TriangleAlert />}
-        <span>
-          {totals.balanced
-            ? 'Balanced. Debits equal credits.'
-            : `Out of balance by ${formatMinor(totals.differenceMinor, currencyCode)}.`}
-        </span>
-      </Alert>
+      </span>
     </div>
   )
 }

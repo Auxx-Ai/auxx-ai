@@ -22,7 +22,7 @@ interface EntryJournalProps {
 /**
  * The journal entry, in the accountant's indented layout: debits first and
  * flush left, credits indented beneath them, a totals row, and an explicit
- * balanced verdict.
+ * balanced verdict ON that totals row.
  *
  * 🛑 Rendered through {@link StatementTable}, NOT a `<table>` of its own. This
  * was the last hand-rolled money table in the subsystem - `ui-plan.md`'s own
@@ -30,9 +30,9 @@ interface EntryJournalProps {
  * hand-rolled (`entry-journal.tsx:100-110`)") - and §4.1's argument applies to
  * it exactly: a statement rendering as shadcn's bare `Table` sits in the same
  * drawer as the framed `TreeRow` lists everything else uses and reads as a
- * different product. The verdict strip below the table was always modelled on
- * this file; `StatementVerdict` is that idea, so it comes back here as a prop
- * rather than as a second `Alert`.
+ * different product. The verdict was always modelled on this file;
+ * `StatementVerdict` is that idea, so it comes back here as a prop rather than
+ * as a second `Alert`.
  *
  * 🛑 No number on this table is ever signed. `direction` is the only carrier of
  * sign in the whole postings module and `amount` is always positive, so a
@@ -44,7 +44,10 @@ interface EntryJournalProps {
  * ⚠️ The balanced verdict is stated rather than implied. `buildEntry` refuses to
  * return an unbalanced entry, so in practice this always reads "Balanced", but
  * a screen that shows totals and leaves the reader to compare them is asking for
- * the one mental step this section exists to remove.
+ * the one mental step this section exists to remove. It states it as a mark on
+ * the Totals row rather than a banner under the drawer: in a docked drawer the
+ * banner sat below the fold as often as not, and "Balanced" is the one word a
+ * reader wants beside the two figures it is about.
  */
 /**
  * Drops the `secondary` slot onto a SECOND LINE, under the account name.
