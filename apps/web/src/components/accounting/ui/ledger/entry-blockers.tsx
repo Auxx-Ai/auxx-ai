@@ -8,7 +8,7 @@ import type {
   PostResultStatus,
 } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
-import { GridTreeRow } from '@auxx/ui/components/tree-row'
+import { GridTreeRow, INDENT_REM } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import {
   Ban,
@@ -380,6 +380,15 @@ interface EntryBlockersProps {
    * month-end console's own `period_closed` card, which has no entry to re-date.
    */
   onPostToNextPeriod?: () => void
+  /**
+   * `bare` drops the framed card and starts each row CLOSED, for a host that has
+   * already named the refusal on a row of its own and nests these under it (the
+   * ledger closeout). Everywhere else the card is the whole statement of what
+   * went wrong and stays framed and open.
+   */
+  variant?: 'card' | 'bare'
+  /** Indent, for a `bare` list nested under the host's own row. */
+  depth?: number
 }
 
 /** Both levels share a grid, so every remedy button lands at the same x. */
@@ -412,6 +421,8 @@ export function EntryBlockers({
   onReviewLock,
   onNextPeriod,
   onPostToNextPeriod,
+  variant = 'card',
+  depth = 0,
 }: EntryBlockersProps) {
   if (blockers.length === 0) return null
 
@@ -424,6 +435,23 @@ export function EntryBlockers({
     (blocker) => (REMEDIES[blocker.status] ?? FALLBACK).tone === 'failure'
   )
 
+  const rows = blockers.map((blocker) => (
+    <BlockerRows
+      key={`${blocker.status}-${blocker.error}`}
+      blocker={blocker}
+      depth={depth}
+      defaultOpen={variant === 'card'}
+      onFix={onFix}
+      onReviewLock={onReviewLock}
+      onNextPeriod={onNextPeriod}
+      onPostToNextPeriod={onPostToNextPeriod}
+    />
+  ))
+
+  // No `role='alert'` on the bare variant: the host row that carries the
+  // refusal's name owns that, and two alerts for one refusal announce it twice.
+  if (variant === 'bare') return <div className='flex w-full flex-col'>{rows}</div>
+
   return (
     <div
       role='alert'
@@ -433,16 +461,7 @@ export function EntryBlockers({
           ? 'border-destructive/50 bg-destructive/5 dark:border-destructive'
           : 'bg-muted/40'
       )}>
-      {blockers.map((blocker) => (
-        <BlockerRows
-          key={`${blocker.status}-${blocker.error}`}
-          blocker={blocker}
-          onFix={onFix}
-          onReviewLock={onReviewLock}
-          onNextPeriod={onNextPeriod}
-          onPostToNextPeriod={onPostToNextPeriod}
-        />
-      ))}
+      {rows}
     </div>
   )
 }
@@ -450,24 +469,28 @@ export function EntryBlockers({
 /**
  * One refusal: a row naming it, and its work underneath.
  *
- * Open by default. A card whose entire purpose is to list what is outstanding
- * has nothing to gain from hiding it behind a chevron; the collapse is there for
- * a month refusing three different ways at once.
+ * Open by default in the `card` variant, where the card IS the statement of what
+ * went wrong and has nothing to gain from a chevron. `bare` starts closed: the
+ * host row above already names the refusal and carries the count.
  */
 function BlockerRows({
   blocker,
+  depth = 0,
+  defaultOpen = true,
   onFix,
   onReviewLock,
   onNextPeriod,
   onPostToNextPeriod,
 }: {
   blocker: LedgerBlocker
+  depth?: number
+  defaultOpen?: boolean
   onFix?: (item: CloseBlockerItem) => void
   onReviewLock?: () => void
   onNextPeriod?: () => void
   onPostToNextPeriod?: () => void
 }) {
-  const [isOpen, setIsOpen] = useState(true)
+  const [isOpen, setIsOpen] = useState(defaultOpen)
   const remedy = REMEDIES[blocker.status] ?? FALLBACK
   const items = blocker.items ?? []
   const Icon = remedy.icon
@@ -504,6 +527,7 @@ function BlockerRows({
   return (
     <GridTreeRow
       columns={COLUMNS}
+      depth={depth}
       expandable
       isOpen={isOpen}
       onToggleOpen={() => setIsOpen((open) => !open)}
@@ -526,7 +550,11 @@ function BlockerRows({
           {cardAction}
         </div>,
       ]}>
-      <div className='flex flex-col'>
+      {/* The prose below is indented with `ps-6`, which clears the connector
+          `BaseTreeRow` draws at the parent icon's center - but only at depth 0.
+          Shifting the whole block by the parent's own indent keeps that true at
+          any depth. */}
+      <div className='flex flex-col' style={{ paddingLeft: `${depth * INDENT_REM}rem` }}>
         {/* The server's own text, verbatim, for a refusal with no items: on an
             uncosted movement it names the row and on `setup_incomplete` it names
             every blank setting. Paraphrasing it would throw away the only part
