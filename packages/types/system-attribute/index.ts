@@ -505,7 +505,7 @@ export const SYSTEM_ATTRIBUTES = [
   'invoice_tax_total',
   'invoice_total',
   'invoice_amount_paid',
-  // Σ credit memo applications (plans/accounting/tasks/10-credit-memos.md
+  // Σ credit memo applications (plans/accounting/tasks/done/10-credit-memos.md
   // §2.3). An application posts no entry, so this is the only place the
   // invoice learns it was reduced: `syncInvoicePaymentState` writes it and
   // subtracts it from the balance.
@@ -617,7 +617,7 @@ export const SYSTEM_ATTRIBUTES = [
   'tax_line_channel_liable',
   'tax_line_order', // owning side; inverse of order_tax_lines
 
-  // ─── Credit memo (plans/accounting/tasks/10-credit-memos.md §2.1) ──
+  // ─── Credit memo (plans/accounting/tasks/done/10-credit-memos.md §2.1) ──
   // The mirror of an invoice: "you owe us less". ONE entity whether a person
   // issued a concession against an invoice (`native`) or the sales channel
   // already refunded the money (`channel`); `credit_memo_source` says which.
@@ -934,7 +934,7 @@ export const SYSTEM_ATTRIBUTES = [
   'order_build_revision',
   'build_order_revision',
 
-  // ─── Bank deposit (plans/accounting/tasks/06-deposit-grouping.md) ──
+  // ─── Bank deposit (plans/accounting/tasks/done/06-deposit-grouping.md) ──
   // Entity migration 125. Five cheques banked together arrive at the bank as
   // ONE line, so without this grouping the bank feed can only ever code a
   // receipt and never match it.
@@ -1156,7 +1156,7 @@ export const SYSTEM_ATTRIBUTES = [
   // where it ships from.
   'vendor_part_tariff_code',
 
-  // ─── Journal entry (plans/accounting/tasks/02-manual-journal-entry.md) ──
+  // ─── Journal entry (plans/accounting/tasks/done/02-manual-journal-entry.md) ──
   // Entity migration 125. The DRAFT of a hand-authored posting, and the holder
   // of the opening trial balance (HANDOFF decision 6.7).
   //

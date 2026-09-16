@@ -3,7 +3,7 @@
 /**
  * Bulk credit memo posting: one `credit_memo` entry per day or month over every
  * memo that no live posting claims
- * (`plans/accounting/tasks/25-batch-posting-and-credit-memos.md`).
+ * (`plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md`).
  *
  * The three halves, in the order a run uses them:
  *

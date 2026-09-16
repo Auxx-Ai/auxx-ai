@@ -3,7 +3,7 @@
 'use client'
 
 // Accounting > Banking > Deposits (plans/accounting/ui-plan.md §2.6,
-// plans/accounting/tasks/06-deposit-grouping.md).
+// plans/accounting/tasks/done/06-deposit-grouping.md).
 //
 // ## What this screen is for
 //

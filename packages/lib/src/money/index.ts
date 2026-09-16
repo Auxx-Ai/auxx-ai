@@ -16,7 +16,7 @@ export {
   setInvoiceSchedule,
   sweepInvoiceDrafts,
 } from './auto-invoice'
-// ─── Bank deposits (plans/accounting/tasks/06-deposit-grouping.md, slot 1D) ──
+// ─── Bank deposits (plans/accounting/tasks/done/06-deposit-grouping.md, slot 1D) ──
 // Appended as one block, per HANDOFF §9a's rule for shared barrels.
 export {
   BANK_DEPOSIT_SOURCE_TYPE,
@@ -122,7 +122,7 @@ export {
   runCreditMemoPosting,
   type UnpostedCreditMemoRange,
 } from './credit-memo-posting'
-// ─── Credit memos (plans/accounting/tasks/10-credit-memos.md) ──────────────
+// ─── Credit memos (plans/accounting/tasks/done/10-credit-memos.md) ──────────────
 // Appended as one block, per HANDOFF section 9a's rule for shared barrels.
 export {
   type ApplyCreditMemoInput,

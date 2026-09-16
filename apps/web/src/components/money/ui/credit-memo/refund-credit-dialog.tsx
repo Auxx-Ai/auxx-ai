@@ -1,7 +1,7 @@
 // apps/web/src/components/money/ui/credit-memo/refund-credit-dialog.tsx
 'use client'
 
-// Refund-credit dialog (plans/accounting/tasks/10-credit-memos.md §6.2), the
+// Refund-credit dialog (plans/accounting/tasks/done/10-credit-memos.md §6.2), the
 // `record-payment-dialog.tsx` FieldPanel recipe with a rail choice on top. The
 // money leg of a native memo is a `PaymentTransaction` of `kind: 'refund'`
 // (§5.3): back onto the original Stripe charge when the linked invoice has a

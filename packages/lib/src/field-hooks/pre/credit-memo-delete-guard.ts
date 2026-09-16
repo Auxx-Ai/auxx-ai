@@ -10,7 +10,7 @@ import { unwrapStatusValue } from '../../resources/events/captured-values'
 import type { EntityPreDeleteEvent, EntityPreDeleteHandler } from '../types'
 
 /**
- * Pre-delete guard for `credit-memos` (plans/accounting/tasks/10-credit-memos.md
+ * Pre-delete guard for `credit-memos` (plans/accounting/tasks/done/10-credit-memos.md
  * section 2.6), registered like the invoice guard. Fires inside `deleteEntity`
  * for EVERY delete path - the generic `record.delete` the drawer's Discard
  * uses, bulk delete, Kopilot, the API - and for the memo when an ORDER is

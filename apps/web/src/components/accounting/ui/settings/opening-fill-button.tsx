@@ -2,7 +2,7 @@
 'use client'
 
 // One component, two doors onto the same mutation, exactly like
-// `ImportChartButton` (plans/accounting/tasks/19-opening-balances-from-the-provider.md
+// `ImportChartButton` (plans/accounting/tasks/done/19-opening-balances-from-the-provider.md
 // section 4.7): the wizard's opening trial balance page and the settings twin
 // both render this, so a provider fill looks and reads identically on either
 // door.

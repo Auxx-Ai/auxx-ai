@@ -2,7 +2,7 @@
 
 /**
  * Bank deposits: grouping received payments into the one line the bank shows
- * (plans/accounting/tasks/06-deposit-grouping.md).
+ * (plans/accounting/tasks/done/06-deposit-grouping.md).
  *
  * ⚠️ A BANK deposit, never a customer deposit. `money/payments/deposit.ts` is
  * money taken before delivery, a liability against `2350 Customer Deposits`.

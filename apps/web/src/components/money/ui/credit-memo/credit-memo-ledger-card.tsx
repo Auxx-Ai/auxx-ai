@@ -2,7 +2,7 @@
 'use client'
 
 // `credit_memo:ledger`, read by STAMP rather than by source line
-// (plans/accounting/tasks/25-batch-posting-and-credit-memos.md §3.3, §4).
+// (plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md §3.3, §4).
 //
 // 🛑 **Why this card cannot just be `<LedgerCard sourceType='credit_memo' />`.**
 // That card asks "which postings have a line naming this record as their

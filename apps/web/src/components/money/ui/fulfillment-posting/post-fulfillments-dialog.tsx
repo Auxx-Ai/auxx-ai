@@ -2,7 +2,7 @@
 'use client'
 
 // The bulk fulfillment posting dialog: the shared frame plus this source's
-// registration (plans/accounting/tasks/25-batch-posting-and-credit-memos.md
+// registration (plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md
 // §5.1). Everything that used to live here is in
 // `~/components/money/ui/batch-posting/`; what is genuinely fulfillment's is in
 // `fulfillment-source.tsx` and `fulfillment-plan-table.tsx`.

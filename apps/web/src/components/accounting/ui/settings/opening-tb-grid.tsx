@@ -155,7 +155,7 @@ export function overlayInventorySettings(
 /**
  * The evidence-rule sentence that tells a person what number belongs in the
  * grid, branched on where the grid's numbers came from
- * (plans/accounting/tasks/19-opening-balances-from-the-provider.md section
+ * (plans/accounting/tasks/done/19-opening-balances-from-the-provider.md section
  * 4.8).
  *
  * 🛑 Both strings live here, not inlined at either call site. The wizard page

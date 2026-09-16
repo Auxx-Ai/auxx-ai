@@ -10,7 +10,7 @@
 // one thing on this page.
 //
 // 🛑 Every write here is on `ledgerControl`, the Full rung of the ledger area
-// (plans/accounting/tasks/12-accountant-permissions.md §4.3), and not because
+// (plans/accounting/tasks/done/12-accountant-permissions.md §4.3), and not because
 // it produces a posting. Mapping a bank account to a GL code decides where
 // CASH lands on the balance sheet; routing that through a records-grade
 // capability would let records-Full / ledger-None move the org's cash account.

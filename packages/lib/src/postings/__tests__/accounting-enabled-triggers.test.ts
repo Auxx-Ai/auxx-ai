@@ -1,6 +1,6 @@
 // packages/lib/src/postings/__tests__/accounting-enabled-triggers.test.ts
 //
-// plans/accounting/tasks/17-accounting-is-opt-in.md section 3, and the exact-set
+// plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3, and the exact-set
 // model of `types.test.ts`: every document-driven posting trigger the brief
 // names must import `isAccountingEnabled` and check it before it builds an
 // entry. A source scan rather than a runtime call, so a new trigger copied from

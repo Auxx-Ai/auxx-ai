@@ -9,7 +9,7 @@
 // `Result` (the money module's local style for a document action). No
 // permission checks here - the router asserts (`docs/lib-module-guide.md` §6).
 //
-// plans/accounting/tasks/10-credit-memos.md sections 2.4, 3.1, 5.1 and 10.7.
+// plans/accounting/tasks/done/10-credit-memos.md sections 2.4, 3.1, 5.1 and 10.7.
 
 import { type Database, database, schema } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'

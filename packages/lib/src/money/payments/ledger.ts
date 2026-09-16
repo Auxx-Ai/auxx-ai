@@ -230,7 +230,7 @@ const TERMINAL_INVOICE_STATUSES = new Set(['void', 'written_off'])
  * {@link INVOICE_STATUS_BYPASS} for the field pre-hook, which that path does NOT clear on its
  * own. Only writes fields that actually changed, to avoid no-op event churn.
  *
- * `balance = total - amountPaid - amountCredited` (plans/accounting/tasks/10-credit-memos.md
+ * `balance = total - amountPaid - amountCredited` (plans/accounting/tasks/done/10-credit-memos.md
  * §2.3). Credit applied from a memo settles the invoice the way money does, with the same
  * status flips: `paid` once the balance reaches zero and anything at all was paid or
  * credited, `partially_paid` while something was and the balance is still positive, and
@@ -436,7 +436,7 @@ export async function syncTransaction(params: {
     // this function, so the split costs nothing here; crediting the whole
     // receipt to `accounts_receivable` drives A/R negative by the deposit book
     // and leaves `2350` at zero, with both entries balancing
-    // (plans/accounting/tasks/07-customer-deposits.md).
+    // (plans/accounting/tasks/done/07-customer-deposits.md).
     allocatedMinor,
   })
 
@@ -700,7 +700,7 @@ export interface CreditMemoForRefund {
 
 /**
  * Read the memo a refund is about to settle and refuse what neither rail may do
- * (plans/accounting/tasks/10-credit-memos.md §2.4, §5.3): a memo that is not
+ * (plans/accounting/tasks/done/10-credit-memos.md §2.4, §5.3): a memo that is not
  * `issued` has nothing to give back (`draft` is unposted, `settled` has a zero
  * balance, `void` was reversed), and a refund may not exceed the balance the
  * settlement writer last derived. Shared by `recordManualRefund` and the Stripe
@@ -752,7 +752,7 @@ export interface RecordManualRefundInput extends MoneyMutationInput {
 
 /**
  * Record a manual (cash/check/card/bank/other) refund against an issued credit memo
- * (plans/accounting/tasks/10-credit-memos.md §5.3): the money leg of a native memo.
+ * (plans/accounting/tasks/done/10-credit-memos.md §5.3): the money leg of a native memo.
  * Inserts a `succeeded` `manual` `refund` row carrying the memo, the memo's contact and,
  * when the memo was raised against an invoice, that invoice as the row's intent, then
  * syncs. Mirrors `recordManualPayment` for validation and for how it reaches the

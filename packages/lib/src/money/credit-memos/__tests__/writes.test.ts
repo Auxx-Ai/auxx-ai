@@ -1,12 +1,12 @@
 // packages/lib/src/money/credit-memos/__tests__/writes.test.ts
 //
-// plans/accounting/tasks/17-accounting-is-opt-in.md section 3: `issueCreditMemo`
+// plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3: `issueCreditMemo`
 // checks the accounting-off case before `orderHadFulfillmentBefore` (a read
 // that exists only to decide the builder's `reverseRevenue`) and before the
 // builder itself - so a native credit memo issues on an org that has never
 // turned accounting on exactly as it would on one that has.
 //
-// plans/accounting/tasks/25-batch-posting-and-credit-memos.md section 2.1:
+// plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md section 2.1:
 // `voidCreditMemo` REFUSES a memo whose live posting summarises it, rather than
 // reversing a period entry that covers hundreds of other memos.
 

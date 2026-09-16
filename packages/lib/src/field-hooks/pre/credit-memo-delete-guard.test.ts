@@ -2,7 +2,7 @@
 // The guard that stops a credit memo being hard-deleted once it is in the
 // books, dated in a settled month, or refunded.
 //
-// plans/accounting/tasks/10-credit-memos.md section 2.6. Same shape as the
+// plans/accounting/tasks/done/10-credit-memos.md section 2.6. Same shape as the
 // vendor bill guard's test: the period predicates are driven through the real
 // `settledPeriodsFor` with its three inputs mocked, and the refund read is a
 // separate `select()` chain so a test cannot confuse the two.

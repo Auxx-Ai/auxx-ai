@@ -1,6 +1,6 @@
 // packages/lib/src/money/invoices/__tests__/post-invoice.test.ts
 //
-// plans/accounting/tasks/17-accounting-is-opt-in.md section 3: `postInvoiceIssuance`
+// plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3: `postInvoiceIssuance`
 // is a pure ledger writer with no other side effect, so the accounting-off case
 // is checked before ANY read - including the one that loads the invoice's own
 // totals, which exists only to build the entry.

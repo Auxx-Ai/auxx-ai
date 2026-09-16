@@ -1,7 +1,7 @@
 // packages/lib/src/postings/default-chart.ts
 //
 // The default chart of accounts auxx.ai seeds into an organization, declared
-// as PACKS (plans/accounting/tasks/16-the-chart-of-accounts.md §1 and §3.2).
+// as PACKS (plans/accounting/tasks/done/16-the-chart-of-accounts.md §1 and §3.2).
 //
 // PURE DATA. No database, no io - `postings/` already owns the account
 // vocabulary (`ACCOUNT_ROLES` in build-entry.ts), the period keyspace and the
@@ -329,7 +329,7 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
   },
   {
     // The service side's revenue, credited when an INVOICE is issued
-    // (plans/accounting/tasks/08-invoice-revenue.md). Separate from `4000` and
+    // (plans/accounting/tasks/done/08-invoice-revenue.md). Separate from `4000` and
     // `4010` because those are the product side and are credited on SHIPMENT
     // by the fulfillment entry; an invoice has no shipment, so issuance is the
     // only event there is.
@@ -990,7 +990,7 @@ const DEBT_ACCOUNTS: readonly DefaultChartAccount[] = [
  *
  * @see ACCOUNT_ROLES in `build-entry.ts` for what each role means
  * @see plans/money/accrual-accounting-plan.html §2 for the accounting argument
- * @see plans/accounting/tasks/16-the-chart-of-accounts.md §1 for the packs
+ * @see plans/accounting/tasks/done/16-the-chart-of-accounts.md §1 for the packs
  */
 export const CHART_PACKS: Record<ChartPackKey, ChartPack> = {
   core: {

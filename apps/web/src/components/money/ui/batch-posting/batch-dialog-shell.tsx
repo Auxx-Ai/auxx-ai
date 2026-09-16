@@ -4,7 +4,7 @@
 // The CHROME every batch dialog wears: the two-page shell, the footer bar and
 // the result page's scroll-and-actions wrapper.
 //
-// (plans/accounting/tasks/25-batch-posting-and-credit-memos.md §5.1 - *"the
+// (plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md §5.1 - *"the
 // whole dialog"* - and §5.2's warning about where that stops.)
 //
 // ## Why this is separate from `BatchPostingSource`

@@ -37,7 +37,7 @@
  * `[ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS]`. Until then that map entry stays
  * `[]`, which is correct: a dark leg drives nothing.
  * See `docs/inventory-costing-architecture-guide.md` §9.3 and
- * `plans/accounting/tasks/01-post-revenue-to-the-ledger.md` §1.1.
+ * `plans/accounting/tasks/done/01-post-revenue-to-the-ledger.md` §1.1.
  *
  * ## Recognition is on SHIPMENT for GOODS, never on the invoice
  *
@@ -56,7 +56,7 @@
  * revenue lands on `4000` from here; service revenue lands on `4030`
  * from there.
  *
- * @see plans/accounting/tasks/01-post-revenue-to-the-ledger.md
+ * @see plans/accounting/tasks/done/01-post-revenue-to-the-ledger.md
  */
 
 import { UnprocessableEntityError } from '../errors'

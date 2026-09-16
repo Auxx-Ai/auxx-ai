@@ -270,7 +270,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
           permissionKey: 'dispatch.board.view',
         },
         // The memos raised against this invoice and the credit applied to it
-        // (plans/accounting/tasks/10-credit-memos.md §6.1).
+        // (plans/accounting/tasks/done/10-credit-memos.md §6.1).
         {
           value: 'credits',
           label: 'Credits',
@@ -285,7 +285,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     },
   },
 
-  // The mirror of an invoice (plans/accounting/tasks/10-credit-memos.md §6.2).
+  // The mirror of an invoice (plans/accounting/tasks/done/10-credit-memos.md §6.2).
   // Drawer-only, like the invoice: lines with the Issue / Send / Void / Discard
   // cluster, the settlement card (apply, hold, refund), and the postings the
   // issue entry filed under the memo.

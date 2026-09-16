@@ -1,6 +1,6 @@
 // packages/lib/src/postings/__tests__/accounting-enabled.test.ts
 //
-// plans/accounting/tasks/17-accounting-is-opt-in.md section 3.
+// plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

@@ -331,7 +331,7 @@ describe('saveAppConnection — connection-identify dedup', () => {
 })
 
 /**
- * The reconnect guard (plans/accounting/tasks/24-the-company-on-the-entry.md §3).
+ * The reconnect guard (plans/accounting/tasks/done/24-the-company-on-the-entry.md §3).
  *
  * A reconnect keeps the credential id, and connection-scoped `CustomField` rows are keyed
  * on that id. So a reconnect that lands on a DIFFERENT provider account leaves every stored

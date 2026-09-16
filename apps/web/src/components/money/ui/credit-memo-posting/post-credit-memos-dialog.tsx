@@ -2,7 +2,7 @@
 'use client'
 
 // The bulk credit memo posting dialog: the shared frame plus this source's
-// registration (plans/accounting/tasks/25-batch-posting-and-credit-memos.md
+// registration (plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md
 // §5.1). What is genuinely the credit memo poster's is in `credit-memo-source.tsx`
 // and `credit-memo-plan-table.tsx`; everything else is
 // `~/components/money/ui/batch-posting/`.

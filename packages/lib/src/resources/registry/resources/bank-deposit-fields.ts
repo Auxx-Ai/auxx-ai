@@ -12,7 +12,7 @@ import type { ResourceField } from '../field-types'
  *
  * Two values and no `void`: a deposit is corrected by reversing its posting and
  * regrouping the payments, never by editing the row
- * (plans/accounting/tasks/06-deposit-grouping.md §3).
+ * (plans/accounting/tasks/done/06-deposit-grouping.md §3).
  */
 export const BANK_DEPOSIT_STATUS_OPTIONS = [
   { label: 'Pending', value: 'pending', color: 'amber' },
@@ -21,7 +21,7 @@ export const BANK_DEPOSIT_STATUS_OPTIONS = [
 
 /**
  * Field definitions for the Bank Deposit resource
- * (plans/accounting/tasks/06-deposit-grouping.md §2.2).
+ * (plans/accounting/tasks/done/06-deposit-grouping.md §2.2).
  *
  * ## Why this entity exists at all
  *

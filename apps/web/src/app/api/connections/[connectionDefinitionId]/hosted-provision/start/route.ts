@@ -123,7 +123,7 @@ export async function GET(
       // settings page - so any signed-in member could navigate to
       // `/api/connections/stripeConnect/hosted-provision/start` and take the
       // workspace through Stripe Connect onboarding. That was recorded as a
-      // known open item (plans/accounting/tasks/12-accountant-permissions.md
+      // known open item (plans/accounting/tasks/done/12-accountant-permissions.md
       // §11.6, HANDOFF §21) rather than fixed, on the grounds that the money
       // plan should pick its key. `integrationsManage` is not that key and does
       // not pre-empt it: an admin holds it either way, and narrowing it later to

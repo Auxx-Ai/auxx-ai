@@ -34,7 +34,7 @@ const logger = createScopedLogger('api-settings')
  * inexpressible. `mailClassification.setInboxEnabled` is the only door.
  *
  * `ledger.lockedThroughMonth` is the accounting period lock
- * (plans/accounting/tasks/12-accountant-permissions.md §0.4/§4.4). It is
+ * (plans/accounting/tasks/done/12-accountant-permissions.md §0.4/§4.4). It is
  * gated on `ledgerControl`, not `settingsManage`. Closing a period is the
  * single most characteristic act of an accountant, and leaving this door open
  * would hand a `settings.manage` holder with no ledger access the ability to

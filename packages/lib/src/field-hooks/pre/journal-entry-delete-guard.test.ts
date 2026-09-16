@@ -1,7 +1,7 @@
 // packages/lib/src/field-hooks/pre/journal-entry-delete-guard.test.ts
 //
 // The guard that stops a journal entry being hard-deleted once it has reached
-// the ledger (plans/accounting/tasks/09-discard-a-draft-entry.md §3.3, §4).
+// the ledger (plans/accounting/tasks/done/09-discard-a-draft-entry.md §3.3, §4).
 //
 // 🛑 `discardJournalEntry` is not the only door. `journal_entry` is an
 // `EntityInstance`, so the GENERIC `record.delete`, a bulk delete and any

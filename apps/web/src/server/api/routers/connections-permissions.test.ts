@@ -563,7 +563,7 @@ describe('connections.test', () => {
  * release door in `banking/feed/reaper.ts` can ever find the account again and Stripe bills
  * 30c per institution per month forever.
  *
- * See plans/accounting/tasks/24-the-company-on-the-entry.md §5.
+ * See plans/accounting/tasks/done/24-the-company-on-the-entry.md §5.
  */
 describe('connections.delete — connector dependency', () => {
   it('refuses a credential that backs a connector, and deletes nothing', async () => {

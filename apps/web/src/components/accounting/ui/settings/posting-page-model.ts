@@ -1,7 +1,7 @@
 // apps/web/src/components/accounting/ui/settings/posting-page-model.ts
 
 // What the Posting settings page and the posting guide share
-// (plans/accounting/tasks/28-how-your-books-post.md §3, §4).
+// (plans/accounting/tasks/done/28-how-your-books-post.md §3, §4).
 //
 // Both screens render `POSTING_POLICY` and nothing else says what a posting
 // type does. What lives HERE is the chrome around the policy: the order the

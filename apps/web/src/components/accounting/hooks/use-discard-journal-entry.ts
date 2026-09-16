@@ -39,7 +39,7 @@ export interface DiscardJournalEntryState {
 /**
  * The Discard action, shared by the two doors a draft is reachable from - the
  * journal-entry drawer and the ledger page's Entries list
- * (plans/accounting/tasks/09-discard-a-draft-entry.md §3.4).
+ * (plans/accounting/tasks/done/09-discard-a-draft-entry.md §3.4).
  *
  * One hook rather than two copies, because the two doors have to agree on the
  * confirm copy: a person who discards from the row and a person who discards

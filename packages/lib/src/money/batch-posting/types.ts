@@ -3,7 +3,7 @@
 /**
  * The vocabulary the bulk posters share.
  *
- * `plans/accounting/tasks/25-batch-posting-and-credit-memos.md` §5.
+ * `plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md` §5.
  *
  * 🛑 **Thin on purpose, and it stays thin (§5.0).** Three modules now have the
  * same SHAPE - `builds/backfill-*`, `money/fulfillment-posting/` and

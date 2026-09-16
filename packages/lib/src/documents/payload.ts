@@ -1486,7 +1486,7 @@ export async function buildBankDepositPdfPayload(params: {
   return { payload, hash: stableHash(payload) }
 }
 
-// ─── Credit memo (plans/accounting/tasks/10-credit-memos.md §6.3) ─────────────
+// ─── Credit memo (plans/accounting/tasks/done/10-credit-memos.md §6.3) ─────────────
 
 /**
  * One credited line on the credit memo PDF. Deliberately not {@link QuotePdfLineItem}: a
@@ -1672,7 +1672,7 @@ async function loadCreditMemoPdfLines(
  * Load a credit memo + its lines + its contact + the linked invoice's number, embed the
  * org's resolved document settings, and hash the whole thing with `stableHash` for the
  * render-or-reuse cache check: the credit-side analog of {@link buildInvoicePdfPayload}
- * (plans/accounting/tasks/10-credit-memos.md §6.3).
+ * (plans/accounting/tasks/done/10-credit-memos.md §6.3).
  *
  * Totals are transcribed from the stored mirrors, not recomputed (see
  * {@link CreditMemoPdfPayload}); a draft the totals hook has not written yet falls back to

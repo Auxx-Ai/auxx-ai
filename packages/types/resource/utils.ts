@@ -174,14 +174,14 @@ export const ENTITY_DEFINITION_TYPES = [
   'tariff_code',
   'tariff_rate',
   'journal_entry',
-  // plans/accounting/tasks/10-credit-memos.md. Listed so a `credit_memo:<id>`
+  // plans/accounting/tasks/done/10-credit-memos.md. Listed so a `credit_memo:<id>`
   // relationship RecordId canonicalizes to the org's def CUID like every other
   // entity-backed def above.
   'credit_memo',
   'credit_memo_line',
   'credit_memo_application',
   // A record carrying its clearing account, never a role
-  // (plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md §5.3).
+  // (plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md §5.3).
   'payment_gateway',
   // plans/apps/shipstation/shared-shipment-entities-proposal.md §6. Both are
   // EntityInstance-backed, so a `shipment:<id>` / `parcel:<id>` relationship

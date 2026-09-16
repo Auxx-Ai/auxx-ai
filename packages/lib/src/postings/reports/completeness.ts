@@ -1,7 +1,7 @@
 // packages/lib/src/postings/reports/completeness.ts
 //
 // The completeness banner every statement view carries, per
-// `plans/accounting/tasks/04-statements.md` §3: "report completeness is not
+// `plans/accounting/tasks/done/04-statements.md` §3: "report completeness is not
 // report correctness." A balance sheet produced while a posting type the
 // business relies on is switched off is arithmetically right and financially
 // meaningless, and this read is what tells the reader so.

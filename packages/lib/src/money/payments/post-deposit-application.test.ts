@@ -121,7 +121,7 @@ beforeEach(() => {
   h.isAccountingEnabled.mockResolvedValue(true)
 })
 
-// plans/accounting/tasks/17-accounting-is-opt-in.md section 3.
+// plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3.
 describe('accounting not enabled', () => {
   it('returns [{status: not_enabled}] without reading allocations or posting', async () => {
     const { database } = await import('@auxx/database')

@@ -2,7 +2,7 @@
 
 /**
  * The `SINGLE_SELECT` option list for `accounting.creditMemoPosting`
- * (`plans/accounting/tasks/28-how-your-books-post.md` §3.1).
+ * (`plans/accounting/tasks/done/28-how-your-books-post.md` §3.1).
  *
  * Its own file, and a tiny one, for the two reasons
  * `money/fulfillment-posting/setting-options.ts` gives:

@@ -106,7 +106,7 @@ export const DOCUMENT_TYPE_DESCRIPTORS: DocumentTypeDescriptor[] = [
   // it contributes no `printOptions` and why its send profile in `money/send-email.ts`
   // refuses rather than mailing.
   { id: 'bank_deposit', entityType: 'bank_deposit', printOptions: [] },
-  // The mirror of the invoice (plans/accounting/tasks/10-credit-memos.md §6.3): "you owe
+  // The mirror of the invoice (plans/accounting/tasks/done/10-credit-memos.md §6.3): "you owe
   // us less". Sent to the customer like an invoice, so it takes the invoice's send path;
   // no `printOptions` because nothing sorts a stack of credit memos by anything but number.
   { id: 'credit_memo', entityType: 'credit_memo', printOptions: [] },

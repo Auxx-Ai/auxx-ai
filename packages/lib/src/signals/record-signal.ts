@@ -40,7 +40,7 @@ export type SignalRecordKind =
   // has to admit it or the shared helper stops compiling.
   | 'bank_deposit'
   // A credit memo is sent to the customer the way an invoice is, so
-  // `recordDocumentSendSignal` links it (plans/accounting/tasks/10-credit-memos.md §6.3).
+  // `recordDocumentSendSignal` links it (plans/accounting/tasks/done/10-credit-memos.md §6.3).
   | 'credit_memo'
   // The chargeback evidence pack's document type
   // (plans/money/tasks/54-returns.md §7). Registered because the shared helper

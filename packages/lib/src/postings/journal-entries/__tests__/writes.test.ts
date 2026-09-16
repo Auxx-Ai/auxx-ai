@@ -469,7 +469,7 @@ describe('reverseJournalEntry', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// discardJournalEntry (plans/accounting/tasks/09-discard-a-draft-entry.md §4)
+// discardJournalEntry (plans/accounting/tasks/done/09-discard-a-draft-entry.md §4)
 //
 // 🛑 ARCHIVE, never delete. `journal_entry_number` is issued by `RecordSequence`
 // on CREATE, so an abandoned `JNL-0006` leaves a permanent hole in a gapless

@@ -1,7 +1,7 @@
 // apps/web/src/components/accounting/ui/settings/posting-settings-page.tsx
 'use client'
 
-// Accounting > Settings > Posting (plans/accounting/tasks/28-how-your-books-post.md §3).
+// Accounting > Settings > Posting (plans/accounting/tasks/done/28-how-your-books-post.md §3).
 //
 // One `SettingsSection` per posting type that writes to the ledger, in
 // trigger-kind order, then one collapsed section for the types declared never

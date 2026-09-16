@@ -56,7 +56,7 @@ export const guardInvoiceDelete: EntityPreDeleteHandler = async (event) => {
   }
 
   // An invoice with a general-ledger entry standing against it cannot be
-  // deleted, only voided (plans/accounting/tasks/08-invoice-revenue.md §3.5).
+  // deleted, only voided (plans/accounting/tasks/done/08-invoice-revenue.md §3.5).
   // Deleting the document behind a posted entry leaves lines whose `sourceId`
   // resolves to nothing: the receivable and the revenue stay in the books
   // forever, and A/R aging reports them under "Unapplied and adjustments"

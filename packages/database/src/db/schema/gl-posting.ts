@@ -64,12 +64,12 @@ export const glPostingType = pgEnum('GlPostingType', [
   'write_off',
   // Slot 2G phase B, drizzle 0362.
   'payment',
-  // plans/accounting/tasks/08-invoice-revenue.md and 07-customer-deposits.md,
+  // plans/accounting/tasks/done/08-invoice-revenue.md and 07-customer-deposits.md,
   // drizzle 0362. An invoice's issuance entry, and the reclass of a held
   // customer deposit out of the liability and onto a receivable.
   'invoice_issued',
   'deposit_application',
-  // plans/accounting/tasks/10-credit-memos.md: the issue entry of a credit memo,
+  // plans/accounting/tasks/done/10-credit-memos.md: the issue entry of a credit memo,
   // Dr 4090 / Dr sales tax payable / Cr A/R.
   'credit_memo',
   // plans/accounting/tasks/20-two-authors-one-ledger.md §6: an entry the
@@ -269,7 +269,7 @@ export const GlPosting = pgTable(
      * exists to catch. That is why both write sites (`postings/post-entry.ts`
      * and `postings/retry-export.ts`) stamp it, and why they have to move
      * together: a retry path that stops stamping produces the unreconstructable
-     * row silently. See plans/accounting/tasks/24-the-company-on-the-entry.md §2.
+     * row silently. See plans/accounting/tasks/done/24-the-company-on-the-entry.md §2.
      */
     providerTenantId: text(),
 

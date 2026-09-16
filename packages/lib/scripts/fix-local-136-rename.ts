@@ -2,7 +2,7 @@
 //
 // DEV ONLY. Repairs a local database on which entity migration 136 ran BEFORE
 // its `refund` / `refund_line` defs were renamed to `credit_memo` /
-// `credit_memo_line` (plans/accounting/tasks/10-credit-memos.md §4.2).
+// `credit_memo_line` (plans/accounting/tasks/done/10-credit-memos.md §4.2).
 //
 // 136 is recorded `applied` in the `DataMigration` ledger, so the ledger will
 // never re-run it, and `ensureCustomFields` is INSERT-only keyed by system

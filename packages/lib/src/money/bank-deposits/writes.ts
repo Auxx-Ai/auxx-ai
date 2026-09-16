@@ -3,7 +3,7 @@
 /**
  * Grouping received payments into a bank deposit, posting the one cash line it
  * produces, clearing it against a bank statement line, and correcting it while
- * that is still allowed (plans/accounting/tasks/06-deposit-grouping.md).
+ * that is still allowed (plans/accounting/tasks/done/06-deposit-grouping.md).
  *
  * Writes only; the reads live in `reads.ts`. No permission checks - the router
  * asserts `ledgerPost` (`docs/lib-module-guide.md` §6).

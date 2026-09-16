@@ -748,7 +748,7 @@ export const GlAccountType = {
 
 /**
  * The second fact about a `gl_account` beyond its statement classification
- * (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §3.1), kept
+ * (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md` §3.1), kept
  * short and ours rather than QuickBooks' eighty detail types: every value
  * either changes a validation or changes a statement. Optional on every
  * account; null means "nothing to say".
@@ -870,7 +870,7 @@ export const BuildSource = {
 
 /**
  * Journal Entry Status
- * plans/accounting/tasks/02-manual-journal-entry.md, HANDOFF slot 1A.
+ * plans/accounting/tasks/done/02-manual-journal-entry.md, HANDOFF slot 1A.
  *
  * Three values, and the set is deliberately NOT `GlPosting.status`
  * (`pending | posted | failed | reversed`). They answer different questions:
@@ -902,7 +902,7 @@ export const JournalEntryStatus = {
 
 /**
  * Journal Entry Kind
- * plans/accounting/tasks/02-manual-journal-entry.md, HANDOFF decision 6.7.
+ * plans/accounting/tasks/done/02-manual-journal-entry.md, HANDOFF decision 6.7.
  *
  * What the record IS, which decides the posting type it becomes: `manual` ->
  * `manual_journal`, `opening_balance` -> `opening_balance`. That mapping is why
@@ -940,7 +940,7 @@ export const JournalEntryKind = {
 } as const
 
 /**
- * How a `payment_gateway` drains (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md`
+ * How a `payment_gateway` drains (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md`
  * §5.3). `stripe`, `shopify_payments` and `affirm` read a real settlement feed;
  * `manual` is worked by hand in the review queue. `manual` is not a gap - it is
  * what Authorize.Net and every rail whose feed nobody reads correctly are.
@@ -998,7 +998,7 @@ export const PaymentGatewayFeeTreatment = {
 
 /**
  * Whether a `payment_gateway` rail is still taking charges
- * (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §5.1). A rail
+ * (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md` §5.1). A rail
  * is not permanent - Authorize.Net closed May 2026 with a clearing balance
  * still winding down to zero - so `closed` marks a gateway retired without
  * deleting it: `toGatewayRoutes` still routes a closed rail's history.

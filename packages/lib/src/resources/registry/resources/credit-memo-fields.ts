@@ -7,7 +7,7 @@ import { CREATED_BY_FIELD } from '../common-fields'
 import type { ResourceField } from '../field-types'
 
 /**
- * Credit memo lifecycle (plans/accounting/tasks/10-credit-memos.md §2.4).
+ * Credit memo lifecycle (plans/accounting/tasks/done/10-credit-memos.md §2.4).
  *
  * ```
  * draft --issue--> issued --(balance reaches 0)--> settled
@@ -52,7 +52,7 @@ export const CREDIT_MEMO_REASON_OPTIONS = [
 
 /**
  * Field definitions for the Credit Memo resource
- * (plans/accounting/tasks/10-credit-memos.md §2.1, §10.2).
+ * (plans/accounting/tasks/done/10-credit-memos.md §2.1, §10.2).
  *
  * ## One document for "you owe us less", whoever started it
  *

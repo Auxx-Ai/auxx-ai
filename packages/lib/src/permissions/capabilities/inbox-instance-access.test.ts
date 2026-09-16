@@ -153,7 +153,7 @@ describe('the registry shape itself (plan 40 §1.1)', () => {
     expect(AREA_ORDER[AREA_ORDER.indexOf(Area.channels) + 1]).toBe(Area.inboxes)
     expect(PERMISSION_AREAS[Area.inboxes].group).toBe(PERMISSION_AREAS[Area.channels].group)
     // The five Channels-group areas, contiguous and in render order. `calls`
-    // (plans/accounting/tasks/12-accountant-permissions.md §10) joined the
+    // (plans/accounting/tasks/done/12-accountant-permissions.md §10) joined the
     // group last, after `snippets`.
     const channelsGroup = AREA_ORDER.filter((area) => PERMISSION_AREAS[area].group === 'Channels')
     expect(channelsGroup).toEqual([

@@ -3,7 +3,7 @@
 /**
  * Phase 3 of the bulk credit memo poster: EXECUTE a {@link CreditMemoPostingPlan}.
  *
- * `plans/accounting/tasks/25-batch-posting-and-credit-memos.md` §3, §4.4 and §8.
+ * `plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md` §3, §4.4 and §8.
  *
  * `plan.ts` decides what to post with no database, no clock and no settings;
  * this file writes it, one `GlPosting` per group and one stamp per memo. The

@@ -13,7 +13,7 @@ import type { ResourceField } from '../field-types'
 
 /**
  * Field definitions for the Payment Gateway resource
- * (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §5.3, HANDOFF
+ * (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md` §5.3, HANDOFF
  * step 5).
  *
  * ## Why this entity exists
@@ -39,7 +39,7 @@ import type { ResourceField } from '../field-types'
  * TEXT, no relationship
  *
  * The same call `bank_account.glAccount` makes
- * (`plans/accounting/tasks/15-the-account-id-is-the-identity.md` §4): plain
+ * (`plans/accounting/tasks/done/15-the-account-id-is-the-identity.md` §4): plain
  * `text()`, no `references()`, validated for existence, active status and
  * type on every read, fail closed. A registry relationship buys nothing a
  * read-time check does not already have to do.

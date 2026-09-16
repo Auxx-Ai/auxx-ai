@@ -2,7 +2,7 @@
 'use client'
 
 // Credit memo drawer's "Lines" card, registered as 'credit_memo:lines'
-// (plans/accounting/tasks/10-credit-memos.md §6.2). The invoice lines card's
+// (plans/accounting/tasks/done/10-credit-memos.md §6.2). The invoice lines card's
 // recipe: the document actions cluster teleported into the drawer Section
 // header via `DocumentSectionActions`, the source badge, and the shared
 // `LineBuilder` in `documentType='credit_memo'` mode.

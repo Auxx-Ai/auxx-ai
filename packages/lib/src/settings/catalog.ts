@@ -1246,7 +1246,7 @@ export const SETTINGS_CATALOG = {
       'ends after it is incomplete. Not a user-facing field.',
   },
 
-  // ── Where payments land (plans/accounting/tasks/06-deposit-grouping.md §2.3) ──
+  // ── Where payments land (plans/accounting/tasks/done/06-deposit-grouping.md §2.3) ──
   //
   // 🛑 **Three rails get three treatments, and getting one wrong silently
   // breaks bank matching for every payment on it.** A cheque is banked in a

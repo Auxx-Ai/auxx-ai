@@ -8,7 +8,7 @@
 // manual conversion needed here unlike the line builder's raw `CurrencyInput` cell).
 //
 // When the invoice's contact has credit available (issued credit memos with balance,
-// plans/accounting/tasks/10-credit-memos.md §6.1), an `Apply credit` section comes first:
+// plans/accounting/tasks/done/10-credit-memos.md §6.1), an `Apply credit` section comes first:
 // on by default, prefilled to min(credit, balance). Confirm applies the credit oldest memo
 // first (one `creditMemo.applyCredit` per planned memo, the `planCreditApplication` shape), then
 // records a payment only for whatever remainder is greater than zero. The deposit

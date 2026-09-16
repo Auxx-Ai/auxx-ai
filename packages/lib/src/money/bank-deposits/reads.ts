@@ -2,7 +2,7 @@
 
 /**
  * Every READ over bank deposits and the undeposited funds queue
- * (plans/accounting/tasks/06-deposit-grouping.md).
+ * (plans/accounting/tasks/done/06-deposit-grouping.md).
  *
  * Reads only. The writes live in `writes.ts`, because a file that both queries
  * and mutates is the first step back toward a service class

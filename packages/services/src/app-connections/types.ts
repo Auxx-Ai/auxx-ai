@@ -123,7 +123,7 @@ export interface AppConnection {
    * was exported to, and the accounting UI compares the two before offering a
    * deep link - a QuickBooks entry id is a per-company sequence, so a link
    * followed into the wrong company reports a live entry as deleted
-   * (plans/accounting/tasks/24-the-company-on-the-entry.md §4).
+   * (plans/accounting/tasks/done/24-the-company-on-the-entry.md §4).
    */
   providerTenantId?: string
   /**

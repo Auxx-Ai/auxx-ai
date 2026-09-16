@@ -4,7 +4,7 @@
  * The client-safe half of `payment-gateways/`: the vocabularies, the read
  * model and the pure handle/route arithmetic (`docs/lib-module-guide.md` §7).
  *
- * `plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §5.3: a
+ * `plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md` §5.3: a
  * gateway is a RECORD carrying its own clearing account, never a role.
  * §5.1's census is why: `authorize_net`/`authorize.net` and `Affirm`/`affirm`
  * are each one rail arriving under two spellings, a rail is not permanent

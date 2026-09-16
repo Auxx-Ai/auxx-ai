@@ -696,7 +696,7 @@ export const connectionsRouter = createTRPCRouter({
       // owns the correct order — reap at Stripe, then the connector, then the credential only
       // when no sibling connector shares that bank login — and a second implementation of
       // "release, then delete" is how the two come to disagree about which happens first.
-      // See plans/accounting/tasks/24-the-company-on-the-entry.md §5.
+      // See plans/accounting/tasks/done/24-the-company-on-the-entry.md §5.
       const connectors = await ctx.db.query.DataConnector.findMany({
         where: (connector, { and, eq }) =>
           and(eq(connector.organizationId, organizationId), eq(connector.credentialId, input.id)),

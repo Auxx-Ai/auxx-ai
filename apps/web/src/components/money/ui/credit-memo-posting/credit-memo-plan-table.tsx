@@ -2,7 +2,7 @@
 'use client'
 
 // The preview table for the bulk credit memo posting
-// (plans/accounting/tasks/25-batch-posting-and-credit-memos.md §3, §5.5, §8).
+// (plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md §3, §5.5, §8).
 //
 // GROUP-first, the same axis as `fulfillment-plan-table.tsx` and for the same
 // mechanical reason: a memo belongs to exactly one group, and the group IS the

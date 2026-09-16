@@ -97,7 +97,7 @@ const GRID_LOCK_REASON =
 
 export function AccountingOpeningSettingsPage() {
   // 🛑 `ledgerControl`, not `ledgerView`. `ledgerOpening.save` and `.post` are
-  // gated on `ledgerControl` (plans/accounting/tasks/12-accountant-permissions.md
+  // gated on `ledgerControl` (plans/accounting/tasks/done/12-accountant-permissions.md
   // §4.3), and this page has no read-only rendering - a `ledgerView` holder
   // used to be able to open it and was then refused on save.
   useRequireCapability(PermissionKey.ledgerControl)

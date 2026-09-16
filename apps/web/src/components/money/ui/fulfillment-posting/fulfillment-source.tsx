@@ -2,7 +2,7 @@
 'use client'
 
 // The bulk fulfillment posting as a REGISTRATION on the shared batch-posting
-// dialog (plans/accounting/tasks/25-batch-posting-and-credit-memos.md §5.2).
+// dialog (plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md §5.2).
 //
 // *"Getting thousands of Shopify orders into the ledger without a click per
 // order"* (49 §2.3) - and after the extraction, everything this file holds is

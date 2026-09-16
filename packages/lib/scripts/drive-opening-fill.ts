@@ -1,6 +1,6 @@
 // packages/lib/scripts/drive-opening-fill.ts
 //
-// DEV-ONLY drive for plans/accounting/tasks/19-opening-balances-from-the-provider.md §8.2.
+// DEV-ONLY drive for plans/accounting/tasks/done/19-opening-balances-from-the-provider.md §8.2.
 //
 // Runs `fillOpeningTrialBalanceFromProvider` for one org exactly as the
 // `ledgerOpening.fillFromProvider` mutation would, then re-reads the opening

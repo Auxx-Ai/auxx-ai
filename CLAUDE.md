@@ -275,6 +275,7 @@ the area**, not after review catches it.
 | Mined mail suggestions, bulk-sender columns, proposed filter conditions, unsubscribe | `docs/mail-suggestions-architecture-guide.md` |
 | Relationship fields in the registry, owned child defs, `deleteEntity`/`bulkDeleteEntities`, pre-delete hooks | `docs/record-delete-architecture-guide.md` |
 | Upload routes and handlers, `StorageManager`, storage adapters, `MediaAsset`/`FolderFile`/`Attachment`/`StorageLocation`, thumbnail and cleanup jobs, the uploader UI | `docs/files-upload-architecture-guide.md` |
+| The general ledger and anything that writes to it: posting types, account roles, accounting effects, the money model, the accounting-provider seam, periods and the close, statements | `docs/accounting-architecture-guide.md` |
 | Purchase orders, vendor bills, the three-way match, receiving, `stock_movement`, builds, standard cost, QoH, GL postings | `docs/inventory-costing-architecture-guide.md` |
 | Workflow node schemas, output variables, the engine's preprocess/execute contract, draft mutations, Kopilot graph edits | `docs/core-workflow-architecture-guide.md` |
 | Workflow blocks contributed by **installed apps** (a different subsystem from the row above) | `docs/workflow-architecture-guide.md` |

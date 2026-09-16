@@ -4,7 +4,7 @@
 // connector sync brought in credit memo records, and if so hand off to the
 // automatic posting run.
 //
-// `plans/accounting/tasks/28-how-your-books-post.md` §3.1.
+// `plans/accounting/tasks/done/28-how-your-books-post.md` §3.1.
 //
 // This is `fulfillment-log-pass.ts`'s posting trigger for the other bulk
 // source. Channel credit memos are not created by anything in this repo: the

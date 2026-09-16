@@ -124,7 +124,7 @@ const RENDER_ENTRIES: Array<
     Pdf: BankDepositPdf as unknown as RegisteredDocumentType['Pdf'],
   },
   {
-    // The mirror of the invoice (plans/accounting/tasks/10-credit-memos.md §6.3).
+    // The mirror of the invoice (plans/accounting/tasks/done/10-credit-memos.md §6.3).
     // `pointerAttr` names the real `credit_memo_pdf_asset` field, for the same
     // asset-leak reason as the entries above.
     id: 'credit_memo',

@@ -2,7 +2,7 @@
 
 /**
  * The shared frame behind the bulk posters
- * (`plans/accounting/tasks/25-batch-posting-and-credit-memos.md` §5).
+ * (`plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md` §5).
  *
  * Explicit named exports only (`docs/lib-module-guide.md` §5).
  */

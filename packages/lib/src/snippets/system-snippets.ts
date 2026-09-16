@@ -178,7 +178,7 @@ function buildCreditMemoEmailTemplate(
 
   // Same vocabulary as the invoice template: the contact's first name plus the
   // memo's own `number`, `total` and `issuedAt`, every one a real key on
-  // `credit-memo-fields.ts` (plans/accounting/tasks/10-credit-memos.md).
+  // `credit-memo-fields.ts` (plans/accounting/tasks/done/10-credit-memos.md).
   const firstName = fieldToken(contactDefId, 'firstName')
   const number = fieldToken(creditMemoDefId, 'number')
   const total = fieldToken(creditMemoDefId, 'total')

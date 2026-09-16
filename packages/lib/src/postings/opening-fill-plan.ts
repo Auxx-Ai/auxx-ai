@@ -1,7 +1,7 @@
 // packages/lib/src/postings/opening-fill-plan.ts
 //
 // The PURE half of suggesting opening balances from a connected accounting
-// provider's balance sheet (plans/accounting/tasks/19-opening-balances-from-the-provider.md
+// provider's balance sheet (plans/accounting/tasks/done/19-opening-balances-from-the-provider.md
 // section 4.2-4.4). Given the provider's balance sheet, the whole opening trial
 // balance VIEW - `readOpeningTrialBalance().rows`, which already carries the
 // locked inventory rows valued from the count settings - the confirmed account

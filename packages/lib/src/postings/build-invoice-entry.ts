@@ -58,7 +58,7 @@
  * argument for the ORDER's sake; on an invoice it is zero and
  * `total = subtotal - discount + tax`. There is no `revenue_shipping` leg here.
  *
- * @see plans/accounting/tasks/08-invoice-revenue.md
+ * @see plans/accounting/tasks/done/08-invoice-revenue.md
  */
 
 import { UnprocessableEntityError } from '../errors'

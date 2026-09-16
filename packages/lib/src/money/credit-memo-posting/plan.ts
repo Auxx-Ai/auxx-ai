@@ -4,7 +4,7 @@
  * What the bulk credit memo run would post, decided with nothing but the memos
  * and four settings.
  *
- * `plans/accounting/tasks/25-batch-posting-and-credit-memos.md` §3, §7 and §8.
+ * `plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md` §3, §7 and §8.
  *
  * 🛑 **PURE, and that is the whole point.** No database, no clock, no settings
  * read, no writer. It is handed every memo in a range that no live posting

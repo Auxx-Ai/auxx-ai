@@ -370,7 +370,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
   },
   {
     // The bank run: N received payments banked as ONE line the statement shows
-    // (plans/accounting/tasks/06-deposit-grouping.md). Entity migration 125.
+    // (plans/accounting/tasks/done/06-deposit-grouping.md). Entity migration 125.
     //
     // ⚠️ NOT a customer deposit — that is money taken before delivery, a
     // liability against `2350 Customer Deposits`, and it lives on
@@ -460,7 +460,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
   },
   {
     // A record carrying its clearing account, never a role
-    // (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §5.3,
+    // (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md` §5.3,
     // HANDOFF step 5). Entity migration 146.
     //
     // `isVisible: false`: the door is Accounting > Settings > Payment
@@ -582,7 +582,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
   },
   {
     // The mirror of an invoice: "you owe us less", whoever started it
-    // (plans/accounting/tasks/10-credit-memos.md §1). ONE entity for both a
+    // (plans/accounting/tasks/done/10-credit-memos.md §1). ONE entity for both a
     // concession a person issues against an invoice and a refund that already
     // happened at the sales channel; `credit_memo_source` says which.
     //

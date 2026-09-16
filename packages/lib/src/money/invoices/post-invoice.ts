@@ -25,7 +25,7 @@
 //
 // No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
 //
-// plans/accounting/tasks/08-invoice-revenue.md
+// plans/accounting/tasks/done/08-invoice-revenue.md
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'

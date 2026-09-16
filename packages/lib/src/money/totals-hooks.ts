@@ -138,7 +138,7 @@ export type TotalledDocumentType = 'quote' | 'invoice' | 'order' | 'purchase_ord
 
 /**
  * Fields on `credit-memo-lines` whose write should trigger a recompute
- * (plans/accounting/tasks/10-credit-memos.md section 2.5). The rel trigger catches
+ * (plans/accounting/tasks/done/10-credit-memos.md section 2.5). The rel trigger catches
  * attach/detach; `subtotal` and `tax_total` are here because both are FACTS the parent
  * sums (a channel line's subtotal is transcribed, its unit price derived from it), so a
  * direct edit to either must re-sum the memo even though neither is `qty * unit_price`.

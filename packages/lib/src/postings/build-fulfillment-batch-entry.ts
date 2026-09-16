@@ -81,7 +81,7 @@ import type { BuiltEntry, GlPostingLineInput, PostingReason } from './types'
  *
  * `partially_refunded` and `refunded` are here with `paid` on purpose: both
  * describe an order that WAS paid, and the refund is its own later event (a
- * credit memo, `plans/accounting/tasks/10-credit-memos.md`). Treating a
+ * credit memo, `plans/accounting/tasks/done/10-credit-memos.md`). Treating a
  * refunded order as unpaid would debit a receivable for money that was
  * collected and then returned, and the memo's settlement leg
  * (`Dr accounts_receivable / Cr clearing_card`) would have nothing to net
@@ -252,7 +252,7 @@ function normaliseGateways(gateways: readonly string[]): string[] {
  * pure and does not read them itself.
  *
  * @see plans/money/tasks/49-bulk-fulfillment-posting.md §3.2, §8.4 decision 6
- * @see plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md §5.3
+ * @see plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md §5.3
  */
 export function resolveFulfillmentDebit(input: {
   financialStatus: string | null

@@ -3,7 +3,7 @@
 /**
  * The one thing a bulk poster has to supply to get the whole dialog.
  *
- * `plans/accounting/tasks/25-batch-posting-and-credit-memos.md` §5.2, §5.5.
+ * `plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md` §5.2, §5.5.
  *
  * 🛑 **This is a descriptor, not a framework (§5.2).** §5.5 is explicit that
  * only TWO things differ per source - the plan table's COLUMNS and the footer's

@@ -55,7 +55,7 @@ export const POSTING_TYPES = [
   // An invoice ISSUED: `Dr accounts_receivable / Cr revenue_service /
   // Cr sales_tax_payable`, dated the invoice's own `issuedAt`. The receivable
   // every payment entry relieves and nothing used to raise
-  // (plans/accounting/tasks/08-invoice-revenue.md).
+  // (plans/accounting/tasks/done/08-invoice-revenue.md).
   //
   // 🛑 Prefix `INI`, never `INV` - `month_end_inventory` holds `INV` and
   // documents already carry it.
@@ -63,13 +63,13 @@ export const POSTING_TYPES = [
   // A held customer deposit reclassed onto an invoice:
   // `Dr customer_deposits / Cr accounts_receivable`. Neither a payment (no
   // money moved) nor a manual journal (nobody keyed it)
-  // (plans/accounting/tasks/07-customer-deposits.md).
+  // (plans/accounting/tasks/done/07-customer-deposits.md).
   'deposit_application',
   // A credit memo ISSUED: `Dr revenue_returns_allowances / Dr sales_tax_payable
   // / Cr accounts_receivable`, dated the memo's own `issuedAt`, plus
   // `Dr accounts_receivable / Cr clearing_card` when a channel refund already
   // paid the money back. Keys on the memo's own number, like `invoice_issued`,
-  // and is reversed by void (plans/accounting/tasks/10-credit-memos.md).
+  // and is reversed by void (plans/accounting/tasks/done/10-credit-memos.md).
   'credit_memo',
   // 🛑 The one posting type auxx does not author. An entry the ACCOUNTANT wrote
   // in the connected provider, read back off their general ledger and written as
@@ -101,7 +101,7 @@ export type PostingDirection = 'debit' | 'credit'
 
 /**
  * Who a receivable or payable line is attributable to
- * (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §1).
+ * (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md` §1).
  * `'customer'` carries a `contact` instance id, `'vendor'` a `company`
  * instance id. Named `counterparty`, not `entity`: `entity` already means
  * three things in this codebase and QuickBooks' own line field is a fourth.
@@ -376,7 +376,7 @@ export interface PostingReason {
 export interface ResolvedPostingLine extends GlPostingLineBase {
   /**
    * The `gl_account` `EntityInstance` id this line resolved to. The IDENTITY
-   * (plans/accounting/tasks/15-the-account-id-is-the-identity.md §2). No
+   * (plans/accounting/tasks/done/15-the-account-id-is-the-identity.md §2). No
    * foreign key anywhere it lands - a ledger line outlives the chart row.
    */
   glAccountId: string
@@ -909,7 +909,7 @@ export interface ChartAccountRow {
   accountType: GlAccountTypeValue
   /**
    * The second fact about an account beyond its statement classification
-   * (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §3), pulled
+   * (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md` §3), pulled
    * forward for `cost_of_goods_sold`: the P&L groups COGS by this, never by a
    * code prefix, because a chart without codes has no prefix to test.
    */

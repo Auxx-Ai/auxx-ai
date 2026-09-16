@@ -72,7 +72,7 @@ export const ledgerOpeningRouter = createTRPCRouter({
    * Gated on `ledgerControl`, not `ledgerPost`: the opening trial balance is
    * the ledger's own baseline, not an ordinary posting, and correcting it after
    * finalize means reversing a standing entry - the same rung as the chart
-   * (plans/accounting/tasks/12-accountant-permissions.md §4.3).
+   * (plans/accounting/tasks/done/12-accountant-permissions.md §4.3).
    */
   save: permissionProcedure(PermissionKey.ledgerControl)
     .input(
@@ -137,7 +137,7 @@ export const ledgerOpeningRouter = createTRPCRouter({
 
   /**
    * Suggest the opening trial balance from the connected accounting provider's
-   * balance sheet (plans/accounting/tasks/19-opening-balances-from-the-provider.md
+   * balance sheet (plans/accounting/tasks/done/19-opening-balances-from-the-provider.md
    * section 4.5), and save it through the same write path {@link save} uses.
    *
    * Gated on `ledgerControl`, not `ledgerPost` and not `ledgerView`: this

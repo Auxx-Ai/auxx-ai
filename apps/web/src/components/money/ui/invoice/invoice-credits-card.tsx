@@ -2,7 +2,7 @@
 'use client'
 
 // Invoice drawer's "Credits" card, registered as 'invoice:credits' and mounted beside
-// Payments (plans/accounting/tasks/10-credit-memos.md §6.1). Two read-only lists off the
+// Payments (plans/accounting/tasks/done/10-credit-memos.md §6.1). Two read-only lists off the
 // invoice's own inverse fields: the memos raised AGAINST this invoice
 // (`invoice_credit_memos`, number / status / total / balance) and the credit applied TO it
 // (`invoice_credit_applications`, memo number / amount / applied at). The two are different

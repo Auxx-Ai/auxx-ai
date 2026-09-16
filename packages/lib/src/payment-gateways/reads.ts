@@ -2,7 +2,7 @@
 
 /**
  * Every READ over `payment_gateway` records
- * (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §5.3).
+ * (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md` §5.3).
  *
  * Reads only. The writes the settings page needs live in `writes.ts`, because
  * a file that both queries and mutates is the first step back toward a

@@ -406,7 +406,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
   },
 
   // Sum of the credit memo applications against this invoice
-  // (plans/accounting/tasks/10-credit-memos.md §2.3). An application posts no
+  // (plans/accounting/tasks/done/10-credit-memos.md §2.3). An application posts no
   // ledger entry, so this field is the only place the invoice learns it was
   // reduced: `syncInvoicePaymentState` writes it and subtracts it from the
   // balance (`total - paid - credited`) with the same status flips.
@@ -660,7 +660,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
   // Reverse relationship: creditMemos (from credit_memo.invoice). The memos
   // raised AGAINST this invoice, as opposed to `creditApplications`, which are
   // the shares of any memo applied TO it. `restrict` like `payments`: a posted
-  // document hangs off it (plans/accounting/tasks/10-credit-memos.md §2.1).
+  // document hangs off it (plans/accounting/tasks/done/10-credit-memos.md §2.1).
   creditMemos: {
     id: toFieldId('creditMemos'),
     key: 'creditMemos',

@@ -1,7 +1,7 @@
 // apps/web/src/components/money/ui/credit-memo/issue-credit-memo-dialog.tsx
 'use client'
 
-// Issue confirmation (plans/accounting/tasks/10-credit-memos.md §6.2): the
+// Issue confirmation (plans/accounting/tasks/done/10-credit-memos.md §6.2): the
 // write-off dialog's recipe, narrowed. Issuing posts `Dr 4090 / Dr tax /
 // Cr 1100` dated `issuedAt` and freezes the lines, so the entry is shown before
 // the click through the same `EntryJournal` / `EntryBlockers` the write-off

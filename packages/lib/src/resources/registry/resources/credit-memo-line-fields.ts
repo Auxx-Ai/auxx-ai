@@ -9,7 +9,7 @@ import type { ResourceField } from '../field-types'
 
 /**
  * What happened to the goods on a credited line
- * (plans/accounting/tasks/10-credit-memos.md §2.2, plans/money/tasks/47 §3, §9).
+ * (plans/accounting/tasks/done/10-credit-memos.md §2.2, plans/money/tasks/47 §3, §9).
  *
  * Provider-neutral by construction, and this is load-bearing. Shopify's own
  * token is `restock_type`; the vocabulary below is auxx's, and the connector
@@ -41,7 +41,7 @@ export const CREDIT_MEMO_LINE_DISPOSITION_OPTIONS = [
 
 /**
  * Field definitions for the Credit Memo Line resource
- * (plans/accounting/tasks/10-credit-memos.md §2.2, §10.3).
+ * (plans/accounting/tasks/done/10-credit-memos.md §2.2, §10.3).
  *
  * One record per credited line under `credit_memo_lines`, rendered by the line
  * builder. Native: from the invoice's line items, or a free-text concession

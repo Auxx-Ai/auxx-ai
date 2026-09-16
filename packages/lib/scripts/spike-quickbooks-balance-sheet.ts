@@ -1,6 +1,6 @@
 // packages/lib/scripts/spike-quickbooks-balance-sheet.ts
 //
-// DEV-ONLY spike for plans/accounting/tasks/19-opening-balances-from-the-provider.md §3.1.
+// DEV-ONLY spike for plans/accounting/tasks/done/19-opening-balances-from-the-provider.md §3.1.
 //
 // Calls the QuickBooks app's `get_quickbooks_balance_sheet` tool for one org
 // through the same installation -> deployment -> connection -> Lambda chain the

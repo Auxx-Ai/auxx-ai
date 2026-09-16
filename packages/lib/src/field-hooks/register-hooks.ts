@@ -612,7 +612,7 @@ export function registerAllHooks(): void {
   // declarative, `restrict` on `tariff_code_vendor_parts` and `cascade` on
   // `tariff_code_rates`.
 
-  // The journal-entry draft (plans/accounting/tasks/09-discard-a-draft-entry.md
+  // The journal-entry draft (plans/accounting/tasks/done/09-discard-a-draft-entry.md
   // §3.3). `journal_entry` is `isVisible: false`, so it has no records table of
   // its own - but the GENERIC `record.delete`, bulk delete and any Kopilot or API
   // caller still reach it by id, and before this guard they hard-deleted a POSTED
@@ -635,7 +635,7 @@ export function registerAllHooks(): void {
   ])
   registerEntityPostDeleteHooks('work-orders', [syncContactAfterWorkOrderDelete])
 
-  // ─── Credit memos (plans/accounting/tasks/10-credit-memos.md) ──────────────
+  // ─── Credit memos (plans/accounting/tasks/done/10-credit-memos.md) ──────────────
   // Appended as one block, per HANDOFF section 9a's rule for shared registration files.
   //
   // The totals engine's memo twin (section 2.5): a line's qty/unit price/subtotal/tax or

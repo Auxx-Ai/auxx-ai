@@ -1,6 +1,6 @@
 // packages/lib/src/money/payments/record-manual-refund.test.ts
 //
-// The manual refund rail of a credit memo (plans/accounting/tasks/10-credit-memos.md §5.3).
+// The manual refund rail of a credit memo (plans/accounting/tasks/done/10-credit-memos.md §5.3).
 //
 // Two properties carry this file. First, the row it writes: a `manual` `refund`, already
 // `succeeded`, carrying the memo, the memo's contact and the memo's invoice, and NO

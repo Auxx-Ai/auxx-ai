@@ -4,7 +4,7 @@
  * Calendar days and months in, one half-open window out.
  *
  * 🛑 **Inclusive in the UI, half-open on the wire (§6.1 of
- * `plans/accounting/tasks/25-batch-posting-and-credit-memos.md`).** The "March
+ * `plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md`).** The "March
  * 31 is missing" report was verified NOT to be a timezone bug: the range really
  * is `from <= x < to`, the old To row's own label said so, and MK read that
  * label and still expected March 31. Half-open stays on the wire - it is what

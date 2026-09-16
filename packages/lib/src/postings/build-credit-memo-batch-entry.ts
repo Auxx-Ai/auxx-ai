@@ -83,7 +83,7 @@
  * particular it is NOT the input to a per-member compensating entry: §2.1 drops
  * that outright, and `voidCreditMemo` refuses on a summarised posting instead.
  *
- * @see plans/accounting/tasks/25-batch-posting-and-credit-memos.md §2.1, §3, §7
+ * @see plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md §2.1, §3, §7
  */
 
 import { UnprocessableEntityError } from '../errors'

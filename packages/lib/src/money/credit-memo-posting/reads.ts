@@ -4,7 +4,7 @@
  * The netting read behind the bulk credit memo poster: every memo in a range
  * that carries no LIVE posting.
  *
- * `plans/accounting/tasks/25-batch-posting-and-credit-memos.md` §4 and §9.1.
+ * `plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md` §4 and §9.1.
  *
  * Reads only, no permission checks - the router asserts and hands the range
  * down (`docs/lib-module-guide.md` §5 and §6). The pure decision over what this

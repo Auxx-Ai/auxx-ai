@@ -27,7 +27,7 @@
  * they are picking a specific account out of THEIR OWN chart, looking at it as
  * it stands right now. That is the same act as a manual journal entry, except
  * this one is written in bulk by the review queue over thousands of rows
- * (`plans/accounting/tasks/15-the-account-id-is-the-identity.md` §4), which is
+ * (`plans/accounting/tasks/done/15-the-account-id-is-the-identity.md` §4), which is
  * why the coded account and the bank account's own mapping are both carried as
  * `gl_account` instance ids rather than codes - a text id with no foreign key,
  * the same shape `GlRoleAssignment.glAccountId` already uses. The bank side of

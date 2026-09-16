@@ -220,7 +220,7 @@ const fulfillmentPostingShape = {
 
 /**
  * How much the bulk credit memo posting batches
- * (plans/accounting/tasks/25-batch-posting-and-credit-memos.md §5.1).
+ * (plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md §5.1).
  *
  * 🛑 A hand-written tuple with `as const satisfies`, like
  * {@link FULFILLMENT_POSTING_GROUPING_VALUES} above, and it does NOT self-correct:
@@ -1039,7 +1039,7 @@ export const moneyRouter = createTRPCRouter({
 
   /**
    * Record what shipped and post the revenue it recognises
-   * (plans/accounting/tasks/01-post-revenue-to-the-ledger.md phase A, handoff
+   * (plans/accounting/tasks/done/01-post-revenue-to-the-ledger.md phase A, handoff
    * decision 6.6).
    *
    * 🛑 `ledgerPost`, not a `dispatch.board.*` key, and the reason is what this
@@ -1237,7 +1237,7 @@ export const moneyRouter = createTRPCRouter({
     }),
 
   /**
-   * Bank deposits (plans/accounting/tasks/06-deposit-grouping.md, HANDOFF 1D).
+   * Bank deposits (plans/accounting/tasks/done/06-deposit-grouping.md, HANDOFF 1D).
    *
    * ⚠️ A BANK deposit - N received payments banked as the one line the
    * statement shows - never a customer deposit, which is a liability and lives

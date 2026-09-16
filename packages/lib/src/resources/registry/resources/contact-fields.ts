@@ -683,7 +683,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
   // Reverse relationship: creditMemos (from credit_memo.contact). `restrict`,
   // unlike `invoices`: a credit memo is a posted document that says the
   // contact is owed something, and deleting the contact under it would orphan
-  // a receivable (plans/accounting/tasks/10-credit-memos.md §2.1).
+  // a receivable (plans/accounting/tasks/done/10-credit-memos.md §2.1).
   creditMemos: {
     id: toFieldId('creditMemos'),
     key: 'creditMemos',

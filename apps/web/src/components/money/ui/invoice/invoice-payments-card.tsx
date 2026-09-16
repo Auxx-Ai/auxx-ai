@@ -26,7 +26,7 @@ import { WriteOffDialog } from './write-off-dialog'
 
 // `invoice_contact` feeds the record-payment dialog's credit lookup, and
 // `invoice_amount_credited` is the credit already netted out of `invoice_balance`
-// (plans/accounting/tasks/10-credit-memos.md §2.3), shown so the balance adds up.
+// (plans/accounting/tasks/done/10-credit-memos.md §2.3), shown so the balance adds up.
 const INVOICE_ATTRS = [
   'invoice_status',
   'invoice_balance',

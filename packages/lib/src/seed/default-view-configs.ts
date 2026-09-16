@@ -1136,7 +1136,7 @@ export const DEFAULT_VIEW_CONFIGS = {
     },
   ],
 
-  // plans/accounting/tasks/10-credit-memos.md §6.1. "Needs review" is the
+  // plans/accounting/tasks/done/10-credit-memos.md §6.1. "Needs review" is the
   // channel path's inbox: a memo the connector drafted from a Shopify refund
   // that the auto-issue rule did not cover waits here until a person issues or
   // voids it (§5.4). Native drafts are not in it: nobody is waiting on those.

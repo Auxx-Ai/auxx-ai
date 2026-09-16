@@ -2,7 +2,7 @@
 
 /**
  * Payment gateways: a record carrying its own clearing account, never a role
- * (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §5.3).
+ * (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md` §5.3).
  *
  * 🛑 Server-only. Client code imports `@auxx/lib/payment-gateways/client`,
  * which carries the vocabularies, the read model and the pure handle/route

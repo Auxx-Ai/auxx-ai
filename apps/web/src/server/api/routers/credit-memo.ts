@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/credit-memo.ts
 //
 // The credit memo actions generic record mutations cannot do
-// (plans/accounting/tasks/10-credit-memos.md section 10.8). A draft memo and its
+// (plans/accounting/tasks/done/10-credit-memos.md section 10.8). A draft memo and its
 // lines are created, edited and discarded through `record.create` /
 // `record.createMany` / `fieldValue.set` / `record.delete`, exactly as an
 // invoice is; the number hook, the totals hook and the delete guard in lib

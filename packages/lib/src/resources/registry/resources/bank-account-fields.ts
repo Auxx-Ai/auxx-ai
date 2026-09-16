@@ -64,7 +64,7 @@ export const BANK_ACCOUNT_STATUS_OPTIONS = [
  *
  * ## `glAccount` is the `gl_account` EntityInstance id, as TEXT, no relationship
  *
- * (`plans/accounting/tasks/15-the-account-id-is-the-identity.md` §4, DECIDED
+ * (`plans/accounting/tasks/done/15-the-account-id-is-the-identity.md` §4, DECIDED
  * 2026-09-09.) Renumbering Cash from `1000` to `1010` must not break the feed,
  * which is the argument for an identity rather than a mutable label - but the
  * identity is stored as plain `text()` with no `references()`, the shape

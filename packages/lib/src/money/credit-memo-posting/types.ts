@@ -3,7 +3,7 @@
 /**
  * The contract the bulk credit memo posting is written against.
  *
- * `plans/accounting/tasks/25-batch-posting-and-credit-memos.md` §3, §4, §7.
+ * `plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md` §3, §4, §7.
  *
  * This file is the seam between the halves of the feature and holds no logic:
  *

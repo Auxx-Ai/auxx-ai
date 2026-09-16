@@ -10,7 +10,7 @@ import type { ResourceField } from '../field-types'
 /**
  * Field definitions for the Journal Entry resource - the **draft** of a
  * hand-authored posting, and the only record in the accounting module a person
- * types line by line (plans/accounting/tasks/02-manual-journal-entry.md).
+ * types line by line (plans/accounting/tasks/done/02-manual-journal-entry.md).
  *
  * ## Why an entity at all, when `GlPosting` is already a table
  *

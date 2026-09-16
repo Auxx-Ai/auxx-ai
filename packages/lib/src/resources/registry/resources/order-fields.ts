@@ -907,7 +907,7 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
   //
   // A channel credit memo is INGESTED - the connector fans `refunds[]` out of
   // the order payload it already fetches, the same way `line_items[]` works
-  // (plans/accounting/tasks/10-credit-memos.md §2.1). This is the relationship
+  // (plans/accounting/tasks/done/10-credit-memos.md §2.1). This is the relationship
   // that fan-out writes through. `cascade` stays, and the credit memo delete
   // guard vetoes it: deleting an order with an issued memo is refused naming
   // the memo (10 §2.6).
