@@ -210,6 +210,22 @@ export {
 export { createInvoiceFromWorkOrder, deleteInvoiceLine, listUninvoicedLines } from './gather'
 export { deleteInvoice, markInvoiceSent, voidInvoice } from './invoice-lifecycle'
 export {
+  type InvoicePaymentRow,
+  listInvoiceMoneyPayments,
+} from './invoices/payment-reads'
+// ── Task 54: money received against an issued invoice ──────────────────────
+// The `customer_receipt` family's second policy. `customer-money/accounting.ts`
+// is the same family's ORDER policy; the two never see each other's movements.
+export {
+  type AcceptInvoiceReceiptInput,
+  acceptInvoiceReceiptAccounting,
+} from './invoices/receipt-accounting'
+export {
+  type RecordInvoicePaymentInput,
+  type RecordInvoicePaymentResult,
+  recordInvoicePayment,
+} from './invoices/record-payment'
+export {
   type PreviewWriteOffInput,
   previewWriteOffInvoice,
   readWriteOffState,

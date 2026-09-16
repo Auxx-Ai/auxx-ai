@@ -323,7 +323,10 @@ async function readFrozenReceiptRoute(
   const parsed = acceptedCustomerReceiptEffectBasisSchema.safeParse(originals[0]!.basis)
   if (!parsed.success)
     throw new UnprocessableEntityError('Refund original receipt basis is invalid')
-  const route = parsed.data.calculation.route
+  // Task 54's invoice-receipt policy freezes a cash account, not a processor
+  // clearing route — there is no gateway in that flow to settle back through.
+  // Refunding one is a different command and does not belong on this path.
+  const route = 'kind' in parsed.data.calculation ? undefined : parsed.data.calculation.route
   if (!route?.paymentRouteId || !route.processorAccountId || !route.glAccountId)
     throw new UnprocessableEntityError('Refund original receipt has no frozen clearing route')
   if (expectedRouteId !== route.paymentRouteId)

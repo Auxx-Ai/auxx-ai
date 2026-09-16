@@ -2717,6 +2717,13 @@
       "when": 1789535565443,
       "tag": "0387_repeatable_accounting_effect_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 388,
+      "version": "7",
+      "when": 1789540828032,
+      "tag": "0388_money_transaction_method",
+      "breakpoints": true
     }
   ]
 }

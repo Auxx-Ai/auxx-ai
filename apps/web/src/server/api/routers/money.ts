@@ -2,11 +2,14 @@
 
 import type { PaymentTransactionEntity } from '@auxx/database'
 import { database, schema } from '@auxx/database'
+import { listBankAccounts } from '@auxx/lib/banking'
+import { getOrgCache } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { isRecordConnectorManaged } from '@auxx/lib/data-connectors'
 import { renderPreviewQuotePdf } from '@auxx/lib/documents'
 import { NotFoundError } from '@auxx/lib/errors'
 import {
+  acceptInvoiceReceiptAccounting,
   addVisitExtrasToContract,
   approveQuote,
   clearBankDeposit,
@@ -33,6 +36,7 @@ import {
   getWorkOrderBillingState,
   listBankDeposits,
   listCreditMemoPostings,
+  listInvoiceMoneyPayments,
   listOrderFulfillmentPostings,
   listPayouts,
   listUndepositedPayments,
@@ -49,7 +53,7 @@ import {
   readOrderForFulfillment,
   readWriteOffState,
   recomputeTotals,
-  recordManualPayment,
+  recordInvoicePayment,
   refundTransaction,
   reorderLines,
   runCreditMemoPosting,
@@ -64,6 +68,7 @@ import {
   writeOffInvoice,
 } from '@auxx/lib/money'
 import type { CreditMemoPostingGrouping, FulfillmentPostingGrouping } from '@auxx/lib/money/client'
+import { resolvePaymentRoute } from '@auxx/lib/money/client'
 import {
   adoptNativeStripeMoney,
   listOrderMoneyTransactions,
@@ -631,6 +636,48 @@ export const moneyRouter = createTRPCRouter({
       }
     }),
 
+  /**
+   * Which destinations a recorded payment can take, per method, plus the bank
+   * accounts it can name (task 54 unit 2b).
+   *
+   * 🔑 Here rather than on `bankAccount.list`, which gates on `ledgerView` — a
+   * desk user who records payments holds the dispatch keys and may hold no
+   * ledger key at all. Same route table the command enforces with, so the
+   * dialog cannot offer a shape the server will refuse.
+   *
+   * ⚠️ Only accounts with a `bank_account_gl_account` link are offered: the
+   * receipt's debit resolves through that pointer, so an unlinked account would
+   * be a choice that always fails at posting time.
+   */
+  paymentDestinations: moneyViewProcedure.query(async ({ ctx }) => {
+    const settings = await getOrgCache().get(ctx.session.organizationId, 'orgSettings')
+    const accounts = await listBankAccounts(ctx.db, {
+      organizationId: ctx.session.organizationId,
+    })
+    if (accounts.isErr()) throw accounts.error
+    return {
+      requiresBankAccount: Object.fromEntries(
+        (['cash', 'check', 'card', 'bank', 'other'] as const).map((method) => [
+          method,
+          resolvePaymentRoute(method, settings) === 'cash',
+        ])
+      ) as Record<'cash' | 'check' | 'card' | 'bank' | 'other', boolean>,
+      forbidsBankAccount: Object.fromEntries(
+        (['cash', 'check', 'card', 'bank', 'other'] as const).map((method) => [
+          method,
+          resolvePaymentRoute(method, settings) === 'undeposited_funds',
+        ])
+      ) as Record<'cash' | 'check' | 'card' | 'bank' | 'other', boolean>,
+      bankAccounts: accounts.value
+        .filter((account) => account.glAccountId && !account.archivedAt)
+        .map((account) => ({
+          id: account.id,
+          name: account.name ?? account.institution ?? 'Bank account',
+          last4: account.last4,
+        })),
+    }
+  }),
+
   recordPayment: moneyProcedure
     .input(
       z.object({
@@ -640,22 +687,45 @@ export const moneyRouter = createTRPCRouter({
         /** ISO date string (`yyyy-MM-dd`) — the date the payment was made (may be backdated). */
         date: z.string(),
         method: z.enum(['cash', 'check', 'card', 'bank', 'other']),
+        /**
+         * The `bank_account` record the money landed in. Required for a method
+         * the org routes straight to cash, forbidden for one held in
+         * undeposited funds — `recordInvoicePayment` enforces which.
+         */
+        bankAccountInstanceId: z.string().nullish(),
         reference: z.string().optional(),
         note: z.string().optional(),
+        /**
+         * Idempotency key. The dialog mints one per open, so a double submit or
+         * a retried request records the payment once.
+         */
+        commandKey: z.string().min(1).max(200),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.invoiceRecordId)
-      return recordManualPayment({
+      // Task 54: the money model, not `PaymentTransaction`. The receipt is
+      // recorded first and its journal accepted after, so a ledger that is not
+      // set up refuses the posting without also refusing to record that the
+      // customer paid.
+      const recorded = await recordInvoicePayment(ctx.db, {
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         invoiceInstanceId: entityInstanceId,
-        amount: input.amount,
+        amountMinor: input.amount,
         date: input.date,
         method: input.method,
+        bankAccountInstanceId: input.bankAccountInstanceId,
         reference: input.reference,
         note: input.note,
+        commandKey: input.commandKey,
       })
+      const posting = await acceptInvoiceReceiptAccounting(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        moneyTransactionId: recorded.moneyTransactionId,
+        actorUserId: ctx.session.user.id,
+      })
+      return { ...recorded, postingStatus: posting.status }
     }),
 
   deletePayment: moneyAdminProcedure
@@ -724,8 +794,29 @@ export const moneyRouter = createTRPCRouter({
         ),
         orderBy: asc(schema.PaymentTransaction.createdAt),
       })
-
-      return mapPaymentRows(ctx.session.organizationId, rows)
+      // Task 54: both lanes, until unit 7 drops `PaymentTransaction`. New
+      // payments land in the money model; anything legacy still renders beside
+      // them, and the two id spaces never collide.
+      const [legacy, money] = await Promise.all([
+        mapPaymentRows(ctx.session.organizationId, rows),
+        listInvoiceMoneyPayments(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          invoiceInstanceId: entityInstanceId,
+        }),
+      ])
+      return [
+        ...legacy,
+        ...money.map((row) => ({
+          ...row,
+          createdByUserId: null,
+          stripeRefundId: null,
+          refundedTransactionId: null,
+          invoiceInstanceId: entityInstanceId,
+          quoteInstanceId: null,
+          workOrderInstanceId: null,
+          heldAmount: 0,
+        })),
+      ]
     }),
 
   /**

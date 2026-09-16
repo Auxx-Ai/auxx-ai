@@ -41,6 +41,15 @@ export const MoneyTransaction = pgTable(
     partyInstanceId: text(),
     paymentRouteId: text(),
     cashAccountInstanceId: text(),
+    /**
+     * How the money moved — `cash` | `check` | `card` | `bank` | `other`.
+     *
+     * 🔑 Nullable, because source-imported money does not have one: a Shopify
+     * receipt carries a GATEWAY, which is a different fact and already lives on
+     * the source object. This is the hand-recorded rail's answer to "what was
+     * it paid by", and it is what `accounting.paymentRoute.<method>` keys on.
+     */
+    method: text().$type<'cash' | 'check' | 'card' | 'bank' | 'other'>(),
     recordedByCommandId: text().notNull(),
     reference: text(),
     note: text(),

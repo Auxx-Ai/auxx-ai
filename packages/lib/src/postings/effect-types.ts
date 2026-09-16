@@ -360,6 +360,134 @@ export const customerReceiptAccountingBasisSchema = z
     if (taxTotal !== BigInt(value.taxMinor)) issue('Tax components do not equal collected tax')
   })
 
+/**
+ * Exact invoice facts frozen for one confirmed receipt against an INVOICE.
+ *
+ * The second policy under the `customer_receipt` family (task 54 §7). The
+ * schema above is the Shopify-order policy and stays byte-identical, because
+ * `credit-memos/accounting.ts` and `customer-money/refund-accounting.ts`
+ * re-parse frozen bases that were written against it.
+ *
+ * ## 🔑 Why this one is so much smaller
+ *
+ * `buildInvoiceEntry` already booked `Dr accounts_receivable / Cr revenue /
+ * Cr sales_tax_payable` when the invoice was issued, so a receipt against it
+ * recognizes nothing — it is `Dr <cash> / Cr accounts_receivable` and no more.
+ * There is no recognition timeline to allocate against, no tax to split, and no
+ * deposit half: money received against an issued invoice was always owed. The
+ * order policy needs all of that because a Shopify receipt can arrive before
+ * anything has been recognized.
+ *
+ * ## ⚠️ `kind` is what makes the union unambiguous
+ *
+ * Both members are `strictObject`s, so the discriminator is structural: an
+ * order basis has no `kind` and is rejected here, and an invoice basis's `kind`
+ * is an unknown key up there. Do not remove it, and do not add it to the order
+ * schema — that would rewrite the meaning of 432 frozen, sha256-hashed rows.
+ */
+export const invoiceReceiptAccountingBasisSchema = z
+  .strictObject({
+    version: z.literal(1),
+    kind: z.literal('invoice_receipt'),
+    moneyTransactionId: id,
+    invoiceInstanceId: id,
+    sourceHash: hash,
+    /**
+     * ⚠️ **Both precisions, mirroring `MoneyTransaction`'s own CHECK.** A
+     * Shopify receipt has an instant; a cheque someone recorded as "the 3rd"
+     * has a DATE and nothing more, and inventing a time for it would make the
+     * book date depend on a timezone conversion of a fact nobody observed.
+     * Exactly one of these is set.
+     */
+    occurredAt: z.iso.datetime().nullable(),
+    occurredOn: date.nullable(),
+    effectiveDate: date,
+    currency: z.literal('USD'),
+    currencyExponent: z.literal(2),
+    amountMinor: minor.refine((v) => BigInt(v) > 0n, 'Receipt must be positive'),
+    receiptAmountMinor: minor.refine((v) => BigInt(v) > 0n, 'Receipt must be positive'),
+    /** The invoice total as `invoice_total` stood when the receipt was frozen. */
+    invoiceTotalMinor: minor,
+    /** What the invoice still owed BEFORE this receipt. The receipt may not exceed it. */
+    invoiceOutstandingMinor: minor,
+    /** The whole receipt relieves the receivable; kept explicit so the entry reads off the basis. */
+    receivableMinor: minor,
+    /**
+     * The resolved debit account, whichever way it was chosen. Frozen because a
+     * chart repointed later must not restate an approved obligation.
+     */
+    cashGlAccountId: id,
+    /**
+     * 🔑 **How the debit account was chosen, and it is genuinely two ways.**
+     *
+     * `bank_account` — the payer named where the money landed, so the account
+     * is that `bank_account` record's `bank_account_gl_account` pointer.
+     *
+     * `undeposited_funds` — nobody named one, so the money sits in the
+     * {@link ACCOUNT_ROLES.UNDEPOSITED_FUNDS} role until a `bank_deposit`
+     * groups it and posts the single `Dr cash Cr undeposited_funds` line.
+     *
+     * ⚠️ This is not a default-vs-explicit distinction, it is an accounting
+     * one. `bank-deposits/route.ts` routes cash and cheque to undeposited funds
+     * precisely because five cheques banked together arrive as ONE bank line
+     * that five separate cash postings can never match. Debiting a bank account
+     * directly for them balances and silently breaks bank matching.
+     */
+    debitSelectedBy: z.enum(['bank_account', 'undeposited_funds']),
+    /** The `bank_account` record, when one was named. Null for undeposited funds. */
+    bankAccountInstanceId: id.nullable(),
+    applications: z
+      .array(
+        z.strictObject({
+          applicationId: id,
+          invoiceInstanceId: id,
+          amountMinor: minor.refine((v) => BigInt(v) > 0n, 'Application must be positive'),
+          effectiveDate: date,
+        })
+      )
+      .min(1),
+  })
+  .superRefine((value, ctx) => {
+    const issue = (message: string) => ctx.addIssue({ code: 'custom', message })
+    if (value.receiptAmountMinor !== value.amountMinor)
+      issue('Receipt amount must equal the confirmed money transaction amount')
+    if (value.receivableMinor !== value.receiptAmountMinor)
+      issue('An invoice receipt relieves the receivable by its whole amount')
+    if (BigInt(value.receiptAmountMinor) > BigInt(value.invoiceOutstandingMinor))
+      issue('Receipt exceeds what the invoice still owed')
+    if (BigInt(value.invoiceOutstandingMinor) > BigInt(value.invoiceTotalMinor))
+      issue('Invoice outstanding exceeds its total')
+    const applicationTotal = value.applications.reduce(
+      (sum, item) => sum + BigInt(item.amountMinor),
+      0n
+    )
+    if (applicationTotal !== BigInt(value.receiptAmountMinor))
+      issue('Receipt applications do not equal the receipt amount')
+    if (
+      value.applications.some(
+        (item) =>
+          item.invoiceInstanceId !== value.invoiceInstanceId ||
+          item.effectiveDate !== value.effectiveDate
+      )
+    )
+      issue('Receipt applications must match the frozen invoice and accounting date')
+    if ((value.debitSelectedBy === 'bank_account') !== (value.bankAccountInstanceId !== null))
+      issue('A bank-account receipt names its bank account; an undeposited one names none')
+    if ((value.occurredAt === null) === (value.occurredOn === null))
+      issue('A receipt occurred at an instant or on a date, never both or neither')
+    // A date-precision receipt IS its book date. There is no conversion to do,
+    // so there is nothing for the timezone check on the accepted basis to
+    // verify — it is pinned here instead.
+    if (value.occurredOn !== null && value.occurredOn !== value.effectiveDate)
+      issue('A date-precision receipt books on the day it occurred')
+  })
+
+/** Either receipt policy's frozen calculation. Order first — it is the older shape. */
+export const customerReceiptCalculationSchema = z.union([
+  customerReceiptAccountingBasisSchema,
+  invoiceReceiptAccountingBasisSchema,
+])
+
 export const customerReceiptWorkBasisSchema = z
   .discriminatedUnion('status', [
     z.strictObject({
@@ -377,7 +505,7 @@ export const customerReceiptWorkBasisSchema = z
       moneyTransactionId: id,
       sourceHash: hash,
       effectiveDate: date,
-      calculation: customerReceiptAccountingBasisSchema,
+      calculation: customerReceiptCalculationSchema,
     }),
   ])
   .superRefine((value, ctx) => {
@@ -395,7 +523,8 @@ export const acceptedCustomerReceiptEffectBasisSchema = z
     version: z.literal(1),
     sourceBasisVersion: z.number().int().positive(),
     sourceHash: hash,
-    policyKey: z.literal('shopify_receipt_v1'),
+    /** `invoice_receipt_v1` is task 54's second policy; the family is unchanged. */
+    policyKey: z.enum(['shopify_receipt_v1', 'invoice_receipt_v1']),
     policyVersion: z.literal(1),
     /** Reserved (D13). Absent everywhere today; see `basis-dimension.ts`. */
     basis: reservedAccountingBasis,
@@ -404,7 +533,7 @@ export const acceptedCustomerReceiptEffectBasisSchema = z
     currency: z.literal('USD'),
     currencyExponent: z.literal(2),
     documentRefs: z.array(z.strictObject({ resourceKind: id, entityInstanceId: id })).min(1),
-    calculation: customerReceiptAccountingBasisSchema,
+    calculation: customerReceiptCalculationSchema,
     accountResolution: z
       .array(
         z.strictObject({
@@ -430,18 +559,40 @@ export const acceptedCustomerReceiptEffectBasisSchema = z
     if (value.sourceHash !== value.calculation.sourceHash) issue('Calculation source hash differs')
     if (value.effectiveDate !== value.calculation.effectiveDate)
       issue('Receipt effect date differs from its calculation date')
+    // Only an INSTANT needs converting into the book's day. A date-precision
+    // receipt already is one, and its own schema pins it to `effectiveDate`.
     if (
+      value.calculation.occurredAt !== null &&
       calendarDateInTimeZone(value.calculation.occurredAt, value.bookTimeZone) !==
-      value.effectiveDate
+        value.effectiveDate
     )
       issue('Receipt effect date differs from the occurrence date in the book time zone')
+    // The two policies name different source documents, and each one's ref has
+    // to be present or the register cannot get back from an effect to what it
+    // was about. `kind` is the structural discriminator; see the invoice basis.
+    const invoicePolicy = 'kind' in value.calculation
+    if (invoicePolicy !== (value.policyKey === 'invoice_receipt_v1'))
+      issue('Receipt policy key does not match its calculation shape')
     if (
+      !invoicePolicy &&
       !value.documentRefs.some(
         (r) =>
-          r.resourceKind === 'order' && r.entityInstanceId === value.calculation.orderInstanceId
+          r.resourceKind === 'order' &&
+          !('kind' in value.calculation) &&
+          r.entityInstanceId === value.calculation.orderInstanceId
       )
     )
       issue('Missing order source reference')
+    if (
+      invoicePolicy &&
+      !value.documentRefs.some(
+        (r) =>
+          r.resourceKind === 'invoice' &&
+          'kind' in value.calculation &&
+          r.entityInstanceId === value.calculation.invoiceInstanceId
+      )
+    )
+      issue('Missing invoice source reference')
     if (
       !value.documentRefs.some(
         (r) =>
@@ -473,16 +624,22 @@ export const acceptedCustomerReceiptEffectBasisSchema = z
     if (balance !== 0n) issue('Effect contribution must balance independently')
     if (debit > BigInt(Number.MAX_SAFE_INTEGER))
       issue('Effect total exceeds the current ledger safe-number boundary')
+    // Where the money landed: the frozen clearing route for an order receipt,
+    // the resolved cash account for an invoice one. Either way it must BE the
+    // debit side and must carry the whole receipt.
+    const cashGlAccountId =
+      'kind' in value.calculation
+        ? value.calculation.cashGlAccountId
+        : value.calculation.route.glAccountId
     if (
       !value.contribution.some(
-        (line) =>
-          line.direction === 'debit' && line.glAccountId === value.calculation.route.glAccountId
+        (line) => line.direction === 'debit' && line.glAccountId === cashGlAccountId
       )
     )
       issue('Receipt route account must be the debit account')
     const routeDebit = value.contribution.reduce(
       (sum, line) =>
-        line.direction === 'debit' && line.glAccountId === value.calculation.route.glAccountId
+        line.direction === 'debit' && line.glAccountId === cashGlAccountId
           ? sum + BigInt(line.amountMinor)
           : sum,
       0n
@@ -494,6 +651,9 @@ export const acceptedCustomerReceiptEffectBasisSchema = z
   })
 
 export type CustomerReceiptAccountingBasisV1 = z.infer<typeof customerReceiptAccountingBasisSchema>
+export type InvoiceReceiptAccountingBasisV1 = z.infer<typeof invoiceReceiptAccountingBasisSchema>
+/** Either receipt policy's calculation; narrow with `'kind' in calculation`. */
+export type CustomerReceiptCalculationV1 = z.infer<typeof customerReceiptCalculationSchema>
 export type CustomerReceiptWorkBasisInput = z.infer<typeof customerReceiptWorkBasisSchema>
 /** Existing fulfillment work input; retained for callers that only accept fulfillments. */
 export const accountingWorkBasisSchema = fulfillmentWorkBasisSchema
