@@ -1,5 +1,13 @@
 // packages/lib/src/postings/effect-types.ts
 import { z } from 'zod'
+import {
+  type AcceptedCustomerCreditEffectBasisV1,
+  customerCreditWorkBasisSchema,
+} from './credit-effect-types'
+import {
+  type AcceptedCustomerRefundEffectBasisV1,
+  customerRefundWorkBasisSchema,
+} from './refund-effect-types'
 
 const id = z.string().min(1)
 const hash = z.string().regex(/^[0-9a-f]{64}$/)
@@ -480,6 +488,8 @@ export const accountingWorkBasisSchema = fulfillmentWorkBasisSchema
 export const accountingWorkBasisSchemaV1 = z.union([
   fulfillmentWorkBasisSchema,
   customerReceiptWorkBasisSchema,
+  customerCreditWorkBasisSchema,
+  customerRefundWorkBasisSchema,
 ])
 export type AccountingWorkBasisInput = z.infer<typeof accountingWorkBasisSchema>
 export type AccountingWorkBasisInputV1 = z.infer<typeof accountingWorkBasisSchemaV1>
@@ -489,3 +499,5 @@ export type AcceptedCustomerReceiptEffectBasisV1 = z.infer<
 export type AcceptedAccountingEffectBasisV1 =
   | AcceptedFulfillmentEffectBasisV1
   | AcceptedCustomerReceiptEffectBasisV1
+  | AcceptedCustomerCreditEffectBasisV1
+  | AcceptedCustomerRefundEffectBasisV1

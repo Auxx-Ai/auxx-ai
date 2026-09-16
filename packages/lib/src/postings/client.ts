@@ -41,12 +41,16 @@ export {
 // and `period-key`, all of which are already on this surface. The write half
 // lives in `money/credit-memos/` and stays server-only.
 export {
+  type BuildCreditMemoEntitlementEntryInput,
   type BuildCreditMemoEntryInput,
+  type BuiltCreditMemoEntitlementEntry,
   type BuiltCreditMemoEntry,
+  buildCreditMemoEntitlementEntry,
   buildCreditMemoEntry,
   CREDIT_MEMO_POSTING_TYPE,
   CREDIT_MEMO_SOURCE_TYPE,
   type CreditMemoAmountsInput,
+  type CreditMemoEntitlementComponent,
   type CreditMemoSettlement,
   computeCreditMemoAmounts,
 } from './build-credit-memo-entry'

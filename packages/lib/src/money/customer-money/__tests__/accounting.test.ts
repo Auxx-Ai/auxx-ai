@@ -135,6 +135,7 @@ function receiptSource(amountMinor = 120n) {
     route: { id: 'route_1' },
     processorAccountId: 'processor_1',
     sourceStoreId: 'store_1',
+    sourceProvider: 'shopify',
     sourceObjectId: 'source_1',
     sourceExternalId: 'capture_1',
     sourceRevision: 'observation_1',

@@ -96,7 +96,7 @@ export async function listOrderMoneyTransactions(
           and(
             eq(schema.AccountingWork.organizationId, organizationId),
             inArray(schema.AccountingWork.moneyTransactionId, moneyIds),
-            eq(schema.AccountingWork.effectKind, 'customer_receipt'),
+            inArray(schema.AccountingWork.effectKind, ['customer_receipt', 'customer_refund']),
             eq(schema.AccountingWork.operation, 'original')
           )
         )

@@ -1,7 +1,7 @@
 // packages/lib/src/resources/crud/financial-record-binding.ts
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { parseRecordId } from '@auxx/types/resource'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, or, sql } from 'drizzle-orm'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
 import type { FinancialRecordType } from '../../money/payouts/record-contracts'
 import type { FinancialWriteProvenance } from '../../money/payouts/record-storage'
@@ -11,6 +11,16 @@ import type { MutationContext } from './unified-handler-mutations'
 /** Financial resources use the normal record identity with typed storage for source facts. */
 export function financialRecordType(value: string | null | undefined): FinancialRecordType | null {
   return value === 'payout' || value === 'processor_balance_entry' ? value : null
+}
+
+/** Entity kinds whose archive/delete path must preserve accepted accounting history. */
+export function hasAccountingHistory(value: string | null | undefined): boolean {
+  return (
+    financialRecordType(value) !== null ||
+    value === 'credit_memo' ||
+    value === 'credit_memo_line' ||
+    value === 'credit_memo_application'
+  )
 }
 /** Resolve verified reporting connection data from the platform write session. */
 export async function resolveFinancialWriteProvenance(
@@ -62,16 +72,49 @@ export async function assertFinancialRecordCanDelete(
   organizationId: string,
   recordId: string
 ): Promise<void> {
-  const { entityInstanceId } = parseRecordId(recordId as Parameters<typeof parseRecordId>[0])
-  const { entityDefinitionId } = parseRecordId(recordId as Parameters<typeof parseRecordId>[0])
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(
+    recordId as Parameters<typeof parseRecordId>[0]
+  )
+  // Record IDs may use either the definition ID or the resource slug.
   const definition = await db.query.EntityDefinition.findFirst({
     where: and(
       eq(schema.EntityDefinition.organizationId, organizationId),
-      eq(schema.EntityDefinition.id, entityDefinitionId)
+      or(
+        eq(schema.EntityDefinition.id, entityDefinitionId),
+        eq(schema.EntityDefinition.entityType, entityDefinitionId)
+      )
     ),
     columns: { entityType: true },
   })
-  const type = financialRecordType(definition?.entityType)
+  // The slug IS the entity type, so a RecordId in that form still classifies even
+  // if no def row resolves — a missing def must not read as "not financial".
+  const entityType = definition?.entityType ?? entityDefinitionId
+  const creditMemoId = await creditMemoForRecord(db, organizationId, entityType, entityInstanceId)
+  if (creditMemoId) {
+    const [accepted] = await db
+      .select({ id: schema.AccountingEffect.id })
+      .from(schema.AccountingEffect)
+      .innerJoin(
+        schema.AccountingWork,
+        and(
+          eq(schema.AccountingWork.id, schema.AccountingEffect.workId),
+          eq(schema.AccountingWork.organizationId, organizationId)
+        )
+      )
+      .where(
+        and(
+          eq(schema.AccountingEffect.organizationId, organizationId),
+          eq(schema.AccountingWork.effectKind, 'customer_credit_issued'),
+          eq(schema.AccountingWork.entityInstanceId, creditMemoId)
+        )
+      )
+      .limit(1)
+    if (accepted)
+      throw new ConflictError(
+        'Credit accounting history cannot be archived or deleted; record a correction instead'
+      )
+  }
+  const type = financialRecordType(entityType)
   if (!type) return
   const rows = await db
     .select({ id: schema.FinancialSourceObservation.id })
@@ -87,4 +130,33 @@ export async function assertFinancialRecordCanDelete(
     throw new ConflictError(
       'Financial history cannot be archived or deleted; record a correction instead'
     )
+}
+
+/** Resolve the memo whose accepted entitlement would be hidden by this write. */
+async function creditMemoForRecord(
+  db: Database | Transaction,
+  organizationId: string,
+  entityType: string | null | undefined,
+  entityInstanceId: string
+): Promise<string | null> {
+  if (entityType === 'credit_memo') return entityInstanceId
+  if (entityType !== 'credit_memo_line' && entityType !== 'credit_memo_application') return null
+  const attribute =
+    entityType === 'credit_memo_line'
+      ? 'credit_memo_line_credit_memo'
+      : 'credit_memo_application_credit_memo'
+  const [edge] = await db
+    .select({ id: schema.FieldValue.relatedEntityId })
+    .from(schema.FieldValue)
+    .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.CustomField.organizationId, organizationId),
+        eq(schema.CustomField.systemAttribute, attribute),
+        eq(schema.FieldValue.entityId, entityInstanceId)
+      )
+    )
+    .limit(1)
+  return edge?.id ?? null
 }

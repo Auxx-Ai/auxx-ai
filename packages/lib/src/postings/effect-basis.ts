@@ -40,6 +40,12 @@ export function customerReceiptAccountingEffectKey(moneyTransactionId: string): 
   return 'customer_receipt:' + JSON.stringify([moneyTransactionId, 'original'])
 }
 
+/** Stable original identity for one confirmed customer refund movement. */
+export function customerRefundAccountingEffectKey(moneyTransactionId: string): string {
+  if (!moneyTransactionId) throw new UnprocessableEntityError('A money transaction ID is required')
+  return 'customer_refund:' + JSON.stringify([moneyTransactionId, 'original'])
+}
+
 /** Corrections have a command identity against the frozen original, never another original. */
 export function correctionAccountingEffectKey(
   originalEffectId: string,

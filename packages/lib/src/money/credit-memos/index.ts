@@ -1,4 +1,9 @@
 // packages/lib/src/money/credit-memos/index.ts
+export {
+  type CreditSourceAllocation,
+  type IssueCreditMemoAccountingInput,
+  issueCreditMemoAccounting,
+} from './accounting'
 //
 // Server entrypoint for the credit memo module (plans/accounting/tasks/10).
 // Explicit named exports only. Anything the UI needs comes from `./client`.

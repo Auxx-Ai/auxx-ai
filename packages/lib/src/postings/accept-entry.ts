@@ -3,6 +3,7 @@ import { type AccountingWorkEntity, schema, type Transaction } from '@auxx/datab
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { ConflictError, UnprocessableEntityError } from '../errors'
 import { withAccountingCommitLock } from './accounting-commit-lock'
+import { acceptedCustomerCreditEffectBasisSchema } from './credit-effect-types'
 import { fulfillmentGroupPeriodKey } from './doc-number'
 import { type PostingAccountingMembership, parsePostingAccountingMembership } from './draft'
 import { accountingBasisHash, canonicalAccountingJson } from './effect-basis'
@@ -18,6 +19,7 @@ import {
 import { insertPostingInTx, type PostingDeliveryIntent, type PreparedLine } from './insert-posting'
 import { resolvePeriodLock } from './period-lock'
 import { prepareEntry, uniqueViolationConstraint } from './post-entry'
+import { acceptedCustomerRefundEffectBasisSchema } from './refund-effect-types'
 import { type RoleSourceScope, resolveRoles } from './resolve-roles'
 import type { BuiltEntry } from './types'
 
@@ -44,7 +46,7 @@ export interface PreparedEffectPosting {
   deliveryIntent: PostingDeliveryIntent
 }
 
-/** The fulfillment domain must re-read source/configuration dependencies using this transaction. */
+/** Each domain re-reads its source and configuration dependencies using this transaction. */
 export interface EffectAcceptanceDependencies {
   revalidateMemberInTx(
     tx: Transaction,
@@ -71,9 +73,16 @@ function parseAcceptedBasis(
   effectKind: AccountingWorkEntity['effectKind'],
   basis: unknown
 ): AcceptedAccountingEffectBasisV1 {
-  return effectKind === 'customer_receipt'
-    ? acceptedCustomerReceiptEffectBasisSchema.parse(basis)
-    : acceptedFulfillmentEffectBasisSchema.parse(basis)
+  switch (effectKind) {
+    case 'customer_receipt':
+      return acceptedCustomerReceiptEffectBasisSchema.parse(basis)
+    case 'customer_credit_issued':
+      return acceptedCustomerCreditEffectBasisSchema.parse(basis)
+    case 'customer_refund':
+      return acceptedCustomerRefundEffectBasisSchema.parse(basis)
+    case 'fulfillment_accounting':
+      return acceptedFulfillmentEffectBasisSchema.parse(basis)
+  }
 }
 
 /** Saved acceptance can span more than one journal after a caller regroups existing members. */
@@ -219,6 +228,7 @@ async function assertCorrectionHead(
       entityInstanceId: schema.AccountingWork.entityInstanceId,
       moneyTransactionId: schema.AccountingWork.moneyTransactionId,
       operation: schema.AccountingWork.operation,
+      effectKind: schema.AccountingWork.effectKind,
     })
     .from(schema.AccountingEffect)
     .innerJoin(
@@ -236,7 +246,8 @@ async function assertCorrectionHead(
     )
   if (
     original[0]?.operation !== 'original' ||
-    (work.effectKind === 'fulfillment_accounting'
+    original[0]?.effectKind !== work.effectKind ||
+    (work.entityInstanceId !== null
       ? original[0]?.entityInstanceId !== work.entityInstanceId
       : original[0]?.moneyTransactionId !== work.moneyTransactionId)
   )
@@ -291,7 +302,7 @@ async function assertCorrectionHead(
 /**
  * Accept exact work membership, journal lines and delivery intent in the caller's transaction.
  * No provider, cache, queue or event calls occur. Domain refusals throw so the caller rolls back.
- * The required revalidator is supplied by the trusted fulfillment writer in 45C; there is no
+ * The required revalidator is supplied by the trusted domain writer; there is no
  * fallback that treats a preview as an authoritative source/configuration snapshot.
  * Manual/automatic is an explicit trusted command choice. The transaction validates the
  * active connection and export boundary; 45C must validate command eligibility and join
@@ -307,9 +318,9 @@ export async function acceptEntryInTx(
     new Set(input.members.map((m) => m.workId)).size !== input.members.length
   )
     throw new UnprocessableEntityError('Choose a nonempty set of distinct accounting work members')
-  if (input.entry.postingType !== 'fulfillment' && input.entry.postingType !== 'payment')
+  if (!['fulfillment', 'payment', 'credit_memo'].includes(input.entry.postingType))
     throw new UnprocessableEntityError(
-      'This acceptance policy supports fulfillment and customer receipt accounting only'
+      'This acceptance policy supports fulfillment, customer money and credit accounting only'
     )
   let members = input.members
     .map((member) => ({
@@ -333,9 +344,13 @@ export async function acceptEntryInTx(
   if (works.length !== members.length)
     throw new ConflictError('Accounting work is missing or belongs to another organization')
   const workById = new Map(works.map((w) => [w.id, w]))
-  const expectedEffectKind =
-    input.entry.postingType === 'payment' ? 'customer_receipt' : 'fulfillment_accounting'
-  if (works.some((work) => work.effectKind !== expectedEffectKind))
+  const expectedPostingType = {
+    fulfillment_accounting: 'fulfillment',
+    customer_receipt: 'payment',
+    customer_refund: 'payment',
+    customer_credit_issued: 'credit_memo',
+  } as const
+  if (works.some((work) => expectedPostingType[work.effectKind] !== input.entry.postingType))
     throw new ConflictError('Journal posting type does not match every accounting work owner')
   members = members.map((member) => {
     const work = workById.get(member.workId)
@@ -352,11 +367,7 @@ export async function acceptEntryInTx(
     )
   }
   if (
-    members.some(
-      (member) =>
-        isReceiptBasis(member.acceptedBasis) ||
-        member.acceptedBasis.policyKey === 'shopify_payment_date_v1'
-    ) &&
+    members.some((member) => member.acceptedBasis.policyKey !== 'fulfillment_current_v1') &&
     sourceDates.some((date) => date !== input.entry.txnDate)
   ) {
     throw new ConflictError('Daily accounting effects must all use the journal date')
@@ -458,7 +469,7 @@ export async function acceptEntryInTx(
   for (const member of members) {
     const work = workById.get(member.workId)!
     if (
-      !['fulfillment_accounting', 'customer_receipt'].includes(work.effectKind) ||
+      !Object.hasOwn(expectedPostingType, work.effectKind) ||
       !['pending', 'blocked'].includes(work.state) ||
       work.eligibility === 'excluded'
     )
@@ -504,9 +515,25 @@ export async function acceptEntryInTx(
         accountingBasisHash(acceptedBasis.calculation) !==
           accountingBasisHash(receiptBasis.calculation)
     }
+    if (!ownerMismatch && work.effectKind === 'customer_credit_issued') {
+      ownerMismatch =
+        !('creditMemoInstanceId' in basis) ||
+        basis.creditMemoInstanceId !== work.entityInstanceId ||
+        acceptedBasis.policyKey !== 'customer_credit_issued_v1' ||
+        accountingBasisHash(acceptedBasis.calculation) !== accountingBasisHash(basis.calculation)
+    }
+    if (!ownerMismatch && work.effectKind === 'customer_refund') {
+      ownerMismatch =
+        !('moneyTransactionId' in basis) ||
+        basis.moneyTransactionId !== work.moneyTransactionId ||
+        acceptedBasis.policyKey !== 'customer_refund_v1' ||
+        accountingBasisHash(acceptedBasis.calculation) !== accountingBasisHash(basis.calculation)
+    }
     if (commonMismatch || ownerMismatch)
       throw new ConflictError('Accepted calculation differs from the selected source basis')
-    if (work.effectKind === 'fulfillment_accounting') {
+    if (work.entityInstanceId !== null) {
+      const entityType =
+        work.effectKind === 'customer_credit_issued' ? 'credit_memo' : 'fulfillment'
       const [source] = await tx
         .select({ id: schema.EntityInstance.id })
         .from(schema.EntityInstance)
@@ -521,13 +548,13 @@ export async function acceptEntryInTx(
           and(
             eq(schema.EntityInstance.organizationId, input.organizationId),
             eq(schema.EntityInstance.id, work.entityInstanceId!),
-            eq(schema.EntityDefinition.entityType, 'fulfillment'),
+            eq(schema.EntityDefinition.entityType, entityType),
             isNull(schema.EntityInstance.archivedAt),
             isNull(schema.EntityDefinition.archivedAt)
           )
         )
         .limit(1)
-      if (!source) throw new ConflictError('The accounting source is not a live fulfillment')
+      if (!source) throw new ConflictError(`The accounting source is not a live ${entityType}`)
     } else {
       const [source] = await tx
         .select({ id: schema.MoneyTransaction.id })
@@ -536,11 +563,15 @@ export async function acceptEntryInTx(
           and(
             eq(schema.MoneyTransaction.organizationId, input.organizationId),
             eq(schema.MoneyTransaction.id, work.moneyTransactionId!),
-            eq(schema.MoneyTransaction.purpose, 'customer_receipt')
+            eq(
+              schema.MoneyTransaction.purpose,
+              work.effectKind === 'customer_refund' ? 'customer_refund' : 'customer_receipt'
+            )
           )
         )
         .limit(1)
-      if (!source) throw new ConflictError('The accounting source is not a live customer receipt')
+      if (!source)
+        throw new ConflictError('The accounting source is not the expected customer movement')
     }
     const revalidated = parseAcceptedBasis(
       work.effectKind,

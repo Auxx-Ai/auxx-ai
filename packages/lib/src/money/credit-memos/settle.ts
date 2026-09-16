@@ -15,6 +15,7 @@ import { toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getEntityDefIdResolver } from '../../cache'
 import { FieldValueService } from '../../field-values/field-value-service'
+import { runWithCreditAccountingProjection } from '../../postings/source-write-guard'
 import type { CreditMemoStatus } from './client'
 import {
   requireCreditMemo,
@@ -124,10 +125,12 @@ export async function settleCreditMemo(
       undefined,
       { bypassFieldGuards: CREDIT_MEMO_STATUS_BYPASS }
     )
-    await fieldValueService.setValuesForEntity({
-      recordId: toRecordId(resolveDefId('credit_memo'), creditMemoInstanceId),
-      values: writes,
-    })
+    await runWithCreditAccountingProjection([creditMemoInstanceId], () =>
+      fieldValueService.setValuesForEntity({
+        recordId: toRecordId(resolveDefId('credit_memo'), creditMemoInstanceId),
+        values: writes,
+      })
+    )
   }
 
   return { amountAppliedMinor, amountRefundedMinor, balanceMinor, status: nextStatus }

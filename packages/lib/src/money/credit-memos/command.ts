@@ -19,7 +19,7 @@ export async function runCreditCommand<T extends Record<string, string>>(
     kind: string
     payload: unknown
   },
-  execute: (tx: Transaction) => Promise<T>
+  execute: (tx: Transaction, commandId: string) => Promise<T>
 ): Promise<T> {
   if (!input.commandKey?.trim() || input.commandKey.length > 200)
     throw new BadRequestError('A credit command needs a retry key of at most 200 characters')
@@ -39,15 +39,27 @@ export async function runCreditCommand<T extends Record<string, string>>(
             throw new ConflictError('This credit retry key already belongs to a different request')
           return previous.resultIds as T
         }
-        const result = await runWithCreditApplicationWrite(() => execute(tx))
-        await tx.insert(schema.MoneyCommand).values({
-          organizationId: input.organizationId,
-          commandKey: input.commandKey,
-          kind: input.kind,
-          payloadHash,
-          actorSnapshot: { userId: input.userId },
-          resultIds: result,
-        })
+        const [command] = await tx
+          .insert(schema.MoneyCommand)
+          .values({
+            organizationId: input.organizationId,
+            commandKey: input.commandKey,
+            kind: input.kind,
+            payloadHash,
+            actorSnapshot: { userId: input.userId },
+          })
+          .returning({ id: schema.MoneyCommand.id })
+        if (!command) throw new Error('Credit command insert returned no row')
+        const result = await runWithCreditApplicationWrite(() => execute(tx, command.id))
+        await tx
+          .update(schema.MoneyCommand)
+          .set({ resultIds: result })
+          .where(
+            and(
+              eq(schema.MoneyCommand.organizationId, input.organizationId),
+              eq(schema.MoneyCommand.id, command.id)
+            )
+          )
         return result
       })
     )
