@@ -98,6 +98,11 @@ const ALWAYS_ON_TOOLS = new Set<string>([
   // the builders', not a toolset anyone picks.
   'resolve_lines',
   'propose_draft',
+  // Ledger-console read — mounted by page context
+  // (`page: 'accounting.ledger'`), never by an org toolset. Same reasoning as
+  // the blocks above, recorded in `ledger/client.ts`: it exists only on a page
+  // no user-authored agent runs on, and a slug outside `auxx:*` would strip it.
+  'get_ledger_status',
 ])
 
 const CAPABILITIES_DIR = join(__dirname, '..', 'capabilities')

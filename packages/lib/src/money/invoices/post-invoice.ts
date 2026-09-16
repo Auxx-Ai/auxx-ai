@@ -27,124 +27,20 @@
 //
 // plans/accounting/tasks/08-invoice-revenue.md
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray } from 'drizzle-orm'
-import { getOrgCache } from '../../cache'
-import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import {
-  buildInvoiceEntry,
   INVOICE_ISSUED_POSTING_TYPE,
   INVOICE_SOURCE_TYPE,
 } from '../../postings/build-invoice-entry'
 import { didLedgerAccept, isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { listPostingsForSource } from '../../postings/list-postings'
 import { resolvePeriodLock } from '../../postings/period-lock'
-import { periodKeyForDate } from '../../postings/periods'
-import { postEntry } from '../../postings/post-entry'
 import { reverseEntry } from '../../postings/reverse-entry'
-import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
-import type { PostResult } from '../../postings/types'
-import { getOrganizationSetting } from '../../settings/settings-service'
+import { NON_FAILURE_REFUSALS, type PostResult } from '../../postings/types'
+import { acceptInvoiceIssuanceAccounting } from './issuance-accounting'
 
 const logger = createScopedLogger('money-invoice-ledger')
-
-const INVOICE_ATTRIBUTES = [
-  'invoice_number',
-  'invoice_issued_at',
-  'invoice_subtotal',
-  'invoice_tax_total',
-  'invoice_total',
-  'invoice_contact',
-] as const
-
-/** The invoice values an issuance entry is built from. Nothing else is read. */
-interface InvoiceForIssuance {
-  number: string
-  /** `YYYY-MM-DD`, or `null` when nothing has been stamped. */
-  issuedAt: string | null
-  subtotalMinor: number | null
-  taxTotalMinor: number | null
-  totalMinor: number | null
-  /** `invoice_contact`'s related `contact` instance id, for the receivable's counterparty. */
-  contactInstanceId: string | null
-}
-
-/**
- * Read the five values off `FieldValue` directly.
- *
- * A plain read rather than `UnifiedCrudHandler.getFieldValues`, which needs an
- * actor - the same trade `write-off.ts` makes so its preview and its writer can
- * share one loader.
- */
-async function loadInvoiceForIssuance(
-  db: Database,
-  organizationId: string,
-  invoiceId: string
-): Promise<InvoiceForIssuance | null> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...INVOICE_ATTRIBUTES])
-  const fields = [
-    cf.invoice_number,
-    cf.invoice_issued_at,
-    cf.invoice_subtotal,
-    cf.invoice_tax_total,
-    cf.invoice_total,
-    cf.invoice_contact,
-  ].filter((field) => field !== null)
-  if (fields.length === 0) return null
-
-  const rows = await db
-    .select({
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      valueNumber: schema.FieldValue.valueNumber,
-      valueDate: schema.FieldValue.valueDate,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.entityId, invoiceId),
-        inArray(
-          schema.FieldValue.fieldId,
-          fields.map((field) => field.id)
-        )
-      )
-    )
-  const byField = new Map(rows.map((row) => [row.fieldId, row]))
-
-  const number = (cf.invoice_number ? byField.get(cf.invoice_number.id)?.valueText : null) ?? ''
-  // `FieldValue.valueDate` arrives as an ISO instant; the accounting date is
-  // the calendar day the bookkeeper wrote, so it is sliced, never re-zoned.
-  const rawIssuedAt = cf.invoice_issued_at ? byField.get(cf.invoice_issued_at.id)?.valueDate : null
-  const issuedAt =
-    typeof rawIssuedAt === 'string' && rawIssuedAt.length >= 10 ? rawIssuedAt.slice(0, 10) : null
-
-  return {
-    number,
-    issuedAt,
-    subtotalMinor:
-      (cf.invoice_subtotal ? byField.get(cf.invoice_subtotal.id)?.valueNumber : null) ?? null,
-    taxTotalMinor:
-      (cf.invoice_tax_total ? byField.get(cf.invoice_tax_total.id)?.valueNumber : null) ?? null,
-    totalMinor: (cf.invoice_total ? byField.get(cf.invoice_total.id)?.valueNumber : null) ?? null,
-    contactInstanceId:
-      (cf.invoice_contact ? byField.get(cf.invoice_contact.id)?.relatedEntityId : null) ?? null,
-  }
-}
-
-/** Today, in the org's own book time zone - falls back to UTC while setup is incomplete. */
-async function todayInBookTimeZone(organizationId: string): Promise<string> {
-  const raw = await getOrganizationSetting({
-    organizationId,
-    key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
-  })
-  const bookTimeZone = typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'UTC'
-  return periodKeyForDate(new Date(), 'day', bookTimeZone)
-}
 
 export interface PostInvoiceIssuanceInput {
   organizationId: string
@@ -169,12 +65,16 @@ export interface PostInvoiceIssuanceInput {
  * and cannot see uncommitted rows - the standing rule for post-commit work in
  * this codebase.
  *
- * Idempotent by the claim's unique index: the period key is the invoice's own
- * number, so a second call claims the same
- * `(org, invoice_issued, periodKey, revision=0)` tuple and converges to
- * `already_posted`. Unlike a payment's minted key this cannot collide with a
- * DIFFERENT document, because an invoice number is unique in the org by
- * construction, so no owner check is needed on top of it.
+ * Idempotent twice over. The period key is still the invoice's own number, so a
+ * second call claims the same `(org, invoice_issued, periodKey, revision=0)`
+ * tuple - and unlike a payment's minted key it cannot collide with a DIFFERENT
+ * document, because an invoice number is unique in the org by construction. On
+ * top of that the issuance now carries a durable `AccountingWork` whose
+ * `effectKey` is unique per invoice, so a re-run converges on the ACCEPTED
+ * EFFECT rather than on the claim alone (D19, 53 §7.3.3).
+ *
+ * 🔑 The accounting lives in `issuance-accounting.ts`; this function is the
+ * never-throws door the invoice lifecycle calls through, and stays that.
  */
 export async function postInvoiceIssuance(
   db: Database,
@@ -182,74 +82,36 @@ export async function postInvoiceIssuance(
 ): Promise<PostResult> {
   const { organizationId, invoiceId, actorUserId } = input
 
-  if (!(await isAccountingEnabled(db, organizationId))) {
-    return { status: 'not_enabled' }
-  }
+  const post = await acceptInvoiceIssuanceAccounting(db, {
+    organizationId,
+    invoiceId,
+    actorUserId,
+  })
 
-  try {
-    const invoice = await loadInvoiceForIssuance(db, organizationId, invoiceId)
-    if (!invoice) {
-      return {
-        status: 'nothing_to_close',
-        error: `Invoice ${invoiceId} has no readable totals, so there is nothing to recognise.`,
-      }
-    }
-
-    // `markInvoiceSent` stamps `issuedAt` when it is empty, so this fallback is
-    // for an invoice sent by some other door. Today in the BOOK time zone, not
-    // UTC: a period boundary is a wall-clock midnight (ground rule 5).
-    const issuedAt = invoice.issuedAt ?? (await todayInBookTimeZone(organizationId))
-
-    const built = buildInvoiceEntry({
-      invoiceId,
-      invoiceNumber: invoice.number,
-      issuedAt,
-      subtotalMinor: invoice.subtotalMinor,
-      taxTotalMinor: invoice.taxTotalMinor,
-      totalMinor: invoice.totalMinor,
-      contactInstanceId: invoice.contactInstanceId,
-    })
-
-    const lock = await resolvePeriodLock(organizationId)
-    const post = await postEntry(db, {
-      organizationId,
-      entry: built.entry,
-      actorUserId,
-      lock,
-      memo: `Invoice ${invoice.number} issued`,
-    })
-
-    if (!isExpectedPostOutcome(post)) {
-      // 🛑 Recorded, never swallowed. A refusal AFTER the claim writes a
-      // `pending`/`failed` `GlPosting` row, which `listFailedExports` reads,
-      // so it surfaces on the close console on its own. A refusal BEFORE the
-      // claim (a locked period, an unmapped `revenue_service` role) writes no
-      // row at all, and this log line is the only trace - which is why it names
-      // the status and the reason rather than "failed".
-      logger.warn('An invoice issuance was not posted to the ledger', {
-        organizationId,
-        invoiceId,
-        invoiceNumber: invoice.number,
-        status: post.status,
-        docNumber: post.docNumber,
-        claimed: Boolean(post.glPostingId),
-        error: post.error,
-      })
-    }
-
-    return post
-  } catch (error) {
-    // A builder refusal - a blank or over-long invoice number, a total that is
-    // not whole cents, an invoice that is all tax. Returned rather than
-    // rethrown so an invoice can never fail to send because its bookkeeping did.
-    const message = error instanceof Error ? error.message : String(error)
-    logger.error('Could not build an invoice issuance entry', {
+  if (
+    !isExpectedPostOutcome(post) &&
+    // 🛑 `nothing_to_close` is not a failure and must not warn. An invoice with
+    // no readable totals is an empty document, and a channel that fires on
+    // routine outcomes is a channel nobody reads (`types.ts` NON_FAILURE_REFUSALS).
+    !(NON_FAILURE_REFUSALS as readonly string[]).includes(post.status)
+  ) {
+    // 🛑 Recorded, never swallowed. A refusal AFTER the claim writes a
+    // `pending`/`failed` `GlPosting` row, which `listFailedExports` reads,
+    // so it surfaces on the close console on its own. A refusal BEFORE the
+    // claim (a locked period, an unmapped `revenue_service` role) writes no
+    // row at all, and this log line is the only trace - which is why it names
+    // the status and the reason rather than "failed".
+    logger.warn('An invoice issuance was not posted to the ledger', {
       organizationId,
       invoiceId,
-      error: message,
+      status: post.status,
+      docNumber: post.docNumber,
+      claimed: Boolean(post.glPostingId),
+      error: post.error,
     })
-    return { status: 'error', failureClass: 'data', retryable: false, error: message }
   }
+
+  return post
 }
 
 /**

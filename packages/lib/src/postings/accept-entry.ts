@@ -3,8 +3,21 @@ import { type AccountingWorkEntity, schema, type Transaction } from '@auxx/datab
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { ConflictError, UnprocessableEntityError } from '../errors'
 import { withAccountingCommitLock } from './accounting-commit-lock'
+import {
+  type AcceptedMoneyApplicationEffectBasisV1,
+  acceptedMoneyApplicationEffectBasisSchema,
+  MONEY_APPLICATION_POSTING_TYPE,
+  MONEY_APPLICATION_RESOURCE_KIND,
+} from './application-effect-types'
 import { acceptedCustomerCreditEffectBasisSchema } from './credit-effect-types'
 import { fulfillmentGroupPeriodKey } from './doc-number'
+import {
+  type AcceptedDocumentEffectBasisV1,
+  acceptedDocumentEffectBasisSchema,
+  DOCUMENT_EFFECT_FAMILY_SPEC,
+  type DocumentEffectFamily,
+  isDocumentEffectFamily,
+} from './document-effect-types'
 import { type PostingAccountingMembership, parsePostingAccountingMembership } from './draft'
 import { accountingBasisHash, canonicalAccountingJson } from './effect-basis'
 import {
@@ -24,6 +37,11 @@ import { type RoleSourceScope, resolveRoles } from './resolve-roles'
 import type { BuiltEntry } from './types'
 
 type ReadyBasis = Extract<AccountingWorkBasisInputV1, { status: 'ready' }>
+
+/** The `GlPostingType`s D19's document families claim. */
+const DOCUMENT_EFFECT_POSTING_TYPES: ReadonlySet<string> = new Set(
+  Object.values(DOCUMENT_EFFECT_FAMILY_SPEC).map((spec) => spec.postingType)
+)
 
 /** A prepared domain member; identity comes from its persisted work, never grouping metadata. */
 export interface PreparedEffectMember<
@@ -82,7 +100,44 @@ function parseAcceptedBasis(
       return acceptedCustomerRefundEffectBasisSchema.parse(basis)
     case 'fulfillment_accounting':
       return acceptedFulfillmentEffectBasisSchema.parse(basis)
+    // D19's document-driven families all share one contract; the family is a
+    // field ON the calculation, re-checked against the work below.
+    case 'invoice_issued':
+    case 'invoice_write_off':
+    case 'payout_settlement':
+    case 'expense_bill':
+    case 'vendor_bill_matched':
+    case 'inventory_receipt':
+      return acceptedDocumentEffectBasisSchema.parse(basis)
+    // Money-owned, and its own contract: the movement is the owner and the
+    // invoice is a reference. See `application-effect-types.ts`.
+    case 'deposit_application':
+      return acceptedMoneyApplicationEffectBasisSchema.parse(basis)
   }
+}
+
+function isMoneyApplicationBasis(
+  basis: AcceptedAccountingEffectBasisV1
+): basis is AcceptedMoneyApplicationEffectBasisV1 {
+  return basis.policyKey === 'money_application_v1'
+}
+
+function isDocumentBasis(
+  basis: AcceptedAccountingEffectBasisV1
+): basis is AcceptedDocumentEffectBasisV1 {
+  return basis.policyKey === 'document_entry_v1'
+}
+
+/**
+ * The `EntityInstance.entityType` an entity-owned work must still resolve to.
+ *
+ * Read at acceptance rather than trusted from preparation: an archived or
+ * retyped source between preparing and accepting is exactly the drift this
+ * guard exists to catch.
+ */
+function ownerEntityType(effectKind: AccountingWorkEntity['effectKind']): string {
+  if (isDocumentEffectFamily(effectKind)) return DOCUMENT_EFFECT_FAMILY_SPEC[effectKind].entityType
+  return effectKind === 'customer_credit_issued' ? 'credit_memo' : 'fulfillment'
 }
 
 /** Saved acceptance can span more than one journal after a caller regroups existing members. */
@@ -318,9 +373,14 @@ export async function acceptEntryInTx(
     new Set(input.members.map((m) => m.workId)).size !== input.members.length
   )
     throw new UnprocessableEntityError('Choose a nonempty set of distinct accounting work members')
-  if (!['fulfillment', 'payment', 'credit_memo'].includes(input.entry.postingType))
+  if (
+    !['fulfillment', 'payment', 'credit_memo', MONEY_APPLICATION_POSTING_TYPE].includes(
+      input.entry.postingType
+    ) &&
+    !DOCUMENT_EFFECT_POSTING_TYPES.has(input.entry.postingType)
+  )
     throw new UnprocessableEntityError(
-      'This acceptance policy supports fulfillment, customer money and credit accounting only'
+      'This acceptance policy supports fulfillment, customer money, credit and document accounting only'
     )
   let members = input.members
     .map((member) => ({
@@ -349,6 +409,13 @@ export async function acceptEntryInTx(
     customer_receipt: 'payment',
     customer_refund: 'payment',
     customer_credit_issued: 'credit_memo',
+    invoice_issued: DOCUMENT_EFFECT_FAMILY_SPEC.invoice_issued.postingType,
+    invoice_write_off: DOCUMENT_EFFECT_FAMILY_SPEC.invoice_write_off.postingType,
+    payout_settlement: DOCUMENT_EFFECT_FAMILY_SPEC.payout_settlement.postingType,
+    expense_bill: DOCUMENT_EFFECT_FAMILY_SPEC.expense_bill.postingType,
+    vendor_bill_matched: DOCUMENT_EFFECT_FAMILY_SPEC.vendor_bill_matched.postingType,
+    inventory_receipt: DOCUMENT_EFFECT_FAMILY_SPEC.inventory_receipt.postingType,
+    deposit_application: MONEY_APPLICATION_POSTING_TYPE,
   } as const
   if (works.some((work) => expectedPostingType[work.effectKind] !== input.entry.postingType))
     throw new ConflictError('Journal posting type does not match every accounting work owner')
@@ -522,6 +589,39 @@ export async function acceptEntryInTx(
         acceptedBasis.policyKey !== 'customer_credit_issued_v1' ||
         accountingBasisHash(acceptedBasis.calculation) !== accountingBasisHash(basis.calculation)
     }
+    if (!ownerMismatch && isDocumentEffectFamily(work.effectKind)) {
+      // 🛑 The family is checked on BOTH sides. The work's `effectKind` is what
+      // the CHECK constraint and the partial unique key on
+      // `(organizationId, entityInstanceId, effectKind)` enforce; the
+      // calculation's `family` is what the accepted basis carries forever. A
+      // journal that agrees with one and not the other is the drift a single
+      // shared contract could otherwise let through.
+      const family: DocumentEffectFamily = work.effectKind
+      ownerMismatch =
+        !('documentInstanceId' in basis) ||
+        basis.documentInstanceId !== work.entityInstanceId ||
+        basis.family !== family ||
+        !isDocumentBasis(acceptedBasis) ||
+        acceptedBasis.calculation.family !== family ||
+        acceptedBasis.calculation.documentKey !== input.entry.periodKey ||
+        accountingBasisHash(acceptedBasis.calculation) !== accountingBasisHash(basis.calculation)
+    }
+    if (!ownerMismatch && work.effectKind === 'deposit_application') {
+      // 🛑 The invoice is checked as a REFERENCE, not as the owner. The owner is
+      // `moneyTransactionId`, checked below with the other money families; what
+      // must not drift is which application this journal froze.
+      ownerMismatch =
+        !('moneyApplicationId' in basis) ||
+        basis.moneyTransactionId !== work.moneyTransactionId ||
+        !isMoneyApplicationBasis(acceptedBasis) ||
+        acceptedBasis.calculation.moneyApplicationId !== basis.moneyApplicationId ||
+        !acceptedBasis.documentRefs.some(
+          (ref) =>
+            ref.resourceKind === MONEY_APPLICATION_RESOURCE_KIND &&
+            ref.entityInstanceId === acceptedBasis.calculation.invoiceInstanceId
+        ) ||
+        accountingBasisHash(acceptedBasis.calculation) !== accountingBasisHash(basis.calculation)
+    }
     if (!ownerMismatch && work.effectKind === 'customer_refund') {
       ownerMismatch =
         !('moneyTransactionId' in basis) ||
@@ -532,8 +632,7 @@ export async function acceptEntryInTx(
     if (commonMismatch || ownerMismatch)
       throw new ConflictError('Accepted calculation differs from the selected source basis')
     if (work.entityInstanceId !== null) {
-      const entityType =
-        work.effectKind === 'customer_credit_issued' ? 'credit_memo' : 'fulfillment'
+      const entityType = ownerEntityType(work.effectKind)
       const [source] = await tx
         .select({ id: schema.EntityInstance.id })
         .from(schema.EntityInstance)
@@ -617,7 +716,25 @@ export async function acceptEntryInTx(
     representation: 'journal',
     effectiveDate: input.entry.txnDate,
   })
-  const entry = { ...input.entry, periodKey: fulfillmentGroupPeriodKey(membershipHash) }
+  // 🛑 A document family KEEPS its own period key, and that is not an
+  // exception grudgingly made. `build-invoice-entry.ts` keys the claim on the
+  // invoice number and `build-payout-entry.ts` on the payout number precisely
+  // so that `(organizationId, postingType, periodKey, revision)` is one entry
+  // per document, and so that the document number reads `AUXX-INI-INV-0042`
+  // rather than `AUXX-INI-fg_1a2b3c4d5`. A grouping hash is the right key for a
+  // fulfillment BATCH, whose membership is the only identity it has; it is a
+  // strictly worse key for a 1:1 document that already has a unique number.
+  //
+  // The membership invariant is unaffected: `membershipHash` still rides into
+  // `GlPosting.draft` below and the existing-journal path above still refuses a
+  // journal whose saved hash differs. Only the claim key differs, and the
+  // owner check above has already pinned every member's `documentKey` to this
+  // exact `periodKey`, so a document group is single-document by construction.
+  const documentGroup = works.every((work) => isDocumentEffectFamily(work.effectKind))
+  const entry = {
+    ...input.entry,
+    periodKey: documentGroup ? input.entry.periodKey : fulfillmentGroupPeriodKey(membershipHash),
+  }
   const prepared = await prepareEntry(tx, {
     organizationId: input.organizationId,
     entry,

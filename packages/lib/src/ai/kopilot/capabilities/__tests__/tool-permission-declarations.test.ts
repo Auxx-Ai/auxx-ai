@@ -76,6 +76,7 @@ import { createKbCapabilities, createKbReadCapabilities } from '../kb'
 import { createKnowledgeCapabilities } from '../knowledge'
 import { createKopilotCapabilities } from '../kopilot'
 import { createLearnedKbCapabilities } from '../learned'
+import { createLedgerCapabilities } from '../ledger'
 import { createMailCapabilities } from '../mail'
 import { createPurchasingIntakeCapabilities } from '../purchasing-intake'
 import { createRecordViewCapabilities } from '../record-views'
@@ -104,6 +105,7 @@ const IDEMPOTENT_READ_TOOLS = [
   'get_dashboard',
   'get_entity',
   'get_entity_history',
+  'get_ledger_status',
   'get_eval_case',
   'get_eval_run',
   'get_node',
@@ -170,6 +172,7 @@ async function collectNativeCapabilities(): Promise<PageCapability[]> {
     createKbCapabilities(getDeps),
     createKbReadCapabilities(getDeps),
     createLearnedKbCapabilities(getDeps),
+    createLedgerCapabilities(getDeps),
     createPurchasingIntakeCapabilities(getDeps),
     createRecordViewCapabilities(getDeps),
     createNativeWorkflowCapabilities(getDeps),

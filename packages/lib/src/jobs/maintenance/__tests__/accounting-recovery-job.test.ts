@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   fulfillment: vi.fn(),
   money: vi.fn(),
   receipt: vi.fn(),
+  application: vi.fn(),
   delivery: vi.fn(),
 }))
 vi.mock('@auxx/database', () => ({
@@ -33,6 +34,9 @@ vi.mock('../../../money/customer-money/ingest', () => ({ sweepImportedCustomerMo
 vi.mock('../../../money/customer-money/accounting', () => ({
   sweepCustomerReceiptAccounting: h.receipt,
 }))
+vi.mock('../../../money/customer-money/deposit-application-accounting', () => ({
+  sweepDepositApplicationAccounting: h.application,
+}))
 vi.mock('../../../postings/delivery', () => ({ sweepAccountingDeliveries: h.delivery }))
 
 import type { JobContext } from '../../types/job-context'
@@ -55,6 +59,9 @@ beforeEach(() => {
   h.receipt.mockImplementation(async (_db, input) => {
     h.events.push(`receipt:${input.organizationId}`)
   })
+  h.application.mockImplementation(async (_db, input) => {
+    h.events.push(`application:${input.organizationId}`)
+  })
   h.delivery.mockImplementation(async (_db, input) => {
     h.events.push(`delivery:${input.organizationId}`)
   })
@@ -69,12 +76,14 @@ describe('accounting recovery organization rotation', () => {
       'cursor:A:new-A',
       'money:A',
       'receipt:A',
+      'application:A',
       'delivery:A',
       'cursor:B:null',
       'fulfillment:B',
       'cursor:B:new-B',
       'money:B',
       'receipt:B',
+      'application:B',
       'delivery:B',
     ])
     expect(h.delivery).toHaveBeenCalledWith(

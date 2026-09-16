@@ -15,26 +15,27 @@
 // asks of new lib code in general. No permission checks here - the router
 // asserts `ledgerPost` (`docs/lib-module-guide.md` §6).
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { and, eq, inArray } from 'drizzle-orm'
-import { getOrgCache } from '../../cache'
 import { BadRequestError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import {
   type BuildWriteOffEntryInput,
   buildWriteOffEntry,
-  WRITE_OFF_SOURCE_TYPE,
 } from '../../postings/build-write-off-entry'
 import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { resolvePeriodLock } from '../../postings/period-lock'
-import { periodKeyForDate } from '../../postings/periods'
-import { LEDGER_CURRENCY, postEntry, previewEntry } from '../../postings/post-entry'
-import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
+import { LEDGER_CURRENCY, previewEntry } from '../../postings/post-entry'
 import type { EntryPreview, PostResult } from '../../postings/types'
-import { getOrganizationSetting } from '../../settings/settings-service'
+import { todayInBookTimeZone } from './issuance-reads'
+import { acceptInvoiceWriteOffAccounting } from './write-off-accounting'
+import {
+  countWriteOffPostings,
+  type InvoiceForWriteOff,
+  loadInvoiceForWriteOff,
+} from './write-off-reads'
 
 /**
  * The one write `invoice_status` guard (`resources/hooks/lifecycle-status-guard.ts`)
@@ -44,187 +45,6 @@ import { getOrganizationSetting } from '../../settings/settings-service'
  * write path needs the identical single-attribute set for the identical reason.
  */
 const INVOICE_STATUS_BYPASS = new Set<SystemAttribute>(['invoice_status'])
-
-const INVOICE_ATTRIBUTES = [
-  'invoice_status',
-  'invoice_number',
-  'invoice_balance',
-  'invoice_total',
-  'invoice_amount_paid',
-  'invoice_written_off',
-  'invoice_contact',
-] as const
-
-interface InvoiceForWriteOff {
-  status: string
-  number: string
-  /** Integer minor units. `0` when the field has never been written. */
-  balanceMinor: number
-  /** Integer minor units. `0` when the field has never been written. */
-  totalMinor: number
-  /** Integer minor units. `0` when the field has never been written. */
-  amountPaidMinor: number
-  /**
-   * Cumulative bad debt already taken off this invoice, integer minor units.
-   * `0` on an org that has not run entity migration 128 yet, which is also the
-   * right answer there: nothing has been written off through a path that could
-   * have recorded it.
-   */
-  writtenOffMinor: number
-  /**
-   * Whether this org has the `invoice_written_off` field at all - it arrives
-   * with entity migration 128, and an org short of it must not be handed a
-   * write for a field that does not exist.
-   */
-  hasWrittenOffField: boolean
-  /**
-   * What is still sitting in accounts receivable for this invoice, and so the
-   * most that may still be written off. See {@link resolveOutstandingMinor}.
-   */
-  outstandingMinor: number
-  /** `invoice_contact`'s related `contact` instance id, for the receivable's counterparty. */
-  contactInstanceId: string | null
-}
-
-/**
- * The receivable this invoice still carries: `total - amountPaid - writtenOff`.
- *
- * 🛑 **Derived from the totals rather than read off `invoice_balance`, because
- * two writers disagree about that field.** `syncInvoicePaymentState`
- * (`money/payments/ledger.ts`) recomputes it as `total - amountPaid` on every
- * payment event and knows nothing about bad debt, so the reduction a partial
- * write-off makes to it is undone by the next payment sync. Deriving here is
- * stable under that: `writtenOff` only ever grows, and it is never folded into
- * the two numbers it is subtracted from.
- *
- * ⚠️ The fallback, for an invoice with no `total` written yet, is
- * `invoice_balance` verbatim - what this file used before. It cannot subtract
- * `writtenOff` there without double-counting, because with no total nothing
- * re-derives the balance and the reduction this file made to it still stands.
- * An invoice with no total is degenerate anyway: `syncInvoicePaymentState`
- * would compute a negative balance for it.
- */
-function resolveOutstandingMinor(parts: {
-  totalMinor: number
-  amountPaidMinor: number
-  writtenOffMinor: number
-  balanceMinor: number
-}): number {
-  const { totalMinor, amountPaidMinor, writtenOffMinor, balanceMinor } = parts
-  if (totalMinor > 0) {
-    return Math.max(0, totalMinor - amountPaidMinor - writtenOffMinor)
-  }
-  return Math.max(0, balanceMinor)
-}
-
-/**
- * The invoice's status/number/balance, or `null` when it does not exist. A
- * plain `FieldValue` read - no actor needed, so `previewWriteOffInvoice` and
- * `writeOffInvoice` share it without either having to invent one for the
- * other, unlike `UnifiedCrudHandler.getFieldValues`, which requires one.
- */
-async function loadInvoiceForWriteOff(
-  db: Database,
-  organizationId: string,
-  invoiceId: string
-): Promise<InvoiceForWriteOff | null> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...INVOICE_ATTRIBUTES])
-  const fieldIds = [
-    cf.invoice_status,
-    cf.invoice_number,
-    cf.invoice_balance,
-    cf.invoice_total,
-    cf.invoice_amount_paid,
-    cf.invoice_written_off,
-    cf.invoice_contact,
-  ]
-    .filter((f) => f !== null)
-    .map((f) => f.id)
-  if (fieldIds.length === 0) return null
-
-  const rows = await db
-    .select({
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      valueNumber: schema.FieldValue.valueNumber,
-      optionId: schema.FieldValue.optionId,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.entityId, invoiceId),
-        inArray(schema.FieldValue.fieldId, fieldIds)
-      )
-    )
-  const byField = new Map(rows.map((row) => [row.fieldId, row]))
-
-  const status = cf.invoice_status ? byField.get(cf.invoice_status.id)?.optionId : undefined
-  if (!status) return null
-
-  const number = (cf.invoice_number ? byField.get(cf.invoice_number.id)?.valueText : null) ?? ''
-  const numberOf = (field: { id: string } | null): number =>
-    (field ? byField.get(field.id)?.valueNumber : null) ?? 0
-
-  const balanceMinor = numberOf(cf.invoice_balance)
-  const totalMinor = numberOf(cf.invoice_total)
-  const amountPaidMinor = numberOf(cf.invoice_amount_paid)
-  const writtenOffMinor = numberOf(cf.invoice_written_off)
-
-  return {
-    status,
-    number,
-    balanceMinor,
-    totalMinor,
-    amountPaidMinor,
-    writtenOffMinor,
-    hasWrittenOffField: cf.invoice_written_off !== null,
-    outstandingMinor: resolveOutstandingMinor({
-      totalMinor,
-      amountPaidMinor,
-      writtenOffMinor,
-      balanceMinor,
-    }),
-    contactInstanceId:
-      (cf.invoice_contact ? byField.get(cf.invoice_contact.id)?.relatedEntityId : null) ?? null,
-  }
-}
-
-/**
- * How many `write_off` postings this invoice has already produced - the
- * `attempt` {@link buildWriteOffEntry} keys on.
- *
- * 🛑 Counted off `GlPostingLine`'s `sourceType`/`sourceId` pair, filtered to the
- * `write_off` posting type, and never off a mirrored column on the invoice: a
- * mirror holds only the latest posting and a reversal clears it, so the count
- * would fall back to zero and the next write-off would re-claim the reversed
- * original's period tuple. The `write_off` filter is what the bank line's
- * equivalent does not need: `sourceType` is `invoice`, which the payment and
- * (soon) invoice-revenue entries also carry, so counting without it would
- * inflate the attempt by every other entry the invoice has ever produced.
- */
-async function countWriteOffPostings(
-  db: Database,
-  organizationId: string,
-  invoiceId: string
-): Promise<number> {
-  const rows = await db
-    .selectDistinct({ glPostingId: schema.GlPosting.id })
-    .from(schema.GlPostingLine)
-    .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
-    .where(
-      and(
-        eq(schema.GlPosting.organizationId, organizationId),
-        eq(schema.GlPosting.postingType, 'write_off'),
-        eq(schema.GlPostingLine.sourceType, WRITE_OFF_SOURCE_TYPE),
-        eq(schema.GlPostingLine.sourceId, invoiceId)
-      )
-    )
-  return rows.length
-}
 
 /**
  * Refuse a write-off that cannot be made, naming the reason. Shared by
@@ -309,16 +129,6 @@ function resolveWriteOffAmount(
     )
   }
   return amount
-}
-
-/** Today, in the org's own book time zone - falls back to UTC while setup is incomplete. */
-async function todayInBookTimeZone(organizationId: string): Promise<string> {
-  const raw = await getOrganizationSetting({
-    organizationId,
-    key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
-  })
-  const bookTimeZone = typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'UTC'
-  return periodKeyForDate(new Date(), 'day', bookTimeZone)
 }
 
 export interface WriteOffState {
@@ -415,14 +225,14 @@ export interface WriteOffInvoiceInput {
  * Write off an invoice's balance (or part of it) to bad debt.
  *
  * Posts `Dr bad_debt_expense (or expenseGlAccountId) Cr accounts_receivable`
- * through the ordinary ledger door (`postEntry` - never throws, resolves to a
- * typed refusal the dialog renders as `EntryBlockers`), and only once the post
+ * through {@link acceptInvoiceWriteOffAccounting} - never throws, resolves to a
+ * typed refusal the dialog renders as `EntryBlockers` - and only once the post
  * actually lands does it flip `invoice_status` to `written_off`. A refused post
  * (a locked period, an unmapped role) leaves the invoice exactly as it was -
  * there is nothing to roll back, because nothing but the ledger claim wrote
  * anything.
  *
- * ## A PARTIAL write-off can be topped up, and that took two things
+ * ## A PARTIAL write-off can be topped up, and that took three things
  *
  * `periodKey` used to be the invoice number and nothing else, so a second
  * write-off claimed the same `(org, write_off, periodKey, revision = 0)` tuple,
@@ -439,6 +249,12 @@ export interface WriteOffInvoiceInput {
  *    {@link resolveWriteOffAmount} can refuse one that would exceed it. Before
  *    it, the only trace was a reduction of `invoice_balance` that the next
  *    `syncInvoicePaymentState` re-derived away.
+ * 3. **The accounting obligation carries the attempt too** (D19). The same
+ *    attempt is the OCCURRENCE of the `invoice_write_off` `AccountingWork`, and
+ *    `AccountingWork_fulfillment_original_key` is narrowed so one invoice may
+ *    hold several originals of this kind. 🛑 A top-up is deliberately NOT
+ *    `operation: 'correction'`: the March write-off was not a mistake, and
+ *    calling it one would move July's bad debt into March.
  *
  * `assertWriteOffAllowed` refuses on the DERIVED outstanding figure rather than
  * on the status, so an invoice a partial write-off left with a receivable is
@@ -470,37 +286,21 @@ export async function writeOffInvoice(
   const amount = resolveWriteOffAmount(invoice, invoiceId, amountMinor)
 
   // 🛑 The org's own accounting-off case is checked FIRST, before the reads and
-  // the build below that exist only to post an entry (task 17 section 3): a
-  // write-off must land on the invoice's balance whether or not the org has
-  // ever turned accounting on.
-  let result: PostResult
-  if (!(await isAccountingEnabled(db, organizationId))) {
-    result = { status: 'not_enabled' }
-  } else {
-    const [txnDate, attempt] = await Promise.all([
-      todayInBookTimeZone(organizationId),
-      countWriteOffPostings(db, organizationId, invoiceId),
-    ])
-    const entry = buildWriteOffEntry({
-      invoiceId,
-      invoiceNumber: invoice.number,
-      attempt,
-      amountMinor: amount,
-      txnDate,
-      expenseGlAccountId,
-      memo: reason,
-      contactInstanceId: invoice.contactInstanceId,
-    } satisfies BuildWriteOffEntryInput)
-
-    const lock = await resolvePeriodLock(organizationId)
-    result = await postEntry(db, {
-      organizationId,
-      entry,
-      actorUserId,
-      memo: reason,
-      lock,
-    })
-  }
+  // the build that exist only to post an entry (task 17 section 3): a write-off
+  // must land on the invoice's balance whether or not the org has ever turned
+  // accounting on. `acceptInvoiceWriteOffAccounting` checks the same gate again
+  // - it is the trigger the gate belongs to - and this early exit is what keeps
+  // an accounting-off org from paying for a transaction it will not use.
+  const result: PostResult = (await isAccountingEnabled(db, organizationId))
+    ? await acceptInvoiceWriteOffAccounting(db, {
+        organizationId,
+        invoiceId,
+        amountMinor: amount,
+        reason,
+        actorUserId,
+        expenseGlAccountId,
+      })
+    : { status: 'not_enabled' }
 
   // ⚠️ This list used to be written out here and was missing `healed` AND
   // `not_exported` - a write-off on a healed claim, or on any posting type that

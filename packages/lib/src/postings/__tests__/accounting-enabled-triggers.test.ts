@@ -19,14 +19,34 @@ import { describe, expect, it } from 'vitest'
 /**
  * Every document-driven posting trigger (task 17 section 3's own list), as a
  * path relative to `packages/lib/src`.
+ *
+ * 🔑 Each entry names the file that BUILDS the entry, which is the only place
+ * the gate can sit in front of. When a trigger's accounting moves into its own
+ * module the path moves with it — the floor is "the builder is gated", not "this
+ * particular filename still mentions the helper".
+ *
+ * ⚠️ D19 (53 §7.3.3) gives each transaction-driven family its own accounting
+ * module, so this list grows one line per family as they land. That is the
+ * intended direction: a seventh module with no gate must fail here.
  */
 const TRIGGER_FILES = [
-  'money/invoices/post-invoice.ts',
+  // D19: `post-invoice.ts` is now the never-throws door and `issuance-accounting.ts`
+  // is where the invoice is read, the entry built and the effect accepted — so
+  // the gate moved with the build. It is still checked before ANY read.
+  'money/invoices/issuance-accounting.ts',
   'money/orders/fulfill.ts',
   'money/fulfillment-posting/run.ts',
   'money/payments/post-transaction.ts',
+  // Two deposit-application lanes, and BOTH are gated. The dispatch-era one
+  // posts off `PaymentAllocation`; the effects one posts off `MoneyApplication`
+  // (D19). Neither may build an entry for an org that has accounting off.
   'money/payments/post-deposit-application.ts',
+  'money/customer-money/deposit-application-accounting.ts',
+  // D19: `write-off.ts` still checks the gate before its own reads, and
+  // `write-off-accounting.ts` is where the entry is now built and accepted — so
+  // the gate is asserted on both halves rather than moved off the builder.
   'money/invoices/write-off.ts',
+  'money/invoices/write-off-accounting.ts',
   'money/credit-memos/writes.ts',
   'money/bank-deposits/writes.ts',
   'postings/post-payout-entry.ts',
