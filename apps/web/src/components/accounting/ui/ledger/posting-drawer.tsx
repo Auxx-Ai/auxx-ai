@@ -9,17 +9,28 @@ import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { Label } from '@auxx/ui/components/label'
+import { MetricCell, MetricGrid } from '@auxx/ui/components/metric-grid'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { BookOpenCheck, CircleHelp, Info, Layers, Receipt, Undo2 } from 'lucide-react'
+import {
+  BookOpenCheck,
+  CalendarClock,
+  CircleHelp,
+  Clock,
+  ExternalLink,
+  Layers,
+  Receipt,
+  Undo2,
+} from 'lucide-react'
 import { useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 import { api } from '~/trpc/react'
 import { EntryJournal, journalLinesFromDetail } from './entry-journal'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatAuditTimestamp, formatPeriodLabel } from './format'
-import { PostResultCallout } from './post-result-callout'
+import { OUTCOMES, type OutcomeCopy, providerEntryUrl } from './post-result-callout'
 import { PostingRegister } from './posting-register'
 import { readStoredAssertions, readStoredReasons } from './stored-draft'
 
@@ -94,6 +105,22 @@ export function PostingDrawer({
   )
   const detail = postingQuery.data
 
+  /**
+   * The provider outcome, carried by the header status badge rather than by a
+   * body callout: it is one sentence about an entry whose identity is already
+   * in that strip, and an Alert for it pushed the journal below the fold.
+   */
+  const result = detail ? providerResultFromDetail(detail) : null
+  const outcome = result ? OUTCOMES[result.status] : null
+  const entryUrl = result?.providerEntryId
+    ? providerEntryUrl(
+        result.providerId,
+        result.providerEntryId,
+        result.providerTenantId ?? null,
+        connectedTenantId
+      )
+    : null
+
   const assertions = detail ? readStoredAssertions(detail.draft) : null
   const reasons = detail ? readStoredReasons(detail.draft) : []
   const isReversal = !!detail?.reversesId
@@ -119,17 +146,47 @@ export function PostingDrawer({
           title={
             <div className='flex flex-wrap items-center gap-2'>
               <span className='font-mono font-medium'>{detail?.docNumber ?? 'Posting'}</span>
-              {detail && (
+              {detail && outcome && (
                 <>
                   <Badge variant='outline' size='sm'>
                     Revision {detail.revision}
                   </Badge>
-                  <Badge variant={detail.status === 'posted' ? 'green' : 'outline'} size='sm'>
-                    {STATUS_LABEL[detail.status]}
-                  </Badge>
+                  <Tooltip
+                    contentComponent={
+                      <div className='flex max-w-64 flex-col gap-1'>
+                        <span className='font-medium'>{outcome.title}</span>
+                        <span>{outcome.detail}</span>
+                        {result?.error && <span>{result.error}</span>}
+                      </div>
+                    }>
+                    <Badge variant={statusVariant(detail.status, outcome.tone)} size='sm'>
+                      {STATUS_LABEL[detail.status]}
+                    </Badge>
+                  </Tooltip>
                 </>
               )}
             </div>
+          }
+          actions={
+            entryUrl && (
+              // Icon-only, the shape `payout-evidence-drawer.tsx` uses: a drawer
+              // header is a narrow strip and a worded button crowds the doc
+              // number out of it at 380px.
+              <Tooltip content={`View in ${providerLabel}`}>
+                <Button variant='ghost' size='icon-xs' asChild>
+                  {/* ⚠️ `aria-label` as well as the tooltip - Radix associates a
+                      tooltip with `aria-describedby` only while it is open, so
+                      an icon-only link has no accessible NAME without it. */}
+                  <a
+                    aria-label={`View in ${providerLabel}`}
+                    href={entryUrl}
+                    target='_blank'
+                    rel='noreferrer'>
+                    <ExternalLink />
+                  </a>
+                </Button>
+              </Tooltip>
+            )
           }
           onClose={() => onOpenChange(false)}
         />
@@ -156,36 +213,37 @@ export function PostingDrawer({
                 Section back out to the edge. Put padding on a non-Section child
                 instead, never here. */}
             <div className='flex flex-col'>
-              <Section title='Details' icon={<Info className='size-4' />} collapsible={false}>
-                <dl className='flex flex-col gap-1 text-sm'>
-                  <div className='flex justify-between gap-4'>
-                    <dt className='text-muted-foreground'>Period</dt>
-                    <dd>{formatPeriodLabel(detail.periodKey)}</dd>
-                  </div>
-                  <div className='flex justify-between gap-4'>
-                    <dt className='text-muted-foreground'>Posted</dt>
-                    <dd>
-                      {detail.postedAt
-                        ? formatAuditTimestamp(detail.postedAt, bookTimeZone)
-                        : 'Not in the books yet'}
-                    </dd>
-                  </div>
-                  {isReversal && (
-                    <div className='flex justify-between gap-4'>
-                      <dt className='shrink-0 text-muted-foreground'>Reverses</dt>
-                      <dd>
-                        <Button
-                          variant='link'
-                          size='sm'
-                          className='h-auto p-0'
-                          onClick={() => detail.reversesId && onSelectPosting(detail.reversesId)}>
-                          <span className='font-mono text-xs'>{detail.reversesId}</span>
-                        </Button>
-                      </dd>
-                    </div>
-                  )}
-                </dl>
-              </Section>
+              {/* The metrics strip `payout-evidence-drawer.tsx` opens with, not a
+                  `Details` section: two facts and a link do not earn a heading,
+                  and a partial row leaves a divider-coloured gap, so `Reverses`
+                  spans the pair rather than sitting alone. */}
+              <MetricGrid columns={2}>
+                <MetricCell
+                  label='Period'
+                  icon={<CalendarClock className='size-4 text-muted-foreground' />}
+                  value={formatPeriodLabel(detail.periodKey)}
+                />
+                <MetricCell
+                  label='Posted'
+                  icon={<Clock className='size-4 text-muted-foreground' />}
+                  value={
+                    detail.postedAt
+                      ? formatAuditTimestamp(detail.postedAt, bookTimeZone)
+                      : 'Not in the books yet'
+                  }
+                />
+                {isReversal && (
+                  <MetricCell label='Reverses' className='col-span-2'>
+                    <Button
+                      variant='link'
+                      size='sm'
+                      className='h-auto p-0'
+                      onClick={() => detail.reversesId && onSelectPosting(detail.reversesId)}>
+                      <span className='font-mono text-xs'>{detail.reversesId}</span>
+                    </Button>
+                  </MetricCell>
+                )}
+              </MetricGrid>
 
               <Section
                 title='Journal entry'
@@ -257,19 +315,11 @@ export function PostingDrawer({
                 </Section>
               )}
 
-              <div className='border-b p-3'>
-                <PostResultCallout
-                  result={providerResultFromDetail(detail)}
-                  providerLabel={providerLabel}
-                  connectedTenantId={connectedTenantId}
-                />
-              </div>
-
               <Section
                 title='Reverse this posting'
                 icon={<Undo2 className='size-4' />}
                 description='A mistake is corrected by reversing and re-entering, never by editing a posted entry.'
-                collapsible={false}>
+                initialOpen={false}>
                 <div className='flex flex-col gap-2'>
                   <Label htmlFor='reversal-memo'>Why is it being reversed?</Label>
                   <Textarea
@@ -305,6 +355,12 @@ export function PostingDrawer({
       </div>
     </DockableDrawer>
   )
+}
+
+/** Red the moment the export refused - the badge is the only place that says so. */
+function statusVariant(status: PostingDetail['status'], tone: OutcomeCopy['tone']) {
+  if (tone === 'failure') return 'red'
+  return status === 'posted' ? 'green' : 'outline'
 }
 
 const STATUS_LABEL: Record<PostingDetail['status'], string> = {
