@@ -1,6 +1,5 @@
 // apps/web/src/components/accounting/ui/ledger/format.ts
 
-import type { RailFeeStatus } from '@auxx/lib/postings/client'
 import { formatCurrency } from '@auxx/utils/currency'
 
 /**
@@ -161,95 +160,4 @@ export function lockRefusalReason(params: {
     return `Nothing moved in ${periodLabel}, so there is no month-end entry to post and locking is gated on one. Move to the next month.`
   }
   return `${periodLabel} has no month-end entry yet. Post it under Entries above, then lock the month. The other entries this month do not close it.`
-}
-
-/**
- * How long before the month on screen a date falls, in whole months.
- * `'2026-07-14'` seen from `'2026-09'` reads `'2 months ago'`.
- *
- * ⚠️ Relative to the MONTH BEING CLOSED, never to the wall clock. A close
- * console is read weeks after the month it is about, so "two months ago" has to
- * mean two months before that month or the sentence changes meaning depending
- * on when somebody opens it. It also keeps this function pure, which is what
- * lets it be server-rendered without a hydration mismatch.
- *
- * Returns `null` when the date is inside the month on screen or after it -
- * there is no "ago" to state, and inventing one ("0 months ago") would be
- * noise the reader has to decode.
- */
-export function formatMonthsAgo(dateKey: string, monthKey: string): string | null {
-  const date = /^(\d{4})-(\d{2})/.exec(dateKey)
-  const month = /^(\d{4})-(\d{2})$/.exec(monthKey)
-  if (!date || !month) return null
-
-  const months = (Number(month[1]) - Number(date[1])) * 12 + (Number(month[2]) - Number(date[2]))
-  if (!Number.isFinite(months) || months <= 0) return null
-  return months === 1 ? 'last month' : `${months} months ago`
-}
-
-/**
- * What the close console says about one rail's processor fees
- * (plans/accounting/tasks/26-a-clearing-account-per-rail.md §6).
- *
- * 🛑 **A fact, never an alarm.** No verdict, no severity and no remedy: the
- * date is the whole message and the person draws the conclusion. §14's R4 is
- * the reason - a rail that bills quarterly would otherwise nag through two
- * closes in three and teach everybody to ignore the block.
- *
- * 🔑 The `shared` case says so rather than quoting a date. A billed rail whose
- * fees land in the default fee account alongside every netted rail's fallback
- * makes "has this rail billed us" unanswerable (§5), and a date read off that
- * account would be a confident wrong answer.
- *
- * Both switches fail CLOSED: an unrecognised treatment or account shape claims
- * nothing about the rail rather than falling through to the reassuring copy.
- */
-export function railFeeSentence(
-  rail: RailFeeStatus,
-  monthKey: string,
-  bookTimeZone: string
-): string {
-  switch (rail.feeTreatment) {
-    case 'netted':
-      return 'Netted, booked with each payout.'
-    case 'billed':
-      break
-    default:
-      return 'Its fee treatment is not set, so nothing here can be said about its fees.'
-  }
-
-  const monthLabel = formatPeriodLabel(monthKey)
-
-  switch (rail.fees.kind) {
-    case 'shared':
-      return (
-        'Billed separately. Its fees go to the default fee account, shared with every other ' +
-        "rail, so auxx cannot tell this rail's fees from theirs."
-      )
-    case 'own': {
-      const { bookedInMonth, lastBookedAt } = rail.fees
-      if (!lastBookedAt) {
-        return 'Billed separately. No fee has ever been booked to its own account.'
-      }
-      const booked = formatAccountingDate(lastBookedAt, bookTimeZone)
-      if (bookedInMonth) return `Billed separately. Last fee booked ${booked}, in ${monthLabel}.`
-      const ago = formatMonthsAgo(lastBookedAt, monthKey)
-      const suffix = ago ? ` (${ago})` : ''
-      return `Billed separately. Last fee booked ${booked}${suffix}. Nothing in ${monthLabel}.`
-    }
-    default:
-      return 'Billed separately. Where its fees are booked could not be read.'
-  }
-}
-
-/**
- * The one softening remark the fee line may carry: this rail did not trade in
- * the month, so nothing being billed for it is what you would expect.
- *
- * `null` for every other case, including every netted rail - a netted rail's
- * fee rides inside its payout entry and needs no explanation either way.
- */
-export function railTradeNote(rail: RailFeeStatus, monthKey: string): string | null {
-  if (rail.feeTreatment !== 'billed' || rail.tradedInMonth) return null
-  return `Nothing posted to its clearing account in ${formatPeriodLabel(monthKey)}.`
 }

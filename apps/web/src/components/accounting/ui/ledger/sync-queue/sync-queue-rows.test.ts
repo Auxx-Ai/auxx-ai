@@ -4,6 +4,8 @@ import type { SyncQueueRow } from '@auxx/lib/postings/client'
 import { describe, expect, it } from 'vitest'
 import {
   filterSyncQueue,
+  refusalTooltipLines,
+  refusedReasonSummary,
   SYNC_QUEUE_TAB_LABELS,
   syncQueuePeriods,
   syncQueueRailSentence,
@@ -106,6 +108,65 @@ describe('the copy is provider-agnostic (D14a)', () => {
   it('never says QuickBooks in the rail sentence', () => {
     const sentence = syncQueueRailSentence(tallySyncQueue([HELD, SENDING, FAILED]), LABEL)
     expect(sentence).toBe('1 ready to sync, 1 sending, 1 refused to Xero.')
+  })
+
+  // 🔌 The refusal STRING is the provider's own words and passes through
+  // verbatim; the sentence wrapped around it is ours, and it takes the label.
+  it('never says QuickBooks in the row tooltip', () => {
+    const lines = refusalTooltipLines(FAILED, 'Coverage has a gap', LABEL)
+    for (const line of lines) expect(line).not.toMatch(/quickbooks/i)
+    expect(lines.join(' ')).toContain(LABEL)
+  })
+})
+
+describe('refusalTooltipLines', () => {
+  // 🛑 The reason moved OFF the row text and into a tooltip, so these are the
+  // only assertions left that either string reaches a reader at all.
+  it('says nothing when there is nothing to say', () => {
+    expect(refusalTooltipLines(HELD, undefined, 'Xero')).toEqual([])
+  })
+
+  it('carries the persisted provider refusal', () => {
+    expect(refusalTooltipLines(FAILED, undefined, 'Xero')).toEqual([
+      'Xero refused it. The period is closed',
+    ])
+  })
+
+  it('carries an in-session plan refusal, which the row itself never records', () => {
+    expect(refusalTooltipLines(HELD, 'Coverage has a gap', 'Xero')).toEqual([
+      'The last sync did not release it. Coverage has a gap',
+    ])
+  })
+
+  it('puts both on ONE icon, the action you just took first', () => {
+    // Two amber dots side by side read as a rendering fault. One icon, two
+    // sentences, and the in-session one leads because it is about the button
+    // the reader just pressed.
+    expect(refusalTooltipLines(FAILED, 'Coverage has a gap', 'Xero')).toEqual([
+      'The last sync did not release it. Coverage has a gap',
+      'Xero refused it. The period is closed',
+    ])
+  })
+})
+
+describe('refusedReasonSummary', () => {
+  // 🔑 D17 applied to the banner: the queue is the list, so the banner counts.
+  it('quotes a single shared reason once, because that is the common case', () => {
+    expect(refusedReasonSummary([FAILED, FAILED, FAILED])).toBe('The period is closed')
+  })
+
+  it('counts distinct reasons rather than enumerating rows', () => {
+    const other = row({ exportStatus: 'failed', failureReason: 'Product Revenue is not mapped' })
+    expect(refusedReasonSummary([FAILED, other, FAILED])).toBe(
+      '2 different reasons, each on its own row in the sync queue.'
+    )
+  })
+
+  it('says so when nothing recorded a reason at all', () => {
+    const silent = row({ exportStatus: 'failed', failureReason: null })
+    expect(refusedReasonSummary([silent, silent])).toBe(
+      'No reason was recorded. The sync queue shows where each one stands.'
+    )
   })
 })
 

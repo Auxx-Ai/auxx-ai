@@ -156,6 +156,7 @@ vi.mock('@auxx/lib/ai/kopilot', () => ({
   createKnowledgeCapabilities: vi.fn(),
   createKopilotCapabilities: vi.fn(),
   createKopilotDomainConfig: vi.fn(),
+  createLedgerCapabilities: vi.fn(),
   createMailCapabilities: vi.fn(),
   createRecordViewCapabilities: vi.fn(),
   createSuggestRepliesGlobalCapability: vi.fn(),

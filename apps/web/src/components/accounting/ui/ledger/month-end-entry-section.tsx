@@ -140,7 +140,7 @@ export function MonthEndEntrySection({
               🛑 REVERSE is deliberately NOT here. It acts on a month that is
               already posted, so there is nothing on this screen to read before
               pressing it - it is a lifecycle act like the lock, and it lives
-              with the lock in the rail's "Close the month" group. The pair are
+              with the lock in the "Close the month" section below. The pair are
               mutually exclusive in practice anyway (`canPost` requires an open
               month, Reverse requires a posting), so all this row ever showed on
               a posted month was a disabled Post button next to a sentence

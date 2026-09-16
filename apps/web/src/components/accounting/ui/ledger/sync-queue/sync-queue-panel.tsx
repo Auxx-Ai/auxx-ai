@@ -21,8 +21,8 @@
 // one entry per transaction versus the summary derived from it. **We have no
 // such split.** `GlPosting` IS the aggregate, so an "exports" page would list
 // the same rows the ledger lists with different columns. So this is a panel in
-// the ledger's own column, reached from a group in the module rail, addressed by
-// `?queue=<tab>`, and rows open the EXISTING `?posting=<id>` drawer. No new
+// the ledger's own column, reached from the rail's Sync queue item, addressed
+// by `?queue=<tab>`, and rows open the EXISTING `?posting=<id>` drawer. No new
 // route, no new detail view.
 //
 // ## 🛑 Two status axes, not one (§7.2.5)
@@ -56,6 +56,7 @@ import {
 } from '@auxx/ui/components/select'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError } from '@auxx/ui/components/toast'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
@@ -66,6 +67,7 @@ import { api } from '~/trpc/react'
 import { EMPTY_CELL, formatMinor, formatPeriodLabel } from '../format'
 import {
   filterSyncQueue,
+  refusalTooltipLines,
   SYNC_QUEUE_STATE_DOT,
   SYNC_QUEUE_TAB_LABELS,
   SYNC_QUEUE_TABS,
@@ -342,15 +344,23 @@ export function SyncQueuePanel({
                   }
                   secondary={
                     <span className='flex flex-wrap items-center gap-1.5'>
-                      {/* 🛑 The refusal string is ON the row. It is already in
-                          the database, and sending somebody to the logs for it
-                          is the defect `FailedExportsBanner` exists not to
-                          repeat. D18 lands here too: a month the provider has
-                          closed arrives as a refused row carrying the
-                          provider's own words. */}
-                      {row.failureReason && (
-                        <span className='text-amber-600 text-xs'>{row.failureReason}</span>
-                      )}
+                      {/* 🛑 The refusal is ON the row, as a warning ICON with
+                          the words on hover. It is already in the database, and
+                          sending somebody to the logs for it is the defect
+                          `FailedExportsBanner` exists not to repeat - but a
+                          provider refusal is a paragraph ("Product Revenue is
+                          not mapped to a QuickBooks account. Sales Tax Payable
+                          is not mapped…"), and printed inline on forty rows it
+                          IS the list. An icon keeps the row one line and keeps
+                          the reason one hover away. D18 lands here too: a month
+                          the provider has closed arrives as a refused row
+                          carrying the provider's own words.
+
+                          ONE icon for both reasons, never two - see
+                          `refusalTooltipLines`. */}
+                      <RefusalWarning
+                        lines={refusalTooltipLines(row, refusals[row.glPostingId], providerLabel)}
+                      />
                       {row.attempts > 0 && (
                         <Badge variant='outline' size='xs'>
                           {row.attempts} {row.attempts === 1 ? 'attempt' : 'attempts'}
@@ -360,14 +370,6 @@ export function SyncQueuePanel({
                         <Badge variant='amber' size='xs'>
                           Delivery parked
                         </Badge>
-                      )}
-                      {/* 🛑 The last Sync refused THIS row and nothing on the
-                          row itself records it - a plan refusal never stamps
-                          `exportStatus`, so the badge still says Ready to sync
-                          and it is telling the truth. This is the only place
-                          the reason exists. */}
-                      {refusals[row.glPostingId] && (
-                        <span className='text-amber-600 text-xs'>{refusals[row.glPostingId]}</span>
                       )}
                     </span>
                   }
@@ -444,6 +446,47 @@ export function SyncQueuePanel({
         ]}
       />
     </div>
+  )
+}
+
+/**
+ * A row's refusals, as ONE amber warning icon with the words on hover.
+ *
+ * ⚠️ `SimpleTooltip` + an amber `CircleAlert`, NOT `TooltipError`. The existing
+ * primitive renders a `CircleX` in `text-destructive` on a `destructive`
+ * bubble, and a refused export is a WARNING here, not an error: the entry is in
+ * the books and correct, and only the copy is outstanding
+ * (`FailedExportsBanner` uses `variant='warning'` for the same condition, and
+ * this row's own state dot is `bg-amber-500`). No `warning` variant was added to
+ * `@auxx/ui` for this - the icon already carries the semantics, and widening
+ * `tooltipContentVariants` is a shared-package change for one row.
+ *
+ * `CircleAlert` rather than `TriangleAlert`, matching `books-health.tsx`'s
+ * `FailedExportsBanner`, which is the other place this same condition is shown.
+ */
+function RefusalWarning({ lines }: { lines: string[] }) {
+  if (lines.length === 0) return null
+  return (
+    <SimpleTooltip
+      contentComponent={
+        <div className='flex max-w-xs flex-col gap-1'>
+          {lines.map((line) => (
+            <span key={line}>{line}</span>
+          ))}
+        </div>
+      }>
+      {/* A `span`, because `SimpleTooltip` clones its child with pointer
+          handlers and the trigger has to accept DOM props. `tabIndex` so the
+          reason is reachable without a mouse - a tooltip that only opens on
+          hover hides the only record some of these refusals have. */}
+      <span
+        tabIndex={0}
+        role='img'
+        aria-label={lines.join(' ')}
+        className='inline-flex cursor-pointer items-center text-amber-600'>
+        <CircleAlert className='size-3.5' />
+      </span>
+    </SimpleTooltip>
   )
 }
 
