@@ -203,29 +203,55 @@ export function DateRangePicker({
   const [open, setOpen] = useState(false)
 
   /**
+   * The half-picked range, held between the two clicks a range takes.
+   *
+   * STOP: `Calendar` in range mode is fully controlled. The first click hands
+   * back `{ from }` with no `to`, and it works out what the SECOND click means
+   * by reading `selected` back. Only ever pushing COMPLETE ranges into `value`
+   * (and dropping the partial one on the floor) therefore meant `selected` was
+   * never half-picked, so every click read as "start a new range", was dropped
+   * for having no `to`, and the calendar could not change the range at all -
+   * the presets were the only thing on this control that worked.
+   */
+  const [draft, setDraft] = useState<CalendarDateRange | null>(null)
+
+  /**
    * Handle selection of predefined time frame option
    */
   const handleTimeFrameSelect = (timeFrame: TimeFrameOption) => {
     const newRange = getDateRangeForTimeFrame(timeFrame)
+    setDraft(null)
     onChange(newRange)
     setOpen(false)
   }
 
   /**
-   * Handle calendar date range selection
+   * Handle calendar date range selection. The first click only parks the anchor;
+   * the second completes the range, and is the only one that commits.
    */
   const handleCalendarSelect = (range: CalendarDateRange) => {
-    if (range.from && range.to) {
-      onChange({ from: range.from, to: range.to })
-      // setOpen(false)
+    if (!range.to) {
+      setDraft(range)
+      return
     }
+    setDraft(null)
+    // Whole days, the same ends the presets use, so a range picked on the
+    // calendar and "Last 7 days" mean the same thing to a caller that filters
+    // on timestamps rather than on calendar days.
+    onChange({ from: startOfDay(range.from), to: endOfDay(range.to) })
   }
 
   const displayLabel = value ? calculateDisplayLabel(value, showShortLabel) : placeholder
   const activeTimeFrame = value ? detectTimeFrameFromDateRange(value) : null
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        // An abandoned first click never becomes a range.
+        if (!next) setDraft(null)
+      }}>
       <PopoverTrigger asChild>
         {trigger ? (
           trigger({ open, label: displayLabel, hasValue: !!value })
@@ -266,7 +292,7 @@ export function DateRangePicker({
           <Calendar
             mode='range'
             className='relative'
-            selected={value}
+            selected={draft ?? value}
             onSelect={handleCalendarSelect}
             numberOfMonths={2}
             {...calendarProps}
