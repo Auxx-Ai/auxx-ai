@@ -186,6 +186,7 @@ export async function readGeneralLedger(
         memo: schema.GlPostingLine.memo,
         direction: schema.GlPostingLine.direction,
         amountMinor: schema.GlPostingLine.amountMinor,
+        lineId: schema.GlPostingLine.id,
       })
       .from(schema.GlPostingLine)
       .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
@@ -269,6 +270,7 @@ interface RawLedgerLine {
   memo: string | null
   direction: string
   amountMinor: string | number
+  lineId: string
 }
 
 /**
@@ -303,6 +305,7 @@ function buildAccount(
     running += direction === naturalDirection ? amountMinor : -amountMinor
     return {
       glPostingId: line.glPostingId,
+      lineId: line.lineId,
       docNumber: line.docNumber,
       txnDate: line.txnDate,
       memo: line.memo,

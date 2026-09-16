@@ -90,11 +90,15 @@ function line(input: {
   docNumber?: string
   glPostingId?: string
   memo?: string | null
+  lineId?: string
 }) {
   return {
     glPostingId: input.glPostingId ?? `gl_${input.docNumber ?? input.txnDate}`,
     docNumber: input.docNumber ?? 'JNL-0001',
     memo: input.memo ?? null,
+    lineId:
+      input.lineId ??
+      `ln_${input.glPostingId ?? input.docNumber ?? input.txnDate}_${input.amountMinor}`,
     ...input,
     amountMinor: String(input.amountMinor),
   }
@@ -462,6 +466,7 @@ describe('toGeneralLedgerRows', () => {
         lines: [
           {
             glPostingId: 'gl_1',
+            lineId: 'ln_1',
             docNumber: 'JNL-0001',
             txnDate: '2026-08-10',
             memo: 'Deposit',
@@ -471,6 +476,7 @@ describe('toGeneralLedgerRows', () => {
           },
           {
             glPostingId: 'gl_2',
+            lineId: 'ln_2',
             docNumber: 'JNL-0002',
             txnDate: '2026-08-12',
             memo: null,
@@ -509,6 +515,37 @@ describe('toGeneralLedgerRows', () => {
     // Debit and credit in their own columns, the running balance in the third.
     expect(section?.children?.[1]?.values).toEqual([5_000, null, 55_000])
     expect(section?.children?.[2]?.values).toEqual([null, 2_000, 53_000])
+  })
+
+  it('gives every line its own row id when one entry posts many lines to one account', () => {
+    // A fulfillment batch credits tax once per order, so `glPostingId`,
+    // `txnDate` and `docNumber` are all identical across those lines.
+    const batched = {
+      ...gl,
+      accounts: [
+        {
+          ...gl.accounts[0]!,
+          lines: [1, 2, 3].map((lineNumber) => ({
+            glPostingId: 'gl_batch',
+            lineId: `ln_batch_${lineNumber}`,
+            docNumber: 'AUXX-FUL-fg_6e2b172a0',
+            txnDate: '2026-08-19',
+            memo: null,
+            direction: 'credit' as const,
+            amountMinor: 1_000,
+            runningBalanceMinor: 50_000 - 1_000 * lineNumber,
+          })),
+        },
+      ],
+    }
+
+    const lineIds =
+      toGeneralLedgerRows(batched)[0]
+        ?.children?.filter((child) => child.meta?.glPostingId)
+        .map((child) => child.id) ?? []
+
+    expect(lineIds).toHaveLength(3)
+    expect(new Set(lineIds).size).toBe(3)
   })
 
   it('never SUMS the running-balance column - the section and its closing row carry the ENDING balance', () => {

@@ -55,6 +55,7 @@ import {
   type PostingGuidePage,
   postingSectionAnchor,
   settingRowTitle,
+  splitPostingColumns,
   TRIGGER_KIND_ICON,
   triggerSentence,
 } from './posting-page-model'
@@ -147,6 +148,61 @@ export function AccountingPostingSettingsPage() {
     )
   }
 
+  const columns = splitPostingColumns(POSTING_PAGE_POLICIES)
+
+  function renderPolicy(policy: PostingPolicy) {
+    const Icon = TRIGGER_KIND_ICON[policy.trigger.kind]
+    const inputKeys = policy.settings.filter((key) => !(key in EXTERNAL_SETTING_HOMES))
+    const externalKeys = policy.settings.filter((key) => key in EXTERNAL_SETTING_HOMES)
+    const runNowSource = isRunNowSource(policy.type) && can('ledger.post') ? policy.type : null
+
+    return (
+      <div key={policy.type} id={postingSectionAnchor(policy.type)}>
+        <SettingsSection
+          icon={Icon}
+          title={
+            <span className='flex items-center gap-2'>
+              {policy.label}
+              {!policy.enabled && (
+                <Tooltip content={policy.disabledSentence}>
+                  <Badge variant='outline' size='xs'>
+                    Not counted as enabled
+                  </Badge>
+                </Tooltip>
+              )}
+            </span>
+          }
+          description={policy.sentence}
+          action={
+            <div className='flex items-center gap-1'>
+              {runNowSource && (
+                <Button variant='outline' size='sm' onClick={() => setRunNow(runNowSource)}>
+                  <Play /> Run now
+                </Button>
+              )}
+              <GuideButton label={policy.label} onClick={() => setGuidePage(policy.type)} />
+            </div>
+          }>
+          {inputKeys.length > 0 && (
+            <FieldPanel
+              className='mt-1 p-0'
+              resizeId={`accounting-posting-${policy.type}`}
+              defaultLabelWidth={220}>
+              {inputKeys.map((key) => renderSettingRow(policy, key))}
+            </FieldPanel>
+          )}
+
+          <PolicyFacts
+            policy={policy}
+            latest={latestByType.get(policy.type) ?? null}
+            latestLoading={latest.isPending}
+            externalKeys={externalKeys}
+          />
+        </SettingsSection>
+      </div>
+    )
+  }
+
   return (
     <SettingsPage
       title='Posting'
@@ -170,61 +226,13 @@ export function AccountingPostingSettingsPage() {
           .
         </p>
 
-        {POSTING_PAGE_POLICIES.map((policy) => {
-          const Icon = TRIGGER_KIND_ICON[policy.trigger.kind]
-          const inputKeys = policy.settings.filter((key) => !(key in EXTERNAL_SETTING_HOMES))
-          const externalKeys = policy.settings.filter((key) => key in EXTERNAL_SETTING_HOMES)
-          const runNowSource =
-            isRunNowSource(policy.type) && can('ledger.post') ? policy.type : null
-
-          return (
-            <div key={policy.type} id={postingSectionAnchor(policy.type)}>
-              <SettingsSection
-                icon={Icon}
-                title={
-                  <span className='flex items-center gap-2'>
-                    {policy.label}
-                    {!policy.enabled && (
-                      <Tooltip content={policy.disabledSentence}>
-                        <Badge variant='outline' size='xs'>
-                          Not counted as enabled
-                        </Badge>
-                      </Tooltip>
-                    )}
-                  </span>
-                }
-                description={policy.sentence}
-                action={
-                  <div className='flex items-center gap-1'>
-                    {runNowSource && (
-                      <Button variant='outline' size='sm' onClick={() => setRunNow(runNowSource)}>
-                        <Play /> Run now
-                      </Button>
-                    )}
-                    <GuideButton label={policy.label} onClick={() => setGuidePage(policy.type)} />
-                  </div>
-                }>
-                {inputKeys.length > 0 && (
-                  <FieldPanel
-                    className='mt-1 p-0'
-                    resizeId={`accounting-posting-${policy.type}`}
-                    defaultLabelWidth={220}>
-                    {inputKeys.map((key) => renderSettingRow(policy, key))}
-                  </FieldPanel>
-                )}
-
-                <PolicyFacts
-                  policy={policy}
-                  latest={latestByType.get(policy.type) ?? null}
-                  latestLoading={latest.isPending}
-                  externalKeys={externalKeys}
-                />
-              </SettingsSection>
-            </div>
-          )
-        })}
-
-        <NotPostingSection onGuide={() => setGuidePage('not-posting')} />
+        <div className='grid grid-cols-1 items-start gap-8 lg:grid-cols-2'>
+          <div className='flex flex-col gap-8'>{columns.left.map(renderPolicy)}</div>
+          <div className='flex flex-col gap-8'>
+            {columns.right.map(renderPolicy)}
+            <NotPostingSection onGuide={() => setGuidePage('not-posting')} />
+          </div>
+        </div>
 
         <FormSaveBar
           dirty={draft.dirty}
@@ -241,7 +249,6 @@ export function AccountingPostingSettingsPage() {
           initialPage={guidePage}
         />
       )}
-
       {/* Mounted only while open, like the buttons on Orders and Credit memos,
           so the preview query does not run on every visit to this page. */}
       {runNow === 'fulfillment' && (

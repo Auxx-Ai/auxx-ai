@@ -350,13 +350,8 @@ function providerResultFromDetail(detail: {
   if (detail.exportStatus === 'failed') {
     return { ...base, status: 'error', error: detail.failureReason ?? undefined }
   }
-  // 🛑 BEFORE the `providerEntryId` check, not after it. On a `'none'`-routed
-  // type that id means the OPPOSITE of what it means everywhere else: for a
-  // `provider_sync` row it is THEIR transaction id, stamped on the way IN as
-  // provenance and as the re-read key (`provider-sync/writes.ts:153`), not an
-  // id the provider handed back on a create. Checked in the old order, every
-  // entry read off QuickBooks reported "recorded here and pushed to the
-  // accounting system" - the exact inversion of what happened to it.
+  // Before the `providerEntryId` check: on a `'none'`-routed type that id is
+  // THEIRS, stamped on the way in, not proof we exported anything.
   if (EXPORT_ROUTE_BY_POSTING_TYPE[detail.postingType as PostingType] === 'none') {
     return { ...base, status: 'not_exported' }
   }

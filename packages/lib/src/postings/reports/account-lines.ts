@@ -29,6 +29,8 @@ const POSTED_STATUSES = ['posted', 'reversed'] as const
 /** One posted line against the requested account, with its running balance. */
 export interface AccountLineRow {
   glPostingId: string
+  /** `GlPostingLine.id` - one entry can post many lines to one account, so the posting id does not identify a row. */
+  lineId: string
   docNumber: string
   /** `YYYY-MM-DD`. */
   txnDate: string
@@ -116,12 +118,12 @@ export async function readAccountLines(
     const rawLines = await db
       .select({
         glPostingId: schema.GlPosting.id,
+        lineId: schema.GlPostingLine.id,
         docNumber: schema.GlPosting.docNumber,
         txnDate: schema.GlPosting.txnDate,
         memo: schema.GlPostingLine.memo,
         direction: schema.GlPostingLine.direction,
         amountMinor: schema.GlPostingLine.amountMinor,
-        lineNumber: schema.GlPostingLine.lineNumber,
       })
       .from(schema.GlPostingLine)
       .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
@@ -139,6 +141,7 @@ export async function readAccountLines(
       running += delta
       return {
         glPostingId: line.glPostingId,
+        lineId: line.lineId,
         docNumber: line.docNumber,
         txnDate: line.txnDate,
         memo: line.memo,

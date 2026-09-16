@@ -404,7 +404,9 @@ export function toGeneralLedgerRows(gl: GeneralLedger): StatementRow[] {
         values: [null, null, account.openingBalanceMinor],
       },
       ...account.lines.map((line) => ({
-        id: `${account.glAccountId}:${line.glPostingId}:${line.txnDate}:${line.docNumber}`,
+        // The LINE id, not the posting's: a fulfillment batch credits sales tax
+        // once per jurisdiction, so one posting owns many rows in this account.
+        id: line.lineId,
         // The drill-down key, carried as DATA rather than left to be parsed
         // back out of `id` above. A GL line's destination is its posting.
         glPostingId: line.glPostingId,

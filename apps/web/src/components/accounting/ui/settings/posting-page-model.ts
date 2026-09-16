@@ -132,6 +132,68 @@ export const POSTING_PAGE_INPUT_KEYS: readonly string[] = POSTING_PAGE_POLICIES.
   policy.settings.filter((key) => !(key in EXTERNAL_SETTING_HOMES))
 )
 
+// Two independent stacks, not a grid of rows: a grid row is as tall as its
+// tallest cell, so the six-setting `payment` section would open a hole beside
+// itself. Reading order is column-major as a result.
+
+const SECTION_BASE_UNITS = 120
+/** The stack's own `gap-8` under each section. */
+const SECTION_GAP_UNITS = 32
+const SETTING_ROW_UNITS = 44
+/** One wrapped line of `PolicyFacts` links. */
+const FACT_LINE_UNITS = 18
+/** The collapsed "Not posting" roll-up, which always closes the second column. */
+export const NOT_POSTING_SECTION_UNITS = SECTION_BASE_UNITS + SECTION_GAP_UNITS
+
+/**
+ * Roughly how tall one policy's section renders, in arbitrary units.
+ *
+ * Only ever used to choose where to cut the list in two, so it need only be
+ * right about which sections are the big ones.
+ */
+export function postingSectionUnits(policy: PostingPolicy): number {
+  const inputKeys = policy.settings.filter((key) => !(key in EXTERNAL_SETTING_HOMES))
+  const externalKeys = policy.settings.filter((key) => key in EXTERNAL_SETTING_HOMES)
+  const factLines = (externalKeys.length > 0 ? 1 : 0) + ((policy.records?.length ?? 0) > 0 ? 1 : 0)
+
+  return (
+    SECTION_BASE_UNITS +
+    SECTION_GAP_UNITS +
+    inputKeys.length * SETTING_ROW_UNITS +
+    factLines * FACT_LINE_UNITS
+  )
+}
+
+/**
+ * The declared order cut in two so both columns end at about the same height.
+ *
+ * Picks a boundary index; never reorders or interleaves. The "Not posting"
+ * roll-up counts against the right column, which is where it renders.
+ */
+export function splitPostingColumns(policies: readonly PostingPolicy[]): {
+  left: PostingPolicy[]
+  right: PostingPolicy[]
+} {
+  const units = policies.map(postingSectionUnits)
+  const total = units.reduce((sum, unit) => sum + unit, 0)
+
+  let bestIndex = 0
+  let bestGap = Number.POSITIVE_INFINITY
+  let left = 0
+
+  // `index` is how many sections the left column takes.
+  for (let index = 0; index <= policies.length; index++) {
+    const gap = Math.abs(left - (total - left + NOT_POSTING_SECTION_UNITS))
+    if (gap < bestGap) {
+      bestGap = gap
+      bestIndex = index
+    }
+    left += units[index] ?? 0
+  }
+
+  return { left: [...policies.slice(0, bestIndex)], right: [...policies.slice(bestIndex)] }
+}
+
 /** A guide page: the overview, one page per posting type, or the never-posting roll-up. */
 export type PostingGuidePage = 'overview' | 'not-posting' | PostingType
 

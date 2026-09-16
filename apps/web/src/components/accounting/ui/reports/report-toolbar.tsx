@@ -14,6 +14,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, FileDown, FileSpreadsheet } from 'lucide-react'
 import type { LedgerPeriodOption } from '~/components/accounting/hooks/use-ledger-period'
 import { formatPeriodLabel } from '~/components/accounting/ui/ledger/format'
+import { ProviderSyncStatus } from './provider-sync-status'
 import type { CompareOption } from './report-helpers'
 
 const COMPARE_LABEL: Record<CompareOption, string> = {
@@ -41,6 +42,8 @@ export interface ReportToolbarProps {
   onSelectCompare?: (compare: CompareOption) => void
   onDownloadPdf: () => void
   onDownloadCsv: () => void
+  /** The last date the statement covers, for the "Synced through" status. */
+  through?: string
   isDownloadingPdf?: boolean
   disabled?: boolean
 }
@@ -65,6 +68,7 @@ export function ReportToolbar({
   onSelectCompare,
   onDownloadPdf,
   onDownloadCsv,
+  through,
   isDownloadingPdf = false,
   disabled = false,
 }: ReportToolbarProps) {
@@ -123,6 +127,8 @@ export function ReportToolbar({
       )}
 
       <div className='flex-1' />
+
+      {through && <ProviderSyncStatus through={through} />}
 
       <Separator orientation='vertical' className='h-6' />
       <Button variant='ghost' size='sm' loading={isDownloadingPdf} onClick={onDownloadPdf}>

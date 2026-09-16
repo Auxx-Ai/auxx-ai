@@ -124,6 +124,7 @@ export function GeneralLedgerReportPage() {
         onSelectTo={(key) => void setToParam(periodEndDate(key))}
         onDownloadPdf={handleDownloadPdf}
         onDownloadCsv={handleDownloadCsv}
+        through={to}
         isDownloadingPdf={renderPdf.isPending}
         // 🛑 Both exports stay ENABLED while the ledger is truncated, and that
         // is a deliberate call. `renderStatementPdf` reads under the SAME
@@ -174,7 +175,9 @@ export function GeneralLedgerReportPage() {
               rows={rows}
               currency={period.currencyCode}
               searchable
-              expandAllByDefault
+              // Closed by default, unlike the other statements: one account can hold
+              // thousands of lines, and a collapsed section already shows its opening
+              // balance, debit/credit totals and ending balance. Search force-opens.
               verdict={
                 query.data
                   ? truncated
@@ -191,15 +194,8 @@ export function GeneralLedgerReportPage() {
                 if (!glPostingId) return
                 const txnDate = txnDateByPostingId.get(glPostingId)
                 if (!txnDate) return
-                // The same destination `AccountLinesDialog`'s doc-number links
-                // use: the posting, open on the ledger page for the month the
-                // line actually landed in.
-                //
-                // 🛑 QUERY PARAMS, NOT A PATH SEGMENT. The ledger is the
-                // module's ONE route (`app/accounting/page.tsx`) and the month
-                // rides on `?month=` (`MONTH_PARAM`). `/app/accounting/2026-05`
-                // is a 404 - there has never been a `[period]` route - so this
-                // drill-down and the dialog's both dead-ended silently.
+                // The ledger is one route; the month rides on `?month=`. A path
+                // segment (`/app/accounting/2026-05`) is a 404.
                 router.push(
                   `/app/accounting?month=${periodKeyFromDate(txnDate)}&posting=${glPostingId}`
                 )
