@@ -22,7 +22,7 @@ import {
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
   discardJournalEntry,
-  findDuplicateBankMovements,
+  evaluateExportGate,
   GL_ACCOUNT_SUBTYPES,
   GL_ACCOUNT_TYPES,
   getJournalEntry,
@@ -48,10 +48,9 @@ import {
   previewMonthEnd,
   readAccountingBookConnectionStatus,
   readLatestPostingsByType,
-  readMonthActivity,
-  readRailFeeStatus,
+  readPostingRegister,
   readTrialBalance,
-  releaseExportsForSync,
+  releaseExportsThroughGate,
   removeChartAccount,
   repairAccountingBookConnection,
   resolveAccountingProvider,
@@ -211,11 +210,11 @@ const draftEntry = z.object({
  * | procedure         | gate         |
  * | ----------------- | ------------ |
  * | `preview`         | `ledger.view` |
+ * | `register`        | `ledger.view` |
  * | `failedExports` | `ledger.view` |
  * | `retryExport` | `ledger.post` |
  * | `syncExports` | `ledger.post` |
  * | `verifyBalance`   | `ledger.view` |
- * | `railFeeStatus`   | `ledger.view` |
  * | `post`            | `ledger.post` |
  * | `reverse`         | `ledger.post` |
  * | `setLockedThrough` | `ledger.control` |
@@ -567,6 +566,40 @@ export const ledgerRouter = createTRPCRouter({
     .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const result = await getPosting(ctx.db, ctx.session.organizationId, input.id)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * The REGISTER behind one summary posting - its member effects, read-only
+   * (plans/accounting/tasks/53-two-modes-one-ledger.md §7.3, decision D16).
+   *
+   * 🔑 A READ over data that already exists. `AccountingEffect.acceptedBasis`
+   * has stored a balanced, account-resolved contribution per transaction since
+   * 42D; nothing has ever rendered it. This is that render's one call, and it
+   * builds nothing: level B - writing those contributions as `GlPosting` rows
+   * too - is explicitly refused, because a derived register in the trial balance
+   * double-counts every summary it rolls into and still balances (§7.3.2).
+   *
+   * ⚠️ An empty `entries` is a legitimate answer, NOT a 404 and not a gap.
+   * Seven posting families have no upstream transaction at all - a manual
+   * journal, an opening balance, a `provider_sync` row authored in the provider
+   * - and for those the posting IS the register row, 1:1 (§7.3.3). Only a
+   * posting id that does not exist, or belongs to another org, is a refusal.
+   *
+   * `ledger.view`, like every other read here. Nothing about it is a write, and
+   * a register row must never be editable: it is a projection of a frozen,
+   * sha256-hashed basis, and the correction path is `operation: 'correction'`
+   * on `AccountingWork`, which already exists.
+   */
+  register: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ glPostingId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const result = await readPostingRegister(
+        ctx.db,
+        ctx.session.organizationId,
+        input.glPostingId
+      )
       if (result.isErr()) throw result.error
       return result.value
     }),
@@ -1114,6 +1147,44 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
+   * Is the ledger ready to be sent? Checked against the SOURCE and the BANK,
+   * before anything leaves (53 D12, §2.1, §8 risk 1).
+   *
+   * 🛑 Not a comparison of two general ledgers. D12 settled that: divergence we
+   * cause is PREVENTED at the gate, and the only two-GL surface that needs
+   * comparing is the one the firm itself authors, which is a different unit.
+   *
+   * A read, and `ledgerView` rather than `ledgerPost`, because asking changes
+   * nothing: the gate writes no flag and is evaluated fresh at the moment of
+   * asking. `syncExports` runs the same evaluation for itself, so this endpoint
+   * exists to render the answer BEFORE somebody presses Sync, not to authorise
+   * it.
+   *
+   * ⚠️ `report.unavailable` names the checks that never ran. A caller that
+   * renders "ready" without reading it will report a green gate for questions
+   * nobody asked.
+   */
+  exportGate: permissionProcedure(PermissionKey.ledgerView)
+    .input(
+      z
+        .object({
+          /** Restrict to these postings. Omit for the whole sync queue. */
+          glPostingIds: z.array(z.string().min(1)).max(500).optional(),
+          /** Bound by accounting month, inclusive. `'2026-08'`. */
+          through: z.string().min(1).optional(),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const result = await evaluateExportGate(ctx.db, ctx.session.organizationId, {
+        glPostingIds: input?.glPostingIds,
+        through: input?.through,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
    * Push one already-posted entry to the accounting system again.
    *
    * 🛑 This never re-posts and never touches `GlPosting.status`. It replays the
@@ -1153,7 +1224,12 @@ export const ledgerRouter = createTRPCRouter({
   syncExports: permissionProcedure(PermissionKey.ledgerPost)
     .input(z.object({ glPostingIds: z.array(z.string().min(1)).min(1).max(500) }))
     .mutation(async ({ ctx, input }) => {
-      const result = await releaseExportsForSync(ctx.db, {
+      // 🛑 Through the PRE-EXPORT GATE (53 D12), not straight at the release. A
+      // posting the books are not ready to stand behind comes back `skipped`
+      // with the reason on its own row, and never reaches the delivery worker.
+      // The gate fails OPEN, so an organization whose subledgers are unreachable
+      // is not grounded - see `postings/export-gate/reads.ts`.
+      const result = await releaseExportsThroughGate(ctx.db, {
         organizationId: ctx.session.organizationId,
         glPostingIds: input.glPostingIds,
       })
@@ -1184,58 +1260,6 @@ export const ledgerRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const result = await verifyBooksBalance(ctx.db, ctx.session.organizationId, {
         month: input?.periodKey,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  /**
-   * The duplicate detector (plans/accounting/tasks/18-two-feeds-one-author.md
-   * §1, DECIDED "no matter what"): two or more posted lines that moved one
-   * bank account by the same amount, in the same direction, from more than one
-   * `sourceType`, within a couple of days of each other - a payout and a bank
-   * line coded to it, most commonly. Rendered as a card beside
-   * `BooksBalanceLine`, never auto-fixed - the remedy is a person reversing one
-   * entry or deleting one in QuickBooks.
-   *
-   * Same optional month input as {@link verifyBalance}, for the same reason:
-   * the close console asks about the month on screen, and a malformed value is
-   * still refused by the regex.
-   */
-  duplicateMovements: permissionProcedure(PermissionKey.ledgerView)
-    .input(optionalMonthKey.optional())
-    .query(async ({ ctx, input }) => {
-      const result = await findDuplicateBankMovements(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        month: input?.periodKey,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  /**
-   * What the close console can say about each rail's processor fees
-   * (plans/accounting/tasks/26-a-clearing-account-per-rail.md §6): which rails
-   * are `billed` rather than `netted`, whether they traded in the month, and
-   * when a fee was last booked to a rail's OWN fee account.
-   *
-   * 🛑 **A fact, never an alarm, and deliberately not a close refusal.** §6 and
-   * §14's R4: a rail that bills quarterly would block two closes in three and
-   * teach everyone to ignore the block. `prepareClose` does not call this. The
-   * date is the whole message and the person draws the conclusion, which is
-   * also why there is no dismissal state to store.
-   *
-   * ⚠️ The month is REQUIRED here, unlike {@link verifyBalance}. Two of the
-   * three things §6 says are knowable are about a specific month, and answering
-   * them for "the whole ledger" would mean answering a question nobody asked.
-   * The close console gates the query on having resolved a month.
-   */
-  railFeeStatus: permissionProcedure(PermissionKey.ledgerView)
-    .input(monthKey)
-    .query(async ({ ctx, input }) => {
-      const result = await readRailFeeStatus(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        month: input.periodKey,
       })
       if (result.isErr()) throw result.error
       return result.value
@@ -1745,29 +1769,4 @@ export const ledgerRouter = createTRPCRouter({
         return { ok: true }
       }),
   }),
-
-  /**
-   * What posted in the month on screen, per posting type, and what the month
-   * still owes the two bulk dialogs (plans/accounting/tasks/28-how-your-books-
-   * post.md §6) - the ledger sidebar's "This month" group.
-   *
-   * 🛑 A fact per row, never an alarm, the same shape as {@link railFeeStatus}:
-   * a count and a date per type, and the person draws the conclusion.
-   * `BooksGroup` stays the place for what did not tie. The two waiting counts
-   * are the same reads {@link verifyBalance} makes, so the two groups cannot
-   * disagree about what is waiting for a dialog.
-   *
-   * ⚠️ The month is REQUIRED, like {@link railFeeStatus}: every number here is
-   * about one month, and the group gates the query on having resolved one.
-   */
-  monthActivity: permissionProcedure(PermissionKey.ledgerView)
-    .input(monthKey)
-    .query(async ({ ctx, input }) => {
-      const result = await readMonthActivity(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        month: input.periodKey,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
 })

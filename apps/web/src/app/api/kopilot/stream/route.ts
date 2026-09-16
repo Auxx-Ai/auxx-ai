@@ -33,6 +33,7 @@ import {
   createKnowledgeCapabilities,
   createKopilotCapabilities,
   createKopilotDomainConfig,
+  createLedgerCapabilities,
   createMailCapabilities,
   createRecordViewCapabilities,
   createSuggestRepliesGlobalCapability,
@@ -790,6 +791,13 @@ async function runInProcessPath(params: {
   registry.register(createKbReadCapabilities(getToolDeps))
   registry.register(createKbCapabilities(getToolDeps))
   registry.register(createRecordViewCapabilities(getToolDeps))
+  // The ledger console's read (`page: 'accounting.ledger'`). Registered
+  // unconditionally, like the record-views capability and unlike the three
+  // page-GATED blocks below: there is nothing privileged to withhold here. The
+  // one tool is read-only and re-asserts `ledgerView` on the caller's own
+  // capability view, so a member who POSTs `page: 'accounting.ledger'` without
+  // the ledger area learns nothing they could not already read.
+  registry.register(createLedgerCapabilities(getToolDeps))
   registry.register(createSuggestRepliesGlobalCapability(getToolDeps))
   // Defence in depth: `page` arrives on the request body, so on its own it must
   // never unlock a privileged tool set. Agent authoring is OWNER/ADMIN-only

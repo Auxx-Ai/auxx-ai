@@ -38,6 +38,22 @@ export {
 } from './account-subtype'
 export { withAccountingCommitLock } from './accounting-commit-lock'
 export {
+  type AcceptedMoneyApplicationEffectBasisV1,
+  acceptedMoneyApplicationEffectBasisSchema,
+  MONEY_APPLICATION_EFFECT_KIND,
+  MONEY_APPLICATION_POSTING_TYPE,
+  MONEY_APPLICATION_RESOURCE_KIND,
+  type MoneyApplicationBasisV1,
+  type MoneyApplicationWorkBasisInput,
+  moneyApplicationBasisSchema,
+  moneyApplicationWorkBasisSchema,
+} from './application-effect-types'
+export {
+  type CaptureMoneyApplicationWorkInput,
+  captureMoneyApplicationWorkInTx,
+  moneyApplicationAccountingEffectKey,
+} from './application-effect-work'
+export {
   type AccountingBasisDimension,
   reservedAccountingBasis,
 } from './basis-dimension'
@@ -270,6 +286,27 @@ export {
   type DocNumberInput,
 } from './doc-number'
 export {
+  type AcceptedDocumentEffectBasisV1,
+  acceptedDocumentEffectBasisSchema,
+  DOCUMENT_EFFECT_FAMILIES,
+  DOCUMENT_EFFECT_FAMILY_SPEC,
+  type DocumentAccountingBasisV1,
+  type DocumentEffectFamily,
+  type DocumentEffectPostingType,
+  type DocumentWorkBasisInput,
+  documentAccountingBasisSchema,
+  documentEffectFamilySchema,
+  documentRoleScope,
+  documentWorkBasisSchema,
+  isDocumentEffectFamily,
+} from './document-effect-types'
+export {
+  assertDocumentJournalIsOwnedInTx,
+  type CaptureDocumentWorkInput,
+  captureDocumentWorkInTx,
+  documentAccountingEffectKey,
+} from './document-effect-work'
+export {
   buildPostingDraft,
   type MonthEndInventorySnapshot,
   POSTING_DRAFT_VERSION,
@@ -321,6 +358,28 @@ export {
   captureCustomerReceiptWorkInTx,
   captureFulfillmentWorkInTx,
 } from './effect-work'
+export {
+  CLAIMED_SOURCE_STREAMS,
+  claimedSourceStreams,
+  describeBankCoverageGap,
+  describeUnbalancedEntry,
+  describeUnreviewedBankLines,
+  type EvaluateExportGateInput,
+  EXPORT_GATE_CHECKS,
+  type ExportGateCheck,
+  type ExportGateFinding,
+  type ExportGateFindingKey,
+  type ExportGateReport,
+  type ExportGateSeverity,
+  type ExportGateStatus,
+  type ExportGateVerdict,
+  evaluateExportGate,
+  exportGateLead,
+  exportGateMessage,
+  exportGateStatus,
+  liftCloseBlockerItem,
+  releaseExportsThroughGate,
+} from './export-gate'
 export { gatherMonthEndInventoryInputs } from './gather-month-end-inventory'
 export type { PostingDeliveryIntent } from './insert-posting'
 export {
@@ -508,6 +567,9 @@ export {
   readRailFeeStatus,
 } from './rail-fee-status'
 export { getPosting, readPostingLineSourceIds } from './read-posting'
+// ── plans/accounting/tasks/53 §7.3 (D16): the register, level A ─────────────
+// The db half. `register.ts` is pure and client-safe and rides on `./client`.
+export { readPostingRegister } from './read-register'
 export {
   ENABLED_POSTING_TYPES,
   EXPORT_ROUTE_BY_POSTING_TYPE,

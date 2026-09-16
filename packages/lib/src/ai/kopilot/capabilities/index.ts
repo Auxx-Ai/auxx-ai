@@ -19,6 +19,7 @@ export { createKbCapabilities, createKbReadCapabilities, KB_PAGE } from './kb'
 export { createKnowledgeCapabilities } from './knowledge'
 export { createKopilotCapabilities } from './kopilot'
 export { createLearnedKbCapabilities } from './learned'
+export { ACCOUNTING_LEDGER_PAGE, createLedgerCapabilities } from './ledger'
 export { createMailCapabilities } from './mail'
 export {
   createPurchasingIntakeCapabilities,

@@ -237,6 +237,21 @@ export {
   type DocNumberInput,
 } from './doc-number'
 export {
+  type AcceptedDocumentEffectBasisV1,
+  acceptedDocumentEffectBasisSchema,
+  DOCUMENT_EFFECT_FAMILIES,
+  DOCUMENT_EFFECT_FAMILY_SPEC,
+  type DocumentAccountingBasisV1,
+  type DocumentEffectFamily,
+  type DocumentEffectPostingType,
+  type DocumentWorkBasisInput,
+  documentAccountingBasisSchema,
+  documentEffectFamilySchema,
+  documentRoleScope,
+  documentWorkBasisSchema,
+  isDocumentEffectFamily,
+} from './document-effect-types'
+export {
   type MonthEndInventorySnapshot,
   POSTING_DRAFT_VERSION,
   type PostingAssertions,
@@ -265,6 +280,28 @@ export {
   type FulfillmentAccountingBasisV1,
   fulfillmentAccountingBasisSchema,
 } from './effect-types'
+// The gate's prose and vocabulary. PURE - the queue panel renders findings as
+// rows, and a label that only existed on the server would have to be written a
+// second time in the browser. See `export-gate/findings.ts`'s own header.
+export {
+  CLAIMED_SOURCE_STREAMS,
+  claimedSourceStreams,
+  describeBankCoverageGap,
+  describeUnbalancedEntry,
+  describeUnreviewedBankLines,
+  EXPORT_GATE_CHECKS,
+  type ExportGateCheck,
+  type ExportGateFinding,
+  type ExportGateFindingKey,
+  type ExportGateReport,
+  type ExportGateSeverity,
+  type ExportGateStatus,
+  type ExportGateVerdict,
+  exportGateLead,
+  exportGateMessage,
+  exportGateStatus,
+  liftCloseBlockerItem,
+} from './export-gate/client'
 export type { PostingDeliveryIntent } from './insert-posting'
 export {
   JOURNAL_ENTRY_POSTING_TYPE,
@@ -397,6 +434,21 @@ export {
   SINGLE_WRITER_ROLES,
   SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
 } from './regime'
+// ── plans/accounting/tasks/53 §7.3 (D16): the register, level A ─────────────
+// PURE. `register.ts` reaches nothing but `zod` and two type-only imports from
+// `types`, which is already on this surface. The db half is `read-register.ts`
+// and stays server-only, exported from `./index`.
+export {
+  type PostingRegister,
+  projectRegisterEntry,
+  type RegisterAccountLabel,
+  type RegisterContributionLine,
+  type RegisterDocumentRef,
+  type RegisterEffectRow,
+  type RegisterEntry,
+  registerTiesToPosting,
+  registerTotalMinor,
+} from './register'
 export type { AccountLineRow, AccountLines } from './reports/account-lines'
 // ── Statements (HANDOFF slot 1E, wave 1) - pure pieces only. The reads
 // (`readTrialBalance`, `readBalanceSheet`, `readProfitAndLoss`,

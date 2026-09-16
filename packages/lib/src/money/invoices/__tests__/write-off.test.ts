@@ -10,18 +10,25 @@
 //     entry** - a refused post (a locked period, an unmapped role) must leave
 //     `invoice_status` untouched, exactly as `voidInvoice`'s own guard does.
 
+import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   selectRows: [] as unknown[],
   resolvePeriodLock: vi.fn(),
-  postEntry: vi.fn(),
+  acceptEntryInTx: vi.fn(),
   previewEntry: vi.fn(),
   getOrganizationSetting: vi.fn(),
   setValuesForEntity: vi.fn(),
   fieldValueServiceArgs: [] as unknown[][],
   isAccountingEnabled: vi.fn(),
+  captureDocumentWorkInTx: vi.fn(),
+  assertDocumentJournalIsOwnedInTx: vi.fn(),
+  resolveAccountLines: vi.fn(),
+  resolveFulfillmentDeliveryIntentInTx: vi.fn(),
+  planAccountingDeliveryInTx: vi.fn(),
+  withAccountingCommitLock: vi.fn(),
 }))
 
 vi.mock('../../../cache', () => ({
@@ -35,8 +42,28 @@ vi.mock('../../../postings/period-lock', () => ({
 }))
 vi.mock('../../../postings/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
-  postEntry: h.postEntry,
   previewEntry: h.previewEntry,
+}))
+// D19 (53 §7.3.3): the write-off no longer calls `postEntry`. It captures an
+// `invoice_write_off` `AccountingWork` and hands the entry to `acceptEntryInTx`,
+// so THAT is the seam these tests watch. `buildWriteOffEntry` stays real, which
+// is what keeps the period-key assertions below meaningful.
+vi.mock('../../../postings/accept-entry', () => ({ acceptEntryInTx: h.acceptEntryInTx }))
+vi.mock('../../../postings/document-effect-work', () => ({
+  captureDocumentWorkInTx: h.captureDocumentWorkInTx,
+  assertDocumentJournalIsOwnedInTx: h.assertDocumentJournalIsOwnedInTx,
+}))
+vi.mock('../../../postings/resolve-roles', () => ({
+  resolveAccountLines: h.resolveAccountLines,
+}))
+vi.mock('../../../postings/book-connections', () => ({
+  resolveFulfillmentDeliveryIntentInTx: h.resolveFulfillmentDeliveryIntentInTx,
+}))
+vi.mock('../../../postings/delivery', () => ({
+  planAccountingDeliveryInTx: h.planAccountingDeliveryInTx,
+}))
+vi.mock('../../../postings/accounting-commit-lock', () => ({
+  withAccountingCommitLock: h.withAccountingCommitLock,
 }))
 vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: h.getOrganizationSetting,
@@ -159,16 +186,46 @@ function stubDb() {
   countChain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
     Promise.resolve(writeOffPostings).then(resolve, reject)
 
-  return { select: () => chain, selectDistinct: () => countChain } as never
+  const db: Record<string, unknown> = {
+    select: () => chain,
+    selectDistinct: () => countChain,
+  }
+  db.transaction = (fn: (tx: unknown) => unknown) => fn(db)
+  return db as never
 }
+
+/** What `acceptEntryInTx` answers when it accepts one member's journal. */
+const accepted = (glPostingId: string) => ({
+  status: 'accepted' as const,
+  existing: false,
+  glPostingId,
+  glPostingIds: [glPostingId],
+  effectIds: ['ef_1'],
+  postings: [{ glPostingId, deliveryIntent: { kind: 'not_required' } }],
+})
+
+/** The two accounts `resolveAccountLines` answers for a write-off's two role legs. */
+const resolvedAccounts = [
+  { glAccountId: 'gl_bad_debt', code: '6100', name: 'Bad debt', accountType: 'expense' },
+  { glAccountId: 'gl_ar', code: '1200', name: 'A/R', accountType: 'asset' },
+]
 
 beforeEach(() => {
   vi.clearAllMocks()
   h.fieldValueServiceArgs.length = 0
   writeOffPostings = []
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
-  h.getOrganizationSetting.mockResolvedValue('UTC')
+  h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) =>
+    key === 'organization.currency' ? 'USD' : 'UTC'
+  )
   h.isAccountingEnabled.mockResolvedValue(true)
+  h.resolveAccountLines.mockResolvedValue(ok(resolvedAccounts))
+  h.captureDocumentWorkInTx.mockResolvedValue({
+    work: { id: 'aw_1', basisVersion: 1 },
+    basis: {},
+    existing: false,
+  })
+  h.resolveFulfillmentDeliveryIntentInTx.mockResolvedValue({ kind: 'not_required' })
 })
 
 describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
@@ -182,7 +239,7 @@ describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
         reason: '  ',
       })
     ).rejects.toBeInstanceOf(BadRequestError)
-    expect(h.postEntry).not.toHaveBeenCalled()
+    expect(h.acceptEntryInTx).not.toHaveBeenCalled()
   })
 
   it('refuses when the invoice does not exist', async () => {
@@ -207,7 +264,7 @@ describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
         reason: 'Bankrupt',
       })
     ).rejects.toBeInstanceOf(BadRequestError)
-    expect(h.postEntry).not.toHaveBeenCalled()
+    expect(h.acceptEntryInTx).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -223,7 +280,7 @@ describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
         reason: 'Bankrupt',
       })
     ).rejects.toBeInstanceOf(BadRequestError)
-    expect(h.postEntry).not.toHaveBeenCalled()
+    expect(h.acceptEntryInTx).not.toHaveBeenCalled()
   })
 
   // 🛑 The regression this pins was found in a BROWSER, not here, because both
@@ -240,7 +297,7 @@ describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
       amountPaidMinor: 3_000,
       writtenOffMinor: 20_000,
     })
-    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gl-1' })
+    h.acceptEntryInTx.mockResolvedValue(accepted('gl-1'))
 
     await writeOffInvoice(stubDb(), {
       organizationId: ORG,
@@ -251,8 +308,8 @@ describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
 
     // Everything still outstanding, not the whole invoice a second time:
     // 72,583 total less 3,000 paid less the 20,000 already written off.
-    expect(h.postEntry).toHaveBeenCalledTimes(1)
-    expect(h.postEntry.mock.calls[0]![1].entry.totalDebit).toBe(49_583)
+    expect(h.acceptEntryInTx).toHaveBeenCalledTimes(1)
+    expect(h.acceptEntryInTx.mock.calls[0]![1].entry.totalDebit).toBe(49_583)
   })
 
   it('refuses an amount over the invoice balance', async () => {
@@ -266,7 +323,7 @@ describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
         reason: 'Bankrupt',
       })
     ).rejects.toBeInstanceOf(BadRequestError)
-    expect(h.postEntry).not.toHaveBeenCalled()
+    expect(h.acceptEntryInTx).not.toHaveBeenCalled()
   })
 
   it('refuses a zero balance', async () => {
@@ -285,11 +342,7 @@ describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
 describe('writeOffInvoice - the happy path', () => {
   it('defaults the amount to the whole balance, posts, and flips the status', async () => {
     wireInvoice('sent', { balanceMinor: 50_000 })
-    h.postEntry.mockResolvedValue({
-      status: 'posted',
-      glPostingId: 'gp_1',
-      docNumber: 'AUXX-WOF-INV0042',
-    })
+    h.acceptEntryInTx.mockResolvedValue(accepted('gp_1'))
 
     const result = await writeOffInvoice(stubDb(), {
       organizationId: ORG,
@@ -299,7 +352,7 @@ describe('writeOffInvoice - the happy path', () => {
     })
 
     expect(result.status).toBe('posted')
-    const postedEntry = h.postEntry.mock.calls[0]![1].entry
+    const postedEntry = h.acceptEntryInTx.mock.calls[0]![1].entry
     expect(postedEntry.totalDebit).toBe(50_000)
     expect(postedEntry.lines.map((l: { direction: string }) => l.direction)).toEqual([
       'debit',
@@ -325,7 +378,7 @@ describe('writeOffInvoice - the happy path', () => {
   // brief 13 §1.2: the receivable credit leg carries the invoice's own contact.
   it('carries the invoice contact on the accounts_receivable credit leg only', async () => {
     wireInvoice('sent', { balanceMinor: 50_000 })
-    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_1' })
+    h.acceptEntryInTx.mockResolvedValue(accepted('gp_1'))
 
     await writeOffInvoice(stubDb(), {
       organizationId: ORG,
@@ -334,14 +387,14 @@ describe('writeOffInvoice - the happy path', () => {
       reason: 'Customer bankrupt',
     })
 
-    const [debit, credit] = h.postEntry.mock.calls[0]![1].entry.lines
+    const [debit, credit] = h.acceptEntryInTx.mock.calls[0]![1].entry.lines
     expect(debit.counterpartyId).toBeUndefined()
     expect(credit).toMatchObject({ counterpartyType: 'customer', counterpartyId: 'ei_contact_1' })
   })
 
   it('posts fine with no contact on the invoice', async () => {
     wireInvoice('sent', { balanceMinor: 50_000, contactInstanceId: null })
-    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_1' })
+    h.acceptEntryInTx.mockResolvedValue(accepted('gp_1'))
 
     await writeOffInvoice(stubDb(), {
       organizationId: ORG,
@@ -350,7 +403,7 @@ describe('writeOffInvoice - the happy path', () => {
       reason: 'Customer bankrupt',
     })
 
-    const [, credit] = h.postEntry.mock.calls[0]![1].entry.lines
+    const [, credit] = h.acceptEntryInTx.mock.calls[0]![1].entry.lines
     expect(credit.counterpartyId).toBeUndefined()
   })
 
@@ -361,7 +414,7 @@ describe('writeOffInvoice - the happy path', () => {
   // every door at once.
   it('writes off part of the balance and reduces invoice_balance by that much', async () => {
     wireInvoice('partially_paid', { balanceMinor: 50_000 })
-    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_1' })
+    h.acceptEntryInTx.mockResolvedValue(accepted('gp_1'))
 
     await writeOffInvoice(stubDb(), {
       organizationId: ORG,
@@ -381,7 +434,7 @@ describe('writeOffInvoice - the happy path', () => {
 
   it('does stamp written_off when the amount clears the whole balance', async () => {
     wireInvoice('partially_paid', { balanceMinor: 20_000 })
-    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_1' })
+    h.acceptEntryInTx.mockResolvedValue(accepted('gp_1'))
 
     await writeOffInvoice(stubDb(), {
       organizationId: ORG,
@@ -396,9 +449,14 @@ describe('writeOffInvoice - the happy path', () => {
     expect(write.values).toContainEqual({ fieldId: 'invoice_balance', value: 0 })
   })
 
+  // ⚠️ The refusal now arrives as a THROW out of `acceptEntryInTx` (a locked
+  // period, an unmapped role) that `acceptInvoiceWriteOffAccounting` converts to
+  // a typed `error` result rather than as `postEntry`'s `period_closed`. The
+  // property this test exists for is unchanged and is the important half: a
+  // refused post must leave `invoice_status` untouched.
   it('does NOT flip the status when the post is refused', async () => {
     wireInvoice('sent', { balanceMinor: 50_000 })
-    h.postEntry.mockResolvedValue({ status: 'period_closed', error: 'That month is locked.' })
+    h.acceptEntryInTx.mockRejectedValue(new Error('That month is locked.'))
 
     const result = await writeOffInvoice(stubDb(), {
       organizationId: ORG,
@@ -407,13 +465,14 @@ describe('writeOffInvoice - the happy path', () => {
       reason: 'Customer bankrupt',
     })
 
-    expect(result.status).toBe('period_closed')
+    expect(result.status).toBe('error')
+    expect(result.error).toMatch(/locked/)
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
 
   it('names the invoice number as the docNumber key, via the reason as memo', async () => {
     wireInvoice('sent', { number: 'INV-0077', balanceMinor: 50_000 })
-    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_1' })
+    h.acceptEntryInTx.mockResolvedValue(accepted('gp_1'))
 
     await writeOffInvoice(stubDb(), {
       organizationId: ORG,
@@ -422,7 +481,7 @@ describe('writeOffInvoice - the happy path', () => {
       reason: 'Customer bankrupt',
     })
 
-    const call = h.postEntry.mock.calls[0]![1]
+    const call = h.acceptEntryInTx.mock.calls[0]![1]
     expect(call.entry.periodKey).toBe('INV-0077')
     expect(call.memo).toBe('Customer bankrupt')
   })
@@ -430,14 +489,14 @@ describe('writeOffInvoice - the happy path', () => {
 
 // 🛑 The defect this block exists for: `periodKey` used to be the invoice
 // number and nothing else, so a SECOND partial write-off claimed the tuple the
-// first already held, `postEntry` answered `already_posted` - a SUCCESS - and
+// first already held, the ledger answered `already_posted` - a SUCCESS - and
 // nothing posted while this function reported that it had. The books were short
 // by the second write-off with no error anywhere.
 describe('writeOffInvoice - a partial write-off can be topped up', () => {
   it('posts a DISTINCT entry for the second partial rather than re-claiming the first key', async () => {
     // The first write-off, on a 50,000 invoice with nothing paid.
     wireInvoice('partially_paid', { balanceMinor: 50_000 })
-    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_1' })
+    h.acceptEntryInTx.mockResolvedValue(accepted('gp_1'))
     await writeOffInvoice(stubDb(), {
       organizationId: ORG,
       actorUserId: USER,
@@ -445,7 +504,7 @@ describe('writeOffInvoice - a partial write-off can be topped up', () => {
       amountMinor: 20_000,
       reason: 'First tranche',
     })
-    const first = h.postEntry.mock.calls[0]![1].entry
+    const first = h.acceptEntryInTx.mock.calls[0]![1].entry
 
     // The second, with the first's posting now in the ledger and its amount
     // recorded on the invoice. `balance` is deliberately the FULL 50,000 here:
@@ -454,7 +513,7 @@ describe('writeOffInvoice - a partial write-off can be topped up', () => {
     // `invoice_written_off`, not from the mirrored balance.
     wireInvoice('partially_paid', { balanceMinor: 50_000, writtenOffMinor: 20_000 })
     writeOffPostings = [{ glPostingId: 'gp_1' }]
-    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_2' })
+    h.acceptEntryInTx.mockResolvedValue(accepted('gp_2'))
     await writeOffInvoice(stubDb(), {
       organizationId: ORG,
       actorUserId: USER,
@@ -462,12 +521,28 @@ describe('writeOffInvoice - a partial write-off can be topped up', () => {
       amountMinor: 15_000,
       reason: 'Second tranche',
     })
-    const second = h.postEntry.mock.calls[1]![1].entry
+    const second = h.acceptEntryInTx.mock.calls[1]![1].entry
 
     expect(first.periodKey).toBe('INV-0042')
     expect(second.periodKey).toBe('INV-00421')
     expect(second.periodKey).not.toBe(first.periodKey)
     expect(second.totalDebit).toBe(15_000)
+
+    // 🔑 D19 task A: the ATTEMPT is also the accounting obligation's occurrence,
+    // so the two write-offs are two ORIGINALS with two `effectKey`s rather than
+    // one obligation - and neither is a `correction`, because the first one was
+    // not a mistake.
+    const [firstWork, secondWork] = h.captureDocumentWorkInTx.mock.calls.map((call) => call[1])
+    expect(firstWork).toMatchObject({
+      family: 'invoice_write_off',
+      documentInstanceId: INVOICE,
+      occurrence: 'original',
+    })
+    expect(secondWork).toMatchObject({
+      family: 'invoice_write_off',
+      documentInstanceId: INVOICE,
+      occurrence: 'attempt:1',
+    })
 
     // And the cumulative figure grows rather than being restated.
     const write = h.setValuesForEntity.mock.calls[1]![0]
@@ -502,13 +577,13 @@ describe('writeOffInvoice - a partial write-off can be topped up', () => {
         reason: 'Too much',
       })
     ).rejects.toThrowError(/already been written off/)
-    expect(h.postEntry).not.toHaveBeenCalled()
+    expect(h.acceptEntryInTx).not.toHaveBeenCalled()
   })
 
   it('writes off only the REMAINDER when no amount is named, and then stamps written_off', async () => {
     wireInvoice('partially_paid', { balanceMinor: 50_000, writtenOffMinor: 20_000 })
     writeOffPostings = [{ glPostingId: 'gp_1' }]
-    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_2' })
+    h.acceptEntryInTx.mockResolvedValue(accepted('gp_2'))
 
     await writeOffInvoice(stubDb(), {
       organizationId: ORG,
@@ -518,7 +593,7 @@ describe('writeOffInvoice - a partial write-off can be topped up', () => {
     })
 
     // 30,000, not the invoice's whole 50,000: the first tranche already left A/R.
-    expect(h.postEntry.mock.calls[0]![1].entry.totalDebit).toBe(30_000)
+    expect(h.acceptEntryInTx.mock.calls[0]![1].entry.totalDebit).toBe(30_000)
     const write = h.setValuesForEntity.mock.calls[0]![0]
     expect(write.values).toContainEqual({ fieldId: 'invoice_status', value: 'written_off' })
     expect(write.values).toContainEqual({ fieldId: 'invoice_balance', value: 0 })
@@ -533,7 +608,7 @@ describe('writeOffInvoice - a partial write-off can be topped up', () => {
       balanceMinor: 60_000,
     })
     writeOffPostings = [{ glPostingId: 'gp_1' }]
-    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_2' })
+    h.acceptEntryInTx.mockResolvedValue(accepted('gp_2'))
 
     await writeOffInvoice(stubDb(), {
       organizationId: ORG,
@@ -542,7 +617,7 @@ describe('writeOffInvoice - a partial write-off can be topped up', () => {
       reason: 'Write off the rest',
     })
 
-    expect(h.postEntry.mock.calls[0]![1].entry.totalDebit).toBe(50_000)
+    expect(h.acceptEntryInTx.mock.calls[0]![1].entry.totalDebit).toBe(50_000)
   })
 
   // An org short of entity migration 128 must still be able to write an invoice
@@ -551,7 +626,7 @@ describe('writeOffInvoice - a partial write-off can be topped up', () => {
   // throw and take the whole action down with it.
   it('skips the invoice_written_off write on an org that has no such field', async () => {
     wireInvoice('sent', { balanceMinor: 50_000, hasWrittenOffField: false })
-    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_1' })
+    h.acceptEntryInTx.mockResolvedValue(accepted('gp_1'))
 
     await writeOffInvoice(stubDb(), {
       organizationId: ORG,
@@ -582,7 +657,7 @@ describe('writeOffInvoice - accounting not enabled', () => {
 
     expect(result).toEqual({ status: 'not_enabled' })
     expect(h.resolvePeriodLock).not.toHaveBeenCalled()
-    expect(h.postEntry).not.toHaveBeenCalled()
+    expect(h.acceptEntryInTx).not.toHaveBeenCalled()
 
     expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
     const write = h.setValuesForEntity.mock.calls[0]![0]
@@ -606,7 +681,7 @@ describe('writeOffInvoice - accounting not enabled', () => {
       reason: 'Partial settlement',
     })
 
-    expect(h.postEntry).not.toHaveBeenCalled()
+    expect(h.acceptEntryInTx).not.toHaveBeenCalled()
     const write = h.setValuesForEntity.mock.calls[0]![0]
     expect(write.values).toEqual([
       { fieldId: 'invoice_balance', value: 30_000 },
@@ -616,7 +691,7 @@ describe('writeOffInvoice - accounting not enabled', () => {
 })
 
 describe('previewWriteOffInvoice', () => {
-  it('previews without touching postEntry or the invoice fields', async () => {
+  it('previews without accepting an effect or touching the invoice fields', async () => {
     wireInvoice('sent', { balanceMinor: 50_000 })
     h.previewEntry.mockResolvedValue({
       postingType: 'write_off',
@@ -633,7 +708,7 @@ describe('previewWriteOffInvoice', () => {
     })
 
     expect(preview.totalMinor).toBe(50_000)
-    expect(h.postEntry).not.toHaveBeenCalled()
+    expect(h.acceptEntryInTx).not.toHaveBeenCalled()
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
 })

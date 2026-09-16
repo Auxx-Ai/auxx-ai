@@ -86,8 +86,9 @@ export function syncQueueStateSentence(state: SyncQueueState, providerLabel: str
  * empty and there is nothing to say.
  *
  * ⚠️ A rail line that renders every day says nothing, so an empty queue gets no
- * line at all rather than "0 entries waiting" - the same rule `BooksGroup` keeps
- * about the standing answer.
+ * line at all rather than "0 entries waiting". Same reason the rail no longer
+ * carries the balance sweep's standing answer: a figure that reads identically
+ * every day teaches people to stop reading.
  */
 export function syncQueueRailSentence(tally: SyncQueueTally, providerLabel: string): string | null {
   if (tally.total === 0) return null
@@ -96,6 +97,62 @@ export function syncQueueRailSentence(tally: SyncQueueTally, providerLabel: stri
   if (tally.sending > 0) parts.push(`${tally.sending} sending`)
   if (tally.failed > 0) parts.push(`${tally.failed} refused`)
   return `${parts.join(', ')} to ${providerLabel}.`
+}
+
+/**
+ * What a row's warning icon says on hover, as lines.
+ *
+ * 🛑 **ONE icon, not two, even though these are two different facts from two
+ * different moments.** `failureReason` is the provider's own refusal, persisted
+ * on the posting; `sessionRefusal` is a PLAN refusal from the Sync you just
+ * pressed, which never stamps `exportStatus: 'failed'` and therefore exists
+ * nowhere but in this session's memory. Both can be true at once - a row the
+ * provider refused last week, re-synced today, refused by
+ * `assertCoveragePartitionsInTx` before it ever left. Two amber dots side by
+ * side read as a rendering fault; one icon carrying both sentences reads as one
+ * row with something to say.
+ *
+ * The in-session line comes FIRST: it describes the action the reader just took.
+ *
+ * 🔌 The provider is never named here either (D14a) - `providerLabel` arrives
+ * from `useAccountingProviderStatus`. The refusal STRINGS are the provider's own
+ * words and are passed through verbatim; the sentence around them is ours.
+ */
+export function refusalTooltipLines(
+  row: Pick<SyncQueueRow, 'failureReason'>,
+  sessionRefusal: string | undefined,
+  providerLabel: string
+): string[] {
+  const lines: string[] = []
+  if (sessionRefusal) lines.push(`The last sync did not release it. ${sessionRefusal}`)
+  if (row.failureReason) lines.push(`${providerLabel} refused it. ${row.failureReason}`)
+  return lines
+}
+
+/**
+ * The refused entries in ONE sentence, for the ledger page's banner.
+ *
+ * 🔑 D17's own reasoning, applied to the banner. The sync queue is one list; a
+ * banner that enumerates every refused row is a second list of the same rows,
+ * and with 28 refusals it buries the ledger under 28 identical amber cards. The
+ * banner's job is to say the count and point at the queue. So reasons are
+ * SUMMARISED, never enumerated.
+ *
+ * ⚠️ The common case is one shared reason (a role nobody mapped refuses every
+ * entry that uses it), and saying it once is strictly more useful than "1
+ * distinct reason" - so a single shared reason is quoted. More than one becomes
+ * a count, because the remedy is per row and the row is in the queue.
+ */
+export function refusedReasonSummary(rows: readonly Pick<SyncQueueRow, 'failureReason'>[]): string {
+  const reasons = new Set<string>()
+  for (const row of rows) {
+    if (row.failureReason) reasons.add(row.failureReason)
+  }
+  if (reasons.size === 0) {
+    return 'No reason was recorded. The sync queue shows where each one stands.'
+  }
+  if (reasons.size === 1) return [...reasons][0]!
+  return `${reasons.size} different reasons, each on its own row in the sync queue.`
 }
 
 /** The distinct periods present in the queue, in the order the rows arrive. */

@@ -202,7 +202,7 @@ export function ProviderAgreementTable({
   return (
     <div className='flex flex-col gap-3'>
       {/*
-        The finding card, on `DuplicateMovementsCard`'s pattern and for the same
+        The finding card, on `FailedExportsBanner`'s pattern and for the same
         reason: this is a finding on a ledger surface, not a transient notice. It
         names the accounts rather than counting them - "3 accounts" sends
         somebody hunting through the table below for which three.

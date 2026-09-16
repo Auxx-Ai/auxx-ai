@@ -1,10 +1,18 @@
 // packages/lib/src/postings/effect-types.ts
 import { z } from 'zod'
+import {
+  type AcceptedMoneyApplicationEffectBasisV1,
+  moneyApplicationWorkBasisSchema,
+} from './application-effect-types'
 import { reservedAccountingBasis } from './basis-dimension'
 import {
   type AcceptedCustomerCreditEffectBasisV1,
   customerCreditWorkBasisSchema,
 } from './credit-effect-types'
+import {
+  type AcceptedDocumentEffectBasisV1,
+  documentWorkBasisSchema,
+} from './document-effect-types'
 import {
   type AcceptedCustomerRefundEffectBasisV1,
   customerRefundWorkBasisSchema,
@@ -495,6 +503,8 @@ export const accountingWorkBasisSchemaV1 = z.union([
   customerReceiptWorkBasisSchema,
   customerCreditWorkBasisSchema,
   customerRefundWorkBasisSchema,
+  documentWorkBasisSchema,
+  moneyApplicationWorkBasisSchema,
 ])
 export type AccountingWorkBasisInput = z.infer<typeof accountingWorkBasisSchema>
 export type AccountingWorkBasisInputV1 = z.infer<typeof accountingWorkBasisSchemaV1>
@@ -506,3 +516,5 @@ export type AcceptedAccountingEffectBasisV1 =
   | AcceptedCustomerReceiptEffectBasisV1
   | AcceptedCustomerCreditEffectBasisV1
   | AcceptedCustomerRefundEffectBasisV1
+  | AcceptedDocumentEffectBasisV1
+  | AcceptedMoneyApplicationEffectBasisV1

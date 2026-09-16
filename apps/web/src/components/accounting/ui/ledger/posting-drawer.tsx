@@ -13,13 +13,14 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { BookOpenCheck, CircleHelp, Info, Layers, Undo2 } from 'lucide-react'
+import { BookOpenCheck, CircleHelp, Info, Layers, Receipt, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
 import { EntryJournal, journalLinesFromDetail } from './entry-journal'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatAuditTimestamp, formatPeriodLabel } from './format'
 import { PostResultCallout } from './post-result-callout'
+import { PostingRegister } from './posting-register'
 import { readStoredAssertions, readStoredReasons } from './stored-draft'
 
 interface PostingDrawerProps {
@@ -80,6 +81,12 @@ export function PostingDrawer({
   isReversing,
 }: PostingDrawerProps) {
   const [memo, setMemo] = useState('')
+  /**
+   * The Register section is open, so its read is worth making. Collapsed on
+   * open because it is the one read here that can be large - a daily
+   * fulfillment group is one summary over every shipment that day.
+   */
+  const [registerOpen, setRegisterOpen] = useState(false)
 
   const postingQuery = api.ledger.get.useQuery(
     { id: postingId ?? '' },
@@ -188,6 +195,25 @@ export function PostingDrawer({
                 <EntryJournal
                   lines={journalLinesFromDetail(detail.lines)}
                   currencyCode={currencyCode}
+                />
+              </Section>
+
+              {/* The REGISTER (53 §7.3, D16). Collapsed by default, and the
+                  read is gated on it being open - see `PostingRegister`. This
+                  is the drill-down §7.3.4 describes, and it is here rather than
+                  on a page of its own because the drawer is what BOTH the
+                  ledger list and the sync queue already open on a row. */}
+              <Section
+                title='Register'
+                icon={<Receipt className='size-4' />}
+                description='The transactions this entry was composed from, each with the balanced contribution frozen when it was accepted. Read-only: a register row is a projection of a hashed basis, and a mistake is corrected by a correction, never by an edit.'
+                initialOpen={false}
+                onOpenChange={setRegisterOpen}>
+                <PostingRegister
+                  glPostingId={postingId}
+                  enabled={registerOpen}
+                  currencyCode={currencyCode}
+                  bookTimeZone={bookTimeZone}
                 />
               </Section>
 

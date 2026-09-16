@@ -2,6 +2,7 @@
 
 export type { CapabilityRegistry, GetToolDeps, PageCapability, ToolDeps } from './capabilities'
 export {
+  ACCOUNTING_LEDGER_PAGE,
   AGENTS_BUILDER_PAGE,
   buildBuilderPersonaPrompt,
   createActorCapabilities,
@@ -14,6 +15,7 @@ export {
   createKbReadCapabilities,
   createKnowledgeCapabilities,
   createKopilotCapabilities,
+  createLedgerCapabilities,
   createMailCapabilities,
   createNativeWorkflowCapabilities,
   createPurchasingIntakeCapabilities,

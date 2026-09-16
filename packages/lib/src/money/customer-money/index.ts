@@ -4,6 +4,12 @@ export { postCustomerReceiptAccounting, sweepCustomerReceiptAccounting } from '.
 export { type AdoptNativeStripeMoneyInput, adoptNativeStripeMoney } from './adopt-native-stripe'
 export type { OrderMoneyTransaction } from './client'
 export {
+  type AcceptDepositApplicationInput,
+  acceptDepositApplicationAccounting,
+  listDepositApplicationAccountingCandidates,
+  sweepDepositApplicationAccounting,
+} from './deposit-application-accounting'
+export {
   materializeImportedMoneyInTx,
   sweepImportedCustomerMoney,
 } from './ingest'

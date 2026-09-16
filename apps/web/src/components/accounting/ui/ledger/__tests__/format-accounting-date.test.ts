@@ -6,9 +6,8 @@
 // the day it falls in the book zone. Brief 28 §6 found the first case printing
 // the previous day for every org west of Greenwich.
 
-import type { RailFeeStatus } from '@auxx/lib/postings/client'
 import { describe, expect, it } from 'vitest'
-import { formatAccountingDate, railFeeSentence } from '../format'
+import { formatAccountingDate } from '../format'
 
 const LOS_ANGELES = 'America/Los_Angeles'
 
@@ -32,25 +31,5 @@ describe('formatAccountingDate', () => {
 
   it('returns an unparseable string unchanged', () => {
     expect(formatAccountingDate('not a date', LOS_ANGELES)).toBe('not a date')
-  })
-})
-
-describe('railFeeSentence reads the booked day as a calendar day', () => {
-  it('quotes the same day west of Greenwich as in UTC', () => {
-    const rail: RailFeeStatus = {
-      paymentGatewayId: 'pg_1',
-      name: 'Authorize.net',
-      feeTreatment: 'billed',
-      tradedInMonth: true,
-      fees: {
-        kind: 'own',
-        glAccountId: 'gl_6150',
-        bookedInMonth: true,
-        lastBookedAt: '2026-09-01',
-      },
-    }
-    expect(railFeeSentence(rail, '2026-09', LOS_ANGELES)).toBe(
-      'Billed separately. Last fee booked Sep 1, 2026, in September 2026.'
-    )
   })
 })

@@ -18,10 +18,9 @@ import {
   Lock,
   Plus,
   RefreshCw,
-  X,
 } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAccountingMonth } from '~/components/accounting/hooks/use-accounting-month'
 import {
   UNKNOWN_PROVIDER_LABEL,
@@ -31,7 +30,6 @@ import { useLedgerEntryActions } from '~/components/accounting/hooks/use-ledger-
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { useMonthEndEntry } from '~/components/accounting/hooks/use-month-end-entry'
 import { useMonthEntries } from '~/components/accounting/hooks/use-month-entries'
-import { useLedgerSidebarStore } from '~/components/accounting/stores/ledger-sidebar-store'
 import { AccountingChecklistPanel } from '~/components/accounting/ui/checklist/accounting-checklist-panel'
 import { EntriesList } from '~/components/accounting/ui/journal/entries-list'
 import { JournalEntryDrawer } from '~/components/accounting/ui/journal/journal-entry-drawer'
@@ -41,6 +39,7 @@ import {
   ProviderAgreementPanel,
   useProviderAgreement,
 } from '~/components/accounting/ui/provider-agreement/provider-agreement-panel'
+import { KopilotContext } from '~/components/kopilot/context'
 import { PostCreditMemosDialog } from '~/components/money/ui/credit-memo-posting'
 import { PostFulfillmentsDialog } from '~/components/money/ui/fulfillment-posting'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -54,23 +53,38 @@ import {
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 
+import { CloseMonthPanel } from './close-month-panel'
 import { type CountAdjustmentRow, CountEvidenceSection } from './count-evidence-section'
 import { EntryBlockers, type FixableBlockerItemKey } from './entry-blockers'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatPeriodLabel, lockRefusalReason } from './format'
 import { type LateArrivalRow, LateArrivalsSection } from './late-arrivals-section'
 import { LedgerBanners } from './ledger-banners'
+import { LedgerSidebar, type LedgerView } from './ledger-sidebar'
 import { LedgerStats } from './ledger-stats'
 import { LedgerToolbar } from './ledger-toolbar'
 import { MonthEndEntrySection } from './month-end-entry-section'
 import { PostingDrawer } from './posting-drawer'
 import { RevisionStrip } from './revision-strip'
-import { LedgerSidebar } from './sidebar/ledger-sidebar'
 import { SyncQueuePanel } from './sync-queue/sync-queue-panel'
 import { SYNC_QUEUE_TABS } from './sync-queue/sync-queue-rows'
 
 /** The setting that declares how far the books are closed. `DOCUMENTS` scope. */
 const LOCKED_THROUGH_KEY = 'ledger.lockedThroughMonth'
+
+/**
+ * Page key Kopilot scopes its tools by (`ACCOUNTING_LEDGER_PAGE` in
+ * `@auxx/lib/ai/kopilot`) - hardcoded here for the same reason
+ * `dashboard-detail-view.tsx` hardcodes `dashboard.builder`: importing the
+ * constant from that barrel drags the whole server-side capability graph into
+ * this client bundle. The two must be changed together.
+ *
+ * What it buys: `get_ledger_status`, the read that answers where the books
+ * stand - balance, duplicate bank movements, processor fee treatment per rail,
+ * and what posted in a month. Those were four groups of standing figures in the
+ * module rail until this pass; asking for them is better than staring past them.
+ */
+const LEDGER_KOPILOT_PAGE = 'accounting.ledger'
 
 /**
  * Bleeds a `Section`'s content past its own `p-3` so a full-width child sits
@@ -98,6 +112,19 @@ const SECTION_BLEED = '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3
  *   1. Setup not finalized  -> the getting-started checklist, period nav disabled
  *   2. A month is open      -> that month's entry, ready to preview and post
  *   3. Everything posted    -> the most recent posted month, plus "nothing to close"
+ *
+ * ## Two destinations, one route
+ *
+ * The rail (`ledger-sidebar.tsx`) picks what the content column shows:
+ *
+ *   - **Closeout** - the month. Its stats, its refusals, its month-end entry,
+ *     the lock, its other entries. The absence of `?queue=`.
+ *   - **Sync queue** - `?queue=<tab>`. Everything in the books and not in the
+ *     provider's copy, EVERY period, which is why it does not share a screen
+ *     with a month-scoped header.
+ *
+ * 🛑 Both are this URL. `?month=`, `?queue=` and `?posting=` are the whole of
+ * the page's state, so every one of them survives a paste into Slack.
  *
  * 🛑 Under the L1 regime a month has exactly ONE entry (no receipt, build or
  * shipment posts individually), so the entry renders inline with no list. What a
@@ -134,14 +161,6 @@ export function LedgerPage() {
    */
   const [queueTab, setQueueTab] = useQueryState('queue', parseAsStringLiteral(SYNC_QUEUE_TABS))
   const isSyncQueueOpen = queueTab !== null
-  const setSidebarOpen = useLedgerSidebarStore((state) => state.setOpen)
-
-  /**
-   * 🛑 The lock lives in the RAIL now, so "Review the lock" opens the rail
-   * rather than scrolling. A scroll target that is inside a collapsed sidebar
-   * scrolls to nothing and the refusal's only remedy reads as a dead button.
-   */
-  const revealLock = useCallback(() => setSidebarOpen(true), [setSidebarOpen])
 
   /**
    * The queue opens on Ready to sync, which is the pile it exists to clear.
@@ -155,6 +174,37 @@ export function LedgerPage() {
     void setPostingId(null)
     void setQueueTab(null)
   }, [setQueueTab, setPostingId])
+
+  /**
+   * The two rail items and the one param behind them. Closeout is the absence
+   * of `?queue=`, so selecting it is the same act as leaving the queue - there
+   * is no third state to keep in step.
+   */
+  const selectView = useCallback(
+    (next: LedgerView) => {
+      if (next === 'sync-queue') openSyncQueue()
+      else closeSyncQueue()
+    },
+    [openSyncQueue, closeSyncQueue]
+  )
+
+  /**
+   * "Review the lock" from a close refusal. The lock is a section in the
+   * Closeout column now, so the remedy leaves the queue if that is what is on
+   * screen and then scrolls to it.
+   *
+   * 🛑 Both halves are needed. Scrolling alone does nothing while the queue is
+   * the column's content (the section is not mounted), and switching alone
+   * lands the reader at the top of a long scroll with no idea what moved.
+   */
+  const closeSectionRef = useRef<HTMLDivElement>(null)
+  const revealLock = useCallback(() => {
+    closeSyncQueue()
+    // After the switch has rendered, not before it.
+    requestAnimationFrame(() =>
+      closeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    )
+  }, [closeSyncQueue])
 
   const { activePeriod, activePeriodKey, bookTimeZone, currencyCode } = period
 
@@ -224,23 +274,14 @@ export function LedgerPage() {
   const balanceQuery = api.ledger.verifyBalance.useQuery({
     periodKey: activePeriodKey || undefined,
   })
-  // The duplicate detector (plans/accounting/tasks/18-two-feeds-one-author.md
-  // §1). Same month, same `||` (not `??`) reasoning as `balanceQuery` above -
-  // `activePeriodKey` is `''` while periods are loading and permanently for a
-  // finalized org whose cutoff is still ahead of the wall clock.
-  const duplicateMovementsQuery = api.ledger.duplicateMovements.useQuery({
-    periodKey: activePeriodKey || undefined,
-  })
-  // Processor fees, as a fact rather than an alarm (brief 26 §6). 🛑 The month
-  // is REQUIRED here, unlike the two reads above: "did this rail trade" and
-  // "was a fee booked" are both questions about one month, so there is nothing
-  // to ask without one. Hence `enabled` rather than `|| undefined` - an org
-  // whose cutoff is still ahead of the wall clock resolves no month, and this
-  // block simply has nothing to say there.
-  const railFeeStatusQuery = api.ledger.railFeeStatus.useQuery(
-    { periodKey: activePeriodKey },
-    { enabled: !!activePeriodKey }
-  )
+  // 🛑 The duplicate detector, the processor-fee status and the month-activity
+  // reads used to be asked here, for three rail groups that rendered their
+  // answers as standing figures. The groups are gone (`ledger-sidebar.tsx`) and
+  // so are the reads: the same three questions are Kopilot's to answer on this
+  // page now, through `get_ledger_status`, which calls the same `packages/lib`
+  // functions server-side. The balance sweep above stays because the stats
+  // strip renders it.
+  //
   // The same rows `EntriesList` renders, counted for the stats strip. One hook,
   // so the header cannot disagree with the list beneath it.
   const monthEntries = useMonthEntries(activePeriodKey || undefined)
@@ -428,45 +469,37 @@ export function LedgerPage() {
             ]
           : []
       }>
-      {/* The dispatch board's shell: one toolbar across the top, then the
-          module rail and the content as flex siblings beneath it. */}
-      <div className='flex h-full flex-col overflow-hidden'>
-        <LedgerToolbar
-          periodKey={activePeriodKey}
-          options={period.options}
-          period={activePeriod}
-          previousPeriodKey={period.previousPeriodKey}
-          nextPeriodKey={period.nextPeriodKey}
-          resolvedPeriodKey={period.resolvedPeriodKey}
-          onSelectPeriod={goToPeriod}
-          disabled={isChecklistState}
+      {/* 🛑 The rail runs the FULL height and the toolbar is inside the content
+          column, not across the top of both. The toolbar is the month picker
+          and the month's state - it is about what the column below it is
+          showing, and spanning it over the rail claimed it governed the rail
+          too, which it never did (the Sync queue is every period). This is the
+          shape `accounting/banking/layout.tsx` and its two siblings already
+          have: nav column on the left, everything else to the right of it.
+
+          ⚠️ A plain `flex` row, NOT `flex-col md:flex-row` the way those three
+          layouts write it. They wrap `SidebarSecondary`, which is an inline
+          column that has to stack above the content on a narrow screen;
+          `ModuleSidebar` handles narrow itself by rendering into a Sheet, so a
+          `flex-col` here would leave a zero-height stub above the toolbar. */}
+      <div className='flex h-full overflow-hidden'>
+        <LedgerSidebar
+          view={isSyncQueueOpen ? 'sync-queue' : 'closeout'}
+          onSelectView={selectView}
+          syncQueue={failedExportsQuery.data}
+          providerLabel={providerLabel}
         />
 
-        <div className='flex flex-1 overflow-hidden'>
-          <LedgerSidebar
-            periodLabel={periodLabel}
-            isLocked={isLocked}
-            lockBlockedReason={lockBlockedReason}
-            lockedThrough={lockedThrough}
-            canControlLedger={canControlLedger}
-            onToggleLock={() => void handleToggleLock()}
-            canReverse={!!entry.postedPostingId}
-            onReverse={() => entry.postedPostingId && void setPostingId(entry.postedPostingId)}
-            balanceReport={balanceQuery.data}
-            balanceError={balanceQuery.isError ? balanceQuery.error.message : null}
-            duplicates={duplicateMovementsQuery.data}
-            currencyCode={currencyCode}
-            bookTimeZone={bookTimeZone}
-            rails={railFeeStatusQuery.data}
-            railsError={railFeeStatusQuery.isError ? railFeeStatusQuery.error.message : null}
+        <div className='flex h-full min-w-0 flex-1 flex-col overflow-hidden'>
+          <LedgerToolbar
             periodKey={activePeriodKey}
-            hasPeriod={!!activePeriodKey && !isChecklistState}
-            syncQueue={failedExportsQuery.data}
-            syncQueueError={failedExportsQuery.isError ? failedExportsQuery.error.message : null}
-            providerLabel={providerLabel}
-            isSyncQueueOpen={isSyncQueueOpen}
-            onOpenSyncQueue={openSyncQueue}
-            onCloseSyncQueue={closeSyncQueue}
+            options={period.options}
+            period={activePeriod}
+            previousPeriodKey={period.previousPeriodKey}
+            nextPeriodKey={period.nextPeriodKey}
+            resolvedPeriodKey={period.resolvedPeriodKey}
+            onSelectPeriod={goToPeriod}
+            disabled={isChecklistState}
           />
 
           <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
@@ -500,19 +533,19 @@ export function LedgerPage() {
                 <AccountingChecklistPanel />
               ) : isSyncQueueOpen ? (
                 /* 🛑 A VIEW of this page, not a route (D17). The rows open the
-                   same `?posting=` drawer that is already docked beside it. */
+                   same `?posting=` drawer that is already docked beside it.
+
+                   🛑 NO "Back to the month" action. The way back is the rail's
+                   Closeout row, which is where somebody already looks to change
+                   what this column shows; a second, differently-worded exit in
+                   the section header made two affordances for one act and only
+                   one of them looked like navigation. */
                 <Section
                   className={SECTION_BLEED}
                   title={`Sync to ${providerLabel}`}
                   icon={<RefreshCw className='size-4' />}
-                  description={`Entries that are in your books and not yet in ${providerLabel}. Every period, not only the month above - nothing here changes what your books say.`}
-                  collapsible={false}
-                  actions={
-                    <Button variant='ghost' size='sm' onClick={closeSyncQueue}>
-                      <X />
-                      Back to the month
-                    </Button>
-                  }>
+                  description={`Entries that are in your books and not yet in ${providerLabel}. Every period, not only the month in the toolbar - nothing here changes what your books say.`}
+                  collapsible={false}>
                   <SyncQueuePanel
                     rows={failedExportsQuery.data}
                     isLoading={failedExportsQuery.isPending}
@@ -600,6 +633,34 @@ export function LedgerPage() {
                     />
                   )}
 
+                  {/* Closing the month: the last thing that happens to it, and
+                      the thing the rail item is named after. Directly under the
+                      entry, because the entry is what you read before deciding
+                      the month is done - and because `revealLock` (a close
+                      refusal's "Review the lock") scrolls here. */}
+                  {!!activePeriodKey && (
+                    <div ref={closeSectionRef}>
+                      <Section
+                        title='Close the month'
+                        icon={<Lock className='size-4' />}
+                        description='Reverse what was posted, and declare the month shut. Locking is a THROUGH marker - it closes this month and every one before it.'
+                        collapsible={false}>
+                        <CloseMonthPanel
+                          periodLabel={periodLabel}
+                          isLocked={isLocked}
+                          lockBlockedReason={lockBlockedReason}
+                          lockedThrough={lockedThrough}
+                          canControlLedger={canControlLedger}
+                          onToggleLock={() => void handleToggleLock()}
+                          canReverse={!!entry.postedPostingId}
+                          onReverse={() =>
+                            entry.postedPostingId && void setPostingId(entry.postedPostingId)
+                          }
+                        />
+                      </Section>
+                    </div>
+                  )}
+
                   {/* Everything the month-end entry above is NOT: other
                       postings this period, plus drafts nobody has posted yet.
                       With no month resolved it is the whole of the screen. */}
@@ -652,10 +713,7 @@ export function LedgerPage() {
                   )}
 
                   {/* Every section below this point is ABOUT a month, so each is
-                  gated on one having resolved. Closing the month and the balance
-                  sweep are no longer among them - they live in the rail
-                  (`sidebar/ledger-sidebar.tsx`), because consulting them is not
-                  the work this column is for. */}
+                  gated on one having resolved. */}
 
                   {!!activePeriodKey && lateArrivals && (
                     <Section
@@ -686,12 +744,12 @@ export function LedgerPage() {
                     </Section>
                   )}
 
-                  {/* The OTHER sweep (brief 20 §8.3): the rail's Books group
-                  proves our own rows balance, this one asks whether the
-                  connected system agrees with them. On the period already on screen, as of its
-                  last day, and only when somebody presses the button - the read
-                  costs a round trip to QuickBooks and the drift it finds is
-                  made at close, not on a Tuesday. */}
+                  {/* The OTHER sweep (brief 20 §8.3): the balance sweep proves
+                  our own rows balance, this one asks whether the connected
+                  system agrees with them. On the period already on screen, as of
+                  its last day, and only when somebody presses the button - the
+                  read costs a round trip to the provider and the drift it finds
+                  is made at close, not on a Tuesday. */}
                   {!!activePeriodKey && (
                     <Section
                       title={`Does ${providerLabel} agree?`}
@@ -718,6 +776,19 @@ export function LedgerPage() {
 
   return (
     <>
+      {/* 🛑 Page context, not rendered chrome. The rail used to carry the
+          balance sweep's findings, the duplicate detector, processor fee
+          treatment per rail and what posted this month - four blocks of figures
+          with nothing to click. Declaring the page here is what puts
+          `get_ledger_status` in scope for the dock's next turn, so those same
+          numbers are answered when somebody asks for them.
+
+          ⚠️ The MONTH is deliberately not bound. `SessionContext` carries a
+          page plus typed entity refs and an accounting period is neither; the
+          tool takes it as an argument instead of this page inventing a second
+          context mechanism for one screen. */}
+      <KopilotContext page={LEDGER_KOPILOT_PAGE} />
+
       {content}
 
       {/* Below the dock breakpoint the same drawers render as floating

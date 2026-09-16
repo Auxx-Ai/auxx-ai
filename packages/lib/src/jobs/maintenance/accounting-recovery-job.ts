@@ -3,6 +3,7 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import { sweepCustomerReceiptAccounting } from '../../money/customer-money/accounting'
+import { sweepDepositApplicationAccounting } from '../../money/customer-money/deposit-application-accounting'
 import { sweepImportedCustomerMoney } from '../../money/customer-money/ingest'
 import { sweepFulfillmentAccountingWork } from '../../money/fulfillment-posting/run'
 import { sweepAccountingDeliveries } from '../../postings/delivery'
@@ -64,6 +65,23 @@ export async function accountingRecoveryJob(ctx: JobContext): Promise<void> {
         })
       } catch (error) {
         logger.warn('Payment accounting recovery needs retry', {
+          organizationId: organization.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    // D19 task B: applications of a held prepayment to an invoice. Runs after
+    // the receipt sweep on purpose - the reclass relieves a receivable the
+    // receipt's own effect is what raised.
+    if (Date.now() < deadline) {
+      try {
+        await sweepDepositApplicationAccounting(database, {
+          organizationId: organization.id,
+          limit: 100,
+          timeBudgetMs: deadline - Date.now(),
+        })
+      } catch (error) {
+        logger.warn('Deposit application accounting recovery needs retry', {
           organizationId: organization.id,
           error: error instanceof Error ? error.message : String(error),
         })

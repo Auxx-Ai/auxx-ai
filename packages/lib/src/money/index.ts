@@ -209,7 +209,6 @@ export {
 } from './fulfillments'
 export { createInvoiceFromWorkOrder, deleteInvoiceLine, listUninvoicedLines } from './gather'
 export { deleteInvoice, markInvoiceSent, voidInvoice } from './invoice-lifecycle'
-// ── HANDOFF slot 2K: writing off an invoice's balance to bad debt ──────────
 export {
   type PreviewWriteOffInput,
   previewWriteOffInvoice,
@@ -218,6 +217,11 @@ export {
   type WriteOffState,
   writeOffInvoice,
 } from './invoices/write-off'
+// ── HANDOFF slot 2K: writing off an invoice's balance to bad debt ──────────
+export {
+  type AcceptInvoiceWriteOffInput,
+  acceptInvoiceWriteOffAccounting,
+} from './invoices/write-off-accounting'
 // ─── Order fulfillment (tasks/01 phase A, HANDOFF slot 2G) ──────────────────
 // The sanctioned action decision 6.6 chose over a status hook: it carries WHAT
 // shipped, which a status flip cannot, and that is what makes a second
