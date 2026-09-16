@@ -103,6 +103,7 @@ import {
   readQuickbooksAccountMap,
 } from '../src/money/quickbooks/account-map'
 import { listChartAccounts } from '../src/postings'
+import { releaseAccountingClaims } from '../src/postings/release-claims'
 import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'
 
 const ORG = process.argv[2] ?? ''
@@ -322,6 +323,20 @@ async function main() {
     console.log('dry run - nothing was deleted. Re-run with --confirm.\n')
     return
   }
+
+  // Effects, deliveries and coverage first: those FKs are ON DELETE NO ACTION,
+  // and releasing them is also what puts the work behind them back to `pending`
+  // instead of stranding it on `accepted` with no journal.
+  const released = await releaseAccountingClaims(
+    db,
+    ORG,
+    postings.map((p) => p.id)
+  )
+  if (released.effects)
+    console.log(
+      `released ${released.effects} effect(s) and ${released.deliveries} delivery(ies); ` +
+        `${released.reopened} work row(s) back to pending`
+    )
 
   // Descending revision: `reversesId` is ON DELETE RESTRICT, so a reversal must
   // go before the row it names. Lines cascade.

@@ -74,6 +74,7 @@ import {
   readQuickbooksAccountMap,
 } from '../src/money/quickbooks/account-map'
 import { listChartAccounts } from '../src/postings'
+import { releaseAccountingClaims } from '../src/postings/release-claims'
 import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'
 
 const ORG_ARG = process.argv[2] ?? ''
@@ -385,6 +386,20 @@ async function main() {
   }
 
   // ── 5. Do it ──────────────────────────────────────────────────────────────
+
+  // Effects, deliveries and coverage first: those FKs are ON DELETE NO ACTION,
+  // and releasing them is also what puts the work behind them back to `pending`
+  // instead of stranding it on `accepted` with no journal.
+  const released = await releaseAccountingClaims(
+    db,
+    org.id,
+    postings.map((p) => p.id)
+  )
+  if (released.effects)
+    console.log(
+      `released ${released.effects} effect(s) and ${released.deliveries} delivery(ies); ` +
+        `${released.reopened} work row(s) back to pending`
+    )
 
   for (const p of postings) {
     await db

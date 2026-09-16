@@ -171,7 +171,7 @@ beforeEach(() => {
 describe('atomic fulfillment command', () => {
   it('commits durable source capture before acceptance and plans delivery before its commit', async () => {
     const result = await acceptFulfillmentWorkGroup(db(), input)
-    expect(result?.shipments).toBe(2)
+    expect(result).toMatchObject({ status: 'accepted', shipments: 2 })
     const acceptedAt = h.events.indexOf('accept')
     const beforeAccept = h.events.slice(0, acceptedAt)
     // 🛑 The contract is the ORDERING, not the transaction count: the capture
@@ -214,7 +214,9 @@ describe('atomic fulfillment command', () => {
   })
   it('rechecks automatic eligibility inside the commit transaction', async () => {
     h.mode = 'manual'
-    expect(await acceptFulfillmentWorkGroup(db(), { ...input, automatic: true })).toBeNull()
+    expect(await acceptFulfillmentWorkGroup(db(), { ...input, automatic: true })).toEqual({
+      status: 'disabled',
+    })
     expect(h.accept).not.toHaveBeenCalled()
     expect(h.capture).toHaveBeenCalledTimes(2)
   })
@@ -230,7 +232,22 @@ describe('atomic fulfillment command', () => {
     h.works.forEach((work) => {
       work.eligibility = 'excluded'
     })
-    expect(await acceptFulfillmentWorkGroup(db(), input)).toBeNull()
+    expect(await acceptFulfillmentWorkGroup(db(), input)).toEqual({ status: 'not_eligible' })
+    expect(h.accept).not.toHaveBeenCalled()
+  })
+  // 🛑 Two groups write nothing for opposite reasons, and the dialog used to
+  // call both "already posted". Deleting a month's journals leaves work nothing
+  // claims; reporting that as posted hid an empty January behind a reassurance.
+  it('separates a group whose journal exists from one whose work nothing claims', async () => {
+    h.works.forEach((work) => {
+      work.state = 'canceled'
+    })
+    expect(await acceptFulfillmentWorkGroup(db(), input)).toEqual({ status: 'not_eligible' })
+    h.effects = [
+      { workId: 'w_f1', glPostingId: 'journal' },
+      { workId: 'w_f2', glPostingId: 'journal' },
+    ]
+    expect(await acceptFulfillmentWorkGroup(db(), input)).toEqual({ status: 'already_posted' })
     expect(h.accept).not.toHaveBeenCalled()
   })
   it('retains committed capture when accounting configuration refuses', async () => {
@@ -279,7 +296,7 @@ describe('atomic fulfillment command', () => {
   })
   it('returns the accepted journal after the commit, with the export still only queued', async () => {
     const result = await acceptFulfillmentWorkGroup(db(), input)
-    expect(result?.glPostingId).toBe('journal')
+    expect(result).toMatchObject({ status: 'accepted', glPostingId: 'journal' })
     // The acceptance is durable at the commit; the export is a later, separate
     // concern. `enqueueAccountingDelivery` swallows its own queue failures (and
     // `sweepAccountingDeliveries` is the backstop), so a wakeup that never

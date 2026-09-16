@@ -583,6 +583,11 @@ export {
   SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
   type WriterConflict,
 } from './regime'
+export {
+  type ReleasedAccountingClaims,
+  releaseAccountingClaims,
+  reopenUnclaimedAcceptedWork,
+} from './release-claims'
 // ── Statements (HANDOFF slot 1E, wave 1) ────────────────────────────────────
 export {
   balanceSheetColumns,

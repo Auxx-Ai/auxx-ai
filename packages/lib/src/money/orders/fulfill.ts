@@ -400,9 +400,14 @@ export async function fulfillOrder(
             groupKey: shippedAt,
             memo,
           })
-          post = accepted
-            ? { status: 'posted', glPostingId: accepted.glPostingId, docNumber: accepted.docNumber }
-            : { status: 'error', error: 'The shipment is recorded; accounting is pending review' }
+          post =
+            accepted.status === 'accepted'
+              ? {
+                  status: 'posted',
+                  glPostingId: accepted.glPostingId,
+                  docNumber: accepted.docNumber,
+                }
+              : { status: 'error', error: 'The shipment is recorded; accounting is pending review' }
         } catch (error) {
           post = { status: 'error', error: error instanceof Error ? error.message : String(error) }
           logger.warn('Shipment recorded with accounting work pending', {
