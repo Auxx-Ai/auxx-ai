@@ -35,7 +35,7 @@ import type { ComponentType } from 'react'
  *   row no export ever reached a provider for, which is also no link.
  * @param connectedTenantId which instance this workspace is connected to now.
  */
-function providerEntryUrl(
+export function providerEntryUrl(
   providerId: string | undefined,
   entryId: string,
   entryTenantId: string | null,
@@ -46,7 +46,7 @@ function providerEntryUrl(
   return `https://app.qbo.intuit.com/app/journal?txnId=${encodeURIComponent(entryId)}`
 }
 
-interface OutcomeCopy {
+export interface OutcomeCopy {
   icon: ComponentType<{ className?: string }>
   title: string
   detail: string
@@ -77,32 +77,31 @@ interface OutcomeCopy {
  * predates its first movement walks through a run of `nothing_to_close`; the
  * console must skip them, not alarm on each one.
  */
-const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
+export const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
   posted: {
     icon: CheckCircle2,
     title: 'Posted',
-    detail: 'The entry was recorded here and pushed to the accounting system.',
+    detail: 'Recorded here and pushed to the accounting system.',
     tone: 'success',
   },
   already_posted: {
     icon: CheckCircle2,
     title: 'Already posted',
-    detail:
-      'The accounting system already held this entry, so nothing was sent. A converged re-run, not a failure.',
+    detail: 'The accounting system already held it, so nothing was sent. A converged re-run.',
     tone: 'success',
   },
   healed: {
     icon: CheckCircle2,
     title: 'Reconciled with the accounting system',
     detail:
-      'The provider held the entry but our record of its id did not. The id was written back rather than posting a second time.',
+      'The provider held the entry. Its id was written back rather than posting a second time.',
     tone: 'success',
   },
   not_connected: {
     icon: PlugZap,
     title: 'Posted. No accounting system is connected',
     detail:
-      'The entry is built, balanced and recorded here exactly as it would be with a provider. There is simply nowhere to push it.',
+      'Built, balanced and recorded here exactly as it would be with a provider. There is nowhere to push it.',
     tone: 'success',
   },
   // 🛑 NOT `not_connected`, and the difference is the whole point of the value.
@@ -115,27 +114,25 @@ const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
     icon: CheckCircle2,
     title: 'Posted. This entry is not exported',
     detail:
-      'An opening balance and an entry synced from your accounting system are both kept here only. Pushing either back would hand the provider a second copy of a figure it already has.',
+      'Opening balances and entries synced back are kept here only. Pushing either would be a second copy.',
     tone: 'success',
   },
   not_enabled: {
     icon: PlugZap,
     title: 'Nothing posted. Accounting is not enabled for this organization',
-    detail:
-      'The ledger is off for this organization, so no entry was built or recorded. Enable the accounting module and run its setup to start posting.',
+    detail: 'No entry was built or recorded. Enable the accounting module and run its setup.',
     tone: 'neutral',
   },
   disabled: {
     icon: CircleSlash,
     title: 'Posted. Export is switched off',
-    detail:
-      'An accounting system is connected but export is turned off at the integration. The entry is recorded here.',
+    detail: 'Export is turned off at the integration. The entry is recorded here.',
     tone: 'neutral',
   },
   period_closed: {
     icon: TriangleAlert,
     title: 'Refused: the period is locked',
-    detail: 'Nothing was written. The month must be unlocked before it can be posted into.',
+    detail: 'Nothing was written. Unlock the month before posting into it.',
     tone: 'failure',
   },
   account_unmapped: {
@@ -154,13 +151,13 @@ const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
     icon: TriangleAlert,
     title: 'Refused: a line names an inventory account',
     detail:
-      'Nothing was written. The three inventory accounts are asserted by the month-end close and cannot be hand-keyed; a manual line there would be reversed by the next close.',
+      'Nothing was written. The inventory accounts are asserted by the close, never hand-keyed.',
     tone: 'failure',
   },
   account_invalid: {
     icon: TriangleAlert,
     title: 'Refused: a line names an account the chart does not hold',
-    detail: 'Nothing was written. The message names the row; fix the code or restore the account.',
+    detail: 'Nothing was written. Fix the code or restore the account named below.',
     tone: 'failure',
   },
   // 🛑 A refusal, and `failure`, but the sentence is about work rather than a
@@ -170,27 +167,26 @@ const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
     icon: TriangleAlert,
     title: 'Refused: the month still holds revenue that is not in the books',
     detail:
-      'Nothing was written. Post the shipments and issue or void the channel credit memos dated in this month first - once it is closed, the entries they owe cannot be written into it.',
+      "Nothing was written. Post the shipments and issue or void this month's credit memos first.",
     tone: 'failure',
   },
   nothing_to_close: {
     icon: CircleSlash,
     title: 'Nothing to close',
-    detail:
-      'No inventory balance or activity total changed this month, so there is no entry to post. Move on to the next month.',
+    detail: 'No balance or activity total changed this month, so there is no entry to post.',
     tone: 'neutral',
   },
   setup_incomplete: {
     icon: PlugZap,
     title: 'Finish the accounting setup first',
     detail:
-      'There is no reconciled opening baseline yet, so a month-end delta cannot be computed. Nothing was written.',
+      'Nothing was written. There is no reconciled opening baseline to compute a delta against.',
     tone: 'neutral',
   },
   error: {
     icon: TriangleAlert,
     title: 'The post failed',
-    detail: 'The reason is below, verbatim.',
+    detail: 'The reason follows, verbatim.',
     tone: 'failure',
   },
 }
