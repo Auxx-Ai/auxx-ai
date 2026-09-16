@@ -2,29 +2,43 @@
 
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import {
   type ChartAccountRow,
   GL_ACCOUNT_TYPES,
   type GlAccountTypeValue,
 } from '@auxx/lib/postings/client'
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
   CommandDetailItem,
   CommandEmpty,
   CommandGroup,
   CommandInput,
+  CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
+import { BookOpen, Link2, Link2Off, Plus, Sparkles, Unlink2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { AccountLabel } from '~/components/accounting/ui/account-label'
 import {
   accountMatchesSearch,
   formatAccountLabel,
 } from '~/components/accounting/ui/account-label-format'
-import { accountTypeLabel } from '~/components/accounting/ui/settings/accounts-types'
+import {
+  type AccountLinkState,
+  accountTypeColor,
+  accountTypeIconId,
+  accountTypeLabel,
+} from '~/components/accounting/ui/settings/accounts-types'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
+import { useAccess } from '~/providers/capabilities-provider'
+import { ChartAccountCreateDialog } from './chart-account-create-dialog'
+import { ChartPacksDialog } from './settings/chart-packs-dialog'
+import { useAccountLinkStates } from './use-account-link-states'
 import { useChartAccounts } from './use-chart-accounts'
 
 export { useChartAccounts }
@@ -47,6 +61,18 @@ export interface GlAccountListProps {
   value: string | null
   /** Fires with the picked account's code or id, per {@link selectBy}. Never called for an inactive account. */
   onSelect: (value: string) => void
+  /**
+   * Link state per account id, from {@link useAccountLinkStates}. Omit (or pass
+   * undefined) to draw no link marks at all.
+   *
+   * 🛑 Undefined is the RIGHT answer twice over: nothing is connected, or the
+   * provider round trip has not landed. A mark on a row the provider has not
+   * answered for yet is a claim about the org, and drawing it mid-load makes it
+   * a false one.
+   */
+  linkStates?: ReadonlyMap<string, AccountLinkState>
+  /** Names the connected system in the link tooltip. `'QuickBooks Online'`. */
+  providerLabel?: string | null
 }
 
 /**
@@ -64,6 +90,8 @@ export function GlAccountList({
   selectBy = 'code',
   value,
   onSelect,
+  linkStates,
+  providerLabel,
 }: GlAccountListProps) {
   const groups = useMemo(
     () => groupAccountsByType(accounts, filterTypes, search),
@@ -81,9 +109,24 @@ export function GlAccountList({
               <CommandDetailItem
                 key={account.id}
                 value={account.id}
+                // The group's classification, drawn on every row in it. Both
+                // strings come from `GL_ACCOUNT_TYPE_META` through
+                // `accounts-types.ts`, so the glyph and the colour here are the
+                // same pair the chart list, the role map and the type badge
+                // draw - the one table that exists so those cannot drift apart.
+                iconId={accountTypeIconId(group.type)}
+                color={accountTypeColor(group.type)}
                 title={formatAccountLabel(account)}
                 description={
                   account.isActive ? undefined : 'This account is inactive and cannot be posted to.'
+                }
+                secondary={
+                  linkStates && (
+                    <AccountLinkMark
+                      state={linkStates.get(account.id) ?? 'unlinked'}
+                      providerLabel={providerLabel ?? null}
+                    />
+                  )
                 }
                 disabled={!account.isActive}
                 selected={optionValue === value}
@@ -120,6 +163,8 @@ export function GlAccountPickerBody({
   selectBy,
   value,
   onSelect,
+  linkStates,
+  providerLabel,
   autoFocus,
 }: Omit<GlAccountListProps, 'search'> & {
   search: string
@@ -143,6 +188,8 @@ export function GlAccountPickerBody({
         selectBy={selectBy}
         value={value}
         onSelect={onSelect}
+        linkStates={linkStates}
+        providerLabel={providerLabel}
       />
     </>
   )
@@ -157,21 +204,74 @@ export function GlAccountPickerBody({
  */
 export function GlAccountPickerContent({
   className,
+  onAddFromCatalogue,
+  onAddBlank,
   ...props
-}: Omit<GlAccountListProps, 'search'> & {
+}: Omit<GlAccountListProps, 'search' | 'linkStates' | 'providerLabel'> & {
   className?: string
   search?: string
   onSearchChange?: (search: string) => void
   autoFocus?: boolean
+  /** Opens the catalogue picker. Omit to leave the footer's first row out. */
+  onAddFromCatalogue?: () => void
+  /** Opens the blank-account dialog. Omit to leave the footer's second row out. */
+  onAddBlank?: () => void
 }) {
   const [internalSearch, setInternalSearch] = useState('')
+  const { can } = useAccess()
+  // 🛑 Gated HERE rather than at each caller, so a new caller cannot forget it.
+  // `ledgerView` is what gets you a picker at all; `ledgerControl` is the
+  // narrower rung every chart write is gated on server-side. Somebody with
+  // `ledgerView` alone gets a read-only list rather than two rows that 403.
+  const canAdd = can(PermissionKey.ledgerControl) && !!(onAddFromCatalogue || onAddBlank)
+  // 🛑 The provider round trip is owned HERE, not by `GlAccountPicker`, and not
+  // by `GlAccountList`. This component mounts only when a picker is actually
+  // open (Radix unmounts closed `PopoverContent`, and `journal-lines.tsx` mounts
+  // it per open cell), so an org that never opens an account picker never pays
+  // for it - while `GlAccountList` stays pure and testable without a tRPC
+  // provider. React Query dedupes the key, so several open at once are still
+  // one request.
+  const links = useAccountLinkStates()
   return (
     <Command shouldFilter={false} className={className}>
       <GlAccountPickerBody
         {...props}
         search={props.search ?? internalSearch}
         onSearchChange={props.onSearchChange ?? setInternalSearch}
+        // Undefined until the map is BOTH connected and landed - see `linkStates`.
+        linkStates={links.ready ? links.byAccountId : undefined}
+        providerLabel={links.providerLabel}
       />
+      {/* 🛑 Pinned OUTSIDE `CommandList`, the same shape `view-selector.tsx:313`
+          uses: a chart of two hundred accounts must scroll UNDER these rows
+          rather than push them past the list's own max height, which is exactly
+          where somebody who has just failed to find an account is looking.
+          Outside the list they also survive an empty search - `CommandEmpty`
+          renders inside it - so "no accounts match" and "add one" are on screen
+          together.
+          🛑 The catalogue is listed FIRST, the order `chart-list.tsx` argues
+          for: most of what a person reaches for here is a standard account that
+          already exists in the catalogue, and leading with the blank row sends
+          them off to type a code and a type that were written down already. */}
+      {canAdd && (
+        <CommandGroup className='border-t' aria-label='Add account'>
+          {onAddFromCatalogue && (
+            <CommandItem
+              value='__add-from-catalogue'
+              onSelect={onAddFromCatalogue}
+              className='h-7.5 cursor-pointer'>
+              <BookOpen className='text-muted-foreground' />
+              <span>From catalogue</span>
+            </CommandItem>
+          )}
+          {onAddBlank && (
+            <CommandItem value='__add-blank' onSelect={onAddBlank} className='h-7.5 cursor-pointer'>
+              <Plus className='text-muted-foreground' />
+              <span>Blank account</span>
+            </CommandItem>
+          )}
+        </CommandGroup>
+      )}
     </Command>
   )
 }
@@ -246,6 +346,11 @@ export function GlAccountPicker({
 }: GlAccountPickerProps) {
   const { accounts, isLoading } = useChartAccounts()
   const [open, setOpen] = useState(false)
+  // 🛑 Both dialogs are siblings of the `Popover`, never children of its
+  // content: Radix unmounts closed popover content, so a dialog opened from a
+  // footer row would be torn down by the very click that opened it.
+  const [catalogueOpen, setCatalogueOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
 
   const selected = useMemo(
     () =>
@@ -296,9 +401,104 @@ export function GlAccountPicker({
             onChange(next)
             handleOpenChange(false)
           }}
+          onAddFromCatalogue={() => {
+            handleOpenChange(false)
+            setCatalogueOpen(true)
+          }}
+          onAddBlank={() => {
+            handleOpenChange(false)
+            setCreateOpen(true)
+          }}
         />
       </PopoverContent>
+
+      <ChartPacksDialog open={catalogueOpen} onOpenChange={setCatalogueOpen} accounts={accounts} />
+      <ChartAccountCreateDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        // A picker restricted to one classification already knows the answer -
+        // the clearing-account pickers are all `filterTypes={['asset']}`. More
+        // than one and there is nothing to presume.
+        defaultAccountType={filterTypes?.length === 1 ? filterTypes[0] : undefined}
+        // 🛑 Selected by the SAME key this picker reports, not always the id.
+        // A `selectBy='code'` caller handed an id would store a value its own
+        // option list can never match, and the trigger would go blank.
+        onCreated={(account) => {
+          const next = selectBy === 'id' ? account.id : account.code
+          if (next) onChange(next)
+        }}
+      />
     </Popover>
+  )
+}
+
+/** The glyph, tone and sentence for one {@link AccountLinkState}. */
+const LINK_MARKS: Record<
+  AccountLinkState,
+  { icon: typeof Link2; className: string; tooltip: (where: string) => string }
+> = {
+  linked: {
+    icon: Link2,
+    className: 'text-muted-foreground',
+    tooltip: (where) => `Linked to ${where}`,
+  },
+  suggested: {
+    icon: Sparkles,
+    className: 'text-amber-600 dark:text-amber-500',
+    tooltip: (where) => `Suggested match in ${where}, not confirmed yet`,
+  },
+  broken: {
+    icon: Unlink2,
+    className: 'text-destructive',
+    tooltip: (where) => `Its ${where} account is gone or no longer matches - re-link it`,
+  },
+  unlinked: {
+    icon: Link2Off,
+    className: 'text-muted-foreground/50',
+    tooltip: (where) => `Not linked to ${where}`,
+  },
+}
+
+/**
+ * Whether one account is linked to the connected accounting system, as a mark
+ * on its picker row.
+ *
+ * 🛑 Every state draws SOMETHING, including `unlinked`. "No mark" must never be
+ * the way a reader learns an account is linked - the same rule the Chart of
+ * accounts list's badge follows. The picker draws an icon rather than that
+ * badge because a row here is one line beside an account name, and four words
+ * of chrome per row would crowd out the name they describe.
+ *
+ * ⚠️ Not a control. The `Button` is here for its size and hit area (the tooltip
+ * needs a real target); it is out of the tab order and swallows its own click
+ * so that hitting it cannot select the row underneath.
+ */
+function AccountLinkMark({
+  state,
+  providerLabel,
+}: {
+  state: AccountLinkState
+  providerLabel: string | null
+}) {
+  const mark = LINK_MARKS[state]
+  const text = mark.tooltip(providerLabel ?? 'the accounting system')
+  return (
+    <SimpleTooltip content={text}>
+      <Button
+        type='button'
+        variant='ghost'
+        size='icon-xs'
+        tabIndex={-1}
+        aria-label={text}
+        onClick={(event) => event.stopPropagation()}
+        // 🛑 Sized to fit the row, not to `icon-xs`'s own `size-6`. A
+        // `CommandItem` is `min-h-7` with `py-1`, so 20px is the tallest thing
+        // that can sit in one without growing it - a 24px button makes every
+        // account row in the list four pixels taller than every other picker's.
+        className={cn('size-5 shrink-0 [&_svg]:size-3.5', mark.className)}>
+        <mark.icon />
+      </Button>
+    </SimpleTooltip>
   )
 }
 
