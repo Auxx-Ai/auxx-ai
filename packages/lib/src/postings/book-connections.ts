@@ -1,8 +1,15 @@
 // packages/lib/src/postings/book-connections.ts
-import { type Database, schema, type Transaction } from '@auxx/database'
+import {
+  type Database,
+  type ExternalBookConnectionEntity,
+  schema,
+  type Transaction,
+} from '@auxx/database'
 import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { z } from 'zod'
+import { getCachedInstalledApps } from '../cache'
 import { ConflictError, UnprocessableEntityError } from '../errors'
+import { getOrganizationSetting } from '../settings/settings-service'
 import { withAccountingCommitLock } from './accounting-commit-lock'
 import { canonicalAccountingJson } from './effect-basis'
 import type { PostingDeliveryIntent } from './insert-posting'
@@ -57,68 +64,68 @@ export function quickbooksCompanyId(metadata: unknown): string {
   return realmId.trim()
 }
 
+/**
+ * The org-scoped QuickBooks credential behind a connection.
+ *
+ * LEFT joins, not inner, so the two refusals stay distinguishable: an absent or
+ * user-scoped credential is "not connected", a credential whose app is not
+ * QuickBooks or whose installation is gone is "not installed". An inner join
+ * collapses both into a missing row.
+ */
 async function readCredentialInTx(tx: Transaction, organizationId: string, credentialId: string) {
-  const credential = await tx.query.Credential.findFirst({
-    where: and(
-      eq(schema.Credential.organizationId, organizationId),
-      eq(schema.Credential.id, credentialId)
-    ),
-    columns: {
-      id: true,
-      appId: true,
-      appInstallationId: true,
-      kind: true,
-      userId: true,
-      metadata: true,
-    },
-  })
-  if (
-    !credential ||
-    credential.kind !== 'app' ||
-    credential.userId !== null ||
-    !credential.appId ||
-    !credential.appInstallationId
-  ) {
+  const [row] = await tx
+    .select({
+      id: schema.Credential.id,
+      appId: schema.Credential.appId,
+      kind: schema.Credential.kind,
+      userId: schema.Credential.userId,
+      metadata: schema.Credential.metadata,
+      boundInstallationId: schema.Credential.appInstallationId,
+      appSlug: schema.App.slug,
+      installationId: schema.AppInstallation.id,
+    })
+    .from(schema.Credential)
+    .leftJoin(schema.App, eq(schema.App.id, schema.Credential.appId))
+    .leftJoin(
+      schema.AppInstallation,
+      and(
+        eq(schema.AppInstallation.id, schema.Credential.appInstallationId),
+        eq(schema.AppInstallation.organizationId, organizationId),
+        eq(schema.AppInstallation.appId, schema.Credential.appId),
+        isNull(schema.AppInstallation.uninstalledAt)
+      )
+    )
+    .where(
+      and(
+        eq(schema.Credential.organizationId, organizationId),
+        eq(schema.Credential.id, credentialId)
+      )
+    )
+    .limit(1)
+  if (!row || row.kind !== 'app' || row.userId !== null || !row.appId || !row.boundInstallationId) {
     throw new UnprocessableEntityError('Accounting requires an organization QuickBooks connection')
   }
-  const app = await tx.query.App.findFirst({
-    where: eq(schema.App.id, credential.appId),
-    columns: { slug: true },
-  })
-  const installation = await tx.query.AppInstallation.findFirst({
-    where: and(
-      eq(schema.AppInstallation.id, credential.appInstallationId),
-      eq(schema.AppInstallation.organizationId, organizationId),
-      eq(schema.AppInstallation.appId, credential.appId),
-      isNull(schema.AppInstallation.uninstalledAt)
-    ),
-    columns: { id: true },
-  })
-  if (app?.slug !== 'quickbooks' || !installation) {
+  if (row.appSlug !== 'quickbooks' || !row.installationId) {
     throw new UnprocessableEntityError('The QuickBooks accounting connection is not installed')
   }
   return {
-    ...credential,
-    appId: credential.appId,
-    appInstallationId: installation.id,
-    companyId: quickbooksCompanyId(credential.metadata),
+    id: row.id,
+    appId: row.appId,
+    appInstallationId: row.installationId,
+    companyId: quickbooksCompanyId(row.metadata),
   }
 }
 
-/** Read a pinned connection from authoritative rows, without changing its destination. */
-export async function readPinnedAccountingConnectionInTx(
+/**
+ * Validate a connection row the caller already holds. Takes no accounting commit
+ * lock — every caller has one.
+ */
+async function validatePinnedConnectionInTx(
   tx: Transaction,
   organizationId: string,
-  connectionId: string
+  connection: ExternalBookConnectionEntity
 ): Promise<PinnedAccountingConnection> {
-  await withAccountingCommitLock(tx, organizationId)
-  const connection = await tx.query.ExternalBookConnection.findFirst({
-    where: and(
-      eq(schema.ExternalBookConnection.organizationId, organizationId),
-      eq(schema.ExternalBookConnection.id, connectionId)
-    ),
-  })
-  if (!connection || connection.state === 'disconnected' || !connection.credentialId) {
+  if (connection.state === 'disconnected' || !connection.credentialId) {
     throw new UnprocessableEntityError(
       'The journal destination is disconnected or retired; repair its original connection'
     )
@@ -155,13 +162,34 @@ export async function readPinnedAccountingConnectionInTx(
     throw new ConflictError('The credential no longer identifies the journal destination company')
   }
   return {
-    connectionId,
+    connectionId: connection.id,
     bookId: book.id,
     credentialId: credential.id,
     companyId: book.externalCompanyId,
     providerKey: 'quickbooks',
     appInstallationId: credential.appInstallationId,
   }
+}
+
+/** Read a pinned connection from authoritative rows, without changing its destination. */
+export async function readPinnedAccountingConnectionInTx(
+  tx: Transaction,
+  organizationId: string,
+  connectionId: string
+): Promise<PinnedAccountingConnection> {
+  await withAccountingCommitLock(tx, organizationId)
+  const connection = await tx.query.ExternalBookConnection.findFirst({
+    where: and(
+      eq(schema.ExternalBookConnection.organizationId, organizationId),
+      eq(schema.ExternalBookConnection.id, connectionId)
+    ),
+  })
+  if (!connection) {
+    throw new UnprocessableEntityError(
+      'The journal destination is disconnected or retired; repair its original connection'
+    )
+  }
+  return validatePinnedConnectionInTx(tx, organizationId, connection)
 }
 
 /** Resolve saved connectivity outside a caller transaction; performs no provider request. */
@@ -199,7 +227,7 @@ export async function activateAccountingBookConnectionInTx(
     active.exportFromDate === input.exportFromDate &&
     canonicalAccountingJson(active.openingPolicy) === canonicalAccountingJson(policy)
   ) {
-    await readPinnedAccountingConnectionInTx(tx, input.organizationId, active.id)
+    await validatePinnedConnectionInTx(tx, input.organizationId, active)
     return active
   }
   if ((active?.id ?? null) !== input.expectedActiveConnectionId) {
@@ -326,43 +354,39 @@ export async function resolveFulfillmentDeliveryIntentInTx(
         'The accounting destination needs an explicit opening policy'
       )
     }
-    await readPinnedAccountingConnectionInTx(tx, organizationId, active.id)
+    await validatePinnedConnectionInTx(tx, organizationId, active)
     if (txnDate < active.exportFromDate) return { kind: 'not_required' }
-    const setting = await tx.query.OrganizationSetting.findFirst({
-      where: and(
-        eq(schema.OrganizationSetting.organizationId, organizationId),
-        eq(schema.OrganizationSetting.key, 'quickbooks.postJournalEntries')
-      ),
-      columns: { value: true },
+    // 🛑 Through `tx`, NOT the `orgSettings` cache. `updateOrganizationSetting`
+    // takes the accounting commit lock for this key (`settings-service.ts`) and
+    // the cache is invalidated only after that commit, so a cached read can hold
+    // a journal whose export was switched on moments earlier.
+    const postJournals = await getOrganizationSetting({
+      organizationId,
+      key: 'quickbooks.postJournalEntries',
+      db: tx,
     })
-    if (setting?.value != null && typeof setting.value !== 'boolean') {
+    if (typeof postJournals !== 'boolean') {
       throw new UnprocessableEntityError('QuickBooks journal export configuration is invalid')
     }
-    return { kind: setting?.value === true ? 'automatic' : 'manual', connectionId: active.id }
+    return { kind: postJournals ? 'automatic' : 'manual', connectionId: active.id }
   }
-  const books = await tx.query.ExternalAccountingBook.findMany({
-    where: eq(schema.ExternalAccountingBook.organizationId, organizationId),
-    columns: { id: true },
-    limit: 1,
-  })
-  const apps = await tx.query.App.findMany({
-    where: eq(schema.App.slug, 'quickbooks'),
-    columns: { id: true },
-  })
-  const installation = apps.length
-    ? await tx.query.AppInstallation.findFirst({
-        where: and(
-          eq(schema.AppInstallation.organizationId, organizationId),
-          inArray(
-            schema.AppInstallation.appId,
-            apps.map((app) => app.id)
-          ),
-          isNull(schema.AppInstallation.uninstalledAt)
-        ),
+  // No destination yet. The install probe is the org cache, not `tx`: nothing on
+  // the install path takes the accounting commit lock, and this is the same
+  // source `resolveAppToolContext` resolves an installation from before any
+  // export, so an install it cannot see could not have exported anyway.
+  const installed = (await getCachedInstalledApps(organizationId)).some(
+    (app) => app.app.slug === 'quickbooks'
+  )
+  // Only asked when nothing is installed: a historical book still means this org
+  // has bridged accounting before.
+  const books = installed
+    ? []
+    : await tx.query.ExternalAccountingBook.findMany({
+        where: eq(schema.ExternalAccountingBook.organizationId, organizationId),
         columns: { id: true },
+        limit: 1,
       })
-    : undefined
-  if (books.length || installation) {
+  if (installed || books.length) {
     throw new UnprocessableEntityError(
       'Establish the QuickBooks accounting destination and explicit export start date before posting fulfillment accounting'
     )

@@ -11,8 +11,10 @@ vi.mock('@auxx/credentials/store', () => ({
 }))
 
 const getCachedEntityDefId = vi.fn()
+const getCachedInstalledApps = vi.fn()
 vi.mock('../cache', () => ({
   getCachedEntityDefId: (...a: unknown[]) => getCachedEntityDefId(...a),
+  getCachedInstalledApps: (...a: unknown[]) => getCachedInstalledApps(...a),
 }))
 
 const setValue = vi.fn()
@@ -41,8 +43,6 @@ const SHOPIFY_CUSTOMER_ID = '207119551'
 function buildDb() {
   return {
     query: {
-      App: { findFirst: vi.fn().mockResolvedValue({ id: 'app1' }) },
-      AppInstallation: { findFirst: vi.fn().mockResolvedValue({ id: INSTALLATION_ID }) },
       CustomField: { findFirst: vi.fn().mockResolvedValue({ id: FIELD_ID }) },
     },
   }
@@ -56,6 +56,10 @@ beforeEach(() => {
   })
   getCachedEntityDefId.mockReset()
   getCachedEntityDefId.mockResolvedValue(CONTACT_DEF_ID)
+  getCachedInstalledApps.mockReset()
+  getCachedInstalledApps.mockResolvedValue([
+    { installationId: INSTALLATION_ID, app: { id: 'app1', slug: 'shopify' } },
+  ])
   setValue.mockReset()
   setValue.mockResolvedValue(undefined)
   upsertRecordIdentity.mockReset()

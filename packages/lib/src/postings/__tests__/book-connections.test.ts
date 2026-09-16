@@ -1,6 +1,6 @@
 // packages/lib/src/postings/__tests__/book-connections.test.ts
 
-import type { Transaction } from '@auxx/database'
+import { schema, type Transaction } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   accountingOpeningPolicySchema,
@@ -11,6 +11,20 @@ import {
 } from '../book-connections'
 
 vi.mock('../accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
+vi.mock('../../cache', () => ({ getCachedInstalledApps: vi.fn() }))
+
+import { getCachedInstalledApps } from '../../cache'
+
+/** The install probe now answers from the org cache, not `App` + `AppInstallation` reads. */
+function installed(value: boolean) {
+  vi.mocked(getCachedInstalledApps).mockResolvedValue(
+    value
+      ? ([{ app: { slug: 'quickbooks' } }] as unknown as Awaited<
+          ReturnType<typeof getCachedInstalledApps>
+        >)
+      : []
+  )
+}
 
 const policy = {
   version: 1 as const,
@@ -27,6 +41,17 @@ const active = {
   exportFromDate: '2026-09-01',
   openingPolicy: policy,
 }
+/** The joined credential row `readCredentialInTx` selects in one round trip. */
+const credentialRow = {
+  id: 'credential_a',
+  appId: 'qb',
+  kind: 'app',
+  userId: null,
+  metadata: { realmId: 'realm_a' },
+  boundInstallationId: 'install',
+  appSlug: 'quickbooks',
+  installationId: 'install',
+}
 function fixture() {
   const query = {
     ExternalBookConnection: { findFirst: vi.fn().mockResolvedValue(active) },
@@ -38,25 +63,36 @@ function fixture() {
       }),
       findMany: vi.fn().mockResolvedValue([]),
     },
-    Credential: {
-      findFirst: vi.fn().mockResolvedValue({
-        id: 'credential_a',
-        appId: 'qb',
-        appInstallationId: 'install',
-        kind: 'app',
-        userId: null,
-        metadata: { realmId: 'realm_a' },
-      }),
-    },
-    App: {
-      findFirst: vi.fn().mockResolvedValue({ slug: 'quickbooks' }),
-      findMany: vi.fn().mockResolvedValue([{ id: 'qb' }]),
-    },
-    AppInstallation: { findFirst: vi.fn().mockResolvedValue({ id: 'install' }) },
-    OrganizationSetting: { findFirst: vi.fn().mockResolvedValue({ value: true }) },
   }
-  const tx = { query, insert: vi.fn(), update: vi.fn() }
-  return { query, tx: tx as unknown as Transaction, writes: tx }
+  // Rows returned by the builder chain, keyed by the table `.from()` names —
+  // both remaining `select()` reads (the credential join and the export switch
+  // `getOrganizationSetting` reads through `tx`) end in `.limit(1)`.
+  const rows: Record<string, unknown[]> = {
+    Credential: [credentialRow],
+    OrganizationSetting: [{ key: 'quickbooks.postJournalEntries', value: true }],
+  }
+  const tables = new Map<unknown, string>([
+    [schema.Credential, 'Credential'],
+    [schema.OrganizationSetting, 'OrganizationSetting'],
+  ])
+  const select = vi.fn(() => {
+    let table = ''
+    const chain: Record<string, unknown> = {
+      from: (t: unknown) => {
+        table = tables.get(t) ?? ''
+        return chain
+      },
+      leftJoin: () => chain,
+      innerJoin: () => chain,
+      where: () => chain,
+      orderBy: () => chain,
+      limit: async () => rows[table] ?? [],
+    }
+    return chain
+  })
+  const tx = { query, select, insert: vi.fn(), update: vi.fn() }
+  installed(true)
+  return { query, rows, tx: tx as unknown as Transaction, writes: tx }
 }
 
 beforeEach(() => vi.clearAllMocks())
@@ -85,8 +121,8 @@ describe('accounting connection bridge', () => {
     })
   })
   it('holds delivery for manual release when the existing export switch is off', async () => {
-    const { tx, query } = fixture()
-    query.OrganizationSetting.findFirst.mockResolvedValue({ value: false })
+    const { tx, rows } = fixture()
+    rows.OrganizationSetting = [{ key: 'quickbooks.postJournalEntries', value: false }]
     expect(await resolveFulfillmentDeliveryIntentInTx(tx, 'org', '2026-09-12')).toEqual({
       kind: 'manual',
       connectionId: 'connection_a',
@@ -109,13 +145,13 @@ describe('accounting connection bridge', () => {
     const { tx, query } = fixture()
     query.ExternalBookConnection.findFirst.mockResolvedValue(undefined)
     query.ExternalAccountingBook.findMany.mockResolvedValue([{ id: 'book_a' }])
-    query.AppInstallation.findFirst.mockResolvedValue(undefined)
+    installed(false)
     await expect(resolveFulfillmentDeliveryIntentInTx(tx, 'org', '2026-09-12')).rejects.toThrow()
   })
   it('allows local-only when no installation or historical accounting book exists', async () => {
     const { tx, query } = fixture()
     query.ExternalBookConnection.findFirst.mockResolvedValue(undefined)
-    query.AppInstallation.findFirst.mockResolvedValue(undefined)
+    installed(false)
     expect(await resolveFulfillmentDeliveryIntentInTx(tx, 'org', '2026-09-12')).toEqual({
       kind: 'not_required',
     })
@@ -139,15 +175,8 @@ describe('accounting connection bridge', () => {
     )
   })
   it('refuses user-scoped credentials rather than falling back to a user', async () => {
-    const { tx, query } = fixture()
-    query.Credential.findFirst.mockResolvedValue({
-      id: 'credential_a',
-      appId: 'qb',
-      appInstallationId: 'install',
-      kind: 'app',
-      userId: 'user',
-      metadata: { realmId: 'realm_a' },
-    })
+    const { tx, rows } = fixture()
+    rows.Credential = [{ ...credentialRow, userId: 'user' }]
     await expect(readPinnedAccountingConnectionInTx(tx, 'org', 'connection_a')).rejects.toThrow(
       'organization QuickBooks'
     )

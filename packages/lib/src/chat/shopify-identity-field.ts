@@ -4,8 +4,8 @@ import { listCredentials } from '@auxx/credentials/store'
 import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
-import { and, eq, isNull } from 'drizzle-orm'
-import { getCachedEntityDefId } from '../cache'
+import { and, eq } from 'drizzle-orm'
+import { getCachedEntityDefId, getCachedInstalledApps } from '../cache'
 import { FieldValueService } from '../field-values/field-value-service'
 import { upsertRecordIdentity } from '../identity'
 
@@ -47,29 +47,20 @@ export interface ShopifyStoreConnection {
  */
 export async function resolveShopifyStoreConnection(
   organizationId: string,
-  shopDomain: string,
-  db: Database = database
+  shopDomain: string
 ): Promise<ShopifyStoreConnection | null> {
-  const shopifyApp = await db.query.App.findFirst({
-    where: eq(schema.App.slug, 'shopify'),
-    columns: { id: true },
-  })
-  if (!shopifyApp) return null
-
-  const installation = await db.query.AppInstallation.findFirst({
-    where: and(
-      eq(schema.AppInstallation.appId, shopifyApp.id),
-      eq(schema.AppInstallation.organizationId, organizationId),
-      isNull(schema.AppInstallation.uninstalledAt)
-    ),
-    columns: { id: true },
-  })
-  if (!installation) return null
+  // The org cache already excludes uninstalled rows, and is the same source
+  // `resolveAppToolContext` resolves an installation from before invoking any
+  // Shopify tool.
+  const install = (await getCachedInstalledApps(organizationId)).find(
+    (app) => app.app.slug === 'shopify'
+  )
+  if (!install) return null
 
   const credsResult = await listCredentials({
     organizationId,
     kind: 'app',
-    appId: shopifyApp.id,
+    appId: install.app.id,
     userId: null,
   })
   if (credsResult.isErr()) {
@@ -83,7 +74,7 @@ export async function resolveShopifyStoreConnection(
   const connectionId = credsResult.value.find((cred) => cred.metadata.shopDomain === shopDomain)?.id
   if (!connectionId) return null
 
-  return { appId: shopifyApp.id, installationId: installation.id, connectionId }
+  return { appId: install.app.id, installationId: install.installationId, connectionId }
 }
 
 /**
@@ -118,7 +109,7 @@ export async function writeShopifyCustomerIdField(
   const { organizationId, contactId, shopDomain, shopifyCustomerId } = input
 
   // 1+2. Shopify app installation + the store connection bound to this domain.
-  const store = await resolveShopifyStoreConnection(organizationId, shopDomain, db)
+  const store = await resolveShopifyStoreConnection(organizationId, shopDomain)
   if (!store) {
     log.warn('No bound Shopify connection for shop domain — skipping customerId field write', {
       organizationId,

@@ -218,12 +218,24 @@ async function connection() {
       externalCompanyId: `company-${organizationId}`,
     })
     .returning()
+  const [credential] = await db()
+    .insert(schema.Credential)
+    .values({
+      organizationId: organizationId,
+      kind: 'app',
+      name: 'Fixture authorization',
+      encryptedSecrets: 'fixture-only-no-token',
+      updatedAt: new Date(),
+    })
+    .returning()
   const [saved] = await db()
     .insert(schema.ExternalBookConnection)
     .values({
       organizationId,
       bookId: book!.id,
       epoch: 1,
+      credentialId: credential!.id,
+      credentialOrganizationId: organizationId,
       credentialBindingSnapshot: 'fixture-credential',
       state: 'active',
       exportFromDate: '2026-01-01',
@@ -282,7 +294,7 @@ async function heldPosting() {
   vi.mocked(readPinnedAccountingConnection).mockImplementation(async () => ({
     connectionId: destination.id,
     bookId: destination.bookId,
-    credentialId: 'credential',
+    credentialId: destination.credentialId!,
     companyId: `company-${organizationId}`,
     providerKey: 'quickbooks',
     appInstallationId: 'installation',
@@ -292,7 +304,7 @@ async function heldPosting() {
     context: {
       organizationId,
       installationId: 'installation',
-      connectionId: 'credential',
+      connectionId: destination.credentialId!,
       realmId: `company-${organizationId}`,
       userId,
       serverBundleSha: 'frozen-bundle',
