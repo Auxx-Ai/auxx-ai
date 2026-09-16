@@ -6,9 +6,11 @@ export * from './account'
 export {
   AccountingDelivery,
   AccountingDeliveryCoverage,
+  type AccountingDeliveryCoverageEntity,
   type AccountingDeliveryEntity,
   AccountingDeliveryOperation,
   type AccountingDeliveryOperationEntity,
+  type DeliveryObjectType,
   ExternalAccountingObject,
 } from './accounting-delivery'
 export { AccountingEffect, type AccountingEffectEntity } from './accounting-effect'

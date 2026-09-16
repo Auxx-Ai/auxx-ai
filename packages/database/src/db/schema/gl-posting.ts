@@ -150,6 +150,29 @@ export const GlPosting = pgTable(
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
 
+    /**
+     * Which BOOK this entry belongs to — accrual or cash (decision D13,
+     * plans/accounting/tasks/44-money-and-accounting-effect-contracts.md).
+     *
+     * 🛑 RESERVED, not built. Nothing writes it and nothing reads it yet. It
+     * exists now because the other half of D13 rides on
+     * `AccountingEffect.acceptedBasis`, which is immutable and sha256-hashed —
+     * adding a dimension to a frozen, hashed record later means rehashing it.
+     * Reserving the dimension costs one nullable column and one optional field;
+     * retrofitting it does not.
+     *
+     * This column is the half for the 1:1 posting families that have no
+     * `AccountingEffect` at all (a manual journal, an opening balance);
+     * otherwise those entries would have no book.
+     *
+     * ⚠️ The claim index `(organizationId, postingType, periodKey, revision)` is
+     * deliberately NOT widened to include this column. Widening the primary
+     * double-post defence is what actually lets two books hold the same period,
+     * and that belongs with the cash book and its substitution rule — neither of
+     * which is built. NULL means "the one book we keep today".
+     */
+    basis: text().$type<'accrual' | 'cash'>(),
+
     postingType: glPostingType().notNull(),
     /** `'2026-08-18'` or `'2026-08'`, or a payout/build id. Parsed by `postings/periods.ts`. */
     periodKey: text().notNull(),
@@ -332,6 +355,11 @@ export const GlPosting = pgTable(
     // Walking a reversal chain back to its original.
     index('GlPosting_reversesId_idx').using('btree', table.reversesId.asc().nullsLast()),
 
+    // Reserved dimension (D13). NULL is the only value anything writes today.
+    check(
+      'GlPosting_basis_check',
+      sql`${table.basis} IS NULL OR ${table.basis} IN ('accrual','cash')`
+    ),
     check('GlPosting_totalMinor_check', sql`${table.totalMinor} >= 0`),
     check('GlPosting_revision_check', sql`${table.revision} >= 0`),
     check('GlPosting_attempts_check', sql`${table.attempts} >= 0`),

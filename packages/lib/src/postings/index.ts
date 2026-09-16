@@ -38,6 +38,10 @@ export {
 } from './account-subtype'
 export { withAccountingCommitLock } from './accounting-commit-lock'
 export {
+  type AccountingBasisDimension,
+  reservedAccountingBasis,
+} from './basis-dimension'
+export {
   type ActivateAccountingBookConnectionInput,
   accountingOpeningPolicySchema,
   activateAccountingBookConnection,
@@ -252,6 +256,13 @@ export {
   planAccountingDeliveryInTx,
   sweepAccountingDeliveries,
 } from './delivery'
+export {
+  assertCoveragePartitionsInTx,
+  type CoverageComponent,
+  contributionLineKeys,
+  findCoveragePartitionProblems,
+  saveComponentCoverageInTx,
+} from './delivery-coverage'
 export {
   buildDocNumber,
   DOC_NUMBER_MAX_LENGTH,
