@@ -73,10 +73,16 @@ export interface EffectAcceptanceDependencies {
   ): Promise<AcceptedAccountingEffectBasisV1>
 }
 
+/**
+ * Both receipt policies, as `isFulfillmentBasis` below already does for its
+ * two: one `customer_receipt` family, one contract, two frozen calculation
+ * shapes (task 54 §7). Missing the second here does not fail loudly — it makes
+ * every invoice receipt look like an owner mismatch.
+ */
 function isReceiptBasis(
   basis: AcceptedAccountingEffectBasisV1
 ): basis is AcceptedCustomerReceiptEffectBasisV1 {
-  return basis.policyKey === 'shopify_receipt_v1'
+  return basis.policyKey === 'shopify_receipt_v1' || basis.policyKey === 'invoice_receipt_v1'
 }
 
 function isFulfillmentBasis(

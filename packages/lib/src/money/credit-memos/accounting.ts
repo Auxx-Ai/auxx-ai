@@ -224,7 +224,14 @@ async function allocationComponents(
     const parsed = z
       .union([acceptedCustomerReceiptEffectBasisSchema, acceptedFulfillmentEffectBasisSchema])
       .safeParse(effect.acceptedBasis)
-    if (!parsed.success || parsed.data.calculation.orderInstanceId !== memo.orderInstanceId)
+    // An invoice receipt (task 54's second policy) has no `orderInstanceId` at
+    // all, so it can never be the source of an order-scoped credit — refuse it
+    // here rather than letting the comparison read `undefined`.
+    if (
+      !parsed.success ||
+      'kind' in parsed.data.calculation ||
+      parsed.data.calculation.orderInstanceId !== memo.orderInstanceId
+    )
       throw new UnprocessableEntityError('Credit source effect does not belong to this order')
     if (
       'customerInstanceId' in parsed.data.calculation &&

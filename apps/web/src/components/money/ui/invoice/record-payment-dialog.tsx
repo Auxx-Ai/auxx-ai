@@ -104,6 +104,16 @@ export function RecordPaymentDialog({
   const [note, setNote] = useState('')
   const [applyCredit, setApplyCredit] = useState(true)
   const [creditAmount, setCreditAmount] = useState<number | null>(null)
+  const [bankAccountId, setBankAccountId] = useState<string | null>(null)
+
+  // Which methods need a bank account named, and which accounts can be named.
+  // Server-resolved from the same route table the command enforces with, so the
+  // dialog can never offer a combination the mutation will refuse.
+  const { data: destinations } = api.money.paymentDestinations.useQuery(undefined, {
+    enabled: open,
+  })
+  const needsBankAccount = destinations?.requiresBankAccount[method] ?? false
+  const forbidsBankAccount = destinations?.forbidsBankAccount[method] ?? true
 
   const { data: credit } = api.creditMemo.contactCredit.useQuery(
     { contactRecordId: contactRecordId as RecordId },
@@ -132,6 +142,7 @@ export function RecordPaymentDialog({
     setNote('')
     setApplyCredit(true)
     setCreditAmount(null)
+    setBankAccountId(null)
   }, [open])
 
   // The credit lookup lands after the dialog opens: prefill the credit section once it
@@ -150,6 +161,18 @@ export function RecordPaymentDialog({
     if (!open) return
     setAmount(remainder)
   }, [remainder])
+
+  // A method the org holds in undeposited funds must not carry an account, and
+  // the command refuses one. Clear it on the switch rather than letting a stale
+  // pick fail at submit.
+  useEffect(() => {
+    if (forbidsBankAccount) setBankAccountId(null)
+  }, [forbidsBankAccount])
+
+  const paymentKey = useRef<string | null>(null)
+  useEffect(() => {
+    if (open) paymentKey.current = crypto.randomUUID()
+  }, [open])
 
   const creditKeys = useRef(new Map<string, string>())
   useEffect(() => {
@@ -175,7 +198,8 @@ export function RecordPaymentDialog({
   const creditValid = creditApplied >= 0 && creditApplied <= maxCredit
   const paymentAmount = amount ?? 0
   const paymentValid = paymentAmount >= 0 && paymentAmount <= remainder
-  const canSave = creditValid && paymentValid && creditApplied + paymentAmount > 0
+  const bankValid = paymentAmount === 0 || !needsBankAccount || Boolean(bankAccountId)
+  const canSave = creditValid && paymentValid && bankValid && creditApplied + paymentAmount > 0
 
   const handleSubmit = async () => {
     if (!canSave) return
@@ -196,8 +220,10 @@ export function RecordPaymentDialog({
           amount: paymentAmount,
           date: date.split('T')[0]!,
           method,
+          bankAccountInstanceId: bankAccountId,
           reference: reference.trim() || undefined,
           note: note.trim() || undefined,
+          commandKey: paymentKey.current ?? crypto.randomUUID(),
         })
       }
       onRecorded?.()
@@ -290,6 +316,25 @@ export function RecordPaymentDialog({
                 disabled={isPending}
               />
             </FieldPanelRow>
+
+            {needsBankAccount ? (
+              <FieldPanelRow title='Deposited to' type={BaseType.ENUM} showIcon isRequired>
+                <FieldInputAdapter
+                  fieldType={FieldType.SINGLE_SELECT}
+                  fieldOptions={{
+                    options: (destinations?.bankAccounts ?? []).map((account) => ({
+                      id: account.id,
+                      value: account.id,
+                      label: account.last4 ? `${account.name} ····${account.last4}` : account.name,
+                    })),
+                  }}
+                  triggerProps={{ className: 'w-full ps-0 pe-1' }}
+                  value={bankAccountId ?? ''}
+                  onChange={(val) => setBankAccountId((val as string[])[0] ?? null)}
+                  disabled={isPending}
+                />
+              </FieldPanelRow>
+            ) : null}
 
             <FieldPanelRow title='Reference' type={BaseType.STRING} showIcon>
               <FieldInputAdapter
