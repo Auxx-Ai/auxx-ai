@@ -141,12 +141,15 @@ export function PaymentsList({
       getKey={(payment) => payment.id}
       visibleLimit={visibleLimit}
       renderRow={(payment) => {
+        // Both hand-recorded lanes can be undone: a legacy `manual` row is
+        // deleted, a `money` one is VOIDED by a reversing entry (task 54). The
+        // router routes on the id; the button is the same either way.
         const action =
-          payment.provider === 'manual'
+          payment.provider === 'manual' || payment.provider === 'money'
             ? isAdmin && (
                 <TreeRowButton
                   variant='destructive'
-                  tooltipText='Delete payment'
+                  tooltipText={payment.provider === 'money' ? 'Void payment' : 'Delete payment'}
                   disabled={deletePending}
                   onClick={() => onDelete(payment.id)}>
                   <Trash2 />

@@ -194,7 +194,11 @@ describe('acceptedCustomerReceiptEffectBasisSchema, invoice policy', () => {
     expect(acceptedCustomerReceiptEffectBasisSchema.safeParse(orphan).success).toBe(false)
   })
 
-  it('refuses when the cash account is not the debit side', () => {
+  it('ALLOWS a flipped entry — that is what a correction is', () => {
+    // 🛑 The schema deliberately does not pin cash to the debit side: a
+    // correction of a receipt is the original with its signs flipped, and
+    // pinning it here made corrections unrepresentable. `accept-entry.ts`
+    // asserts direction for originals, where `work.operation` is known.
     const flipped = {
       ...accepted,
       contribution: [
@@ -202,7 +206,19 @@ describe('acceptedCustomerReceiptEffectBasisSchema, invoice policy', () => {
         { ...accepted.contribution[1]!, direction: 'debit' as const },
       ],
     }
-    expect(acceptedCustomerReceiptEffectBasisSchema.safeParse(flipped).success).toBe(false)
+    expect(acceptedCustomerReceiptEffectBasisSchema.safeParse(flipped).success).toBe(true)
+  })
+
+  it('still refuses a cash account that moves by the wrong amount', () => {
+    const wrong = {
+      ...accepted,
+      calculation: { ...calculation, amountMinor: '120', receiptAmountMinor: '120' },
+      contribution: [
+        { ...accepted.contribution[0]!, amountMinor: '90' },
+        { ...accepted.contribution[1]!, amountMinor: '90' },
+      ],
+    }
+    expect(acceptedCustomerReceiptEffectBasisSchema.safeParse(wrong).success).toBe(false)
   })
 
   it('accepts a date-precision receipt without a timezone conversion', () => {

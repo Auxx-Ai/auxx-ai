@@ -625,27 +625,28 @@ export const acceptedCustomerReceiptEffectBasisSchema = z
     if (debit > BigInt(Number.MAX_SAFE_INTEGER))
       issue('Effect total exceeds the current ledger safe-number boundary')
     // Where the money landed: the frozen clearing route for an order receipt,
-    // the resolved cash account for an invoice one. Either way it must BE the
-    // debit side and must carry the whole receipt.
+    // the resolved cash account for an invoice one. Either way the account must
+    // move by the WHOLE receipt.
+    //
+    // 🛑 **Direction is deliberately not asserted here, and this is subtle.**
+    // A CORRECTION of a receipt is the original with its signs flipped, so cash
+    // is its credit side. Pinning cash to the debit side in the schema made
+    // every correction unrepresentable — which is why, at 9,102 accepted
+    // effects, not one of them was `operation: 'correction'`.
+    //
+    // ✅ Nothing is lost. `accept-entry.ts` knows `work.operation`, which the
+    // schema never can, and asserts the stronger pair there: an ORIGINAL debits
+    // cash, and a CORRECTION is the exact negation of the effect it corrects.
     const cashGlAccountId =
       'kind' in value.calculation
         ? value.calculation.cashGlAccountId
         : value.calculation.route.glAccountId
-    if (
-      !value.contribution.some(
-        (line) => line.direction === 'debit' && line.glAccountId === cashGlAccountId
-      )
-    )
-      issue('Receipt route account must be the debit account')
-    const routeDebit = value.contribution.reduce(
-      (sum, line) =>
-        line.direction === 'debit' && line.glAccountId === cashGlAccountId
-          ? sum + BigInt(line.amountMinor)
-          : sum,
+    const cashMovement = value.contribution.reduce(
+      (sum, line) => (line.glAccountId === cashGlAccountId ? sum + BigInt(line.amountMinor) : sum),
       0n
     )
-    if (routeDebit !== BigInt(value.calculation.amountMinor))
-      issue('Receipt route debit must equal the receipt amount')
+    if (cashMovement !== BigInt(value.calculation.amountMinor))
+      issue('Receipt cash account must move by the receipt amount')
     if (debit !== BigInt(value.calculation.amountMinor))
       issue('Receipt total debit must equal the receipt amount')
   })
