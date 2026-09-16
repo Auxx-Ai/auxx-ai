@@ -32,6 +32,12 @@ vi.mock('../../period-lock', () => ({
   resolvePeriodLock: vi.fn(async () => ({ lockedThroughMonth: null })),
 }))
 
+// The company the walk read from. Stamped on every row the sync writes so a
+// provider entry id is unique PER COMPANY, not per org (`G20`).
+vi.mock('../../book-connections', () => ({
+  readActiveBookCompanyId: vi.fn(async () => '9341453857213446'),
+}))
+
 vi.mock('../../provider', () => ({
   NONE_PROVIDER_ID: 'none',
   resolveAccountingProvider: vi.fn(async () => ({
@@ -96,6 +102,22 @@ describe('the marker advances', () => {
       '2026-01-31',
       '2026-02-28',
     ])
+  })
+
+  it('🛑 stamps the COMPANY on every entry it writes, so an entry id is unique per book', async () => {
+    // `G20`. A provider entry id is a per-company sequence - `101` exists in
+    // every company and means something different in each - so a row carrying
+    // one and no company sits outside the uniqueness index entirely, because
+    // NULLs are distinct. The export path always stamped it; the inbound path
+    // never did, which left 126 rows unguarded before this was fixed.
+    readProviderLedger.mockResolvedValueOnce(monthOfTheirWork('2026-01-01', '2026-01-31', '101'))
+
+    await syncProviderLedger(db, ORG, { from: '2026-01-01', to: '2026-01-31' })
+
+    expect(postProviderSyncEntry).toHaveBeenCalled()
+    for (const call of postProviderSyncEntry.mock.calls) {
+      expect(call[2].providerTenantId).toBe('9341453857213446')
+    }
   })
 
   it('advances over an EMPTY month - a quiet month is a real answer, not a fault', async () => {
