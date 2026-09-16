@@ -7,24 +7,22 @@ import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
+import { todayInZone } from '@auxx/utils/calendar-day'
 import { ListChecks } from 'lucide-react'
 import Link from 'next/link'
-import { useQueryState } from 'nuqs'
+import { useMemo } from 'react'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { useDrillToLedger } from './drill-to-ledger'
 import { ReportErrorCard } from './report-error-card'
-import {
-  periodEndDate,
-  periodKeyFromDate,
-  periodStartDate,
-  toStatementTableRows,
-} from './report-helpers'
+import { periodStartDate, toStatementTableRows } from './report-helpers'
+import { reportAsOfPresets } from './report-range-presets'
 import { ReportToolbar } from './report-toolbar'
 import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
+import { useReportAsOf } from './use-report-window'
 
 /**
  * `/app/accounting/reports/trial-balance` (`plans/accounting/ui-plan.md`
@@ -35,14 +33,20 @@ import { StatementTable } from './statement-table'
  */
 export function TrialBalanceReportPage() {
   const period = useLedgerPeriod()
-  const [asOfParam, setAsOfParam] = useQueryState('asOf')
   const drillToLedger = useDrillToLedger()
-  // The first day the books cover. An as-of statement is cumulative from the
-  // beginning, so this is the `from` its drill-down hands the ledger.
+  // The first day the books cover, and the drill-down's fallback start when no
+  // range has been carried in from another report.
   const cutoff = period.options[0] ? periodStartDate(period.options[0].periodKey) : null
 
-  const asOf =
-    asOfParam || (period.resolvedPeriodKey ? periodEndDate(period.resolvedPeriodKey) : '')
+  const { asOf, from, setAsOf } = useReportAsOf(period.bookTimeZone, !!period.resolvedPeriodKey)
+  // The carried range start when another report set one, else the books' floor.
+  // Either way the ledger's own "Opening balance" row absorbs what came before,
+  // so the drill-down still ties to the figure that was clicked.
+  const drillFrom = from ?? cutoff
+  const asOfPresets = useMemo(
+    () => reportAsOfPresets(todayInZone(period.bookTimeZone), cutoff),
+    [period.bookTimeZone, cutoff]
+  )
 
   const query = api.ledgerReports.trialBalance.useQuery({ to: asOf }, { enabled: !!asOf })
   const renderPdf = api.ledgerReports.renderStatementPdf.useMutation({
@@ -83,9 +87,10 @@ export function TrialBalanceReportPage() {
     <div className='flex h-full min-h-0 w-full flex-1 flex-col'>
       <ReportToolbar
         mode='asOf'
-        periodOptions={period.options}
-        periodKey={asOf ? periodKeyFromDate(asOf) : undefined}
-        onSelectPeriod={(key) => void setAsOfParam(periodEndDate(key))}
+        asOf={asOf}
+        onSelectAsOf={setAsOf}
+        asOfPresets={asOfPresets}
+        cutoff={cutoff}
         onDownloadPdf={handleDownloadPdf}
         onDownloadCsv={handleDownloadCsv}
         through={asOf}
@@ -148,8 +153,8 @@ export function TrialBalanceReportPage() {
               }
               canRowDrill={(row) => !!row.meta?.glAccountId}
               onRowClick={(row) =>
-                row.meta?.glAccountId && cutoff
-                  ? drillToLedger(row.meta.glAccountId, { from: cutoff, to: asOf })
+                row.meta?.glAccountId && drillFrom
+                  ? drillToLedger(row.meta.glAccountId, { from: drillFrom, to: asOf })
                   : undefined
               }
             />

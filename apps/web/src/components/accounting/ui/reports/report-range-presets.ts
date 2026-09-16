@@ -91,3 +91,32 @@ export function generalLedgerRangePresets(today: string): ReportRangePreset[] {
     { label: 'Last 30 days', from: addDaysToDayKey(today, -29), to: today },
   ]
 }
+
+/** One entry in the as-of picker's rail, as a single calendar day. */
+export interface ReportAsOfPreset {
+  label: string
+  date: string
+}
+
+/**
+ * The as-of picker's presets — the same vocabulary {@link reportRangePresets}
+ * uses, reduced to the one date an as-of statement takes.
+ *
+ * ⚠️ A preset that lands before `cutoff` is DROPPED rather than floored to it.
+ * Flooring a range's `from` keeps the label honest ("Year to date", clipped to
+ * where the books start); flooring a single date would make "Last year end"
+ * name a day that is not the end of last year.
+ */
+export function reportAsOfPresets(today: string, cutoff: string | null): ReportAsOfPreset[] {
+  const lastMonth = shiftMonthKey(monthKeyOfDay(today), -1)
+  const lastYear = String(Number(today.slice(0, 4)) - 1)
+
+  const presets: ReportAsOfPreset[] = [
+    { label: 'Today', date: today },
+    { label: 'Last month end', date: endOfMonthDay(lastMonth) },
+    { label: 'Last quarter end', date: quarterOf(today, 1).to },
+    { label: 'Last year end', date: `${lastYear}-12-31` },
+  ]
+
+  return presets.filter((preset) => !cutoff || preset.date >= cutoff)
+}

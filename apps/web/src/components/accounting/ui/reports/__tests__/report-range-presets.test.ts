@@ -1,7 +1,11 @@
 // apps/web/src/components/accounting/ui/reports/__tests__/report-range-presets.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { generalLedgerRangePresets, reportRangePresets } from '../report-range-presets'
+import {
+  generalLedgerRangePresets,
+  reportAsOfPresets,
+  reportRangePresets,
+} from '../report-range-presets'
 
 const TODAY = '2026-09-16'
 
@@ -74,5 +78,32 @@ describe('generalLedgerRangePresets', () => {
   it('counts a "last N days" window inclusively of today', () => {
     expect(labelled(presets, 'Last 7 days')).toEqual({ from: '2026-09-10', to: TODAY })
     expect(labelled(presets, 'Last 30 days')).toEqual({ from: '2026-08-18', to: TODAY })
+  })
+})
+
+describe('reportAsOfPresets', () => {
+  const dateOf = (cutoff: string | null, label: string) =>
+    reportAsOfPresets(TODAY, cutoff).find((preset) => preset.label === label)?.date
+
+  it('offers today itself, not the end of the month today falls in', () => {
+    expect(dateOf(null, 'Today')).toBe(TODAY)
+  })
+
+  it('closes every completed period on its own last day', () => {
+    expect(dateOf(null, 'Last month end')).toBe('2026-08-31')
+    expect(dateOf(null, 'Last quarter end')).toBe('2026-06-30')
+    expect(dateOf(null, 'Last year end')).toBe('2025-12-31')
+  })
+
+  // 🛑 Dropped, never floored - flooring would leave "Last year end" naming a
+  // day that is not the end of last year. See the function's own note.
+  it('drops a preset that falls before the cutoff rather than flooring it', () => {
+    const labels = reportAsOfPresets(TODAY, '2026-08-01').map((preset) => preset.label)
+    expect(labels).toEqual(['Today', 'Last month end'])
+    expect(dateOf('2026-08-01', 'Last year end')).toBeUndefined()
+  })
+
+  it('keeps a preset landing exactly on the cutoff', () => {
+    expect(dateOf('2026-06-30', 'Last quarter end')).toBe('2026-06-30')
   })
 })
