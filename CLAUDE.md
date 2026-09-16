@@ -313,6 +313,28 @@ export class ApiKeyModel extends BaseModel<typeof ApiKey, CreateInput, Entity, U
 }
 ```
 
+## New Storage: Ask, Don't Assume
+
+**Before adding a new table or a new entity definition, stop and ask.** Present the
+two options with a recommendation and the reasoning, then wait for an answer.
+
+The discriminator is usually **cardinality**:
+
+- **Bounded reference data** — a definition holding tens of rows (a chart account, a
+  gateway, a rule) → an **entity definition**. You get records UI, permissions,
+  relationships and custom fields for free.
+- **Unbounded transactional data** — rows that grow with usage into the millions (a
+  posting, a movement, a money transaction) → a **dedicated Drizzle table**. EAV
+  write amplification is real (~20 `FieldValue` rows per record), and composite
+  uniqueness across two fields is not expressible on the entity route at all.
+
+Both can be true: a table registered as a system resource (`thread`, `article` and
+`message` are the precedent). That is a third answer, not a compromise.
+
+🛑 Do not pick one and proceed. The choice is expensive to reverse once rows exist,
+and it has been re-litigated three times in the accounting subsystem alone. See
+`docs/accounting-architecture-guide.md` §14 for the worked cases.
+
 ## Database Schema Changes
 
 - **Never write raw SQL migration files.** Always modify the Drizzle schema files in `packages/database/src/db/schema/`.

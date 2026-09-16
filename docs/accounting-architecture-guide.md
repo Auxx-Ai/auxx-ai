@@ -675,6 +675,27 @@ already got".
 | 1099 | `vendor-1099.ts`, `vendor-1099-rows.ts` | Per vendor |
 | Dimension breakdown | `dimension-breakdown.ts` | Group by a `dimensions` key |
 
+### 12.1 🔑 The fiscal-year boundary is a read rule, not a posted entry
+
+auxx posts **no closing entries**. At the fiscal-year boundary, revenue and expense
+accounts do not get zeroed by a journal entry; instead **every read** shows a P&L
+account from `fiscalYearStart(asOf)` and derives a Retained Earnings row for
+everything before it. Equity never moves — the amount simply shifts from the
+"this year" bucket to the "prior years" one.
+
+🛑 **This is a property of every read path, including the general ledger**, not a
+statement convention. A P&L account's beginning balance in the ledger is
+fiscal-year-to-date, not life-to-date. A new report that forgets this will disagree
+with the row it was opened from.
+
+✅ **The door to posted entries is open and costs nothing to keep.**
+`retainedEarnings()` accepts a `postedRetainedEarningsBalance` and reports
+`priorYearsSource: 'posted' | 'rolled_forward'`, so a posted closing entry — or a
+provider's imported RE balance — flows through the same function.
+
+⚠️ A computed Retained Earnings row needs its `meta.note` treatment ("computed from
+the P&L, not a posted balance"), or it reads as an account somebody posted to.
+
 `statement-math.ts` owns `retainedEarnings()`; `fiscal-year.ts` owns `fiscalYearStart()`.
 `rows.ts` and `adapters.ts` turn a read into `StatementRow`s; `pdf/` renders.
 
@@ -747,13 +768,17 @@ a checkbox showing the catalog default forever.
 
 ### The ones that cost money
 
-1. 🛑 **`GlPosting_org_provider_entry_key` is scoped to the org, not the company.**
-   `(organizationId, providerId, providerEntryId)` at `gl-posting.ts:329` — `providerId` is the
-   literal string `'quickbooks'`, never the realm. `providerTenantId` exists on the row but is
-   **not in the index**. Provider entry ids are small sequential integers, so two companies
-   colliding is likely rather than exotic, and the failure is silent in the worst way: the entry
-   posts to the provider, `markPosted` violates the index, the error is caught and logged, the row
-   stays `pending`, and `postEntry` returns `posted`. Decision `G20`, still open.
+1. ✅ **A provider entry id is unique PER COMPANY, and both write paths must stamp it.**
+   The index is `(organizationId, providerId, providerTenantId, providerEntryId)` — a
+   provider entry id is a per-company sequence, so `147` exists in every company and
+   means something different in each. 🛑 **`providerTenantId` is the company, not the
+   connection**: one `ExternalAccountingBook` has many `ExternalBookConnection` rows
+   over time (a reconnect mints a new `epoch`), so a connection id would be too narrow.
+   ⚠️ **NULLs are distinct in a unique index**, so a row carrying an entry id and no
+   company sits outside the guarantee entirely — which is exactly what the inbound sync
+   did until 2026-09-16, leaving 126 of 152 in-scope rows unguarded. Export stamps it
+   from the pinned connection; `provider-sync/writes.ts` stamps it from the active book.
+   Anything new that writes a `providerEntryId` must stamp it too.
 
 2. 🛑 **No default account, ever.** An entry posted to an arbitrary account still balances, so
    nothing downstream can detect it.
@@ -837,67 +862,28 @@ a checkbox showing the catalog default forever.
 
 ---
 
-## 15. What a Change Here Must Prove
+## 15. The Scenarios a Change Here Must Survive
 
-Rescued from the architecture blueprint that this guide replaces. It is not a test plan for
-any one feature — it is the standing list of properties that keep the ledger trustworthy, and
-the right question to ask of any change to §4, §6, §7 or §9.
+Rescued from the architecture blueprint this guide replaces. Concrete, testable, and the
+right thing to walk through before changing §4, §6, §7 or §9.
 
-### Concurrency and retries
+1. A **$200 charge applied $150 / $50 across two invoices**: one money movement, two
+   applications, a correct held balance, and no duplicate bank receipt.
+2. An **unapplied deposit** and a **refund** both remain visible without a mirror record.
+3. The **same charge arriving twice** — through collection and through connector evidence:
+   one canonical transaction, one original accounting effect.
+4. A **payout arriving before its charges**, or with incomplete evidence: inspectable, but
+   not falsely reconciled, and never a synthetic invoice allocation or revenue entry.
+5. A **vendor payment covering several bills, partially reversed**: correct allocations, a
+   correct payable balance, and matching bank evidence.
+6. A **control-account adjustment that ties in total but carries no document attribution**:
+   show a subledger discrepancy until it is properly resolved, and do not repost it.
+7. **Removing a connection** does not disable local accounting; **adding one** does not
+   indiscriminately export every historical local entry.
 
-- Concurrent apply / refund / credit commands cannot overspend a receipt, a bill or an
-  entitlement.
-- Repeated commands, duplicate webhooks and **reversed source arrival order** converge to the
-  same records, balances and external objects.
-- Failures before commit, after commit, and after provider success do not lose accounting work
-  and do not cause a second payment or a second export. An **unknown** refund outcome retains
-  its capacity reservation.
-- Concurrent manual and automatic runs, late arrivals and post-commit crashes cannot duplicate
-  a recognized event. An external timeout retries the **saved** journal, not a rebuilt one.
+🔑 Two properties worth stating separately, because they are the ones most often assumed:
 
-### Coverage and completeness
-
-- Collection, partial fulfillment, credits, refunds, fees and payout reconcile independently
-  for invoice-less imported orders and for manual ones.
-- Invoice and vendor workflows preserve explicit application amounts, credit availability,
-  overpayments and original receipt history.
-- Automatic runs and historical bulk runs use the **same** acceptance rules and the same
-  original dates.
-- Native and summary delivery cover each effect **exactly once**, match local account / date /
-  amount semantics, and reconcile the relevant remote open balances.
-
-### Boundaries and time
-
-- Close-period races, late facts, timezone boundaries, currency precision and grouped
-  corrections all preserve the original basis and complete membership.
-- 🔑 **Source-to-auxx reconciliation and auxx-to-provider reconciliation are two different
-  boundaries. A clean first proves nothing about the second.** The first proves acquisition and
-  normalization coverage; the second proves delivery and readback.
-- Disconnecting and reconnecting a source, or switching external books, preserves provenance,
-  prevents historical replay, and respects the active destination boundary.
-
-### Identity and routing
-
-- Two source observations can link to one receipt with a distinct merchant route, including
-  when only one of the two systems is connected. Two merchants sharing a gateway handle resolve
-  independently. A manual bank payment needs no processor integration at all.
-- Account previews explain the role / profile / route selection they made. A missing mapping
-  retains the confirmed money with **visibly blocked** accounting rather than rerouting it.
-  Changing a route between receipt, refund and payout preserves the original clearing balances.
-  Tax routing preserves component identity.
-
-### The scenarios that decide whether the money model is right
-
-- A $200 charge applied $150 / $50 across two invoices: **one** money movement, two
-  applications, a correct held balance, and no duplicate bank receipt.
-- An unapplied deposit and a refund both remain visible without a mirror record.
-- The same charge arriving through both collection and connector evidence: **one** canonical
-  transaction and **one** original accounting effect.
-- A payout arriving before its charges, or with incomplete evidence: inspectable, but not
-  falsely reconciled — and never a synthetic invoice allocation or revenue entry.
-- A vendor payment covering several bills, partially reversed, with correct allocations, a
-  correct payable balance and matching bank evidence.
-- A control-account adjustment that aligns GL totals but carries no document attribution:
-  show a **subledger discrepancy** until it is properly resolved, and do not repost it.
-- Removing a connection does not disable local accounting; adding one does not indiscriminately
-  export every historical local entry.
+- **Reversed source arrival order must converge.** Repeated commands, duplicate webhooks and
+  out-of-order facts all have to land on the same records and balances.
+- **Source-to-auxx and auxx-to-provider are two different reconciliation boundaries.** A
+  clean first proves nothing about the second.

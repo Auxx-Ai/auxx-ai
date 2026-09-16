@@ -171,6 +171,43 @@ async function validatePinnedConnectionInTx(
   }
 }
 
+/**
+ * The company the org's ACTIVE book connection points at, or `null` when nothing
+ * is connected.
+ *
+ * 🔑 The company, not the connection. One book has many `ExternalBookConnection`
+ * rows over time - every reconnect mints a new `epoch` - so a connection id is
+ * too narrow to identify whose ledger an entry came from. `externalCompanyId` is
+ * what `GlPosting.providerTenantId` stores, and it is what scopes the
+ * provider-entry uniqueness index (decision `G20`).
+ *
+ * Reads only, and refuses nothing: an org with no connection is the ordinary
+ * standalone case, and the caller decides what an absent company means.
+ */
+export async function readActiveBookCompanyId(
+  db: Database,
+  organizationId: string
+): Promise<string | null> {
+  const [row] = await db
+    .select({ companyId: schema.ExternalAccountingBook.externalCompanyId })
+    .from(schema.ExternalBookConnection)
+    .innerJoin(
+      schema.ExternalAccountingBook,
+      and(
+        eq(schema.ExternalAccountingBook.organizationId, organizationId),
+        eq(schema.ExternalAccountingBook.id, schema.ExternalBookConnection.bookId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.ExternalBookConnection.organizationId, organizationId),
+        eq(schema.ExternalBookConnection.state, 'active')
+      )
+    )
+    .limit(1)
+  return row?.companyId ?? null
+}
+
 /** Read a pinned connection from authoritative rows, without changing its destination. */
 export async function readPinnedAccountingConnectionInTx(
   tx: Transaction,

@@ -31,6 +31,7 @@ import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { readActiveBookCompanyId } from '../book-connections'
 import { resolvePeriodLock } from '../period-lock'
 import { isPeriodLocked, type PeriodLock, periodMonth } from '../periods'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../provider'
@@ -166,6 +167,9 @@ export async function syncProviderLedger(
       if (chunks.isErr()) throw chunks.error
 
       const provider = await resolveAccountingProvider(organizationId)
+      // Resolved ONCE per run: a walk reads one connected book, and the company
+      // is what scopes every provider entry id it brings across (`G20`).
+      const providerTenantId = await readActiveBookCompanyId(db, organizationId)
       if (provider.id === NONE_PROVIDER_ID) {
         throw new UnprocessableEntityError(
           'No accounting system is connected, so there is no ledger to sync from.',
@@ -216,6 +220,7 @@ export async function syncProviderLedger(
           glAccountIdByProviderId: inverted.value,
           lock,
           providerId: provider.id,
+          providerTenantId,
           actorUserId: input.actorUserId,
         })
         outcomes.push(outcome)
@@ -286,6 +291,8 @@ interface ChunkContext {
   glAccountIdByProviderId: ReadonlyMap<string, string>
   lock: PeriodLock
   providerId: string
+  /** The provider company the ledger was read from; stamped on every row written (`G20`). */
+  providerTenantId: string | null
   actorUserId?: string
 }
 
@@ -362,6 +369,7 @@ async function syncOneChunk(
       entry,
       glAccountIdByProviderId: ctx.glAccountIdByProviderId,
       providerId: ctx.providerId,
+      providerTenantId: ctx.providerTenantId,
       lock,
       actorUserId: ctx.actorUserId,
     })

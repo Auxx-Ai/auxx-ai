@@ -324,13 +324,32 @@ export const GlPosting = pgTable(
       table.docNumber.asc().nullsLast()
     ),
 
-    // One provider entry maps to one posting. Partial: NULL until posted, and an
-    // org with no provider connected never populates it.
+    // One provider entry maps to one posting, PER COMPANY. Partial: NULL until
+    // the row reaches (or comes from) a provider.
+    //
+    // 🛑 `providerTenantId` is in the key because a provider entry id is a
+    // per-company sequence - QuickBooks issues small integers, so `147` exists
+    // in every company and means something different in each (decision `G20`,
+    // task 24). Scoped to the org alone, two company files collide, and the
+    // failure is silent in the worst way: the entry reaches the provider,
+    // `markPosted` violates the index, `stampOutcome` catches and logs, the row
+    // stays `pending`, and `postEntry` still returns `posted`.
+    //
+    // ⚠️ It is the COMPANY, not the connection. One book has many
+    // `ExternalBookConnection` rows over time - a reconnect mints a new `epoch` -
+    // so keying on a connection id would be too narrow and the same entry seen
+    // across two epochs would be two rows.
+    //
+    // 🛑 Both write paths must stamp it or a row falls outside the guarantee
+    // entirely, because NULLs are DISTINCT in a unique index: export stamps it
+    // from the pinned connection's company, and the inbound sync stamps it from
+    // the active book (`provider-sync/writes.ts`).
     uniqueIndex('GlPosting_org_provider_entry_key')
       .using(
         'btree',
         table.organizationId.asc().nullsLast(),
         table.providerId.asc().nullsLast(),
+        table.providerTenantId.asc().nullsLast(),
         table.providerEntryId.asc().nullsLast()
       )
       .where(sql`${table.providerEntryId} IS NOT NULL`),

@@ -45,6 +45,18 @@ export interface PostProviderSyncEntryInput {
    * constant this file spells. Written to `GlPosting.providerId` as provenance.
    */
   providerId: string
+  /**
+   * The provider COMPANY this ledger was read from, stamped to
+   * `GlPosting.providerTenantId`. `null` when nothing is connected.
+   *
+   * 🛑 Without it an inbound row carries a `providerEntryId` and no company, and
+   * a provider entry id is a per-company sequence - `147` exists in every
+   * company and means something different in each. The uniqueness index over
+   * `(organizationId, providerId, providerTenantId, providerEntryId)` cannot
+   * constrain a NULL, so an unstamped row is outside the guarantee entirely
+   * (decision `G20`).
+   */
+  providerTenantId: string | null
   lock: PeriodLock
   actorUserId?: string
 }
@@ -93,7 +105,7 @@ export async function postProviderSyncEntry(
   organizationId: string,
   input: PostProviderSyncEntryInput
 ): Promise<Result<ProviderSyncEntryOutcome, Error>> {
-  const { entry, glAccountIdByProviderId, providerId, lock, actorUserId } = input
+  const { entry, glAccountIdByProviderId, providerId, providerTenantId, lock, actorUserId } = input
 
   // 🛑 The unmapped-account refusal, before anything is claimed. A guess that
   // lands on a real account produces an entry that balances and is wrong, and
@@ -151,6 +163,7 @@ export async function postProviderSyncEntry(
     glPostingId,
     providerId,
     providerEntryId: entry.txnId,
+    providerTenantId,
   })
   if (stamped.isErr()) return err(stamped.error)
 
@@ -224,13 +237,18 @@ async function stampProvenance(
     glPostingId: string
     providerId: string
     providerEntryId: string
+    providerTenantId: string | null
   }
 ): Promise<Result<void, Error>> {
   return guard(
     async () => {
       await db
         .update(schema.GlPosting)
-        .set({ providerId: input.providerId, providerEntryId: input.providerEntryId })
+        .set({
+          providerId: input.providerId,
+          providerEntryId: input.providerEntryId,
+          providerTenantId: input.providerTenantId,
+        })
         .where(
           and(
             eq(schema.GlPosting.id, input.glPostingId),
