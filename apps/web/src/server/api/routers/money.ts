@@ -65,6 +65,7 @@ import {
   syncPayouts,
   updateBankDeposit,
   voidInvoice,
+  voidInvoicePayment,
   writeOffInvoice,
 } from '@auxx/lib/money'
 import type { CreditMemoPostingGrouping, FulfillmentPostingGrouping } from '@auxx/lib/money/client'
@@ -728,13 +729,44 @@ export const moneyRouter = createTRPCRouter({
       return { ...recorded, postingStatus: posting.status }
     }),
 
+  /**
+   * Undo a recorded payment.
+   *
+   * 🔑 Two lanes, and the id says which. A legacy `PaymentTransaction` is
+   * deleted outright, as it always was. A money-model receipt is VOIDED — an
+   * immutable, hashed effect cannot be deleted, so the mistake is corrected by
+   * a second, reversing entry (task 54 unit 3).
+   */
   deletePayment: moneyAdminProcedure
-    .input(z.object({ transactionId: z.string() }))
+    .input(
+      z.object({
+        transactionId: z.string(),
+        /** Carried onto the correction's journal memo. */
+        reason: z.string().max(500).optional(),
+        /** Idempotency key for the money lane; ignored by the legacy one. */
+        commandKey: z.string().min(1).max(200).optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      return deleteManualPayment({
+      const legacy = await ctx.db.query.PaymentTransaction.findFirst({
+        where: and(
+          eq(schema.PaymentTransaction.organizationId, ctx.session.organizationId),
+          eq(schema.PaymentTransaction.id, input.transactionId)
+        ),
+        columns: { id: true },
+      })
+      if (legacy)
+        return deleteManualPayment({
+          organizationId: ctx.session.organizationId,
+          userId: ctx.session.user.id,
+          transactionId: input.transactionId,
+        })
+      await voidInvoicePayment(ctx.db, {
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
-        transactionId: input.transactionId,
+        moneyTransactionId: input.transactionId,
+        reason: input.reason,
+        commandKey: input.commandKey ?? `void:${input.transactionId}`,
       })
     }),
 

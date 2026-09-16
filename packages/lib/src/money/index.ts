@@ -210,6 +210,16 @@ export {
 export { createInvoiceFromWorkOrder, deleteInvoiceLine, listUninvoicedLines } from './gather'
 export { deleteInvoice, markInvoiceSent, voidInvoice } from './invoice-lifecycle'
 export {
+  type ApplyMoneyToInvoiceInput,
+  type ApplyMoneyToInvoiceResult,
+  applyMoneyToInvoice,
+} from './invoices/apply-money'
+export {
+  type MoveInvoicePaymentInput,
+  type MoveInvoicePaymentResult,
+  moveInvoicePayment,
+} from './invoices/move-payment'
+export {
   type InvoicePaymentRow,
   listInvoiceMoneyPayments,
 } from './invoices/payment-reads'
@@ -225,6 +235,16 @@ export {
   type RecordInvoicePaymentResult,
   recordInvoicePayment,
 } from './invoices/record-payment'
+export {
+  type UnapplyMoneyFromInvoiceInput,
+  type UnapplyMoneyFromInvoiceResult,
+  unapplyMoneyFromInvoice,
+} from './invoices/unapply-money'
+export {
+  type VoidInvoicePaymentInput,
+  type VoidInvoicePaymentResult,
+  voidInvoicePayment,
+} from './invoices/void-payment'
 export {
   type PreviewWriteOffInput,
   previewWriteOffInvoice,

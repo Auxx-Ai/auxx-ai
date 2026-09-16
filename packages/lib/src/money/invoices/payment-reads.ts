@@ -11,12 +11,12 @@
  *
  * ## ⚠️ `provider: 'money'` is load-bearing in the UI
  *
- * `payments-list.tsx` gates its Delete action on `provider === 'manual'` and its
- * Refund action on the Stripe rail. A money-model receipt is neither, so it
- * renders as a row with no actions — which is correct today: deleting one is a
- * `MoneyApplication` `unapply` plus a journal reversal, and that correction
- * command is unit 3. A row wearing `'manual'` would show a Delete button that
- * cannot work.
+ * `payments-list.tsx` keys its actions off it: a `money` row offers **Void**
+ * (`voidInvoicePayment`, a reversing correction) where a legacy `manual` row
+ * offers Delete, and neither offers the Stripe rail's Refund. The distinction
+ * has to survive into the row because an immutable, hashed effect cannot be
+ * deleted the way a `PaymentTransaction` could — the router routes on the id
+ * and the two lanes never share one.
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'

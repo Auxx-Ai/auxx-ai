@@ -360,6 +360,71 @@ async function assertCorrectionHead(
     throw new ConflictError('The correction head changed; recompute against the accepted history')
 }
 
+/** One frozen contribution line, as every accepted basis carries them. */
+type ContributionLine = {
+  glAccountId: string
+  direction: 'debit' | 'credit'
+  amountMinor: string
+}
+
+/** `account → signed minor`, debit positive. The shape a negation compares on. */
+function netByAccount(contribution: readonly ContributionLine[]): Map<string, bigint> {
+  const net = new Map<string, bigint>()
+  for (const line of contribution) {
+    const signed = (line.direction === 'debit' ? 1n : -1n) * BigInt(line.amountMinor)
+    net.set(line.glAccountId, (net.get(line.glAccountId) ?? 0n) + signed)
+  }
+  return net
+}
+
+/**
+ * A correction must be the EXACT negation of the effect it corrects.
+ *
+ * 🔑 **The invariant the ledger was missing.** Corrections have been
+ * structurally supported since the beginning — `correctsEffectId`, heads,
+ * ancestry — but nothing ever accepted one, so nothing ever checked what a
+ * correction is allowed to contain. Without this, "correct effect X" could post
+ * any balanced journal at all and still claim to reverse X.
+ *
+ * ⚠️ Compared per ACCOUNT, not per `lineKey`. A correction is free to arrive as
+ * one line per account where the original used three (a tax split, say); what
+ * must not differ is the net movement of every account it touches. Comparing
+ * line keys would reject a correct reversal for cosmetic reasons.
+ *
+ * 🛑 Family-agnostic on purpose. Every one of the seven effect kinds gets this
+ * for free, which is the whole reason it lives here and not in one policy's
+ * schema — a schema cannot see the effect being corrected.
+ */
+async function assertCorrectionNegatesOriginal(
+  tx: Transaction,
+  organizationId: string,
+  correctsEffectId: string,
+  contribution: readonly ContributionLine[]
+) {
+  const [original] = await tx
+    .select({ acceptedBasis: schema.AccountingEffect.acceptedBasis })
+    .from(schema.AccountingEffect)
+    .where(
+      and(
+        eq(schema.AccountingEffect.organizationId, organizationId),
+        eq(schema.AccountingEffect.id, correctsEffectId)
+      )
+    )
+    .limit(1)
+  const originalContribution = (original?.acceptedBasis as { contribution?: ContributionLine[] })
+    ?.contribution
+  if (!originalContribution?.length)
+    throw new ConflictError('The corrected effect has no frozen contribution to reverse')
+
+  const was = netByAccount(originalContribution)
+  const now = netByAccount(contribution)
+  for (const account of new Set([...was.keys(), ...now.keys()]))
+    if ((now.get(account) ?? 0n) !== -(was.get(account) ?? 0n))
+      throw new ConflictError(
+        'A correction must exactly reverse the effect it corrects, account for account'
+      )
+}
+
 /**
  * Accept exact work membership, journal lines and delivery intent in the caller's transaction.
  * No provider, cache, queue or event calls occur. Domain refusals throw so the caller rolls back.
@@ -553,6 +618,13 @@ export async function acceptEntryInTx(
       throw new ConflictError('Accept corrections to the same original in separate commands')
     if (work.correctsEffectId) corrections.add(work.correctsEffectId)
     await assertCorrectionHead(tx, input.organizationId, work, member.expectedCorrectionHeadId)
+    if (work.correctsEffectId)
+      await assertCorrectionNegatesOriginal(
+        tx,
+        input.organizationId,
+        work.correctsEffectId,
+        (member.acceptedBasis as { contribution: ContributionLine[] }).contribution
+      )
     const saved = await tx.query.AccountingWorkBasis.findFirst({
       where: and(
         eq(schema.AccountingWorkBasis.organizationId, input.organizationId),
@@ -587,6 +659,22 @@ export async function acceptEntryInTx(
         !isReceiptBasis(acceptedBasis) ||
         accountingBasisHash(acceptedBasis.calculation) !==
           accountingBasisHash(receiptBasis.calculation)
+      // 🔑 The direction check the schema gave up so corrections could exist.
+      // An ORIGINAL receipt debits its cash account — money arriving is an asset
+      // going up. Only a correction is allowed to run the other way, and what
+      // constrains that one is the negation check below.
+      if (!ownerMismatch && work.operation === 'original' && isReceiptBasis(acceptedBasis)) {
+        const cashGlAccountId =
+          'kind' in acceptedBasis.calculation
+            ? acceptedBasis.calculation.cashGlAccountId
+            : acceptedBasis.calculation.route.glAccountId
+        if (
+          !acceptedBasis.contribution.some(
+            (line) => line.direction === 'debit' && line.glAccountId === cashGlAccountId
+          )
+        )
+          throw new ConflictError('An original receipt must debit its cash account')
+      }
     }
     if (!ownerMismatch && work.effectKind === 'customer_credit_issued') {
       ownerMismatch =
