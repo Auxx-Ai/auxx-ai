@@ -51,6 +51,7 @@ import {
   readMonthActivity,
   readRailFeeStatus,
   readTrialBalance,
+  releaseExportsForSync,
   removeChartAccount,
   repairAccountingBookConnection,
   resolveAccountingProvider,
@@ -212,6 +213,7 @@ const draftEntry = z.object({
  * | `preview`         | `ledger.view` |
  * | `failedExports` | `ledger.view` |
  * | `retryExport` | `ledger.post` |
+ * | `syncExports` | `ledger.post` |
  * | `verifyBalance`   | `ledger.view` |
  * | `railFeeStatus`   | `ledger.view` |
  * | `post`            | `ledger.post` |
@@ -1127,6 +1129,33 @@ export const ledgerRouter = createTRPCRouter({
       const result = await retryExport(ctx.db, {
         organizationId,
         glPostingId: input.glPostingId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Release held entries to the accounting system - the sync queue's bulk
+   * action (plans/accounting/tasks/53-two-modes-one-ledger.md §7.2).
+   *
+   * 🛑 This RELEASES and returns; it does not wait on the provider. With the
+   * hold on, a posting rests `pending` with its delivery unreleased, and this
+   * stamps `releasedAt` and hands the journal to the delivery worker. An export
+   * is three to five sequential round trips to a rate-limited third party and a
+   * bulk bar acts on forty rows at once, so doing it inline is a request nobody
+   * holds open. `retryExport` above stays the one-row door, precisely because a
+   * single row pressed on its own wants the refusal back in the same breath.
+   *
+   * ⚠️ 500 is a ceiling on ONE call, not on the queue: the read behind it is
+   * unbounded on purpose. It exists so a select-all over an eighteen-month
+   * backlog cannot open five thousand transactions inside one request.
+   */
+  syncExports: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ glPostingIds: z.array(z.string().min(1)).min(1).max(500) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await releaseExportsForSync(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        glPostingIds: input.glPostingIds,
       })
       if (result.isErr()) throw result.error
       return result.value

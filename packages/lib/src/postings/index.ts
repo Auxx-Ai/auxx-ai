@@ -634,7 +634,12 @@ export {
   resolveAccountLines,
   resolveRoles,
 } from './resolve-roles'
-export { retryExport } from './retry-export'
+export {
+  releaseExportsForSync,
+  retryExport,
+  type SyncReleaseOutcome,
+  type SyncReleaseResult,
+} from './retry-export'
 export { type ReverseEntryOptions, reverseEntry } from './reverse-entry'
 export {
   listChartAccounts,
@@ -708,5 +713,6 @@ export {
   type BooksBalanceReport,
   type FailedExport,
   listFailedExports,
+  type SyncQueueRow,
   verifyBooksBalance,
 } from './verify-balance'

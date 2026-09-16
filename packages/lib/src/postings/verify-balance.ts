@@ -42,8 +42,8 @@ import { compareMonths, periodMonth } from './periods'
 import type {
   BooksBalanceDiscrepancy,
   BooksBalanceReport,
-  FailedExport,
   PostingType,
+  SyncQueueRow,
 } from './types'
 
 const logger = createScopedLogger('postings:verify-balance')
@@ -256,8 +256,8 @@ async function countIncompleteRevenue(
   }
 }
 
-// `FailedExport` moved to `types.ts` - see the note there.
-export type { FailedExport } from './types'
+// `FailedExport` and `SyncQueueRow` live in `types.ts` - see the note there.
+export type { FailedExport, SyncQueueRow } from './types'
 
 /**
  * Every entry that has been claimed but is not in the books.
@@ -288,12 +288,23 @@ export type { FailedExport } from './types'
  *
  * Ordered by `periodKey` then `postingType` so the banner and the console list
  * agree with each other and with themselves between refreshes.
+ *
+ * ⚠️ Returns {@link SyncQueueRow}, which is `FailedExport` widened with the
+ * money and the release axis (53 §7.2.4/§7.2.5). Every existing caller keeps
+ * reading it as a `FailedExport` and ignores the rest. The `AccountingDelivery`
+ * join is a LEFT join on purpose: the delivery row is written by the delivery
+ * worker, not by the acceptance, so a freshly accepted posting is legitimately
+ * in this list with no delivery yet.
+ *
+ * 🛑 Unbounded, deliberately. `through` is the only narrowing this read offers
+ * and the queue's whole point is a backlog that spans months, so it is called
+ * with no bound. See 53 §7.2.4.
  */
 export async function listFailedExports(
   db: Database,
   organizationId: string,
   options?: { through?: string }
-): Promise<Result<FailedExport[], Error>> {
+): Promise<Result<SyncQueueRow[], Error>> {
   try {
     // Normalized through `periodMonth`, which also VALIDATES: a malformed bound
     // throws `BadRequestError` here rather than silently matching nothing, and a
@@ -309,8 +320,21 @@ export async function listFailedExports(
         docNumber: schema.GlPosting.docNumber,
         attempts: schema.GlPosting.attempts,
         failureReason: schema.GlPosting.failureReason,
+        txnDate: schema.GlPosting.txnDate,
+        totalMinor: schema.GlPosting.totalMinor,
+        currency: schema.GlPosting.currency,
+        deliveryIntent: schema.GlPosting.deliveryIntent,
+        releasedAt: schema.AccountingDelivery.releasedAt,
+        deliveryState: schema.AccountingDelivery.state,
       })
       .from(schema.GlPosting)
+      .leftJoin(
+        schema.AccountingDelivery,
+        and(
+          eq(schema.AccountingDelivery.organizationId, schema.GlPosting.organizationId),
+          eq(schema.AccountingDelivery.glPostingId, schema.GlPosting.id)
+        )
+      )
       .where(
         and(
           eq(schema.GlPosting.organizationId, organizationId),
@@ -321,9 +345,27 @@ export async function listFailedExports(
       )
       .orderBy(asc(schema.GlPosting.periodKey), asc(schema.GlPosting.postingType))
 
-    const owed: FailedExport[] = []
+    // 🛑 Deduped by posting, because the join CAN fan out. The delivery's unique
+    // key is `(organizationId, bookId, glPostingId)`, so an org that ever pins a
+    // second book gets two delivery rows for one journal - and one journal
+    // listed twice in a queue with a checkbox on each is a queue that bulk-syncs
+    // the same entry twice. A RELEASED delivery wins the tie: the question this
+    // row answers is "has anybody asked for this to be sent", and one book
+    // having asked is a yes.
+    const owed: SyncQueueRow[] = []
+    const byPosting = new Map<string, number>()
     for (const row of rows) {
       if (throughMonth && !withinThrough(row.periodKey, throughMonth)) continue
+      const releasedAt = row.releasedAt ? new Date(row.releasedAt).toISOString() : null
+      const seen = byPosting.get(row.glPostingId)
+      if (seen !== undefined) {
+        if (releasedAt && !owed[seen]!.releasedAt) {
+          owed[seen]!.releasedAt = releasedAt
+          owed[seen]!.deliveryState = row.deliveryState
+        }
+        continue
+      }
+      byPosting.set(row.glPostingId, owed.length)
       owed.push({
         periodKey: row.periodKey,
         postingType: row.postingType as PostingType,
@@ -332,6 +374,12 @@ export async function listFailedExports(
         docNumber: row.docNumber,
         attempts: row.attempts,
         failureReason: row.failureReason,
+        txnDate: row.txnDate,
+        totalMinor: toMinor(row.totalMinor),
+        currency: row.currency,
+        deliveryIntent: row.deliveryIntent,
+        releasedAt,
+        deliveryState: row.deliveryState,
       })
     }
 

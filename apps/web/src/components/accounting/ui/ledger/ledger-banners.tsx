@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { FailedExport } from '@auxx/lib/postings/client'
+import type { SyncQueueRow } from '@auxx/lib/postings/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { CalendarCheck2 } from 'lucide-react'
 import { FailedExportsBanner } from './books-health'
@@ -13,7 +13,11 @@ interface LedgerBannersProps {
   /** False once every month from the cutoff forward is posted or locked. */
   hasOpenPeriod: boolean
   periodLabel: string
-  exports: FailedExport[]
+  /** The whole queue, all periods. This component takes only the refusals out of it. */
+  exports: SyncQueueRow[]
+  /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
+  providerLabel: string
+  onOpenSyncQueue: () => void
 }
 
 /**
@@ -30,8 +34,18 @@ export function LedgerBanners({
   hasOpenPeriod,
   periodLabel,
   exports,
+  providerLabel,
+  onOpenSyncQueue,
 }: LedgerBannersProps) {
-  const nothingToSay = hasPeriod && hasOpenPeriod && exports.length === 0
+  /**
+   * 🛑 REFUSALS only (53 §7.2.2). With the hold on, every posted entry rests at
+   * `exportStatus: 'pending'`, so a banner keyed on the whole queue would be
+   * open on every visit forever - and a banner that is always there is one
+   * nobody reads by the time something has actually gone wrong. What is merely
+   * HELD is the sync queue's, and the rail is the door to it.
+   */
+  const refused = exports.filter((row) => row.exportStatus === 'failed')
+  const nothingToSay = hasPeriod && hasOpenPeriod && refused.length === 0
   // 🛑 `null`, not an empty padded div. The column this sits in has no padding
   // of its own (every `Section` under it pads itself), so a wrapper that always
   // rendered would leave 24px of dead space above the first section on the
@@ -52,7 +66,13 @@ export function LedgerBanners({
         </Alert>
       )}
 
-      {exports.length > 0 && <FailedExportsBanner exports={exports} />}
+      {refused.length > 0 && (
+        <FailedExportsBanner
+          exports={refused}
+          providerLabel={providerLabel}
+          onOpenSyncQueue={onOpenSyncQueue}
+        />
+      )}
 
       {hasPeriod && !hasOpenPeriod && (
         <Alert variant='neutral'>

@@ -59,6 +59,12 @@ describe('readCompleteness', () => {
           docNumber: 'GL-ME-2026-07',
           attempts: 2,
           failureReason: 'QuickBooks rate limit',
+          txnDate: '2026-07-31',
+          totalMinor: 12_500,
+          currency: 'USD',
+          deliveryIntent: 'manual',
+          releasedAt: null,
+          deliveryState: null,
         },
       ])
     )

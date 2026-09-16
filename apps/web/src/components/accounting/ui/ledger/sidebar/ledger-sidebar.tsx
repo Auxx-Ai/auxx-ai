@@ -6,12 +6,14 @@ import type {
   BooksBalanceReport,
   DuplicateMovementFinding,
   RailFeeStatus,
+  SyncQueueRow,
 } from '@auxx/lib/postings/client'
 import { ModuleSidebar } from '@auxx/ui/components/module-sidebar'
 import { useLedgerSidebarStore } from '~/components/accounting/stores/ledger-sidebar-store'
 import { BooksGroup } from './books-group'
 import { CloseMonthGroup } from './close-month-group'
 import { RailFeesGroup } from './rail-fees-group'
+import { SyncQueueGroup } from './sync-queue-group'
 import { ThisMonthGroup } from './this-month-group'
 
 interface LedgerSidebarProps {
@@ -38,6 +40,17 @@ interface LedgerSidebarProps {
 
   /** Setup is not finalized, or no month resolved: the Close group has nothing to act on. */
   hasPeriod: boolean
+
+  // ── The sync queue (53 §7.2.4, D17) ──────────────────────────────────────
+  /** Everything in the books and not in the provider's, ALL periods. */
+  syncQueue: SyncQueueRow[] | undefined
+  syncQueueError: string | null
+  /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
+  providerLabel: string
+  /** The queue panel is what the main column is showing. */
+  isSyncQueueOpen: boolean
+  onOpenSyncQueue: () => void
+  onCloseSyncQueue: () => void
 }
 
 /**
@@ -78,6 +91,12 @@ export function LedgerSidebar({
   railsError,
   periodKey,
   hasPeriod,
+  syncQueue,
+  syncQueueError,
+  providerLabel,
+  isSyncQueueOpen,
+  onOpenSyncQueue,
+  onCloseSyncQueue,
 }: LedgerSidebarProps) {
   const open = useLedgerSidebarStore((state) => state.open)
   const setOpen = useLedgerSidebarStore((state) => state.setOpen)
@@ -108,6 +127,19 @@ export function LedgerSidebar({
           bookTimeZone={bookTimeZone}
         />
       )}
+
+      {/* 🛑 NOT gated on a month, and this is the point of it. The queue is a
+          backlog that spans months (§7.2.4), so gating the only door to it on
+          the month the toolbar resolved would hide every entry held from an
+          earlier one. */}
+      <SyncQueueGroup
+        rows={syncQueue}
+        error={syncQueueError}
+        providerLabel={providerLabel}
+        isOpen={isSyncQueueOpen}
+        onOpen={onOpenSyncQueue}
+        onClose={onCloseSyncQueue}
+      />
 
       {/* ⚠️ NOT gated on a month. Balance is a WHOLE-LEDGER fact; the month only
           adds the completeness half. */}

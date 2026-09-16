@@ -1275,6 +1275,66 @@ export interface FailedExport {
   failureReason: string | null
 }
 
+/**
+ * One row of the SYNC QUEUE: a {@link FailedExport} plus the two things a queue
+ * needs that a banner never did - the money, and the RELEASE axis.
+ *
+ * 🛑 `exportStatus` is one axis and on its own it is not enough
+ * (plans/accounting/tasks/53-two-modes-one-ledger.md §7.2.5). Once the hold is
+ * on (`quickbooks.postJournalEntries` off) `pending` stops meaning "in flight"
+ * and becomes the resting state of every posting the organization makes, and
+ * the two readings need telling apart:
+ *
+ *   * `deliveryIntent: 'manual'` with no `releasedAt` - HELD. Nobody has asked
+ *     for this to be sent, so nothing is wrong and nothing is owed. This is the
+ *     state the Sync button acts on.
+ *   * `releasedAt` set (or `deliveryIntent: 'automatic'`) and still `pending` -
+ *     RELEASED and not yet in the provider's books. In flight, or claimed by a
+ *     run that died before the push.
+ *
+ * ⚠️ `deliveryIntent: null` is a LEGACY row that predates the delivery pipeline.
+ * It has no `AccountingDelivery` at all, so its `releasedAt` is null for a
+ * reason that has nothing to do with a hold; it reads as released, never held.
+ *
+ * `deliveryState` is `AccountingDelivery.state`, null until the delivery worker
+ * has planned the row. It says nothing `exportStatus` does not except in one
+ * case: `blocked` on a row this side still calls `pending` means the operation
+ * was parked between the two writes.
+ */
+export interface SyncQueueRow extends FailedExport {
+  /** The accounting date, `YYYY-MM-DD`. */
+  txnDate: string
+  /** Integer minor units. Equals both the debit and the credit total. */
+  totalMinor: number
+  /** ISO 4217, off the posting itself - never assumed. */
+  currency: string
+  deliveryIntent: 'not_required' | 'manual' | 'automatic' | null
+  /** `AccountingDelivery.releasedAt` as an ISO string, or `null`. */
+  releasedAt: string | null
+  deliveryState: 'pending' | 'blocked' | 'delivered' | null
+}
+
+/** The two-axis reading of a {@link SyncQueueRow}, and the queue's tab set. */
+export const SYNC_QUEUE_STATES = ['held', 'sending', 'failed'] as const
+export type SyncQueueState = (typeof SYNC_QUEUE_STATES)[number]
+
+/**
+ * Which of the three states one queue row is in.
+ *
+ * Pure, and the single place the two axes are collapsed into one word - the tab
+ * filter, the row badge and the bulk bar's copy all read it, so they cannot
+ * disagree about what a row is.
+ */
+export function syncQueueState(row: SyncQueueRow): SyncQueueState {
+  if (row.exportStatus === 'failed') return 'failed'
+  // HELD is a positive claim and needs both halves: the posting was accepted
+  // under the hold, and nothing has released it since. Anything else pending is
+  // on its way, including every legacy row - which has no delivery to release
+  // and so must never be offered a Sync button that would do nothing.
+  if (row.deliveryIntent === 'manual' && !row.releasedAt) return 'held'
+  return 'sending'
+}
+
 /** One entry whose lines do not tie, or do not sum to its recorded total. */
 export interface BooksBalanceDiscrepancy {
   glPostingId: string

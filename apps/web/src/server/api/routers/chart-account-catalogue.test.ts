@@ -120,6 +120,7 @@ vi.mock('@auxx/lib/postings', () => ({
   previewEntry: vi.fn(),
   previewJournalEntry: vi.fn(),
   previewMonthEnd: vi.fn(),
+  releaseExportsForSync: vi.fn(),
   removeChartAccount: vi.fn(),
   resolvePeriodLock: vi.fn(),
   retryExport: vi.fn(),

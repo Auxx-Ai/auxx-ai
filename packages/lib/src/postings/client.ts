@@ -552,4 +552,8 @@ export {
   type RoleSourceAssignmentRow,
   type RoleSourceRow,
   type RoleSourceScope,
+  SYNC_QUEUE_STATES,
+  type SyncQueueRow,
+  type SyncQueueState,
+  syncQueueState,
 } from './types'

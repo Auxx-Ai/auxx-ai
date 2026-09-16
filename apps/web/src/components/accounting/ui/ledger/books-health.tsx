@@ -5,14 +5,14 @@
 import type {
   BooksBalanceReport,
   DuplicateMovementFinding,
-  FailedExport,
+  SyncQueueRow,
 } from '@auxx/lib/postings/client'
 import { describeIncompleteRevenue } from '@auxx/lib/postings/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
-import { CircleAlert, Loader, RefreshCw, TriangleAlert } from 'lucide-react'
+import { CircleAlert, RefreshCw, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { AccountLabel } from '~/components/accounting/ui/account-label'
 import { PostingLinesDialog } from '~/components/accounting/ui/ledger-card'
@@ -133,73 +133,89 @@ function CompletenessLines({ report }: BooksBalanceLineProps) {
 }
 
 interface FailedExportsBannerProps {
-  exports: FailedExport[]
+  /** ONLY refused rows. Held and in-flight ones belong in the sync queue. */
+  exports: SyncQueueRow[]
+  /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
+  providerLabel: string
+  /** Opens the sync queue view, where the rest of the outstanding copies live. */
+  onOpenSyncQueue: () => void
 }
 
 /**
- * Entries that ARE in the books and have not reached the accounting system.
+ * Entries that ARE in the books and that the provider REFUSED.
  *
- * 🛑 The wording matters and it is the whole point of the export split. This
- * banner used to say these entries were "claimed but not in the books", which
- * was true only because a refused push took them out of the books. It no longer
- * does, so the banner must not imply the statements are short - they are not.
- * What is outstanding is the COPY. See plans/accounting/export-state-split.md.
+ * 🛑 **Refusals only, and that is a change** (53 §7.2.2). This banner used to
+ * list every `pending` row as well, which was right while `pending` meant "in
+ * flight": the hold was off, so a row resting there was a push that had not
+ * answered. With the hold ON (`quickbooks.postJournalEntries` off) `pending`
+ * becomes the resting state of every entry the organization posts, and a banner
+ * listing all of them would be permanently open, permanently long, and
+ * permanently wrong about what it was reporting - a healthy hold rendered as
+ * forty problems. Held entries are the SYNC QUEUE's, reached from the rail.
  *
- * 🛑 `pending` and `failed` stay visually distinct. They call for different
- * actions: `pending` is owed and has not been refused (in flight, or claimed by
- * a run that died before the push), while `failed` was attempted and refused and
- * carries the reason. `attempts` and `failureReason` are on the shipped row
- * precisely so nobody is sent to the logs for a string already in the database.
+ * ⚠️ `hasBooksFindings` never counted exports at all, so the rail's Books group
+ * was never at risk here; this banner was.
  *
- * ⚠️ Nothing is filtered out of this list. `periodMonth` throws on keys
- * `GlPosting` explicitly permits (`build` keys on the build number, `payout` on
- * the payout id), and the answer is to include the row anyway.
- * `formatPeriodLabel` returns a non-month key unchanged rather than throwing.
+ * 🛑 The wording matters. These entries are NOT missing from the statements -
+ * they are in the books and it is the COPY that is outstanding. See
+ * plans/accounting/export-state-split.md.
+ *
+ * ⚠️ Nothing is filtered by period. `periodMonth` throws on keys `GlPosting`
+ * explicitly permits (`build` keys on the build number, `payout` on the payout
+ * id), and the answer is to include the row anyway. `formatPeriodLabel` returns
+ * a non-month key unchanged rather than throwing.
  */
-export function FailedExportsBanner({ exports: owed }: FailedExportsBannerProps) {
+export function FailedExportsBanner({
+  exports: refused,
+  providerLabel,
+  onOpenSyncQueue,
+}: FailedExportsBannerProps) {
   const utils = api.useUtils()
-  const retryExport = api.ledger.retryExport.useMutation({
+  // Same write as the sync queue's own Sync, deliberately: one verb must not
+  // mean "release to the worker" on one surface and "push now" on another when
+  // both sit on this page. An export is 3 to 5 sequential round trips to a
+  // rate-limited provider, so it belongs on the queue either way - the entry
+  // moves to `Sending` and the worker finishes it.
+  const syncExports = api.ledger.syncExports.useMutation({
     onSuccess: (result) => {
-      if (result.exportStatus === 'failed') {
+      const refusal = result.outcomes.find((outcome) => outcome.status === 'error')
+      if (refusal) {
         toastError({
-          title: 'The accounting system refused it again',
-          description: result.error ?? 'No reason was recorded.',
+          title: `Could not sync it`,
+          description: refusal.message ?? 'No reason was recorded.',
         })
       }
       void utils.ledger.failedExports.invalidate()
       void utils.ledger.listPostings.invalidate()
     },
     onError: (error) => {
-      toastError({ title: 'Could not retry the export', description: error.message })
+      toastError({ title: 'Could not sync it', description: error.message })
     },
   })
 
-  if (owed.length === 0) return null
-
-  const failed = owed.filter((row) => row.exportStatus === 'failed')
-  const pending = owed.filter((row) => row.exportStatus === 'pending')
+  if (refused.length === 0) return null
 
   return (
-    <Alert variant={failed.length > 0 ? 'warning' : 'neutral'}>
-      {failed.length > 0 ? <CircleAlert /> : <Loader />}
+    <Alert variant='warning'>
+      <CircleAlert />
       <AlertTitle className='flex-wrap'>
-        {owed.length} {owed.length === 1 ? 'entry is' : 'entries are'} in your books but not in the
-        accounting system
+        {providerLabel} refused {refused.length} {refused.length === 1 ? 'entry' : 'entries'}. They
+        are still in your books
       </AlertTitle>
 
       <div className='mt-2 flex flex-col gap-2'>
-        {[...failed, ...pending].map((row) => (
+        {refused.map((row) => (
           <div
             key={row.glPostingId}
             className='flex flex-col gap-1 rounded-lg border bg-background p-3'>
             <div className='flex flex-wrap items-center gap-2 text-sm'>
-              <Badge variant={row.exportStatus === 'failed' ? 'amber' : 'gray'} size='sm'>
-                {row.exportStatus === 'failed' ? 'Export refused' : 'Export pending'}
+              <Badge variant='amber' size='sm'>
+                Refused
               </Badge>
               <span>{formatPeriodLabel(row.periodKey)}</span>
-              <span className='font-mono text-xs text-muted-foreground'>{row.docNumber}</span>
-              <span className='text-xs text-muted-foreground'>{row.postingType}</span>
-              <span className='text-xs text-muted-foreground'>
+              <span className='font-mono text-muted-foreground text-xs'>{row.docNumber}</span>
+              <span className='text-muted-foreground text-xs'>{row.postingType}</span>
+              <span className='text-muted-foreground text-xs'>
                 {row.attempts} {row.attempts === 1 ? 'attempt' : 'attempts'}
               </span>
               <Button
@@ -207,24 +223,31 @@ export function FailedExportsBanner({ exports: owed }: FailedExportsBannerProps)
                 size='sm'
                 className='ml-auto'
                 loading={
-                  retryExport.isPending && retryExport.variables?.glPostingId === row.glPostingId
+                  syncExports.isPending &&
+                  syncExports.variables?.glPostingIds.includes(row.glPostingId)
                 }
-                loadingText='Retrying...'
-                onClick={() => retryExport.mutate({ glPostingId: row.glPostingId })}>
+                loadingText='Syncing...'
+                onClick={() => syncExports.mutate({ glPostingIds: [row.glPostingId] })}>
                 <RefreshCw />
-                Retry export
+                Sync again
               </Button>
             </div>
             {row.failureReason ? (
-              <p className='text-sm text-muted-foreground'>{row.failureReason}</p>
+              <p className='text-muted-foreground text-sm'>{row.failureReason}</p>
             ) : (
-              <p className='text-xs text-muted-foreground'>
-                No refusal was recorded. This export is still in flight, or the run that claimed the
-                entry died before pushing it.
+              <p className='text-muted-foreground text-xs'>
+                No refusal was recorded. Open the sync queue to see where this one stands.
               </p>
             )}
           </div>
         ))}
+      </div>
+
+      <div className='mt-2'>
+        <Button variant='ghost' size='sm' onClick={onOpenSyncQueue}>
+          <RefreshCw />
+          Open the sync queue
+        </Button>
       </div>
     </Alert>
   )

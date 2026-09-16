@@ -17,8 +17,10 @@ import {
   Layers,
   Lock,
   Plus,
+  RefreshCw,
+  X,
 } from 'lucide-react'
-import { useQueryState } from 'nuqs'
+import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useState } from 'react'
 import { useAccountingMonth } from '~/components/accounting/hooks/use-accounting-month'
 import {
@@ -64,6 +66,8 @@ import { MonthEndEntrySection } from './month-end-entry-section'
 import { PostingDrawer } from './posting-drawer'
 import { RevisionStrip } from './revision-strip'
 import { LedgerSidebar } from './sidebar/ledger-sidebar'
+import { SyncQueuePanel } from './sync-queue/sync-queue-panel'
+import { SYNC_QUEUE_TABS } from './sync-queue/sync-queue-rows'
 
 /** The setting that declares how far the books are closed. `DOCUMENTS` scope. */
 const LOCKED_THROUGH_KEY = 'ledger.lockedThroughMonth'
@@ -121,6 +125,15 @@ export function LedgerPage() {
   const [postingId, setPostingId] = useQueryState('posting')
   // `?je=new` or `?je=<journalEntryId>` - the JE drawer (HANDOFF slot 1B).
   const [journalEntryParam, setJournalEntryParam] = useQueryState('je')
+  /**
+   * 🛑 The sync queue is a VIEW of this page, not a second route (53 D17).
+   * `GlPosting` is already the aggregate, so an exports page would list the same
+   * rows with different columns. One param carries both halves - present means
+   * the queue is what the column is showing, and its value is the tab - so a
+   * pasted link reopens the pile somebody was actually looking at.
+   */
+  const [queueTab, setQueueTab] = useQueryState('queue', parseAsStringLiteral(SYNC_QUEUE_TABS))
+  const isSyncQueueOpen = queueTab !== null
   const setSidebarOpen = useLedgerSidebarStore((state) => state.setOpen)
 
   /**
@@ -129,6 +142,19 @@ export function LedgerPage() {
    * scrolls to nothing and the refusal's only remedy reads as a dead button.
    */
   const revealLock = useCallback(() => setSidebarOpen(true), [setSidebarOpen])
+
+  /**
+   * The queue opens on Ready to sync, which is the pile it exists to clear.
+   *
+   * ⚠️ `?posting=` is dropped on the way out, not on the way in: a row opened
+   * from the queue can be from any month, and leaving its drawer over the
+   * month view would show an entry the month below it does not list.
+   */
+  const openSyncQueue = useCallback(() => void setQueueTab('held'), [setQueueTab])
+  const closeSyncQueue = useCallback(() => {
+    void setPostingId(null)
+    void setQueueTab(null)
+  }, [setQueueTab, setPostingId])
 
   const { activePeriod, activePeriodKey, bookTimeZone, currencyCode } = period
 
@@ -435,10 +461,20 @@ export function LedgerPage() {
             railsError={railFeeStatusQuery.isError ? railFeeStatusQuery.error.message : null}
             periodKey={activePeriodKey}
             hasPeriod={!!activePeriodKey && !isChecklistState}
+            syncQueue={failedExportsQuery.data}
+            syncQueueError={failedExportsQuery.isError ? failedExportsQuery.error.message : null}
+            providerLabel={providerLabel}
+            isSyncQueueOpen={isSyncQueueOpen}
+            onOpenSyncQueue={openSyncQueue}
+            onCloseSyncQueue={closeSyncQueue}
           />
 
           <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
-            {!isChecklistState && (
+            {/* ⚠️ The strip is about ONE month and the queue is about every
+                period, so the two must not share a screen - a "September" header
+                over a list reaching back eighteen months is a wrong claim about
+                what is underneath it. */}
+            {!isChecklistState && !isSyncQueueOpen && (
               <LedgerStats
                 loading={period.isLoading}
                 period={activePeriod}
@@ -462,6 +498,33 @@ export function LedgerPage() {
             <div className='flex w-full flex-col'>
               {isChecklistState ? (
                 <AccountingChecklistPanel />
+              ) : isSyncQueueOpen ? (
+                /* 🛑 A VIEW of this page, not a route (D17). The rows open the
+                   same `?posting=` drawer that is already docked beside it. */
+                <Section
+                  className={SECTION_BLEED}
+                  title={`Sync to ${providerLabel}`}
+                  icon={<RefreshCw className='size-4' />}
+                  description={`Entries that are in your books and not yet in ${providerLabel}. Every period, not only the month above - nothing here changes what your books say.`}
+                  collapsible={false}
+                  actions={
+                    <Button variant='ghost' size='sm' onClick={closeSyncQueue}>
+                      <X />
+                      Back to the month
+                    </Button>
+                  }>
+                  <SyncQueuePanel
+                    rows={failedExportsQuery.data}
+                    isLoading={failedExportsQuery.isPending}
+                    error={failedExportsQuery.isError ? failedExportsQuery.error.message : null}
+                    tab={queueTab ?? 'held'}
+                    onTabChange={(next) => void setQueueTab(next)}
+                    providerLabel={providerLabel}
+                    canSync={can('ledger.post')}
+                    activePostingId={postingId}
+                    onSelectPosting={openPosting}
+                  />
+                </Section>
               ) : period.isLoading ? (
                 <div className='flex flex-col gap-3 p-3'>
                   <Skeleton className='h-24 w-full' />
@@ -474,6 +537,8 @@ export function LedgerPage() {
                     hasOpenPeriod={period.hasOpenPeriod}
                     periodLabel={periodLabel}
                     exports={failedExportsQuery.data ?? []}
+                    providerLabel={providerLabel}
+                    onOpenSyncQueue={openSyncQueue}
                   />
 
                   {!!activePeriodKey && (
