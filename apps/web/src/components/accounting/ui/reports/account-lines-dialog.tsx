@@ -100,7 +100,7 @@ export function AccountLinesDialog({
                   <TableCell>{formatAccountingDate(line.txnDate, bookTimeZone)}</TableCell>
                   <TableCell className='font-mono text-xs'>
                     <Link
-                      href={`/app/accounting/${periodKeyFromDate(line.txnDate)}?posting=${line.glPostingId}`}
+                      href={`/app/accounting?month=${periodKeyFromDate(line.txnDate)}&posting=${line.glPostingId}`}
                       className='hover:underline'>
                       {line.docNumber}
                     </Link>

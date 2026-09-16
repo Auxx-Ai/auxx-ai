@@ -540,24 +540,18 @@ export function LedgerPage() {
                    what this column shows; a second, differently-worded exit in
                    the section header made two affordances for one act and only
                    one of them looked like navigation. */
-                <Section
-                  className={SECTION_BLEED}
-                  title={`Sync to ${providerLabel}`}
-                  icon={<RefreshCw className='size-4' />}
-                  description={`Entries that are in your books and not yet in ${providerLabel}. Every period, not only the month in the toolbar - nothing here changes what your books say.`}
-                  collapsible={false}>
-                  <SyncQueuePanel
-                    rows={failedExportsQuery.data}
-                    isLoading={failedExportsQuery.isPending}
-                    error={failedExportsQuery.isError ? failedExportsQuery.error.message : null}
-                    tab={queueTab ?? 'held'}
-                    onTabChange={(next) => void setQueueTab(next)}
-                    providerLabel={providerLabel}
-                    canSync={can('ledger.post')}
-                    activePostingId={postingId}
-                    onSelectPosting={openPosting}
-                  />
-                </Section>
+
+                <SyncQueuePanel
+                  rows={failedExportsQuery.data}
+                  isLoading={failedExportsQuery.isPending}
+                  error={failedExportsQuery.isError ? failedExportsQuery.error.message : null}
+                  tab={queueTab ?? 'held'}
+                  onTabChange={(next) => void setQueueTab(next)}
+                  providerLabel={providerLabel}
+                  canSync={can('ledger.post')}
+                  activePostingId={postingId}
+                  onSelectPosting={openPosting}
+                />
               ) : period.isLoading ? (
                 <div className='flex flex-col gap-3 p-3'>
                   <Skeleton className='h-24 w-full' />

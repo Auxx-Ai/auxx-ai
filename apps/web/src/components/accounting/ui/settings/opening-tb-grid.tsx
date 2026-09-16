@@ -363,7 +363,12 @@ function toStatementRows(
 }
 
 /**
- * The verdict strip's copy, from the two totals.
+ * The verdict's copy, from the two totals.
+ *
+ * Rendered as a mark on the Total row - except on an EMPTY grid, which has no
+ * Total row to mark, so `StatementTable` falls back to the strip. Which is the
+ * right place for it: "nothing entered yet" is the one verdict here that is
+ * not a remark about figures on screen.
  *
  * ⚠️ "Nothing entered" is NOT the same answer as "does not balance", and both
  * are different from "balanced". An empty grid balances trivially at zero, and

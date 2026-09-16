@@ -175,11 +175,14 @@ describe('what a statement reads', () => {
     connected: true,
     providerId: 'quickbooks',
     syncedThrough: '2026-11-30',
+    // The reader is ON 31 December, so every statement below is judged against
+    // its own end date rather than against the horizon.
+    today: '2026-12-31',
   }
 
   it('🛑 renders nothing at all for an org with no provider', () => {
     const reading = describeProviderSyncCoverage(
-      { connected: false, providerId: 'none', syncedThrough: null },
+      { connected: false, providerId: 'none', syncedThrough: null, today: '2026-12-31' },
       '2026-12-31'
     )
     // Not "synced through: never", not an empty marker. Meaningless there, and
@@ -213,11 +216,50 @@ describe('what a statement reads', () => {
 
   it('names the never-synced case separately - everything of theirs is missing', () => {
     const reading = describeProviderSyncCoverage(
-      { connected: true, providerId: 'quickbooks', syncedThrough: null },
+      { connected: true, providerId: 'quickbooks', syncedThrough: null, today: '2026-12-31' },
       '2026-12-31'
     )
     expect(reading.coverage).toBe('never_synced')
     expect(reading.headline).toBe('Nothing has been read from QuickBooks yet')
+  })
+
+  // 🛑 The reason the horizon exists. Every report page defaults to the CURRENT
+  // period, so the statement runs to the end of this month while the sync can
+  // only ever have read up to today. Compared against the month's end alone,
+  // an org synced this morning wears "Incomplete after <today>" on the default
+  // view of every statement, all month, every month - a warning nobody can
+  // clear, naming days that have not happened yet.
+  it('🛑 is current when the sync has reached today and the statement runs past it', () => {
+    const syncedToToday: ProviderSyncMarker = {
+      connected: true,
+      providerId: 'quickbooks',
+      syncedThrough: '2026-09-16',
+      today: '2026-09-16',
+    }
+
+    expect(describeProviderSyncCoverage(syncedToToday, '2026-09-30')).toEqual({
+      coverage: 'current',
+      headline: 'Synced through 2026-09-16',
+      detail: null,
+    })
+  })
+
+  it('is behind again the moment the gap is in days that have happened', () => {
+    const behindByDays: ProviderSyncMarker = {
+      connected: true,
+      providerId: 'quickbooks',
+      syncedThrough: '2026-09-10',
+      today: '2026-09-16',
+    }
+
+    const reading = describeProviderSyncCoverage(behindByDays, '2026-09-30')
+
+    expect(reading.coverage).toBe('behind')
+    expect(reading.headline).toBe('Incomplete after 2026-09-10')
+    // The sentence still names the statement's own end, which is what the
+    // reader is looking at - the horizon decides IF it is behind, not what the
+    // figures cover.
+    expect(reading.detail).toContain('2026-09-30')
   })
 
   it('reads a statement with no resolved range as current rather than behind', () => {

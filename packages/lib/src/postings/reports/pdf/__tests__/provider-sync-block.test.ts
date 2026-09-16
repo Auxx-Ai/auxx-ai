@@ -54,6 +54,9 @@ const CONNECTED: ProviderSyncMarker = {
   connected: true,
   providerId: 'quickbooks',
   syncedThrough: '2026-11-30',
+  // On or after every `through` in this file, so the horizon is the statement's
+  // own end and these readings are about the marker alone.
+  today: '2026-12-31',
 }
 
 beforeEach(() => {
@@ -67,6 +70,7 @@ describe('the four states, on the printed page', () => {
       connected: false,
       providerId: 'none',
       syncedThrough: null,
+      today: '2026-12-31',
     }
 
     // Not "synced through: never", not an empty strip, and no footer stamp
@@ -87,6 +91,7 @@ describe('the four states, on the printed page', () => {
       connected: true,
       providerId: 'quickbooks',
       syncedThrough: null,
+      today: '2026-12-31',
     }
     const reading = describeProviderSyncCoverage(marker, '2026-12-31')
     expect(reading.coverage).toBe('never_synced')

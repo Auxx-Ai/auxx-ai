@@ -6,6 +6,8 @@ import {
   filterStatementRows,
   maxAccountCodeLength,
   type StatementRow,
+  verdictRowId,
+  verdictText,
 } from '../statement-table'
 
 function row(overrides: Partial<StatementRow> & Pick<StatementRow, 'id'>): StatementRow {
@@ -26,6 +28,40 @@ describe('allParentIds', () => {
       row({ id: 'total', kind: 'total' }),
     ]
     expect([...allParentIds(rows)]).toEqual(['assets'])
+  })
+})
+
+describe('verdictRowId', () => {
+  it('picks the LAST top-level total row - a statement ends on its bottom line', () => {
+    const rows = [
+      row({ id: 'assets', kind: 'section', children: [row({ id: 'a1', kind: 'total' })] }),
+      row({ id: 'total-liabilities', kind: 'total' }),
+      row({ id: 'total-liabilities-equity', kind: 'total' }),
+    ]
+    expect(verdictRowId(rows)).toBe('total-liabilities-equity')
+  })
+
+  it('ignores a total nested inside a section', () => {
+    const rows = [
+      row({ id: 'assets', kind: 'section', children: [row({ id: 'a1', kind: 'total' })] }),
+    ]
+    expect(verdictRowId(rows)).toBeUndefined()
+  })
+
+  it('is undefined for a flat list of lines, so the caller can fall back to the strip', () => {
+    expect(verdictRowId([row({ id: 'cash' }), row({ id: 'ar' })])).toBeUndefined()
+    expect(verdictRowId([])).toBeUndefined()
+  })
+})
+
+describe('verdictText', () => {
+  it('joins the label and its follow-up, and omits the space when there is none', () => {
+    expect(verdictText({ ok: true, label: 'Balanced.', detail: 'Debits equal credits.' })).toBe(
+      'Balanced. Debits equal credits.'
+    )
+    expect(verdictText({ ok: false, label: 'Out of balance by $5.00.' })).toBe(
+      'Out of balance by $5.00.'
+    )
   })
 })
 

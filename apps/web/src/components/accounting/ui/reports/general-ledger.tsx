@@ -17,8 +17,6 @@ import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period
 import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
-import { CompletenessBanner } from './completeness-banner'
-import { ProviderSyncMarker } from './provider-sync-marker'
 import { ReportErrorCard } from './report-error-card'
 import {
   periodEndDate,
@@ -27,6 +25,7 @@ import {
   toStatementTableRows,
 } from './report-helpers'
 import { ReportToolbar } from './report-toolbar'
+import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
 
 /**
@@ -36,7 +35,7 @@ import { StatementTable } from './statement-table'
  * `toGeneralLedgerRows` prepends its own `INCOMPLETE` row ahead of every
  * account, so the warning is already row 1 of the table, row 1 of the CSV and
  * row 1 of the PDF - the exports carry it because they render the same rows
- * this page does. This card and the verdict strip below the table are the
+ * this page does. This card and the verdict on the table's Total row are the
  * screen's own, louder copies, because a person scanning figures reads a
  * bordered red card and does not read row 1.
  */
@@ -60,7 +59,7 @@ const TRUNCATED_HEADLINE = 'This general ledger is incomplete'
  * general ledger does not tie to the trial balance for the same range, with
  * nothing in the figures to say why. It is stated FOUR times when it happens:
  * the adapter's own `INCOMPLETE` first row (which is what reaches the CSV and
- * the PDF), `TruncatedBanner` above the table, the verdict strip below it, and
+ * the PDF), `TruncatedBanner` above the table, the verdict on its Total row, and
  * the `-INCOMPLETE` suffix on the CSV filename.
  */
 export function GeneralLedgerReportPage() {
@@ -139,8 +138,7 @@ export function GeneralLedgerReportPage() {
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
           {truncated && <TruncatedBanner maxLines={query.data?.maxLines} />}
-          <CompletenessBanner asOf={to} />
-          <ProviderSyncMarker through={to} />
+          <StatementNotices through={to} />
           {period.isLoading ? (
             <Skeleton className='h-64 w-full' />
           ) : !from || !to ? (
@@ -196,7 +194,15 @@ export function GeneralLedgerReportPage() {
                 // The same destination `AccountLinesDialog`'s doc-number links
                 // use: the posting, open on the ledger page for the month the
                 // line actually landed in.
-                router.push(`/app/accounting/${periodKeyFromDate(txnDate)}?posting=${glPostingId}`)
+                //
+                // 🛑 QUERY PARAMS, NOT A PATH SEGMENT. The ledger is the
+                // module's ONE route (`app/accounting/page.tsx`) and the month
+                // rides on `?month=` (`MONTH_PARAM`). `/app/accounting/2026-05`
+                // is a 404 - there has never been a `[period]` route - so this
+                // drill-down and the dialog's both dead-ended silently.
+                router.push(
+                  `/app/accounting?month=${periodKeyFromDate(txnDate)}&posting=${glPostingId}`
+                )
               }}
             />
           )}

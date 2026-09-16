@@ -1,12 +1,7 @@
 // packages/lib/src/postings/reports/__tests__/completeness.test.ts
 
 import type { Database } from '@auxx/database'
-import { err, ok } from 'neverthrow'
-import { describe, expect, it, vi } from 'vitest'
-
-vi.mock('../../verify-balance', () => ({ listFailedExports: vi.fn() }))
-
-import { listFailedExports } from '../../verify-balance'
+import { describe, expect, it } from 'vitest'
 import { readCompleteness } from '../completeness'
 
 const ORG = 'org_1'
@@ -17,8 +12,6 @@ function stubDb(): Database {
 
 describe('readCompleteness', () => {
   it('names every posting type not in ENABLED_POSTING_TYPES, each with a remedy', async () => {
-    vi.mocked(listFailedExports).mockResolvedValue(ok([]))
-
     const result = await readCompleteness(stubDb(), { organizationId: ORG, asOf: '2026-08-31' })
     const completeness = result._unsafeUnwrap()
 
@@ -26,7 +19,7 @@ describe('readCompleteness', () => {
     // L3 buy side (`receipt`, `vendor_bill`) and `bank_transaction` are still
     // off and must be named, each with a remedy.
     expect(completeness.disabledPostingTypes.length).toBeGreaterThan(0)
-    expect(completeness.disabledPostingTypes.every((item) => item.remedy.href)).toBe(true)
+    expect(completeness.disabledPostingTypes.every((item) => !!item.remedy?.href)).toBe(true)
     const ids = completeness.disabledPostingTypes.map((item) => item.id)
     expect(ids.some((id) => id.includes('receipt'))).toBe(true)
     expect(ids.some((id) => id.includes('fulfillment'))).toBe(false)
@@ -37,8 +30,6 @@ describe('readCompleteness', () => {
   // as "switched off" would put a permanent, unfixable item on every org's
   // statements naming something nobody can turn on.
   it('does not report the synced posting type as switched off', async () => {
-    vi.mocked(listFailedExports).mockResolvedValue(ok([]))
-
     const result = await readCompleteness(stubDb(), { organizationId: ORG, asOf: '2026-08-31' })
     const completeness = result._unsafeUnwrap()
 
@@ -48,50 +39,42 @@ describe('readCompleteness', () => {
     expect(completeness.items.some((item) => item.label.includes('provider_sync'))).toBe(false)
   })
 
-  it('surfaces unposted periods with a remedy that opens that period', async () => {
-    vi.mocked(listFailedExports).mockResolvedValue(
-      ok([
-        {
-          periodKey: '2026-07',
-          postingType: 'month_end_inventory',
-          glPostingId: 'gl_1',
-          exportStatus: 'failed',
-          docNumber: 'GL-ME-2026-07',
-          attempts: 2,
-          failureReason: 'QuickBooks rate limit',
-          txnDate: '2026-07-31',
-          totalMinor: 12_500,
-          currency: 'USD',
-          deliveryIntent: 'manual',
-          releasedAt: null,
-          deliveryState: null,
-        },
-      ])
-    )
-
+  // 🛑 The export backlog is NOT a completeness item. Every entry in it is in
+  // the books and in these figures - no statement read filters on
+  // `exportStatus` - so naming it under "Not included in this report" was false
+  // about every row, and the rows are the sync queue's subject. See the file
+  // header.
+  it('says nothing about entries that have not reached the accounting provider', async () => {
     const result = await readCompleteness(stubDb(), { organizationId: ORG, asOf: '2026-08-31' })
     const completeness = result._unsafeUnwrap()
 
-    expect(completeness.unpostedPeriods).toHaveLength(1)
-    const item = completeness.items.find((i) => i.id.includes('gl_1'))
-    expect(item?.label).toContain('QuickBooks rate limit')
-    expect(item?.remedy.href).toBe('/app/accounting/2026-07')
+    expect(completeness.items.every((item) => item.id.startsWith('disabled-posting-type:'))).toBe(
+      true
+    )
+    expect(completeness.items.some((item) => item.label.includes('accounting system'))).toBe(false)
+  })
+
+  // 🛑 Every item used to point at `/app/accounting`, and a posting type cannot
+  // be switched on from the ledger - or from anywhere in the product; `enabled`
+  // is a deploy. The Posting settings page is the one screen that explains the
+  // item, and every type in today's list is `never`-triggered, so it lives in
+  // that page's collapsed "Not posting" section rather than at its own anchor.
+  it('sends a disabled posting type to the settings page that explains it', async () => {
+    const result = await readCompleteness(stubDb(), { organizationId: ORG, asOf: '2026-08-31' })
+    const completeness = result._unsafeUnwrap()
+
+    expect(completeness.items.length).toBeGreaterThan(0)
+    for (const item of completeness.items) {
+      expect(item.remedy?.href).toBe('/app/accounting/settings/posting#posting-never')
+      expect(item.remedy?.label).toBe('Posting settings')
+    }
   })
 
   it('leaves the bank-feed placeholders empty until the feed exists', async () => {
-    vi.mocked(listFailedExports).mockResolvedValue(ok([]))
-
     const result = await readCompleteness(stubDb(), { organizationId: ORG, asOf: '2026-08-31' })
     const completeness = result._unsafeUnwrap()
 
     expect(completeness.unreviewedBankLines).toEqual([])
     expect(completeness.coverageGaps).toEqual([])
-  })
-
-  it('returns err rather than throwing when the unposted-periods read fails', async () => {
-    vi.mocked(listFailedExports).mockResolvedValue(err(new Error('boom')))
-
-    const result = await readCompleteness(stubDb(), { organizationId: ORG, asOf: '2026-08-31' })
-    expect(result.isErr()).toBe(true)
   })
 })
