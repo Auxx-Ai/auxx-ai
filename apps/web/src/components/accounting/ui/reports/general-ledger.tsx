@@ -10,13 +10,12 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { BookOpen, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
-import { useMemo } from 'react'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
+import { PostingDrawerHost, usePostingDrawer } from './posting-drawer-host'
 import { ReportErrorCard } from './report-error-card'
 import {
   periodEndDate,
@@ -64,7 +63,7 @@ const TRUNCATED_HEADLINE = 'This general ledger is incomplete'
  */
 export function GeneralLedgerReportPage() {
   const period = useLedgerPeriod()
-  const router = useRouter()
+  const posting = usePostingDrawer()
   const [fromParam, setFromParam] = useQueryState('from')
   const [toParam, setToParam] = useQueryState('to')
 
@@ -107,7 +106,6 @@ export function GeneralLedgerReportPage() {
 
   const rows = query.data ? toStatementTableRows(query.data.rows) : []
   const isEmpty = !!query.data && query.data.accounts.length === 0
-  const txnDateByPostingId = useMemo(() => buildTxnDateIndex(query.data?.accounts), [query.data])
 
   // One `MainPageContent` per screen, and it is the reports LAYOUT's - see
   // `accounting/settings/layout.tsx` for the same split. A second one here
@@ -190,49 +188,19 @@ export function GeneralLedgerReportPage() {
                   : undefined
               }
               onRowClick={(row) => {
-                const glPostingId = row.meta?.glPostingId
-                if (!glPostingId) return
-                const txnDate = txnDateByPostingId.get(glPostingId)
-                if (!txnDate) return
-                // The ledger is one route; the month rides on `?month=`. A path
-                // segment (`/app/accounting/2026-05`) is a 404.
-                router.push(
-                  `/app/accounting?month=${periodKeyFromDate(txnDate)}&posting=${glPostingId}`
-                )
+                if (row.meta?.glPostingId) posting.open(row.meta.glPostingId)
               }}
             />
           )}
         </div>
       </ScrollArea>
+      <PostingDrawerHost
+        postingId={posting.postingId}
+        onClose={posting.close}
+        onSelectPosting={posting.open}
+      />
     </div>
   )
-}
-
-/**
- * `glPostingId` -> the date that posting landed on, for the drill-down route.
- *
- * The row carries the posting id itself on `meta.glPostingId`
- * (`toGeneralLedgerRows` sets it), so the only thing still missing is the
- * month to open the ledger page at. That comes from the SAME typed response,
- * keyed on a real id rather than on a composed row-id string.
- *
- * ⚠️ An earlier version keyed this map on the adapter's row `id`
- * (`account:posting:date:docNumber`), which coupled this file to a string
- * shape assembled in lib. `meta.glPostingId` was added to the row contract to
- * retire that; do not reintroduce id parsing here.
- *
- * The opening-balance and "Ending balance" rows never appear: they carry no
- * `glPostingId` because they are positions, not entries, and there is nothing
- * to open.
- */
-function buildTxnDateIndex(
-  accounts: readonly { lines: readonly { glPostingId: string; txnDate: string }[] }[] | undefined
-): Map<string, string> {
-  const index = new Map<string, string>()
-  for (const account of accounts ?? []) {
-    for (const line of account.lines) index.set(line.glPostingId, line.txnDate)
-  }
-  return index
 }
 
 /**
