@@ -28,14 +28,14 @@ import {
   captureFulfillmentWorkInTx,
 } from '../../postings/effect-work'
 import { resolveAccountLines } from '../../postings/resolve-roles'
-import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
 import type { BuiltEntry } from '../../postings/types'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import { readOrderRecognitionFactsInTx } from '../customer-money/recognition-facts'
-import { financialFields } from '../fulfillments/field-context'
-import { loadFulfillmentFieldContext } from '../fulfillments/reads'
-import { loadGatewayRoutesForPlan } from './plan'
-import { readFulfillmentPostingSettings, readUnpostedShipments, toCalendarDay } from './reads'
+import {
+  type FulfillmentAcceptanceContext,
+  resolveFulfillmentAcceptanceContext,
+} from './acceptance-context'
+import { readUnpostedShipments, toCalendarDay } from './reads'
 import {
   FULFILLMENT_POSTING_SETTING_KEY,
   type FulfillmentPostingGroup,
@@ -94,9 +94,30 @@ export function singleShipmentGroup(shipment: PlannedShipment): FulfillmentPosti
 /** Read complete live financial dependencies; missing/legacy evidence refuses sealing. */
 export async function readFulfillmentAccountingSourceInTx(
   tx: Transaction,
-  organizationId: string,
+  context: FulfillmentAcceptanceContext,
+  fulfillmentInstanceId: string,
+  options: { fresh?: boolean } = {}
+): Promise<FulfillmentAccountingSource> {
+  if (!options.fresh) {
+    const memoized = context.sources.get(fulfillmentInstanceId)
+    if (memoized) return memoized
+  }
+  const source = await readFulfillmentAccountingSourceUncachedInTx(
+    tx,
+    context,
+    fulfillmentInstanceId
+  )
+  context.sources.set(fulfillmentInstanceId, source)
+  return source
+}
+
+/** {@link readFulfillmentAccountingSourceInTx}, always hitting the database. */
+async function readFulfillmentAccountingSourceUncachedInTx(
+  tx: Transaction,
+  context: FulfillmentAcceptanceContext,
   fulfillmentInstanceId: string
 ): Promise<FulfillmentAccountingSource> {
+  const { organizationId } = context
   await withAccountingCommitLock(tx, organizationId)
   const instance = await tx.query.EntityInstance.findFirst({
     where: and(
@@ -106,37 +127,43 @@ export async function readFulfillmentAccountingSourceInTx(
     ),
   })
   if (!instance) throw new UnprocessableEntityError('Fulfillment is missing or archived')
-  const ctx = await loadFulfillmentFieldContext(organizationId, tx)
-  if (!ctx || instance.entityDefinitionId !== ctx.fulfillmentDefId)
+  const ctx = context.fields
+  if (instance.entityDefinitionId !== ctx.fulfillmentDefId)
     throw new UnprocessableEntityError('Fulfillment identity is unresolved')
-  const date = await tx.query.FieldValue.findFirst({
-    where: and(
-      eq(schema.FieldValue.organizationId, organizationId),
-      eq(schema.FieldValue.entityId, fulfillmentInstanceId),
-      eq(schema.FieldValue.fieldId, ctx.fulfillment.fulfillment_shipped_at?.id ?? '')
-    ),
-  })
-  const configuredTimeZone = await getOrganizationSetting({
-    organizationId,
-    key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
-    db: tx,
-  })
-  const bookTimeZone =
-    typeof configuredTimeZone === 'string' && configuredTimeZone.trim()
-      ? configuredTimeZone.trim()
-      : null
-  const shippedOn = toCalendarDay(date?.valueDate, bookTimeZone ?? 'UTC')
+  // Both of these come from the group prefetch when there was one - see
+  // `prefetchGroupSources`. The fallbacks are the single-source doors, which
+  // have no group to batch and read exactly as they always did.
+  const prefetched = context.prefetched.has(fulfillmentInstanceId)
+  const shippedOn = prefetched
+    ? (context.shipDays.get(fulfillmentInstanceId) ?? null)
+    : toCalendarDay(
+        (
+          await tx.query.FieldValue.findFirst({
+            where: and(
+              eq(schema.FieldValue.organizationId, organizationId),
+              eq(schema.FieldValue.entityId, fulfillmentInstanceId),
+              eq(schema.FieldValue.fieldId, ctx.fulfillment.fulfillment_shipped_at?.id ?? '')
+            ),
+          })
+        )?.valueDate,
+        context.settings.timeZone ?? 'UTC'
+      )
   if (!shippedOn || !z.iso.date().safeParse(shippedOn).success)
     throw new UnprocessableEntityError('Fulfillment ship date is unresolved')
-  const tomorrow = new Date(`${shippedOn}T00:00:00.000Z`)
-  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
-  const read = await readUnpostedShipments(tx, {
-    organizationId,
-    range: { from: shippedOn, to: tomorrow.toISOString().slice(0, 10) },
-    fulfillmentIds: [fulfillmentInstanceId],
-  })
-  if (read.isErr()) throw read.error
-  const shipment = read.value.find((row) => row.fulfillmentInstanceId === fulfillmentInstanceId)
+  const shipment = prefetched
+    ? context.shipments.get(fulfillmentInstanceId)
+    : await (async () => {
+        const tomorrow = new Date(`${shippedOn}T00:00:00.000Z`)
+        tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+        const read = await readUnpostedShipments(tx, {
+          organizationId,
+          range: { from: shippedOn, to: tomorrow.toISOString().slice(0, 10) },
+          fulfillmentIds: [fulfillmentInstanceId],
+          context,
+        })
+        if (read.isErr()) throw read.error
+        return read.value.find((row) => row.fulfillmentInstanceId === fulfillmentInstanceId)
+      })()
   if (!shipment)
     throw new UnprocessableEntityError('Fulfillment is incomplete, canceled, or already accepted')
   if (shipment.legacyPostingId)
@@ -200,16 +227,13 @@ export async function readFulfillmentAccountingSourceInTx(
     shipment.lines.some((line) => kindById.get(line.lineId) !== 'line_item')
   )
     throw new UnprocessableEntityError('An order, order line, or customer dependency is missing')
-  const ownership = await financialFields(organizationId, ['line_item_order'] as const, tx)
-  if (!ownership.line_item_order)
-    throw new UnprocessableEntityError('Order line ownership field is missing')
   const ownedLines = await tx
     .select({ id: schema.FieldValue.entityId })
     .from(schema.FieldValue)
     .where(
       and(
         eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, ownership.line_item_order.id),
+        eq(schema.FieldValue.fieldId, context.ownershipFieldId),
         eq(schema.FieldValue.relatedEntityId, shipment.orderId),
         inArray(
           schema.FieldValue.entityId,
@@ -221,7 +245,7 @@ export async function readFulfillmentAccountingSourceInTx(
     throw new UnprocessableEntityError(
       'A fulfillment line belongs to another order or has unresolved ownership'
     )
-  const routes = await loadGatewayRoutesForPlan(tx, organizationId)
+  const routes = context.gatewayRoutes
   const metadata = z.record(z.string(), z.unknown()).safeParse(instance.metadata)
   const native = metadata.success && metadata.data.accountingFulfillmentLane === 'native'
   const route = shipment.recognitionAllocation
@@ -421,6 +445,16 @@ export async function captureFulfillmentAccountingWorkInTx(
     organizationId: string
     fulfillmentInstanceId: string
     eligibility?: Eligibility
+    /**
+     * The acceptance context, when the caller already holds one.
+     *
+     * The source-write guard and `fulfillOrder` capture one fulfillment at a
+     * time and pass nothing, so they resolve their own. A group acceptance
+     * captures every shipment in the group against ONE context - which is the
+     * difference between reading the org's field metadata once and reading it
+     * once per shipment.
+     */
+    context?: FulfillmentAcceptanceContext
   }
 ) {
   await withAccountingCommitLock(tx, input.organizationId)
@@ -448,13 +482,10 @@ export async function captureFulfillmentAccountingWorkInTx(
           : 'manual'))
   let basis: AccountingWorkBasisInput
   try {
-    basis = (
-      await readFulfillmentAccountingSourceInTx(
-        tx,
-        input.organizationId,
-        input.fulfillmentInstanceId
-      )
-    ).basis
+    const context =
+      input.context ?? (await resolveFulfillmentAcceptanceContext(tx, input.organizationId))
+    basis = (await readFulfillmentAccountingSourceInTx(tx, context, input.fulfillmentInstanceId))
+      .basis
   } catch (error) {
     // SQL errors must escape so an aborted transaction cannot masquerade as captured work.
     if (
@@ -503,8 +534,11 @@ export async function captureFulfillmentAccountingWorkInTx(
 export async function prepareFulfillmentEffectMemberInTx(
   tx: Transaction,
   organizationId: string,
-  workId: string
+  workId: string,
+  acceptance?: FulfillmentAcceptanceContext,
+  options: { fresh?: boolean } = {}
 ): Promise<{ member: PreparedEffectMember; entry: BuiltEntry; shipment: PlannedShipment }> {
+  const context = acceptance ?? (await resolveFulfillmentAcceptanceContext(tx, organizationId))
   const work = await tx.query.AccountingWork.findFirst({
     where: and(
       eq(schema.AccountingWork.organizationId, organizationId),
@@ -516,12 +550,11 @@ export async function prepareFulfillmentEffectMemberInTx(
     throw new ConflictError('Fulfillment accounting work has no source entity')
   const source = await readFulfillmentAccountingSourceInTx(
     tx,
-    organizationId,
-    work.entityInstanceId
+    context,
+    work.entityInstanceId,
+    options
   )
-  const settings = await readFulfillmentPostingSettings(tx, organizationId)
-  if (settings.isErr()) throw settings.error
-  if (!settings.value.timeZone)
+  if (!context.settings.timeZone)
     throw new UnprocessableEntityError('Book time zone is not configured')
   const resolved = await resolveAccountLines(tx, organizationId, source.entry.lines)
   if (resolved.isErr()) throw resolved.error
@@ -556,7 +589,7 @@ export async function prepareFulfillmentEffectMemberInTx(
       : 'fulfillment_current_v1',
     policyVersion: 1,
     effectiveDate: source.basis.effectiveDate,
-    bookTimeZone: settings.value.timeZone,
+    bookTimeZone: context.settings.timeZone,
     currency: 'USD',
     currencyExponent: 2,
     documentRefs: [
@@ -578,10 +611,22 @@ export async function prepareFulfillmentEffectMemberInTx(
 export async function revalidateFulfillmentMemberInTx(
   tx: Transaction,
   work: { organizationId: string; id: string },
-  _basis: ReadyBasis
+  // The saved basis is deliberately ignored: this callback exists to re-read
+  // the live source, not to trust what was written. Typed `unknown` so the
+  // generic acceptance contract can hand it whichever basis shape it holds.
+  _basis: unknown,
+  acceptance?: FulfillmentAcceptanceContext
 ): Promise<AcceptedFulfillmentEffectBasisV1> {
-  return (await prepareFulfillmentEffectMemberInTx(tx, work.organizationId, work.id)).member
-    .acceptedBasis
+  // 🛑 `fresh` skips the per-source memo so the basis is REBUILT rather than
+  // handed back. The live data behind it is refreshed by the caller's second
+  // `prefetchGroupSources({ refresh: true })` pass. Both halves are needed:
+  // without the refresh this compares a value to itself, and without `fresh` it
+  // never recomputes at all.
+  return (
+    await prepareFulfillmentEffectMemberInTx(tx, work.organizationId, work.id, acceptance, {
+      fresh: true,
+    })
+  ).member.acceptedBasis
 }
 
 /** Preserve rejected incoming financial evidence as deduplicated blocked correction work. */

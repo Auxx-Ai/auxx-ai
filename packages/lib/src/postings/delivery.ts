@@ -6,6 +6,7 @@ import {
   schema,
   type Transaction,
 } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import {
@@ -31,6 +32,9 @@ const scoped = (
   id: string
 ) => and(eq(table.organizationId, organizationId), eq(table.id, id))
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
+const logger = createScopedLogger('accounting-delivery')
+/** How long an acceptance will wait on the queue before leaving it to the sweep. */
+const ENQUEUE_TIMEOUT_MS = 2_000
 
 /** Plan complete-effect coverage before any provider work; caller owns the transaction. */
 export async function planAccountingDeliveryInTx(
@@ -346,6 +350,74 @@ async function saveSuccess(
 }
 
 /** Deliver an accepted journal after its outermost transaction commits; uncertainty never authorizes a second create. */
+/**
+ * Hand one accepted journal to the delivery worker instead of exporting it here.
+ *
+ * 🛑 Call this from an acceptance, NOT {@link deliverAccountingPosting}. An
+ * export is 3 to 5 sequential Lambda round trips to a rate-limited third party,
+ * and an acceptance is usually running inside somebody's HTTP request - a bulk
+ * fulfillment run makes one export per GROUP, which is what turned a 28-group
+ * posting into a multi-minute dialog.
+ *
+ * Losing the enqueue is survivable and deliberately not fatal: the acceptance
+ * has already committed its `AccountingDelivery` row, and
+ * `sweepAccountingDeliveries` exists to find exactly the rows nothing woke up
+ * for. The queue is an optimisation on WHEN, never the only path.
+ */
+export async function enqueueAccountingDelivery(input: {
+  organizationId: string
+  glPostingId: string
+}): Promise<void> {
+  try {
+    const { getQueue, Queues } = await import('../jobs/queues')
+    const queued = getQueue(Queues.accountingDeliveryQueue)
+      .add('accounting-delivery', input, {
+        // One job per posting. A retried acceptance that re-enters here with the
+        // same journal collapses onto the job still queued rather than racing a
+        // second export against the first one's lease.
+        jobId: `accounting-delivery:${input.organizationId}:${input.glPostingId}`,
+      })
+      // Settled below either way; this keeps a late rejection from surfacing as
+      // an unhandled one after the race has already moved on.
+      .catch((error) => {
+        logger.warn('Could not enqueue an accounting delivery; recovery will pick it up', {
+          ...input,
+          error: message(error),
+        })
+      })
+
+    // 🛑 BOUNDED, and this is the whole point of the function. `add()` talks to
+    // Redis, and ioredis retries a refused connection forever rather than
+    // failing - so an unbounded await here hands the acceptance a new way to
+    // hang, which is precisely what moving delivery off the request path was
+    // meant to remove. A sick queue must cost this call a couple of seconds and
+    // nothing else.
+    //
+    // Dropping the job is safe by construction: the acceptance has already
+    // committed its `AccountingDelivery` row, and `sweepAccountingDeliveries`
+    // exists to find rows nothing woke up for. Late delivery, never lost.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const expired = Symbol('expired')
+    const result = await Promise.race([
+      queued,
+      new Promise<typeof expired>((resolve) => {
+        timer = setTimeout(() => resolve(expired), ENQUEUE_TIMEOUT_MS)
+      }),
+    ])
+    if (timer) clearTimeout(timer)
+    if (result === expired)
+      logger.warn('Enqueueing an accounting delivery timed out; recovery will pick it up', {
+        ...input,
+        timeoutMs: ENQUEUE_TIMEOUT_MS,
+      })
+  } catch (error) {
+    logger.warn('Could not enqueue an accounting delivery; recovery will pick it up', {
+      ...input,
+      error: message(error),
+    })
+  }
+}
+
 export async function deliverAccountingPosting(
   db: Database,
   input: { organizationId: string; glPostingId: string; manual?: boolean }

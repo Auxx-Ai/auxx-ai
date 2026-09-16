@@ -16,6 +16,7 @@ vi.mock('../../../cache', async (original) => ({
   onCacheEvent: vi.fn(),
 }))
 
+import { prefetchGroupSources, resolveFulfillmentAcceptanceContext } from '../acceptance-context'
 import {
   captureFulfillmentAccountingWorkInTx,
   discoverFulfillmentAccountingWork,
@@ -151,8 +152,12 @@ describe('authoritative fulfillment source capture', () => {
     expect(complete.id).toBe(first.id)
     expect(complete.state).toBe('pending')
     expect(complete.basisVersion).toBe(2)
-    const source = await db().transaction((tx) =>
-      readFulfillmentAccountingSourceInTx(tx, organizationId, fulfillmentId)
+    const source = await db().transaction(async (tx) =>
+      readFulfillmentAccountingSourceInTx(
+        tx,
+        await resolveFulfillmentAcceptanceContext(tx, organizationId),
+        fulfillmentId
+      )
     )
     expect(source.basis.calculation.lines[0]).toMatchObject({
       fulfillmentLineId,
@@ -181,8 +186,12 @@ describe('authoritative fulfillment source capture', () => {
   })
   it('preserves native receivable policy and imported paid-order clearing policy', async () => {
     await sealSource()
-    const imported = await db().transaction((tx) =>
-      readFulfillmentAccountingSourceInTx(tx, organizationId, fulfillmentId)
+    const imported = await db().transaction(async (tx) =>
+      readFulfillmentAccountingSourceInTx(
+        tx,
+        await resolveFulfillmentAcceptanceContext(tx, organizationId),
+        fulfillmentId
+      )
     )
     expect(imported.basis.calculation.debitRoute).toMatchObject({
       kind: 'role',
@@ -192,8 +201,12 @@ describe('authoritative fulfillment source capture', () => {
       .update(schema.EntityInstance)
       .set({ metadata: { accountingFulfillmentLane: 'native' } })
       .where(eq(schema.EntityInstance.id, fulfillmentId))
-    const native = await db().transaction((tx) =>
-      readFulfillmentAccountingSourceInTx(tx, organizationId, fulfillmentId)
+    const native = await db().transaction(async (tx) =>
+      readFulfillmentAccountingSourceInTx(
+        tx,
+        await resolveFulfillmentAcceptanceContext(tx, organizationId),
+        fulfillmentId
+      )
     )
     expect(native.basis.calculation.debitRoute).toMatchObject({
       kind: 'role',
@@ -532,5 +545,133 @@ describe('fulfillment acceptance through the domain command', () => {
     expect(
       await db().query.FieldValue.findFirst({ where: eq(schema.FieldValue.entityId, child!.id) })
     ).toBeUndefined()
+  })
+})
+
+describe('the group netting prefetch', () => {
+  /**
+   * 🛑 The prefetch is only allowed to be FASTER. It replaces one netting read
+   * per shipment with one for the group, and the group read carries a wider
+   * range and a longer id list - so the thing worth asserting is not that it
+   * returns something plausible, but that it returns the SAME basis, hash for
+   * hash, as the per-shipment reads it stands in for. A prefetch that quietly
+   * dropped a shipment's prior-subtotal or its tax lines would still produce a
+   * balanced entry, and nothing downstream would object.
+   *
+   * Two orders on two different ship days, so the derived `[min, max+1)` range
+   * has to actually span them.
+   */
+  async function secondShipment({ taxMinor = 20, shippingMinor = 15 } = {}) {
+    const ids: Record<string, string> = {}
+    for (const kind of ['order', 'line_item', 'fulfillment', 'fulfillment_line']) {
+      const [instance] = await db()
+        .insert(schema.EntityInstance)
+        .values({ organizationId, entityDefinitionId: definitions[kind]!, updatedAt: new Date() })
+        .returning()
+      ids[kind] = instance!.id
+    }
+    await value(ids.fulfillment!, 'fulfillment_order', { relatedEntityId: ids.order! })
+    await value(ids.fulfillment!, 'fulfillment_sequence', { valueNumber: 1 })
+    await value(ids.fulfillment!, 'fulfillment_shipped_at', {
+      valueDate: '2026-09-12T12:00:00.000Z',
+    })
+    await value(ids.fulfillment!, 'fulfillment_status', { optionId: 'success' })
+    await value(ids.fulfillment_line!, 'fulfillment_line_fulfillment', {
+      relatedEntityId: ids.fulfillment!,
+    })
+    await value(ids.fulfillment_line!, 'fulfillment_line_line_item', {
+      relatedEntityId: ids.line_item!,
+    })
+    await value(ids.fulfillment_line!, 'fulfillment_line_quantity', { valueNumber: 2 })
+    await value(ids.order!, 'order_number', { valueText: '1002' })
+    await value(ids.order!, 'order_channel', { optionId: 'dtc' })
+    await value(ids.order!, 'order_currency', { valueText: 'USD' })
+    await value(ids.order!, 'order_subtotal', { valueNumber: 250 })
+    await value(ids.order!, 'order_tax_total', { valueNumber: taxMinor })
+    await value(ids.order!, 'order_shipping_total', { valueNumber: shippingMinor })
+    await value(ids.order!, 'order_financial_status', { optionId: 'paid' })
+    await value(ids.order!, 'order_payment_gateways', { valueText: 'shopify_payments' })
+    await value(ids.line_item!, 'line_item_order', { relatedEntityId: ids.order! })
+    await value(ids.line_item!, 'line_item_qty', { valueNumber: 2 })
+    await value(ids.line_item!, 'line_item_unit_price', { valueNumber: 125 })
+    return ids.fulfillment!
+  }
+
+  it('produces byte-identical bases to the per-shipment reads it replaces', async () => {
+    await sealSource()
+    const secondId = await secondShipment()
+    const both = [fulfillmentId, secondId]
+
+    const perShipment = await db().transaction(async (tx) => {
+      const context = await resolveFulfillmentAcceptanceContext(tx, organizationId)
+      const out = []
+      for (const id of both)
+        out.push(await readFulfillmentAccountingSourceInTx(tx, context, id, { fresh: true }))
+      return out
+    })
+
+    const batched = await db().transaction(async (tx) => {
+      const context = await resolveFulfillmentAcceptanceContext(tx, organizationId)
+      await prefetchGroupSources(tx, context, both)
+      expect(context.prefetched.size).toBe(2)
+      expect(context.shipments.size).toBe(2)
+      // The derived range has to span two different ship days.
+      expect([...context.shipDays.values()].sort()).toEqual(['2026-09-10', '2026-09-12'])
+      const out = []
+      for (const id of both)
+        out.push(await readFulfillmentAccountingSourceInTx(tx, context, id, { fresh: true }))
+      return out
+    })
+
+    expect(batched).toHaveLength(2)
+    for (const index of [0, 1]) {
+      expect(batched[index]!.basis.sourceHash).toBe(perShipment[index]!.basis.sourceHash)
+      expect(batched[index]!.basis).toEqual(perShipment[index]!.basis)
+      expect(batched[index]!.entry).toEqual(perShipment[index]!.entry)
+      expect(batched[index]!.shipment).toEqual(perShipment[index]!.shipment)
+    }
+  })
+
+  it('refuses a prefetched shipment that is not a candidate without falling back to a read', async () => {
+    await sealSource()
+    const secondId = await secondShipment()
+    // Cancelled, so the netting read will not offer it.
+    await db()
+      .update(schema.FieldValue)
+      .set({ optionId: 'cancelled' })
+      .where(
+        and(
+          eq(schema.FieldValue.entityId, secondId),
+          eq(schema.FieldValue.fieldId, fields.fulfillment_status!.id)
+        )
+      )
+
+    await expect(
+      db().transaction(async (tx) => {
+        const context = await resolveFulfillmentAcceptanceContext(tx, organizationId)
+        await prefetchGroupSources(tx, context, [fulfillmentId, secondId])
+        return readFulfillmentAccountingSourceInTx(tx, context, secondId, { fresh: true })
+      })
+    ).rejects.toThrow('incomplete, canceled, or already accepted')
+  })
+
+  it('accepts a two-shipment group into one balanced journal through the prefetch', async () => {
+    await sealSource()
+    // No tax or shipping: `configureAccounting` maps the core roles only, and
+    // this test is about the prefetch reaching acceptance, not role coverage.
+    const secondId = await secondShipment({ taxMinor: 0, shippingMinor: 0 })
+    await configureAccounting()
+    const accepted = await acceptFulfillmentWorkGroup(db(), {
+      organizationId,
+      actorUserId: userId,
+      fulfillmentIds: [fulfillmentId, secondId],
+      groupKey: '2026-09',
+    })
+    expect(accepted?.shipments).toBe(2)
+    const [posting] = await db()
+      .select()
+      .from(schema.GlPosting)
+      .where(eq(schema.GlPosting.id, accepted!.glPostingId))
+    expect(posting).toBeDefined()
   })
 })
