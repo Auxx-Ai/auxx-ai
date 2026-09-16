@@ -52,20 +52,32 @@ describe('suggestRail', () => {
     })
 
     it('keeps fee treatment independent of settlement source', () => {
-      // Affirm settles outside every API AND nets its fee; Authorize.Net
-      // settles outside every API and bills for it. Two questions (§4).
-      expect(suggestRail('affirm').settlementSource).toBe('manual')
-      expect(suggestRail('affirm').feeTreatment).toBe('netted')
+      // 🛑 The proof is two rails that SHARE a settlement source and disagree
+      // about fees: PayPal is worked by hand and nets its cut out of the
+      // deposit, the acquirer behind Authorize.Net is worked by hand and bills
+      // monthly. Neither field may be derived from the other (§4).
+      expect(suggestRail('paypal').settlementSource).toBe('manual')
+      expect(suggestRail('paypal').feeTreatment).toBe('netted')
       expect(suggestRail('authorize_net').settlementSource).toBe('manual')
       expect(suggestRail('authorize_net').feeTreatment).toBe('billed')
+
+      // And from the other side: Affirm has a feed AND nets its discount fee.
+      expect(suggestRail('affirm').settlementSource).toBe('affirm')
+      expect(suggestRail('affirm').feeTreatment).toBe('netted')
     })
 
-    it('claims `stripe` as the only readable settlement source', () => {
-      // `money/payouts/gather.ts` talks to Stripe Connect and nothing else
-      // (§1.4), so no other rail may promise a drain nobody wrote.
+    it('suggests a readable source only for the rails that have a feed', () => {
+      // A settlement source that promises a drain nobody wrote is worse than
+      // one that says "by hand", so a rail is promoted out of `manual` only
+      // when its feed is actually read.
       expect(suggestRail('stripe').settlementSource).toBe('stripe')
+      expect(suggestRail('shopify_payments').settlementSource).toBe('shopify_payments')
+      // ✔ Affirm settles on its own weekly `deposit_id`, in no Shopify Payments
+      // deposit (`plans/apps/affirm/portal-probe-2026-09-15.md` §5).
+      expect(suggestRail('affirm').settlementSource).toBe('affirm')
+
       for (const handle of ['paypal', 'square', 'klarna', 'braintree', 'amazon_pay', 'afterpay']) {
-        expect(suggestRail(handle).settlementSource).not.toBe('stripe')
+        expect(suggestRail(handle).settlementSource).toBe('manual')
       }
     })
   })

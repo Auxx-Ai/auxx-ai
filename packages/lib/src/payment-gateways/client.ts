@@ -20,8 +20,29 @@
  * `@auxx/lib/payment-gateways`. The barrel reaches Drizzle and the org cache.
  */
 
-/** How a gateway drains. Mirrors `PaymentGatewaySettlementSource` (enum-values.ts). */
-export const PAYMENT_GATEWAY_SETTLEMENT_SOURCES = ['stripe', 'shopify_payments', 'manual'] as const
+/**
+ * How a gateway drains. Mirrors `PaymentGatewaySettlementSource` (enum-values.ts).
+ *
+ * `manual` is deliberately LAST: it is the fallback every other value is
+ * measured against, and `resolvePaymentGatewaySettlementSource` coerces an
+ * unrecognised option to it.
+ *
+ * 🛑 Adding a value here widens `PayoutSourceId`
+ * (`money/payouts/source.ts` - `Exclude<…, 'manual'>`), which is the key type of
+ * the `PayoutSource` registry. A value may sit in this vocabulary with no source
+ * registered against it: `getPayoutSource` answers a `NotFoundError` naming the
+ * id, and the sweep only polls sources that registered themselves. `affirm` is
+ * permanently in that state on purpose - it is read by the financial connector,
+ * which is mutually exclusive with the `PayoutSource` registry
+ * (`plans/apps/affirm/affirm-build-plan.md` §5.3, and
+ * `money/payouts/ingestion-owner.ts` for the guard that enforces it).
+ */
+export const PAYMENT_GATEWAY_SETTLEMENT_SOURCES = [
+  'stripe',
+  'shopify_payments',
+  'affirm',
+  'manual',
+] as const
 export type PaymentGatewaySettlementSourceValue =
   (typeof PAYMENT_GATEWAY_SETTLEMENT_SOURCES)[number]
 
@@ -50,6 +71,7 @@ export const PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS: Record<
 > = {
   stripe: 'Stripe',
   shopify_payments: 'Shopify Payments',
+  affirm: 'Affirm',
   manual: 'By hand',
 }
 
@@ -64,11 +86,20 @@ export const PAYMENT_GATEWAY_FEE_TREATMENT_LABELS: Record<PaymentGatewayFeeTreat
     billed: 'Billed separately',
   }
 
-/** Narrow an unknown option value to a {@link PaymentGatewaySettlementSourceValue}. */
+/**
+ * Narrow an unknown option value to a {@link PaymentGatewaySettlementSourceValue}.
+ *
+ * 🛑 Driven off {@link PAYMENT_GATEWAY_SETTLEMENT_SOURCES} rather than a chain of
+ * literals, because the failure mode of forgetting one is SILENT: a record
+ * storing the new option would read back as `manual`, and a rail that reads a
+ * feed would present itself as worked by hand. The list is the vocabulary; this
+ * function must not hold a second, shorter copy of it.
+ */
 export function resolvePaymentGatewaySettlementSource(
   value: string | null | undefined
 ): PaymentGatewaySettlementSourceValue {
-  return value === 'stripe' || value === 'shopify_payments' ? value : 'manual'
+  const found = PAYMENT_GATEWAY_SETTLEMENT_SOURCES.find((source) => source === value)
+  return found ?? 'manual'
 }
 
 /** Narrow an unknown option value to a {@link PaymentGatewayStatusValue}. */

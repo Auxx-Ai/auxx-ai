@@ -54,6 +54,10 @@
       "types": "./lib/root/data-connectors/index.d.ts",
       "import": "./lib/root/data-connectors/index.js"
     },
+    "./financial-source": {
+      "types": "./lib/root/financial-source/index.d.ts",
+      "import": "./lib/root/financial-source/index.js"
+    },
     "./shared": {
       "types": "./lib/shared/index.d.ts",
       "import": "./lib/shared/index.js"

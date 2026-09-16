@@ -92,15 +92,21 @@ interface RailEntry {
  * of handles and one account, which is exactly this shape.
  *
  * ⚠️ `settlementSource` here is what auxx can actually READ, not who owns the
- * rail. Only `stripe` has a payout reader today (`money/payouts/gather.ts`
- * talks to Stripe Connect and nothing else, §1.4), so every other rail suggests
- * `manual` even when the processor plainly has an API - a settlement source
+ * rail. `stripe`, `shopify_payments` and `affirm` are the three rails a reader
+ * is being built for; `afterpay`, `klarna`, `paypal`, `braintree`, `amazon_pay`,
+ * `square` and the acquirer behind Authorize.Net all still suggest `manual` even
+ * though every one of those processors plainly has an API - a settlement source
  * that promises a drain nobody wrote is worse than one that says "by hand".
+ * A rail is promoted out of `manual` HERE only when its feed is being read, not
+ * when somebody notices the vendor has documentation.
  *
  * ⚠️ `feeTreatment` is a SEPARATE question from `settlementSource` and does not
- * follow from it (§4). Affirm settles outside every API AND nets its discount
- * fee; a traditional acquirer behind Authorize.Net batches daily and bills
- * monthly. Two questions, two fields.
+ * follow from it (§4). The clearest proof is two rails that share a settlement
+ * source and disagree on fees: PayPal is `manual` and nets its cut out of the
+ * deposit, while the traditional acquirer behind Authorize.Net is `manual`,
+ * batches daily GROSS and bills monthly. Affirm makes the same point from the
+ * other side - it now has a reader AND nets its discount fee. Two questions,
+ * two fields.
  */
 const RAILS: Record<string, RailEntry> = {
   stripe: { name: 'Stripe', settlementSource: 'stripe', feeTreatment: 'netted' },
@@ -130,7 +136,17 @@ const RAILS: Record<string, RailEntry> = {
   'authorize.net': { name: 'Authorize.Net', settlementSource: 'manual', feeTreatment: 'billed' },
   authorizenet: { name: 'Authorize.Net', settlementSource: 'manual', feeTreatment: 'billed' },
 
-  affirm: { name: 'Affirm', settlementSource: 'manual', feeTreatment: 'netted' },
+  // ✔ Affirm settles to the bank on its own weekly `deposit_id`, and none of it
+  // rides inside a Shopify Payments deposit (`plans/apps/affirm/portal-probe-2026-09-15.md`
+  // §5: 31 Affirm-paid orders, 0 Shopify Payments balance entries). So it is a
+  // genuine second rail with a feed of its own, not the `manual` case.
+  // `netted` is confirmed by the same evidence and is unchanged: `fees`,
+  // `txn_fees` and `mdr_rate` ride on the settlement event itself, which is what
+  // netting means.
+  // 🛑 One key, lower-cased. Shopify reports the handle as `'Affirm'`, but the
+  // table is read through `normaliseGatewayHandle` - a second `'Affirm'` key
+  // would be dead code.
+  affirm: { name: 'Affirm', settlementSource: 'affirm', feeTreatment: 'netted' },
   afterpay: { name: 'Afterpay', settlementSource: 'manual', feeTreatment: 'netted' },
   klarna: { name: 'Klarna', settlementSource: 'manual', feeTreatment: 'netted' },
   paypal: { name: 'PayPal', settlementSource: 'manual', feeTreatment: 'netted' },

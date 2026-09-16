@@ -199,9 +199,9 @@ export const PAYMENT_GATEWAY_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Select settlement source',
     defaultValue: 'manual',
     description:
-      'How this gateway drains: `stripe` or `shopify_payments` read a real payout feed, ' +
-      '`manual` is worked by hand. `manual` is not a gap - it is what Affirm and every ' +
-      'historical rail correctly are.',
+      'How this gateway drains: `stripe`, `shopify_payments` and `affirm` read a real ' +
+      'settlement feed, `manual` is worked by hand in the review queue. `manual` is not a gap - ' +
+      'it is what Authorize.Net and every rail whose feed nobody reads correctly are.',
   },
 
   settlementAccount: {
@@ -299,7 +299,8 @@ export const PAYMENT_GATEWAY_FIELDS: Record<string, ResourceField> = {
       'Whether the processor withholds its cut from the deposit (`netted`) or bills for it ' +
       'later (`billed`). A payout entry on a billed rail has NO fee leg and its deposit is ' +
       'gross, so this decides the shape of the entry, not just a label. Deliberately not ' +
-      'folded into settlementSource: Affirm settles outside every API and still nets its fee.',
+      'folded into settlementSource: PayPal and Authorize.Net are both `manual` and disagree ' +
+      'on this, and Affirm reads a feed and still nets its fee.',
   },
 
   status: {
