@@ -464,7 +464,14 @@ export {
 } from './reports/adapters'
 export type { BalanceSheet, BalanceSheetRow, BalanceSheetSnapshot } from './reports/balance-sheet'
 export type { Completeness, CompletenessItem } from './reports/completeness'
-export { fiscalYearStart, previousCalendarDay } from './reports/fiscal-year'
+export {
+  DEFAULT_FISCAL_YEAR_START_MONTH,
+  FISCAL_YEAR_START_MONTH_OPTIONS,
+  FISCAL_YEAR_START_MONTH_SETTING_KEY,
+  fiscalYearStart,
+  normalizeFiscalYearStartMonth,
+  previousCalendarDay,
+} from './reports/fiscal-year'
 // The general ledger (task 21 §5). Types only: `readGeneralLedger` and its
 // `GENERAL_LEDGER_MAX_LINES` guard are a db read and a server policy, and stay
 // on `./index`. `toGeneralLedgerRows`/`GENERAL_LEDGER_COLUMNS` are pure and

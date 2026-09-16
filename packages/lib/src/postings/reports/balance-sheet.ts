@@ -16,6 +16,7 @@ import { loadRoleAccountCodes } from '../resolve-roles'
 import { listChartAccounts } from '../role-map'
 import type { ChartAccountRow } from '../types'
 import { fiscalYearStart, previousCalendarDay } from './fiscal-year'
+import { resolveFiscalYearStartMonth } from './fiscal-year-setting'
 import { netIncome, type RetainedEarnings, retainedEarnings } from './statement-math'
 import { readTrialBalance, type TrialBalanceRow } from './trial-balance'
 
@@ -141,12 +142,17 @@ export async function readBalanceSheet(
     if (chartResult.isErr()) return err(chartResult.error)
     const chart = chartResult.value
 
-    const primary = await computeSnapshot(db, organizationId, asOf, chart)
+    // Once per call, for the same reason the chart is: both snapshots must draw
+    // the boundary in the same month, and a compare period that resolved it
+    // separately could straddle a settings change mid-read.
+    const fyStartMonth = await resolveFiscalYearStartMonth(organizationId, db)
+
+    const primary = await computeSnapshot(db, organizationId, asOf, chart, fyStartMonth)
     if (primary.isErr()) return err(primary.error)
 
     let compare: BalanceSheetSnapshot | null = null
     if (compareAsOf) {
-      const compared = await computeSnapshot(db, organizationId, compareAsOf, chart)
+      const compared = await computeSnapshot(db, organizationId, compareAsOf, chart, fyStartMonth)
       if (compared.isErr()) return err(compared.error)
       compare = compared.value
     }
@@ -163,9 +169,10 @@ async function computeSnapshot(
   db: Database,
   organizationId: string,
   asOf: string,
-  chart: readonly ChartAccountRow[]
+  chart: readonly ChartAccountRow[],
+  fiscalYearStartMonth: number
 ): Promise<Result<BalanceSheetSnapshot, Error>> {
-  const fyStart = fiscalYearStart(asOf)
+  const fyStart = fiscalYearStart(asOf, fiscalYearStartMonth)
   const dayBeforeFyStart = previousCalendarDay(fyStart)
 
   const [asOfResult, priorYearsResult, currentFyResult, retainedEarningsAccounts] =

@@ -20,6 +20,14 @@ import { PAYMENT_ROUTE_SETTING_OPTIONS } from '../money/bank-deposits/route'
 import { BATCH_POSTING_GROUPING_SETTING_OPTIONS } from '../money/batch-posting/setting-options'
 import { CREDIT_MEMO_POSTING_SETTING_OPTIONS } from '../money/credit-memo-posting/setting-options'
 import { FULFILLMENT_POSTING_SETTING_OPTIONS } from '../money/fulfillment-posting/setting-options'
+// Same one-list rule for the fiscal year. `reports/fiscal-year.ts` is pure and
+// already client-safe (`postings/client.ts` exports `fiscalYearStart`), so the
+// months live beside the function that consumes them rather than in a split-out
+// file of their own.
+import {
+  DEFAULT_FISCAL_YEAR_START_MONTH,
+  FISCAL_YEAR_START_MONTH_OPTIONS,
+} from '../postings/reports/fiscal-year'
 import type { SettingScope, SettingValue } from './types'
 
 /**
@@ -960,6 +968,24 @@ export const SETTINGS_CATALOG = {
     description:
       'The IANA timezone the books are kept in, e.g. America/New_York. Period keys are ' +
       'derived in it. Unset refuses to post rather than assuming UTC.',
+  },
+  // 🔑 A DEFAULT, unlike the two keys above, and deliberately. January is what
+  // every report assumed before this key existed, so an org that never touches
+  // it reads exactly as it did. It is also not frozen after the first posting:
+  // the cutoff and the timezone are frozen because they change a posted entry's
+  // `txnDate`/`periodKey`, and this one touches no stored column at all — it
+  // only moves where a READ splits prior years from this year
+  // (`docs/accounting-architecture-guide.md` §12.1).
+  'accounting.fiscalYearStartMonth': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: String(DEFAULT_FISCAL_YEAR_START_MONTH),
+    options: { options: [...FISCAL_YEAR_START_MONTH_OPTIONS] },
+    description:
+      'The month the fiscal year starts in. Every report resets revenue and expense accounts ' +
+      'at this boundary and rolls everything before it into retained earnings. Changing it ' +
+      're-frames the reports; it rewrites no posted entry.',
   },
 
   // ── When a shipment reaches the ledger (49 §2.4, §8.4 decision 1) ──────────

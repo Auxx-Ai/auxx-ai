@@ -2,7 +2,12 @@
 
 'use client'
 
-import { type ClosePeriod, FINALIZED_SETUP_STATE } from '@auxx/lib/postings/client'
+import {
+  type ClosePeriod,
+  FINALIZED_SETUP_STATE,
+  FISCAL_YEAR_START_MONTH_SETTING_KEY,
+  normalizeFiscalYearStartMonth,
+} from '@auxx/lib/postings/client'
 import { useMemo } from 'react'
 import { formatPeriodLabel } from '~/components/accounting/ui/ledger/format'
 import { useSettings } from '~/hooks/use-settings'
@@ -39,6 +44,13 @@ export interface LedgerPeriodModel {
   hasOpenPeriod: boolean
   /** The zone the period boundaries were drawn in. Never the viewer's zone. */
   bookTimeZone: string
+  /**
+   * 1-12. The client half of the fiscal-year boundary: `resolveFiscalYearStartMonth`
+   * answers the same question server-side, and both go through
+   * `normalizeFiscalYearStartMonth` so a report and its drill-down cannot draw
+   * the boundary in different months.
+   */
+  fiscalYearStartMonth: number
   currencyCode: string
 }
 
@@ -62,6 +74,9 @@ export function useLedgerPeriod(periodKey?: string): LedgerPeriodModel {
 
   const setupState = getSetting('accounting.setupState')
   const bookTimeZone = (getSetting('accounting.bookTimeZone') as string) || FALLBACK_BOOK_TIME_ZONE
+  const fiscalYearStartMonth = normalizeFiscalYearStartMonth(
+    getSetting(FISCAL_YEAR_START_MONTH_SETTING_KEY)
+  )
   const currencyCode = (getSetting('organization.currency') as string) || 'USD'
   const isSetupDraft = setupState !== FINALIZED_SETUP_STATE
 
@@ -96,7 +111,16 @@ export function useLedgerPeriod(periodKey?: string): LedgerPeriodModel {
         index >= 0 && index < options.length - 1 ? (options[index + 1]?.periodKey ?? null) : null,
       hasOpenPeriod: !!firstOpen,
       bookTimeZone,
+      fiscalYearStartMonth,
       currencyCode,
     }
-  }, [bookTimeZone, currencyCode, isSetupDraft, periodKey, periods, periodsQuery.isPending])
+  }, [
+    bookTimeZone,
+    currencyCode,
+    fiscalYearStartMonth,
+    isSetupDraft,
+    periodKey,
+    periods,
+    periodsQuery.isPending,
+  ])
 }

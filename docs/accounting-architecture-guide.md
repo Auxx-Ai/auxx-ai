@@ -699,8 +699,17 @@ the P&L, not a posted balance"), or it reads as an account somebody posted to.
 `statement-math.ts` owns `retainedEarnings()`; `fiscal-year.ts` owns `fiscalYearStart()`.
 `rows.ts` and `adapters.ts` turn a read into `StatementRow`s; `pdf/` renders.
 
-⚠️ **There is no `accounting.fiscalYear*` setting.** The calendar year is assumed. Any org whose
-year does not start in January needs that setting before the fiscal-year boundary means anything.
+🛑 **`fiscalYearStart(date, startMonth)` takes the month; it does not read it.** The org's value
+lives in `accounting.fiscalYearStartMonth` and is resolved **once per report** —
+`resolveFiscalYearStartMonth()` server-side, `useLedgerPeriod().fiscalYearStartMonth` in the
+browser — then passed down. A read path that calls `fiscalYearStart(date)` with no month silently
+assumes January and will disagree with the row it was opened from.
+
+The setting defaults to January (what every report assumed before it existed, so nothing moved when
+it landed) and is **not** frozen after the first posting, unlike `cutoffPeriod` and `bookTimeZone`:
+those change a posted entry's `txnDate`/`periodKey`, this one writes nothing to the ledger at all.
+Both readers normalize through `normalizeFiscalYearStartMonth()`, which falls back to January rather
+than throwing — one hand-edited row must not take down every statement in the org.
 
 ⚠️ **`GENERAL_LEDGER_MAX_LINES = 25_000`** with a truncation contract: an `INCOMPLETE` first row, a
 banner, a verdict override and an `-INCOMPLETE` filename. CSV and PDF read the **full** range
@@ -741,6 +750,7 @@ drawer needs `DockedPanelsOutletProvider` in the layout; `settings` and `banking
 | Key | What it decides |
 | --- | --- |
 | `accounting.bookTimeZone` | 🔑 Every period boundary |
+| `accounting.fiscalYearStartMonth` | 🔑 Where every read splits prior years from this year (§12.1). Defaults to January; not frozen |
 | `accounting.cutoffPeriod` | The first month auxx keeps |
 | `accounting.setupState`, `setupFinalizedAt/ByUserId` | Wizard completion |
 | `accounting.fulfillmentPosting`, `creditMemoPosting` | Manual or automatic |

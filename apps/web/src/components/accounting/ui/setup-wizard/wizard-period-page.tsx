@@ -13,8 +13,9 @@ import type { WizardStepHandle } from './wizard-step-handle'
 
 const CUTOFF_KEY = 'accounting.cutoffPeriod'
 const TIMEZONE_KEY = 'accounting.bookTimeZone'
+const FISCAL_YEAR_KEY = 'accounting.fiscalYearStartMonth'
 
-const DRAFT_KEYS = [CUTOFF_KEY, TIMEZONE_KEY] as const
+const DRAFT_KEYS = [CUTOFF_KEY, TIMEZONE_KEY, FISCAL_YEAR_KEY] as const
 
 /**
  * `parsePeriodKey` requires a MONTH key and there is no pattern validation on a `TEXT` setting -
@@ -30,8 +31,8 @@ function text(value: unknown): string | null {
 }
 
 /**
- * Page 2 of `AccountingSetupWizard` - the two settings that decide which month a piece of
- * subledger activity belongs to.
+ * Page 2 of `AccountingSetupWizard` - the settings that decide which month a piece of subledger
+ * activity belongs to, and which month the fiscal year turns over in.
  *
  * 🛑 There is NO UTC fallback on the timezone, deliberately. A receipt logged at 7pm on January 31
  * in `America/New_York` is already February 1 in UTC, so an org whose zone was quietly assumed
@@ -103,6 +104,17 @@ export const WizardPeriodPage = forwardRef<WizardStepHandle>(
             description='The IANA timezone period keys are derived in. Unset refuses to post rather than assuming UTC.'
             placeholder='America/New_York'
             {...controlled(TIMEZONE_KEY)}
+          />
+          {/*
+            Absent from `invalidReason` on purpose: this key defaults to January
+            and the other two have no default, so an untouched wizard advances
+            with a correct fiscal year and refuses only on the two it cannot guess.
+          */}
+          <SettingsFieldRow
+            settingKey={FISCAL_YEAR_KEY}
+            title='Fiscal year starts'
+            description='The month your fiscal year turns over. January unless your books say otherwise.'
+            {...controlled(FISCAL_YEAR_KEY)}
           />
         </FieldPanel>
 

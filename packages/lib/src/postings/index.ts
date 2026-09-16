@@ -631,7 +631,15 @@ export {
   type ReadDimensionBreakdownOptions,
   readDimensionBreakdown,
 } from './reports/dimension-breakdown'
-export { fiscalYearStart, previousCalendarDay } from './reports/fiscal-year'
+export {
+  DEFAULT_FISCAL_YEAR_START_MONTH,
+  FISCAL_YEAR_START_MONTH_OPTIONS,
+  FISCAL_YEAR_START_MONTH_SETTING_KEY,
+  fiscalYearStart,
+  normalizeFiscalYearStartMonth,
+  previousCalendarDay,
+} from './reports/fiscal-year'
+export { resolveFiscalYearStartMonth } from './reports/fiscal-year-setting'
 // ── The general ledger (task 21 §5): the sixth statement ────────────────────
 export {
   type AccountLineRow,

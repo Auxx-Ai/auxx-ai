@@ -57,7 +57,11 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
   const [recordIdParam, setRecordIdParam] = useQueryState('id', parseAsString.withDefault(''))
 
   const cutoff = period.options[0] ? periodStartDate(period.options[0].periodKey) : null
-  const { asOf, setAsOf } = useReportAsOf(period.bookTimeZone, !!period.resolvedPeriodKey)
+  const { asOf, setAsOf } = useReportAsOf(
+    period.bookTimeZone,
+    !!period.resolvedPeriodKey,
+    period.fiscalYearStartMonth
+  )
   const asOfPresets = useMemo(
     () => reportAsOfPresets(todayInZone(period.bookTimeZone), cutoff),
     [period.bookTimeZone, cutoff]
