@@ -5,6 +5,10 @@
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import { BookOpen, Building2, FileText, ListChecks, Scale, TrendingUp, Users } from 'lucide-react'
 import { usePathname } from 'next/navigation'
+import {
+  DockedPanelsOutletProvider,
+  useDockedPanelsOutlet,
+} from '~/components/global/docked-panels-outlet'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
 
@@ -85,13 +89,19 @@ const REPORTS_NAV: SidebarProps[] = [
   },
 ]
 
-export default function AccountingReportsLayout({ children }: { children: React.ReactNode }) {
+/**
+ * The layout owns the one `MainPageContent`, so a report docks its posting
+ * drawer by publishing it to the outlet rather than by passing a prop it cannot
+ * reach. See `docked-panels-outlet.tsx`.
+ */
+function AccountingReportsLayoutFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const pages = pathname.split('/')
   const page = pages[pages.length - 1]
+  const dockedPanels = useDockedPanelsOutlet()
 
   return (
-    <MainPageContent>
+    <MainPageContent dockedPanels={dockedPanels}>
       {/* `md:` must match `SidebarSecondary`'s own breakpoint - see
           `accounting/settings/layout.tsx` for why a mismatch collapses the
           sidebar to a sliver at `sm:`. */}
@@ -105,5 +115,13 @@ export default function AccountingReportsLayout({ children }: { children: React.
         <div className='relative flex h-full w-full flex-1 grow overflow-hidden'>{children}</div>
       </div>
     </MainPageContent>
+  )
+}
+
+export default function AccountingReportsLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <DockedPanelsOutletProvider>
+      <AccountingReportsLayoutFrame>{children}</AccountingReportsLayoutFrame>
+    </DockedPanelsOutletProvider>
   )
 }

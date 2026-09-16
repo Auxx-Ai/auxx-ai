@@ -504,9 +504,10 @@ function StatementTableRow({
         )
       }
       isOpen={isOpen}
-      onToggleOpen={
-        hasChildren ? () => onToggleOpen(row.id) : clickable ? () => onRowClick?.(row) : undefined
-      }
+      // Two gestures, two slots. `onRowClick` takes the body and leaves the
+      // chevron to `onToggleOpen`, so a row can expand AND drill.
+      onToggleOpen={hasChildren ? () => onToggleOpen(row.id) : undefined}
+      onRowClick={clickable ? () => onRowClick?.(row) : undefined}
       title={
         verdictMark ? (
           // Inline-flex, not flex: `TreeRow`'s title span truncates, and a
