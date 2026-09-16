@@ -65,6 +65,17 @@ export enum Queues {
   // race for the same day's period key. The `auto` lane coalesces on a per-org
   // `jobId`, which only de-dupes against a job that is still QUEUED.
   fulfillmentPostingQueue = 'fulfillment-posting',
+  // External accounting delivery: push ONE accepted journal to the pinned books
+  // (QuickBooks today). Off the request path on purpose - a delivery is 3 to 5
+  // sequential Lambda round trips (resolve context, list the chart, read back,
+  // create, plus a customer upsert per new counterparty), and a bulk posting run
+  // makes one per GROUP. Doing that inline held a 28-group run open for minutes.
+  //
+  // NOT concurrency 1: journals are independent, the readback-before-create in
+  // `delivery.ts` makes each one idempotent, and `AccountingDeliveryOperation`
+  // holds a lease so two attempts at the same posting cannot both send. It is
+  // kept low anyway because the far side is one company's rate-limited API.
+  accountingDeliveryQueue = 'accounting-delivery',
   // Bulk credit memo posting (plans/accounting/tasks/28-how-your-books-post.md §3.1).
   // Its OWN queue at concurrency 1 for the same reason as the one above: one job
   // posts every unposted channel memo in an org as one entry per issue day, and

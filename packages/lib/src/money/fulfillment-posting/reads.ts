@@ -32,6 +32,7 @@ import {
   readOrderTaxLines,
   requireOrderFieldContext,
 } from '../orders/reads'
+import type { FulfillmentAcceptanceContext } from './acceptance-context'
 import { guard } from './guard'
 import { loadGatewayRoutesForPlan, planFulfillmentPosting } from './plan'
 import type {
@@ -102,14 +103,13 @@ async function readUnpostedFulfillmentCandidates(
   organizationId: string,
   ctx: FulfillmentFieldContext,
   range: UnpostedShipmentRange,
+  zone: string,
   fulfillmentIds?: readonly string[]
 ): Promise<FulfillmentCandidate[]> {
   const shippedAtField = ctx.fulfillment.fulfillment_shipped_at
   const orderField = ctx.fulfillment.fulfillment_order
   if (!shippedAtField || !orderField) return []
   const glPostingFieldId = ctx.fulfillment.fulfillment_gl_posting?.id ?? ''
-  const zone =
-    (await readTextSetting(db, organizationId, OPENING_BASELINE_SETTING_KEYS.bookTimeZone)) ?? 'UTC'
   const bookDay = sql`(${schema.FieldValue.valueDate} AT TIME ZONE ${zone})::date`
 
   const orderEdge = alias(schema.FieldValue, 'fulfillment_order_edge')
@@ -202,6 +202,15 @@ export async function readUnpostedShipments(
     organizationId: string
     range: UnpostedShipmentRange
     fulfillmentIds?: readonly string[]
+    /**
+     * Field metadata and book time zone already resolved by the caller.
+     *
+     * The acceptance path reads one shipment at a time and would otherwise
+     * re-derive both on every call - three settings reads and two field-context
+     * resolutions per shipment, for values the accounting commit lock is
+     * already holding still. See `acceptance-context.ts`.
+     */
+    context?: FulfillmentAcceptanceContext
   }
 ): Promise<Result<UnpostedShipment[], Error>> {
   const { organizationId, range } = params
@@ -211,14 +220,20 @@ export async function readUnpostedShipments(
       assertIsoDate(range.from, 'The range start')
       assertIsoDate(range.to, 'The range end')
 
-      const fulfillmentCtx = await loadFulfillmentFieldContext(organizationId, db)
+      const fulfillmentCtx =
+        params.context?.fields ?? (await loadFulfillmentFieldContext(organizationId, db))
       if (!fulfillmentCtx) return []
+
+      const bookTimeZone =
+        params.context?.settings.timeZone ??
+        (await readTextSetting(db, organizationId, OPENING_BASELINE_SETTING_KEYS.bookTimeZone))
 
       const candidates = await readUnpostedFulfillmentCandidates(
         db,
         organizationId,
         fulfillmentCtx,
         range,
+        bookTimeZone ?? 'UTC',
         params.fulfillmentIds
       )
       if (candidates.length === 0) return []
@@ -233,7 +248,7 @@ export async function readUnpostedShipments(
       const orderIds = [...new Set(candidates.map((row) => row.orderId))]
 
       const [ctx, byOrder] = await Promise.all([
-        requireOrderFieldContext(organizationId, db),
+        params.context?.orderFields ?? requireOrderFieldContext(organizationId, db),
         readFulfillmentsForOrders(db, { organizationId, orderIds }),
       ])
 
@@ -248,11 +263,6 @@ export async function readUnpostedShipments(
         }
       }
 
-      const bookTimeZone = await readTextSetting(
-        db,
-        organizationId,
-        OPENING_BASELINE_SETTING_KEYS.bookTimeZone
-      )
       const [orders, lines, taxLinesByOrder, moneyCoverage] = await Promise.all([
         readOrderFacts(db, organizationId, ctx, orderIds),
         readLineFacts(db, organizationId, ctx, [...lineIds]),

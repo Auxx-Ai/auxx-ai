@@ -4,6 +4,7 @@ import { isSelfHosted } from '@auxx/deployment'
 import { reconcileConnectorSchedulers } from '@auxx/lib/data-connectors'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { reconcileSourceSchedulers } from '@auxx/lib/knowledge-sources'
+import { startAccountingDeliveryWorker } from './worker-definitions/accounting-delivery-worker'
 import { startAiAgentWorker } from './worker-definitions/ai-agent-worker'
 import { startAiAutofillWorker } from './worker-definitions/ai-autofill-worker'
 import { startAppTriggerWorker } from './worker-definitions/app-trigger-worker'
@@ -141,6 +142,11 @@ export async function startWorkers() {
   // cap as the fulfillment one, for the same period-key reason.
   const creditMemoPostingWorker = startCreditMemoPostingWorker()
 
+  // External accounting delivery worker: pushes ONE accepted journal to the
+  // pinned books per job. This is what keeps a bulk posting run off the
+  // QuickBooks round trips - see the worker definition.
+  const accountingDeliveryWorker = startAccountingDeliveryWorker()
+
   // Inbound-mail AI categorisation worker (mail-classification plan §4)
   const mailClassificationWorker = startMailClassificationWorker()
 
@@ -191,6 +197,7 @@ export async function startWorkers() {
     documentPdfWorker,
     fulfillmentPostingWorker,
     creditMemoPostingWorker,
+    accountingDeliveryWorker,
     mailClassificationWorker,
     purchaseIntakeWorker,
     returnIntakeWorker,

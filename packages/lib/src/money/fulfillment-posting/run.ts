@@ -13,7 +13,7 @@ import { withAccountingCommitLock } from '../../postings/accounting-commit-lock'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { resolveFulfillmentDeliveryIntentInTx } from '../../postings/book-connections'
 import { buildEntry } from '../../postings/build-entry'
-import { deliverAccountingPosting, planAccountingDeliveryInTx } from '../../postings/delivery'
+import { enqueueAccountingDelivery, planAccountingDeliveryInTx } from '../../postings/delivery'
 import { canonicalAccountingJson } from '../../postings/effect-basis'
 import {
   FINALIZED_SETUP_STATE,
@@ -21,6 +21,7 @@ import {
 } from '../../postings/setup-readiness'
 import type { GlPostingLineInput } from '../../postings/types'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { prefetchGroupSources, resolveFulfillmentAcceptanceContext } from './acceptance-context'
 import { guard } from './guard'
 import { loadGatewayRoutesForPlan, planFulfillmentPosting } from './plan'
 import { readFulfillmentPostingSettings, readUnpostedShipments } from './reads'
@@ -331,16 +332,39 @@ export async function acceptFulfillmentWorkGroup(
     memo?: string
   }
 ): Promise<{ glPostingId: string; docNumber: string; shipments: number } | null> {
-  const workIds: string[] = []
-  for (const fulfillmentInstanceId of [...new Set(input.fulfillmentIds)]) {
-    const work = await db.transaction((tx) =>
-      captureFulfillmentAccountingWorkInTx(tx, {
+  const fulfillmentIds = [...new Set(input.fulfillmentIds)]
+  if (!fulfillmentIds.length) return null
+  // 🛑 ONE transaction for the whole capture pass, and it COMMITS BEFORE the
+  // acceptance below opens. That ordering is the contract - capture must survive
+  // a bookkeeping refusal, because a shipment whose source cannot be sealed is
+  // durable `blocked` work carrying the reason, and folding capture into the
+  // acceptance would roll that evidence back on exactly the runs that need it
+  // most (`executeGroup`'s header; asserted in `run.test.ts`).
+  //
+  // What the contract does NOT require is a transaction PER SHIPMENT, which is
+  // what this used to be: N transactions each re-resolving the org's accounting
+  // configuration and each re-running the netting read for a set of one.
+  //
+  // ⚠️ The one thing this gives up: a genuine SQL error mid-pass now aborts the
+  // whole group's capture rather than just that shipment's, since Postgres
+  // aborts the transaction either way. Bounded on purpose - the shipments are
+  // re-discovered by `sweepFulfillmentAccountingWork`, whose entire job is
+  // exactly this kind of gap. Source-level refusals are unaffected: they are
+  // recorded as an `incomplete` basis rather than thrown (`work.ts`).
+  const workIds = await db.transaction(async (tx) => {
+    const captureContext = await resolveFulfillmentAcceptanceContext(tx, input.organizationId)
+    await prefetchGroupSources(tx, captureContext, fulfillmentIds)
+    const captured: string[] = []
+    for (const fulfillmentInstanceId of fulfillmentIds) {
+      const work = await captureFulfillmentAccountingWorkInTx(tx, {
         organizationId: input.organizationId,
         fulfillmentInstanceId,
+        context: captureContext,
       })
-    )
-    workIds.push(work.id)
-  }
+      captured.push(work.id)
+    }
+    return captured
+  })
   if (!workIds.length) return null
   const result = await db.transaction(async (tx) => {
     await withAccountingCommitLock(tx, input.organizationId)
@@ -353,6 +377,11 @@ export async function acceptFulfillmentWorkGroup(
       })) !== 'auto'
     )
       return null
+    // 🛑 ONE context for the whole group. Every shipment below reads the same
+    // field metadata and the same accounting configuration, and the commit lock
+    // this transaction holds is what makes reading it once and reading it per
+    // shipment provably identical. See `acceptance-context.ts`.
+    const context = await resolveFulfillmentAcceptanceContext(tx, input.organizationId)
     const works = await tx.query.AccountingWork.findMany({
       where: and(
         eq(schema.AccountingWork.organizationId, input.organizationId),
@@ -386,30 +415,37 @@ export async function acceptFulfillmentWorkGroup(
       }
       return null
     }
-    const setupState = await getOrganizationSetting({
-      organizationId: input.organizationId,
-      key: OPENING_BASELINE_SETTING_KEYS.setupState,
-      db: tx,
-    })
-    const settings = await readFulfillmentPostingSettings(tx, input.organizationId)
-    if (settings.isErr()) throw settings.error
-    const refusal = resolveRefusal(setupState, settings.value.timeZone)
+    const refusal = resolveRefusal(context.setupState, context.settings.timeZone)
     if (refusal) throw new UnprocessableEntityError(refusal)
+    // The group's netting read, once, for the shipments that are actually going
+    // to be prepared. Everything in the loop below then reads it out of the
+    // context instead of re-running it for a set of one.
+    const pendingIds = pending.map((work) => work.entityInstanceId!)
+    await prefetchGroupSources(tx, context, pendingIds)
     const prepared = []
     for (const work of pending) {
       // Configuration or source edits after initial capture select another immutable basis version.
+      // The capture above committed and released the lock, so this is a real
+      // re-read, not a repeat of one - it just no longer re-resolves the org
+      // metadata and configuration the context already holds.
       const refreshed = await captureFulfillmentAccountingWorkInTx(tx, {
         organizationId: input.organizationId,
         fulfillmentInstanceId: work.entityInstanceId!,
+        context,
       })
       if (refreshed.state === 'blocked')
         throw new UnprocessableEntityError(
           refreshed.blockedReason ?? 'Fulfillment accounting is blocked'
         )
-      const member = await prepareFulfillmentEffectMemberInTx(tx, input.organizationId, work.id)
+      const member = await prepareFulfillmentEffectMemberInTx(
+        tx,
+        input.organizationId,
+        work.id,
+        context
+      )
       if (
-        settings.value.cutoffPeriod &&
-        member.shipment.shippedAt.slice(0, 7) <= settings.value.cutoffPeriod
+        context.settings.cutoffPeriod &&
+        member.shipment.shippedAt.slice(0, 7) <= context.settings.cutoffPeriod
       )
         throw new UnprocessableEntityError('Fulfillment is before the opening cutoff')
       prepared.push(member)
@@ -446,6 +482,12 @@ export async function acceptFulfillmentWorkGroup(
       sequence: item.shipment.sequence,
       amounts: item.shipment.amounts,
     }))
+    // 🛑 The SECOND pass, and the acceptance guard depends on it. `acceptEntryInTx`
+    // re-reads every member's live source through `revalidateFulfillmentMemberInTx`
+    // and refuses if its hash differs from what preparation froze; that check is
+    // only worth anything against data read again, so the snapshot preparation
+    // used is dropped here rather than reused.
+    await prefetchGroupSources(tx, context, pendingIds, { refresh: true })
     const result = await acceptEntryInTx(
       tx,
       {
@@ -460,7 +502,10 @@ export async function acceptFulfillmentWorkGroup(
           txnDate
         ),
       },
-      { revalidateMemberInTx: revalidateFulfillmentMemberInTx }
+      {
+        revalidateMemberInTx: (revalidateTx, work, basis) =>
+          revalidateFulfillmentMemberInTx(revalidateTx, work, basis, context),
+      }
     )
     if (result.status === 'replan')
       throw new Error('Membership changed while holding the accounting lock')
@@ -476,20 +521,16 @@ export async function acceptFulfillmentWorkGroup(
     await planAccountingDeliveryInTx(tx, { organizationId: input.organizationId, glPostingId })
     return { glPostingId, docNumber: posting.docNumber ?? '', shipments: prepared.length }
   })
-  if (result) {
-    try {
-      await deliverAccountingPosting(db, {
-        organizationId: input.organizationId,
-        glPostingId: result.glPostingId,
-      })
-    } catch (error) {
-      logger.warn('Accepted fulfillment journal awaits delivery recovery', {
-        organizationId: input.organizationId,
-        glPostingId: result.glPostingId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }
+  // 🛑 ENQUEUED, not awaited. Exporting the journal is 3 to 5 sequential Lambda
+  // round trips to QuickBooks, and a bulk run does this once per GROUP - a
+  // 28-day range held the dialog open for minutes on the export alone. The
+  // acceptance has already committed its `AccountingDelivery` row, so the work
+  // is durable whether or not the queue hears about it.
+  if (result)
+    await enqueueAccountingDelivery({
+      organizationId: input.organizationId,
+      glPostingId: result.glPostingId,
+    })
   return result
 }
 

@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
   intent: vi.fn(),
   plan: vi.fn(),
   deliver: vi.fn(),
+  enqueue: vi.fn(),
 }))
 vi.mock('../../../postings/accounting-enabled', () => ({
   isAccountingEnabled: async () => h.enabled,
@@ -33,6 +34,7 @@ vi.mock('../../../postings/book-connections', () => ({
 vi.mock('../../../postings/delivery', () => ({
   planAccountingDeliveryInTx: h.plan,
   deliverAccountingPosting: h.deliver,
+  enqueueAccountingDelivery: h.enqueue,
 }))
 vi.mock('../../../cache', () => ({ getOrgCache: () => ({ get: async () => 'system' }) }))
 vi.mock('../../../settings/settings-service', () => ({
@@ -47,6 +49,27 @@ vi.mock('../reads', () => ({
 vi.mock('../plan', () => ({
   loadGatewayRoutesForPlan: async () => [],
   planFulfillmentPosting: () => ({ groups: [], exclusions: [], footer: { shipments: 0 } }),
+}))
+vi.mock('../acceptance-context', () => ({
+  resolveFulfillmentAcceptanceContext: async (_tx: unknown, organizationId: string) => ({
+    organizationId,
+    fields: {},
+    orderFields: {},
+    ownershipFieldId: 'f_line_item_order',
+    settings: {
+      timeZone: 'UTC',
+      cutoffPeriod: null,
+      lockedThroughMonth: null,
+      ledgerCurrency: 'USD',
+    },
+    setupState: h.setup,
+    gatewayRoutes: [],
+    sources: new Map(),
+    shipments: new Map(),
+    shipDays: new Map(),
+    prefetched: new Set(),
+  }),
+  prefetchGroupSources: async () => {},
 }))
 vi.mock('../work', () => ({
   captureFulfillmentAccountingWorkInTx: h.capture,
@@ -140,6 +163,9 @@ beforeEach(() => {
   h.deliver.mockImplementation(async () => {
     h.events.push('deliver')
   })
+  h.enqueue.mockImplementation(async () => {
+    h.events.push('enqueue')
+  })
 })
 
 describe('atomic fulfillment command', () => {
@@ -147,8 +173,18 @@ describe('atomic fulfillment command', () => {
     const result = await acceptFulfillmentWorkGroup(db(), input)
     expect(result?.shipments).toBe(2)
     const acceptedAt = h.events.indexOf('accept')
-    expect(h.events.slice(0, acceptedAt).filter((event) => event === 'commit')).toHaveLength(2)
-    expect(h.events.slice(acceptedAt)).toEqual(['accept', 'plan', 'commit', 'deliver'])
+    const beforeAccept = h.events.slice(0, acceptedAt)
+    // 🛑 The contract is the ORDERING, not the transaction count: the capture
+    // pass commits before the acceptance opens, so a bookkeeping refusal cannot
+    // take the source evidence down with it. It is one transaction for the whole
+    // group now, so assert what actually matters - every shipment captured, and
+    // that capture committed, before acceptance started.
+    expect(beforeAccept.filter((event) => event === 'commit')).toHaveLength(1)
+    const captureCommit = beforeAccept.indexOf('commit')
+    expect(beforeAccept.slice(0, captureCommit).filter((e) => e === 'capture')).toHaveLength(2)
+    // The export is ENQUEUED after the commit, never sent inside the request.
+    expect(h.events.slice(acceptedAt)).toEqual(['accept', 'plan', 'commit', 'enqueue'])
+    expect(h.deliver).not.toHaveBeenCalled()
   })
   it('aggregates exactly the pending members and dates a monthly journal to their latest shipment', async () => {
     await acceptFulfillmentWorkGroup(db(), input)
@@ -169,12 +205,12 @@ describe('atomic fulfillment command', () => {
     expect(call.members[0].workId).toBe('w_f2')
     expect(call.entry.totalDebit).toBe(100)
   })
-  it('does not release a manual external delivery just because a person posted the fulfillment', async () => {
+  it('hands the accepted journal to the delivery queue rather than exporting it in the request', async () => {
     await acceptFulfillmentWorkGroup(db(), input)
-    expect(h.deliver).toHaveBeenCalledWith(expect.anything(), {
-      organizationId: 'org',
-      glPostingId: 'journal',
-    })
+    // 🛑 An export is 3-5 sequential Lambda round trips to QuickBooks and a bulk
+    // run makes one per GROUP. It must leave through the queue, never inline.
+    expect(h.enqueue).toHaveBeenCalledWith({ organizationId: 'org', glPostingId: 'journal' })
+    expect(h.deliver).not.toHaveBeenCalled()
   })
   it('rechecks automatic eligibility inside the commit transaction', async () => {
     h.mode = 'manual'
@@ -200,9 +236,12 @@ describe('atomic fulfillment command', () => {
   it('retains committed capture when accounting configuration refuses', async () => {
     h.intent.mockRejectedValueOnce(new Error('Unbridged QuickBooks company'))
     await expect(acceptFulfillmentWorkGroup(db(), input)).rejects.toThrow('Unbridged')
-    expect(h.events.filter((event) => event === 'commit')).toHaveLength(2)
+    // The capture pass committed and STAYS committed; only the acceptance rolls
+    // back. That is the whole reason capture is a separate transaction.
+    expect(h.events.filter((event) => event === 'commit')).toHaveLength(1)
+    expect(h.events.indexOf('commit')).toBeLessThan(h.events.indexOf('rollback'))
     expect(h.events.at(-1)).toBe('rollback')
-    expect(h.deliver).not.toHaveBeenCalled()
+    expect(h.enqueue).not.toHaveBeenCalled()
   })
   it('does not create a delivery when source sealing remains blocked', async () => {
     h.blocked = true
@@ -214,7 +253,7 @@ describe('atomic fulfillment command', () => {
     h.plan.mockRejectedValueOnce(new Error('write failed'))
     await expect(acceptFulfillmentWorkGroup(db(), input)).rejects.toThrow('write failed')
     expect(h.events.at(-1)).toBe('rollback')
-    expect(h.deliver).not.toHaveBeenCalled()
+    expect(h.enqueue).not.toHaveBeenCalled()
   })
   it('does not write accounting when the organization disabled it', async () => {
     h.enabled = false
@@ -238,10 +277,14 @@ describe('atomic fulfillment command', () => {
     })
     expect(h.capture).not.toHaveBeenCalled()
   })
-  it('preserves accepted local results when the delivery wakeup fails after commit', async () => {
-    h.deliver.mockRejectedValueOnce(new Error('connection unavailable'))
+  it('returns the accepted journal after the commit, with the export still only queued', async () => {
     const result = await acceptFulfillmentWorkGroup(db(), input)
     expect(result?.glPostingId).toBe('journal')
-    expect(h.events.at(-1)).toBe('commit')
+    // The acceptance is durable at the commit; the export is a later, separate
+    // concern. `enqueueAccountingDelivery` swallows its own queue failures (and
+    // `sweepAccountingDeliveries` is the backstop), so a wakeup that never
+    // arrives cannot cost us the journal.
+    expect(h.events.indexOf('commit')).toBeLessThan(h.events.indexOf('enqueue'))
+    expect(h.deliver).not.toHaveBeenCalled()
   })
 })
