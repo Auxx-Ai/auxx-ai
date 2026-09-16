@@ -8,13 +8,16 @@ import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
+import { todayInZone } from '@auxx/utils/calendar-day'
 import { BookOpen, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
+import { useMemo } from 'react'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
+import { formatAccountLabel } from '../account-label'
 import { PostingDrawerHost, usePostingDrawer } from './posting-drawer-host'
 import { ReportErrorCard } from './report-error-card'
 import {
@@ -23,6 +26,7 @@ import {
   periodStartDate,
   toStatementTableRows,
 } from './report-helpers'
+import { generalLedgerRangePresets } from './report-range-presets'
 import { ReportToolbar } from './report-toolbar'
 import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
@@ -66,6 +70,10 @@ export function GeneralLedgerReportPage() {
   const posting = usePostingDrawer()
   const [fromParam, setFromParam] = useQueryState('from')
   const [toParam, setToParam] = useQueryState('to')
+  // Set when a trial balance / balance sheet / P&L row drilled in here. The
+  // ledger IS the account drill-down, at one zoom level rather than two
+  // reports that have to agree with each other.
+  const [accountParam, setAccountParam] = useQueryState('account')
 
   // The current period, same default the P&L takes - the month a person is
   // working in is the range they almost always want, and it is also the range
@@ -74,16 +82,35 @@ export function GeneralLedgerReportPage() {
   const from = fromParam || (fallbackKey ? periodStartDate(fallbackKey) : '')
   const to = toParam || (fallbackKey ? periodEndDate(fallbackKey) : '')
 
-  const query = api.ledgerReports.generalLedger.useQuery({ from, to }, { enabled: !!from && !!to })
+  // 🛑 A SHORTER preset list than every other statement's, on purpose: this is
+  // the one report bounded by transaction volume rather than by the chart, so
+  // offering "Last 12 months" here is a one-click route to a truncated ledger.
+  const cutoff = period.options[0] ? periodStartDate(period.options[0].periodKey) : null
+  const presets = useMemo(
+    () => generalLedgerRangePresets(todayInZone(period.bookTimeZone)),
+    [period.bookTimeZone]
+  )
+
+  const query = api.ledgerReports.generalLedger.useQuery(
+    { from, to, glAccountId: accountParam ?? undefined },
+    { enabled: !!from && !!to }
+  )
   const renderPdf = api.ledgerReports.renderStatementPdf.useMutation({
     onError: (error) => toastError({ title: 'Error generating PDF', description: error.message }),
   })
 
   const truncated = !!query.data?.truncated
 
+  // The filtered account's own label, read off the section the query came
+  // back with rather than fetched again.
+  const filtered = accountParam ? query.data?.accounts[0] : undefined
+  const accountLabel = filtered
+    ? formatAccountLabel({ code: filtered.accountCode, name: filtered.accountName })
+    : null
+
   function handleDownloadPdf() {
     renderPdf.mutate(
-      { kind: 'general-ledger', from, to },
+      { kind: 'general-ledger', from, to, glAccountId: accountParam ?? undefined },
       {
         onSuccess: ({ assetId }) =>
           window.open(`/api/files/download/asset:${assetId}`, '_blank', 'noopener,noreferrer'),
@@ -100,7 +127,7 @@ export function GeneralLedgerReportPage() {
     // opens it.
     downloadCsv(
       toCsvRows(query.data.rows, GENERAL_LEDGER_COLUMNS, period.currencyCode),
-      `general-ledger-${from}-to-${to}${truncated ? '-INCOMPLETE' : ''}.csv`
+      `general-ledger-${accountLabel ? `${accountLabel.replace(/[^\w.-]+/g, '-')}-` : ''}${from}-to-${to}${truncated ? '-INCOMPLETE' : ''}.csv`
     )
   }
 
@@ -116,10 +143,19 @@ export function GeneralLedgerReportPage() {
       <ReportToolbar
         mode='range'
         periodOptions={period.options}
-        fromPeriodKey={from ? periodKeyFromDate(from) : undefined}
-        toPeriodKey={to ? periodKeyFromDate(to) : undefined}
-        onSelectFrom={(key) => void setFromParam(periodStartDate(key))}
-        onSelectTo={(key) => void setToParam(periodEndDate(key))}
+        from={from}
+        to={to}
+        onSelectRange={(next) => {
+          void setFromParam(next.from)
+          void setToParam(next.to)
+        }}
+        presets={presets}
+        cutoff={cutoff}
+        filter={
+          accountParam
+            ? { label: accountLabel ?? 'One account', onClear: () => void setAccountParam(null) }
+            : undefined
+        }
         onDownloadPdf={handleDownloadPdf}
         onDownloadCsv={handleDownloadCsv}
         through={to}
@@ -187,6 +223,11 @@ export function GeneralLedgerReportPage() {
                     : { label: 'Debits = Credits', ok: query.data.balanced }
                   : undefined
               }
+              // 🛑 `glPostingId`, not the generic gate. This report's account
+              // SECTIONS carry `glAccountId` too, and letting them read as
+              // drillable would take the row body away from `onToggleOpen` and
+              // stop them expanding.
+              canRowDrill={(row) => !!row.meta?.glPostingId}
               onRowClick={(row) => {
                 if (row.meta?.glPostingId) posting.open(row.meta.glPostingId)
               }}

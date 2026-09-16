@@ -1,6 +1,7 @@
 // apps/web/src/components/accounting/ui/reports/__tests__/report-helpers.test.ts
 
 import type { StatementRow as LibStatementRow } from '@auxx/lib/postings/client'
+import { daysBetween } from '@auxx/utils/calendar-day'
 import { describe, expect, it } from 'vitest'
 import {
   compareAsOfFor,
@@ -76,6 +77,22 @@ describe('compareAsOfFor', () => {
   it('derives the prior year end, leap year included', () => {
     expect(compareAsOfFor('2028-02-29', 'prior_year')).toBe('2027-02-28')
   })
+
+  // A month-end as-of compares to a month END; anything else keeps its day.
+  it('keeps the day of the month for a mid-month as-of', () => {
+    expect(compareAsOfFor('2026-09-16', 'prior_period')).toBe('2026-08-16')
+    expect(compareAsOfFor('2026-09-16', 'prior_year')).toBe('2025-09-16')
+  })
+
+  it('does not snap a mid-month as-of to a month boundary', () => {
+    // The old arithmetic answered '2026-08-31' here - 31 days of August set
+    // against 16 days of September, in two columns read as comparable.
+    expect(compareAsOfFor('2026-09-16', 'prior_period')).not.toBe('2026-08-31')
+  })
+
+  it('clamps a day of the month the target month does not have', () => {
+    expect(compareAsOfFor('2026-03-30', 'prior_period')).toBe('2026-02-28')
+  })
 })
 
 describe('compareRangeFor', () => {
@@ -96,6 +113,64 @@ describe('compareRangeFor', () => {
     expect(compareRangeFor('2026-06-01', '2026-08-31', 'prior_period')).toEqual({
       from: '2026-03-01',
       to: '2026-05-31',
+    })
+  })
+
+  // Every *-to-date range the date picker can now emit: anchored on the first
+  // of a month, ending mid-month.
+  it('keeps the end day of the month for a month-to-date range', () => {
+    expect(compareRangeFor('2026-09-01', '2026-09-16', 'prior_period')).toEqual({
+      from: '2026-08-01',
+      to: '2026-08-16',
+    })
+  })
+
+  it('does not stretch a partial month out to a whole one', () => {
+    // The old arithmetic answered { from: '2026-08-01', to: '2026-08-31' }.
+    expect(compareRangeFor('2026-09-01', '2026-09-16', 'prior_period')).not.toEqual({
+      from: '2026-08-01',
+      to: '2026-08-31',
+    })
+  })
+
+  it('shifts a quarter-to-date range back by its own span in months', () => {
+    expect(compareRangeFor('2026-07-01', '2026-09-16', 'prior_period')).toEqual({
+      from: '2026-04-01',
+      to: '2026-06-16',
+    })
+  })
+
+  // A window anchored nowhere in particular has no sensible month answer, so
+  // the prior period is the equally long window immediately before it.
+  it('shifts a free-floating window back by its own length in days', () => {
+    expect(compareRangeFor('2026-08-20', '2026-09-10', 'prior_period')).toEqual({
+      from: '2026-07-29',
+      to: '2026-08-19',
+    })
+  })
+
+  it('leaves no gap and no overlap between a free-floating range and its compare', () => {
+    const primary = { from: '2026-08-20', to: '2026-09-10' }
+    const compare = compareRangeFor(primary.from, primary.to, 'prior_period')
+    expect(compare).toBeDefined()
+    if (!compare) return
+    // The compare ends the day before the primary begins, and both cover the
+    // same number of days.
+    expect(daysBetween(compare.to, primary.from)).toBe(1)
+    expect(daysBetween(compare.from, compare.to)).toBe(daysBetween(primary.from, primary.to))
+  })
+
+  it('shifts a partial range back a full year on both ends', () => {
+    expect(compareRangeFor('2026-09-01', '2026-09-16', 'prior_year')).toEqual({
+      from: '2025-09-01',
+      to: '2025-09-16',
+    })
+  })
+
+  it('clamps a leap day when shifting back a year', () => {
+    expect(compareRangeFor('2024-02-01', '2024-02-29', 'prior_year')).toEqual({
+      from: '2023-02-01',
+      to: '2023-02-28',
     })
   })
 

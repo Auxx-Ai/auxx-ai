@@ -1,11 +1,11 @@
 // apps/web/src/components/accounting/ui/reports/report-helpers.ts
 //
 // Pure date/period arithmetic behind the reports toolbar (`plans/accounting/
-// ui-plan.md` §2.4, §4.5) - as-of derivation for the period dropdown, and the
-// compare-range derivation for the "none / prior period / prior year"
-// dropdown. No React, no tRPC: every function here is a plain string-in,
-// string-out transform, which is what makes it worth a vitest file rather
-// than exercising it only through the pages.
+// ui-plan.md` §2.4, §4.5) - as-of derivation for the period control, and the
+// compare derivation for the "none / prior period / prior year" dropdown. No
+// React, no tRPC: every function here is a plain string-in, string-out
+// transform, which is what makes it worth a vitest file rather than exercising
+// it only through the pages.
 //
 // 🛑 A period key ('2027-03') and a period-END date ('2027-03-31') always
 // share the same 'YYYY-MM' prefix, so `periodKeyFromDate` is a plain string
@@ -13,76 +13,80 @@
 // already the calendar day the ledger assigned it (`trial-balance.ts`'s own
 // file header makes the same point about `txnDate`); the org's
 // `bookTimeZone` only matters for DISPLAY, via `formatAccountingDate`.
+//
+// The calendar arithmetic itself is `@auxx/utils/calendar-day` - a compare
+// range computed here and a range bound applied in SQL must not be two
+// implementations of "one month earlier".
 
 import type { StatementRow as LibStatementRow, StatementColumn } from '@auxx/lib/postings/client'
 import { isRecordId } from '@auxx/types/resource'
+import {
+  addDaysToDayKey,
+  addMonthsToDayKey,
+  daysBetween,
+  endOfMonthDay,
+  monthKeyOfDay,
+  monthsBetween,
+  shiftMonthKey,
+  startOfMonthDay,
+} from '@auxx/utils/calendar-day'
 import { formatAccountingDate } from '../ledger/format'
 import type { StatementRow } from './statement-table'
-
-const PERIOD_KEY_PATTERN = /^(\d{4})-(\d{2})$/
 
 /** `'none'` renders no compare snapshot; the other two shift the primary range back. */
 export type CompareOption = 'none' | 'prior_period' | 'prior_year'
 
-/** Days in `month` (1-12) of `year`, leap years included. */
-function daysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate()
-}
-
-function monthIndex(periodKey: string): number | null {
-  const match = PERIOD_KEY_PATTERN.exec(periodKey)
-  if (!match?.[1] || !match[2]) return null
-  return Number(match[1]) * 12 + (Number(match[2]) - 1)
-}
-
 /** `'2027-03'` -> `'2027-03-01'`. Returns `periodKey` unchanged if it is not `YYYY-MM`. */
-export function periodStartDate(periodKey: string): string {
-  return PERIOD_KEY_PATTERN.test(periodKey) ? `${periodKey}-01` : periodKey
-}
+export const periodStartDate = startOfMonthDay
 
 /** `'2027-03'` -> `'2027-03-31'`. Returns `periodKey` unchanged if it is not `YYYY-MM`. */
-export function periodEndDate(periodKey: string): string {
-  const match = PERIOD_KEY_PATTERN.exec(periodKey)
-  if (!match?.[1] || !match[2]) return periodKey
-  const day = daysInMonth(Number(match[1]), Number(match[2]))
-  return `${periodKey}-${String(day).padStart(2, '0')}`
-}
+export const periodEndDate = endOfMonthDay
 
-/** `'2027-03-31'` -> `'2027-03'`. The inverse of the two functions above - see the file header. */
-export function periodKeyFromDate(date: string): string {
-  return date.slice(0, 7)
-}
+/** `'2027-03-31'` -> `'2027-03'`. The inverse of the two above - see the file header. */
+export const periodKeyFromDate = monthKeyOfDay
 
-/** Shift a `'YYYY-MM'` period key by `deltaMonths` (negative moves back). Unchanged if malformed. */
-export function shiftPeriodKey(periodKey: string, deltaMonths: number): string {
-  const index = monthIndex(periodKey)
-  if (index === null) return periodKey
-  const shifted = index + deltaMonths
-  const year = Math.floor(shifted / 12)
-  const month = ((shifted % 12) + 12) % 12
-  return `${year}-${String(month + 1).padStart(2, '0')}`
-}
+/** Shift a `'YYYY-MM'` period key by `deltaMonths` (negative moves back). */
+export const shiftPeriodKey = shiftMonthKey
 
 export const priorPeriodKey = (periodKey: string): string => shiftPeriodKey(periodKey, -1)
 export const priorYearPeriodKey = (periodKey: string): string => shiftPeriodKey(periodKey, -12)
 
 /**
- * The `compareAsOf` date the balance sheet toolbar sends for `compare`, or
- * `undefined` for `'none'` - what `ledgerReports.balanceSheet`'s
- * `compareAsOf` and `renderStatementPdf`'s `balance-sheet` branch both take.
+ * The `compareAsOf` date the balance sheet toolbar sends, or `undefined` for
+ * `'none'` - what `ledgerReports.balanceSheet`'s `compareAsOf` and
+ * `renderStatementPdf`'s `balance-sheet` branch both take.
+ *
+ * A MONTH-END `asOf` compares to the prior month's own end, which is the
+ * convention every balance sheet is read under. Any other `asOf` keeps its day
+ * of the month (Sep 16 compares to Aug 16), because somebody who deliberately
+ * picked mid-month is not asking to be moved to a month boundary in silence.
  */
 export function compareAsOfFor(asOf: string, compare: CompareOption): string | undefined {
   if (compare === 'none') return undefined
-  const key = periodKeyFromDate(asOf)
-  const compareKey = compare === 'prior_period' ? priorPeriodKey(key) : priorYearPeriodKey(key)
-  return periodEndDate(compareKey)
+  const months = compare === 'prior_period' ? -1 : -12
+  if (asOf === endOfMonthDay(asOf)) {
+    return endOfMonthDay(shiftPeriodKey(periodKeyFromDate(asOf), months))
+  }
+  return addMonthsToDayKey(asOf, months)
 }
 
 /**
  * The compare `{ from, to }` range the P&L toolbar sends, or `undefined` for
- * `'none'`. `'prior_period'` shifts back by the SPAN of the primary range (a
- * quarter compares to the prior quarter, not to one month before it);
- * `'prior_year'` always shifts back exactly twelve months.
+ * `'none'`.
+ *
+ * 🛑 The compare range has to be COMPARABLE to the primary one, and which
+ * arithmetic achieves that depends on where the range is anchored:
+ *
+ * - `from` is the first of a month - every whole-month range, and every
+ *   month/quarter/year-to-date one - so shift both ends back by the span in
+ *   whole MONTHS, keeping the day of the month. Sep 1-16 compares to Aug 1-16,
+ *   and Feb 1-28 compares to the whole of January rather than to 28 days of it.
+ * - anything else is a free-floating window, so take the window of equal length
+ *   in DAYS immediately before `from`.
+ *
+ * Day arithmetic alone is wrong for the first case (months are not the same
+ * length); month arithmetic alone is wrong for the second. `'prior_year'` is
+ * always twelve months back on both ends, which is unambiguous either way.
  */
 export function compareRangeFor(
   from: string,
@@ -90,16 +94,19 @@ export function compareRangeFor(
   compare: CompareOption
 ): { from: string; to: string } | undefined {
   if (compare === 'none') return undefined
-  const fromKey = periodKeyFromDate(from)
-  const toKey = periodKeyFromDate(to)
-  const fromIndex = monthIndex(fromKey)
-  const toIndex = monthIndex(toKey)
-  const spanMonths = fromIndex !== null && toIndex !== null ? toIndex - fromIndex + 1 : 1
-  const shift = compare === 'prior_period' ? -spanMonths : -12
-  return {
-    from: periodStartDate(shiftPeriodKey(fromKey, shift)),
-    to: periodEndDate(shiftPeriodKey(toKey, shift)),
+
+  if (compare === 'prior_year') {
+    return { from: addMonthsToDayKey(from, -12), to: addMonthsToDayKey(to, -12) }
   }
+
+  if (from === startOfMonthDay(from)) {
+    const span = (monthsBetween(from, to) ?? 0) + 1
+    return { from: addMonthsToDayKey(from, -span), to: addMonthsToDayKey(to, -span) }
+  }
+
+  const span = daysBetween(from, to)
+  if (span === null) return { from, to }
+  return { from: addDaysToDayKey(from, -(span + 1)), to: addDaysToDayKey(to, -(span + 1)) }
 }
 
 /**
@@ -138,6 +145,37 @@ export function profitAndLossColumns(
     columns.push({
       key: 'compare',
       label: formatDateRangeLabel(pl.compare.from, pl.compare.to, bookTimeZone),
+      align: 'right',
+      signed: true,
+    })
+  }
+  return columns
+}
+
+/**
+ * The balance sheet's own columns - one as-of snapshot, or two with a compare.
+ *
+ * Lib has a `balanceSheetColumns` too, but its label is the bare `asOf` string
+ * because an adapter has no `bookTimeZone` to format with, so the header on
+ * screen read `2026-08-31` while the P&L beside it read `Aug 31, 2026`. Same
+ * reason `profitAndLossColumns` lives here rather than in the adapter.
+ */
+export function balanceSheetColumns(
+  bs: { asOf: string; compare?: { asOf: string } | null },
+  bookTimeZone: string
+): StatementColumn[] {
+  const columns: StatementColumn[] = [
+    {
+      key: 'primary',
+      label: formatAccountingDate(bs.asOf, bookTimeZone),
+      align: 'right',
+      signed: true,
+    },
+  ]
+  if (bs.compare) {
+    columns.push({
+      key: 'compare',
+      label: formatAccountingDate(bs.compare.asOf, bookTimeZone),
       align: 'right',
       signed: true,
     })

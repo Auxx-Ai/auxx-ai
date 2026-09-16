@@ -3,6 +3,8 @@
 'use client'
 
 import { toCsvRows } from '@auxx/lib/postings/client'
+import type { RecordId } from '@auxx/types/resource'
+import { isRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -16,9 +18,13 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, FileDown, FileSpreadsheet, FileText } from 'lucide-react'
-import { parseAsInteger, useQueryState } from 'nuqs'
+import { parseAsInteger, parseAsString, useQueryState } from 'nuqs'
+import { useMemo } from 'react'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
+import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
+import { RecordDrawer } from '~/components/records/record-drawer'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { ProviderSyncStatus } from './provider-sync-status'
@@ -43,6 +49,33 @@ function recentYears(currentYear: number, count = 6): number[] {
 export function Vendor1099ReportPage() {
   const period = useLedgerPeriod()
   const currentYear = new Date().getUTCFullYear()
+  const [recordIdParam, setRecordIdParam] = useQueryState('id', parseAsString.withDefault(''))
+  const selectedRecordId = isRecordId(recordIdParam) ? (recordIdParam as RecordId) : undefined
+
+  // The vendor behind a row, on `?id=` - the same door the aging report opens.
+  const drawer = useMemo(
+    () => (
+      <RecordDrawer
+        open={!!selectedRecordId}
+        onOpenChange={(open) => !open && void setRecordIdParam(null)}
+        recordId={selectedRecordId}
+      />
+    ),
+    [selectedRecordId, setRecordIdParam]
+  )
+  // `overlay: true` unconditionally - see `posting-drawer-host.tsx`.
+  const panels = useMemo(
+    () => [
+      {
+        key: 'vendor-1099-record',
+        open: { docked: !!selectedRecordId, overlay: true },
+        content: drawer,
+      },
+    ],
+    [selectedRecordId, drawer]
+  )
+  const { dockedPanels, overlays } = useDockedPanels(panels)
+  useRegisterDockedPanels(dockedPanels)
   const [year, setYear] = useQueryState('year', parseAsInteger.withDefault(currentYear))
 
   const query = api.ledgerReports.vendor1099.useQuery({ year })
@@ -127,10 +160,17 @@ export function Vendor1099ReportPage() {
               columns={query.data?.columns ?? []}
               rows={rows}
               currency={period.currencyCode}
+              // Only the vendor lines carry one; a box section and its subtotal
+              // do not, so they expand and sit still respectively.
+              canRowDrill={(row) => !!row.meta?.recordId}
+              onRowClick={(row) =>
+                row.meta?.recordId ? void setRecordIdParam(row.meta.recordId) : undefined
+              }
             />
           )}
         </div>
       </ScrollArea>
+      {overlays}
     </div>
   )
 }

@@ -160,6 +160,12 @@
       "import": "./dist/task-date.js",
       "default": "./src/task-date.ts"
     },
+    "./calendar-day": {
+      "types": "./src/calendar-day.ts",
+      "source": "./src/calendar-day.ts",
+      "import": "./dist/calendar-day.js",
+      "default": "./src/calendar-day.ts"
+    },
     "./calc-expression": {
       "types": "./src/calc-expression.ts",
       "source": "./src/calc-expression.ts",

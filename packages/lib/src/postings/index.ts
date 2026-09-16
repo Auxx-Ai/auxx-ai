@@ -585,12 +585,6 @@ export {
 } from './regime'
 // ── Statements (HANDOFF slot 1E, wave 1) ────────────────────────────────────
 export {
-  type AccountLineRow,
-  type AccountLines,
-  type ReadAccountLinesOptions,
-  readAccountLines,
-} from './reports/account-lines'
-export {
   balanceSheetColumns,
   GENERAL_LEDGER_COLUMNS,
   TRIAL_BALANCE_COLUMNS,
@@ -635,6 +629,7 @@ export {
 export { fiscalYearStart, previousCalendarDay } from './reports/fiscal-year'
 // ── The general ledger (task 21 §5): the sixth statement ────────────────────
 export {
+  type AccountLineRow,
   GENERAL_LEDGER_MAX_LINES,
   type GeneralLedger,
   type GeneralLedgerAccount,

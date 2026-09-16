@@ -19,6 +19,7 @@
 // brief's explicit fallback. If a fiscal-year-start setting is added later,
 // {@link fiscalYearStart} is the one function that needs to change.
 
+import { previousDayKey } from '@auxx/utils/calendar-day'
 import { BadRequestError } from '../../errors'
 
 const DAY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
@@ -29,10 +30,6 @@ function parseCalendarDate(date: string): { year: number; month: number; day: nu
     throw new BadRequestError(`Expected a YYYY-MM-DD date, got "${date}"`, { date })
   }
   return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) }
-}
-
-function formatCalendarDate(utcMs: number): string {
-  return new Date(utcMs).toISOString().slice(0, 10)
 }
 
 /**
@@ -47,12 +44,10 @@ export function fiscalYearStart(date: string): string {
 /**
  * The calendar day immediately before `date`. `'2026-01-01'` -> `'2025-12-31'`.
  *
- * Goes through `Date.UTC` and back rather than hand-rolled month/year
- * rollover, for the same reason `periods.ts`'s `assertRealDate` does: manual
- * day-in-month tables get February and year boundaries wrong far more often
- * than the platform's own calendar math does.
+ * Parses first so a malformed `asOf` is refused here, by name, rather than
+ * passed through unchanged as a day that silently equals its own predecessor.
  */
 export function previousCalendarDay(date: string): string {
-  const { year, month, day } = parseCalendarDate(date)
-  return formatCalendarDate(Date.UTC(year, month - 1, day - 1))
+  parseCalendarDate(date)
+  return previousDayKey(date)
 }

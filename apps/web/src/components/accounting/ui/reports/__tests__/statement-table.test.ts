@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   allParentIds,
   filterStatementRows,
+  hasAnyDrillKey,
   maxAccountCodeLength,
   type StatementRow,
   verdictRowId,
@@ -28,6 +29,34 @@ describe('allParentIds', () => {
       row({ id: 'total', kind: 'total' }),
     ]
     expect([...allParentIds(rows)]).toEqual(['assets'])
+  })
+})
+
+describe('hasAnyDrillKey', () => {
+  // 🛑 The gate this replaced was `kind !== 'section'`, which every one of
+  // these rows passes while carrying nothing to drill on - so five reports
+  // painted a pointer cursor on rows that did nothing when clicked.
+  it('refuses a total, a subtotal and a computed row that carry no key', () => {
+    expect(hasAnyDrillKey(row({ id: 'total', kind: 'total' }))).toBe(false)
+    expect(hasAnyDrillKey(row({ id: 'sub', kind: 'subtotal' }))).toBe(false)
+    expect(hasAnyDrillKey(row({ id: 'gross-profit', kind: 'computed' }))).toBe(false)
+  })
+
+  it('refuses the general ledger`s INCOMPLETE banner row', () => {
+    expect(hasAnyDrillKey(row({ id: 'incomplete', kind: 'computed', meta: {} }))).toBe(false)
+  })
+
+  it('accepts any of the three keys a statement row can be drilled on', () => {
+    expect(hasAnyDrillKey(row({ id: 'a', meta: { glAccountId: 'acc_1' } }))).toBe(true)
+    expect(hasAnyDrillKey(row({ id: 'b', meta: { glPostingId: 'pos_1' } }))).toBe(true)
+    expect(hasAnyDrillKey(row({ id: 'c', meta: { recordId: 'def:inst' } }))).toBe(true)
+  })
+
+  // A contact group on the aging report, and a box section on the 1099: both
+  // have children and no key, so the row body falls through to expand rather
+  // than being swallowed by a handler that returns undefined.
+  it('refuses a group row that has children but no key of its own', () => {
+    expect(hasAnyDrillKey(row({ id: 'contact', children: [row({ id: 'doc' })] }))).toBe(false)
   })
 })
 

@@ -20,7 +20,6 @@ import {
   balanceSheetColumns,
   GENERAL_LEDGER_COLUMNS,
   GENERAL_LEDGER_MAX_LINES,
-  readAccountLines,
   readAging,
   readBalanceSheet,
   readCompleteness,
@@ -150,31 +149,6 @@ export const ledgerReportsRouter = createTRPCRouter({
   }),
 
   /**
-   * The drill-down behind one account - every posted line in the range,
-   * oldest first, with a running natural-sign balance. What a row click on
-   * any statement opens. Keyed on `glAccountId` (task 15), not a code, so a
-   * renumbered account's history still opens as one drill-down.
-   */
-  accountLines: permissionProcedure(PermissionKey.ledgerView)
-    .input(
-      z.object({
-        glAccountId: z.string().min(1),
-        from: dateKey.optional(),
-        to: dateKey.optional(),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      const result = await readAccountLines(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        glAccountId: input.glAccountId,
-        from: input.from,
-        to: input.to,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  /**
    * The general ledger over `[from, to]`: every posted line, grouped by
    * account, with each account's brought-forward opening balance and a running
    * natural-sign balance. The report a filing accountant asks for FIRST, and
@@ -190,12 +164,13 @@ export const ledgerReportsRouter = createTRPCRouter({
    * and `balanced` must not be read as a tie-out unless `truncated` is false.
    */
   generalLedger: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ from: dateKey, to: dateKey }))
+    .input(z.object({ from: dateKey, to: dateKey, glAccountId: z.string().min(1).optional() }))
     .query(async ({ ctx, input }) => {
       const result = await readGeneralLedger(ctx.db, {
         organizationId: ctx.session.organizationId,
         from: input.from,
         to: input.to,
+        glAccountId: input.glAccountId,
         maxLines: GENERAL_LEDGER_MAX_LINES,
       })
       if (result.isErr()) throw result.error
@@ -237,7 +212,12 @@ export const ledgerReportsRouter = createTRPCRouter({
         // Task 21 §5: the general ledger, under the same server-side line cap
         // the `generalLedger` query above applies - so the printed copy and the
         // page stop in the same place.
-        z.object({ kind: z.literal('general-ledger'), from: dateKey, to: dateKey }),
+        z.object({
+          kind: z.literal('general-ledger'),
+          from: dateKey,
+          to: dateKey,
+          glAccountId: z.string().min(1).optional(),
+        }),
       ])
     )
     .mutation(async ({ ctx, input }) => {
@@ -275,7 +255,7 @@ export const ledgerReportsRouter = createTRPCRouter({
           organizationId,
           actorId: userId,
           kind: input.kind,
-          params: { from: input.from, to: input.to },
+          params: { from: input.from, to: input.to, glAccountId: input.glAccountId },
         })
       }
       if (input.kind === 'ar-aging' || input.kind === 'ap-aging') {

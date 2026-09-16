@@ -1,5 +1,6 @@
 // packages/lib/src/postings/refund-effect-types.ts
 
+import { dayKeyInZone } from '@auxx/utils/calendar-day'
 import { z } from 'zod'
 import { reservedAccountingBasis } from './basis-dimension'
 
@@ -18,17 +19,6 @@ const bookTimeZone = z
       return false
     }
   }, 'Unknown book time zone')
-
-function calendarDateInTimeZone(value: string, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date(value))
-  const fields = new Map(parts.map((part) => [part.type, part.value]))
-  return `${fields.get('year')}-${fields.get('month')}-${fields.get('day')}`
-}
 
 const settlementSchema = z.strictObject({
   settlementId: id,
@@ -202,7 +192,7 @@ export const acceptedCustomerRefundEffectBasisSchema = z
       issue('Refund effect date differs from its calculation date')
     if (
       value.calculation.datePrecision === 'instant' &&
-      calendarDateInTimeZone(value.calculation.occurredAt!, value.bookTimeZone) !==
+      dayKeyInZone(new Date(value.calculation.occurredAt!), value.bookTimeZone) !==
         value.effectiveDate
     )
       issue('Refund effect date differs from the occurrence date in the book time zone')

@@ -34,6 +34,15 @@ export interface Vendor1099Summary {
   organizationId: string
   year: number
   thresholdMinor: number
+  /**
+   * The `company` entity-definition id, so a vendor row can carry a real
+   * `defId:instanceId` for the drill-down. `null` when the org has no `company`
+   * definition, which is the same condition that makes `rows` empty.
+   *
+   * ⚠️ A bare instance id is NOT a `RecordId`: `isRecordId` requires the colon,
+   * so `toStatementTableRows` drops one, and the row silently opens nothing.
+   */
+  companyDefId: string | null
   rows: Vendor1099Row[]
   totalMinor: number
 }
@@ -82,7 +91,9 @@ export function toVendor1099Rows(summary: Vendor1099Summary): StatementRow[] {
       depth: 1,
       kind: 'line',
       values: [row.totalMinor],
-      meta: { recordId: row.companyId },
+      meta: summary.companyDefId
+        ? { recordId: `${summary.companyDefId}:${row.companyId}` }
+        : undefined,
     }))
     const boxTotal = boxRows.reduce((sum, row) => sum + row.totalMinor, 0)
     children.push({

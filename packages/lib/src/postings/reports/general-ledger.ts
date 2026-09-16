@@ -4,15 +4,11 @@
 //
 // ## Why this exists, when `account-lines.ts` already reads one account
 //
-// Because a filing accountant asks for the general ledger FIRST, and today it
-// is the one report that exists in no form at all. `readAccountLines` answers
-// "show me this account" from a drill-down dialog; producing a general ledger
-// out of it means opening that dialog once per account and copying each one
-// out of the browser by hand.
-//
-// This is the same query without the `glAccountId` filter, grouped. The shapes
-// below deliberately mirror `AccountLines` / `AccountLineRow` so that the two
-// stay recognisably the same report at two zoom levels.
+// Because a filing accountant asks for the general ledger FIRST, and it is
+// also what "show me the lines behind this figure" means: a trial balance,
+// balance sheet or P&L row links here with its own account, and
+// {@link ReadGeneralLedgerOptions.glAccountId} narrows this same query to it.
+// One report at two zoom levels, rather than two reports that have to agree.
 //
 // ## 🛑 The one way this report is unlike the other five
 //
@@ -40,7 +36,6 @@ import { compareAccountsByCodeThenName } from '../account-label'
 import { GL_ACCOUNT_TYPES, type GlAccountTypeValue } from '../default-chart'
 import { listChartAccounts } from '../role-map'
 import type { ChartAccountRow, PostingDirection } from '../types'
-import type { AccountLineRow } from './account-lines'
 import { previousCalendarDay } from './fiscal-year'
 import { NATURAL_BALANCE_DIRECTION, signedBalance } from './statement-math'
 
@@ -70,6 +65,21 @@ const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
  * cap.
  */
 export const GENERAL_LEDGER_MAX_LINES = 25_000
+
+/** One posted line against an account, with its running balance. */
+export interface AccountLineRow {
+  glPostingId: string
+  /** `GlPostingLine.id` - one entry can post many lines to one account, so the posting id does not identify a row. */
+  lineId: string
+  docNumber: string
+  /** `YYYY-MM-DD`. */
+  txnDate: string
+  memo: string | null
+  direction: PostingDirection
+  amountMinor: number
+  /** Natural-sign balance through and including this line. */
+  runningBalanceMinor: number
+}
 
 /**
  * One account's section of the ledger: the account, where it started, every
@@ -133,6 +143,16 @@ export interface ReadGeneralLedgerOptions {
   /** `YYYY-MM-DD`, inclusive. */
   to: string
   /**
+   * Narrow to ONE account, by `gl_account` id (task 15's identity, never a
+   * code).
+   *
+   * This is what a statement row drills into: the trial balance, the balance
+   * sheet and the P&L all link here with the account they were clicked on, so
+   * "the lines behind this figure" is the general ledger at one zoom level
+   * rather than a second report that has to agree with it.
+   */
+  glAccountId?: string
+  /**
    * Stop after this many LINES and set {@link GeneralLedger.truncated}.
    *
    * A safety valve, not a page size: the intended use is a range small enough
@@ -158,7 +178,7 @@ export async function readGeneralLedger(
   db: Database,
   options: ReadGeneralLedgerOptions
 ): Promise<Result<GeneralLedger, Error>> {
-  const { organizationId, from, to, maxLines } = options
+  const { organizationId, from, to, glAccountId, maxLines } = options
 
   try {
     assertDayFormat(from, 'from')
@@ -171,7 +191,12 @@ export async function readGeneralLedger(
     if (chartResult.isErr()) return err(chartResult.error)
     const chartById = new Map(chartResult.value.map((account) => [account.id, account]))
 
-    const opening = await readOpeningBalances(db, organizationId, previousCalendarDay(from))
+    const opening = await readOpeningBalances(
+      db,
+      organizationId,
+      previousCalendarDay(from),
+      glAccountId
+    )
 
     // 🛑 `limit` is applied in SQL, not after the fact. The guard exists to
     // protect the PROCESS, and a JS `.slice()` over a result set the driver
@@ -195,7 +220,8 @@ export async function readGeneralLedger(
           eq(schema.GlPosting.organizationId, organizationId),
           inArray(schema.GlPosting.status, [...POSTED_STATUSES]),
           gte(schema.GlPosting.txnDate, from),
-          lte(schema.GlPosting.txnDate, to)
+          lte(schema.GlPosting.txnDate, to),
+          ...(glAccountId ? [eq(schema.GlPostingLine.glAccountId, glAccountId)] : [])
         )
       )
       // Account first, then chronological within the account: the cut, when it
@@ -275,7 +301,7 @@ interface RawLedgerLine {
 
 /**
  * One account's section: the running natural-sign balance walked line by line
- * from its opening position, exactly as `readAccountLines` walks one account -
+ * from its opening position -
  * the two reports are the same report at two zoom levels and must agree line
  * for line.
  */
@@ -288,7 +314,7 @@ function buildAccount(
   const openingDebit = openingSums?.debitMinor ?? 0
   const openingCredit = openingSums?.creditMinor ?? 0
   // A deleted account has no natural side left to sign against, so its balance
-  // is the unsigned debit-minus-credit `readAccountLines` falls back to.
+  // is the unsigned debit-minus-credit fallback.
   const openingBalanceMinor = account
     ? signedBalance(openingDebit, openingCredit, account.accountType)
     : openingDebit - openingCredit
@@ -335,7 +361,7 @@ function buildAccount(
  * Every account's `SUM(debit)`/`SUM(credit)` through `through`, in ONE
  * aggregate.
  *
- * 🛑 One query, not one per account. `readAccountLines` can afford a
+ * 🛑 One query, not one per account. A single-account read can afford a
  * per-account opening sum because it reads one account; a general ledger over
  * a full chart would turn that into a hundred round trips for a figure a
  * single `GROUP BY` already has.
@@ -343,7 +369,8 @@ function buildAccount(
 async function readOpeningBalances(
   db: Database,
   organizationId: string,
-  through: string
+  through: string,
+  glAccountId?: string
 ): Promise<Map<string, { debitMinor: number; creditMinor: number }>> {
   const rows = await db
     .select({
@@ -357,7 +384,10 @@ async function readOpeningBalances(
       and(
         eq(schema.GlPosting.organizationId, organizationId),
         inArray(schema.GlPosting.status, [...POSTED_STATUSES]),
-        lte(schema.GlPosting.txnDate, through)
+        lte(schema.GlPosting.txnDate, through),
+        // Narrowed with the lines above, or the brought-forward figures would
+        // be computed for the whole chart to serve one account.
+        ...(glAccountId ? [eq(schema.GlPostingLine.glAccountId, glAccountId)] : [])
       )
     )
     .groupBy(schema.GlPostingLine.glAccountId)

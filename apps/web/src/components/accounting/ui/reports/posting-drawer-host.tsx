@@ -12,6 +12,7 @@ import {
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { PostingDrawer } from '~/components/accounting/ui/ledger/posting-drawer'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
@@ -99,24 +100,27 @@ export function PostingDrawerHost({ postingId, onClose, onSelectPosting }: Posti
     ]
   )
 
-  // Memoised: a fresh array every render re-runs the outlet's publish effect.
+  /**
+   * ⚠️ `overlay: true` unconditionally. The panel only DOCKS when there is a
+   * posting, but the overlay node stays mounted either way so `DockableDrawer`
+   * can animate itself shut on its own `open={!!postingId}` - unmounting it the
+   * moment the id clears would cut that exit short.
+   *
+   * Memoised: a fresh array every render re-runs the outlet's publish effect.
+   */
   const panels = useMemo(
-    () =>
-      isDocked && postingId
-        ? [
-            {
-              key: 'posting',
-              content: drawer,
-              width: dockedWidth,
-              onWidthChange: setDockedWidth,
-              minWidth: 380,
-              maxWidth: 800,
-            },
-          ]
-        : [],
-    [isDocked, postingId, drawer, dockedWidth, setDockedWidth]
+    () => [
+      {
+        key: 'posting',
+        open: { docked: !!postingId, overlay: true },
+        content: drawer,
+        width: { value: dockedWidth, set: setDockedWidth, min: 380, max: 800 },
+      },
+    ],
+    [postingId, drawer, dockedWidth, setDockedWidth]
   )
-  useRegisterDockedPanels(panels)
+  const { dockedPanels, overlays } = useDockedPanels(panels)
+  useRegisterDockedPanels(dockedPanels)
 
-  return isDocked ? null : drawer
+  return overlays
 }

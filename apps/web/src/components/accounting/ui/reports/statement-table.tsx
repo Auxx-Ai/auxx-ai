@@ -147,6 +147,17 @@ export function StatementVerdictMark({ verdict }: { verdict: StatementVerdict })
   )
 }
 
+/**
+ * The fallback gate: any of the three keys a statement row can be drilled on.
+ *
+ * ⚠️ Only right for a page whose handler acts on ALL of them. The general
+ * ledger's account SECTIONS carry `glAccountId` while its handler acts on
+ * `glPostingId`, so it passes its own - see {@link StatementTableProps.canRowDrill}.
+ */
+export function hasAnyDrillKey(row: StatementRow): boolean {
+  return !!(row.meta?.glAccountId || row.meta?.glPostingId || row.meta?.recordId)
+}
+
 export interface StatementTableProps {
   columns: StatementColumn[]
   rows: StatementRow[]
@@ -155,6 +166,20 @@ export interface StatementTableProps {
   mode?: 'read' | 'edit'
   onCellChange?: (rowId: string, colKey: string, minor: number | null) => void
   onRowClick?: (row: StatementRow) => void
+  /**
+   * Which rows {@link StatementTableProps.onRowClick} can actually act on.
+   *
+   * 🛑 Pass this whenever `onRowClick` is passed, and derive it from the SAME
+   * condition the handler branches on. The gate used to be `kind !== 'section'`,
+   * which is not the same question: a total, a subtotal and a computed row all
+   * pass it while carrying no key to drill on, so five reports painted a pointer
+   * cursor and a hover response on rows that did nothing - including the general
+   * ledger's red "INCOMPLETE" warning row.
+   *
+   * A row this refuses falls through to `onToggleOpen`, so a group row that
+   * cannot drill still expands instead of swallowing the click.
+   */
+  canRowDrill?: (row: StatementRow) => boolean
   verdict?: StatementVerdict
   /**
    * Turns the `Account` header into a search field. Off by default: six rows of
@@ -223,6 +248,7 @@ export function StatementTable({
   mode = 'read',
   onCellChange,
   onRowClick,
+  canRowDrill = hasAnyDrillKey,
   verdict,
   searchable = false,
   labelHeading = 'Account',
@@ -365,6 +391,7 @@ export function StatementTable({
                 onToggleOpen={toggleOpen}
                 onCellChange={onCellChange}
                 onRowClick={onRowClick}
+                canRowDrill={canRowDrill}
                 rowClassName={rowClassName}
                 verdictMark={
                   verdict && row.id === markedRowId ? (
@@ -420,6 +447,7 @@ interface StatementTableRowProps {
   onToggleOpen: (rowId: string) => void
   onCellChange?: (rowId: string, colKey: string, minor: number | null) => void
   onRowClick?: (row: StatementRow) => void
+  canRowDrill: (row: StatementRow) => boolean
   /** Appended after the row's `kind` class. See `StatementTableProps`. */
   rowClassName?: string
   /** The statement's verdict, on the one row that carries it. See {@link StatementVerdictMark}. */
@@ -446,11 +474,12 @@ function StatementTableRow({
   onToggleOpen,
   onCellChange,
   onRowClick,
+  canRowDrill,
   rowClassName,
   verdictMark,
 }: StatementTableRowProps) {
   const editable = mode === 'edit' && EDITABLE_KINDS.has(row.kind)
-  const clickable = !!onRowClick && row.kind !== 'section'
+  const drillable = !!onRowClick && canRowDrill(row)
   const hasChildren = !!row.children && row.children.length > 0
   const isOpen = openIds.has(row.id)
 
@@ -505,9 +534,11 @@ function StatementTableRow({
       }
       isOpen={isOpen}
       // Two gestures, two slots. `onRowClick` takes the body and leaves the
-      // chevron to `onToggleOpen`, so a row can expand AND drill.
+      // chevron to `onToggleOpen`, so a row can expand AND drill. A row that
+      // cannot drill passes only `onToggleOpen`, and `TreeRow` falls back to it
+      // for the body - which is what lets a non-drillable group row expand.
       onToggleOpen={hasChildren ? () => onToggleOpen(row.id) : undefined}
-      onRowClick={clickable ? () => onRowClick?.(row) : undefined}
+      onRowClick={drillable ? () => onRowClick?.(row) : undefined}
       title={
         verdictMark ? (
           // Inline-flex, not flex: `TreeRow`'s title span truncates, and a
@@ -575,6 +606,7 @@ function StatementTableRow({
               onToggleOpen={onToggleOpen}
               onCellChange={onCellChange}
               onRowClick={onRowClick}
+              canRowDrill={canRowDrill}
               rowClassName={rowClassName}
             />
           ))
