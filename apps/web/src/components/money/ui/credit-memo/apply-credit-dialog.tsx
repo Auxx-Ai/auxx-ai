@@ -1,7 +1,7 @@
 // apps/web/src/components/money/ui/credit-memo/apply-credit-dialog.tsx
 'use client'
 
-// Apply-credit dialog (plans/accounting/tasks/10-credit-memos.md §6.2), the
+// Apply-credit dialog (plans/accounting/tasks/done/10-credit-memos.md §6.2), the
 // `record-payment-dialog.tsx` FieldPanel recipe: pick one of the contact's open
 // invoices (`creditMemo.openInvoices`, the `OpenInvoiceRow` shape from
 // `money/credit-memos/client.ts`), amount prefilled to min(invoice open balance,

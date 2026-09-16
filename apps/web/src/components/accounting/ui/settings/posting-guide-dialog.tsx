@@ -1,7 +1,7 @@
 // apps/web/src/components/accounting/ui/settings/posting-guide-dialog.tsx
 'use client'
 
-// The posting guide (plans/accounting/tasks/28-how-your-books-post.md §4): one
+// The posting guide (plans/accounting/tasks/done/28-how-your-books-post.md §4): one
 // `GuideDialog`, paged by posting type plus an overview, opened from the `?`
 // on every Posting page section, the ledger toolbar and the bulk dialogs.
 //

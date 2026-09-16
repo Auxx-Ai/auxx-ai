@@ -55,7 +55,7 @@ const GUARDED = [
   { slug: 'journal-entries', handler: guardJournalEntryDelete },
   // `credit-memos` is `isVisible: true` but not a member of the inventory
   // subsystem's `MONEY_ENTITY_TYPES` below, so it is pinned here by name
-  // (plans/accounting/tasks/10-credit-memos.md section 2.6).
+  // (plans/accounting/tasks/done/10-credit-memos.md section 2.6).
   { slug: 'credit-memos', handler: guardCreditMemoDelete },
 ] as const
 

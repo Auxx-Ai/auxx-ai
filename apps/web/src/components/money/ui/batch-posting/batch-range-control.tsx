@@ -2,7 +2,7 @@
 'use client'
 
 // The range control, shaped by the frequency above it (§6.2 of
-// `plans/accounting/tasks/25-batch-posting-and-credit-memos.md`).
+// `plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md`).
 //
 // The dialog used to ask From, To, Group into, which is backwards: the grouping
 // is what decides what a sensible range even looks like. Frequency comes first

@@ -7,7 +7,7 @@
 // Mounted as `banking` in `root.ts`.
 //
 // 🛑 Reads are `ledgerView`. Writes split by rung
-// (plans/accounting/tasks/12-accountant-permissions.md §4.3): `create` and
+// (plans/accounting/tasks/done/12-accountant-permissions.md §4.3): `create` and
 // `update` set the account's GL mapping - which decides where cash lands - and
 // `connect` / `reconnect` mint a bank connection, so all four are
 // `ledgerControl`, the same reasoning that puts the chart's own writes there
@@ -293,7 +293,7 @@ export const bankingRouter = createTRPCRouter({
    *
    * `ledgerControl`, not `ledgerPost`: connecting a bank decides where cash
    * comes from. 🛑 This alone does not gate provisioning - see
-   * `plans/accounting/tasks/12-accountant-permissions.md` §4.7: the URL this
+   * `plans/accounting/tasks/done/12-accountant-permissions.md` §4.7: the URL this
    * mints is not the door that provisions the feed, so moving this key is
    * necessary but not sufficient.
    */

@@ -83,8 +83,8 @@
  *    caller resolves `accounting.cashBankAccountId` to a `gl_account` id and
  *    passes it in, and this file refuses to post the route with none.
  *
- * @see plans/accounting/tasks/01-post-revenue-to-the-ledger.md §1.2
- * @see plans/accounting/tasks/06-deposit-grouping.md §2.3
+ * @see plans/accounting/tasks/done/01-post-revenue-to-the-ledger.md §1.2
+ * @see plans/accounting/tasks/done/06-deposit-grouping.md §2.3
  */
 
 import { UnprocessableEntityError } from '../errors'

@@ -10,7 +10,7 @@ import type { EntityPreDeleteHandler } from '../types'
 
 /**
  * Pre-delete guard for `journal-entries`
- * (plans/accounting/tasks/09-discard-a-draft-entry.md §3.3), modelled on
+ * (plans/accounting/tasks/done/09-discard-a-draft-entry.md §3.3), modelled on
  * `invoice-delete-guard.ts`, which exists for this exact reason.
  *
  * 🛑 **`discardJournalEntry` is not the only door.** A journal entry is an

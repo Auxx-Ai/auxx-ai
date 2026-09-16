@@ -124,7 +124,7 @@ export const INVENTORY_ROLES_BY_POSTING_TYPE = SINGLE_WRITER_ROLES_BY_POSTING_TY
  * the change most likely to double-book, and the check that should have caught
  * it would move with it. A human comes to the policy and says so.
  *
- * plans/accounting/tasks/14-one-quickbooks-two-write-paths.md originally scoped
+ * plans/accounting/tasks/done/14-one-quickbooks-two-write-paths.md originally scoped
  * a third value, `document` (a document mirror owns the transaction; the entry
  * is built, balanced and persisted, and NOT pushed) for the INVOICE family:
  * `invoice_issued`, `payment`, `credit_memo`, `deposit_application`,

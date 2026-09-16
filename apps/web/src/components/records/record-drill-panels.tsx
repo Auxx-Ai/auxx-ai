@@ -107,7 +107,7 @@ function CreditMemoDrillBar({ itemId }: { itemId: string | null }) {
 }
 
 /**
- * The `credit-memos` drill (plans/accounting/tasks/10-credit-memos.md §6.1):
+ * The `credit-memos` drill (plans/accounting/tasks/done/10-credit-memos.md §6.1):
  * single-level like `invoices`, so a Credit memos card on a DETAIL PAGE (order,
  * contact) can `open('credit-memos', recordId)` straight into the memo. Inside a
  * drawer the same card uses `useOpenRecord` and pushes a peek frame instead.

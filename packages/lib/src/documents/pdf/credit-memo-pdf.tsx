@@ -108,7 +108,7 @@ function CreditTotalsBlock(props: { styles: Styles; payload: CreditMemoPdfPayloa
 }
 
 /**
- * The credit memo PDF (plans/accounting/tasks/10-credit-memos.md §6.3): the invoice
+ * The credit memo PDF (plans/accounting/tasks/done/10-credit-memos.md §6.3): the invoice
  * layout with the title changed, the original invoice number printed when the memo was
  * raised against one, and the credited lines with their transcribed tax. Reuses the
  * invoice's `lineDisplay`/footer settings, since a credit memo is the same customer-facing

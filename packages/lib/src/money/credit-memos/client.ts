@@ -8,7 +8,7 @@
 // No 'use client' directive, on purpose: `money/client.ts` documents why a
 // directive here turns every server-side import into a client-reference proxy.
 //
-// plans/accounting/tasks/10-credit-memos.md sections 2, 5 and 10.7.
+// plans/accounting/tasks/done/10-credit-memos.md sections 2, 5 and 10.7.
 
 import {
   CREDIT_MEMO_REASON_OPTIONS,

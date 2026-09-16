@@ -1,7 +1,7 @@
 // packages/lib/src/seed/gl-account-chart.ts
 //
 // Seeds one or more chart PACKS (`postings/default-chart.ts`'s `CHART_PACKS`,
-// plans/accounting/tasks/16-the-chart-of-accounts.md §1.5) into one
+// plans/accounting/tasks/done/16-the-chart-of-accounts.md §1.5) into one
 // organization as `gl_account` EntityInstances, and points each posting ROLE
 // at the account that fulfils it via a `GlRoleAssignment` row (decision
 // `G19`). `seedChartPacks` always walks `core` first and expands a pack's

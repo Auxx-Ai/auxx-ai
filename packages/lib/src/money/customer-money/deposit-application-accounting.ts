@@ -45,7 +45,7 @@
  * posting its own `deposit_application` journals off `PaymentAllocation` in the
  * meantime; the two claim disjoint period keys and never post the same journal.
  *
- * @see plans/accounting/tasks/07-customer-deposits.md
+ * @see plans/accounting/tasks/done/07-customer-deposits.md
  * @see docs/lib-module-guide.md
  */
 

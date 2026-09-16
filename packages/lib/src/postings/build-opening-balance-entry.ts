@@ -56,7 +56,7 @@
  * `findWriterConflicts` has nothing to see, and the by-name refusal in
  * `post-entry.ts` is scoped to `manual_journal` for the same reason.
  *
- * @see plans/accounting/tasks/03-opening-balances.md
+ * @see plans/accounting/tasks/done/03-opening-balances.md
  * @see plans/accounting/HANDOFF.md slot 1C
  */
 

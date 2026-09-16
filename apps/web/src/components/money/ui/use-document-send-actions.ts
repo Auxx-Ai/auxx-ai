@@ -24,7 +24,7 @@ import { api } from '~/trpc/react'
  * from the RecordId against `DOCUMENT_TYPE_DESCRIPTORS` (`documentTypeOf`), so a type
  * registered in `documents/client.ts` + `documents/registry.ts` + the send profile
  * table in `money/send-email.ts` works from this hook without a change. A credit memo
- * (plans/accounting/tasks/10-credit-memos.md §6.3) is the latest to ride on that.
+ * (plans/accounting/tasks/done/10-credit-memos.md §6.3) is the latest to ride on that.
  *
  * @param recordId - the document's RecordId
  * @param documentLabel - lowercase noun for error toasts, e.g. `'quote'` / `'invoice'` /

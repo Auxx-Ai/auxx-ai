@@ -2,7 +2,7 @@
 
 /**
  * Where a received payment lands in the ledger, by METHOD
- * (plans/accounting/tasks/06-deposit-grouping.md §2.3).
+ * (plans/accounting/tasks/done/06-deposit-grouping.md §2.3).
  *
  * PURE and client-safe. No database, no clock, no imports outside this package's
  * own client half - the settings form, the payment builder (wave 2) and the

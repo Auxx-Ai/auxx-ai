@@ -999,7 +999,7 @@ sweep that has not happened yet.
   route, which lets a non-employee browse every file in the workspace. `Attachment`-table files
   already have parent-scoped visibility through `canViewAttachment`, so the gap is specific to
   FileRef field values and report assets. See
-  `plans/accounting/tasks/12-accountant-permissions.md` §5.2.
+  `plans/accounting/tasks/done/12-accountant-permissions.md` §5.2.
 
 **Multipart, after #1866**
 

@@ -198,7 +198,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
       },
       {
         // The mirror of an invoice: "you owe us less"
-        // (plans/accounting/tasks/10-credit-memos.md §6.1).
+        // (plans/accounting/tasks/done/10-credit-memos.md §6.1).
         id: 'dispatch-credit-memos',
         label: 'Credit Memos',
         slug: 'credit-memos',

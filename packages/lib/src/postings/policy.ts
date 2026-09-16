@@ -3,7 +3,7 @@
 // PURE, client-safe. One declared record per posting type: what triggers it,
 // what its entry looks like as roles, which settings change it, the sentence
 // for its ON state and its OFF state, and the constants a person should know
-// about. plans/accounting/tasks/28-how-your-books-post.md section 2.
+// about. plans/accounting/tasks/done/28-how-your-books-post.md section 2.
 //
 // Four tables used to answer four separate questions about a posting type
 // (`ENABLED_POSTING_TYPES`, `EXPORT_ROUTE_BY_POSTING_TYPE`,

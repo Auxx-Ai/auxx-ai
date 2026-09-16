@@ -1023,7 +1023,7 @@ bookkeeper types into is an `EntityInstance` on the **`journal_entry`** def (ent
 draft is the thing somebody then presses Post on. The chart and account roles sit a rung higher:
 `chartAccountCreate` / `Update` / `Remove`, `setRoleAssignment` and `provisionChart` are gated on
 `ledgerControl`, the third rung `Area.ledger` gained for the accountant/bookkeeper split (see
-`plans/accounting/tasks/12-accountant-permissions.md`).
+`plans/accounting/tasks/done/12-accountant-permissions.md`).
 
 Four things about it that are not obvious and cost a debugging session each:
 

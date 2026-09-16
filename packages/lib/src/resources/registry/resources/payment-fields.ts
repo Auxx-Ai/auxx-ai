@@ -211,7 +211,7 @@ export const PAYMENT_FIELDS: Record<string, ResourceField> = {
 
   /**
    * The bank deposit this payment was banked in
-   * (plans/accounting/tasks/06-deposit-grouping.md §2.2), added by entity
+   * (plans/accounting/tasks/done/06-deposit-grouping.md §2.2), added by entity
    * migration 125.
    *
    * 🛑 **The OWNING side of the pair, and the enforcement of "a payment can be

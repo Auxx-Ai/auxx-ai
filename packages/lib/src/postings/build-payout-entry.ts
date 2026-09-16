@@ -109,7 +109,7 @@
  * every Stripe card receipt was accumulating in an account named for a provider
  * the money never touched.
  *
- * @see plans/accounting/tasks/01-post-revenue-to-the-ledger.md §1.3
+ * @see plans/accounting/tasks/done/01-post-revenue-to-the-ledger.md §1.3
  */
 
 import { UnprocessableEntityError } from '../errors'

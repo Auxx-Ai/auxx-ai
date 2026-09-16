@@ -2,7 +2,7 @@
 //
 // Server entry point for the opening trial balance - the one `opening_balance`
 // journal entry an organization ever makes, and the screens that fill it
-// (plans/accounting/tasks/03-opening-balances.md, HANDOFF slot 1C).
+// (plans/accounting/tasks/done/03-opening-balances.md, HANDOFF slot 1C).
 //
 // Client code must import `@auxx/lib/postings/client`, never this barrel: the
 // writes pull `UnifiedCrudHandler` and the whole server graph behind it.

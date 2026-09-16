@@ -902,7 +902,7 @@ export interface RefundTransactionInput {
   /** `PaymentTransaction.id` of the `succeeded` `stripe` `charge` row to refund. */
   transactionId: string
   /**
-   * Integer minor units (plans/accounting/tasks/10-credit-memos.md §5.3). Absent = everything
+   * Integer minor units (plans/accounting/tasks/done/10-credit-memos.md §5.3). Absent = everything
    * still refundable on the charge, byte-identical to the full-only behaviour every existing
    * caller relies on. When present it must be above zero and at most the charge amount less
    * every refund already pending, processing or succeeded against it.
@@ -925,7 +925,7 @@ export interface RefundTransactionResult {
 
 /**
  * Admin refund of a succeeded Stripe charge (money MP1 build spec §E bullet 3; partial amounts
- * and the credit memo link from plans/accounting/tasks/10-credit-memos.md §5.3). Inserts a
+ * and the credit memo link from plans/accounting/tasks/done/10-credit-memos.md §5.3). Inserts a
  * `pending` `refund` row, then calls `refunds.create` with the amount and
  * `refund_application_fee: true` (the platform fee is refunded too, pro rata for a partial)
  * and stamps `stripeRefundId`. The `charge.refunded` webhook (`applyStripeEvent`) is what

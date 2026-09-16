@@ -237,14 +237,14 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
       default: m.InvoiceBillingContextCard,
     })),
   // The credit memos raised against this invoice and the credit applied to it
-  // (plans/accounting/tasks/10-credit-memos.md §6.1).
+  // (plans/accounting/tasks/done/10-credit-memos.md §6.1).
   'invoice:credits': () =>
     import('../money/ui/invoice/invoice-credits-card').then((m) => ({
       default: m.InvoiceCreditsCard,
     })),
 
   // ─────────────────────────────────────────────────────────────────
-  // CREDIT MEMO OVERVIEW CARDS (plans/accounting/tasks/10-credit-memos.md
+  // CREDIT MEMO OVERVIEW CARDS (plans/accounting/tasks/done/10-credit-memos.md
   // §6.2) — drawer-only like the invoice, so these are the memo's only surface.
   // ─────────────────────────────────────────────────────────────────
   'credit_memo:lines': () =>
@@ -274,7 +274,7 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   'order:work-orders': () =>
     import('./cards/order-work-orders-card').then((m) => ({ default: m.OrderWorkOrdersCard })),
   // The credit memos taken against this order: the card task 47 planned as
-  // "refunds inside the order" (plans/accounting/tasks/10-credit-memos.md §6.1).
+  // "refunds inside the order" (plans/accounting/tasks/done/10-credit-memos.md §6.1).
   'order:credit-memos': () =>
     import('./cards/order-credit-memos-card').then((m) => ({ default: m.OrderCreditMemosCard })),
 

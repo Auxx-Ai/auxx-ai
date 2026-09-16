@@ -1,6 +1,6 @@
 // packages/lib/src/money/payments/refund-transaction.test.ts
 //
-// The Stripe refund rail after plans/accounting/tasks/10-credit-memos.md §5.3: a partial
+// The Stripe refund rail after plans/accounting/tasks/done/10-credit-memos.md §5.3: a partial
 // `amount`, and a `creditMemoInstanceId` that changes what the refund means.
 //
 // The allocation copy is the property under test. A refund's allocations are what

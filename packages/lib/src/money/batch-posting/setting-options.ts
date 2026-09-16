@@ -3,7 +3,7 @@
 /**
  * The `SINGLE_SELECT` option list for the two default-grouping settings,
  * `accounting.fulfillmentGrouping` and `accounting.creditMemoGrouping`
- * (`plans/accounting/tasks/28-how-your-books-post.md` §3.1).
+ * (`plans/accounting/tasks/done/28-how-your-books-post.md` §3.1).
  *
  * One list for both sources, because the grouping vocabulary is one
  * ({@link BATCH_POSTING_GROUPINGS}, brief 25 §5) and the two settings hold a

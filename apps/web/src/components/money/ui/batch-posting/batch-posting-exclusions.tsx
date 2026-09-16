@@ -2,7 +2,7 @@
 'use client'
 
 // The members of the range that produce no posting, with the reason
-// (§5.1 of plans/accounting/tasks/25-batch-posting-and-credit-memos.md,
+// (§5.1 of plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md,
 // following 44 §7.2b and `manufacturing/builds/backfill-exclusions.tsx`).
 //
 // 🛑 **The first question anyone asks this screen is "where is order 1042?"** If

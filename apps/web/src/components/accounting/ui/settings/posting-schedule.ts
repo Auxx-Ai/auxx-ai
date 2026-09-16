@@ -1,7 +1,7 @@
 // apps/web/src/components/accounting/ui/settings/posting-schedule.ts
 
 // When a scheduled posting type fires next, computed in the browser from the
-// policy's own cron (plans/accounting/tasks/28-how-your-books-post.md §3.2).
+// policy's own cron (plans/accounting/tasks/done/28-how-your-books-post.md §3.2).
 //
 // PURE: no React, no clock of its own. `now` is a parameter so the test can pin
 // "today" against "tomorrow" without faking timers. Only a `schedule` trigger

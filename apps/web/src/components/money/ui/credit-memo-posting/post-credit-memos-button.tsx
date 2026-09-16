@@ -2,7 +2,7 @@
 'use client'
 
 // The entry point on the credit memos list, `RecordsView`'s `pageActions` slot,
-// beside Create (plans/accounting/tasks/25-batch-posting-and-credit-memos.md §9
+// beside Create (plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md §9
 // item 14). Mirrors `fulfillment-posting/post-fulfillments-button.tsx` on the
 // orders page.
 //

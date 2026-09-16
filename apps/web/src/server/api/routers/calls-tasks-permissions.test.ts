@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/calls-tasks-permissions.test.ts
 
 /**
- * plans/accounting/tasks/12-accountant-permissions.md §10 — calls, tasks and
+ * plans/accounting/tasks/done/12-accountant-permissions.md §10 — calls, tasks and
  * kopilot each gained their own Layer-2 area. Calls and tasks had no area at
  * all (the sidebar showed them on a feature flag alone and the routers were
  * `protectedProcedure`, except `recording.delete` which rode `channelsManage`);

@@ -70,7 +70,7 @@ function AccountingLayoutHeader() {
             // is ordinary bookkeeping an Edit holder should still reach. The
             // chart, opening balances and bank accounts pages inside the
             // segment gate themselves on `ledger.control`
-            // (plans/accounting/tasks/12-accountant-permissions.md §4.3).
+            // (plans/accounting/tasks/done/12-accountant-permissions.md §4.3).
             hidden: !can('ledger.post'),
           },
         ]}
@@ -97,7 +97,7 @@ export default function AccountingLayout({ children }: { children: React.ReactNo
   // General page (period, timezone, absorption rates, standard cost), which is
   // ordinary bookkeeping. The chart, opening balances and bank accounts pages
   // narrow further to `ledger.control` on their own guards
-  // (plans/accounting/tasks/12-accountant-permissions.md §4.3) - a Read-only
+  // (plans/accounting/tasks/done/12-accountant-permissions.md §4.3) - a Read-only
   // ledger member never reaches this segment at all.
   const permissionKey = isSettings ? 'ledger.post' : 'ledger.view'
 

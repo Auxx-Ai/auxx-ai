@@ -320,7 +320,7 @@ export function LedgerPage() {
   const organizationId = useDehydratedOrganizationId()
   const { patchSettings } = useDehydratedStateContext()
 
-  // `ledgerControl`-gated (plans/accounting/tasks/12-accountant-permissions.md
+  // `ledgerControl`-gated (plans/accounting/tasks/done/12-accountant-permissions.md
   // §4.4): the period lock used to write `ledger.lockedThroughMonth` through
   // the generic `setting.updateOrganizationSetting` door, which asserted
   // `settingsManage` - handing whoever closes the books every organization

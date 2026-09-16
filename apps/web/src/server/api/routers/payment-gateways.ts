@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/payment-gateways.ts
 //
 // Payment gateways: a record carrying its own clearing account, never a role
-// (plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md §5.3). Mounted
+// (plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md §5.3). Mounted
 // as `paymentGateway` in `root.ts`.
 //
 // 🛑 Reads are `ledgerView`. Writes are `ledgerControl`, the same rung

@@ -83,7 +83,7 @@ export const BANK_RULE_ACTION_OPTIONS = [
  * directly, and the Rules UI builds its own picker against `bank_account`/
  * `contact` records rather than the generic RELATIONSHIP input. It is also
  * what `glAccount` below became: an id, TEXT, no relationship
- * (`plans/accounting/tasks/15-the-account-id-is-the-identity.md` §4).
+ * (`plans/accounting/tasks/done/15-the-account-id-is-the-identity.md` §4).
  *
  * `contact` is chosen over a second `company` field per this slot's "pick one
  * or document": a coded line's payee is a vendor or a customer, and both are

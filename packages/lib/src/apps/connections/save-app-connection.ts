@@ -239,7 +239,7 @@ export async function saveAppConnection(
     // the same generic `connection-identify` handler the fresh-connect path below uses to
     // dedupe - no provider knowledge here, and the guard covers Shopify stores and Stripe
     // accounts on the same terms.
-    // See plans/accounting/tasks/24-the-company-on-the-entry.md §3.
+    // See plans/accounting/tasks/done/24-the-company-on-the-entry.md §3.
     const identifier = await resolveConnectionIdentity(appInstallationId, connectionData, metadata)
     if (identifier) {
       const existingResult = await getCredential(options.connectionId, organizationId)

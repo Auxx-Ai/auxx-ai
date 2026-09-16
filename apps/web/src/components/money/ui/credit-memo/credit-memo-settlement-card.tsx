@@ -2,7 +2,7 @@
 'use client'
 
 // Credit memo drawer's "Settlement" card, registered as 'credit_memo:settlement'
-// (plans/accounting/tasks/10-credit-memos.md §6.2). What happened to the credit
+// (plans/accounting/tasks/done/10-credit-memos.md §6.2). What happened to the credit
 // after issue, in the three outcomes of §1: applied to an invoice, held on the
 // contact (the balance), or refunded. Reads `creditMemo.settlement` (the
 // `CreditMemoSettlement` shape from `money/credit-memos/client.ts`) for the four

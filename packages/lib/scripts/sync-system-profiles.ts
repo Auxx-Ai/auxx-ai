@@ -8,7 +8,7 @@
 // `accountant` keeps its old `{ledger, records, files}` grant forever, and its
 // `bookkeeper` row will not exist at all until something inserts it. Without
 // this, testing the accountant-permissions reshape (plan
-// `plans/accounting/tasks/12-accountant-permissions.md` §4.2) locally means
+// `plans/accounting/tasks/done/12-accountant-permissions.md` §4.2) locally means
 // editing `PermissionGrant.levels` by hand in Postgres.
 //
 // THIS IS DELIBERATE, NOT FORENSIC, unlike `repair-member-baseline.ts`, which

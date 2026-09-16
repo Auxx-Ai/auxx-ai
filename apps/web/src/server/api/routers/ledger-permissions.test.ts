@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/ledger-permissions.test.ts
 
 /**
- * plans/accounting/tasks/12-accountant-permissions.md §4.3/§4.4/§7. The third
+ * plans/accounting/tasks/done/12-accountant-permissions.md §4.3/§4.4/§7. The third
  * rung on `Area.ledger` (`ledgerControl`) and the period lock's move off the
  * generic settings door.
  *

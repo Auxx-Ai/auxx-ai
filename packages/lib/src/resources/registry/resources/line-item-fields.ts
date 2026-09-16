@@ -392,7 +392,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
   },
 
   // Reverse relationship: the credit memo lines that credited part of this line
-  // (plans/accounting/tasks/10-credit-memos.md §2.2). The counterpart of the
+  // (plans/accounting/tasks/done/10-credit-memos.md §2.2). The counterpart of the
   // owning `credit_memo_line_line_item`, and declared for the same reason
   // `part_line_items` is: an inverse a relationship POINTS AT but that does not
   // exist leaves the edge unlinked, and an unlinked relationship accepts writes

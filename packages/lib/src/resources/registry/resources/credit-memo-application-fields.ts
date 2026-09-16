@@ -8,7 +8,7 @@ import type { ResourceField } from '../field-types'
 
 /**
  * Field definitions for the Credit Memo Application resource
- * (plans/accounting/tasks/10-credit-memos.md §2.3, §10.4).
+ * (plans/accounting/tasks/done/10-credit-memos.md §2.3, §10.4).
  *
  * One row per "this much of this memo went against this invoice". Hidden;
  * the memo's settlement card and the invoice's credits card render it.

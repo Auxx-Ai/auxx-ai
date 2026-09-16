@@ -2,7 +2,7 @@
 
 /**
  * The most recent `GlPosting` of each posting type an organization has, in
- * one grouped read (plans/accounting/tasks/28-how-your-books-post.md §3.2).
+ * one grouped read (plans/accounting/tasks/done/28-how-your-books-post.md §3.2).
  *
  * The Posting settings page shows "Last posted 2026-09-13 (AUXX-FUL-20260913)"
  * under every section, and there are fourteen sections. `listPostings` answers

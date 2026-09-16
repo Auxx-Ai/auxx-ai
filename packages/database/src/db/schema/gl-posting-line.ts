@@ -46,7 +46,7 @@ export const GlPostingLine = pgTable(
 
     /**
      * The `gl_account` `EntityInstance` id this line posted to. The IDENTITY
-     * (plans/accounting/tasks/15-the-account-id-is-the-identity.md §2.1).
+     * (plans/accounting/tasks/done/15-the-account-id-is-the-identity.md §2.1).
      *
      * No foreign key, deliberately - the call `GlRoleAssignment.glAccountId`
      * already makes, for its reasons. A ledger line must outlive the chart row,
@@ -117,7 +117,7 @@ export const GlPostingLine = pgTable(
 
     /**
      * Who this line is attributable to, when the account requires it - `'customer'`
-     * or `'vendor'` (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md`
+     * or `'vendor'` (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md`
      * §1.1). Set ONLY on a receivable or payable line, and FROZEN here at post
      * time so a retry exports under the attribution the ledger asserted, never
      * one re-resolved after a merge or a rename - the same reason `accountCode`

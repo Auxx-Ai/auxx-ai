@@ -151,7 +151,7 @@ export const ModelTypeValues = [
   'gl_account',
   'build',
   // Undeposited funds moved to the bank as one line per bank run
-  // (plans/accounting/tasks/06-deposit-grouping.md). NOT a customer deposit,
+  // (plans/accounting/tasks/done/06-deposit-grouping.md). NOT a customer deposit,
   // which is a liability and lives on `PaymentTransaction`.
   'bank_deposit',
   // The bank feed (plans/bank-connection/02-connection-architecture.md §6).
@@ -170,10 +170,10 @@ export const ModelTypeValues = [
   'tariff_code',
   'tariff_rate',
   // The draft of a hand-authored posting, and the holder of the opening trial
-  // balance (plans/accounting/tasks/02-manual-journal-entry.md).
+  // balance (plans/accounting/tasks/done/02-manual-journal-entry.md).
   'journal_entry',
   // A record carrying its clearing account, never a role
-  // (plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md §5.3). Entity
+  // (plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md §5.3). Entity
   // migration 146.
   'payment_gateway',
   // One dispatch of goods and the physical boxes it went out in

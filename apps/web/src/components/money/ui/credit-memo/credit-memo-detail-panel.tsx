@@ -14,7 +14,7 @@ import { parseRecordId, useRecord } from '~/components/resources'
 
 /**
  * CreditMemoDetailPanel, the single-level `credit-memos` drill on an order or
- * contact detail page (plans/accounting/tasks/10-credit-memos.md §6.2), the
+ * contact detail page (plans/accounting/tasks/done/10-credit-memos.md §6.2), the
  * invoice drill's recipe applied to the memo. `itemId` carries the memo's
  * RecordId. Renders the SAME items as the credit memo drawer by replaying its
  * overview recipe: the Details fields block (number, status, source, contact,

@@ -1,10 +1,10 @@
 // packages/lib/src/money/payments/__tests__/post-transaction.test.ts
 //
-// plans/accounting/tasks/17-accounting-is-opt-in.md section 3: the
+// plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3: the
 // accounting-off case is checked before the org-settings read that exists only
 // to resolve the payment route for the builder.
 //
-// plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md §2.4: the `cash`
+// plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md §2.4: the `cash`
 // route names a bank account, never a role, so it is resolved and refused
 // BEFORE the build - `resolveCashBankAccountGlAccountId` is exercised here
 // directly against a stub `Database`, never mocked away, because it is the one

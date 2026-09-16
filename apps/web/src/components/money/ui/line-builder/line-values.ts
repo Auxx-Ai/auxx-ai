@@ -570,7 +570,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     photosAttr: null,
     capabilities: BUY_SIDE_CAPABILITIES,
   },
-  // The mirror of an invoice (plans/accounting/tasks/10-credit-memos.md §6.2).
+  // The mirror of an invoice (plans/accounting/tasks/done/10-credit-memos.md §6.2).
   // A credit memo line hangs off its own entity, like the two purchasing lines,
   // but it is a SELL-side concession: free text, a quantity, a rate, no part.
   credit_memo: {

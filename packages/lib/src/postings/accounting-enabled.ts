@@ -8,7 +8,7 @@ import { FeatureKey } from '../permissions/types'
  * Has this organization enabled the accounting module at all?
  *
  * The gate every document-driven posting trigger checks FIRST
- * (plans/accounting/tasks/17-accounting-is-opt-in.md section 3). An org that
+ * (plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3). An org that
  * never turned accounting on is a first-class silent case, like `not_connected`
  * under decision P1: nothing is built, nothing is claimed, nothing is logged,
  * and the trigger answers `not_enabled`. It is deliberately distinct from

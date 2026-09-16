@@ -584,7 +584,7 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // (`packages/lib/scripts/flush-user-capabilities-cache.ts`), for the same
   // rolling-deploy reason recorded above.
   //
-  // v19 (plans/accounting/tasks/12-accountant-permissions.md §4.3, §6): a third
+  // v19 (plans/accounting/tasks/done/12-accountant-permissions.md §4.3, §6): a third
   // rung on `Area.ledger` with one new `PermissionKey`, `ledger.control`. The
   // chart of accounts, account roles, the opening trial balance, the period
   // lock and bank feed provisioning move off `ledger.post` onto it. A `keys`
@@ -615,7 +615,7 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // rolling-deploy reason recorded above.
   //
   // v19 ALSO adds two new L2 areas, in the SAME bump as `ledger.control` above
-  // (plans/accounting/tasks/12-accountant-permissions.md §10): `Area.tasks`
+  // (plans/accounting/tasks/done/12-accountant-permissions.md §10): `Area.tasks`
   // (`tasks.view`, `tasks.manage`) and `Area.calls` (`calls.view`,
   // `calls.manage`). Two areas at once, same class of change as the
   // `ledger.control` rung: no shape change, still a `keys` CONTENT bump.

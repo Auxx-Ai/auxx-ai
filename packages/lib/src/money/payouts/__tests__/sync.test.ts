@@ -1,6 +1,6 @@
 // packages/lib/src/money/payouts/__tests__/sync.test.ts
 //
-// plans/accounting/tasks/17-accounting-is-opt-in.md section 3. `syncPayouts`
+// plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3. `syncPayouts`
 // runs nightly for every org a source can poll (`payoutSyncJob` ->
 // `sweepPayouts`), so the gate sits here, once per org, before any source is
 // asked for a context - not only inside `postPayoutEntry`, which this test does

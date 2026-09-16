@@ -2,7 +2,7 @@
 'use client'
 
 // Order drawer overview block for the credit memos taken against this order
-// (plans/accounting/tasks/10-credit-memos.md §6.1): the card task 47 planned as
+// (plans/accounting/tasks/done/10-credit-memos.md §6.1): the card task 47 planned as
 // "refunds inside the order", under the entity's real name. Read-only: a channel
 // memo is created by the connector and reviewed in the Credit memos list, and a
 // native memo is raised from an invoice, so there is no create action to mirror.

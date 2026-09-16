@@ -3,7 +3,7 @@
 'use client'
 
 // What the sync reads, as a mode and then a range
-// (plans/accounting/tasks/27-the-connected-system-is-its-own-page.md §4.1).
+// (plans/accounting/tasks/done/27-the-connected-system-is-its-own-page.md §4.1).
 //
 // It used to be two bare date fields with a five-line paragraph underneath
 // explaining that an empty `From` is not "no start date" but the cutover floor.

@@ -43,7 +43,7 @@ interface StampRow {
 
 /**
  * Migration 152: `credit_memo` learns which `GlPosting` it was posted into
- * (`plans/accounting/tasks/25-batch-posting-and-credit-memos.md` §4.1).
+ * (`plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md` §4.1).
  *
  * ## Why the field has to exist
  *
@@ -107,7 +107,7 @@ export const migration152CreditMemoGlPosting = {
     'Adds credit_memo_gl_posting to the credit_memo def and backfills it from the existing ' +
     'per-memo postings, so an already-posted memo keeps its ledger card once memos batch and ' +
     'is not offered to the next preview a second time ' +
-    '(plans/accounting/tasks/25-batch-posting-and-credit-memos.md §4.1)',
+    '(plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md §4.1)',
 
   async up(db: Database, organizationId: string): Promise<Migration152Result> {
     const state = { entityDefsCreated: 0, fieldsCreated: 0, relationshipsLinked: 0 }

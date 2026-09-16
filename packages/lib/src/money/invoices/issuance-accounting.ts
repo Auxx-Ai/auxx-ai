@@ -31,7 +31,7 @@
  * family's own `periodKey`, so an issuance is still `AUXX-INI-INV-0042` and the
  * claim is still one entry per invoice number.
  *
- * @see plans/accounting/tasks/08-invoice-revenue.md
+ * @see plans/accounting/tasks/done/08-invoice-revenue.md
  * @see docs/lib-module-guide.md
  */
 

@@ -997,7 +997,7 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
       [Area.workflows]: Level.Full,
       [Area.agents]: Level.Full,
       [Area.comments]: Level.Full,
-      // Added by plans/accounting/tasks/12-accountant-permissions.md §10, and
+      // Added by plans/accounting/tasks/done/12-accountant-permissions.md §10, and
       // `Full` - a NEW area, so the plan-22 parity claim is untouched. Tasks
       // were ungated before this area existed, so `Full` here is today's
       // behaviour, not a widening.
@@ -1046,7 +1046,7 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
       // org-shared mail access under the two-rung ladder (`Read → view` on every
       // row-less shared inbox); `Full` would mean Manager of every inbox.
       [Area.inboxes]: Level.Read,
-      // Added by plans/accounting/tasks/12-accountant-permissions.md §10, and
+      // Added by plans/accounting/tasks/done/12-accountant-permissions.md §10, and
       // `Full` - a NEW area, same reasoning as `tasks` above: recordings were
       // ungated before this area existed, so `Full` here is today's behaviour.
       [Area.calls]: Level.Full,

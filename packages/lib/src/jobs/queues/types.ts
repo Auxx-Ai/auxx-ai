@@ -76,7 +76,7 @@ export enum Queues {
   // holds a lease so two attempts at the same posting cannot both send. It is
   // kept low anyway because the far side is one company's rate-limited API.
   accountingDeliveryQueue = 'accounting-delivery',
-  // Bulk credit memo posting (plans/accounting/tasks/28-how-your-books-post.md §3.1).
+  // Bulk credit memo posting (plans/accounting/tasks/done/28-how-your-books-post.md §3.1).
   // Its OWN queue at concurrency 1 for the same reason as the one above: one job
   // posts every unposted channel memo in an org as one entry per issue day, and
   // the day's period key is claimed by attempt number, so two runs side by side

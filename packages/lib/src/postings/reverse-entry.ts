@@ -72,7 +72,7 @@ function refuse(error: string, glPostingId?: string): PostResult {
  * could detect it.
  *
  * `glAccountId` is the IDENTITY (`GlPostingLineInput`'s third variant,
- * plans/accounting/tasks/15-the-account-id-is-the-identity.md), and every
+ * plans/accounting/tasks/done/15-the-account-id-is-the-identity.md), and every
  * reversed line is built from the original's stored id rather than its role or
  * code. `resolveAccountLines` still validates the id against the org's chart -
  * archived reads as missing, inactive refuses - so a reversal fails closed the

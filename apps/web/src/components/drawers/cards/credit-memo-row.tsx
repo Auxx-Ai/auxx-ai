@@ -3,7 +3,7 @@
 
 // One credit memo as a related-record TreeRow: number, status badge, and the money
 // figures the host card asks for. Shared by the invoice drawer's Credits card and the
-// order drawer's Credit memos card (plans/accounting/tasks/10-credit-memos.md §6.1), so
+// order drawer's Credit memos card (plans/accounting/tasks/done/10-credit-memos.md §6.1), so
 // the two lists read the same memo the same way.
 
 import { getDefinitionId, getInstanceId, type RecordId } from '@auxx/types/resource'

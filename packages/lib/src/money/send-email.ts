@@ -174,7 +174,7 @@ export const DOCUMENT_EMAIL_PROFILES: Record<DocumentType, DocumentEmailProfile>
     },
     sentSubjectFallback: 'Deposit slip',
   },
-  // The mirror of the invoice (plans/accounting/tasks/10-credit-memos.md §6.3), sent
+  // The mirror of the invoice (plans/accounting/tasks/done/10-credit-memos.md §6.3), sent
   // to the same customer the invoice went to. There is no `sent` status on a memo:
   // it is issued by a click and posted at that moment, so a confirmed send moves
   // nothing and `markSent` is the idempotent no-op the caller already tolerates.

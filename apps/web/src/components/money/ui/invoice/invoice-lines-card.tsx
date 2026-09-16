@@ -59,7 +59,7 @@ const SENDABLE_STATUSES = new Set(['draft', 'sent', 'partially_paid'])
 const SENT_STATUSES = new Set(['sent', 'partially_paid', 'paid'])
 /** Statuses where an invoice can be overdue (money MI1 build spec §J.4). */
 const OVERDUE_STATUSES = new Set(['sent', 'partially_paid'])
-/** Statuses a credit memo can be raised against (plans/accounting/tasks/10-credit-memos.md
+/** Statuses a credit memo can be raised against (plans/accounting/tasks/done/10-credit-memos.md
  * §6.1): the invoice must have been issued, so there is revenue to reverse. A draft is
  * edited instead, and a void or written-off invoice has nothing left to credit. */
 const CREDITABLE_STATUSES = new Set(['sent', 'partially_paid', 'paid'])

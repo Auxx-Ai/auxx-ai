@@ -3,7 +3,7 @@
 // 🛑 DEV-ONLY. Deletes every organization's chart of accounts, its
 // `GlRoleAssignment` rows and the retired `gl_account_role` field, if it is
 // still there. Does NOT re-seed: accounting is opt-in now
-// (plans/accounting/tasks/17-accounting-is-opt-in.md §1, §2), and this script
+// (plans/accounting/tasks/done/17-accounting-is-opt-in.md §1, §2), and this script
 // is the dev-side twin of entity migration 142
 // (`data-migrations/migrations/142-wipe-seeded-charts.ts`), which does
 // the same wipe (plus journal entries, the QuickBooks account map and the

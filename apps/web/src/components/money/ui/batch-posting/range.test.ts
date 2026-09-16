@@ -1,6 +1,6 @@
 // apps/web/src/components/money/ui/batch-posting/range.test.ts
 //
-// plans/accounting/tasks/25-batch-posting-and-credit-memos.md §6.1 and
+// plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md §6.1 and
 // acceptance item 6: the control is INCLUSIVE at both ends, the wire is
 // half-open, and the conversion is the only place that knows.
 //

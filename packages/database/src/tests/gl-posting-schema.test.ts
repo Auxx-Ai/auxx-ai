@@ -144,7 +144,7 @@ describe('GlPostingLine', () => {
     expect(columnNames(lineConfig)).not.toContain('updatedAt')
   })
 
-  // plans/accounting/tasks/15-the-account-id-is-the-identity.md §5. `accountCode`
+  // plans/accounting/tasks/done/15-the-account-id-is-the-identity.md §5. `accountCode`
   // is a SNAPSHOT, nullable like `accountName`: a chart imported with account
   // numbers off, or kept by name alone, has no code to snapshot. Its own
   // `length(trim()) > 0` check goes with it - a null needs no such guard.
@@ -162,7 +162,7 @@ describe('GlPostingLine', () => {
     expect(fkTargets.sort()).toEqual(['GlPosting', 'Organization'])
   })
 
-  // plans/accounting/tasks/15-the-account-id-is-the-identity.md §2. `glAccountId`
+  // plans/accounting/tasks/done/15-the-account-id-is-the-identity.md §2. `glAccountId`
   // is the IDENTITY now, and `accountCode` is demoted to a snapshot - it makes
   // the same no-FK call `GlRoleAssignment.glAccountId` already does, for the same
   // reason: a ledger line must outlive the chart row, so `cascade` would destroy
@@ -244,7 +244,7 @@ describe('GlPostingLine', () => {
     expect(uniq?.config.unique).toBe(true)
   })
 
-  // plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md §1.1. Frozen at
+  // plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md §1.1. Frozen at
   // post time, never a provider id (P2), plain `text` rather than a `pgEnum` for
   // the reason `accountRole` gives - the vocabulary is `CounterpartyType` in
   // packages/lib/src/postings/types.ts, not here.

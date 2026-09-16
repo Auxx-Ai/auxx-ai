@@ -34,7 +34,7 @@ export enum PermissionKey {
   commentsView = 'comments.view',
   commentsManage = 'comments.manage',
 
-  // tasks (plans/accounting/tasks/12-accountant-permissions.md §10). Tasks had no
+  // tasks (plans/accounting/tasks/done/12-accountant-permissions.md §10). Tasks had no
   // area at all: the nav showed them on no key and the router was protectedProcedure.
   tasksView = 'tasks.view',
   tasksManage = 'tasks.manage',
@@ -103,7 +103,7 @@ export enum PermissionKey {
   snippetsEdit = 'snippets.edit',
   snippetsManage = 'snippets.manage',
 
-  // calls (plans/accounting/tasks/12-accountant-permissions.md §10). Recordings and
+  // calls (plans/accounting/tasks/done/12-accountant-permissions.md §10). Recordings and
   // meetings had no area: the nav showed Calls on the feature flag alone.
   callsView = 'calls.view',
   callsManage = 'calls.manage',
@@ -1238,7 +1238,7 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
       { level: Level.Read, keys: [PermissionKey.tasksView] },
       { level: Level.Full, keys: [PermissionKey.tasksManage] },
     ],
-    // Created 2026-09-09 (plans/accounting/tasks/12-accountant-permissions.md
+    // Created 2026-09-09 (plans/accounting/tasks/done/12-accountant-permissions.md
     // §10). Tasks had no Layer-2 area: the sidebar entry carried no key and
     // every `task.*` procedure was `protectedProcedure`, so no profile could
     // close them. Ships OPEN for members (`MEMBER_BASELINE_LEVELS` Full) and
@@ -1256,7 +1256,7 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
       { level: Level.Read, keys: [PermissionKey.callsView] },
       { level: Level.Full, keys: [PermissionKey.callsManage] },
     ],
-    // Created 2026-09-09 (plans/accounting/tasks/12-accountant-permissions.md
+    // Created 2026-09-09 (plans/accounting/tasks/done/12-accountant-permissions.md
     // §10). Recordings had no area: the sidebar showed Calls on the
     // `callRecordings` feature flag alone and the recording router was
     // `protectedProcedure` except `delete` (`channelsManage`, plan 21 §6).
@@ -1289,7 +1289,7 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     // Welding them would mean either handing the card to the bookkeeper or
     // handing the ledger to whoever pays the bill.
     //
-    // THREE RUNGS (plans/accounting/tasks/12-accountant-permissions.md §4.3).
+    // THREE RUNGS (plans/accounting/tasks/done/12-accountant-permissions.md §4.3).
     // There is still no `Edit` FOR AN ENTRY: an entry is immutable once posted
     // and a mistake is corrected by REVERSING it (task 10 §5), which is itself a
     // post. The middle rung is not between reading and writing, it IS writing;

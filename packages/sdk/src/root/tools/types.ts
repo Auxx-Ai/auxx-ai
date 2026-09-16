@@ -122,7 +122,7 @@ export interface ToolActionContext {
  *
  * `credit_memo`, `credit_memo_line`, `credit_memo_application` and
  * `tax_line` were ADDED 2026-09-08 with entity migration 136
- * (plans/accounting/tasks/10-credit-memos.md §2, plans/money/tasks/48 §4.1).
+ * (plans/accounting/tasks/done/10-credit-memos.md §2, plans/money/tasks/48 §4.1).
  * `credit_memo` is a visible business document and qualifies under the rule
  * outright. The other three follow `line_item`'s precedent: they are
  * `isVisible: false` and render inside their parent, and the line and the tax

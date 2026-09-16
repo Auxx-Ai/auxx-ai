@@ -9,7 +9,7 @@ const jobMappings = {
 }
 
 /**
- * Bulk credit memo posting worker (plans/accounting/tasks/28-how-your-books-post.md §3.1).
+ * Bulk credit memo posting worker (plans/accounting/tasks/done/28-how-your-books-post.md §3.1).
  *
  * Concurrency 1, and not as a throttle - the same cap `fulfillment-posting-worker.ts`
  * carries, for the same reason. One job posts every unposted channel memo in an

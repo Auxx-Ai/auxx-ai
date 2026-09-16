@@ -63,7 +63,7 @@ export const BILLING_TIMING_LABELS: Record<WorkOrderInvoiceTiming, string> = {
   custom_schedule: 'On a schedule',
 }
 
-// ─── Bank deposits (plans/accounting/tasks/06-deposit-grouping.md, slot 1D) ──
+// ─── Bank deposits (plans/accounting/tasks/done/06-deposit-grouping.md, slot 1D) ──
 // The client-safe half only: constants, the status union, and the pure route
 // and grouping helpers the deposits page reads. Nothing here imports a database.
 export {
@@ -115,7 +115,7 @@ export {
   type PlannedCreditMemo,
   type UnpostedCreditMemo,
 } from './credit-memo-posting/client'
-// ─── Credit memos (plans/accounting/tasks/10-credit-memos.md) ──────────────
+// ─── Credit memos (plans/accounting/tasks/done/10-credit-memos.md) ──────────────
 // The client-safe half only: the vocabularies, the wire shapes and the pure
 // planner the apply dialog prefills with. Nothing here imports a database.
 export {

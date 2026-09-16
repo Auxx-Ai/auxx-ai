@@ -2,7 +2,7 @@
 'use client'
 
 // The one bulk-posting dialog, with the source in a descriptor
-// (plans/accounting/tasks/25-batch-posting-and-credit-memos.md §5.1, §5.5, §6).
+// (plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md §5.1, §5.5, §6).
 //
 // Preview a batch, then run it: a frequency, a range shaped by it, a read-only
 // plan, the excluded rows with the number that proves each, a footer that moves

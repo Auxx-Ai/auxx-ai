@@ -1,7 +1,7 @@
 // apps/web/src/components/accounting/ui/journal/discard-action-gating.test.tsx
 //
 // Who is offered the Discard action, and on what
-// (plans/accounting/tasks/09-discard-a-draft-entry.md §4, "Web").
+// (plans/accounting/tasks/done/09-discard-a-draft-entry.md §4, "Web").
 //
 // 🛑 The server refuses either way - `ledger.journalEntry.discard` is on
 // `permissionProcedure(ledgerPost)` and `discardJournalEntry` refuses anything

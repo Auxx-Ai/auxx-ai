@@ -3,7 +3,7 @@
 /**
  * What posted in one accounting month, per posting type, and what the month
  * still owes the two bulk dialogs
- * (`plans/accounting/tasks/28-how-your-books-post.md` §6).
+ * (`plans/accounting/tasks/done/28-how-your-books-post.md` §6).
  *
  * ## A fact per type, never an alarm
  *

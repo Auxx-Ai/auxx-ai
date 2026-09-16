@@ -285,7 +285,7 @@ one constant that does.
 | --- | --- |
 | **Built, dark** | **Per-event costing** (`receipt`, `vendor_bill`, per-event COGS). The builders exist and are tested. They stay off because the month-end inventory assertion currently drives the inventory accounts, and a balance assertion plus per-event postings may never both drive them. Turning it on is one swap, never an addition. |
 | **Silent risk** | **Multi-currency.** A payout's currency is recorded, but the ledger is pinned to one currency and posts every payout as if it were that one. An org settling in two currencies books wrong numbers **and the entry still balances**, so nothing downstream complains. |
-| **Unverified** | The **payout path has never run against a real Stripe account**, and its migrations are confirmed on dev only. The nightly sweep ships enabled, so the first production worker restart is when it starts posting. That first run wants watching — see `plans/accounting/payout-rollout.md`. |
+| **Unverified** | The **payout path has never run against a real Stripe account**, and its migrations are confirmed on dev only. The nightly sweep ships enabled, so the first production worker restart is when it starts posting. That first run wants watching. |
 | **Known gap** | The invoice drawer's Ledger panel reads **"Nothing posted yet"** both when nothing was ever attempted and when a posting was attempted and refused. Two different facts, rendered identically. The reason is already stored; the panel does not read it. |
 | **No plans** | Payroll and a sales-tax engine are ruled out. `1210 Affirm Clearing` exists in the chart with no role and no writer. |
 
@@ -297,6 +297,6 @@ one constant that does.
 | --- | --- |
 | Why the ledger is shaped this way | `docs/inventory-costing-architecture-guide.md` §9 |
 | The current truth, newest section wins | `plans/accounting/HANDOFF.md` §11–§12 |
-| What stands between the payout code and a live card sale | `plans/accounting/payout-rollout.md` |
+| What stands between the payout code and a live card sale | `plans/accounting/tasks/26-a-clearing-account-per-rail.md` and `27-a-settlement-from-anywhere.md`; the blocker is `plans/accounting/decisions.md` §4.5 |
 | The bank feed, and the double-count hazard | `plans/bank-connection/README.md` |
 | Every accounting surface and its primitives | `plans/accounting/ui-plan.md` |

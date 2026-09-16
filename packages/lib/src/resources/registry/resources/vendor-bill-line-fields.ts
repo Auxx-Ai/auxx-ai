@@ -286,7 +286,7 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
    *     is frozen precisely because it can never be corrected.
    *
    * `id as TEXT, no FK, validated on read` is the decision
-   * (`plans/accounting/tasks/15-the-account-id-is-the-identity.md` §4) - the
+   * (`plans/accounting/tasks/done/15-the-account-id-is-the-identity.md` §4) - the
    * same shape `GlRoleAssignment.glAccountId` already uses.
    *
    * ⚠️ What is still wrong: `bill-lines-from-purchase-order.ts` hardcodes

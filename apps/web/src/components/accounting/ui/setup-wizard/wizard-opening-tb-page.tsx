@@ -34,7 +34,7 @@ const LOCK_REASON =
 
 /**
  * Page 3b of `AccountingSetupWizard` - the opening trial balance
- * (plans/accounting/tasks/03-opening-balances.md, ui-plan §2.2).
+ * (plans/accounting/tasks/done/03-opening-balances.md, ui-plan §2.2).
  *
  * 🛑 **Continue is refused while the difference is non-zero.** This is the one
  * page in the wizard where "fill it in later" is not a survivable answer: a

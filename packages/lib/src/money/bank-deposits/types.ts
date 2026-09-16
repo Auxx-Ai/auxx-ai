@@ -2,7 +2,7 @@
 
 /**
  * The shapes the bank-deposit reads return and the writes accept
- * (plans/accounting/tasks/06-deposit-grouping.md).
+ * (plans/accounting/tasks/done/06-deposit-grouping.md).
  *
  * Every money figure is INTEGER MINOR UNITS. `FieldValue.valueNumber` is a
  * double, so each read converts once, here, and every consumer downstream of

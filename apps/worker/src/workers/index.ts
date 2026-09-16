@@ -138,7 +138,7 @@ export async function startWorkers() {
   const fulfillmentPostingWorker = startFulfillmentPostingWorker()
 
   // Bulk credit memo posting worker: the `auto` lane of
-  // plans/accounting/tasks/28-how-your-books-post.md §3.1. Same concurrency-1
+  // plans/accounting/tasks/done/28-how-your-books-post.md §3.1. Same concurrency-1
   // cap as the fulfillment one, for the same period-key reason.
   const creditMemoPostingWorker = startCreditMemoPostingWorker()
 

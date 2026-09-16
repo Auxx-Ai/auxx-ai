@@ -217,7 +217,7 @@ describe('syncInvoicePaymentState — what it derives', () => {
   })
 })
 
-// plans/accounting/tasks/10-credit-memos.md §2.3: an application is not money and has no
+// plans/accounting/tasks/done/10-credit-memos.md §2.3: an application is not money and has no
 // `PaymentAllocation`. The memo's issue entry already credited `1100` for it, so an invoice
 // that did not subtract its applied credit would carry a balance the ledger no longer does.
 describe('syncInvoicePaymentState - applied credit', () => {

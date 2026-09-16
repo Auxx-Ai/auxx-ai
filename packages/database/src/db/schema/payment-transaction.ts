@@ -57,7 +57,7 @@ export const PaymentTransaction = pgTable(
       onDelete: 'restrict',
     }),
     /**
-     * The credit memo a refund settles (plans/accounting/tasks/10-credit-memos.md §5.3).
+     * The credit memo a refund settles (plans/accounting/tasks/done/10-credit-memos.md §5.3).
      * Set only on `kind: 'refund'` rows written by `recordManualRefund` or a Stripe
      * `refundTransaction` that names a memo; null on every charge and on a plain refund.
      * `credit_memo_amount_refunded` is the sum of succeeded rows carrying this id.

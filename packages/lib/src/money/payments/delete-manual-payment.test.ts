@@ -132,7 +132,7 @@ beforeEach(() => {
   h.settled = []
 })
 
-// plans/accounting/tasks/10-credit-memos.md §5.3: a manual refund is a manual row too
+// plans/accounting/tasks/done/10-credit-memos.md §5.3: a manual refund is a manual row too
 // (decision 3, data entry a member may take back). It has no allocation and no mirror; what
 // it touched is the memo it carried, and that is re-derived after the row is gone.
 describe('deleteManualPayment - a manual refund against a credit memo', () => {

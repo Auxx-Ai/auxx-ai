@@ -43,7 +43,7 @@
  * **Anything about periods being open.** `resolvePeriodLock` and
  * `assertPeriodOpen` own that, and the poster surfaces it as `period_closed`.
  *
- * @see plans/accounting/tasks/02-manual-journal-entry.md
+ * @see plans/accounting/tasks/done/02-manual-journal-entry.md
  */
 
 import { UnprocessableEntityError } from '../errors'

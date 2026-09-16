@@ -49,7 +49,7 @@
  * worse than no entry. `total` must equal `subtotal + taxTotal` for the same
  * reason: the entry ties to the stored totals by construction or it refuses.
  *
- * @see plans/accounting/tasks/10-credit-memos.md section 3 and section 10.6
+ * @see plans/accounting/tasks/done/10-credit-memos.md section 3 and section 10.6
  */
 
 import { UnprocessableEntityError } from '../errors'

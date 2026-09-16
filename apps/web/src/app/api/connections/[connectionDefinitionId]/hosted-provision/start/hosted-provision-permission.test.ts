@@ -4,7 +4,7 @@ import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * §4.7 of plans/accounting/tasks/12-accountant-permissions.md: `banking.connect` /
+ * §4.7 of plans/accounting/tasks/done/12-accountant-permissions.md: `banking.connect` /
  * `reconnect` only ever minted a URL to this route, and this route checked a
  * session and nothing else, so any signed-in member could hit
  * `/api/connections/stripeFinancialConnections/hosted-provision/start` directly

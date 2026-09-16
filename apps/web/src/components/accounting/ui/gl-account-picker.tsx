@@ -287,7 +287,7 @@ export interface GlAccountPickerProps {
    * What `value`/`onChange` carry. Defaults to `'code'`, which is every caller
    * that still names an account the `P2` way (a manual journal line, a
    * write-off). Pass `'id'` for the six registry pointers converted by
-   * `plans/accounting/tasks/15-the-account-id-is-the-identity.md` §4
+   * `plans/accounting/tasks/done/15-the-account-id-is-the-identity.md` §4
    * (`bank_account.glAccount`, `bank_rule.glAccount`,
    * `bank_transaction.glAccount`/`suggestedGlAccount`,
    * `vendor_bill_line.glAccount`), which store the `gl_account` instance id.

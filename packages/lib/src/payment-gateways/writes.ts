@@ -3,7 +3,7 @@
 /**
  * The three writes the payment gateways settings page needs: adding a
  * gateway, editing one, and archiving one
- * (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §5.3).
+ * (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md` §5.3).
  *
  * Writes only; the reads live in `reads.ts`. No permission checks - the router
  * asserts `ledgerControl` (`docs/lib-module-guide.md` §6).

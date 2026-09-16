@@ -1,6 +1,6 @@
 // packages/lib/src/postings/__tests__/post-payout-entry.test.ts
 //
-// plans/accounting/tasks/17-accounting-is-opt-in.md section 3: the accounting-off
+// plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3: the accounting-off
 // case is checked FIRST, before the builder, the period-lock read and the post.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'

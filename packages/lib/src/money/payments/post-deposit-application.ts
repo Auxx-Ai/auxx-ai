@@ -43,7 +43,7 @@
  * `postPaymentTransaction` does. A deposit application must not fail because
  * its bookkeeping did.
  *
- * @see plans/accounting/tasks/07-customer-deposits.md
+ * @see plans/accounting/tasks/done/07-customer-deposits.md
  */
 
 import { type Database, type PaymentTransactionEntity, schema } from '@auxx/database'

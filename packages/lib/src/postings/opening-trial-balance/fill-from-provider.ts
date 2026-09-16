@@ -1,7 +1,7 @@
 // packages/lib/src/postings/opening-trial-balance/fill-from-provider.ts
 //
 // Suggest the opening trial balance from the connected accounting provider's
-// balance sheet (plans/accounting/tasks/19-opening-balances-from-the-provider.md
+// balance sheet (plans/accounting/tasks/done/19-opening-balances-from-the-provider.md
 // section 4.5): read the draft context, read the provider's balance sheet as
 // of the cutover date, run the pure planner, save the result through the
 // existing write path, and record the three inventory settings plus
