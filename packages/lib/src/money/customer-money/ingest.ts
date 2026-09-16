@@ -6,6 +6,7 @@ import { ConflictError } from '../../errors'
 import { accountingBasisHash } from '../../postings/effect-basis'
 import { captureCustomerReceiptWorkInTx } from '../../postings/effect-work'
 import { periodKeyForDate } from '../../postings/periods'
+import { getOrganizationSetting } from '../../settings/settings-service'
 import { sumCreditMemoApplications, sumReservedCreditMemoRefunds } from '../credit-memos/reads'
 import { confirmedCustomerMovement } from './contracts'
 import {
@@ -374,17 +375,15 @@ export async function materializeImportedMoneyInTx(
       .update(schema.MoneyTransaction)
       .set({ partyInstanceId: partyId })
       .where(eq(schema.MoneyTransaction.id, money.id))
-  const zone = await tx.query.OrganizationSetting.findFirst({
-    where: and(
-      eq(schema.OrganizationSetting.organizationId, organizationId),
-      eq(schema.OrganizationSetting.key, 'accounting.bookTimeZone')
-    ),
-    columns: { value: true },
+  const zone = await getOrganizationSetting({
+    db: tx,
+    organizationId,
+    key: 'accounting.bookTimeZone',
   })
   let effectiveDate: string
   try {
-    if (typeof zone?.value !== 'string' || !zone.value.trim()) throw new Error('missing timezone')
-    effectiveDate = periodKeyForDate(money.occurredAt!, 'day', zone.value)
+    if (typeof zone !== 'string' || !zone.trim()) throw new Error('missing timezone')
+    effectiveDate = periodKeyForDate(money.occurredAt!, 'day', zone)
   } catch {
     await updateAcceptance(tx, acceptance.id, {
       ...base,
@@ -580,16 +579,15 @@ export async function materializeImportedMoneyInTx(
       ),
     })
     if (!work) {
-      const mode = await tx.query.OrganizationSetting.findFirst({
-        where: and(
-          eq(schema.OrganizationSetting.organizationId, organizationId),
-          eq(schema.OrganizationSetting.key, 'accounting.fulfillmentPosting')
-        ),
+      const mode = await getOrganizationSetting({
+        db: tx,
+        organizationId,
+        key: 'accounting.fulfillmentPosting',
       })
       await captureCustomerReceiptWorkInTx(tx, {
         organizationId,
         moneyTransactionId: money.id,
-        eligibility: mode?.value === 'auto' ? 'automatic' : 'manual',
+        eligibility: mode === 'auto' ? 'automatic' : 'manual',
         basis: {
           version: 1,
           status: 'incomplete',

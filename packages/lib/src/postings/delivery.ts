@@ -238,6 +238,45 @@ async function updateOwned(
   if (!rows.length) throw new Error('Delivery lease was lost')
 }
 
+/**
+ * Recheck between tool calls that the binding still points where the export
+ * started, catching a disconnect, cutover or repair landing mid-export.
+ *
+ * One row, no transaction and no accounting lock: {@link contextFor} already ran
+ * the full validation once, so taking the org lock per tool call would only
+ * serialize the export worker against acceptance.
+ */
+async function assertBindingUnchanged(
+  db: Database,
+  organizationId: string,
+  connectionId: string,
+  ctx: QuickbooksToolContext
+) {
+  const [live] = await db
+    .select({
+      state: schema.ExternalBookConnection.state,
+      credentialId: schema.ExternalBookConnection.credentialId,
+      companyId: schema.ExternalAccountingBook.externalCompanyId,
+    })
+    .from(schema.ExternalBookConnection)
+    .innerJoin(
+      schema.ExternalAccountingBook,
+      and(
+        eq(schema.ExternalAccountingBook.organizationId, organizationId),
+        eq(schema.ExternalAccountingBook.id, schema.ExternalBookConnection.bookId)
+      )
+    )
+    .where(scoped(schema.ExternalBookConnection, organizationId, connectionId))
+    .limit(1)
+  if (
+    !live ||
+    live.state === 'disconnected' ||
+    live.credentialId !== ctx.connectionId ||
+    live.companyId !== ctx.realmId
+  )
+    throw new Error('Pinned QuickBooks binding changed')
+}
+
 /** Explicitly bound context; every tool request rechecks the saved connection without redirecting. */
 async function contextFor(db: Database, organizationId: string, connectionId: string) {
   const pinned = await readPinnedAccountingConnection(db, organizationId, connectionId)
@@ -252,9 +291,7 @@ async function contextFor(db: Database, organizationId: string, connectionId: st
     throw new Error('Pinned accounting installation changed')
   const call = ctx.callTool
   ctx.callTool = async (toolId, inputs) => {
-    const live = await readPinnedAccountingConnection(db, organizationId, connectionId)
-    if (live.credentialId !== ctx.connectionId || live.companyId !== ctx.realmId)
-      throw new Error('Pinned QuickBooks binding changed')
+    await assertBindingUnchanged(db, organizationId, connectionId, ctx)
     return call(toolId, inputs)
   }
   return { ctx, pinned }
