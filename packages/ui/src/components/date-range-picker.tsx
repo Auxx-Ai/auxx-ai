@@ -326,10 +326,19 @@ export function DateRangePicker({
           )}
           <Calendar
             mode='range'
-            className='relative'
+            // `pb-2` because nothing below the grid has any: the popover is
+            // `p-0` and `MonthGrid` is `px-2`, so on a month whose last week row
+            // is full the days sat against the border.
+            className='relative pb-2'
             selected={draft ?? value}
             onSelect={handleCalendarSelect}
             numberOfMonths={2}
+            // Six week rows always: the popover holds its worst-case height
+            // instead of growing a row when you page onto a 6-week month. The
+            // padding row is blank (multi-month forces `showOutsideDays` off),
+            // which also gives short months the bottom gap they had only by
+            // accident before, from the preset rail being the taller column.
+            fixedWeeks
             {...calendarProps}
           />
         </div>

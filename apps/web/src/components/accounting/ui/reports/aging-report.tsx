@@ -8,6 +8,7 @@ import { isRecordId } from '@auxx/types/resource'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
+import { todayInZone } from '@auxx/utils/calendar-day'
 import { Building2, Users } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
 import { useMemo } from 'react'
@@ -20,10 +21,12 @@ import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { formatMinor } from '../ledger/format'
 import { ReportErrorCard } from './report-error-card'
-import { periodEndDate, periodKeyFromDate, toStatementTableRows } from './report-helpers'
+import { periodStartDate, toStatementTableRows } from './report-helpers'
+import { reportAsOfPresets } from './report-range-presets'
 import { ReportToolbar } from './report-toolbar'
 import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
+import { useReportAsOf } from './use-report-window'
 
 export interface AgingReportPageProps {
   side: 'receivable' | 'payable'
@@ -51,11 +54,14 @@ const COPY: Record<
 export function AgingReportPage({ side }: AgingReportPageProps) {
   const period = useLedgerPeriod()
   const copy = COPY[side]
-  const [asOfParam, setAsOfParam] = useQueryState('asOf')
   const [recordIdParam, setRecordIdParam] = useQueryState('id', parseAsString.withDefault(''))
 
-  const asOf =
-    asOfParam || (period.resolvedPeriodKey ? periodEndDate(period.resolvedPeriodKey) : '')
+  const cutoff = period.options[0] ? periodStartDate(period.options[0].periodKey) : null
+  const { asOf, setAsOf } = useReportAsOf(period.bookTimeZone, !!period.resolvedPeriodKey)
+  const asOfPresets = useMemo(
+    () => reportAsOfPresets(todayInZone(period.bookTimeZone), cutoff),
+    [period.bookTimeZone, cutoff]
+  )
   const selectedRecordId = isRecordId(recordIdParam) ? (recordIdParam as RecordId) : undefined
 
   // 🛑 Published to the reports layout's outlet, not rendered inline. A
@@ -123,9 +129,10 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
     <div className='flex h-full min-h-0 w-full flex-1 flex-col'>
       <ReportToolbar
         mode='asOf'
-        periodOptions={period.options}
-        periodKey={asOf ? periodKeyFromDate(asOf) : undefined}
-        onSelectPeriod={(key) => void setAsOfParam(periodEndDate(key))}
+        asOf={asOf}
+        onSelectAsOf={setAsOf}
+        asOfPresets={asOfPresets}
+        cutoff={cutoff}
         onDownloadPdf={handleDownloadPdf}
         onDownloadCsv={handleDownloadCsv}
         through={asOf}

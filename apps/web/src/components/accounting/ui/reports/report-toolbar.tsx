@@ -14,12 +14,12 @@ import {
 import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
 import { dayKeyOfLocalDate, localDateOfDayKey } from '@auxx/utils/calendar-day'
+import { format } from 'date-fns'
 import { CalendarIcon, ChevronDown, FileDown, FileSpreadsheet, X } from 'lucide-react'
-import type { LedgerPeriodOption } from '~/components/accounting/hooks/use-ledger-period'
-import { formatPeriodLabel } from '~/components/accounting/ui/ledger/format'
+import { DateTimePicker } from '~/components/pickers/date-time-picker'
 import { ProviderSyncStatus } from './provider-sync-status'
 import type { CompareOption } from './report-helpers'
-import type { ReportRangePreset } from './report-range-presets'
+import type { ReportAsOfPreset, ReportRangePreset } from './report-range-presets'
 
 const COMPARE_LABEL: Record<CompareOption, string> = {
   none: 'None',
@@ -31,14 +31,21 @@ const COMPARE_OPTIONS: CompareOption[] = ['none', 'prior_period', 'prior_year']
 
 export interface ReportToolbarProps {
   /**
-   * `asOf` is one period dropdown (trial balance, balance sheet, aging).
-   * `range` is a day-granular `DateRangePicker` (the P&L, the general ledger).
+   * `asOf` is one day-granular `DateTimePicker` in `mode='date'` (trial
+   * balance, balance sheet, aging). `range` is a `DateRangePicker` (the P&L,
+   * the general ledger).
+   *
+   * 🛑 `asOf` used to be a dropdown over the org's close periods, which could
+   * only ever name a month END - so the default as-of was the last day of the
+   * current month, a date in the FUTURE. An as-of statement takes whichever day
+   * it is asked for, exactly as QuickBooks does (`tasks/57` §7.3, §8.4).
    */
   mode: 'asOf' | 'range'
-  periodOptions: LedgerPeriodOption[]
-  /** `asOf` mode only. */
-  periodKey?: string
-  onSelectPeriod?: (periodKey: string) => void
+  /** `asOf` mode only. `YYYY-MM-DD`. */
+  asOf?: string
+  onSelectAsOf?: (day: string) => void
+  /** The preset rail for `asOf` mode - see `report-range-presets.ts`. */
+  asOfPresets?: readonly ReportAsOfPreset[]
   /** `range` mode only. Both `YYYY-MM-DD`, both ends inclusive. */
   from?: string
   to?: string
@@ -73,9 +80,9 @@ export interface ReportToolbarProps {
  */
 export function ReportToolbar({
   mode,
-  periodOptions,
-  periodKey,
-  onSelectPeriod,
+  asOf,
+  onSelectAsOf,
+  asOfPresets,
   from,
   to,
   onSelectRange,
@@ -90,16 +97,42 @@ export function ReportToolbar({
   isDownloadingPdf = false,
   disabled = false,
 }: ReportToolbarProps) {
+  // `DateTimePicker` has no notion of an ACTIVE preset, so the label is worked
+  // out here: naming the preset back ("As of Last month end") beats restating a
+  // date the reader just picked by name. Same idea as `DateRangePicker`'s own
+  // `activePresetLabel`, which it does internally.
+  const asOfLabel = asOf
+    ? (asOfPresets?.find((preset) => preset.date === asOf)?.label ??
+      format(localDateOfDayKey(asOf), 'PPP'))
+    : 'Select a date...'
+
   return (
     <div className='flex flex-wrap items-center gap-1 border-b p-1'>
       {mode === 'asOf' && (
-        <PeriodDropdown
-          label='As of'
-          periodOptions={periodOptions}
-          selected={periodKey}
-          onSelect={onSelectPeriod}
-          disabled={disabled}
-        />
+        <DateTimePicker
+          mode='date'
+          // Commit on the first click: an as-of statement takes one day, so a
+          // confirm step would be a second click to agree with yourself.
+          noConfirm
+          showPresets={!!asOfPresets?.length}
+          value={asOf ? localDateOfDayKey(asOf) : undefined}
+          onChange={(next) => next && onSelectAsOf?.(dayKeyOfLocalDate(next))}
+          presets={asOfPresets?.map((preset) => ({
+            value: preset.date,
+            label: preset.label,
+            getDate: () => localDateOfDayKey(preset.date),
+          }))}
+          // Same floor as `range` mode: a day before the books open has no
+          // statement to show, so it is refused on the calendar rather than
+          // answered with zeroes.
+          disabledDates={cutoff ? (day: Date) => dayKeyOfLocalDate(day) < cutoff : undefined}
+          disabled={disabled}>
+          <Button variant='ghost' size='sm' className='gap-1' disabled={disabled}>
+            <CalendarIcon />
+            <span className='text-muted-foreground'>As of</span>
+            {asOfLabel}
+          </Button>
+        </DateTimePicker>
       )}
 
       {mode === 'range' && (
@@ -189,40 +222,5 @@ export function ReportToolbar({
         CSV
       </Button>
     </div>
-  )
-}
-
-function PeriodDropdown({
-  label,
-  periodOptions,
-  selected,
-  onSelect,
-  disabled,
-}: {
-  label: string
-  periodOptions: LedgerPeriodOption[]
-  selected?: string
-  onSelect?: (periodKey: string) => void
-  disabled?: boolean
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild disabled={disabled || periodOptions.length === 0}>
-        <Button variant='ghost' size='sm' className='min-w-[10rem] justify-between gap-1'>
-          <span className='text-muted-foreground'>{label}</span>
-          {selected ? formatPeriodLabel(selected) : 'Select...'}
-          <ChevronDown />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align='start' className='min-w-[13rem]'>
-        {periodOptions.map((option) => (
-          <DropdownMenuItem key={option.periodKey} onSelect={() => onSelect?.(option.periodKey)}>
-            <span className={cn(option.periodKey === selected && 'font-medium')}>
-              {option.label}
-            </span>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
   )
 }

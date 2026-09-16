@@ -4,7 +4,7 @@
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import { BookOpen, Building2, FileText, ListChecks, Scale, TrendingUp, Users } from 'lucide-react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import {
   DockedPanelsOutletProvider,
   useDockedPanelsOutlet,
@@ -99,6 +99,14 @@ function AccountingReportsLayoutFrame({ children }: { children: React.ReactNode 
   const pages = pathname.split('/')
   const page = pages[pages.length - 1]
   const dockedPanels = useDockedPanelsOutlet()
+  // Every report shares one `?from=`/`?to=` window, so the nav carries the whole
+  // query across a report switch rather than resetting to each report's default
+  // (`tasks/57` §7.5). The WHOLE string, not an allowlist: a param a report does
+  // not read is inert there, and the ones that are read - the ledger's
+  // `?account=`, a drawer's `?posting=`/`?id=` - are visible on arrival with a
+  // door back out, so carrying them restores where the reader left off.
+  const searchParams = useSearchParams()
+  const linkQuery = searchParams.toString()
 
   return (
     <MainPageContent dockedPanels={dockedPanels}>
@@ -111,6 +119,7 @@ function AccountingReportsLayoutFrame({ children }: { children: React.ReactNode 
           baseUrl='/app/accounting/reports'
           current={page}
           title='Reports'
+          linkQuery={linkQuery}
         />
         <div className='relative flex h-full w-full flex-1 grow overflow-hidden'>{children}</div>
       </div>

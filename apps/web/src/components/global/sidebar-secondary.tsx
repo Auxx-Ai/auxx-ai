@@ -33,6 +33,15 @@ type Props = {
   current: string | undefined
   /** Focus the search field once, on mount — for sections entered from a top-level nav click. */
   autoFocusSearch?: boolean
+  /**
+   * Query string (no leading `?`) appended to every nav and search href.
+   *
+   * Opt-in, and only the accounting reports use it: those pages share one
+   * `?from=`/`?to=` window, so a plain `<Link>` to a sibling report would drop
+   * the range the reader is working in and reset to that report's default.
+   * Settings pages have no such shared state and must not inherit one.
+   */
+  linkQuery?: string
 }
 
 /** Below this many reachable pages the search field is more chrome than help. */
@@ -46,7 +55,11 @@ const SEARCH_MIN_ITEMS = 8
  * The nav rows are deliberately NOT cmdk items: keeping them plain links preserves
  * cmd-click/middle-click and keeps `role='listbox'` off the always-visible nav.
  */
-function SidebarSecondary({ items, baseUrl, title, current, autoFocusSearch }: Props) {
+function SidebarSecondary({ items, baseUrl, title, current, autoFocusSearch, linkQuery }: Props) {
+  const withQuery = useCallback(
+    (href: string) => (linkQuery ? `${href}?${linkQuery}` : href),
+    [linkQuery]
+  )
   const router = useRouter()
   const groups = useSettingsMenu(items)
   const [query, setQuery] = useState('')
@@ -148,6 +161,7 @@ function SidebarSecondary({ items, baseUrl, title, current, autoFocusSearch }: P
             query={query}
             onNavigate={handleNavigate}
             onItemClick={closeMobilePanel}
+            withQuery={withQuery}
           />
         ) : (
           <ScrollArea
@@ -161,6 +175,7 @@ function SidebarSecondary({ items, baseUrl, title, current, autoFocusSearch }: P
                 baseUrl={baseUrl}
                 current={current}
                 onItemClick={closeMobilePanel}
+                withQuery={withQuery}
               />
             ))}
           </ScrollArea>
@@ -176,11 +191,13 @@ function SidebarNavGroup({
   baseUrl,
   current,
   onItemClick,
+  withQuery,
 }: {
   group: SidebarProps
   baseUrl: string
   current: string | undefined
   onItemClick: () => void
+  withQuery: (href: string) => string
 }) {
   return (
     <div className='relative flex w-full min-w-0 flex-col p-2'>
@@ -195,7 +212,10 @@ function SidebarNavGroup({
               variant='secondary'
               size='compact'
               isActive={item.slug === current}>
-              <Link href={`${baseUrl}/${item.slug}`} prefetch={false} onClick={onItemClick}>
+              <Link
+                href={withQuery(`${baseUrl}/${item.slug}`)}
+                prefetch={false}
+                onClick={onItemClick}>
                 {item.icon}
                 <span>{item.label}</span>
               </Link>
@@ -217,11 +237,13 @@ function SearchResults({
   query,
   onNavigate,
   onItemClick,
+  withQuery,
 }: {
   results: SettingsSearchResult[]
   query: string
   onNavigate: (href: string) => void
   onItemClick: () => void
+  withQuery: (href: string) => string
 }) {
   const openPalette = useCommandPaletteStore((state) => state.openPalette)
 
@@ -244,7 +266,7 @@ function SearchResults({
         <CommandItem
           key={result.item.id}
           value={result.item.id}
-          onSelect={() => onNavigate(result.href)}
+          onSelect={() => onNavigate(withQuery(result.href))}
           className={cn(
             sidebarMenuButtonVariants({ variant: 'secondary', size: 'compact' }),
             'h-auto min-h-7 rounded-md py-1.5',
@@ -252,7 +274,7 @@ function SearchResults({
             'data-[selected=true]:bg-black/5 dark:data-[selected=true]:bg-sidebar-accent'
           )}>
           <Link
-            href={result.href}
+            href={withQuery(result.href)}
             prefetch={false}
             onClick={(event) => {
               // Let the anchor own every click (incl. cmd/middle) — keep cmdk's
