@@ -37,9 +37,13 @@ export interface SourceAccountSubject {
  *
  * The strings are borrowed from `PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS`
  * (`payment-gateways/client.ts`), but that map is keyed on *settlement sources*
- * (`stripe | shopify_payments | manual`) - a strictly narrower type than
+ * (`stripe | shopify_payments | affirm | manual`) - a strictly narrower type than
  * `providerKey`, which also carries `shopify` and `auxx`. Reuse the strings; do
  * NOT reuse the type, or half this namespace becomes unrepresentable.
+ *
+ * ⚠️ A key absent from this table is TITLED, not dropped (`sourceProviderLabel`),
+ * so a provider is only worth listing here when title-casing its key gets the
+ * name wrong. `affirm` titles to `Affirm` already, which is why it has no entry.
  */
 const SOURCE_PROVIDER_LABELS: Record<string, string> = {
   shopify: 'Shopify',

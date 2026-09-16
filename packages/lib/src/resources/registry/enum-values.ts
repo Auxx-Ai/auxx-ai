@@ -941,18 +941,26 @@ export const JournalEntryKind = {
 
 /**
  * How a `payment_gateway` drains (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md`
- * §5.3). The three answers that exist: `stripe` and `shopify_payments` read a
- * real payout feed, `manual` is worked by hand. `manual` is not a gap - it is
- * what Affirm and every historical rail correctly are.
+ * §5.3). `stripe`, `shopify_payments` and `affirm` read a real settlement feed;
+ * `manual` is worked by hand in the review queue. `manual` is not a gap - it is
+ * what Authorize.Net and every rail whose feed nobody reads correctly are.
+ *
+ * 🛑 Mirrored by `PAYMENT_GATEWAY_SETTLEMENT_SOURCES`
+ * (`payment-gateways/client.ts`), which is what the settings picker, the router
+ * schema and `PayoutSourceId` are all built from. The two lists must agree: this
+ * one is the stored option list on the record, that one is the type. A value in
+ * the type but not here renders a blank select on a fresh org.
  */
 export const PaymentGatewaySettlementSource = {
   STRIPE: 'stripe',
   SHOPIFY_PAYMENTS: 'shopify_payments',
+  AFFIRM: 'affirm',
   MANUAL: 'manual',
 
   values: [
     { value: 'stripe', label: 'Stripe', color: 'purple' },
     { value: 'shopify_payments', label: 'Shopify Payments', color: 'green' },
+    { value: 'affirm', label: 'Affirm', color: 'blue' },
     { value: 'manual', label: 'By hand', color: 'gray' },
   ] satisfies FieldOptionItem[],
 } as const
@@ -969,8 +977,10 @@ export const PaymentGatewaySettlementSource = {
  *   weeks later as one ACH debit or an invoice.
  *
  * 🛑 **Not the same question `PaymentGatewaySettlementSource` answers.** The two
- * correlate - `manual` tends to be billed - but Affirm settles outside every
- * API and still nets its discount fee. Two questions, two fields.
+ * correlate - `manual` tends to be billed - but PayPal is `manual` and nets its
+ * cut out of the deposit, while the acquirer behind Authorize.Net is also
+ * `manual` and bills monthly. Same settlement source, opposite entry shapes.
+ * Two questions, two fields.
  *
  * `netted` is the default because it preserves today's behaviour on every
  * existing record: a payout entry with a fee leg is what the builder has always

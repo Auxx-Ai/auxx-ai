@@ -37,10 +37,24 @@ import type {
 /**
  * Which feed a source reads. Maps 1:1 onto the `payment_gateway` record's
  * `settlementSource`, so the rail's own declaration of how it drains IS the
- * registry key: `stripe` today, `shopify_payments` when unit 5 lands, and `csv`
- * once unit 3 adds that value to the settlement-source vocabulary. `manual` is
- * the one value that can never name a source - a billed rail is relieved in
- * the review queue (§3) and wants no feed, ever.
+ * registry key: `stripe`, `shopify_payments`, and `csv` once unit 3 adds that
+ * value to the settlement-source vocabulary. `manual` is the one value that can
+ * never name a source - a billed rail is relieved in the review queue (§3) and
+ * wants no feed, ever.
+ *
+ * ⚠️ **A key here is not a promise that a source exists.** `affirm` joined the
+ * vocabulary with `plans/apps/affirm/affirm-build-plan.md` §5.1 and is therefore
+ * in this union, but **nothing will ever register a `PayoutSource` for it, by
+ * design** (that plan's §5.3, resolved 2026-09-15). Affirm is read by the
+ * financial connector (task 46), and the two paths are MUTUALLY EXCLUSIVE:
+ * {@link assertLegacyPayoutIngestionOwner} refuses this legacy writer once a
+ * connector holds an enabled `upsert` mapping into `payout` or
+ * `processor_balance_entry` for the same installation and credential. An
+ * `AFFIRM_PAYOUT_SOURCE` would therefore throw on every run.
+ *
+ * Until something registers it, `getPayoutSource` answers a `NotFoundError`
+ * naming the id and the sweep never polls it, which is a visible absence rather
+ * than a silent one. For `affirm` that absence is the permanent, correct state.
  */
 export type PayoutSourceId = Exclude<PaymentGatewaySettlementSourceValue, 'manual'>
 

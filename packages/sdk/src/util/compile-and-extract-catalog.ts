@@ -463,6 +463,13 @@ export async function compileAndExtractCatalog(): Promise<
   const SDK_REAL_FIELDS = path.join(SDK_ROOT, 'lib', 'root', 'fields', 'index.js')
   const SDK_REAL_ENTITIES = path.join(SDK_ROOT, 'lib', 'root', 'entities', 'index.js')
   const SDK_REAL_DATA_CONNECTORS = path.join(SDK_ROOT, 'lib', 'root', 'data-connectors', 'index.js')
+  const SDK_REAL_FINANCIAL_SOURCE = path.join(
+    SDK_ROOT,
+    'lib',
+    'root',
+    'financial-source',
+    'index.js'
+  )
   const stubSdkSubpaths: esbuild.Plugin = {
     name: 'auxx-stub-sdk-subpaths',
     setup(build) {
@@ -481,6 +488,12 @@ export async function compileAndExtractCatalog(): Promise<
         // `defineDataConnector` is a validator called at module load too — same
         // real-runtime requirement as `defineFields`.
         if (args.path === '@auxx/sdk/data-connectors') return { path: SDK_REAL_DATA_CONNECTORS }
+        // `payoutSourceFields` / `processorSourceFields` build a connector
+        // stream's `exampleRecord`, which is evaluated at module load inside
+        // the `defineDataConnector` call — same real-runtime requirement as
+        // `defineFields`, and the stub fails the same way
+        // (`payoutSourceFields is not a function`).
+        if (args.path === '@auxx/sdk/financial-source') return { path: SDK_REAL_FINANCIAL_SOURCE }
         return { path: args.path, namespace: 'auxx-sdk-stub' }
       })
       // CJS module shape with a Proxy: any named import becomes a no-op

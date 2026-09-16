@@ -64,6 +64,19 @@ export {
   type FieldTypeValueMap,
   type FieldValueType,
 } from './fields/index.js'
+// Financial source surface — `import { payoutSourceFields } from '@auxx/sdk/financial-source'`
+export {
+  type Acquisition,
+  customerTransactionFieldMappings,
+  type FinancialSourceFieldMapping,
+  orderPaymentSourceFields,
+  payoutFieldMappings,
+  payoutSourceFields,
+  processorFieldMappings,
+  processorSourceFields,
+  type SourceAccount,
+  type SourceRow,
+} from './financial-source/index.js'
 export { Settings } from './settings/index.js'
 // Export settings schema types and namespace
 export type {
