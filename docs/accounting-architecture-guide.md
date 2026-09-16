@@ -667,7 +667,8 @@ already got".
 
 | Report | File | Shape |
 | --- | --- | --- |
-| Trial balance | `trial-balance.ts` | As of one date. `GROUP BY accountCode` |
+| Trial balance (primitive) | `trial-balance.ts` | `GROUP BY glAccountId` over `[from, to]`. 🛑 Cumulative, no fiscal year — five readers compose it |
+| Trial balance (statement) | `trial-balance-statement.ts` | As of ONE date. Composes three of the above; §12.1's boundary; computed retained earnings |
 | Balance sheet | `balance-sheet.ts` | As of one date; splits equity at `fiscalYearStart(asOf)` |
 | Profit & loss | `profit-and-loss.ts` | A true range report |
 | General ledger | `general-ledger.ts` | Per-account lines; takes an optional `glAccountId` filter |
@@ -695,6 +696,18 @@ provider's imported RE balance — flows through the same function.
 
 ⚠️ A computed Retained Earnings row needs its `meta.note` treatment ("computed from
 the P&L, not a posted balance"), or it reads as an account somebody posted to.
+
+🛑 **`readTrialBalance` is the shared primitive and does NOT know about the fiscal year.**
+`readBalanceSheet` makes three raw calls to it, `readTrialBalanceStatement` the same three,
+`readProfitAndLoss` one and `aging.ts` one. Teaching the boundary to the primitive would make
+the balance sheet apply it twice. A new report that wants the boundary composes, it does not
+reach down.
+
+⚠️ **The trial balance's computed row is `priorYearsMinor`, not `balanceMinor`.** Resetting P&L
+accounts breaks `Σdebit = Σcredit` by exactly prior-year net income, so that is the whole plug.
+`balanceMinor` would also add `postedPriorYearsMinor` (already on the report as the org's own
+retained-earnings account row) and `currentPeriodMinor` (already on it as the current-year P&L
+rows). The balance sheet makes the identical argument about its own equity section.
 
 `statement-math.ts` owns `retainedEarnings()`; `fiscal-year.ts` owns `fiscalYearStart()`.
 `rows.ts` and `adapters.ts` turn a read into `StatementRow`s; `pdf/` renders.

@@ -26,10 +26,14 @@ import { useReportAsOf } from './use-report-window'
 
 /**
  * `/app/accounting/reports/trial-balance` (`plans/accounting/ui-plan.md`
- * §2.4). As-of only, no compare: `ledgerReports.trialBalance` reads
- * cumulative from the beginning of time through `to`, which is the standard
- * reading of "a trial balance" and ties to `ledger.verifyBalance` for the
- * same range (`tasks/04-statements.md` §0).
+ * §2.4). As-of only, no compare, and ONE date - `ledgerReports.trialBalance`
+ * reads balance-sheet accounts cumulative through `to` and resets revenue and
+ * expense at the fiscal year, with the difference in a computed
+ * retained-earnings row (`docs/accounting-architecture-guide.md` §12.1).
+ *
+ * 🛑 The computed row is not drillable and must not become so: `canRowDrill`
+ * keys on `meta.glAccountId`, which it deliberately has none of. There is no
+ * ledger behind a figure nobody posted.
  */
 export function TrialBalanceReportPage() {
   const period = useLedgerPeriod()

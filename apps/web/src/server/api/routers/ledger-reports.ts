@@ -26,7 +26,7 @@ import {
   readGeneralLedger,
   readProfitAndLoss,
   readProviderSyncMarker,
-  readTrialBalance,
+  readTrialBalanceStatement,
   readVendor1099Summary,
   renderStatementPdf,
   TRIAL_BALANCE_COLUMNS,
@@ -34,7 +34,7 @@ import {
   toBalanceSheetRows,
   toGeneralLedgerRows,
   toProfitAndLossRows,
-  toTrialBalanceRows,
+  toTrialBalanceStatementRows,
   toVendor1099Rows,
   VENDOR_1099_COLUMNS,
 } from '@auxx/lib/postings'
@@ -46,23 +46,27 @@ const dateKey = z.iso.date({ error: 'Expected YYYY-MM-DD' })
 
 export const ledgerReportsRouter = createTRPCRouter({
   /**
-   * The trial balance, as of `to` (activity-only from `from` when given). Ties
-   * to `ledger.verifyBalance` for the same organization - see
-   * `postings/reports/__tests__/trial-balance.test.ts`.
+   * The trial balance as of ONE date (task 57 §5.3): balance-sheet accounts
+   * cumulative, revenue and expense reset at the fiscal year, the difference in
+   * a computed retained-earnings row.
+   *
+   * 🛑 It no longer ties to `ledger.verifyBalance` row for row - that sweep is
+   * cumulative and this is not. `balanced` still holds, and THAT is the verdict
+   * the strip renders. `readTrialBalance` is the cumulative primitive if you
+   * want the old reading.
    */
   trialBalance: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ from: dateKey.optional(), to: dateKey }))
+    .input(z.object({ to: dateKey }))
     .query(async ({ ctx, input }) => {
-      const result = await readTrialBalance(ctx.db, {
+      const result = await readTrialBalanceStatement(ctx.db, {
         organizationId: ctx.session.organizationId,
-        from: input.from,
-        to: input.to,
+        asOf: input.to,
       })
       if (result.isErr()) throw result.error
       return {
         ...result.value,
         columns: TRIAL_BALANCE_COLUMNS,
-        rows: toTrialBalanceRows(result.value),
+        rows: toTrialBalanceStatementRows(result.value),
       }
     }),
 
@@ -231,7 +235,9 @@ export const ledgerReportsRouter = createTRPCRouter({
           organizationId,
           actorId: userId,
           kind: input.kind,
-          params: { from: input.from, to: input.to },
+          // One date. `from` on the input is the carried drill-down window
+          // (57 §7.1), never an input to this summary.
+          params: { to: input.to },
         })
       }
       if (input.kind === 'balance-sheet') {

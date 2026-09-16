@@ -461,6 +461,7 @@ export {
   toGeneralLedgerRows,
   toProfitAndLossRows,
   toTrialBalanceRows,
+  toTrialBalanceStatementRows,
 } from './reports/adapters'
 export type { BalanceSheet, BalanceSheetRow, BalanceSheetSnapshot } from './reports/balance-sheet'
 export type { Completeness, CompletenessItem } from './reports/completeness'
@@ -507,6 +508,10 @@ export {
   signedBalance,
 } from './reports/statement-math'
 export type { TrialBalance, TrialBalanceRow } from './reports/trial-balance'
+export type {
+  TrialBalanceRetainedEarnings,
+  TrialBalanceStatement,
+} from './reports/trial-balance-statement'
 export type { Vendor1099Row, Vendor1099Summary } from './reports/vendor-1099-rows'
 // ── HANDOFF slot 2K (accountant profile, 1099/W-9, write-off) ──────────────
 export {

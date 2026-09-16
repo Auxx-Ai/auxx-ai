@@ -597,6 +597,7 @@ export {
   toGeneralLedgerRows,
   toProfitAndLossRows,
   toTrialBalanceRows,
+  toTrialBalanceStatementRows,
 } from './reports/adapters'
 // ── Aging (HANDOFF slot 2H, wave 2) ─────────────────────────────────────────
 export {
@@ -687,6 +688,12 @@ export {
   type TrialBalance,
   type TrialBalanceRow,
 } from './reports/trial-balance'
+export {
+  type ReadTrialBalanceStatementOptions,
+  readTrialBalanceStatement,
+  type TrialBalanceRetainedEarnings,
+  type TrialBalanceStatement,
+} from './reports/trial-balance-statement'
 export {
   type ReadVendor1099SummaryOptions,
   readVendor1099Summary,
