@@ -629,7 +629,7 @@ it('uses the book-zone day for shipment selection and acceptance across midnight
     fulfillmentIds: [shipment],
     groupKey: '2026-08-31',
   })
-  expect(result).not.toBeNull()
+  expect(result.status).toBe('accepted')
   const [effect] = await db().select().from(schema.AccountingEffect)
   expect(effect!.effectiveDate).toBe('2026-08-31')
   const [journal] = await db().select().from(schema.GlPosting)

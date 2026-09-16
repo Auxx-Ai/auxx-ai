@@ -132,7 +132,11 @@ vi.mock('../../fulfillment-posting/run', () => ({
   acceptFulfillmentWorkGroup: async () => {
     h.events.push('accept')
     if (!h.postResult.glPostingId) throw new Error(h.postResult.error)
-    return { glPostingId: h.postResult.glPostingId, docNumber: h.postResult.docNumber }
+    return {
+      status: 'accepted',
+      glPostingId: h.postResult.glPostingId,
+      docNumber: h.postResult.docNumber,
+    }
   },
 }))
 vi.mock('../../../resources/crud/tx-write-scope', () => ({

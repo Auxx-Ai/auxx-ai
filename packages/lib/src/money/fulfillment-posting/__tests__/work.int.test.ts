@@ -6,6 +6,7 @@ import { and, eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFieldValueContext } from '../../../field-values/field-value-helpers'
 import { FieldValueService } from '../../../field-values/field-value-service'
+import { releaseAccountingClaims } from '../../../postings/release-claims'
 import { withAccountingFieldMutation } from '../../../postings/source-write-guard'
 import { acceptFulfillmentWorkGroup, sweepFulfillmentAccountingWork } from '../run'
 
@@ -358,7 +359,10 @@ describe('fulfillment acceptance through the domain command', () => {
       .set({ metadata: { accountingFulfillmentLane: 'native' } })
       .where(eq(schema.EntityInstance.id, fulfillmentId))
     const results = await Promise.all([acceptSource(), acceptSource(true), acceptSource()])
-    expect(new Set(results.map((result) => result?.glPostingId)).size).toBe(1)
+    expect(
+      new Set(results.map((result) => (result.status === 'accepted' ? result.glPostingId : null)))
+        .size
+    ).toBe(1)
     expect(await db().select().from(schema.AccountingEffect)).toHaveLength(1)
     expect(await db().select().from(schema.GlPosting)).toHaveLength(1)
     const work = await db().query.AccountingWork.findFirst()
@@ -667,11 +671,83 @@ describe('the group netting prefetch', () => {
       fulfillmentIds: [fulfillmentId, secondId],
       groupKey: '2026-09',
     })
-    expect(accepted?.shipments).toBe(2)
+    if (accepted.status !== 'accepted') throw new Error(`group was ${accepted.status}`)
+    expect(accepted.shipments).toBe(2)
     const [posting] = await db()
       .select()
       .from(schema.GlPosting)
-      .where(eq(schema.GlPosting.id, accepted!.glPostingId))
+      .where(eq(schema.GlPosting.id, accepted.glPostingId))
     expect(posting).toBeDefined()
   })
+
+  // 🛑 `state` is derived from the effect row. A journal deleted out from under
+  // an `accepted` work used to strand it: the planner kept offering the shipment
+  // (it keys on the missing effect) and the acceptance kept refusing it (it keys
+  // on the stale state), which reported a whole empty month as already posted.
+  it('reposts a shipment whose journal was deleted without clearing its work', async () => {
+    await sealSource()
+    await configureAccounting()
+    const first = await acceptFulfillmentWorkGroup(db(), {
+      organizationId,
+      actorUserId: userId,
+      fulfillmentIds: [fulfillmentId],
+      groupKey: '2026-09-10',
+    })
+    if (first.status !== 'accepted') throw new Error(`group was ${first.status}`)
+
+    await deleteJournalLeavingWorkAccepted(first.glPostingId)
+    const work = await db().query.AccountingWork.findFirst()
+    expect(work?.state).toBe('accepted')
+
+    const second = await acceptFulfillmentWorkGroup(db(), {
+      organizationId,
+      actorUserId: userId,
+      fulfillmentIds: [fulfillmentId],
+      groupKey: '2026-09-10',
+    })
+    expect(second.status).toBe('accepted')
+    expect(await db().select().from(schema.AccountingEffect)).toHaveLength(1)
+  })
+
+  it('releases the claims a journal holds so its work is postable again', async () => {
+    await sealSource()
+    await configureAccounting()
+    const accepted = await acceptFulfillmentWorkGroup(db(), {
+      organizationId,
+      actorUserId: userId,
+      fulfillmentIds: [fulfillmentId],
+      groupKey: '2026-09-10',
+    })
+    if (accepted.status !== 'accepted') throw new Error(`group was ${accepted.status}`)
+
+    const released = await releaseAccountingClaims(db(), organizationId, [accepted.glPostingId])
+    expect(released).toMatchObject({ effects: 1, reopened: 1 })
+    expect(await db().select().from(schema.AccountingEffect)).toHaveLength(0)
+    const work = await db().query.AccountingWork.findFirst()
+    expect(work?.state).toBe('pending')
+    // The whole point of releasing first: the posting delete now goes through.
+    await db().delete(schema.GlPosting).where(eq(schema.GlPosting.id, accepted.glPostingId))
+    expect(await db().select().from(schema.GlPosting)).toHaveLength(0)
+  })
 })
+
+/** What a hand-rolled `DELETE FROM "GlPosting"` leaves behind: work still `accepted`. */
+async function deleteJournalLeavingWorkAccepted(glPostingId: string) {
+  const deliveries = await db()
+    .select({ id: schema.AccountingDelivery.id })
+    .from(schema.AccountingDelivery)
+    .where(eq(schema.AccountingDelivery.glPostingId, glPostingId))
+  for (const { id } of deliveries) {
+    await db()
+      .delete(schema.AccountingDeliveryCoverage)
+      .where(eq(schema.AccountingDeliveryCoverage.deliveryId, id))
+    await db()
+      .delete(schema.AccountingDeliveryOperation)
+      .where(eq(schema.AccountingDeliveryOperation.deliveryId, id))
+    await db().delete(schema.AccountingDelivery).where(eq(schema.AccountingDelivery.id, id))
+  }
+  await db()
+    .delete(schema.AccountingEffect)
+    .where(eq(schema.AccountingEffect.glPostingId, glPostingId))
+  await db().delete(schema.GlPosting).where(eq(schema.GlPosting.id, glPostingId))
+}

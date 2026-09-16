@@ -22,6 +22,15 @@ import type { BatchPostingCount, BatchPostingPostedRow, BatchPostingSummaryShape
 /** How many rows of a list are printed before it collapses into "and N more". */
 const ROWS_SHOWN = 24
 
+/**
+ * Skip statuses that really do mean "nothing to do here".
+ *
+ * ⚠️ Anything else loses the reassurance line. A skip the poster cannot explain
+ * as benign — work in a terminal state with no journal behind it — read as
+ * "nothing is wrong" for a whole month of deleted entries.
+ */
+const BENIGN_SKIPS = new Set(['already_posted', 'disabled', 'locked', 'empty'])
+
 interface BatchPostingResultProps<Summary extends BatchPostingSummaryShape> {
   result: Summary | null
   /** What the posted entries covered, in this source's nouns. */
@@ -53,6 +62,7 @@ export function BatchPostingResult<Summary extends BatchPostingSummaryShape>({
 
   const posted = postedRows.length
   const skipped = result.skipped.length
+  const benignSkips = result.skipped.every((row) => BENIGN_SKIPS.has(row.status))
   const failed = result.failed.length
   const excluded = result.exclusions.length
 
@@ -80,7 +90,8 @@ export function BatchPostingResult<Summary extends BatchPostingSummaryShape>({
         <div>
           <p>
             {skipped} {skipped === 1 ? 'group was' : 'groups were'} skipped. Nothing was written for{' '}
-            {skipped === 1 ? 'it' : 'them'}, and nothing is wrong.
+            {skipped === 1 ? 'it' : 'them'}
+            {benignSkips ? ', and nothing is wrong.' : '.'}
           </p>
           <ul className='mt-1 ps-4 text-muted-foreground text-xs'>
             {result.skipped.slice(0, ROWS_SHOWN).map((row) => (

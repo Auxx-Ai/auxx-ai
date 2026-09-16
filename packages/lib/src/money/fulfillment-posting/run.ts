@@ -289,6 +289,33 @@ function resolveRefusal(setupState: unknown, timeZone: string | null): string | 
   return null
 }
 
+/**
+ * What one group acceptance did. Only `accepted` wrote a journal.
+ *
+ * ⚠️ `already_posted` and `not_eligible` are NOT the same answer, and collapsing
+ * them is what made a range whose journals had been deleted report 28 groups as
+ * "already posted" when the ledger held nothing for them.
+ */
+export type FulfillmentGroupOutcome =
+  | { status: 'accepted'; glPostingId: string; docNumber: string; shipments: number }
+  /** An `AccountingEffect` already claims this work: the journal exists. */
+  | { status: 'already_posted' }
+  /** Work exists, nothing claims it, and none of it is in a postable state. */
+  | { status: 'not_eligible' }
+  /** An automatic run that found the org back on manual while holding the lock. */
+  | { status: 'disabled' }
+  /** No fulfillments, or none that captured. */
+  | { status: 'empty' }
+
+/** Why a group wrote nothing, in the words the run summary shows. */
+const SKIP_REASON: Record<Exclude<FulfillmentGroupOutcome['status'], 'accepted'>, string> = {
+  already_posted: 'These fulfillments are already on an accepted journal',
+  not_eligible:
+    'Nothing in this group could post: its accounting work is excluded, canceled, or not yet captured. No journal exists for it either — this is worth looking at',
+  disabled: 'Automatic posting was switched off while the run held the accounting lock',
+  empty: 'No accounting work was captured for these fulfillments',
+}
+
 /** Capture survives bookkeeping refusal; acceptance and its delivery intent share one commit. */
 async function executeGroup(
   db: Database,
@@ -304,11 +331,11 @@ async function executeGroup(
     automatic: request.actorUserId === null,
     memo: request.memo,
   })
-  if (!result) {
+  if (result.status !== 'accepted') {
     summary.skipped.push({
       groupKey: context.group.groupKey,
-      status: 'already_posted',
-      reason: 'The selected fulfillments are already accepted or no longer automatically eligible',
+      status: result.status,
+      reason: SKIP_REASON[result.status],
     })
     return
   }
@@ -331,9 +358,9 @@ export async function acceptFulfillmentWorkGroup(
     automatic?: boolean
     memo?: string
   }
-): Promise<{ glPostingId: string; docNumber: string; shipments: number } | null> {
+): Promise<FulfillmentGroupOutcome> {
   const fulfillmentIds = [...new Set(input.fulfillmentIds)]
-  if (!fulfillmentIds.length) return null
+  if (!fulfillmentIds.length) return { status: 'empty' }
   // 🛑 ONE transaction for the whole capture pass, and it COMMITS BEFORE the
   // acceptance below opens. That ordering is the contract - capture must survive
   // a bookkeeping refusal, because a shipment whose source cannot be sealed is
@@ -365,8 +392,8 @@ export async function acceptFulfillmentWorkGroup(
     }
     return captured
   })
-  if (!workIds.length) return null
-  const result = await db.transaction(async (tx) => {
+  if (!workIds.length) return { status: 'empty' }
+  const result: FulfillmentGroupOutcome = await db.transaction(async (tx) => {
     await withAccountingCommitLock(tx, input.organizationId)
     if (
       input.automatic &&
@@ -376,7 +403,7 @@ export async function acceptFulfillmentWorkGroup(
         db: tx,
       })) !== 'auto'
     )
-      return null
+      return { status: 'disabled' }
     // 🛑 ONE context for the whole group. Every shipment below reads the same
     // field metadata and the same accounting configuration, and the commit lock
     // this transaction holds is what makes reading it once and reading it per
@@ -411,9 +438,16 @@ export async function acceptFulfillmentWorkGroup(
           ),
         })
         if (posting)
-          return { glPostingId: posting.id, docNumber: posting.docNumber ?? '', shipments: 1 }
+          return {
+            status: 'accepted',
+            glPostingId: posting.id,
+            docNumber: posting.docNumber ?? '',
+            shipments: 1,
+          }
       }
-      return null
+      // A claim exists, so the journal really is out there; with no claim the
+      // work is in some terminal state and nobody has posted it.
+      return accepted.length ? { status: 'already_posted' } : { status: 'not_eligible' }
     }
     const refusal = resolveRefusal(context.setupState, context.settings.timeZone)
     if (refusal) throw new UnprocessableEntityError(refusal)
@@ -519,14 +553,19 @@ export async function acceptFulfillmentWorkGroup(
     })
     if (!posting) throw new Error('Accepted journal is missing')
     await planAccountingDeliveryInTx(tx, { organizationId: input.organizationId, glPostingId })
-    return { glPostingId, docNumber: posting.docNumber ?? '', shipments: prepared.length }
+    return {
+      status: 'accepted',
+      glPostingId,
+      docNumber: posting.docNumber ?? '',
+      shipments: prepared.length,
+    }
   })
   // 🛑 ENQUEUED, not awaited. Exporting the journal is 3 to 5 sequential Lambda
   // round trips to QuickBooks, and a bulk run does this once per GROUP - a
   // 28-day range held the dialog open for minutes on the export alone. The
   // acceptance has already committed its `AccountingDelivery` row, so the work
   // is durable whether or not the queue hears about it.
-  if (result)
+  if (result.status === 'accepted')
     await enqueueAccountingDelivery({
       organizationId: input.organizationId,
       glPostingId: result.glPostingId,
@@ -609,7 +648,7 @@ export async function sweepFulfillmentAccountingWork(
         groupKey,
         automatic: true,
       })
-      result.accepted += accepted?.shipments ?? 0
+      result.accepted += accepted.status === 'accepted' ? accepted.shipments : 0
     } catch (error) {
       result.blocked += fulfillmentIds.length
       logger.warn('Fulfillment accounting remains pending after recovery', {

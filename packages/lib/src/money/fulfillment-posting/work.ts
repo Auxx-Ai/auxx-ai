@@ -438,6 +438,38 @@ async function readFulfillmentAccountingSourceUncachedInTx(
   return { shipment: planned, basis, entry }
 }
 
+/**
+ * Put an `accepted` work back to `pending` when nothing claims it any more.
+ *
+ * @returns the reopened row, or null when an {@link schema.AccountingEffect}
+ *   still claims this work — in which case `accepted` is the truth.
+ */
+async function reopenUnclaimedAcceptedWorkInTx(
+  tx: Transaction,
+  organizationId: string,
+  workId: string
+) {
+  const claim = await tx.query.AccountingEffect.findFirst({
+    where: and(
+      eq(schema.AccountingEffect.organizationId, organizationId),
+      eq(schema.AccountingEffect.workId, workId)
+    ),
+  })
+  if (claim) return null
+  const [work] = await tx
+    .update(schema.AccountingWork)
+    .set({ state: 'pending', blockedReason: null, nextAttemptAt: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.AccountingWork.organizationId, organizationId),
+        eq(schema.AccountingWork.id, workId),
+        eq(schema.AccountingWork.state, 'accepted')
+      )
+    )
+    .returning()
+  return work ?? null
+}
+
 /** Capture complete or blocked source evidence in the source writer's transaction. */
 export async function captureFulfillmentAccountingWorkInTx(
   tx: Transaction,
@@ -458,14 +490,23 @@ export async function captureFulfillmentAccountingWorkInTx(
   }
 ) {
   await withAccountingCommitLock(tx, input.organizationId)
-  const existing = await tx.query.AccountingWork.findFirst({
+  let existing = await tx.query.AccountingWork.findFirst({
     where: and(
       eq(schema.AccountingWork.organizationId, input.organizationId),
       eq(schema.AccountingWork.entityInstanceId, input.fulfillmentInstanceId),
       eq(schema.AccountingWork.operation, 'original')
     ),
   })
-  if (existing?.state === 'accepted') return existing
+  if (existing?.state === 'accepted') {
+    // 🛑 `state` is DERIVED from the effect row, never the other way round
+    // (`reads.ts`'s header: eligibility is the absence of accepted membership).
+    // A work whose journal was deleted keeps a stale `accepted` that no path
+    // can clear, so the planner offers the shipment forever and the acceptance
+    // refuses it forever. Reopen instead of bailing.
+    const reopened = await reopenUnclaimedAcceptedWorkInTx(tx, input.organizationId, existing.id)
+    if (!reopened) return existing
+    existing = reopened
+  }
   const mode = await getOrganizationSetting({
     organizationId: input.organizationId,
     key: FULFILLMENT_POSTING_SETTING_KEY,
