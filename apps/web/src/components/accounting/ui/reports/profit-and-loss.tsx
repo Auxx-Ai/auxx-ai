@@ -7,15 +7,16 @@ import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
+import { todayInZone } from '@auxx/utils/calendar-day'
 import { TrendingUp } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
-import { AccountLinesDialog, type AccountLinesDialogTarget } from './account-lines-dialog'
+import { useDrillToLedger } from './drill-to-ledger'
 import { ReportErrorCard } from './report-error-card'
 import {
   type CompareOption,
@@ -26,6 +27,7 @@ import {
   profitAndLossColumns,
   toStatementTableRows,
 } from './report-helpers'
+import { reportRangePresets } from './report-range-presets'
 import { ReportToolbar } from './report-toolbar'
 import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
@@ -44,13 +46,22 @@ export function ProfitAndLossReportPage() {
   const [fromParam, setFromParam] = useQueryState('from')
   const [toParam, setToParam] = useQueryState('to')
   const [compareParam, setCompareParam] = useQueryState('compare')
-  const [drillDown, setDrillDown] = useState<AccountLinesDialogTarget | null>(null)
+  const drillToLedger = useDrillToLedger()
 
   const fallbackKey = period.resolvedPeriodKey
   const from = fromParam || (fallbackKey ? periodStartDate(fallbackKey) : '')
   const to = toParam || (fallbackKey ? periodEndDate(fallbackKey) : '')
   const compare = (compareParam as CompareOption | null) ?? 'none'
   const compareRange = from && to ? compareRangeFor(from, to, compare) : undefined
+
+  // The books' own floor and the day they run to, both in BOOK time - a
+  // preset resolved against the viewer's midnight would name a different day
+  // for two people looking at the same statement.
+  const cutoff = period.options[0] ? periodStartDate(period.options[0].periodKey) : null
+  const presets = useMemo(
+    () => reportRangePresets(todayInZone(period.bookTimeZone), cutoff),
+    [period.bookTimeZone, cutoff]
+  )
 
   const query = api.ledgerReports.profitAndLoss.useQuery(
     { from, to, compare: compareRange },
@@ -96,10 +107,14 @@ export function ProfitAndLossReportPage() {
       <ReportToolbar
         mode='range'
         periodOptions={period.options}
-        fromPeriodKey={from ? periodKeyFromDate(from) : undefined}
-        toPeriodKey={to ? periodKeyFromDate(to) : undefined}
-        onSelectFrom={(key) => void setFromParam(periodStartDate(key))}
-        onSelectTo={(key) => void setToParam(periodEndDate(key))}
+        from={from}
+        to={to}
+        onSelectRange={(next) => {
+          void setFromParam(next.from)
+          void setToParam(next.to)
+        }}
+        presets={presets}
+        cutoff={cutoff}
         compare={compare}
         onSelectCompare={(next) => void setCompareParam(next === 'none' ? null : next)}
         onDownloadPdf={handleDownloadPdf}
@@ -146,21 +161,16 @@ export function ProfitAndLossReportPage() {
               columns={columns}
               rows={rows}
               currency={period.currencyCode}
+              canRowDrill={(row) => !!row.meta?.glAccountId}
               onRowClick={(row) =>
                 row.meta?.glAccountId
-                  ? setDrillDown({ glAccountId: row.meta.glAccountId, from, to })
+                  ? drillToLedger(row.meta.glAccountId, { from, to })
                   : undefined
               }
             />
           )}
         </div>
       </ScrollArea>
-      <AccountLinesDialog
-        target={drillDown}
-        onOpenChange={(open) => !open && setDrillDown(null)}
-        currencyCode={period.currencyCode}
-        bookTimeZone={period.bookTimeZone}
-      />
     </div>
   )
 }

@@ -2,7 +2,9 @@
 
 'use client'
 
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { DateRangePicker } from '@auxx/ui/components/date-range-picker'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,11 +13,13 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, FileDown, FileSpreadsheet } from 'lucide-react'
+import { dayKeyOfLocalDate, localDateOfDayKey } from '@auxx/utils/calendar-day'
+import { CalendarIcon, ChevronDown, FileDown, FileSpreadsheet, X } from 'lucide-react'
 import type { LedgerPeriodOption } from '~/components/accounting/hooks/use-ledger-period'
 import { formatPeriodLabel } from '~/components/accounting/ui/ledger/format'
 import { ProviderSyncStatus } from './provider-sync-status'
 import type { CompareOption } from './report-helpers'
+import type { ReportRangePreset } from './report-range-presets'
 
 const COMPARE_LABEL: Record<CompareOption, string> = {
   none: 'None',
@@ -26,17 +30,29 @@ const COMPARE_LABEL: Record<CompareOption, string> = {
 const COMPARE_OPTIONS: CompareOption[] = ['none', 'prior_period', 'prior_year']
 
 export interface ReportToolbarProps {
-  /** `asOf` is one period dropdown (trial balance, balance sheet). `range` is two (the P&L). */
+  /**
+   * `asOf` is one period dropdown (trial balance, balance sheet, aging).
+   * `range` is a day-granular `DateRangePicker` (the P&L, the general ledger).
+   */
   mode: 'asOf' | 'range'
   periodOptions: LedgerPeriodOption[]
   /** `asOf` mode only. */
   periodKey?: string
   onSelectPeriod?: (periodKey: string) => void
-  /** `range` mode only. */
-  fromPeriodKey?: string
-  toPeriodKey?: string
-  onSelectFrom?: (periodKey: string) => void
-  onSelectTo?: (periodKey: string) => void
+  /** `range` mode only. Both `YYYY-MM-DD`, both ends inclusive. */
+  from?: string
+  to?: string
+  onSelectRange?: (range: { from: string; to: string }) => void
+  /** The preset sidebar for `range` mode - see `report-range-presets.ts`. */
+  presets?: readonly ReportRangePreset[]
+  /** The earliest day the books cover. Days before it are refused on the calendar. */
+  cutoff?: string | null
+  /**
+   * An active narrowing, with the door back out. Rendered as a removable chip
+   * beside the range: a statement narrowed to one account with nothing on
+   * screen saying so reads as a ledger that has lost most of its rows.
+   */
+  filter?: { label: string; onClear: () => void }
   /** Omit entirely to hide the compare control - the trial balance has none. */
   compare?: CompareOption
   onSelectCompare?: (compare: CompareOption) => void
@@ -60,10 +76,12 @@ export function ReportToolbar({
   periodOptions,
   periodKey,
   onSelectPeriod,
-  fromPeriodKey,
-  toPeriodKey,
-  onSelectFrom,
-  onSelectTo,
+  from,
+  to,
+  onSelectRange,
+  presets,
+  cutoff,
+  filter,
   compare,
   onSelectCompare,
   onDownloadPdf,
@@ -85,21 +103,52 @@ export function ReportToolbar({
       )}
 
       {mode === 'range' && (
+        <DateRangePicker
+          value={
+            from && to ? { from: localDateOfDayKey(from), to: localDateOfDayKey(to) } : undefined
+          }
+          onChange={(next) =>
+            onSelectRange?.({
+              from: dayKeyOfLocalDate(next.from),
+              to: dayKeyOfLocalDate(next.to),
+            })
+          }
+          placeholder='Select a range...'
+          presets={presets?.map((preset) => ({
+            label: preset.label,
+            range: () => ({
+              from: localDateOfDayKey(preset.from),
+              to: localDateOfDayKey(preset.to),
+            }),
+          }))}
+          // A day before the books open has no statement to show, so it is
+          // refused on the calendar rather than answered with zeroes.
+          disabled={cutoff ? (day: Date) => dayKeyOfLocalDate(day) < cutoff : undefined}
+          // `DateRangePicker`'s own `disabled` is a per-DAY predicate on the
+          // calendar, not a switch for the control, so the whole-control
+          // disable has to come through the trigger.
+          trigger={({ label }) => (
+            <Button variant='ghost' size='sm' className='gap-1' disabled={disabled}>
+              <CalendarIcon />
+              {label}
+            </Button>
+          )}
+        />
+      )}
+
+      {filter && (
         <>
-          <PeriodDropdown
-            label='From'
-            periodOptions={periodOptions}
-            selected={fromPeriodKey}
-            onSelect={onSelectFrom}
-            disabled={disabled}
-          />
-          <PeriodDropdown
-            label='To'
-            periodOptions={periodOptions}
-            selected={toPeriodKey}
-            onSelect={onSelectTo}
-            disabled={disabled}
-          />
+          <Separator orientation='vertical' className='h-6' />
+          <Badge variant='secondary' className='gap-1 py-1'>
+            {filter.label}
+            <button
+              type='button'
+              aria-label={`Clear the ${filter.label} filter`}
+              onClick={filter.onClear}
+              className='rounded-sm opacity-60 hover:opacity-100'>
+              <X className='size-3' />
+            </button>
+          </Badge>
         </>
       )}
 

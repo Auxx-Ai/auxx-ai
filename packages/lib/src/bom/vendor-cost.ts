@@ -19,6 +19,7 @@
  * browser bundle.
  */
 
+import { dayKeyInZone } from '@auxx/utils/calendar-day'
 import { BadRequestError } from '../errors'
 
 /**
@@ -526,21 +527,4 @@ export function effectiveDay(effectiveFrom: Date | string | null): string | null
   }
   if (Number.isNaN(effectiveFrom.getTime())) return null
   return effectiveFrom.toISOString().slice(0, 10)
-}
-
-/**
- * An instant as a `YYYY-MM-DD` day in `timeZone`.
- *
- * `Intl.DateTimeFormat` with the `en-CA` locale because that locale's short
- * date format IS `YYYY-MM-DD`; hand-rolled offset arithmetic gets DST wrong
- * roughly twice a year. The same technique `postings/periods.ts` uses, copied
- * rather than imported because this file stays free of lib neighbours.
- */
-function dayKeyInZone(date: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date)
 }

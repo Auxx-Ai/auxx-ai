@@ -67,17 +67,62 @@ describe('VENDOR_1099_THRESHOLD_MINOR', () => {
   })
 })
 
-function summary(rows: Vendor1099Summary['rows']): Vendor1099Summary {
+function summary(
+  rows: Vendor1099Summary['rows'],
+  companyDefId: string | null = 'def_company'
+): Vendor1099Summary {
   return {
     organizationId: ORG,
     year: 2026,
     thresholdMinor: VENDOR_1099_THRESHOLD_MINOR,
+    companyDefId,
     rows,
     totalMinor: rows.reduce((sum, row) => sum + row.totalMinor, 0),
   }
 }
 
 describe('toVendor1099Rows', () => {
+  // 🛑 `isRecordId` is a colon check, so a bare instance id is silently dropped
+  // by `toStatementTableRows` and the row opens nothing. The vendor line has to
+  // carry the full `defId:instanceId`.
+  it('gives a vendor line a full defId:instanceId to drill on', () => {
+    const rows = toVendor1099Rows(
+      summary([
+        {
+          companyId: 'cmp_1',
+          companyName: 'Acme',
+          box: 'nec_1',
+          totalMinor: 70_000,
+          taxClassification: null,
+          tin: null,
+          w9OnFile: false,
+        },
+      ])
+    )
+    const vendor = rows[0]?.children?.[0]
+    expect(vendor?.meta?.recordId).toBe('def_company:cmp_1')
+  })
+
+  it('carries no recordId at all when the org has no company definition', () => {
+    const rows = toVendor1099Rows(
+      summary(
+        [
+          {
+            companyId: 'cmp_1',
+            companyName: 'Acme',
+            box: 'nec_1',
+            totalMinor: 70_000,
+            taxClassification: null,
+            tin: null,
+            w9OnFile: false,
+          },
+        ],
+        null
+      )
+    )
+    expect(rows[0]?.children?.[0]?.meta?.recordId).toBeUndefined()
+  })
+
   it('sections by box, in nec/misc-rents/misc-other/none order, omitting empty boxes', () => {
     const rows = toVendor1099Rows(
       summary([

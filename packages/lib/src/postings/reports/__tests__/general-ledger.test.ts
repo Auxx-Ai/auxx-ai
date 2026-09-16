@@ -341,6 +341,45 @@ describe('readGeneralLedger', () => {
     expect(openingQuery.sql).toContain('<= $4')
   })
 
+  // The statement drill-down: a trial balance / balance sheet / P&L row links
+  // here with the account it was clicked on, so the ledger IS the account
+  // drill-down at one zoom level rather than a second report to reconcile.
+  it('narrows BOTH queries to one account when `glAccountId` is given', async () => {
+    vi.mocked(listChartAccounts).mockResolvedValue(ok([account({ id: 'id_cash', code: '1000' })]))
+    const capture: Capture = { where: [], limit: [] }
+
+    await readGeneralLedger(stubDb([[], []], capture), {
+      organizationId: ORG,
+      ...RANGE,
+      glAccountId: 'id_cash',
+    })
+
+    const dialect = new PgDialect()
+    const lines = dialect.sqlToQuery(capture.where[1] as SqlCondition)
+    expect(lines.params).toContain('id_cash')
+
+    // 🛑 The OPENING aggregate is narrowed too. Left unfiltered it would sum
+    // the brought-forward balance of every account in the chart to serve one.
+    const opening = dialect.sqlToQuery(capture.where[0] as SqlCondition)
+    expect(opening.params).toContain('id_cash')
+  })
+
+  it('leaves both queries unnarrowed when no account is given', async () => {
+    vi.mocked(listChartAccounts).mockResolvedValue(ok([account({ id: 'id_cash', code: '1000' })]))
+    const capture: Capture = { where: [], limit: [] }
+
+    await readGeneralLedger(stubDb([[], []], capture), { organizationId: ORG, ...RANGE })
+
+    const dialect = new PgDialect()
+    expect(dialect.sqlToQuery(capture.where[1] as SqlCondition).params).toEqual([
+      ORG,
+      'posted',
+      'reversed',
+      RANGE.from,
+      RANGE.to,
+    ])
+  })
+
   it('sets `truncated` and stops at `maxLines`, applying the cap in SQL', async () => {
     vi.mocked(listChartAccounts).mockResolvedValue(ok([account({ id: 'id_cash', code: '1000' })]))
     const capture: Capture = { where: [], limit: [] }

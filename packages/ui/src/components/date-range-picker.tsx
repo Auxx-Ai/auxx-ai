@@ -43,6 +43,15 @@ type TimeFrameOption =
   | 'allTime'
 
 /**
+ * One entry in the preset sidebar. `range()` is called when it is clicked and
+ * again to decide whether it is the ACTIVE preset, so it must be pure.
+ */
+interface DateRangePreset {
+  label: string
+  range: () => DateRange
+}
+
+/**
  * DateRangePicker component props
  */
 interface DateRangePickerProps {
@@ -54,6 +63,15 @@ interface DateRangePickerProps {
   showShortLabel?: boolean
   /** Hide the left-hand preset sidebar (Today / Last 7 days / …). Defaults to shown. */
   showPresets?: boolean
+  /**
+   * Replace the default preset list.
+   *
+   * The default list is calendar-generic ("Today", "Last 7 days") and its
+   * "All time" is a hardcoded 2020-01-01, so a caller whose domain has its own
+   * floor and its own vocabulary — an accounting period, a fiscal year — passes
+   * its own rather than living with presets that answer the wrong question.
+   */
+  presets?: readonly DateRangePreset[]
   /** Trigger label shown when `value` is undefined. */
   placeholder?: string
   /**
@@ -115,6 +133,10 @@ const getDateRangeForTimeFrame = (timeFrame: TimeFrameOption): DateRange => {
   }
 }
 
+/** Two ranges naming the same pair of calendar days. */
+const sameRange = (a: DateRange, b: DateRange): boolean =>
+  isSameDay(a.from, b.from) && isSameDay(a.to, b.to)
+
 /**
  * Detect if current DateRange matches a predefined timeframe
  */
@@ -154,9 +176,15 @@ const getTimeFrameDisplayName = (timeFrame: TimeFrameOption): string => {
 /**
  * Calculate display label based on date range and showShortLabel preference
  */
-const calculateDisplayLabel = (dateRange: DateRange, showShortLabel: boolean): string => {
-  // Always prefer detected timeframe if found
-  const detectedTimeFrame = detectTimeFrameFromDateRange(dateRange)
+const calculateDisplayLabel = (
+  dateRange: DateRange,
+  showShortLabel: boolean,
+  detectBuiltInTimeFrames: boolean
+): string => {
+  // Prefer a built-in timeframe name, but only when the built-in list is the
+  // one on screen: naming a range "Last 12 months" next to a sidebar that does
+  // not offer it describes a preset the caller never had.
+  const detectedTimeFrame = detectBuiltInTimeFrames ? detectTimeFrameFromDateRange(dateRange) : null
   if (detectedTimeFrame) {
     return getTimeFrameDisplayName(detectedTimeFrame)
   }
@@ -197,10 +225,17 @@ export function DateRangePicker({
   showShortLabel = false,
   showPresets = true,
   placeholder = 'Select dates',
+  presets,
   trigger,
   ...calendarProps
 }: DateRangePickerProps & DateRangePickerCalendarProps) {
   const [open, setOpen] = useState(false)
+  const presetList: readonly DateRangePreset[] =
+    presets ??
+    timeFrameOptions.map((option) => ({
+      label: option.label,
+      range: () => getDateRangeForTimeFrame(option.value),
+    }))
 
   /**
    * The half-picked range, held between the two clicks a range takes.
@@ -215,13 +250,9 @@ export function DateRangePicker({
    */
   const [draft, setDraft] = useState<CalendarDateRange | null>(null)
 
-  /**
-   * Handle selection of predefined time frame option
-   */
-  const handleTimeFrameSelect = (timeFrame: TimeFrameOption) => {
-    const newRange = getDateRangeForTimeFrame(timeFrame)
+  const handlePresetSelect = (preset: DateRangePreset) => {
     setDraft(null)
-    onChange(newRange)
+    onChange(preset.range())
     setOpen(false)
   }
 
@@ -241,8 +272,12 @@ export function DateRangePicker({
     onChange({ from: startOfDay(range.from), to: endOfDay(range.to) })
   }
 
-  const displayLabel = value ? calculateDisplayLabel(value, showShortLabel) : placeholder
-  const activeTimeFrame = value ? detectTimeFrameFromDateRange(value) : null
+  const activePresetLabel = value
+    ? (presetList.find((preset) => sameRange(preset.range(), value))?.label ?? null)
+    : null
+  const displayLabel = value
+    ? (activePresetLabel ?? calculateDisplayLabel(value, showShortLabel, !presets))
+    : placeholder
 
   return (
     <Popover
@@ -270,19 +305,19 @@ export function DateRangePicker({
           {showPresets && (
             <div className='border-r border-border min-w-[140px] h-full'>
               <div className='p-2 space-y-1 flex flex-col overflow-y-auto'>
-                {timeFrameOptions.map((option) => {
-                  const isSelected = activeTimeFrame === option.value
+                {presetList.map((preset) => {
+                  const isSelected = activePresetLabel === preset.label
                   return (
                     <Button
-                      key={option.value}
+                      key={preset.label}
                       variant={isSelected ? 'secondary' : 'ghost'}
                       size='sm'
                       className={cn(
                         'justify-start',
                         isSelected && 'bg-secondary text-secondary-foreground'
                       )}
-                      onClick={() => handleTimeFrameSelect(option.value)}>
-                      {option.label}
+                      onClick={() => handlePresetSelect(preset)}>
+                      {preset.label}
                     </Button>
                   )
                 })}
@@ -304,4 +339,4 @@ export function DateRangePicker({
 }
 
 // Export types for external use
-export type { DateRange, TimeFrameOption }
+export type { DateRange, DateRangePreset, TimeFrameOption }

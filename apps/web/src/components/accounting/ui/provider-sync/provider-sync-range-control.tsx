@@ -26,6 +26,10 @@
 import { Button } from '@auxx/ui/components/button'
 import { DateRangePicker } from '@auxx/ui/components/date-range-picker'
 import { ToggleGroup, ToggleGroupItem } from '@auxx/ui/components/toggle-group'
+import {
+  localDateOfDayKey as dateOfDayKey,
+  dayKeyOfLocalDate as dayKeyOf,
+} from '@auxx/utils/calendar-day'
 import { CalendarIcon } from 'lucide-react'
 
 /** Which question the control is asking. */
@@ -174,19 +178,4 @@ export function ProviderSyncRangeControl({
       )}
     </div>
   )
-}
-
-/** `YYYY-MM-DD` from a local `Date`. */
-function dayKeyOf(date: Date): string {
-  const year = String(date.getFullYear()).padStart(4, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-/** Midday local, so a `Date` round-tripped through the picker never slips a day. */
-function dateOfDayKey(dayKey: string): Date {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey)
-  if (!match) return new Date(Number.NaN)
-  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0)
 }

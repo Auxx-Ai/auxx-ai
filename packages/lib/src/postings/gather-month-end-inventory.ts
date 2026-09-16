@@ -71,7 +71,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { fromZonedTime } from 'date-fns-tz'
+import { shiftMonthKey, startOfMonthInstant } from '@auxx/utils/calendar-day'
 import { and, desc, eq, gte, isNull, lt, notInArray, or, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
@@ -228,23 +228,16 @@ function requireMonthKey(periodKey: string): string {
 
 /** `'2026-12'` -> `'2027-01'`. Month keys are zero-padded, so December rolls. */
 function nextMonth(monthKey: string): string {
-  const { year, month } = parsePeriodKey(monthKey)
-  const nextYear = month === 12 ? year + 1 : year
-  const next = month === 12 ? 1 : month + 1
-  return `${String(nextYear).padStart(4, '0')}-${String(next).padStart(2, '0')}`
+  parsePeriodKey(monthKey)
+  return shiftMonthKey(monthKey, 1)
 }
 
 /**
- * The INSTANT at which `monthKey` begins in `timeZone`.
- *
- * This is rule B made mechanical. `fromZonedTime` reads the wall-clock string as
- * local to the zone and returns the UTC instant it corresponds to, which is the
- * same `date-fns-tz` call `workflow-engine/nodes/wait/*` and `sequences/anchor`
- * already use for exactly this. Hand-rolled offset arithmetic gets DST wrong
- * roughly twice a year, and one of those two times is inside a month boundary.
+ * The first instant of `monthKey` in the book timezone, refusing loudly rather
+ * than handing a close an invalid `Date`.
  */
 function monthStartInstant(monthKey: string, timeZone: string): Date {
-  const instant = fromZonedTime(`${monthKey}-01T00:00:00`, timeZone)
+  const instant = startOfMonthInstant(monthKey, timeZone)
   if (Number.isNaN(instant.getTime())) {
     throw new UnprocessableEntityError(
       `Could not place the start of ${monthKey} in the book timezone "${timeZone}"`,

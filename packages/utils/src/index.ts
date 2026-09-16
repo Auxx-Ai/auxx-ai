@@ -13,6 +13,27 @@ export {
   type ParsedExpression,
   validateCalcExpression,
 } from './calc-expression'
+// Calendar-day / calendar-month values (see the file header: arithmetic is
+// timezone-free, conversion across an instant always takes a zone)
+export {
+  addDaysToDayKey,
+  addMonthsToDayKey,
+  type DayKey,
+  dayKeyInZone,
+  dayKeyOfLocalDate,
+  daysBetween,
+  endOfMonthDay,
+  localDateOfDayKey,
+  type MonthKey,
+  monthKeyOfDay,
+  monthsBetween,
+  previousDayKey,
+  shiftMonthKey,
+  startOfDayInstant,
+  startOfMonthDay,
+  startOfMonthInstant,
+  todayInZone,
+} from './calendar-day'
 // Comment utilities
 export { getGroupPosition, groupConsecutiveComments } from './comments'
 // Contact utilities

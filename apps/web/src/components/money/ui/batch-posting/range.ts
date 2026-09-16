@@ -13,41 +13,33 @@
  * now takes an inclusive end and this file adds the day, and the explanatory
  * label is gone.
  *
- * Every function here is pure and zone-free: a `YYYY-MM-DD` is a calendar day,
- * and the server re-cuts it in book time.
+ * The calendar arithmetic itself is `@auxx/utils/calendar-day`; what is left
+ * here is the inclusive-to-half-open translation, which is this screen's own.
  */
 
-/** `'2026-03-31'` becomes `'2026-04-01'`. UTC arithmetic on a zone-free day. */
-export function nextDayKey(dayKey: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey)
-  if (!match) return dayKey
-  const next = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + 1))
-  return next.toISOString().slice(0, 10)
-}
+import {
+  addDaysToDayKey,
+  dayKeyOfLocalDate,
+  endOfMonthDay,
+  localDateOfDayKey,
+  monthKeyOfDay,
+  shiftMonthKey,
+  startOfMonthDay,
+} from '@auxx/utils/calendar-day'
+
+export { dayKeyOfLocalDate as dayKeyOf, localDateOfDayKey as dateOfDayKey, monthKeyOfDay }
+
+/** `'2026-03-31'` becomes `'2026-04-01'`. */
+export const nextDayKey = (dayKey: string): string => addDaysToDayKey(dayKey, 1)
 
 /** `'2026-03'` becomes `'2026-04'`. */
-export function nextMonthKey(monthKey: string): string {
-  const match = /^(\d{4})-(\d{2})$/.exec(monthKey)
-  if (!match) return monthKey
-  const year = Number(match[1])
-  const month = Number(match[2])
-  const rolls = month === 12
-  return `${String(rolls ? year + 1 : year).padStart(4, '0')}-${String(
-    rolls ? 1 : month + 1
-  ).padStart(2, '0')}`
-}
+export const nextMonthKey = (monthKey: string): string => shiftMonthKey(monthKey, 1)
 
 /** `'2026-03'` becomes `'2026-03-01'`. */
-export function firstDayOfMonth(monthKey: string): string {
-  return `${monthKey}-01`
-}
+export const firstDayOfMonth = startOfMonthDay
 
-/** `'2026-03'` becomes `'2026-03-31'`. Day 0 of the next month is this one's last. */
-export function lastDayOfMonth(monthKey: string): string {
-  const match = /^(\d{4})-(\d{2})$/.exec(monthKey)
-  if (!match) return monthKey
-  return new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).toISOString().slice(0, 10)
-}
+/** `'2026-03'` becomes `'2026-03-31'`. */
+export const lastDayOfMonth = endOfMonthDay
 
 /**
  * A month range, both ends INCLUSIVE, as the half-open window the wire takes.
@@ -64,40 +56,14 @@ export function dayRangeToWire(from: string, to: string): { from: string; to: st
   return { from, to: nextDayKey(to) }
 }
 
-/**
- * The calendar day a `Date` falls on in the VIEWER's zone.
- *
- * The same rule `toCalendarDayIso` uses (`field-values/calendar-day.ts:24`):
- * local `getFullYear/getMonth/getDate`, because what somebody clicked on a
- * calendar is the day they meant, not an instant.
- */
-export function dayKeyOf(date: Date): string {
-  const year = String(date.getFullYear()).padStart(4, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-/** Midday local, so a `Date` round-tripped through a picker never slips a day. */
-export function dateOfDayKey(dayKey: string): Date {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey)
-  if (!match) return new Date(Number.NaN)
-  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0)
-}
-
-/** `'2026-03-31'`'s month, `'2026-03'`. */
-export function monthKeyOfDay(dayKey: string): string {
-  return dayKey.slice(0, 7)
-}
-
 /** The first day of last month, the window a monthly close asks for. */
 export function startOfLastMonthDayKey(now = new Date()): string {
-  return dayKeyOf(new Date(now.getFullYear(), now.getMonth() - 1, 1))
+  return startOfMonthDay(shiftMonthKey(monthKeyOfDay(dayKeyOfLocalDate(now)), -1))
 }
 
 /** Today in the viewer's own zone, inclusive. The server re-cuts it in book time. */
 export function todayDayKey(now = new Date()): string {
-  return dayKeyOf(now)
+  return dayKeyOfLocalDate(now)
 }
 
 /** Last month, `'2026-01'`. The month a backlog run almost always starts on. */

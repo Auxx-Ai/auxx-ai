@@ -20,11 +20,14 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { startOfDayInstant } from '@auxx/utils/calendar-day'
 import { and, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { AuxxError, BadRequestError } from '../../errors'
+import { getOrganizationSetting } from '../../settings/settings-service'
+import { OPENING_BASELINE_SETTING_KEYS } from '../setup-readiness'
 import {
   VENDOR_1099_THRESHOLD_MINOR,
   type Vendor1099Row,
@@ -65,11 +68,19 @@ export interface ReadVendor1099SummaryOptions {
   year: number
 }
 
+/** A setting value as a non-empty string, else null - `close-periods.ts` reads the same way. */
+function readText(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
 function emptySummary(organizationId: string, year: number): Vendor1099Summary {
   return {
     organizationId,
     year,
     thresholdMinor: VENDOR_1099_THRESHOLD_MINOR,
+    companyDefId: null,
     rows: [],
     totalMinor: 0,
   }
@@ -119,12 +130,19 @@ export async function readVendor1099Summary(
       .from(organizationId, 'customFields')
       .bySystemAttributes([...COMPANY_1099_ATTRIBUTES])
 
-    // Half-open UTC year bounds, the same shape `journal-entries/reads.ts`'s
-    // `monthBoundsUtc` uses for a DATETIME `FieldValue.valueDate` - `paidAt` is
-    // an instant, not a calendar date, so a string-prefix compare would depend
-    // on driver rendering.
-    const yearStart = new Date(Date.UTC(year, 0, 1)).toISOString()
-    const yearEnd = new Date(Date.UTC(year + 1, 0, 1)).toISOString()
+    // 🛑 Half-open year bounds drawn at the BOOK zone's own midnight, not at
+    // UTC's. `paidAt` is an instant, so a payment made at 4pm on Dec 31 in
+    // `America/Los_Angeles` is already Jan 1 in UTC: UTC bounds would file it
+    // on the wrong year's 1099, and a 1099 is filed with the IRS.
+    const bookTimeZone =
+      readText(
+        await getOrganizationSetting({
+          organizationId,
+          key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
+        })
+      ) ?? 'UTC'
+    const yearStart = startOfDayInstant(`${year}-01-01`, bookTimeZone).toISOString()
+    const yearEnd = startOfDayInstant(`${year + 1}-01-01`, bookTimeZone).toISOString()
 
     const amountValue = alias(schema.FieldValue, 'vp_amount')
     const vendorValue = alias(schema.FieldValue, 'vp_vendor')
@@ -210,6 +228,8 @@ export async function readVendor1099Summary(
       organizationId,
       year,
       thresholdMinor: VENDOR_1099_THRESHOLD_MINOR,
+      // What turns a vendor row into a drill-down - see the field's own JSDoc.
+      companyDefId: (await getCachedEntityDefId(organizationId, 'company')) ?? null,
       rows,
       totalMinor: rows.reduce((sum, row) => sum + row.totalMinor, 0),
     })

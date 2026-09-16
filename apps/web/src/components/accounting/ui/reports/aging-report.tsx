@@ -10,9 +10,12 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { Building2, Users } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
+import { useMemo } from 'react'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
+import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
 import { RecordDrawer } from '~/components/records/record-drawer'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { formatMinor } from '../ledger/format'
@@ -54,6 +57,35 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
   const asOf =
     asOfParam || (period.resolvedPeriodKey ? periodEndDate(period.resolvedPeriodKey) : '')
   const selectedRecordId = isRecordId(recordIdParam) ? (recordIdParam as RecordId) : undefined
+
+  // 🛑 Published to the reports layout's outlet, not rendered inline. A
+  // `DockableDrawer` that is docked with no portal target renders its children
+  // where they stand, which put this drawer in the middle of the statement -
+  // the same trap `posting-drawer-host.tsx` documents.
+  const drawer = useMemo(
+    () => (
+      <RecordDrawer
+        open={!!selectedRecordId}
+        onOpenChange={(open) => !open && void setRecordIdParam(null)}
+        recordId={selectedRecordId}
+      />
+    ),
+    [selectedRecordId, setRecordIdParam]
+  )
+  // `overlay: true` unconditionally so the drawer can animate itself shut on
+  // its own `open` - see `posting-drawer-host.tsx` for the full note.
+  const panels = useMemo(
+    () => [
+      {
+        key: 'aging-record',
+        open: { docked: !!selectedRecordId, overlay: true },
+        content: drawer,
+      },
+    ],
+    [selectedRecordId, drawer]
+  )
+  const { dockedPanels, overlays } = useDockedPanels(panels)
+  useRegisterDockedPanels(dockedPanels)
 
   const query = api.ledgerReports.aging.useQuery({ side, asOf }, { enabled: !!asOf })
   const renderPdf = api.ledgerReports.renderStatementPdf.useMutation({
@@ -137,6 +169,10 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
                     }
                   : undefined
               }
+              // A contact/vendor GROUP row has no `recordId`, so it is not
+              // drillable and its body falls through to expand. Payment and
+              // manual-line documents have none either, and open nothing.
+              canRowDrill={(row) => !!row.meta?.recordId}
               onRowClick={(row) =>
                 row.meta?.recordId ? void setRecordIdParam(row.meta.recordId) : undefined
               }
@@ -144,11 +180,7 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
           )}
         </div>
       </ScrollArea>
-      <RecordDrawer
-        open={!!selectedRecordId}
-        onOpenChange={(open) => !open && void setRecordIdParam(null)}
-        recordId={selectedRecordId}
-      />
+      {overlays}
     </div>
   )
 }

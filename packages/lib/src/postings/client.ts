@@ -449,10 +449,9 @@ export {
   registerTiesToPosting,
   registerTotalMinor,
 } from './register'
-export type { AccountLineRow, AccountLines } from './reports/account-lines'
 // ── Statements (HANDOFF slot 1E, wave 1) - pure pieces only. The reads
 // (`readTrialBalance`, `readBalanceSheet`, `readProfitAndLoss`,
-// `readCompleteness`, `readAccountLines`) and the PDF render touch a database
+// `readCompleteness`, `readGeneralLedger`) and the PDF render touch a database
 // or react-pdf/S3 and stay server-only, exported from `./index` only. ────────
 export {
   balanceSheetColumns,
@@ -470,10 +469,7 @@ export { fiscalYearStart, previousCalendarDay } from './reports/fiscal-year'
 // `GENERAL_LEDGER_MAX_LINES` guard are a db read and a server policy, and stay
 // on `./index`. `toGeneralLedgerRows`/`GENERAL_LEDGER_COLUMNS` are pure and
 // come through the adapters block above, like every other statement's.
-export type {
-  GeneralLedger,
-  GeneralLedgerAccount,
-} from './reports/general-ledger'
+export type { AccountLineRow, GeneralLedger, GeneralLedgerAccount } from './reports/general-ledger'
 export type {
   RenderStatementPdfOptions,
   RenderStatementPdfParamsByKind,

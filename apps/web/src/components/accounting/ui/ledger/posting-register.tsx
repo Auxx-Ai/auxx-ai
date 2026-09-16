@@ -241,8 +241,7 @@ function RegisterRow({
         {entry.unreadable ? (
           /* 🛑 "Could not read" and "has none" are different answers and must
              never render the same. An empty table here would be a false answer,
-             not a missing one - the same rule `line-drill-down.tsx` keeps about
-             a report whose read does not exist. */
+             not a missing one. */
           <p className='text-amber-600 text-xs'>
             This transaction's stored basis could not be read, so its lines are not shown. The entry
             above is unaffected - the basis is frozen and hashed, and nothing here is derived from

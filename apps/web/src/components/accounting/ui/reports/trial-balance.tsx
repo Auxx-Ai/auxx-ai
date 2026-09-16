@@ -10,14 +10,18 @@ import { toastError } from '@auxx/ui/components/toast'
 import { ListChecks } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
-import { useState } from 'react'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
-import { AccountLinesDialog, type AccountLinesDialogTarget } from './account-lines-dialog'
+import { useDrillToLedger } from './drill-to-ledger'
 import { ReportErrorCard } from './report-error-card'
-import { periodEndDate, periodKeyFromDate, toStatementTableRows } from './report-helpers'
+import {
+  periodEndDate,
+  periodKeyFromDate,
+  periodStartDate,
+  toStatementTableRows,
+} from './report-helpers'
 import { ReportToolbar } from './report-toolbar'
 import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
@@ -32,7 +36,10 @@ import { StatementTable } from './statement-table'
 export function TrialBalanceReportPage() {
   const period = useLedgerPeriod()
   const [asOfParam, setAsOfParam] = useQueryState('asOf')
-  const [drillDown, setDrillDown] = useState<AccountLinesDialogTarget | null>(null)
+  const drillToLedger = useDrillToLedger()
+  // The first day the books cover. An as-of statement is cumulative from the
+  // beginning, so this is the `from` its drill-down hands the ledger.
+  const cutoff = period.options[0] ? periodStartDate(period.options[0].periodKey) : null
 
   const asOf =
     asOfParam || (period.resolvedPeriodKey ? periodEndDate(period.resolvedPeriodKey) : '')
@@ -139,21 +146,16 @@ export function TrialBalanceReportPage() {
                       }
                   : undefined
               }
+              canRowDrill={(row) => !!row.meta?.glAccountId}
               onRowClick={(row) =>
-                row.meta?.glAccountId
-                  ? setDrillDown({ glAccountId: row.meta.glAccountId, to: asOf })
+                row.meta?.glAccountId && cutoff
+                  ? drillToLedger(row.meta.glAccountId, { from: cutoff, to: asOf })
                   : undefined
               }
             />
           )}
         </div>
       </ScrollArea>
-      <AccountLinesDialog
-        target={drillDown}
-        onOpenChange={(open) => !open && setDrillDown(null)}
-        currencyCode={period.currencyCode}
-        bookTimeZone={period.bookTimeZone}
-      />
     </div>
   )
 }
