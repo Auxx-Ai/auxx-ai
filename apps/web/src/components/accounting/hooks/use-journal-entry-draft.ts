@@ -81,12 +81,17 @@ export interface JournalEntryDraftState {
  * eventually mint a record, and the caller is told the new id so it can replace
  * `new` in the URL.
  *
- * 🛑 But NOT on mount. Creating on mount meant every drawer somebody opened and
+ * 🛑 But NOT on mount, and NOT on the first edit either any more (accounting
+ * migration step 1b). Creating on mount meant every drawer somebody opened and
  * closed again left an "Untitled draft" for $0.00 in the Entries list, with no
- * delete affordance anywhere in the module to clear it up. The create is
- * therefore deferred to the FIRST EDIT (`ensureDraft`), which is also the first
- * moment there is anything worth persisting; Save, Preview and Post are all
- * disabled until an id exists, and the first edit is what produces it.
+ * delete affordance anywhere in the module to clear it up; creating on the
+ * first keystroke meant a bare date or memo change - with no lines typed yet -
+ * tried to raise a record `createJournalEntry` now refuses outright, since a
+ * `GlPosting` cannot hold zero lines (`journal-entries/writes.ts`). The create
+ * is therefore deferred to the first press of Save (`createDraft`, called from
+ * `saveDraft`), which is also the first moment a refusal is a reasonable thing
+ * to show: Preview and Post stay disabled until an id exists, and Save is what
+ * produces one.
  *
  * ── Closing the drawer ──
  *
@@ -142,14 +147,12 @@ export function useJournalEntryDraft({
   const loadedIdRef = useRef<string | null>(null)
   const createRequestedRef = useRef(false)
 
-  // Latest props/state, readable from stable callbacks. `ensureDraft` fires out
-  // of a setter and must send what the drawer holds at that instant without
-  // taking `date`/`memo`/`lines` as dependencies - they change on every
-  // keystroke, and a callback re-created per keystroke re-creates every setter
-  // under it.
-  // The kind rides its own ref rather than `latestRef`: `ensureDraft` spreads
+  // Latest props/state, readable from stable callbacks. `saveDraft` reads this
+  // rather than closing over `date`/`memo`/`lines` directly, so it stays one
+  // stable callback across every keystroke instead of being re-created per one.
+  // The kind rides its own ref rather than `latestRef`: `createDraft` spreads
   // `latestRef.current` into its own argument shape, and a fourth key there
-  // would have to be threaded through all three setters that call it.
+  // would have to be threaded through it too.
   const kindRef = useRef(kind)
   kindRef.current = kind
 
@@ -204,11 +207,21 @@ export function useJournalEntryDraft({
 
   const create = createMutation.mutate
   /**
-   * Raise the record behind `?je=new`, once, on the first edit - see this hook's
-   * own doc for why not on mount. A no-op in every other state, including a
-   * create that is already in flight.
+   * Raise the record behind `?je=new`, on an explicit Save - never on mount
+   * and never on the first keystroke (accounting migration step 1b).
+   *
+   * 🛑 It used to fire on the first edit of ANY field, including a bare date
+   * or memo change with no lines at all. `createJournalEntry` now refuses
+   * fewer than two balanced lines - `buildManualEntry` always did, and the
+   * lib agreed to move that refusal earlier rather than allow a save-nothing
+   * draft to exist (see `journal-entries/writes.ts`) - so that first keystroke
+   * would toast a refusal before the bookkeeper had typed a single line.
+   * Deferring the create to `saveDraft` is what makes "create on first save"
+   * the actual first thing this hook attempts, so the refusal (still possible,
+   * still a toast - there is no record yet for a blockers card to attach to)
+   * lands on a press the bookkeeper made, not one they did not.
    */
-  const ensureDraft = useCallback(
+  const createDraft = useCallback(
     (next: { date: string; memo: string; lines: JournalLineDraft[] }) => {
       const current = latestRef.current
       if (!current.isNew || current.journalEntryId || createRequestedRef.current) return
@@ -249,40 +262,37 @@ export function useJournalEntryDraft({
     [create, utils]
   )
 
-  // Inlined into each setter rather than a shared `markDirty()` helper: a
-  // plain function re-created every render cannot sit in a `useCallback` dep
-  // array without defeating the memoization it is there to provide.
-  const setDate = useCallback(
-    (next: string) => {
-      setDateState(next)
-      setPreviewIsStale(true)
-      setPostResult(null)
-      ensureDraft({ ...latestRef.current, date: next })
-    },
-    [ensureDraft]
-  )
-  const setMemo = useCallback(
-    (next: string) => {
-      setMemoState(next)
-      setPreviewIsStale(true)
-      setPostResult(null)
-      ensureDraft({ ...latestRef.current, memo: next })
-    },
-    [ensureDraft]
-  )
-  const setLines = useCallback(
-    (next: JournalLineDraft[]) => {
-      setLinesState(next)
-      setPreviewIsStale(true)
-      setPostResult(null)
-      ensureDraft({ ...latestRef.current, lines: next })
-    },
-    [ensureDraft]
-  )
+  // Local state only now - the create used to ride along here (see
+  // `createDraft`'s own doc for why that moved to `saveDraft`).
+  const setDate = useCallback((next: string) => {
+    setDateState(next)
+    setPreviewIsStale(true)
+    setPostResult(null)
+  }, [])
+  const setMemo = useCallback((next: string) => {
+    setMemoState(next)
+    setPreviewIsStale(true)
+    setPostResult(null)
+  }, [])
+  const setLines = useCallback((next: JournalLineDraft[]) => {
+    setLinesState(next)
+    setPreviewIsStale(true)
+    setPostResult(null)
+  }, [])
 
   const update = updateMutation.mutate
+  /**
+   * The one Save button, for both halves of this record's life: raises it on
+   * the first press (`createDraft`), edits it on every press after
+   * (`update`). Never both in the same call - `createDraft` is a no-op once
+   * `journalEntryId` exists, and this branches on that before either mutation
+   * ever fires.
+   */
   const saveDraft = useCallback(() => {
-    if (!journalEntryId) return
+    if (!journalEntryId) {
+      createDraft(latestRef.current)
+      return
+    }
     update(
       { id: journalEntryId, date, memo, lines: linesFromDraftRows(lines) },
       {
@@ -297,7 +307,7 @@ export function useJournalEntryDraft({
           toastError({ title: 'Could not save the draft', description: error.message }),
       }
     )
-  }, [journalEntryId, date, memo, lines, update, utils])
+  }, [journalEntryId, date, memo, lines, update, utils, createDraft])
 
   const runPreviewMutate = previewMutation.mutate
   const runPreview = useCallback(() => {

@@ -123,6 +123,15 @@ export const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
     detail: 'No entry was built or recorded. Enable the accounting module and run its setup.',
     tone: 'neutral',
   },
+  // A SUCCESS, not a refusal: the entry holds no claim and no doc number by
+  // design, because its avenue's `autoPost` setting is off. `postDraft`
+  // promotes it - see the Drafts tab (step 1c).
+  drafted: {
+    icon: CheckCircle2,
+    title: 'Saved as a draft',
+    detail: 'Recorded here, held for review before it posts. Nothing in the books yet.',
+    tone: 'neutral',
+  },
   disabled: {
     icon: CircleSlash,
     title: 'Posted. Export is switched off',

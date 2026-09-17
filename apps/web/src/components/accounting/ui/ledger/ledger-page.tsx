@@ -19,7 +19,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useAccountingMonth } from '~/components/accounting/hooks/use-accounting-month'
 import {
   UNKNOWN_PROVIDER_LABEL,
@@ -39,8 +39,6 @@ import {
   useProviderAgreement,
 } from '~/components/accounting/ui/provider-agreement/provider-agreement-panel'
 import { KopilotContext } from '~/components/kopilot/context'
-import { PostCreditMemosDialog } from '~/components/money/ui/credit-memo-posting'
-import { PostFulfillmentsDialog } from '~/components/money/ui/fulfillment-posting'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
 import { useSettings } from '~/hooks/use-settings'
@@ -54,7 +52,6 @@ import { api } from '~/trpc/react'
 
 import { CloseMonthPanel } from './close-month-panel'
 import { type CountAdjustmentRow, CountEvidenceSection } from './count-evidence-section'
-import type { FixableBlockerItemKey } from './entry-blockers'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatPeriodLabel, lockRefusalReason } from './format'
 import { type LateArrivalRow, LateArrivalsSection } from './late-arrivals-section'
@@ -327,26 +324,12 @@ export function LedgerPage() {
   // setting in the product. `ledger.setLockedThrough` is now the only door.
   const setLockedThrough = api.ledger.setLockedThrough.useMutation()
 
-  // ── The remedies that are a DIALOG on this page (not another screen) ───────
-  //
-  // 🛑 Mounted only while open. `BatchPostingDialog` previews as soon as it
-  // mounts, and that preview is a full plan over the month: rendering both
-  // unconditionally would run two of them on every visit to a console that is
-  // usually not refusing anything at all.
-  //
-  // ⚠️ Scoped to `activePeriodKey`, the month the refusal is ABOUT. The dialog's
-  // own default window is last month through today, so an unscoped open would
-  // offer to post a range the card never mentioned.
-  const [fixing, setFixing] = useState<FixableBlockerItemKey | null>(null)
-  const closeFixDialog = useCallback((open: boolean) => {
-    if (!open) setFixing(null)
-  }, [])
-  // The refusal was raised by a read of the same rows the run just changed, so
-  // the preview has to be asked again before the card can claim to be current.
-  const onFixCompleted = useCallback(() => {
-    void utils.ledger.previewMonthEnd.invalidate()
-    void utils.ledger.verifyBalance.invalidate()
-  }, [utils])
+  // The batch fulfillment/credit-memo posting dialogs that used to open from a
+  // `revenue_incomplete` blocker's Fix button are gone (step 1b, part E): every
+  // fulfillment and credit memo posts as it happens now, and the Drafts tab
+  // (step 1c) is what a review-before-post queue becomes. `onFix` below is a
+  // no-op until then - `LedgerBanners` still requires the prop.
+  const onFix = useCallback(() => {}, [])
 
   function goToPeriod(next: string) {
     // `?posting=` deliberately does NOT survive: a posting id belongs to one
@@ -572,7 +555,7 @@ export function LedgerPage() {
                     onOpenSyncQueue={openSyncQueue}
                     blockers={activePeriodKey ? entry.blockers : []}
                     isSoftRefusal={entry.isSoftRefusal}
-                    onFix={setFixing}
+                    onFix={onFix}
                     onReviewLock={revealLock}
                     onNextPeriod={
                       period.nextPeriodKey
@@ -781,23 +764,6 @@ export function LedgerPage() {
           way; this is the mobile half of the same rule. */}
       {!isDesktop && !!postingId && postingDrawer}
       {!isDesktop && !!journalEntryParam && journalEntryDrawer}
-
-      {fixing === 'unposted_shipments' && (
-        <PostFulfillmentsDialog
-          open
-          onOpenChange={closeFixDialog}
-          onCompleted={onFixCompleted}
-          initialMonth={activePeriodKey || undefined}
-        />
-      )}
-      {fixing === 'unposted_credit_memos' && (
-        <PostCreditMemosDialog
-          open
-          onOpenChange={closeFixDialog}
-          onCompleted={onFixCompleted}
-          initialMonth={activePeriodKey || undefined}
-        />
-      )}
 
       <ConfirmDialog />
     </>

@@ -427,7 +427,7 @@ function SyncQueueBody({
    * One confirm for one row and for forty. The sentence is the same either way
    * because the consequence is: a second, opposite entry per posting.
    */
-  const runReverse = async (glPostingIds: string[], docNumber?: string) => {
+  const runReverse = async (glPostingIds: string[], docNumber?: string | null) => {
     const count = glPostingIds.length
     const confirmed = await confirm({
       title: count === 1 ? `Reverse ${docNumber || 'this posting'}?` : `Reverse ${count} postings?`,

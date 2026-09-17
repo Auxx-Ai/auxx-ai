@@ -11,7 +11,6 @@ import { startAiAutofillWorker } from './worker-definitions/ai-autofill-worker'
 import { startAppTriggerWorker } from './worker-definitions/app-trigger-worker'
 import { startCalendarSyncWorker } from './worker-definitions/calendar-sync-worker'
 import { startChatAgentWorker } from './worker-definitions/chat-agent-worker'
-import { startCreditMemoPostingWorker } from './worker-definitions/credit-memo-posting-worker'
 import { startDataConnectorWorker } from './worker-definitions/data-connector-worker'
 import { startDataExportWorker } from './worker-definitions/data-export-worker'
 import { startDataImportWorker } from './worker-definitions/data-import-worker'
@@ -23,7 +22,6 @@ import { startEmailWorker } from './worker-definitions/email-worker'
 import { startEnrichmentWorker } from './worker-definitions/enrichment-worker'
 import { startEvalRunWorker } from './worker-definitions/eval-run-worker'
 import { startEventHandlersWorker, startEventsWorker } from './worker-definitions/events-worker'
-import { startFulfillmentPostingWorker } from './worker-definitions/fulfillment-posting-worker'
 import { startKBSyncWorker } from './worker-definitions/kb-sync-worker'
 import { startKnowledgeSourceWorker } from './worker-definitions/knowledge-source-worker'
 import { startLearnedExtractionWorker } from './worker-definitions/learned-extraction-worker'
@@ -134,16 +132,6 @@ export async function startWorkers() {
   // The QuickBooks invoice sync worker was retired 2026-09-10: the invoice document mirror is
   // gone on MK's decision (brief 14's DECIDED block) in favor of journal-only export.
 
-  // Bulk fulfillment posting worker: the `auto` lane of
-  // plans/money/tasks/49-bulk-fulfillment-posting.md §2.4. Concurrency 1 - see
-  // the worker definition for why that is a correctness cap, not a throttle.
-  const fulfillmentPostingWorker = startFulfillmentPostingWorker()
-
-  // Bulk credit memo posting worker: the `auto` lane of
-  // plans/accounting/tasks/done/28-how-your-books-post.md §3.1. Same concurrency-1
-  // cap as the fulfillment one, for the same period-key reason.
-  const creditMemoPostingWorker = startCreditMemoPostingWorker()
-
   // External accounting delivery worker: pushes ONE accepted journal to the
   // pinned books per job. This is what keeps a bulk posting run off the
   // QuickBooks round trips - see the worker definition.
@@ -202,8 +190,6 @@ export async function startWorkers() {
     knowledgeSourceWorker,
     dataConnectorWorker,
     documentPdfWorker,
-    fulfillmentPostingWorker,
-    creditMemoPostingWorker,
     accountingDeliveryWorker,
     providerSyncWorker,
     mailClassificationWorker,

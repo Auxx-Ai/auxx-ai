@@ -304,6 +304,9 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       { value: 'documents', label: 'Documents', icon: 'paperclip' },
       { value: 'vendor', label: 'Vendor', icon: 'store' },
       { value: 'payment', label: 'Payment', icon: 'credit-card' },
+      // Accounting migration step 1b, part E - kept in step with
+      // `DRAWER_CONFIG_REGISTRY.vendor_bill` (`drawer-card-parity.test.ts`).
+      { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
     ],
   },
 

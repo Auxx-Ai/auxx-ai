@@ -6,7 +6,7 @@ import type { JournalEntryLine, PostingSummary } from '@auxx/lib/postings/client
 import { useMemo } from 'react'
 import { api } from '~/trpc/react'
 
-/** One row's `journal_entry_status`/`GlPosting.status` collapsed to a common vocabulary. */
+/** One row's journal-entry kind/`GlPosting.status` collapsed to a common vocabulary. */
 export type EntryStatus = 'posted' | 'reversed' | 'pending' | 'failed' | 'draft'
 
 export interface EntryRow {
@@ -35,10 +35,11 @@ export interface MonthEntries {
  * show - from two reads merged into one list (ui-plan.md §2.1):
  *
  * - `ledger.listPostings` - every posting this month except `month_end_inventory`
- *   (already excluded server-side), posted or reversed.
+ *   (already excluded server-side), posted or reversed. Draft-status rows are
+ *   filtered OUT here (TARGET §1 widened `GlPosting.status` to include
+ *   `draft`) - see the note on that filter below.
  * - `ledger.journalEntry.list` with `status: 'draft'` - entries a bookkeeper has
- *   started but not posted. `GlPosting` has no draft status (traps §8), so this
- *   is the only door to them.
+ *   started but not posted, whichever avenue's draft this is.
  *
  * 🛑 ONE hook because two callers need the same answer: the list renders these
  * rows and the stats strip counts them. Two hand-written copies of the query
@@ -75,9 +76,17 @@ export function useMonthEntries(periodKey?: string): MonthEntries {
   const drafts = draftsQuery.data
 
   return useMemo(() => {
-    const rows = [...(postings ?? []).map(postingToRow), ...(drafts ?? []).map(draftToRow)].sort(
-      (a, b) => b.sortKey.localeCompare(a.sortKey)
-    )
+    // 🛑 Draft-status postings are excluded here, not merely left unmapped by
+    // `postingToRow`: a manual/recurring journal draft's own `GlPosting` row
+    // would otherwise render TWICE - once from here, once from `draftsQuery` -
+    // and a draft from any OTHER avenue (a fulfillment or invoice with
+    // `autoPost` off) does not belong on this list at all. This screen is the
+    // posted/reversed activity plus the two POSTABLE journal-entry kinds; every
+    // draft, across every avenue, is the Drafts tab's list (step 1c).
+    const rows = [
+      ...(postings ?? []).filter((posting) => posting.status !== 'draft').map(postingToRow),
+      ...(drafts ?? []).map(draftToRow),
+    ].sort((a, b) => b.sortKey.localeCompare(a.sortKey))
 
     return {
       rows,

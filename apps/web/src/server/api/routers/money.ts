@@ -32,9 +32,7 @@ import {
   getPaymentAccount,
   getWorkOrderBillingState,
   listBankDeposits,
-  listCreditMemoPostings,
   listInvoiceMoneyPayments,
-  listOrderFulfillmentPostings,
   listPayouts,
   listUndepositedPayments,
   listWorkOrderMoneyPayments,
@@ -42,9 +40,7 @@ import {
   markQuoteSent,
   PAYOUT_STATUSES,
   prepareDocumentEmail,
-  previewCreditMemoPosting,
   previewFulfillment,
-  previewFulfillmentPosting,
   previewInvoiceBatch,
   previewWriteOffInvoice,
   readOrderForFulfillment,
@@ -52,8 +48,6 @@ import {
   recomputeTotals,
   recordInvoicePayment,
   reorderLines,
-  runCreditMemoPosting,
-  runFulfillmentPosting,
   runInvoiceBatch,
   saveBillingInstallments,
   setInvoiceSchedule,
@@ -64,7 +58,6 @@ import {
   voidInvoicePayment,
   writeOffInvoice,
 } from '@auxx/lib/money'
-import type { CreditMemoPostingGrouping, FulfillmentPostingGrouping } from '@auxx/lib/money/client'
 import { resolvePaymentRoute } from '@auxx/lib/money/client'
 import {
   listOrderMoneyTransactions,
@@ -76,7 +69,7 @@ import {
 import { listRailStrip } from '@auxx/lib/money/payouts'
 import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
-import { listOrderAccountingWork } from '@auxx/lib/postings'
+import { listPostingsForSource } from '@auxx/lib/postings'
 import {
   describeRecurrence,
   type RecurrencePattern,
@@ -133,78 +126,6 @@ const moneyAdminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   capabilities.assert(PermissionKey.dispatchBoardManage)
   return next({ ctx: { capabilities } })
 })
-
-/**
- * How much the bulk fulfillment posting batches (plans/money/tasks/49 §2.3).
- *
- * `as const satisfies` rather than a bare `z.enum`, the way `builds.ts` writes
- * the backfill's grouping: the vocabulary lives in
- * `money/fulfillment-posting/types.ts`, and a member renamed there has to break
- * this file rather than silently narrow what the browser may ask for.
- */
-const FULFILLMENT_POSTING_GROUPING_VALUES = [
-  'day',
-  'month',
-] as const satisfies readonly FulfillmentPostingGrouping[]
-
-/**
- * The window and the grouping, shared by the preview and the run so the two can
- * never disagree about what a range means.
- *
- * Half-open on `shippedAt` (`from <= shippedAt < to`), both plain `YYYY-MM-DD`
- * rather than instants: the bucket boundary is cut in the org's book time zone
- * server-side, and a `Date` from the browser would carry its own zone into a
- * decision that is not the browser's to make.
- */
-const fulfillmentPostingShape = {
-  from: z.iso.date(),
-  to: z.iso.date(),
-  grouping: z.enum(FULFILLMENT_POSTING_GROUPING_VALUES),
-}
-
-/**
- * How much the bulk credit memo posting batches
- * (plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md §5.1).
- *
- * 🛑 A hand-written tuple with `as const satisfies`, like
- * {@link FULFILLMENT_POSTING_GROUPING_VALUES} above, and it does NOT self-correct:
- * `satisfies readonly CreditMemoPostingGrouping[]` proves every member is a legal
- * grouping, never that every legal grouping is a member. Dropping one here
- * silently narrows what the browser may ask for, and nothing fails. The
- * vocabulary is `money/batch-posting/types.ts`; a member renamed there breaks
- * this file, which is the half worth having.
- */
-const CREDIT_MEMO_POSTING_GROUPING_VALUES = [
-  'day',
-  'month',
-] as const satisfies readonly CreditMemoPostingGrouping[]
-
-/**
- * The window and the grouping, shared by the credit memo preview and run so the
- * two can never disagree about what a range means.
- *
- * Half-open on `issuedAt` (`from <= issuedAt < to`), both plain `YYYY-MM-DD` for
- * the reason {@link fulfillmentPostingShape} gives: the bucket boundary is cut in
- * the org's book time zone server-side, and a `Date` from the browser would carry
- * its own zone into a decision that is not the browser's to make.
- */
-const creditMemoPostingShape = {
-  from: z.iso.date(),
-  to: z.iso.date(),
-  grouping: z.enum(CREDIT_MEMO_POSTING_GROUPING_VALUES),
-  /**
-   * Issue the `draft` memos in the range as part of the run instead of excluding
-   * them as `not-issued`.
-   *
-   * 🛑 On the PREVIEW as well as the run, and required on both rather than
-   * defaulted: channel memos are ingested as `draft`, so this flag decides
-   * whether a plan covers the whole backlog or nothing at all, and a preview
-   * taken without it would name a footer the run does not honour. A default
-   * would let a caller that never heard of the flag get the other answer
-   * silently.
-   */
-  issueDrafts: z.boolean(),
-}
 
 /** {@link listPayments}'s exact row shape — kept explicit so `listPaymentsForQuote`'s
  * empty return (quote deposits have no money-model source yet) doesn't infer `never[]`. */
@@ -880,12 +801,6 @@ export const moneyRouter = createTRPCRouter({
       })
     ),
 
-  orderAccountingWork: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ orderId: z.string().min(1) }))
-    .query(({ ctx, input }) =>
-      listOrderAccountingWork(ctx.db, ctx.session.organizationId, input.orderId)
-    ),
-
   orderMoneyCoverage: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ orderId: z.string().min(1) }))
     .query(({ ctx, input }) =>
@@ -983,147 +898,39 @@ export const moneyRouter = createTRPCRouter({
       return result.value
     }),
 
-  // ─── Bulk fulfillment posting (plans/money/tasks/49 §2.3) ──────────────────
-
   /**
-   * What a bulk fulfillment posting WOULD write. Persists nothing.
+   * The postings this order's fulfillments produced, for its ledger card.
    *
-   * 🛑 The plan is recomputed here from the range and the grouping; the browser
-   * never supplies one. The same call backs {@link runFulfillmentPosting}, so
-   * what the dialog shows and what the run posts come from one code path
-   * (`plans/money/tasks/49-bulk-fulfillment-posting.md` §2.3).
-   *
-   * A refusal (`accounting.bookTimeZone` unset, or a draft chart) comes back on
-   * the payload as `refusal` rather than as a thrown error: the dialog renders
-   * it as a card beside the range it applies to, which a toast cannot do.
-   */
-  previewFulfillmentPosting: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object(fulfillmentPostingShape))
-    .query(async ({ ctx, input }) => {
-      const result = await previewFulfillmentPosting(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        actorUserId: ctx.session.userId,
-        range: { from: input.from, to: input.to },
-        grouping: input.grouping,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  /**
-   * Post one entry per group and stamp every shipment behind it.
-   *
-   * 🛑 `ledgerPost`, for the same reason {@link fulfillOrder} takes it: this
-   * writes `GlPosting` rows. The run NEVER throws: a group the poster declined
-   * (`already_posted`, a locked period) and a group that failed are both arms of
-   * the summary, so the result page can tell somebody which of their 62 days
-   * landed instead of reporting the whole run as an error.
-   */
-  runFulfillmentPosting: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ ...fulfillmentPostingShape, memo: z.string().max(4000).optional() }))
-    .mutation(async ({ ctx, input }) => {
-      return runFulfillmentPosting(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        actorUserId: ctx.session.userId,
-        range: { from: input.from, to: input.to },
-        grouping: input.grouping,
-        memo: input.memo,
-      })
-    }),
-
-  /**
-   * The postings this order's shipment log names, for its ledger card (§2.5).
-   *
-   * Reads the per-shipment STAMP rather than the posting's source lines: a bulk
-   * entry summarises many orders, so `listPostingsForSource` finds nothing for
-   * an order whose revenue went out in one (the A/R leg is the exception, and
-   * relying on it would show terms orders a card that card orders do not get).
+   * `GlPostingSource` carries the order as the `parent` link on every
+   * fulfillment posting (TARGET §1) - one query finds them all, no stamp field
+   * and no batch summary to fall back to.
    */
   orderFulfillmentPostings: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ orderId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const result = await listOrderFulfillmentPostings(ctx.db, {
+      const result = await listPostingsForSource(ctx.db, {
         organizationId: ctx.session.organizationId,
-        orderId: input.orderId,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  // ─── Bulk credit memo posting (plans/accounting/tasks/25 §9 PR 3) ──────────
-
-  /**
-   * What a bulk credit memo posting WOULD write. Persists nothing.
-   *
-   * 🛑 The plan is recomputed here from the range and the grouping; the browser
-   * never supplies one. The same call backs {@link runCreditMemoPosting}, so what
-   * the dialog shows and what the run posts come from one code path - the rule
-   * {@link previewFulfillmentPosting} is written to, on a ledger where the only
-   * correction is a reversal.
-   *
-   * A refusal (`accounting.bookTimeZone` unset, a draft chart) comes back on the
-   * payload as `refusal` rather than as a thrown error: the dialog renders it as
-   * a card beside the range it applies to, which a toast cannot do.
-   *
-   * ⚠️ No `actorUserId`: a preview writes nothing, so `CreditMemoPostingPreviewInput`
-   * does not carry one.
-   */
-  previewCreditMemoPosting: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object(creditMemoPostingShape))
-    .query(async ({ ctx, input }) => {
-      const result = await previewCreditMemoPosting(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        range: { from: input.from, to: input.to },
-        grouping: input.grouping,
-        issueDrafts: input.issueDrafts,
+        sourceKind: 'order',
+        sourceId: input.orderId,
       })
       if (result.isErr()) throw result.error
       return result.value
     }),
 
   /**
-   * Post one entry per group and stamp every memo behind it.
+   * The posting this credit memo produced, for its ledger card.
    *
-   * 🛑 `ledgerPost`, for the same reason {@link runFulfillmentPosting} takes it:
-   * this writes `GlPosting` rows. The run NEVER throws - a group the poster
-   * declined (`already_posted`, a locked period) and a group that failed are both
-   * arms of the summary, so the result page can say which of the months landed
-   * instead of reporting the whole run as an error.
-   *
-   * ⚠️ With `issueDrafts` this also writes to the MEMOS - every draft it covers
-   * is issued before the entry is posted - which is why `summary.issued` is its
-   * own arm: a memo can be issued and still fail to post, and a draft that
-   * refuses to issue is a document somebody has to open.
-   */
-  runCreditMemoPosting: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ ...creditMemoPostingShape, memo: z.string().max(4000).optional() }))
-    .mutation(async ({ ctx, input }) => {
-      return runCreditMemoPosting(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        actorUserId: ctx.session.userId,
-        range: { from: input.from, to: input.to },
-        grouping: input.grouping,
-        issueDrafts: input.issueDrafts,
-        memo: input.memo,
-      })
-    }),
-
-  /**
-   * The posting this credit memo is STAMPED with, for its ledger card (§3.3).
-   *
-   * Reads `credit_memo_gl_posting` rather than the posting's source lines: a
-   * batch entry's summarised legs carry `credit_memo_batch` with the PERIOD KEY
-   * as their source and its receivable legs carry `contact`, so no line in the
-   * entry names the memo and `listPostingsForSource` renders an empty card over a
-   * memo that is perfectly well posted. Same read, same reason, as
+   * The credit memo is the `subject` link on its own `credit_memo` posting
+   * (TARGET §1) - `listPostingsForSource` is the one read, same as
    * {@link orderFulfillmentPostings}.
    */
   creditMemoPostings: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ creditMemoId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const result = await listCreditMemoPostings(ctx.db, {
+      const result = await listPostingsForSource(ctx.db, {
         organizationId: ctx.session.organizationId,
-        creditMemoId: input.creditMemoId,
+        sourceKind: 'credit_memo',
+        sourceId: input.creditMemoId,
       })
       if (result.isErr()) throw result.error
       return result.value

@@ -23,7 +23,7 @@ import {
   CloudOff,
   ExternalLink,
   Layers,
-  Receipt,
+  Link2,
   Undo2,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -34,8 +34,7 @@ import { EntryJournal, journalLinesFromDetail } from './entry-journal'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatAuditTimestamp, formatPeriodLabel } from './format'
 import { OUTCOMES, type OutcomeCopy, providerEntryUrl } from './post-result-callout'
-import { PostingRegister } from './posting-register'
-import { readStoredAssertions, readStoredReasons } from './stored-draft'
+import { readStoredAssertions, readStoredReasons, readStoredSources } from './stored-draft'
 
 interface PostingDrawerProps {
   /** From `?posting=<id>`. `null` closes the drawer. */
@@ -100,12 +99,6 @@ export function PostingDrawer({
   const [memo, setMemo] = useState('')
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
-  /**
-   * The Register section is open, so its read is worth making. Collapsed on
-   * open because it is the one read here that can be large - a daily
-   * fulfillment group is one summary over every shipment that day.
-   */
-  const [registerOpen, setRegisterOpen] = useState(false)
 
   const postingQuery = api.ledger.get.useQuery(
     { id: postingId ?? '' },
@@ -135,6 +128,7 @@ export function PostingDrawer({
 
   const assertions = detail ? readStoredAssertions(detail.draft) : null
   const reasons = detail ? readStoredReasons(detail.draft) : []
+  const sources = detail ? readStoredSources(detail.draft) : []
   const isReversal = !!detail?.reversesId
 
   /**
@@ -207,7 +201,7 @@ export function PostingDrawer({
       onWidthChange={onWidthChange}
       minWidth={380}
       maxWidth={720}
-      title={detail ? `Posting ${detail.docNumber}` : 'Posting'}>
+      title={detail ? `Posting ${detail.docNumber || '(draft)'}` : 'Posting'}>
       <div className='flex min-h-0 flex-1 flex-col rounded-t-xl'>
         <DrawerHeader
           icon={<BookOpenCheck className='size-5 text-muted-foreground' />}
@@ -356,24 +350,34 @@ export function PostingDrawer({
                 />
               </Section>
 
-              {/* The REGISTER (53 §7.3, D16). Collapsed by default, and the
-                  read is gated on it being open - see `PostingRegister`. This
-                  is the drill-down §7.3.4 describes, and it is here rather than
-                  on a page of its own because the drawer is what BOTH the
-                  ledger list and the sync queue already open on a row. */}
-              <Section
-                title='Register'
-                icon={<Receipt className='size-4' />}
-                description='The transactions this entry was composed from, each with the balanced contribution frozen when it was accepted. Read-only: a register row is a projection of a hashed basis, and a mistake is corrected by a correction, never by an edit.'
-                initialOpen={false}
-                onOpenChange={setRegisterOpen}>
-                <PostingRegister
-                  glPostingId={postingId}
-                  enabled={registerOpen}
-                  currencyCode={currencyCode}
-                  bookTimeZone={bookTimeZone}
-                />
-              </Section>
+              {/* The links (TARGET §1): what this entry is OF (`subject`), and
+                  what it names as `parent`, `counterparty` or `member` - read
+                  off the stored envelope, the same rows `GlPostingSource`
+                  holds. Replaces the register (accounting migration step 1b,
+                  part E): a summary is a grouping of postings now, never its
+                  own kind of row, so there is no second ledger to drill into. */}
+              {sources.length > 0 && (
+                <Section
+                  title='Links'
+                  icon={<Link2 className='size-4' />}
+                  description='Every record this entry is linked to, and how.'
+                  collapsible={false}>
+                  <ul className='flex flex-col gap-1.5 text-sm'>
+                    {sources.map((source, index) => (
+                      <li
+                        key={`${source.sourceKind}-${source.sourceId}-${index}`}
+                        className='flex items-center justify-between gap-2'>
+                        <span className='truncate font-mono text-xs text-muted-foreground'>
+                          {source.sourceKind}:{source.sourceId}
+                        </span>
+                        <Badge variant='outline' size='xs'>
+                          {source.linkRole}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
 
               {reasons.length > 0 && (
                 <Section
@@ -481,6 +485,7 @@ function statusBadgeLabel(status: PostingDetail['status'], tone: OutcomeCopy['to
 }
 
 const STATUS_LABEL: Record<PostingDetail['status'], string> = {
+  draft: 'Draft',
   posted: 'Posted',
   reversed: 'Reversed',
 }
@@ -510,7 +515,7 @@ const STATUS_LABEL: Record<PostingDetail['status'], string> = {
  */
 function providerResultFromDetail(detail: {
   exportStatus: string
-  docNumber: string
+  docNumber: string | null
   postingType: string
   providerId: string | null
   providerEntryId: string | null
@@ -518,7 +523,9 @@ function providerResultFromDetail(detail: {
   failureReason: string | null
 }): PostResult {
   const providerId = detail.providerId ?? undefined
-  const base = { docNumber: detail.docNumber, providerId }
+  // A draft has no doc number yet - `PostResult.docNumber` is optional for
+  // exactly this reason.
+  const base = { docNumber: detail.docNumber ?? undefined, providerId }
 
   if (detail.exportStatus === 'failed') {
     return { ...base, status: 'error', error: detail.failureReason ?? undefined }

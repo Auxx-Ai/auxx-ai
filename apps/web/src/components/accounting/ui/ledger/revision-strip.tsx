@@ -15,7 +15,7 @@ export interface RevisionEntry {
   glPostingId: string
   revision: number
   status: PostingDetail['status']
-  docNumber: string
+  docNumber: string | null
   postedAt: string | null
 }
 

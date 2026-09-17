@@ -1,15 +1,12 @@
 // apps/web/src/components/money/ui/order/order-fulfillment-ledger-card.tsx
 'use client'
 
-// Fulfillment postings come from accepted effect membership. Pending source work
-// remains visible even when its date or other accounting inputs are incomplete.
+// Fulfillment postings are read through `money.orderFulfillmentPostings`
+// (`listPostingsForSource` on the order's `parent` link, TARGET §1) rather
+// than through a per-order accounting-work queue - the second lane is gone.
 
-import {
-  defaultFulfillmentName,
-  type Fulfillment,
-  type OrderFulfillmentPostingRef,
-} from '@auxx/lib/money/client'
-import { LEDGER_CURRENCY } from '@auxx/lib/postings/client'
+import { defaultFulfillmentName, type Fulfillment } from '@auxx/lib/money/client'
+import { LEDGER_CURRENCY, type PostingStatus } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
@@ -41,67 +38,25 @@ export function OrderFulfillmentLedgerCard({ entityInstanceId }: DrawerTabProps)
     { enabled: !!entityInstanceId }
   )
 
-  const workQuery = api.money.orderAccountingWork.useQuery(
-    { orderId: entityInstanceId },
-    { enabled: !!entityInstanceId }
-  )
-  const pendingWork = (workQuery.data ?? []).filter((work) => work.state !== 'accepted')
-
   const fulfillments: Fulfillment[] = orderQuery.data?.fulfillments ?? []
   const orderNumber = orderQuery.data?.number ?? null
-  const loading = orderQuery.isPending || workQuery.isPending || postingsQuery.isPending
+  const loading = orderQuery.isPending || postingsQuery.isPending
 
   const postingStatusByGlPosting = useMemo(() => {
-    const map = new Map<string, OrderFulfillmentPostingRef['status']>()
-    for (const stamp of postingsQuery.data ?? []) map.set(stamp.glPostingId, stamp.status)
+    const map = new Map<string, PostingStatus>()
+    for (const posting of postingsQuery.data ?? []) map.set(posting.id, posting.status)
     return map
   }, [postingsQuery.data])
 
-  const error = orderQuery.error ?? workQuery.error ?? postingsQuery.error
+  const error = orderQuery.error ?? postingsQuery.error
   if (error) return <EmptyRow label={error.message} />
 
-  if (!loading && fulfillments.length === 0 && pendingWork.length === 0) {
+  if (!loading && fulfillments.length === 0) {
     return <EmptyRow label='Nothing shipped yet' />
   }
 
   return (
     <>
-      {pendingWork.map((work) => (
-        <TreeRow
-          key={work.id}
-          icon={<BookOpenCheck className='size-4' />}
-          title={
-            work.state === 'no_effect'
-              ? 'Shipment needs no accounting entry'
-              : work.state === 'canceled'
-                ? 'Shipment accounting canceled'
-                : work.operation === 'correction'
-                  ? 'Accounting correction awaiting review'
-                  : 'Shipment awaiting accounting'
-          }
-          description={
-            work.reason ??
-            (work.effectiveDate ? `Shipped ${work.effectiveDate}` : 'Shipment date is missing')
-          }
-          secondary={
-            <Badge
-              variant={
-                work.state === 'no_effect' || work.state === 'canceled' ? 'outline' : 'amber'
-              }
-              size='xs'>
-              {work.state === 'no_effect'
-                ? 'Not required'
-                : work.state === 'canceled'
-                  ? 'Canceled'
-                  : work.eligibility === 'excluded'
-                    ? 'Excluded'
-                    : work.state === 'blocked'
-                      ? 'Needs attention'
-                      : 'Pending'}
-            </Badge>
-          }
-        />
-      ))}
       <TreeRowList
         items={fulfillments}
         loading={loading}
@@ -109,9 +64,10 @@ export function OrderFulfillmentLedgerCard({ entityInstanceId }: DrawerTabProps)
         getKey={(fulfillment) => fulfillment.id}
         renderRow={(fulfillment) => {
           const glPostingId = fulfillment.glPosting
+          const postingStatus = glPostingId ? postingStatusByGlPosting.get(glPostingId) : undefined
           const badge = fulfillmentBadge(
             fulfillment,
-            glPostingId ? postingStatusByGlPosting.get(glPostingId) : undefined
+            postingStatus === 'posted' || postingStatus === 'reversed' ? postingStatus : undefined
           )
           const tracking = trackingLabel(fulfillment)
 

@@ -2,8 +2,8 @@
 
 'use client'
 
-// `<entityType>:ledger` - the postings whose lines name this record
-// (`sourceType`/`sourceId`), per `plans/accounting/ui-plan.md` §2.3 / §4.4.
+// `<entityType>:ledger` - every posting linked to this record on
+// `GlPostingSource` (TARGET §1), per `plans/accounting/ui-plan.md` §2.3 / §4.4.
 //
 // Copies `manufacturing/builds/build-ledger-card.tsx`'s shape (a `TreeRowList`
 // read through a scoped query, click opens the detail), but the source data is
@@ -12,8 +12,10 @@
 // no entity mirror (decision `G6`), so this card reads it through a dedicated
 // tRPC procedure instead.
 //
-// Reads `ledger.listPostingsForSource` (slot 1A) for the postings whose lines
-// name this record as their source.
+// Reads `ledger.listPostingsForSource` for every posting linked to this record
+// by `sourceKind`/`sourceId`, whatever the link role - `linkRole` is rendered
+// as its own badge so a `parent` row (an order listing its fulfillments) reads
+// differently from the `subject` row a fulfillment's own card shows.
 //
 // Gained a `Retry export` action 2026-09-10 (plans/accounting/tasks/14-one-
 // quickbooks-two-write-paths.md §4.4): with the invoice document mirror
@@ -24,6 +26,7 @@
 import type {
   PostingDetail,
   PostingExportStatus,
+  PostingLinkRole,
   PostingStatus,
   PostingType,
 } from '@auxx/lib/postings/client'
@@ -52,26 +55,39 @@ export interface SourcePosting {
   status: PostingStatus
   exportStatus: PostingExportStatus
   failureReason: string | null
+  /** How this posting relates to the record - `subject`, `parent`, `counterparty`, `member`. */
+  linkRole: PostingLinkRole
 }
 
 export interface LedgerCardProps extends DrawerTabProps {
   /**
-   * The `sourceType` this record's postings are filed under (`'order'`,
-   * `'invoice'`, `'payment'`, `'bank_deposit'`...). Fixed by the wrapper a
-   * future registration pins, per `ledgerBlock()`'s pattern for related-record
-   * cards, never inferred from the record itself.
+   * The `sourceKind` this record's postings are linked under on
+   * `GlPostingSource` (`'order'`, `'invoice'`, `'money_transaction'`,
+   * `'bank_deposit'`...). Fixed by the wrapper a registration pins, per
+   * `ledgerBlock()`'s pattern for related-record cards, never inferred from
+   * the record itself.
    */
-  sourceType: string
+  sourceKind: string
 }
 
 const STATUS_VARIANT: Record<PostingStatus, Variant> = {
+  draft: 'outline',
   posted: 'green',
   reversed: 'amber',
 }
 
 const STATUS_LABEL: Record<PostingStatus, string> = {
+  draft: 'Draft',
   posted: 'Posted',
   reversed: 'Reversed',
+}
+
+/** How this posting relates to the record - shown as a small badge beside the status. */
+const LINK_ROLE_LABEL: Record<PostingLinkRole, string> = {
+  subject: 'Subject',
+  parent: 'Parent',
+  counterparty: 'Counterparty',
+  member: 'Member',
 }
 
 /**
@@ -102,13 +118,13 @@ function humanizePostingType(type: string): string {
 }
 
 /**
- * `LedgerCard`: a record sidebar card listing the postings whose
- * `sourceType`/`sourceId` name this record. Row click opens a `Dialog` with
- * the posting's lines (`EntryJournal`, the same journal table
- * `posting-drawer.tsx` renders), since these entries are not on the ledger
- * page's own `?posting=` deep link from here.
+ * `LedgerCard`: a record sidebar card listing every posting linked to this
+ * record on `GlPostingSource`. Row click opens a `Dialog` with the posting's
+ * lines (`EntryJournal`, the same journal table `posting-drawer.tsx`
+ * renders), since these entries are not on the ledger page's own `?posting=`
+ * deep link from here.
  */
-export function LedgerCard({ entityInstanceId, sourceType }: LedgerCardProps) {
+export function LedgerCard({ entityInstanceId, sourceKind }: LedgerCardProps) {
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
   const bookTimeZone = (getSetting('accounting.bookTimeZone') as string | null) ?? 'UTC'
@@ -117,7 +133,7 @@ export function LedgerCard({ entityInstanceId, sourceType }: LedgerCardProps) {
 
   const utils = api.useUtils()
   const postingsQuery = api.ledger.listPostingsForSource.useQuery(
-    { sourceType, sourceId: entityInstanceId },
+    { sourceKind, sourceId: entityInstanceId },
     { enabled: !!entityInstanceId }
   )
   const postings = (postingsQuery.data ?? []) as SourcePosting[]
@@ -131,7 +147,7 @@ export function LedgerCard({ entityInstanceId, sourceType }: LedgerCardProps) {
           description: result.error ?? 'No reason was recorded.',
         })
       }
-      void utils.ledger.listPostingsForSource.invalidate({ sourceType, sourceId: entityInstanceId })
+      void utils.ledger.listPostingsForSource.invalidate({ sourceKind, sourceId: entityInstanceId })
     },
     onError: (error) => {
       toastError({ title: 'Could not retry the export', description: error.message })
@@ -162,6 +178,9 @@ export function LedgerCard({ entityInstanceId, sourceType }: LedgerCardProps) {
                 </Badge>
                 <Badge variant={STATUS_VARIANT[posting.status]} size='xs'>
                   {STATUS_LABEL[posting.status]}
+                </Badge>
+                <Badge variant='outline' size='xs'>
+                  {LINK_ROLE_LABEL[posting.linkRole]}
                 </Badge>
                 {EXPORT_BADGE[posting.exportStatus] ? (
                   <Badge

@@ -298,6 +298,18 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('../accounting/ui/ledger-card-registrations').then((m) => ({
       default: m.BankDepositLedgerCard,
     })),
+  'fulfillment:ledger': () =>
+    import('../accounting/ui/ledger-card-registrations').then((m) => ({
+      default: m.FulfillmentLedgerCard,
+    })),
+  'payout:ledger': () =>
+    import('../accounting/ui/ledger-card-registrations').then((m) => ({
+      default: m.PayoutLedgerCard,
+    })),
+  'vendor_bill:ledger': () =>
+    import('../accounting/ui/ledger-card-registrations').then((m) => ({
+      default: m.VendorBillLedgerCard,
+    })),
 
   // ─────────────────────────────────────────────────────────────────
   // PURCHASING CARDS — plans/purchasing/01-build-plan.md §4.4 / §5.1.

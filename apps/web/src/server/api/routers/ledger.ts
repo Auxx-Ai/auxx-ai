@@ -21,6 +21,7 @@ import {
   createJournalEntry,
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
+  discardDraftPosting,
   discardJournalEntry,
   enqueueProviderSync,
   evaluateExportGate,
@@ -43,6 +44,7 @@ import {
   POSTING_TYPES,
   PROVIDER_SYNC_RUN_STALE_MS,
   PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
+  postDraft,
   postEntry,
   postJournalEntry,
   postMonthEnd,
@@ -51,7 +53,6 @@ import {
   previewMonthEnd,
   readAccountingBookConnectionStatus,
   readLatestPostingsByType,
-  readPostingRegister,
   readProviderSyncRunState,
   readTrialBalance,
   releaseExportsThroughGate,
@@ -219,7 +220,6 @@ const draftEntry = z.object({
  * | procedure         | gate         |
  * | ----------------- | ------------ |
  * | `preview`         | `ledger.view` |
- * | `register`        | `ledger.view` |
  * | `failedExports` | `ledger.view` |
  * | `retryExport` | `ledger.post` |
  * | `syncExports` | `ledger.post` |
@@ -411,6 +411,15 @@ export const ledgerRouter = createTRPCRouter({
         actorUserId: userId,
         memo,
         lock,
+        // This surface takes a hand-built entry with no record behind it -
+        // there is nothing else to claim through. `sourceKind`/`sourceId`
+        // reproduce the pre-TARGET §1 claim exactly: `(organizationId,
+        // postingType, periodKey)`, now on `GlPostingSource` rather than a
+        // composite index on `GlPosting` itself.
+        sources: [
+          { sourceKind: entry.postingType, sourceId: entry.periodKey, linkRole: 'subject' },
+        ],
+        mode: 'post',
       })
     }),
 
@@ -617,40 +626,6 @@ export const ledgerRouter = createTRPCRouter({
     .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const result = await getPosting(ctx.db, ctx.session.organizationId, input.id)
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  /**
-   * The REGISTER behind one summary posting - its member effects, read-only
-   * (plans/accounting/tasks/53-two-modes-one-ledger.md §7.3, decision D16).
-   *
-   * 🔑 A READ over data that already exists. `AccountingEffect.acceptedBasis`
-   * has stored a balanced, account-resolved contribution per transaction since
-   * 42D; nothing has ever rendered it. This is that render's one call, and it
-   * builds nothing: level B - writing those contributions as `GlPosting` rows
-   * too - is explicitly refused, because a derived register in the trial balance
-   * double-counts every summary it rolls into and still balances (§7.3.2).
-   *
-   * ⚠️ An empty `entries` is a legitimate answer, NOT a 404 and not a gap.
-   * Seven posting families have no upstream transaction at all - a manual
-   * journal, an opening balance, a `provider_sync` row authored in the provider
-   * - and for those the posting IS the register row, 1:1 (§7.3.3). Only a
-   * posting id that does not exist, or belongs to another org, is a refusal.
-   *
-   * `ledger.view`, like every other read here. Nothing about it is a write, and
-   * a register row must never be editable: it is a projection of a frozen,
-   * sha256-hashed basis, and the correction path is `operation: 'correction'`
-   * on `AccountingWork`, which already exists.
-   */
-  register: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ glPostingId: z.string().min(1) }))
-    .query(async ({ ctx, input }) => {
-      const result = await readPostingRegister(
-        ctx.db,
-        ctx.session.organizationId,
-        input.glPostingId
-      )
       if (result.isErr()) throw result.error
       return result.value
     }),
@@ -1676,23 +1651,84 @@ export const ledgerRouter = createTRPCRouter({
    * Every posting one record produced - the `ledger` card on an order, an
    * invoice, a payment or a journal entry.
    *
-   * Reached through `GlPostingLine.sourceType` / `sourceId`, which every builder
-   * stamps on every line. `sourceType` is a free string rather than an enum on
-   * purpose: it names the KIND of row that produced the line and new kinds
-   * arrive with new builders, so an enum here would have to be edited in
-   * lockstep with a vocabulary this router does not own. There is nothing to
-   * leak - both halves are scoped to the caller's organization in SQL.
+   * Reached through `GlPostingSource` (TARGET §1), never a stamp field and
+   * never `GlPostingLine.sourceType`: one query, every link role. `sourceKind`
+   * is a free string rather than an enum on purpose - it names the KIND of
+   * record a posting is linked to and new kinds arrive with new builders, so an
+   * enum here would have to be edited in lockstep with a vocabulary this router
+   * does not own. There is nothing to leak - both halves are scoped to the
+   * caller's organization in SQL.
    */
   listPostingsForSource: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ sourceType: z.string().min(1), sourceId: z.string().min(1) }))
+    .input(z.object({ sourceKind: z.string().min(1), sourceId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const result = await listPostingsForSource(ctx.db, {
         organizationId: ctx.session.organizationId,
-        sourceType: input.sourceType,
+        sourceKind: input.sourceKind,
         sourceId: input.sourceId,
       })
       if (result.isErr()) throw result.error
       return result.value
+    }),
+
+  /**
+   * Every DRAFT posting in one accounting month - the Drafts tab (TARGET §4
+   * gate 1, step 1c). A draft holds no claim and no doc number; `autoPost` off
+   * on its avenue is what leaves one here instead of `posted`.
+   *
+   * Filtered in this router rather than in `listPostings` itself: the lib read
+   * answers "what is in this month", and status is one more thing a caller
+   * narrows on, the same way the close console excludes `month_end_inventory`
+   * by name rather than the read growing a parameter per screen.
+   *
+   * `ledgerPost`, not `ledgerView`: the Drafts tab is where a draft gets
+   * approved or discarded, and reviewing what is queued to post is part of
+   * that authority, not a separate read anyone with `ledgerView` should get.
+   */
+  listDrafts: permissionProcedure(PermissionKey.ledgerPost)
+    .input(monthKey)
+    .query(async ({ ctx, input }) => {
+      const result = await listPostings(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        periodKey: input.periodKey,
+      })
+      if (result.isErr()) throw result.error
+      return result.value.filter((posting) => posting.status === 'draft')
+    }),
+
+  /**
+   * Promote a draft: re-resolve its roles, re-check the period lock, claim,
+   * number, flip to `posted` (TARGET §4 gate 1). Never throws - a closed period
+   * or an account the chart no longer holds comes back as a `PostResult` status
+   * the Drafts tab renders, exactly as {@link post} does.
+   */
+  postDraft: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ glPostingId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const lock = await resolvePeriodLock(organizationId)
+
+      return postDraft(ctx.db, {
+        organizationId,
+        glPostingId: input.glPostingId,
+        actorUserId: userId,
+        lock,
+      })
+    }),
+
+  /**
+   * Throw a draft posting away: its lines, then the header. A draft holds no
+   * claim, so nothing is released - there is simply nothing left to post.
+   */
+  discardDraft: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ glPostingId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await discardDraftPosting(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        glPostingId: input.glPostingId,
+      })
+      if (result.isErr()) throw result.error
+      return { glPostingId: input.glPostingId, discarded: true }
     }),
 
   /**

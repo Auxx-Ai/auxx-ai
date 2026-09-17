@@ -35,10 +35,7 @@ export function OrderPaymentsCard({ entityInstanceId }: DrawerTabProps) {
     onSuccess: async (result) => {
       if (result.status !== 'accepted' && result.reason)
         toastError({ title: 'Payment accounting needs attention', description: result.reason })
-      await Promise.all([
-        utils.money.orderMoneyTransactions.invalidate({ orderId: entityInstanceId }),
-        utils.money.orderAccountingWork.invalidate({ orderId: entityInstanceId }),
-      ])
+      await utils.money.orderMoneyTransactions.invalidate({ orderId: entityInstanceId })
     },
     onError: (error) => toastError({ title: 'Could not post payment', description: error.message }),
   })
