@@ -18,6 +18,9 @@ import React from 'react'
  * the slot truncates (overflow-hidden) by default, which cuts off pill shapes.
  * Apply to the container around the rows.
  */
+/** The tint a nested row carries to read as a child of the row above it. */
+export const TREE_ROW_NESTED_TINT = 'bg-primary-50 hover:bg-primary-100'
+
 export const TREE_SECONDARY_NOTRUNCATE =
   '[&_[data-slot=tree-row-secondary]]:shrink-0 [&_[data-slot=tree-row-secondary]]:overflow-visible [&_[data-slot=tree-row-secondary]]:whitespace-nowrap'
 
