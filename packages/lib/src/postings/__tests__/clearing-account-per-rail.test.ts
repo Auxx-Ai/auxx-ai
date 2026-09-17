@@ -9,7 +9,7 @@
 //
 // 🛑 Why that needs its own file. A fulfillment debits the gateway record's
 // clearing account BY ID (`resolveFulfillmentDebit`) and, before brief 26, a
-// payout credited the `clearing_card` ROLE unconditionally
+// payout credited the `clearing` ROLE unconditionally
 // (`money/payouts/sync.ts:266`). Both entries balance. Both post. Nothing
 // downstream compares them - so the moment any rail is routed to its own
 // account the two accounts drift apart forever and the only symptom is a
@@ -39,7 +39,7 @@ const PAYOUT = {
   grossMinor: 500_000,
   feesMinor: 14_800,
   netMinor: 485_200,
-  clearingRole: ACCOUNT_ROLES.CLEARING_CARD,
+  clearingRole: ACCOUNT_ROLES.CLEARING,
   paidAt: '2026-09-04',
 }
 
@@ -107,7 +107,7 @@ describe('an org with zero payment_gateway records is bit-for-bit unaffected', (
       {
         sourceType: 'payout',
         sourceId: 'po_1AbCdEfGhIjKlMnOpQrStUvW',
-        accountRole: 'clearing_card',
+        accountRole: 'clearing',
         direction: 'credit',
         amount: 500_000,
         memo: 'Payout PO-0007 - gross settled',
@@ -144,7 +144,7 @@ describe('an org with zero payment_gateway records is bit-for-bit unaffected', (
   })
 
   it('and the fulfillment debit with no routes is unchanged too', () => {
-    expect(debitedClearing('authorize_net', [])).toEqual({ accountRole: 'clearing_card' })
+    expect(debitedClearing('authorize_net', [])).toEqual({ accountRole: 'clearing' })
   })
 })
 
@@ -173,13 +173,13 @@ describe('a fulfillment for gateway G and a payout resolved to G meet', () => {
 
   it('is exactly what FAILED before the credit side was id-routed', () => {
     // 🛑 The regression guard. This is `money/payouts/sync.ts:266` as it stood:
-    // `clearingRole: ACCOUNT_ROLES.CLEARING_CARD`, hardcoded, no id. The debit
+    // `clearingRole: ACCOUNT_ROLES.CLEARING`, hardcoded, no id. The debit
     // moves to the record's account and the credit does not, and BOTH entries
     // still balance - which is why nothing caught it for four days.
     const debit = debitedClearing('authorize_net', [AUTHORIZE_NET])
     const creditAsItWas = creditedClearing(buildPayoutEntry(PAYOUT))
 
-    expect(creditAsItWas).toEqual({ accountRole: 'clearing_card' })
+    expect(creditAsItWas).toEqual({ accountRole: 'clearing' })
     expect(creditAsItWas).not.toEqual(debit)
   })
 })
@@ -199,7 +199,7 @@ describe('two records claiming one handle', () => {
     // Guessing which of two accounts is right would put real money in one of
     // them, and the entry would balance either way.
     expect(matchGatewayRoute('authorize_net', RIVALS)).toBeUndefined()
-    expect(debitedClearing('authorize_net', RIVALS)).toEqual({ accountRole: 'clearing_card' })
+    expect(debitedClearing('authorize_net', RIVALS)).toEqual({ accountRole: 'clearing' })
   })
 
   it('and the two sides still meet, on the role, which is why the fallback is safe', () => {

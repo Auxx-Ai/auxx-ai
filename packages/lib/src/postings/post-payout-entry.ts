@@ -109,7 +109,10 @@ export async function postPayoutEntry(
       memo: input.memo ?? `Payout ${built.periodKey}`,
       // A payout is wholly one merchant account's, so the ENTRY-level door is
       // the right one - there is no second processor on it to disagree with.
-      ...(processorAccountId ? { scope: { processor: processorAccountId } } : {}),
+      // ⚠️ Still a `FinancialSourceAccount` id, not yet the `payment_gateway`
+      // id `RoleSourceScope.rail` names (task 58 §5.3, U4) - see the field
+      // comment on `processorAccountId` above.
+      ...(processorAccountId ? { scope: { rail: processorAccountId } } : {}),
     })
 
     logger.info('Posted a payout entry', {

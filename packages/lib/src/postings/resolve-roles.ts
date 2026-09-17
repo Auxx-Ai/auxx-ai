@@ -47,11 +47,15 @@
  * neither of which fires when a bookkeeper renames or archives an ACCOUNT. A
  * cached key wired to the doors that DO exist is correct for an hour and then
  * posts to the account somebody renamed, and it fails OPEN: the entry balances.
+ * Task 58's rail scope does not change this argument - it is still `gl_account`
+ * that has no invalidation door, whichever axis picked it.
  *
  * The cost of not caching is two indexed reads on a path that runs at a close or
  * per posted event - not a hot request path. When the `G19` wizard lands and
  * gives assignment writes an explicit event of their own, cache it then, and
  * wire `gl_account` create/update/archive at the same time or not at all.
+ * `role-assignments.ts`'s `readRoleAssignments` is where that cache key would
+ * go (§10.4) - it is the one door every reader of `GlRoleAssignment` now shares.
  *
  * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
  */
@@ -71,6 +75,7 @@ import {
 } from './build-entry'
 import { loadChartAccountFields, loadChartAccountsById } from './chart-accounts'
 import { CHART_PACKS, type GlAccountTypeValue, packForRole } from './default-chart'
+import { type RoleAssignmentRecord, readRoleAssignments } from './role-assignments'
 import { readLiveSourceAccountIds, readManualSourceAccountId } from './source-scope'
 import type { GlPostingLineInput, RoleSourceScope } from './types'
 
@@ -91,8 +96,16 @@ const logger = createScopedLogger('postings:resolve-roles')
 const NOT_PROVISIONED =
   'The chart of accounts is not provisioned for this organization - gl_account_code / gl_account_type are missing. Run the entity migrations before posting.'
 
-/** Key for the scoped-assignment lookup. A NUL byte cannot appear in either half. */
+/** Key for the store-scoped lookup. A NUL byte cannot appear in either half. */
 const scopedKey = (role: string, sourceAccountId: string) => `${role}\u0000${sourceAccountId}`
+
+/**
+ * Key for the rail-scoped lookup - role, rail AND currency, so a currencied row
+ * and its rail's no-currency row are two slots, never one (58 §5.1, mirrors
+ * `GlRoleAssignment_org_role_rail_key`'s `coalesce(currency, '')`).
+ */
+const railKey = (role: string, paymentGatewayId: string, currency: string | null) =>
+  `${role}\u0000${paymentGatewayId}\u0000${currency ?? ''}`
 
 /** One role's account, as it stands right now. Snapshot it onto the line; do not re-read. */
 export interface ResolvedAccount {
@@ -128,22 +141,26 @@ export interface ResolvedAccount {
  * | `isActive = false` | reactivate the account, or repoint the role |
  * | `accountType` incompatible | the mapping is to the wrong KIND of account |
  *
- * ## The scope chain (task 47 §5)
+ * ## The scope chain (task 47 §5, rail axis and currency added by task 58 §5.1)
  *
  * ```
- * axis 'store',     scope.store set        ->  (role, that id)      ->  (role, null)
- * axis 'store',     scope.store null       ->  (role, manual id)    ->  (role, null)
- * axis 'processor', scope.processor set    ->  (role, that id)      ->  (role, null)
+ * axis 'store', scope.store set    ->  (role, that id)         ->  (role, null)
+ * axis 'store', scope.store null   ->  (role, manual id)       ->  (role, null)
+ * axis 'rail',  scope.rail set     ->  (role, rail, currency)  ->  (role, rail, null)  ->  (role, null)
  * ```
  *
- * Two lookups, one fallback, and the five refusals above apply unchanged to
- * whichever row wins.
+ * The five refusals above apply unchanged to whichever row wins - except
+ * `bank` (`ROLES_WITHOUT_DEFAULT`), whose `(role, null)` cannot exist
+ * (`setRoleAssignment` refuses to write an unscoped `bank` row): a miss on the
+ * rail leaves it unresolved rather than reaching a fallback that is illegal to
+ * begin with, and it fails closed with its own sentence below, same as any
+ * other unmapped role.
  *
- * 🛑 **A miss falls back, it does not fail.** Connecting a second store must
- * never stop the books, so an unmapped source posts to the org default and is
- * surfaced by the settings screen rather than by a refusal (decision D6). The
- * same is true of a source ARCHIVED since somebody mapped it: the assignment
- * row survives the archive and must not be used (§12.5).
+ * 🛑 **A miss falls back, it does not fail** (except `bank`, above). Connecting
+ * a second store must never stop the books, so an unmapped source posts to the
+ * org default and is surfaced by the settings screen rather than by a refusal
+ * (decision D6). The same is true of a source ARCHIVED since somebody mapped
+ * it: the assignment row survives the archive and must not be used (§12.5).
  *
  * ⚠️ An org with no scoped rows runs the query it ran before this brief and
  * takes the same decisions. That is the acceptance test for the whole brief.
@@ -158,64 +175,91 @@ export async function resolveRoles(
   if (wanted.length === 0) return ok(new Map())
 
   try {
-    const assignments = await db
-      .select({
-        role: schema.GlRoleAssignment.role,
-        glAccountId: schema.GlRoleAssignment.glAccountId,
-        markedUnused: schema.GlRoleAssignment.markedUnused,
-        sourceAccountId: schema.GlRoleAssignment.sourceAccountId,
-      })
-      .from(schema.GlRoleAssignment)
-      .where(
-        and(
-          eq(schema.GlRoleAssignment.organizationId, organizationId),
-          inArray(schema.GlRoleAssignment.role, wanted)
-        )
-      )
+    const assignments = (await readRoleAssignments(db, organizationId)).filter((row) =>
+      wanted.includes(row.role)
+    )
 
     // ── The impossible case, asserted anyway ──────────────────────────────
-    // The two partial unique indexes on this table - one over
-    // (organizationId, role) WHERE sourceAccountId IS NULL, one over
-    // (organizationId, role, sourceAccountId) WHERE it IS NOT NULL - make both
-    // of the collisions below unreachable. They are asserted because the ONE
-    // failure this module must never have is picking arbitrarily between two
-    // accounts, and an assertion is cheaper than the audit that would follow.
-    const byRole = new Map<string, (typeof assignments)[number]>()
-    const byScope = new Map<string, (typeof assignments)[number]>()
+    // Three partial unique indexes on this table - the org default (WHERE
+    // sourceAccountId AND paymentGatewayId are both NULL), the store override
+    // (WHERE sourceAccountId IS NOT NULL) and the rail override (WHERE
+    // paymentGatewayId IS NOT NULL, keyed on role + rail + coalesce(currency,
+    // '')) - make every collision below unreachable. Asserted anyway because
+    // the ONE failure this module must never have is picking arbitrarily
+    // between two accounts, and an assertion is cheaper than the audit that
+    // would follow. This is the fix for the live bug (58 §"START HERE"): a
+    // rail row used to fall into the default bucket alongside the org default,
+    // because both carry `sourceAccountId IS NULL`.
+    const byRole = new Map<string, RoleAssignmentRecord>()
+    const byStoreScope = new Map<string, RoleAssignmentRecord>()
+    const byRailScope = new Map<string, RoleAssignmentRecord>()
     for (const row of assignments) {
-      // `== null` catches BOTH null and undefined, deliberately. The column is
-      // nullable, and "absent" has to read as the ORG DEFAULT whether a driver
-      // hands back `null` or omits the key - misreading it as a scope would
-      // file every default row under a source nothing will ever ask for, and
-      // every role would then resolve to nothing.
-      const scoped = row.sourceAccountId != null
-      const bucket = scoped ? byScope : byRole
-      const lookup = scoped ? scopedKey(row.role, row.sourceAccountId as string) : row.role
-      if (bucket.has(lookup)) {
+      // `== null` catches BOTH null and undefined, deliberately - see
+      // `role-assignments.ts` on why "absent" has to read as the org default.
+      if (row.sourceAccountId != null) {
+        const lookup = scopedKey(row.role, row.sourceAccountId)
+        if (byStoreScope.has(lookup)) {
+          throw new UnprocessableEntityError(
+            `Organization ${organizationId} has more than one account mapped to role '${row.role}' ` +
+              `for source ${row.sourceAccountId}. Refusing to choose. This should be impossible - ` +
+              'GlRoleAssignment_org_role_source_key is a unique index.',
+            { organizationId, role: row.role }
+          )
+        }
+        byStoreScope.set(lookup, row)
+        continue
+      }
+      if (row.paymentGatewayId != null) {
+        const lookup = railKey(row.role, row.paymentGatewayId, row.currency)
+        if (byRailScope.has(lookup)) {
+          throw new UnprocessableEntityError(
+            `Organization ${organizationId} has more than one account mapped to role '${row.role}' ` +
+              `for rail ${row.paymentGatewayId}${row.currency ? ` in ${row.currency}` : ''}. Refusing ` +
+              'to choose. This should be impossible - GlRoleAssignment_org_role_rail_key is a unique index.',
+            { organizationId, role: row.role }
+          )
+        }
+        byRailScope.set(lookup, row)
+        continue
+      }
+      if (byRole.has(row.role)) {
         throw new UnprocessableEntityError(
-          `Organization ${organizationId} has more than one account mapped to role '${row.role}'` +
-            `${scoped ? ` for source ${row.sourceAccountId}` : ''}. Refusing to choose. This ` +
-            'should be impossible - GlRoleAssignment_org_role_default_key and ' +
-            'GlRoleAssignment_org_role_source_key are unique indexes.',
+          `Organization ${organizationId} has more than one account mapped to role '${row.role}'. ` +
+            'Refusing to choose. This should be impossible - GlRoleAssignment_org_role_default_key ' +
+            'is a unique index.',
           { organizationId, role: row.role }
         )
       }
-      bucket.set(lookup, row)
+      byRole.set(row.role, row)
     }
 
     // Which source each role reads, for the whole batch at once. Costs no query
     // at all on an org with no overrides for these roles, which is every org
     // until somebody writes one.
-    const scopeIdByRole = await resolveScopeIds(db, organizationId, wanted, scope, byScope.size > 0)
+    const hasOverrides = byStoreScope.size > 0 || byRailScope.size > 0
+    const scopeIdByRole = await resolveScopeIds(db, organizationId, wanted, scope, hasOverrides)
 
     /**
      * The row each role resolves through: its override when the source it came
-     * from has one, the org default otherwise.
+     * from has one, the org default otherwise. A rail role walks the chain in
+     * the doc comment above - currency, then no-currency, then the org
+     * default (never reached by `bank`, which has none).
      */
-    const chosen = new Map<string, (typeof assignments)[number]>()
+    const chosen = new Map<string, RoleAssignmentRecord>()
     for (const role of wanted) {
       const scopeId = scopeIdByRole.get(role)
-      const override = scopeId === undefined ? undefined : byScope.get(scopedKey(role, scopeId))
+      if (roleScopeAxis(role) === 'rail') {
+        const withCurrency =
+          scopeId && scope?.currency
+            ? byRailScope.get(railKey(role, scopeId, scope.currency))
+            : undefined
+        const withoutCurrency = scopeId ? byRailScope.get(railKey(role, scopeId, null)) : undefined
+        const assignment = withCurrency ?? withoutCurrency ?? byRole.get(role)
+        if (assignment) chosen.set(role, assignment)
+        continue
+      }
+      const override =
+        scopeId === undefined ? undefined : byStoreScope.get(scopedKey(role, scopeId))
       const assignment = override ?? byRole.get(role)
       if (assignment) chosen.set(role, assignment)
     }
@@ -245,11 +289,17 @@ export async function resolveRoles(
         // that would provision it (16 §3.2). An invented role (caught properly
         // below as "not a declared posting role") has neither, so it falls back
         // to the plain sentence rather than indexing `CHART_PACKS` with nothing.
+        // A role in `ROLES_WITHOUT_DEFAULT` (`bank`, 58 §3 rule 3) has a label
+        // but no pack - there is nothing to seed - so it gets its own sentence
+        // rather than a third `CHART_PACKS` index with nothing.
         const label = ACCOUNT_ROLE_LABELS[role as AccountRole]
+        const pack = label ? packForRole(role as AccountRole) : null
         refuse(
-          label
-            ? `'${role}' (${label}) is not mapped to any account. Add the ${CHART_PACKS[packForRole(role as AccountRole)].label} accounts under Accounting > Settings > Accounts > Roles, or map it to an account of your own there.`
-            : `'${role}' is not mapped to any account. Map it in the chart of accounts before posting.`
+          pack
+            ? `'${role}' (${label}) is not mapped to any account. Add the ${CHART_PACKS[pack].label} accounts under Accounting > Settings > Accounts > Roles, or map it to an account of your own there.`
+            : label
+              ? `'${role}' (${label}) has no organization-wide default and is not mapped for this scope. Map it under Accounting > Settings > Accounts > Roles.`
+              : `'${role}' is not mapped to any account. Map it in the chart of accounts before posting.`
         )
         continue
       }
@@ -325,19 +375,22 @@ export async function resolveRoles(
 }
 
 /**
- * The `FinancialSourceAccount` each wanted role resolves through, or nothing.
+ * The `FinancialSourceAccount` (store axis) or `payment_gateway` (rail axis)
+ * each wanted role resolves through, or nothing.
  *
  * A role is absent from the answer whenever it is not scopable, the caller
  * supplied no scope, the caller does not know the axis that role reads, or the
- * source it names is not a live account in this org - and absent means "use the
- * org default", which is what every role did before task 47.
+ * id it names is not live in this org - and absent means "use the org
+ * default", which is what every role did before task 47 (store) and before
+ * task 58 (rail); `resolveRoles` folds `bank`'s exception to that in.
  *
  * ⚠️ Runs inside {@link resolveRoles}' existing batch rather than as a separate
  * round trip per line, and does nothing at all unless the org actually holds a
  * scoped row for one of the roles being resolved (`hasOverrides`). That is what
  * keeps the no-op guarantee literal: an org that maps nothing issues exactly the
  * query it issued before. Do NOT add a cache key here - `resolve-roles.ts`'s own
- * "Not cached" argument is unchanged by this brief (§5).
+ * "Not cached" argument is unchanged by this brief; `role-assignments.ts` is
+ * where a future one goes (§10.4).
  *
  * 🛑 The NULL-to-manual translation lives here and nowhere else. The sentinel
  * is a mapping key, never an effect value (§3.2).
@@ -354,23 +407,27 @@ async function resolveScopeIds(
 
   const axes = new Map(wanted.map((role) => [role, roleScopeAxis(role)]))
   const wantsStore = [...axes.values()].includes('store')
-  const wantsProcessor = [...axes.values()].includes('processor')
-  if (!wantsStore && !wantsProcessor) return answer
+  const wantsRail = [...axes.values()].includes('rail')
+  if (!wantsStore && !wantsRail) return answer
 
-  // The ids the caller named, checked for liveness in one go. An archived
-  // source falls back to the default rather than posting to the account
-  // somebody chose for a store that is gone (§12.5).
-  const named = [
-    ...(wantsStore && typeof scope.store === 'string' ? [scope.store] : []),
-    ...(wantsProcessor && typeof scope.processor === 'string' ? [scope.processor] : []),
-  ]
-  const [live, manualId] = await Promise.all([
-    readLiveSourceAccountIds(db, organizationId, named),
+  // The store id the caller named, checked for liveness. An archived source
+  // falls back to the default rather than posting to the account somebody
+  // chose for a store that is gone (§12.5).
+  const storeId = wantsStore && typeof scope.store === 'string' ? scope.store : null
+  const railId = wantsRail && typeof scope.rail === 'string' ? scope.rail : null
+  const [storeLive, manualId, railLive] = await Promise.all([
+    storeId
+      ? readLiveSourceAccountIds(db, organizationId, [storeId])
+      : Promise.resolve(new Set<string>()),
     // Only when a store-axis role is in play AND this record had no connected
     // source. `readManualSourceAccountId` already filters live and archived.
     wantsStore && scope.store === null
       ? readManualSourceAccountId(db, organizationId)
       : Promise.resolve(null),
+    // A rail id names a `payment_gateway` EntityInstance, not a
+    // `FinancialSourceAccount` - a different table from the store axis (task
+    // 58), so `readLiveSourceAccountIds` cannot answer this one.
+    railId ? readLiveGatewayIds(db, organizationId, [railId]) : Promise.resolve(new Set<string>()),
   ])
 
   for (const [role, axis] of axes) {
@@ -379,18 +436,44 @@ async function resolveScopeIds(
       // connected source". Only the second reaches the manual bucket.
       if (scope.store === undefined) continue
       const id = scope.store === null ? manualId : scope.store
-      if (id && (id === manualId || live.has(id))) answer.set(role, id)
+      if (id && (id === manualId || storeLive.has(id))) answer.set(role, id)
       continue
     }
-    if (axis === 'processor') {
-      // No manual counterpart: a manual order has no processor, so a null here
+    if (axis === 'rail') {
+      // No manual counterpart: a manual order has no rail, so a null here
       // reads exactly like an absent key (§4).
-      const id = scope.processor
-      if (id && live.has(id)) answer.set(role, id)
+      if (railId && railLive.has(railId)) answer.set(role, railId)
     }
   }
 
   return answer
+}
+
+/**
+ * Live `payment_gateway` `EntityInstance` ids among `ids` - the rail-axis
+ * counterpart of `readLiveSourceAccountIds`, against `EntityInstance` rather
+ * than `FinancialSourceAccount` (task 58 §5.1). No entity-def check, same call
+ * `loadChartAccountsById` makes for a `gl_account` id: the only source of a
+ * rail id is a `GlRoleAssignment.paymentGatewayId` FK or an effect built from
+ * one, so an id from anywhere else is not a scope this module will ever see.
+ */
+async function readLiveGatewayIds(
+  db: Database | Transaction,
+  organizationId: string,
+  ids: readonly string[]
+): Promise<Set<string>> {
+  if (ids.length === 0) return new Set()
+  const rows = await db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        inArray(schema.EntityInstance.id, [...new Set(ids)]),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+  return new Set(rows.map((row) => row.id))
 }
 
 /**
@@ -647,7 +730,7 @@ function scopeBucketKey(scope: RoleSourceScope | undefined): string {
   if (!scope) return '-'
   const part = (value: string | null | undefined) =>
     value === undefined ? '-' : value === null ? 'manual' : value
-  return `${part(scope.store)}|${part(scope.processor)}`
+  return `${part(scope.store)}|${part(scope.rail)}|${scope.currency ?? '-'}`
 }
 
 /**
@@ -679,31 +762,20 @@ export async function loadRoleAccountCodes(
   const wanted = [...new Set(roles)]
   if (wanted.length === 0) return new Map()
 
-  const assignments = await db
-    .select({
-      role: schema.GlRoleAssignment.role,
-      glAccountId: schema.GlRoleAssignment.glAccountId,
-      markedUnused: schema.GlRoleAssignment.markedUnused,
-    })
-    .from(schema.GlRoleAssignment)
-    .where(
-      and(
-        eq(schema.GlRoleAssignment.organizationId, organizationId),
-        inArray(schema.GlRoleAssignment.role, wanted),
-        // 🛑 The ORG DEFAULT only. This answer is compared against account IDS
-        // by its caller, and a per-source override would add an account to the
-        // guarded set without the caller ever having asked about that source.
-        // None of the roles it is called with is scopable today (§4), so this
-        // is a statement of intent as much as a filter.
-        isNull(schema.GlRoleAssignment.sourceAccountId)
-      )
-    )
-
-  // Filtered on BOTH the requested set and `markedUnused`, even though the
-  // query already narrows the first: this function's answer is compared against
-  // account IDS by its caller, so a stray role leaking in would attach an
-  // unrelated account to the guarded set and refuse an innocent entry.
-  const live = assignments.filter((row) => !row.markedUnused && wanted.includes(row.role))
+  const rows = await readRoleAssignments(db, organizationId)
+  // 🛑 The ORG DEFAULT only, and that now excludes a RAIL row too (task 58) -
+  // a rail row also carries no `sourceAccountId`. This answer is compared
+  // against account IDS by its caller, so a per-source or per-rail override
+  // would attach an account to the guarded set the caller never asked about.
+  // None of the roles it is called with is scopable today (§4), so this is a
+  // statement of intent as much as a filter.
+  const live = rows.filter(
+    (row) =>
+      wanted.includes(row.role) &&
+      !row.markedUnused &&
+      row.sourceAccountId == null &&
+      row.paymentGatewayId == null
+  )
   const accounts = await loadAccounts(
     db,
     organizationId,

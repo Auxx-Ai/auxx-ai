@@ -263,7 +263,7 @@ export interface GatewayRoute {
  * 🛑 **Closed rows are included on purpose.** Authorize.Net is closed as of
  * May 2026 but its orders are still in the ledger; excluding a closed
  * gateway's route would silently fall the fulfillment debit fork back to its
- * `clearing_card` default the moment somebody marks the rail closed, which is
+ * `clearing` default the moment somebody marks the rail closed, which is
  * a posting change disguised as a settings edit. `active` rides along on the
  * route so a caller that wants to treat closed differently (a report, a
  * warning) can, without a second query.
@@ -284,7 +284,7 @@ export function toGatewayRoutes(rows: readonly PaymentGatewayRow[]): GatewayRout
  * a sale and its refund in different accounts - which balances, and is
  * therefore undetectable downstream. `build-fulfillment-batch-entry.ts`
  * (the sale) and `money/credit-memos/writes.ts` (the refund) are the two
- * callers; they used to be a private copy and a hardcoded `clearing_card`
+ * callers; they used to be a private copy and a hardcoded `clearing`
  * respectively.
  *
  * Both sides are normalised with {@link normaliseGatewayHandle}, so `'Affirm'`,
@@ -296,7 +296,7 @@ export function toGatewayRoutes(rows: readonly PaymentGatewayRow[]): GatewayRout
  * - **more than one match.** Two routes claiming one handle is a state the
  *   record's own write path should never allow, and guessing which is right
  *   would put real money in one of two accounts. Refusing to choose leaves it
- *   in `clearing_card`, where a wrong answer fails to reconcile visibly.
+ *   in `clearing`, where a wrong answer fails to reconcile visibly.
  *
  * ⚠️ A CLOSED route still matches. Its past orders are still in the ledger and
  * must keep reconciling; treating `active: false` as absent would silently move

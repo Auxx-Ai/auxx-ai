@@ -48,7 +48,7 @@ export interface RailHandle {
  *
  * `split` is the interesting one and it is what §8 item 2's merge exists for:
  * `authorize_net` claimed by a record while `authorize.net` is not is ONE rail
- * whose second spelling is silently falling back to `clearing_card`.
+ * whose second spelling is silently falling back to `clearing`.
  */
 export type RailGroupState = 'routed' | 'split' | 'unrouted'
 

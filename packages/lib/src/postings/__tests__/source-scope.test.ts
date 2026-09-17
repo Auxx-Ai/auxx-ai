@@ -97,9 +97,9 @@ describe('listRoleSources - the axis comes from the evidence', () => {
     expect(rows).toEqual([expect.objectContaining({ id: SHOPIFY.id, axes: ['store'] })])
   })
 
-  it('reads a source with settlement evidence as a PROCESSOR', async () => {
+  it('reads a source with settlement evidence as a RAIL', async () => {
     const rows = await listRoleSources(stubDb({ accounts: [STRIPE], balanceIds: [STRIPE.id] }), ORG)
-    expect(rows).toEqual([expect.objectContaining({ id: STRIPE.id, axes: ['processor'] })])
+    expect(rows).toEqual([expect.objectContaining({ id: STRIPE.id, axes: ['rail'] })])
   })
 
   it('counts a payout as settlement evidence too', async () => {
@@ -107,18 +107,19 @@ describe('listRoleSources - the axis comes from the evidence', () => {
       stubDb({ accounts: [STRIPE], transferIds: [STRIPE.id] }),
       ORG
     )
-    expect(rows[0]?.axes).toEqual(['processor'])
+    expect(rows[0]?.axes).toEqual(['rail'])
   })
 
   // 🛑 Shopify Payments. The one row is both a storefront and a merchant
-  // account, and it has to appear under both - a revenue role AND the fee role
-  // may legitimately name it.
+  // account, and it has to appear under both - task 58 stopped the fee role
+  // reading this tag (it reads `paymentGatewayId` now), but a revenue role
+  // still may, and the settings screens that show this evidence still want it.
   it('reads a source with both kinds of evidence as BOTH', async () => {
     const rows = await listRoleSources(
       stubDb({ accounts: [SHOPIFY], storeIds: [SHOPIFY.id], balanceIds: [SHOPIFY.id] }),
       ORG
     )
-    expect(rows[0]?.axes).toEqual(['store', 'processor'])
+    expect(rows[0]?.axes).toEqual(['store', 'rail'])
   })
 
   // 🛑 The regression this filter exists for. `FinancialSourceObject` holds BOTH

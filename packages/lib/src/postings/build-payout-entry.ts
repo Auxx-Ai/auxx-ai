@@ -10,7 +10,7 @@
  *   Dr <the settlement's own bank account>   the whole deposit that reached the bank
  *   Dr <the gateway's fee account, or payment_processing_fees>
  *                                            fees withheld on the RECOGNISED charges
- *       Cr <the gateway's clearing account, or clearing_card>   RECOGNISED gross
+ *       Cr <the gateway's clearing account, or clearing>   RECOGNISED gross
  *       Cr unidentified_receipts                   the unrecognised remainder, net
  * ```
  *
@@ -26,7 +26,7 @@
  *
  * The bank-account leg below was the precedent and the other two followed it on
  * 2026-09-14. A fulfillment debits the gateway record's clearing account BY ID
- * (`resolveFulfillmentDebit`), so a payout crediting the `clearing_card` ROLE
+ * (`resolveFulfillmentDebit`), so a payout crediting the `clearing` ROLE
  * relieves a different account the moment any rail is routed to its own: both
  * accounts drift forever, in balanced entries nothing complains about. So
  * {@link BuildPayoutEntryInput.clearingGlAccountId} and
@@ -55,7 +55,7 @@
  * A gateway payout settles EVERY charge the merchant took, including charges
  * taken outside auxx - a payment link sent from the Stripe dashboard, a
  * subscription on the same account, a terminal. Those were never debited to
- * `clearing_card`, so crediting the payout's full gross to clearing drives that
+ * `clearing`, so crediting the payout's full gross to clearing drives that
  * account permanently negative by the amount auxx never took. Relieving only
  * the recognised part and debiting the bank account to match would keep
  * clearing right and break the bank instead: the bank feed shows ONE deposit
@@ -122,7 +122,7 @@ import type { BuiltEntry, GlPostingLineInput, PostingReason } from './types'
 export const PAYOUT_SOURCE_TYPE = 'payout'
 
 /**
- * The clearing roles a payout may drain. `clearing_card`, and only ever that.
+ * The clearing roles a payout may drain. `clearing`, and only ever that.
  *
  * 🛑 **Every non-card rail is excluded BY CONSTRUCTION, not by omission.** An
  * Affirm settlement never lands on the card rail, so it is invisible to the
@@ -136,7 +136,7 @@ export const PAYOUT_SOURCE_TYPE = 'payout'
  * `payment_gateway` record whose clearing account the fulfillment entry debits
  * by id (`clearing_affirm` was deleted on 2026-09-10). So the exclusion is now
  * structural rather than a name left off a list: an id-routed debit is not
- * `clearing_card`, and `clearing_card` is the only thing here. Each such rail
+ * `clearing`, and `clearing` is the only thing here. Each such rail
  * clears when a settlement feed for it exists, through its own entry.
  *
  * ⚠️ Since brief 26 §3 this is the FALLBACK guard, not the vocabulary. A caller
@@ -147,7 +147,7 @@ export const PAYOUT_SOURCE_TYPE = 'payout'
  * way, because a caller that names a nonsense role is wrong about something
  * whether or not it also passed an id.
  */
-export const PAYOUT_CLEARING_ROLES: readonly AccountRole[] = [ACCOUNT_ROLES.CLEARING_CARD]
+export const PAYOUT_CLEARING_ROLES: readonly AccountRole[] = [ACCOUNT_ROLES.CLEARING]
 
 export interface BuildPayoutEntryInput {
   /** The gateway's own payout id. Every line's `sourceId`. */
@@ -212,7 +212,7 @@ export interface BuildPayoutEntryInput {
    *
    * 🔑 **This is what makes the debit and the credit meet.** A fulfillment
    * debits the gateway record's clearing account BY ID
-   * (`resolveFulfillmentDebit`), so a payout crediting the `clearing_card` ROLE
+   * (`resolveFulfillmentDebit`), so a payout crediting the `clearing` ROLE
    * relieves a different account the moment any rail is routed to its own - and
    * both accounts then drift forever, in balanced entries nothing complains
    * about.

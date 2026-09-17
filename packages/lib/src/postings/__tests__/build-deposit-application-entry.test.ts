@@ -46,7 +46,7 @@ describe('the reclass', () => {
 
   it('moves no cash: neither leg touches an account money passes through', () => {
     const built = buildDepositApplicationEntry(BASE)
-    for (const role of [ACCOUNT_ROLES.UNDEPOSITED_FUNDS, ACCOUNT_ROLES.CLEARING_CARD]) {
+    for (const role of [ACCOUNT_ROLES.UNDEPOSITED_FUNDS, ACCOUNT_ROLES.CLEARING]) {
       expect(line(built.entry, role)).toBeUndefined()
     }
   })

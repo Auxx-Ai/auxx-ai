@@ -88,7 +88,7 @@ async function seedChart() {
   if (!definition) throw new Error('fixture GL definition missing')
   const roleTypes = {
     accounts_receivable: 'asset',
-    clearing_card: 'asset',
+    clearing: 'asset',
     revenue_returns_allowances: 'revenue',
     customer_deposits: 'liability',
     sales_tax_payable: 'liability',
@@ -279,7 +279,7 @@ async function seedAcceptedReceiptSource(orderInstanceId = fixture.orderId) {
     route: {
       paymentRouteId: 'payment-route-source',
       processorAccountId: 'processor-source',
-      glAccountId: fixture.accounts.get('clearing_card')!,
+      glAccountId: fixture.accounts.get('clearing')!,
       reason: 'fixture',
     },
     applications: [
@@ -319,8 +319,8 @@ async function seedAcceptedReceiptSource(orderInstanceId = fixture.orderId) {
     accountResolution: [
       {
         lineKey: 'line:ar',
-        glAccountId: fixture.accounts.get('clearing_card')!,
-        accountRole: 'clearing_card',
+        glAccountId: fixture.accounts.get('clearing')!,
+        accountRole: 'clearing',
         selectedBy: 'route' as const,
         configurationHash: 'f'.repeat(64),
       },
@@ -342,7 +342,7 @@ async function seedAcceptedReceiptSource(orderInstanceId = fixture.orderId) {
     contribution: [
       {
         lineKey: 'line:ar',
-        glAccountId: fixture.accounts.get('clearing_card')!,
+        glAccountId: fixture.accounts.get('clearing')!,
         direction: 'debit' as const,
         amountMinor: '1100',
         counterpartyType: null,

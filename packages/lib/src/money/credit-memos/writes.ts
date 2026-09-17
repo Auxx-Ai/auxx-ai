@@ -517,7 +517,7 @@ export async function resolveIssue(
   //
   // 🛑 It must come out of the account the SALE debited. A `payment_gateway`
   // record routes a non-card rail to its own clearing account by id, so an
-  // Affirm sale debits `1210` while `clearing_card` is `1200`; crediting the
+  // Affirm sale debits `1210` while `clearing` is `1200`; crediting the
   // role here would leave `1210` overstated forever in an entry that balances.
   // Same matcher the fulfillment debit fork uses, so the two cannot drift.
   const settlement: CreditMemoSettlementLeg | undefined =
@@ -549,7 +549,7 @@ export async function resolveIssue(
 
 /**
  * Where a channel refund comes back out of: a `payment_gateway` record's own
- * clearing account, or `clearing_card`.
+ * clearing account, or `clearing`.
  *
  * The mirror of `resolveFulfillmentDebit`'s gateway branch, and deliberately
  * only that branch - a refund asks "which account did this order's money land
@@ -558,7 +558,7 @@ export async function resolveIssue(
  * resolve two ways.
  *
  * Falls back to the role on every uncertainty - no order, no gateway, no
- * matching record, two records claiming one handle - because `clearing_card` is
+ * matching record, two records claiming one handle - because `clearing` is
  * where a wrong answer fails to reconcile visibly rather than quietly.
  *
  * ⚠️ An order with TWO gateways takes the role too. The fulfillment fork
@@ -582,8 +582,8 @@ export async function resolveSettlementAccount(
   organizationId: string,
   orderInstanceId: string | null,
   routes?: readonly GatewayRoute[]
-): Promise<{ role: 'clearing_card' } | { glAccountId: string }> {
-  const fallback = { role: 'clearing_card' } as const
+): Promise<{ role: 'clearing' } | { glAccountId: string }> {
+  const fallback = { role: 'clearing' } as const
   if (!orderInstanceId) return fallback
 
   const gateways = await readOrderGateways(db, organizationId, orderInstanceId)

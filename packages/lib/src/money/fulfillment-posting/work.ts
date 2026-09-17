@@ -80,7 +80,7 @@ export function singleShipmentGroup(shipment: PlannedShipment): FulfillmentPosti
     totals: {
       ...amounts,
       byDebitRole: {
-        clearing_card: amounts.debitRole === 'clearing_card' ? amounts.totalMinor : 0,
+        clearing: amounts.debitRole === 'clearing' ? amounts.totalMinor : 0,
         accounts_receivable:
           amounts.debitRole === 'accounts_receivable'
             ? (amounts.receivableDebitMinor ?? amounts.totalMinor)

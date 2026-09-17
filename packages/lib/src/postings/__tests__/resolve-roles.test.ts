@@ -37,7 +37,7 @@ vi.mock('../../cache', () => ({
   }),
 }))
 
-import { CHART_PACKS, packForRole } from '../default-chart'
+import { CHART_PACKS, type ChartPackKey, packForRole } from '../default-chart'
 import { loadRoleAccountCodes, resolveAccountLines, resolveRoles } from '../resolve-roles'
 import type { GlPostingLineInput } from '../types'
 
@@ -212,7 +212,9 @@ describe('resolveRoles - the five refusals, each with its own message', () => {
     // The refusal names the role's label and the pack that would provision
     // it, so the person reading it knows what to add and where.
     expect(error.message).toContain('(Goods Received Not Invoiced)')
-    expect(error.message).toContain(CHART_PACKS[packForRole('grni')].label)
+    // `grni` is seeded, so it always has a pack - `packForRole` is only ever
+    // null for a role in `ROLES_WITHOUT_DEFAULT` (task 58 §3 rule 3).
+    expect(error.message).toContain(CHART_PACKS[packForRole('grni') as ChartPackKey].label)
     expect(error.message).toMatch(/Accounting > Settings > Accounts > Roles/)
   })
 

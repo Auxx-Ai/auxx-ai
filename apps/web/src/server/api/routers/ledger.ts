@@ -848,7 +848,7 @@ export const ledgerRouter = createTRPCRouter({
       const chart = await seedChartPacks(ctx.db, organizationId, glAccountDefId, input.packs)
 
       // Task 13 §5.3: the one default `payment_gateway` record. Runs AFTER the
-      // chart on purpose - the clearing account it points at (`clearing_card`)
+      // chart on purpose - the clearing account it points at (`clearing`)
       // only exists once the chart above has just created or confirmed it.
       // Brief 16 §1.5 ties it to the `card_rail` pack; gated on the WALKED
       // packs, not the requested ones, so `requires` expansion is honoured

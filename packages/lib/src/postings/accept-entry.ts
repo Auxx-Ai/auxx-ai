@@ -243,10 +243,14 @@ function assertExactContributions(
 function effectRoleScope(basis: ReadyBasis): RoleSourceScope {
   const calculation = (basis as { calculation?: Record<string, unknown> }).calculation ?? {}
   const store = calculation.sourceStoreId
-  const processor = calculation.processorAccountId
+  // ⚠️ Still `calculation.processorAccountId` - a `FinancialSourceAccount` id,
+  // not yet the `payment_gateway` id `RoleSourceScope.rail` names (task 58
+  // §5.2/§5.6, U3/U6). Renamed here only so the shape matches; it will not
+  // match a live gateway until those units carry the real id.
+  const rail = calculation.processorAccountId
   return {
     ...(store === undefined ? {} : { store: (store as string | null) ?? null }),
-    ...(typeof processor === 'string' ? { processor } : {}),
+    ...(typeof rail === 'string' ? { rail } : {}),
   }
 }
 

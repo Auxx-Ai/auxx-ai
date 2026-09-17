@@ -11,9 +11,7 @@ import {
 
 /**
  * Every registry attribute that LOOKS like a pointer at a `gl_account`: a TEXT
- * field whose name ends in `_gl_account`, plus the two `payment_gateway`
- * account fields, which are named for their ROLE on the gateway rather than for
- * what they point at.
+ * field whose name ends in `_gl_account`.
  *
  * 🛑 Deliberately not "anything ending in `_account`" - that sweeps in
  * `*_bank_account`, which names a `bank_account` instance. Those are a
@@ -27,11 +25,7 @@ function registryPointerAttributes(): string[] {
       const attribute = field?.systemAttribute
       if (!attribute) continue
       if (field.fieldType !== 'TEXT') continue
-      const isGlPointer = attribute.endsWith('_gl_account')
-      const isGatewayAccount =
-        attribute === 'payment_gateway_clearing_account' ||
-        attribute === 'payment_gateway_fee_account'
-      if (isGlPointer || isGatewayAccount) found.add(attribute)
+      if (attribute.endsWith('_gl_account')) found.add(attribute)
     }
   }
   return [...found].sort()
@@ -66,10 +60,13 @@ describe('GL_ACCOUNT_POINTER_ATTRIBUTES', () => {
     expect(keys).not.toContain('bank_transaction_bank_account')
   })
 
-  it('includes the two payment_gateway accounts, which brief 13 §5.3 added', () => {
-    expect(Object.keys(GL_ACCOUNT_POINTER_ATTRIBUTES)).toEqual(
-      expect.arrayContaining(['payment_gateway_clearing_account', 'payment_gateway_fee_account'])
-    )
+  // Task 58 moved a rail's clearing and fee accounts onto `GlRoleAssignment`,
+  // which `resolveRoles` already refuses over. Re-adding them here would sweep
+  // fields the registry no longer declares.
+  it('no longer carries the payment_gateway accounts, which task 58 retired', () => {
+    const keys = Object.keys(GL_ACCOUNT_POINTER_ATTRIBUTES)
+    expect(keys).not.toContain('payment_gateway_clearing_account')
+    expect(keys).not.toContain('payment_gateway_fee_account')
   })
 })
 
@@ -104,17 +101,17 @@ describe('findGlAccountPointers', () => {
   it('maps a row onto its human label', async () => {
     const { db } = stubDb([
       {
-        attribute: 'payment_gateway_clearing_account',
-        entityId: 'pg_1',
-        glAccountId: 'acct_1210',
+        attribute: 'bank_account_gl_account',
+        entityId: 'ba_1',
+        glAccountId: 'acct_1010',
       },
     ])
-    expect(await findGlAccountPointers(db, 'org-1', ['acct_1210'])).toEqual([
+    expect(await findGlAccountPointers(db, 'org-1', ['acct_1010'])).toEqual([
       {
-        attribute: 'payment_gateway_clearing_account',
-        label: 'a payment gateway (clearing account)',
-        entityId: 'pg_1',
-        glAccountId: 'acct_1210',
+        attribute: 'bank_account_gl_account',
+        label: 'a bank account',
+        entityId: 'ba_1',
+        glAccountId: 'acct_1010',
       },
     ])
   })

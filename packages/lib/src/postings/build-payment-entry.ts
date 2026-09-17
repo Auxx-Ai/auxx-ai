@@ -6,13 +6,13 @@
  * PURE. No database, no clock, no chart.
  *
  * ```
- *   charge:   Dr undeposited_funds | cash | clearing_card     amount
+ *   charge:   Dr undeposited_funds | cash | clearing     amount
  *                 Cr accounts_receivable                             allocated
  *                 Cr customer_deposits                               the rest
  *
  *   refund:   Dr accounts_receivable                             allocated
  *             Dr customer_deposits                               the rest
- *                 Cr undeposited_funds | cash | clearing_card     amount
+ *                 Cr undeposited_funds | cash | clearing     amount
  * ```
  *
  * ## 🛑 The credit side SPLITS, and that split is the accounting
@@ -68,7 +68,7 @@
  *    the one that knows what it is posting. See
  *    {@link BuildPaymentEntryInput.postingType}.
  * 2. **Which clearing account.** A `PaymentRoute` is a payment METHOD, and
- *    `'clearing'` maps to `clearing_card` (`1200`) - the only clearing ROLE
+ *    `'clearing'` maps to `clearing` (`1200`) - the only clearing ROLE
  *    there is. ⚠️ It cannot reach a non-card rail, because a method does not say
  *    which gateway took the money, and a non-card rail has no role to reach:
  *    it is a `payment_gateway` record carrying its own clearing account
@@ -108,7 +108,7 @@ export const PAYMENT_SOURCE_TYPE = 'payment_transaction'
  *
  * A bank account is not a role (brief 13 §2.4) - an org has several, and the
  * `cash` route is the one place a payment names one directly rather than
- * through a function like `clearing_card`.
+ * through a function like `clearing`.
  */
 export type PaymentRouteAccount = { kind: 'role'; role: AccountRole } | { kind: 'bank_account' }
 
@@ -126,7 +126,7 @@ export const PAYMENT_ROUTE_ROLE: Record<PaymentRoute, PaymentRouteAccount> = {
   // {@link BuildPaymentEntryInput.bankAccountGlAccountId} - see the file header.
   cash: { kind: 'bank_account' },
   // One clearing role exists today. See the file header on `1210 Affirm Clearing`.
-  clearing: { kind: 'role', role: ACCOUNT_ROLES.CLEARING_CARD },
+  clearing: { kind: 'role', role: ACCOUNT_ROLES.CLEARING },
 }
 
 /** The `PaymentTransaction` fields an entry is built from. Nothing else is read. */
@@ -321,7 +321,7 @@ export function buildPaymentEntry(input: BuildPaymentEntryInput): BuiltPaymentEn
   const receivableMinor = allocatedMinor
   const depositMinor = amountMinor - allocatedMinor
 
-  // Never on the route leg (`undeposited_funds` | `cash` | `clearing_card`) -
+  // Never on the route leg (`undeposited_funds` | `cash` | `clearing`) -
   // only the two per-customer legs below carry it (brief 13 §1.2).
   const counterparty = contactInstanceId
     ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }

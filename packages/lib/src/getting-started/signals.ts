@@ -9,7 +9,7 @@
 // Reads come from the per-org cache; only limit-1 DB lookups touch the database directly.
 
 import { database, schema } from '@auxx/database'
-import { and, eq, isNotNull, isNull } from 'drizzle-orm'
+import { and, eq, isNotNull } from 'drizzle-orm'
 import {
   getAllCachedCustomFields,
   getCachedAgents,
@@ -20,6 +20,7 @@ import {
 import { listObservedGatewayHandles } from '../payment-gateways'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../postings/provider'
 import { ENABLED_POSTING_TYPES, INVENTORY_ROLES_BY_POSTING_TYPE } from '../postings/regime'
+import { readRoleAssignments } from '../postings/role-assignments'
 import { resolveSetupReadiness } from '../postings/setup-readiness'
 import type { ChecklistId, GoalKey } from './client'
 import type { GettingStartedContext } from './types'
@@ -235,21 +236,17 @@ async function hasRequiredRoleAssignments(ctx: GettingStartedContext): Promise<b
   if (required.size === 0) return true
 
   const db = ctx.db ?? database
-  const rows = await db
-    .select({ role: schema.GlRoleAssignment.role })
-    .from(schema.GlRoleAssignment)
-    .where(
-      and(
-        eq(schema.GlRoleAssignment.organizationId, ctx.organizationId),
-        // 🛑 The ORG DEFAULT only (task 47). "Has this role been mapped" is a
-        // question about the account every unscoped source falls back to; an
-        // override for one store is not a substitute for it, and counting one
-        // would light this checklist row green on a half-finished setup.
-        isNull(schema.GlRoleAssignment.sourceAccountId)
-      )
-    )
-
-  const assigned = new Set(rows.map((r) => r.role))
+  const rows = await readRoleAssignments(db, ctx.organizationId)
+  // 🛑 The ORG DEFAULT only (task 47, and task 58's rail rows, which also
+  // carry no `sourceAccountId`). "Has this role been mapped" is a question
+  // about the account every unscoped source falls back to; a per-store or
+  // per-rail override is not a substitute for it, and counting one would
+  // light this checklist row green on a half-finished setup.
+  const assigned = new Set(
+    rows
+      .filter((row) => row.sourceAccountId == null && row.paymentGatewayId == null)
+      .map((r) => r.role)
+  )
   for (const role of required) if (!assigned.has(role)) return false
   return true
 }
@@ -268,7 +265,7 @@ async function hasRequiredRoleAssignments(ctx: GettingStartedContext): Promise<b
  * already drops `manual` and `bogus`, which are unroutable by design.
  *
  * An unrouted handle still posts - `resolveFulfillmentDebit` falls back to
- * `clearing_card` - so this goal is a nudge, never a gate. That is exactly the
+ * `clearing` - so this goal is a nudge, never a gate. That is exactly the
  * failure it exists to surface: the fallback is silent, and this list is one of
  * the two places that says so out loud.
  */

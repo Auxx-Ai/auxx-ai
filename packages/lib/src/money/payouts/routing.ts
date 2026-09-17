@@ -61,7 +61,7 @@ export type ResolvedPayoutGateway =
  *   the role rather than posting to `''`; `assertClearingAccount` makes that
  *   unreachable from the write path, it is reachable from a hand-edited row.
  * - **`rail` null, nothing conflicting.** The role fallback: the builder uses
- *   `clearing_card` and `payment_processing_fees`, which is precisely what
+ *   `clearing` and `payment_processing_fees`, which is precisely what
  *   every org did before brief 26. Only the Stripe source produces this.
  * - **`conflictingRails`.** 🛑 A REFUSAL, stamped as `payout_blocked_reason`
  *   the same way an unresolvable destination is. Never a silent fall back to

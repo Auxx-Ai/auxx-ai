@@ -100,7 +100,7 @@ export const fulfillmentAccountingBasisSchema = z
     debitRoute: z.discriminatedUnion('kind', [
       z.strictObject({
         kind: z.literal('role'),
-        role: z.enum(['clearing_card', 'accounts_receivable']),
+        role: z.enum(['clearing', 'accounts_receivable']),
         reason: id,
       }),
       z.strictObject({ kind: z.literal('account'), glAccountId: id, reason: id }),

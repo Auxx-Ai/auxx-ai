@@ -196,7 +196,7 @@ describe('authoritative fulfillment source capture', () => {
     )
     expect(imported.basis.calculation.debitRoute).toMatchObject({
       kind: 'role',
-      role: 'clearing_card',
+      role: 'clearing',
     })
     await db()
       .update(schema.EntityInstance)
@@ -306,11 +306,7 @@ async function configureAccounting() {
       },
     ])
     .returning()
-  for (const [index, role] of [
-    'clearing_card',
-    'revenue_product',
-    'accounts_receivable',
-  ].entries()) {
+  for (const [index, role] of ['clearing', 'revenue_product', 'accounts_receivable'].entries()) {
     const [account] = await db()
       .insert(schema.EntityInstance)
       .values({ organizationId, entityDefinitionId: definition!.id, updatedAt: new Date() })

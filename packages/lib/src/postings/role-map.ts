@@ -46,12 +46,15 @@ import { and, count, eq, isNotNull, isNull } from 'drizzle-orm'
 import { PgTransaction } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError, NotFoundError, UnprocessableEntityError } from '../errors'
+import { getPaymentGateway } from '../payment-gateways/reads'
 import { accountLabel, compareAccountsByCodeThenName } from './account-label'
 import { withAccountingCommitLock } from './accounting-commit-lock'
 import {
   ACCOUNT_ROLES,
   type AccountRole,
+  ROLE_ACCOUNT_SUBTYPES,
   ROLE_ACCOUNT_TYPES,
+  ROLES_WITHOUT_DEFAULT,
   roleScopeAxis,
   type ScopeAxis,
 } from './build-entry'
@@ -61,6 +64,7 @@ import {
   loadChartAccountsById as readChartAccountsById,
   readChartAccountValues,
 } from './chart-accounts'
+import { readRoleAssignments } from './role-assignments'
 import { listRoleSources, type RoleSourceRow } from './source-scope'
 import type {
   ChartAccountRow,
@@ -129,25 +133,25 @@ export async function listRoleMap(
   organizationId: string
 ): Promise<Result<RoleAssignmentRow[], Error>> {
   try {
-    const assignments = await db
-      .select({
-        role: schema.GlRoleAssignment.role,
-        glAccountId: schema.GlRoleAssignment.glAccountId,
-        source: schema.GlRoleAssignment.source,
-        confirmedAt: schema.GlRoleAssignment.confirmedAt,
-        markedUnused: schema.GlRoleAssignment.markedUnused,
-        sourceAccountId: schema.GlRoleAssignment.sourceAccountId,
-      })
-      .from(schema.GlRoleAssignment)
-      .where(eq(schema.GlRoleAssignment.organizationId, organizationId))
+    const assignments = await readRoleAssignments(db, organizationId)
 
     // The org DEFAULT per role, and the per-source overrides beside it. Both
     // come out of the one query - the same partition `resolveRoles` makes, so
     // the screen and the resolver cannot disagree about which row is which.
     // `== null` catches BOTH null and undefined - see `resolve-roles.ts` on why
     // "absent" has to read as the org default however the driver spells it.
+    //
+    // 🛑 `paymentGatewayId == null` too. A rail row (task 58) also carries
+    // `sourceAccountId: null`, and without this a role with both an org
+    // default and a rail override would collide on this Map's key - two DB
+    // rows are legal (different partial unique indexes), one Map slot is not.
+    // Rail rows are dropped here rather than shown as overrides: this read
+    // does not understand the rail axis yet (U1c, U8), so silence is the
+    // honest answer until it does.
     const byRole = new Map(
-      assignments.filter((row) => row.sourceAccountId == null).map((row) => [row.role, row])
+      assignments
+        .filter((row) => row.sourceAccountId == null && row.paymentGatewayId == null)
+        .map((row) => [row.role, row])
     )
     const overridesByRole = new Map<string, typeof assignments>()
     for (const row of assignments) {
@@ -387,7 +391,7 @@ export async function listChartAccountUsage(
 // Writes
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** What one role-map edit is asking for. Exactly one of the three modes below. */
+/** What one role-map edit is asking for. Exactly one of the four modes below. */
 export interface SetRoleAssignmentOptions {
   organizationId: string
   /** An `ACCOUNT_ROLES` value. Anything else is a `BadRequestError`. */
@@ -406,12 +410,27 @@ export interface SetRoleAssignmentOptions {
    * 🛑 Refused on a role outside `SCOPABLE_ROLES`, naming the role. The
    * vocabulary of what may be scoped is as closed as the role vocabulary itself,
    * and for the same reason: a scope only means something if the posting path
-   * reads that axis.
+   * reads that axis. Exclusive with {@link paymentGatewayId} - `GlRoleAssignment
+   * _scope_exclusive_check` refuses both at once (task 58 §3 rule 1).
    */
   sourceAccountId?: string | null
   /**
-   * Drop this source's override and go back to the org default ("Use the
-   * default account"). Requires {@link sourceAccountId}.
+   * Scope this edit to ONE payment rail instead of the org default (task 58 §3).
+   *
+   * A `payment_gateway` EntityInstance id, live and this org's. Refused on a
+   * role whose `SCOPABLE_ROLES` axis is not `'rail'` - `clearing`, `bank` and
+   * `payment_processing_fees` today. Exclusive with {@link sourceAccountId}.
+   */
+  paymentGatewayId?: string | null
+  /**
+   * Further scope a {@link paymentGatewayId} row to one settlement currency.
+   * Requires {@link paymentGatewayId} and a three-letter code - both are the
+   * `GlRoleAssignment` CHECK constraints named on the column.
+   */
+  currency?: string | null
+  /**
+   * Drop this scope's override and go back to what it falls back to ("Use the
+   * default account"). Requires {@link sourceAccountId} or {@link paymentGatewayId}.
    *
    * ⚠️ A DELETE, not a write of the default's account id. Inheriting is the
    * absence of a row, so an override copied from the default would silently stop
@@ -424,42 +443,61 @@ export interface SetRoleAssignmentOptions {
 
 /**
  * Point one role at one account, or mark it unused - upserting the single row
- * the `(organizationId, role)` unique index permits.
+ * one of three unique indexes permits.
  *
- * Three modes, and the arguments pick exactly one:
+ * Modes, and the arguments pick exactly one:
  *
  * | Call | Effect |
  * | --- | --- |
- * | `{ role, glAccountId }` | map it: `source: 'human'`, `confirmedAt: now`, `confirmedByUserId`, `markedUnused: false` |
+ * | `{ role, glAccountId }` | map the org default: `source: 'human'`, `confirmedAt: now`, `confirmedByUserId`, `markedUnused: false` |
  * | `{ role, markedUnused: true }` | mark it unused, keeping the account it already names |
  * | `{ role, markedUnused: false }` | clear the unused mark, restoring whatever it was before |
+ * | `{ role, sourceAccountId, glAccountId }` | map that connection's override (store axis) |
+ * | `{ role, paymentGatewayId, currency?, glAccountId }` | map that rail's override (rail axis, task 58 §3) |
  *
  * `glAccountId` together with `markedUnused: true` is a contradiction - "use
  * this account" and "we do not use this role" - and is refused rather than
- * silently resolved in one direction.
+ * silently resolved in one direction. `sourceAccountId` and `paymentGatewayId`
+ * together is the same kind of contradiction one scope over - two answers to
+ * "which scope" - and `GlRoleAssignment_scope_exclusive_check` is the same
+ * refusal one layer down if this one is ever bypassed.
  *
  * ## What is validated before anything is written
  *
  * - the role is in `ACCOUNT_ROLES` (`BadRequestError`). The vocabulary is CLOSED:
  *   an org may renumber, rename or replace the ACCOUNT behind a role, it may not
  *   invent a role, because a role only means something if a builder emits it.
+ * - `sourceAccountId` and `paymentGatewayId` are not both given (`BadRequestError`)
+ * - `currency` is not given without `paymentGatewayId`, and matches `^[A-Z]{3}$`
+ *   when it is given (`BadRequestError`) - the same two CHECK constraints named
+ *   on the column
+ * - a `paymentGatewayId` names a role whose `SCOPABLE_ROLES` axis is `'rail'`,
+ *   and a `sourceAccountId` one whose axis is `'store'` (`BadRequestError`,
+ *   naming the role and the scope it should have used instead)
+ * - `bank` (any role in `ROLES_WITHOUT_DEFAULT`) is never written with no scope
+ *   at all - it has no org-wide answer (`BadRequestError`, task 58 §3 rule 3)
  * - the account exists in THIS org and is not archived (`UnprocessableEntityError`)
  * - the account is active (`UnprocessableEntityError`)
  * - the account's `accountType` matches `ROLE_ACCOUNT_TYPES[role]`
  *   (`UnprocessableEntityError`, naming the role, the account and both types)
+ * - the account's `subtype` matches `ROLE_ACCOUNT_SUBTYPES[role]`, for the two
+ *   roles that pin one (`UnprocessableEntityError`, task 58 §3 rule 4)
  *
- * The last one is the one that matters. `resolveRoles` performs the identical
- * check at post time off the identical table, and if this write did not, the
- * first anyone would learn of the mismatch is a refused close. An entry posted
- * to the wrong KIND of account still balances, so there is no downstream reader
- * that could catch it.
+ * The type check is the one that matters most. `resolveRoles` performs the
+ * identical check at post time off the identical table, and if this write did
+ * not, the first anyone would learn of the mismatch is a refused close. An
+ * entry posted to the wrong KIND of account still balances, so there is no
+ * downstream reader that could catch it.
  *
  * 🛑 `source: 'human'` and a `confirmedAt` stamp are written only in the mapping
- * mode. Marking a role unused is not a confirmation of the account behind it,
+ * modes. Marking a role unused is not a confirmation of the account behind it,
  * and stamping one would erase the `G19` distinction the wizard renders -
  * "we chose this for you" versus "you chose this".
  *
- * @returns the role's row as {@link listRoleMap} would render it afterwards.
+ * @returns the role's row as {@link listRoleMap} would render it afterwards -
+ * except for a `paymentGatewayId` write, whose rail is not in that checklist
+ * yet (58 §6, U8). That write's own row is complete; it just cannot be shown
+ * beside the org default until then.
  */
 export async function setRoleAssignment(
   db: Database | Transaction,
@@ -479,6 +517,8 @@ async function setRoleAssignmentInTx(
   const glAccountId = options.glAccountId?.trim() || null
   const markedUnused = options.markedUnused
   const sourceAccountId = options.sourceAccountId?.trim() || null
+  const paymentGatewayId = options.paymentGatewayId?.trim() || null
+  const currency = options.currency?.trim() || null
 
   try {
     if (!isAccountRole(role)) {
@@ -492,6 +532,68 @@ async function setRoleAssignmentInTx(
       throw new BadRequestError(
         `Cannot both map '${role}' to an account and mark it unused. Send one or the other.`,
         { organizationId, role }
+      )
+    }
+
+    // 🛑 The three scope refusals below are checked before either scope branch
+    // runs, and before the role-specific ones: naming both scopes, or a
+    // currency with neither, is wrong regardless of which role or account is
+    // involved (`GlRoleAssignment_scope_exclusive_check` and
+    // `_currency_rail_check` one layer down).
+    if (sourceAccountId && paymentGatewayId) {
+      throw new BadRequestError(
+        `Cannot map '${role}' to a connection and a payment gateway at once. Send one or the other.`,
+        { organizationId, role }
+      )
+    }
+    if (currency && !paymentGatewayId) {
+      throw new BadRequestError(
+        `'${role}' cannot carry a currency without a payment gateway - currency only qualifies a rail.`,
+        { organizationId, role }
+      )
+    }
+    if (currency && !/^[A-Z]{3}$/.test(currency)) {
+      throw new BadRequestError(
+        `'${currency}' is not a three-letter currency code for '${role}'.`,
+        {
+          organizationId,
+          role,
+          currency,
+        }
+      )
+    }
+
+    if (paymentGatewayId) {
+      // 🛑 Every scoped refusal is checked BEFORE anything is written, and
+      // each names the role: a scope that only fails at a close fails on the
+      // night of the close, which is `setRoleAssignment`'s whole argument.
+      await assertScopableGateway(db, organizationId, role, paymentGatewayId)
+      if (markedUnused !== undefined) {
+        throw new BadRequestError(
+          `'${role}' can only be marked unused for the whole organization, not for one payment ` +
+            'gateway - that is a fact about the business, not about one rail.',
+          { organizationId, role }
+        )
+      }
+      if (options.useDefault) {
+        return ok(await clearGatewayRole(db, organizationId, role, paymentGatewayId, currency))
+      }
+      if (!glAccountId) {
+        throw new BadRequestError(
+          `Nothing to set for '${role}' on this payment gateway. Send an account, or useDefault.`,
+          { organizationId, role }
+        )
+      }
+      return ok(
+        await mapGatewayRole(
+          db,
+          organizationId,
+          role,
+          glAccountId,
+          actorUserId,
+          paymentGatewayId,
+          currency
+        )
       )
     }
 
@@ -523,12 +625,22 @@ async function setRoleAssignmentInTx(
 
     if (options.useDefault) {
       throw new BadRequestError(
-        `'${role}' has no connection to clear. useDefault needs the connection it applies to.`,
+        `'${role}' has no connection or payment gateway to clear. useDefault needs the scope it applies to.`,
         { organizationId, role }
       )
     }
 
     if (glAccountId) {
+      // §3 rule 3: `bank` (and anything else in `ROLES_WITHOUT_DEFAULT`) has no
+      // answer that holds for the whole org, so this is the one write that mode
+      // must always refuse, unscoped, before it ever reaches `mapRole`.
+      if ((ROLES_WITHOUT_DEFAULT as readonly string[]).includes(role)) {
+        throw new BadRequestError(
+          `'${role}' has no organization-wide default - map it to a payment gateway instead. ` +
+            'Send paymentGatewayId.',
+          { organizationId, role }
+        )
+      }
       return ok(await mapRole(db, organizationId, role, glAccountId, actorUserId))
     }
 
@@ -545,6 +657,63 @@ async function setRoleAssignmentInTx(
     logger.error('Failed to set a role assignment', { error, organizationId, role })
     return err(new AuxxError('Internal error'))
   }
+}
+
+/**
+ * Existence, active status, statement type and (for the two roles that pin
+ * one) subtype - every check a role-map write makes on the account it is
+ * about to name, shared by every write mode.
+ *
+ * The type and subtype checks are the ones that matter. `resolveRoles`
+ * performs the identical checks at post time off the identical table, and if
+ * this write did not, the first anyone would learn of the mismatch is a
+ * refused close. An entry posted to the wrong KIND of account still balances,
+ * so there is no downstream reader that could catch it.
+ */
+async function assertMappableAccount(
+  db: Database | Transaction,
+  organizationId: string,
+  role: AccountRole,
+  glAccountId: string
+): Promise<ChartAccountRow> {
+  const accounts = await loadChartAccountsById(db, organizationId, [glAccountId])
+  const account = accounts.get(glAccountId)
+
+  if (!account) {
+    throw new UnprocessableEntityError(
+      `Cannot map '${role}': account ${glAccountId} does not exist in this organization, or has been archived.`,
+      { organizationId, role, glAccountId }
+    )
+  }
+
+  if (!account.isActive) {
+    throw new UnprocessableEntityError(
+      `Cannot map '${role}' to ${accountLabel(account)}, which is not active. Reactivate the account or choose another.`,
+      { organizationId, role, glAccountId }
+    )
+  }
+
+  const expectedType = ROLE_ACCOUNT_TYPES[role]
+  if (account.accountType !== expectedType) {
+    throw new UnprocessableEntityError(
+      `'${role}' must be mapped to a ${expectedType} account, but ${accountLabel(account)} is a ${account.accountType} account.`,
+      { organizationId, role, glAccountId }
+    )
+  }
+
+  // §3 rule 4: a second, narrower pin beside the type, present for `bank` and
+  // `clearing` only. `ChartAccountRow.subtype` is already loaded above - no
+  // second chart read.
+  const expectedSubtype = ROLE_ACCOUNT_SUBTYPES[role]
+  if (expectedSubtype && account.subtype !== expectedSubtype) {
+    throw new UnprocessableEntityError(
+      `'${role}' must be mapped to a '${expectedSubtype}' account, but ${accountLabel(account)} is ` +
+        `${account.subtype ? `a '${account.subtype}' account` : 'not marked with a subtype'}.`,
+      { organizationId, role, glAccountId }
+    )
+  }
+
+  return account
 }
 
 /**
@@ -565,32 +734,7 @@ async function mapRole(
   sourceAccountId?: string,
   axis?: ScopeAxis
 ): Promise<RoleAssignmentRow> {
-  const accounts = await loadChartAccountsById(db, organizationId, [glAccountId])
-  const account = accounts.get(glAccountId)
-
-  if (!account) {
-    throw new UnprocessableEntityError(
-      `Cannot map '${role}': account ${glAccountId} does not exist in this organization, or has been archived.`,
-      { organizationId, role, glAccountId }
-    )
-  }
-
-  if (!account.isActive) {
-    throw new UnprocessableEntityError(
-      `Cannot map '${role}' to ${accountLabel(account)}, which is not active. Reactivate the account or choose another.`,
-      { organizationId, role, glAccountId }
-    )
-  }
-
-  // The same table `resolveRoles` checks, at the same strictness, one step
-  // earlier. See the JSDoc on `setRoleAssignment`.
-  const expectedType = ROLE_ACCOUNT_TYPES[role]
-  if (account.accountType !== expectedType) {
-    throw new UnprocessableEntityError(
-      `'${role}' must be mapped to a ${expectedType} account, but ${accountLabel(account)} is a ${account.accountType} account.`,
-      { organizationId, role, glAccountId }
-    )
-  }
+  const account = await assertMappableAccount(db, organizationId, role, glAccountId)
 
   const confirmedAt = new Date()
   const [written] = await db
@@ -632,7 +776,12 @@ async function mapRole(
           }
         : {
             target: [schema.GlRoleAssignment.organizationId, schema.GlRoleAssignment.role],
-            targetWhere: isNull(schema.GlRoleAssignment.sourceAccountId),
+            // ⚠️ Both halves, matching `GlRoleAssignment_org_role_default_key` after task
+            // 58 widened it. A predicate narrower than the index infers nothing (42P10).
+            targetWhere: and(
+              isNull(schema.GlRoleAssignment.sourceAccountId),
+              isNull(schema.GlRoleAssignment.paymentGatewayId)
+            ),
             set: {
               glAccountId,
               source: 'human',
@@ -739,21 +888,24 @@ async function readRoleOverrides(
 }
 
 /**
- * Validate a scoped edit before anything is written, and answer the role's axis.
+ * Validate a store-scoped edit before anything is written, and answer the
+ * role's axis. The rail equivalent is {@link assertScopableGateway}.
  *
- * Four refusals, each with its own sentence, because they send four different
- * people to four different places (task 47 §4, §7.4):
+ * Three refusals, each with its own sentence, because they send three
+ * different people to three different places (task 47 §4, §7.4; narrowed to
+ * the store axis by task 58 §3, which moved every rail role onto
+ * `paymentGatewayId` instead):
  *
  * | Condition | What the reader has to do about it |
  * | --- | --- |
- * | the role is not scopable | nothing - `accounts_receivable` is settled by cash, not by store |
- * | the source is not this org's, or is archived | pick a live connection |
- * | the source is not `live` | a test store's revenue must not reach the live account |
- * | the source does not carry the role's AXIS | 🛑 a revenue role pointed at a merchant account, or the fee role at a storefront |
+ * | the role is not scopable at all | nothing - `accounts_receivable` is settled by cash, not by store |
+ * | the role is scoped, but by rail | send `paymentGatewayId` instead |
+ * | the source is not this org's, is archived, or is not `live` | pick a live connection |
+ * | the source does not carry store evidence | 🛑 a revenue role pointed at a merchant account with no storefront behind it |
  *
  * The last is the one that matters, and it is why this returns the axis rather
- * than a boolean: a settings screen offers only the sources on a role's axis, but
- * that filter is a CONVENIENCE, and a write pairing a Stripe account with
+ * than a boolean: a settings screen offers only the sources on the store axis,
+ * but that filter is a CONVENIENCE, and a write pairing a Stripe account with
  * `revenue_product` has to be refused by the server that would otherwise store
  * it.
  */
@@ -767,8 +919,13 @@ async function assertScopableSource(
   if (!axis) {
     throw new BadRequestError(
       `'${role}' is answered once for the whole organization and cannot be set per connection. ` +
-        'Only product revenue, shipping revenue, returns and allowances, and payment processing ' +
-        'fees can differ by connection.',
+        'Only product revenue, shipping revenue and returns and allowances can differ by connection.',
+      { organizationId, role }
+    )
+  }
+  if (axis !== 'store') {
+    throw new BadRequestError(
+      `'${role}' is scoped by payment gateway, not by connection. Send paymentGatewayId instead.`,
       { organizationId, role }
     )
   }
@@ -784,12 +941,46 @@ async function assertScopableSource(
   }
   if (!source.axes.includes(axis)) {
     throw new UnprocessableEntityError(
-      axis === 'store'
-        ? `Cannot set '${role}' for ${source.name}: revenue belongs to the storefront that sold it, ` +
-            'and nothing has ever been sold through that connection.'
-        : `Cannot set '${role}' for ${source.name}: processing fees belong to the merchant account ` +
-            'the money settled through, and nothing has ever settled through that connection.',
+      `Cannot set '${role}' for ${source.name}: revenue belongs to the storefront that sold it, ` +
+        'and nothing has ever been sold through that connection.',
       { organizationId, role, sourceAccountId }
+    )
+  }
+  return axis
+}
+
+/**
+ * Validate a rail-scoped edit before anything is written - the rail mirror of
+ * {@link assertScopableSource}. Two refusals:
+ *
+ * | Condition | What the reader has to do about it |
+ * | --- | --- |
+ * | the role's axis is not `'rail'` | send `sourceAccountId`, or nothing at all, instead |
+ * | the gateway is not this org's, or is archived | pick a live payment gateway |
+ */
+async function assertScopableGateway(
+  db: Database | Transaction,
+  organizationId: string,
+  role: AccountRole,
+  paymentGatewayId: string
+): Promise<ScopeAxis> {
+  const axis = roleScopeAxis(role)
+  if (axis !== 'rail') {
+    throw new BadRequestError(
+      axis === 'store'
+        ? `'${role}' is scoped by connection, not by payment gateway. Send sourceAccountId instead.`
+        : `'${role}' is answered once for the whole organization and cannot be scoped to a payment gateway.`,
+      { organizationId, role }
+    )
+  }
+
+  const gateway = await getPaymentGateway(db, organizationId, paymentGatewayId)
+  if (gateway.isErr()) throw gateway.error
+  if (!gateway.value) {
+    throw new UnprocessableEntityError(
+      `Cannot set '${role}' for that payment gateway: it is not a live payment gateway of this ` +
+        'organization, or it has been removed.',
+      { organizationId, role, paymentGatewayId }
     )
   }
   return axis
@@ -823,6 +1014,125 @@ async function clearScopedRole(
       )
     )
   return readRoleRow(db, organizationId, role)
+}
+
+/**
+ * Point one role at one account for one rail (a payment gateway, optionally
+ * further scoped to a currency) - the rail mirror of {@link mapRole}.
+ *
+ * Explicit select-then-write rather than `onConflictDoUpdate`:
+ * `GlRoleAssignment_org_role_rail_key` keys on `coalesce(currency, '')`, and
+ * Drizzle's upsert target cannot address an expression index
+ * (`identity/upsert.ts` made the same call for the same reason). Safe against
+ * a concurrent editor anyway - `setRoleAssignmentInTx` already holds
+ * `withAccountingCommitLock` for the whole org before this runs.
+ */
+async function mapGatewayRole(
+  db: Database | Transaction,
+  organizationId: string,
+  role: AccountRole,
+  glAccountId: string,
+  actorUserId: string | undefined,
+  paymentGatewayId: string,
+  currency: string | null
+): Promise<RoleAssignmentRow> {
+  const account = await assertMappableAccount(db, organizationId, role, glAccountId)
+  const confirmedAt = new Date()
+
+  const [existing] = await db
+    .select({ id: schema.GlRoleAssignment.id })
+    .from(schema.GlRoleAssignment)
+    .where(
+      and(
+        eq(schema.GlRoleAssignment.organizationId, organizationId),
+        eq(schema.GlRoleAssignment.role, role),
+        eq(schema.GlRoleAssignment.paymentGatewayId, paymentGatewayId),
+        currency
+          ? eq(schema.GlRoleAssignment.currency, currency)
+          : isNull(schema.GlRoleAssignment.currency)
+      )
+    )
+    .limit(1)
+
+  if (existing) {
+    await db
+      .update(schema.GlRoleAssignment)
+      .set({
+        glAccountId,
+        source: 'human',
+        confirmedAt,
+        confirmedByUserId: actorUserId ?? null,
+        markedUnused: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.GlRoleAssignment.id, existing.id))
+  } else {
+    await db.insert(schema.GlRoleAssignment).values({
+      organizationId,
+      role,
+      glAccountId,
+      source: 'human',
+      confirmedAt,
+      confirmedByUserId: actorUserId ?? null,
+      markedUnused: false,
+      paymentGatewayId,
+      currency,
+    })
+  }
+
+  return {
+    role,
+    state: 'confirmed',
+    accountId: glAccountId,
+    account,
+    source: 'human',
+    confirmedAt: toIso(confirmedAt),
+    axis: 'rail',
+    // 🛑 Rail scopes aren't in this shape yet. `RoleSourceAssignmentRow` is
+    // keyed on `sourceAccountId`, and a settings screen showing this rail
+    // beside the org default is 58 §6 (U8). This write's own answer is
+    // complete; the checklist just cannot fold it in until then.
+    overrides: [],
+  }
+}
+
+/**
+ * Delete one rail's override, so it falls back to the next link in the chain
+ * (§3 rule 2) - the rail mirror of {@link clearScopedRole}.
+ *
+ * Returns the deletion alone, not the row it falls back to: resolving that
+ * chain is `resolve-roles.ts`'s read (U2), and this file's own read,
+ * `listRoleMap`, does not follow rail rows yet either (U1c, U8).
+ */
+async function clearGatewayRole(
+  db: Database | Transaction,
+  organizationId: string,
+  role: AccountRole,
+  paymentGatewayId: string,
+  currency: string | null
+): Promise<RoleAssignmentRow> {
+  await db
+    .delete(schema.GlRoleAssignment)
+    .where(
+      and(
+        eq(schema.GlRoleAssignment.organizationId, organizationId),
+        eq(schema.GlRoleAssignment.role, role),
+        eq(schema.GlRoleAssignment.paymentGatewayId, paymentGatewayId),
+        currency
+          ? eq(schema.GlRoleAssignment.currency, currency)
+          : isNull(schema.GlRoleAssignment.currency)
+      )
+    )
+  return {
+    role,
+    state: 'unmapped',
+    accountId: null,
+    account: null,
+    source: null,
+    confirmedAt: null,
+    axis: 'rail',
+    overrides: [],
+  }
 }
 
 /**
@@ -874,7 +1184,8 @@ async function setUnusedFlag(
         // shipping", which is a fact about the BUSINESS - it cannot be true of
         // one store and false of another, so there is no per-source version of
         // it and the settings tree offers none (task 47 §7.1).
-        isNull(schema.GlRoleAssignment.sourceAccountId)
+        isNull(schema.GlRoleAssignment.sourceAccountId),
+        isNull(schema.GlRoleAssignment.paymentGatewayId)
       )
     )
     .returning({

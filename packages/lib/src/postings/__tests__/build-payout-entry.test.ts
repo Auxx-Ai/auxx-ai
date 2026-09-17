@@ -20,7 +20,7 @@ const BASE = {
   grossMinor: 500_000,
   feesMinor: 14_800,
   netMinor: 485_200,
-  clearingRole: ACCOUNT_ROLES.CLEARING_CARD,
+  clearingRole: ACCOUNT_ROLES.CLEARING,
   paidAt: '2026-09-04',
 }
 
@@ -45,7 +45,7 @@ describe('the entry', () => {
       direction: 'debit',
       amount: 14_800,
     })
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toMatchObject({
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING)).toMatchObject({
       direction: 'credit',
       amount: 500_000,
     })
@@ -166,7 +166,7 @@ describe('the unrecognised remainder', () => {
     // The merchant took $600 outside auxx in the same payout, $580 of it net.
     const built = buildPayoutEntry({ ...BASE, unrecognisedNetMinor: 58_000 })
 
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toMatchObject({
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING)).toMatchObject({
       direction: 'credit',
       amount: 500_000,
     })
@@ -251,12 +251,12 @@ describe('the clearing leg', () => {
     })
     // And the role is gone from the line entirely - not carried alongside.
     expect(idLine(built.entry, 'acct_authnet')?.accountRole).toBeUndefined()
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toBeUndefined()
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING)).toBeUndefined()
   })
 
   it('falls back to the role when no id is given, unchanged', () => {
     const built = buildPayoutEntry(BASE)
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toMatchObject({
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING)).toMatchObject({
       direction: 'credit',
       amount: 500_000,
     })
@@ -264,7 +264,7 @@ describe('the clearing leg', () => {
 
   it('treats a blank id as no id rather than posting to an empty account', () => {
     const built = buildPayoutEntry({ ...BASE, clearingGlAccountId: '   ' })
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toBeDefined()
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING)).toBeDefined()
   })
 
   it('still refuses a nonsense clearing role even when an id was passed', () => {
@@ -323,7 +323,7 @@ describe('a billed rail', () => {
     expect(built.entry.lines).toHaveLength(3)
     expect(line(built.entry, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)).toBeUndefined()
     expect(bankLine(built.entry)).toMatchObject({ direction: 'debit', amount: 558_000 })
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toMatchObject({
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING)).toMatchObject({
       direction: 'credit',
       amount: 500_000,
     })

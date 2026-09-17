@@ -398,7 +398,7 @@ describe('issueDrafts', () => {
 describe('the reasons that deliberately do not exist', () => {
   it('posts a memo whose order names two gateways rather than refusing it', () => {
     // Two gateways resolve to no account at all, so the memo arrives here with
-    // no entry in the settlement map - the `clearing_card` fallback.
+    // no entry in the settlement map - the `clearing` fallback.
     const result = plan([memo()], { settlementAccounts: new Map() })
 
     expect(result.exclusions).toEqual([])

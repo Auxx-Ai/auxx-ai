@@ -33,7 +33,7 @@ const OPTIONS = {
   grossMinor: 500_000,
   feesMinor: 14_800,
   netMinor: 485_200,
-  clearingRole: ACCOUNT_ROLES.CLEARING_CARD,
+  clearingRole: ACCOUNT_ROLES.CLEARING,
   paidAt: '2026-09-04',
 }
 

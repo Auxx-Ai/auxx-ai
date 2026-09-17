@@ -67,7 +67,7 @@ export const POSTING_TYPES = [
   'deposit_application',
   // A credit memo ISSUED: `Dr revenue_returns_allowances / Dr sales_tax_payable
   // / Cr accounts_receivable`, dated the memo's own `issuedAt`, plus
-  // `Dr accounts_receivable / Cr clearing_card` when a channel refund already
+  // `Dr accounts_receivable / Cr clearing` when a channel refund already
   // paid the money back. Keys on the memo's own number, like `invoice_issued`,
   // and is reversed by void (plans/accounting/tasks/done/10-credit-memos.md).
   'credit_memo',
@@ -200,12 +200,13 @@ export interface GlPostingLineBase {
 
 /**
  * WHICH SOURCE a posted event came from, for the roles that read one
- * (task 47 §5).
+ * (task 47 §5, rail axis added by task 58 §5.1).
  *
- * Consulted only for the roles in `SCOPABLE_ROLES` - the three revenue roles and
- * the processor fee. Every other role ignores it entirely, which is what keeps
- * an org that maps nothing byte-for-byte identical to how it behaved before
- * task 47, and that no-op is the acceptance test for the whole brief.
+ * Consulted only for the roles in `SCOPABLE_ROLES` - the three revenue roles,
+ * `clearing`, `payment_processing_fees` and `bank`. Every other role ignores it
+ * entirely, which is what keeps an org that maps nothing byte-for-byte
+ * identical to how it behaved before task 47, and that no-op is the acceptance
+ * test for the whole brief.
  *
  * 🛑 **`undefined` and `null` mean different things, and the difference is the
  * manual bucket.**
@@ -214,11 +215,10 @@ export interface GlPostingLineBase {
  * | --- | --- |
  * | the key is absent | this caller does not know the axis. Use the ORG DEFAULT |
  * | `null` on `store` | this record had NO connected source. Use the MANUAL bucket |
- * | an id | that `FinancialSourceAccount` |
+ * | an id | that `FinancialSourceAccount` (`store`) or `payment_gateway` (`rail`) |
  *
- * `processor` has no manual counterpart: a manual order has no processor, so
- * `payment_processing_fees` is never emitted for one and a `null` there reads
- * the same as an absent key (§4).
+ * `rail` has no manual counterpart: a manual order has no rail, so a `null`
+ * there reads the same as an absent key (§4).
  *
  * Declared HERE rather than in `resolve-roles.ts` because a LINE carries one
  * ({@link GlPostingLineBase.sourceScope}) and this file is client-safe, while
@@ -227,8 +227,10 @@ export interface GlPostingLineBase {
 export interface RoleSourceScope {
   /** `effect.sourceStoreId`. Null means the manual bucket; see the table above. */
   store?: string | null
-  /** `effect.processorAccountId`. */
-  processor?: string | null
+  /** `effect.paymentGatewayId`. Null means no rail; see the table above. */
+  rail?: string | null
+  /** Settlement currency. Only consulted for a rail role, alongside `rail`. */
+  currency?: string
 }
 
 /**

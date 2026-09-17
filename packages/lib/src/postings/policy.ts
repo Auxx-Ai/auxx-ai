@@ -363,7 +363,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     template: [
       {
         side: 'debit',
-        role: ACCOUNT_ROLES.CLEARING_CARD,
+        role: ACCOUNT_ROLES.CLEARING,
         what: 'Card shipments, summarised, when no gateway record claims the rail',
       },
       {
@@ -441,7 +441,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         role: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
         what: 'Cash, cheques and unknown methods, until a deposit run banks them',
       },
-      { side: 'debit', role: ACCOUNT_ROLES.CLEARING_CARD, what: 'Card payments, until the payout' },
+      { side: 'debit', role: ACCOUNT_ROLES.CLEARING, what: 'Card payments, until the payout' },
       { side: 'debit', role: 'by id', what: 'The cash bank account, for ACH and wire' },
       {
         side: 'credit',
@@ -532,7 +532,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
       {
         side: 'credit',
-        role: ACCOUNT_ROLES.CLEARING_CARD,
+        role: ACCOUNT_ROLES.CLEARING,
         what: "Gross settled, or the rail's own clearing account by id",
       },
       {
@@ -721,7 +721,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
       {
         side: 'credit',
-        role: ACCOUNT_ROLES.CLEARING_CARD,
+        role: ACCOUNT_ROLES.CLEARING,
         what: "The refund leaving through the rail's clearing account, or its record's account by id",
       },
     ],

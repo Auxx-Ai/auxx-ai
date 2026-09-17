@@ -69,7 +69,7 @@ import { runInTxWrite } from '../../resources/crud/tx-write-scope'
  * (`routing.ts`) passes its clearing account, its fee account and its fee
  * treatment down; NO record is the ordinary fallback to the roles, and TWO is a
  * refusal stamped the same way a bad destination is. Line 266 used to read
- * `clearingRole: ACCOUNT_ROLES.CLEARING_CARD` unconditionally, which meant the
+ * `clearingRole: ACCOUNT_ROLES.CLEARING` unconditionally, which meant the
  * fulfillment debit (id-routed since brief 13 §5.3) and the payout credit
  * stopped meeting the moment any rail was routed to its own account - in
  * balanced entries nothing complains about.
@@ -390,7 +390,7 @@ async function ingestOne(
   )
   // 🛑 And the CLEARING side, resolved the same way and refused the same way
   // (brief 26 §3). A fulfillment debits the gateway record's clearing account by
-  // id, so crediting the `clearing_card` role here would relieve a different
+  // id, so crediting the `clearing` role here would relieve a different
   // account the moment any rail is routed to its own - and nothing downstream
   // could detect it, because the entry balances either way.
   const gateway = resolvePayoutRail(ctx, number)
@@ -431,7 +431,7 @@ async function ingestOne(
       // The ROLE fallback, unchanged and still guarded. It is what an org with
       // no `payment_gateway` record gets, which is bit for bit what every org
       // got before brief 26.
-      clearingRole: ACCOUNT_ROLES.CLEARING_CARD,
+      clearingRole: ACCOUNT_ROLES.CLEARING,
       // The merchant account the money settled through (task 47 §4).
       //
       // 🛑 Spread only when the rail names one, exactly like the two account ids

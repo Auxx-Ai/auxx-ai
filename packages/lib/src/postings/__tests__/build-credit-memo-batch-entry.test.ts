@@ -77,7 +77,7 @@ function memo(
       settlement: settlement
         ? settlement.glAccountId
           ? { amount: settlement.amount, glAccountId: settlement.glAccountId }
-          : { amount: settlement.amount, role: 'clearing_card' }
+          : { amount: settlement.amount, role: 'clearing' }
         : undefined,
     })
   return {
@@ -145,7 +145,7 @@ function expectBalanced(entry: { totalDebit: number; totalCredit: number }): voi
 
 describe('a mixed-gateway group', () => {
   // The Affirm memo settles into the gateway record's OWN clearing account;
-  // the card memo settles into the `clearing_card` role. One group.
+  // the card memo settles into the `clearing` role. One group.
   const card = memo({ number: 'CM-0001', settlement: { amount: 10_800 } })
   const affirm = memo({
     number: 'CM-0002',
@@ -161,9 +161,9 @@ describe('a mixed-gateway group', () => {
   })
 
   it('keeps TWO settlement credit lines, one per resolved account', () => {
-    // 🛑 The whole point. Collapsed into one `clearing_card` credit this entry
+    // 🛑 The whole point. Collapsed into one `clearing` credit this entry
     // still balances and `1210` is overstated forever with nothing to detect it.
-    const roleLines = byRole(built.entry.lines, ACCOUNT_ROLES.CLEARING_CARD)
+    const roleLines = byRole(built.entry.lines, ACCOUNT_ROLES.CLEARING)
     const idLines = built.entry.lines.filter((line) => line.glAccountId === 'gl-affirm')
     expect(roleLines).toHaveLength(1)
     expect(roleLines[0]).toMatchObject({ direction: 'credit', amount: 10_800 })
@@ -275,7 +275,7 @@ describe('the receivable leg', () => {
     const built = build([memo({ contactId: 'contact-a', settlement: { amount: 4_000 } })])
     const [receivable] = byRole(built.entry.lines, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)
     expect(receivable).toMatchObject({ direction: 'credit', amount: 6_800 })
-    expect(byRole(built.entry.lines, ACCOUNT_ROLES.CLEARING_CARD)[0]?.amount).toBe(4_000)
+    expect(byRole(built.entry.lines, ACCOUNT_ROLES.CLEARING)[0]?.amount).toBe(4_000)
     expectBalanced(built.entry)
   })
 
@@ -330,7 +330,7 @@ describe('a reverseRevenue: false member mixed with true ones', () => {
   })
 
   it('keeps its settlement credit', () => {
-    expect(byRole(built.entry.lines, ACCOUNT_ROLES.CLEARING_CARD)[0]?.amount).toBe(18_360)
+    expect(byRole(built.entry.lines, ACCOUNT_ROLES.CLEARING)[0]?.amount).toBe(18_360)
     expect(built.totals.settlementMinor).toBe(18_360)
   })
 
@@ -344,7 +344,7 @@ describe('a reverseRevenue: false member mixed with true ones', () => {
     })
 
     // The same memo through the single-memo builder: `Dr accounts_receivable /
-    // Cr clearing_card`, and the batch has to agree with it.
+    // Cr clearing`, and the batch has to agree with it.
     const single = buildCreditMemoEntry({
       creditMemoId: neverShipped.creditMemoId,
       number: neverShipped.number,
@@ -354,7 +354,7 @@ describe('a reverseRevenue: false member mixed with true ones', () => {
       taxTotal: 560,
       total: 7_560,
       reverseRevenue: false,
-      settlement: { role: 'clearing_card', amount: 7_560 },
+      settlement: { role: 'clearing', amount: 7_560 },
       contactInstanceId: 'contact-b',
     })
     const singleReceivable = single.entry.lines.filter(
@@ -580,7 +580,7 @@ describe('computeCreditMemoAmounts is the one implementation both builders use',
       taxTotal: 800,
       total: 10_800,
       reverseRevenue: true,
-      settlement: { role: 'clearing_card', amount: 4_000 },
+      settlement: { role: 'clearing', amount: 4_000 },
     })
     const amounts = computeCreditMemoAmounts({
       creditMemoId: 'cm-shared',
@@ -589,7 +589,7 @@ describe('computeCreditMemoAmounts is the one implementation both builders use',
       taxTotal: 800,
       total: 10_800,
       reverseRevenue: true,
-      settlement: { role: 'clearing_card', amount: 4_000 },
+      settlement: { role: 'clearing', amount: 4_000 },
     })
     expect(amounts).toEqual({
       subtotalMinor: single.subtotalMinor,
@@ -609,7 +609,7 @@ describe('computeCreditMemoAmounts is the one implementation both builders use',
         taxTotal: 560,
         total: 7_560,
         reverseRevenue: false,
-        settlement: { role: 'clearing_card', amount: 7_560 },
+        settlement: { role: 'clearing', amount: 7_560 },
       })
     ).toEqual({
       subtotalMinor: 0,
@@ -653,7 +653,7 @@ describe('computeCreditMemoAmounts is the one implementation both builders use',
       expectRefusal(() =>
         computeCreditMemoAmounts({
           ...base,
-          settlement: { role: 'clearing_card', amount: 2_000 },
+          settlement: { role: 'clearing', amount: 2_000 },
         })
       ).message
     ).toMatch(/cannot have paid back more/)

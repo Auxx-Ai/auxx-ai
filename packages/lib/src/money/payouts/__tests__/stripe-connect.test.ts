@@ -193,7 +193,7 @@ const EXPECTED_ENTRY_INPUT = {
   feesMinor: 3_200,
   netMinor: 86_800,
   unrecognisedNetMinor: 55_500,
-  clearingRole: 'clearing_card',
+  clearingRole: 'clearing',
   clearingGlAccountId: 'gl_clearing_stripe',
   feeTreatment: 'netted',
   paidAt: '2026-09-14',
@@ -284,7 +284,7 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
     expect(values.payout_payment_gateway).toBeUndefined()
     const [, input] = h.postPayoutEntry.mock.calls[0] as [unknown, Record<string, unknown>]
     expect(input).toMatchObject({
-      clearingRole: 'clearing_card',
+      clearingRole: 'clearing',
       clearingReason:
         'Credited by the card clearing role because no gateway record claims the Stripe rail.',
     })

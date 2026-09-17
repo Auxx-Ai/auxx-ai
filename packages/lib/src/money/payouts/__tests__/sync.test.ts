@@ -379,7 +379,7 @@ describe('the debit and the credit meet', () => {
     // actually run in production: `toGatewayRoutes` -> `resolveFulfillmentDebit`
     // on the sale, `resolvePayoutGateway` on the settlement. Before brief 26
     // the payout side did not consult this record at all - it passed
-    // `clearingRole: ACCOUNT_ROLES.CLEARING_CARD` and the two accounts drifted
+    // `clearingRole: ACCOUNT_ROLES.CLEARING` and the two accounts drifted
     // apart in entries that both balanced.
     const rail = gateway({
       handles: ['authorize_net', 'authorize.net'],

@@ -157,7 +157,15 @@ export async function readManualSourceAccountId(
  * Written by `customer-money/record-evidence.ts` (`order_transaction`) and
  * `customer-money/adopt-native-stripe.ts` (`charge`, `refund`). The processor
  * side - `balance_transaction`, `payout`, from `payouts/record-storage.ts` - is
- * deliberately absent and is what the `processor` axis reads instead.
+ * deliberately absent and is what the `rail` axis reads instead.
+ *
+ * 🛑 Task 58 gives `rail` a SECOND, separate mechanism -
+ * `GlRoleAssignment.paymentGatewayId` against the `payment_gateway`
+ * EntityInstance (`role-map.ts`'s `assertScopableGateway`), which
+ * `setRoleAssignment` now requires for `clearing`, `bank` and
+ * `payment_processing_fees`. This evidence-based `rail` tag survives only for
+ * the settings screens still built on it (58 §6, U8) and is not consulted by
+ * the write path any more.
  */
 const STORE_EVIDENCE_OBJECT_TYPES = ['order_transaction', 'charge', 'refund'] as const
 
@@ -231,7 +239,7 @@ export async function listRoleSources(
       ? ['store']
       : [
           ...(stores.has(account.id) ? (['store'] as const) : []),
-          ...(processors.has(account.id) ? (['processor'] as const) : []),
+          ...(processors.has(account.id) ? (['rail'] as const) : []),
         ]
     // A live account nothing has ever sent evidence through carries no axis, so
     // there is no role it could be offered under. Dropped rather than listed

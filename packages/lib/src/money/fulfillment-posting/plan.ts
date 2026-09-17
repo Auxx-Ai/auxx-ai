@@ -228,7 +228,7 @@ export function groupKeyFor(shippedAt: string, grouping: FulfillmentPostingGroup
 /** Collapse one bucket of shipments into the posting it becomes. */
 function toGroup(groupKey: string, shipments: PlannedShipment[]): FulfillmentPostingGroup {
   const byDebitRole: Record<FulfillmentDebitRole, number> = {
-    clearing_card: 0,
+    clearing: 0,
     accounts_receivable: 0,
     // Every id-based (`payment_gateway` route) debit lands here, whichever
     // account it named - the account id itself rides on the shipment's own

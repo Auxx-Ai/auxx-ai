@@ -5,7 +5,7 @@
 //
 //  1. **The debit fork.** A Shopify order was paid at checkout. Debiting
 //     `accounts_receivable` for it fills aging with money nobody owes and
-//     leaves `clearing_card` permanently negative once a payout drains it -
+//     leaves `clearing` permanently negative once a payout drains it -
 //     and every one of those entries balances. So the fork gets a table test
 //     covering every rule, including the two that EXCLUDE.
 //  2. **Balance by construction.** Debits are each shipment's total and
@@ -89,7 +89,7 @@ function planned(
 /** Total a group the way the plan does, so the builder gets a realistic input. */
 function group(shipments: PlannedShipment[], groupKey = '2026-07-06'): FulfillmentPostingGroup {
   const byDebitRole: Record<FulfillmentDebitRole, number> = {
-    clearing_card: 0,
+    clearing: 0,
     accounts_receivable: 0,
     gateway: 0,
   }
@@ -151,21 +151,21 @@ const AFFIRM_ACCOUNT = 'acct_gw_affirm'
 describe('resolveFulfillmentDebit', () => {
   it.each([
     // [financialStatus, gateways, expected role]
-    ['paid', ['shopify_payments'], 'clearing_card'],
+    ['paid', ['shopify_payments'], 'clearing'],
     // 🛑 `affirm` with NO `payment_gateway` route is card money now. It had a
     // role of its own until 2026-09-10; a role may not name a vendor, so the
     // answer moved to a record and the fallback is the ordinary one. This is
     // the residual `1200` carries when an Affirm store never adds the record -
     // see `resolves a routed gateway to the record's own account` below for
     // the path that prevents it.
-    ['paid', ['affirm'], 'clearing_card'],
+    ['paid', ['affirm'], 'clearing'],
     // Casing and whitespace are the provider's, not a second gateway.
-    ['paid', ['  Affirm '], 'clearing_card'],
-    ['PAID', ['SHOPIFY_PAYMENTS'], 'clearing_card'],
+    ['paid', ['  Affirm '], 'clearing'],
+    ['PAID', ['SHOPIFY_PAYMENTS'], 'clearing'],
     // A rail nobody has named is still card money: one processor took it, and
-    // `clearing_card` is where a wrong guess fails to reconcile visibly.
-    ['paid', ['paypal'], 'clearing_card'],
-    ['paid', ['stripe'], 'clearing_card'],
+    // `clearing` is where a wrong guess fails to reconcile visibly.
+    ['paid', ['paypal'], 'clearing'],
+    ['paid', ['stripe'], 'clearing'],
     // Paid, but not on a rail auxx can see. The order still owes.
     ['paid', ['manual'], 'accounts_receivable'],
     ['paid', [], 'accounts_receivable'],
@@ -176,10 +176,10 @@ describe('resolveFulfillmentDebit', () => {
     ['partially_paid', [], 'accounts_receivable'],
     [null, ['shopify_payments'], 'accounts_receivable'],
     // A refund is its OWN later event (a credit memo). The money was taken.
-    ['refunded', ['shopify_payments'], 'clearing_card'],
-    ['partially_refunded', ['affirm'], 'clearing_card'],
+    ['refunded', ['shopify_payments'], 'clearing'],
+    ['partially_refunded', ['affirm'], 'clearing'],
     // One gateway repeated is one gateway.
-    ['paid', ['shopify_payments', 'Shopify_Payments'], 'clearing_card'],
+    ['paid', ['shopify_payments', 'Shopify_Payments'], 'clearing'],
   ])('%s through %j debits %s', (financialStatus, gateways, role) => {
     expect(resolveFulfillmentDebit({ financialStatus, gateways })).toMatchObject({
       kind: 'debit',
@@ -227,7 +227,7 @@ describe('resolveFulfillmentDebit', () => {
 
   it('maps every debit answer to a declared posting role', () => {
     expect(FULFILLMENT_DEBIT_ACCOUNT_ROLE).toEqual({
-      clearing_card: ACCOUNT_ROLES.CLEARING_CARD,
+      clearing: ACCOUNT_ROLES.CLEARING,
       accounts_receivable: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
     })
   })
@@ -241,9 +241,9 @@ describe('resolveFulfillmentDebit', () => {
   // ── The `payment_gateway` record path (brief 13 §5.3) ─────────────────────
   //
   // 🛑 Load-bearing since `clearing_affirm` was deleted. This is now the ONLY
-  // mechanism keeping a non-card rail out of `clearing_card`, and a rail that
+  // mechanism keeping a non-card rail out of `clearing`, and a rail that
   // lands there can never be drained: `PAYOUT_CLEARING_ROLES` relieves
-  // `clearing_card` by exactly what a card payout settled, so an Affirm sale
+  // `clearing` by exactly what a card payout settled, so an Affirm sale
   // sitting in `1200` is a residual that balances and never clears.
 
   it("resolves a routed gateway to the record's own account, not to a role", () => {
@@ -291,7 +291,7 @@ describe('resolveFulfillmentDebit', () => {
           { handles: ['authorize_net'], clearingGlAccountId: 'acct_authnet', active: true },
         ],
       })
-    ).toMatchObject({ kind: 'debit', role: 'clearing_card' })
+    ).toMatchObject({ kind: 'debit', role: 'clearing' })
   })
 
   it('refuses to choose when two routes claim the same handle', () => {
@@ -306,7 +306,7 @@ describe('resolveFulfillmentDebit', () => {
           { handles: ['Affirm'], clearingGlAccountId: 'acct_b', active: true },
         ],
       })
-    ).toMatchObject({ kind: 'debit', role: 'clearing_card' })
+    ).toMatchObject({ kind: 'debit', role: 'clearing' })
   })
 
   it('never routes an unpaid order, however well its gateway matches', () => {
@@ -348,10 +348,10 @@ describe('computeShipmentAmounts', () => {
         orderTaxTotalMinor: 1_650,
         orderShippingTotalMinor: 0,
       }),
-      { role: 'clearing_card' }
+      { role: 'clearing' }
     )
     expect(amounts).toMatchObject({
-      debitRole: 'clearing_card',
+      debitRole: 'clearing',
       subtotalMinor: 20_000,
       taxMinor: 1_650,
       shippingMinor: 0,
@@ -385,7 +385,7 @@ describe('computeShipmentAmounts', () => {
         orderTaxTotalMinor: 1_650,
         orderShippingTotalMinor: 0,
       }),
-      { role: 'clearing_card' }
+      { role: 'clearing' }
     )
     expect(amounts.taxBasis).toBe('allocated')
     expect(amounts.taxMinor).toBe(1_650)
@@ -408,7 +408,7 @@ describe('computeShipmentAmounts', () => {
         orderTaxTotalMinor: 400,
         orderShippingTotalMinor: 0,
       }),
-      { role: 'clearing_card' }
+      { role: 'clearing' }
     )
     expect(amounts).toMatchObject({ subtotalMinor: 3_000, taxMinor: 300, taxBasis: 'per_line' })
   })
@@ -429,7 +429,7 @@ describe('computeShipmentAmounts', () => {
         orderTaxTotalMinor: 400,
         orderShippingTotalMinor: 0,
       }),
-      { role: 'clearing_card' }
+      { role: 'clearing' }
     )
     expect(amounts.taxMinor).toBe(400)
   })
@@ -451,7 +451,7 @@ describe('computeShipmentAmounts', () => {
         orderShippingTotalMinor: 0,
         priorShipmentsSubtotalMinor: 0,
       }),
-      { role: 'clearing_card' }
+      { role: 'clearing' }
     )
     const second = computeShipmentAmounts(
       shipment({
@@ -469,7 +469,7 @@ describe('computeShipmentAmounts', () => {
         orderShippingTotalMinor: 0,
         priorShipmentsSubtotalMinor: 10_000,
       }),
-      { role: 'clearing_card' }
+      { role: 'clearing' }
     )
     expect(first.taxMinor).toBe(770)
     expect(second.taxMinor).toBe(1_540)
@@ -479,11 +479,11 @@ describe('computeShipmentAmounts', () => {
   it('recognises shipping once, on the shipment that carries the flag', () => {
     const carries = computeShipmentAmounts(
       shipment({ orderShippingTotalMinor: 1_500, includeShipping: true }),
-      { role: 'clearing_card' }
+      { role: 'clearing' }
     )
     const does_not = computeShipmentAmounts(
       shipment({ orderShippingTotalMinor: 1_500, includeShipping: false }),
-      { role: 'clearing_card' }
+      { role: 'clearing' }
     )
     expect(carries.shippingMinor).toBe(1_500)
     expect(does_not.shippingMinor).toBe(0)
@@ -503,7 +503,7 @@ describe('computeShipmentAmounts', () => {
             },
           ],
         }),
-        { role: 'clearing_card' }
+        { role: 'clearing' }
       )
     ).toThrowError(UnprocessableEntityError)
   })
@@ -606,10 +606,10 @@ describe('buildFulfillmentBatchEntry', () => {
     expect(credits.reduce((sum, line) => sum + line.amount, 0)).toBe(expectedTotal)
     expect(amountFor(entry, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBe(built.totals.taxMinor)
     expect(amountFor(entry, ACCOUNT_ROLES.REVENUE_SHIPPING)).toBe(built.totals.shippingMinor)
-    expect(amountFor(entry, ACCOUNT_ROLES.CLEARING_CARD)).toBe(
+    expect(amountFor(entry, ACCOUNT_ROLES.CLEARING)).toBe(
       card.amounts.totalMinor + exempt.amounts.totalMinor
     )
-    // 🛑 By ACCOUNT ID, not by role, and NOT folded into `clearing_card` - a
+    // 🛑 By ACCOUNT ID, not by role, and NOT folded into `clearing` - a
     // rail that lands in `1200` can never be drained, because a payout relieves
     // that account by exactly what a CARD payout settled.
     expect(amountForAccount(entry, AFFIRM_ACCOUNT)).toBe(affirm.amounts.totalMinor)
@@ -694,7 +694,7 @@ describe('buildFulfillmentBatchEntry', () => {
     ).toBeUndefined()
     // The card order's clearing debit is summarised, and never carries a
     // counterparty even though the shipment itself has a contact.
-    expect(linesFor(entry, ACCOUNT_ROLES.CLEARING_CARD)[0]?.counterpartyId).toBeUndefined()
+    expect(linesFor(entry, ACCOUNT_ROLES.CLEARING)[0]?.counterpartyId).toBeUndefined()
   })
 
   it('sources every summarised line on the period key, never on an order', () => {
@@ -735,7 +735,7 @@ describe('buildFulfillmentBatchEntry', () => {
     })
     expect(entry.lines.map((line) => line.accountRole)).toEqual([
       ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
-      ACCOUNT_ROLES.CLEARING_CARD,
+      ACCOUNT_ROLES.CLEARING,
       ACCOUNT_ROLES.REVENUE_PRODUCT,
     ])
     expect(entry.lines.map((line) => line.sortOrder)).toEqual([0, 1, 2])
@@ -807,7 +807,7 @@ describe('buildFulfillmentBatchEntry', () => {
       memo: 'July catch-up',
     })
     expect(linesFor(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)[0]?.memo).toBe('#6002')
-    expect(linesFor(built.entry, ACCOUNT_ROLES.CLEARING_CARD)[0]?.memo).toContain('July catch-up')
+    expect(linesFor(built.entry, ACCOUNT_ROLES.CLEARING)[0]?.memo).toContain('July catch-up')
   })
 
   it('stamps the posting type, the period key and the group txn date', () => {
@@ -932,7 +932,7 @@ describe('the debit reason', () => {
     })
     expect(answer).toEqual({
       kind: 'debit',
-      role: 'clearing_card',
+      role: 'clearing',
       reason:
         'paid through shopify_payments, which no gateway record claims, so the card clearing fallback',
     })
@@ -989,7 +989,7 @@ describe('the debit reason', () => {
     if (debit.kind !== 'debit') throw new Error('fixture excluded')
     const { kind: _kind, ...rest } = debit
     expect(computeShipmentAmounts(base, rest).debitReason).toBe(debit.reason)
-    expect(computeShipmentAmounts(base, 'clearing_card').debitReason).toBeUndefined()
+    expect(computeShipmentAmounts(base, 'clearing').debitReason).toBeUndefined()
   })
 })
 
@@ -1026,7 +1026,7 @@ describe('buildFulfillmentBatchEntry reasons', () => {
     const receivable = lineNumberOf(
       (line) => line.accountRole === ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE
     )
-    const clearing = lineNumberOf((line) => line.accountRole === ACCOUNT_ROLES.CLEARING_CARD)
+    const clearing = lineNumberOf((line) => line.accountRole === ACCOUNT_ROLES.CLEARING)
     const routed = lineNumberOf((line) => line.glAccountId === AFFIRM_ACCOUNT)
 
     expect(entry.reasons).toEqual([
@@ -1051,7 +1051,7 @@ describe('buildFulfillmentBatchEntry reasons', () => {
   it('carries no reasons at all when the amounts were built from bare roles', () => {
     const bare: PlannedShipment = {
       ...shipment({ orderId: 'o-bare', orderNumber: '#7100' }),
-      amounts: computeShipmentAmounts(shipment(), 'clearing_card'),
+      amounts: computeShipmentAmounts(shipment(), 'clearing'),
     }
     const { entry } = buildFulfillmentBatchEntry({
       group: group([bare]),
@@ -1084,10 +1084,10 @@ describe('computeShipmentAmounts carries the line total through (29 §12 item 6)
   }
 
   it('two shipments of one unit each sum to the line total', () => {
-    const one = computeShipmentAmounts(shipment({ ...order, lines: [line(0)] }), 'clearing_card')
+    const one = computeShipmentAmounts(shipment({ ...order, lines: [line(0)] }), 'clearing')
     const two = computeShipmentAmounts(
       shipment({ ...order, sequence: 2, lines: [line(1)], priorShipmentsSubtotalMinor: 91 }),
-      'clearing_card'
+      'clearing'
     )
     expect([one.subtotalMinor, two.subtotalMinor]).toEqual([91, 90])
     expect(one.subtotalMinor + two.subtotalMinor).toBe(181)
@@ -1096,7 +1096,7 @@ describe('computeShipmentAmounts carries the line total through (29 §12 item 6)
   it('is unchanged for a line without a stored total - the rate is extended as before', () => {
     const without = computeShipmentAmounts(
       shipment({ ...order, lines: [{ ...line(1), lineTotalMinor: null }] }),
-      'clearing_card'
+      'clearing'
     )
     expect(without.subtotalMinor).toBe(91)
   })
@@ -1127,7 +1127,7 @@ describe('computeShipmentAmounts allocates line tax cumulatively', () => {
           priorShipmentsSubtotalMinor: prior * 100,
           lines: [line(prior)],
         }),
-        'clearing_card'
+        'clearing'
       )
     )
 
@@ -1159,7 +1159,7 @@ describe('canonical customer-money fulfillment allocation', () => {
     expect(amountFor(entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBe(12_300)
     expect(amountFor(entry, ACCOUNT_ROLES.REVENUE_PRODUCT)).toBe(10_000)
     expect(amountFor(entry, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBe(800)
-    expect(amountFor(entry, ACCOUNT_ROLES.CLEARING_CARD)).toBeUndefined()
+    expect(amountFor(entry, ACCOUNT_ROLES.CLEARING)).toBeUndefined()
   })
 
   it('splits a partial receipt between deposit release, A/R and unpaid tax', () => {
@@ -1179,7 +1179,7 @@ describe('canonical customer-money fulfillment allocation', () => {
     expect(amountFor(entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)).toBe(5_750)
     expect(amountFor(entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBe(6_150)
     expect(amountFor(entry, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBe(400)
-    expect(amountFor(entry, ACCOUNT_ROLES.CLEARING_CARD)).toBeUndefined()
+    expect(amountFor(entry, ACCOUNT_ROLES.CLEARING)).toBeUndefined()
   })
 
   it('fully funded shipment releases the deposit without an A/R or tax line', () => {

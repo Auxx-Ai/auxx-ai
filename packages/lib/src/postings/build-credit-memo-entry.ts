@@ -13,7 +13,7 @@
  *
  *   money leg (settlement, a channel refund already paid out):
  *     Dr accounts_receivable          amount
- *         Cr clearing_card              amount
+ *         Cr clearing              amount
  * ```
  *
  * ## One builder, both sources
@@ -24,7 +24,7 @@
  * A channel memo is a Shopify refund that was created and paid back in the same
  * instant, and Shopify money never passes through `PaymentTransaction`, so its
  * money leg rides in this entry as the mirror of the channel receipt:
- * `Cr clearing_card`, which `build-payout-entry.ts` then drains net of refunds.
+ * `Cr clearing`, which `build-payout-entry.ts` then drains net of refunds.
  *
  * ## 4090 always, never the original revenue account
  *
@@ -79,7 +79,7 @@ export const CREDIT_MEMO_POSTING_TYPE = 'credit_memo' as const
  *
  * 🛑 **It has to be the account the SALE debited, whatever that was.** A
  * `payment_gateway` record routes a non-card rail to its own clearing account
- * by id (brief 13 §5.3), so an Affirm sale debits `1210` while `clearing_card`
+ * by id (brief 13 §5.3), so an Affirm sale debits `1210` while `clearing`
  * is `1200`. A refund hardcoded to the role would credit `1200` for money that
  * never entered it and leave `1210` overstated forever - and since the entry
  * balances either way, nothing downstream could detect it. This was the shape
@@ -87,14 +87,14 @@ export const CREDIT_MEMO_POSTING_TYPE = 'credit_memo' as const
  *
  * | Member | When |
  * | --- | --- |
- * | `{ role: 'clearing_card' }` | no `payment_gateway` record names the order's gateway - the same default the fulfillment debit fork takes |
+ * | `{ role: 'clearing' }` | no `payment_gateway` record names the order's gateway - the same default the fulfillment debit fork takes |
  * | `{ glAccountId }` | exactly one record claims it, and the sale debited that account |
  *
  * `amount` is integer minor units, > 0 and at most `total` - what the channel
  * actually paid back.
  */
 export type CreditMemoSettlement = { amount: number } & (
-  | { role: 'clearing_card'; glAccountId?: never }
+  | { role: 'clearing'; glAccountId?: never }
   | { glAccountId: string; role?: never }
 )
 
@@ -399,7 +399,7 @@ export interface BuiltCreditMemoEntry {
   subtotalMinor: number
   /** What came back out of `sales_tax_payable`. `0` omits the leg. */
   taxTotalMinor: number
-  /** What the money leg moved out of `clearing_card`. Zero without a settlement. */
+  /** What the money leg moved out of `clearing`. Zero without a settlement. */
   settlementMinor: number
 }
 
@@ -508,7 +508,7 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
       // exclusive on the type, so exactly one of these keys is ever set.
       ...(settlement.glAccountId
         ? { glAccountId: settlement.glAccountId }
-        : { accountRole: ACCOUNT_ROLES.CLEARING_CARD }),
+        : { accountRole: ACCOUNT_ROLES.CLEARING }),
       direction: 'credit',
       amount: settlementMinor,
       memo: `${lineMemo} refunded`,

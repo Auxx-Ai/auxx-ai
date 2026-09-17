@@ -11,6 +11,9 @@
 // runtime failure; a builder that cannot balance its own arithmetic is a bug.
 
 import { UnprocessableEntityError } from '../errors'
+// Plain data, no io - the same direction `account-subtype.ts` already takes.
+import { GlAccountSubtype } from '../resources/registry/enum-values'
+import type { GlAccountSubtypeValue } from './account-subtype'
 // Type-only, so this file stays pure: `default-chart.ts` imports the statement
 // classifications from the registry at runtime, and nothing of that reaches here.
 import type { GlAccountTypeValue } from './default-chart'
@@ -256,14 +259,20 @@ export const ACCOUNT_ROLES = {
    * so every Stripe card receipt was accumulating in an account named for a
    * provider the money never touched.
    */
-  CLEARING_CARD: 'clearing_card',
+  CLEARING: 'clearing',
+  /**
+   * Bank (no default account - §3 rule 3 of task 58). The payout's deposit
+   * leg. Always rail-scoped: "which bank" has no org-wide answer, so an
+   * unscoped row is illegal (`ROLES_WITHOUT_DEFAULT`).
+   */
+  BANK: 'bank',
   /**
    * Unidentified receipts (default `2450`). Money that arrived and auxx cannot
    * attribute, held as a LIABILITY until somebody codes it.
    *
    * 🛑 The payout entry is what fills this. A gateway payout settles every
    * charge the merchant took, INCLUDING charges taken outside auxx, which were
-   * never debited to `clearing_card`. Crediting the payout's full gross to
+   * never debited to `clearing`. Crediting the payout's full gross to
    * clearing would drive that account permanently negative by the amount auxx
    * never took; posting only the recognised part and leaving cash short of the
    * bank would break the bank reconciliation instead. So cash takes the whole
@@ -378,7 +387,8 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   inventory_count_variance: 'expense',
   accounts_receivable: 'asset',
   undeposited_funds: 'asset',
-  clearing_card: 'asset',
+  clearing: 'asset',
+  bank: 'asset',
   unidentified_receipts: 'liability',
   sales_tax_payable: 'liability',
   customer_deposits: 'liability',
@@ -390,6 +400,25 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   payment_processing_fees: 'expense',
   bad_debt_expense: 'expense',
 }
+
+/**
+ * The subtype pin beside {@link ROLE_ACCOUNT_TYPES} (§3 rule 4 of task 58): a
+ * second, narrower requirement present for exactly two roles. `bank` must
+ * carry `GlAccountSubtype.BANK`; `clearing` must carry `GlAccountSubtype.CLEARING`.
+ * Every other role pins nothing here and only its statement type applies.
+ */
+export const ROLE_ACCOUNT_SUBTYPES: Readonly<Partial<Record<AccountRole, GlAccountSubtypeValue>>> =
+  {
+    [ACCOUNT_ROLES.BANK]: GlAccountSubtype.BANK,
+    [ACCOUNT_ROLES.CLEARING]: GlAccountSubtype.CLEARING,
+  }
+
+/**
+ * Roles with no org-wide default (§3 rule 3 of task 58): `bank` has no answer
+ * that holds for the whole org, so an unscoped row is illegal, not merely
+ * unusual.
+ */
+export const ROLES_WITHOUT_DEFAULT = ['bank'] as const
 
 /**
  * A human label per role, for the one place a role is ever shown to a person:
@@ -416,7 +445,8 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   inventory_count_variance: 'Inventory Count Variance',
   accounts_receivable: 'Accounts Receivable',
   undeposited_funds: 'Undeposited Funds',
-  clearing_card: 'Card Clearing',
+  clearing: 'Card Clearing',
+  bank: 'Bank',
   unidentified_receipts: 'Unidentified Receipts',
   sales_tax_payable: 'Sales Tax Payable',
   customer_deposits: 'Customer Deposits',
@@ -430,36 +460,36 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
 }
 
 /**
- * Which axis of a posted event a SCOPABLE role reads its source from
- * (task 47 §4).
+ * Which axis of a posted event a SCOPABLE role reads its scope from
+ * (task 47 §4, the `rail` axis added by task 58 §3).
  *
- * `FinancialSourceAccount` holds two kinds of row - a storefront and a merchant
- * account at a processor - and the effect contract already distinguishes them
- * (`effect-types.ts`: a receipt carries `sourceStoreId` AND `processorAccountId`,
- * with a consistency check between them). Both axes key the SAME
- * `GlRoleAssignment.sourceAccountId` column against the SAME table; only the
- * selector differs.
+ * `store` keys the existing `GlRoleAssignment.sourceAccountId` column against
+ * `FinancialSourceAccount` - unchanged from 47. `rail` is a SEPARATE column,
+ * `GlRoleAssignment.paymentGatewayId`, against the `payment_gateway`
+ * EntityInstance directly, because a rail row also carries an optional
+ * `currency` the store axis has no counterpart for (58 §4.1).
  *
  * | axis | reads | answers |
  * | --- | --- | --- |
  * | `store` | `sourceStoreId`, null -> the manual row | which storefront sold it |
- * | `processor` | `processorAccountId` | which merchant account the money came through |
+ * | `rail` | `effect.paymentGatewayId` | which payment rail took the money |
  */
-export type ScopeAxis = 'store' | 'processor'
+export type ScopeAxis = 'store' | 'rail'
 
 /**
- * The roles an org may answer DIFFERENTLY PER SOURCE, and the axis each reads.
+ * The roles an org may answer DIFFERENTLY PER SCOPE, and the axis each reads
+ * (task 47 §4, restructured by task 58 §3 rule 5).
  *
  * 🔑 **The vocabulary stays closed.** No role is added by scoping and no builder
  * changes: a fulfillment still emits `revenue_product`. What changes is that the
  * org may point `revenue_product` at `4001 Revenue - Auxx-Lift US` for one store
  * and leave every other store on the org-wide default (task 47 §1.2).
  *
- * 🛑 **Fees are NOT a store axis.** A store using two processors would pool both
- * processors' fees, and two stores sharing one Stripe account would split fees
- * that arrive on a single statement and reconcile as one number. The model
- * already says so: `payment_gateway.settlementAccount` stores a
- * `FinancialSourceAccount.id` beside `settlementBankAccount`.
+ * 🛑 **Fees are NOT a store axis.** A store using two rails would pool both
+ * rails' fees, and two stores sharing one Stripe account would split fees that
+ * arrive on a single statement and reconcile as one number. `clearing` and
+ * `bank` read the same rail axis for the same reason: each is an answer to
+ * "which rail", never "which store" (58 §3).
  *
  * 🛑 **`cogs_product_cost` is WANTED and BLOCKED, not excluded** (47 §4.2).
  * Splitting revenue per store while COGS pools makes gross margin per store
@@ -472,24 +502,25 @@ export type ScopeAxis = 'store' | 'processor'
  * that flips `includeCogs` true under L3.
  *
  * Everything else is deliberately out, and 47 §4.3 carries the reasoning per
- * role: `clearing_card` is already id-routed per gateway (brief 26), a bank
- * account is not a role at all, `accounts_receivable` is settled by cash rather
- * than by store, `sales_tax_payable` is one obligation per jurisdiction,
- * inventory is one physical pool, `unidentified_receipts` wants ONE place to
- * look, and `revenue_service` is credited on an invoice, which is always manual.
+ * role: `accounts_receivable` is settled by cash rather than by store,
+ * `sales_tax_payable` is one obligation per jurisdiction, inventory is one
+ * physical pool, `unidentified_receipts` wants ONE place to look, and
+ * `revenue_service` is credited on an invoice, which is always manual.
  *
- * A write naming any other role with a `sourceAccountId` is refused by
- * `setRoleAssignment`, and `__tests__/build-entry.test.ts` pins this set the
- * same way it pins {@link ROLE_ACCOUNT_TYPES}.
+ * A write naming any other role with a `sourceAccountId` or `paymentGatewayId`
+ * is refused by `setRoleAssignment`, and `__tests__/build-entry.test.ts` pins
+ * this set the same way it pins {@link ROLE_ACCOUNT_TYPES}.
  */
 export const SCOPABLE_ROLES: Readonly<Partial<Record<AccountRole, ScopeAxis>>> = {
   [ACCOUNT_ROLES.REVENUE_PRODUCT]: 'store',
   [ACCOUNT_ROLES.REVENUE_SHIPPING]: 'store',
   [ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES]: 'store',
-  [ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES]: 'processor',
+  [ACCOUNT_ROLES.CLEARING]: 'rail',
+  [ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES]: 'rail',
+  [ACCOUNT_ROLES.BANK]: 'rail',
 }
 
-/** The axis `role` resolves its source from, or null when it is not scopable. */
+/** The axis `role` resolves its scope from, or null when it is not scopable. */
 export function roleScopeAxis(role: string): ScopeAxis | null {
   return SCOPABLE_ROLES[role as AccountRole] ?? null
 }
@@ -498,7 +529,7 @@ export function roleScopeAxis(role: string): ScopeAxis | null {
  * Whether the MANUAL bucket is a meaningful source for this role.
  *
  * ⚠️ Derived from the axis rather than declared in a second table, which would
- * be a copy that drifts. A manual order has no processor, so
+ * be a copy that drifts. A manual order has no rail, so
  * `payment_processing_fees` is never emitted for one and the settings tree greys
  * that cell rather than offering it (47 §4.3).
  */

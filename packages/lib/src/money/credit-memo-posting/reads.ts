@@ -510,10 +510,10 @@ function resolveReverseRevenue(
  * record); the MATCH itself is `matchGatewayRoute`, shared with the sale side
  * and with the single-memo door, so one gateway cannot resolve two ways.
  *
- * A memo absent from the map takes the `clearing_card` role, which is
+ * A memo absent from the map takes the `clearing` role, which is
  * `resolveSettlementAccount`'s fallback and is deliberately NOT a refusal: a
  * refund cannot be refused, because the money has already moved, and
- * `clearing_card` is where a wrong answer fails to reconcile visibly (§7).
+ * `clearing` is where a wrong answer fails to reconcile visibly (§7).
  */
 export async function readCreditMemoSettlementAccounts(
   db: Database,

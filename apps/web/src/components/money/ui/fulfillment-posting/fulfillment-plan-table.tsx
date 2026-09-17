@@ -51,21 +51,21 @@ import { formatDayKey } from '~/components/money/ui/batch-posting'
  * name when the caller supplies {@link FulfillmentPlanTableProps.gatewayNames}.
  */
 export const DEBIT_ROLE_LABEL: Record<FulfillmentDebitRole, string> = {
-  clearing_card: 'Card clearing',
+  clearing: 'Card clearing',
   accounts_receivable: 'Accounts receivable',
   gateway: 'Gateway clearing',
 }
 
 /** The same, short enough for a column head. */
 const DEBIT_ROLE_COLUMN: Record<FulfillmentDebitRole, string> = {
-  clearing_card: 'Card',
+  clearing: 'Card',
   accounts_receivable: 'A/R',
   gateway: 'Gateway',
 }
 
 /** The order the debit columns are read in. Card first: it is the common case. */
 const DEBIT_ROLE_ORDER: readonly FulfillmentDebitRole[] = [
-  'clearing_card',
+  'clearing',
   'gateway',
   'accounts_receivable',
 ]

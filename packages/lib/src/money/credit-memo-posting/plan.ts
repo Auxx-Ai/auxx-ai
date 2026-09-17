@@ -59,7 +59,7 @@
  * 🛑 **`gateway-ambiguous` and `test-gateway` deliberately do not exist here**
  * (§7, and `types.ts` says it at length). A sale can be refused and re-run; a
  * refund cannot, because the money has already moved. The settlement account is
- * resolved before the plan and falls back to the `clearing_card` role on every
+ * resolved before the plan and falls back to the `clearing` role on every
  * uncertainty, which is where a wrong answer fails to reconcile VISIBLY. Do not
  * "fix" that into a refusal.
  *
@@ -100,7 +100,7 @@ export interface CreditMemoPlanContext {
   /**
    * `creditMemoId -> the settlement account the refund comes back out of`.
    *
-   * Absent for a memo means the `clearing_card` role, which is
+   * Absent for a memo means the `clearing` role, which is
    * `resolveSettlementAccount`'s own fallback. §3.1 item 1: the map is kept PER
    * MEMO and the builder never collapses it, because an Affirm memo and a card
    * memo in one group must stay two credit lines or `1210` is overstated forever
@@ -378,7 +378,7 @@ function settlementFor(
   return {
     settlement: settlementGlAccountId
       ? { glAccountId: settlementGlAccountId, amount }
-      : { role: 'clearing_card', amount },
+      : { role: 'clearing', amount },
   }
 }
 

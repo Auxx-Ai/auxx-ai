@@ -357,7 +357,7 @@ describe('totals and the debit split', () => {
     )
 
     expect(result.groups[0]?.totals.byDebitRole).toEqual({
-      clearing_card: 10_000,
+      clearing: 10_000,
       accounts_receivable: 10_000,
       gateway: 10_000,
     })
@@ -371,7 +371,7 @@ describe('totals and the debit split', () => {
     const result = plan([shipment({ orderId: 'b', orderNumber: '#2', gateways: ['Affirm'] })])
 
     expect(result.groups[0]?.totals.byDebitRole).toEqual({
-      clearing_card: 10_000,
+      clearing: 10_000,
       accounts_receivable: 0,
       gateway: 0,
     })
@@ -552,7 +552,7 @@ describe('gatewayRoutes (brief 13 §5.3)', () => {
     expect(posted?.amounts.debitGlAccountId).toBe('acct_authnet_clearing')
     // The role buckets stay zero; the id-based debit is counted under `gateway`.
     expect(result.groups[0]?.totals.byDebitRole).toEqual({
-      clearing_card: 0,
+      clearing: 0,
       accounts_receivable: 0,
       gateway: 10_000,
     })
@@ -571,7 +571,7 @@ describe('gatewayRoutes (brief 13 §5.3)', () => {
       gatewayRoutes: [authNetRoute],
     })
     const posted = result.groups[0]?.shipments[0]
-    expect(posted?.amounts.debitRole).toBe('clearing_card')
+    expect(posted?.amounts.debitRole).toBe('clearing')
     expect(posted?.amounts.debitGlAccountId).toBeUndefined()
   })
 

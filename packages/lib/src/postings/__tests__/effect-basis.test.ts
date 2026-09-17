@@ -109,7 +109,7 @@ describe('durable accounting basis', () => {
         {
           lineKey: 'clearing',
           glAccountId: 'gl-clearing',
-          accountRole: 'clearing_card',
+          accountRole: 'clearing',
           selectedBy: 'route' as const,
           configurationHash: hash,
         },
@@ -164,7 +164,7 @@ describe('durable accounting basis', () => {
         ...basis,
         calculation: {
           ...basis.calculation,
-          route: { kind: 'role', role: 'clearing_card', reason: 'x' },
+          route: { kind: 'role', role: 'clearing', reason: 'x' },
         },
       }).success
     ).toBe(false)

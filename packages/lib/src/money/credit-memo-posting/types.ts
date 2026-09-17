@@ -33,7 +33,7 @@ export type CreditMemoPostingGrouping = BatchPostingGrouping
  * 🛑 **`gateway-ambiguous` and `test-gateway` deliberately do NOT apply here**,
  * and this asymmetry with the fulfillment poster is load-bearing (§7). A sale
  * can be refused and re-run; a refund cannot, because the money has already
- * moved. `resolveSettlementAccount` therefore falls back to `clearing_card` on
+ * moved. `resolveSettlementAccount` therefore falls back to `clearing` on
  * every uncertainty - no order, no gateway, no match, two records claiming one
  * handle - because that is where a wrong answer fails to reconcile VISIBLY
  * rather than quietly. Do not "fix" that into a refusal.
@@ -151,7 +151,7 @@ export interface CreditMemoAmounts {
    *
    * §3.1 item 1: an Affirm memo and a card memo in one group must stay two
    * credit lines, or `1210` is overstated forever in an entry that balances and
-   * that nothing downstream can detect. Absent means the `clearing_card` role.
+   * that nothing downstream can detect. Absent means the `clearing` role.
    */
   settlementGlAccountId?: string
   reverseRevenue: boolean

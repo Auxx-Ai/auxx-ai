@@ -52,7 +52,7 @@ export const FULFILLMENT_POSTING_GROUPINGS: readonly FulfillmentPostingGrouping[
  * unchanged by counting every id-based debit under this one key; the actual
  * account id rides on `ShipmentAmounts.debitGlAccountId`.
  */
-export type FulfillmentDebitRole = 'clearing_card' | 'accounts_receivable' | 'gateway'
+export type FulfillmentDebitRole = 'clearing' | 'accounts_receivable' | 'gateway'
 
 /**
  * What a shipment debits: a declared ROLE, or a `payment_gateway` record's own

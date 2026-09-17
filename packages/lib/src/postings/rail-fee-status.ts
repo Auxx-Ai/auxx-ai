@@ -56,7 +56,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError } from '../errors'
 import type { PaymentGatewayFeeTreatmentValue, PaymentGatewayRow } from '../payment-gateways/client'
@@ -68,6 +68,7 @@ import type { PaymentGatewayFeeTreatmentValue, PaymentGatewayRow } from '../paym
 import { listPaymentGateways } from '../payment-gateways/reads'
 import { ACCOUNT_ROLES } from './build-entry'
 import { parsePeriodKey } from './periods'
+import { readRoleAssignments } from './role-assignments'
 
 const logger = createScopedLogger('postings:rail-fee-status')
 
@@ -262,23 +263,20 @@ async function readFallbackFeeAccountId(
   db: Database,
   organizationId: string
 ): Promise<string | null> {
-  const [row] = await db
-    .select({ glAccountId: schema.GlRoleAssignment.glAccountId })
-    .from(schema.GlRoleAssignment)
-    .where(
-      and(
-        eq(schema.GlRoleAssignment.organizationId, organizationId),
-        eq(schema.GlRoleAssignment.role, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES),
-        // 🛑 The ORG DEFAULT only (task 47). "Which account does a rail with no
-        // fee account of its own book into" has exactly one answer per org; a
-        // per-processor override is a different row, and `.limit(1)` over both
-        // would pick between them arbitrarily.
-        isNull(schema.GlRoleAssignment.sourceAccountId)
-      )
-    )
-    .limit(1)
+  const rows = await readRoleAssignments(db, organizationId)
+  // 🛑 The ORG DEFAULT only (task 47, and task 58's rail rows - which also
+  // carry no `sourceAccountId`). "Which account does a rail with no fee
+  // account of its own book into" has exactly one answer per org; a
+  // per-source or per-rail override is a different row, and picking between
+  // them would be the arbitrary choice `resolveRoles` itself refuses to make.
+  const fallback = rows.find(
+    (row) =>
+      row.role === ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES &&
+      row.sourceAccountId == null &&
+      row.paymentGatewayId == null
+  )
 
-  return row?.glAccountId ?? null
+  return fallback?.glAccountId ?? null
 }
 
 /**

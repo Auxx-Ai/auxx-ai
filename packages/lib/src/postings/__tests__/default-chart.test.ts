@@ -30,6 +30,7 @@ import {
   ACCOUNT_ROLE_LABELS,
   ACCOUNT_ROLES,
   ROLE_ACCOUNT_TYPES,
+  ROLES_WITHOUT_DEFAULT,
   roleAcceptsManualSource,
   roleScopeAxis,
   SCOPABLE_ROLES,
@@ -94,9 +95,12 @@ describe('the roles that may be scoped to a source', () => {
 
   // 🛑 Exact, both directions. Adding a role to `ACCOUNT_ROLES` must not
   // silently make it scopable, and dropping one from this list must be a
-  // deliberate edit rather than a merge artifact.
-  it('is exactly the four roles brief 47 decides on', () => {
+  // deliberate edit rather than a merge artifact. Task 58 §3 rule 5 added
+  // `bank` and `clearing` on the rail axis.
+  it('is exactly the six roles brief 47 and task 58 decide on', () => {
     expect(Object.keys(SCOPABLE_ROLES).sort()).toEqual([
+      'bank',
+      'clearing',
       'payment_processing_fees',
       'revenue_product',
       'revenue_returns_allowances',
@@ -104,14 +108,17 @@ describe('the roles that may be scoped to a source', () => {
     ])
   })
 
-  // 🛑 Fees are NOT a store axis. A store on two processors would pool both
-  // processors' fees; two stores sharing one Stripe account would split fees
-  // that arrive on a single statement and reconcile as one number.
-  it('reads revenue from the store and fees from the processor', () => {
+  // 🛑 Fees are NOT a store axis. A store on two rails would pool both rails'
+  // fees; two stores sharing one Stripe account would split fees that arrive
+  // on a single statement and reconcile as one number. `clearing` and `bank`
+  // read the same rail axis, for the same "which rail" reason (58 §3).
+  it('reads revenue from the store and clearing, fees and bank from the rail', () => {
     expect(SCOPABLE_ROLES.revenue_product).toBe('store')
     expect(SCOPABLE_ROLES.revenue_shipping).toBe('store')
     expect(SCOPABLE_ROLES.revenue_returns_allowances).toBe('store')
-    expect(SCOPABLE_ROLES.payment_processing_fees).toBe('processor')
+    expect(SCOPABLE_ROLES.clearing).toBe('rail')
+    expect(SCOPABLE_ROLES.payment_processing_fees).toBe('rail')
+    expect(SCOPABLE_ROLES.bank).toBe('rail')
   })
 
   // 🛑 `cogs_product_cost` is WANTED and BLOCKED (47 §4.2), not merely
@@ -182,13 +189,21 @@ describe('the union of every pack', () => {
   // that cannot post. `assertAccountRolesResolve` would fail the entry with
   // `account_unmapped` before the period was claimed - correct behaviour, but it
   // should never be reachable from the DEFAULT chart, which is the whole point
-  // of shipping the roles pre-assigned (`G8`). Exact set, both directions.
-  it('assigns every role in ACCOUNT_ROLES exactly once', () => {
+  // of shipping the roles pre-assigned (`G8`). Exact set, both directions -
+  // except `ROLES_WITHOUT_DEFAULT` (`bank`, task 58 §3 rule 3), which has no
+  // org-wide answer to seed at all.
+  it('assigns every role in ACCOUNT_ROLES exactly once, but never a role with no default', () => {
     const assigned = DEFAULT_CHART_OF_ACCOUNTS.flatMap((account) =>
       account.role ? [account.role] : []
     )
     expect(new Set(assigned).size).toBe(assigned.length)
-    expect([...assigned].sort()).toEqual([...CODE_ROLE_VALUES].sort())
+    const seedable = CODE_ROLE_VALUES.filter(
+      (role) => !(ROLES_WITHOUT_DEFAULT as readonly string[]).includes(role)
+    )
+    expect([...assigned].sort()).toEqual([...seedable].sort())
+    for (const role of ROLES_WITHOUT_DEFAULT) {
+      expect(assigned, role).not.toContain(role)
+    }
   })
 
   // The four LFK-only accounts brief 16 dropped (DECIDED, 16.3). Role-less and
@@ -324,7 +339,7 @@ describe('the other packs', () => {
   it('put every non-core role in the pack whose builders drive it', () => {
     expect([...rolesOf('card_rail')].sort()).toEqual(
       [
-        ACCOUNT_ROLES.CLEARING_CARD,
+        ACCOUNT_ROLES.CLEARING,
         ACCOUNT_ROLES.UNIDENTIFIED_RECEIPTS,
         ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES,
       ].sort()
@@ -497,11 +512,15 @@ describe('the other packs', () => {
 })
 
 describe('packForRole', () => {
-  it('is total and agrees with the tables', () => {
+  it('is total for every seedable role, and null for ROLES_WITHOUT_DEFAULT', () => {
     for (const role of CODE_ROLE_VALUES) {
       const pack = packForRole(role)
+      if ((ROLES_WITHOUT_DEFAULT as readonly string[]).includes(role)) {
+        expect(pack, role).toBeNull()
+        continue
+      }
       expect(CHART_PACK_KEYS, role).toContain(pack)
-      expect(rolesOf(pack), `${role} -> ${pack}`).toContain(role)
+      expect(rolesOf(pack as ChartPackKey), `${role} -> ${pack}`).toContain(role)
     }
   })
 })

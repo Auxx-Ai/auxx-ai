@@ -465,7 +465,7 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // `seedDefaultPaymentGateways` runs after this pack, never after the core: the
-// default gateway record points at `clearing_card`, which only exists once this
+// default gateway record points at `clearing`, which only exists once this
 // pack has landed (13 §5.3, 16 §1.5).
 //
 // 🛑 **Affirm is not in here, and no rail past the card rail ever will be.**
@@ -475,7 +475,7 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
 // what Authorize.Net already was - a rail the merchant ADDS, as a
 // `payment_gateway` record pointing at a clearing account they create. The
 // exclusion from `1200` still happens, and still mechanically: an id-routed
-// gateway debit never reaches `clearing_card`, which is the only role
+// gateway debit never reaches `clearing`, which is the only role
 // `PAYOUT_CLEARING_ROLES` drains.
 const CARD_RAIL_ACCOUNTS: readonly DefaultChartAccount[] = [
   {
@@ -492,7 +492,7 @@ const CARD_RAIL_ACCOUNTS: readonly DefaultChartAccount[] = [
     // same subtype - they carry no ROLE (see the band's docblock), so the subtype
     // is the only thing that marks them as a settlement holding pen.
     subtype: GlAccountSubtype.CLEARING,
-    role: 'clearing_card',
+    role: 'clearing',
   },
   {
     // Money that arrived and auxx cannot attribute. The payout entry's fourth
@@ -542,7 +542,7 @@ export interface AccountCodeBand {
  * merchant has ever had.
  *
  * 🛑 The accounts minted into this band carry **no role** (§7.3). `1200`'s
- * `clearing_card` is the only role there will ever be here: `clearing_affirm`
+ * `clearing` is the only role there will ever be here: `clearing_affirm`
  * was deleted on 2026-09-10 because a role must not name a vendor, and the mint
  * path deliberately offers no way to add one back.
  */
@@ -1080,9 +1080,14 @@ const PACK_BY_ROLE = Object.fromEntries(
   )
 ) as Record<AccountRole, ChartPackKey>
 
-/** The pack whose accounts carry this role. Every role is in exactly one. */
-export function packForRole(role: AccountRole): ChartPackKey {
-  return PACK_BY_ROLE[role]
+/**
+ * The pack whose accounts carry this role. Every role is in exactly one -
+ * except a role in `ROLES_WITHOUT_DEFAULT` (`bank`, task 58 §3 rule 3), which
+ * is seeded nowhere because it has no org-wide answer to seed. `null` for
+ * those, never a lookup into `CHART_PACKS` with nothing.
+ */
+export function packForRole(role: AccountRole): ChartPackKey | null {
+  return PACK_BY_ROLE[role] ?? null
 }
 
 /**

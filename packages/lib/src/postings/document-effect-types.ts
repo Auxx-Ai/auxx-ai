@@ -406,11 +406,11 @@ export const acceptedDocumentEffectBasisSchema = z
 export function documentRoleScope(calculation: {
   sourceStoreId?: string | null
   processorAccountId?: string
-}): { store?: string | null; processor?: string } {
+}): { store?: string | null; rail?: string } {
   return {
     ...(calculation.sourceStoreId === undefined ? {} : { store: calculation.sourceStoreId }),
     ...(typeof calculation.processorAccountId === 'string'
-      ? { processor: calculation.processorAccountId }
+      ? { rail: calculation.processorAccountId }
       : {}),
   }
 }

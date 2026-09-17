@@ -28,6 +28,18 @@ vi.mock('../../cache', () => ({
   }),
 }))
 
+// `assertScopableGateway` (task 58 §3) reads a `payment_gateway` record
+// through `payment-gateways/reads.ts`, which is its own subsystem with its
+// own field-provisioning story - mocked here rather than taught to the
+// hand-written `stubDb` below, which only speaks `FinancialSourceAccount`.
+const gatewayStub = vi.hoisted(() => ({ live: new Set<string>() }))
+vi.mock('../../payment-gateways/reads', () => ({
+  getPaymentGateway: vi.fn(async (_db: unknown, _organizationId: string, id: string) => {
+    const { ok } = await import('neverthrow')
+    return ok(gatewayStub.live.has(id) ? { id } : null)
+  }),
+}))
+
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import { setRoleAssignment } from '../role-map'
 import { MANUAL_SOURCE_EXTERNAL_ID, MANUAL_SOURCE_PROVIDER_KEY } from '../source-scope'
@@ -41,6 +53,7 @@ const ACTIVE_FIELD = 'fld_active'
 const STORE = 'fsa_store_us'
 const STRIPE = 'fsa_stripe'
 const MANUAL = 'fsa_manual'
+const GATEWAY = 'pg_stripe'
 
 const ACCOUNTS = [
   { id: 'acct_4001', code: '4001', name: 'Revenue - US', accountType: 'revenue' },
@@ -173,6 +186,7 @@ beforeEach(() => {
     ['gl_account_type', { id: TYPE_FIELD }],
     ['gl_account_is_active', { id: ACTIVE_FIELD }],
   ])
+  gatewayStub.live = new Set([GATEWAY])
 })
 
 describe('setRoleAssignment - which roles may name a connection', () => {
@@ -241,7 +255,10 @@ describe('setRoleAssignment - a connection must carry the role AXIS', () => {
     expect(stub.inserts).toHaveLength(0)
   })
 
-  it('refuses the fee role pointed at a storefront', async () => {
+  // Task 58 §3 rule 5 moved `payment_processing_fees` off the store-scoped
+  // `sourceAccountId` mechanism entirely, onto `paymentGatewayId` - a
+  // connection can no longer carry it whatever evidence it has.
+  it('refuses the fee role pointed at a storefront by connection', async () => {
     const stub = stubDb()
     const result = await setRoleAssignment(stub.db, {
       organizationId: ORG,
@@ -251,10 +268,11 @@ describe('setRoleAssignment - a connection must carry the role AXIS', () => {
     })
 
     expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr().message).toContain('auxx-lift.myshopify.com')
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+    expect(result._unsafeUnwrapErr().message).toContain('paymentGatewayId')
   })
 
-  it('accepts the fee role on a merchant account', async () => {
+  it('refuses the fee role pointed at a merchant account by connection too', async () => {
     const stub = stubDb()
     const result = await setRoleAssignment(stub.db, {
       organizationId: ORG,
@@ -263,12 +281,40 @@ describe('setRoleAssignment - a connection must carry the role AXIS', () => {
       sourceAccountId: STRIPE,
     })
 
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+  })
+
+  it('accepts the fee role scoped to a payment gateway', async () => {
+    const stub = stubDb()
+    const result = await setRoleAssignment(stub.db, {
+      organizationId: ORG,
+      role: 'payment_processing_fees',
+      glAccountId: 'acct_6101',
+      paymentGatewayId: GATEWAY,
+    })
+
     expect(result.isOk()).toBe(true)
   })
 
+  it('refuses a revenue role scoped to a payment gateway', async () => {
+    const stub = stubDb()
+    const result = await setRoleAssignment(stub.db, {
+      organizationId: ORG,
+      role: 'revenue_product',
+      glAccountId: 'acct_4001',
+      paymentGatewayId: GATEWAY,
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+    expect(result._unsafeUnwrapErr().message).toContain('sourceAccountId')
+  })
+
   // ⚠️ A source that is BOTH - Shopify is a storefront and Shopify Payments is a
-  // processor - appears on both axes and may carry either role.
-  it('accepts either axis on a connection that carries both', async () => {
+  // processor - still carries revenue by connection; the fee role never reads
+  // a connection at all any more, whatever axes it has.
+  it('accepts revenue by connection on a source that carries both axes', async () => {
     const stub = stubDb({ storeIds: [STORE], processorIds: [STORE] })
     expect(
       (
@@ -288,7 +334,7 @@ describe('setRoleAssignment - a connection must carry the role AXIS', () => {
           glAccountId: 'acct_6101',
           sourceAccountId: STORE,
         })
-      ).isOk()
+      ).isErr()
     ).toBe(true)
   })
 

@@ -192,7 +192,7 @@ export async function getPaymentGateway(
  *
  * `handles` is a free-text field, and a handle that does not match what
  * Shopify wrote on the order is INVISIBLE: `resolveFulfillmentDebit` finds no
- * route, falls back to `clearing_card`, and the entry balances. Nothing
+ * route, falls back to `clearing`, and the entry balances. Nothing
  * downstream can tell a typo from a rail that legitimately has no record yet.
  * Before this, the only way to learn the real strings was to query
  * `order_payment_gateways` by hand - so the "add a gateway" screen asked a

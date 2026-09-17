@@ -80,7 +80,7 @@ describe('seedDefaultPaymentGateways', () => {
 
   it('creates Shopify Payments when the card clearing role is mapped', async () => {
     h.roleRows = [
-      { role: 'clearing_card', glAccountId: 'acct_1200' },
+      { role: 'clearing', glAccountId: 'acct_1200' },
       { role: 'payment_processing_fees', glAccountId: 'acct_6100' },
     ]
 
@@ -109,7 +109,7 @@ describe('seedDefaultPaymentGateways', () => {
   })
 
   it('is idempotent by handle - skips a default a record already claims', async () => {
-    h.roleRows = [{ role: 'clearing_card', glAccountId: 'acct_1200' }]
+    h.roleRows = [{ role: 'clearing', glAccountId: 'acct_1200' }]
     h.existingGateways = [{ id: 'pg_existing', handles: ['Shopify_Payments'] }]
 
     const result = await seedDefaultPaymentGateways(stubDb(), 'org-1')
@@ -120,13 +120,13 @@ describe('seedDefaultPaymentGateways', () => {
   })
 
   // 🛑 The whole list, pinned. A rail auxx seeds is one every org's default
-  // chart names a role for, and `clearing_card` is the only clearing role there
+  // chart names a role for, and `clearing` is the only clearing role there
   // is. Affirm joined Authorize.Net here on 2026-09-10: seeding it meant `1210`,
   // `6105` and a `clearing_affirm` role in the chart of every org, naming a
   // vendor most of them have never taken a payment through.
   it('seeds the card rail and nothing else - a merchant adds every other rail', async () => {
     h.roleRows = [
-      { role: 'clearing_card', glAccountId: 'acct_1200' },
+      { role: 'clearing', glAccountId: 'acct_1200' },
       { role: 'payment_processing_fees', glAccountId: 'acct_6100' },
     ]
 

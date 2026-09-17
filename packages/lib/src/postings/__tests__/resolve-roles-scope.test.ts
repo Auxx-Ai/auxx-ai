@@ -1,8 +1,9 @@
 // packages/lib/src/postings/__tests__/resolve-roles-scope.test.ts
 //
-// Task 47: an org may answer a posting role DIFFERENTLY PER SOURCE - per
-// storefront for revenue, per merchant account for processing fees - and
-// `resolveRoles` is the one place that decides which answer a given event gets.
+// Task 47 (store axis) and task 58 §5.1 (rail axis): an org may answer a
+// posting role DIFFERENTLY PER SOURCE - per storefront for revenue, per rail
+// for processing fees - and `resolveRoles` is the one place that decides
+// which answer a given event gets.
 //
 // Three properties carry this file, and each is a way the books move silently
 // when it is wrong:
@@ -14,10 +15,10 @@
 //  2. **A miss falls back, it never fails.** Connecting a second store must not
 //     stop the books, so an unmapped or archived source posts to the org default
 //     and is surfaced by the settings screen rather than by a refusal (D6).
-//  3. **The axes do not cross.** `payment_processing_fees` reads the PROCESSOR
+//  3. **The axes do not cross.** `payment_processing_fees` reads the RAIL
 //     and `revenue_product` reads the STORE. Two stores sharing one Stripe
-//     account book fees to ONE account; one store on two processors books to
-//     TWO. Crossing them produces an entry that balances perfectly.
+//     rail book fees to ONE account; one store on two rails books to TWO.
+//     Crossing them produces an entry that balances perfectly.
 //
 // The stub answers by TABLE rather than by call order, unlike
 // `resolve-roles.test.ts`'s: the scope chain issues its reads conditionally, and
@@ -50,8 +51,11 @@ const ACTIVE_FIELD = 'fld_active'
 
 const STORE_US = 'fsa_store_us'
 const STORE_EU = 'fsa_store_eu'
-const STRIPE = 'fsa_stripe'
 const MANUAL = 'fsa_manual'
+/** A `FinancialSourceAccount` id - store-axis filler, unrelated to the rail tests below. */
+const STRIPE = 'fsa_stripe'
+/** A `payment_gateway` `EntityInstance` id - the rail axis lives on this table, not `FinancialSourceAccount`. */
+const STRIPE_GATEWAY = 'pg_stripe'
 
 interface Assignment {
   role: string
@@ -59,6 +63,9 @@ interface Assignment {
   markedUnused?: boolean
   /** Null (or absent) is the ORG DEFAULT. */
   sourceAccountId?: string | null
+  /** A rail override (task 58 §5.1) - exclusive with `sourceAccountId`. */
+  paymentGatewayId?: string | null
+  currency?: string | null
 }
 
 interface SourceAccount {
@@ -105,7 +112,11 @@ interface Stub {
   sourceReads: number
 }
 
-function stubDb(assignments: Assignment[], sources: SourceAccount[] = []): Stub {
+function stubDb(
+  assignments: Assignment[],
+  sources: SourceAccount[] = [],
+  gateways: readonly string[] = []
+): Stub {
   const state = { sourceReads: 0 }
   const values = ACCOUNTS.flatMap((account) => [
     { entityId: account.id, fieldId: CODE_FIELD, valueText: account.code },
@@ -121,6 +132,8 @@ function stubDb(assignments: Assignment[], sources: SourceAccount[] = []): Stub 
         glAccountId: a.glAccountId,
         markedUnused: a.markedUnused ?? false,
         sourceAccountId: a.sourceAccountId ?? null,
+        paymentGatewayId: a.paymentGatewayId ?? null,
+        currency: a.currency ?? null,
       }))
     }
     if (table === schema.FinancialSourceAccount) {
@@ -141,7 +154,11 @@ function stubDb(assignments: Assignment[], sources: SourceAccount[] = []): Stub 
       return live.filter((s) => params.includes(s.id)).map((s) => ({ id: s.id }))
     }
     if (table === schema.EntityInstance) {
-      return ACCOUNTS.filter((a) => params.includes(a.id)).map((a) => ({ id: a.id }))
+      // Shared by the chart-account liveness check AND the rail (gateway)
+      // liveness check (task 58 §5.1) - both read `EntityInstance`, told apart
+      // only by which ids they asked for.
+      const ids = [...ACCOUNTS.map((a) => a.id), ...gateways]
+      return ids.filter((id) => params.includes(id)).map((id) => ({ id }))
     }
     return values.filter((row) => params.includes(row.entityId as string))
   }
@@ -257,7 +274,7 @@ describe('the scope chain: the source, then the default', () => {
   // org default; only a caller that KNOWS there was no source gets manual.
   it('does not reach the manual bucket when the caller simply did not say', async () => {
     const stub = stubDb(SCOPED, LIVE_SOURCES)
-    const result = await resolveRoles(stub.db, ORG, ['revenue_product'], { processor: STRIPE })
+    const result = await resolveRoles(stub.db, ORG, ['revenue_product'], { rail: STRIPE_GATEWAY })
     expect(result._unsafeUnwrap().get('revenue_product')?.code).toBe('4000')
   })
 
@@ -299,21 +316,23 @@ describe('the scope chain: the source, then the default', () => {
   })
 })
 
-// §10.9 - the axis separation, which is the whole of decision D12.
+// §10.9 - the axis separation, which is the whole of decision D12. Task 58
+// moved `payment_processing_fees` from the (retired) processor axis onto the
+// rail axis - a `payment_gateway` `EntityInstance`, not a `FinancialSourceAccount`.
 describe('a role reads its OWN axis and no other', () => {
   const BOTH_AXES = [
     DEFAULT_REVENUE,
     { role: 'revenue_product', glAccountId: 'acct_4001', sourceAccountId: STORE_US },
     { role: 'payment_processing_fees', glAccountId: 'acct_6100' },
-    { role: 'payment_processing_fees', glAccountId: 'acct_6101', sourceAccountId: STRIPE },
+    { role: 'payment_processing_fees', glAccountId: 'acct_6101', paymentGatewayId: STRIPE_GATEWAY },
   ]
 
-  it('reads the fee role from the processor, never from the store', async () => {
-    const stub = stubDb(BOTH_AXES, LIVE_SOURCES)
+  it('reads the fee role from the rail, never from the store', async () => {
+    const stub = stubDb(BOTH_AXES, LIVE_SOURCES, [STRIPE_GATEWAY])
     const resolved = (
       await resolveRoles(stub.db, ORG, ['revenue_product', 'payment_processing_fees'], {
         store: STORE_US,
-        processor: STRIPE,
+        rail: STRIPE_GATEWAY,
       })
     )._unsafeUnwrap()
 
@@ -321,21 +340,21 @@ describe('a role reads its OWN axis and no other', () => {
     expect(resolved.get('payment_processing_fees')?.code).toBe('6101')
   })
 
-  // 🛑 Two stores sharing one Stripe account book fees to ONE account. The fees
+  // 🛑 Two stores sharing one Stripe rail book fees to ONE account. The fees
   // arrive on a single statement and reconcile as one number, so splitting them
   // by storefront would make the rail impossible to tie out.
-  it('books two stores on one processor to one fee account', async () => {
-    const stub = stubDb(BOTH_AXES, LIVE_SOURCES)
+  it('books two stores on one rail to one fee account', async () => {
+    const stub = stubDb(BOTH_AXES, LIVE_SOURCES, [STRIPE_GATEWAY])
     const us = (
       await resolveRoles(stub.db, ORG, ['payment_processing_fees'], {
         store: STORE_US,
-        processor: STRIPE,
+        rail: STRIPE_GATEWAY,
       })
     )._unsafeUnwrap()
     const eu = (
       await resolveRoles(stub.db, ORG, ['payment_processing_fees'], {
         store: STORE_EU,
-        processor: STRIPE,
+        rail: STRIPE_GATEWAY,
       })
     )._unsafeUnwrap()
 
@@ -343,12 +362,57 @@ describe('a role reads its OWN axis and no other', () => {
     expect(eu.get('payment_processing_fees')?.code).toBe('6101')
   })
 
-  it('leaves the fee role on the default when the store is scoped and the processor is not', async () => {
-    const stub = stubDb(BOTH_AXES, LIVE_SOURCES)
+  it('leaves the fee role on the default when the store is scoped and the rail is not', async () => {
+    const stub = stubDb(BOTH_AXES, LIVE_SOURCES, [STRIPE_GATEWAY])
     const resolved = (
       await resolveRoles(stub.db, ORG, ['payment_processing_fees'], { store: STORE_US })
     )._unsafeUnwrap()
     expect(resolved.get('payment_processing_fees')?.code).toBe('6100')
+  })
+
+  // The currency chain (§3 rule 2): a currencied rail row wins over its rail's
+  // no-currency row, which wins over the org default.
+  it('walks currency, then rail, then the org default', async () => {
+    const withCurrency = [
+      { role: 'payment_processing_fees', glAccountId: 'acct_6100' },
+      {
+        role: 'payment_processing_fees',
+        glAccountId: 'acct_6101',
+        paymentGatewayId: STRIPE_GATEWAY,
+      },
+      {
+        role: 'payment_processing_fees',
+        glAccountId: 'acct_6100',
+        paymentGatewayId: STRIPE_GATEWAY,
+        currency: 'EUR',
+      },
+    ]
+    const stub = stubDb(withCurrency, LIVE_SOURCES, [STRIPE_GATEWAY])
+
+    const eur = (
+      await resolveRoles(stub.db, ORG, ['payment_processing_fees'], {
+        rail: STRIPE_GATEWAY,
+        currency: 'EUR',
+      })
+    )._unsafeUnwrap()
+    const usd = (
+      await resolveRoles(stub.db, ORG, ['payment_processing_fees'], {
+        rail: STRIPE_GATEWAY,
+        currency: 'USD',
+      })
+    )._unsafeUnwrap()
+
+    expect(eur.get('payment_processing_fees')?.code).toBe('6100')
+    expect(usd.get('payment_processing_fees')?.code).toBe('6101')
+  })
+
+  // §3 rule 3: `bank` has no org-wide default, so a rail with no bank row of
+  // its own is unresolved rather than reaching the org default.
+  it('fails closed for a rail-scoped role with no default to fall to', async () => {
+    const stub = stubDb([], LIVE_SOURCES, [STRIPE_GATEWAY])
+    const result = await resolveRoles(stub.db, ORG, ['bank'], { rail: STRIPE_GATEWAY })
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain("'bank'")
   })
 
   // A role with no axis is invisible to the whole mechanism.
