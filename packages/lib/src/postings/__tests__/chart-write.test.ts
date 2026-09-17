@@ -162,14 +162,21 @@ function stubDb(accounts: Account[], assignments: Assignment[] = []): Database {
 
   const rowsFor = (table: unknown, params: string[]): unknown[] => {
     if (table === schema.GlRoleAssignment) {
+      // `liveRolesFor` reads the whole org through `readRoleAssignments`
+      // (task 58 §4.9) and filters by account id and `markedUnused` itself, so
+      // the stub returns every row for the org rather than pre-filtering.
       return assignments
-        .filter(
-          (a) =>
-            !a.markedUnused &&
-            params.includes(a.organizationId ?? ORG) &&
-            params.includes(a.glAccountId)
-        )
-        .map((a) => ({ role: a.role, glAccountId: a.glAccountId }))
+        .filter((a) => params.includes(a.organizationId ?? ORG))
+        .map((a) => ({
+          role: a.role,
+          glAccountId: a.glAccountId,
+          markedUnused: a.markedUnused ?? false,
+          sourceAccountId: null,
+          paymentGatewayId: null,
+          currency: null,
+          source: 'human',
+          confirmedAt: null,
+        }))
     }
     if (table === schema.EntityInstance) {
       return liveAccounts()
@@ -862,9 +869,11 @@ describe('I2: deactivating an account a role still posts to', () => {
  * the next Affirm posting would refuse with "no active account with id ...".
  */
 describe('I4: removing or deactivating an account a TEXT pointer still names', () => {
+  // A bank account rather than the gateway's clearing account: task 58 moved a
+  // rail's accounts onto `GlRoleAssignment`, so they are no longer TEXT pointers.
   const gatewayPointer = {
-    attribute: 'payment_gateway_clearing_account',
-    entityId: 'pg_affirm',
+    attribute: 'bank_account_gl_account',
+    entityId: 'ba_chase',
     glAccountId: GRNI_ACCOUNT.id,
   }
 
@@ -880,7 +889,7 @@ describe('I4: removing or deactivating an account a TEXT pointer still names', (
       })
     )._unsafeUnwrapErr()
 
-    expect(error.message).toContain('a payment gateway (clearing account)')
+    expect(error.message).toContain('a bank account')
     expect(error.message).toContain('still points at it')
     // 🛑 Refused means NOTHING was archived. A guard that refuses after the
     // write is not a guard.
@@ -900,7 +909,7 @@ describe('I4: removing or deactivating an account a TEXT pointer still names', (
       })
     )._unsafeUnwrapErr()
 
-    expect(error.message).toContain('a payment gateway (clearing account)')
+    expect(error.message).toContain('a bank account')
     expect(h.updates).toEqual([])
   })
 

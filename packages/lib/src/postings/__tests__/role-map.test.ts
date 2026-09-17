@@ -45,6 +45,7 @@ import {
   listChartAccounts,
   listChartAccountUsage,
   listRoleMap,
+  saveRoleAssignments,
   setRoleAssignment,
 } from '../role-map'
 
@@ -66,6 +67,9 @@ interface Assignment {
   source?: string
   confirmedAt?: Date | null
   markedUnused?: boolean
+  /** Rail scope (task 58 §3): a `payment_gateway` id, mutually exclusive with a store scope. */
+  paymentGatewayId?: string | null
+  currency?: string | null
 }
 
 interface Account {
@@ -143,6 +147,8 @@ function stubDb(assignments: Assignment[], accounts: Account[]): Stub {
           source: a.source ?? 'seed',
           confirmedAt: a.confirmedAt ?? null,
           markedUnused: a.markedUnused ?? false,
+          paymentGatewayId: a.paymentGatewayId ?? null,
+          currency: a.currency ?? null,
         }))
     }
     if (table === schema.EntityInstance) {
@@ -394,6 +400,146 @@ describe('listRoleMap - the four derived states', () => {
     )
     const row = (await listRoleMap(stub.db, ORG))._unsafeUnwrap().find((r) => r.role === 'grni')
     expect(row?.state).toBe('unmapped')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 59 V1: listRoleMap now returns rail scopes and their currency sub-rows.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CLEARING_1210: Account = {
+  id: 'acct_1210',
+  code: '1210',
+  name: 'Card Clearing',
+  accountType: 'asset',
+  isActive: true,
+}
+const CLEARING_1230: Account = {
+  id: 'acct_1230',
+  code: '1230',
+  name: 'Stripe Clearing USD',
+  accountType: 'asset',
+  isActive: true,
+}
+const CLEARING_1231: Account = {
+  id: 'acct_1231',
+  code: '1231',
+  name: 'Stripe Clearing EUR',
+  accountType: 'asset',
+  isActive: true,
+}
+
+describe('listRoleMap - rail scopes and currency rows (task 58 §3, task 59 V1)', () => {
+  // The org default and a rail row are the SAME role - two DB rows, one Map
+  // slot for each - so `clearing`'s own row must stay the org default's, not
+  // fold the rail's account into it.
+  it('keeps a rail row out of the org default and lists it under railOverrides instead', async () => {
+    const stub = stubDb(
+      [
+        { role: 'clearing', glAccountId: 'acct_1210' },
+        {
+          role: 'clearing',
+          glAccountId: 'acct_1230',
+          paymentGatewayId: 'pg_stripe',
+          source: 'human',
+          confirmedAt: new Date('2026-08-20T10:00:00.000Z'),
+        },
+      ],
+      [CLEARING_1210, CLEARING_1230]
+    )
+    const row = (await listRoleMap(stub.db, ORG))._unsafeUnwrap().find((r) => r.role === 'clearing')
+
+    expect(row?.accountId).toBe('acct_1210')
+    expect(row?.railOverrides).toEqual([
+      expect.objectContaining({
+        paymentGatewayId: 'pg_stripe',
+        currency: null,
+        state: 'confirmed',
+        accountId: 'acct_1230',
+      }),
+    ])
+  })
+
+  // `bank` has no org default at all (`ROLES_WITHOUT_DEFAULT`) - the top-level
+  // row stays `unmapped` and the rail row is the only place the mapping lives.
+  it('lists a rail row for a role with no org-wide default', async () => {
+    const stub = stubDb(
+      [{ role: 'bank', glAccountId: 'acct_1210', paymentGatewayId: 'pg_stripe' }],
+      [{ ...CLEARING_1210, code: '1010', name: 'Chase Checking' }]
+    )
+    const row = (await listRoleMap(stub.db, ORG))._unsafeUnwrap().find((r) => r.role === 'bank')
+
+    expect(row?.state).toBe('unmapped')
+    expect(row?.accountId).toBeNull()
+    expect(row?.railOverrides).toHaveLength(1)
+    expect(row?.railOverrides[0]).toMatchObject({
+      paymentGatewayId: 'pg_stripe',
+      accountId: 'acct_1210',
+    })
+  })
+
+  // A currency row is a SECOND rail row, same `paymentGatewayId`, its own
+  // `currency` - flat, not nested (the screen groups them by rail itself).
+  it('lists a rail row and its currency sub-row as two flat railOverrides', async () => {
+    const stub = stubDb(
+      [
+        {
+          role: 'clearing',
+          glAccountId: 'acct_1230',
+          paymentGatewayId: 'pg_stripe',
+          currency: 'USD',
+        },
+        {
+          role: 'clearing',
+          glAccountId: 'acct_1231',
+          paymentGatewayId: 'pg_stripe',
+          currency: 'EUR',
+        },
+      ],
+      [CLEARING_1230, CLEARING_1231]
+    )
+    const row = (await listRoleMap(stub.db, ORG))._unsafeUnwrap().find((r) => r.role === 'clearing')
+
+    expect(row?.railOverrides).toEqual([
+      expect.objectContaining({
+        paymentGatewayId: 'pg_stripe',
+        currency: 'EUR',
+        accountId: 'acct_1231',
+      }),
+      expect.objectContaining({
+        paymentGatewayId: 'pg_stripe',
+        currency: 'USD',
+        accountId: 'acct_1230',
+      }),
+    ])
+  })
+
+  // Suggested vs confirmed follows the same `confirmedAt` rule a store override
+  // does (D5: suggestions exist for scopes, not only defaults).
+  it('derives suggested on a rail row with no confirmation', async () => {
+    const stub = stubDb(
+      [
+        {
+          role: 'clearing',
+          glAccountId: 'acct_1230',
+          paymentGatewayId: 'pg_stripe',
+          source: 'seed',
+        },
+      ],
+      [CLEARING_1230]
+    )
+    const row = (await listRoleMap(stub.db, ORG))._unsafeUnwrap().find((r) => r.role === 'clearing')
+    expect(row?.railOverrides[0]?.state).toBe('suggested')
+  })
+
+  // A store-axis role never carries a rail row and a rail-axis role never
+  // carries a store row, whatever the table holds - `setRoleAssignment`
+  // refuses writing the wrong one, but the READ stays defensive too.
+  it('never folds a rail row into a store-axis role or vice versa', async () => {
+    const stub = stubDb([], [])
+    const rows = (await listRoleMap(stub.db, ORG))._unsafeUnwrap()
+    expect(rows.find((r) => r.role === 'revenue_product')?.railOverrides).toEqual([])
+    expect(rows.find((r) => r.role === 'bank')?.overrides).toEqual([])
   })
 })
 
@@ -751,6 +897,116 @@ describe('setRoleAssignment - marking a role unused', () => {
       setRoleAssignment(stub.db, { organizationId: ORG, role: 'grni', markedUnused: true })
     )
     expect(error).toBeInstanceOf(NotFoundError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// saveRoleAssignments - the Mapping tab's batch write (59 §2.4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('saveRoleAssignments - one bad row refuses the whole batch, named', () => {
+  // `bank` is refused unscoped with no database round trip at all
+  // (`ROLES_WITHOUT_DEFAULT`), which is what lets this prove NOTHING commits:
+  // the bad row is first, so the good row after it is never even attempted.
+  it('refuses the batch and names the offending row, writing nothing', async () => {
+    const stub = stubDb([], [GRNI_ACCOUNT])
+    const result = await saveRoleAssignments(stub.db, {
+      organizationId: ORG,
+      rows: [
+        { role: 'bank', scope: null, value: 'acct_grni' },
+        { role: 'grni', scope: null, value: 'acct_grni' },
+      ],
+    })
+
+    expect(result.isErr()).toBe(true)
+    const error = result._unsafeUnwrapErr()
+    expect(error).toBeInstanceOf(BadRequestError)
+    expect(error.message).toMatch(/^Row 1, 'bank' on the default:/)
+    expect(error.message).toMatch(/no organization-wide default/i)
+    expect(stub.inserts).toHaveLength(0)
+  })
+
+  // The same refusal, later in the batch - proves the row NAMED is the one
+  // that actually failed, not always the first.
+  it('names a row other than the first', async () => {
+    const stub = stubDb([], [GRNI_ACCOUNT])
+    const result = await saveRoleAssignments(stub.db, {
+      organizationId: ORG,
+      rows: [
+        { role: 'grni', scope: null, value: 'acct_grni' },
+        { role: 'invented', scope: null, value: 'acct_grni' },
+      ],
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toMatch(/^Row 2, 'invented' on the default:/)
+    expect(result._unsafeUnwrapErr().message).toMatch(/not a declared posting role/i)
+  })
+
+  // Every refusal `setRoleAssignment` carries still applies - this is the
+  // subtype pin (58 §3 rule 4), reached through the batch rather than a
+  // shortcut around `setRoleAssignment`'s validation.
+  it('still refuses a type mismatch, through the batch', async () => {
+    const stub = stubDb([], [{ ...GRNI_ACCOUNT, accountType: 'revenue' }])
+    const result = await saveRoleAssignments(stub.db, {
+      organizationId: ORG,
+      rows: [{ role: 'grni', scope: null, value: 'acct_grni' }],
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(UnprocessableEntityError)
+    expect(result._unsafeUnwrapErr().message).toMatch(/must be mapped to a liability account/i)
+  })
+
+  it('applies every row and returns each one in order, on a clean batch', async () => {
+    const variance: Account = {
+      id: 'acct_var',
+      code: '5090',
+      name: 'Variances',
+      accountType: 'expense',
+      isActive: true,
+    }
+    const stub = stubDb([], [GRNI_ACCOUNT, variance])
+    const result = await saveRoleAssignments(stub.db, {
+      organizationId: ORG,
+      actorUserId: 'usr_7',
+      rows: [
+        { role: 'grni', scope: null, value: 'acct_grni' },
+        { role: 'ppv', scope: null, value: 'acct_var' },
+      ],
+    })
+
+    expect(result.isOk()).toBe(true)
+    const rows = result._unsafeUnwrap()
+    expect(rows.map((r) => r.role)).toEqual(['grni', 'ppv'])
+    expect(rows.every((r) => r.state === 'confirmed')).toBe(true)
+    expect(stub.inserts).toHaveLength(2)
+  })
+
+  // 'unused' maps to `markedUnused: true`; `setRoleAssignment` still refuses it
+  // on any scoped row - the batch surfaces that refusal unchanged.
+  it('translates the "unused" sentinel to markedUnused, refused when scoped', async () => {
+    const stub = stubDb([{ role: 'duties_accrual', glAccountId: 'acct_grni' }], [GRNI_ACCOUNT])
+    const result = await saveRoleAssignments(stub.db, {
+      organizationId: ORG,
+      rows: [{ role: 'duties_accrual', scope: null, value: 'unused' }],
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(stub.updates).toEqual([expect.objectContaining({ markedUnused: true })])
+  })
+
+  // 'inherit' maps to `useDefault: true`; refused with no scope to apply it to,
+  // exactly like a direct `setRoleAssignment` call.
+  it('refuses the "inherit" sentinel with no scope, same as a direct call', async () => {
+    const stub = stubDb([], [GRNI_ACCOUNT])
+    const result = await saveRoleAssignments(stub.db, {
+      organizationId: ORG,
+      rows: [{ role: 'grni', scope: null, value: 'inherit' }],
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
   })
 })
 

@@ -30,6 +30,43 @@ function referenceKey(
   ])
 }
 
+/**
+ * Every `payment_gateway` a set of `FinancialSourceAccount` ids settles for.
+ *
+ * The disambiguator a receipt's own reference cannot carry by itself: two
+ * gateways can report the identical order reference (a shared reference
+ * misfires this exact way), and only agreement on the RAIL says which one
+ * actually settled it. `PaymentRoute`'s processor kind used to carry this on
+ * the `MoneyTransaction` side; it is retired (task 58 D5) and never had a live
+ * row to replace (§2.3 - zero processor `PaymentRoute` writes in production).
+ * `FinancialSourceAccount.paymentGatewayId` (D3) is the one link left.
+ */
+async function readPaymentGatewayByAccount(
+  db: Database | Transaction,
+  organizationId: string,
+  accountIds: readonly string[]
+): Promise<Map<string, string>> {
+  const ids = [...new Set(accountIds)]
+  if (ids.length === 0) return new Map()
+  const rows = await db
+    .select({
+      id: schema.FinancialSourceAccount.id,
+      paymentGatewayId: schema.FinancialSourceAccount.paymentGatewayId,
+    })
+    .from(schema.FinancialSourceAccount)
+    .where(
+      and(
+        eq(schema.FinancialSourceAccount.organizationId, organizationId),
+        inArray(schema.FinancialSourceAccount.id, ids)
+      )
+    )
+  const result = new Map<string, string>()
+  for (const row of rows) {
+    if (row.paymentGatewayId) result.set(row.id, row.paymentGatewayId)
+  }
+  return result
+}
+
 /** Match scoped source identities in bounded sets; amounts validate identity, never establish it. */
 export async function matchProcessorEntries(
   db: Database | Transaction,
@@ -42,6 +79,14 @@ export async function matchProcessorEntries(
     const parsed = financialSourceReferenceSchema.safeParse(entry.sourceReference)
     return parsed.success ? [{ entry, reference: parsed.data }] : []
   })
+  if (eligible.length === 0) return result
+
+  const gatewayByAccount = await readPaymentGatewayByAccount(
+    db,
+    organizationId,
+    eligible.map(({ entry }) => entry.sourceAccountId)
+  )
+
   for (let offset = 0; offset < eligible.length; offset += 200) {
     const chunk = eligible.slice(offset, offset + 200)
     const rows = await db
@@ -49,7 +94,6 @@ export async function matchProcessorEntries(
         object: schema.FinancialSourceObject,
         account: schema.FinancialSourceAccount,
         money: schema.MoneyTransaction,
-        processorAccountId: schema.PaymentRoute.processorAccountId,
       })
       .from(schema.FinancialSourceObject)
       .innerJoin(
@@ -76,21 +120,11 @@ export async function matchProcessorEntries(
           eq(schema.MoneyTransaction.id, schema.MoneySourceLink.moneyTransactionId)
         )
       )
-      .innerJoin(
-        schema.PaymentRoute,
-        and(
-          eq(schema.PaymentRoute.organizationId, schema.MoneyTransaction.organizationId),
-          eq(schema.PaymentRoute.id, schema.MoneyTransaction.paymentRouteId)
-        )
-      )
       .where(
         and(
           eq(schema.FinancialSourceObject.organizationId, organizationId),
           inArray(schema.FinancialSourceObject.externalId, [
             ...new Set(chunk.map(({ reference }) => reference.externalId)),
-          ]),
-          inArray(schema.PaymentRoute.processorAccountId, [
-            ...new Set(chunk.map(({ entry }) => entry.sourceAccountId)),
           ])
         )
       )
@@ -107,10 +141,14 @@ export async function matchProcessorEntries(
       byReference.set(key, list)
     }
     for (const { entry, reference } of chunk) {
+      // No rail on the entry's own account is a refusal, not a wildcard - an
+      // unlinked merchant account must not match every rail's receipts.
+      const gatewayId = gatewayByAccount.get(entry.sourceAccountId)
       const candidates = byReference.get(referenceKey(reference)) ?? []
       const matches = candidates.filter(
-        ({ money, processorAccountId }) =>
-          processorAccountId === entry.sourceAccountId &&
+        ({ money, account }) =>
+          !!gatewayId &&
+          account.paymentGatewayId === gatewayId &&
           money.currency === entry.currency &&
           money.currencyExponent === entry.currencyExponent &&
           money.amountMinor === (entry.grossMinor < 0n ? -entry.grossMinor : entry.grossMinor) &&

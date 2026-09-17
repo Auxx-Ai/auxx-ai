@@ -42,6 +42,7 @@ function roleMap(overrides: Record<string, RoleAssignmentRow['state']> = {}): Ro
     confirmedAt: null,
     axis: roleScopeAxis(role),
     overrides: [],
+    railOverrides: [],
   }))
 }
 

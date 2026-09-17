@@ -15,16 +15,36 @@ vi.mock('../recognise', () => ({ recognise: h.recognise }))
 
 import type { Database } from '@auxx/database'
 import { UnprocessableEntityError } from '../../../errors'
+import type { PaymentGatewayRow } from '../../../payment-gateways/client'
 import { gatherPayout } from '../gather'
 import type { PayoutHeader, PayoutSource, PayoutSourceCtx } from '../source'
 
 const db = {} as Database
 
+/** A minimal linked rail - task 58 §5.5: every context carries exactly one. */
+const RAIL: PaymentGatewayRow = {
+  id: 'gateway_1',
+  recordId: 'payment_gateway:gateway_1',
+  name: 'Stripe',
+  handles: [],
+  clearingGlAccountId: '',
+  feeGlAccountId: null,
+  settlementSource: 'stripe',
+  processorAccountId: null,
+  settlementCurrency: null,
+  bankAccountId: null,
+  feeTreatment: 'netted',
+  status: 'active',
+  lastSettlementAt: null,
+  lastFeeBookedAt: null,
+  createdAt: null,
+  updatedAt: null,
+}
+
 const ctx: PayoutSourceCtx = {
   organizationId: 'org_1',
   sourceId: 'stripe',
-  rail: null,
-  conflictingRails: [],
+  rail: RAIL,
   handle: 'acct_1',
 }
 

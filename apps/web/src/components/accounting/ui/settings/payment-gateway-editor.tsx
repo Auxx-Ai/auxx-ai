@@ -1,60 +1,62 @@
 // apps/web/src/components/accounting/ui/settings/payment-gateway-editor.tsx
 'use client'
 
-// The right pane of Accounting > Settings > Payment gateways (task 13 §5.3).
+// The right pane of Accounting > Settings > Payment gateways (task 13 §5.3,
+// rebuilt for task 58/59: a gateway no longer carries its own clearing/fee
+// account fields - those are `GlRoleAssignment` rows scoped to this rail,
+// read and written exactly like the Mapping tab's own rows (D1). Three
+// sections: the record's own fields, Accounts (the shared `MappingScopeRow`,
+// transposed), Feeds (which `FinancialSourceAccount`s read this rail).
 //
-// 🛑 Copies `bank-account-editor.tsx`'s ONE SAVE MODEL: every row commits on
-// change, no `Save` button, no dirty guard. See that file's header for why -
-// the same argument holds here unchanged (a record editor beside a master
-// list, not a section-shaped settings form).
+// 🛑 The top FieldPanel still commits on change, no Save button - `name`,
+// `handles`, `feeTreatment` and `lastSettlementAt` are `payment_gateway`
+// attributes, unrelated to the Accounts section below it.
+//
+// 🛑 Accounts saves on change too, immediately (MK, scope change during 59's
+// build - no staged batch, no `FormSaveBar`, here or on the Mapping tab). One
+// `ledger.saveMapping` call per pick, one row. A refusal drops the optimistic
+// guess so the control snaps back to what is actually stored, with
+// `toastError` naming why; a success invalidates `ledger.roleMap` (shared
+// with the Mapping tab) plus `paymentGateway.readiness`/`list`, so both
+// screens and this rail's own readiness line agree.
 //
 // 🛑 Handles is a TAG input, not a text field (§5.1's census: two rails arrive
 // under two spellings each, and a single-string field re-creates the exact
 // problem this record exists to solve). Rendered through `FieldInputAdapter`
 // with `FieldType.TAGS`, the same idiom `order_payment_gateways` uses.
-//
-// 🛑 Clearing account is filtered to `asset`, fee account to `expense` - the
-// picker is a convenience; `writes.ts`'s refusal sentence is the actual
-// defence, and it is surfaced verbatim on save.
-//
-// 🛑 Repointing the clearing account CONFIRMS, and it names the balance it is
-// about to strand (brief 26 §9.1). A settings edit moves new postings only, so
-// every sale on this rail that was not settled at the switch moment stays in
-// the old account together with whatever residue was already there. The
-// transfer entry is deliberately not built yet; a silent repoint is the failure
-// this addresses, and a manual journal entry on the switch date is the accepted
-// interim.
 
 import { FieldType } from '@auxx/database/enums'
 import type { PaymentGatewayRow } from '@auxx/lib/payment-gateways/client'
 import {
   PAYMENT_GATEWAY_FEE_TREATMENT_LABELS,
   PAYMENT_GATEWAY_FEE_TREATMENTS,
-  PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS,
-  PAYMENT_GATEWAY_SETTLEMENT_SOURCES,
 } from '@auxx/lib/payment-gateways/client'
+import type { GlAccountSubtypeValue, GlAccountTypeValue } from '@auxx/lib/postings/client'
+import { AutosizeInput } from '@auxx/ui/components/autosize-input'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Section } from '@auxx/ui/components/section'
-import { formatCurrency } from '@auxx/utils/currency'
-import { CreditCard } from 'lucide-react'
+import { EmptySection, Section } from '@auxx/ui/components/section'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
+import { toastError } from '@auxx/ui/components/toast'
+import { TreeRowButton } from '@auxx/ui/components/tree-row'
+import { ArrowUpRight, CreditCard, Plus, TriangleAlert, X } from 'lucide-react'
+import Link from 'next/link'
 import { useMemo, useRef, useState } from 'react'
-import { useChartAccount } from '~/components/accounting/ui/account-label'
-import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
-import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
-import { GatewaySettlementFields } from './gateway-settlement-fields'
-
-const SETTLEMENT_SOURCE_OPTIONS = PAYMENT_GATEWAY_SETTLEMENT_SOURCES.map((value) => ({
-  value,
-  label: PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS[value],
-  color: value === 'manual' ? ('gray' as const) : ('green' as const),
-}))
+import { sourceAccountLabel } from '../source-account-label'
+import type { MappingAccountValue } from './mapping-account-select'
+import { MappingScopeRow } from './mapping-scope-row'
 
 // 🛑 Not a label. `billed` removes the fee leg from this rail's payout entry
 // entirely (brief 26 §4), and `gross === net` becomes the expected arithmetic
@@ -71,12 +73,31 @@ const TEXT_COMMIT_DELAY_MS = 500
 export interface PaymentGatewayPatch {
   name?: string
   handles?: string[]
-  clearingAccountId?: string
-  feeAccountId?: string | null
-  settlementSource?: PaymentGatewayRow['settlementSource']
   feeTreatment?: PaymentGatewayRow['feeTreatment']
   lastSettlementAt?: string | null
 }
+
+/** The three rail roles, in the order §3's Accounts section renders them. */
+const RAIL_ROLES = [
+  {
+    role: 'clearing',
+    label: 'Clearing',
+    filterType: 'asset' as GlAccountTypeValue,
+    subtypePin: 'clearing' as GlAccountSubtypeValue,
+  },
+  {
+    role: 'payment_processing_fees',
+    label: 'Fees',
+    filterType: 'expense' as GlAccountTypeValue,
+    subtypePin: undefined,
+  },
+  {
+    role: 'bank',
+    label: 'Bank',
+    filterType: 'asset' as GlAccountTypeValue,
+    subtypePin: 'bank' as GlAccountSubtypeValue,
+  },
+] as const
 
 /**
  * Cancels the scroll container's `p-3` so a `Section` sits FLUSH with the
@@ -93,6 +114,8 @@ interface PaymentGatewayEditorProps {
   onPatch: (patch: PaymentGatewayPatch) => void
   /** Mark the gateway closed. Disabled while it already is. */
   onClose: () => void
+  /** `PermissionKey.ledgerControl` - false disables every picker in Accounts and hides Link/Unlink. */
+  canControl: boolean
 }
 
 export function PaymentGatewayEditor({ gateway, ...rest }: PaymentGatewayEditorProps) {
@@ -116,6 +139,7 @@ function PaymentGatewayForm({
   closing = false,
   onPatch,
   onClose,
+  canControl,
 }: PaymentGatewayEditorProps & { gateway: PaymentGatewayRow }) {
   const [name, setName] = useState(gateway.name)
   const nameRef = useRef(name)
@@ -124,49 +148,6 @@ function PaymentGatewayForm({
     if (value.trim()) onPatch({ name: value })
   }, TEXT_COMMIT_DELAY_MS)
 
-  const [confirm, ConfirmDialog] = useConfirm()
-  const { getSetting } = useSettings({ scope: 'GENERAL' })
-  const currencyCode = (getSetting('organization.currency') as string) || 'USD'
-
-  // What is posted to the account this gateway points at TODAY. ⚠️ It answers
-  // for the ACCOUNT, never for the gateway: nothing stamps a gateway onto a
-  // posting line, and a clearing account can be shared - which is why every
-  // sentence built from it below names the account.
-  const clearingBalance = api.paymentGateway.clearingBalance.useQuery(
-    { glAccountId: gateway.clearingGlAccountId },
-    { enabled: Boolean(gateway.clearingGlAccountId) }
-  )
-  const { account: clearingAccount } = useChartAccount(gateway.clearingGlAccountId)
-  const posted = clearingBalance.data
-  // 🔑 Gated on the LINE COUNT, not on the balance. An account that has taken a
-  // thousand lines and happens to net to zero this afternoon still has history,
-  // and a rail that is square today is exactly the one somebody repoints
-  // without thinking.
-  const hasPostedHistory = (posted?.lineCount ?? 0) > 0
-  const clearingAccountName =
-    clearingAccount?.name || clearingAccount?.code || 'the current clearing account'
-
-  async function repointClearingAccount(nextAccountId: string) {
-    if (nextAccountId === gateway.clearingGlAccountId) return
-    if (hasPostedHistory && posted) {
-      const confirmed = await confirm({
-        title: `Leave ${formatCurrency(posted.balanceMinor, { currencyCode })} behind in ${clearingAccountName}?`,
-        description:
-          `${clearingAccountName} holds ${formatCurrency(posted.balanceMinor, { currencyCode })} ` +
-          `across ${posted.lineCount} posted ${posted.lineCount === 1 ? 'line' : 'lines'}` +
-          `${posted.lastTxnDate ? `, most recently ${posted.lastTxnDate}` : ''}. ` +
-          'Repointing moves NEW postings only. That balance stays exactly where it is, including ' +
-          'every sale on this rail that has not settled yet, and nothing here moves it for you - ' +
-          'square it with a journal entry dated the day you switched.',
-        confirmText: 'Repoint anyway',
-        cancelText: 'Cancel',
-        destructive: true,
-      })
-      if (!confirmed) return
-    }
-    onPatch({ clearingAccountId: nextAccountId })
-  }
-
   // 🛑 The option set is DERIVED from the values. `payment_gateway_handles` is an
   // OPEN, value-keyed TAGS field - the registry declares `options: { options: [] }`
   // and the write stores the raw string - so a stored handle matches no option row.
@@ -174,8 +155,6 @@ function PaymentGatewayForm({
   // trigger rendered it italic-grey as "not in this field's option set", and it
   // never appeared in the popover at all, so it could not be unchecked. Nothing is
   // wrong with what is stored; the input has to be told the values ARE the options.
-  // The `useMemo` is load-bearing too - a fresh `[]` each render re-fired
-  // `MultiSelectPicker`'s options sync and wiped the tag being typed.
   const handleOptions = useMemo(
     () => gateway.handles.map((handle) => ({ label: handle, value: handle })),
     [gateway.handles]
@@ -193,7 +172,7 @@ function PaymentGatewayForm({
         <span className='text-muted-foreground text-xs'>
           {isClosed
             ? 'Closed. Its history still routes to this clearing account, but a merchant would add a new gateway for a new rail.'
-            : 'A record carrying its own clearing account, never a role - two rails can share one account.'}
+            : 'The rail that took the money for an order. Its clearing, fee and bank accounts map below.'}
         </span>
       </div>
 
@@ -226,87 +205,11 @@ function PaymentGatewayForm({
             fieldOptions={{ options: handleOptions }}
             useValueAsLabel
             value={gateway.handles}
-            // 🛑 `showClear: false` - the trigger's X is a CLEAR ALL, and a
-            // gateway with no handle is refused by `updatePaymentGateway`
-            // ("at least one handle"), so the button could only ever be a
-            // silent no-op: the guard below drops the write and the next
-            // render puts every tag straight back. A control that cannot
-            // succeed does not belong on the row.
             triggerProps={{ className: 'w-full ps-0 pe-1', showClear: false }}
             placeholder='Add a handle'
             onChange={(value) => {
               const handles = Array.isArray(value) ? (value as string[]) : []
               if (handles.length > 0) onPatch({ handles })
-            }}
-          />
-        </FieldPanelRow>
-
-        <FieldPanelRow
-          title='Clearing account'
-          type={BaseType.STRING}
-          showIcon
-          isRequired
-          description='Where this gateway settles. Two gateways sharing one account is fine - this only says which account, it never mints a new one.'>
-          {/* 🛑 `showClear: false`, same argument as Gateway handles above: the
-              clearing account is REQUIRED - it is where this rail's money lands
-              on the balance sheet - so `onChange(null)` is dropped by the guard
-              and the X could only ever be a no-op. The fee account below keeps
-              its X, because null there is a real answer (fall back to the
-              default merchant-fees account). */}
-          <div className='flex flex-col gap-1'>
-            <GlAccountPicker
-              value={gateway.clearingGlAccountId}
-              selectBy='id'
-              filterTypes={['asset']}
-              placeholder='Select account…'
-              triggerProps={{ showClear: false }}
-              onChange={(id) => id && void repointClearingAccount(id)}
-            />
-            {/* The number BEFORE the picker is touched, not only in the
-                confirmation. §9.1's failure is a repoint nobody thought about,
-                and a balance that only appears once you have already chosen a
-                new account is half a warning. */}
-            {hasPostedHistory && posted && (
-              <span className='text-muted-foreground text-xs'>
-                {formatCurrency(posted.balanceMinor, { currencyCode })} posted here across{' '}
-                {posted.lineCount} {posted.lineCount === 1 ? 'line' : 'lines'}
-                {posted.lastTxnDate ? `, most recently ${posted.lastTxnDate}` : ''}. Changing this
-                account leaves that balance behind.
-              </span>
-            )}
-          </div>
-        </FieldPanelRow>
-
-        <FieldPanelRow
-          title='Fee account'
-          type={BaseType.STRING}
-          showIcon
-          description='Where the processor’s withheld fee lands. Falls back to your default merchant-fees account until you set one.'>
-          <GlAccountPicker
-            value={gateway.feeGlAccountId}
-            selectBy='id'
-            filterTypes={['expense']}
-            placeholder='Select account…'
-            onChange={(id) => onPatch({ feeAccountId: id })}
-          />
-        </FieldPanelRow>
-
-        <FieldPanelRow
-          title='Settlement source'
-          type={BaseType.ENUM}
-          showIcon
-          description='The source used to retrieve settlement history.'>
-          <FieldInputAdapter
-            fieldType={FieldType.SINGLE_SELECT}
-            fieldOptions={{ options: SETTLEMENT_SOURCE_OPTIONS }}
-            value={gateway.settlementSource}
-            triggerProps={{ className: 'w-full ps-0 pe-1' }}
-            placeholder='Select settlement source'
-            onChange={(value) => {
-              const next = Array.isArray(value) ? value[0] : value
-              if (next === 'stripe' || next === 'shopify_payments' || next === 'manual') {
-                onPatch({ settlementSource: next })
-              }
             }}
           />
         </FieldPanelRow>
@@ -323,8 +226,6 @@ function PaymentGatewayForm({
             triggerProps={{ className: 'w-full ps-0 pe-1' }}
             placeholder='Select fee treatment'
             onChange={(value) => {
-              // 🛑 SINGLE_SELECT emits `string[]`. Narrowing the array itself
-              // matches nothing and the write silently no-ops.
               const next = Array.isArray(value) ? value[0] : value
               if (next === 'netted' || next === 'billed') onPatch({ feeTreatment: next })
             }}
@@ -355,7 +256,8 @@ function PaymentGatewayForm({
         </FieldPanelRow>
       </FieldPanel>
 
-      <GatewaySettlementFields gateway={gateway} />
+      <AccountsSection gatewayId={gateway.id} canControl={canControl} />
+      <FeedsSection gatewayId={gateway.id} canControl={canControl} />
 
       <div className='min-h-4 text-muted-foreground text-xs'>{pending ? 'Saving…' : null}</div>
 
@@ -375,8 +277,467 @@ function PaymentGatewayForm({
           </div>
         </Section>
       )}
-
-      <ConfirmDialog />
     </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Accounts - the Mapping tab's own rows, transposed onto one rail (59 §3, D1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AccountsSection({ gatewayId, canControl }: { gatewayId: string; canControl: boolean }) {
+  const roleMap = api.ledger.roleMap.useQuery()
+  // Only for the Bank row's mismatch line (58 §5.4 rule 2) - the Feeds section
+  // below reads the same query for its own list.
+  const readiness = api.paymentGateway.readiness.useQuery({ gatewayId })
+  const bankMismatch = readiness.data?.mismatches[0]?.message
+  const utils = api.useUtils()
+  const [optimistic, setOptimistic] = useState<Record<string, MappingAccountValue>>({})
+  const [currencyDrafts, setCurrencyDrafts] = useState<Record<string, string[]>>({})
+
+  const saveMapping = api.ledger.saveMapping.useMutation({
+    onSuccess: async (_data, variables) => {
+      await Promise.all([
+        utils.ledger.roleMap.invalidate(),
+        utils.paymentGateway.readiness.invalidate({ gatewayId }),
+        utils.paymentGateway.list.invalidate(),
+      ])
+      setOptimistic((prev) => {
+        const next = { ...prev }
+        for (const row of variables) delete next[row.role + (row.currency ?? '')]
+        return next
+      })
+    },
+    onError: (error, variables) => {
+      setOptimistic((prev) => {
+        const next = { ...prev }
+        for (const row of variables) delete next[row.role + (row.currency ?? '')]
+        return next
+      })
+      toastError({ title: 'Error saving the mapping', description: error.message })
+    },
+  })
+
+  const commit = (role: string, currency: string | null, value: string | 'inherit') => {
+    setOptimistic((prev) => ({ ...prev, [role + (currency ?? '')]: value }))
+    saveMapping.mutate([{ role, scope: { rail: gatewayId }, currency, value }])
+  }
+
+  if (roleMap.isPending) {
+    return (
+      <Section title='Accounts' className={SECTION_BLEED}>
+        <EmptySection loading />
+      </Section>
+    )
+  }
+
+  return (
+    <Section
+      title='Accounts'
+      className={SECTION_BLEED}
+      actions={
+        <Link
+          href={`/app/accounting/settings/accounts?s=mapping&scope=${encodeURIComponent(gatewayId)}`}
+          className='flex items-center gap-1 text-primary-600 text-xs hover:underline'>
+          Map on the Mapping tab
+          <ArrowUpRight className='size-3' />
+        </Link>
+      }>
+      <div className='flex flex-col gap-0.5'>
+        {RAIL_ROLES.map(({ role, label, filterType, subtypePin }) => {
+          const row = roleMap.data?.roles.find((r) => r.role === role)
+          const isBank = role === 'bank'
+          const own = row?.railOverrides.find(
+            (o) => o.paymentGatewayId === gatewayId && o.currency === null
+          )
+          const persisted: MappingAccountValue = own ? own.accountId : isBank ? null : 'inherit'
+          const key = role
+          const value = key in optimistic ? optimistic[key]! : persisted
+          const inheritedName = isBank ? null : row?.account ? accountText(row.account) : null
+
+          const currencyRows =
+            row?.railOverrides.filter(
+              (o) => o.paymentGatewayId === gatewayId && o.currency !== null
+            ) ?? []
+          const existingCurrencies = new Set(currencyRows.map((o) => o.currency as string))
+          const optimisticCurrencies = Object.keys(optimistic)
+            .filter(
+              (k) =>
+                k.startsWith(role) &&
+                k.length === role.length + 3 &&
+                !existingCurrencies.has(k.slice(role.length))
+            )
+            .map((k) => k.slice(role.length))
+
+          return (
+            <MappingScopeRow
+              key={role}
+              depth={1}
+              title={label}
+              value={value}
+              onChange={(next) => commit(role, null, next)}
+              inheritedAccountName={inheritedName}
+              filterTypes={[filterType]}
+              subtypePin={subtypePin}
+              suggested={!(key in optimistic) && own?.state === 'suggested'}
+              onConfirmSuggested={
+                own
+                  ? () =>
+                      saveMapping.mutate([
+                        { role, scope: { rail: gatewayId }, value: own.accountId },
+                      ])
+                  : undefined
+              }
+              onAddCurrency={
+                canControl
+                  ? () =>
+                      setCurrencyDrafts((prev) => ({
+                        ...prev,
+                        [role]: [...(prev[role] ?? []), ''],
+                      }))
+                  : undefined
+              }
+              mismatchMessage={isBank ? bankMismatch : undefined}
+              disabled={!canControl}>
+              {currencyRows.map((o) => (
+                <RailRoleCurrencyRow
+                  key={o.currency}
+                  role={role}
+                  currency={o.currency as string}
+                  override={o}
+                  railOwnLabel={own?.account ? accountText(own.account) : null}
+                  isBank={isBank}
+                  orgDefaultLabel={inheritedName}
+                  optimistic={optimistic}
+                  filterType={filterType}
+                  subtypePin={subtypePin}
+                  onCommit={commit}
+                  onConfirm={(accountId) =>
+                    saveMapping.mutate([
+                      { role, scope: { rail: gatewayId }, currency: o.currency, value: accountId },
+                    ])
+                  }
+                  canControl={canControl}
+                />
+              ))}
+              {optimisticCurrencies.map((currency) => (
+                <RailRoleCurrencyRow
+                  key={currency}
+                  role={role}
+                  currency={currency}
+                  override={undefined}
+                  railOwnLabel={own?.account ? accountText(own.account) : null}
+                  isBank={isBank}
+                  orgDefaultLabel={inheritedName}
+                  optimistic={optimistic}
+                  filterType={filterType}
+                  subtypePin={subtypePin}
+                  onCommit={commit}
+                  onConfirm={() => {}}
+                  canControl={canControl}
+                />
+              ))}
+              {(currencyDrafts[role] ?? []).map((code, index) => (
+                <CurrencyDraft
+                  key={index}
+                  code={code}
+                  existing={new Set([...existingCurrencies, ...optimisticCurrencies])}
+                  filterType={filterType}
+                  subtypePin={subtypePin}
+                  onChange={(next) =>
+                    setCurrencyDrafts((prev) => {
+                      const list = [...(prev[role] ?? [])]
+                      list[index] = next
+                      return { ...prev, [role]: list }
+                    })
+                  }
+                  onPick={(accountId) => {
+                    commit(role, code, accountId)
+                    setCurrencyDrafts((prev) => ({
+                      ...prev,
+                      [role]: (prev[role] ?? []).filter((_, i) => i !== index),
+                    }))
+                  }}
+                  onRemove={() =>
+                    setCurrencyDrafts((prev) => ({
+                      ...prev,
+                      [role]: (prev[role] ?? []).filter((_, i) => i !== index),
+                    }))
+                  }
+                />
+              ))}
+            </MappingScopeRow>
+          )
+        })}
+      </div>
+    </Section>
+  )
+}
+
+function accountText(account: { code: string | null; name: string }): string {
+  return account.code ? `${account.code} · ${account.name}` : account.name
+}
+
+function RailRoleCurrencyRow({
+  role,
+  currency,
+  override,
+  railOwnLabel,
+  isBank,
+  orgDefaultLabel,
+  optimistic,
+  filterType,
+  subtypePin,
+  onCommit,
+  onConfirm,
+  canControl,
+}: {
+  role: string
+  currency: string
+  override: { accountId: string; state: 'confirmed' | 'suggested' } | undefined
+  railOwnLabel: string | null
+  isBank: boolean
+  orgDefaultLabel: string | null
+  optimistic: Record<string, MappingAccountValue>
+  filterType: GlAccountTypeValue
+  subtypePin: GlAccountSubtypeValue | undefined
+  onCommit: (role: string, currency: string | null, value: string | 'inherit') => void
+  onConfirm: (accountId: string) => void
+  canControl: boolean
+}) {
+  const persisted: MappingAccountValue = override ? override.accountId : 'inherit'
+  const key = role + currency
+  const value = key in optimistic ? optimistic[key]! : persisted
+  const inheritedName = railOwnLabel ?? (isBank ? null : orgDefaultLabel)
+
+  return (
+    <MappingScopeRow
+      depth={2}
+      nested
+      title={currency}
+      value={value}
+      onChange={(next) => onCommit(role, currency, next)}
+      inheritedAccountName={inheritedName}
+      filterTypes={[filterType]}
+      subtypePin={subtypePin}
+      suggested={!(key in optimistic) && override?.state === 'suggested'}
+      onConfirmSuggested={override ? () => onConfirm(override.accountId) : undefined}
+      disabled={!canControl}
+    />
+  )
+}
+
+function CurrencyDraft({
+  code,
+  existing,
+  filterType,
+  subtypePin,
+  onChange,
+  onPick,
+  onRemove,
+}: {
+  code: string
+  existing: Set<string>
+  filterType: GlAccountTypeValue
+  subtypePin: GlAccountSubtypeValue | undefined
+  onChange: (code: string) => void
+  onPick: (accountId: string) => void
+  onRemove: () => void
+}) {
+  const valid = /^[A-Z]{3}$/.test(code) && !existing.has(code)
+  return (
+    <MappingScopeRow
+      depth={2}
+      nested
+      title={
+        <AutosizeInput
+          value={code}
+          onChange={(e) => onChange(e.target.value.toUpperCase().slice(0, 3))}
+          placeholder='USD'
+          minWidth={40}
+          inputClassName='bg-transparent text-sm text-foreground outline-none uppercase'
+        />
+      }
+      value={null}
+      onChange={(next) => next !== 'inherit' && valid && onPick(next)}
+      filterTypes={[filterType]}
+      subtypePin={subtypePin}
+      extraActions={
+        <TreeRowButton tooltipText='Remove' onClick={onRemove}>
+          <X />
+        </TreeRowButton>
+      }
+    />
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Feeds - the `FinancialSourceAccount`s reading this rail (59 §3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FeedsSection({ gatewayId, canControl }: { gatewayId: string; canControl: boolean }) {
+  const utils = api.useUtils()
+  const readiness = api.paymentGateway.readiness.useQuery({ gatewayId })
+  const [linking, setLinking] = useState(false)
+  const [pickedFeed, setPickedFeed] = useState<string | null>(null)
+  const unlinked = api.paymentGateway.listUnlinkedFeeds.useQuery(undefined, { enabled: linking })
+  const [confirm, ConfirmDialog] = useConfirm()
+
+  const invalidate = () =>
+    Promise.all([
+      utils.paymentGateway.readiness.invalidate({ gatewayId }),
+      utils.paymentGateway.listUnlinkedFeeds.invalidate(),
+    ])
+
+  const linkFeed = api.paymentGateway.linkFeed.useMutation({
+    onSuccess: async () => {
+      setLinking(false)
+      setPickedFeed(null)
+      await invalidate()
+    },
+    onError: (error) => {
+      toastError({ title: 'Error linking the feed', description: error.message })
+    },
+  })
+
+  const unlinkFeed = api.paymentGateway.unlinkFeed.useMutation({
+    onSuccess: () => invalidate(),
+    onError: (error) => {
+      toastError({ title: 'Error unlinking the feed', description: error.message })
+    },
+  })
+
+  async function handleUnlink(sourceAccountId: string, name: string) {
+    const confirmed = await confirm({
+      title: `Unlink ${name}?`,
+      description:
+        'The feed and its history are untouched - only which rail reads it for new payouts changes.',
+      confirmText: 'Unlink',
+      cancelText: 'Cancel',
+    })
+    if (confirmed) unlinkFeed.mutate({ sourceAccountId })
+  }
+
+  const readinessLine = readiness.data
+    ? readiness.data.ready
+      ? 'Ready to post.'
+      : !readiness.data.clearingMapped
+        ? 'Needs a clearing account - map it above.'
+        : 'Needs a receiving bank account - the Bank row above is highlighted.'
+    : null
+
+  return (
+    <>
+      <Section title='Feeds' className={SECTION_BLEED}>
+        <div className='flex flex-col gap-2 p-1'>
+          {readiness.isPending ? (
+            <EmptySection loading />
+          ) : readiness.data?.linkedFeeds.length === 0 ? (
+            <p className='text-muted-foreground text-xs'>
+              No feed linked. Shipments still route here by handle; a payout for this rail cannot
+              post until a feed is linked and mapped to a bank account.
+            </p>
+          ) : (
+            readiness.data?.linkedFeeds.map((feed) => (
+              <div key={feed.sourceAccountId} className='flex items-center gap-2 text-sm'>
+                <span className='min-w-0 flex-1 truncate'>{sourceAccountLabel(feed)}</span>
+                {canControl && (
+                  <Button
+                    variant='ghost'
+                    size='xs'
+                    onClick={() =>
+                      void handleUnlink(feed.sourceAccountId, sourceAccountLabel(feed))
+                    }>
+                    Unlink
+                  </Button>
+                )}
+              </div>
+            ))
+          )}
+
+          {readiness.data && readiness.data.mismatches.length > 0 && (
+            <div className='flex flex-col gap-1'>
+              {readiness.data.mismatches.map((m) => (
+                <span
+                  key={m.payoutId}
+                  className='flex items-start gap-1.5 text-amber-700 text-xs dark:text-amber-400'>
+                  <TriangleAlert className='mt-0.5 size-3.5 shrink-0' />
+                  {m.message}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {canControl && !linking && (
+            <Button
+              variant='outline'
+              size='sm'
+              className='self-start'
+              onClick={() => setLinking(true)}>
+              <Plus />
+              Link a feed
+            </Button>
+          )}
+
+          {linking && (
+            <div className='flex items-center gap-2'>
+              <Select value={pickedFeed ?? undefined} onValueChange={setPickedFeed}>
+                <SelectTrigger size='sm' className='w-full'>
+                  <SelectValue placeholder={unlinked.isPending ? 'Loading…' : 'Select a feed…'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(unlinked.data ?? []).length === 0 && !unlinked.isPending ? (
+                    <div className='p-2 text-muted-foreground text-xs'>
+                      No live feed is reporting activity with nothing claiming it yet.
+                    </div>
+                  ) : (
+                    (unlinked.data ?? []).map((feed) => (
+                      <SelectItem key={feed.processorAccountId} value={feed.processorAccountId}>
+                        {sourceAccountLabel({
+                          providerKey: feed.providerKey,
+                          externalAccountId: feed.externalAccountId,
+                          name: feed.name,
+                        })}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <Button
+                variant='outline'
+                size='sm'
+                loading={linkFeed.isPending}
+                disabled={!pickedFeed}
+                onClick={() =>
+                  pickedFeed && linkFeed.mutate({ gatewayId, sourceAccountId: pickedFeed })
+                }>
+                Link
+              </Button>
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={() => {
+                  setLinking(false)
+                  setPickedFeed(null)
+                }}>
+                Cancel
+              </Button>
+            </div>
+          )}
+
+          {readinessLine && (
+            <p
+              className={
+                readiness.data?.ready
+                  ? 'text-muted-foreground text-xs'
+                  : 'text-amber-700 text-xs dark:text-amber-400'
+              }>
+              {readinessLine}
+            </p>
+          )}
+        </div>
+      </Section>
+      <ConfirmDialog />
+    </>
   )
 }

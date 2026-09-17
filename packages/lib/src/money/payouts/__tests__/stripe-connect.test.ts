@@ -1,19 +1,15 @@
 // packages/lib/src/money/payouts/__tests__/stripe-connect.test.ts
 //
-// brief 27 §13 test 1: Stripe behind the `PayoutSource` interface is
-// bit-for-bit. One Stripe fixture - a payout and its balance transactions -
-// runs through the registered source, the recogniser (stubbed to a fixed set,
-// so this file tests the PIPELINE and `recognise.test.ts` tests the lookups),
-// the split, the record write and the entry build, and lands on the two
-// payloads that matter:
+// brief 27 §13 test 1, updated for task 58: Stripe behind the `PayoutSource`
+// interface. One Stripe fixture - a payout and its balance transactions - runs
+// through the registered source, the recogniser (stubbed to a fixed set, so
+// this file tests the PIPELINE and `recognise.test.ts` tests the lookups), the
+// split, the record write and the entry build, and lands on the two payloads
+// that matter:
 //
 //  - the `payout` record's field values (`payoutValues`);
-//  - the input `postPayoutEntry` receives.
-//
-// 🔑 The expected literals below were computed BY HAND from the pre-unit-2
-// `gather.ts` + `sync.ts` over this exact fixture, before those files were
-// rewritten. They are what those files produced; this test pins that the
-// rewrite produces the same bytes. Do not "fix" a literal to match the code.
+//  - the input `postPayoutEntry` receives - every leg a role line scoped to
+//    the rail and currency (§5.3), never a resolved `gl_account` id.
 //
 // The second half pins the source module alone: how a balance transaction
 // becomes a `PayoutItem` (which refs, which rows skipped), and that both walks
@@ -31,15 +27,28 @@ const h = vi.hoisted(() => ({
     has_more: false,
   })),
   findPayoutByGatewayId: vi.fn(async (..._args: unknown[]) => null as unknown),
+  listLinkedFeedAccounts: vi.fn(
+    async () => [] as { id: string; externalAccountId: string; paymentGatewayId: string }[]
+  ),
   create: vi.fn(async (_defId: string, _values: unknown) => ({ instance: { id: 'inst_1' } })),
   update: vi.fn(async (_recordId: string, _values: unknown) => undefined),
   postPayoutEntry: vi.fn(async (_db: unknown, _input: unknown) => ({
     status: 'posted' as const,
     glPostingId: 'glp_1',
   })),
+  resolveRoles: vi.fn(
+    async () =>
+      ({ isErr: () => false, isOk: () => true, value: new Map() }) as {
+        isErr: () => boolean
+        isOk: () => boolean
+        value?: Map<string, unknown>
+        error?: Error
+      }
+  ),
   stamp: vi.fn(async (_db: unknown, _input: unknown) => ({ isErr: () => false })),
   recognise: vi.fn(async () => new Set<string>()),
   gateways: [] as unknown[],
+  readDestinations: vi.fn(async (..._args: unknown[]) => [] as string[]),
 }))
 
 vi.mock('@auxx/database', async (original) => ({
@@ -54,11 +63,8 @@ vi.mock('../reads', () => ({
     fields: { payout_payment_gateway: { id: 'f_pg' } },
   }),
   findPayoutByGatewayId: h.findPayoutByGatewayId,
-  findBankAccountByStripeExternalAccountId: async () => ({
-    bankAccountId: 'ba_row_1',
-    recordId: 'def_bank_account:ba_row_1',
-    glAccountId: 'gl_1000',
-  }),
+  listLinkedFeedAccounts: h.listLinkedFeedAccounts,
+  readBankAccountSettlementDestinations: h.readDestinations,
 }))
 vi.mock('../../payments/account-state', () => ({
   getPaymentAccount: async () => ({ stripeAccountId: 'acct_1' }),
@@ -79,6 +85,7 @@ vi.mock('../../../postings/post-payout-entry', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   postPayoutEntry: h.postPayoutEntry,
 }))
+vi.mock('../../../postings/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
 vi.mock('../../../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
     withDatabase() {
@@ -165,7 +172,10 @@ const BALANCE_TRANSACTIONS = [
   { id: 'txn_fee', type: 'stripe_fee', source: null, amount: -2_500, fee: 0 },
 ]
 
-/** What the pre-unit-2 `payoutValues(gathered, rail)` wrote for this fixture. */
+/** The feed a person has linked to {@link RAIL} (task 58 §5.5). */
+const LINKED_FEED = { id: 'fsa_1', externalAccountId: 'acct_1', paymentGatewayId: RAIL.id }
+
+/** What `payoutValues(gathered, ctx)` writes for this fixture. */
 const EXPECTED_PAYOUT_VALUES = {
   payout_gateway_id: 'po_1',
   payout_payment_gateway: 'payment_gateway:pg_stripe',
@@ -182,26 +192,21 @@ const EXPECTED_PAYOUT_VALUES = {
   payout_unrecognised_count: 2,
 }
 
-/** What the pre-unit-2 `ingestOne` handed `postPayoutEntry` for this fixture. */
+/** What `ingestOne` hands `postPayoutEntry` for this fixture (task 58 §5.3). */
 const EXPECTED_ENTRY_INPUT = {
   organizationId: ORG,
   actorUserId: 'user_system',
   payoutId: 'po_1',
   payoutNumber: 'PAY-0001',
-  bankAccountGlAccountId: 'gl_1000',
+  rail: 'pg_stripe',
+  currency: 'USD',
   grossMinor: 90_000,
   feesMinor: 3_200,
   netMinor: 86_800,
   unrecognisedNetMinor: 55_500,
-  clearingRole: 'clearing_card',
-  clearingGlAccountId: 'gl_clearing_stripe',
   feeTreatment: 'netted',
   paidAt: '2026-09-14',
   memo: 'Payout PAY-0001',
-  bankAccountReason:
-    'Debited because Stripe reported destination ba_1, which is confirmed on this bank account.',
-  clearingReason:
-    'Credited because the Stripe gateway record settles through Stripe and names this as its clearing account.',
 }
 
 beforeEach(() => {
@@ -209,12 +214,15 @@ beforeEach(() => {
   __resetPayoutSourcesForTests()
   registerPayoutSources()
   h.gateways = [RAIL]
+  h.listLinkedFeedAccounts.mockResolvedValue([LINKED_FEED])
+  h.resolveRoles.mockResolvedValue({ isErr: () => false, isOk: () => true, value: new Map() })
   h.recognise.mockResolvedValue(new Set(['ch_a', 're_x']))
   h.payoutsList.mockResolvedValue({ data: [PAYOUT], has_more: false })
   h.balanceList.mockResolvedValue({ data: BALANCE_TRANSACTIONS, has_more: false })
   h.create.mockResolvedValue({ instance: { id: 'inst_1' } })
   h.postPayoutEntry.mockResolvedValue({ status: 'posted', glPostingId: 'glp_1' })
   h.stamp.mockResolvedValue({ isErr: () => false })
+  h.readDestinations.mockResolvedValue([])
   h.findPayoutByGatewayId
     .mockResolvedValueOnce(null)
     .mockResolvedValueOnce({ payoutId: 'inst_1', number: 'PAY-0001', glPostingId: null })
@@ -229,32 +237,74 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
     expect(h.create).toHaveBeenCalledWith('def_payout', EXPECTED_PAYOUT_VALUES)
   })
 
-  it('hands postPayoutEntry the same input the pre-unit-2 pipeline handed it', async () => {
+  it('hands postPayoutEntry the input task 58 §5.3 describes - every leg a role line, scoped', async () => {
     await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
 
     expect(h.postPayoutEntry).toHaveBeenCalledTimes(1)
     const [, input] = h.postPayoutEntry.mock.calls[0] as [unknown, Record<string, unknown>]
-    expect(input).toEqual({ ...EXPECTED_ENTRY_INPUT, beforeCommit: expect.any(Function) })
-    // `feeGlAccountId` is spread in only when the rail names one; the fixture's
-    // rail does not, and the key must be ABSENT rather than undefined.
-    expect('feeGlAccountId' in input).toBe(false)
+    expect(input).toEqual(EXPECTED_ENTRY_INPUT)
   })
 
-  it('stamps the posting, the bank account and the watermark exactly as before', async () => {
+  it('checks the bank role is mapped for this rail and currency before building, and stamps the posting and the watermark', async () => {
     await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
 
+    expect(h.resolveRoles).toHaveBeenCalledWith(expect.anything(), ORG, ['bank'], {
+      rail: 'pg_stripe',
+      currency: 'USD',
+    })
     expect(h.update).toHaveBeenCalledWith('def_payout:inst_1', {
       payout_status: 'paid',
       payout_blocked_reason: null,
-      payout_bank_account: 'def_bank_account:ba_row_1',
+      // 58 §5.4 rule 2: the fixture's `resolveRoles` answers an EMPTY map, so
+      // there is no resolved `bank` glAccountId to check the destination against.
+      payout_destination_mismatch: null,
       payout_gl_posting_id: 'glp_1',
     })
+    expect(h.readDestinations).not.toHaveBeenCalled()
     expect(h.stamp).toHaveBeenCalledWith(expect.anything(), {
       organizationId: ORG,
       actorUserId: 'user_system',
       paymentGatewayId: 'pg_stripe',
       settledAt: '2026-09-14',
     })
+  })
+
+  it('writes payout_destination_mismatch when the mapped bank account does not confirm the reported destination (58 §5.4 rule 2, D7)', async () => {
+    // `PAYOUT.destination` ('ba_1') flows through as `gathered.destination`.
+    h.resolveRoles.mockResolvedValue({
+      isErr: () => false,
+      isOk: () => true,
+      value: new Map([['bank', { glAccountId: 'gl_bank_1' }]]),
+    })
+    h.readDestinations.mockResolvedValue(['ba_other'])
+
+    await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
+
+    expect(h.readDestinations).toHaveBeenCalledWith(expect.anything(), ORG, 'gl_bank_1')
+    expect(h.update).toHaveBeenCalledWith('def_payout:inst_1', {
+      payout_status: 'paid',
+      payout_blocked_reason: null,
+      payout_destination_mismatch: expect.stringContaining('PAY-0001'),
+      payout_gl_posting_id: 'glp_1',
+    })
+    // The entry still posted - a mismatch is a flag, never a block.
+    expect(h.postPayoutEntry).toHaveBeenCalledTimes(1)
+  })
+
+  it('writes no mismatch when the mapped bank account confirms the reported destination', async () => {
+    h.resolveRoles.mockResolvedValue({
+      isErr: () => false,
+      isOk: () => true,
+      value: new Map([['bank', { glAccountId: 'gl_bank_1' }]]),
+    })
+    h.readDestinations.mockResolvedValue(['ba_1'])
+
+    await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
+
+    expect(h.update).toHaveBeenCalledWith(
+      'def_payout:inst_1',
+      expect.objectContaining({ payout_destination_mismatch: null })
+    )
   })
 
   it('reads the payouts on the connected account, from the first-run floor, exactly as before', async () => {
@@ -272,39 +322,36 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
     )
   })
 
-  it('takes the role fallback, with no rail pointer, when no record claims the Stripe stream', async () => {
-    // The org with zero `payment_gateway` records: bit for bit what every org
-    // did before brief 26. The record carries no pointer and the entry no
-    // clearing id.
-    h.gateways = []
+  it('runs nothing when nothing has linked a feed to a rail (task 58 §5.5)', async () => {
+    // A payout with no rail cannot exist - it was read by a source that is
+    // linked to one. Nothing linked means no context, no record, no entry.
+    h.listLinkedFeedAccounts.mockResolvedValue([])
 
-    await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
+    const result = await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
 
-    const [, values] = h.create.mock.calls[0] as [string, Record<string, unknown>]
-    expect(values.payout_payment_gateway).toBeUndefined()
-    const [, input] = h.postPayoutEntry.mock.calls[0] as [unknown, Record<string, unknown>]
-    expect(input).toMatchObject({
-      clearingRole: 'clearing_card',
-      clearingReason:
-        'Credited by the card clearing role because no gateway record claims the Stripe rail.',
-    })
-    expect('clearingGlAccountId' in input).toBe(false)
-    expect(h.stamp).not.toHaveBeenCalled()
+    expect(result._unsafeUnwrap()).toMatchObject({ seen: 0, created: 0, posted: 0 })
+    expect(h.create).not.toHaveBeenCalled()
+    expect(h.postPayoutEntry).not.toHaveBeenCalled()
   })
 
-  it('raises the record and BLOCKS, naming both rails, when two records claim the stream', async () => {
-    h.gateways = [RAIL, { ...RAIL, id: 'pg_two', name: 'Stripe EU' }]
+  it('blocks before building when the rail has no bank row mapped for this currency (task 58 §5.4 rule 1)', async () => {
+    h.resolveRoles.mockResolvedValue({
+      isErr: () => true,
+      isOk: () => false,
+      error: new Error('unmapped'),
+    })
 
     const result = await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
 
     expect(h.create).toHaveBeenCalledTimes(1)
     expect(h.postPayoutEntry).not.toHaveBeenCalled()
     expect(h.update).toHaveBeenCalledWith('def_payout:inst_1', {
-      payout_blocked_reason: expect.stringContaining(
-        '2 payment gateways settle through Stripe (Stripe, Stripe EU)'
-      ),
+      payout_blocked_reason:
+        'Payout PAY-0001 has no receiving bank account mapped for Stripe in USD. Map it on ' +
+        'Accounting > Settings > Payment gateways.',
     })
     expect(result._unsafeUnwrap().refused).toHaveLength(1)
+    expect(h.stamp).not.toHaveBeenCalled()
   })
 
   it('stops at the pair lookup when the payout already carries a posting', async () => {
@@ -327,7 +374,6 @@ const ctx: PayoutSourceCtx = {
   organizationId: ORG,
   sourceId: 'stripe',
   rail: RAIL,
-  conflictingRails: [],
   handle: 'acct_1',
 }
 

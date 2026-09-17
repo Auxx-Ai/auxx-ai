@@ -127,7 +127,7 @@ describe('readRailFeeStatus', () => {
 
     const result = await readRailFeeStatus(
       stubDb(
-        [{ glAccountId: 'gl_6100' }],
+        [{ role: 'payment_processing_fees', glAccountId: 'gl_6100' }],
         [
           { glAccountId: 'gl_1201', lastAt: '2026-09-28', lastInMonthAt: '2026-09-28' },
           { glAccountId: 'gl_6150', lastAt: '2026-07-14', lastInMonthAt: null },
@@ -167,7 +167,7 @@ describe('readRailFeeStatus', () => {
 
     const result = await readRailFeeStatus(
       stubDb(
-        [{ glAccountId: 'gl_6100' }],
+        [{ role: 'payment_processing_fees', glAccountId: 'gl_6100' }],
         [{ glAccountId: 'gl_6100', lastAt: '2026-07-14', lastInMonthAt: null }]
       ),
       { organizationId: ORG, month: MONTH }

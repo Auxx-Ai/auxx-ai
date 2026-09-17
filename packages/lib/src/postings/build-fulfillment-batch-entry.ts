@@ -4,13 +4,13 @@
  * ONE fulfillment entry for a whole day or month of shipments.
  *
  * PURE. No database, no clock, no chart - the property every builder in this
- * folder has, and here it is what lets a mixed group of card, routed-gateway,
- * terms and tax-exempt orders be balanced exhaustively in a unit test.
+ * folder has, and here it is what lets a mixed group of card, rail-routed,
+ * cash, terms and tax-exempt orders be balanced exhaustively in a unit test.
  *
  * ```
- *   Dr accounts_receivable   ONE LINE PER ORDER   that order's terms shipments
- *   Dr clearing_card         summarised           every card shipment's total
- *   Dr <gateway's own account>  summarised, per id  every routed-gateway shipment's total
+ *   Dr accounts_receivable   ONE LINE PER ORDER    that order's terms shipments
+ *   Dr clearing              summarised, per rail   every card shipment's total (task 58 §5.2)
+ *   Dr undeposited_funds     summarised             every cash shipment's total (D12)
  *       Cr revenue_product   summarised, per channel dimension  Σ subtotal
  *       Cr sales_tax_payable summarised, per jurisdiction dimension (when it ties)  Σ tax
  *       Cr revenue_shipping  summarised             Σ shipping
@@ -34,7 +34,7 @@
  *
  * 1. **The debit is not always a receivable.** A Shopify order was PAID at
  *    checkout, so debiting `accounts_receivable` fills aging with money nobody
- *    owes and leaves `clearing_card` permanently negative when the payout
+ *    owes and leaves `clearing` permanently negative when the payout
  *    entry drains it. {@link resolveFulfillmentDebit} is that fork, and it
  *    EXCLUDES rather than guesses when the gateways do not say.
  * 2. **The A/R leg stays per order.** Aging has to name the debtor, so a terms
@@ -61,7 +61,7 @@ import type {
   UnpostedShipmentLine,
 } from '../money/fulfillment-posting/types'
 import { FULFILLMENT_BATCH_SOURCE_TYPE } from '../money/fulfillment-posting/types'
-import { matchGatewayRoute, normaliseGatewayHandle } from '../payment-gateways/client'
+import { normaliseGatewayHandle } from '../payment-gateways/client'
 import { ACCOUNT_ROLES, type AccountRole, buildEntry } from './build-entry'
 import {
   CHANNEL_KEYS,
@@ -84,7 +84,7 @@ import type { BuiltEntry, GlPostingLineInput, PostingReason } from './types'
  * credit memo, `plans/accounting/tasks/done/10-credit-memos.md`). Treating a
  * refunded order as unpaid would debit a receivable for money that was
  * collected and then returned, and the memo's settlement leg
- * (`Dr accounts_receivable / Cr clearing_card`) would have nothing to net
+ * (`Dr accounts_receivable / Cr clearing`) would have nothing to net
  * against.
  *
  * Anything else - `pending`, `authorized`, `partially_paid`, blank - is an
@@ -112,43 +112,9 @@ const TEST_GATEWAY = 'bogus'
 const MANUAL_GATEWAY = 'manual'
 
 /**
- * Which clearing account each named gateway settles into BY ROLE. DECLARED.
- *
- * Only gateways whose answer is NOT the card rail would need a row, and since
- * 2026-09-10 there are none: everything (PayPal, Stripe, Shop Pay, a gateway
- * nobody has seen yet) settles as card money into `clearing_card`, which is the
- * account a payout entry drains.
- *
- * 🛑 **`affirm` used to be the row that matters, and it is now a
- * `payment_gateway` record instead.** The fact behind it is unchanged: an
- * Affirm settlement never lands on the card rail and is invisible to the
- * payouts API, so an Affirm sale debited to `clearing_card` leaves that account
- * with a residual no payout can ever relieve - it balances, and `1200` simply
- * stops reconciling to zero. What changed is WHERE the exclusion is declared. A
- * role named a vendor, which `build-entry.ts` forbids; a record does not, and
- * {@link matchGatewayRoute} routes the gateway to that record's own account by
- * id before this table is ever consulted. The safety property survives because
- * an id-routed debit is not `clearing_card` and `PAYOUT_CLEARING_ROLES` drains
- * `clearing_card` alone.
- *
- * ⚠️ **An Affirm store with no `payment_gateway` record falls through to
- * `clearing_card` and the residual comes back.** That is the cost of deleting
- * the role, it is the same cost Authorize.Net has always carried, and the
- * gateway settings page is where it is paid.
- *
- * The table is kept - rather than collapsed into the `clearing_card` default -
- * because it is the declaration site a future non-card rail would be added to
- * if one ever earns a role rather than a record.
- */
-export const FULFILLMENT_GATEWAY_DEBIT: Readonly<
-  Record<string, Exclude<FulfillmentDebitRole, 'gateway'>>
-> = {
-  shopify_payments: 'clearing_card',
-}
-
-/**
- * A `payment_gateway` record's own clearing route, as far as this pure builder
- * needs to see it (brief 13 §5.3, lane 4's `money/fulfillment-posting/`).
+ * A `payment_gateway` record, as far as this pure builder needs to see it
+ * (task 58 §5.2 - was brief 13 §5.3's `GatewayRoute`, before the rail scope
+ * replaced routing a debit onto the record's OWN account).
  *
  * `handles` is a SET, never one string - the census that motivated this found
  * two rails arriving under two spellings each (`authorize_net` /
@@ -158,13 +124,15 @@ export const FULFILLMENT_GATEWAY_DEBIT: Readonly<
  * reconciling, and "should this route still be offered" is lane 4's plan.ts
  * concern, not this match's.
  *
- * Structurally `GatewayRoute` from `payment-gateways/client.ts`, which is where
- * the matcher lives - see {@link matchGatewayRoute}. Kept as a named type here
- * because this builder's signature is the contract lane 4 was written against.
+ * 🛑 **Carries `id`, never `clearingGlAccountId`.** Every rail's clearing debit
+ * is the `clearing` ROLE now, scoped to this record's id (`sourceScope.rail`,
+ * `postings/resolve-roles.ts`); the account itself is resolved later, the same
+ * way for every rail, matched or not (§3 rule 2).
  */
 export interface FulfillmentGatewayRoute {
+  /** The `payment_gateway` EntityInstance id - the rail scope a debit resolves through. */
+  id: string
   handles: readonly string[]
-  clearingGlAccountId: string
   active: boolean
   /**
    * The record's display name, for the reason sentence a routed debit carries
@@ -174,6 +142,35 @@ export interface FulfillmentGatewayRoute {
    */
   name?: string
 }
+
+/**
+ * Which route (if exactly one) claims a normalised gateway handle.
+ *
+ * Mirrors `matchGatewayRoute` (`payment-gateways/client.ts`) exactly - same
+ * zero-or-one-match rule, same case/whitespace normalisation - but answers
+ * with the RECORD, not an account id: task 58 moved the fulfillment debit off
+ * the record's own account and onto the `clearing` role scoped to the
+ * record's id, so there is no account for this match to name any more.
+ */
+function matchFulfillmentGatewayRoute(
+  gateway: string,
+  routes: readonly FulfillmentGatewayRoute[] = []
+): FulfillmentGatewayRoute | undefined {
+  const wanted = normaliseGatewayHandle(gateway)
+  if (!wanted) return undefined
+  const matches = routes.filter((route) =>
+    route.handles.some((handle) => normaliseGatewayHandle(handle) === wanted)
+  )
+  return matches.length === 1 ? matches[0] : undefined
+}
+
+/**
+ * Shopify's cash tender (D12, task 58 §5.2). Never a rail: nothing settles it
+ * through a processor, so it must not land in `clearing` beside money that
+ * genuinely will. It is undeposited, exactly like a cheque, until a bank
+ * deposit run groups it (§9 item 14).
+ */
+const CASH_GATEWAY = 'cash'
 
 /** The exclusions the debit fork itself can produce. A subset of lane B's closed set. */
 export type FulfillmentDebitExclusionReason = Extract<
@@ -211,8 +208,8 @@ function normaliseGateways(gateways: readonly string[]): string[] {
 }
 
 /**
- * Which account a shipment DEBITS: a `payment_gateway` route, a clearing role,
- * or the receivable.
+ * Which account a shipment DEBITS: `clearing` scoped to a rail, undeposited
+ * funds, or the receivable.
  *
  * PURE and total. Gateway names are compared case-insensitively after trim, so
  * `'Affirm'` and `' affirm '` are one gateway.
@@ -225,8 +222,9 @@ function normaliseGateways(gateways: readonly string[]): string[] {
  * | financial status is not `paid`, `partially_refunded` or `refunded` | `accounts_receivable` |
  * | any gateway is `manual` | `accounts_receivable` |
  * | no gateways at all | `accounts_receivable` |
- * | exactly one gateway, and exactly one `gatewayRoutes` entry names it | that route's `clearingGlAccountId` |
- * | exactly one gateway, otherwise | {@link FULFILLMENT_GATEWAY_DEBIT}, defaulting to `clearing_card` |
+ * | exactly one gateway, and it is `cash` | `undeposited_funds` (D12) |
+ * | exactly one gateway, and exactly one `gatewayRoutes` entry names it | `clearing`, rail = that record's id |
+ * | exactly one gateway, otherwise | `clearing`, rail = `null` (§3 rule 2 resolves it to the org default) |
  * | two or more distinct gateways | exclude, `gateway-ambiguous`, detail is the list |
  *
  * ⚠️ **`bogus` is checked before the status, and the build contract listed it
@@ -236,15 +234,24 @@ function normaliseGateways(gateways: readonly string[]): string[] {
  * order, because Shopify marks them `paid`; they differ only where the
  * contract's order is wrong.
  *
- * ## Why an unknown gateway is card money rather than an exclusion
+ * ## Why an unrouted gateway is card money rather than an exclusion
  *
  * A single unrecognised gateway is a rail auxx has not named, not an
- * ambiguity: the order is paid, one processor took it, and `clearing_card` is
- * the account that then fails to reconcile visibly if the guess was wrong.
- * TWO gateways is different in kind - the money split, and no single line can
+ * ambiguity: the order is paid, one processor took it, and the org's default
+ * `clearing` account is where a wrong guess fails to reconcile visibly. TWO
+ * gateways is different in kind - the money split, and no single line can
  * describe it - so that one refuses.
  *
- * ## `gatewayRoutes` (brief 13 §5.3, the contract with lane 4)
+ * ## 🛑 This is a bridge, not the design (D11, task 58 §5.2)
+ *
+ * A split tender has no answer at this grain - the order's gateway LIST does
+ * not say how much went to which rail. Once the receipt lane (§5.6) posts per
+ * transaction, a fulfillment whose order already has a posted receipt must
+ * skip this fork entirely and debit deposits or receivables instead, never a
+ * rail - see `money/fulfillment-posting/work.ts`'s header for what exists
+ * today and what does not.
+ *
+ * ## `gatewayRoutes` (task 58 §5.2, was brief 13 §5.3's id-routed contract)
  *
  * Optional and empty by default, so every existing caller (and every test in
  * this file) is unaffected. `money/fulfillment-posting/plan.ts` reads the
@@ -252,7 +259,7 @@ function normaliseGateways(gateways: readonly string[]): string[] {
  * pure and does not read them itself.
  *
  * @see plans/money/tasks/49-bulk-fulfillment-posting.md §3.2, §8.4 decision 6
- * @see plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md §5.3
+ * @see plans/accounting/tasks/58-one-mapping-table.md §5.2
  */
 export function resolveFulfillmentDebit(input: {
   financialStatus: string | null
@@ -297,24 +304,30 @@ export function resolveFulfillmentDebit(input: {
 
   if (gateways.length === 1) {
     const gateway = gateways[0] as string
-    const glAccountId = matchGatewayRoute(gateway, input.gatewayRoutes)
-    if (glAccountId) {
-      // `matchGatewayRoute` answers with the account alone; the record that
-      // named it is found again here for its NAME. Exactly one route matched,
-      // so this is the same route the matcher chose.
-      const route = input.gatewayRoutes?.find(
-        (candidate) =>
-          candidate.clearingGlAccountId === glAccountId &&
-          candidate.handles.some((handle) => normaliseGatewayHandle(handle) === gateway)
-      )
-      const recordName = route?.name?.trim() || gateway
-      return { kind: 'debit', glAccountId, reason: `routed by the ${recordName} gateway record` }
+    // D12: cash never lands in clearing - nothing settles it through a
+    // processor, so it waits in undeposited funds like a cheque.
+    if (gateway === CASH_GATEWAY) {
+      return {
+        kind: 'debit',
+        role: 'undeposited_funds',
+        reason:
+          'paid in cash, banked in a run, so undeposited funds until a bank deposit groups it',
+      }
     }
-    return {
-      kind: 'debit',
-      role: FULFILLMENT_GATEWAY_DEBIT[gateway] ?? 'clearing_card',
-      reason: `paid through ${gateway}, which no gateway record claims, so the card clearing fallback`,
-    }
+    const matched = matchFulfillmentGatewayRoute(gateway, input.gatewayRoutes)
+    return matched
+      ? {
+          kind: 'debit',
+          role: 'clearing',
+          rail: matched.id,
+          reason: `routed by the ${matched.name?.trim() || gateway} gateway record`,
+        }
+      : {
+          kind: 'debit',
+          role: 'clearing',
+          rail: null,
+          reason: `paid through ${gateway}, which no gateway record claims, so the card clearing fallback`,
+        }
   }
 
   return { kind: 'exclude', reason: 'gateway-ambiguous', detail: listed }
@@ -370,13 +383,9 @@ export function scaleLineTax(
  * - The jurisdiction split (brief 13 §5), from `shipment.taxLines` - see
  *   `splitTaxByJurisdiction`.
  *
- * `debit` is {@link FulfillmentDebit} (a role, or a `payment_gateway` route's
- * own account id from `resolveFulfillmentDebit`) - or a bare
- * {@link FulfillmentDebitRole} string, accepted for
- * `money/fulfillment-posting/plan.ts`'s own current call until it is updated
- * to pass the route-aware answer through (brief 13 §5.3). An id-based debit
- * becomes `debitRole: 'gateway'` plus `debitGlAccountId`, so `byDebitRole`
- * summaries keep working unchanged.
+ * `debit` is {@link FulfillmentDebit} (a role, `clearing` carrying its rail) -
+ * or a bare {@link FulfillmentDebitRole} string, which every test in this file
+ * that does not care about the rail or the reason still passes.
  *
  * @throws {UnprocessableEntityError} on a non-positive quantity or a stored
  *   amount that is not whole minor units.
@@ -416,18 +425,14 @@ export function computeShipmentAmounts(
         }) ?? undefined)
       : undefined
 
-  // 🛑 Accepts a bare ROLE STRING too, not only `FulfillmentDebit` - back
-  // compat with `money/fulfillment-posting/plan.ts`'s current call
-  // (`computeAmounts(shipment, debit.role)`), which still passes a plain
-  // string until lane 4 updates it to pass the full `resolveFulfillmentDebit`
-  // answer through (brief 13 §5.3's contract). Widening the parameter rather
-  // than requiring the wrapped shape means plan.ts's RUNTIME behaviour is
-  // unchanged even though its TYPECHECK is red until that update lands.
-  const debitFields: Pick<ShipmentAmounts, 'debitRole' | 'debitGlAccountId' | 'debitReason'> =
+  // A bare ROLE STRING skips the rail entirely - every caller that does not
+  // have a `resolveFulfillmentDebit` answer to hand (most of this file's own
+  // fixtures) still gets a plain `clearing` line, scoped to the org default.
+  const debitFields: Pick<ShipmentAmounts, 'debitRole' | 'debitRail' | 'debitReason'> =
     typeof debit === 'string'
       ? { debitRole: debit }
-      : 'glAccountId' in debit
-        ? { debitRole: 'gateway', debitGlAccountId: debit.glAccountId, debitReason: debit.reason }
+      : debit.role === 'clearing'
+        ? { debitRole: 'clearing', debitRail: debit.rail, debitReason: debit.reason }
         : { debitRole: debit.role, debitReason: debit.reason }
 
   const allocation = shipment.recognitionAllocation
@@ -617,19 +622,11 @@ export interface FulfillmentBatchSource {
   amounts: ShipmentAmounts
 }
 
-/**
- * Which posting role each ROLE-based debit answer resolves to. DECLARED, one
- * row each.
- *
- * 🛑 **`'gateway'` is deliberately absent.** An id-based debit (brief 13 §5.3)
- * names a `payment_gateway` record's own account directly - there is no role
- * to look up, which is the whole point of the record existing.
- */
-export const FULFILLMENT_DEBIT_ACCOUNT_ROLE: Readonly<
-  Record<Exclude<FulfillmentDebitRole, 'gateway'>, AccountRole>
-> = {
-  clearing_card: ACCOUNT_ROLES.CLEARING_CARD,
+/** Which posting role each debit answer resolves to. DECLARED, one row each. */
+export const FULFILLMENT_DEBIT_ACCOUNT_ROLE: Readonly<Record<FulfillmentDebitRole, AccountRole>> = {
+  clearing: ACCOUNT_ROLES.CLEARING,
   accounts_receivable: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
+  undeposited_funds: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
 }
 
 export interface BuildFulfillmentBatchEntryInput {
@@ -688,7 +685,7 @@ function assertWholeMinor(value: number, label: string, context: Record<string, 
  * 1. `Dr accounts_receivable`, **one line per order**, `sourceType: 'order'`,
  *    `sourceId: <orderId>`, memo `<orderNumber>`. Aging has to name the debtor,
  *    and `listPostingsForSource` on an order still finds this one.
- * 2. `Dr clearing_card` and `Dr <gateway route's account>` - summarised, the
+ * 2. `Dr clearing` and `Dr <gateway route's account>` - summarised, the
  *    second one per distinct account id (brief 13 §5.3).
  * 3. `Cr revenue_product` - summarised PER CHANNEL, one line per
  *    `dimensions.channel` value, through the fail-open {@link CHANNEL_KEYS}
@@ -713,6 +710,17 @@ function assertWholeMinor(value: number, label: string, context: Record<string, 
  */
 function storeScopeKey(store: string | null | undefined): string {
   return store === undefined ? '-' : store === null ? 'manual' : store
+}
+
+/**
+ * A stable bucket key for a clearing debit's rail. `null` and `undefined` are
+ * ONE bucket here, unlike {@link storeScopeKey} - `RoleSourceScope`'s rail axis
+ * has no manual counterpart (task 58 §5.1: "a manual order has no rail, so a
+ * `null` there reads the same as an absent key"), so a matched rail and the
+ * org-default fallback are the only two cases a clearing debit ever has.
+ */
+function railScopeKey(rail: string | null | undefined): string {
+  return rail ?? 'default'
 }
 
 export function buildFulfillmentBatchEntry(
@@ -740,18 +748,18 @@ export function buildFulfillmentBatchEntry(
     { orderNumber: string; amountMinor: number; contactId: string | null }
   >()
   const byDebitRole: Record<FulfillmentDebitRole, number> = {
-    clearing_card: 0,
+    clearing: 0,
     accounts_receivable: 0,
-    gateway: 0,
+    undeposited_funds: 0,
   }
-  /** A `payment_gateway` route's own clearing account id -> its summarised debit. */
-  const byGatewayAccount = new Map<string, number>()
+  /** {@link railScopeKey} -> the clearing debit summarised under that rail (task 58 §5.2). */
+  const byRail = new Map<string, { rail: string | null; amountMinor: number }>()
   /**
    * Why each SUMMARISED debit line holds what it holds (brief 28 §5): per
    * debit account, per distinct reason sentence, the orders it applies to. A
    * day's clearing line summarises many orders, so the sentence is per account
    * with an order count, not per order - the per-order answer is in `sources`.
-   * Keyed `role:clearing_card` or `id:<glAccountId>`.
+   * Keyed `rail:<railScopeKey>` for clearing, `role:<role>` otherwise.
    */
   const debitReasons = new Map<string, Map<string, Set<string>>>()
   const noteDebitReason = (accountKey: string, reason: string, orderId: string): void => {
@@ -881,30 +889,19 @@ export function buildFulfillmentBatchEntry(
       })
     } else if (amounts.debitReason) {
       noteDebitReason(
-        amounts.debitRole === 'gateway'
-          ? `id:${amounts.debitGlAccountId ?? ''}`
+        amounts.debitRole === 'clearing'
+          ? `rail:${railScopeKey(amounts.debitRail)}`
           : `role:${amounts.debitRole}`,
         amounts.debitReason,
         shipment.orderId
       )
     }
     if (!switchedRecognition) byDebitRole[amounts.debitRole] += amounts.totalMinor
-    if (!switchedRecognition && amounts.debitRole === 'gateway') {
-      const glAccountId = amounts.debitGlAccountId
-      if (!glAccountId) {
-        // Unreachable through `computeShipmentAmounts`, which always sets one
-        // alongside `debitRole: 'gateway'` - asserted so a hand-built
-        // `ShipmentAmounts` cannot silently drop the debit's destination.
-        throw new UnprocessableEntityError(
-          `Shipment ${shipment.sequence} of order ${shipment.orderNumber} resolved to a gateway ` +
-            'debit with no account id.',
-          context
-        )
-      }
-      byGatewayAccount.set(
-        glAccountId,
-        (byGatewayAccount.get(glAccountId) ?? 0) + amounts.totalMinor
-      )
+    if (!switchedRecognition && amounts.debitRole === 'clearing') {
+      const key = railScopeKey(amounts.debitRail)
+      const bucket = byRail.get(key)
+      if (bucket) bucket.amountMinor += amounts.totalMinor
+      else byRail.set(key, { rail: amounts.debitRail ?? null, amountMinor: amounts.totalMinor })
     }
 
     const channelDimension = CHANNEL_KEYS[toChannelKey(shipment.channel)]
@@ -1008,28 +1005,31 @@ export function buildFulfillmentBatchEntry(
     }
   }
 
-  // 2. The clearing accounts, summarised - by ROLE, or by a gateway route's
-  //    own account id (brief 13 §5.3).
-  if (byDebitRole.clearing_card !== 0) {
+  // 2. The clearing accounts, summarised PER RAIL (task 58 §5.2): one role,
+  //    `clearing`, scoped by `sourceScope.rail` - a matched record's id, or
+  //    `null` for the org default, exactly what the role-only fallback always
+  //    posted. Cash is its own line, never clearing (D12).
+  for (const bucket of byRail.values()) {
+    if (bucket.amountMinor === 0) continue
     const line = push({
       ...summarised,
-      accountRole: ACCOUNT_ROLES.CLEARING_CARD,
+      accountRole: ACCOUNT_ROLES.CLEARING,
       direction: 'debit',
-      amount: byDebitRole.clearing_card,
+      amount: bucket.amountMinor,
       memo: describe('card clearing'),
+      sourceScope: { rail: bucket.rail },
     })
-    explainSummarised(line, 'role:clearing_card')
+    explainSummarised(line, `rail:${railScopeKey(bucket.rail)}`)
   }
-  for (const [glAccountId, amount] of byGatewayAccount) {
-    if (amount === 0) continue
+  if (byDebitRole.undeposited_funds !== 0) {
     const line = push({
       ...summarised,
-      glAccountId,
+      accountRole: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
       direction: 'debit',
-      amount,
-      memo: describe('gateway clearing'),
+      amount: byDebitRole.undeposited_funds,
+      memo: describe('cash, undeposited'),
     })
-    explainSummarised(line, `id:${glAccountId}`)
+    explainSummarised(line, 'role:undeposited_funds')
   }
 
   // 3. Revenue, summarised PER CHANNEL and PER SOURCE STORE. The channel stays

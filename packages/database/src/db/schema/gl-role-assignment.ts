@@ -13,8 +13,15 @@
 //     and `FieldValue` carries exactly two unique indexes — the PK and
 //     `(entityId, fieldId, sortKey)`. Decision `G6`'s argument verbatim: not
 //     unimplemented, unexpressible.
-//   - This table: `uniqueIndex(organizationId, role)`. One line, Postgres
-//     enforced, and many rows may share `glAccountId`.
+//   - This table: THREE partial unique indexes on `(organizationId, role, ...)`,
+//     never one three-column unique — Postgres treats NULLs as distinct, so a
+//     single composite would admit two org defaults for one role. The org
+//     DEFAULT (unscoped); one per `FinancialSourceAccount` via `sourceAccountId`
+//     (STORE scope, brief 47); one per `payment_gateway` + `coalesce(currency,
+//     '')` via `paymentGatewayId` (RAIL scope, brief 58 — "which bank"/"which
+//     clearing account" has no org-wide answer, so this axis exists to be
+//     scoped, never defaulted). Postgres enforced, and many rows may share
+//     `glAccountId`.
 //
 // 🛑 `gl_account` STAYS an `EntityInstance`. `RecordIdentity` is keyed on an
 // instance and has no other addressing mode, and decision `P2` hangs the
@@ -25,6 +32,7 @@ import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
   boolean,
+  check,
   foreignKey,
   index,
   pgTable,
@@ -33,6 +41,7 @@ import {
   timestamp,
   uniqueIndex,
 } from './_shared'
+import { EntityInstance } from './entity-instance'
 import { FinancialSourceAccount } from './financial-source-account'
 import { Organization } from './organization'
 import { User } from './user'
@@ -99,6 +108,12 @@ export const GlRoleAssignment = pgTable(
      */
     sourceAccountId: text(),
 
+    /** Rail scope: the `payment_gateway` EntityInstance this row answers for. Null for store scope or the org default. */
+    paymentGatewayId: text(),
+
+    /** Three-letter settlement currency; only a rail row may carry one. */
+    currency: text(),
+
     /**
      * How this mapping came to be: `'seed'` | `'human'` | `'suggested'`.
      *
@@ -136,9 +151,11 @@ export const GlRoleAssignment = pgTable(
     // unique would happily accept two org defaults for the same role - and
     // `resolveRoles` refuses to choose between two rows rather than picking one,
     // so that state takes the whole ledger down instead of being caught here.
+    // `paymentGatewayId IS NULL` too: after 58 a rail row also has
+    // `sourceAccountId IS NULL`, and without this it collides with the default here.
     uniqueIndex('GlRoleAssignment_org_role_default_key')
       .using('btree', table.organizationId.asc().nullsLast(), table.role.asc().nullsLast())
-      .where(sql`${table.sourceAccountId} IS NULL`),
+      .where(sql`${table.sourceAccountId} IS NULL AND ${table.paymentGatewayId} IS NULL`),
     uniqueIndex('GlRoleAssignment_org_role_source_key')
       .using(
         'btree',
@@ -147,6 +164,17 @@ export const GlRoleAssignment = pgTable(
         table.sourceAccountId.asc().nullsLast()
       )
       .where(sql`${table.sourceAccountId} IS NOT NULL`),
+    // The `coalesce` makes a currency-less rail row and a currencied rail row two
+    // rows, and two currency-less rows for the same rail a conflict (58 §4.1).
+    uniqueIndex('GlRoleAssignment_org_role_rail_key')
+      .using(
+        'btree',
+        table.organizationId.asc().nullsLast(),
+        table.role.asc().nullsLast(),
+        table.paymentGatewayId.asc().nullsLast(),
+        sql`coalesce(${table.currency}, '')`
+      )
+      .where(sql`${table.paymentGatewayId} IS NOT NULL`),
 
     // ⚠️ A real foreign key, and it does NOT contradict `glAccountId`'s
     // deliberate lack of one above. That argument is about a bookkeeper
@@ -160,6 +188,28 @@ export const GlRoleAssignment = pgTable(
       columns: [table.organizationId, table.sourceAccountId],
       foreignColumns: [FinancialSourceAccount.organizationId, FinancialSourceAccount.id],
     }),
+
+    // Same shape as `PaymentRoute_paymentGatewayInstanceId_fk` — a rail row points
+    // at the `payment_gateway` EntityInstance it is scoped to.
+    foreignKey({
+      name: 'GlRoleAssignment_paymentGatewayId_fk',
+      columns: [table.organizationId, table.paymentGatewayId],
+      foreignColumns: [EntityInstance.organizationId, EntityInstance.id],
+    }).onDelete('no action'),
+
+    // A row is scoped to a source XOR a rail, never both.
+    check(
+      'GlRoleAssignment_scope_exclusive_check',
+      sql`num_nonnulls(${table.sourceAccountId}, ${table.paymentGatewayId}) <= 1`
+    ),
+    check(
+      'GlRoleAssignment_currency_rail_check',
+      sql`${table.currency} IS NULL OR ${table.paymentGatewayId} IS NOT NULL`
+    ),
+    check(
+      'GlRoleAssignment_currency_format_check',
+      sql`${table.currency} IS NULL OR ${table.currency} ~ '^[A-Z]{3}$'`
+    ),
 
     // "Which roles does this account serve?" — the admin list, and the read the
     // archive path needs before it can warn.

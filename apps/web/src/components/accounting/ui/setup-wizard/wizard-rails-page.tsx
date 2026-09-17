@@ -155,7 +155,6 @@ export function WizardRailsPage() {
       feeAccountName: draft.mintFeeAccount
         ? draft.feeAccountName.trim() || group.suggestion.feeAccountName
         : undefined,
-      settlementSource: group.suggestion.settlementSource,
       feeTreatment: group.suggestion.feeTreatment,
       status: draft.markClosed ? 'closed' : 'active',
     })

@@ -70,6 +70,7 @@ import {
 } from './chart-accounts'
 import type { GlAccountTypeValue } from './default-chart'
 import { describeGlAccountPointers, findGlAccountPointers } from './gl-account-pointers'
+import { readRoleAssignments } from './role-assignments'
 import type { ChartAccountRow } from './types'
 
 const logger = createScopedLogger('postings:chart-write')
@@ -626,34 +627,21 @@ async function loadLiveAccount(
  * `markedUnused`. That is the same exemption `listRoleMap`'s precedence table
  * derives as the `unused` state, and it is the only state that exempts: a role
  * the org has explicitly said it does not use is not a reason to refuse
- * anything. A direct one-account query rather than `listRoleMap` because that
- * one returns all thirteen roles and re-reads the chart to do it, and this needs
- * neither.
+ * anything. Filtered from `readRoleAssignments` rather than through
+ * `listRoleMap`, which re-reads the whole chart to decode every role's account
+ * and this needs neither.
  */
 async function liveRolesFor(
   db: Database,
   organizationId: string,
   accountId: string
 ): Promise<LiveRole[]> {
-  const rows = await db
-    .select({
-      role: schema.GlRoleAssignment.role,
-      glAccountId: schema.GlRoleAssignment.glAccountId,
-    })
-    .from(schema.GlRoleAssignment)
-    .where(
-      and(
-        eq(schema.GlRoleAssignment.organizationId, organizationId),
-        eq(schema.GlRoleAssignment.glAccountId, accountId),
-        eq(schema.GlRoleAssignment.markedUnused, false)
-      )
-    )
+  const rows = (await readRoleAssignments(db, organizationId)).filter(
+    (row) => row.glAccountId === accountId && !row.markedUnused
+  )
 
   return rows
-    .filter(
-      (row): row is LiveRole =>
-        (ROLE_ACCOUNT_TYPES as Record<string, string>)[row.role] !== undefined
-    )
+    .filter((row) => (ROLE_ACCOUNT_TYPES as Record<string, string>)[row.role] !== undefined)
     .map((row) => ({ role: row.role as AccountRole, glAccountId: row.glAccountId }))
 }
 

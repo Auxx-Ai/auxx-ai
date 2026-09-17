@@ -62,13 +62,12 @@ import {
 import { ChartAccountsBulkBar } from './chart-accounts-bulk-bar'
 import { ChartList } from './chart-list'
 import { ChartPacksDialog } from './chart-packs-dialog'
-import { RoleMapEditor } from './role-map-editor'
-import { RoleMapList } from './role-map-list'
+import { MappingList } from './mapping-list'
 
-type AccountsTab = 'roles' | 'chart'
+type AccountsTab = 'mapping' | 'chart'
 
 const TABS = [
-  { value: 'roles', label: 'Roles', icon: Waypoints },
+  { value: 'mapping', label: 'Mapping', icon: Waypoints },
   { value: 'chart', label: 'Chart of accounts', icon: Landmark },
 ]
 
@@ -79,7 +78,7 @@ const BREADCRUMBS = [
 ]
 
 const PAGE_DESCRIPTION =
-  'Which account each posting role lands on, and the chart those accounts live in - including which account in your accounting system each one corresponds to.'
+  'Which account each posting category lands on, per store and per payment rail, and the chart those accounts live in.'
 
 export function AccountingAccountsSettingsPage() {
   useRequireCapability(PermissionKey.ledgerView)
@@ -94,8 +93,8 @@ export function AccountingAccountsSettingsPage() {
   const { hasAccess } = useFeatureFlags()
   const utils = api.useUtils()
 
-  const [tab, setTab] = useQueryState('s', { defaultValue: 'roles' as string })
-  const activeTab: AccountsTab = tab === 'chart' ? 'chart' : 'roles'
+  const [tab, setTab] = useQueryState('s', { defaultValue: 'mapping' as string })
+  const activeTab: AccountsTab = tab === 'chart' ? 'chart' : 'mapping'
 
   const roleMap = api.ledger.roleMap.useQuery()
   // 🛑 Always asks for archived rows, and the LIST decides what to show. Making
@@ -119,11 +118,6 @@ export function AccountingAccountsSettingsPage() {
   // pane that vanishes on refresh cannot be linked to, and this is the screen
   // people are sent to ("map 1100 to a QuickBooks account") - one param per tab,
   // so switching tabs and coming back keeps each side's selection.
-  const [roleParam, setSelectedRole] = useQueryState('role')
-  // 🛑 In the URL beside the role, for the reason the role is: "why does Amazon
-  // credit 4003" is a question somebody sends a link about. Null is the role's
-  // own org-wide default, which is the row the parent already shows.
-  const [sourceParam, setSelectedSourceId] = useQueryState('connection')
   const [accountParam, setSelectedAccountId] = useQueryState('account')
   // The phantom draft for the Chart tab. The full field set lives inside the
   // draft form instance (keyed by `draftId`); this page tracks only enough to
@@ -138,55 +132,12 @@ export function AccountingAccountsSettingsPage() {
     parseAsBoolean.withDefault(false)
   )
   const [confirm, ConfirmDialog] = useConfirm()
-  // The Roles tab's "Add accounts" action (brief 16 §3.2) - provisions a named
+  // The Mapping tab's "Add accounts" action (brief 16 §3.2) - provisions a named
   // chart pack without going back through the wizard.
   const [addAccountsOpen, setAddAccountsOpen] = useState(false)
 
   const roleRows = useMemo<RoleAssignmentRow[]>(() => roleMap.data?.roles ?? [], [roleMap.data])
-  /** Every live connection a scopable role may be pointed at, plus Manual (task 47 §7.4). */
-  const roleSources = useMemo(() => roleMap.data?.sources ?? [], [roleMap.data])
   const accounts = useMemo(() => chart.data ?? [], [chart.data])
-
-  const rowsByRole = useMemo(() => new Map(roleRows.map((row) => [row.role, row])), [roleRows])
-
-  /**
-   * The selection, validated against what actually loaded.
-   *
-   * 🛑 A param is only REJECTED once its list has arrived. Validating while the
-   * query is pending would drop the selection on every refresh - the URL is read
-   * before the data is, so the row it names does not exist yet.
-   *
-   * A phantom chart draft is the exception on the account side: its id names no
-   * row in `accounts` and is valid for exactly as long as the draft is mounted.
-   */
-  const selectedRole: AccountRole | null =
-    roleParam && (roleMap.isPending || rowsByRole.has(roleParam as AccountRole))
-      ? (roleParam as AccountRole)
-      : null
-
-  /**
-   * The selected connection, validated the same way the role is.
-   *
-   * ⚠️ Also dropped when the role it belongs to is gone, and when the connection
-   * is not on that role's AXIS - a `?connection=` naming a Stripe account beside
-   * `?role=revenue_product` is a link that was true for another role, and
-   * honouring it would open an editor the server would refuse to save.
-   */
-  const selectedSource = useMemo(() => {
-    if (!sourceParam || !selectedRole) return null
-    const axis = rowsByRole.get(selectedRole)?.axis
-    const source = roleSources.find((row) => row.id === sourceParam)
-    return source && axis && source.axes.includes(axis) ? source : null
-  }, [sourceParam, selectedRole, rowsByRole, roleSources])
-
-  /** Selecting a role clears the connection unless one is named in the same act. */
-  const handleSelectRole = useCallback(
-    (role: AccountRole | null, sourceAccountId?: string | null) => {
-      void setSelectedRole(role)
-      void setSelectedSourceId(sourceAccountId ?? null)
-    },
-    [setSelectedRole, setSelectedSourceId]
-  )
 
   const isDraftSelected =
     !!chartDraft && (accountParam === chartDraft.draftId || accountParam === chartDraft.recordId)
@@ -233,59 +184,6 @@ export function AccountingAccountsSettingsPage() {
     }
     return map
   }, [roleRows])
-
-  // ── The one write on this page ───────────────────────────────────────────
-  //
-  // 🛑 `setRoleAssignment` already refuses an unknown role, a missing or
-  // archived account, an inactive account and a type-incompatible one, each with
-  // a message naming the role and the problem. That message is surfaced VERBATIM
-  // rather than re-checked here: a second client-side authority would drift, and
-  // replacing "'grni' must be mapped to a liability account, but 4000 Sales is a
-  // revenue account" with "Could not save" throws away the only sentence that
-  // says what to do next.
-  const setRole = api.ledger.setRoleAssignment.useMutation({
-    onSuccess: () => {
-      void utils.ledger.roleMap.invalidate()
-    },
-    onError: (error) => {
-      toastError({ title: 'Error saving the role map', description: error.message })
-    },
-  })
-
-  function handleAssignRole(role: AccountRole, accountId: string, sourceAccountId?: string | null) {
-    // Picking an account is what turns a suggestion into a confirmation; that is
-    // the whole point of `G19` step 4. The server stamps `confirmedAt`.
-    //
-    // A `sourceAccountId` scopes the edit to one connection (task 47 §7.3);
-    // without one this is the org-wide default, which is what it always was.
-    setRole.mutate({ role, glAccountId: accountId, sourceAccountId: sourceAccountId ?? null })
-  }
-
-  /**
-   * Give one connection's override back, so it follows the org default again.
-   *
-   * 🛑 A DELETE on the server, not a write of the default's account id.
-   * Inheriting is the ABSENCE of a row - an override copied from the default
-   * would silently stop following it the next time somebody repointed the role.
-   */
-  function handleUseDefault(role: AccountRole, sourceAccountId: string) {
-    setRole.mutate({ role, sourceAccountId, useDefault: true })
-  }
-
-  /**
-   * Mark a role unused, or clear that mark.
-   *
-   * 🛑 Never called on an `unmapped` role. `GlRoleAssignment.glAccountId` is
-   * `NOT NULL`, so there is no row to flip and the server answers `NotFoundError`.
-   * Both callers hide or disable the affordance in that state - the list drops
-   * the button, the editor renders it disabled beside the reason - so the refusal
-   * is explained before it can be provoked rather than after.
-   */
-  function handleToggleUnused(role: AccountRole) {
-    const current = rowsByRole.get(role)
-    if (!current || current.state === 'unmapped') return
-    setRole.mutate({ role, markedUnused: current.state !== 'unused' })
-  }
 
   // ── The chart writes ────────────────────────────────────────────────────
   //
@@ -599,40 +497,6 @@ export function AccountingAccountsSettingsPage() {
     )
   }
 
-  const editorContent =
-    activeTab === 'roles' ? (
-      <RoleMapEditor
-        role={selectedRole}
-        assignment={selectedRole ? rowsByRole.get(selectedRole) : undefined}
-        source={selectedSource}
-        accounts={accounts}
-        accountsLoading={chart.isPending}
-        pending={setRole.isPending}
-        onAssign={handleAssignRole}
-        onToggleUnused={handleToggleUnused}
-        onUseDefault={handleUseDefault}
-        canControl={canControl}
-      />
-    ) : (
-      <ChartAccountEditor
-        selectedId={selectedAccountId}
-        accounts={accounts}
-        roles={selectedAccountId ? (rolesByAccountId.get(selectedAccountId) ?? []) : []}
-        usage={chartUsage.data ?? {}}
-        draft={chartDraft}
-        onDraftChange={handleChartDraftChange}
-        onCreate={handleCreateAccount}
-        onDraftCommitted={handleChartDraftCommitted}
-        onUpdate={handleUpdateAccount}
-        onRemove={handleRemoveAccount}
-        map={mapView}
-        onSetIdentity={handleSetIdentity}
-        canControl={canControl}
-      />
-    )
-
-  const selectedId = activeTab === 'roles' ? selectedRole : selectedAccountId
-
   return (
     <SettingsPage
       title='Accounts'
@@ -641,38 +505,38 @@ export function AccountingAccountsSettingsPage() {
       subHeader={
         <ResponsiveTabs value={activeTab} onValueChange={handleTabChange} size='sm' items={TABS} />
       }>
-      {/* Both tabs are master-detail. The exception this used to carry was for the
-          QuickBooks tab, which edited in place and had nothing for a drawer to hold. */}
-      <MasterDetailSplit
-        id='accounting-accounts'
-        pane={editorContent}
-        paneTitle={activeTab === 'roles' ? 'Map role' : 'Account'}
-        paneOpen={!!selectedId}
-        onPaneClose={() => {
-          handleSelectRole(null)
-          handleSelectAccount(null)
-        }}>
-        {activeTab === 'roles' ? (
-          <RoleMapList
-            rows={roleRows}
-            sources={roleSources}
-            // 🛑 Gate on the query, never on an empty array. Every role
-            // reading "Not mapped - every preview refuses until this is set"
-            // is a CLAIM about the org, and rendering it mid-load makes it a
-            // false one.
-            isLoading={roleMap.isPending}
-            selectedRole={selectedRole}
-            selectedSourceId={selectedSource?.id ?? null}
-            onSelect={handleSelectRole}
-            onToggleUnused={handleToggleUnused}
-            onUseDefault={handleUseDefault}
-            onAddAccounts={() => setAddAccountsOpen(true)}
-            canControl={canControl}
-          />
-        ) : (
-          // 🛑 The provider wraps ONLY the chart list, not the page: the store
-          // is per-list by design, and a selection that survived a tab switch
-          // would let the Roles tab's bulk bar act on chart rows nobody can see.
+      {activeTab === 'mapping' ? (
+        // 🛑 No `MasterDetailSplit` on this tab (59 §2.1, D2) - the control is
+        // inline on the row, and `MappingList` is the whole tab body.
+        <MappingList canControl={canControl} onAddAccounts={() => setAddAccountsOpen(true)} />
+      ) : (
+        // The Chart tab is unchanged: `MasterDetailSplit` with a persistent
+        // editor pane, exactly as it was before the Mapping tab lost its own.
+        <MasterDetailSplit
+          id='accounting-accounts'
+          pane={
+            <ChartAccountEditor
+              selectedId={selectedAccountId}
+              accounts={accounts}
+              roles={selectedAccountId ? (rolesByAccountId.get(selectedAccountId) ?? []) : []}
+              usage={chartUsage.data ?? {}}
+              draft={chartDraft}
+              onDraftChange={handleChartDraftChange}
+              onCreate={handleCreateAccount}
+              onDraftCommitted={handleChartDraftCommitted}
+              onUpdate={handleUpdateAccount}
+              onRemove={handleRemoveAccount}
+              map={mapView}
+              onSetIdentity={handleSetIdentity}
+              canControl={canControl}
+            />
+          }
+          paneTitle='Account'
+          paneOpen={!!selectedAccountId}
+          onPaneClose={() => handleSelectAccount(null)}>
+          {/* 🛑 The provider wraps ONLY the chart list, not the page: the store
+              is per-list by design, and a selection that survived a tab switch
+              would let another tab's bulk bar act on chart rows nobody can see. */}
           <ListSelectionProvider>
             <ChartAccountsBulkBar />
             <ChartList
@@ -706,8 +570,8 @@ export function AccountingAccountsSettingsPage() {
               canControl={canControl}
             />
           </ListSelectionProvider>
-        )}
-      </MasterDetailSplit>
+        </MasterDetailSplit>
+      )}
 
       <ConfirmDialog />
       <ChartPacksDialog

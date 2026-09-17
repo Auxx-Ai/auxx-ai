@@ -45,9 +45,11 @@ import { and, eq, inArray } from 'drizzle-orm'
  *
  * 🛑 **Add a row here when the registry gains a pointer.** The coverage test in
  * `__tests__/gl-account-pointers.test.ts` walks the registry for TEXT fields
- * whose attribute ends in `_gl_account`, plus the two `payment_gateway` account
- * fields (named for their ROLE on the gateway rather than for what they point
- * at), and fails when one is missing - so this cannot silently fall behind.
+ * whose attribute ends in `_gl_account` and fails when one is missing - so this
+ * cannot silently fall behind. The two `payment_gateway` account fields left
+ * this list with task 58: a rail's clearing and fee accounts are
+ * `GlRoleAssignment` rows now, and that table is guarded by its own read-time
+ * check rather than by a pointer sweep.
  *
  * Deliberately NOT here:
  *
@@ -63,8 +65,6 @@ export const GL_ACCOUNT_POINTER_ATTRIBUTES: Readonly<Record<string, string>> = {
   bank_rule_gl_account: 'a bank rule',
   bank_transaction_gl_account: 'a bank transaction',
   bank_transaction_suggested_gl_account: 'a bank transaction suggestion',
-  payment_gateway_clearing_account: 'a payment gateway (clearing account)',
-  payment_gateway_fee_account: 'a payment gateway (fee account)',
   stock_movement_gl_account: 'a stock movement',
   vendor_bill_line_gl_account: 'a vendor bill line',
 }

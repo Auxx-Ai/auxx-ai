@@ -287,6 +287,6 @@ describe('documentRoleScope', () => {
     expect(documentRoleScope({})).toEqual({})
     expect(documentRoleScope({ sourceStoreId: null })).toEqual({ store: null })
     expect(documentRoleScope({ sourceStoreId: 'src_1' })).toEqual({ store: 'src_1' })
-    expect(documentRoleScope({ processorAccountId: 'pa_1' })).toEqual({ processor: 'pa_1' })
+    expect(documentRoleScope({ processorAccountId: 'pa_1' })).toEqual({ rail: 'pa_1' })
   })
 })

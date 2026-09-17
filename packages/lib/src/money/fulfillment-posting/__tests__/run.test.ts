@@ -145,7 +145,7 @@ beforeEach(() => {
       postingType: 'fulfillment',
       txnDate: workId.endsWith('1') ? '2026-09-01' : '2026-09-12',
       lines: [
-        { accountRole: 'clearing_card', direction: 'debit', amount: 100 },
+        { accountRole: 'clearing', direction: 'debit', amount: 100 },
         { accountRole: 'revenue_product', direction: 'credit', amount: 100 },
       ],
       totalDebit: 100,

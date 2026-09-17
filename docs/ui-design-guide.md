@@ -283,6 +283,7 @@ Any indented, expandable, connector-lined list (agent tools tree, knowledge reso
 - `chevronOnHover` swaps the leading icon for the expand chevron on hover instead of adding a trailing chevron — use for dense trees where a second chevron column would waste space.
 - `depth` indents one level (`~1.5rem` each); nested rows go in `children` and get the connector line automatically via `BaseTreeRow`.
 - Use `GridTreeRow` instead of `TreeRow` when later columns (an arrow, a target picker, an actions cluster) need to line up at a fixed x regardless of nesting depth — `TreeRow`'s indent shifts the whole row, `GridTreeRow`'s indent lives only in the first cell.
+- **The inherit-row pattern** — a `TreeRow` whose value is either explicit or "inherited" from a parent scope, with a hover affordance to reset back to inherited — has two instances: `permissions/ui/access-tree-row.tsx` (a grant inherits from the org default until overridden) and `accounting/ui/settings/mapping-scope-row.tsx` (a role's account inherits from the org default, or a currency row from its rail, until mapped — task 58/59). Reach for this shape over a bespoke override toggle whenever a row's value can fall back to a parent scope.
 
 ## 8. Toast, buttons, delete confirmation
 

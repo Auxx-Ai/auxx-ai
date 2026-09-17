@@ -34,8 +34,7 @@
  * id, and the sweep only polls sources that registered themselves. `affirm` is
  * permanently in that state on purpose - it is read by the financial connector,
  * which is mutually exclusive with the `PayoutSource` registry
- * (`plans/apps/affirm/affirm-build-plan.md` §5.3, and
- * `money/payouts/ingestion-owner.ts` for the guard that enforces it).
+ * (`plans/apps/affirm/affirm-build-plan.md` §5.3).
  */
 export const PAYMENT_GATEWAY_SETTLEMENT_SOURCES = [
   'stripe',
@@ -207,14 +206,23 @@ export interface PaymentGatewayRow {
   name: string
   /** Every stored `order_payment_gateways` value this rail answers to. Raw, not normalised. */
   handles: string[]
-  /** The `gl_account` id this gateway settles into (task 15 §4 shape). No foreign key. */
+  /**
+   * The `gl_account` id this rail's `clearing` role resolves to (task 58 §3), preferring the
+   * rail's no-currency row. `''` when unmapped - this is no longer a field on the record itself.
+   */
   clearingGlAccountId: string
-  /** The `gl_account` id the processor withholds its fee into, or null (`6100` is the fallback). */
+  /** Like {@link clearingGlAccountId}, for the rail's `payment_processing_fees` role. */
   feeGlAccountId: string | null
+  /** Derived from the rail's linked live feed's `providerKey` (58 §5.5) - there is no stored enum. */
   settlementSource: PaymentGatewaySettlementSourceValue
-  /** Explicit merchant identity for settlement matching. */
+  /** The linked feed's `externalAccountId`, or null when no feed is linked. */
   processorAccountId: string | null
+  /** A currency named by one of the rail's own role rows, or null - there is no longer one answer. */
   settlementCurrency: string | null
+  /**
+   * Always null. `bank` now resolves to a `gl_account` directly (58 §3), not to a `bank_account`
+   * record, so there is no single id to answer with here - see `payment-gateways/feeds.ts`.
+   */
   bankAccountId: string | null
   /**
    * Whether the processor withholds its cut from the deposit or bills for it
@@ -241,9 +249,8 @@ export interface PaymentGatewayRow {
 }
 
 /**
- * What `resolveFulfillmentDebit` reads to answer a gateway with an id instead
- * of a role (HANDOFF step 5 / task 13 §5.3's replacement for
- * `FULFILLMENT_GATEWAY_DEBIT`).
+ * What `resolveFulfillmentDebit` reads to answer which RAIL a handle belongs to
+ * (task 58 §5.2; before it, this answered with the rail's clearing account id).
  *
  * `handles` are RAW (not normalised) - the caller normalises both sides at
  * match time with {@link normaliseGatewayHandle}, the same way
@@ -263,7 +270,7 @@ export interface GatewayRoute {
  * 🛑 **Closed rows are included on purpose.** Authorize.Net is closed as of
  * May 2026 but its orders are still in the ledger; excluding a closed
  * gateway's route would silently fall the fulfillment debit fork back to its
- * `clearing_card` default the moment somebody marks the rail closed, which is
+ * `clearing` default the moment somebody marks the rail closed, which is
  * a posting change disguised as a settings edit. `active` rides along on the
  * route so a caller that wants to treat closed differently (a report, a
  * warning) can, without a second query.
@@ -284,7 +291,7 @@ export function toGatewayRoutes(rows: readonly PaymentGatewayRow[]): GatewayRout
  * a sale and its refund in different accounts - which balances, and is
  * therefore undetectable downstream. `build-fulfillment-batch-entry.ts`
  * (the sale) and `money/credit-memos/writes.ts` (the refund) are the two
- * callers; they used to be a private copy and a hardcoded `clearing_card`
+ * callers; they used to be a private copy and a hardcoded `clearing`
  * respectively.
  *
  * Both sides are normalised with {@link normaliseGatewayHandle}, so `'Affirm'`,
@@ -296,7 +303,7 @@ export function toGatewayRoutes(rows: readonly PaymentGatewayRow[]): GatewayRout
  * - **more than one match.** Two routes claiming one handle is a state the
  *   record's own write path should never allow, and guessing which is right
  *   would put real money in one of two accounts. Refusing to choose leaves it
- *   in `clearing_card`, where a wrong answer fails to reconcile visibly.
+ *   in `clearing`, where a wrong answer fails to reconcile visibly.
  *
  * ⚠️ A CLOSED route still matches. Its past orders are still in the ledger and
  * must keep reconciling; treating `active: false` as absent would silently move

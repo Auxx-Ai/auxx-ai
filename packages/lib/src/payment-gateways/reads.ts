@@ -20,6 +20,8 @@ import { getOrgCache } from '../cache'
 import { UnprocessableEntityError } from '../errors'
 import type { FieldOptions } from '../field-values/converters'
 import { financialEntityDefId, financialFields } from '../money/fulfillments/field-context'
+import { ACCOUNT_ROLES } from '../postings/build-entry'
+import { readRoleAssignments } from '../postings/role-assignments'
 import { buildOptionIndex, resolveOptionId } from '../resources/registry/option-helpers'
 import { toRecordId } from '../resources/resource-id'
 import {
@@ -34,20 +36,22 @@ import {
 } from './client'
 import { guard } from './guard'
 
-/** Every `payment_gateway` attribute a {@link PaymentGatewayRow} is assembled from. */
+/**
+ * Every `payment_gateway` attribute a {@link PaymentGatewayRow} is assembled from.
+ *
+ * §4.3 removed six fields this used to name (`clearingAccount`, `feeAccount`,
+ * `settlementSource`, `settlementAccount`, `settlementCurrency`,
+ * `settlementBankAccount`) - what they answered now comes from the rail scope
+ * (`GlRoleAssignment.paymentGatewayId`) and the linked feed, both read in
+ * {@link hydratePaymentGateways}, never from a `FieldValue` on this record.
+ */
 const PAYMENT_GATEWAY_ATTRIBUTES = [
   'payment_gateway_name',
   'payment_gateway_handles',
-  'payment_gateway_clearing_account',
-  'payment_gateway_fee_account',
-  'payment_gateway_settlement_source',
   'payment_gateway_fee_treatment',
   'payment_gateway_status',
   'payment_gateway_last_settlement_at',
   'payment_gateway_last_fee_booked_at',
-  'payment_gateway_settlement_account',
-  'payment_gateway_settlement_currency',
-  'payment_gateway_settlement_bank_account',
 ] as const
 
 type PaymentGatewayAttribute = (typeof PAYMENT_GATEWAY_ATTRIBUTES)[number]
@@ -79,9 +83,10 @@ export async function loadPaymentGatewayFieldContext(
     PAYMENT_GATEWAY_ATTRIBUTES,
     db
   )) as PaymentGatewayFields
-  // Without `name` and `clearingAccount` there is no gateway at all: the
-  // display value and the one thing this entity exists to say are both gone.
-  if (!fields.payment_gateway_name || !fields.payment_gateway_clearing_account) return null
+  // Without `name` there is no gateway at all: the display value is the one
+  // thing every row must carry. `clearingAccount` used to gate this too, but
+  // §4.3 removed it from the record - the rail scope answers that now.
+  if (!fields.payment_gateway_name) return null
   return { paymentGatewayDefId, fields }
 }
 
@@ -192,7 +197,7 @@ export async function getPaymentGateway(
  *
  * `handles` is a free-text field, and a handle that does not match what
  * Shopify wrote on the order is INVISIBLE: `resolveFulfillmentDebit` finds no
- * route, falls back to `clearing_card`, and the entry balances. Nothing
+ * route, falls back to `clearing`, and the entry balances. Nothing
  * downstream can tell a typo from a rail that legitimately has no record yet.
  * Before this, the only way to learn the real strings was to query
  * `order_payment_gateways` by hand - so the "add a gateway" screen asked a
@@ -436,8 +441,101 @@ function handleReader(
 }
 
 /**
+ * One rail's `clearing`/`payment_processing_fees` accounts, resolved through the
+ * rail scope (task 58 §3) rather than read off the record - see {@link readGatewayRailAccounts}.
+ */
+interface GatewayRailAccounts {
+  clearingGlAccountId: string
+  feeGlAccountId: string | null
+  /** A currency named by one of this rail's own rows, if any - there is no longer one answer. */
+  currency: string | null
+}
+
+/**
+ * Every gateway's `clearing`/`payment_processing_fees` mapping, read once through the
+ * `GlRoleAssignment` seam (§4.9) and filtered in memory - the same "one decode, callers own
+ * their output shape" argument `readRoleAssignments`'s own header makes.
+ *
+ * Preference within a rail: the no-currency row first (the rail's default), then the first
+ * currency-scoped row - `PaymentGatewayRow` has room for one answer per role, and a screen that
+ * needs every currency reads `GlRoleAssignment` itself (58 §6, U8).
+ */
+async function readGatewayRailAccounts(
+  db: Database | Transaction,
+  organizationId: string
+): Promise<Map<string, GatewayRailAccounts>> {
+  const assignments = await readRoleAssignments(db, organizationId)
+  const byGateway = new Map<string, GatewayRailAccounts>()
+  for (const row of assignments) {
+    if (!row.paymentGatewayId || row.markedUnused) continue
+    if (row.role !== ACCOUNT_ROLES.CLEARING && row.role !== ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)
+      continue
+    const entry = byGateway.get(row.paymentGatewayId) ?? {
+      clearingGlAccountId: '',
+      feeGlAccountId: null,
+      currency: null,
+    }
+    // The no-currency row wins whenever one exists; otherwise the first currency row seen stands.
+    if (
+      row.role === ACCOUNT_ROLES.CLEARING &&
+      (!entry.clearingGlAccountId || row.currency == null)
+    ) {
+      entry.clearingGlAccountId = row.glAccountId
+    }
+    if (
+      row.role === ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES &&
+      (!entry.feeGlAccountId || row.currency == null)
+    ) {
+      entry.feeGlAccountId = row.glAccountId
+    }
+    if (row.currency && !entry.currency) entry.currency = row.currency
+    byGateway.set(row.paymentGatewayId, entry)
+  }
+  return byGateway
+}
+
+/** One live feed linked to a rail, for the settlement-source/merchant-id derivation below. */
+interface GatewayLinkedFeed {
+  providerKey: string
+  externalAccountId: string
+}
+
+/** Every gateway's linked feed (task 58 §5.5), first live match per rail. */
+async function readGatewayLinkedFeeds(
+  db: Database | Transaction,
+  organizationId: string,
+  paymentGatewayIds: readonly string[]
+): Promise<Map<string, GatewayLinkedFeed>> {
+  const byGateway = new Map<string, GatewayLinkedFeed>()
+  if (paymentGatewayIds.length === 0) return byGateway
+  const rows = await db
+    .select({
+      paymentGatewayId: schema.FinancialSourceAccount.paymentGatewayId,
+      providerKey: schema.FinancialSourceAccount.providerKey,
+      externalAccountId: schema.FinancialSourceAccount.externalAccountId,
+    })
+    .from(schema.FinancialSourceAccount)
+    .where(
+      and(
+        eq(schema.FinancialSourceAccount.organizationId, organizationId),
+        inArray(schema.FinancialSourceAccount.paymentGatewayId, [...paymentGatewayIds]),
+        isNull(schema.FinancialSourceAccount.archivedAt)
+      )
+    )
+  for (const row of rows) {
+    if (!row.paymentGatewayId || byGateway.has(row.paymentGatewayId)) continue
+    byGateway.set(row.paymentGatewayId, {
+      providerKey: row.providerKey,
+      externalAccountId: row.externalAccountId,
+    })
+  }
+  return byGateway
+}
+
+/**
  * Turn a page of payment-gateway instance ids into full rows with exactly one
- * query for their field values.
+ * query for their field values, one for their rail-scoped role rows and one for
+ * their linked feeds.
  *
  * `handles` is the one multi-value field here (TAGS - one `FieldValue` row per
  * handle), so this groups values by `(entityId, fieldId)` into arrays rather
@@ -454,6 +552,10 @@ async function hydratePaymentGateways(
   page: { id: string; createdAt: Date | null; updatedAt: Date | null }[]
 ): Promise<PaymentGatewayRow[]> {
   const ids = page.map((row) => row.id)
+  const [railAccounts, linkedFeeds] = await Promise.all([
+    readGatewayRailAccounts(db, organizationId),
+    readGatewayLinkedFeeds(db, organizationId, ids),
+  ])
   const fieldIds = Object.values(ctx.fields)
     .filter((field): field is { id: string } => field != null)
     .map((field) => field.id)
@@ -502,6 +604,8 @@ async function hydratePaymentGateways(
   return page.map((row) => {
     const lastSettlementAt = readOne(row.id, 'payment_gateway_last_settlement_at')?.valueDate
     const lastFeeBookedAt = readOne(row.id, 'payment_gateway_last_fee_booked_at')?.valueDate
+    const rail = railAccounts.get(row.id)
+    const feed = linkedFeeds.get(row.id)
     return {
       id: row.id,
       recordId: toRecordId(ctx.paymentGatewayDefId, row.id),
@@ -509,11 +613,15 @@ async function hydratePaymentGateways(
       handles: readMany(row.id, 'payment_gateway_handles')
         .map((value) => value.optionId ?? value.valueText)
         .filter((handle): handle is string => !!handle),
-      clearingGlAccountId: readOne(row.id, 'payment_gateway_clearing_account')?.valueText ?? '',
-      feeGlAccountId: readOne(row.id, 'payment_gateway_fee_account')?.valueText ?? null,
-      settlementSource: resolvePaymentGatewaySettlementSource(
-        readOne(row.id, 'payment_gateway_settlement_source')?.optionId
-      ),
+      clearingGlAccountId: rail?.clearingGlAccountId ?? '',
+      feeGlAccountId: rail?.feeGlAccountId ?? null,
+      // §5.5: no stored enum - "manual" for a rail nothing has linked yet.
+      settlementSource: resolvePaymentGatewaySettlementSource(feed?.providerKey),
+      processorAccountId: feed?.externalAccountId ?? null,
+      settlementCurrency: rail?.currency ?? null,
+      // §3: `bank` resolves to a `gl_account`, not a `bank_account` record - see
+      // `payment-gateways/feeds.ts` for the rail's actual bank mapping.
+      bankAccountId: null,
       // 🛑 An org short of migration 156 has no option row here, and
       // `resolvePaymentGatewayFeeTreatment` answers `netted` for it - which is
       // exactly the entry `buildPayoutEntry` has always produced. Defaulting the
@@ -524,10 +632,6 @@ async function hydratePaymentGateways(
       status: resolvePaymentGatewayStatus(readOne(row.id, 'payment_gateway_status')?.optionId),
       lastSettlementAt: lastSettlementAt ? lastSettlementAt.slice(0, 10) : null,
       lastFeeBookedAt: lastFeeBookedAt ? lastFeeBookedAt.slice(0, 10) : null,
-      processorAccountId: readOne(row.id, 'payment_gateway_settlement_account')?.valueText ?? null,
-      settlementCurrency: readOne(row.id, 'payment_gateway_settlement_currency')?.valueText ?? null,
-      bankAccountId:
-        readOne(row.id, 'payment_gateway_settlement_bank_account')?.relatedEntityId ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     } satisfies PaymentGatewayRow

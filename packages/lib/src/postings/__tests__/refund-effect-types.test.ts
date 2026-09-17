@@ -7,13 +7,18 @@ import {
 } from '../refund-effect-types'
 
 const route = {
-  paymentRouteId: 'route-1',
-  kind: 'processor' as const,
-  method: 'card',
+  kind: 'rail' as const,
+  paymentGatewayId: 'gateway-1',
   settlementCurrency: 'USD',
   endpointGlAccountId: 'gl-clearing',
-  processorAccountId: 'provider-account-1',
-  gatewayInstanceId: 'gateway-1',
+}
+
+const manualRoute = {
+  kind: 'manual' as const,
+  paymentRouteId: 'route-1',
+  method: 'cash',
+  settlementCurrency: 'USD',
+  endpointGlAccountId: 'gl-clearing',
 }
 
 function calculation(overrides: Record<string, unknown> = {}) {
@@ -49,37 +54,28 @@ function calculation(overrides: Record<string, unknown> = {}) {
 }
 
 describe('customer refund accounting basis', () => {
-  it('accepts a fully partitioned multi-credit refund with a processor identity', () => {
+  it('accepts a fully partitioned multi-credit refund with a rail identity', () => {
     expect(customerRefundAccountingBasisSchema.safeParse(calculation()).success).toBe(true)
   })
 
-  it.each(['stripe-account', 'paypal-account'])('accepts processor identity %s', (accountId) => {
+  it.each(['gateway-2', 'gateway-3'])('accepts rail identity %s', (paymentGatewayId) => {
     expect(
       customerRefundAccountingBasisSchema.safeParse(
-        calculation({ route: { ...route, processorAccountId: accountId } })
+        calculation({ route: { ...route, paymentGatewayId } })
       ).success
     ).toBe(true)
   })
 
-  it('accepts an explicit manual cash route without processor identity', () => {
+  it('accepts an explicit manual cash route', () => {
     expect(
-      customerRefundAccountingBasisSchema.safeParse(
-        calculation({
-          route: {
-            ...route,
-            kind: 'manual',
-            processorAccountId: null,
-            gatewayInstanceId: null,
-          },
-        })
-      ).success
+      customerRefundAccountingBasisSchema.safeParse(calculation({ route: manualRoute })).success
     ).toBe(true)
   })
 
   it.each([
     { settlements: calculation().settlements.slice(0, 1) },
     { settlements: [...calculation().settlements, { ...calculation().settlements[0] }] },
-    { route: { ...route, processorAccountId: null, gatewayInstanceId: null } },
+    { route: { ...route, kind: 'manual' } },
     { occurredOn: null, datePrecision: 'date' },
   ])('rejects an incomplete or ambiguous refund basis', (override) => {
     expect(customerRefundAccountingBasisSchema.safeParse(calculation(override)).success).toBe(false)

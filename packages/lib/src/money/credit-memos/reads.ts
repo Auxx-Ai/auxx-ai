@@ -787,7 +787,7 @@ export async function loadInvoiceLinesForCredit(
  * 🛑 Read for the REFUND's account, not the sale's. `issueCreditMemo` matches
  * these against the org's `payment_gateway` records so a channel refund credits
  * the account its sale debited - see `CreditMemoSettlement`. Before 2026-09-11
- * the refund was hardcoded to `clearing_card`, which was correct only while
+ * the refund was hardcoded to `clearing`, which was correct only while
  * every rail shared one clearing account.
  *
  * ⚠️ **TAGS, so the value is in `optionId`**, not `valueText` - one row per
@@ -797,7 +797,7 @@ export async function loadInvoiceLinesForCredit(
  * is the silent version of the bug this read exists to fix.
  *
  * Empty when the field is unprovisioned or the order names no gateway: the
- * caller then takes the `clearing_card` default, which is what the fulfillment
+ * caller then takes the `clearing` default, which is what the fulfillment
  * debit fork does with the same input.
  */
 export async function readOrderGateways(

@@ -256,16 +256,17 @@ export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       'active status and type on every read, fail closed',
   },
 
-  stripeExternalAccountId: {
-    id: toFieldId('stripeExternalAccountId'),
-    key: 'stripeExternalAccountId',
-    label: 'Stripe external account',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
+  settlementDestinations: {
+    id: toFieldId('settlementDestinations'),
+    key: 'settlementDestinations',
+    label: 'Settlement destinations',
+    type: BaseType.TAGS,
+    fieldType: FieldType.TAGS,
     isSystem: true,
-    systemAttribute: 'bank_account_stripe_external_account_id',
+    systemAttribute: 'bank_account_settlement_destinations',
     systemSortOrder: 'a6a',
     nullable: true,
+    options: { options: [] },
     capabilities: {
       filterable: true,
       sortable: false,
@@ -275,9 +276,11 @@ export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
     },
     placeholder: 'ba_1AbCdEf...',
     description:
-      "The Stripe ba_… or card_… destination id a person confirms once, so a payout's " +
-      'settlement can be attributed to this account. Brief 13 §2.3: never matched on last4 - ' +
-      'a four-digit string is strong evidence and not proof, and two accounts at one bank can ' +
+      'The ids processors report a payout was sent to, confirmed here once, so a payout can ' +
+      'say whether it landed where the mapping expects (58 §4.4, §5.4). A SET, generalised ' +
+      'from the Stripe-only stripeExternalAccountId: ba_… / card_… from Stripe, ' +
+      'gid://shopify/ShopifyPaymentsBankAccount/… from Shopify. Never matched on last4 - a ' +
+      'four-digit string is strong evidence and not proof, and two accounts at one bank can ' +
       'share it',
   },
 
@@ -494,32 +497,6 @@ export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       'The gateway payouts that landed in this account (brief 27 §6.1). The INVERSE half - the ' +
       'owning side is payout.bankAccount, and both halves must exist in one migration or ' +
       'linkNewRelationships skips the pair with a debug line',
-  },
-
-  settlementGateways: {
-    id: toFieldId('settlementGateways'),
-    key: 'settlementGateways',
-    label: 'Settlement gateways',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'bank_account_settlement_gateways',
-    systemSortOrder: 'aCX',
-    showInPanel: false,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: false,
-      updatable: false,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'payment_gateway:settlementBankAccount' as ResourceFieldId,
-      relationshipType: 'has_many',
-      onDelete: 'unlink',
-      isInverse: true,
-    },
-    description: 'Payment gateways that send settlements to this account.',
   },
 
   hasPosted: {

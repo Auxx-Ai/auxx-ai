@@ -8,17 +8,23 @@ vi.mock('../../../payment-gateways/reads', () => ({ listPaymentGateways: h.gatew
 
 import { loadPayoutSourceSummaries } from '../source-reads'
 
-const account = {
+const account: {
+  id: string
+  providerKey: string
+  externalAccountId: string
+  environment: string
+  // 58 §4.2/§5.5: the link IS this pointer - no processorAccountId/settlementCurrency match.
+  paymentGatewayId: string | null
+} = {
   id: 'account-1',
   providerKey: 'shopify_payments',
   externalAccountId: 'shop-1',
   environment: 'live',
+  paymentGatewayId: 'gateway-1',
 }
 const gateway = {
   id: 'gateway-1',
   name: 'Shopify Payments',
-  processorAccountId: account.id,
-  settlementCurrency: 'USD',
 }
 const fields = {
   payout_source_provider_key: 'shopify_payments',
@@ -85,15 +91,19 @@ describe('settlement source reads', () => {
     { payout_source_provider_key: 'stripe' },
     { payout_source_account_id: 'shop-2' },
     { payout_source_environment: 'test' },
-    { payout_source_currency: 'CAD' },
-  ])('does not route a different identity or currency %j', async (patch) => {
+  ])('does not route a different identity %j', async (patch) => {
     expect(await read(patch)).toMatchObject({ gatewayId: null, routingIssue: expect.any(String) })
   })
-  it('does not pick an arbitrary gateway when settings conflict', async () => {
-    h.gateways.mockResolvedValue(ok([gateway, { ...gateway, id: 'gateway-2' }]))
-    expect(await read()).toMatchObject({
+  it('routes regardless of the reported currency - the link no longer names one', async () => {
+    expect(await read({ payout_source_currency: 'CAD' })).toMatchObject({
+      gatewayId: gateway.id,
+      routingIssue: null,
+    })
+  })
+  it('does not route an account nothing has linked to a gateway', async () => {
+    expect(await read({}, [{ ...account, paymentGatewayId: null }])).toMatchObject({
       gatewayId: null,
-      routingIssue: expect.stringContaining('Multiple'),
+      routingIssue: expect.any(String),
     })
   })
   it('shows missing account setup without hiding a valid amount', async () => {

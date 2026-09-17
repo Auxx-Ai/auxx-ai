@@ -22,8 +22,6 @@ let orderId: string
 let lineItemId: string
 let taxLineId: string
 let sourceStoreId: string
-let processorAccountId: string
-let paymentRouteId: string
 let gatewayId: string
 let clearingGlAccountId: string
 let coverageId: string
@@ -149,45 +147,31 @@ async function seedChart() {
     ])
 }
 
+// 58 §5.6: the rail is the store feed's own `paymentGatewayId` link (D3), and
+// its clearing account resolves through the rail-scoped `GlRoleAssignment`
+// (§5.1) - there is no `PaymentRoute` in the receipt lane any more.
 async function seedGateway() {
   const sourceDefinitionId = await createDefinition('payment_gateway', [
     'payment_gateway_name',
     'payment_gateway_handles',
-    'payment_gateway_clearing_account',
-    'payment_gateway_settlement_source',
     'payment_gateway_status',
   ])
   gatewayId = await createInstance(sourceDefinitionId)
   await value(gatewayId, 'payment_gateway_name', { valueText: 'Shopify Payments' })
   await value(gatewayId, 'payment_gateway_handles', { optionId: 'shopify_payments' })
-  await value(gatewayId, 'payment_gateway_clearing_account', {
-    valueText: clearingGlAccountId,
-  })
-  await value(gatewayId, 'payment_gateway_settlement_source', { optionId: 'shopify_payments' })
   await value(gatewayId, 'payment_gateway_status', { optionId: 'active' })
 
-  const [processor] = await db()
-    .insert(schema.FinancialSourceAccount)
-    .values({
-      organizationId,
-      providerKey: 'shopify',
-      externalAccountId: 'processor-fixture',
-      environment: 'live',
-    })
-    .returning()
-  processorAccountId = processor!.id
-  const [route] = await db()
-    .insert(schema.PaymentRoute)
-    .values({
-      organizationId,
-      kind: 'processor',
-      method: 'card',
-      settlementCurrency: 'USD',
-      processorAccountId,
-      paymentGatewayInstanceId: gatewayId,
-    })
-    .returning()
-  paymentRouteId = route!.id
+  await db()
+    .update(schema.FinancialSourceAccount)
+    .set({ paymentGatewayId: gatewayId })
+    .where(eq(schema.FinancialSourceAccount.id, sourceStoreId))
+  await db().insert(schema.GlRoleAssignment).values({
+    organizationId,
+    role: 'clearing',
+    paymentGatewayId: gatewayId,
+    glAccountId: clearingGlAccountId,
+    source: 'seed',
+  })
 }
 
 async function seedConnectorAndCoverage() {
@@ -308,7 +292,6 @@ async function createReceipt(amountMinor: bigint, externalId: string, occurredAt
       datePrecision: 'instant',
       occurredAt: new Date(occurredAt),
       partyInstanceId: await getContactId(),
-      paymentRouteId,
       recordedByCommandId: command!.id,
     })
     .returning()

@@ -2,10 +2,9 @@
 //
 // `loadGatewayRoutesForPlan` is the one database read `planFulfillmentPosting`
 // itself must never take on (this file's own header: PURE, no db). It is a
-// thin wrapper over `payment-gateways/reads.ts` + `client.ts`'s
-// `toGatewayRoutes`, so this only pins the two edges: an org with no
-// `payment_gateway` rows (or an unmigrated one) gets an empty table rather
-// than a throw.
+// thin wrapper over `payment-gateways/reads.ts`'s `listPaymentGateways`, so
+// this only pins the two edges: an org with no `payment_gateway` rows (or an
+// unmigrated one) gets an empty table rather than a throw.
 
 import { describe, expect, it, vi } from 'vitest'
 
@@ -21,12 +20,6 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../../../payment-gateways', () => ({
   listPaymentGateways: async () => h.result,
-  toGatewayRoutes: (rows: { handles: string[]; clearingGlAccountId: string; status: string }[]) =>
-    rows.map((row) => ({
-      handles: row.handles,
-      clearingGlAccountId: row.clearingGlAccountId,
-      active: row.status === 'active',
-    })),
 }))
 
 const { loadGatewayRoutesForPlan } = await import('../plan')
@@ -44,30 +37,30 @@ describe('loadGatewayRoutesForPlan', () => {
     expect(routes).toEqual([])
   })
 
-  it('maps rows through toGatewayRoutes, active and closed alike', async () => {
+  it('maps rows to id, handles, active and name - never a clearing account (task 58 §5.2)', async () => {
     h.result = {
       isOk: () => true,
       isErr: () => false,
       value: [
         {
+          id: 'gw_1',
           name: 'Authorize.Net',
           handles: ['authorize_net', 'authorize.net'],
-          clearingGlAccountId: 'acct_1',
           status: 'closed',
         },
-        { name: 'Affirm', handles: ['affirm'], clearingGlAccountId: 'acct_2', status: 'active' },
+        { id: 'gw_2', name: 'Affirm', handles: ['affirm'], status: 'active' },
       ],
     }
     const routes = await loadGatewayRoutesForPlan({} as never, 'org_1')
     expect(routes).toEqual([
       // The record's NAME rides along for the debit's reason sentence (brief 28 §5).
       {
+        id: 'gw_1',
         handles: ['authorize_net', 'authorize.net'],
-        clearingGlAccountId: 'acct_1',
         active: false,
         name: 'Authorize.Net',
       },
-      { handles: ['affirm'], clearingGlAccountId: 'acct_2', active: true, name: 'Affirm' },
+      { id: 'gw_2', handles: ['affirm'], active: true, name: 'Affirm' },
     ])
   })
 })

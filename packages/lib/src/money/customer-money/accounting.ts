@@ -20,7 +20,7 @@ import {
   appendCustomerReceiptWorkBasisInTx,
   captureCustomerReceiptWorkInTx,
 } from '../../postings/effect-work'
-import { resolveAccountLines } from '../../postings/resolve-roles'
+import { resolveAccountLines, resolveRoles } from '../../postings/resolve-roles'
 import { FINALIZED_SETUP_STATE } from '../../postings/setup-readiness'
 import type { GlPostingLineInput } from '../../postings/types'
 import type { SettingKey } from '../../settings/catalog'
@@ -85,6 +85,13 @@ async function prepareReceipt(tx: Transaction, input: Command, basisVersion: num
     amountMinor: taxShares.find((share) => share.componentKey === component.componentKey)!
       .amountMinor,
   }))
+  // 58 §5.6: the clearing account resolves through the receipt's rail scope,
+  // exactly like a fulfillment's, not the gateway's own (retired) field.
+  const clearing = await resolveRoles(tx, input.organizationId, ['clearing'], {
+    rail: source.paymentGatewayId,
+  })
+  if (clearing.isErr()) throw clearing.error
+  const clearingGlAccountId = clearing.value.get('clearing')!.glAccountId
   const sourceHash = accountingBasisHash({
     receipt: source.sourceHash,
     history: allocation.historyHash,
@@ -132,14 +139,12 @@ async function prepareReceipt(tx: Transaction, input: Command, basisVersion: num
       orderTaxMinor: facts.tax.toString(),
       orderShippingMinor: facts.shipping.toString(),
       orderTotalMinor: facts.total.toString(),
-      paymentRouteId: source.route.id,
+      paymentGatewayId: source.paymentGatewayId,
       sourceStoreId: source.sourceStoreId,
-      processorAccountId: source.processorAccountId,
       route: {
-        paymentRouteId: source.route.id,
-        processorAccountId: source.processorAccountId,
-        glAccountId: source.clearingGlAccountId,
-        reason: 'Confirmed receipt processor clearing account',
+        paymentGatewayId: source.paymentGatewayId,
+        glAccountId: clearingGlAccountId,
+        reason: "Resolved through the gateway's rail scope (58 §5.6)",
       },
       applications: source.applications.map((a) => ({
         applicationId: a.id,
@@ -155,8 +160,7 @@ async function prepareReceipt(tx: Transaction, input: Command, basisVersion: num
     sourceProvider: source.sourceProvider,
     ...(facts.channel ? { channel: facts.channel } : {}),
     sourceStoreId: source.sourceStoreId,
-    processorAccountId: source.processorAccountId,
-    paymentRouteId: source.route.id,
+    paymentGatewayId: source.paymentGatewayId,
     orderId: source.orderId,
   }
   const base = { sourceType: 'money_transaction', sourceId: source.money.id, dimensions }
@@ -164,7 +168,7 @@ async function prepareReceipt(tx: Transaction, input: Command, basisVersion: num
   const lines: GlPostingLineInput[] = [
     {
       ...base,
-      glAccountId: source.clearingGlAccountId,
+      glAccountId: clearingGlAccountId,
       direction: 'debit',
       amount: money(allocation.amountMinor),
       sortOrder: 0,

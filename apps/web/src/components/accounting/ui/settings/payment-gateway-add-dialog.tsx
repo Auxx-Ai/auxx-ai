@@ -5,9 +5,17 @@
 // (task 13 §5.3). Copies `bank-account-manual-dialog.tsx`'s shape: a small
 // `FieldPanel` in a dialog, extracted so the fields and the refusal handling
 // live in one place.
+//
+// The clearing step (task 59 §3) offers a suggested `<Name> Clearing` account,
+// minted through `mint-rail-accounts.ts` via `paymentGateway.createForRail` -
+// or an existing account, through the plain `paymentGateway.create`. Fee
+// account and fee treatment stay out of this dialog and go to the editor,
+// since `netted`/no dedicated fee account are already the right defaults for
+// most rails.
 
 import { FieldType } from '@auxx/database/enums'
 import type { PaymentGatewayRow } from '@auxx/lib/payment-gateways/client'
+import { suggestRail } from '@auxx/lib/payment-gateways/rail-catalogue'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -26,14 +34,26 @@ import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
 
+type ClearingMode = 'new' | 'existing'
+
 /** The dialog's fields, as it holds them before the write. */
 interface AddDraft {
   name: string
   handles: string[]
+  clearingMode: ClearingMode
+  /** Edited from the suggestion the moment a handle is typed - `clearingMode: 'new'`. */
+  clearingAccountName: string
+  /** `clearingMode: 'existing'`. */
   clearingAccountId: string | null
 }
 
-const EMPTY_DRAFT: AddDraft = { name: '', handles: [], clearingAccountId: null }
+const EMPTY_DRAFT: AddDraft = {
+  name: '',
+  handles: [],
+  clearingMode: 'new',
+  clearingAccountName: '',
+  clearingAccountId: null,
+}
 
 export interface PaymentGatewayAddDialogProps {
   open: boolean
@@ -48,10 +68,9 @@ export interface PaymentGatewayAddDialogProps {
 /**
  * PaymentGatewayAddDialog
  *
- * Collects the three fields `createPaymentGateway` requires - name, at least
- * one handle, and an active asset clearing account - before enabling Add.
- * Fee account and settlement source are left to the editor, since they are
- * optional and `manual`/null are already correct defaults for most rails.
+ * Collects the fields `createPaymentGateway`/`createForRail` require - name,
+ * at least one handle, and a clearing account, minted or picked - before
+ * enabling Add.
  */
 export function PaymentGatewayAddDialog({
   open,
@@ -60,18 +79,30 @@ export function PaymentGatewayAddDialog({
 }: PaymentGatewayAddDialogProps) {
   const utils = api.useUtils()
   const [draft, setDraft] = useState<AddDraft>(EMPTY_DRAFT)
+  const [nameTouched, setNameTouched] = useState(false)
+  const [clearingNameTouched, setClearingNameTouched] = useState(false)
+
+  const onSuccess = async (gateway: PaymentGatewayRow) => {
+    await utils.paymentGateway.list.invalidate()
+    onOpenChange(false)
+    setDraft(EMPTY_DRAFT)
+    setNameTouched(false)
+    setClearingNameTouched(false)
+    onCreated?.(gateway)
+  }
+  const onError = (error: { message: string }) => {
+    toastError({ title: 'Error adding the gateway', description: error.message })
+  }
 
   const create = api.paymentGateway.create.useMutation({
-    onSuccess: async (gateway) => {
-      await utils.paymentGateway.list.invalidate()
-      onOpenChange(false)
-      setDraft(EMPTY_DRAFT)
-      onCreated?.(gateway)
-    },
-    onError: (error) => {
-      toastError({ title: 'Error adding the gateway', description: error.message })
-    },
+    onSuccess,
+    onError,
   })
+  const createForRail = api.paymentGateway.createForRail.useMutation({
+    onSuccess: (result) => onSuccess(result.gateway),
+    onError,
+  })
+  const pending = create.isPending || createForRail.isPending
 
   // The handles actually seen on this org's orders. Only the UNCLAIMED ones are
   // offered: a handle another gateway already holds would be refused by
@@ -83,16 +114,6 @@ export function PaymentGatewayAddDialog({
     [observed.data]
   )
 
-  // 🛑 The option set is DERIVED from the values, plus the suggestions above.
-  // `payment_gateway_handles` is an OPEN, value-keyed TAGS field - the registry
-  // declares `options: { options: [] }` and the write stores the raw string - so a
-  // stored handle matches no option row. Handing the picker a literal `[]` made
-  // every handle resolve `unknown`: the trigger rendered it italic-grey as "not in
-  // this field's option set", and it never appeared in the popover at all, so it
-  // could not be unchecked. Nothing is wrong with what is stored; the input has to
-  // be told the values ARE the options. The `useMemo` is load-bearing too - a fresh
-  // `[]` each render re-fired `MultiSelectPicker`'s options sync and wiped the tag
-  // being typed.
   const handleOptions = useMemo(() => {
     const seen = new Set<string>()
     const options: { label: string; value: string }[] = []
@@ -105,21 +126,63 @@ export function PaymentGatewayAddDialog({
     return options
   }, [suggestions, draft.handles])
 
-  const canSubmit = draft.name.trim() && draft.handles.length > 0 && draft.clearingAccountId
+  // The rail catalogue's guess, from the first handle - a name and a suggested
+  // `<Name> Clearing` account name, both editable fields a person may overwrite.
+  const suggestion = useMemo(() => suggestRail(draft.handles[0] ?? ''), [draft.handles])
+
+  function updateDraft(patch: Partial<AddDraft>) {
+    setDraft((prev) => {
+      const next = { ...prev, ...patch }
+      // Re-suggest the name and clearing account name from the first handle,
+      // unless a person has already typed one of their own.
+      const nextSuggestion = suggestRail(next.handles[0] ?? '')
+      if (!nameTouched && patch.name === undefined) next.name = nextSuggestion.name
+      if (!clearingNameTouched && patch.clearingAccountName === undefined) {
+        next.clearingAccountName = nextSuggestion.clearingAccountName
+      }
+      return next
+    })
+  }
+
+  const canSubmit =
+    draft.name.trim() &&
+    draft.handles.length > 0 &&
+    (draft.clearingMode === 'new' ? draft.clearingAccountName.trim() : draft.clearingAccountId)
+
+  function submit() {
+    if (draft.clearingMode === 'existing') {
+      create.mutate({
+        name: draft.name.trim(),
+        handles: draft.handles,
+        clearingAccountId: draft.clearingAccountId as string,
+      })
+      return
+    }
+    createForRail.mutate({
+      name: draft.name.trim(),
+      handles: draft.handles,
+      clearingAccountName: draft.clearingAccountName.trim(),
+      mintFeeAccount: false,
+    })
+  }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
         onOpenChange(next)
-        if (!next) setDraft(EMPTY_DRAFT)
+        if (!next) {
+          setDraft(EMPTY_DRAFT)
+          setNameTouched(false)
+          setClearingNameTouched(false)
+        }
       }}>
       <DialogContent position='tc'>
         <DialogHeader>
           <DialogTitle>Add a payment gateway</DialogTitle>
           <DialogDescription>
-            A record carrying its own clearing account - never a role. Two rails can share one
-            account; this only says which account, it never mints a new one.
+            The rail that takes money for an order. Its clearing account is mapped below - minted
+            fresh, or an existing one you pick.
           </DialogDescription>
         </DialogHeader>
 
@@ -134,8 +197,11 @@ export function PaymentGatewayAddDialog({
               fieldType={FieldType.TEXT}
               value={draft.name}
               placeholder='Authorize.Net'
-              disabled={create.isPending}
-              onChange={(value) => setDraft({ ...draft, name: (value as string) ?? '' })}
+              disabled={pending}
+              onChange={(value) => {
+                setNameTouched(true)
+                updateDraft({ name: (value as string) ?? '' })
+              }}
             />
           </FieldPanelRow>
           <FieldPanelRow
@@ -157,21 +223,59 @@ export function PaymentGatewayAddDialog({
               value={draft.handles}
               triggerProps={{ className: 'w-full ps-0 pe-1' }}
               placeholder='Add a handle'
-              disabled={create.isPending}
+              disabled={pending}
               onChange={(value) =>
-                setDraft({ ...draft, handles: Array.isArray(value) ? (value as string[]) : [] })
+                updateDraft({ handles: Array.isArray(value) ? (value as string[]) : [] })
               }
             />
           </FieldPanelRow>
           <FieldPanelRow title='Clearing account' type={BaseType.STRING} showIcon isRequired>
-            <GlAccountPicker
-              value={draft.clearingAccountId}
-              selectBy='id'
-              filterTypes={['asset']}
-              placeholder='Select account…'
-              disabled={create.isPending}
-              onChange={(id) => setDraft({ ...draft, clearingAccountId: id })}
-            />
+            <div className='flex flex-col gap-2'>
+              <div className='flex items-center gap-1'>
+                <Button
+                  type='button'
+                  variant={draft.clearingMode === 'new' ? 'secondary' : 'ghost'}
+                  size='xs'
+                  disabled={pending}
+                  onClick={() => setDraft((prev) => ({ ...prev, clearingMode: 'new' }))}>
+                  Create new
+                </Button>
+                <Button
+                  type='button'
+                  variant={draft.clearingMode === 'existing' ? 'secondary' : 'ghost'}
+                  size='xs'
+                  disabled={pending}
+                  onClick={() => setDraft((prev) => ({ ...prev, clearingMode: 'existing' }))}>
+                  Use existing
+                </Button>
+              </div>
+              {draft.clearingMode === 'new' ? (
+                <FieldInputAdapter
+                  fieldType={FieldType.TEXT}
+                  value={draft.clearingAccountName}
+                  placeholder={suggestion.clearingAccountName}
+                  disabled={pending}
+                  onChange={(value) => {
+                    setClearingNameTouched(true)
+                    updateDraft({ clearingAccountName: (value as string) ?? '' })
+                  }}
+                />
+              ) : (
+                <GlAccountPicker
+                  value={draft.clearingAccountId}
+                  selectBy='id'
+                  filterTypes={['asset']}
+                  placeholder='Select account…'
+                  disabled={pending}
+                  onChange={(id) => setDraft((prev) => ({ ...prev, clearingAccountId: id }))}
+                />
+              )}
+              <p className='text-muted-foreground text-xs'>
+                {draft.clearingMode === 'new'
+                  ? 'A new asset account, minted with the next free code in the clearing band - reached by id, through this record, and pointed at by nothing else.'
+                  : 'Two rails can share one clearing account - this only says which account, it never mints a new one.'}
+              </p>
+            </div>
           </FieldPanelRow>
         </FieldPanel>
 
@@ -181,22 +285,16 @@ export function PaymentGatewayAddDialog({
             variant='ghost'
             size='sm'
             onClick={() => onOpenChange(false)}
-            disabled={create.isPending}>
+            disabled={pending}>
             Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
             variant='outline'
             size='sm'
-            loading={create.isPending}
+            loading={pending}
             loadingText='Adding...'
             disabled={!canSubmit}
-            onClick={() =>
-              create.mutate({
-                name: draft.name.trim(),
-                handles: draft.handles,
-                clearingAccountId: draft.clearingAccountId as string,
-              })
-            }
+            onClick={submit}
             data-dialog-submit>
             Add gateway <KbdSubmit variant='outline' size='sm' />
           </Button>

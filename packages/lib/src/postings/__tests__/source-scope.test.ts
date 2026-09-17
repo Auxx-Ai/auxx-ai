@@ -1,23 +1,35 @@
 // packages/lib/src/postings/__tests__/source-scope.test.ts
 //
 // Task 47 §3 and §7.4: WHICH sources a role map may be scoped to, and which AXIS
-// each one carries.
+// each one carries. Widened by task 58 §3 rule 6 (59 V1): the RAIL axis moved
+// off this table entirely, onto the org's own `payment_gateway` records.
 //
-// Two things are easy to get wrong here and both are silent:
+// Three things are easy to get wrong here and all are silent:
 //
-//  1. **The axis cannot be derived from `providerKey`.** Shopify is a storefront
-//     AND a processor (Shopify Payments), so the key does not settle it. The
-//     evidence does: a row reached through `FinancialSourceObject` is a store, a
-//     row carrying processor balance entries or payouts is a merchant account,
-//     and a row can be BOTH.
+//  1. **The STORE axis cannot be derived from `providerKey`.** Shopify is a
+//     storefront, so a row reached through `FinancialSourceObject` is a store.
+//     `providerKey` alone does not settle it - a merchant account can share a
+//     provider with a storefront and carry no store evidence at all.
 //  2. **The manual bucket is a row, not a null.** It has to satisfy the existing
 //     identity check and unique index without any schema change, and it has to
 //     stay invisible to every other reader of `FinancialSourceAccount` - all of
 //     which either filter `providerKey` or join in from an evidence row, and a
 //     row with no evidence pointing at it is invisible to all of them (§3.1).
+//  3. **A rail is never a `FinancialSourceAccount` row any more.** It is a live
+//     `payment_gateway` EntityInstance, read through a separate module
+//     (`payment-gateways/reads.ts`, mocked below) and appended to the same
+//     list, always on the `rail` axis alone.
 
 import { type Database, schema } from '@auxx/database'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const gatewayStub = vi.hoisted(() => ({ rows: [] as Array<{ id: string; name: string }> }))
+vi.mock('../../payment-gateways/reads', () => ({
+  listPaymentGateways: vi.fn(async () => {
+    const { ok } = await import('neverthrow')
+    return ok(gatewayStub.rows)
+  }),
+}))
 
 import {
   listRoleSources,
@@ -53,8 +65,6 @@ const MANUAL: Row = {
 function stubDb(input: {
   accounts: Row[]
   storeIds?: string[]
-  balanceIds?: string[]
-  transferIds?: string[]
   /** Filled with the `where` clause each table's query was given, so a test can
    *  assert on a predicate this stub is too dumb to evaluate. */
   captured?: Map<unknown, unknown>
@@ -62,9 +72,6 @@ function stubDb(input: {
   const rowsFor = (table: unknown): unknown[] => {
     if (table === schema.FinancialSourceAccount) return input.accounts
     if (table === schema.FinancialSourceObject) return (input.storeIds ?? []).map((id) => ({ id }))
-    if (table === schema.ProcessorBalanceEntry)
-      return (input.balanceIds ?? []).map((id) => ({ id }))
-    if (table === schema.MoneyTransfer) return (input.transferIds ?? []).map((id) => ({ id }))
     return []
   }
 
@@ -91,34 +98,14 @@ function stubDb(input: {
   } as unknown as Database
 }
 
-describe('listRoleSources - the axis comes from the evidence', () => {
+beforeEach(() => {
+  gatewayStub.rows = []
+})
+
+describe('listRoleSources - the STORE axis comes from evidence', () => {
   it('reads a source with order evidence as a STORE', async () => {
     const rows = await listRoleSources(stubDb({ accounts: [SHOPIFY], storeIds: [SHOPIFY.id] }), ORG)
     expect(rows).toEqual([expect.objectContaining({ id: SHOPIFY.id, axes: ['store'] })])
-  })
-
-  it('reads a source with settlement evidence as a PROCESSOR', async () => {
-    const rows = await listRoleSources(stubDb({ accounts: [STRIPE], balanceIds: [STRIPE.id] }), ORG)
-    expect(rows).toEqual([expect.objectContaining({ id: STRIPE.id, axes: ['processor'] })])
-  })
-
-  it('counts a payout as settlement evidence too', async () => {
-    const rows = await listRoleSources(
-      stubDb({ accounts: [STRIPE], transferIds: [STRIPE.id] }),
-      ORG
-    )
-    expect(rows[0]?.axes).toEqual(['processor'])
-  })
-
-  // 🛑 Shopify Payments. The one row is both a storefront and a merchant
-  // account, and it has to appear under both - a revenue role AND the fee role
-  // may legitimately name it.
-  it('reads a source with both kinds of evidence as BOTH', async () => {
-    const rows = await listRoleSources(
-      stubDb({ accounts: [SHOPIFY], storeIds: [SHOPIFY.id], balanceIds: [SHOPIFY.id] }),
-      ORG
-    )
-    expect(rows[0]?.axes).toEqual(['store', 'processor'])
   })
 
   // 🛑 The regression this filter exists for. `FinancialSourceObject` holds BOTH
@@ -199,9 +186,11 @@ describe('listRoleSources - the axis comes from the evidence', () => {
   })
 
   // Every other provider gets the key beside the id, so `acct_1ABC` is not left
-  // to stand on its own as though it were a word.
+  // to stand on its own as though it were a word. Store evidence here only
+  // because the derivation is store-side machinery; the fact under test is the
+  // label, not the axis.
   it('qualifies an unnamed non-Shopify connection with its provider', async () => {
-    const rows = await listRoleSources(stubDb({ accounts: [STRIPE], balanceIds: [STRIPE.id] }), ORG)
+    const rows = await listRoleSources(stubDb({ accounts: [STRIPE], storeIds: [STRIPE.id] }), ORG)
     expect(rows[0]?.name).toBe('Stripe · acct_1ABC')
   })
 
@@ -215,6 +204,53 @@ describe('listRoleSources - the axis comes from the evidence', () => {
       name: 'Main US store',
       externalAccountId: 'auxx-lift.myshopify.com',
     })
+  })
+})
+
+describe('listRoleSources - the RAIL axis comes from payment_gateway records (58 §3 rule 6)', () => {
+  it('lists every live payment gateway on the rail axis', async () => {
+    gatewayStub.rows = [{ id: 'pg_stripe', name: 'Stripe' }]
+    const rows = await listRoleSources(stubDb({ accounts: [] }), ORG)
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: 'pg_stripe',
+        name: 'Stripe',
+        axes: ['rail'],
+        isManual: false,
+      }),
+    ])
+  })
+
+  // A gateway's id lives in a different table and id space than any
+  // `FinancialSourceAccount` - so a storefront that also happens to be a rail
+  // (Shopify, whose payments arm is its own `payment_gateway` record) shows up
+  // as TWO rows now, never one row carrying both axes.
+  it('lists a storefront and its own rail as two separate rows', async () => {
+    gatewayStub.rows = [{ id: 'pg_shopify_payments', name: 'Shopify Payments' }]
+    const rows = await listRoleSources(stubDb({ accounts: [SHOPIFY], storeIds: [SHOPIFY.id] }), ORG)
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: SHOPIFY.id, axes: ['store'] }),
+        expect.objectContaining({ id: 'pg_shopify_payments', axes: ['rail'] }),
+      ])
+    )
+    expect(rows).toHaveLength(2)
+  })
+
+  it('offers no rail at all for an org with no payment gateways', async () => {
+    const rows = await listRoleSources(stubDb({ accounts: [] }), ORG)
+    expect(rows).toEqual([])
+  })
+
+  // Manual still sorts first; a rail sorts among the connections by name, the
+  // same rule `pins manual first, then sorts connections by name` pins for stores.
+  it('sorts a rail into the same name order as the connections', async () => {
+    gatewayStub.rows = [{ id: 'pg_stripe', name: 'Stripe' }]
+    const rows = await listRoleSources(
+      stubDb({ accounts: [MANUAL, AMAZON], storeIds: [AMAZON.id] }),
+      ORG
+    )
+    expect(rows.map((row) => row.name)).toEqual([MANUAL_SOURCE_LABEL, 'Amazon · A1B2C3', 'Stripe'])
   })
 })
 

@@ -19,17 +19,16 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import { BadRequestError, ConflictError, NotFoundError } from '../errors'
-import { loadChartAccountsById } from '../postings/chart-accounts'
+import { ACCOUNT_ROLES } from '../postings/build-entry'
+import { setRoleAssignment } from '../postings/role-map'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { toRecordId } from '../resources/resource-id'
 import {
   normaliseGatewayHandle,
   PAYMENT_GATEWAY_FEE_TREATMENTS,
-  PAYMENT_GATEWAY_SETTLEMENT_SOURCES,
   PAYMENT_GATEWAY_STATUSES,
   type PaymentGatewayFeeTreatmentValue,
   type PaymentGatewayRow,
-  type PaymentGatewaySettlementSourceValue,
   type PaymentGatewayStatusValue,
 } from './client'
 import { guard } from './guard'
@@ -43,11 +42,13 @@ export interface CreatePaymentGatewayInput {
   actorUserId: string
   name: string
   handles: string[]
-  /** The `gl_account` id this gateway settles into. Must be an active asset account. */
+  /**
+   * The `gl_account` id this rail's `clearing` role maps to (task 58 §3), written through
+   * `setRoleAssignment` - an active asset account with subtype `clearing`.
+   */
   clearingAccountId: string
-  /** The `gl_account` id the processor withholds its fee into, or null. */
+  /** Like {@link clearingAccountId}, for the rail's `payment_processing_fees` role, or null. */
   feeAccountId?: string | null
-  settlementSource?: PaymentGatewaySettlementSourceValue
   /**
    * Whether the processor withholds its cut from the deposit (`netted`) or
    * bills for it later (`billed`). Defaults to `netted`, which is what the
@@ -65,9 +66,10 @@ export interface UpdatePaymentGatewayInput {
   paymentGatewayId: string
   name?: string
   handles?: string[]
+  /** Repoints the rail's `clearing` role. See {@link CreatePaymentGatewayInput.clearingAccountId}. */
   clearingAccountId?: string
+  /** Repoints the rail's fee role; `null` clears the override back to the org default. */
   feeAccountId?: string | null
-  settlementSource?: PaymentGatewaySettlementSourceValue
   feeTreatment?: PaymentGatewayFeeTreatmentValue
   status?: PaymentGatewayStatusValue
   lastSettlementAt?: string | null
@@ -95,7 +97,14 @@ export interface StampPaymentGatewayLastSettlementInput {
  * 🛑 **What it must NOT do: mint an account per gateway.** `clearingAccountId`
  * names an EXISTING chart account (§5.3's explicit rule); this never creates
  * one. Two rails sharing a clearing account is ordinary - `1200` already is
- * that for every gateway `FULFILLMENT_GATEWAY_DEBIT` does not recognise.
+ * that for every gateway with no `payment_gateway` record of its own.
+ *
+ * The clearing/fee mapping is no longer a field on the record - it is two
+ * `setRoleAssignment` writes scoped to the new record's id (task 58 §3), which
+ * carry their own account-type/subtype validation. Not one transaction with the
+ * entity create: `setRoleAssignment` opens its own, the same accepted gap
+ * `createForRail` (`routers/payment-gateways.ts`) already documents for
+ * `mintRailAccounts` plus this function.
  */
 export async function createPaymentGateway(
   db: Database,
@@ -116,8 +125,6 @@ export async function createPaymentGateway(
         throw new BadRequestError('A payment gateway needs at least one handle')
       }
 
-      const settlementSource = input.settlementSource ?? 'manual'
-      assertSettlementSource(settlementSource)
       // 🛑 Defaulted here AND stamped by migration 156 on every record that
       // predates the field, so the value is never absent and §4's default does
       // not end up living in three places.
@@ -126,25 +133,45 @@ export async function createPaymentGateway(
       const status = input.status ?? 'active'
       assertStatus(status)
 
-      await assertHandlesAvailable(db, organizationId, name, handles)
-      await assertClearingAccount(db, organizationId, input.clearingAccountId)
-      if (input.feeAccountId) {
-        await assertFeeAccount(db, organizationId, input.feeAccountId)
+      const clearingAccountId = input.clearingAccountId?.trim()
+      if (!clearingAccountId) {
+        throw new BadRequestError('A payment gateway needs a clearing account')
       }
+
+      await assertHandlesAvailable(db, organizationId, name, handles)
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
       const created = await crud.create(ctx.paymentGatewayDefId, {
         payment_gateway_name: name,
         payment_gateway_handles: handles,
-        payment_gateway_clearing_account: input.clearingAccountId.trim(),
-        payment_gateway_fee_account: input.feeAccountId?.trim() || undefined,
-        payment_gateway_settlement_source: settlementSource,
         payment_gateway_fee_treatment: feeTreatment,
         payment_gateway_status: status,
         payment_gateway_last_settlement_at: input.lastSettlementAt || undefined,
       })
+      const paymentGatewayId = created.instance.id
 
-      const row = await getPaymentGateway(db, organizationId, created.instance.id)
+      const clearing = await setRoleAssignment(db, {
+        organizationId,
+        role: ACCOUNT_ROLES.CLEARING,
+        paymentGatewayId,
+        glAccountId: clearingAccountId,
+        actorUserId,
+      })
+      if (clearing.isErr()) throw clearing.error
+
+      const feeAccountId = input.feeAccountId?.trim()
+      if (feeAccountId) {
+        const fee = await setRoleAssignment(db, {
+          organizationId,
+          role: ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES,
+          paymentGatewayId,
+          glAccountId: feeAccountId,
+          actorUserId,
+        })
+        if (fee.isErr()) throw fee.error
+      }
+
+      const row = await getPaymentGateway(db, organizationId, paymentGatewayId)
       if (row.isErr()) throw row.error
       if (!row.value) {
         throw new NotFoundError('The payment gateway could not be read back after writing')
@@ -152,7 +179,7 @@ export async function createPaymentGateway(
 
       logger.info('Created a payment gateway', {
         organizationId,
-        paymentGatewayId: created.instance.id,
+        paymentGatewayId,
         handles,
       })
       return row.value
@@ -212,18 +239,37 @@ export async function updatePaymentGateway(
       }
 
       if (input.clearingAccountId !== undefined) {
-        await assertClearingAccount(db, organizationId, input.clearingAccountId)
-        patch.payment_gateway_clearing_account = input.clearingAccountId.trim()
+        const clearingAccountId = input.clearingAccountId.trim()
+        if (!clearingAccountId) {
+          throw new BadRequestError('A payment gateway needs a clearing account')
+        }
+        const clearing = await setRoleAssignment(db, {
+          organizationId,
+          role: ACCOUNT_ROLES.CLEARING,
+          paymentGatewayId,
+          glAccountId: clearingAccountId,
+          actorUserId,
+        })
+        if (clearing.isErr()) throw clearing.error
       }
       if (input.feeAccountId !== undefined) {
-        if (input.feeAccountId) {
-          await assertFeeAccount(db, organizationId, input.feeAccountId)
-        }
-        patch.payment_gateway_fee_account = input.feeAccountId?.trim() || null
-      }
-      if (input.settlementSource !== undefined) {
-        assertSettlementSource(input.settlementSource)
-        patch.payment_gateway_settlement_source = input.settlementSource
+        const feeAccountId = input.feeAccountId?.trim()
+        const fee = feeAccountId
+          ? await setRoleAssignment(db, {
+              organizationId,
+              role: ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES,
+              paymentGatewayId,
+              glAccountId: feeAccountId,
+              actorUserId,
+            })
+          : await setRoleAssignment(db, {
+              organizationId,
+              role: ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES,
+              paymentGatewayId,
+              useDefault: true,
+              actorUserId,
+            })
+        if (fee.isErr()) throw fee.error
       }
       if (input.feeTreatment !== undefined) {
         assertFeeTreatment(input.feeTreatment)
@@ -363,16 +409,6 @@ function normaliseHandleList(handles: readonly string[]): string[] {
   return out
 }
 
-function assertSettlementSource(
-  value: string
-): asserts value is PaymentGatewaySettlementSourceValue {
-  if (!PAYMENT_GATEWAY_SETTLEMENT_SOURCES.includes(value as PaymentGatewaySettlementSourceValue)) {
-    throw new BadRequestError(
-      `"${value}" is not a settlement source. Use ${PAYMENT_GATEWAY_SETTLEMENT_SOURCES.join(', ')}`
-    )
-  }
-}
-
 /**
  * 🛑 A refusal, never a coercion to `netted`. `resolvePaymentGatewayFeeTreatment`
  * coerces on the READ side because an unmigrated record legitimately has no
@@ -425,56 +461,5 @@ async function assertHandlesAvailable(
         )
       }
     }
-  }
-}
-
-/** The clearing account must exist, be active, and be an asset account. */
-async function assertClearingAccount(
-  db: Database,
-  organizationId: string,
-  clearingAccountId: string
-): Promise<void> {
-  const id = clearingAccountId?.trim()
-  if (!id) throw new BadRequestError('A payment gateway needs a clearing account')
-  await assertAccount(db, organizationId, id, 'asset', 'clearing account')
-}
-
-/** The fee account, when given, must exist, be active, and be an expense account. */
-async function assertFeeAccount(
-  db: Database,
-  organizationId: string,
-  feeAccountId: string
-): Promise<void> {
-  const id = feeAccountId?.trim()
-  if (!id) return
-  await assertAccount(db, organizationId, id, 'expense', 'fee account')
-}
-
-async function assertAccount(
-  db: Database,
-  organizationId: string,
-  accountId: string,
-  wantType: 'asset' | 'expense',
-  label: string
-): Promise<void> {
-  const { accounts, malformed } = await loadChartAccountsById(
-    db,
-    organizationId,
-    [accountId],
-    'Payment gateways cannot be mapped until the chart of accounts is provisioned'
-  )
-  const account = accounts.get(accountId)
-  if (!account || malformed.includes(accountId)) {
-    throw new BadRequestError(`The ${label} does not exist in your chart, or has been removed.`)
-  }
-  if (!account.isActive) {
-    throw new BadRequestError(
-      `"${account.name || account.code}" is inactive and cannot be a ${label}.`
-    )
-  }
-  if (account.accountType !== wantType) {
-    throw new BadRequestError(
-      `"${account.name || account.code}" is a ${account.accountType} account. A ${label} must be ${wantType === 'asset' ? 'an asset' : 'an expense'} account.`
-    )
   }
 }

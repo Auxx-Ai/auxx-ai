@@ -31,7 +31,6 @@ export {
 } from './reads'
 export { readRecognisedChargeIds, readRecognisedOrderIds, recognise } from './recognise'
 export { reconcileFinancialRecords } from './reconcile-records'
-export { type ResolvedPayoutGateway, resolvePayoutRail } from './routing'
 export type {
   PayoutSource,
   PayoutSourceCtx,
@@ -50,17 +49,6 @@ export {
   SHOPIFY_PAYMENTS_PAYOUTS_SCOPE,
   SHOPIFY_PAYMENTS_SOURCE_ID,
 } from './sources/shopify-payments'
-export {
-  resolvePayoutGateway,
-  resolvePayoutGatewayFrom,
-  STRIPE_CONNECT_PAYOUT_SOURCE,
-  STRIPE_CONNECT_SOURCE_ID,
-} from './sources/stripe-connect'
-export {
-  type ResolvedPayoutBankAccount,
-  resolvePayoutBankAccount,
-  reverseFailedPayout,
-  syncPayoutSource,
-  syncPayouts,
-} from './sync'
+export { STRIPE_CONNECT_PAYOUT_SOURCE, STRIPE_CONNECT_SOURCE_ID } from './sources/stripe-connect'
+export { reverseFailedPayout, syncPayoutSource, syncPayouts } from './sync'
 export type { ListPayoutsFilters, PayoutRecord, SyncPayoutsResult } from './types'

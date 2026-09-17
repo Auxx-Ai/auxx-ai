@@ -80,12 +80,12 @@ export function singleShipmentGroup(shipment: PlannedShipment): FulfillmentPosti
     totals: {
       ...amounts,
       byDebitRole: {
-        clearing_card: amounts.debitRole === 'clearing_card' ? amounts.totalMinor : 0,
+        clearing: amounts.debitRole === 'clearing' ? amounts.totalMinor : 0,
         accounts_receivable:
           amounts.debitRole === 'accounts_receivable'
             ? (amounts.receivableDebitMinor ?? amounts.totalMinor)
             : 0,
-        gateway: amounts.debitRole === 'gateway' ? amounts.totalMinor : 0,
+        undeposited_funds: amounts.debitRole === 'undeposited_funds' ? amounts.totalMinor : 0,
       },
     },
   }
@@ -302,7 +302,11 @@ async function readFulfillmentAccountingSourceUncachedInTx(
     shippedOn,
     channel: shipment.channel,
     sourceStoreId: shipment.sourceStoreId ?? null,
-    processorRouteId: shipment.processorRouteId ?? null,
+    // The rail this shipment's card half settles through (58 §5.2), and only
+    // when this fork chose clearing. 🛑 Not `shipment.processorRouteId`: that
+    // is a `PaymentRoute` id, not a `payment_gateway` one, and a recognition
+    // or native shipment debits deposits or receivables and names no rail (D11).
+    paymentGatewayId: route.role === 'clearing' ? route.rail : null,
     shippingRegion: null,
     dimensions: {},
     lines: shipment.lines.map((line) => ({
@@ -372,18 +376,11 @@ async function readFulfillmentAccountingSourceUncachedInTx(
               remitter: 'unknown' as const,
               withholdingEvidenceId: null,
             })),
-    debitRoute:
-      'glAccountId' in route
-        ? {
-            kind: 'account' as const,
-            glAccountId: route.glAccountId,
-            reason: route.reason ?? 'Gateway clearing route',
-          }
-        : {
-            kind: 'role' as const,
-            role: route.role,
-            reason: route.reason ?? 'Order payment state',
-          },
+    debitRoute: {
+      kind: 'role' as const,
+      role: route.role,
+      reason: route.reason ?? 'Order payment state',
+    },
   }
   const basis = accountingWorkBasisSchema.parse({
     version: 1,

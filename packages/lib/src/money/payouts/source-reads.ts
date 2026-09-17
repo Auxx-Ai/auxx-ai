@@ -90,14 +90,13 @@ export async function loadPayoutSourceSummaries(
         item.externalAccountId === externalAccountId &&
         item.environment === environment
     )
-    const matches =
-      account && environment === 'live'
-        ? gateways.value.filter(
-            (gateway) =>
-              gateway.processorAccountId === account.id && gateway.settlementCurrency === currency
-          )
-        : []
-    const gateway = matches.length === 1 ? matches[0] : null
+    // 58 §4.2/§5.5: the link is `FinancialSourceAccount.paymentGatewayId` itself, a single
+    // pointer - not a text match on a retired `processorAccountId`/`settlementCurrency` pair,
+    // which could never disagree in two directions (`gateways` no longer carries either).
+    const gateway =
+      account && environment === 'live' && account.paymentGatewayId
+        ? (gateways.value.find((item) => item.id === account.paymentGatewayId) ?? null)
+        : null
     summaries.set(record.payoutId, {
       amountMinor,
       currency,
@@ -110,9 +109,7 @@ export async function loadPayoutSourceSummaries(
       gatewayName: gateway?.name ?? null,
       routingIssue: gateway
         ? null
-        : matches.length > 1
-          ? 'Multiple payment gateways claim this merchant account and currency. Review settlement settings.'
-          : 'Select this merchant account and currency in Payment gateway settlement settings.',
+        : 'Link this merchant account to a payment gateway on Accounting > Settings > Payment gateways.',
       amountIssue,
     })
   }

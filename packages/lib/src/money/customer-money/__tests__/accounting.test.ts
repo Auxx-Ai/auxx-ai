@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   readOrderRecognitionFactsInTx: vi.fn(),
   readOrderRecognitionSource: vi.fn(),
   resolveAccountLines: vi.fn(),
+  resolveRoles: vi.fn(),
   resolveFulfillmentDeliveryIntentInTx: vi.fn(),
   planAccountingDeliveryInTx: vi.fn(),
 }))
@@ -36,7 +37,10 @@ vi.mock('../../../postings/effect-work', () => ({
   appendCustomerReceiptWorkBasisInTx: h.appendCustomerReceiptWorkBasisInTx,
   captureCustomerReceiptWorkInTx: h.captureCustomerReceiptWorkInTx,
 }))
-vi.mock('../../../postings/resolve-roles', () => ({ resolveAccountLines: h.resolveAccountLines }))
+vi.mock('../../../postings/resolve-roles', () => ({
+  resolveAccountLines: h.resolveAccountLines,
+  resolveRoles: h.resolveRoles,
+}))
 vi.mock('../../../postings/setup-readiness', () => ({ FINALIZED_SETUP_STATE: 'finalized' }))
 vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: h.getOrganizationSetting,
@@ -97,6 +101,21 @@ function setup() {
     return null
   })
   h.resolveFulfillmentDeliveryIntentInTx.mockResolvedValue({ kind: 'not_required' })
+  h.resolveRoles.mockResolvedValue({
+    isErr: () => false,
+    value: new Map([
+      [
+        'clearing',
+        {
+          glAccountId: 'gl_clearing',
+          code: null,
+          name: 'Clearing',
+          accountType: 'asset',
+          isActive: true,
+        },
+      ],
+    ]),
+  })
   h.resolveAccountLines.mockImplementation(async (_tx, _org, lines) => ({
     isErr: () => false,
     value: lines.map((line: { glAccountId?: string; accountRole?: string }) => {
@@ -132,14 +151,12 @@ function receiptSource(amountMinor = 120n) {
     },
     orderId: 'order_1',
     effectiveDate: '2026-09-01',
-    route: { id: 'route_1' },
-    processorAccountId: 'processor_1',
+    paymentGatewayId: 'gateway_1',
     sourceStoreId: 'store_1',
     sourceProvider: 'shopify',
     sourceObjectId: 'source_1',
     sourceExternalId: 'capture_1',
     sourceRevision: 'observation_1',
-    clearingGlAccountId: 'gl_clearing',
     sourceHash: 'b'.repeat(64),
     applications: [
       { id: 'application_1', orderInstanceId: 'order_1', amountMinor, effectiveDate: '2026-09-01' },

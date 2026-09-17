@@ -11,7 +11,7 @@
  * ```
  *   Dr revenue_returns_allowances   summarised                      Σ subtotal
  *   Dr sales_tax_payable            summarised                      Σ tax
- *       Cr clearing_card                summarised                  Σ settled
+ *       Cr clearing                summarised                  Σ settled
  *       Cr <gateway's own account>      summarised PER ACCOUNT ID   Σ settled
  *       Cr accounts_receivable          ONE LINE PER CONTACT        Σ unsettled
  * ```
@@ -37,7 +37,7 @@
  *    account by id, so an Affirm memo and a card memo in one group stay TWO
  *    credit lines. Collapse them and `1210` is overstated forever in an entry
  *    that still balances and that nothing downstream can detect.
- *    `CreditMemoAmounts.settlementGlAccountId` absent means the `clearing_card`
+ *    `CreditMemoAmounts.settlementGlAccountId` absent means the `clearing`
  *    role.
  * 2. **The A/R leg stays per counterparty.** Aging has to name the debtor, and
  *    `resolveCounterparties` refuses an `accounts_receivable`-subtype line with
@@ -50,14 +50,14 @@
  *    `computeCreditMemoAmounts`, their settlement still credits a clearing
  *    account, and their share of the A/R leg is therefore NEGATIVE - a DEBIT,
  *    exactly as the single-memo builder's money leg is `Dr accounts_receivable
- *    / Cr clearing_card`. One group, correct arithmetic.
+ *    / Cr clearing`. One group, correct arithmetic.
  *
  * ## 🛑 `gateway-ambiguous` and `test-gateway` deliberately do NOT apply here
  *
  * This asymmetry with the fulfillment batch builder is load-bearing (§7) and
  * somebody will eventually try to "fix" it into a refusal. A sale can be
  * refused and re-run; a refund cannot, because the money has already moved.
- * `resolveSettlementAccount` therefore falls back to `clearing_card` on every
+ * `resolveSettlementAccount` therefore falls back to `clearing` on every
  * uncertainty - no order, no gateway, no match, two records claiming one handle
  * - because that is where a wrong answer fails to reconcile VISIBLY rather than
  * quietly. This builder has no gateway fork at all: the account was resolved
@@ -491,7 +491,7 @@ export function buildCreditMemoBatchEntry(
   if (clearingCardMinor !== 0) {
     push({
       ...summarised,
-      accountRole: ACCOUNT_ROLES.CLEARING_CARD,
+      accountRole: ACCOUNT_ROLES.CLEARING,
       direction: 'credit',
       amount: clearingCardMinor,
       memo: describe('card clearing'),

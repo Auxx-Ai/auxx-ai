@@ -163,42 +163,6 @@ async function createManualRoute() {
   return route!.id
 }
 
-async function createProcessorRoute(providerKey: string) {
-  const gatewayId = await instance(fixture.paymentGatewayDefinitionId)
-  const [processor] = await db()
-    .insert(schema.FinancialSourceAccount)
-    .values({
-      organizationId: fixture.organizationId,
-      providerKey,
-      externalAccountId: `${providerKey}-fixture`,
-      environment: 'live',
-    })
-    .returning()
-  await fieldValue(gatewayId, 'payment_gateway_name', { valueText: `${providerKey} gateway` })
-  await fieldValue(gatewayId, 'payment_gateway_handles', { valueText: providerKey })
-  await fieldValue(gatewayId, 'payment_gateway_clearing_account', {
-    valueText: fixture.accounts.get('cash')!,
-  })
-  await fieldValue(gatewayId, 'payment_gateway_settlement_source', { optionId: 'manual' })
-  await fieldValue(gatewayId, 'payment_gateway_status', { optionId: 'active' })
-  await fieldValue(gatewayId, 'payment_gateway_settlement_account', {
-    valueText: processor!.id,
-  })
-  await fieldValue(gatewayId, 'payment_gateway_settlement_currency', { valueText: 'USD' })
-  const [route] = await db()
-    .insert(schema.PaymentRoute)
-    .values({
-      organizationId: fixture.organizationId,
-      kind: 'processor',
-      method: 'card',
-      settlementCurrency: 'USD',
-      processorAccountId: processor!.id,
-      paymentGatewayInstanceId: gatewayId,
-    })
-    .returning()
-  return { routeId: route!.id, gatewayId, processorId: processor!.id }
-}
-
 async function createRefund(
   amountMinor: bigint,
   commandKey: string,
@@ -310,63 +274,14 @@ beforeEach(async () => {
 })
 
 describe('postCustomerRefundAccounting against PostgreSQL', () => {
-  it.each(['paypal', 'adyen'])('accepts the opaque %s processor route', async (providerKey) => {
-    const processor = await createProcessorRoute(providerKey)
-    const refundId = await createRefund(100n, `refund-${providerKey}`, processor.routeId)
-    const result = await postCustomerRefundAccounting(db(), {
-      organizationId: fixture.organizationId,
-      moneyTransactionId: refundId,
-      actorUserId: fixture.userId,
-    })
-
-    expect(result.status).toBe('accepted')
-    if (result.status !== 'accepted') return
-    const [effect] = await db().query.AccountingEffect.findMany({
-      where: eq(schema.AccountingEffect.glPostingId, result.glPostingId),
-    })
-    expect(effect?.acceptedBasis).toMatchObject({
-      calculation: { route: { processorAccountId: processor.processorId } },
-    })
-  })
-
-  it('blocks a processor route when the gateway identity does not match the route', async () => {
-    const processor = await createProcessorRoute('paypal')
-    const [otherProcessor] = await db()
-      .insert(schema.FinancialSourceAccount)
-      .values({
-        organizationId: fixture.organizationId,
-        providerKey: 'adyen',
-        externalAccountId: 'adyen-mismatch-fixture',
-        environment: 'live',
-      })
-      .returning()
-    const settlementAccountField = fixture.fields.get('payment_gateway_settlement_account')!
-    await db()
-      .update(schema.FieldValue)
-      .set({ valueText: otherProcessor!.id })
-      .where(
-        and(
-          eq(schema.FieldValue.organizationId, fixture.organizationId),
-          eq(schema.FieldValue.entityId, processor.gatewayId),
-          eq(schema.FieldValue.fieldId, settlementAccountField.id)
-        )
-      )
-    const refundId = await createRefund(100n, 'refund-processor-mismatch', processor.routeId)
-    const result = await postCustomerRefundAccounting(db(), {
-      organizationId: fixture.organizationId,
-      moneyTransactionId: refundId,
-      actorUserId: fixture.userId,
-    })
-
-    expect(result.status).toBe('blocked')
-    expect(result.status === 'blocked' ? result.reason : '').toMatch(/gateway|processor/i)
-    expect(
-      await db().query.AccountingWork.findMany({
-        where: eq(schema.AccountingWork.effectKind, 'customer_refund'),
-      })
-    ).toMatchObject([{ state: 'blocked' }])
-  })
-
+  // 58 D5: `PaymentRoute`'s processor kind is retired - a card refund resolves
+  // through its original receipt's frozen rail (`readFrozenReceiptRoute` in
+  // `refund-accounting.ts`), not through a route of its own. The manual
+  // (cash/bank) route below is what a refund with no original receipt still
+  // uses.
+  // TODO(58 U9): cover the `ConflictError` that guard throws when a
+  // receipt-backed refund also names its own payment route - the two tests
+  // deleted here covered the retired processor kind, not that rule.
   it('posts a balanced debit to frozen credit control and credit to manual cash', async () => {
     const routeId = await createManualRoute()
     const refundId = await createRefund(1100n, 'refund-success', routeId)

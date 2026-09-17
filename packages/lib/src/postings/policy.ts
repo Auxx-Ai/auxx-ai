@@ -363,7 +363,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     template: [
       {
         side: 'debit',
-        role: ACCOUNT_ROLES.CLEARING_CARD,
+        role: ACCOUNT_ROLES.CLEARING,
         what: 'Card shipments, summarised, when no gateway record claims the rail',
       },
       {
@@ -441,7 +441,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         role: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
         what: 'Cash, cheques and unknown methods, until a deposit run banks them',
       },
-      { side: 'debit', role: ACCOUNT_ROLES.CLEARING_CARD, what: 'Card payments, until the payout' },
+      { side: 'debit', role: ACCOUNT_ROLES.CLEARING, what: 'Card payments, until the payout' },
       { side: 'debit', role: 'by id', what: 'The cash bank account, for ACH and wire' },
       {
         side: 'credit',
@@ -524,16 +524,20 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       description: 'Daily at 04:30 UTC, for every organisation with a Stripe Connect account',
     },
     template: [
-      { side: 'debit', role: 'by id', what: 'The bank account the payout settled into' },
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.BANK,
+        what: "The rail's mapped receiving bank account",
+      },
       {
         side: 'debit',
         role: ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES,
-        what: "Processor fees deducted, or the rail's own fee account by id",
+        what: "Processor fees deducted, or the rail's own fee account",
       },
       {
         side: 'credit',
-        role: ACCOUNT_ROLES.CLEARING_CARD,
-        what: "Gross settled, or the rail's own clearing account by id",
+        role: ACCOUNT_ROLES.CLEARING,
+        what: "Gross settled, or the rail's own clearing account",
       },
       {
         side: 'credit',
@@ -543,7 +547,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     ],
     settings: [],
     sentence:
-      "Each Stripe payout drains the rail's clearing account into the bank account it settled into, with the processor's fees recognised alongside.",
+      "Each payout drains the rail's clearing account into the bank account it settled into, with the processor's fees recognised alongside.",
     disabledSentence:
       'Payout posting is off, so Shopify and processor clearing accounts are not reconciled per payout.',
     parameters: [
@@ -564,12 +568,6 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         value: 'Stripe payout.paid webhook',
         sentence:
           'A payout.paid event posts the same payout the moment it arrives; the daily run is the guarantee behind it for a webhook that was dropped or unsubscribed.',
-      },
-      {
-        name: 'Rails',
-        value: 'Stripe Connect only',
-        sentence:
-          'Only a payment gateway record whose settlement source is Stripe is read; other rails have no payout entry yet.',
       },
     ],
     records: [PAYMENT_GATEWAYS_RECORD, BANK_ACCOUNTS_RECORD],
@@ -721,7 +719,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
       {
         side: 'credit',
-        role: ACCOUNT_ROLES.CLEARING_CARD,
+        role: ACCOUNT_ROLES.CLEARING,
         what: "The refund leaving through the rail's clearing account, or its record's account by id",
       },
     ],

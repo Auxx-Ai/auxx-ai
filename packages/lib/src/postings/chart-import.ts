@@ -11,7 +11,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { isNull } from 'drizzle-orm'
+import { and, isNull } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UniqueValueConflictError, UnprocessableEntityError } from '../errors'
 import type { GlAccountSubtypeValue } from './account-subtype'
@@ -240,7 +240,12 @@ async function insertRoleAssignment(
         // settings.
         // `where` is `onConflictDoNothing`'s spelling of the index predicate;
         // `onConflictDoUpdate` spells the same thing `targetWhere`.
-        where: isNull(schema.GlRoleAssignment.sourceAccountId),
+        // ⚠️ Both halves: task 58 widened the index predicate, and a narrower
+        // `where` infers no index at all (42P10).
+        where: and(
+          isNull(schema.GlRoleAssignment.sourceAccountId),
+          isNull(schema.GlRoleAssignment.paymentGatewayId)
+        ),
       })
       .returning({ id: schema.GlRoleAssignment.id })
 

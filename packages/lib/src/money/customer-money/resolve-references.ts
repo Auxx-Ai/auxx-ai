@@ -6,7 +6,7 @@ import { accountingBasisHash } from '../../postings/effect-basis'
 import { confirmedCustomerMovement } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
 
-/** Explicit verified source association or processor resolution; similarity is never evidence. */
+/** Explicit verified source association or manual route resolution; similarity is never evidence. */
 export interface ResolveImportedMoneyReferencesInput {
   organizationId: string
   moneyTransactionId: string
@@ -17,7 +17,7 @@ export interface ResolveImportedMoneyReferencesInput {
   evidence: string
 }
 
-/** Link evidenced provider objects to one immutable movement and resolve its actual processor. */
+/** Link evidenced provider objects to one immutable movement and its manual payment route. */
 export async function resolveImportedMoneyReferences(
   db: Database,
   input: ResolveImportedMoneyReferencesInput
@@ -70,25 +70,8 @@ export async function resolveImportedMoneyReferences(
         )
       if (money.paymentRouteId && money.paymentRouteId !== route.id)
         throw new ConflictError('A resolved movement route cannot be replaced')
-      if (route.kind === 'processor') {
-        const gateway = await tx
-          .select({ id: schema.EntityInstance.id })
-          .from(schema.EntityInstance)
-          .innerJoin(
-            schema.EntityDefinition,
-            eq(schema.EntityDefinition.id, schema.EntityInstance.entityDefinitionId)
-          )
-          .where(
-            and(
-              eq(schema.EntityInstance.organizationId, input.organizationId),
-              eq(schema.EntityInstance.id, route.paymentGatewayInstanceId!),
-              eq(schema.EntityDefinition.entityType, 'payment_gateway'),
-              isNull(schema.EntityInstance.archivedAt)
-            )
-          )
-        if (gateway.length !== 1)
-          throw new UnprocessableEntityError('Payment route gateway is not active')
-      }
+      // 58 D5: `PaymentRoute` is manual-only now - a processor rail resolves
+      // through `FinancialSourceAccount.paymentGatewayId` (D3), not this door.
     }
     for (const objectId of objectIds) {
       const object = await tx.query.FinancialSourceObject.findFirst({

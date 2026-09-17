@@ -1,7 +1,7 @@
 // apps/web/src/components/permissions/ui/access-tree-row.tsx
 'use client'
 
-import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TREE_ROW_NESTED_TINT, TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import type { ComponentProps, ReactNode } from 'react'
 import { AccessLevelSelect } from './access-level-select'
@@ -20,7 +20,6 @@ export const ACCESS_ROW_DEPTH = 1
  * in every child-row file, which is how the four of them drifted apart while
  * looking identical.
  */
-const ACCESS_ROW_CLASS = 'bg-primary-50 hover:bg-primary-100'
 
 /**
  * One access child row: a `TreeRow` with the depth, tint and title treatment that
@@ -68,7 +67,7 @@ export function AccessTreeRow({
   return (
     <TreeRow
       depth={depth}
-      rowClassName={ACCESS_ROW_CLASS}
+      rowClassName={TREE_ROW_NESTED_TINT}
       icon={icon}
       title={<span className={cn('truncate', muted && 'text-muted-foreground')}>{title}</span>}
       description={description}

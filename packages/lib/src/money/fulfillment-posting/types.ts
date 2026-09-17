@@ -40,28 +40,24 @@ export const FULFILLMENT_POSTING_GROUPINGS: readonly FulfillmentPostingGrouping[
  *
  * Decided per shipment from the order's financial status and gateways, never
  * from the channel. A card order was paid at checkout and the payout entry
- * drains clearing; a terms order owes, and aging names the debtor.
+ * drains clearing; a terms order owes, and aging names the debtor; a cash
+ * order waits, undeposited, for a bank run (task 58 §5.2 D12).
  *
- * 🛑 **`'gateway'`, added by brief 13 §5.3, is not a third account.** It is
- * the bucket a shipment falls into when its gateway resolved to a
- * `payment_gateway` record's own clearing account id rather than to one of the
- * two roles below - see {@link FulfillmentDebit}. Every non-card rail lands
- * here since `clearing_affirm` was deleted on 2026-09-10. `byDebitRole` summaries
- * (this file's own `FulfillmentPostingGroup.totals.byDebitRole` and the
- * builder's `BuiltFulfillmentBatchEntry.totals.byDebitRole`) keep working
- * unchanged by counting every id-based debit under this one key; the actual
- * account id rides on `ShipmentAmounts.debitGlAccountId`.
+ * 🛑 **`'gateway'` is gone (task 58).** Every non-card rail used to fall into
+ * this bucket, debiting a `payment_gateway` record's OWN clearing account by
+ * id. That account is now `clearing`, scoped to the record's id through
+ * `sourceScope.rail` (`ShipmentAmounts.debitRail`) - one role, resolved per
+ * rail, the same way a scoped `revenue_product` already resolved per store.
  */
-export type FulfillmentDebitRole = 'clearing_card' | 'accounts_receivable' | 'gateway'
+export type FulfillmentDebitRole = 'clearing' | 'accounts_receivable' | 'undeposited_funds'
 
 /**
- * What a shipment debits: a declared ROLE, or a `payment_gateway` record's own
- * clearing account id (brief 13 §5.3's contract - `build-entry.ts`'s header:
- * "a gateway does not get a role").
+ * What a shipment debits: a declared ROLE, `clearing` carrying the rail its
+ * scope resolves through (task 58 §5.2).
  */
 export type FulfillmentDebit =
-  | { role: Exclude<FulfillmentDebitRole, 'gateway'>; reason?: string }
-  | { glAccountId: string; reason?: string }
+  | { role: 'clearing'; rail: string | null; reason?: string }
+  | { role: Exclude<FulfillmentDebitRole, 'clearing'>; reason?: string }
 
 /**
  * Why the debit fork chose what it chose, as a predicate on the order(s) it
@@ -183,7 +179,7 @@ export interface UnpostedShipment {
   taxLines: readonly { title: string; priceMinor: number }[]
   /** Shopify source provenance selected by the canonical money timeline. */
   sourceStoreId?: string | null
-  /** Processor route selected by the canonical receipt timeline. */
+  /** Rail selected by the canonical receipt timeline; feeds `calculation.paymentGatewayId`. */
   processorRouteId?: string | null
   /** Conserved tax components for this recognition event. */
   recognitionTaxComponents?: readonly FulfillmentRecognitionTaxComponent[]
@@ -233,13 +229,14 @@ export interface FulfillmentPostingPlanInput {
 export interface ShipmentAmounts {
   debitRole: FulfillmentDebitRole
   /**
-   * The `payment_gateway` record's own clearing account id, set only when
-   * `debitRole` is `'gateway'` (brief 13 §5.3). Absent for the three declared
-   * roles.
+   * The `payment_gateway` record id `debitRole: 'clearing'` scopes through
+   * (`sourceScope.rail`, task 58 §5.2) - a matched record's id, or `null` when
+   * none claimed the handle (resolves to the org default). Absent for the two
+   * unscoped roles.
    */
-  debitGlAccountId?: string
+  debitRail?: string | null
   /**
-   * The fork's reason for `debitRole` / `debitGlAccountId`, carried from
+   * The fork's reason for `debitRole` / `debitRail`, carried from
    * `resolveFulfillmentDebit` through `computeShipmentAmounts` so the batch
    * builder can write it onto the debit line per account, with an order count
    * (brief 28 §5). Absent when the caller passed a bare role.

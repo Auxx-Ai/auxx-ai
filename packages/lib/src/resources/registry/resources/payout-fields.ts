@@ -558,5 +558,29 @@ export const PAYOUT_FIELDS: Record<string, ResourceField> = {
       '"everything recognised" - the screen must say which. Provenance, never edited',
   },
 
+  destinationMismatch: {
+    id: toFieldId('destinationMismatch'),
+    key: 'destinationMismatch',
+    label: 'Destination Mismatch',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'payout_destination_mismatch',
+    systemSortOrder: 'aJ',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      "Set when the reported destination is not among the mapped bank account's " +
+      'settlementDestinations (58 §4.5, §5.4, D7). This payout POSTED - distinct from ' +
+      'blockedReason, which means nothing did',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

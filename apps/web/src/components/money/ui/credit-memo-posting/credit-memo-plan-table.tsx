@@ -42,7 +42,7 @@ import { formatMinor } from '~/components/accounting/ui/ledger/format'
 import { formatDayKey } from '~/components/money/ui/batch-posting'
 
 /** What a memo with no resolved gateway account credits: the card clearing role. */
-const CLEARING_CARD_LABEL = 'Card clearing'
+const CLEARING_LABEL = 'Card clearing'
 
 /** The fallback when a memo routes to a gateway account nothing has named. */
 const GATEWAY_LABEL = 'Gateway clearing'
@@ -249,12 +249,12 @@ function memoNote(memo: PlannedCreditMemo, gatewayNames: Readonly<Record<string,
   return parts.join(' · ')
 }
 
-/** Absent means the `clearing_card` role rather than a resolved gateway account. */
+/** Absent means the `clearing` role rather than a resolved gateway account. */
 function settlementLabel(
   settlementGlAccountId: string | undefined,
   gatewayNames: Readonly<Record<string, string>>
 ): string {
-  if (!settlementGlAccountId) return CLEARING_CARD_LABEL
+  if (!settlementGlAccountId) return CLEARING_LABEL
   return gatewayNames[settlementGlAccountId] ?? GATEWAY_LABEL
 }
 

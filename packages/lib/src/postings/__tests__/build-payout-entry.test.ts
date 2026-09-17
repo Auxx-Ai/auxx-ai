@@ -4,7 +4,7 @@
 // `gross !== net + fees`. Every other builder here computes its own totals; a
 // payout TRANSCRIBES three numbers a gateway reported, and balancing them by
 // deriving one from the other two would silently correct the gateway's
-// arithmetic - which is the one thing that makes `1200 Card Clearing`
+// arithmetic - which is the one thing that makes a rail's clearing account
 // impossible to reconcile to zero for reasons nobody can reconstruct.
 
 import { describe, expect, it } from 'vitest'
@@ -13,14 +13,18 @@ import { ACCOUNT_ROLES } from '../build-entry'
 import { buildPayoutEntry, PAYOUT_SOURCE_TYPE } from '../build-payout-entry'
 import { buildDocNumber } from '../doc-number'
 
+const RAIL = 'gateway_1'
+const CURRENCY = 'USD'
+const SCOPE = { rail: RAIL, currency: CURRENCY }
+
 const BASE = {
   payoutId: 'po_1AbCdEfGhIjKlMnOpQrStUvW',
   payoutNumber: 'PO-0007',
-  bankAccountGlAccountId: 'gl-1000',
+  rail: RAIL,
+  currency: CURRENCY,
   grossMinor: 500_000,
   feesMinor: 14_800,
   netMinor: 485_200,
-  clearingRole: ACCOUNT_ROLES.CLEARING_CARD,
   paidAt: '2026-09-04',
 }
 
@@ -28,35 +32,34 @@ function line(entry: ReturnType<typeof buildPayoutEntry>['entry'], role: string)
   return entry.lines.find((row) => row.accountRole === role)
 }
 
-/** The bank-account debit leg, named by `glAccountId` - never a role (brief 13 §2). */
-function bankLine(entry: ReturnType<typeof buildPayoutEntry>['entry']) {
-  return entry.lines.find((row) => row.glAccountId === BASE.bankAccountGlAccountId)
-}
-
 describe('the entry', () => {
-  it('debits the settlement bank account net, debits fees, and credits clearing gross', () => {
+  it('debits bank net, debits fees, and credits clearing gross - every leg a role line', () => {
     const built = buildPayoutEntry(BASE)
 
-    expect(bankLine(built.entry)).toMatchObject({
+    expect(line(built.entry, ACCOUNT_ROLES.BANK)).toMatchObject({
       direction: 'debit',
       amount: 485_200,
+      sourceScope: SCOPE,
     })
     expect(line(built.entry, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)).toMatchObject({
       direction: 'debit',
       amount: 14_800,
+      sourceScope: SCOPE,
     })
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toMatchObject({
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING)).toMatchObject({
       direction: 'credit',
       amount: 500_000,
+      sourceScope: SCOPE,
     })
     expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
     expect(built.entry.postingType).toBe('payout')
   })
 
-  it('names the bank account by id, never by the retired cash role', () => {
+  it('names every line by role, never by a gl_account id', () => {
     const built = buildPayoutEntry(BASE)
-    expect(bankLine(built.entry)?.accountRole).toBeUndefined()
     for (const row of built.entry.lines) {
+      expect(row.accountRole).toBeDefined()
+      expect(row.glAccountId).toBeUndefined()
       expect(row.accountRole).not.toBe('cash')
     }
   })
@@ -123,25 +126,18 @@ describe('refusals', () => {
     )
   })
 
-  it('refuses a missing bank account, naming the remedy', () => {
-    expect(() => buildPayoutEntry({ ...BASE, bankAccountGlAccountId: '' })).toThrowError(
-      /no bank account to debit/
-    )
+  // task 58 §5.3: a payout without a rail cannot exist - it was read by a
+  // source that is linked to one.
+  it('refuses a missing rail', () => {
+    expect(() => buildPayoutEntry({ ...BASE, rail: '' })).toThrowError(/has no rail/)
   })
 
-  it('refuses a blank bank account id', () => {
-    expect(() => buildPayoutEntry({ ...BASE, bankAccountGlAccountId: '   ' })).toThrowError(
-      UnprocessableEntityError
-    )
+  it('refuses a blank rail', () => {
+    expect(() => buildPayoutEntry({ ...BASE, rail: '   ' })).toThrowError(UnprocessableEntityError)
   })
 
-  it('refuses a role that is not a clearing account', () => {
-    // Affirm-gateway settlements are invisible to the payouts API, so `1200`
-    // can never reconcile if they are folded into it - one payout drains ONE
-    // clearing account, and this is the guard that says which.
-    expect(() =>
-      buildPayoutEntry({ ...BASE, clearingRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE })
-    ).toThrowError(/not a clearing account/)
+  it('refuses a missing settlement currency', () => {
+    expect(() => buildPayoutEntry({ ...BASE, currency: '' })).toThrowError(/no settlement currency/)
   })
 })
 
@@ -166,13 +162,14 @@ describe('the unrecognised remainder', () => {
     // The merchant took $600 outside auxx in the same payout, $580 of it net.
     const built = buildPayoutEntry({ ...BASE, unrecognisedNetMinor: 58_000 })
 
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toMatchObject({
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING)).toMatchObject({
       direction: 'credit',
       amount: 500_000,
     })
     expect(line(built.entry, ACCOUNT_ROLES.UNIDENTIFIED_RECEIPTS)).toMatchObject({
       direction: 'credit',
       amount: 58_000,
+      sourceScope: SCOPE,
     })
     expect(line(built.entry, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)).toMatchObject({
       direction: 'debit',
@@ -183,7 +180,7 @@ describe('the unrecognised remainder', () => {
   it('debits the bank account the WHOLE deposit, which is what the bank line shows', () => {
     const built = buildPayoutEntry({ ...BASE, unrecognisedNetMinor: 58_000 })
 
-    expect(bankLine(built.entry)).toMatchObject({
+    expect(line(built.entry, ACCOUNT_ROLES.BANK)).toMatchObject({
       direction: 'debit',
       amount: 543_200,
     })
@@ -232,79 +229,6 @@ describe('the unrecognised remainder', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// brief 26 §3: id over role, with the role as the fallback. The credit side
-// catching up with the debit side, which has been id-routed since brief 13 §5.3.
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** The leg naming a `gl_account` id that is NOT the bank account. */
-function idLine(entry: ReturnType<typeof buildPayoutEntry>['entry'], glAccountId: string) {
-  return entry.lines.find((row) => row.glAccountId === glAccountId)
-}
-
-describe('the clearing leg', () => {
-  it('credits the resolved gateway account BY ID when the caller passed one', () => {
-    const built = buildPayoutEntry({ ...BASE, clearingGlAccountId: 'acct_authnet' })
-
-    expect(idLine(built.entry, 'acct_authnet')).toMatchObject({
-      direction: 'credit',
-      amount: 500_000,
-    })
-    // And the role is gone from the line entirely - not carried alongside.
-    expect(idLine(built.entry, 'acct_authnet')?.accountRole).toBeUndefined()
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toBeUndefined()
-  })
-
-  it('falls back to the role when no id is given, unchanged', () => {
-    const built = buildPayoutEntry(BASE)
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toMatchObject({
-      direction: 'credit',
-      amount: 500_000,
-    })
-  })
-
-  it('treats a blank id as no id rather than posting to an empty account', () => {
-    const built = buildPayoutEntry({ ...BASE, clearingGlAccountId: '   ' })
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toBeDefined()
-  })
-
-  it('still refuses a nonsense clearing role even when an id was passed', () => {
-    // PAYOUT_CLEARING_ROLES is the FALLBACK guard, not the vocabulary - but a
-    // caller naming a role that is not a clearing account is wrong about
-    // something whether or not it also resolved an id.
-    expect(() =>
-      buildPayoutEntry({
-        ...BASE,
-        clearingRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
-        clearingGlAccountId: 'acct_authnet',
-      })
-    ).toThrowError(/not a clearing account/)
-  })
-})
-
-describe('the fee leg', () => {
-  it("debits the gateway's own fee account by id when one was resolved", () => {
-    const built = buildPayoutEntry({ ...BASE, feeGlAccountId: 'acct_authnet_fees' })
-
-    expect(idLine(built.entry, 'acct_authnet_fees')).toMatchObject({
-      direction: 'debit',
-      amount: 14_800,
-    })
-    expect(line(built.entry, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)).toBeUndefined()
-  })
-
-  it('falls back to payment_processing_fees when the gateway names no fee account', () => {
-    // §5: the netted default is deliberately the shared fallback. The fee is
-    // booked automatically in every payout entry, so it cannot be forgotten,
-    // and per-rail margin is answerable from the dimension on the line.
-    const built = buildPayoutEntry(BASE)
-    expect(line(built.entry, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)).toMatchObject({
-      direction: 'debit',
-      amount: 14_800,
-    })
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
 // brief 26 §4: `feeTreatment`. A billed rail deposits GROSS.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -322,8 +246,11 @@ describe('a billed rail', () => {
 
     expect(built.entry.lines).toHaveLength(3)
     expect(line(built.entry, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)).toBeUndefined()
-    expect(bankLine(built.entry)).toMatchObject({ direction: 'debit', amount: 558_000 })
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toMatchObject({
+    expect(line(built.entry, ACCOUNT_ROLES.BANK)).toMatchObject({
+      direction: 'debit',
+      amount: 558_000,
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING)).toMatchObject({
       direction: 'credit',
       amount: 500_000,
     })
@@ -334,11 +261,10 @@ describe('a billed rail', () => {
     expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
   })
 
-  it('books no fee leg even when the rail also names a fee account', () => {
-    // The account exists for the statement the acquirer sends later. There is
-    // no fee IN THIS SETTLEMENT to post to it at any amount.
-    const built = buildPayoutEntry({ ...BILLED, feeGlAccountId: 'acct_authnet_fees' })
-    expect(idLine(built.entry, 'acct_authnet_fees')).toBeUndefined()
+  it('books no fee leg even on a billed rail', () => {
+    // There is no fee IN THIS SETTLEMENT to post at any amount - the acquirer
+    // bills for it later.
+    const built = buildPayoutEntry(BILLED)
     expect(built.entry.lines).toHaveLength(2)
   })
 
@@ -352,58 +278,5 @@ describe('a billed rail', () => {
     const withDefault = buildPayoutEntry(BASE)
     const explicit = buildPayoutEntry({ ...BASE, feeTreatment: 'netted' })
     expect(withDefault.entry.lines).toEqual(explicit.entry.lines)
-  })
-})
-
-// ── The per-line why (brief 28 §5) ──────────────────────────────────────────
-
-describe('the reasons', () => {
-  const BANK_REASON =
-    'Debited because Stripe reported destination ba_1, confirmed on this bank account.'
-  const CLEARING_REASON =
-    'Credited because the Stripe gateway record settles through Stripe and names this as its clearing account.'
-
-  it('puts the bank reason on the bank line and the clearing reason on the clearing line', () => {
-    const built = buildPayoutEntry({
-      ...BASE,
-      clearingGlAccountId: 'gl-1200-stripe',
-      bankAccountReason: BANK_REASON,
-      clearingReason: CLEARING_REASON,
-    })
-    // Bank at sortOrder 0, fees at 1, clearing at 2: line numbers 1, 2, 3.
-    expect(built.entry.lines.map((row) => row.sortOrder)).toEqual([0, 1, 2])
-    expect(built.entry.reasons).toEqual([
-      { line: 1, sentence: BANK_REASON },
-      { line: 3, sentence: CLEARING_REASON },
-    ])
-  })
-
-  it('numbers the clearing line by POSITION when the fee leg is dropped', () => {
-    // `sortOrder` stays 2 on the clearing leg but it is the SECOND stored line,
-    // and `lineNumber` is what the drawer joins on.
-    const built = buildPayoutEntry({
-      ...BASE,
-      feesMinor: 0,
-      netMinor: 500_000,
-      bankAccountReason: BANK_REASON,
-      clearingReason: CLEARING_REASON,
-    })
-    expect(built.entry.lines).toHaveLength(2)
-    expect(built.entry.lines[1]?.sortOrder).toBe(2)
-    expect(built.entry.reasons).toEqual([
-      { line: 1, sentence: BANK_REASON },
-      { line: 2, sentence: CLEARING_REASON },
-    ])
-  })
-
-  it('carries only the reasons it was given', () => {
-    expect(buildPayoutEntry({ ...BASE, clearingReason: CLEARING_REASON }).entry.reasons).toEqual([
-      { line: 3, sentence: CLEARING_REASON },
-    ])
-  })
-
-  it('writes no reasons field at all when none were given - the entry is what it was', () => {
-    const built = buildPayoutEntry(BASE)
-    expect('reasons' in built.entry).toBe(false)
   })
 })

@@ -7,55 +7,46 @@
  * PURE. No database, no clock, no chart.
  *
  * ```
- *   Dr <the settlement's own bank account>   the whole deposit that reached the bank
- *   Dr <the gateway's fee account, or payment_processing_fees>
- *                                            fees withheld on the RECOGNISED charges
- *       Cr <the gateway's clearing account, or clearing_card>   RECOGNISED gross
- *       Cr unidentified_receipts                   the unrecognised remainder, net
+ *   Dr bank                     the whole deposit that reached the bank, [rail, currency]
+ *   Dr payment_processing_fees  fees withheld on the RECOGNISED charges, [rail, currency]
+ *       Cr clearing             RECOGNISED gross,                        [rail, currency]
+ *       Cr unidentified_receipts  the unrecognised remainder, net
  * ```
  *
- * This is the entry that makes `1200 Card Clearing` reconcilable. A card
- * receipt DEBITS the clearing account gross at the sale (`buildPaymentEntry`
- * with route `clearing`), and this entry credits it gross again, net to the
- * bank account the payout settled into and the difference to fees. A settled
- * batch therefore leaves the clearing account at zero, and a non-zero balance
- * is a list of sales the gateway has not paid out yet - which is a useful
- * control on its own.
+ * This is the entry that makes clearing reconcilable. A card receipt DEBITS
+ * the clearing account gross at the sale, and this entry credits it gross
+ * again, net to the bank account the payout settled into and the difference to
+ * fees. A settled batch therefore leaves the rail's clearing account at zero,
+ * and a non-zero balance is a list of sales the gateway has not paid out yet -
+ * which is a useful control on its own.
  *
- * ## 🛑 A clearing account is not a role either (brief 26 §3)
+ * ## Every leg is a role line, scoped to the rail (task 58 §5.3)
  *
- * The bank-account leg below was the precedent and the other two followed it on
- * 2026-09-14. A fulfillment debits the gateway record's clearing account BY ID
- * (`resolveFulfillmentDebit`), so a payout crediting the `clearing_card` ROLE
- * relieves a different account the moment any rail is routed to its own: both
- * accounts drift forever, in balanced entries nothing complains about. So
- * {@link BuildPayoutEntryInput.clearingGlAccountId} and
- * {@link BuildPayoutEntryInput.feeGlAccountId} name the accounts when the caller
- * resolved the payout's gateway, and the roles are the fallback for an org that
- * has no `payment_gateway` record at all - which is bit for bit what it was.
+ * `bank`, `payment_processing_fees`, `clearing` and `unidentified_receipts` are
+ * ALL emitted as `{ accountRole, sourceScope: { rail, currency } }`. There is no
+ * id-routing left in this builder - the rail scope IS what makes the debit
+ * (a fulfillment or receipt, scoped the same way) and this credit meet in one
+ * account, and `resolveRoles` (task 58 §5.1) is what turns the role into a
+ * `gl_account`. `bank` has no org-wide default (`ROLES_WITHOUT_DEFAULT`): a
+ * miss on the rail scope fails closed rather than falling back anywhere, which
+ * is `postPayoutEntry`'s job to word (task 58 §5.4 rule 1) - this file only
+ * emits the line.
+ *
+ * There is no fallback for a payout with no rail, because a payout without a
+ * rail cannot exist: it was read by a source that is linked to one (§5.5).
+ * {@link BuildPayoutEntryInput.rail} and {@link BuildPayoutEntryInput.currency}
+ * are therefore both required, not optional.
  *
  * And {@link BuildPayoutEntryInput.feeTreatment} decides whether there is a fee
  * leg AT ALL: a `billed` rail deposits gross and invoices for its fees weeks
  * later (§4), so `gross === net` is the expected arithmetic there.
  *
- * ## 🛑 A bank account is not a role (brief 13 §2)
- *
- * The debit used to be `ACCOUNT_ROLES.CASH`, which resolved to whichever
- * single account held the role - so a payout settling into Wells Fargo
- * Checking and the bank feed's own line for the same money could land in two
- * different accounts and still balance, with nothing comparing them. The debit
- * is now the SETTLEMENT'S OWN bank account, resolved by the caller from the
- * payout's Stripe destination (`money/payouts/sync.ts`) and passed in as
- * {@link BuildPayoutEntryInput.bankAccountGlAccountId}. This file never reads a
- * `bank_account` itself - it stays PURE - it only takes the id the caller
- * already resolved and confirmed.
- *
- * ## 🛑 The fourth leg, and why it is not optional
+ * ## The fourth leg, and why it is not optional
  *
  * A gateway payout settles EVERY charge the merchant took, including charges
  * taken outside auxx - a payment link sent from the Stripe dashboard, a
  * subscription on the same account, a terminal. Those were never debited to
- * `clearing_card`, so crediting the payout's full gross to clearing drives that
+ * `clearing`, so crediting the payout's full gross to clearing drives that
  * account permanently negative by the amount auxx never took. Relieving only
  * the recognised part and debiting the bank account to match would keep
  * clearing right and break the bank instead: the bank feed shows ONE deposit
@@ -69,7 +60,7 @@
  * - **clearing is relieved of exactly what auxx put in it**, so it still
  *   reconciles to zero;
  * - **the remainder is visible in one account somebody must work**
- *   (`unidentified_receipts`, `2450`) rather than silently distorting either.
+ *   (`unidentified_receipts`) rather than silently distorting either.
  *
  * When every charge in the payout is recognised the fourth leg is zero and gets
  * dropped, which is the ordinary case and the original three-line entry exactly.
@@ -88,90 +79,46 @@
  * does not store. So `feesMinor` is an input, and it must come from a payout
  * source, not from that file.
  *
- * ## ⚠️ And `1210 Affirm Clearing` must be excluded
- *
- * The chart's own note: an Affirm settlement never lands on the card rail and
- * is invisible to the payouts API, so folding Affirm-gateway orders into `1200`
- * means it can never reconcile to zero. `clearingRole` is an input for that
- * reason - one payout drains ONE clearing account.
- *
  * ## The gatherer
  *
- * `money/payouts/gather-payout.ts` is the read that fills this input from
- * Stripe, and `money/payouts/sync-payouts.ts` is what walks an org's payouts and
- * posts them. Both landed 2026-09-07; the file header used to say no payout
- * source existed at all.
+ * `money/payouts/gather.ts` is the read that fills this input from a
+ * {@link PayoutSource}, and `money/payouts/sync.ts` is what walks an org's
+ * payouts and posts them.
  *
- * ✅ The account this drains is `1200 Card Clearing`, named for the RAIL.
- * It was `Shopify Clearing` / `clearing_shopify` until entity migration 132,
- * which reconciled perfectly and read as a lie: `PaymentTransaction.provider` is
- * `'manual' | 'stripe'` and there is no Shopify payment rail in auxx at all, so
- * every Stripe card receipt was accumulating in an account named for a provider
- * the money never touched.
- *
- * @see plans/accounting/tasks/done/01-post-revenue-to-the-ledger.md §1.3
+ * @see plans/accounting/tasks/58-one-mapping-table.md §5.3
  */
 
 import { UnprocessableEntityError } from '../errors'
 import type { PaymentGatewayFeeTreatmentValue } from '../payment-gateways/client'
-import { ACCOUNT_ROLES, type AccountRole, buildEntry } from './build-entry'
+import { ACCOUNT_ROLES, buildEntry } from './build-entry'
 import { DOC_NUMBER_MAX_LENGTH } from './doc-number'
-import type { BuiltEntry, GlPostingLineInput, PostingReason } from './types'
+import type { BuiltEntry, GlPostingLineInput, RoleSourceScope } from './types'
 
 /** The `sourceType` every payout line carries. */
 export const PAYOUT_SOURCE_TYPE = 'payout'
-
-/**
- * The clearing roles a payout may drain. `clearing_card`, and only ever that.
- *
- * 🛑 **Every non-card rail is excluded BY CONSTRUCTION, not by omission.** An
- * Affirm settlement never lands on the card rail, so it is invisible to the
- * payouts API and no payout can ever relieve the account holding it (accrual
- * plan §3, 49 §3.2). Widening this list would let a card payout drain an
- * account its deposit never touched: the entry would balance, that account
- * would go negative by the sales it was holding, and nothing downstream could
- * detect it.
- *
- * This list is roles, and a non-card rail no longer HAS a role - it is a
- * `payment_gateway` record whose clearing account the fulfillment entry debits
- * by id (`clearing_affirm` was deleted on 2026-09-10). So the exclusion is now
- * structural rather than a name left off a list: an id-routed debit is not
- * `clearing_card`, and `clearing_card` is the only thing here. Each such rail
- * clears when a settlement feed for it exists, through its own entry.
- *
- * ⚠️ Since brief 26 §3 this is the FALLBACK guard, not the vocabulary. A caller
- * that resolved the payout's `payment_gateway` record passes
- * {@link BuildPayoutEntryInput.clearingGlAccountId} and the credit leg names
- * that account by id, exactly as the bank-account debit already does; the role
- * is what an org with no record still gets. `clearingRole` is checked either
- * way, because a caller that names a nonsense role is wrong about something
- * whether or not it also passed an id.
- */
-export const PAYOUT_CLEARING_ROLES: readonly AccountRole[] = [ACCOUNT_ROLES.CLEARING_CARD]
 
 export interface BuildPayoutEntryInput {
   /** The gateway's own payout id. Every line's `sourceId`. */
   payoutId: string
   /**
-   * The `gl_account` id of the `bank_account` this payout settled into,
-   * resolved by the caller from the payout's Stripe destination against a
-   * CONFIRMED `bank_account.stripeExternalAccountId` (brief 13 §2.3). Never a
-   * role: an org has several bank accounts and the payout settles into exactly
-   * one of them, so a role would send every payout to whichever single account
-   * happened to hold it. The caller refuses to call this function at all when
-   * the destination cannot be resolved - see `money/payouts/sync.ts`.
+   * The `payment_gateway` `EntityInstance` id this payout settled - every
+   * line's rail scope (task 58 §5.3). Required: a payout with no rail cannot
+   * exist, because it was read by a source that is linked to one (§5.5).
    */
-  bankAccountGlAccountId: string
+  rail: string
+  /** The settlement currency, alongside {@link rail} on every scoped line. */
+  currency: string
   /**
    * The short, human key the document number is built on.
    *
    * 🛑 **`doc-number.ts` says `payout` keys on the payout id, and that rule
    * only works while the id is short.** Shopify can issue two payouts in a day,
    * so a DATE key would merge them into one entry whose total ties to neither
-   * deposit - and reconciling `1200` is exactly what would then be impossible.
-   * A Stripe `po_…` id is 27 characters and blows the 21-character cap, so the
-   * caller passes a short number when it has one and the id when it is short
-   * enough; this function refuses the rest, naming the length.
+   * deposit - and reconciling clearing is exactly what would then be
+   * impossible. A Stripe `po_…` id is 27 characters and blows the
+   * 21-character cap, so the caller passes a short number when it has one and
+   * the id when it is short enough; this function refuses the rest, naming the
+   * length.
    */
   payoutNumber: string
   /** Total sales settled, integer minor units. Equals `net + fees`. */
@@ -181,8 +128,8 @@ export interface BuildPayoutEntryInput {
   /**
    * What actually reached the bank, integer minor units. The RECOGNISED net -
    * `grossMinor - feesMinor` - NOT the payout's total. The whole deposit is
-   * `netMinor + unrecognisedNetMinor`, and that is what lands on
-   * {@link bankAccountGlAccountId}.
+   * `netMinor + unrecognisedNetMinor`, and that is what lands on the `bank`
+   * line.
    */
   netMinor: number
   /**
@@ -196,38 +143,8 @@ export interface BuildPayoutEntryInput {
    */
   unrecognisedNetMinor?: number
   /**
-   * Which clearing account this payout drains BY ROLE, when nothing resolved an
-   * id. See the file header on Affirm, and {@link PAYOUT_CLEARING_ROLES}.
-   *
-   * ⚠️ Still validated when {@link clearingGlAccountId} is given. It is then
-   * unused, and a caller naming a role that is not a clearing account is wrong
-   * about something either way.
-   */
-  clearingRole: AccountRole
-  /**
-   * The `gl_account` id of the `payment_gateway` record this payout settles,
-   * resolved by the caller (`money/payouts/sync.ts`). When present the credit
-   * leg names this account; when absent it falls back to {@link clearingRole},
-   * bit for bit as before (brief 26 §3).
-   *
-   * 🔑 **This is what makes the debit and the credit meet.** A fulfillment
-   * debits the gateway record's clearing account BY ID
-   * (`resolveFulfillmentDebit`), so a payout crediting the `clearing_card` ROLE
-   * relieves a different account the moment any rail is routed to its own - and
-   * both accounts then drift forever, in balanced entries nothing complains
-   * about.
-   */
-  clearingGlAccountId?: string
-  /**
-   * The `gl_account` id the resolved gateway withholds its fee into, or absent
-   * for the `payment_processing_fees` role fallback. Same id-over-role shape as
-   * {@link clearingGlAccountId}; §5's netted default is deliberately the shared
-   * fallback account, so most netted rails pass nothing here.
-   */
-  feeGlAccountId?: string
-  /**
-   * How the resolved gateway charges for itself (brief 26 §4). Defaults to
-   * `netted`, which is what this builder has always assumed.
+   * How the rail charges for itself (brief 26 §4). Defaults to `netted`, which
+   * is what this builder has always assumed.
    *
    * 🛑 **`billed` drops the fee leg entirely.** A traditional acquirer on
    * statement billing deposits GROSS and invoices for the fees weeks later, so
@@ -240,19 +157,6 @@ export interface BuildPayoutEntryInput {
   /** `YYYY-MM-DD`. The date the money reached the bank. */
   paidAt: string
   memo?: string
-  /**
-   * Why {@link bankAccountGlAccountId} is the account it is, in words, from the
-   * caller that resolved it (`resolvePayoutBankAccount`). Written onto the bank
-   * line as `BuiltEntry.reasons` and frozen into the draft (brief 28 §5). Absent
-   * on a caller that has no sentence; the line is then unexplained, not wrong.
-   */
-  bankAccountReason?: string
-  /**
-   * Why the clearing credit lands where it does - the gateway record that named
-   * it, or the role fallback because none claims the Stripe rail - from
-   * `resolvePayoutGateway`. Same contract as {@link bankAccountReason}.
-   */
-  clearingReason?: string
 }
 
 export interface BuiltPayoutEntry {
@@ -289,14 +193,12 @@ function assertMinor(value: number, label: string, payoutNumber: string): number
  *
  * @throws {UnprocessableEntityError} on a fractional or negative amount, an
  *   arithmetic disagreement, a withheld fee on a `billed` rail, an over-long
- *   payout number, a missing `bankAccountGlAccountId`, or a `clearingRole` that
- *   is not a clearing account.
+ *   payout number, or a missing rail or currency.
  */
 export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry {
-  const { payoutId, payoutNumber, clearingRole, paidAt, memo } = input
-  const bankAccountGlAccountId = input.bankAccountGlAccountId?.trim()
-  const clearingGlAccountId = input.clearingGlAccountId?.trim()
-  const feeGlAccountId = input.feeGlAccountId?.trim()
+  const { payoutId, payoutNumber, paidAt, memo } = input
+  const rail = input.rail?.trim()
+  const currency = input.currency?.trim()
   const feeTreatment = input.feeTreatment ?? 'netted'
 
   const number = payoutNumber.trim()
@@ -308,13 +210,18 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       { payoutId }
     )
   }
-  if (!bankAccountGlAccountId) {
+  if (!rail) {
     throw new UnprocessableEntityError(
-      `Payout ${number} has no bank account to debit. A payout settles into a specific bank ` +
-        "account, never a role - resolve the payout's Stripe destination to a confirmed " +
-        'bank_account first.',
+      `Payout ${number} has no rail. A payout with no rail cannot exist - it was read by a ` +
+        'source that is linked to one.',
       { payoutId, payoutNumber: number }
     )
+  }
+  if (!currency) {
+    throw new UnprocessableEntityError(`Payout ${number} has no settlement currency.`, {
+      payoutId,
+      payoutNumber: number,
+    })
   }
   const compact = number.replace(/-/g, '')
   if (compact.length > MAX_COMPACT_PERIOD_KEY) {
@@ -322,14 +229,6 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       `Payout number "${number}" compacts to ${compact.length} characters and the document number ` +
         `allows ${MAX_COMPACT_PERIOD_KEY}. Key on a short payout number rather than the gateway's id.`,
       { payoutId, payoutNumber: number, length: String(compact.length) }
-    )
-  }
-
-  if (!PAYOUT_CLEARING_ROLES.includes(clearingRole)) {
-    throw new UnprocessableEntityError(
-      `Payout ${number} names "${clearingRole}", which is not a clearing account. A payout drains ` +
-        `exactly one of: ${PAYOUT_CLEARING_ROLES.join(', ')}.`,
-      { payoutNumber: number, clearingRole }
     )
   }
 
@@ -399,20 +298,13 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
   const depositedMinor = netMinor + unrecognisedNetMinor
 
   const source = { sourceType: PAYOUT_SOURCE_TYPE, sourceId: payoutId }
-  /**
-   * The per-line "why" (brief 28 §5), for the two legs a resolver chose: the
-   * bank account and the clearing account. `line` is the 1-based position in
-   * `lines`, which is what `postEntry` stores as `lineNumber` - the `sortOrder`
-   * values below have a gap when the fee leg is dropped, so the position is
-   * read off the array rather than derived from `sortOrder`.
-   */
-  const reasons: PostingReason[] = []
+  /** Every leg reads its account through this same rail scope (task 58 §5.3). */
+  const sourceScope: RoleSourceScope = { rail, currency }
   const lines: GlPostingLineInput[] = [
     {
       ...source,
-      // 🛑 The settlement's OWN bank account, by id - never the `cash` role
-      // (brief 13 §2). The caller resolved and confirmed it before calling in.
-      glAccountId: bankAccountGlAccountId,
+      accountRole: ACCOUNT_ROLES.BANK,
+      sourceScope,
       // 🛑 The WHOLE deposit, not the recognised net. This leg is what the bank
       // line matches against, and the bank shows one figure for the payout.
       direction: 'debit',
@@ -421,7 +313,6 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       sortOrder: 0,
     },
   ]
-  if (input.bankAccountReason) reasons.push({ line: 1, sentence: input.bankAccountReason })
   // Dropped when zero rather than posted at zero: an org whose processor
   // withheld nothing has no reason to have mapped `payment_processing_fees`.
   // Dropped ENTIRELY on a billed rail, which is a different statement: there is
@@ -429,27 +320,18 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
   if (feeTreatment !== 'billed' && feesMinor !== 0) {
     lines.push({
       ...source,
-      // The resolved gateway's own fee account when it has one, the shared
-      // `payment_processing_fees` role when it does not. §5: a netted rail
-      // defaults to the role on purpose - the fee is booked automatically in
-      // every payout entry, so it cannot be forgotten, and per-rail margin is
-      // answerable from the dimension on the line.
-      ...(feeGlAccountId
-        ? { glAccountId: feeGlAccountId }
-        : { accountRole: ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES }),
+      accountRole: ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES,
+      sourceScope,
       direction: 'debit',
       amount: feesMinor,
       memo: `Payout ${number} - processor fees withheld`,
       sortOrder: 1,
     })
   }
-  if (input.clearingReason) reasons.push({ line: lines.length + 1, sentence: input.clearingReason })
   lines.push({
     ...source,
-    // 🔑 The id when the caller resolved a `payment_gateway` record, the role
-    // when it did not. The debit side has been id-routed since brief 13 §5.3;
-    // this is the credit side catching up (brief 26 §3).
-    ...(clearingGlAccountId ? { glAccountId: clearingGlAccountId } : { accountRole: clearingRole }),
+    accountRole: ACCOUNT_ROLES.CLEARING,
+    sourceScope,
     direction: 'credit',
     amount: grossMinor,
     memo: `Payout ${number} - gross settled`,
@@ -462,6 +344,7 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
     lines.push({
       ...source,
       accountRole: ACCOUNT_ROLES.UNIDENTIFIED_RECEIPTS,
+      sourceScope,
       direction: 'credit',
       amount: unrecognisedNetMinor,
       memo: `Payout ${number} - settled charges auxx has no payment for`,
@@ -469,15 +352,12 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
     })
   }
 
-  const built = buildEntry({
+  const entry = buildEntry({
     postingType: 'payout',
     periodKey: number,
     txnDate: paidAt,
     lines,
   })
-  // The reasons ride into `GlPosting.draft` with the entry (brief 28 §5), only
-  // when a caller supplied any - an entry with none is bit for bit what it was.
-  const entry: BuiltEntry = reasons.length > 0 ? { ...built, reasons } : built
 
   return {
     entry,

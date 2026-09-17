@@ -77,12 +77,10 @@ describe('durable accounting basis', () => {
           receivableMinor: '0',
           taxMinor: '10',
         },
-        paymentRouteId: 'route-1',
+        paymentGatewayId: 'gateway-1',
         sourceStoreId: 'store-1',
-        processorAccountId: 'processor-1',
         route: {
-          paymentRouteId: 'route-1',
-          processorAccountId: 'processor-1',
+          paymentGatewayId: 'gateway-1',
           glAccountId: 'gl-clearing',
           reason: 'configured payment route',
         },
@@ -109,7 +107,7 @@ describe('durable accounting basis', () => {
         {
           lineKey: 'clearing',
           glAccountId: 'gl-clearing',
-          accountRole: 'clearing_card',
+          accountRole: 'clearing',
           selectedBy: 'route' as const,
           configurationHash: hash,
         },
@@ -164,7 +162,7 @@ describe('durable accounting basis', () => {
         ...basis,
         calculation: {
           ...basis.calculation,
-          route: { kind: 'role', role: 'clearing_card', reason: 'x' },
+          route: { kind: 'role', role: 'clearing', reason: 'x' },
         },
       }).success
     ).toBe(false)

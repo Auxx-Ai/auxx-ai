@@ -23,8 +23,10 @@
  * Every org some registered `api` {@link PayoutSource} says it can poll,
  * de-duplicated across sources. Discovery is the source's to answer: Stripe
  * Connect names the orgs holding a connected, non-disconnected `PaymentAccount`
- * (a few hundred rows), and a rail-backed source names the orgs whose
- * `payment_gateway` records declare its `settlementSource`. Within an org,
+ * (a few hundred rows), and Shopify Payments names the orgs with the app
+ * installed. Neither reads a `payment_gateway` field to get there - which orgs
+ * actually POST is `resolveContexts`' question, one context per live feed a
+ * person has linked to a rail (task 58 §5.5), not this file's. Within an org,
  * `syncPayouts` builds one context per rail and runs each, so one rail's
  * failure stops neither the next rail nor the next org.
  *

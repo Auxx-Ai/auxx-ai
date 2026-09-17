@@ -59,6 +59,8 @@ import {
   retryExport,
   reverseEntry,
   reverseJournalEntry,
+  type SaveMappingRow,
+  saveRoleAssignments,
   setAccountIdentity,
   setLockedThrough,
   setRoleAssignment,
@@ -605,20 +607,26 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * Every posting role and the account it resolves to.
+   * Every posting role and the account it resolves to, plus every store and
+   * rail it may be scoped to.
    *
    * Returns a row for EVERY role in `ACCOUNT_ROLES`, mapped or not: the role map
    * is a complete checklist, and a list of only the rows that happen to exist
-   * could never show what is missing.
+   * could never show what is missing. Each role's `overrides` carries its
+   * per-store rows and `railOverrides` its per-rail rows (with a currency
+   * sub-row where one exists) - `sources` is what `listRoleSources` offers a
+   * picker for either axis (task 58 §6.1), stores from evidence, rails from the
+   * org's own live `payment_gateway` records.
    */
   roleMap: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
     const { organizationId } = ctx.session
     const [result, sources] = await Promise.all([
       listRoleMap(ctx.db, organizationId),
-      // The connections a scopable role may be pointed at (task 47 §7.4). On the
-      // same read as the roles because the tree renders them together, and a
-      // second round trip would let the two arrive out of step - a role showing
-      // an override for a connection the picker has not heard of yet.
+      // The stores and rails a scopable role may be pointed at (task 47 §7.4,
+      // task 58 §6.1). On the same read as the roles because the tree renders
+      // them together, and a second round trip would let the two arrive out of
+      // step - a role showing an override for a store or rail the picker has
+      // not heard of yet.
       listRoleSources(ctx.db, organizationId),
     ])
     if (result.isErr()) throw result.error
@@ -661,6 +669,44 @@ export const ledgerRouter = createTRPCRouter({
         sourceAccountId: input.sourceAccountId,
         useDefault: input.useDefault,
         actorUserId: userId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Apply the Mapping tab's whole staged batch in one call (59 §2.4): every
+   * edit goes through `setRoleAssignment`'s own validation, in one transaction,
+   * so one refused row refuses the batch and names itself - never a partial
+   * save the screen would have to reconcile against what it just rendered.
+   *
+   * Same `ledgerControl` rung as `setRoleAssignment`, for the same reason.
+   */
+  saveMapping: permissionProcedure(PermissionKey.ledgerControl)
+    .input(
+      z
+        .object({
+          role: z.enum(Object.values(ACCOUNT_ROLES) as [string, ...string[]]),
+          /** `null` is the org default; a store or a rail scopes the edit (58 §3). */
+          scope: z
+            .union([
+              z.object({ store: z.string().min(1) }).strict(),
+              z.object({ rail: z.string().min(1) }).strict(),
+            ])
+            .nullable(),
+          /** Only meaningful beside `scope: { rail }` - a settlement currency. */
+          currency: z.string().min(1).nullish(),
+          /** An account id, or one of the two sentinels the row's picker offers beside one. */
+          value: z.string().min(1),
+        } satisfies Record<keyof SaveMappingRow, z.ZodTypeAny>)
+        .array()
+        .min(1)
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await saveRoleAssignments(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+        rows: input,
       })
       if (result.isErr()) throw result.error
       return result.value
@@ -848,7 +894,7 @@ export const ledgerRouter = createTRPCRouter({
       const chart = await seedChartPacks(ctx.db, organizationId, glAccountDefId, input.packs)
 
       // Task 13 §5.3: the one default `payment_gateway` record. Runs AFTER the
-      // chart on purpose - the clearing account it points at (`clearing_card`)
+      // chart on purpose - the clearing account it points at (`clearing`)
       // only exists once the chart above has just created or confirmed it.
       // Brief 16 §1.5 ties it to the `card_rail` pack; gated on the WALKED
       // packs, not the requested ones, so `requires` expansion is honoured

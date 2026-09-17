@@ -19,18 +19,15 @@
  * `money/payments/fees.ts` is the Connect APPLICATION fee - auxx's own cut - and
  * is a different number entirely.
  *
- * ## Which record is the Connect rail (27 §6.2)
+ * ## Which record is the Connect rail (task 58 §5.5)
  *
- * A Stripe payout knows its Connect account, not a gateway handle, so the only
- * honest key is the record's own declaration of how it drains:
- * `settlementSource: 'stripe'`. Exactly one such record is the rail; none is the
- * role fallback (bit for bit what every org did before brief 26); two or more is
- * a REFUSAL stamped on every payout, never a guess (26 §13 decision 2). `status`
- * is deliberately not filtered: a closed rail is still a record claiming the
- * stream, and quietly preferring the active one would be guessing.
+ * `resolveContexts` builds one context per live `FinancialSourceAccount` a
+ * person has linked to a `payment_gateway` record (`listLinkedFeedAccounts`),
+ * scoped to the org's own connected account id - never the retired
+ * `settlementSource` enum. A feed nothing has linked yet is a manual rail and
+ * never reaches this poll.
  */
 
-import { configService } from '@auxx/credentials'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -38,15 +35,14 @@ import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import type Stripe from 'stripe'
 import { BadRequestError } from '../../../errors'
 import type { PaymentGatewayRow } from '../../../payment-gateways/client'
-import { listPaymentGateways } from '../../../payment-gateways/reads'
 import { getPaymentAccount } from '../../payments/account-state'
 import { getStripeConnectClient } from '../../payments/connect-client'
-import { type ResolvedPayoutGateway, resolvePayoutRail } from '../routing'
+import { listLinkedFeedAccounts } from '../reads'
 import type { PayoutHeader, PayoutItem, PayoutSource, PayoutSourceCtx } from '../source'
 
 const logger = createScopedLogger('payouts:stripe-connect')
 
-/** The registry id, and the `payment_gateway.settlementSource` value that names this feed. */
+/** The registry id, and the `providerKey` a linked feed carries for this rail. */
 export const STRIPE_CONNECT_SOURCE_ID = 'stripe' as const
 
 /**
@@ -56,48 +52,6 @@ export const STRIPE_CONNECT_SOURCE_ID = 'stripe' as const
  * money auxx does in fact know about.
  */
 const PAGE_SIZE = 100
-
-/** How the Stripe rails split: the one record, or the several that conflict. */
-export interface StripeRails {
-  rail: PaymentGatewayRow | null
-  conflictingRails: PaymentGatewayRow[]
-}
-
-/**
- * The record(s) claiming the Stripe stream. One is the rail; zero leaves the
- * role fallback; two or more is the conflict {@link resolvePayoutRail} refuses.
- */
-export function resolveStripeRails(gateways: readonly PaymentGatewayRow[]): StripeRails {
-  const stripeRails = gateways.filter((row) => row.settlementSource === STRIPE_CONNECT_SOURCE_ID)
-  if (stripeRails.length === 1) return { rail: stripeRails[0] ?? null, conflictingRails: [] }
-  return { rail: null, conflictingRails: stripeRails.length > 1 ? stripeRails : [] }
-}
-
-/**
- * Resolve the `payment_gateway` record a Stripe payout settles, or name why it
- * cannot be posted. The pre-unit-2 `resolvePayoutGateway`, kept for callers and
- * tests that hold gateway rows rather than a source context.
- */
-export function resolvePayoutGatewayFrom(
-  gateways: readonly PaymentGatewayRow[],
-  payoutNumber: string
-): ResolvedPayoutGateway {
-  return resolvePayoutRail(
-    { sourceId: STRIPE_CONNECT_SOURCE_ID, ...resolveStripeRails(gateways) },
-    payoutNumber
-  )
-}
-
-/** {@link resolvePayoutGatewayFrom} over the org's records, read here. */
-export async function resolvePayoutGateway(
-  db: Database,
-  organizationId: string,
-  payoutNumber: string
-): Promise<ResolvedPayoutGateway> {
-  const gateways = await listPaymentGateways(db, organizationId)
-  if (gateways.isErr()) throw gateways.error
-  return resolvePayoutGatewayFrom(gateways.value, payoutNumber)
-}
 
 /** The `PaymentAccount.stripeAccountId` the context was built with. */
 function stripeAccountIdOf(ctx: PayoutSourceCtx): string {
@@ -137,12 +91,14 @@ async function listOrganizations(db: Database): Promise<string[]> {
 }
 
 /**
- * One context per org: its connected account as the handle and the single
- * `stripe` rail (or the conflict) from the records the caller read once.
- * Empty when the org has no connected account - nothing to poll.
+ * One context per live feed linked to a rail (task 58 §5.5): the org's
+ * connected account is required (nothing to poll without one), and each
+ * linked `FinancialSourceAccount` whose `externalAccountId` matches it gets
+ * its own context - a stale link left over from a disconnected or re-connected
+ * account is skipped rather than polled against the wrong Connect account.
  */
 async function resolveContexts(
-  _db: Database,
+  db: Database,
   organizationId: string,
   rails: readonly PaymentGatewayRow[]
 ): Promise<PayoutSourceCtx[]> {
@@ -154,23 +110,20 @@ async function resolveContexts(
     logger.info('No connected Stripe account, nothing to sync', { organizationId })
     return []
   }
-  return [
-    {
+  const linked = await listLinkedFeedAccounts(db, organizationId, STRIPE_CONNECT_SOURCE_ID)
+  const contexts: PayoutSourceCtx[] = []
+  for (const feed of linked) {
+    if (feed.externalAccountId !== stripeAccountId) continue
+    const rail = rails.find((row) => row.id === feed.paymentGatewayId)
+    if (!rail) continue
+    contexts.push({
       organizationId,
       sourceId: STRIPE_CONNECT_SOURCE_ID,
-      ...resolveStripeRails(rails),
+      rail,
       handle: stripeAccountId,
-      ownership: {
-        sourceAccount: {
-          providerKey: 'stripe',
-          externalAccountId: stripeAccountId,
-          environment: configService.get<string>('STRIPE_SECRET_KEY')?.startsWith('sk_test_')
-            ? 'test'
-            : 'live',
-        },
-      },
-    },
-  ]
+    })
+  }
+  return contexts
 }
 
 /** Every payout the account settled since `since`, oldest first. */

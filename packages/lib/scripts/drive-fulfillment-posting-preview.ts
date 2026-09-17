@@ -76,14 +76,14 @@ async function main() {
       if (amount !== 0) console.log(`  debit ${role}: ${usd(amount as number)}`)
     }
 
-    // The distinct id-based debits, which bypass the role table entirely.
-    const byAccount = new Map<string, number>()
+    // The distinct rail scopes a `clearing` debit resolves through (58 §5.2).
+    const byRail = new Map<string, number>()
     for (const s of group.shipments) {
-      const id = s.amounts.debitGlAccountId
-      if (id) byAccount.set(id, (byAccount.get(id) ?? 0) + s.amounts.totalMinor)
+      const rail = s.amounts.debitRail
+      if (rail) byRail.set(rail, (byRail.get(rail) ?? 0) + s.amounts.totalMinor)
     }
-    for (const [id, amount] of byAccount) {
-      console.log(`  debit BY ID ${id}: ${usd(amount)}`)
+    for (const [rail, amount] of byRail) {
+      console.log(`  debit BY RAIL ${rail}: ${usd(amount)}`)
     }
 
     let built: ReturnType<typeof buildFulfillmentBatchEntry>

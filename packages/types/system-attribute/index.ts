@@ -994,6 +994,10 @@ export const SYSTEM_ATTRIBUTES = [
   // bank-account identity. Never a role; naming the payout, the destination and
   // the remedy (brief 13 §2.3).
   'payout_blocked_reason',
+  // Brief 58 §4.5, D7. Set when the reported destination is not among the
+  // mapped bank account's settlementDestinations. This payout POSTED -
+  // distinct from payout_blocked_reason, which means nothing did.
+  'payout_destination_mismatch',
   // Brief 27 §6.1. The rail this payout settled - THE routing key, and half of
   // the idempotency pair with `payout_gateway_id`. Null when no gateway record
   // claimed the rail (the role fallback).
@@ -1024,29 +1028,25 @@ export const SYSTEM_ATTRIBUTES = [
   // bank-account removal gate: false deletes, true archives
   // (plans/bank-connection/08-removing-a-bank-account.md §5.1)
   'bank_account_has_posted',
-  // 🛑 The Stripe `ba_…` / `card_…` destination id, confirmed once by a person.
-  // Never matched on last4 (brief 13 §2.3): a four-digit string is strong
-  // evidence and not proof, and two accounts at one bank can share it.
-  'bank_account_stripe_external_account_id',
+  // 🛑 Brief 58 §4.4, generalised from the Stripe-only field below: the SET
+  // of provider destination ids (`ba_…`/`card_…` from Stripe,
+  // `gid://shopify/ShopifyPaymentsBankAccount/…` from Shopify) confirmed once
+  // by a person. Never matched on last4 (brief 13 §2.3): a four-digit string
+  // is strong evidence and not proof, and two accounts at one bank can share it.
+  'bank_account_settlement_destinations',
   'bank_account_transactions', // inverse of bank_transaction_bank_account
   'bank_account_deposits', // inverse of bank_deposit_bank_account_record
   'bank_account_payouts', // inverse of payout_bank_account
-  'bank_account_settlement_gateways',
 
   // ─── Payment gateway (task 13 §5.3) ──────────────────────────────
   // A record carrying its clearing account, never a role. Entity migration
   // 146. `payment_gateway_handles` is a SET (TAGS): two rails arrive under
   // two spellings each (`authorize_net`/`authorize.net`, `Affirm`/`affirm`).
+  // Brief 58 §4.3 retires the six settlement/clearing/fee fields below in
+  // favour of the rail-scoped GlRoleAssignment; kept: name, handles, fee
+  // treatment, status, the two "last …" dates, and the payouts inverse.
   'payment_gateway_name',
   'payment_gateway_handles',
-  // 🛑 The `gl_account` id this gateway settles into, TEXT with no foreign
-  // key - the same call `bank_account_gl_account` makes.
-  'payment_gateway_clearing_account',
-  'payment_gateway_fee_account',
-  'payment_gateway_settlement_source', // stripe | shopify_payments | manual
-  'payment_gateway_settlement_account',
-  'payment_gateway_settlement_currency',
-  'payment_gateway_settlement_bank_account',
   // netted | billed (brief 26 §4). Whether the processor withholds its cut from
   // the deposit or bills for it later - two structurally different rails, and
   // NOT the same question `payment_gateway_settlement_source` answers.

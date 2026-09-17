@@ -36,7 +36,7 @@ const BREADCRUMBS = [
 ]
 
 const PAGE_DESCRIPTION =
-  'The rails that have ever taken money for an order, and which account in your chart each one clears into. A gateway carries its own clearing account - it never needs a role, and two rails can share one account.'
+  'The rails that take money for an order. Each rail maps its clearing, fee and bank accounts on the Mapping tab or here.'
 
 export function PaymentGatewaysSettingsPage() {
   // 🛑 `ledgerControl`, not `ledgerView`. Every control on this page is a
@@ -140,6 +140,9 @@ export function PaymentGatewaysSettingsPage() {
             closing={archive.isPending}
             onPatch={handlePatch}
             onClose={handleClose}
+            // The page itself requires `ledgerControl` (above) to render at all -
+            // there is no read-only rendering of this screen to gate further.
+            canControl
           />
         }
         paneTitle='Payment gateway'

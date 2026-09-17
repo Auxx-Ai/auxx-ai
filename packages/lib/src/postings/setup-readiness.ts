@@ -484,8 +484,8 @@ export interface UnscopedSourceRole {
   role: string
   /** `ACCOUNT_ROLE_LABELS[role]`. Passed in so this file stays free of the role table. */
   label: string
-  /** `'store' | 'processor' | null`. Null is a role that cannot be scoped at all. */
-  axis: 'store' | 'processor' | null
+  /** `'store' | 'rail' | null`. Null is a role that cannot be scoped at all. */
+  axis: 'store' | 'rail' | null
   /** The account the role itself names, already formatted, or null when unmapped. */
   accountLabel: string | null
   /** The `FinancialSourceAccount` ids that already carry an override. */
@@ -496,7 +496,7 @@ export interface UnscopedSourceRole {
 export interface UnscopedSourceConnection {
   id: string
   name: string
-  axes: readonly ('store' | 'processor')[]
+  axes: readonly ('store' | 'rail')[]
 }
 
 /** One advisory sentence, addressed to one connection on one role. */

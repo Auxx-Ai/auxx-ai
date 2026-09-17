@@ -62,7 +62,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../cache'
 import {
   createPaymentGateway,
@@ -76,6 +76,7 @@ import {
   type ChartPackKey,
   type DefaultChartAccount,
 } from '../postings/default-chart'
+import { readRoleAssignments } from '../postings/role-assignments'
 import { ensureManualSourceAccount } from '../postings/source-scope'
 import { seedSession, UnifiedCrudHandler } from '../resources/crud'
 import { SystemUserService } from '../users/system-user-service'
@@ -364,7 +365,12 @@ async function assignSeededRoles(
         // decision, made in settings.
         // `where` is `onConflictDoNothing`'s spelling of the index predicate;
         // `onConflictDoUpdate` spells the same thing `targetWhere`.
-        where: isNull(schema.GlRoleAssignment.sourceAccountId),
+        // ⚠️ Both halves: task 58 widened the index predicate, and a narrower
+        // `where` infers no index at all (42P10).
+        where: and(
+          isNull(schema.GlRoleAssignment.sourceAccountId),
+          isNull(schema.GlRoleAssignment.paymentGatewayId)
+        ),
       })
       .returning({ id: schema.GlRoleAssignment.id })
 
@@ -393,7 +399,7 @@ export interface PaymentGatewaySeedResult {
  *
  * 🛑 **Mints `shopify_payments` and nothing else.** A rail auxx seeds is one
  * every org's default chart already names a role for, and after 2026-09-10
- * `clearing_card` is the only clearing role there is. So `shopify_payments`
+ * `clearing` is the only clearing role there is. So `shopify_payments`
  * (settlement source `shopify_payments`, fee account = whichever account
  * carries `payment_processing_fees`, `6100` by default) is the whole list.
  *
@@ -410,7 +416,7 @@ export interface PaymentGatewaySeedResult {
  * chart already exists) skips a default whose handle some record - seeded or
  * hand-added - already claims, rather than creating a second row.
  *
- * A missing `clearing_card` assignment skips the default rather than guessing
+ * A missing `clearing` assignment skips the default rather than guessing
  * an account - the same tolerance {@link assignSeededRoles} has for a chart that
  * does not match the packs walked.
  */
@@ -430,23 +436,17 @@ export async function seedDefaultPaymentGateways(
       : []
   )
 
-  const roleRows = await db
-    .select({
-      role: schema.GlRoleAssignment.role,
-      glAccountId: schema.GlRoleAssignment.glAccountId,
-    })
-    .from(schema.GlRoleAssignment)
-    .where(
-      and(
-        eq(schema.GlRoleAssignment.organizationId, organizationId),
-        inArray(schema.GlRoleAssignment.role, ['clearing_card', 'payment_processing_fees']),
-        // 🛑 The ORG DEFAULT only (task 47). A seeded gateway record names the
-        // account the org uses when nothing more specific applies; picking a
-        // per-processor override here would hand one processor's fee account to
-        // a gateway that settles through another.
-        isNull(schema.GlRoleAssignment.sourceAccountId)
-      )
-    )
+  const assignments = await readRoleAssignments(db, organizationId)
+  // 🛑 The ORG DEFAULT only (task 47, and task 58's rail rows). A seeded
+  // gateway record names the account the org uses when nothing more specific
+  // applies; picking a per-source or per-rail override here would hand one
+  // processor's fee account to a gateway that settles through another.
+  const roleRows = assignments.filter(
+    (row) =>
+      (row.role === 'clearing' || row.role === 'payment_processing_fees') &&
+      row.sourceAccountId == null &&
+      row.paymentGatewayId == null
+  )
   const byRole = new Map(roleRows.map((row) => [row.role, row.glAccountId]))
 
   const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
@@ -454,7 +454,7 @@ export async function seedDefaultPaymentGateways(
   let created = 0
   let skipped = 0
 
-  const clearingCard = byRole.get('clearing_card')
+  const clearingCard = byRole.get('clearing')
   if (!existingHandles.has('shopify_payments') && clearingCard) {
     const result = await createPaymentGateway(db, {
       organizationId,
@@ -463,7 +463,6 @@ export async function seedDefaultPaymentGateways(
       handles: ['shopify_payments'],
       clearingAccountId: clearingCard,
       feeAccountId: byRole.get('payment_processing_fees') ?? null,
-      settlementSource: 'shopify_payments',
       status: 'active',
     })
     if (result.isOk()) created++

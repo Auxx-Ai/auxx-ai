@@ -50,7 +50,7 @@ const BANK_ACCOUNT_ATTRIBUTES = [
   'bank_account_type',
   'bank_account_currency',
   'bank_account_gl_account',
-  'bank_account_stripe_external_account_id',
+  'bank_account_settlement_destinations',
   'bank_account_feed_start_date',
   'bank_account_coverage_from',
   'bank_account_coverage_gaps',
@@ -226,6 +226,65 @@ export async function getBankAccount(
     },
     'Failed to read bank account',
     { organizationId, bankAccountId }
+  )
+}
+
+/** One bank account offered as a possible match for a payout's reported destination. */
+export interface BankAccountSuggestion {
+  bankAccountId: string
+  recordId: string
+  name: string | null
+  last4: string | null
+  /** An exact `settlementDestinations` match, or (weaker) a last-four match alone. */
+  reason: 'destination' | 'last4'
+}
+
+/**
+ * Bank accounts that might be the one a rail's payout destination named (task 58 §5.4 rule 3),
+ * for the gateway editor's bank picker (U8 builds the UI). A SUGGESTION, never a resolution -
+ * `setRoleAssignment` is the only write that maps a rail's `bank` role.
+ *
+ * Exact `settlementDestinations` matches come first and, when any exist, are the whole answer.
+ * A last-four match is weaker evidence on its own (`settlementDestinations`'s own field comment:
+ * two accounts at one bank can share a last four) and is offered only when nothing matched exactly.
+ */
+export async function suggestBankAccountsForDestination(
+  db: Database,
+  params: { organizationId: string; destination: string }
+): Promise<Result<BankAccountSuggestion[], Error>> {
+  const { organizationId, destination } = params
+  return guard(
+    async () => {
+      const trimmed = destination.trim()
+      if (!trimmed) return []
+
+      const accounts = await listBankAccounts(db, { organizationId })
+      if (accounts.isErr()) throw accounts.error
+
+      const toSuggestion = (
+        account: BankAccountRow,
+        reason: BankAccountSuggestion['reason']
+      ): BankAccountSuggestion => ({
+        bankAccountId: account.id,
+        recordId: account.recordId,
+        name: account.name,
+        last4: account.last4,
+        reason,
+      })
+
+      const exact = accounts.value.filter((account) =>
+        account.settlementDestinations.includes(trimmed)
+      )
+      if (exact.length > 0) return exact.map((account) => toSuggestion(account, 'destination'))
+
+      const last4 = trimmed.slice(-4)
+      if (last4.length !== 4) return []
+      return accounts.value
+        .filter((account) => account.last4 === last4)
+        .map((account) => toSuggestion(account, 'last4'))
+    },
+    'Failed to suggest a receiving bank account',
+    { organizationId, destination }
   )
 }
 
@@ -667,19 +726,27 @@ async function hydrateBankAccounts(
         )
     : []
 
-  const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
+  const byInstance = new Map<string, Map<string, (typeof values)[number][]>>()
   for (const value of values) {
     let bucket = byInstance.get(value.entityId)
     if (!bucket) {
       bucket = new Map()
       byInstance.set(value.entityId, bucket)
     }
-    bucket.set(value.fieldId, value)
+    const rows = bucket.get(value.fieldId) ?? []
+    rows.push(value)
+    bucket.set(value.fieldId, rows)
   }
 
   const read = (instanceId: string, attr: BankAccountAttribute) => {
     const id = ctx.fields[attr]?.id
-    return id ? (byInstance.get(instanceId)?.get(id) ?? null) : null
+    return id ? (byInstance.get(instanceId)?.get(id)?.[0] ?? null) : null
+  }
+  // `settlementDestinations` is TAGS (58 §4.4) - one `FieldValue` row per destination, written
+  // with the typed text AS the `optionId`, mirroring `payment_gateway_handles`'s read.
+  const readMany = (instanceId: string, attr: BankAccountAttribute) => {
+    const id = ctx.fields[attr]?.id
+    return id ? (byInstance.get(instanceId)?.get(id) ?? []) : []
   }
 
   const connectorIds = [
@@ -690,6 +757,11 @@ async function hydrateBankAccounts(
     ),
   ]
   const connectors = await readConnectorHealth(db, organizationId, connectorIds)
+
+  const readSettlementDestinations = (instanceId: string): string[] =>
+    readMany(instanceId, 'bank_account_settlement_destinations')
+      .map((value) => value.optionId ?? value.valueText)
+      .filter((destination): destination is string => !!destination)
 
   return page.map((row) => {
     const connectorId = read(row.id, 'bank_account_connector_id')?.valueText ?? null
@@ -704,8 +776,7 @@ async function hydrateBankAccounts(
       type: resolveBankAccountType(read(row.id, 'bank_account_type')?.optionId),
       currency: read(row.id, 'bank_account_currency')?.valueText ?? null,
       glAccountId: read(row.id, 'bank_account_gl_account')?.valueText ?? null,
-      stripeExternalAccountId:
-        read(row.id, 'bank_account_stripe_external_account_id')?.valueText ?? null,
+      settlementDestinations: readSettlementDestinations(row.id),
       feedStartDate: feedStartDate ? toDateKey(feedStartDate) : null,
       coverageFrom: coverageFrom ? toDateKey(coverageFrom) : null,
       coverageGaps: normalizeCoverageGaps(read(row.id, 'bank_account_coverage_gaps')?.valueJson),

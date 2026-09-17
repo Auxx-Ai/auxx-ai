@@ -22,7 +22,7 @@
  * Clearing` left the `card_rail` pack in the same pass. `ACCOUNT_ROLES` is a
  * CLOSED vocabulary tied to builders, so a role minted per rail would name
  * nothing a builder emits - and the one role that does route a rail,
- * `clearing_card`, is the FALLBACK every unrouted handle lands on. An account
+ * `clearing`, is the FALLBACK every unrouted handle lands on. An account
  * minted here is reached by id, through the `payment_gateway` record that
  * points at it, and by nothing else.
  *

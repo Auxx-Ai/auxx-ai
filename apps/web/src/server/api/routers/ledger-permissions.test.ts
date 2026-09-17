@@ -35,6 +35,7 @@ vi.mock('@auxx/lib/postings', async () => {
     setLockedThrough: vi.fn(async () => undefined),
     createChartAccount: vi.fn(async () => okResult({ id: 'acc_cuid000000000000000000000' })),
     setRoleAssignment: vi.fn(async () => okResult({ role: 'cash', glAccountId: 'acc_1' })),
+    saveRoleAssignments: vi.fn(async () => okResult([{ role: 'cash', glAccountId: 'acc_1' }])),
     // Brief 20 §7.4. The inbound sync RESTATES prior months - it writes into
     // closed periods and reverses entries that have vanished from the provider
     // - so it sits on `ledgerControl` beside `setLockedThrough` rather than on
@@ -282,6 +283,30 @@ describe('ledger chart-structure writes: Edit refused, Full admitted', () => {
         role: Object.values(ACCOUNT_ROLES as Record<string, string>)[0],
         glAccountId: 'acc_cuid000000000000000000000',
       })
+    ).resolves.toBeDefined()
+  })
+
+  it('saveMapping refuses ledger: Edit', async () => {
+    await expect(
+      ledgerCaller(ledgerEdit()).saveMapping([
+        {
+          role: Object.values(ACCOUNT_ROLES as Record<string, string>)[0],
+          scope: null,
+          value: 'x',
+        },
+      ])
+    ).rejects.toMatchObject(FORBIDDEN)
+  })
+
+  it('saveMapping admits ledger: Full', async () => {
+    await expect(
+      ledgerCaller(ledgerFull()).saveMapping([
+        {
+          role: Object.values(ACCOUNT_ROLES as Record<string, string>)[0],
+          scope: null,
+          value: 'x',
+        },
+      ])
     ).resolves.toBeDefined()
   })
 

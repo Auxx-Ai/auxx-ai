@@ -140,7 +140,6 @@ export {
   buildFulfillmentBatchEntry,
   computeShipmentAmounts,
   FULFILLMENT_DEBIT_ACCOUNT_ROLE,
-  FULFILLMENT_GATEWAY_DEBIT,
   type FulfillmentBatchSource,
   type FulfillmentDebitExclusionReason,
   type FulfillmentDebitResolution,
@@ -213,7 +212,6 @@ export {
   type BuildPayoutEntryInput,
   type BuiltPayoutEntry,
   buildPayoutEntry,
-  PAYOUT_CLEARING_ROLES,
   PAYOUT_SOURCE_TYPE,
 } from './build-payout-entry'
 // ── HANDOFF slot 2K (accountant profile, 1099/W-9, write-off) ──────────────
@@ -722,7 +720,9 @@ export {
   listChartAccounts,
   listChartAccountUsage,
   listRoleMap,
+  type SaveMappingRow,
   type SetRoleAssignmentOptions,
+  saveRoleAssignments,
   setRoleAssignment,
 } from './role-map'
 export { type SetLockedThroughInput, setLockedThrough } from './set-locked-through'
@@ -784,6 +784,7 @@ export {
   type ResolvedPostingLine,
   type RoleAssignmentRow,
   type RoleAssignmentState,
+  type RoleRailAssignmentRow,
 } from './types'
 export {
   type BooksBalanceDiscrepancy,

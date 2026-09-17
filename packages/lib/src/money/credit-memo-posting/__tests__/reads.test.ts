@@ -568,7 +568,7 @@ describe('the settlement accounts', () => {
   ]
 
   for (const [what, rows] of fallbacks) {
-    it(`leaves ${what} to the clearing_card role`, async () => {
+    it(`leaves ${what} to the clearing role`, async () => {
       h.gateways = [{ handles: ['affirm'], clearingGlAccountId: 'acct_1210' }]
       h.selects = [rows]
 

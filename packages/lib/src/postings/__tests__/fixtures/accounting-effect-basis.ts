@@ -21,7 +21,7 @@ export function readyBasis(id: string): Extract<AccountingWorkBasisInput, { stat
       shippedOn: '2026-09-14',
       channel: null,
       sourceStoreId: null,
-      processorRouteId: null,
+      paymentGatewayId: null,
       shippingRegion: null,
       dimensions: {},
       lines: [
@@ -45,7 +45,9 @@ export function readyBasis(id: string): Extract<AccountingWorkBasisInput, { stat
       shippingAllocationMinor: '0',
       includeShipping: false,
       taxComponents: [],
-      debitRoute: { kind: 'role', role: 'clearing_card', reason: 'Current debit route' },
+      // 🛑 Frozen basis literal (`effect-types.ts:103`) - not the `clearing`
+      // role rename, do not touch.
+      debitRoute: { kind: 'role', role: 'clearing', reason: 'Current debit route' },
     },
   }
 }

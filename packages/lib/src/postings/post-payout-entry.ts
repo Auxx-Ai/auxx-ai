@@ -5,21 +5,16 @@
  * entry to `postEntry`; the accounting is all in the builder.
  *
  * `money/payouts/sync.ts` is the gatherer and the trigger: it lists an org's
- * Stripe payouts, resolves each payout's destination to a confirmed
- * `bank_account` (brief 13 §2.3) AND the payout's own `payment_gateway` record
- * (brief 26 §3, `resolvePayoutGateway`), and calls this function once it has a
- * `bankAccountGlAccountId` to pass in. See {@link payoutAccountUnmappedResult}
- * for the shape it returns INSTEAD of calling this function when either
- * resolution fails - no entry is built and nothing is claimed.
+ * payouts, resolves the rail through the source context (task 58 §5.5) and
+ * calls this function with `rail`/`currency` set. See
+ * {@link payoutAccountUnmappedResult} for the shape it returns INSTEAD of
+ * calling this function when a payout has no rail to resolve - no entry is
+ * built and nothing is claimed.
  *
- * ⚠️ **This file resolves nothing itself and must not start.** The gateway's
- * `clearingGlAccountId`, `feeGlAccountId` and `feeTreatment` ride in through
- * {@link PostPayoutEntryOptions}, which is {@link BuildPayoutEntryInput}
- * verbatim, and are all optional - an org with no `payment_gateway` record
- * passes none of them and gets the role fallback, bit for bit as before. The
- * resolution lives beside the bank-account resolution, in one place, because a
- * second resolver here would be a second opinion about which account a rail
- * settles into.
+ * ⚠️ **This file resolves nothing itself and must not start.** Every leg of
+ * {@link BuildPayoutEntryInput} is a role line scoped to `rail`/`currency`
+ * (task 58 §5.3); which `gl_account` each role names is `resolveAccountLines`'
+ * job, inside `postEntry`, not this file's.
  */
 
 import type { Database, Transaction } from '@auxx/database'
@@ -37,33 +32,17 @@ export interface PostPayoutEntryOptions extends BuildPayoutEntryInput {
   actorUserId?: string
   /** Source ownership is checked inside the ledger acceptance transaction. */
   beforeCommit?: (tx: Transaction) => Promise<void>
-  /**
-   * The `FinancialSourceAccount` this payout settled through - the rail's
-   * `payment_gateway.settlementAccount` (task 47 §4).
-   *
-   * 🛑 The PROCESSOR axis, never the store. A store on two processors would
-   * pool both processors' fees into one account; two stores sharing one Stripe
-   * account would split fees that arrive on a single statement and reconcile as
-   * one number. Fees belong to the merchant account the money came through.
-   *
-   * ⚠️ Only reaches `payment_processing_fees`, and only when the rail names no
-   * `feeGlAccountId` of its own - a rail with one emits an id line, which names
-   * its account outright and ignores every scope (brief 26).
-   */
-  processorAccountId?: string | null
 }
 
 /**
- * The `PostResult` a payout carries when its Stripe destination cannot be
- * resolved to a confirmed bank account (brief 13 §2.3).
+ * The `PostResult` a payout carries when it has no rail, or its rail has no
+ * `bank` row mapped for its currency (task 58 §5.4 rule 1).
  *
  * 🛑 Never reached through {@link postPayoutEntry} - the caller (`money/payouts/
- * sync.ts`) constructs this DIRECTLY and skips the call, because there is no
- * `bankAccountGlAccountId` to build with. `account_unmapped` is the same
- * status `postEntry` returns for an unresolved ROLE (`post-entry.ts`); this is
- * the closest existing status for an unresolved bank-account IDENTITY, and
- * brief 13 §2.4's DECIDED block says not to add a new one. Pre-claim, like
- * every `account_unmapped`: nothing is built, nothing is written.
+ * sync.ts`) constructs this DIRECTLY and skips the call. `account_unmapped` is
+ * the same status `postEntry` returns for an unresolved ROLE (`post-entry.ts`),
+ * and this is the pre-build refusal for the same fact: nothing is built,
+ * nothing is written.
  */
 export function payoutAccountUnmappedResult(message: string): PostResult {
   return { status: 'account_unmapped', failureClass: 'configuration', error: message }
@@ -74,10 +53,9 @@ export function payoutAccountUnmappedResult(message: string): PostResult {
  *
  * **Never throws.** A builder refusal - a gateway whose gross does not equal
  * net plus fees, a withheld fee on a rail that bills separately, an over-long
- * payout id, a clearing role that is not one - comes back as
- * `{ status: 'error' }` with the builder's own message, which is what
- * `EntryBlockers` renders. Everything `postEntry` can answer passes
- * through unchanged.
+ * payout id, a missing rail or currency - comes back as `{ status: 'error' }`
+ * with the builder's own message, which is what `EntryBlockers` renders.
+ * Everything `postEntry` can answer passes through unchanged.
  *
  * Checked FIRST, before the builder: an org that has never turned accounting on
  * gets `{ status: 'not_enabled' }` with no build, no period-lock read and no
@@ -91,7 +69,7 @@ export async function postPayoutEntry(
   db: Database,
   options: PostPayoutEntryOptions
 ): Promise<PostResult> {
-  const { organizationId, actorUserId, beforeCommit, processorAccountId, ...input } = options
+  const { organizationId, actorUserId, beforeCommit, ...input } = options
 
   if (!(await isAccountingEnabled(db, organizationId))) {
     return { status: 'not_enabled' }
@@ -107,9 +85,6 @@ export async function postPayoutEntry(
       beforeCommit,
       lock,
       memo: input.memo ?? `Payout ${built.periodKey}`,
-      // A payout is wholly one merchant account's, so the ENTRY-level door is
-      // the right one - there is no second processor on it to disagree with.
-      ...(processorAccountId ? { scope: { processor: processorAccountId } } : {}),
     })
 
     logger.info('Posted a payout entry', {

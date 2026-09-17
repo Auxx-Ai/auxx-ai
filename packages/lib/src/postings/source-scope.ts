@@ -47,6 +47,10 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+// Reaches the same `payment_gateway` records `assertScopableGateway` in
+// `role-map.ts` reads through - the rail axis is a live gateway now, not
+// evidence (58 §3 rule 6).
+import { listPaymentGateways } from '../payment-gateways/reads'
 import type { ScopeAxis } from './build-entry'
 // 🛑 `RoleSourceRow` lives in `types.ts`, which is client-safe: a settings
 // screen holds the shape and this file reaches a database. Re-exported so a
@@ -156,33 +160,41 @@ export async function readManualSourceAccountId(
  *
  * Written by `customer-money/record-evidence.ts` (`order_transaction`) and
  * `customer-money/adopt-native-stripe.ts` (`charge`, `refund`). The processor
- * side - `balance_transaction`, `payout`, from `payouts/record-storage.ts` - is
- * deliberately absent and is what the `processor` axis reads instead.
+ * object types - `balance_transaction`, `payout` - are deliberately absent:
+ * before task 58 they were what the `rail` axis read; now `rail` is a live
+ * `payment_gateway` record (§3 rule 6), never evidence on this table at all,
+ * so a row carrying them earns no axis here any more.
  */
 const STORE_EVIDENCE_OBJECT_TYPES = ['order_transaction', 'charge', 'refund'] as const
 
 /**
- * Every live source this org's role map may be scoped to, manual pinned first.
+ * Every live source this org's role map may be scoped to, manual pinned first -
+ * `store`-axis rows from `FinancialSourceAccount` evidence, `rail`-axis rows
+ * from the org's own `payment_gateway` records (58 §3 rule 6). Two tables, two
+ * id spaces, one list: `RoleSourceRow.id` is a `FinancialSourceAccount.id` for
+ * the first kind and a `payment_gateway` EntityInstance id for the second, and
+ * a caller tells them apart by `axes` - a `rail` row is never also a `store`.
  *
- * 🛑 **Every live source gets a row, always**, including the ones that inherit
- * the org default. An unconfigured store must be VISIBLE rather than absent -
- * "Amazon US is using 4000 Product Revenue" is the fact the screen exists to
- * surface, and a screen that only listed overrides could never say it.
+ * 🛑 **Every live source and every live rail gets a row, always**, including
+ * the ones that inherit the org default. An unconfigured store or rail must be
+ * VISIBLE rather than absent - "Amazon US is using 4000 Product Revenue" is
+ * the fact the screen exists to surface, and a screen that only listed
+ * overrides could never say it.
  *
  * Sorted manual first, then by name. Sorting by `providerKey` would bury `auxx`
  * between `amazon` and `shopify`, which is a sort order that hides the one row
  * every org has.
  *
- * Archived and non-`live` accounts are excluded IN THE QUERY, the same rule
- * `recognition-source.ts` applies to evidence and `chart-accounts.ts` applies to
- * the chart: a source somebody archived must not be offered, and a test store's
- * revenue must not reach the live account.
+ * Archived and non-`live` accounts, and archived gateways, are excluded IN THE
+ * QUERY, the same rule `recognition-source.ts` applies to evidence and
+ * `chart-accounts.ts` applies to the chart: a source somebody archived must
+ * not be offered, and a test store's revenue must not reach the live account.
  */
 export async function listRoleSources(
   db: Database | Transaction,
   organizationId: string
 ): Promise<RoleSourceRow[]> {
-  const [accounts, storeEvidence, processorEntries, processorTransfers] = await Promise.all([
+  const [accounts, storeEvidence, gatewaysResult] = await Promise.all([
     db
       .select({
         id: schema.FinancialSourceAccount.id,
@@ -207,36 +219,21 @@ export async function listRoleSources(
           inArray(schema.FinancialSourceObject.objectType, [...STORE_EVIDENCE_OBJECT_TYPES])
         )
       ),
-    db
-      .selectDistinct({ id: schema.ProcessorBalanceEntry.sourceAccountId })
-      .from(schema.ProcessorBalanceEntry)
-      .where(eq(schema.ProcessorBalanceEntry.organizationId, organizationId)),
-    db
-      .selectDistinct({ id: schema.MoneyTransfer.sourceAccountId })
-      .from(schema.MoneyTransfer)
-      .where(eq(schema.MoneyTransfer.organizationId, organizationId)),
+    listPaymentGateways(db, organizationId),
   ])
+  if (gatewaysResult.isErr()) throw gatewaysResult.error
 
   const stores = new Set(storeEvidence.map((row) => row.id))
-  const processors = new Set(
-    [...processorEntries, ...processorTransfers].map((row) => row.id).filter(Boolean)
-  )
 
   const rows: RoleSourceRow[] = []
   for (const account of accounts) {
     const isManual =
       account.providerKey === MANUAL_SOURCE_PROVIDER_KEY &&
       account.externalAccountId === MANUAL_SOURCE_EXTERNAL_ID
-    const axes: ScopeAxis[] = isManual
-      ? ['store']
-      : [
-          ...(stores.has(account.id) ? (['store'] as const) : []),
-          ...(processors.has(account.id) ? (['processor'] as const) : []),
-        ]
-    // A live account nothing has ever sent evidence through carries no axis, so
-    // there is no role it could be offered under. Dropped rather than listed
-    // under both - a screen offering a source that cannot post is a question
-    // with no answer.
+    const axes: ScopeAxis[] = isManual || stores.has(account.id) ? ['store'] : []
+    // A live account with no store evidence at all carries no axis, so there is
+    // no role it could be offered under. Dropped rather than listed anyway - a
+    // screen offering a source that cannot post is a question with no answer.
     if (axes.length === 0) continue
     rows.push({
       id: account.id,
@@ -245,6 +242,19 @@ export async function listRoleSources(
       name: sourceAccountLabel(account),
       axes,
       isManual,
+    })
+  }
+
+  // Every live rail is its own row, always `['rail']` - a gateway is never
+  // also a store, whatever evidence its linked feed happens to carry.
+  for (const gateway of gatewaysResult.value) {
+    rows.push({
+      id: gateway.id,
+      providerKey: 'payment_gateway',
+      externalAccountId: gateway.id,
+      name: gateway.name,
+      axes: ['rail'],
+      isManual: false,
     })
   }
 

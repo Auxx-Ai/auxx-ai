@@ -499,14 +499,14 @@ describe('accounting foundation against PostgreSQL', () => {
       ])
       await tx.insert(schema.GlRoleAssignment).values({
         organizationId,
-        role: 'clearing_card',
+        role: 'clearing',
         source: 'human',
         glAccountId: account!.id,
         markedUnused: false,
       })
-      const result = await resolveRoles(tx, organizationId, ['clearing_card'])
+      const result = await resolveRoles(tx, organizationId, ['clearing'])
       expect(result.isOk()).toBe(true)
-      if (result.isOk()) expect(result.value.get('clearing_card')?.glAccountId).toBe(account!.id)
+      if (result.isOk()) expect(result.value.get('clearing')?.glAccountId).toBe(account!.id)
     })
   })
 })

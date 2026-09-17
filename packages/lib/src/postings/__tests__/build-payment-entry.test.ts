@@ -72,7 +72,7 @@ describe('the route table', () => {
       role: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
     })
     expect(PAYMENT_ROUTE_ROLE.cash).toEqual({ kind: 'bank_account' })
-    expect(PAYMENT_ROUTE_ROLE.clearing).toEqual({ kind: 'role', role: ACCOUNT_ROLES.CLEARING_CARD })
+    expect(PAYMENT_ROUTE_ROLE.clearing).toEqual({ kind: 'role', role: ACCOUNT_ROLES.CLEARING })
   })
 
   it.each([

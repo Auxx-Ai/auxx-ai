@@ -155,7 +155,7 @@ describe('canonical customer-money allocation', () => {
     expect(amountFor(built.entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)).toBe(52_500)
     expect(amountFor(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBe(54_000)
     expect(amountFor(built.entry, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBe(5_000)
-    expect(built.entry.lines.some((line) => line.accountRole === ACCOUNT_ROLES.CLEARING_CARD)).toBe(
+    expect(built.entry.lines.some((line) => line.accountRole === ACCOUNT_ROLES.CLEARING)).toBe(
       false
     )
   })

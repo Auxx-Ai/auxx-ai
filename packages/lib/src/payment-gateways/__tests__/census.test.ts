@@ -10,12 +10,17 @@
 // `authorize_net`/`authorize.net` deliberately NOT merged (they are one rail,
 // but they are two handles, and the rail grouping is the caller's job).
 //
-// Same double `reads.test.ts` uses, plus `leftJoin`/`groupBy` on the chain.
+// Same table-keyed double `reads.test.ts` uses, plus `leftJoin`/`groupBy` on
+// the chain. `claimedBy` now comes through `listPaymentGateways`, whose own
+// hydrate reads `GlRoleAssignment`/`FinancialSourceAccount` as well as
+// `FieldValue` (task 58 §4.3) - `script`'s `gateways` param queues all three.
 
+import { schema } from '@auxx/database'
+import { getTableName } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({
-  script: [] as unknown[][],
+  tables: new Map<string, unknown[][]>(),
   gatewayFieldOptions: null as unknown,
   /** False to simulate an org whose `order_placed_at` field is not provisioned. */
   placedAtField: true,
@@ -42,32 +47,50 @@ vi.mock('../../cache', () => ({
   }),
 }))
 
+function queue(table: unknown, rows: unknown[]): void {
+  const name = getTableName(table as Parameters<typeof getTableName>[0])
+  const pages = state.tables.get(name) ?? []
+  pages.push(rows)
+  state.tables.set(name, pages)
+}
+
 /** One query stage: chainable and awaitable, resolving to `rows`. */
 function stage(rows: unknown[]): unknown {
   const chain: Record<string, unknown> = {}
-  for (const method of ['from', 'orderBy', 'limit', 'where', 'leftJoin', 'innerJoin', 'groupBy']) {
+  for (const method of ['orderBy', 'limit', 'where', 'leftJoin', 'innerJoin', 'groupBy']) {
     chain[method] = () => stage(rows)
   }
   return Object.assign(Promise.resolve(rows), chain)
 }
 
 function fakeDb() {
-  let call = 0
-  const next = () => stage(state.script[call++] ?? [])
-  return { select: next, selectDistinct: next } as never
+  const request = () => ({
+    from: (table: unknown) => {
+      const name = getTableName(table as Parameters<typeof getTableName>[0])
+      const pages = state.tables.get(name) ?? []
+      return stage(pages.shift() ?? [])
+    },
+  })
+  return { select: request, selectDistinct: request } as never
 }
 
 const ORG = 'org_1'
 
-/** The census query, then `listPaymentGateways`'s instance and value queries. */
+/** The census query, then (when there are any instances) `listPaymentGateways`'s own reads. */
 function script(censusRows: unknown[], gateways: { instances: unknown[]; values: unknown[] }) {
-  state.script.push(censusRows, gateways.instances, gateways.values)
+  queue(schema.FieldValue, censusRows)
+  queue(schema.EntityInstance, gateways.instances)
+  if (gateways.instances.length > 0) {
+    queue(schema.GlRoleAssignment, [])
+    queue(schema.FinancialSourceAccount, [])
+    queue(schema.FieldValue, gateways.values)
+  }
 }
 
 const NO_GATEWAYS = { instances: [], values: [] }
 
 beforeEach(() => {
-  state.script.length = 0
+  state.tables.clear()
   state.gatewayFieldOptions = null
   state.placedAtField = true
 })
@@ -179,12 +202,6 @@ describe('listGatewayHandleCensus', () => {
           fieldId: 'payment_gateway_handles',
           valueText: null,
           optionId: 'affirm',
-        },
-        {
-          entityId: 'pg_1',
-          fieldId: 'payment_gateway_clearing_account',
-          valueText: 'gl_1210',
-          optionId: null,
         },
         {
           entityId: 'pg_1',

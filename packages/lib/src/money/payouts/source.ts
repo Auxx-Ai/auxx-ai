@@ -35,22 +35,18 @@ import type {
 } from '../../payment-gateways/client'
 
 /**
- * Which feed a source reads. Maps 1:1 onto the `payment_gateway` record's
- * `settlementSource`, so the rail's own declaration of how it drains IS the
- * registry key: `stripe`, `shopify_payments`, and `csv` once unit 3 adds that
- * value to the settlement-source vocabulary. `manual` is the one value that can
- * never name a source - a billed rail is relieved in the review queue (§3) and
- * wants no feed, ever.
+ * Which feed a source reads. Matches the `providerKey` a linked
+ * `FinancialSourceAccount` carries (task 58 §5.5) - `stripe`,
+ * `shopify_payments`, and `csv` once unit 3 adds that value. `manual` is the
+ * one value that can never name a source - a billed rail is relieved in the
+ * review queue (§3) and wants no feed, ever.
  *
  * ⚠️ **A key here is not a promise that a source exists.** `affirm` joined the
  * vocabulary with `plans/apps/affirm/affirm-build-plan.md` §5.1 and is therefore
  * in this union, but **nothing will ever register a `PayoutSource` for it, by
  * design** (that plan's §5.3, resolved 2026-09-15). Affirm is read by the
- * financial connector (task 46), and the two paths are MUTUALLY EXCLUSIVE:
- * {@link assertLegacyPayoutIngestionOwner} refuses this legacy writer once a
- * connector holds an enabled `upsert` mapping into `payout` or
- * `processor_balance_entry` for the same installation and credential. An
- * `AFFIRM_PAYOUT_SOURCE` would therefore throw on every run.
+ * financial connector (task 46) instead, through its own evidence path - an
+ * `AFFIRM_PAYOUT_SOURCE` would simply never be registered.
  *
  * Until something registers it, `getPayoutSource` answers a `NotFoundError`
  * naming the id and the sweep never polls it, which is a visible absence rather
@@ -108,40 +104,26 @@ export interface PayoutHeader {
  * Everything one run of a source needs: the org, the rail it reads for, and
  * whatever reaches its provider.
  *
- * ## The rail is IN the context (§4, §6.2)
+ * ## The rail is IN the context, always exactly one (task 58 §5.3, §5.5)
  *
- * That is what retired the per-payout `resolvePayoutGateway` call: the source
- * that built the context already knows which `payment_gateway` record it is
- * reading for, and every payout it lists is stamped with it and routed through
- * its clearing and fee accounts. `rail: null` is the role fallback - no record
- * claims the source's stream - which only the Stripe source can produce, and
- * which is bit for bit what every org did before brief 26.
- *
- * `conflictingRails` is the OTHER way a source can fail to name one rail:
- * several records claim its stream. `rail` is null and every payout is raised
- * and then BLOCKED naming them all (26 §13 decision 2), never guessed at.
+ * A context is built per live `FinancialSourceAccount` a person has linked to
+ * a `payment_gateway` record (`reads.ts`'s `listLinkedFeedAccounts`), never
+ * filtered by the retired `settlementSource` enum - so `rail` is REQUIRED, not
+ * a role fallback. A payout with no rail cannot exist: it was read by a source
+ * that is linked to one. A feed nothing has linked yet builds no context at
+ * all, and two feeds linked to two different rails are two contexts, not a
+ * conflict - each posts its own payouts through its own rail.
  */
 export interface PayoutSourceCtx {
   organizationId: string
   sourceId: PayoutSourceId
-  rail: PaymentGatewayRow | null
-  conflictingRails: readonly PaymentGatewayRow[]
+  rail: PaymentGatewayRow
   /**
    * What the source needs to reach its provider: a Stripe connected-account id,
    * an app tool handle, a parsed file. Opaque here; the source that built the
    * context is the one that reads it back, and it narrows.
    */
   handle: unknown
-  /** Adapter-declared identity used to prevent another writer claiming the same feed. */
-  ownership?: {
-    sourceAccount?: {
-      providerKey: string
-      externalAccountId: string
-      environment?: 'live' | 'test'
-    }
-    appInstallationId?: string
-    credentialId?: string
-  }
 }
 
 /**
