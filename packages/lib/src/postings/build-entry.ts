@@ -448,7 +448,7 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   inventory_count_variance: 'Inventory Count Variance',
   accounts_receivable: 'Accounts Receivable',
   undeposited_funds: 'Undeposited Funds',
-  clearing: 'Card Clearing',
+  clearing: 'Clearing',
   bank: 'Bank',
   unidentified_receipts: 'Unidentified Receipts',
   sales_tax_payable: 'Sales Tax Payable',

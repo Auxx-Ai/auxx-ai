@@ -23,7 +23,6 @@ import {
   listPaymentGateways,
   listUnlinkedFeeds,
   PAYMENT_GATEWAY_FEE_TREATMENTS,
-  PAYMENT_GATEWAY_SETTLEMENT_SOURCES,
   PAYMENT_GATEWAY_STATUSES,
   readClearingAccountBalance,
   readiness,
@@ -208,10 +207,6 @@ export const paymentGatewaysRouter = createTRPCRouter({
         mintFeeAccount: z.boolean(),
         /** Overrides the suggested fee account name. */
         feeAccountName: z.string().min(1).max(200).optional(),
-        // 🛑 Accepted and ignored (58 §5.5: "there is no enum"). The wizard's suggestion
-        // catalogue still offers one for its own display; kept here only so the caller does
-        // not have to strip it before calling. TODO(U8): drop once the wizard stops sending it.
-        settlementSource: z.enum(PAYMENT_GATEWAY_SETTLEMENT_SOURCES).optional(),
         feeTreatment: paymentGatewayFields.feeTreatment.optional(),
         /** `closed` for a rail with no recent orders (§9). Its history still routes. */
         status: z.enum(PAYMENT_GATEWAY_STATUSES).optional(),

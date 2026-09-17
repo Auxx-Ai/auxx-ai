@@ -103,8 +103,6 @@ export interface CreateBankAccountInput {
   currency?: string | null
   /** The `gl_account` instance id this account maps to (task 15 §4). Never a code. */
   glAccountId?: string | null
-  /** Legacy single-value input, wrapped into a one-item `settlementDestinations` when that is absent. */
-  stripeExternalAccountId?: string | null
   /** The provider destination ids confirmed for this account (task 58 §4.4). */
   settlementDestinations?: string[] | null
   feedStartDate?: string | null
@@ -122,28 +120,17 @@ export interface UpdateBankAccountInput {
   currency?: string | null
   /** The `gl_account` instance id this account maps to (task 15 §4). Never a code. */
   glAccountId?: string | null
-  /** Legacy single-value input, wrapped into a one-item `settlementDestinations` when that is absent. */
-  stripeExternalAccountId?: string | null
   /** The provider destination ids confirmed for this account (task 58 §4.4). */
   settlementDestinations?: string[] | null
   feedStartDate?: string | null
   status?: BankAccountStatus
 }
 
-/**
- * Normalise either input shape to the TAGS array `bank_account_settlement_destinations` stores.
- * `settlementDestinations`, given, wins outright - it is the newer and more expressive of the
- * two and a caller sending both means it did the wrapping itself.
- */
+/** Normalise the TAGS array `bank_account_settlement_destinations` stores. */
 function resolveSettlementDestinations(input: {
-  stripeExternalAccountId?: string | null
   settlementDestinations?: string[] | null
 }): string[] {
-  if (input.settlementDestinations !== undefined) {
-    return (input.settlementDestinations ?? []).map((id) => id.trim()).filter(Boolean)
-  }
-  const legacy = input.stripeExternalAccountId?.trim()
-  return legacy ? [legacy] : []
+  return (input.settlementDestinations ?? []).map((id) => id.trim()).filter(Boolean)
 }
 
 /**
@@ -286,10 +273,7 @@ export async function updateBankAccount(
       if (input.glAccountId !== undefined) {
         patch.bank_account_gl_account = input.glAccountId?.trim() || null
       }
-      if (
-        input.stripeExternalAccountId !== undefined ||
-        input.settlementDestinations !== undefined
-      ) {
+      if (input.settlementDestinations !== undefined) {
         patch.bank_account_settlement_destinations = resolveSettlementDestinations(input)
       }
       if (input.feedStartDate !== undefined) {

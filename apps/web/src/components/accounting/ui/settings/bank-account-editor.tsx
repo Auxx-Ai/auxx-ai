@@ -63,7 +63,7 @@ import { EmptySection, Section } from '@auxx/ui/components/section'
 import { cn } from '@auxx/ui/lib/utils'
 import { ArchiveRestore, Landmark, PlugZap, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
 import { ConnectorRunsPanel } from '~/components/data-connectors/ui/connector-runs-panel'
 import { asConnectorStatus } from '~/components/data-connectors/ui/connector-status'
@@ -112,8 +112,8 @@ export interface BankAccountPatch {
   currency?: string | null
   /** The `gl_account` instance id this account maps to (task 15 §4). Never a code. */
   glAccountId?: string | null
-  /** The Stripe destination id, confirmed once by a person (brief 13 §2.3). */
-  stripeExternalAccountId?: string | null
+  /** The provider destination ids confirmed for this account (task 58 §4.4). */
+  settlementDestinations?: string[] | null
   feedStartDate?: string | null
 }
 
@@ -203,7 +203,6 @@ interface TextValues {
   institution: string
   last4: string
   currency: string
-  stripeExternalAccountId: string
 }
 
 function BankAccountForm({
@@ -228,7 +227,6 @@ function BankAccountForm({
     institution: account.institution ?? '',
     last4: account.last4 ?? '',
     currency: account.currency ?? '',
-    stripeExternalAccountId: account.stripeExternalAccountId ?? '',
   })
 
   // The debounced writer reads the merged values through a ref: two rows edited
@@ -258,9 +256,12 @@ function BankAccountForm({
     (value: string) => onPatch({ currency: value || null }),
     TEXT_COMMIT_DELAY_MS
   )
-  const commitStripeExternalAccountId = useDebouncedCallback(
-    (value: string) => onPatch({ stripeExternalAccountId: value || null }),
-    TEXT_COMMIT_DELAY_MS
+
+  // Not a text field, so no debounce: a tags input commits on every add/remove,
+  // the same idiom `payment_gateway_handles` uses.
+  const settlementDestinationOptions = useMemo(
+    () => account.settlementDestinations.map((id) => ({ label: id, value: id })),
+    [account.settlementDestinations]
   )
 
   // 🛑 Connector-owned identity: the feed rewrites these on every sync, so an
@@ -388,19 +389,20 @@ function BankAccountForm({
         </FieldPanelRow>
 
         <FieldPanelRow
-          title='Stripe external account'
+          title='Settlement destinations'
           type={BaseType.STRING}
           showIcon
-          description='The Stripe destination id (ba_… or card_…) this account settles payouts to, confirmed once so a payout can be attributed here. Never matched on last four.'>
+          description='The ids processors report a payout was sent to, confirmed here once, so a payout can say whether it landed where the mapping expects. Stripe: ba_… / card_…. Shopify: gid://shopify/ShopifyPaymentsBankAccount/….'>
           <FieldInputAdapter
-            fieldType={FieldType.TEXT}
-            value={values.stripeExternalAccountId}
-            placeholder='ba_1AbCdEf...'
-            onChange={(value) => {
-              const next = (value as string) ?? ''
-              bufferText('stripeExternalAccountId', next)
-              commitStripeExternalAccountId(next)
-            }}
+            fieldType={FieldType.TAGS}
+            fieldOptions={{ options: settlementDestinationOptions }}
+            useValueAsLabel
+            value={account.settlementDestinations}
+            triggerProps={{ className: 'w-full ps-0 pe-1' }}
+            placeholder='Add a destination id'
+            onChange={(value) =>
+              onPatch({ settlementDestinations: Array.isArray(value) ? (value as string[]) : [] })
+            }
           />
         </FieldPanelRow>
 

@@ -776,7 +776,6 @@ async function hydrateBankAccounts(
       type: resolveBankAccountType(read(row.id, 'bank_account_type')?.optionId),
       currency: read(row.id, 'bank_account_currency')?.valueText ?? null,
       glAccountId: read(row.id, 'bank_account_gl_account')?.valueText ?? null,
-      stripeExternalAccountId: readSettlementDestinations(row.id)[0] ?? null,
       settlementDestinations: readSettlementDestinations(row.id),
       feedStartDate: feedStartDate ? toDateKey(feedStartDate) : null,
       coverageFrom: coverageFrom ? toDateKey(coverageFrom) : null,

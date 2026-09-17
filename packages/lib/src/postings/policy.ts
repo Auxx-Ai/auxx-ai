@@ -524,16 +524,20 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       description: 'Daily at 04:30 UTC, for every organisation with a Stripe Connect account',
     },
     template: [
-      { side: 'debit', role: 'by id', what: 'The bank account the payout settled into' },
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.BANK,
+        what: "The rail's mapped receiving bank account",
+      },
       {
         side: 'debit',
         role: ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES,
-        what: "Processor fees deducted, or the rail's own fee account by id",
+        what: "Processor fees deducted, or the rail's own fee account",
       },
       {
         side: 'credit',
         role: ACCOUNT_ROLES.CLEARING,
-        what: "Gross settled, or the rail's own clearing account by id",
+        what: "Gross settled, or the rail's own clearing account",
       },
       {
         side: 'credit',
@@ -543,7 +547,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     ],
     settings: [],
     sentence:
-      "Each Stripe payout drains the rail's clearing account into the bank account it settled into, with the processor's fees recognised alongside.",
+      "Each payout drains the rail's clearing account into the bank account it settled into, with the processor's fees recognised alongside.",
     disabledSentence:
       'Payout posting is off, so Shopify and processor clearing accounts are not reconciled per payout.',
     parameters: [

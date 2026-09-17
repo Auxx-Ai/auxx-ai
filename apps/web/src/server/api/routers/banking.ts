@@ -63,8 +63,6 @@ const bankAccountFields = {
   type: z.enum(BANK_ACCOUNT_TYPES),
   currency: z.string().max(8).nullish(),
   glAccountId: z.string().max(64).nullish(),
-  /** Legacy single-value shape; superseded by `settlementDestinations` (task 58 §4.4). */
-  stripeExternalAccountId: z.string().max(64).nullish(),
   /** The provider destination ids a person confirms for this account (task 58 §4.4). */
   settlementDestinations: z.array(z.string().min(1).max(128)).max(20).nullish(),
   feedStartDate: z.iso.date().nullish(),
@@ -141,7 +139,6 @@ export const bankingRouter = createTRPCRouter({
           type: bankAccountFields.type.optional(),
           currency: bankAccountFields.currency,
           glAccountId: bankAccountFields.glAccountId,
-          stripeExternalAccountId: bankAccountFields.stripeExternalAccountId,
           settlementDestinations: bankAccountFields.settlementDestinations,
           feedStartDate: bankAccountFields.feedStartDate,
         })
@@ -177,7 +174,6 @@ export const bankingRouter = createTRPCRouter({
           type: bankAccountFields.type.optional(),
           currency: bankAccountFields.currency,
           glAccountId: bankAccountFields.glAccountId,
-          stripeExternalAccountId: bankAccountFields.stripeExternalAccountId,
           settlementDestinations: bankAccountFields.settlementDestinations,
           feedStartDate: bankAccountFields.feedStartDate,
           status: z.enum(BANK_ACCOUNT_STATUSES).optional(),

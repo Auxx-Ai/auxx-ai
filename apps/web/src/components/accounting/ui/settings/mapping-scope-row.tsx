@@ -10,10 +10,11 @@ import { Tooltip } from '~/components/global/tooltip'
 import { MappingAccountSelect, type MappingAccountValue } from './mapping-account-select'
 
 export interface MappingScopeRowProps {
-  title: string
+  /** Usually the scope's name; an editable `AutosizeInput` for an unconfirmed currency-code draft (59 §2.2). */
+  title: ReactNode
   icon?: ReactNode
-  /** 1 for a store/rail scope row, 2 for a currency row nested under a rail (task 59 §2.2). */
-  depth?: 1 | 2
+  /** 0 for a role row (the Mapping tab's own default), 1 for a store/rail scope row, 2 for a currency row nested under a rail (task 59 §2.2). */
+  depth?: 0 | 1 | 2
   value: MappingAccountValue
   onChange: (value: string | 'inherit') => void
   /** Omit for a role with no default, e.g. `bank` (task 58 §3 rule 3) — a currency row's Inherit names the rail's own row, not the org default. */
@@ -31,6 +32,8 @@ export interface MappingScopeRowProps {
   onAddCurrency?: () => void
   /** Viewer lacks `ledgerControl` — every control disabled, no hover actions. */
   disabled?: boolean
+  /** A role row's "Mark unused"/"Mark used again" — the one hover action neither a scope nor a currency row carries. */
+  extraActions?: ReactNode
   children?: ReactNode
 }
 
@@ -55,6 +58,7 @@ export function MappingScopeRow({
   noFeedLinked = false,
   onAddCurrency,
   disabled = false,
+  extraActions,
   children,
 }: MappingScopeRowProps) {
   const hasInherit =
@@ -110,6 +114,7 @@ export function MappingScopeRow({
                   <RotateCcw />
                 </TreeRowButton>
               )}
+              {extraActions}
             </div>
           )}
         </div>

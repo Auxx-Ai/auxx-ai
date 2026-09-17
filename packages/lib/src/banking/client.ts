@@ -252,11 +252,6 @@ export interface BankAccountRow {
   /** The `gl_account` instance id this account maps to (task 15 §4). No foreign key. */
   glAccountId: string | null
   /**
-   * The first entry of {@link settlementDestinations}, kept for callers still reading the
-   * pre-58 single-value shape. `null` when nothing is confirmed yet.
-   */
-  stripeExternalAccountId: string | null
-  /**
    * The provider destination ids confirmed for this account (task 58 §4.4): `ba_…`/`card_…`
    * from Stripe, `gid://shopify/ShopifyPaymentsBankAccount/…` from Shopify. A payout whose
    * reported destination is not in this set is flagged, never blocked (§5.4 rule 2, D7).

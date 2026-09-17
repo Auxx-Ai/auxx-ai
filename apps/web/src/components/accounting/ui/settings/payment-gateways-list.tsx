@@ -190,9 +190,9 @@ export function PaymentGatewaysList({
           title='No payment gateways yet'
           description={
             <>
-              A payment gateway is a record carrying its own clearing account - Shopify Payments,
-              Affirm, or any rail this store has ever run. Add one to route its shipments there
-              instead of the default card clearing account.
+              A payment gateway is a record for a rail this store has ever run - Shopify Payments,
+              Affirm, or any other. Add one to map its own clearing, fee and bank accounts instead
+              of falling through to the default clearing account.
             </>
           }
           button={addButton}
