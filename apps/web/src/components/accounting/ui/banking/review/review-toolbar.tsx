@@ -62,6 +62,12 @@ interface ReviewToolbarProps {
    * invalidate the queries the page holds, so the node arrives built.
    */
   actions?: React.ReactNode
+  /**
+   * The list's select-all box, first on row one and aligned with the rows' own
+   * checkboxes. A node for the same reason `actions` is: the selection store it
+   * reads belongs to the page.
+   */
+  selectAll?: React.ReactNode
 }
 
 /**
@@ -100,7 +106,7 @@ const asDate = (day: string) => new Date(`${day}T00:00:00`)
  * that crosses the wire is integer minor units; this is the one boundary where
  * a person's `12.50` becomes `1250`, and it is deliberately not two conventions.
  */
-export function ReviewToolbar({ filters, onChange, actions }: ReviewToolbarProps) {
+export function ReviewToolbar({ filters, onChange, actions, selectAll }: ReviewToolbarProps) {
   const set = <K extends keyof ReviewFilters>(key: K, value: ReviewFilters[K]) =>
     onChange({ ...filters, [key]: value })
 
@@ -133,6 +139,8 @@ export function ReviewToolbar({ filters, onChange, actions }: ReviewToolbarProps
   return (
     <div className='sticky top-0 z-10 shrink-0 backdrop-blur-sm'>
       <ListToolbar sticky={false}>
+        {selectAll}
+
         <ListToolbarGroup className='shrink-0'>
           {/* The shared picker, so this filter groups by institution like every
               other bank-account list in the app. `allLabel` is what a filter
