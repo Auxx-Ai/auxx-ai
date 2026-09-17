@@ -267,16 +267,6 @@ async function readFulfillmentAccountingSourceUncachedInTx(
         })
   if (route.kind === 'exclude')
     throw new UnprocessableEntityError(`Unresolved debit route: ${route.reason}`)
-  // 🛑 TODO(58 D12): `effect-types.ts`'s `debitRoute.role` enum only admits
-  // `'clearing' | 'accounts_receivable'`. A lone `cash` handle resolves here
-  // to `undeposited_funds`, which that schema cannot freeze yet - refuse with
-  // a clear reason (caught below, surfaced as incomplete work) rather than let
-  // the zod parse fail with a cryptic one, until the enum is widened.
-  if (route.role === 'undeposited_funds')
-    throw new UnprocessableEntityError(
-      'A cash-handle fulfillment routes to undeposited funds (task 58 §5.2 D12); ' +
-        "effect-types.ts's debitRoute schema does not admit that role yet."
-    )
   if (shipment.currency && shipment.currency.toUpperCase() !== 'USD')
     throw new UnprocessableEntityError('Foreign currency requires accounting review')
   const recognitionFacts = shipment.recognitionAllocation
