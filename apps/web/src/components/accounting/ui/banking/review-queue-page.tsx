@@ -51,6 +51,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
+import {
+  ListSelectionProvider,
+  SelectAllCheckbox,
+  useBulkMode,
+  useListSelection,
+  useSelectionIds,
+} from '~/components/list-selection'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
 import { useViewportFill } from '~/hooks/use-viewport-fill'
@@ -126,7 +133,19 @@ function toMinor(value: string): number | undefined {
   return Math.round(parsed * 100)
 }
 
+/**
+ * The provider is mounted HERE rather than in the route: one selection store per
+ * list, disposed with the page that owns it.
+ */
 export function BankingReviewQueuePage() {
+  return (
+    <ListSelectionProvider>
+      <ReviewQueueBody />
+    </ListSelectionProvider>
+  )
+}
+
+function ReviewQueueBody() {
   useRequireCapability(PermissionKey.ledgerView)
   const utils = api.useUtils()
   const { can } = useAccess()
@@ -148,7 +167,17 @@ export function BankingReviewQueuePage() {
   )
   const [account, setAccount] = useQueryState('account')
   const [localFilters, setLocalFilters] = useState<ReviewFilters>(EMPTY_REVIEW_FILTERS)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+
+  const selectedIds = useSelectionIds()
+  /**
+   * Anything selected → the list is in SELECTING mode: the checkboxes are
+   * pinned and a row click picks that row rather than opening it. Clearing the
+   * selection hands the row click back to the drawer.
+   */
+  const selecting = useBulkMode()
+  const toggle = useListSelection((state) => state.toggle)
+  const setItemIds = useListSelection((state) => state.setItemIds)
+  const exitSelection = useListSelection((state) => state.exit)
   const [txn, setTxn] = useQueryState('txn')
 
   const filters = useMemo<ReviewFilters>(
@@ -173,7 +202,7 @@ export function BankingReviewQueuePage() {
    */
   // biome-ignore lint/correctness/useExhaustiveDependencies: the URL is the trigger
   useEffect(() => {
-    setSelectedIds([])
+    exitSelection()
     setLastRun(null)
   }, [queueState, account])
 
@@ -238,18 +267,20 @@ export function BankingReviewQueuePage() {
     [list.data?.pages]
   )
 
-  const toggle = useCallback((id: string) => {
-    setSelectedIds((current) =>
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
-    )
-  }, [])
-
   /**
-   * Anything selected → the list is in SELECTING mode: the checkboxes are
-   * pinned and a row click picks that row rather than opening it. Clearing the
-   * selection hands the row click back to the drawer.
+   * What shift-range and Cmd+A read: the rows actually listed, in render order -
+   * every page the infinite scroll has pulled in, never the whole queue.
+   *
+   * 🛑 Default pruning, unlike `chart-list.tsx`. Nothing here HIDES a row from
+   * a selection you are part-way through: every filter re-queries, so a row
+   * that leaves `rows` has left the view, and a bulk action must not still be
+   * holding it. `setItemIds` skips pruning on an empty list, so the blank
+   * moment between two fetches does not eat the selection.
    */
-  const selecting = selectedIds.length > 0
+  const rowIds = useMemo(() => rows.map((row) => row.id), [rows])
+  useEffect(() => {
+    setItemIds(rowIds)
+  }, [rowIds, setItemIds])
 
   const hasAccounts = accounts.length > 0
 
@@ -445,6 +476,7 @@ export function BankingReviewQueuePage() {
           filters={filters}
           onChange={handleFiltersChange}
           actions={applyRulesAction}
+          selectAll={<SelectAllCheckbox listPadding={16} />}
         />
 
         {!list.isPending && rows.length === 0 ? (
@@ -499,7 +531,7 @@ export function BankingReviewQueuePage() {
                     selectable
                     selecting={selecting}
                     selected={selectedIds.includes(row.id)}
-                    onSelectChange={() => toggle(row.id)}
+                    onSelectChange={(_next, event) => toggle(row.id, { shiftKey: event.shiftKey })}
                     selectLabel={`Select ${row.description ?? row.id}`}
                     /* Direction, then date, then the description - all three
                        inside `title`, so every row starts on the same two
@@ -645,11 +677,7 @@ export function BankingReviewQueuePage() {
         )}
       </div>
 
-      <ReviewBulkBar
-        selectedIds={selectedIds}
-        onClear={() => setSelectedIds([])}
-        onDone={() => setSelectedIds([])}
-      />
+      <ReviewBulkBar selectedIds={selectedIds} onClear={exitSelection} onDone={exitSelection} />
 
       {/* Below the dock breakpoint the same drawer renders as a floating
           overlay, the way every other docked panel's fallback does. */}

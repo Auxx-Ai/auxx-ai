@@ -61,8 +61,16 @@ import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/comp
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { CheckCircle2, CircleAlert, FileText, Loader, PanelRight, RefreshCw } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import {
+  ListSelectionProvider,
+  SelectAllCheckbox,
+  useBulkMode,
+  useListSelection,
+  useSelectionIds,
+} from '~/components/list-selection'
+import { useViewportFill } from '~/hooks/use-viewport-fill'
 import { api } from '~/trpc/react'
 import { EMPTY_CELL, formatMinor, formatPeriodLabel } from '../format'
 import {
@@ -76,6 +84,9 @@ import {
   syncQueueStateSentence,
   tallySyncQueue,
 } from './sync-queue-rows'
+
+/** The panel never fills less than this, however short the viewport is. */
+const MIN_PANEL_HEIGHT = 260
 
 /** "All periods" as a `Select` value. Never the empty string - `SelectItem` refuses one. */
 const ALL_PERIODS = 'all'
@@ -110,10 +121,21 @@ interface SyncQueuePanelProps {
  * tabs, bulk selection, and rows that open a drawer rather than a page.
  *
  * ⚠️ It is a PANEL, not that page: it renders inside the ledger's own scroll
- * column, so there is no `SettingsPage`, no `useViewportFill` and no docked
- * panel of its own. The drawer it opens is the ledger's, already mounted.
+ * column, so there is no `SettingsPage` and no docked panel of its own. The
+ * drawer it opens is the ledger's, already mounted.
+ *
+ * The provider is mounted HERE, not by the ledger page: one selection store per
+ * list, scoped to the view that owns it, so leaving the queue disposes it.
  */
-export function SyncQueuePanel({
+export function SyncQueuePanel(props: SyncQueuePanelProps) {
+  return (
+    <ListSelectionProvider>
+      <SyncQueueBody {...props} />
+    </ListSelectionProvider>
+  )
+}
+
+function SyncQueueBody({
   rows,
   isLoading,
   error,
@@ -125,8 +147,21 @@ export function SyncQueuePanel({
   onSelectPosting,
 }: SyncQueuePanelProps) {
   const utils = api.useUtils()
+  /**
+   * A floor, not a height: the empty state is `flex-1` and centres in whatever
+   * room it is given, and the ledger's scroll column is auto-height - so
+   * without this it pins to the toolbar instead of the middle of the screen. A
+   * MIN leaves a long queue free to grow past the fold as it always did.
+   */
+  const panelRef = useRef<HTMLDivElement>(null)
+  const panelHeight = useViewportFill(panelRef, MIN_PANEL_HEIGHT)
   const [period, setPeriod] = useState<string>(ALL_PERIODS)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+
+  const selectedIds = useSelectionIds()
+  const selecting = useBulkMode()
+  const toggle = useListSelection((state) => state.toggle)
+  const setItemIds = useListSelection((state) => state.setItemIds)
+  const exitSelection = useListSelection((state) => state.exit)
   /**
    * Why the last Sync did not release a posting, BY POSTING.
    *
@@ -153,6 +188,21 @@ export function SyncQueuePanel({
   }, [all, tab, period])
 
   /**
+   * What shift-range and Cmd+A read: the rows actually on screen, in render
+   * order.
+   *
+   * 🛑 Default pruning, unlike `chart-list.tsx`. Nothing here HIDES a row from
+   * a selection you are mid-way through - the tab and the period are the view
+   * itself and clear it outright below - so the only other way an id leaves
+   * `visible` is a refetch moving a synced posting to another tab. That row is
+   * gone from this list and has to leave the selection with it.
+   */
+  const visibleIds = useMemo(() => visible.map((row) => row.glPostingId), [visible])
+  useEffect(() => {
+    setItemIds(visibleIds)
+  }, [visibleIds, setItemIds])
+
+  /**
    * ⚠️ A selection that outlives the view it was made in would act on rows that
    * are no longer listed - the same guard the banking queue keeps, and for the
    * same reason. The last run's refusals go with it: they describe a view you
@@ -160,7 +210,7 @@ export function SyncQueuePanel({
    */
   // biome-ignore lint/correctness/useExhaustiveDependencies: the view is the trigger
   useEffect(() => {
-    setSelectedIds([])
+    exitSelection()
     setRefusals({})
   }, [tab, period])
 
@@ -196,7 +246,7 @@ export function SyncQueuePanel({
    */
   const syncExports = api.ledger.syncExports.useMutation({
     onSuccess: (result) => {
-      setSelectedIds([])
+      exitSelection()
       // ⚠️ `skipped` is on this list as well as `error`. An entry that is never
       // exported, or that has no destination, is not a failure - but pressing
       // Sync on it and watching nothing happen is worse than being told why.
@@ -221,12 +271,6 @@ export function SyncQueuePanel({
    */
   const syncOne = (glPostingId: string) => syncExports.mutate({ glPostingIds: [glPostingId] })
 
-  const toggle = (id: string) =>
-    setSelectedIds((current) =>
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
-    )
-
-  const selecting = selectedIds.length > 0
   const refusedCount = Object.keys(refusals).length
 
   if (error) {
@@ -238,8 +282,10 @@ export function SyncQueuePanel({
   }
 
   return (
-    <div className='flex flex-col'>
-      <ListToolbar sticky={false}>
+    <div ref={panelRef} className='flex flex-col' style={{ minHeight: panelHeight }}>
+      <ListToolbar>
+        {canSync && <SelectAllCheckbox listPadding={12} />}
+
         <ListToolbarGroup className='shrink-0'>
           <RadioTab
             value={tab}
@@ -324,7 +370,9 @@ export function SyncQueuePanel({
                   selectable={canSync}
                   selecting={selecting}
                   selected={selectedIds.includes(row.glPostingId)}
-                  onSelectChange={() => toggle(row.glPostingId)}
+                  onSelectChange={(_next, event) =>
+                    toggle(row.glPostingId, { shiftKey: event.shiftKey })
+                  }
                   selectLabel={`Select ${row.docNumber}`}
                   /* Period, then doc number, then type - three fixed columns, so
                      the eye reads straight down them the way the banking queue's
@@ -429,7 +477,7 @@ export function SyncQueuePanel({
 
       <ActionBar
         open={selecting}
-        onOpenChange={(open) => !open && setSelectedIds([])}
+        onOpenChange={(open) => !open && exitSelection()}
         duration={Number.POSITIVE_INFINITY}
         position='bottom-center'
         selectedCount={selectedIds.length}

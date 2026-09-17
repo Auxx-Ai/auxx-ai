@@ -1,4 +1,6 @@
 // apps/web/src/components/list-selection/index.ts
+
+export { SelectAllCheckbox } from './select-all-checkbox'
 export {
   ListSelectionProvider,
   type ListSelectionState,
