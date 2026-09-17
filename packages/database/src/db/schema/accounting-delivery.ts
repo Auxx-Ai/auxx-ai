@@ -157,9 +157,13 @@ export const AccountingDeliveryOperation = pgTable(
     operationKey: text().notNull(),
     objectType: text().notNull().$type<DeliveryObjectType>(),
     requestId: text().notNull(),
+    // `abandoned` is terminal for the SWEEP only: a data fault no retry can
+    // change. The manual retry door stays open on it.
     state: text()
       .notNull()
-      .$type<'pending' | 'prepared' | 'sending' | 'uncertain' | 'blocked' | 'succeeded'>(),
+      .$type<
+        'pending' | 'prepared' | 'sending' | 'uncertain' | 'blocked' | 'abandoned' | 'succeeded'
+      >(),
     payload: jsonb().$type<Record<string, unknown>>(),
     payloadHash: text(),
     mappingBasis: jsonb(),
@@ -183,7 +187,7 @@ export const AccountingDeliveryOperation = pgTable(
     }).onDelete('no action'),
     check(
       'AccountingDeliveryOperation_state_check',
-      sql`${t.state} IN ('pending','prepared','sending','uncertain','blocked','succeeded') AND ${t.objectType} IN ('journal','customer','invoice','payment','credit_memo') AND ${t.attempts} >= 0`
+      sql`${t.state} IN ('pending','prepared','sending','uncertain','blocked','abandoned','succeeded') AND ${t.objectType} IN ('journal','customer','invoice','payment','credit_memo') AND ${t.attempts} >= 0`
     ),
     check(
       'AccountingDeliveryOperation_payload_check',
