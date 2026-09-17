@@ -127,7 +127,8 @@ export function DialogNav({
         <DialogTitle className='sr-only'>{title}</DialogTitle>
         {description && <DialogDescription className='sr-only'>{description}</DialogDescription>}
       </div>
-      {actions && <div className='flex items-center'>{actions}</div>}
+      {/* mr-6 clears DialogContent's close button (size-7 at right-1). */}
+      {actions && <div className='mr-6 flex items-center'>{actions}</div>}
     </DialogHeader>
   )
 }

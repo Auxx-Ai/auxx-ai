@@ -29,8 +29,8 @@ export function financialSourceField(
     isSystem: true,
     systemSortOrder: 'a1',
     nullable: true,
-    showInPanel: kind !== 'json',
-    showInDialogs: true,
+    showInPanel: false,
+    showInDialogs: false,
     capabilities: {
       filterable: kind !== 'json',
       sortable: kind !== 'json',
