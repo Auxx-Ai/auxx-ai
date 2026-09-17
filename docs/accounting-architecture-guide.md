@@ -1,6 +1,11 @@
 # Accounting Architecture Guide
 
 **Last Updated:** 2026-09-16
+
+> **Target model (2026-09-17):** the mechanism below is what is in the code today.
+> [`plans/accounting/TARGET.md`](../plans/accounting/TARGET.md) is what it is being moved to;
+> sections it overturns carry a ⛔ callout. Do not build new work on a section marked ⛔.
+
 **Scope:** The general ledger and everything that writes to it — the posting pipeline, account
 roles, the accounting-effect acceptance boundary, the money model, source evidence, the
 accounting-provider seam in both directions, periods and the close, and the statements.
@@ -119,6 +124,10 @@ Five properties hold the whole thing up:
 | **Ledger mode** | auxx holds the primary GL; the provider is an exporter |
 | **Subledger mode** | The provider holds the primary GL; auxx keeps a full shadow ledger |
 
+> ⛔ **Target:** `Work`, `Basis`, `Effect`, `Delivery` and `Coverage` are removed as concepts —
+> the claim lives on `GlPosting` itself, delivery becomes one export-batch table, and `Coverage`
+> has no successor (`plans/accounting/TARGET.md` §1, §3).
+
 ---
 
 ## 3. The Ledger: Data Model
@@ -195,6 +204,9 @@ production readers wrote their own `select` before it existed; each now filters 
 only its own output shape, the same call `chart-accounts.ts` made for the read side of the chart.
 
 ### 3.4 The effect tables
+
+> ⛔ **Target:** `AccountingWork`, `AccountingWorkBasis` and `AccountingEffect` go away; the
+> frozen input lives in `GlPosting.basis`, as it already does (`plans/accounting/TARGET.md` §1).
 
 | Table | Holds |
 | --- | --- |
@@ -287,6 +299,11 @@ automatic runs.
 when nothing is posting; not the same path as a click.
 
 ### 4.6 Batch posting
+
+> ⛔ **Target:** no batch builders. Summary is a grouping of postings, never a kind of posting;
+> `build-fulfillment-batch-entry.ts` / `build-credit-memo-batch-entry.ts` and the
+> `fulfillment_batch` / `credit_memo_batch` source types go, and with them the compensating-entry
+> void (`plans/accounting/TARGET.md` §1, §9).
 
 `money/batch-posting/` is the shared frame; `money/fulfillment-posting/` and
 `money/credit-memo-posting/` are its two sources. Batching lives **in the ledger, not at the
@@ -414,6 +431,10 @@ The gap this leaves over bank-account **ids** (which the guard cannot see, since
 
 ## 6. The Effect Layer: Atomic Acceptance
 
+> ⛔ **Target:** the whole effect layer — `AccountingWork`, `AccountingWorkBasis`,
+> `AccountingEffect`, `acceptEntryInTx`, and corrections as a distinct verb — goes. Every builder
+> feeds one `postEntry`; undo is always reverse (`plans/accounting/TARGET.md` §1, §9).
+
 This is the newest and least obvious layer. It exists because "post the journal, then record that
 we posted it" has a crash window in the middle, and a ledger that loses that record either
 double-posts on retry or silently drops the event.
@@ -526,6 +547,9 @@ drained by a payout entry; a card on a terminal auxx does not know about produce
 
 ### 7.5 The legacy lane
 
+> ⛔ **Target:** deleted outright, not migrated — the Dispatch-era `money/payments/` lane goes in
+> the same PR as the effect layer, no dual-running, no shim (`plans/accounting/TARGET.md` §11).
+
 `PaymentTransaction` / `PaymentAllocation` and the hidden `payment` entity mirror are the
 Dispatch-era money model, still standing in `money/payments/`. They are being retired
 (`plans/accounting/tasks/54-one-money-model.md`). Do not build new work against them, and do not
@@ -626,6 +650,9 @@ meaningless.
 
 ### 9.2 Book connections
 
+> ⛔ **Target:** delivery intent and pinned-connection plumbing collapse into one export-batch
+> table serving both Transaction and Summary mode (`plans/accounting/TARGET.md` §3).
+
 `postings/book-connections.ts` resolves the **pinned** connection and the delivery intent for a
 posting. `ExternalAccountingBook` is unique on (org, provider, company); `ExternalBookConnection`
 allows one active connection per org.
@@ -638,6 +665,11 @@ The opening policy (`accountingOpeningPolicySchema`) is an explicit, immutable c
 a local period cutoff is **not** evidence of what the external books already contain.
 
 ### 9.3 `delivery.ts` — lease, freeze, prove
+
+> ⛔ **Target:** `AccountingDelivery`, `AccountingDeliveryCoverage`, `AccountingDeliveryOperation`
+> and `ExternalAccountingObject` go — coverage partitioning, attempt epochs and `requestId`
+> idempotence with them. Send becomes idempotent by readback against the mirror, not a lease
+> (`plans/accounting/TARGET.md` §2, §3, §9).
 
 The delivery path is off the request path on purpose: a delivery is three to five sequential
 round trips, and doing it inline held a 28-group run open for minutes.
@@ -679,6 +711,10 @@ current delivery implementation. `objectType` vocabulary is neutral (`journal`, 
 `invoice`, `payment`, `credit_memo`) and the adapter maps to the provider's own names.
 
 ### 9.6 Withdrawing a delivery
+
+> ⛔ **Target:** un-sync stops being a lane of its own. A late change into an already-sent period
+> is one explicit rollback per batch — delete the provider copy, rebuild from current detail,
+> resend — never automatic (`plans/accounting/TARGET.md` §3).
 
 `postings/unsync/` removes the provider's copy of an entry we already delivered and puts the row
 back to *Ready to sync*, so a corrected mapping can send it again.
@@ -749,6 +785,10 @@ already gone, because that is what makes the uncertain case resolvable by retryi
 ---
 
 ## 10. The Accounting-Provider Seam: Inbound
+
+> ⛔ **Target:** inbound reads a raw mirror of the provider's ledger, not the GeneralLedger report
+> straight into `GlPosting`; translated entries post as `provider_sync` from that mirror
+> (`plans/accounting/TARGET.md` §2, §9).
 
 `postings/provider-sync/` reads entries the accountant authored in the connected system and writes
 them as `provider_sync` postings. Three rules run the file (`provider-sync/sync.ts:1-27`):
@@ -998,6 +1038,10 @@ a checkbox showing the catalog default forever.
 
 8. **Do not add `kind` to the frozen order basis schema.** The union discriminates structurally
    and hundreds of rows re-parse it.
+
+   > ⛔ **Target:** items 7 and 8 go moot — `AccountingEffect` and its frozen `acceptedBasis` /
+   > `basisHash` are removed; the frozen input moves to `GlPosting.basis`
+   > (`plans/accounting/TARGET.md` §1).
 
 9. **Two copies of the posting-type vocabulary, never three.** `types.ts` (client-safe) and the
    `GlPostingType` pgEnum. The old registry enum was deleted; do not bring it back.

@@ -3,6 +3,11 @@
 # Inventory, Purchasing & Costing Architecture Guide
 
 **Last Updated:** 2026-08-28
+
+> **Target model (2026-09-17):** the mechanism below is what is in the code today.
+> [`plans/accounting/TARGET.md`](../plans/accounting/TARGET.md) is what it is being moved to;
+> sections it overturns carry a ⛔ callout. Do not build new work on a section marked ⛔.
+
 **Scope:** The money spine that points *inward and through* — buy, receive, bill, match, build,
 value, and post. `purchase_order` → `stock_movement` → `vendor_bill` → three-way match →
 `build` → `GlPosting`. What each entity owns, where a cost comes from and when it freezes,
@@ -686,6 +691,11 @@ build's movements from exploding their own BOM. Update the reasoning, not the co
 
 ## 9. The GL Seam — what exists, what is designed
 
+> ⛔ **Target:** `stock_movement` becomes the subledger and the GL posts one `inventory_movement`
+> entry per document (fulfillment, receipt, adjustment, build) at frozen cost, with member links
+> to the movements; month-end becomes a check under the perpetual regime, not a posting
+> (`plans/accounting/TARGET.md` §1, §5).
+
 ### 9.1 What is built
 
 - **`GlPosting` + `GlPostingLine` Drizzle TABLES** (migrations `0351`/`0352`), with a
@@ -800,6 +810,9 @@ unbuilt — see `plans/money/tasks/12-accounting-setup.md`.
 
 ### 9.3 L1 vs L3 — the load-bearing constraint
 
+> ⛔ **Target:** the L1/L3 either-or goes. Perpetual, per-document postings are the regime;
+> month-end is a roll-forward check, not a posting (`plans/accounting/TARGET.md` §1, §5).
+
 🛑 **A balance assertion and per-event postings cannot both drive `1310` / `1320` / `1330`.** The
 monthly assertion would silently reverse every perpetual posting and dump the residual into COGS,
 where it would look like consumption.
@@ -904,6 +917,9 @@ subsystem is `bigint` minor units for the same reason; the type is pinned by the
 in `packages/database/src/tests/gl-posting-schema.test.ts` so it cannot silently regress.
 
 ### 9.5 The L1 month-end inventory reader — `gatherMonthEndInventoryInputs`
+
+> ⛔ **Target:** the monthly assertion with COGS as the plug goes. COGS posts per document, from
+> the `sale` movement, in its own `inventory_movement` entry (`plans/accounting/TARGET.md` §5).
 
 `postings/gather-month-end-inventory.ts` is the read half of the one entry that turns the
 subledger into the general ledger. `build-month-end-inventory.ts` is the pure arithmetic beside
@@ -1318,6 +1334,10 @@ because `packages/database` has no `typecheck` script and its suite is not
 reached by a `packages/lib` run.
 
 ### 9.13 Bulk fulfillment posting (2026-09-09, plans/money/tasks/49)
+
+> ⛔ **Target:** the `fulfillment_batch` summary and its stamp field go — the parent link table
+> covers the record's ledger card. A fulfillment posts revenue only, no COGS; COGS moves to the
+> `inventory_movement` entry per document (`plans/accounting/TARGET.md` §1, §5).
 
 Revenue on connector orders is posted **one `fulfillment` entry per ship day**, never per
 order, from `money/fulfillment-posting/` (`reads.ts` is one SQL over the `order_fulfillments`
