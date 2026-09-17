@@ -18,7 +18,6 @@ import {
   findInventoryWriterConflicts,
   findWriterConflicts,
   INVENTORY_ROLES,
-  INVENTORY_ROLES_BY_POSTING_TYPE,
   SINGLE_WRITER_ROLES,
   SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
 } from '../regime'
@@ -78,7 +77,9 @@ describe('the declaration cannot drift from the vocabulary', () => {
   it('declares an entry for every posting type', () => {
     // A type with no entry would read as "drives nothing" and be invisible to
     // the assertion - the failure mode is silence, so pin the key set.
-    expect(Object.keys(INVENTORY_ROLES_BY_POSTING_TYPE).sort()).toEqual([...POSTING_TYPES].sort())
+    expect(Object.keys(SINGLE_WRITER_ROLES_BY_POSTING_TYPE).sort()).toEqual(
+      [...POSTING_TYPES].sort()
+    )
   })
 
   it('every enabled type is a real posting type', () => {
@@ -97,7 +98,7 @@ describe('the declaration cannot drift from the vocabulary', () => {
 
   it('only ever declares real account roles', () => {
     const valid = new Set<string>(Object.values(ACCOUNT_ROLES))
-    for (const roles of Object.values(INVENTORY_ROLES_BY_POSTING_TYPE)) {
+    for (const roles of Object.values(SINGLE_WRITER_ROLES_BY_POSTING_TYPE)) {
       for (const role of roles) expect(valid.has(role)).toBe(true)
     }
   })

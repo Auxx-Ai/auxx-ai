@@ -15,10 +15,18 @@ const route = {
 
 const manualRoute = {
   kind: 'manual' as const,
-  paymentRouteId: 'route-1',
-  method: 'cash',
-  settlementCurrency: 'USD',
-  endpointGlAccountId: 'gl-clearing',
+  method: 'bank' as const,
+  debitSelectedBy: 'bank_account' as const,
+  bankAccountInstanceId: 'bank-1',
+  endpointGlAccountId: 'gl-cash',
+}
+
+const undepositedRoute = {
+  kind: 'manual' as const,
+  method: 'cash' as const,
+  debitSelectedBy: 'undeposited_funds' as const,
+  bankAccountInstanceId: null,
+  endpointGlAccountId: 'gl-undeposited',
 }
 
 function calculation(overrides: Record<string, unknown> = {}) {
@@ -66,10 +74,24 @@ describe('customer refund accounting basis', () => {
     ).toBe(true)
   })
 
-  it('accepts an explicit manual cash route', () => {
+  it('accepts both halves of the two-way manual endpoint', () => {
     expect(
       customerRefundAccountingBasisSchema.safeParse(calculation({ route: manualRoute })).success
     ).toBe(true)
+    expect(
+      customerRefundAccountingBasisSchema.safeParse(calculation({ route: undepositedRoute }))
+        .success
+    ).toBe(true)
+  })
+
+  // Both mismatches balance, so only the schema can catch them.
+  it.each([
+    { ...manualRoute, bankAccountInstanceId: null },
+    { ...undepositedRoute, bankAccountInstanceId: 'bank-1' },
+  ])('rejects a manual endpoint whose bank account and selection disagree', (route) => {
+    expect(customerRefundAccountingBasisSchema.safeParse(calculation({ route })).success).toBe(
+      false
+    )
   })
 
   it.each([

@@ -98,14 +98,13 @@ export const fulfillmentAccountingBasisSchema = z
         withholdingEvidenceId: id.nullable(),
       })
     ),
-    debitRoute: z.discriminatedUnion('kind', [
-      z.strictObject({
-        kind: z.literal('role'),
-        role: z.enum(['clearing', 'accounts_receivable', 'undeposited_funds']),
-        reason: id,
-      }),
-      z.strictObject({ kind: z.literal('account'), glAccountId: id, reason: id }),
-    ]),
+    // 🛑 A ROLE, never an account id: since 58 U3 the rail's clearing account is
+    // named by a `GlRoleAssignment` row, so there is nothing left to pin by id.
+    debitRoute: z.strictObject({
+      kind: z.literal('role'),
+      role: z.enum(['clearing', 'accounts_receivable', 'undeposited_funds']),
+      reason: id,
+    }),
   })
   .superRefine((value, ctx) => {
     for (const field of ['fulfillmentLineId', 'orderLineId'] as const) {

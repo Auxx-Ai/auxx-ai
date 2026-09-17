@@ -303,9 +303,8 @@ async function readFulfillmentAccountingSourceUncachedInTx(
     channel: shipment.channel,
     sourceStoreId: shipment.sourceStoreId ?? null,
     // The rail this shipment's card half settles through (58 §5.2), and only
-    // when this fork chose clearing. 🛑 Not `shipment.processorRouteId`: that
-    // is a `PaymentRoute` id, not a `payment_gateway` one, and a recognition
-    // or native shipment debits deposits or receivables and names no rail (D11).
+    // when this fork chose clearing: a recognition or native shipment debits
+    // deposits or receivables and names no rail (D11).
     paymentGatewayId: route.role === 'clearing' ? route.rail : null,
     shippingRegion: null,
     dimensions: {},
@@ -425,7 +424,6 @@ async function readFulfillmentAccountingSourceUncachedInTx(
         taxLines: shipment.taxLines,
         recognitionAllocation: shipment.recognitionAllocation,
         recognitionTaxComponents: shipment.recognitionTaxComponents,
-        includeCogs: false,
       }).entry
     : buildFulfillmentBatchEntry({
         group: singleShipmentGroup(planned),

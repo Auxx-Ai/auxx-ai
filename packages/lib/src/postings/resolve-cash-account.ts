@@ -10,12 +10,11 @@ import { UnprocessableEntityError } from '../errors'
  * The GL account a `bank_account` record points at, or a refusal naming which
  * link is missing.
  *
- * 🔑 **Why this is a pointer lookup and not an account role.** `CASH` was
- * deliberately removed from `ACCOUNT_ROLES` — *"a bank account is not a role"*
- * (`build-payout-entry.ts:41`). An org has one `accounts_receivable` but many
- * bank accounts, so the account to debit is a property of the record the money
- * landed in, read through `bank_account_gl_account`
- * (`gl-account-pointers.ts:62`).
+ * 🔑 **Why this is a pointer lookup and not a role.** `bank` IS a role, but a
+ * rail-scoped one (58 §5.1): it answers "which bank does THIS rail settle to".
+ * A hand-recorded payment has no rail and names its bank account directly, so
+ * the account to debit is a property of the record the money landed in, read
+ * through `bank_account_gl_account`.
  *
  * ⚠️ The definition id is checked, not just the instance id. A
  * `cashAccountInstanceId` FK guarantees an `EntityInstance` in this

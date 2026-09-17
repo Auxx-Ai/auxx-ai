@@ -25,11 +25,19 @@ function registryPointerAttributes(): string[] {
       const attribute = field?.systemAttribute
       if (!attribute) continue
       if (field.fieldType !== 'TEXT') continue
+      if (NOT_A_POINTER.has(attribute)) continue
       if (attribute.endsWith('_gl_account')) found.add(attribute)
     }
   }
   return [...found].sort()
 }
+
+/**
+ * The one `_gl_account` attribute that does not hold an account id: a stock
+ * movement freezes a posting ROLE there, so a pointer sweep can never match it
+ * and a row in the registry would enforce the falsehood (64 A5).
+ */
+const NOT_A_POINTER = new Set(['stock_movement_gl_account'])
 
 describe('GL_ACCOUNT_POINTER_ATTRIBUTES', () => {
   // 🛑 THE point of this file. A pointer added to the registry and forgotten
@@ -58,6 +66,11 @@ describe('GL_ACCOUNT_POINTER_ATTRIBUTES', () => {
     expect(keys).not.toContain('gl_account_type')
     expect(keys).not.toContain('bank_deposit_bank_account')
     expect(keys).not.toContain('bank_transaction_bank_account')
+  })
+
+  it('excludes stock_movement_gl_account, which holds a role and not an id', () => {
+    expect(Object.keys(GL_ACCOUNT_POINTER_ATTRIBUTES)).not.toContain('stock_movement_gl_account')
+    expect([...NOT_A_POINTER]).toEqual(['stock_movement_gl_account'])
   })
 
   // Task 58 moved a rail's clearing and fee accounts onto `GlRoleAssignment`,
@@ -179,8 +192,8 @@ describe('describeGlAccountPointers', () => {
       describeGlAccountPointers([
         pointer('a bank account'),
         pointer('a bank rule'),
-        pointer('a stock movement'),
+        pointer('a vendor bill line'),
       ])
-    ).toBe('a bank account, a bank rule and a stock movement')
+    ).toBe('a bank account, a bank rule and a vendor bill line')
   })
 })

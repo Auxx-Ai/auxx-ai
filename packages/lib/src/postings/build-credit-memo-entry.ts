@@ -77,18 +77,16 @@ export const CREDIT_MEMO_POSTING_TYPE = 'credit_memo' as const
 /**
  * The money leg of a channel memo: WHERE the refund comes back out of.
  *
- * 🛑 **It has to be the account the SALE debited, whatever that was.** A
- * `payment_gateway` record routes a non-card rail to its own clearing account
- * by id (brief 13 §5.3), so an Affirm sale debits `1210` while `clearing`
- * is `1200`. A refund hardcoded to the role would credit `1200` for money that
- * never entered it and leave `1210` overstated forever - and since the entry
- * balances either way, nothing downstream could detect it. This was the shape
- * until 2026-09-11; the two members exist so a refund can mirror its sale.
+ * 🛑 **It has to be the account the SALE debited, whatever that was.** The sale
+ * debited `clearing` scoped to its rail, so a memo copies the FROZEN account
+ * rather than re-resolving the role (64 A4): re-resolving after the rail was
+ * repointed would credit an account the money never entered and leave the other
+ * overstated forever, and the entry balances either way.
  *
  * | Member | When |
  * | --- | --- |
- * | `{ role: 'clearing' }` | no `payment_gateway` record names the order's gateway - the same default the fulfillment debit fork takes |
- * | `{ glAccountId }` | exactly one record claims it, and the sale debited that account |
+ * | `{ role: 'clearing' }` | the order names no rail - the same default the fulfillment debit fork takes |
+ * | `{ glAccountId }` | the sale debited that account |
  *
  * `amount` is integer minor units, > 0 and at most `total` - what the channel
  * actually paid back.

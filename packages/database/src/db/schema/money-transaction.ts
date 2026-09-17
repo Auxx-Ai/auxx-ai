@@ -16,7 +16,6 @@ import {
 import { EntityInstance } from './entity-instance'
 import { MoneyCommand } from './money-command'
 import { Organization } from './organization'
-import { PaymentRoute } from './payment-route'
 
 /** Durable MoneyTransaction owner; organization deletion cascades, scoped financial references preserve history. */
 export const MoneyTransaction = pgTable(
@@ -39,7 +38,6 @@ export const MoneyTransaction = pgTable(
     occurredAt: timestamp({ withTimezone: true }),
     occurredOn: date(),
     partyInstanceId: text(),
-    paymentRouteId: text(),
     cashAccountInstanceId: text(),
     /**
      * How the money moved — `cash` | `check` | `card` | `bank` | `other`.
@@ -60,11 +58,6 @@ export const MoneyTransaction = pgTable(
       name: 'MoneyTransaction_partyInstanceId_fk',
       columns: [t.organizationId, t.partyInstanceId],
       foreignColumns: [EntityInstance.organizationId, EntityInstance.id],
-    }).onDelete('no action'),
-    foreignKey({
-      name: 'MoneyTransaction_paymentRouteId_fk',
-      columns: [t.organizationId, t.paymentRouteId],
-      foreignColumns: [PaymentRoute.organizationId, PaymentRoute.id],
     }).onDelete('no action'),
     foreignKey({
       name: 'MoneyTransaction_cashAccountInstanceId_fk',

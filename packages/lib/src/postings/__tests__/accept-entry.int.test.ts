@@ -50,6 +50,8 @@ let userId: string
 let definitionId: string
 let clearingId: string
 let revenueId: string
+let accountDefinitionId: string
+let accountFieldIds: { code: string; type: string }
 
 beforeEach(async () => {
   organizationId = (await createTestOrganization()).id
@@ -74,7 +76,7 @@ beforeEach(async () => {
     ])
     .returning()
   definitionId = definitions[0]!.id
-  const accountDefinitionId = definitions[1]!.id
+  accountDefinitionId = definitions[1]!.id
   const fields = await db()
     .insert(schema.CustomField)
     .values([
@@ -105,6 +107,7 @@ beforeEach(async () => {
     .returning()
   clearingId = accounts[0]!.id
   revenueId = accounts[1]!.id
+  accountFieldIds = { code: fields[0]!.id, type: fields[1]!.id }
   await db()
     .insert(schema.FieldValue)
     .values(
@@ -130,7 +133,10 @@ beforeEach(async () => {
   vi.mocked(resolveAccountingProvider).mockClear()
 })
 
-async function member(effectiveDate = '2026-09-14'): Promise<PreparedEffectMember> {
+async function member(
+  effectiveDate = '2026-09-14',
+  paymentGatewayId: string | null = null
+): Promise<PreparedEffectMember> {
   const [source] = await db()
     .insert(schema.EntityInstance)
     .values({
@@ -143,6 +149,7 @@ async function member(effectiveDate = '2026-09-14'): Promise<PreparedEffectMembe
   const sourceBasis = readyBasis(id)
   sourceBasis.effectiveDate = effectiveDate
   sourceBasis.calculation.shippedOn = effectiveDate
+  sourceBasis.calculation.paymentGatewayId = paymentGatewayId
   const { work } = await db().transaction((tx) =>
     captureFulfillmentWorkInTx(tx, {
       organizationId,
@@ -1469,6 +1476,121 @@ describe('atomic accounting acceptance against PostgreSQL', () => {
     }
     await closer
     await refusal
+    await assertNoAcceptance()
+  })
+})
+
+// 64 §1: acceptance re-resolves every `org_role` line through the scope its
+// preparation used. Before the fix it read `calculation.processorAccountId` — a
+// member nothing ever wrote — so the rail was dropped, `clearing` fell back to
+// the org default and every rail-matched shipment was refused with "an account
+// role changed after preparation".
+describe('a rail-scoped role survives acceptance', () => {
+  async function glAccount(code: string, type: string): Promise<string> {
+    const [account] = await db()
+      .insert(schema.EntityInstance)
+      .values({ organizationId, entityDefinitionId: accountDefinitionId, updatedAt: new Date() })
+      .returning()
+    await db()
+      .insert(schema.FieldValue)
+      .values([
+        {
+          organizationId,
+          entityId: account!.id,
+          entityDefinitionId: accountDefinitionId,
+          fieldId: accountFieldIds.code,
+          valueText: code,
+          sortKey: 'a0',
+        },
+        {
+          organizationId,
+          entityId: account!.id,
+          entityDefinitionId: accountDefinitionId,
+          fieldId: accountFieldIds.type,
+          optionId: type,
+          sortKey: 'a0',
+        },
+      ])
+    return account!.id
+  }
+
+  /** A live `payment_gateway` `EntityInstance` — the only rail id `resolveRoles` honours. */
+  async function gateway(): Promise<string> {
+    const [definition] = await db()
+      .insert(schema.EntityDefinition)
+      .values({
+        organizationId,
+        apiSlug: 'payment_gateways',
+        singular: 'Payment gateway',
+        plural: 'Payment gateways',
+        entityType: 'payment_gateway',
+      })
+      .returning()
+    const [instance] = await db()
+      .insert(schema.EntityInstance)
+      .values({ organizationId, entityDefinitionId: definition!.id, updatedAt: new Date() })
+      .returning()
+    return instance!.id
+  }
+
+  function assignment(role: string, glAccountId: string, paymentGatewayId: string | null) {
+    return db()
+      .insert(schema.GlRoleAssignment)
+      .values({ organizationId, role, glAccountId, paymentGatewayId, source: 'human' })
+  }
+
+  /** The fulfillment member of a shipment matched to `paymentGatewayId`, frozen onto `clearingAccountId`. */
+  async function railMember(paymentGatewayId: string, clearingAccountId: string): Promise<Member> {
+    const prepared = await member('2026-09-14', paymentGatewayId)
+    for (const line of prepared.acceptedBasis.accountResolution) {
+      if (line.lineKey !== 'clearing') continue
+      line.glAccountId = clearingAccountId
+      line.accountRole = 'clearing'
+      line.selectedBy = 'org_role'
+    }
+    for (const line of prepared.acceptedBasis.contribution)
+      if (line.lineKey === 'clearing') line.glAccountId = clearingAccountId
+    return prepared
+  }
+
+  it('debits the rail account when a rail row exists, and the org default when it does not', async () => {
+    const railId = await gateway()
+    const railClearingId = await glAccount('1210', 'asset')
+    await assignment('clearing', clearingId, null)
+    await assignment('clearing', railClearingId, railId)
+
+    const scoped = await railMember(railId, railClearingId)
+    await accept([scoped])
+    const debits = await db()
+      .select({ glAccountId: schema.GlPostingLine.glAccountId })
+      .from(schema.GlPostingLine)
+      .where(eq(schema.GlPostingLine.direction, 'debit'))
+    expect(debits.map((line) => line.glAccountId)).toEqual([railClearingId])
+
+    await db()
+      .delete(schema.GlRoleAssignment)
+      .where(eq(schema.GlRoleAssignment.paymentGatewayId, railId))
+    const unscoped = await railMember(railId, clearingId)
+    await accept([unscoped])
+    const all = await db()
+      .select({ glAccountId: schema.GlPostingLine.glAccountId })
+      .from(schema.GlPostingLine)
+      .where(eq(schema.GlPostingLine.direction, 'debit'))
+    expect(all.map((line) => line.glAccountId).sort()).toEqual([railClearingId, clearingId].sort())
+  })
+
+  it('refuses when the rail row moved after preparation', async () => {
+    const railId = await gateway()
+    const railClearingId = await glAccount('1210', 'asset')
+    const movedId = await glAccount('1211', 'asset')
+    await assignment('clearing', clearingId, null)
+    await assignment('clearing', railClearingId, railId)
+    const prepared = await railMember(railId, railClearingId)
+    await db()
+      .update(schema.GlRoleAssignment)
+      .set({ glAccountId: movedId })
+      .where(eq(schema.GlRoleAssignment.paymentGatewayId, railId))
+    await expect(accept([prepared])).rejects.toThrow('An account role changed after preparation')
     await assertNoAcceptance()
   })
 })

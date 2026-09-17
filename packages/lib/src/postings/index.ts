@@ -591,7 +591,6 @@ export {
   findInventoryWriterConflicts,
   findWriterConflicts,
   INVENTORY_ROLES,
-  INVENTORY_ROLES_BY_POSTING_TYPE,
   type InventoryWriterConflict,
   SINGLE_WRITER_ROLES,
   SINGLE_WRITER_ROLES_BY_POSTING_TYPE,

@@ -2752,6 +2752,13 @@
       "when": 1789627011088,
       "tag": "0392_accounting_delivery_unsync",
       "breakpoints": true
+    },
+    {
+      "idx": 393,
+      "version": "7",
+      "when": 1789675156997,
+      "tag": "0393_retire_payment_route",
+      "breakpoints": true
     }
   ]
 }

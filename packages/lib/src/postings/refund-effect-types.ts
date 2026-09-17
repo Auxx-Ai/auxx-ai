@@ -27,15 +27,17 @@ const settlementSchema = z.strictObject({
   creditControlAccountId: id,
 })
 
-// 58 D5: the processor kind of `PaymentRoute` is retired. A refund routes
-// through either a manual `PaymentRoute` (cash/bank) or, when it corrects an
-// original receipt, that receipt's frozen rail (§5.6) - never both.
+// 64 A1: `PaymentRoute` is retired entirely. A refund credits either the
+// two-way manual endpoint - the invoice receipt's choice with the sign flipped
+// (`effect-types.ts` `invoice_receipt_v1`) - or, when it corrects an original
+// receipt, that receipt's frozen rail (58 §5.6). Never both.
 const routeSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('manual'),
-    paymentRouteId: id,
-    method: id,
-    settlementCurrency: z.string().regex(/^[A-Z]{3}$/),
+    method: z.enum(['cash', 'check', 'card', 'bank', 'other']),
+    debitSelectedBy: z.enum(['bank_account', 'undeposited_funds']),
+    /** The `bank_account` record, when one was named. Null for undeposited funds. */
+    bankAccountInstanceId: id.nullable(),
     endpointGlAccountId: id,
   }),
   z.strictObject({
@@ -74,6 +76,15 @@ export const customerRefundAccountingBasisSchema = z
         code: 'custom',
         message: 'Refund occurrence precision does not match its date fields',
       })
+    if (
+      value.route.kind === 'manual' &&
+      (value.route.debitSelectedBy === 'bank_account') !==
+        (value.route.bankAccountInstanceId !== null)
+    )
+      ctx.addIssue({
+        code: 'custom',
+        message: 'A bank-account refund names its bank account; an undeposited one names none',
+      })
     if (value.datePrecision === 'date' && value.effectiveDate !== value.occurredOn)
       ctx.addIssue({
         code: 'custom',
@@ -102,7 +113,9 @@ export const customerRefundAccountingBasisSchema = z
       )
     )
       ctx.addIssue({ code: 'custom', message: 'Refund credit memo partition is inconsistent' })
-    if (value.route.settlementCurrency !== value.currency)
+    // Only a rail carries its own settlement currency; the manual endpoint is
+    // an account in this org's own book, which the basis already pins to USD.
+    if (value.route.kind === 'rail' && value.route.settlementCurrency !== value.currency)
       ctx.addIssue({ code: 'custom', message: 'Refund route currency differs from the movement' })
   })
 

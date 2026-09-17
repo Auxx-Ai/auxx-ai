@@ -121,13 +121,12 @@ describe('the roles that may be scoped to a source', () => {
     expect(SCOPABLE_ROLES.bank).toBe('rail')
   })
 
-  // 🛑 `cogs_product_cost` is WANTED and BLOCKED (47 §4.2), not merely
-  // absent. Both `buildFulfillmentEntry` call sites pass `includeCogs: false`,
-  // so COGS is emitted only by the org-wide month-end plug, which has no
+  // 🛑 `cogs_product_cost` is WANTED and BLOCKED (47 §4.2), not merely absent.
+  // COGS is emitted only by the org-wide month-end plug, which has no
   // `sourceStoreId` and cannot have one. Scoped today, every COGS line would
   // resolve through the manual bucket while the per-store accounts sat at zero.
-  // This assertion is the tripwire on the pass that flips `includeCogs` true.
-  it('leaves COGS pooled until L3 puts it on the fulfillment effect', () => {
+  // This assertion is the tripwire on 61 I2.
+  it('leaves COGS pooled until the inventory entry carries it', () => {
     expect(SCOPABLE_ROLES.cogs_product_cost).toBeUndefined()
   })
 

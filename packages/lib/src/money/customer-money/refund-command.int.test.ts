@@ -39,6 +39,7 @@ type Fixture = {
   memoDefinitionId: string
   lineDefinitionId: string
   paymentGatewayDefinitionId: string
+  bankAccountDefinitionId: string
   fields: Map<string, typeof schema.CustomField.$inferSelect>
   accounts: Map<string, string>
 }
@@ -84,6 +85,8 @@ async function seedChart() {
     accounts_receivable: 'asset',
     revenue_returns_allowances: 'revenue',
     sales_tax_payable: 'liability',
+    undeposited_funds: 'asset',
+    // Named by a `bank_account` record's pointer, never by a role (64 A1).
     cash: 'asset',
   } as const
   const accounts = new Map<string, string>()
@@ -102,6 +105,15 @@ async function seedChart() {
       })
   }
   fixture.accounts = accounts
+}
+
+/** A `bank_account` record pointing at the chart's cash account. */
+async function createBankAccount() {
+  const bankId = await instance(fixture.bankAccountDefinitionId)
+  await fieldValue(bankId, 'bank_account_gl_account', {
+    valueText: fixture.accounts.get('cash')!,
+  })
+  return bankId
 }
 
 async function seedMemo() {
@@ -149,24 +161,18 @@ async function createCommand(commandKey: string) {
   return command!.id
 }
 
-async function createManualRoute() {
-  const [route] = await db()
-    .insert(schema.PaymentRoute)
-    .values({
-      organizationId: fixture.organizationId,
-      kind: 'manual',
-      method: 'cash',
-      settlementCurrency: 'USD',
-      cashGlAccountInstanceId: fixture.accounts.get('cash')!,
-    })
-    .returning()
-  return route!.id
-}
-
+/**
+ * A confirmed refund movement. `method` plus `cashAccountInstanceId` ARE the
+ * two-way endpoint (64 A1) - a named bank account resolves through its pointer,
+ * none takes the `undeposited_funds` role.
+ */
 async function createRefund(
   amountMinor: bigint,
   commandKey: string,
-  paymentRouteId: string | null
+  endpoint: {
+    method?: 'cash' | 'check' | 'card' | 'bank' | 'other' | null
+    bankAccountInstanceId?: string | null
+  } = {}
 ) {
   const commandId = await createCommand(commandKey)
   const [refund] = await db()
@@ -180,7 +186,8 @@ async function createRefund(
       datePrecision: 'date',
       occurredOn: '2026-09-15',
       partyInstanceId: fixture.contactId,
-      paymentRouteId,
+      method: endpoint.method === undefined ? 'check' : endpoint.method,
+      cashAccountInstanceId: endpoint.bankAccountInstanceId ?? null,
       recordedByCommandId: commandId,
     })
     .returning()
@@ -212,6 +219,7 @@ beforeEach(async () => {
     'credit_memo_application',
     'gl_account',
     'payment_gateway',
+    'bank_account',
   ]
   const defs: EntityDefMap = new Map([...all].filter(([kind]) => kinds.includes(kind)))
   const seededFields = await createAllFields(db(), organization.id, defs)
@@ -236,6 +244,7 @@ beforeEach(async () => {
     memoDefinitionId: defs.get('credit_memo')!.id,
     lineDefinitionId: defs.get('credit_memo_line')!.id,
     paymentGatewayDefinitionId: defs.get('payment_gateway')!.id,
+    bankAccountDefinitionId: defs.get('bank_account')!.id,
     fields,
     accounts: new Map([['__definition__', defs.get('gl_account')!.id]]),
   }
@@ -274,17 +283,15 @@ beforeEach(async () => {
 })
 
 describe('postCustomerRefundAccounting against PostgreSQL', () => {
-  // 58 D5: `PaymentRoute`'s processor kind is retired - a card refund resolves
-  // through its original receipt's frozen rail (`readFrozenReceiptRoute` in
-  // `refund-accounting.ts`), not through a route of its own. The manual
-  // (cash/bank) route below is what a refund with no original receipt still
-  // uses.
-  // TODO(58 U9): cover the `ConflictError` that guard throws when a
-  // receipt-backed refund also names its own payment route - the two tests
-  // deleted here covered the retired processor kind, not that rule.
-  it('posts a balanced debit to frozen credit control and credit to manual cash', async () => {
-    const routeId = await createManualRoute()
-    const refundId = await createRefund(1100n, 'refund-success', routeId)
+  // 64 A1: `PaymentRoute` is retired. A card refund resolves through its
+  // original receipt's frozen rail (`readFrozenReceiptRoute`); a refund with no
+  // original receipt takes the two-way manual endpoint tested below.
+  it('credits the named bank accounts GL account and debits frozen credit control', async () => {
+    const bankId = await createBankAccount()
+    const refundId = await createRefund(1100n, 'refund-success', {
+      method: 'bank',
+      bankAccountInstanceId: bankId,
+    })
     const result = await postCustomerRefundAccounting(db(), {
       organizationId: fixture.organizationId,
       moneyTransactionId: refundId,
@@ -307,8 +314,11 @@ describe('postCustomerRefundAccounting against PostgreSQL', () => {
   })
 
   it('replays the refund without creating another effect or journal', async () => {
-    const routeId = await createManualRoute()
-    const refundId = await createRefund(1100n, 'refund-replay', routeId)
+    const bankId = await createBankAccount()
+    const refundId = await createRefund(1100n, 'refund-replay', {
+      method: 'bank',
+      bankAccountInstanceId: bankId,
+    })
     const input = {
       organizationId: fixture.organizationId,
       moneyTransactionId: refundId,
@@ -328,8 +338,27 @@ describe('postCustomerRefundAccounting against PostgreSQL', () => {
     ).toHaveLength(1)
   })
 
-  it('stores blocked work for a missing route and accepts after the route is repaired', async () => {
-    const refundId = await createRefund(1100n, 'refund-repair', null)
+  // The shipped route for `check` is undeposited funds, so naming no bank
+  // account is the complete answer rather than a missing one.
+  it('credits undeposited funds when the method routes there and no bank is named', async () => {
+    const refundId = await createRefund(1100n, 'refund-undeposited')
+    const result = await postCustomerRefundAccounting(db(), {
+      organizationId: fixture.organizationId,
+      moneyTransactionId: refundId,
+      actorUserId: fixture.userId,
+    })
+
+    expect(result.status).toBe('accepted')
+    if (result.status !== 'accepted') return
+    const lines = await db().query.GlPostingLine.findMany({
+      where: eq(schema.GlPostingLine.glPostingId, result.glPostingId),
+      orderBy: asc(schema.GlPostingLine.lineNumber),
+    })
+    expect(lines[1]!.glAccountId).toBe(fixture.accounts.get('undeposited_funds'))
+  })
+
+  it('stores blocked work for an unrouteable refund and accepts once the method is set', async () => {
+    const refundId = await createRefund(1100n, 'refund-repair', { method: null })
     const input = {
       organizationId: fixture.organizationId,
       moneyTransactionId: refundId,
@@ -337,10 +366,9 @@ describe('postCustomerRefundAccounting against PostgreSQL', () => {
     }
     const blocked = await postCustomerRefundAccounting(db(), input)
     expect(blocked.status).toBe('blocked')
-    const routeId = await createManualRoute()
     await db()
       .update(schema.MoneyTransaction)
-      .set({ paymentRouteId: routeId })
+      .set({ method: 'check' })
       .where(
         and(
           eq(schema.MoneyTransaction.organizationId, fixture.organizationId),
@@ -353,9 +381,24 @@ describe('postCustomerRefundAccounting against PostgreSQL', () => {
     expect(await db().query.AccountingEffect.findMany()).toHaveLength(2)
   })
 
+  // A `bank` refund routes to `cash`, and a cash route with no bank account is
+  // an incomplete record rather than an undeposited one.
+  it('blocks a cash-routed refund that names no bank account', async () => {
+    const refundId = await createRefund(1100n, 'refund-no-bank', { method: 'bank' })
+    const blocked = await postCustomerRefundAccounting(db(), {
+      organizationId: fixture.organizationId,
+      moneyTransactionId: refundId,
+      actorUserId: fixture.userId,
+    })
+
+    expect(blocked.status).toBe('blocked')
+    expect(blocked.status === 'blocked' ? blocked.reason : '').toMatch(/bank account/)
+  })
+
   it('blocks a refund that exceeds the remaining credit entitlement', async () => {
-    const routeId = await createManualRoute()
-    const firstId = await createRefund(1100n, 'refund-capacity-first', routeId)
+    const bankId = await createBankAccount()
+    const endpoint = { method: 'bank' as const, bankAccountInstanceId: bankId }
+    const firstId = await createRefund(1100n, 'refund-capacity-first', endpoint)
     expect(
       (
         await postCustomerRefundAccounting(db(), {
@@ -365,7 +408,7 @@ describe('postCustomerRefundAccounting against PostgreSQL', () => {
         })
       ).status
     ).toBe('accepted')
-    const secondId = await createRefund(1n, 'refund-capacity-second', routeId)
+    const secondId = await createRefund(1n, 'refund-capacity-second', endpoint)
     const blocked = await postCustomerRefundAccounting(db(), {
       organizationId: fixture.organizationId,
       moneyTransactionId: secondId,

@@ -509,34 +509,13 @@ describe('the period key', () => {
   })
 })
 
-describe('the dark COGS leg', () => {
-  it('is absent by default', () => {
+// 61 I2 moves COGS onto the inventory entry; a fulfillment never relieves
+// inventory, so neither role may appear on this entry at all.
+describe('no COGS leg', () => {
+  it('emits neither cogs_product_cost nor inventory_finished_goods', () => {
     const built = buildFulfillmentEntry({ ...BASE, shippedLines: WHOLE_ORDER })
     expect(amountFor(built.entry, ACCOUNT_ROLES.COGS_PRODUCT_COST)).toBeUndefined()
     expect(amountFor(built.entry, ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS)).toBeUndefined()
-  })
-
-  it('adds Dr cogs_product_cost / Cr inventory_finished_goods when switched on', () => {
-    const built = buildFulfillmentEntry({
-      ...BASE,
-      shippedLines: WHOLE_ORDER,
-      includeCogs: true,
-      cogsMinor: 62_000,
-    })
-    expect(amountFor(built.entry, ACCOUNT_ROLES.COGS_PRODUCT_COST)).toBe(62_000)
-    expect(amountFor(built.entry, ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS)).toBe(62_000)
-    expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
-  })
-
-  it('refuses a zero cost rather than shipping goods for free', () => {
-    expect(() =>
-      buildFulfillmentEntry({
-        ...BASE,
-        shippedLines: WHOLE_ORDER,
-        includeCogs: true,
-        cogsMinor: 0,
-      })
-    ).toThrowError(/nobody priced/)
   })
 })
 

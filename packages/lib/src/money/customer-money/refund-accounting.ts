@@ -10,7 +10,7 @@ import { acceptEntryInTx } from '../../postings/accept-entry'
 import { withAccountingCommitLock } from '../../postings/accounting-commit-lock'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { resolveFulfillmentDeliveryIntentInTx } from '../../postings/book-connections'
-import { buildEntry } from '../../postings/build-entry'
+import { ACCOUNT_ROLES, buildEntry } from '../../postings/build-entry'
 import { acceptedCustomerCreditEffectBasisSchema } from '../../postings/credit-effect-types'
 import { deliverAccountingPosting, planAccountingDeliveryInTx } from '../../postings/delivery'
 import {
@@ -27,10 +27,12 @@ import {
   type CustomerRefundWorkBasisInput,
   customerRefundWorkBasisSchema,
 } from '../../postings/refund-effect-types'
-import { resolveAccountLines } from '../../postings/resolve-roles'
+import { resolveBankAccountGlAccountInTx } from '../../postings/resolve-cash-account'
+import { resolveAccountLines, resolveRoles } from '../../postings/resolve-roles'
 import { FINALIZED_SETUP_STATE } from '../../postings/setup-readiness'
 import type { GlPostingLineInput } from '../../postings/types'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { resolvePaymentRoute } from '../bank-deposits/route'
 import {
   loadCreditMemo,
   sumCreditMemoApplications,
@@ -58,15 +60,16 @@ type Settlement = {
   originalTransactionId: string | null
 }
 
-// 58 D5: `PaymentRoute` is manual-only now; a receipt-backed refund routes
-// through the original's frozen rail (`readFrozenReceiptRoute`) instead.
+// 64 A1: `PaymentRoute` is gone. A refund with no original receipt credits the
+// two-way manual endpoint; a receipt-backed one routes through the original's
+// frozen rail (`readFrozenReceiptRoute`).
 type RouteResolution = {
   route:
     | {
         kind: 'manual'
-        paymentRouteId: string
-        method: string
-        settlementCurrency: string
+        method: 'cash' | 'check' | 'card' | 'bank' | 'other'
+        debitSelectedBy: 'bank_account' | 'undeposited_funds'
+        bankAccountInstanceId: string | null
         endpointGlAccountId: string
       }
     | {
@@ -197,72 +200,56 @@ export async function captureCustomerRefundWorkInTx(
   return { work, basis: saved, existing: false }
 }
 
+/**
+ * The endpoint a refund with NO original receipt credits: the invoice receipt's
+ * two-way choice with the sign flipped (`receipt-accounting.ts`).
+ *
+ * 🛑 The org's `accounting.paymentRoute.<method>` setting decides which of the
+ * two a method may take, and both wrong answers still balance - a `bank` refund
+ * must name the account the money left, a `cash` one must not. `clearing` is the
+ * one route that does not carry over to a hand-recorded refund (there is no
+ * payout coming to drain it), so it takes the recorder's explicit choice.
+ */
 async function readRoute(
   tx: Transaction,
   organizationId: string,
   money: typeof schema.MoneyTransaction.$inferSelect
 ): Promise<RouteResolution> {
-  if (!money.paymentRouteId)
-    throw new UnprocessableEntityError('Refund payment route is unresolved')
-  const route = await tx.query.PaymentRoute.findFirst({
-    where: and(
-      eq(schema.PaymentRoute.organizationId, organizationId),
-      eq(schema.PaymentRoute.id, money.paymentRouteId),
-      isNull(schema.PaymentRoute.archivedAt),
-      eq(schema.PaymentRoute.settlementCurrency, money.currency)
-    ),
-  })
-  if (!route)
+  if (!money.method)
+    throw new UnprocessableEntityError('Refund needs the method the money went back by')
+  const settings = await getOrgCache().get(organizationId, 'orgSettings')
+  const routing = resolvePaymentRoute(money.method, settings)
+  const bankAccountInstanceId = money.cashAccountInstanceId
+  if (routing === 'cash' && !bankAccountInstanceId)
+    throw new UnprocessableEntityError('Refund must name the bank account the money left')
+  if (routing === 'undeposited_funds' && bankAccountInstanceId)
     throw new UnprocessableEntityError(
-      'Refund payment route is missing, archived or in another currency'
+      'Refund by this method comes out of undeposited funds and cannot name a bank account'
     )
-
-  let endpointGlAccountId: string | null = null
-  if (route.cashGlAccountInstanceId) {
-    endpointGlAccountId = route.cashGlAccountInstanceId
-  } else if (route.bankAccountInstanceId) {
-    const bankDefId = await getCachedEntityDefId(organizationId, 'bank_account')
-    const field = await getOrgCache()
-      .from(organizationId, 'customFields')
-      .bySystemAttributes(['bank_account_gl_account'])
-    const fieldId = field.bank_account_gl_account?.id
-    if (!bankDefId || !fieldId)
-      throw new UnprocessableEntityError('Refund bank account mapping is not provisioned')
-    const [bank] = await tx
-      .select({ id: schema.EntityInstance.id, archivedAt: schema.EntityInstance.archivedAt })
-      .from(schema.EntityInstance)
-      .where(
-        and(
-          eq(schema.EntityInstance.organizationId, organizationId),
-          eq(schema.EntityInstance.entityDefinitionId, bankDefId),
-          eq(schema.EntityInstance.id, route.bankAccountInstanceId)
-        )
-      )
-      .limit(1)
-    if (!bank || bank.archivedAt)
-      throw new UnprocessableEntityError('Refund bank account is missing or archived')
-    const [mapping] = await tx
-      .select({ valueText: schema.FieldValue.valueText })
-      .from(schema.FieldValue)
-      .where(
-        and(
-          eq(schema.FieldValue.organizationId, organizationId),
-          eq(schema.FieldValue.entityId, bank.id),
-          eq(schema.FieldValue.fieldId, fieldId)
-        )
-      )
-      .limit(1)
-    endpointGlAccountId = mapping?.valueText?.trim() || null
+  const debitSelectedBy = bankAccountInstanceId ? 'bank_account' : 'undeposited_funds'
+  let endpointGlAccountId: string
+  if (bankAccountInstanceId) {
+    endpointGlAccountId = await resolveBankAccountGlAccountInTx(
+      tx,
+      organizationId,
+      bankAccountInstanceId,
+      'Refund'
+    )
+  } else {
+    const roles = await resolveRoles(tx, organizationId, [ACCOUNT_ROLES.UNDEPOSITED_FUNDS])
+    if (roles.isErr()) throw new UnprocessableEntityError(roles.error.message)
+    const undeposited = roles.value.get(ACCOUNT_ROLES.UNDEPOSITED_FUNDS)
+    if (!undeposited)
+      throw new UnprocessableEntityError('Refund undeposited funds account is not mapped')
+    endpointGlAccountId = undeposited.glAccountId
   }
-  if (!endpointGlAccountId)
-    throw new UnprocessableEntityError('Refund route has no explicit cash or clearing account')
   return {
     endpointGlAccountId,
     route: {
       kind: 'manual',
-      paymentRouteId: route.id,
-      method: route.method,
-      settlementCurrency: route.settlementCurrency,
+      method: money.method,
+      debitSelectedBy,
+      bankAccountInstanceId,
       endpointGlAccountId,
     },
   }
@@ -271,8 +258,7 @@ async function readRoute(
 async function readFrozenReceiptRoute(
   tx: Transaction,
   organizationId: string,
-  originalTransactionId: string,
-  refundPaymentRouteId: string | null
+  originalTransactionId: string
 ): Promise<RouteResolution | null> {
   const rows = await tx
     .select({
@@ -309,13 +295,6 @@ async function readFrozenReceiptRoute(
   const route = 'kind' in parsed.data.calculation ? undefined : parsed.data.calculation.route
   if (!route?.paymentGatewayId || !route.glAccountId)
     throw new UnprocessableEntityError('Refund original receipt has no frozen clearing route')
-  // 58 D5: the original's rail is the whole answer here - a refund cannot also
-  // carry its own manually-resolved `PaymentRoute` (that route kind is retired
-  // for anything but a manual cash/bank refund with no original receipt).
-  if (refundPaymentRouteId !== null)
-    throw new ConflictError(
-      'Refund cannot name its own payment route while correcting a receipt-backed original'
-    )
   return {
     endpointGlAccountId: route.glAccountId,
     route: {
@@ -501,12 +480,7 @@ async function prepareCustomerRefund(
   if (originalRouteIds.length > 0) {
     if (originalRouteIds.length !== 1)
       throw new UnprocessableEntityError('Refund partitions have different original receipt routes')
-    const frozen = await readFrozenReceiptRoute(
-      tx,
-      input.organizationId,
-      originalRouteIds[0]!,
-      money.paymentRouteId
-    )
+    const frozen = await readFrozenReceiptRoute(tx, input.organizationId, originalRouteIds[0]!)
     if (!frozen) throw new UnprocessableEntityError('Refund original receipt route is unresolved')
     const original = await tx.query.MoneyTransaction.findFirst({
       where: and(
@@ -602,7 +576,7 @@ async function prepareCustomerRefund(
     amount: toLedgerMinor(calculation.amountMinor, 'USD', 2),
     dimensions:
       route.route.kind === 'manual'
-        ? { paymentRouteId: route.route.paymentRouteId }
+        ? { refundMethod: route.route.method }
         : { paymentGatewayId: route.route.paymentGatewayId },
     memo: 'Customer credit refund',
     sortOrder: lines.length,

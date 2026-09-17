@@ -22,13 +22,13 @@
  * Clearing` left the `card_rail` pack in the same pass. `ACCOUNT_ROLES` is a
  * CLOSED vocabulary tied to builders, so a role minted per rail would name
  * nothing a builder emits - and the one role that does route a rail,
- * `clearing`, is the FALLBACK every unrouted handle lands on. An account
- * minted here is reached by id, through the `payment_gateway` record that
- * points at it, and by nothing else.
+ * `clearing`, is the FALLBACK every unrouted handle lands on. An account minted
+ * here is named by a rail-scoped `GlRoleAssignment` row (58 §5.1), and by
+ * nothing else - the gateway record carries no account fields.
  *
- * ⚠️ The account is not left unprotected by being role-less. `assertNoPointer`
- * (`chart-write.ts`, I4) refuses to archive or deactivate an account a gateway
- * still names, which is the guard added for precisely this shape.
+ * ⚠️ The account is not left unprotected by being role-less. `assertNoLiveRole`
+ * (`chart-write.ts`) refuses to archive or deactivate an account a role
+ * assignment still names, which is the guard for precisely this shape.
  *
  * ## What it does not do
  *

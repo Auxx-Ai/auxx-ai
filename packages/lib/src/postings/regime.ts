@@ -110,12 +110,6 @@ export const SINGLE_WRITER_ROLES_BY_POSTING_TYPE: Record<PostingType, readonly A
   ) as Record<PostingType, readonly AccountRole[]>
 
 /**
- * @deprecated Since slot 0C the map is {@link SINGLE_WRITER_ROLES_BY_POSTING_TYPE}.
- * Kept as an alias so the month-end and regime call sites read unchanged.
- */
-export const INVENTORY_ROLES_BY_POSTING_TYPE = SINGLE_WRITER_ROLES_BY_POSTING_TYPE
-
-/**
  * How each posting type reaches the connected accounting system.
  *
  * DECLARED on each type's {@link POSTING_POLICY} record as `exportRoute`, never

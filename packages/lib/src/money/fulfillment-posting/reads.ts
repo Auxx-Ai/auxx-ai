@@ -401,7 +401,6 @@ export async function readUnpostedShipments(
             historyHash: source.target.historyHash,
           }
           shipment.sourceStoreId = source.sourceStoreId
-          shipment.processorRouteId = source.processorRouteId
           shipment.recognitionTaxComponents =
             source.targetTaxComponents?.map((component) => ({
               componentKey: component.componentKey,

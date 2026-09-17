@@ -180,7 +180,6 @@ export interface UnpostedShipment {
   /** Shopify source provenance selected by the canonical money timeline. */
   sourceStoreId?: string | null
   /** Rail selected by the canonical receipt timeline; feeds `calculation.paymentGatewayId`. */
-  processorRouteId?: string | null
   /** Conserved tax components for this recognition event. */
   recognitionTaxComponents?: readonly FulfillmentRecognitionTaxComponent[]
   /**

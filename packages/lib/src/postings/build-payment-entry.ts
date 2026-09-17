@@ -125,7 +125,7 @@ export const PAYMENT_ROUTE_ROLE: Record<PaymentRoute, PaymentRouteAccount> = {
   // `bank_account`'s `glAccountId` and passes it as
   // {@link BuildPaymentEntryInput.bankAccountGlAccountId} - see the file header.
   cash: { kind: 'bank_account' },
-  // One clearing role exists today. See the file header on `1210 Affirm Clearing`.
+  // One role, resolved PER RAIL: `resolveRoles` reads the rail scope (58 §5.1).
   clearing: { kind: 'role', role: ACCOUNT_ROLES.CLEARING },
 }
 

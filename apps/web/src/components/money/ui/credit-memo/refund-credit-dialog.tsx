@@ -3,10 +3,10 @@
 
 // Refund-credit dialog (plans/accounting/tasks/done/10-credit-memos.md §6.2), the
 // `record-payment-dialog.tsx` FieldPanel recipe with a rail choice on top. The
-// money leg of a native memo is a `PaymentTransaction` of `kind: 'refund'`
-// (§5.3): back onto the original Stripe charge when the linked invoice has a
-// succeeded one (partial allowed), else recorded by hand with a method,
-// reference and date. Amount prefilled to the memo's balance.
+// money leg of a native memo goes back onto the original Stripe charge when the
+// linked invoice has a succeeded one (partial allowed), else it is recorded by
+// hand with a method, reference, date and - where the method routes there - the
+// bank account it left. Amount prefilled to the memo's balance.
 
 import { FieldType } from '@auxx/database/enums'
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
@@ -69,6 +69,16 @@ export function RefundCreditDialog({
   const [date, setDate] = useState<string>(todayIso())
   const [method, setMethod] = useState<PaymentMethod>('cash')
   const [reference, setReference] = useState('')
+  const [bankAccountId, setBankAccountId] = useState<string | null>(null)
+
+  // Which methods need a bank account named, and which accounts can be named.
+  // Server-resolved from the same route table `recordCreditMemoRefund` enforces
+  // with, so the dialog cannot offer a combination the mutation will refuse.
+  const { data: destinations } = api.money.paymentDestinations.useQuery(undefined, {
+    enabled: open && rail === 'manual',
+  })
+  const needsBankAccount = destinations?.requiresBankAccount[method] ?? false
+  const forbidsBankAccount = destinations?.forbidsBankAccount[method] ?? true
 
   // The Stripe rail exists only where the linked invoice took a Stripe charge
   // that succeeded. Read the link off the memo, then that invoice's ledger.
@@ -106,7 +116,15 @@ export function RefundCreditDialog({
     setDate(todayIso())
     setMethod('cash')
     setReference('')
+    setBankAccountId(null)
   }, [open, hasStripeCharge])
+
+  // A method the org holds in undeposited funds must not carry an account, and
+  // the command refuses one. Clear it on the switch rather than letting a stale
+  // pick fail at submit.
+  useEffect(() => {
+    if (forbidsBankAccount) setBankAccountId(null)
+  }, [forbidsBankAccount])
 
   const refundKeys = useRef(new Map<string, string>())
   useEffect(() => {
@@ -128,7 +146,9 @@ export function RefundCreditDialog({
   // A Stripe refund cannot exceed the charge it goes back onto.
   const cap =
     rail === 'stripe' && selectedCharge ? Math.min(balance, selectedCharge.amount) : balance
-  const canSave = !!amount && amount > 0 && amount <= cap && (rail === 'manual' || !!selectedCharge)
+  const bankValid = rail === 'stripe' || !needsBankAccount || Boolean(bankAccountId)
+  const canSave =
+    !!amount && amount > 0 && amount <= cap && bankValid && (rail === 'manual' || !!selectedCharge)
 
   const handleSubmit = async () => {
     if (!canSave || !amount) return
@@ -157,6 +177,7 @@ export function RefundCreditDialog({
                 rail,
                 selectedCharge?.id,
                 method,
+                bankAccountId,
                 reference,
                 date,
               ]),
@@ -164,6 +185,7 @@ export function RefundCreditDialog({
               amount,
               rail,
               method,
+              bankAccountInstanceId: bankAccountId,
               reference: reference.trim() || undefined,
               date: date.split('T')[0]!,
             }
@@ -262,6 +284,27 @@ export function RefundCreditDialog({
                   disabled={refund.isPending}
                 />
               </FieldPanelRow>
+
+              {needsBankAccount ? (
+                <FieldPanelRow title='Paid from' type={BaseType.ENUM} showIcon isRequired>
+                  <FieldInputAdapter
+                    fieldType={FieldType.SINGLE_SELECT}
+                    fieldOptions={{
+                      options: (destinations?.bankAccounts ?? []).map((account) => ({
+                        id: account.id,
+                        value: account.id,
+                        label: account.last4
+                          ? `${account.name} ····${account.last4}`
+                          : account.name,
+                      })),
+                    }}
+                    triggerProps={{ className: 'w-full ps-0 pe-1' }}
+                    value={bankAccountId ?? ''}
+                    onChange={(val) => setBankAccountId((val as string[])[0] ?? null)}
+                    disabled={refund.isPending}
+                  />
+                </FieldPanelRow>
+              ) : null}
 
               <FieldPanelRow title='Reference' type={BaseType.STRING} showIcon>
                 <FieldInputAdapter

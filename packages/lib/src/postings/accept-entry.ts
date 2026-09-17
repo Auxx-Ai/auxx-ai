@@ -16,6 +16,7 @@ import {
   acceptedDocumentEffectBasisSchema,
   DOCUMENT_EFFECT_FAMILY_SPEC,
   type DocumentEffectFamily,
+  documentRoleScope,
   isDocumentEffectFamily,
 } from './document-effect-types'
 import { type PostingAccountingMembership, parsePostingAccountingMembership } from './draft'
@@ -231,27 +232,23 @@ function assertExactContributions(
 /**
  * The role scope frozen on one member's calculation (task 47 §5).
  *
- * Both effect contracts already carry the source - `sourceStoreId` on the
- * fulfillment effect (nullable: a record with no connected source) and
- * `sourceStoreId` plus `processorAccountId` on the receipt - so acceptance needs
- * no new read to re-resolve a role the way preparation did.
+ * 🛑 Delegates to preparation's own {@link documentRoleScope} rather than
+ * deriving the scope a second time: a scope the two read differently refuses
+ * every scoped posting with "an account role changed after preparation".
  *
  * ⚠️ An absent `sourceStoreId` reads as "not known", which resolves to the org
- * default - which is exactly what a calculation written before this brief
- * posted to when it was prepared.
+ * default.
  */
 function effectRoleScope(basis: ReadyBasis): RoleSourceScope {
   const calculation = (basis as { calculation?: Record<string, unknown> }).calculation ?? {}
-  const store = calculation.sourceStoreId
-  // ⚠️ Still `calculation.processorAccountId` - a `FinancialSourceAccount` id,
-  // not yet the `payment_gateway` id `RoleSourceScope.rail` names (task 58
-  // §5.2/§5.6, U3/U6). Renamed here only so the shape matches; it will not
-  // match a live gateway until those units carry the real id.
-  const rail = calculation.processorAccountId
-  return {
-    ...(store === undefined ? {} : { store: (store as string | null) ?? null }),
-    ...(typeof rail === 'string' ? { rail } : {}),
-  }
+  return documentRoleScope({
+    ...(calculation.sourceStoreId === undefined
+      ? {}
+      : { sourceStoreId: (calculation.sourceStoreId as string | null) ?? null }),
+    ...(typeof calculation.paymentGatewayId === 'string'
+      ? { paymentGatewayId: calculation.paymentGatewayId }
+      : {}),
+  })
 }
 
 async function assertDeliveryIntent(tx: Transaction, input: PreparedEffectPosting) {

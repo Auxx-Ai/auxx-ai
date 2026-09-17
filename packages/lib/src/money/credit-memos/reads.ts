@@ -12,11 +12,11 @@
 //
 // No permission checks anywhere in this file. The router asserts (section 6).
 
-import { type Database, schema, type Transaction } from '@auxx/database'
+import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { getOrgCache } from '../../cache'
-import { ConflictError, NotFoundError } from '../../errors'
+import { BadRequestError, ConflictError, NotFoundError } from '../../errors'
 import { isLiveFulfillment } from '../fulfillments/client'
 import { readFulfillmentsForOrder } from '../fulfillments/reads'
 import type {
@@ -531,62 +531,20 @@ export async function sumReservedCreditMemoRefunds(
   organizationId: string,
   memo: Pick<CreditMemoRecord, 'id' | 'source' | 'amountRefundedMinor'>
 ): Promise<number> {
-  const [refunds, settlements] = await Promise.all([
-    listCreditMemoRefunds(db, organizationId, memo.id),
-    db.query.MoneyRefundSettlement.findMany({
-      where: and(
-        eq(schema.MoneyRefundSettlement.organizationId, organizationId),
-        eq(schema.MoneyRefundSettlement.customerCreditMemoInstanceId, memo.id)
-      ),
-    }),
-  ])
-  // Adoption records explicitly identify a legacy refund represented by canonical money.
-  // Never deduplicate separate movements merely because their amounts match.
-  const adoptedLegacyIds = new Set<string>()
-  if (settlements.length) {
-    const evidence = await db
-      .select({ payload: schema.FinancialSourceObservation.payload })
-      .from(schema.MoneySourceLink)
-      .innerJoin(
-        schema.FinancialSourceObservation,
-        and(
-          eq(
-            schema.FinancialSourceObservation.organizationId,
-            schema.MoneySourceLink.organizationId
-          ),
-          eq(
-            schema.FinancialSourceObservation.sourceObjectId,
-            schema.MoneySourceLink.sourceObjectId
-          )
-        )
-      )
-      .where(
-        and(
-          eq(schema.MoneySourceLink.organizationId, organizationId),
-          inArray(
-            schema.MoneySourceLink.moneyTransactionId,
-            settlements.map((row) => row.refundTransactionId)
-          )
-        )
-      )
-    for (const { payload } of evidence) {
-      if (
-        payload &&
-        typeof payload === 'object' &&
-        'legacyTransactionId' in payload &&
-        typeof payload.legacyTransactionId === 'string'
-      )
-        adoptedLegacyIds.add(payload.legacyTransactionId)
-    }
-  }
-  const canonical = settlements.reduce((sum, row) => sum + row.amountMinor, 0n)
+  const refunds = await listCreditMemoRefunds(db, organizationId, memo.id)
+  const canonical = refunds
+    .filter((row) => row.origin === 'money')
+    .reduce((sum, row) => sum + BigInt(row.amountMinor), 0n)
   const native = refunds
     .filter(
       (row) =>
-        ['pending', 'processing', 'succeeded'].includes(row.status) &&
-        !adoptedLegacyIds.has(row.transactionId)
+        row.origin === 'payment_transaction' &&
+        ['pending', 'processing', 'succeeded'].includes(row.status)
     )
     .reduce((sum, row) => sum + BigInt(row.amountMinor), 0n)
+  // A channel memo's transcribed figure and the canonical movements can
+  // describe the same refunds, so the larger stands rather than their sum; the
+  // legacy rail is a separate movement and adds.
   const imported = memo.source === 'channel' ? BigInt(memo.amountRefundedMinor) : 0n
   const reserved = (canonical > imported ? canonical : imported) + native
   if (reserved > BigInt(Number.MAX_SAFE_INTEGER))
@@ -597,32 +555,121 @@ export async function sumReservedCreditMemoRefunds(
 // ─── Refunds ────────────────────────────────────────────────────────────────
 
 /**
- * Every refund `PaymentTransaction` carrying this memo, oldest first, whatever
- * its status. The delete guard reads the whole list; the settlement sums only
- * the `succeeded` rows.
+ * Every refund carrying this memo, oldest first, whatever its status - both
+ * rails in one list.
+ *
+ * 🛑 A canonical `MoneyRefundSettlement` and a legacy refund
+ * `PaymentTransaction` can describe the SAME money, so an adopted legacy row is
+ * dropped here rather than at each caller. Adoption is an explicit evidence
+ * record; never deduplicate two movements merely because their amounts match.
+ * `origin` is what keeps `sumReservedCreditMemoRefunds` from counting the two
+ * rails twice.
  */
 export async function listCreditMemoRefunds(
   db: Database | Transaction,
   organizationId: string,
   creditMemoId: string
 ): Promise<CreditMemoRefundRow[]> {
-  const rows = await db.query.PaymentTransaction.findMany({
-    where: and(
-      eq(schema.PaymentTransaction.organizationId, organizationId),
-      eq(schema.PaymentTransaction.creditMemoInstanceId, creditMemoId),
-      eq(schema.PaymentTransaction.kind, 'refund')
-    ),
-    orderBy: asc(schema.PaymentTransaction.createdAt),
-  })
-  return rows.map((row) => ({
-    transactionId: row.id,
-    provider: row.provider,
-    status: row.status,
-    amountMinor: row.amount,
-    method: row.method ?? null,
-    reference: row.reference ?? null,
-    createdAt: row.createdAt.toISOString(),
-  }))
+  const [legacy, settlements] = await Promise.all([
+    db.query.PaymentTransaction.findMany({
+      where: and(
+        eq(schema.PaymentTransaction.organizationId, organizationId),
+        eq(schema.PaymentTransaction.creditMemoInstanceId, creditMemoId),
+        eq(schema.PaymentTransaction.kind, 'refund')
+      ),
+      orderBy: asc(schema.PaymentTransaction.createdAt),
+    }),
+    db.query.MoneyRefundSettlement.findMany({
+      where: and(
+        eq(schema.MoneyRefundSettlement.organizationId, organizationId),
+        eq(schema.MoneyRefundSettlement.customerCreditMemoInstanceId, creditMemoId)
+      ),
+    }),
+  ])
+  const adoptedLegacyIds = await readAdoptedLegacyRefundIds(
+    db,
+    organizationId,
+    settlements.map((row) => row.refundTransactionId)
+  )
+  const money = settlements.length
+    ? await db.query.MoneyTransaction.findMany({
+        where: and(
+          eq(schema.MoneyTransaction.organizationId, organizationId),
+          inArray(
+            schema.MoneyTransaction.id,
+            settlements.map((row) => row.refundTransactionId)
+          )
+        ),
+      })
+    : []
+  const moneyById = new Map(money.map((row) => [row.id, row]))
+  const rows: CreditMemoRefundRow[] = []
+  for (const row of settlements) {
+    const movement = moneyById.get(row.refundTransactionId)
+    if (!movement) continue
+    rows.push({
+      transactionId: movement.id,
+      origin: 'money',
+      provider: 'manual',
+      // A `MoneyTransaction` IS the confirmed movement - there is no pending
+      // state to project, unlike a provider-held `PaymentTransaction`.
+      status: 'succeeded',
+      amountMinor: Number(row.amountMinor),
+      method: movement.method ?? null,
+      reference: movement.reference ?? null,
+      createdAt: movement.createdAt.toISOString(),
+    })
+  }
+  for (const row of legacy) {
+    if (adoptedLegacyIds.has(row.id)) continue
+    rows.push({
+      transactionId: row.id,
+      origin: 'payment_transaction',
+      provider: row.provider,
+      status: row.status,
+      amountMinor: row.amount,
+      method: row.method ?? null,
+      reference: row.reference ?? null,
+      createdAt: row.createdAt.toISOString(),
+    })
+  }
+  return rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+}
+
+/** Legacy refund ids an adoption record says canonical money already represents. */
+async function readAdoptedLegacyRefundIds(
+  db: Database | Transaction,
+  organizationId: string,
+  refundTransactionIds: string[]
+): Promise<Set<string>> {
+  const adopted = new Set<string>()
+  if (!refundTransactionIds.length) return adopted
+  const evidence = await db
+    .select({ payload: schema.FinancialSourceObservation.payload })
+    .from(schema.MoneySourceLink)
+    .innerJoin(
+      schema.FinancialSourceObservation,
+      and(
+        eq(schema.FinancialSourceObservation.organizationId, schema.MoneySourceLink.organizationId),
+        eq(schema.FinancialSourceObservation.sourceObjectId, schema.MoneySourceLink.sourceObjectId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.MoneySourceLink.organizationId, organizationId),
+        inArray(schema.MoneySourceLink.moneyTransactionId, refundTransactionIds)
+      )
+    )
+  for (const { payload } of evidence) {
+    if (
+      payload &&
+      typeof payload === 'object' &&
+      'legacyTransactionId' in payload &&
+      typeof payload.legacyTransactionId === 'string'
+    )
+      adopted.add(payload.legacyTransactionId)
+  }
+  return adopted
 }
 
 /** Integer minor units: the `succeeded` refunds carrying this memo, summed. */
@@ -1121,4 +1168,51 @@ export async function countUnissuedChannelCreditMemos(
     if (toCalendarDay(row.valueDate)?.startsWith(`${month}-`)) count += 1
   }
   return count
+}
+
+/** What a refund rail needs to know about the memo it settles. */
+export interface CreditMemoForRefund {
+  status: string
+  /** Integer minor units, `credit_memo_balance` as `settleCreditMemo` last wrote it. */
+  balance: number
+  contactInstanceId: string | null
+  invoiceInstanceId: string | null
+}
+
+/**
+ * Read the memo a refund is about to settle and refuse what neither rail may do
+ * (plans/accounting/tasks/done/10-credit-memos.md §2.4, §5.3): a memo that is not
+ * `issued` has nothing to give back (`draft` is unposted, `settled` has a zero
+ * balance, `void` was reversed), and a refund may not exceed the balance the
+ * settlement writer last derived. Shared by `recordManualRefund` and the Stripe
+ * rail's `refundTransaction` so the two rails cannot disagree on what a
+ * refundable memo is. Throws `NotFoundError` when the memo does not resolve.
+ */
+export async function readCreditMemoForRefund(params: {
+  organizationId: string
+  userId: string
+  creditMemoInstanceId: string
+  amount: number
+  db?: Database
+}): Promise<CreditMemoForRefund> {
+  const { organizationId, creditMemoInstanceId, amount } = params
+  const db = params.db ?? database
+  if (!Number.isSafeInteger(amount) || amount <= 0)
+    throw new BadRequestError('Refund amount must be a whole number of minor units above zero')
+  const memo = await requireCreditMemo(db, organizationId, creditMemoInstanceId)
+  if (memo.status !== 'issued')
+    throw new BadRequestError(`Cannot refund a credit memo in status '${memo.status}'`)
+  const [applied, reserved] = await Promise.all([
+    sumCreditMemoApplications(db, organizationId, creditMemoInstanceId),
+    sumReservedCreditMemoRefunds(db, organizationId, memo),
+  ])
+  const balance = memo.totalMinor - applied - reserved
+  if (amount > balance)
+    throw new BadRequestError(`Refund amount exceeds the credit memo balance of ${balance}`)
+  return {
+    status: memo.status,
+    balance,
+    contactInstanceId: memo.contactInstanceId,
+    invoiceInstanceId: memo.invoiceInstanceId,
+  }
 }
