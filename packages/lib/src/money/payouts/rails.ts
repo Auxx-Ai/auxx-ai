@@ -29,13 +29,12 @@
  * ## ⚠️ Derived, not stamped
  *
  * `lastSettledAt` is the gateway's hand-entered `lastSettlementAt` or the
- * latest paid payout the sync recorded for that rail, whichever is later. Until
- * unit 1 stamps a `paymentGateway` onto the payout record, the only rail a
- * payout can be attributed to is the one `resolvePayoutGateway` would pick: the
- * SINGLE gateway that settles through `stripe`. Two such records attribute
- * nothing rather than guess (26 §13 decision 2). `lastFeeBookedAt` is read off
- * the rail's OWN fee account through `readRailFeeStatus`, and falls back to the
- * stamped field for a closed rail that read excludes.
+ * latest paid payout the sync recorded for that rail, whichever is later. Every
+ * payout raised since task 58 §5.5 carries its own `paymentGateway` pointer; the
+ * `stripe`-settlementSource fallback below only ever attributes a payout raised
+ * before that pointer existed. `lastFeeBookedAt` is read off the rail's OWN fee
+ * account through `readRailFeeStatus`, and falls back to the stamped field for a
+ * closed rail that read excludes.
  *
  * No permission checks here. The router asserts `ledgerView`
  * (`docs/lib-module-guide.md` §6).
@@ -134,9 +133,9 @@ export async function listRailStrip(
       const feesByRail = new Map(feeStatus.value.map((rail) => [rail.paymentGatewayId, rail.fees]))
 
       const latestPaidAt = await readLatestPaidPayoutDate(db, organizationId)
-      // The one rail a payout can be attributed to today. Two `stripe` records
-      // attribute nothing: `resolvePayoutGateway` blocks the payout in that
-      // state, so no payout was recorded for either.
+      // Legacy fallback for a payout raised before task 58 §5.5 stamped every
+      // rail's own pointer: two `stripe` records attribute nothing rather than
+      // guess which one an unstamped row belongs to.
       const stripeRails = routed.filter((gateway) => gateway.settlementSource === 'stripe')
       const stripeRailId = stripeRails.length === 1 ? stripeRails[0]?.id : undefined
 

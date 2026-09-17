@@ -21,7 +21,7 @@ export function readyBasis(id: string): Extract<AccountingWorkBasisInput, { stat
       shippedOn: '2026-09-14',
       channel: null,
       sourceStoreId: null,
-      processorRouteId: null,
+      paymentGatewayId: null,
       shippingRegion: null,
       dimensions: {},
       lines: [

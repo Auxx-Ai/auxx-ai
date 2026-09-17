@@ -27,15 +27,24 @@ const settlementSchema = z.strictObject({
   creditControlAccountId: id,
 })
 
-const routeSchema = z.strictObject({
-  paymentRouteId: id,
-  kind: z.enum(['processor', 'manual']),
-  method: id,
-  settlementCurrency: z.string().regex(/^[A-Z]{3}$/),
-  endpointGlAccountId: id,
-  processorAccountId: id.nullable(),
-  gatewayInstanceId: id.nullable(),
-})
+// 58 D5: the processor kind of `PaymentRoute` is retired. A refund routes
+// through either a manual `PaymentRoute` (cash/bank) or, when it corrects an
+// original receipt, that receipt's frozen rail (§5.6) - never both.
+const routeSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('manual'),
+    paymentRouteId: id,
+    method: id,
+    settlementCurrency: z.string().regex(/^[A-Z]{3}$/),
+    endpointGlAccountId: id,
+  }),
+  z.strictObject({
+    kind: z.literal('rail'),
+    paymentGatewayId: id,
+    settlementCurrency: z.string().regex(/^[A-Z]{3}$/),
+    endpointGlAccountId: id,
+  }),
+])
 
 /** Exact facts needed to account for a confirmed customer refund. */
 export const customerRefundAccountingBasisSchema = z
@@ -95,15 +104,6 @@ export const customerRefundAccountingBasisSchema = z
       ctx.addIssue({ code: 'custom', message: 'Refund credit memo partition is inconsistent' })
     if (value.route.settlementCurrency !== value.currency)
       ctx.addIssue({ code: 'custom', message: 'Refund route currency differs from the movement' })
-    if (value.route.kind === 'processor') {
-      if (!value.route.processorAccountId || !value.route.gatewayInstanceId)
-        ctx.addIssue({ code: 'custom', message: 'Processor refund route identity is incomplete' })
-    } else if (value.route.processorAccountId || value.route.gatewayInstanceId) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'Manual refund route cannot carry processor identity',
-      })
-    }
   })
 
 /** Durable incomplete or ready input for one customer-refund accounting work item. */

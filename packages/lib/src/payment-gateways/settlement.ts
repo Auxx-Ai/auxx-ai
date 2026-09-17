@@ -1,6 +1,5 @@
 // packages/lib/src/payment-gateways/settlement.ts
-import { type Database, schema, type Transaction, withAccountingCommitLock } from '@auxx/database'
-import { and, eq, isNull } from 'drizzle-orm'
+import { type Database, type Transaction, withAccountingCommitLock } from '@auxx/database'
 import { getBankAccount } from '../banking/reads'
 import { BadRequestError, ConflictError, NotFoundError } from '../errors'
 import { financialFields } from '../money/fulfillments/field-context'
@@ -35,7 +34,7 @@ export async function getGatewaySettlementReadiness(
   const accounts = await listSettlementSourceAccounts(db, input.organizationId)
   const issues: string[] = []
   try {
-    await validateSelections(db, input.organizationId, gateway.value, selections, accounts)
+    await validateSelections(db, input.organizationId, selections, accounts)
   } catch (error) {
     issues.push(error instanceof Error ? error.message : 'Review settlement settings')
   }
@@ -47,7 +46,6 @@ export async function getGatewaySettlementReadiness(
 async function validateSelections(
   db: Database | Transaction,
   organizationId: string,
-  gateway: { id: string; settlementSource: string },
   selections: GatewaySettlementFields,
   accounts: Awaited<ReturnType<typeof listSettlementSourceAccounts>>
 ) {
@@ -64,20 +62,11 @@ async function validateSelections(
       throw new BadRequestError(
         'The selected currency has not been reported by this settlement account.'
       )
-    if (settlementCurrency) {
-      const routes = await db.query.PaymentRoute.findMany({
-        where: and(
-          eq(schema.PaymentRoute.organizationId, organizationId),
-          eq(schema.PaymentRoute.processorAccountId, processorAccountId),
-          eq(schema.PaymentRoute.settlementCurrency, settlementCurrency),
-          isNull(schema.PaymentRoute.archivedAt)
-        ),
-      })
-      if (routes.some((route) => route.paymentGatewayInstanceId !== gateway.id))
-        throw new ConflictError(
-          'This processor account and currency use a different payment gateway. Resolve its payment route first.'
-        )
-    }
+    // 🛑 The cross-gateway conflict used to be checked here through
+    // `PaymentRoute`, which task 58 D5 retired to the manual kind only - it
+    // never linked a `payment_gateway` at all. `updateGatewaySettlementSettings`
+    // below still refuses one merchant/currency pair claimed by two gateways;
+    // that check never went through `PaymentRoute`.
   }
   if (bankAccountId) {
     const result = await getBankAccount(db as Database, { organizationId, bankAccountId })
@@ -126,7 +115,7 @@ export async function updateGatewaySettlementSettings(
       )
     const next = { ...selections, ...input.patch }
     const accounts = await listSettlementSourceAccounts(tx, input.organizationId)
-    await validateSelections(tx, input.organizationId, gateway.value, next, accounts)
+    await validateSelections(tx, input.organizationId, next, accounts)
     if (next.processorAccountId && next.settlementCurrency) {
       const gateways = await listPaymentGateways(tx, input.organizationId)
       if (gateways.isErr()) throw gateways.error

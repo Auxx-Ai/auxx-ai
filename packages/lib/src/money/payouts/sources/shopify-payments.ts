@@ -20,16 +20,15 @@
  * the Shopify connector writes as the order's `externalId`; that is the ref.
  * A row with no order (a fee, an adjustment, a reserve) is `none`.
  *
- * ## Which record is the Shopify Payments rail
+ * ## Which record is the Shopify Payments rail (task 58 §5.5)
  *
- * One Shopify store per org, so one context per org, and the rail is the ONE
- * `payment_gateway` record whose `settlementSource` is `shopify_payments`.
- * Zero such records is nothing to poll: unlike Stripe Connect there is no role
- * fallback, because a payout with no rail has no bank account to debit (27 §6.3)
- * and an org that never declared a Shopify rail never asked for its payouts.
- * Two or more is a conflict carried on the context and refused per payout,
- * naming them all (26 §13 decision 2). The plan's "one context per rail" would
- * read the same payouts once per record and post each deposit twice (R4).
+ * One Shopify store per org, so at most one live `FinancialSourceAccount` of
+ * `providerKey: 'shopify_payments'` - and a context is built only once a
+ * person has linked it to a `payment_gateway` record
+ * (`listLinkedFeedAccounts`), never off the retired `settlementSource` enum.
+ * Nothing linked is nothing to poll: a payout with no rail has no bank account
+ * to debit (§5.4) and an org that has not linked a Shopify rail never asked
+ * for its payouts.
  *
  * ## The scope
  *
@@ -48,11 +47,12 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { type AppToolContext, resolveAppToolContext } from '../../../apps/invoke-app-tool'
 import { BadRequestError, ForbiddenError, UnprocessableEntityError } from '../../../errors'
 import type { PaymentGatewayRow } from '../../../payment-gateways/client'
+import { listLinkedFeedAccounts } from '../reads'
 import type { PayoutHeader, PayoutItem, PayoutSource, PayoutSourceCtx } from '../source'
 
 const logger = createScopedLogger('payouts:shopify-payments')
 
-/** The registry id, and the `payment_gateway.settlementSource` value that names this feed. */
+/** The registry id, and the `providerKey` a linked feed carries for this rail. */
 export const SHOPIFY_PAYMENTS_SOURCE_ID = 'shopify_payments' as const
 
 /** The installed app whose tools read Shopify Payments. */
@@ -121,18 +121,18 @@ async function listOrganizations(db: Database): Promise<string[]> {
 }
 
 /**
- * One context per org, when a `shopify_payments` rail exists AND the Shopify
- * app is installed with a connection. The rails are checked FIRST, off the
- * records the caller read once, so an org with no Shopify rail never pays for
- * the installation/deployment/connection resolution.
+ * One context per linked feed, when the Shopify app is installed with a
+ * connection. The linked feeds are checked FIRST, off the org's own
+ * `FinancialSourceAccount` rows, so an org that has not linked a Shopify rail
+ * never pays for the installation/deployment/connection resolution.
  */
 async function resolveContexts(
-  _db: Database,
+  db: Database,
   organizationId: string,
   rails: readonly PaymentGatewayRow[]
 ): Promise<PayoutSourceCtx[]> {
-  const shopifyRails = rails.filter((row) => row.settlementSource === SHOPIFY_PAYMENTS_SOURCE_ID)
-  if (shopifyRails.length === 0) return []
+  const linked = await listLinkedFeedAccounts(db, organizationId, SHOPIFY_PAYMENTS_SOURCE_ID)
+  if (linked.length === 0) return []
 
   const resolved = await resolveAppToolContext({
     organizationId,
@@ -140,26 +140,25 @@ async function resolveContexts(
     appLabel: SHOPIFY_APP_LABEL,
   })
   if (!resolved.connected) {
-    logger.info('A Shopify Payments rail exists but the Shopify app is not connected', {
+    logger.info('A Shopify Payments rail is linked but the Shopify app is not connected', {
       organizationId,
-      paymentGatewayIds: shopifyRails.map((row) => row.id),
+      paymentGatewayIds: linked.map((feed) => feed.paymentGatewayId),
     })
     return []
   }
 
-  return [
-    {
+  const contexts: PayoutSourceCtx[] = []
+  for (const feed of linked) {
+    const rail = rails.find((row) => row.id === feed.paymentGatewayId)
+    if (!rail) continue
+    contexts.push({
       organizationId,
       sourceId: SHOPIFY_PAYMENTS_SOURCE_ID,
-      rail: shopifyRails.length === 1 ? (shopifyRails[0] ?? null) : null,
-      conflictingRails: shopifyRails.length > 1 ? shopifyRails : [],
+      rail,
       handle: resolved.context,
-      ownership: {
-        appInstallationId: resolved.context.installationId,
-        credentialId: resolved.context.connectionId,
-      },
-    },
-  ]
+    })
+  }
+  return contexts
 }
 
 /** Every payout dated on or after `since`, oldest first (the tool sorts by date, then id). */
@@ -268,10 +267,7 @@ async function callShopifyTool(
         `Shopify has not granted ${missingScopes.join(', ')} for this store, so its payouts ` +
           'cannot be read. Reconnect the Shopify app to approve the scope; nothing else the ' +
           'app does is affected.',
-        {
-          organizationId: ctx.organizationId,
-          ...(ctx.rail ? { paymentGatewayId: ctx.rail.id } : {}),
-        }
+        { organizationId: ctx.organizationId, paymentGatewayId: ctx.rail.id }
       )
     }
     throw error

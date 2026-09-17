@@ -42,7 +42,7 @@
  */
 
 import type { Database, Transaction } from '@auxx/database'
-import { listPaymentGateways, toGatewayRoutes } from '../../payment-gateways'
+import { listPaymentGateways } from '../../payment-gateways'
 import {
   computeShipmentAmounts,
   type FulfillmentGatewayRoute,
@@ -75,12 +75,10 @@ import type {
  * Empty on any read failure or on an org that has not provisioned
  * `payment_gateway` yet (entity migration 146) - `resolveFulfillmentDebit`'s
  * `gatewayRoutes` is optional and an empty table falls every gateway back to
- * its role default, which is exactly today's behaviour.
+ * the org's default `clearing` account, which is exactly today's behaviour.
  *
- * Each route also carries the record's `name`, which routing never reads: it is
- * what the debit's reason sentence names (brief 28 §5, *"routed by the Affirm
- * gateway record"*). `toGatewayRoutes` is a one-to-one map, so the name is
- * zipped back on by index.
+ * Carries the record's own `id` and `name` (task 58 §5.2) - never its
+ * clearing account, which the fulfillment debit no longer names directly.
  */
 export async function loadGatewayRoutesForPlan(
   db: Database | Transaction,
@@ -88,8 +86,12 @@ export async function loadGatewayRoutesForPlan(
 ): Promise<readonly FulfillmentGatewayRoute[]> {
   const result = await listPaymentGateways(db, organizationId)
   if (result.isErr()) throw result.error
-  const rows = result.value
-  return toGatewayRoutes(rows).map((route, index) => ({ ...route, name: rows[index]?.name }))
+  return result.value.map((row) => ({
+    id: row.id,
+    handles: row.handles,
+    active: row.status === 'active',
+    name: row.name,
+  }))
 }
 
 /**
@@ -159,8 +161,8 @@ export function planFulfillmentPosting(
     // `reason` rides along (brief 28 §5): it is what the batch builder writes
     // onto the debit line, and this is its only way there.
     const debitInput: FulfillmentDebit =
-      'glAccountId' in debit
-        ? { glAccountId: debit.glAccountId, reason: debit.reason }
+      debit.role === 'clearing'
+        ? { role: 'clearing', rail: debit.rail, reason: debit.reason }
         : { role: debit.role, reason: debit.reason }
     const computed = computeAmounts(shipment, debitInput)
     if (!computed.ok) {
@@ -230,10 +232,7 @@ function toGroup(groupKey: string, shipments: PlannedShipment[]): FulfillmentPos
   const byDebitRole: Record<FulfillmentDebitRole, number> = {
     clearing: 0,
     accounts_receivable: 0,
-    // Every id-based (`payment_gateway` route) debit lands here, whichever
-    // account it named - the account id itself rides on the shipment's own
-    // `amounts.debitGlAccountId` (brief 13 §5.3, types.ts's header).
-    gateway: 0,
+    undeposited_funds: 0,
   }
   let subtotalMinor = 0
   let taxMinor = 0

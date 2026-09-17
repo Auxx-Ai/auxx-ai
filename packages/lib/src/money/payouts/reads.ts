@@ -12,7 +12,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, desc, eq, gt, inArray, isNull, or, type SQL, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNotNull, isNull, or, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
@@ -92,6 +92,57 @@ export async function requirePayoutFieldContext(
     )
   }
   return ctx
+}
+
+/** One live feed linked to a rail (task 58 §5.5): a `FinancialSourceAccount` a person has pointed at a `payment_gateway`. */
+export interface LinkedFeedAccount {
+  id: string
+  externalAccountId: string
+  /** The `payment_gateway` `EntityInstance` id this feed settles for. Never null - see the query below. */
+  paymentGatewayId: string
+}
+
+/**
+ * Every live `FinancialSourceAccount` of one `providerKey` that a person has
+ * linked to a rail, for one org.
+ *
+ * THE discovery query for a `PayoutSource`'s `resolveContexts` (task 58 §5.5):
+ * a context is built per row this returns, one context per feed, never
+ * filtered by the retired `settlementSource` enum. A feed nothing has linked
+ * yet (`paymentGatewayId IS NULL`) is a manual rail and never reaches this
+ * list - linking it is a person's act (§6.2), not a default this file guesses.
+ */
+export async function listLinkedFeedAccounts(
+  db: Database,
+  organizationId: string,
+  providerKey: string
+): Promise<LinkedFeedAccount[]> {
+  const rows = await db
+    .select({
+      id: schema.FinancialSourceAccount.id,
+      externalAccountId: schema.FinancialSourceAccount.externalAccountId,
+      paymentGatewayId: schema.FinancialSourceAccount.paymentGatewayId,
+    })
+    .from(schema.FinancialSourceAccount)
+    .where(
+      and(
+        eq(schema.FinancialSourceAccount.organizationId, organizationId),
+        eq(schema.FinancialSourceAccount.providerKey, providerKey),
+        isNotNull(schema.FinancialSourceAccount.paymentGatewayId),
+        isNull(schema.FinancialSourceAccount.archivedAt)
+      )
+    )
+  return rows.flatMap((row) =>
+    row.paymentGatewayId
+      ? [
+          {
+            id: row.id,
+            externalAccountId: row.externalAccountId,
+            paymentGatewayId: row.paymentGatewayId,
+          },
+        ]
+      : []
+  )
 }
 
 /**

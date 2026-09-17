@@ -6,7 +6,6 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
-import { getPaymentGateway } from '../../payment-gateways/reads'
 import { acceptEntryInTx } from '../../postings/accept-entry'
 import { withAccountingCommitLock } from '../../postings/accounting-commit-lock'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
@@ -59,16 +58,23 @@ type Settlement = {
   originalTransactionId: string | null
 }
 
+// 58 D5: `PaymentRoute` is manual-only now; a receipt-backed refund routes
+// through the original's frozen rail (`readFrozenReceiptRoute`) instead.
 type RouteResolution = {
-  route: {
-    paymentRouteId: string
-    kind: 'processor' | 'manual'
-    method: string
-    settlementCurrency: string
-    endpointGlAccountId: string
-    processorAccountId: string | null
-    gatewayInstanceId: string | null
-  }
+  route:
+    | {
+        kind: 'manual'
+        paymentRouteId: string
+        method: string
+        settlementCurrency: string
+        endpointGlAccountId: string
+      }
+    | {
+        kind: 'rail'
+        paymentGatewayId: string
+        settlementCurrency: string
+        endpointGlAccountId: string
+      }
   endpointGlAccountId: string
   effectiveDate?: string
 }
@@ -212,31 +218,7 @@ async function readRoute(
     )
 
   let endpointGlAccountId: string | null = null
-  let gatewayInstanceId: string | null = null
-  if (route.kind === 'processor') {
-    gatewayInstanceId = route.paymentGatewayInstanceId
-    if (!route.processorAccountId || !gatewayInstanceId)
-      throw new UnprocessableEntityError('Processor refund route identity is incomplete')
-    const processor = await tx.query.FinancialSourceAccount.findFirst({
-      where: and(
-        eq(schema.FinancialSourceAccount.organizationId, organizationId),
-        eq(schema.FinancialSourceAccount.id, route.processorAccountId),
-        isNull(schema.FinancialSourceAccount.archivedAt)
-      ),
-    })
-    if (!processor || processor.environment !== 'live')
-      throw new UnprocessableEntityError('Refund processor account is missing or archived')
-    const gateway = await getPaymentGateway(tx, organizationId, gatewayInstanceId)
-    if (
-      gateway.isErr() ||
-      !gateway.value ||
-      gateway.value.status !== 'active' ||
-      gateway.value.processorAccountId !== processor.id ||
-      gateway.value.settlementCurrency !== money.currency
-    )
-      throw new UnprocessableEntityError('Refund payment gateway is missing, archived or closed')
-    endpointGlAccountId = gateway.value.clearingGlAccountId
-  } else if (route.cashGlAccountInstanceId) {
+  if (route.cashGlAccountInstanceId) {
     endpointGlAccountId = route.cashGlAccountInstanceId
   } else if (route.bankAccountInstanceId) {
     const bankDefId = await getCachedEntityDefId(organizationId, 'bank_account')
@@ -277,13 +259,11 @@ async function readRoute(
   return {
     endpointGlAccountId,
     route: {
+      kind: 'manual',
       paymentRouteId: route.id,
-      kind: route.kind,
       method: route.method,
       settlementCurrency: route.settlementCurrency,
       endpointGlAccountId,
-      processorAccountId: route.processorAccountId,
-      gatewayInstanceId,
     },
   }
 }
@@ -292,7 +272,7 @@ async function readFrozenReceiptRoute(
   tx: Transaction,
   organizationId: string,
   originalTransactionId: string,
-  expectedRouteId: string | null
+  refundPaymentRouteId: string | null
 ): Promise<RouteResolution | null> {
   const rows = await tx
     .select({
@@ -323,34 +303,26 @@ async function readFrozenReceiptRoute(
   const parsed = acceptedCustomerReceiptEffectBasisSchema.safeParse(originals[0]!.basis)
   if (!parsed.success)
     throw new UnprocessableEntityError('Refund original receipt basis is invalid')
-  // Task 54's invoice-receipt policy freezes a cash account, not a processor
+  // Task 54's invoice-receipt policy freezes a cash account, not a rail
   // clearing route — there is no gateway in that flow to settle back through.
   // Refunding one is a different command and does not belong on this path.
   const route = 'kind' in parsed.data.calculation ? undefined : parsed.data.calculation.route
-  if (!route?.paymentRouteId || !route.processorAccountId || !route.glAccountId)
+  if (!route?.paymentGatewayId || !route.glAccountId)
     throw new UnprocessableEntityError('Refund original receipt has no frozen clearing route')
-  if (expectedRouteId !== route.paymentRouteId)
-    throw new ConflictError('Refund original receipt route differs from the movement route')
-  const savedRoute = await tx.query.PaymentRoute.findFirst({
-    where: and(
-      eq(schema.PaymentRoute.organizationId, organizationId),
-      eq(schema.PaymentRoute.id, route.paymentRouteId)
-    ),
-  })
-  if (!savedRoute || savedRoute.settlementCurrency !== parsed.data.currency)
-    throw new UnprocessableEntityError(
-      'Refund original receipt route is missing or in another currency'
+  // 58 D5: the original's rail is the whole answer here - a refund cannot also
+  // carry its own manually-resolved `PaymentRoute` (that route kind is retired
+  // for anything but a manual cash/bank refund with no original receipt).
+  if (refundPaymentRouteId !== null)
+    throw new ConflictError(
+      'Refund cannot name its own payment route while correcting a receipt-backed original'
     )
   return {
     endpointGlAccountId: route.glAccountId,
     route: {
-      paymentRouteId: route.paymentRouteId,
-      kind: 'processor',
-      method: savedRoute.method,
-      settlementCurrency: savedRoute.settlementCurrency,
+      kind: 'rail',
+      paymentGatewayId: route.paymentGatewayId,
+      settlementCurrency: parsed.data.currency,
       endpointGlAccountId: route.glAccountId,
-      processorAccountId: route.processorAccountId,
-      gatewayInstanceId: savedRoute.paymentGatewayInstanceId,
     },
     effectiveDate: parsed.data.effectiveDate,
   }
@@ -628,12 +600,10 @@ async function prepareCustomerRefund(
     glAccountId: route.endpointGlAccountId,
     direction: 'credit',
     amount: toLedgerMinor(calculation.amountMinor, 'USD', 2),
-    dimensions: {
-      paymentRouteId: route.route.paymentRouteId,
-      ...(route.route.processorAccountId
-        ? { processorAccountId: route.route.processorAccountId }
-        : {}),
-    },
+    dimensions:
+      route.route.kind === 'manual'
+        ? { paymentRouteId: route.route.paymentRouteId }
+        : { paymentGatewayId: route.route.paymentGatewayId },
     memo: 'Customer credit refund',
     sortOrder: lines.length,
   })

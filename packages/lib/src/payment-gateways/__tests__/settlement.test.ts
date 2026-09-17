@@ -8,7 +8,6 @@ const h = vi.hoisted(() => ({
   lock: vi.fn(),
   update: vi.fn(),
   getBank: vi.fn(),
-  routes: [] as { paymentGatewayInstanceId: string | null }[],
   gateway: {
     id: 'gateway-1',
     recordId: 'gateway-def:gateway-1',
@@ -111,7 +110,6 @@ function database() {
         },
       }),
     }),
-    query: { PaymentRoute: { findMany: vi.fn(async () => h.routes) } },
   }
   const db = { ...tx, transaction: async <T>(run: (value: typeof tx) => Promise<T>) => run(tx) }
   return { db: db as unknown as Database, tx }
@@ -126,7 +124,6 @@ beforeEach(() => {
     name: 'Main store',
   }
   h.others = []
-  h.routes = []
   h.accounts = [
     { processorAccountId: 'merchant-1', providerKey: 'shopify_payments', currencies: ['USD'] },
   ]
@@ -236,18 +233,6 @@ describe('gateway settlement configuration', () => {
       'settlement account with imported'
     )
     expect(h.update).not.toHaveBeenCalled()
-  })
-
-  it('refuses a merchant and currency assigned to another payment route', async () => {
-    h.routes = [{ paymentGatewayInstanceId: 'gateway-other' }]
-    await expect(save().result).rejects.toThrow('different payment gateway')
-    expect(h.update).not.toHaveBeenCalled()
-  })
-
-  it('allows an existing payment route for this exact gateway', async () => {
-    h.routes = [{ paymentGatewayInstanceId: 'gateway-1' }]
-    await save().result
-    expect(h.update).toHaveBeenCalledOnce()
   })
 
   it('refuses duplicate gateway ownership of a merchant and settlement currency', async () => {

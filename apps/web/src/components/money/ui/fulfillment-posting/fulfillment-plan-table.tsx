@@ -44,48 +44,45 @@ import { formatDayKey } from '~/components/money/ui/batch-posting'
 /**
  * The account each debit role names, spelled out where there is room for it.
  *
- * `gateway` (brief 13 §5.3) is the generic fallback for an id-based debit -
- * one shipment can route to a different `payment_gateway` record than the
- * next one under the same role, so there is no single name to put here. Use
- * {@link debitLabel} for a shipment ROW, which prefers the actual gateway's
- * name when the caller supplies {@link FulfillmentPlanTableProps.gatewayNames}.
+ * Use {@link debitLabel} for a shipment ROW, which prefers the actual rail's
+ * name (task 58 §5.2) when the caller supplies
+ * {@link FulfillmentPlanTableProps.gatewayNames}.
  */
 export const DEBIT_ROLE_LABEL: Record<FulfillmentDebitRole, string> = {
   clearing: 'Card clearing',
   accounts_receivable: 'Accounts receivable',
-  gateway: 'Gateway clearing',
+  undeposited_funds: 'Undeposited funds',
 }
 
 /** The same, short enough for a column head. */
 const DEBIT_ROLE_COLUMN: Record<FulfillmentDebitRole, string> = {
   clearing: 'Card',
   accounts_receivable: 'A/R',
-  gateway: 'Gateway',
+  undeposited_funds: 'Cash',
 }
 
 /** The order the debit columns are read in. Card first: it is the common case. */
 const DEBIT_ROLE_ORDER: readonly FulfillmentDebitRole[] = [
   'clearing',
-  'gateway',
+  'undeposited_funds',
   'accounts_receivable',
 ]
 
 /**
  * The label one shipment ROW shows for its debit.
  *
- * `role === 'gateway'` means the debit is a `payment_gateway` record's own
- * clearing account id (`amounts.debitGlAccountId`), not one of the two
- * declared roles - `DEBIT_ROLE_LABEL.gateway` alone cannot say WHICH gateway,
- * so this prefers the name from `gatewayNames` (keyed by that same id) and
- * falls back to the generic label when the caller has not supplied one.
+ * A `clearing` debit carries the `payment_gateway` record's id it scoped
+ * through (`amounts.debitRail`, task 58 §5.2) - `null` for the org default.
+ * This prefers the name from `gatewayNames` (keyed by that same id) and falls
+ * back to the generic label when the caller has not supplied one.
  */
 function debitLabel(
   role: FulfillmentDebitRole,
-  debitGlAccountId: string | undefined,
+  debitRail: string | null | undefined,
   gatewayNames: Readonly<Record<string, string>>
 ): string {
-  if (role !== 'gateway') return DEBIT_ROLE_LABEL[role]
-  return (debitGlAccountId && gatewayNames[debitGlAccountId]) || DEBIT_ROLE_LABEL.gateway
+  if (role !== 'clearing' || !debitRail) return DEBIT_ROLE_LABEL[role]
+  return gatewayNames[debitRail] || DEBIT_ROLE_LABEL.clearing
 }
 
 /**
@@ -106,11 +103,11 @@ interface FulfillmentPlanTableProps {
   plan: FulfillmentPostingPlan
   currencyCode: string
   /**
-   * `payment_gateway.clearingAccount` id -> the gateway's name, so a shipment
-   * routed there by `resolveFulfillmentDebit` (brief 13 §5.3) shows which
-   * gateway rather than the generic "Gateway clearing" fallback. Optional -
-   * a caller that has not wired `paymentGateway.list` gets the fallback
-   * everywhere, which is still correct, just less specific.
+   * `payment_gateway` record id -> its name, so a shipment scoped there by
+   * `resolveFulfillmentDebit` (task 58 §5.2) shows which rail rather than the
+   * generic "Card clearing" label. Optional - a caller that has not wired
+   * `paymentGateway.list` gets the generic label everywhere, still correct,
+   * just less specific.
    */
   gatewayNames?: Readonly<Record<string, string>>
 }
@@ -230,12 +227,8 @@ function GroupRows({
               <span className='block ps-4 truncate'>{shipment.orderNumber}</span>
               <span className='block ps-4 text-[11px] text-muted-foreground'>
                 Shipment {shipment.sequence} ·{' '}
-                {debitLabel(
-                  shipment.amounts.debitRole,
-                  shipment.amounts.debitGlAccountId,
-                  gatewayNames
-                )}{' '}
-                · {TAX_BASIS_LABEL[shipment.amounts.taxBasis]}
+                {debitLabel(shipment.amounts.debitRole, shipment.amounts.debitRail, gatewayNames)} ·{' '}
+                {TAX_BASIS_LABEL[shipment.amounts.taxBasis]}
               </span>
             </TableCell>
             <TableCell className='text-muted-foreground text-xs'>

@@ -473,10 +473,10 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
 // 2026-09-10 along with the `clearing_affirm` role: a default chart every org
 // gets must not name a vendor most of them have never heard of. Affirm is now
 // what Authorize.Net already was - a rail the merchant ADDS, as a
-// `payment_gateway` record pointing at a clearing account they create. The
-// exclusion from `1200` still happens, and still mechanically: an id-routed
-// gateway debit never reaches `clearing`, which is the only role
-// `PAYOUT_CLEARING_ROLES` drains.
+// `payment_gateway` record. Task 58 made that record a SCOPE rather than a
+// pointer: the rail's clearing account is a `GlRoleAssignment` row keyed on it,
+// so a rail the merchant adds keeps its own account without a role of its own,
+// and an org that adds none still resolves `clearing` to `1200`.
 const CARD_RAIL_ACCOUNTS: readonly DefaultChartAccount[] = [
   {
     // Named for the RAIL. Was `Shopify Clearing` / `clearing_shopify` until

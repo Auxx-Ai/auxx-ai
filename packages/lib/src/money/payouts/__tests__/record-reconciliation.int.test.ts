@@ -143,7 +143,7 @@ describe('shared payout records and event reconciliation against PostgreSQL', ()
     expect(await getTestDb().select().from(schema.FieldValue)).toHaveLength(0)
   })
 
-  it('matches an existing receipt by full source identity and its actual processor route', async () => {
+  it('matches an existing receipt by full source identity and its actual rail', async () => {
     const input = evidence('p1')
     input.membership.entries[0]!.sourceReference = {
       sourceAccount: {
@@ -176,17 +176,13 @@ describe('shared payout records and event reconciliation against PostgreSQL', ()
         updatedAt: new Date(),
       })
       .returning()
-    const [route] = await getTestDb()
-      .insert(schema.PaymentRoute)
-      .values({
-        organizationId,
-        kind: 'processor',
-        method: 'card',
-        settlementCurrency: 'USD',
-        processorAccountId: transfer!.sourceAccountId,
-        paymentGatewayInstanceId: gateway!.id,
-      })
-      .returning()
+    // task 58 D3/D5: the rail is `FinancialSourceAccount.paymentGatewayId`, not
+    // a `PaymentRoute` (its processor kind is retired). The payout's own
+    // merchant account is stamped onto this rail directly.
+    await getTestDb()
+      .update(schema.FinancialSourceAccount)
+      .set({ paymentGatewayId: gateway!.id })
+      .where(eq(schema.FinancialSourceAccount.id, transfer!.sourceAccountId))
     const [command] = await getTestDb()
       .insert(schema.MoneyCommand)
       .values({
@@ -207,7 +203,6 @@ describe('shared payout records and event reconciliation against PostgreSQL', ()
         currencyExponent: 2,
         datePrecision: 'date',
         occurredOn: '2026-09-15',
-        paymentRouteId: route!.id,
         recordedByCommandId: command!.id,
       })
       .returning()
@@ -216,6 +211,10 @@ describe('shared payout records and event reconciliation against PostgreSQL', ()
       .values({
         organizationId,
         ...input.membership.entries[0]!.sourceReference!.sourceAccount,
+        // The order-side feed settles through the SAME rail as the payout's
+        // own merchant account - that agreement is what identifies which
+        // payout actually settled this receipt.
+        paymentGatewayId: gateway!.id,
       })
       .returning()
     const [object] = await getTestDb()

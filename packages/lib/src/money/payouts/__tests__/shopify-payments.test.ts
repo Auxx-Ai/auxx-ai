@@ -15,11 +15,15 @@ const h = vi.hoisted(() => ({
     async (_toolId: string, _inputs: Record<string, unknown>): Promise<unknown> => ({})
   ),
   resolveAppToolContext: vi.fn(async (_input: unknown): Promise<unknown> => ({ connected: false })),
+  listLinkedFeedAccounts: vi.fn(
+    async () => [] as { id: string; externalAccountId: string; paymentGatewayId: string }[]
+  ),
 }))
 
 vi.mock('../../../apps/invoke-app-tool', () => ({
   resolveAppToolContext: h.resolveAppToolContext,
 }))
+vi.mock('../reads', () => ({ listLinkedFeedAccounts: h.listLinkedFeedAccounts }))
 
 import type { Database } from '@auxx/database'
 import { ForbiddenError } from '../../../errors'
@@ -78,7 +82,6 @@ const ctx: PayoutSourceCtx = {
   organizationId: ORG,
   sourceId: 'shopify_payments',
   rail: RAIL,
-  conflictingRails: [],
   handle: APP_CONTEXT,
 }
 
@@ -312,15 +315,19 @@ describe('the missing-scope refusal', () => {
 
 describe('SHOPIFY_PAYMENTS_PAYOUT_SOURCE.resolveContexts', () => {
   const db = {} as Database
+  const FEED = { id: 'fsa_1', externalAccountId: 'gid://shopify/…', paymentGatewayId: RAIL.id }
 
-  it('yields nothing, and never resolves the app, when no rail settles through Shopify Payments', async () => {
+  it('yields nothing, and never resolves the app, when nothing has linked a Shopify Payments feed', async () => {
+    h.listLinkedFeedAccounts.mockResolvedValue([])
+
     const contexts = await SHOPIFY_PAYMENTS_PAYOUT_SOURCE.resolveContexts!(db, ORG, [STRIPE_RAIL])
 
     expect(contexts).toEqual([])
     expect(h.resolveAppToolContext).not.toHaveBeenCalled()
   })
 
-  it('yields nothing when a rail exists but the Shopify app is not connected', async () => {
+  it('yields nothing when a feed is linked but the Shopify app is not connected', async () => {
+    h.listLinkedFeedAccounts.mockResolvedValue([FEED])
     h.resolveAppToolContext.mockResolvedValue({ connected: false })
 
     const contexts = await SHOPIFY_PAYMENTS_PAYOUT_SOURCE.resolveContexts!(db, ORG, [RAIL])
@@ -333,34 +340,40 @@ describe('SHOPIFY_PAYMENTS_PAYOUT_SOURCE.resolveContexts', () => {
     })
   })
 
-  it('yields one context per org with the one rail and the resolved app context as its handle', async () => {
+  it('yields one context per linked feed, with the resolved app context as its handle', async () => {
+    h.listLinkedFeedAccounts.mockResolvedValue([FEED])
+
     const contexts = await SHOPIFY_PAYMENTS_PAYOUT_SOURCE.resolveContexts!(db, ORG, [
       STRIPE_RAIL,
       RAIL,
     ])
 
     expect(contexts).toEqual([
-      {
-        organizationId: ORG,
-        sourceId: 'shopify_payments',
-        rail: RAIL,
-        conflictingRails: [],
-        handle: APP_CONTEXT,
-        ownership: {
-          appInstallationId: APP_CONTEXT.installationId,
-          credentialId: APP_CONTEXT.connectionId,
-        },
-      },
+      { organizationId: ORG, sourceId: 'shopify_payments', rail: RAIL, handle: APP_CONTEXT },
     ])
   })
 
-  it('carries two Shopify Payments rails as a conflict on ONE context rather than reading the store twice', async () => {
+  it('drops a linked feed whose gateway id names no live record, rather than posting with none', async () => {
+    h.listLinkedFeedAccounts.mockResolvedValue([{ ...FEED, paymentGatewayId: 'pg_gone' }])
+
+    const contexts = await SHOPIFY_PAYMENTS_PAYOUT_SOURCE.resolveContexts!(db, ORG, [RAIL])
+
+    expect(contexts).toEqual([])
+  })
+
+  it('yields two contexts for two feeds linked to two different rails, never one for both', async () => {
     const second = { ...RAIL, id: 'pg_shopify_2', name: 'Shopify EU' }
+    h.listLinkedFeedAccounts.mockResolvedValue([
+      FEED,
+      { id: 'fsa_2', externalAccountId: 'gid://shopify/…2', paymentGatewayId: second.id },
+    ])
 
     const contexts = await SHOPIFY_PAYMENTS_PAYOUT_SOURCE.resolveContexts!(db, ORG, [RAIL, second])
 
-    expect(contexts).toHaveLength(1)
-    expect(contexts[0]).toMatchObject({ rail: null, conflictingRails: [RAIL, second] })
+    expect(contexts).toEqual([
+      { organizationId: ORG, sourceId: 'shopify_payments', rail: RAIL, handle: APP_CONTEXT },
+      { organizationId: ORG, sourceId: 'shopify_payments', rail: second, handle: APP_CONTEXT },
+    ])
   })
 })
 

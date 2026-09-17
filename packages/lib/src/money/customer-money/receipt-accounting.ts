@@ -126,54 +126,29 @@ export async function readCustomerReceiptAccountingSource(
   }
   if (evidence.length !== 1)
     throw new UnprocessableEntityError('Receipt needs one unambiguous accepted transaction source')
-  const route =
-    money.paymentRouteId &&
-    (await tx.query.PaymentRoute.findFirst({
-      where: and(
-        eq(schema.PaymentRoute.organizationId, organizationId),
-        eq(schema.PaymentRoute.id, money.paymentRouteId),
-        isNull(schema.PaymentRoute.archivedAt)
-      ),
-    }))
-  if (
-    !route ||
-    route.kind !== 'processor' ||
-    route.settlementCurrency !== money.currency ||
-    !route.processorAccountId ||
-    !route.paymentGatewayInstanceId
-  )
-    throw new UnprocessableEntityError(
-      'Receipt processor route is unresolved or requires currency conversion'
-    )
-  const processor = await tx.query.FinancialSourceAccount.findFirst({
-    where: and(
-      eq(schema.FinancialSourceAccount.organizationId, organizationId),
-      eq(schema.FinancialSourceAccount.id, route.processorAccountId),
-      isNull(schema.FinancialSourceAccount.archivedAt)
-    ),
-  })
-  if (!processor || processor.environment !== 'live')
-    throw new UnprocessableEntityError(
-      'Receipt processor merchant account is unresolved or test data'
-    )
-  const gateway = await getPaymentGateway(tx, organizationId, route.paymentGatewayInstanceId)
-  if (gateway.isErr()) throw gateway.error
-  if (!gateway.value?.clearingGlAccountId)
-    throw new UnprocessableEntityError('Receipt gateway needs an explicit clearing account')
   const source = evidence[0]!
+  // 58 D3/§5.6: the feed's own rail link, not a `PaymentRoute` - the processor
+  // kind is retired and the account below resolves through the rail scope.
+  const paymentGatewayId = source.account.paymentGatewayId
+  if (!paymentGatewayId)
+    throw new UnprocessableEntityError(
+      'Receipt source feed has no payment gateway linked. Map it under Accounting > Settings > Payment gateways.'
+    )
+  const gateway = await getPaymentGateway(tx, organizationId, paymentGatewayId)
+  if (gateway.isErr()) throw gateway.error
+  if (!gateway.value)
+    throw new UnprocessableEntityError('Receipt payment gateway is missing or archived')
   return {
     money,
     applications,
     orderId,
     effectiveDate,
-    route,
-    processorAccountId: processor.id,
+    paymentGatewayId,
     sourceStoreId: source.account.id,
     sourceProvider: source.account.providerKey,
     sourceObjectId: source.object.id,
     sourceExternalId: source.object.externalId,
     sourceRevision: source.observation.id,
-    clearingGlAccountId: gateway.value.clearingGlAccountId,
     gatewayName: gateway.value.name,
     storeDomain: source.account.externalAccountId,
     sourceHash: accountingBasisHash({
@@ -191,8 +166,6 @@ export async function readCustomerReceiptAccountingSource(
         date: a.effectiveDate,
       })),
       observation: source.observation.contentHash,
-      route: JSON.parse(JSON.stringify(route)),
-      processor: JSON.parse(JSON.stringify(processor)),
       gateway: JSON.parse(JSON.stringify(gateway.value)),
     }),
   }

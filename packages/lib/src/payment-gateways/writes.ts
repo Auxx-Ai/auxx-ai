@@ -95,7 +95,7 @@ export interface StampPaymentGatewayLastSettlementInput {
  * 🛑 **What it must NOT do: mint an account per gateway.** `clearingAccountId`
  * names an EXISTING chart account (§5.3's explicit rule); this never creates
  * one. Two rails sharing a clearing account is ordinary - `1200` already is
- * that for every gateway `FULFILLMENT_GATEWAY_DEBIT` does not recognise.
+ * that for every gateway with no `payment_gateway` record of its own.
  */
 export async function createPaymentGateway(
   db: Database,

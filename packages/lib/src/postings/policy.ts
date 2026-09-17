@@ -565,12 +565,6 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         sentence:
           'A payout.paid event posts the same payout the moment it arrives; the daily run is the guarantee behind it for a webhook that was dropped or unsubscribed.',
       },
-      {
-        name: 'Rails',
-        value: 'Stripe Connect only',
-        sentence:
-          'Only a payment gateway record whose settlement source is Stripe is read; other rails have no payout entry yet.',
-      },
     ],
     records: [PAYMENT_GATEWAYS_RECORD, BANK_ACCOUNTS_RECORD],
     enabled: true,

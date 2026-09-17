@@ -18,7 +18,6 @@ vi.mock('../period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
 vi.mock('../post-entry', () => ({ postEntry: h.postEntry }))
 
 import type { Database } from '@auxx/database'
-import { ACCOUNT_ROLES } from '../build-entry'
 import { payoutAccountUnmappedResult, postPayoutEntry } from '../post-payout-entry'
 
 const ORG = 'org_1'
@@ -29,11 +28,11 @@ const OPTIONS = {
   actorUserId: 'user_1',
   payoutId: 'po_1',
   payoutNumber: 'PO-0007',
-  bankAccountGlAccountId: 'gl-1000',
+  rail: 'gateway_1',
+  currency: 'USD',
   grossMinor: 500_000,
   feesMinor: 14_800,
   netMinor: 485_200,
-  clearingRole: ACCOUNT_ROLES.CLEARING,
   paidAt: '2026-09-04',
 }
 

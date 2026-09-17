@@ -13,7 +13,7 @@
 // Amounts are integer minor units: 12_000 = $120.00.
 
 import { describe, expect, it } from 'vitest'
-import type { GatewayRoute } from '../../../payment-gateways/client'
+import type { FulfillmentGatewayRoute } from '../../../postings/build-fulfillment-batch-entry'
 import { groupKeyFor, planFulfillmentPosting } from '../plan'
 import type {
   FulfillmentPostingGrouping,
@@ -58,7 +58,9 @@ function shipment(overrides: Partial<UnpostedShipment> = {}): UnpostedShipment {
 function plan(
   shipments: UnpostedShipment[],
   overrides: Partial<
-    Omit<FulfillmentPostingPlanInput, 'shipments'> & { gatewayRoutes: readonly GatewayRoute[] }
+    Omit<FulfillmentPostingPlanInput, 'shipments'> & {
+      gatewayRoutes: readonly FulfillmentGatewayRoute[]
+    }
   > = {}
 ) {
   return planFulfillmentPosting({
@@ -339,41 +341,38 @@ describe('totals and the debit split', () => {
   it('splits a group by the account each shipment debits', () => {
     const result = plan(
       [
-        // Paid by card.
+        // Paid by card, no rail matched - the org default.
         shipment({ orderId: 'a', orderNumber: '#1' }),
-        // Paid by Affirm: its own clearing account via a `payment_gateway`
-        // record, so the card payout still reconciles to zero. This was the
-        // `clearing_affirm` ROLE until 2026-09-10 - a role may not name a
-        // vendor, so it became a record and lands in the `gateway` bucket.
+        // Paid by Affirm, routed to its OWN `payment_gateway` record - still
+        // `clearing`, scoped to a different rail (task 58 §5.2). This was the
+        // `clearing_affirm` ROLE until 2026-09-10, then an id-based `gateway`
+        // bucket until 58 folded the scope into the role.
         shipment({ orderId: 'b', orderNumber: '#2', gateways: ['Affirm'] }),
         // Not paid: a receivable, and aging needs the debtor.
         shipment({ orderId: 'c', orderNumber: '#3', financialStatus: 'pending' }),
       ],
       {
-        gatewayRoutes: [
-          { handles: ['affirm'], clearingGlAccountId: 'acct_affirm_clearing', active: true },
-        ],
+        gatewayRoutes: [{ id: 'gw_affirm', handles: ['affirm'], active: true }],
       }
     )
 
     expect(result.groups[0]?.totals.byDebitRole).toEqual({
-      clearing: 10_000,
+      clearing: 20_000,
       accounts_receivable: 10_000,
-      gateway: 10_000,
+      undeposited_funds: 0,
     })
   })
 
-  it('folds a non-card rail into card clearing when no record routes it', () => {
-    // 🛑 The cost of deleting `clearing_affirm`, pinned rather than left
-    // implicit: `1200` now carries a residual no card payout can relieve. The
-    // gateway settings page is where that is paid, and it is the same cost
-    // Authorize.Net has always carried.
+  it('folds a non-card rail into the org default clearing when no record routes it', () => {
+    // 🛑 The cost of an Affirm store with no `payment_gateway` record, pinned
+    // rather than left implicit: `1200` now carries a residual no card payout
+    // can relieve. The gateway settings page is where that is paid.
     const result = plan([shipment({ orderId: 'b', orderNumber: '#2', gateways: ['Affirm'] })])
 
     expect(result.groups[0]?.totals.byDebitRole).toEqual({
       clearing: 10_000,
       accounts_receivable: 0,
-      gateway: 0,
+      undeposited_funds: 0,
     })
   })
 
@@ -534,27 +533,27 @@ describe('what the plan does NOT know', () => {
   })
 })
 
-describe('gatewayRoutes (brief 13 §5.3)', () => {
-  const authNetRoute: GatewayRoute = {
+describe('gatewayRoutes (task 58 §5.2)', () => {
+  const authNetRoute: FulfillmentGatewayRoute = {
+    id: 'gw_authnet',
     handles: ['authorize_net', 'authorize.net'],
-    clearingGlAccountId: 'acct_authnet_clearing',
     active: false,
   }
 
-  it('debits a payment_gateway route instead of the role default when exactly one route matches', () => {
+  it('scopes the clearing debit to the matched rail when exactly one route matches', () => {
     const result = plan(
       [shipment({ orderId: 'a', orderNumber: '#1', gateways: ['Authorize.Net'] })],
       { gatewayRoutes: [authNetRoute] }
     )
 
     const posted = result.groups[0]?.shipments[0]
-    expect(posted?.amounts.debitRole).toBe('gateway')
-    expect(posted?.amounts.debitGlAccountId).toBe('acct_authnet_clearing')
-    // The role buckets stay zero; the id-based debit is counted under `gateway`.
+    expect(posted?.amounts.debitRole).toBe('clearing')
+    expect(posted?.amounts.debitRail).toBe('gw_authnet')
+    // One role, `clearing` - the rail rides on the shipment's own `debitRail`.
     expect(result.groups[0]?.totals.byDebitRole).toEqual({
-      clearing: 0,
+      clearing: 10_000,
       accounts_receivable: 0,
-      gateway: 10_000,
+      undeposited_funds: 0,
     })
   })
 
@@ -563,16 +562,16 @@ describe('gatewayRoutes (brief 13 §5.3)', () => {
       [shipment({ orderId: 'a', orderNumber: '#1', gateways: ['authorize_net'] })],
       { gatewayRoutes: [authNetRoute] }
     )
-    expect(result.groups[0]?.shipments[0]?.amounts.debitGlAccountId).toBe('acct_authnet_clearing')
+    expect(result.groups[0]?.shipments[0]?.amounts.debitRail).toBe('gw_authnet')
   })
 
-  it('falls back to the role default when no route names the gateway', () => {
+  it('falls back to the org default (a null rail) when no route names the gateway', () => {
     const result = plan([shipment({ orderId: 'a', orderNumber: '#1' })], {
       gatewayRoutes: [authNetRoute],
     })
     const posted = result.groups[0]?.shipments[0]
     expect(posted?.amounts.debitRole).toBe('clearing')
-    expect(posted?.amounts.debitGlAccountId).toBeUndefined()
+    expect(posted?.amounts.debitRail).toBeNull()
   })
 
   it('omitting gatewayRoutes entirely reproduces the role-only plan', () => {

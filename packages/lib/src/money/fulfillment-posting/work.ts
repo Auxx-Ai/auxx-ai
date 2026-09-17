@@ -85,7 +85,7 @@ export function singleShipmentGroup(shipment: PlannedShipment): FulfillmentPosti
           amounts.debitRole === 'accounts_receivable'
             ? (amounts.receivableDebitMinor ?? amounts.totalMinor)
             : 0,
-        gateway: amounts.debitRole === 'gateway' ? amounts.totalMinor : 0,
+        undeposited_funds: amounts.debitRole === 'undeposited_funds' ? amounts.totalMinor : 0,
       },
     },
   }
@@ -267,6 +267,16 @@ async function readFulfillmentAccountingSourceUncachedInTx(
         })
   if (route.kind === 'exclude')
     throw new UnprocessableEntityError(`Unresolved debit route: ${route.reason}`)
+  // 🛑 TODO(58 D12): `effect-types.ts`'s `debitRoute.role` enum only admits
+  // `'clearing' | 'accounts_receivable'`. A lone `cash` handle resolves here
+  // to `undeposited_funds`, which that schema cannot freeze yet - refuse with
+  // a clear reason (caught below, surfaced as incomplete work) rather than let
+  // the zod parse fail with a cryptic one, until the enum is widened.
+  if (route.role === 'undeposited_funds')
+    throw new UnprocessableEntityError(
+      'A cash-handle fulfillment routes to undeposited funds (task 58 §5.2 D12); ' +
+        "effect-types.ts's debitRoute schema does not admit that role yet."
+    )
   if (shipment.currency && shipment.currency.toUpperCase() !== 'USD')
     throw new UnprocessableEntityError('Foreign currency requires accounting review')
   const recognitionFacts = shipment.recognitionAllocation
@@ -302,7 +312,11 @@ async function readFulfillmentAccountingSourceUncachedInTx(
     shippedOn,
     channel: shipment.channel,
     sourceStoreId: shipment.sourceStoreId ?? null,
-    processorRouteId: shipment.processorRouteId ?? null,
+    // The rail this shipment's card half settles through (58 §5.2), and only
+    // when this fork chose clearing. 🛑 Not `shipment.processorRouteId`: that
+    // is a `PaymentRoute` id, not a `payment_gateway` one, and a recognition
+    // or native shipment debits deposits or receivables and names no rail (D11).
+    paymentGatewayId: route.role === 'clearing' ? route.rail : null,
     shippingRegion: null,
     dimensions: {},
     lines: shipment.lines.map((line) => ({
@@ -372,18 +386,11 @@ async function readFulfillmentAccountingSourceUncachedInTx(
               remitter: 'unknown' as const,
               withholdingEvidenceId: null,
             })),
-    debitRoute:
-      'glAccountId' in route
-        ? {
-            kind: 'account' as const,
-            glAccountId: route.glAccountId,
-            reason: route.reason ?? 'Gateway clearing route',
-          }
-        : {
-            kind: 'role' as const,
-            role: route.role,
-            reason: route.reason ?? 'Order payment state',
-          },
+    debitRoute: {
+      kind: 'role' as const,
+      role: route.role,
+      reason: route.reason ?? 'Order payment state',
+    },
   }
   const basis = accountingWorkBasisSchema.parse({
     version: 1,

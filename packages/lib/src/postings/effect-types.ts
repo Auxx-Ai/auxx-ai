@@ -51,7 +51,8 @@ export const fulfillmentAccountingBasisSchema = z
     shippedOn: date,
     channel: z.string().nullable(),
     sourceStoreId: id.nullable(),
-    processorRouteId: id.nullable(),
+    /** The `payment_gateway` record this shipment's card half settles through (58 §5.2). */
+    paymentGatewayId: id.nullable(),
     shippingRegion: z.string().nullable(),
     dimensions,
     lines: z
@@ -100,7 +101,7 @@ export const fulfillmentAccountingBasisSchema = z
     debitRoute: z.discriminatedUnion('kind', [
       z.strictObject({
         kind: z.literal('role'),
-        role: z.enum(['clearing', 'accounts_receivable']),
+        role: z.enum(['clearing', 'accounts_receivable', 'undeposited_funds']),
         reason: id,
       }),
       z.strictObject({ kind: z.literal('account'), glAccountId: id, reason: id }),
@@ -275,12 +276,11 @@ export const customerReceiptAccountingBasisSchema = z
       receivableMinor: minor,
       taxMinor: minor,
     }),
-    paymentRouteId: id,
+    /** The `payment_gateway` record the receipt's rail scope resolves through (58 §5.6). */
+    paymentGatewayId: id,
     sourceStoreId: id,
-    processorAccountId: id,
     route: z.strictObject({
-      paymentRouteId: id,
-      processorAccountId: id,
+      paymentGatewayId: id,
       glAccountId: id,
       reason: id,
     }),
@@ -328,10 +328,8 @@ export const customerReceiptAccountingBasisSchema = z
       value.allocation.taxMinor !== value.taxMinor
     )
       issue('Recognition allocation does not equal receipt contribution')
-    if (value.route.paymentRouteId !== value.paymentRouteId)
-      issue('Receipt route identity differs from the calculation payment route')
-    if (value.route.processorAccountId !== value.processorAccountId)
-      issue('Receipt processor account differs from the calculation processor account')
+    if (value.route.paymentGatewayId !== value.paymentGatewayId)
+      issue('Receipt route identity differs from the calculation payment gateway')
     const applicationTotal = value.applications.reduce(
       (sum, item) => sum + BigInt(item.amountMinor),
       0n

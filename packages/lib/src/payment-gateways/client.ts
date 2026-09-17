@@ -34,8 +34,7 @@
  * id, and the sweep only polls sources that registered themselves. `affirm` is
  * permanently in that state on purpose - it is read by the financial connector,
  * which is mutually exclusive with the `PayoutSource` registry
- * (`plans/apps/affirm/affirm-build-plan.md` §5.3, and
- * `money/payouts/ingestion-owner.ts` for the guard that enforces it).
+ * (`plans/apps/affirm/affirm-build-plan.md` §5.3).
  */
 export const PAYMENT_GATEWAY_SETTLEMENT_SOURCES = [
   'stripe',
@@ -241,9 +240,8 @@ export interface PaymentGatewayRow {
 }
 
 /**
- * What `resolveFulfillmentDebit` reads to answer a gateway with an id instead
- * of a role (HANDOFF step 5 / task 13 §5.3's replacement for
- * `FULFILLMENT_GATEWAY_DEBIT`).
+ * What `resolveFulfillmentDebit` reads to answer which RAIL a handle belongs to
+ * (task 58 §5.2; before it, this answered with the rail's clearing account id).
  *
  * `handles` are RAW (not normalised) - the caller normalises both sides at
  * match time with {@link normaliseGatewayHandle}, the same way

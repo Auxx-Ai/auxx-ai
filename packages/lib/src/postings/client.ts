@@ -103,7 +103,6 @@ export {
   buildFulfillmentBatchEntry,
   computeShipmentAmounts,
   FULFILLMENT_DEBIT_ACCOUNT_ROLE,
-  FULFILLMENT_GATEWAY_DEBIT,
   type FulfillmentBatchSource,
   type FulfillmentDebitExclusionReason,
   type FulfillmentDebitResolution,
@@ -189,7 +188,6 @@ export {
   type BuildPayoutEntryInput,
   type BuiltPayoutEntry,
   buildPayoutEntry,
-  PAYOUT_CLEARING_ROLES,
   PAYOUT_SOURCE_TYPE,
 } from './build-payout-entry'
 // ── plans/accounting/tasks/16: the chart import, pure half ─────────────────
