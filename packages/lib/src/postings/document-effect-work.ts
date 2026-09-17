@@ -1,7 +1,7 @@
 // packages/lib/src/postings/document-effect-work.ts
 
 import { schema, type Transaction } from '@auxx/database'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, like, or } from 'drizzle-orm'
 import { ConflictError, UnprocessableEntityError } from '../errors'
 import { withAccountingCommitLock } from './accounting-commit-lock'
 import {
@@ -64,22 +64,32 @@ export async function assertDocumentJournalIsOwnedInTx(
   input: { organizationId: string; family: DocumentEffectFamily; documentKey: string }
 ) {
   const { postingType, resourceKind } = DOCUMENT_EFFECT_FAMILY_SPEC[input.family]
-  const [journal] = await tx
+  // Every generation `documentGenerationKey` may have minted for this document,
+  // not just the bare key — a reversal's freed claim still needs this check.
+  const journals = await tx
     .select({ id: schema.GlPosting.id, draft: schema.GlPosting.draft })
     .from(schema.GlPosting)
     .where(
       and(
         eq(schema.GlPosting.organizationId, input.organizationId),
         eq(schema.GlPosting.postingType, postingType),
-        eq(schema.GlPosting.periodKey, input.documentKey)
+        or(
+          eq(schema.GlPosting.periodKey, input.documentKey),
+          like(schema.GlPosting.periodKey, `${input.documentKey}.%`)
+        )
       )
     )
-    .limit(1)
-  if (!journal) return
-  const draft = journal.draft
-  if (draft !== null && typeof draft === 'object' && 'accountingMembership' in draft) return
+  const unowned = journals.find(
+    (journal) =>
+      !(
+        journal.draft !== null &&
+        typeof journal.draft === 'object' &&
+        'accountingMembership' in journal.draft
+      )
+  )
+  if (!unowned) return
   throw new ConflictError(
-    `This ${resourceKind} already has journal ${journal.id}, which predates accounting effects. ` +
+    `This ${resourceKind} already has journal ${unowned.id}, which predates accounting effects. ` +
       'Reverse or reconcile it before posting this document again.'
   )
 }

@@ -10,6 +10,7 @@
 // Document and fulfillment membership keys instead use `txnDate` for period checks.
 
 import { BadRequestError, UnprocessableEntityError } from '../errors'
+import { isGroupPeriodKey } from './doc-number'
 
 /** `'day'` -> `'2026-08-18'`, `'month'` -> `'2026-08'`. */
 export type PeriodGranularity = 'day' | 'month'
@@ -125,7 +126,7 @@ export function periodMonth(periodKey: string): string {
 
 /** Use the accounting date for document/group identities and the period for calendar keys. */
 export function postingLockKey(entry: { periodKey: string; txnDate: string }): string {
-  if (!entry.periodKey.startsWith('fg_')) {
+  if (!isGroupPeriodKey(entry.periodKey)) {
     try {
       parsePeriodKey(entry.periodKey)
       return entry.periodKey

@@ -148,7 +148,11 @@ export async function planAccountingDeliveryInTx(
         eq(schema.AccountingEffect.glPostingId, glPostingId)
       )
     )
-  if (!effects.length) throw new Error('Posting has no accepted accounting effects')
+  // A reversal (`reversesId` set) is the one row allowed through with zero
+  // coverage - it backs out an effect-backed original that already released
+  // its own effect, so there is nothing left to partition (brief 62 §4).
+  if (!effects.length && !posting.reversesId)
+    throw new Error('Posting has no accepted accounting effects')
   let [delivery] = await tx
     .select()
     .from(schema.AccountingDelivery)
@@ -173,15 +177,18 @@ export async function planAccountingDeliveryInTx(
         releasedAt: posting.deliveryIntent === 'automatic' || input.manual ? new Date() : null,
       })
       .returning()
-    await tx.insert(schema.AccountingDeliveryCoverage).values(
-      effects.map((effect) => ({
-        organizationId,
-        bookId: connection.bookId,
-        deliveryId: delivery!.id,
-        effectId: effect.id,
-        componentKey: 'whole_effect',
-      }))
-    )
+    // Empty on a reversal with nothing to partition; drizzle throws on an
+    // empty `values()` array.
+    if (effects.length)
+      await tx.insert(schema.AccountingDeliveryCoverage).values(
+        effects.map((effect) => ({
+          organizationId,
+          bookId: connection.bookId,
+          deliveryId: delivery!.id,
+          effectId: effect.id,
+          componentKey: 'whole_effect',
+        }))
+      )
     await tx.insert(schema.AccountingDeliveryOperation).values({
       organizationId,
       deliveryId: delivery!.id,
@@ -784,6 +791,8 @@ export async function sweepAccountingDeliveries(
         input.organizationId
           ? eq(schema.GlPosting.organizationId, input.organizationId)
           : undefined,
+        // A `reversed` original is never re-planned; its reversal is its own row.
+        eq(schema.GlPosting.status, 'posted'),
         inArray(schema.GlPosting.deliveryIntent, ['manual', 'automatic']),
         or(
           isNull(schema.AccountingDelivery.id),

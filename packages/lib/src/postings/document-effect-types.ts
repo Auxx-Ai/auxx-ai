@@ -194,7 +194,7 @@ export const documentAccountingBasisSchema = z
      *
      * 🔑 Kept rather than replaced by an acceptance grouping hash. The document
      * number is both a stronger claim key and a readable one — `AUXX-INI-INV-0042`
-     * instead of `AUXX-INI-fg_1a2b3c4d5`. `acceptEntryInTx` honours it.
+     * instead of `AUXX-INI-g1a2b3c4d`. `acceptEntryInTx` honours it.
      *
      * 🛑 On a `repeatable` family this is also where the OCCURRENCE is pinned:
      * `writeOffPeriodKey` appends the attempt, so `acceptEntryInTx`'s

@@ -1,6 +1,6 @@
 // packages/lib/src/postings/accept-entry.ts
 import { type AccountingWorkEntity, schema, type Transaction } from '@auxx/database'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull, like, or } from 'drizzle-orm'
 import { ConflictError, UnprocessableEntityError } from '../errors'
 import { withAccountingCommitLock } from './accounting-commit-lock'
 import {
@@ -10,7 +10,7 @@ import {
   MONEY_APPLICATION_RESOURCE_KIND,
 } from './application-effect-types'
 import { acceptedCustomerCreditEffectBasisSchema } from './credit-effect-types'
-import { fulfillmentGroupPeriodKey } from './doc-number'
+import { documentGenerationKey, fulfillmentGroupPeriodKey } from './doc-number'
 import {
   type AcceptedDocumentEffectBasisV1,
   acceptedDocumentEffectBasisSchema,
@@ -814,24 +814,39 @@ export async function acceptEntryInTx(
     representation: 'journal',
     effectiveDate: input.entry.txnDate,
   })
-  // 🛑 A document family KEEPS its own period key, and that is not an
-  // exception grudgingly made. `build-invoice-entry.ts` keys the claim on the
-  // invoice number and `build-payout-entry.ts` on the payout number precisely
-  // so that `(organizationId, postingType, periodKey, revision)` is one entry
-  // per document, and so that the document number reads `AUXX-INI-INV-0042`
-  // rather than `AUXX-INI-fg_1a2b3c4d5`. A grouping hash is the right key for a
-  // fulfillment BATCH, whose membership is the only identity it has; it is a
-  // strictly worse key for a 1:1 document that already has a unique number.
-  //
-  // The membership invariant is unaffected: `membershipHash` still rides into
-  // `GlPosting.draft` below and the existing-journal path above still refuses a
-  // journal whose saved hash differs. Only the claim key differs, and the
-  // owner check above has already pinned every member's `documentKey` to this
-  // exact `periodKey`, so a document group is single-document by construction.
+  // 🛑 A document family keeps its own period key rather than the membership
+  // hash a fulfillment batch uses, so `AUXX-INI-INV-0042` reads instead of
+  // `AUXX-INI-g1a2b3c4d`. That key is the document's own number, forever — but
+  // a reversal frees `(postingType, periodKey, 0)` without freeing the key
+  // itself, so a re-post walks generations (`documentGenerationKey`) past every
+  // one a reversal already vacated. The owner check above still pins every
+  // member's `documentKey` to the bare `input.entry.periodKey`, unaffected.
   const documentGroup = works.every((work) => isDocumentEffectFamily(work.effectKind))
+  let documentPeriodKey = input.entry.periodKey
+  if (documentGroup) {
+    const priorClaims = await tx
+      .select({ periodKey: schema.GlPosting.periodKey, status: schema.GlPosting.status })
+      .from(schema.GlPosting)
+      .where(
+        and(
+          eq(schema.GlPosting.organizationId, input.organizationId),
+          eq(schema.GlPosting.postingType, input.entry.postingType),
+          eq(schema.GlPosting.revision, 0),
+          or(
+            eq(schema.GlPosting.periodKey, input.entry.periodKey),
+            like(schema.GlPosting.periodKey, `${input.entry.periodKey}.%`)
+          )
+        )
+      )
+    const statusByKey = new Map(priorClaims.map((row) => [row.periodKey, row.status]))
+    let generation = 1
+    while (statusByKey.get(documentGenerationKey(input.entry.periodKey, generation)) === 'reversed')
+      generation++
+    documentPeriodKey = documentGenerationKey(input.entry.periodKey, generation)
+  }
   const entry = {
     ...input.entry,
-    periodKey: documentGroup ? input.entry.periodKey : fulfillmentGroupPeriodKey(membershipHash),
+    periodKey: documentGroup ? documentPeriodKey : fulfillmentGroupPeriodKey(membershipHash),
   }
   const prepared = await prepareEntry(tx, {
     organizationId: input.organizationId,

@@ -16,16 +16,23 @@ import {
   buildDocNumber,
   DOC_NUMBER_MAX_LENGTH,
   DOC_NUMBER_PREFIX,
+  documentGenerationKey,
   fulfillmentGroupPeriodKey,
+  isGroupPeriodKey,
 } from '../doc-number'
 import { POSTING_TYPES } from '../types'
 
 describe('fulfillment membership document numbers', () => {
-  it('fits the provider cap without truncating the composed document number', () => {
+  it('leaves room under the provider cap for a reversal suffix', () => {
     const periodKey = fulfillmentGroupPeriodKey('abcdef0123456789'.repeat(4))
-    expect(periodKey).toBe('fg_abcdef012')
-    expect(buildDocNumber({ postingType: 'fulfillment', periodKey })).toBe('AUXX-FUL-fg_abcdef012')
-    expect(buildDocNumber({ postingType: 'fulfillment', periodKey })).toHaveLength(21)
+    expect(periodKey).toMatch(/^g[0-9a-z]{8}$/)
+    expect(isGroupPeriodKey(periodKey)).toBe(true)
+    expect(buildDocNumber({ postingType: 'fulfillment', periodKey })).toHaveLength(18)
+    expect(buildDocNumber({ postingType: 'fulfillment', periodKey, revision: 1 })).toBe(
+      `AUXX-FUL-${periodKey}-R1`
+    )
+    expect(isGroupPeriodKey('2026-08-18')).toBe(false)
+    expect(isGroupPeriodKey('fg_abcdef012')).toBe(false)
   })
 
   it('requires a full canonical hash before shortening the group identity', () => {
@@ -35,8 +42,8 @@ describe('fulfillment membership document numbers', () => {
   })
 
   it('exposes prefix collisions for the accepting transaction to compare in full', () => {
-    const first = 'abcdef012' + '0'.repeat(55)
-    const second = 'abcdef012' + '1'.repeat(55)
+    const first = 'abcdef0123' + '0'.repeat(54)
+    const second = 'abcdef0123' + '1'.repeat(54)
     expect(first).not.toBe(second)
     expect(fulfillmentGroupPeriodKey(first)).toBe(fulfillmentGroupPeriodKey(second))
   })
@@ -222,6 +229,31 @@ describe('the synced key, whose length somebody else chooses', () => {
     expect(() =>
       buildDocNumber({ postingType: 'provider_sync', periodKey: '9'.repeat(10), revision: 1 })
     ).toThrow(UnprocessableEntityError)
+  })
+})
+
+describe('documentGenerationKey', () => {
+  it('leaves generation 1 bare — every document number already minted', () => {
+    expect(documentGenerationKey('INV-0042', 1)).toBe('INV-0042')
+  })
+
+  it('suffixes generation 2 and beyond with the freed reversal generation', () => {
+    expect(documentGenerationKey('INV-0042', 2)).toBe('INV-0042.2')
+    expect(documentGenerationKey('INV-0042', 3)).toBe('INV-0042.3')
+  })
+
+  it.each([0, 1.5, -1, Number.NaN])('refuses a generation of %s', (generation) => {
+    expect(() => documentGenerationKey('INV-0042', generation)).toThrow(UnprocessableEntityError)
+  })
+
+  it('still fits the document-number cap at generation 2', () => {
+    const docNumber = buildDocNumber({
+      postingType: 'invoice_issued',
+      periodKey: documentGenerationKey('INV-0042', 2),
+      revision: 1,
+    })
+    expect(docNumber).toBe('AUXX-INI-INV0042.2-R1')
+    expect(docNumber.length).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
   })
 })
 

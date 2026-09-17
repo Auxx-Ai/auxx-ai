@@ -4,6 +4,7 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { ConflictError } from '../errors'
 
 /** What {@link releaseAccountingClaims} removed, for a script to print. */
 export interface ReleasedAccountingClaims {
@@ -96,6 +97,200 @@ export async function releaseAccountingClaims(
     deliveries: deliveryIds.length,
     reopened: reopened.length,
   }
+}
+
+/**
+ * Release one reversed posting's claim: its effect and coverage go, the work
+ * behind it reopens on a bumped basis version, and the delivery is kept only
+ * if the provider actually holds a copy (brief 62 R2-R4).
+ *
+ * 🛑 **R5.** If a correction already names one of this posting's effects as
+ * `correctsEffectId`, this refuses instead of deleting under it - the
+ * correction is real bookkeeping and the reversal should say so.
+ *
+ * Unlike {@link releaseAccountingClaims}, a delivery the provider holds a copy
+ * of is kept rather than dropped: `unsync` R4 reads it to withdraw the pair,
+ * and the coverage rows are removed regardless because their FK to the effect
+ * is `NO ACTION`.
+ */
+export async function releaseReversedPostingClaimsInTx(
+  tx: Transaction,
+  organizationId: string,
+  original: { id: string; docNumber: string; exportStatus: string }
+): Promise<ReleasedAccountingClaims> {
+  const empty = { effects: 0, deliveries: 0, reopened: 0 }
+  const effects = await tx
+    .select({ id: schema.AccountingEffect.id, workId: schema.AccountingEffect.workId })
+    .from(schema.AccountingEffect)
+    .where(
+      and(
+        eq(schema.AccountingEffect.organizationId, organizationId),
+        eq(schema.AccountingEffect.glPostingId, original.id)
+      )
+    )
+  if (!effects.length) return empty
+  const effectIds = effects.map((effect) => effect.id)
+
+  const [corrected] = await tx
+    .select({ id: schema.AccountingWork.id })
+    .from(schema.AccountingWork)
+    .where(
+      and(
+        eq(schema.AccountingWork.organizationId, organizationId),
+        inArray(schema.AccountingWork.correctsEffectId, effectIds)
+      )
+    )
+    .limit(1)
+  if (corrected)
+    throw new ConflictError(
+      `${original.docNumber} has been corrected; a corrected entry cannot be reversed`
+    )
+
+  // The coverage's FK to the effect is NO ACTION, so it must go before the effect.
+  await tx
+    .delete(schema.AccountingDeliveryCoverage)
+    .where(
+      and(
+        eq(schema.AccountingDeliveryCoverage.organizationId, organizationId),
+        inArray(schema.AccountingDeliveryCoverage.effectId, effectIds)
+      )
+    )
+
+  const deliveries = await tx
+    .select({ id: schema.AccountingDelivery.id })
+    .from(schema.AccountingDelivery)
+    .where(
+      and(
+        eq(schema.AccountingDelivery.organizationId, organizationId),
+        eq(schema.AccountingDelivery.glPostingId, original.id)
+      )
+    )
+  const deliveryIds = deliveries.map((row) => row.id)
+
+  // R4: both halves or neither. A delivery the provider never received is
+  // dropped rather than kept as a plan for a copy that is never coming.
+  let providerHoldsCopy = original.exportStatus === 'exported'
+  if (!providerHoldsCopy && deliveryIds.length) {
+    const operations = await tx
+      .select({ id: schema.AccountingDeliveryOperation.id })
+      .from(schema.AccountingDeliveryOperation)
+      .where(
+        and(
+          eq(schema.AccountingDeliveryOperation.organizationId, organizationId),
+          inArray(schema.AccountingDeliveryOperation.deliveryId, deliveryIds)
+        )
+      )
+    const operationIds = operations.map((row) => row.id)
+    if (operationIds.length) {
+      const [remoteObject] = await tx
+        .select({ id: schema.ExternalAccountingObject.id })
+        .from(schema.ExternalAccountingObject)
+        .where(
+          and(
+            eq(schema.ExternalAccountingObject.organizationId, organizationId),
+            inArray(schema.ExternalAccountingObject.operationId, operationIds)
+          )
+        )
+        .limit(1)
+      providerHoldsCopy = !!remoteObject
+    }
+  }
+
+  if (!providerHoldsCopy && deliveryIds.length) {
+    await tx
+      .delete(schema.AccountingDeliveryOperation)
+      .where(
+        and(
+          eq(schema.AccountingDeliveryOperation.organizationId, organizationId),
+          inArray(schema.AccountingDeliveryOperation.deliveryId, deliveryIds)
+        )
+      )
+    await tx
+      .delete(schema.AccountingDelivery)
+      .where(
+        and(
+          eq(schema.AccountingDelivery.organizationId, organizationId),
+          inArray(schema.AccountingDelivery.id, deliveryIds)
+        )
+      )
+    // Nothing is owed for a reversed row that never reached the provider.
+    await tx
+      .update(schema.GlPosting)
+      .set({ exportStatus: 'not_required' })
+      .where(
+        and(
+          eq(schema.GlPosting.organizationId, organizationId),
+          eq(schema.GlPosting.id, original.id)
+        )
+      )
+  }
+
+  const released = await tx
+    .delete(schema.AccountingEffect)
+    .where(
+      and(
+        eq(schema.AccountingEffect.organizationId, organizationId),
+        inArray(schema.AccountingEffect.id, effectIds)
+      )
+    )
+    .returning({ workId: schema.AccountingEffect.workId })
+  const workIds = [...new Set(released.map((row) => row.workId))]
+
+  for (const workId of workIds) {
+    const [work] = await tx
+      .select()
+      .from(schema.AccountingWork)
+      .where(
+        and(
+          eq(schema.AccountingWork.organizationId, organizationId),
+          eq(schema.AccountingWork.id, workId)
+        )
+      )
+      .for('update')
+    if (!work) continue
+    const [basis] = await tx
+      .select()
+      .from(schema.AccountingWorkBasis)
+      .where(
+        and(
+          eq(schema.AccountingWorkBasis.organizationId, organizationId),
+          eq(schema.AccountingWorkBasis.workId, workId),
+          eq(schema.AccountingWorkBasis.version, work.basisVersion)
+        )
+      )
+      .limit(1)
+    if (!basis) continue
+    // The acceptance membership hash - and so the claim key - includes
+    // `basisVersion`; without the bump a re-post of the same membership
+    // collides with the reversed row's revision-0 claim.
+    await tx.insert(schema.AccountingWorkBasis).values({
+      organizationId,
+      workId,
+      version: work.basisVersion + 1,
+      sourceHash: basis.sourceHash,
+      effectiveDate: basis.effectiveDate,
+      basis: basis.basis,
+    })
+    await tx
+      .update(schema.AccountingWork)
+      .set({
+        state: 'pending',
+        basisVersion: work.basisVersion + 1,
+        blockedReason: null,
+        nextAttemptAt: null,
+        leaseToken: null,
+        leaseUntil: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.AccountingWork.organizationId, organizationId),
+          eq(schema.AccountingWork.id, workId)
+        )
+      )
+  }
+
+  return { effects: released.length, deliveries: deliveryIds.length, reopened: workIds.length }
 }
 
 /**

@@ -46,9 +46,9 @@ import { type CloseBlockerItem, describeUnmappedRoles } from './close-blockers'
 import { buildDocNumber } from './doc-number'
 import { type PostingAssertions, requiresAssertions } from './draft'
 import {
-  assertPostingReversalAllowedInTx,
   type ClaimOutcome,
   insertPostingInTx,
+  type PostingDeliveryIntent,
   type PreparedLine,
 } from './insert-posting'
 import { LEDGER_CURRENCY } from './ledger-currency'
@@ -152,6 +152,12 @@ export interface PostEntryOptions {
    * never stop the books (decision D6).
    */
   scope?: RoleSourceScope
+  /**
+   * Set only by {@link reverseEntry}: the reversal inherits its original's
+   * pinned destination and skips the inline provider push below, so the
+   * delivery lane (not this file) carries the pair.
+   */
+  deliveryIntent?: PostingDeliveryIntent
 }
 
 export interface PreviewEntryOptions {
@@ -695,7 +701,6 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
       await db.transaction(async (tx) => {
         await withAccountingCommitLock(tx, organizationId)
         await options.beforeCommit?.(tx)
-        if (reversesId) await assertPostingReversalAllowedInTx(tx, organizationId, reversesId)
         const authoritativeLock = await resolvePeriodLock(organizationId, tx)
         prepared = await prepareEntry(tx, {
           organizationId,
@@ -718,6 +723,7 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
           memo,
           actorUserId,
           assertions,
+          deliveryIntent: options.deliveryIntent,
         })
       })
     } catch (error) {
@@ -805,6 +811,24 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
     }
 
     const glPostingId = claim.row.id
+
+    // A pinned intent (set only by `reverseEntry`) carries this row through
+    // the delivery lane instead - the row's `exportStatus` is already right
+    // from the insert, so this returns without touching the legacy provider.
+    if (options.deliveryIntent) {
+      logger.info('Posting carries a pinned delivery intent - skipping the inline provider push', {
+        organizationId,
+        glPostingId,
+        docNumber,
+        deliveryIntent: options.deliveryIntent.kind,
+      })
+      return {
+        status: 'posted',
+        exportStatus: options.deliveryIntent.kind === 'not_required' ? 'not_required' : 'pending',
+        glPostingId,
+        docNumber,
+      }
+    }
 
     // ── The provider, after the claim has committed ────────────────────────
     // This is the first and only reader of `EXPORT_ROUTE_BY_POSTING_TYPE`.
