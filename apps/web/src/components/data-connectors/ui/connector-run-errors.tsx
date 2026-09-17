@@ -24,9 +24,10 @@ export interface ConnectorRunError {
   /**
    * 'invalid' = dropped before the write; 'rejected' = the write threw; 'skipped' = a
    * deliberate no-op with a reason (a true in-source duplicate, money plan 39 section
-   * 6.1); absent = engine-level.
+   * 6.1); 'diverged' = nothing failed, but the upstream copy of a record we authored
+   * no longer matches ours; absent = engine-level.
    */
-  tier?: 'invalid' | 'rejected' | 'skipped'
+  tier?: 'invalid' | 'rejected' | 'skipped' | 'diverged'
 }
 
 /** errorSample is capped server-side (`service.ts` finalizeRun → `.slice(0, 50)`). */
@@ -36,6 +37,7 @@ const TIER_META: Record<string, { label: string; variant: BadgeProps['variant'] 
   invalid: { label: 'Invalid', variant: 'amber' },
   rejected: { label: 'Rejected', variant: 'red' },
   skipped: { label: 'Skipped', variant: 'gray' },
+  diverged: { label: 'Diverged', variant: 'amber' },
 }
 const UNTAGGED_TIER = { label: 'Error', variant: 'gray' as const }
 

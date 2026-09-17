@@ -230,7 +230,7 @@ describe('fillOpeningTrialBalanceFromProvider', () => {
     expect(postEntry).toHaveBeenCalledTimes(1)
   })
 
-  it('writes the provenance settings and fires the cache invalidation the settings router would have', async () => {
+  it('writes the provenance settings, and does not opt out of the cache bust', async () => {
     await fillOpeningTrialBalanceFromProvider(db, ORG, USER)
     expect(h.batchUpdateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -241,9 +241,12 @@ describe('fillOpeningTrialBalanceFromProvider', () => {
         ]),
       })
     )
-    expect(h.cacheEvents).toEqual([
-      ['org.settings.changed', { orgId: ORG, broadcastUserKeys: true }],
-    ])
+    // The bust lives in `batchUpdateOrganizationSettings` now, which this file
+    // mocks - so it is not observable here. What must stay true is that the
+    // batch is not told to skip it: the browser's store hydrates from the
+    // per-user `userSettings` cache, and brief 19 learned by driving that an
+    // un-busted write leaves a reload showing the manual instruction.
+    expect(h.batchUpdateSettings.mock.calls[0]![0]).not.toHaveProperty('skipCacheInvalidation')
   })
 
   it('refuses when nothing is connected', async () => {

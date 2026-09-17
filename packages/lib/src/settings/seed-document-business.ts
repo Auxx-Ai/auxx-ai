@@ -23,7 +23,7 @@ type ProfileBackedFields = { companyName?: string; website?: string }
  *   email/password signup path, where the org is created with `name: ''`
  * - `organization.update` — the moment onboarding's last step supplies the real name/website
  *
- * No-ops (and skips the cache event) when the profile has nothing the block is missing.
+ * No-ops (no write, hence no cache event) when the profile has nothing the block is missing.
  */
 export async function seedDocumentBusinessFromProfile(params: {
   organizationId: string
@@ -59,10 +59,4 @@ export async function seedDocumentBusinessFromProfile(params: {
     value: { ...existing, ...patch },
     db,
   })
-
-  // `updateOrganizationSetting` does not invalidate on its own — every caller owns this
-  // (see setting.ts's mutations). Without it the freshly seeded block sits behind a stale
-  // `orgSettings` cache entry and the Documents/Dispatch settings pages read blank.
-  const { onCacheEvent } = await import('../cache/invalidate')
-  await onCacheEvent('org.settings.changed', { orgId: organizationId })
 }

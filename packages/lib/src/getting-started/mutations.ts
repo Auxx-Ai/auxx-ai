@@ -1,6 +1,5 @@
 // packages/lib/src/getting-started/mutations.ts
 import type { Database, Transaction } from '@auxx/database'
-import { onCacheEvent } from '../cache'
 import { getOrganizationSetting, updateOrganizationSetting } from '../settings'
 import {
   CHECKLISTS,
@@ -26,7 +25,7 @@ async function readState(
   return (value as GettingStartedState | null) ?? DEFAULT_GETTING_STARTED_STATE
 }
 
-/** Persist a checklist's new state + invalidate the org-settings cache. */
+/** Persist a checklist's new state (`updateOrganizationSetting` busts the org cache). */
 async function writeState(
   db: Database | Transaction | undefined,
   organizationId: string,
@@ -39,7 +38,6 @@ async function writeState(
     value: state,
     db,
   })
-  await onCacheEvent('org.settings.changed', { orgId: organizationId })
 }
 
 /**

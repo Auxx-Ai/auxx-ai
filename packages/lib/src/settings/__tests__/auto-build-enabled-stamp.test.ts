@@ -22,6 +22,10 @@ interface Upsert {
   scope: string
 }
 
+// `updateOrganizationSetting` busts the org cache itself now; stub it out so
+// this file keeps testing the stamp and not the cache.
+vi.mock('../../cache/invalidate', () => ({ onCacheEvent: async () => {} }))
+
 const h = vi.hoisted(() => ({
   /** The one row a `select` returns, or `undefined` for "no row yet". */
   storedValue: undefined as unknown,

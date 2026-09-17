@@ -5,7 +5,6 @@ import { getCredentials, ProviderRegistry, QuotaService, SystemModelService } fr
 // has to come from its own module — the same deep import `aiIntegration.ts` makes.
 import { ModelType } from '@auxx/lib/ai/providers/types'
 import { CREDIT_USD_VALUE } from '@auxx/lib/ai/quota/client'
-import { onCacheEvent } from '@auxx/lib/cache'
 import { BadRequestError, ConflictError } from '@auxx/lib/errors'
 import {
   cancelMailReclassifyRun,
@@ -370,12 +369,6 @@ export const mailClassificationRouter = createTRPCRouter({
           key: MAIL_CLASSIFICATION_INBOXES_KEY,
           value: next,
           db: ctx.db,
-        })
-        // The guard reads this through the `orgSettings` org cache (§3.1 exit 3),
-        // so without this the classifier keeps answering with the old list.
-        await onCacheEvent('org.settings.changed', {
-          orgId: ctx.session.organizationId,
-          broadcastUserKeys: true,
         })
 
         // Routing this key out of `settings.updateOrganizationSetting` would

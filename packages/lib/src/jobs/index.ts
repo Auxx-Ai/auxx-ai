@@ -331,6 +331,16 @@ export {
   type FulfillmentPostingJobData,
   fulfillmentPostingJob,
 } from './money/fulfillment-posting-job'
+export {
+  PROVIDER_SYNC_JOB_NAME,
+  type ProviderSyncJobData,
+  providerSyncJob,
+} from './money/provider-sync-job'
+export {
+  PROVIDER_SYNC_SCHEDULED_JOB_NAME,
+  type ProviderSyncScheduledJobData,
+  providerSyncScheduledJob,
+} from './money/provider-sync-scheduled-job'
 // OAuth2
 export { oauth2TokenRefreshJob } from './oauth2-refresh'
 // Polling

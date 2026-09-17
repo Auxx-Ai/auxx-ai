@@ -540,21 +540,19 @@ describe('mailClassification router — the stored list', () => {
     expect(hoisted.updateOrganizationSetting).toHaveBeenCalledTimes(1)
   })
 
-  it('busts the org-settings cache after a real write, so the guard sees it', async () => {
+  it('writes and audits a real change — the cache bust is the writer’s own', async () => {
     await caller().setInboxEnabled({ inboxId: OWN_PERSONAL, enabled: true })
 
-    expect(hoisted.onCacheEvent).toHaveBeenCalledWith('org.settings.changed', {
-      orgId: ORG_ID,
-      broadcastUserKeys: true,
-    })
+    // `updateOrganizationSetting` fires `org.settings.changed` itself, so the
+    // guard sees the new list without the router repeating the event.
+    expect(hoisted.updateOrganizationSetting).toHaveBeenCalledTimes(1)
     expect(hoisted.recordAuditFromCtx).toHaveBeenCalled()
   })
 
-  it('does not bust the cache or audit when nothing changed', async () => {
+  it('does not write or audit when nothing changed', async () => {
     await caller().setInboxEnabled({ inboxId: OWN_PERSONAL, enabled: false })
 
     expect(hoisted.updateOrganizationSetting).not.toHaveBeenCalled()
-    expect(hoisted.onCacheEvent).not.toHaveBeenCalled()
     expect(hoisted.recordAuditFromCtx).not.toHaveBeenCalled()
   })
 

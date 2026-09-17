@@ -10,12 +10,11 @@
 // caller (`sync.ts`) decides what "succeeded" means; this file's contribution is
 // that there is exactly one door onto the key, so the decision is in one place.
 //
-// ⚠️ `updateOrganizationSetting` does NOT invalidate the `orgSettings` cache -
-// its callers do (HANDOFF §10.5). A writer that forgets leaves every server
-// reading a stale snapshot, which for this key means every statement keeps
-// rendering the OLD marker after a sync that moved it. So the event is fired
-// here, next to the write, rather than left to a router that may not be the only
-// caller: the sync also runs from a worker.
+// ⚠️ `updateOrganizationSetting` busts the `orgSettings` cache itself, after
+// commit and broadcasting to user keys. That matters on this key: the browser's
+// store hydrates from the per-user `userSettings` cache, so without the
+// broadcast a full reload keeps rendering the OLD marker - a statement claiming
+// a completeness it does not have.
 
 import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
@@ -56,16 +55,6 @@ export async function recordProviderSyncedThrough(
         key: PROVIDER_SYNCED_THROUGH_SETTING_KEY,
         value: through,
       })
-
-      // `broadcastUserKeys: true` is load-bearing and is the same lesson brief
-      // 19's fill path learned by driving (`opening-trial-balance/
-      // fill-from-provider.ts:179`): the browser's settings store hydrates from
-      // the per-user `userSettings` cache, which the `org.settings.changed` edge
-      // reaches only when the event broadcasts to user keys. With `{ orgId }`
-      // alone a full reload still shows the previous marker - which on this key
-      // is a statement claiming a completeness it does not have.
-      const { onCacheEvent } = await import('../../cache/invalidate')
-      await onCacheEvent('org.settings.changed', { orgId: organizationId, broadcastUserKeys: true })
 
       logger.info('Advanced the provider sync marker', { organizationId, syncedThrough: through })
     },

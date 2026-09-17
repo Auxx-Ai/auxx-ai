@@ -15,6 +15,7 @@ export {
   getOrganizationSetting,
   getOrganizationSettingsWithMetadata,
   getUserSetting,
+  invalidateOrganizationSettings,
   type OrganizationSettingWithMetadata,
   resetUserSetting,
   updateOrganizationSetting,

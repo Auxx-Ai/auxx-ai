@@ -24,7 +24,17 @@ export async function guard<T>(
   try {
     return ok(await fn())
   } catch (error) {
-    if (error instanceof AuxxError) return err(error)
+    if (error instanceof AuxxError) {
+      // `warn`, not `error`: a refusal is a business-rule outcome, but it still
+      // has to leave a trace - the remedy string used to exist only in the browser.
+      logger.warn(logMessage, {
+        ...meta,
+        error: error.message,
+        errorName: error.name,
+        statusCode: error.statusCode,
+      })
+      return err(error)
+    }
     logger.error(logMessage, { error, ...meta })
     return err(new AuxxError('Internal error'))
   }

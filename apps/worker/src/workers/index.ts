@@ -4,6 +4,7 @@ import { isSelfHosted } from '@auxx/deployment'
 import { reconcileConnectorSchedulers } from '@auxx/lib/data-connectors'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { reconcileSourceSchedulers } from '@auxx/lib/knowledge-sources'
+import { reconcileProviderSyncSchedulers } from '@auxx/lib/postings'
 import { startAccountingDeliveryWorker } from './worker-definitions/accounting-delivery-worker'
 import { startAiAgentWorker } from './worker-definitions/ai-agent-worker'
 import { startAiAutofillWorker } from './worker-definitions/ai-autofill-worker'
@@ -33,6 +34,7 @@ import { startMessageSyncWorker } from './worker-definitions/message-sync-worker
 import { startOAuth2RefreshWorker } from './worker-definitions/oauth2-refresh-worker'
 import { startPollingSyncWorker } from './worker-definitions/polling-sync-worker'
 import { startPollingTriggerWorker } from './worker-definitions/polling-trigger-worker'
+import { startProviderSyncWorker } from './worker-definitions/provider-sync-worker'
 import { startPurchaseIntakeWorker } from './worker-definitions/purchase-intake-worker'
 import { startRecordingBotWorker } from './worker-definitions/recording-bot-worker'
 import { startRecordingProcessingWorker } from './worker-definitions/recording-processing-worker'
@@ -147,6 +149,11 @@ export async function startWorkers() {
   // QuickBooks round trips - see the worker definition.
   const accountingDeliveryWorker = startAccountingDeliveryWorker()
 
+  // Inbound provider-ledger sync worker: one slice of the walk per job, chained
+  // by the runner's directive. Concurrency 1 - see the worker definition for why
+  // that is a correctness cap on the marker, not a throttle.
+  const providerSyncWorker = startProviderSyncWorker()
+
   // Inbound-mail AI categorisation worker (mail-classification plan §4)
   const mailClassificationWorker = startMailClassificationWorker()
 
@@ -198,6 +205,7 @@ export async function startWorkers() {
     fulfillmentPostingWorker,
     creditMemoPostingWorker,
     accountingDeliveryWorker,
+    providerSyncWorker,
     mailClassificationWorker,
     purchaseIntakeWorker,
     returnIntakeWorker,
@@ -1284,6 +1292,13 @@ export async function setupSchedules() {
   // Re-register per-connector scheduled syncs so a cleared Redis can't silently
   // stop them firing. Idempotent (upsert by data-connector-sync-{id}).
   await reconcileConnectorSchedulers(database)
+
+  // ── Inbound Provider-Sync Schedules ──────────────────────────
+  // Same reason, per org rather than per row: re-register the cadence of every
+  // org with a connected accounting provider (plans/accounting/tasks/55 §5.1).
+  // Idempotent, and an org with no `providerSync.schedule` value gets no
+  // scheduler - there is no default cadence.
+  await reconcileProviderSyncSchedulers(database)
 
   // ── Data Migrations ──────────────────────────────────────────
   // Hourly safety net, NOT the primary trigger. The primary trigger is the

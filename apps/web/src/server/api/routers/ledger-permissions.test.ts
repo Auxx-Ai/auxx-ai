@@ -39,23 +39,9 @@ vi.mock('@auxx/lib/postings', async () => {
     // Brief 20 §7.4. The inbound sync RESTATES prior months - it writes into
     // closed periods and reverses entries that have vanished from the provider
     // - so it sits on `ledgerControl` beside `setLockedThrough` rather than on
-    // `ledgerPost`. Mocked to an `ok`, because the only thing under test here
-    // is which rung reaches the resolver body at all.
-    syncProviderLedger: vi.fn(async () =>
-      okResult({
-        from: '2026-01-01',
-        to: '2026-01-31',
-        providerId: 'quickbooks',
-        currency: 'USD',
-        chunks: [],
-        written: 0,
-        alreadyPosted: 0,
-        reversed: 0,
-        deferredToClosedMonths: [],
-        refusals: [],
-        syncedThrough: '2026-01-31',
-      })
-    ),
+    // `ledgerPost`. Mocked to a successful enqueue, because the only thing under
+    // test here is which rung reaches the resolver body at all.
+    enqueueProviderSync: vi.fn(async () => true),
   }
 })
 
@@ -237,7 +223,7 @@ describe('ledger.syncProviderLedger', () => {
   it('admits ledger: Full', async () => {
     await expect(
       ledgerCaller(ledgerFull()).syncProviderLedger({ to: '2026-01-31' })
-    ).resolves.toMatchObject({ syncedThrough: '2026-01-31' })
+    ).resolves.toMatchObject({ status: 'queued', to: '2026-01-31' })
   })
 
   it('refuses a caller with settingsManage but not ledgerControl', async () => {

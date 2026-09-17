@@ -341,25 +341,83 @@ export async function getAllUserSettings(params: {
   return result
 }
 
+/** Keys whose write must serialize behind the accounting commit lock. */
+function needsAccountingCommitLock(key: SettingKey): boolean {
+  return (
+    key.startsWith('accounting.') ||
+    key.startsWith('ledger.') ||
+    key === 'quickbooks.postJournalEntries'
+  )
+}
+
+/**
+ * Bust the `orgSettings` cache after an org settings write has COMMITTED — the
+ * door for callers that supplied their own transaction, whose commit
+ * {@link updateOrganizationSetting} cannot observe.
+ *
+ * `broadcastUserKeys` defaults to `true` and is load-bearing: the browser's
+ * settings store hydrates from the per-user `userSettings` cache, which the
+ * `org.settings.changed` edge reaches only when the event broadcasts to user
+ * keys — with `{ orgId }` alone a full reload still shows the previous value.
+ */
+export async function invalidateOrganizationSettings(
+  organizationId: string,
+  opts?: { broadcastUserKeys?: boolean }
+): Promise<void> {
+  // Dynamic import — `../cache` pulls in the org-settings cache provider, which
+  // imports this module (same cycle as `bustInvoiceDefaultTimingCache`).
+  const { onCacheEvent } = await import('../cache/invalidate')
+  await onCacheEvent('org.settings.changed', {
+    orgId: organizationId,
+    broadcastUserKeys: opts?.broadcastUserKeys ?? true,
+  })
+}
+
 /**
  * Update an organization setting. Validates the value against the catalog's
- * `fieldType` via {@link normalizeSettingValue} and upserts.
+ * `fieldType` via {@link normalizeSettingValue}, upserts, then busts the
+ * `orgSettings` cache.
+ *
+ * ⚠️ When the caller supplies its own `PgTransaction` the bust is skipped —
+ * this function cannot know when that transaction commits, and firing inside it
+ * lets a concurrent reader repopulate the cache from the pre-commit state with
+ * no further event coming. Such callers must call
+ * {@link invalidateOrganizationSettings} after their own commit.
  */
 export async function updateOrganizationSetting(params: {
   organizationId: string
   key: SettingKey
   value: SettingValue
   db?: Database | Transaction
+  /** For keys written many times per run: bust the org cache once at the end instead. */
+  skipCacheInvalidation?: boolean
 }): Promise<void> {
-  const { organizationId, key, value, db = defaultDb } = params
-  if (
-    key.startsWith('accounting.') ||
-    key.startsWith('ledger.') ||
-    key === 'quickbooks.postJournalEntries'
-  ) {
-    if (!(db instanceof PgTransaction)) {
-      return db.transaction((tx) => updateOrganizationSetting({ ...params, db: tx }))
-    }
+  const { organizationId, key, db = defaultDb, skipCacheInvalidation } = params
+  const callerSuppliedTransaction = db instanceof PgTransaction
+
+  // The accounting keys need the commit lock, so they get a transaction of their
+  // own when the caller didn't bring one. The invalidation below then runs in
+  // THIS frame, after `transaction()` has resolved — i.e. after commit.
+  if (needsAccountingCommitLock(key) && !callerSuppliedTransaction) {
+    await db.transaction((tx) => updateOrganizationSettingInner({ ...params, db: tx }))
+  } else {
+    await updateOrganizationSettingInner({ ...params, db })
+  }
+
+  if (!skipCacheInvalidation && !callerSuppliedTransaction) {
+    await invalidateOrganizationSettings(organizationId)
+  }
+}
+
+/** The write half of {@link updateOrganizationSetting} — never invalidates. */
+async function updateOrganizationSettingInner(params: {
+  organizationId: string
+  key: SettingKey
+  value: SettingValue
+  db: Database | Transaction
+}): Promise<void> {
+  const { organizationId, key, value, db } = params
+  if (needsAccountingCommitLock(key) && db instanceof PgTransaction) {
     await withAccountingCommitLock(db, organizationId)
   }
   if (key === 'ledger.lockedThroughMonth') {
@@ -492,13 +550,24 @@ export async function resetUserSetting(params: {
 
 /**
  * Batch update organization settings in a single transaction.
+ *
+ * Busts the org settings cache once for the whole batch, after commit - the same
+ * contract {@link updateOrganizationSetting} keeps, so a caller never has to know
+ * which of the two it used.
  */
 export async function batchUpdateOrganizationSettings(params: {
   organizationId: string
   settings: Array<{ key: SettingKey; value: SettingValue }>
   db?: Database | Transaction
+  /** See {@link updateOrganizationSetting}. */
+  skipCacheInvalidation?: boolean
 }): Promise<void> {
-  const { organizationId, settings, db = defaultDb } = params
+  const { organizationId, settings, db = defaultDb, skipCacheInvalidation } = params
+  // A caller-supplied transaction has not committed when the block below
+  // resolves, so busting here would let a concurrent reader repopulate from the
+  // pre-commit row. That caller owns the bust; `invalidateOrganizationSettings`
+  // is exported for it.
+  const callerSuppliedTransaction = db instanceof PgTransaction
   if (settings.some(({ key }) => key === 'ledger.lockedThroughMonth')) {
     throw new UnprocessableEntityError(
       'Use the accounting setLockedThrough command to change the period lock'
@@ -507,14 +576,7 @@ export async function batchUpdateOrganizationSettings(params: {
   let touchedInvoiceDefaultTiming = false
 
   await db.transaction(async (tx) => {
-    if (
-      settings.some(
-        ({ key }) =>
-          key.startsWith('accounting.') ||
-          key.startsWith('ledger.') ||
-          key === 'quickbooks.postJournalEntries'
-      )
-    )
+    if (settings.some(({ key }) => needsAccountingCommitLock(key)))
       await withAccountingCommitLock(tx, organizationId)
     for (const setting of settings) {
       const { key, value } = setting
@@ -567,6 +629,8 @@ export async function batchUpdateOrganizationSettings(params: {
   })
 
   if (touchedInvoiceDefaultTiming) await bustInvoiceDefaultTimingCache(organizationId)
+  if (!skipCacheInvalidation && !callerSuppliedTransaction)
+    await invalidateOrganizationSettings(organizationId)
 }
 
 /** One organization setting merged with its catalog metadata. */

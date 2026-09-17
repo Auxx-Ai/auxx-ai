@@ -49,6 +49,7 @@ import { err, ok, type Result } from 'neverthrow'
 import { postEntry, previewEntry } from '../post-entry'
 import {
   __resetAccountingProvidersForTests,
+  NULL_LEDGER_SLICER,
   registerAccountingProvider,
   setConnectedProviderResolver,
 } from '../provider'
@@ -467,9 +468,9 @@ beforeEach(() => {
 const NO_ACCOUNT_MAP = {
   listProviderAccounts: async () => ok([]),
   readProviderBalances: async () => ok(null),
-  // The inbound half (brief 20 §5.1). `null`, never an empty chunk - see
-  // `NoneAccountingProvider.readProviderLedger`.
-  readProviderLedger: async () => ok(null),
+  // The inbound half (brief 20 §5.1). The null slicer answers `null`, never an
+  // empty batch - see `NULL_LEDGER_SLICER`.
+  ledgerSlicer: () => NULL_LEDGER_SLICER,
   listAccountMappings: async () => ok(new Map<string, string>()),
   setAccountMapping: async () => ok(undefined),
   clearAccountMapping: async () => ok(undefined),

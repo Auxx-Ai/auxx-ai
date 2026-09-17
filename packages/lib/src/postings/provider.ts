@@ -19,7 +19,7 @@ import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError, UnprocessableEntityError } from '../errors'
 import type { GlAccountSubtypeValue } from './account-subtype'
 import type { GlAccountTypeValue } from './default-chart'
-import type { ProviderLedger } from './provider-sync/client'
+import type { ProviderLedgerSlicer } from './provider-sync/client'
 import type {
   PostEntryInput,
   PostEntryResult,
@@ -111,8 +111,8 @@ export interface AccountingProvider {
   ): Promise<Result<ProviderBalanceSheet | null, Error>>
 
   /**
-   * The connected system's general ledger over one date range - the INBOUND
-   * half of the seam (brief 20 §5.1).
+   * How this system's general ledger is WALKED - the INBOUND half of the seam
+   * (brief 20 §5.1, reshaped by brief 55 §4.9).
    *
    * Where {@link readProviderBalances} answers "what do they say the position
    * is", this answers "what did they POST, line by line, and who authored it".
@@ -124,22 +124,17 @@ export interface AccountingProvider {
    * grouped into entries by `(txnType, txnId)` before anything is written - a
    * writer that took one row as one posting would produce single-sided
    * postings. The grouping, the exclusion and the comparison all live in
-   * `postings/provider-sync/`; an adapter's whole job is to return the range it
+   * `postings/provider-sync/`; an adapter's whole job is to return the batch it
    * was asked for, flattened.
    *
-   * `range` is inclusive on both ends and the RETURNED `from`/`to` are the
-   * range the provider echoed back, not the one asked for - Intuit silently
-   * ignores some date parameters, so the caller asserts the echo. An adapter
-   * must never relabel a range it did not get.
-   *
-   * Null means nothing is connected, exactly as {@link readProviderBalances}
-   * answers it: a complete answer to a read, never an empty `lines` array,
-   * which would be indistinguishable from a quiet month.
+   * 🛑 A SLICER rather than a `readProviderLedger(orgId, { from, to })`, because
+   * a date range is QuickBooks-shaped and cannot serve Xero: Xero's Journals
+   * feed is walked by an offset on `JournalNumber`, which is CREATION order, not
+   * `JournalDate` order, so "give me 2026-07" is not answerable by any bounded
+   * offset walk. What differs per provider is how the next batch is obtained and
+   * what the cursor is - nothing after the lines arrive.
    */
-  readProviderLedger(
-    orgId: string,
-    range: { from: string; to: string }
-  ): Promise<Result<ProviderLedger | null, Error>>
+  ledgerSlicer(): ProviderLedgerSlicer
 
   /**
    * Which provider account each of the org's own accounts is mapped to, as
@@ -290,6 +285,24 @@ export interface ClearAccountMappingInput {
 }
 
 /**
+ * The slicer for a provider with no ledger to walk.
+ *
+ * 🛑 `fetchBatch` answers `ok(null)`, and `ok({ ledger: { lines: [] } })` would
+ * be the dangerous shape: an empty batch reads as "the accountant posted nothing
+ * that month", which is a real and ordinary state, so a sync could not tell it
+ * apart from "there is nothing to sync from". Null says which - the same
+ * convention {@link AccountingProvider.readProviderBalances} established.
+ *
+ * Exported so a test stub can state "no inbound half" once rather than
+ * hand-rolling a slicer that gets the null convention wrong.
+ */
+export const NULL_LEDGER_SLICER: ProviderLedgerSlicer = {
+  kind: 'ranged',
+  firstCursor: (range) => ({ kind: 'token', value: `${range.from}..${range.to}` }),
+  fetchBatch: async () => ok(null),
+}
+
+/**
  * The provider for an organization with no accounting system connected.
  *
  * A first-class case, not an error path. The ledger is ours (P1), so with
@@ -337,17 +350,9 @@ class NoneAccountingProvider implements AccountingProvider {
     return ok(null)
   }
 
-  /**
-   * No external ledger to read, and `null` is the answer rather than an empty
-   * chunk - the same convention {@link readProviderBalances} established.
-   *
-   * 🛑 `ok({ lines: [] })` would be the dangerous shape here: an empty range
-   * reads as "the accountant posted nothing that month", which is a real and
-   * ordinary state, so a sync could not tell it apart from "there is nothing to
-   * sync from". Null says which.
-   */
-  async readProviderLedger(): Promise<Result<ProviderLedger | null, Error>> {
-    return ok(null)
+  /** Nothing to walk. See {@link NULL_LEDGER_SLICER}. */
+  ledgerSlicer(): ProviderLedgerSlicer {
+    return NULL_LEDGER_SLICER
   }
 
   async listAccountMappings(): Promise<Result<Map<string, string>, Error>> {

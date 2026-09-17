@@ -99,24 +99,16 @@ export interface OpeningBaseline {
  *
  * ### The cache is busted by the thing that writes it
  *
- * `apps/web/src/server/api/routers/setting.ts` fires
- * `onCacheEvent('org.settings.changed', { orgId, broadcastUserKeys: true })`
- * after BOTH write paths — the single-key `update` (line 134) and the batch
- * `batchUpdate` (line 221) — and `cache/invalidation-graph.ts:250` maps that
- * event to `org: ['orgSettings']`. So the accounting setup wizard, which posts
- * its values through those router mutations, drops this key on every save. The
- * baseline a close reads is the baseline the wizard last wrote.
+ * `updateOrganizationSetting` fires `org.settings.changed` itself, after its
+ * write commits, and `cache/invalidation-graph.ts` maps that event to
+ * `org: ['orgSettings']`. So the accounting setup wizard drops this key on
+ * every save, whatever door it came through. The baseline a close reads is the
+ * baseline the wizard last wrote.
  *
- * ### 🛑 The invalidation lives in the ROUTER, not in the settings service
- *
- * `updateOrganizationSetting` and `batchUpdateOrganizationSettings` fire NO
- * cache event of their own. Anything that writes one of these keys outside the
- * tRPC router — a script, a worker job, a seeder, a data migration — MUST fire
- * `onCacheEvent('org.settings.changed', { orgId })` itself or the org keeps
- * serving the pre-write value until the key's TTL expires. Existing non-router
- * writers already do exactly that: `settings/seed-document-business.ts:67` and
- * `getting-started/mutations.ts:42`. This is the one remaining way a stale
- * baseline can reach a close, and it is a bug in the writer, not here.
+ * The two exceptions, both explicit: a caller that supplied its own
+ * `PgTransaction` (it must call `invalidateOrganizationSettings` after its own
+ * commit) and `batchUpdateOrganizationSettings`, whose invalidation still lives
+ * in `routers/setting.ts`.
  *
  * ### Why the residual race is acceptable
  *

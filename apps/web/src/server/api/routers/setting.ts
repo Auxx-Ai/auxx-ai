@@ -48,11 +48,24 @@ const logger = createScopedLogger('api-settings')
  * person typing a later date here would make every statement understate its own
  * incompleteness, which is the exact failure §7.3 exists to prevent, so there is
  * no truthful hand edit of it to allow.
+ *
+ * `providerSync.state` is that sync's walk position and run counters
+ * (plans/accounting/tasks/55-the-inbound-sync-runs-in-a-worker.md §4.4, §4.8).
+ * The worker writes it after every slice and the sync panel reads it; a hand
+ * edit either moves the cursor under a running chain or fakes a run that never
+ * happened. `ledger.syncProviderLedger` is the only door.
+ *
+ * `providerSync.schedule` is that sync's cadence (55 §5.1). Writing it and
+ * registering the BullMQ job scheduler are one act - a value written here alone
+ * is a cadence the screen claims and nothing fires. `ledger.setProviderSyncSchedule`
+ * does both.
  */
 const ROUTER_OWNED_ORG_SETTING_KEYS = new Set<string>([
   'mailClassificationInboxIds',
   'ledger.lockedThroughMonth',
   'accounting.providerSyncedThrough',
+  'providerSync.state',
+  'providerSync.schedule',
 ])
 
 const ROUTER_OWNED_ORG_SETTING_MESSAGES: Record<string, string> = {
@@ -60,6 +73,10 @@ const ROUTER_OWNED_ORG_SETTING_MESSAGES: Record<string, string> = {
   'ledger.lockedThroughMonth': 'managed by the ledger, through ledger.setLockedThrough',
   'accounting.providerSyncedThrough':
     'stamped by the provider sync from what it actually read, and cannot be set by hand. Run the sync instead',
+  'providerSync.state':
+    'written by the provider sync worker after every chunk it reads, and cannot be set by hand. It is where the walk IS, not a preference',
+  'providerSync.schedule':
+    'set through ledger.setProviderSyncSchedule, which also registers the job scheduler. A cadence written here alone would never fire',
 }
 
 function assertNotRouterOwned(key: string): void {
@@ -161,8 +178,6 @@ export const settingsRouter = createTRPCRouter({
 
       await updateOrganizationSetting({ organizationId, key, value, db: ctx.db })
 
-      await onCacheEvent('org.settings.changed', { orgId: organizationId, broadcastUserKeys: true })
-
       await recordAuditFromCtx(ctx, {
         category: 'settings',
         action: 'setting.changed',
@@ -251,8 +266,6 @@ export const settingsRouter = createTRPCRouter({
         settings: settings as Array<{ key: SettingKey; value: any }>,
         db: ctx.db,
       })
-
-      await onCacheEvent('org.settings.changed', { orgId: organizationId, broadcastUserKeys: true })
 
       await recordAuditFromCtx(ctx, {
         category: 'settings',
