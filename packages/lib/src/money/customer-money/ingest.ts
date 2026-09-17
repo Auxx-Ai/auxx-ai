@@ -3,8 +3,7 @@
 import { type Database, schema, type Transaction, withAccountingCommitLock } from '@auxx/database'
 import { and, asc, eq, inArray, isNull, lte, or } from 'drizzle-orm'
 import { ConflictError } from '../../errors'
-import { accountingBasisHash } from '../../postings/effect-basis'
-import { captureCustomerReceiptWorkInTx } from '../../postings/effect-work'
+import { accountingBasisHash } from '../../postings/basis-hash'
 import { periodKeyForDate } from '../../postings/periods'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import { sumCreditMemoApplications, sumReservedCreditMemoRefunds } from '../credit-memos/reads'
@@ -566,37 +565,6 @@ export async function materializeImportedMoneyInTx(
         customerCreditMemoInstanceId: creditId,
         commandId: command!.id,
         commandItemKey: 'initial_credit',
-      })
-    }
-  }
-  if (money.purpose === 'customer_receipt') {
-    const work = await tx.query.AccountingWork.findFirst({
-      where: and(
-        eq(schema.AccountingWork.organizationId, organizationId),
-        eq(schema.AccountingWork.moneyTransactionId, money.id),
-        eq(schema.AccountingWork.effectKind, 'customer_receipt'),
-        eq(schema.AccountingWork.operation, 'original')
-      ),
-    })
-    if (!work) {
-      const mode = await getOrganizationSetting({
-        db: tx,
-        organizationId,
-        key: 'accounting.fulfillmentPosting',
-      })
-      await captureCustomerReceiptWorkInTx(tx, {
-        organizationId,
-        moneyTransactionId: money.id,
-        eligibility: mode === 'auto' ? 'automatic' : 'manual',
-        basis: {
-          version: 1,
-          status: 'incomplete',
-          moneyTransactionId: money.id,
-          sourceHash: observation.contentHash,
-          effectiveDate,
-          missingDependencies: ['Receipt accounting awaits source and route validation'],
-          observed: { orderInstanceId: orderId, amountMinor: money.amountMinor.toString() },
-        },
       })
     }
   }

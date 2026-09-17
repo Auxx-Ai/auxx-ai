@@ -4,7 +4,7 @@ import { generateId } from '@auxx/utils'
 import { and, eq, inArray, or, sql } from 'drizzle-orm'
 import { PgTransaction } from 'drizzle-orm/pg-core'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
-import { accountingBasisHash } from '../../postings/effect-basis'
+import { accountingBasisHash } from '../../postings/basis-hash'
 import { exactEvidenceMinor } from './evidence-contracts'
 import {
   type FinancialRecordEvidence,

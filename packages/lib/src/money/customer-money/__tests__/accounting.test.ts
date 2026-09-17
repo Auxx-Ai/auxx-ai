@@ -1,46 +1,35 @@
 // packages/lib/src/money/customer-money/__tests__/accounting.test.ts
+//
+// The channel receipt writer on the one poster: the recognition split becomes
+// the entry's lines, the movement is the claim, the order is the parent, and
+// the store and rail ride on the posting (MIGRATION.md step 1b).
 
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  acceptEntryInTx: vi.fn(),
-  appendCustomerReceiptWorkBasisInTx: vi.fn(),
-  captureCustomerReceiptWorkInTx: vi.fn(),
-  deliverAccountingPosting: vi.fn(),
   getOrganizationSetting: vi.fn(),
   isAccountingEnabled: vi.fn(),
   listCustomerReceiptAccountingCandidates: vi.fn(),
   readCustomerReceiptAccountingSource: vi.fn(),
   readOrderRecognitionFactsInTx: vi.fn(),
   readOrderRecognitionSource: vi.fn(),
-  resolveAccountLines: vi.fn(),
   resolveRoles: vi.fn(),
-  resolveFulfillmentDeliveryIntentInTx: vi.fn(),
-  planAccountingDeliveryInTx: vi.fn(),
+  postEntry: vi.fn(),
+  findLiveSubjectPosting: vi.fn(),
+  resolvePeriodLock: vi.fn(),
+  readAutoPostMode: vi.fn(async () => 'post'),
 }))
 
-vi.mock('../../../postings/accept-entry', () => ({ acceptEntryInTx: h.acceptEntryInTx }))
-vi.mock('../../../postings/accounting-commit-lock', () => ({
-  withAccountingCommitLock: vi.fn(async () => undefined),
-}))
 vi.mock('../../../postings/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
-vi.mock('../../../postings/book-connections', () => ({
-  resolveFulfillmentDeliveryIntentInTx: h.resolveFulfillmentDeliveryIntentInTx,
+vi.mock('../../../postings/auto-post', () => ({ readAutoPostMode: h.readAutoPostMode }))
+vi.mock('../../../postings/post-entry', () => ({ postEntry: h.postEntry }))
+vi.mock('../../../postings/list-postings', () => ({
+  findLiveSubjectPosting: h.findLiveSubjectPosting,
 }))
-vi.mock('../../../postings/delivery', () => ({
-  deliverAccountingPosting: h.deliverAccountingPosting,
-  planAccountingDeliveryInTx: h.planAccountingDeliveryInTx,
-}))
-vi.mock('../../../postings/effect-work', () => ({
-  appendCustomerReceiptWorkBasisInTx: h.appendCustomerReceiptWorkBasisInTx,
-  captureCustomerReceiptWorkInTx: h.captureCustomerReceiptWorkInTx,
-}))
-vi.mock('../../../postings/resolve-roles', () => ({
-  resolveAccountLines: h.resolveAccountLines,
-  resolveRoles: h.resolveRoles,
-}))
+vi.mock('../../../postings/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
+vi.mock('../../../postings/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
 vi.mock('../../../postings/setup-readiness', () => ({ FINALIZED_SETUP_STATE: 'finalized' }))
 vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: h.getOrganizationSetting,
@@ -60,83 +49,17 @@ vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }))
 
-import { UnprocessableEntityError } from '../../../errors'
+import type { Database } from '@auxx/database'
 import { postCustomerReceiptAccounting } from '../accounting'
 
 const organizationId = 'org_1'
 const moneyTransactionId = 'money_1'
 
-function chain<T>(value: T) {
-  const query = {
-    from: () => query,
-    innerJoin: () => query,
-    where: async () => value,
-  }
-  return query
-}
-
-function db(existing: unknown[] = [], workState?: { current: unknown }) {
-  const tx = {
-    select: vi.fn(() => chain(existing)),
-    query: {
-      AccountingWork: {
-        findFirst: vi.fn(async () => workState?.current),
-      },
-      AccountingEffect: { findFirst: vi.fn(async () => undefined) },
-    },
-    update: vi.fn(() => ({
-      set: () => ({ where: async () => [] }),
-    })),
-  }
-  return { transaction: async <T>(fn: (transaction: typeof tx) => Promise<T>) => fn(tx), tx }
-}
-
-function setup() {
-  vi.clearAllMocks()
-  h.isAccountingEnabled.mockResolvedValue(true)
-  h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) => {
-    if (key === 'accounting.bookTimeZone') return 'America/Los_Angeles'
-    if (key === 'accounting.setupState') return 'finalized'
-    if (key === 'accounting.fulfillmentPosting') return 'auto'
-    return null
-  })
-  h.resolveFulfillmentDeliveryIntentInTx.mockResolvedValue({ kind: 'not_required' })
-  h.resolveRoles.mockResolvedValue({
-    isErr: () => false,
-    value: new Map([
-      [
-        'clearing',
-        {
-          glAccountId: 'gl_clearing',
-          code: null,
-          name: 'Clearing',
-          accountType: 'asset',
-          isActive: true,
-        },
-      ],
-    ]),
-  })
-  h.resolveAccountLines.mockImplementation(async (_tx, _org, lines) => ({
-    isErr: () => false,
-    value: lines.map((line: { glAccountId?: string; accountRole?: string }) => {
-      const accountRole = line.accountRole
-      return {
-        glAccountId: line.glAccountId ?? `resolved_${accountRole}`,
-        code: null,
-        name: line.glAccountId ?? accountRole ?? 'account',
-        accountType:
-          line.glAccountId || accountRole === 'accounts_receivable' ? 'asset' : 'liability',
-        isActive: true,
-      }
-    }),
-  }))
-  h.acceptEntryInTx.mockResolvedValue({ status: 'accepted', glPostingId: 'posting_1' })
-  h.captureCustomerReceiptWorkInTx.mockResolvedValue({
-    work: { id: 'work_1', state: 'pending', basisVersion: 1 },
-  })
-  h.appendCustomerReceiptWorkBasisInTx.mockResolvedValue({ version: 1 })
-  h.planAccountingDeliveryInTx.mockResolvedValue(undefined)
-  h.deliverAccountingPosting.mockResolvedValue(undefined)
+function db(): Database {
+  const tx = {}
+  return {
+    transaction: async <T>(fn: (transaction: typeof tx) => Promise<T>) => fn(tx),
+  } as unknown as Database
 }
 
 function receiptSource(amountMinor = 120n) {
@@ -157,6 +80,8 @@ function receiptSource(amountMinor = 120n) {
     sourceObjectId: 'source_1',
     sourceExternalId: 'capture_1',
     sourceRevision: 'observation_1',
+    gatewayName: 'Shopify Payments',
+    storeDomain: 'demo.myshopify.com',
     sourceHash: 'b'.repeat(64),
     applications: [
       { id: 'application_1', orderInstanceId: 'order_1', amountMinor, effectiveDate: '2026-09-01' },
@@ -178,6 +103,7 @@ function prepareRecognition(
     tax: 20n,
     shipping: 0n,
     total: 120n,
+    channel: null,
     taxComponents: [
       {
         componentKey: 'tax_1',
@@ -206,137 +132,127 @@ function prepareRecognition(
   })
 }
 
+beforeEach(() => {
+  vi.clearAllMocks()
+  h.isAccountingEnabled.mockResolvedValue(true)
+  h.readAutoPostMode.mockResolvedValue('post')
+  h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
+  h.findLiveSubjectPosting.mockResolvedValue({ isErr: () => false, value: null })
+  h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'posting_1' })
+  h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) => {
+    if (key === 'accounting.bookTimeZone') return 'America/Los_Angeles'
+    if (key === 'accounting.setupState') return 'finalized'
+    return null
+  })
+  h.resolveRoles.mockResolvedValue({
+    isErr: () => false,
+    value: new Map([['clearing', { glAccountId: 'gl_clearing', accountType: 'asset' }]]),
+  })
+})
+
 describe('postCustomerReceiptAccounting', () => {
-  it('returns the immutable journal without rereading source evidence on retry', async () => {
-    setup()
-    const database = db([{ glPostingId: 'posting_existing' }])
+  it('claims the movement, parents the order, names the customer, and scopes the rail', async () => {
+    prepareRecognition(120n, '0', '100', '20')
 
-    await expect(
-      postCustomerReceiptAccounting(database as never, { organizationId, moneyTransactionId })
-    ).resolves.toEqual({ status: 'accepted', glPostingId: 'posting_existing' })
-    expect(h.readCustomerReceiptAccountingSource).not.toHaveBeenCalled()
-    expect(h.acceptEntryInTx).not.toHaveBeenCalled()
-  })
-
-  it('captures a durable blocked work item when source evidence is incomplete', async () => {
-    setup()
-    const database = db()
-    h.readCustomerReceiptAccountingSource.mockRejectedValue(
-      new UnprocessableEntityError('Receipt processor route is unresolved')
-    )
-
-    await expect(
-      postCustomerReceiptAccounting(database as never, { organizationId, moneyTransactionId })
-    ).resolves.toEqual({ status: 'blocked', reason: 'Receipt processor route is unresolved' })
-    expect(h.captureCustomerReceiptWorkInTx).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        organizationId,
-        moneyTransactionId,
-        basis: expect.objectContaining({ status: 'incomplete' }),
-      })
-    )
-    expect(database.tx.update).toHaveBeenCalled()
-  })
-
-  it('retries blocked work after source repair and accepts the repaired basis', async () => {
-    setup()
-    const state: { current: unknown } = { current: undefined }
-    const database = db([], state)
-    h.captureCustomerReceiptWorkInTx.mockImplementation(async () => {
-      state.current = { id: 'work_1', state: 'blocked', basisVersion: 1 }
-      return { work: state.current }
+    const result = await postCustomerReceiptAccounting(db(), {
+      organizationId,
+      moneyTransactionId,
     })
-    h.readCustomerReceiptAccountingSource.mockRejectedValueOnce(
-      new UnprocessableEntityError('Receipt processor route is unresolved')
-    )
 
-    await expect(
-      postCustomerReceiptAccounting(database as never, { organizationId, moneyTransactionId })
-    ).resolves.toMatchObject({ status: 'blocked' })
-
-    prepareRecognition(120n, '100', '0', '20')
-    h.appendCustomerReceiptWorkBasisInTx.mockResolvedValue({ version: 2 })
-    await expect(
-      postCustomerReceiptAccounting(database as never, { organizationId, moneyTransactionId })
-    ).resolves.toEqual({ status: 'accepted', glPostingId: 'posting_1' })
-    expect(h.appendCustomerReceiptWorkBasisInTx).toHaveBeenCalledOnce()
-    expect(h.acceptEntryInTx).toHaveBeenCalledOnce()
+    expect(result).toEqual({ status: 'accepted', glPostingId: 'posting_1' })
+    const options = h.postEntry.mock.calls[0]![1]
+    expect(options.sources).toEqual([
+      { sourceKind: 'money_transaction', sourceId: moneyTransactionId, linkRole: 'subject' },
+      { sourceKind: 'order', sourceId: 'order_1', linkRole: 'parent' },
+      { sourceKind: 'contact', sourceId: 'customer_1', linkRole: 'counterparty' },
+    ])
+    expect(options.storeId).toBe('store_1')
+    expect(options.railId).toBe('gateway_1')
+    expect(options.mode).toBe('post')
   })
 
-  it.each([
-    [
-      'full advance',
-      120n,
-      '100',
-      '0',
-      '20',
-      ['gl_clearing:debit:120', 'customer_deposits:credit:100', 'sales_tax_payable:credit:20'],
-    ],
-    [
-      'partial advance',
-      60n,
-      '50',
-      '0',
-      '10',
-      ['gl_clearing:debit:60', 'customer_deposits:credit:50', 'sales_tax_payable:credit:10'],
-    ],
-    [
-      'after shipment',
-      60n,
-      '0',
-      '50',
-      '10',
-      ['gl_clearing:debit:60', 'accounts_receivable:credit:50', 'sales_tax_payable:credit:10'],
-    ],
-  ])('builds the %s journal from its numeric recognition allocation', async (_name, amount, deposit, receivable, tax, expected) => {
-    setup()
-    prepareRecognition(amount, deposit, receivable, tax)
-    const database = db()
+  it('builds the advance journal from the recognition allocation', async () => {
+    prepareRecognition(120n, '100', '0', '20')
 
-    await expect(
-      postCustomerReceiptAccounting(database as never, { organizationId, moneyTransactionId })
-    ).resolves.toEqual({ status: 'accepted', glPostingId: 'posting_1' })
-    const entry = h.acceptEntryInTx.mock.calls[0]![1].entry as {
-      lines: Array<{
-        glAccountId?: string
-        accountRole?: string
-        direction: string
-        amount: number
-      }>
-    }
+    await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
+
+    const entry = h.postEntry.mock.calls[0]![1].entry
     expect(
-      entry.lines.map(
-        (line) => `${line.glAccountId ?? line.accountRole}:${line.direction}:${line.amount}`
-      )
-    ).toEqual(expected)
-    expect(h.acceptEntryInTx).toHaveBeenCalledOnce()
-    expect(h.planAccountingDeliveryInTx).toHaveBeenCalledOnce()
-    const acceptedBasis = h.acceptEntryInTx.mock.calls[0]![1].members[0].acceptedBasis
-    expect(acceptedBasis.policyKey).toBe('shopify_receipt_v1')
-    expect(acceptedBasis.calculation.allocation.taxMinor).toBe(tax)
-    if (_name === 'full advance') {
-      const revalidate = h.acceptEntryInTx.mock.calls[0]![2].revalidateMemberInTx
-      await expect(revalidate({}, { basisVersion: 1 })).resolves.toMatchObject({
-        policyKey: 'shopify_receipt_v1',
-      })
-      expect(h.readCustomerReceiptAccountingSource).toHaveBeenCalledTimes(2)
-    }
+      entry.lines.map((line: { accountRole?: string; glAccountId?: string; amount: number }) => [
+        line.accountRole ?? line.glAccountId,
+        line.amount,
+      ])
+    ).toEqual([
+      ['gl_clearing', 120],
+      ['customer_deposits', 100],
+      ['sales_tax_payable', 20],
+    ])
   })
 
-  it('blocks a receipt whose source supplies an invalid accounting date before acceptance', async () => {
-    setup()
-    prepareRecognition(120n, '100', '0', '20')
-    h.readCustomerReceiptAccountingSource.mockResolvedValue({
-      ...receiptSource(120n),
-      effectiveDate: '2026-99-99',
+  it('builds the after-shipment journal against the receivable', async () => {
+    prepareRecognition(120n, '0', '100', '20')
+
+    await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
+
+    const entry = h.postEntry.mock.calls[0]![1].entry
+    expect(entry.lines[1]).toMatchObject({
+      accountRole: 'accounts_receivable',
+      counterpartyId: 'customer_1',
+      amount: 100,
+    })
+  })
+
+  it('returns the standing posting without preparing anything, on a retry', async () => {
+    h.findLiveSubjectPosting.mockResolvedValue({ isErr: () => false, value: { id: 'posting_1' } })
+
+    const result = await postCustomerReceiptAccounting(db(), {
+      organizationId,
+      moneyTransactionId,
     })
 
-    const database = db()
-    await expect(
-      postCustomerReceiptAccounting(database as never, { organizationId, moneyTransactionId })
-    ).resolves.toMatchObject({ status: 'blocked' })
-    expect(h.acceptEntryInTx).not.toHaveBeenCalled()
-    expect(h.captureCustomerReceiptWorkInTx).toHaveBeenCalled()
+    expect(result).toEqual({ status: 'accepted', glPostingId: 'posting_1' })
+    expect(h.readCustomerReceiptAccountingSource).not.toHaveBeenCalled()
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it('blocks rather than throws when the source cannot be read', async () => {
+    prepareRecognition(120n, '0', '100', '20')
+    h.readCustomerReceiptAccountingSource.mockRejectedValue(
+      new (await import('../../../errors')).UnprocessableEntityError('Receipt source is unresolved')
+    )
+
+    const result = await postCustomerReceiptAccounting(db(), {
+      organizationId,
+      moneyTransactionId,
+    })
+
+    expect(result.status).toBe('blocked')
+    expect(result.reason).toMatch(/unresolved/)
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it('blocks when the ledger refuses the entry', async () => {
+    prepareRecognition(120n, '0', '100', '20')
+    h.postEntry.mockResolvedValue({ status: 'period_closed', error: 'September is closed.' })
+
+    const result = await postCustomerReceiptAccounting(db(), {
+      organizationId,
+      moneyTransactionId,
+    })
+
+    expect(result).toEqual({ status: 'blocked', reason: 'September is closed.' })
+  })
+
+  it('skips when accounting is off', async () => {
+    const result = await postCustomerReceiptAccounting(db(), {
+      organizationId,
+      moneyTransactionId,
+    })
+
+    h.isAccountingEnabled.mockResolvedValue(false)
+    expect(result.status).toBe('accepted')
+    expect(
+      (await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })).status
+    ).toBe('skipped')
   })
 })

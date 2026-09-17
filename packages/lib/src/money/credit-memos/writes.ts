@@ -27,27 +27,19 @@ import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import {
   type BuiltCreditMemoEntry,
   buildCreditMemoEntry,
-  CREDIT_MEMO_POSTING_TYPE,
-  CREDIT_MEMO_SOURCE_TYPE,
   type CreditMemoSettlement as CreditMemoSettlementLeg,
 } from '../../postings/build-credit-memo-entry'
 import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
-import { listPostingsForSource } from '../../postings/list-postings'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { periodKeyForDate } from '../../postings/periods'
-import { LEDGER_CURRENCY, postEntry, previewEntry } from '../../postings/post-entry'
-import { reverseEntry } from '../../postings/reverse-entry'
+import { LEDGER_CURRENCY, previewEntry } from '../../postings/post-entry'
 import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
 import type { EntryPreview, PostResult } from '../../postings/types'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { getOrganizationSetting } from '../../settings/settings-service'
-import {
-  CREDIT_MEMO_BATCH_SOURCE_TYPE,
-  CREDIT_MEMO_GL_POSTING_ATTRIBUTE,
-} from '../credit-memo-posting/types'
-import { readOrderSourceScope } from '../customer-money/reads'
 import { roundCents } from '../totals'
 import { recomputeTotals } from '../totals-hooks'
+import { postCreditMemoEntry, reverseCreditMemoEntry } from './accounting'
 import type { CreditMemoLineInput, CreditMemoReason, CreditMemoSource } from './client'
 import { runCreditCommand } from './command'
 import {
@@ -630,31 +622,12 @@ export async function previewIssueCreditMemo(
  * point, so the memo stays a draft. The claim is keyed on the memo number, so a
  * retry converges to `already_posted` and still flips the status.
  *
- * @param options.post Post the issue entry. Defaults to `true`, which is every
- *   door a person presses.
- *
- *   🛑 **`false` is the BULK door** (`money/credit-memo-posting/run.ts`, brief
- *   25 §7). Channel memos are INGESTED as `draft` - all 1,061 of DemoOrg1's -
- *   so bulk posting has to bulk issue, and issuing through here with the ledger
- *   attached would mint 1,061 single-memo entries, which is the exact thing the
- *   batch poster exists to prevent. With `false` the entry is neither built nor
- *   posted and the period lock is never resolved; everything that makes the
- *   memo a document still happens, in the same order - the totals, the status,
- *   the date, the settlement. The accounting-disabled branch below is the
- *   existing proof that this shape works.
- *
- *   ⚠️ There is no posting id in that case, so **no stamp is written**. The
- *   batch run stamps the memo with its GROUP's posting id afterwards, and a
- *   memo issued here that the run then fails to post is an ordinary unposted
- *   memo the next netting read picks up.
  */
 export async function issueCreditMemo(
   db: Database,
-  input: IssueCreditMemoInput,
-  options: { post?: boolean } = {}
+  input: IssueCreditMemoInput
 ): Promise<IssueCreditMemoResult> {
   const { organizationId, userId, creditMemoInstanceId } = input
-  const shouldPost = options.post ?? true
 
   // The mirrors first, so what is stored is what posts. `resolveIssue` sums the
   // lines itself, and the builder asserts `total = subtotal + tax`, so a stale
@@ -673,31 +646,22 @@ export async function issueCreditMemo(
   // an entry (task 17 section 3) - a credit memo issues on an org that has
   // never turned accounting on exactly as it would on one that has.
   //
-  // A caller that asked not to post takes the same road and does not even make
-  // the settings read: nothing downstream of it can change the answer, and over
-  // a 1,061-memo backlog it is 1,061 identical reads.
-  const accountingEnabled = shouldPost && (await isAccountingEnabled(db, organizationId))
+  const accountingEnabled = await isAccountingEnabled(db, organizationId)
   const { memo, issuedAt, built } = await resolveIssue(db, input, { buildEntry: accountingEnabled })
 
   let post: PostResult
   if (accountingEnabled) {
-    const lock = await resolvePeriodLock(organizationId)
-    post = await postEntry(db, {
+    post = await postCreditMemoEntry(db, {
       organizationId,
+      creditMemoInstanceId,
+      contactInstanceId: memo.contactInstanceId,
+      orderInstanceId: memo.orderInstanceId,
       entry: built!.entry,
       actorUserId: userId,
-      lock,
       memo: `Credit memo ${memo.number} issued`,
-      // Task 47 §5. A memo belongs to at most one order, so one scope covers
-      // the whole entry and `revenue_returns_allowances` lands in the store's
-      // own contra-revenue account when the org keeps one. Everything else on
-      // the entry - tax, A/R, clearing - ignores it.
-      scope: await readOrderSourceScope(db, organizationId, memo.orderInstanceId),
     })
   } else {
-    // Nothing was asked of the ledger, either because the org keeps no books or
-    // because the caller is posting the entry itself. Both carry no posting id,
-    // so neither writes a stamp below.
+    // The org keeps no books, so nothing was asked of the ledger.
     post = { status: 'not_enabled' }
   }
   if (!isExpectedPostOutcome(post)) {
@@ -713,21 +677,6 @@ export async function issueCreditMemo(
   ]
   if (memo.issuedAt !== issuedAt) {
     writes.push({ fieldId: 'credit_memo_issued_at', value: calendarDayToInstant(issuedAt) })
-  }
-  // 🛑 **Stamp the posting here, or the batch poster reposts this memo.**
-  //
-  // `money/credit-memo-posting/reads.ts` decides "unposted" from this field
-  // alone (brief 25 §4.2): no stamp means no live posting. A memo issued
-  // through THIS door with its entry in the books but no stamp would therefore
-  // be offered by the next netting read and posted a SECOND time inside a
-  // period entry, double-booking its contra-revenue - and, because the same
-  // rule drives `countUnpostedCreditMemos`, would refuse the month close
-  // forever with a memo nobody can find anything wrong with.
-  //
-  // Written in the same `statusWriter` batch as the status, so a memo is never
-  // `issued` without its stamp.
-  if (post.glPostingId) {
-    writes.push({ fieldId: CREDIT_MEMO_GL_POSTING_ATTRIBUTE, value: post.glPostingId })
   }
   const writer = await statusWriter(db, organizationId, userId)
   await writer.write(creditMemoInstanceId, writes)
@@ -749,152 +698,6 @@ export interface CreditMemoLifecycleInput {
   creditMemoInstanceId: string
 }
 
-const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-] as const
-
-/**
- * A period key as a person says it: `2026-01` is `January 2026`.
- *
- * A day key, a document number keyed on a memo number, or a month key carrying
- * an attempt suffix that is not a bare month reads as ITSELF rather than being
- * bent into a month it may not describe - the refusal has to name the thing the
- * person will repost, and a wrong month name sends them to the wrong screen.
- * The attempt suffix (a single base-36 character, `build-fulfillment-batch-entry.ts`)
- * is dropped, because `2026-01A` is still January's entry.
- *
- * Deliberately a table rather than `Intl`: this string is part of a refusal that
- * tests assert on, and it must not change with the server's locale.
- */
-function periodLabel(periodKey: string): string {
-  const match = /^(\d{4})-(\d{2})[0-9A-Z]?$/.exec(periodKey)
-  if (!match) return periodKey
-  const month = Number(match[2])
-  if (month < 1 || month > 12) return periodKey
-  return `${MONTH_NAMES[month - 1]} ${match[1]}`
-}
-
-/**
- * How many credit memos are stamped with one posting - the entry's member
- * count, read off the stamps rather than off the entry's own `draft` envelope.
- *
- * 🛑 `BuiltEntry.sources` is NOT the source of this number (brief 25 §2.1's
- * `sources` trap): nothing in product code has ever read that list back out of a
- * stored row, and a refusal is the wrong place to become its first consumer.
- * The stamp is the declared, indexable link (§4.1), and the memo being refused
- * is itself one of the rows counted here, so the answer is at least one.
- */
-async function countCreditMemosStampedWith(
-  db: Database,
-  organizationId: string,
-  glPostingId: string
-): Promise<number> {
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([CREDIT_MEMO_GL_POSTING_ATTRIBUTE])) as Record<
-    string,
-    { id: string } | null
-  >
-  const field = fields[CREDIT_MEMO_GL_POSTING_ATTRIBUTE]
-  if (!field) return 0
-
-  const [row] = await db
-    .select({ memos: count() })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, field.id),
-        eq(schema.FieldValue.valueText, glPostingId)
-      )
-    )
-  return row?.memos ?? 0
-}
-
-/**
- * Refuse the void when the memo's live posting SUMMARISES it (brief 25 §2.1).
- *
- * 🛑 **No compensating entry, deliberately.** Once memos batch, one posting
- * covers hundreds of them, and `reverseEntry` on it would un-book every other
- * member. The first answer to that was a delta entry for this member's slice
- * alone; it is dropped, because such an entry must reverse the member's
- * settlement leg down to its RESOLVED ACCOUNT ID or an Affirm memo voided out of
- * a mixed batch credits `1200` for money that left `1210` - in an entry that
- * still balances and that nothing downstream can detect. The documented
- * correction is what every comparable connector does: reverse the entry, void
- * the memo, repost the period. §10 item 5 already owes us that path.
- *
- * ## How a batched member is detected
- *
- * Structurally, by the source type on the posting's lines, never by comparing
- * amounts. But `listPostingsForSource(credit_memo, memoId)` cannot find the
- * entry at all: a summarised line carries `CREDIT_MEMO_BATCH_SOURCE_TYPE` with
- * the PERIOD KEY as its `sourceId`, and the per-contact A/R legs carry
- * `'contact'`, so no line in the entry names this memo. The `credit_memo_gl_posting`
- * stamp (§4.1) is therefore the only handle on it, and the source type is read
- * off the lines of the posting the stamp names.
- *
- * A stamp naming a reversed posting, or one that no longer exists, is not a live
- * posting (§4.2): the memo is back to unposted, and it voids freely.
- */
-async function assertNotInsideBatchEntry(
-  db: Database,
-  organizationId: string,
-  memo: CreditMemoRecord
-): Promise<void> {
-  const glPostingId = memo.glPostingId
-  if (!glPostingId) return
-
-  const [posting] = await db
-    .select({
-      docNumber: schema.GlPosting.docNumber,
-      periodKey: schema.GlPosting.periodKey,
-      status: schema.GlPosting.status,
-    })
-    .from(schema.GlPosting)
-    .where(
-      and(eq(schema.GlPosting.organizationId, organizationId), eq(schema.GlPosting.id, glPostingId))
-    )
-    .limit(1)
-  if (!posting || posting.status === 'reversed') return
-
-  const [summarised] = await db
-    .select({ id: schema.GlPostingLine.id })
-    .from(schema.GlPostingLine)
-    .where(
-      and(
-        eq(schema.GlPostingLine.organizationId, organizationId),
-        eq(schema.GlPostingLine.glPostingId, glPostingId),
-        eq(schema.GlPostingLine.sourceType, CREDIT_MEMO_BATCH_SOURCE_TYPE)
-      )
-    )
-    .limit(1)
-  // Stamped, live, and every line names this memo directly: an ordinary
-  // single-memo entry, which the caller reverses exactly as it always has.
-  if (!summarised) return
-
-  // This memo is one of the stamped rows, so the floor is one however the count
-  // read goes - a refusal that says "covers 0 memos" would read as a bug.
-  const members = Math.max(1, await countCreditMemosStampedWith(db, organizationId, glPostingId))
-  const entry = posting.docNumber || posting.periodKey
-  throw new BadRequestError(
-    `This credit memo is inside ${entry}, which covers ${members} memos. Reverse that entry, ` +
-      `void the memo, and post ${periodLabel(posting.periodKey)} again.`,
-    { creditMemoInstanceId: memo.id, docNumber: entry, glPostingId }
-  )
-}
-
 /**
  * Void a memo: reverse its issue entry through `reverseEntry`, then set
  * `void`. Refused once anything has been applied or refunded (unapply first),
@@ -905,8 +708,6 @@ async function assertNotInsideBatchEntry(
  * append-only and the connector must not resurrect it on re-ingest (section
  * 2.4). A `native` draft is discarded instead.
  *
- * 🛑 A memo inside a SUMMARISED entry is refused rather than reversed - see
- * {@link assertNotInsideBatchEntry}.
  */
 export async function voidCreditMemo(db: Database, input: CreditMemoLifecycleInput): Promise<void> {
   await runCreditCommand(
@@ -954,49 +755,19 @@ export async function voidCreditMemo(db: Database, input: CreditMemoLifecycleInp
         )
       }
 
-      const postings = await listPostingsForSource(db, {
+      const reversal = await reverseCreditMemoEntry(db, {
         organizationId,
-        sourceType: CREDIT_MEMO_SOURCE_TYPE,
-        sourceId: creditMemoInstanceId,
+        creditMemoInstanceId,
+        actorUserId: userId,
+        memo: `Credit memo ${memo.number} voided`,
       })
-      const live = postings.isOk()
-        ? postings.value.filter(
-            // `PostingStatus` is `posted | reversed` since the export split; a
-            // reversed original has already left the books.
-            (posting) =>
-              posting.postingType === CREDIT_MEMO_POSTING_TYPE && posting.status !== 'reversed'
-          )
-        : []
-
-      // No line names this memo, so either it was never posted or its entry
-      // summarises it. The stamp is the only thing that can tell the two apart, and
-      // a summarised entry is refused rather than reversed (§2.1). Checked here,
-      // AFTER the applied and refunded refusals: a memo whose money has already
-      // moved is unvoidable whatever shape its entry has, and pointing the person at
-      // a period repost would be the wrong remedy.
-      if (live.length === 0) {
-        await assertNotInsideBatchEntry(db, organizationId, memo)
-      }
-
-      if (live.length > 0) {
-        const lock = await resolvePeriodLock(organizationId)
-        for (const posting of live) {
-          const result = await reverseEntry(db, {
-            organizationId,
-            glPostingId: posting.id,
-            actorUserId: userId,
-            lock,
-            memo: `Reversal of ${posting.docNumber} - credit memo ${memo.number} voided`,
-          })
-          if (!isExpectedPostOutcome(result)) {
-            throw new BadRequestError(
-              `This credit memo has a general ledger entry (${posting.docNumber}) that could not be ` +
-                `reversed${result.error ? `: ${result.error}` : ` (${result.status})`}. Voiding it ` +
-                'would leave the credit in the books with no document behind it.',
-              { creditMemoInstanceId, docNumber: posting.docNumber, status: result.status }
-            )
-          }
-        }
+      if (reversal && !isExpectedPostOutcome(reversal)) {
+        throw new BadRequestError(
+          'This credit memo has a general ledger entry that could not be reversed' +
+            `${reversal.error ? `: ${reversal.error}` : ` (${reversal.status})`}. Voiding it ` +
+            'would leave the credit in the books with no document behind it.',
+          { creditMemoInstanceId, status: reversal.status }
+        )
       }
 
       await writer.write(creditMemoInstanceId, [{ fieldId: 'credit_memo_status', value: 'void' }])

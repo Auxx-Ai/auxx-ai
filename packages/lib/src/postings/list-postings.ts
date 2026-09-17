@@ -294,3 +294,31 @@ function toDateKey(value: Date | string): string {
   if (typeof value === 'string') return value
   return value.toISOString().slice(0, 10)
 }
+
+/**
+ * The one posting that currently holds a source's subject claim, or `null`.
+ *
+ * The read every "reverse this record's entry" path makes first: a reversal
+ * deletes the original's subject row, so anything still `subject` and not
+ * `reversed` is what is standing in the books right now.
+ */
+export async function findLiveSubjectPosting(
+  db: Database,
+  options: {
+    organizationId: string
+    sourceKind: string
+    sourceId: string
+    /** Narrow to one pass over the source - a write-off attempt, say. */
+    occurrence?: string
+  }
+): Promise<Result<SourcePosting | null, Error>> {
+  const found = await listPostingsForSource(db, options)
+  if (found.isErr()) return err(found.error)
+  const live = found.value.find(
+    (posting) =>
+      posting.linkRole === 'subject' &&
+      posting.status !== 'reversed' &&
+      (options.occurrence === undefined || posting.occurrence === options.occurrence)
+  )
+  return ok(live ?? null)
+}

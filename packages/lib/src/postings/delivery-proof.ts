@@ -1,6 +1,6 @@
 // packages/lib/src/postings/delivery-proof.ts
 import { z } from 'zod/v4'
-import { canonicalAccountingJson } from './effect-basis'
+import { canonicalAccountingJson } from './basis-hash'
 
 const party = z.object({ type: z.enum(['Customer', 'Vendor', 'Employee']), id: z.string().min(1) })
 export const preparedJournalSchema = z

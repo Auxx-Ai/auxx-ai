@@ -33,6 +33,9 @@ vi.mock('../../../cache/singletons', () => ({
   getOrgCache: () => ({ get: async () => settings.value }),
 }))
 vi.mock('../issuance-reads', () => ({ loadInvoiceForIssuance: loadInvoice }))
+// The invoice mirror projection is its own writer with its own test; this one
+// is about what the payment doors write and read.
+vi.mock('../payment-state', () => ({ syncInvoicePaymentState: vi.fn(async () => {}) }))
 
 // The command runner is replaced by one that actually RUNS the writer's
 // callback — the point is to exercise the inserts, not to skip them.

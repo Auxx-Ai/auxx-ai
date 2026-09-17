@@ -1,14 +1,8 @@
 // packages/lib/src/money/credit-memos/__tests__/writes.test.ts
 //
-// plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3: `issueCreditMemo`
-// checks the accounting-off case before `orderHadFulfillmentBefore` (a read
-// that exists only to decide the builder's `reverseRevenue`) and before the
-// builder itself - so a native credit memo issues on an org that has never
-// turned accounting on exactly as it would on one that has.
-//
-// plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md section 2.1:
-// `voidCreditMemo` REFUSES a memo whose live posting summarises it, rather than
-// reversing a period entry that covers hundreds of other memos.
+// One lane: `issueCreditMemo` posts through `postCreditMemoEntry`, and
+// `voidCreditMemo` reverses through `reverseCreditMemoEntry`. There is no stamp
+// field and no batch member to refuse (MIGRATION.md step 1b).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -16,13 +10,10 @@ const h = vi.hoisted(() => ({
   isAccountingEnabled: vi.fn(async () => true),
   memo: {} as Record<string, unknown>,
   lines: [] as unknown[],
-  customFields: {} as Record<string, { id: string } | null>,
   orderHadFulfillmentBefore: vi.fn(async () => false),
   buildCreditMemoEntry: vi.fn(),
-  resolvePeriodLock: vi.fn(),
-  postEntry: vi.fn(),
-  listPostingsForSource: vi.fn(),
-  reverseEntry: vi.fn(),
+  postCreditMemoEntry: vi.fn(),
+  reverseCreditMemoEntry: vi.fn(),
   setValuesForEntity: vi.fn(),
   settleCreditMemo: vi.fn(async () => ({ status: 'issued' })),
   recomputeTotals: vi.fn(async () => {}),
@@ -40,27 +31,20 @@ vi.mock('../../../postings/accounting-enabled', () => ({
 }))
 vi.mock('../../../cache', () => ({
   getEntityDefIdResolver: async () => (type: string) => type,
-  getOrgCache: () => ({
-    from: () => ({ bySystemAttributes: async () => h.customFields }),
-  }),
+  getOrgCache: () => ({ from: () => ({ bySystemAttributes: async () => ({}) }) }),
 }))
 vi.mock('../../../postings/build-credit-memo-entry', () => ({
-  CREDIT_MEMO_POSTING_TYPE: 'credit_memo',
-  CREDIT_MEMO_SOURCE_TYPE: 'credit_memo',
   buildCreditMemoEntry: h.buildCreditMemoEntry,
 }))
-vi.mock('../../../postings/list-postings', () => ({
-  listPostingsForSource: h.listPostingsForSource,
-}))
-vi.mock('../../../postings/period-lock', () => ({
-  resolvePeriodLock: h.resolvePeriodLock,
-}))
+vi.mock('../../../postings/period-lock', () => ({ resolvePeriodLock: vi.fn() }))
 vi.mock('../../../postings/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
-  postEntry: h.postEntry,
   previewEntry: vi.fn(),
 }))
-vi.mock('../../../postings/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
+vi.mock('../accounting', () => ({
+  postCreditMemoEntry: h.postCreditMemoEntry,
+  reverseCreditMemoEntry: h.reverseCreditMemoEntry,
+}))
 vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: async () => null,
 }))
@@ -95,42 +79,13 @@ vi.mock('../settle', () => ({
 }))
 
 import type { Database } from '@auxx/database'
-import { AuxxError } from '../../../errors'
 import { issueCreditMemo, voidCreditMemo } from '../writes'
 
 const ORG = 'org_1'
 const USER = 'user_1'
 const MEMO_ID = 'cm_1'
 const db = {} as Database
-
-/**
- * A drizzle-shaped query builder that answers each `await` with the next queued
- * row set. Every builder method returns the same thenable, so a whole
- * `select().from().where().limit()` chain is one answer, in call order.
- */
-function fakeDb(...answers: unknown[][]): { db: Database; select: ReturnType<typeof vi.fn> } {
-  const queue = [...answers]
-  const chain: Record<string, unknown> = {}
-  const select = vi.fn(() => chain)
-  chain.select = select
-  for (const method of ['selectDistinct', 'from', 'innerJoin', 'where', 'orderBy', 'limit']) {
-    chain[method] = () => chain
-  }
-  // biome-ignore lint/suspicious/noThenProperty: a drizzle builder is thenable; so is this double
-  chain.then = (resolve: (rows: unknown[]) => unknown, reject?: (reason: unknown) => unknown) =>
-    Promise.resolve(queue.shift() ?? []).then(resolve, reject)
-  return { db: chain as unknown as Database, select }
-}
-
-/** A live posting header row, as the batch probe selects it. */
-function postingRow(over: Partial<Record<string, unknown>> = {}) {
-  return {
-    docNumber: 'AUXX-CRM-202601',
-    periodKey: '2026-01',
-    status: 'posted',
-    ...over,
-  }
-}
+const input = { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -153,7 +108,6 @@ beforeEach(() => {
     amountRefundedMinor: 0,
     balanceMinor: 100_00,
     lineIds: ['line_1'],
-    glPostingId: null,
     hasSettlementFields: true,
   }
   h.lines = [
@@ -169,466 +123,126 @@ beforeEach(() => {
       sortOrder: 0,
     },
   ]
-  h.customFields = { credit_memo_gl_posting: { id: 'field_gl_posting' } }
   h.orderHadFulfillmentBefore.mockResolvedValue(false)
   h.buildCreditMemoEntry.mockReturnValue({
     entry: { postingType: 'credit_memo', periodKey: 'CM-0001', txnDate: '2026-09-01', lines: [] },
   })
-  h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
-  h.postEntry.mockResolvedValue({
+  h.postCreditMemoEntry.mockResolvedValue({
     status: 'posted',
     glPostingId: 'gl_1',
     docNumber: 'AUXX-CRM-0001',
   })
+  h.reverseCreditMemoEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gl_rev' })
   h.settleCreditMemo.mockResolvedValue({ status: 'issued' })
-  h.listPostingsForSource.mockResolvedValue({ isOk: () => true, value: [] })
-  h.reverseEntry.mockResolvedValue({ status: 'posted' })
   h.sumCreditMemoApplications.mockResolvedValue(0)
   h.sumSucceededCreditMemoRefunds.mockResolvedValue(0)
 })
 
-describe('accounting not enabled', () => {
-  beforeEach(() => {
-    h.isAccountingEnabled.mockResolvedValue(false)
-  })
+describe('issueCreditMemo', () => {
+  it('posts one entry with the memo and its contact, and returns its ids', async () => {
+    const result = await issueCreditMemo(db, input)
 
-  it('issues the memo without building, locking, or posting an entry', async () => {
-    const result = await issueCreditMemo(db, {
+    expect(h.postCreditMemoEntry).toHaveBeenCalledTimes(1)
+    expect(h.postCreditMemoEntry.mock.calls[0]![1]).toMatchObject({
       organizationId: ORG,
-      userId: USER,
       creditMemoInstanceId: MEMO_ID,
+      contactInstanceId: 'contact_1',
+      orderInstanceId: null,
     })
-
-    expect(result.postingId).toBeNull()
-    expect(result.docNumber).toBeNull()
-    expect(h.buildCreditMemoEntry).not.toHaveBeenCalled()
-    expect(h.resolvePeriodLock).not.toHaveBeenCalled()
-    expect(h.postEntry).not.toHaveBeenCalled()
-    // The read that exists only to decide the builder's `reverseRevenue`.
-    expect(h.orderHadFulfillmentBefore).not.toHaveBeenCalled()
-  })
-
-  it('still flips the status to issued', async () => {
-    await issueCreditMemo(db, {
-      organizationId: ORG,
-      userId: USER,
-      creditMemoInstanceId: MEMO_ID,
-    })
-
-    expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
-    const write = h.setValuesForEntity.mock.calls[0]![0]
-    expect(write.values).toContainEqual({ fieldId: 'credit_memo_status', value: 'issued' })
-  })
-})
-
-describe('accounting enabled', () => {
-  it('builds, locks, and posts before flipping the status', async () => {
-    const result = await issueCreditMemo(db, {
-      organizationId: ORG,
-      userId: USER,
-      creditMemoInstanceId: MEMO_ID,
-    })
-
-    expect(h.buildCreditMemoEntry).toHaveBeenCalledTimes(1)
-    expect(h.postEntry).toHaveBeenCalledTimes(1)
     expect(result.postingId).toBe('gl_1')
+    expect(result.docNumber).toBe('AUXX-CRM-0001')
   })
 
-  // 🛑 Brief 25 §4.2. `credit-memo-posting/reads.ts` decides "unposted" from
-  // this stamp ALONE, so a memo issued here with an entry in the books but no
-  // stamp is offered by the next netting read and posted a SECOND time inside
-  // a period entry. The same rule drives `countUnpostedCreditMemos`, so it
-  // would also refuse the month close forever.
-  it('stamps the posting id in the same write as the status', async () => {
-    await issueCreditMemo(db, {
-      organizationId: ORG,
-      userId: USER,
-      creditMemoInstanceId: MEMO_ID,
-    })
-
-    expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
-    const write = h.setValuesForEntity.mock.calls[0]![0]
-    expect(write.values).toContainEqual({ fieldId: 'credit_memo_status', value: 'issued' })
-    expect(write.values).toContainEqual({ fieldId: 'credit_memo_gl_posting', value: 'gl_1' })
-  })
-
-  it('writes no stamp when the post produced no posting id', async () => {
-    h.postEntry.mockResolvedValueOnce({ status: 'posted', glPostingId: null, docNumber: null })
-
-    await issueCreditMemo(db, {
-      organizationId: ORG,
-      userId: USER,
-      creditMemoInstanceId: MEMO_ID,
-    })
+  it('writes the status with no posting stamp beside it', async () => {
+    await issueCreditMemo(db, input)
 
     const write = h.setValuesForEntity.mock.calls[0]![0]
-    expect(
-      (write.values as Array<{ fieldId: string }>).some(
-        (v) => v.fieldId === 'credit_memo_gl_posting'
-      )
-    ).toBe(false)
+    expect(write.values).toEqual([{ fieldId: 'credit_memo_status', value: 'issued' }])
   })
-})
 
-// ─── Brief 25 §7: issuing WITHOUT posting, for the batch poster ─────────────
-//
-// 🛑 Channel memos are ingested as `draft`, so the bulk poster has to bulk
-// issue - and issuing 1,061 of them through the ledger would mint 1,061
-// single-memo entries, which is the exact thing batching exists to prevent.
-describe('post: false', () => {
-  const issue = (options?: { post?: boolean }) =>
-    issueCreditMemo(
-      db,
-      { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID },
-      options
-    )
+  it('refuses the issue when the ledger refuses the entry', async () => {
+    h.postCreditMemoEntry.mockResolvedValueOnce({ status: 'period_closed', error: 'August closed' })
 
-  it('builds nothing, locks nothing and posts nothing, with accounting ENABLED', async () => {
-    h.isAccountingEnabled.mockResolvedValue(true)
+    await expect(issueCreditMemo(db, input)).rejects.toThrow('could not be posted')
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
 
-    const result = await issue({ post: false })
+  // accounting is opt-in (task 17 §3): nothing is built, and nothing is posted.
+  it('issues without building or posting when accounting is off', async () => {
+    h.isAccountingEnabled.mockResolvedValue(false)
+
+    const result = await issueCreditMemo(db, input)
 
     expect(h.buildCreditMemoEntry).not.toHaveBeenCalled()
-    expect(h.resolvePeriodLock).not.toHaveBeenCalled()
-    expect(h.postEntry).not.toHaveBeenCalled()
-    // The read that exists only to decide the builder's `reverseRevenue`.
+    expect(h.postCreditMemoEntry).not.toHaveBeenCalled()
     expect(h.orderHadFulfillmentBefore).not.toHaveBeenCalled()
     expect(result.postingId).toBeNull()
-    expect(result.docNumber).toBeNull()
   })
 
-  it('does everything else, in the same order', async () => {
-    await issue({ post: false })
-
-    expect(h.recomputeTotals).toHaveBeenCalledTimes(1)
-    const write = h.setValuesForEntity.mock.calls[0]![0]
-    expect(write.values).toContainEqual({ fieldId: 'credit_memo_status', value: 'issued' })
-    expect(h.settleCreditMemo).toHaveBeenCalledTimes(1)
-  })
-
-  // ⚠️ There is no posting id to stamp. The batch run stamps the memo with the
-  // GROUP's posting id afterwards, and stamping anything here would claim the
-  // memo is posted when the entry has not been built yet.
-  it('writes NO stamp', async () => {
-    await issue({ post: false })
-
-    const write = h.setValuesForEntity.mock.calls[0]![0]
-    expect(
-      (write.values as Array<{ fieldId: string }>).some(
-        (v) => v.fieldId === 'credit_memo_gl_posting'
-      )
-    ).toBe(false)
-  })
-
-  it('writes the resolved issue date when it differs from the stored one', async () => {
-    h.memo.issuedAt = null
-
-    await issueCreditMemo(
-      db,
-      {
-        organizationId: ORG,
-        userId: USER,
-        creditMemoInstanceId: MEMO_ID,
-        issuedAt: '2026-01-14',
-      },
-      { post: false }
-    )
-
-    const write = h.setValuesForEntity.mock.calls[0]![0]
-    expect(write.values).toContainEqual({
-      fieldId: 'credit_memo_issued_at',
-      value: '2026-01-14T12:00:00.000Z',
-    })
-  })
-
-  it('applies the same refusals: a memo with no number does not issue', async () => {
+  it('refuses a memo with no number before anything is written', async () => {
     h.memo.number = ''
 
-    await expect(issue({ post: false })).rejects.toThrow('has no number yet')
+    await expect(issueCreditMemo(db, input)).rejects.toThrow('has no number yet')
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
-
-  it('skips the accounting-enabled read entirely, because nothing can use it', async () => {
-    await issue({ post: false })
-
-    expect(h.isAccountingEnabled).not.toHaveBeenCalled()
-  })
-
-  // Every existing call site passes no options at all.
-  it('defaults to posting', async () => {
-    const result = await issue()
-
-    expect(h.postEntry).toHaveBeenCalledTimes(1)
-    expect(result.postingId).toBe('gl_1')
-  })
-
-  it('posts when asked explicitly', async () => {
-    await issue({ post: true })
-
-    expect(h.postEntry).toHaveBeenCalledTimes(1)
-  })
 })
 
-// ─── Brief 25 §2.1: a batched member is not voided in place ─────────────────
-
-describe('voidCreditMemo, memo inside a batched entry', () => {
+describe('voidCreditMemo', () => {
   beforeEach(() => {
     h.memo.status = 'issued'
     h.memo.source = 'channel'
-    h.memo.glPostingId = 'gl_batch'
   })
 
-  it('refuses the void, naming the entry, its size and the way out', async () => {
-    // The posting header, one summarised line, then the stamp count.
-    const { db: fake } = fakeDb([postingRow()], [{ id: 'line_x' }], [{ memos: 312 }])
+  it('reverses the memo posting, then sets void', async () => {
+    await voidCreditMemo(db, input)
 
-    await expect(
-      voidCreditMemo(fake, { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID })
-    ).rejects.toThrow(
-      'This credit memo is inside AUXX-CRM-202601, which covers 312 memos. Reverse that entry, ' +
-        'void the memo, and post January 2026 again.'
-    )
-  })
-
-  it('reverses nothing and leaves the memo exactly as it was', async () => {
-    const { db: fake } = fakeDb([postingRow()], [{ id: 'line_x' }], [{ memos: 312 }])
-
-    await expect(
-      voidCreditMemo(fake, { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID })
-    ).rejects.toThrow(AuxxError)
-
-    expect(h.reverseEntry).not.toHaveBeenCalled()
-    expect(h.setValuesForEntity).not.toHaveBeenCalled()
-  })
-
-  it('carries the memo, the entry and the posting id as structured context', async () => {
-    const { db: fake } = fakeDb([postingRow()], [{ id: 'line_x' }], [{ memos: 7 }])
-
-    const error = await voidCreditMemo(fake, {
-      organizationId: ORG,
-      userId: USER,
-      creditMemoInstanceId: MEMO_ID,
-    }).catch((thrown: unknown) => thrown as AuxxError)
-
-    expect(error).toBeInstanceOf(AuxxError)
-    expect((error as AuxxError).statusCode).toBe(400)
-    expect((error as AuxxError).details).toMatchObject({
-      creditMemoInstanceId: MEMO_ID,
-      docNumber: 'AUXX-CRM-202601',
-      glPostingId: 'gl_batch',
-    })
-  })
-
-  it('names a day-grouped period as itself rather than bending it into a month', async () => {
-    const { db: fake } = fakeDb(
-      [postingRow({ docNumber: 'AUXX-CRM-20260115', periodKey: '2026-01-15' })],
-      [{ id: 'line_x' }],
-      [{ memos: 4 }]
-    )
-
-    await expect(
-      voidCreditMemo(fake, { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID })
-    ).rejects.toThrow(
-      'This credit memo is inside AUXX-CRM-20260115, which covers 4 memos. Reverse that entry, ' +
-        'void the memo, and post 2026-01-15 again.'
-    )
-  })
-
-  it('reads an attempt-suffixed month key as that month', async () => {
-    const { db: fake } = fakeDb(
-      [postingRow({ docNumber: 'AUXX-CRM-202601A', periodKey: '2026-01A' })],
-      [{ id: 'line_x' }],
-      [{ memos: 9 }]
-    )
-
-    await expect(
-      voidCreditMemo(fake, { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID })
-    ).rejects.toThrow('post January 2026 again.')
-  })
-
-  it('never reports zero members, because the memo being refused is one of them', async () => {
-    // The count read comes back empty - an unprovisioned stamp field, say.
-    const { db: fake } = fakeDb([postingRow()], [{ id: 'line_x' }], [])
-
-    await expect(
-      voidCreditMemo(fake, { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID })
-    ).rejects.toThrow('which covers 1 memos')
-  })
-})
-
-describe('voidCreditMemo, the refusal ladder above the batch check', () => {
-  beforeEach(() => {
-    h.memo.status = 'issued'
-    h.memo.source = 'channel'
-    h.memo.glPostingId = 'gl_batch'
-  })
-
-  it('refuses a refunded memo before it ever looks at the stamp', async () => {
-    h.memo.amountRefundedMinor = 50_00
-    const { db: fake, select } = fakeDb([postingRow()], [{ id: 'line_x' }], [{ memos: 312 }])
-
-    await expect(
-      voidCreditMemo(fake, { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID })
-    ).rejects.toThrow('has a completed or pending refund and cannot be voided')
-
-    expect(select).not.toHaveBeenCalled()
-  })
-
-  it('refuses an applied memo before it ever looks at the stamp', async () => {
-    h.sumCreditMemoApplications.mockResolvedValue(25_00)
-    const { db: fake, select } = fakeDb([postingRow()], [{ id: 'line_x' }], [{ memos: 312 }])
-
-    await expect(
-      voidCreditMemo(fake, { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID })
-    ).rejects.toThrow('Unapply this credit memo from its invoices before voiding it')
-
-    expect(select).not.toHaveBeenCalled()
-  })
-
-  it('refuses an already-void memo before it ever looks at the stamp', async () => {
-    h.memo.status = 'void'
-    const { db: fake, select } = fakeDb([postingRow()], [{ id: 'line_x' }], [{ memos: 312 }])
-
-    await expect(
-      voidCreditMemo(fake, { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID })
-    ).rejects.toThrow('This credit memo is already void')
-
-    expect(select).not.toHaveBeenCalled()
-  })
-
-  it('voids a channel draft with no posting and no stamp read at all', async () => {
-    h.memo.status = 'draft'
-    const { db: fake, select } = fakeDb([postingRow()], [{ id: 'line_x' }], [{ memos: 312 }])
-
-    await voidCreditMemo(fake, {
-      organizationId: ORG,
-      userId: USER,
-      creditMemoInstanceId: MEMO_ID,
-    })
-
-    expect(select).not.toHaveBeenCalled()
-    expect(h.reverseEntry).not.toHaveBeenCalled()
-    expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('voidCreditMemo, a posting that names the memo directly', () => {
-  beforeEach(() => {
-    h.memo.status = 'issued'
-    h.memo.source = 'channel'
-    h.memo.glPostingId = 'gl_single'
-    h.listPostingsForSource.mockResolvedValue({
-      isOk: () => true,
-      value: [
-        {
-          id: 'gl_single',
-          postingType: 'credit_memo',
-          docNumber: 'AUXX-CRM-CM0001',
-          status: 'posted',
-        },
-      ],
-    })
-  })
-
-  it('still reverses the whole entry, unchanged', async () => {
-    const { db: fake, select } = fakeDb()
-
-    await voidCreditMemo(fake, {
-      organizationId: ORG,
-      userId: USER,
-      creditMemoInstanceId: MEMO_ID,
-    })
-
-    expect(h.reverseEntry).toHaveBeenCalledTimes(1)
-    expect(h.reverseEntry.mock.calls[0]![1]).toMatchObject({ glPostingId: 'gl_single' })
-    // A line names the memo, so the batch probe is never reached.
-    expect(select).not.toHaveBeenCalled()
-  })
-
-  it('flips the status to void after the reversal', async () => {
-    const { db: fake } = fakeDb()
-
-    await voidCreditMemo(fake, {
-      organizationId: ORG,
-      userId: USER,
-      creditMemoInstanceId: MEMO_ID,
-    })
-
+    expect(h.reverseCreditMemoEntry).toHaveBeenCalledTimes(1)
     expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
     const write = h.setValuesForEntity.mock.calls[0]![0]
-    expect(write.values).toContainEqual({ fieldId: 'credit_memo_status', value: 'void' })
+    expect(write.values).toEqual([{ fieldId: 'credit_memo_status', value: 'void' }])
+  })
+
+  it('voids an unposted memo, because there is nothing standing to reverse', async () => {
+    h.reverseCreditMemoEntry.mockResolvedValue(null)
+
+    await voidCreditMemo(db, input)
+
+    expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
   })
 
   it('refuses the void when the reversal is refused', async () => {
-    h.reverseEntry.mockResolvedValue({ status: 'locked', error: 'January is closed' })
-    const { db: fake } = fakeDb()
+    h.reverseCreditMemoEntry.mockResolvedValue({ status: 'period_closed', error: 'August closed' })
 
-    await expect(
-      voidCreditMemo(fake, { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID })
-    ).rejects.toThrow('could not be')
+    await expect(voidCreditMemo(db, input)).rejects.toThrow('could not be reversed')
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
-})
 
-describe('voidCreditMemo, a stamp that is not a live batch entry', () => {
-  beforeEach(() => {
-    h.memo.status = 'issued'
-    h.memo.source = 'channel'
-    h.memo.glPostingId = 'gl_batch'
+  it('refuses a refunded memo before it touches the ledger', async () => {
+    h.memo.amountRefundedMinor = 50_00
+
+    await expect(voidCreditMemo(db, input)).rejects.toThrow('has a completed or pending refund')
+    expect(h.reverseCreditMemoEntry).not.toHaveBeenCalled()
   })
 
-  it('voids freely when the stamped posting has been reversed', async () => {
-    // §4.2: a reversed stamp is not a live posting - the memo is back to
-    // unposted and the batch it was in has already been rolled back.
-    const { db: fake } = fakeDb([postingRow({ status: 'reversed' })])
+  it('refuses an applied memo before it touches the ledger', async () => {
+    h.sumCreditMemoApplications.mockResolvedValue(25_00)
 
-    await voidCreditMemo(fake, {
-      organizationId: ORG,
-      userId: USER,
-      creditMemoInstanceId: MEMO_ID,
-    })
-
-    expect(h.reverseEntry).not.toHaveBeenCalled()
-    expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
+    await expect(voidCreditMemo(db, input)).rejects.toThrow('Unapply this credit memo')
+    expect(h.reverseCreditMemoEntry).not.toHaveBeenCalled()
   })
 
-  it('voids freely when the stamp names a posting that no longer exists', async () => {
-    const { db: fake } = fakeDb([])
+  it('refuses an already-void memo', async () => {
+    h.memo.status = 'void'
 
-    await voidCreditMemo(fake, {
-      organizationId: ORG,
-      userId: USER,
-      creditMemoInstanceId: MEMO_ID,
-    })
-
-    expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
+    await expect(voidCreditMemo(db, input)).rejects.toThrow('is already void')
   })
 
-  it('voids freely when the live posting carries no summarised line', async () => {
-    // Stamped and live, but nothing on it is a `credit_memo_batch` line, so it
-    // is an ordinary single-memo entry and the stamp decides nothing.
-    const { db: fake } = fakeDb([postingRow()], [])
+  it('voids a channel draft with no reversal at all', async () => {
+    h.memo.status = 'draft'
 
-    await voidCreditMemo(fake, {
-      organizationId: ORG,
-      userId: USER,
-      creditMemoInstanceId: MEMO_ID,
-    })
+    await voidCreditMemo(db, input)
 
-    expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
-  })
-
-  it('does not read the posting at all when the memo carries no stamp', async () => {
-    h.memo.glPostingId = null
-    const { db: fake, select } = fakeDb([postingRow()], [{ id: 'line_x' }], [{ memos: 312 }])
-
-    await voidCreditMemo(fake, {
-      organizationId: ORG,
-      userId: USER,
-      creditMemoInstanceId: MEMO_ID,
-    })
-
-    expect(select).not.toHaveBeenCalled()
+    expect(h.reverseCreditMemoEntry).not.toHaveBeenCalled()
     expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
   })
 })

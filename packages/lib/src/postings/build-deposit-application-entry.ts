@@ -50,22 +50,12 @@ import type { BuiltEntry, GlPostingLineInput } from './types'
 /**
  * The `sourceType` every application line carries.
  *
- * 🛑 `payment_transaction`, the same value the receipt entry uses, and
- * deliberately not the allocation row.
- *
- * Two readers depend on it. `listPaymentPostings` finds every entry a payment
- * produced by this pair, which is what lets `reversePaymentPostings` back the
- * reclass out before the receipt when a payment is deleted; and
- * `postDepositApplications` computes how much of a transaction is still sitting
- * in the liability by reading its own lines back out of the ledger rather than
- * from a column that could drift. Sourcing on the allocation would hide the
- * entry from both.
- *
- * WHICH allocation an entry belongs to is carried by the period key, which is a
- * deterministic function of the allocation id - see
- * {@link depositApplicationPeriodKey}.
+ * 🛑 `money_transaction`, the same value the receipt entry's lines carry, so a
+ * per-line audit of the movement finds the reclass beside the receipt. WHICH
+ * application the entry belongs to is carried by the period key and by the
+ * posting's `GlPostingSource` subject row.
  */
-export const DEPOSIT_APPLICATION_SOURCE_TYPE = 'payment_transaction'
+export const DEPOSIT_APPLICATION_SOURCE_TYPE = 'money_transaction'
 
 /** The posting type an application entry claims. */
 export const DEPOSIT_APPLICATION_POSTING_TYPE = 'deposit_application' as const
@@ -96,11 +86,11 @@ export function depositApplicationPeriodKey(allocationId: string): string {
 }
 
 export interface BuildDepositApplicationEntryInput {
-  /** `PaymentAllocation.id`. Keys the entry - {@link depositApplicationPeriodKey}. */
+  /** `MoneyApplication.id`. Keys the entry - {@link depositApplicationPeriodKey}. */
   allocationId: string
   /**
-   * `PaymentTransaction.id`. Every line's `sourceId`, so the reclass is found
-   * by the same reads that find the receipt entry.
+   * `MoneyTransaction.id`. Every line's `sourceId`, so the reclass is found by
+   * the same reads that find the receipt entry.
    */
   transactionId: string
   /** Integer minor units, > 0. What moves out of the liability. */
@@ -141,7 +131,7 @@ export function buildDepositApplicationEntry(
 
   if (!transactionId) {
     throw new UnprocessableEntityError(
-      'A deposit application entry needs the payment transaction it reclasses',
+      'A deposit application entry needs the money transaction it reclasses',
       { allocationId }
     )
   }

@@ -5,7 +5,7 @@ import { readEnvelope } from '@auxx/types/field-value'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { ConflictError } from '../../errors'
-import { accountingBasisHash } from '../../postings/effect-basis'
+import { accountingBasisHash } from '../../postings/basis-hash'
 import { stageOrderPaymentEvidenceInTx } from '../customer-money/record-evidence'
 import type { PayoutRecordEvidence, ProcessorRecordEvidence } from '../payouts/record-contracts'
 import {

@@ -3,7 +3,7 @@
 import { type Database, schema, type Transaction, withAccountingCommitLock } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { BadRequestError, ConflictError } from '../../errors'
-import { accountingBasisHash } from '../../postings/effect-basis'
+import { accountingBasisHash } from '../../postings/basis-hash'
 import { flushTxWriteScope } from '../../resources/crud/tx-write-flush'
 import { runInTxWrite } from '../../resources/crud/tx-write-scope'
 import { runWithWriteDb } from '../../resources/crud/write-session-als'

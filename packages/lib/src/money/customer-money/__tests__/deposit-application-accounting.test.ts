@@ -1,10 +1,9 @@
 // packages/lib/src/money/customer-money/__tests__/deposit-application-accounting.test.ts
 //
-// D19 task B (53 §7.3.3). The three properties that decide whether this lane is
-// correct, none of which a schema test can reach:
+// The three properties that decide whether this lane is correct:
 //
-//  1. the obligation is MONEY-owned and keyed on the APPLICATION, so one
-//     movement applied to two invoices produces two work rows;
+//  1. the subject claim is the APPLICATION, so one movement applied to two
+//     invoices is two claims, and the invoice is the parent;
 //  2. the entry is dated the day it was APPLIED, never the day the money
 //     arrived - the prepayment changed character on the later date;
 //  3. the accounting-off gate short-circuits before any read (task 17 §3).
@@ -13,12 +12,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   isAccountingEnabled: vi.fn(),
-  acceptEntryInTx: vi.fn(),
-  captureMoneyApplicationWorkInTx: vi.fn(),
-  resolveAccountLines: vi.fn(),
-  resolveFulfillmentDeliveryIntentInTx: vi.fn(),
-  planAccountingDeliveryInTx: vi.fn(),
-  deliverAccountingPosting: vi.fn(),
+  postEntry: vi.fn(),
+  reverseEntry: vi.fn(),
+  findLiveSubjectPosting: vi.fn(),
+  resolvePeriodLock: vi.fn(),
+  readAutoPostMode: vi.fn(async () => 'post'),
   loadInvoiceForIssuance: vi.fn(),
   application: null as unknown,
   money: null as unknown,
@@ -28,20 +26,13 @@ const h = vi.hoisted(() => ({
 vi.mock('../../../postings/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
-vi.mock('../../../postings/accept-entry', () => ({ acceptEntryInTx: h.acceptEntryInTx }))
-vi.mock('../../../postings/application-effect-work', () => ({
-  captureMoneyApplicationWorkInTx: h.captureMoneyApplicationWorkInTx,
+vi.mock('../../../postings/post-entry', () => ({ postEntry: h.postEntry }))
+vi.mock('../../../postings/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
+vi.mock('../../../postings/list-postings', () => ({
+  findLiveSubjectPosting: h.findLiveSubjectPosting,
 }))
-vi.mock('../../../postings/resolve-roles', () => ({
-  resolveAccountLines: h.resolveAccountLines,
-}))
-vi.mock('../../../postings/book-connections', () => ({
-  resolveFulfillmentDeliveryIntentInTx: h.resolveFulfillmentDeliveryIntentInTx,
-}))
-vi.mock('../../../postings/delivery', () => ({
-  planAccountingDeliveryInTx: h.planAccountingDeliveryInTx,
-  deliverAccountingPosting: h.deliverAccountingPosting,
-}))
+vi.mock('../../../postings/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
+vi.mock('../../../postings/auto-post', () => ({ readAutoPostMode: h.readAutoPostMode }))
 vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: async ({ key }: { key: string }) =>
     key === 'organization.currency' ? 'USD' : 'America/New_York',
@@ -50,8 +41,10 @@ vi.mock('../../invoices/issuance-reads', () => ({
   loadInvoiceForIssuance: h.loadInvoiceForIssuance,
 }))
 
-import { ok } from 'neverthrow'
-import { acceptDepositApplicationAccounting } from '../deposit-application-accounting'
+import {
+  acceptDepositApplicationAccounting,
+  reverseDepositApplicationAccounting,
+} from '../deposit-application-accounting'
 
 const ORG = 'org_1'
 const APPLICATION = 'ma_1'
@@ -75,15 +68,6 @@ function stubDb() {
   db.transaction = (fn: (tx: unknown) => unknown) => fn(db)
   return db as never
 }
-
-const accepted = (glPostingId: string) => ({
-  status: 'accepted' as const,
-  existing: false,
-  glPostingId,
-  glPostingIds: [glPostingId],
-  effectIds: ['ef_1'],
-  postings: [{ glPostingId, deliveryIntent: { kind: 'not_required' } }],
-})
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -120,19 +104,11 @@ beforeEach(() => {
     totalMinor: 50_000,
     contactInstanceId: 'ct_1',
   })
-  h.resolveAccountLines.mockResolvedValue(
-    ok([
-      { glAccountId: 'gl_deposits', code: '2300', name: 'Deposits', accountType: 'liability' },
-      { glAccountId: 'gl_ar', code: '1200', name: 'A/R', accountType: 'asset' },
-    ])
-  )
-  h.captureMoneyApplicationWorkInTx.mockResolvedValue({
-    work: { id: 'aw_1', basisVersion: 1 },
-    basis: {},
-    existing: false,
-  })
-  h.resolveFulfillmentDeliveryIntentInTx.mockResolvedValue({ kind: 'not_required' })
-  h.acceptEntryInTx.mockResolvedValue(accepted('gp_1'))
+  h.readAutoPostMode.mockResolvedValue('post')
+  h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
+  h.findLiveSubjectPosting.mockResolvedValue({ isErr: () => false, value: null })
+  h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_1' })
+  h.reverseEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_rev' })
 })
 
 describe('acceptDepositApplicationAccounting', () => {
@@ -143,7 +119,7 @@ describe('acceptDepositApplicationAccounting', () => {
     })
 
     expect(result).toMatchObject({ status: 'posted', glPostingId: 'gp_1' })
-    const entry = h.acceptEntryInTx.mock.calls[0]![1].entry
+    const entry = h.postEntry.mock.calls[0]![1].entry
     expect(entry.postingType).toBe('deposit_application')
     expect(entry.totalDebit).toBe(20_000)
     expect(
@@ -164,44 +140,40 @@ describe('acceptDepositApplicationAccounting', () => {
       organizationId: ORG,
       moneyApplicationId: APPLICATION,
     })
-    const entry = h.acceptEntryInTx.mock.calls[0]![1].entry
-    expect(entry.txnDate).toBe('2026-09-04')
-    const member = h.acceptEntryInTx.mock.calls[0]![1].members[0]
-    expect(member.acceptedBasis.effectiveDate).toBe('2026-09-04')
+    expect(h.postEntry.mock.calls[0]![1].entry.txnDate).toBe('2026-09-04')
   })
 
-  // 🔑 Money-owned work, keyed on the application: the capture is handed the
-  // MOVEMENT as the owner and the APPLICATION as the identity.
-  it('captures money-owned work that names the movement and the application', async () => {
+  // 🔑 The APPLICATION is the claim, so one movement applied to two invoices is
+  // two claims; the invoice is the parent the ledger card reads.
+  it('claims the application and parents the invoice', async () => {
     await acceptDepositApplicationAccounting(stubDb(), {
       organizationId: ORG,
       moneyApplicationId: APPLICATION,
       automatic: true,
     })
-    const captured = h.captureMoneyApplicationWorkInTx.mock.calls[0]![1]
-    expect(captured).toMatchObject({
-      organizationId: ORG,
-      moneyApplicationId: APPLICATION,
-      moneyTransactionId: MOVEMENT,
-      eligibility: 'automatic',
-    })
-    expect(captured.basis.calculation.invoiceInstanceId).toBe(INVOICE)
+    expect(h.postEntry.mock.calls[0]![1].sources).toEqual([
+      { sourceKind: 'money_application', sourceId: APPLICATION, linkRole: 'subject' },
+      { sourceKind: 'invoice', sourceId: INVOICE, linkRole: 'parent' },
+    ])
   })
 
-  it('carries the customer on both balance-sheet legs and names the invoice as a reference', async () => {
+  it('carries the customer on both balance-sheet legs', async () => {
     await acceptDepositApplicationAccounting(stubDb(), {
       organizationId: ORG,
       moneyApplicationId: APPLICATION,
     })
-    const entry = h.acceptEntryInTx.mock.calls[0]![1].entry
+    const entry = h.postEntry.mock.calls[0]![1].entry
     for (const line of entry.lines)
       expect(line).toMatchObject({ counterpartyType: 'customer', counterpartyId: 'ct_1' })
-    const basis = h.acceptEntryInTx.mock.calls[0]![1].members[0].acceptedBasis
-    expect(basis.documentRefs).toContainEqual({
-      resourceKind: 'invoice',
-      entityInstanceId: INVOICE,
+  })
+
+  it('drafts the entry when the receipt avenue does not auto-post', async () => {
+    h.readAutoPostMode.mockResolvedValue('draft')
+    await acceptDepositApplicationAccounting(stubDb(), {
+      organizationId: ORG,
+      moneyApplicationId: APPLICATION,
     })
-    expect(basis.policyKey).toBe('money_application_v1')
+    expect(h.postEntry.mock.calls[0]![1].mode).toBe('draft')
   })
 
   // task 17 §3: nothing is read, nothing is built, nothing is logged.
@@ -213,7 +185,7 @@ describe('acceptDepositApplicationAccounting', () => {
     })
     expect(result).toEqual({ status: 'not_enabled' })
     expect(h.loadInvoiceForIssuance).not.toHaveBeenCalled()
-    expect(h.acceptEntryInTx).not.toHaveBeenCalled()
+    expect(h.postEntry).not.toHaveBeenCalled()
   })
 
   // ⚠️ An `unapply` reverses an earlier apply; its accounting is the correction
@@ -226,7 +198,7 @@ describe('acceptDepositApplicationAccounting', () => {
     })
     expect(result.status).toBe('error')
     expect(result.error).toMatch(/live invoice application/)
-    expect(h.acceptEntryInTx).not.toHaveBeenCalled()
+    expect(h.postEntry).not.toHaveBeenCalled()
   })
 
   it('refuses when the movement is not a confirmed USD customer receipt', async () => {
@@ -250,13 +222,40 @@ describe('acceptDepositApplicationAccounting', () => {
     expect(result.error).toMatch(/live invoice in this organization/)
   })
 
-  it('never throws when acceptance refuses', async () => {
-    h.acceptEntryInTx.mockRejectedValue(new Error('That month is locked.'))
+  it('never throws when the ledger refuses', async () => {
+    h.postEntry.mockResolvedValue({ status: 'period_closed', error: 'That month is locked.' })
     const result = await acceptDepositApplicationAccounting(stubDb(), {
       organizationId: ORG,
       moneyApplicationId: APPLICATION,
     })
-    expect(result.status).toBe('error')
+    expect(result.status).toBe('period_closed')
     expect(result.error).toMatch(/locked/)
+  })
+})
+
+describe('reverseDepositApplicationAccounting', () => {
+  it('reverses the application posting, freeing its claim', async () => {
+    h.findLiveSubjectPosting.mockResolvedValue({
+      isErr: () => false,
+      value: { id: 'gp_1', docNumber: 'AUXX-DPA-0001' },
+    })
+
+    const result = await reverseDepositApplicationAccounting(stubDb(), {
+      organizationId: ORG,
+      moneyApplicationId: APPLICATION,
+    })
+
+    expect(result).toMatchObject({ status: 'posted' })
+    expect(h.reverseEntry.mock.calls[0]![1].glPostingId).toBe('gp_1')
+  })
+
+  it('is a no-op when the application never posted', async () => {
+    const result = await reverseDepositApplicationAccounting(stubDb(), {
+      organizationId: ORG,
+      moneyApplicationId: APPLICATION,
+    })
+
+    expect(result).toBeNull()
+    expect(h.reverseEntry).not.toHaveBeenCalled()
   })
 })

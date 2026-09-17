@@ -11,8 +11,15 @@ import { getCachedInstalledApps } from '../cache'
 import { ConflictError, UnprocessableEntityError } from '../errors'
 import { getOrganizationSetting } from '../settings/settings-service'
 import { withAccountingCommitLock } from './accounting-commit-lock'
-import { canonicalAccountingJson } from './effect-basis'
-import type { PostingDeliveryIntent } from './insert-posting'
+import { canonicalAccountingJson } from './basis-hash'
+
+// TODO(step-3): `PostingDeliveryIntent` lived on `insert-posting.ts`'s claim
+// path, deleted in step 1a with `GlPosting.deliveryIntent`. This function has
+// no live caller today; the type is kept inline until the export batch (step 3)
+// gives delivery intent a home again.
+type PostingDeliveryIntent =
+  | { kind: 'not_required' }
+  | { kind: 'manual' | 'automatic'; connectionId: string }
 
 const accountingDateSchema = z
   .string()

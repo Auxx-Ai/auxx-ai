@@ -102,7 +102,7 @@ describe('refusals', () => {
 
   it('refuses a blank transaction id, naming what is missing', () => {
     expect(() => buildDepositApplicationEntry({ ...BASE, transactionId: '  ' })).toThrowError(
-      /payment transaction/
+      /money transaction/
     )
   })
 

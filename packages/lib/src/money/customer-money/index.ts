@@ -1,5 +1,4 @@
 // packages/lib/src/money/customer-money/index.ts
-
 export { postCustomerReceiptAccounting, sweepCustomerReceiptAccounting } from './accounting'
 export type { OrderMoneyTransaction } from './client'
 export {
@@ -22,7 +21,6 @@ export {
   type CustomerRefundAccountingInput,
   type CustomerRefundAccountingResult,
   postCustomerRefundAccounting,
-  postCustomerRefundAccountingInTx,
 } from './refund-accounting'
 export {
   type ResolveImportedMoneyReferencesInput,

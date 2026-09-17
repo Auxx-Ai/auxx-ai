@@ -17,6 +17,7 @@ import {
 import { toNeutralPartyType } from '../money/quickbooks/object-types'
 import { prepareQuickbooksJournal } from '../money/quickbooks/quickbooks-accounting-provider'
 import { withAccountingCommitLock } from './accounting-commit-lock'
+import { accountingBasisHash } from './basis-hash'
 import { readPinnedAccountingConnection } from './book-connections'
 import { assertCoveragePartitionsInTx } from './delivery-coverage'
 import {
@@ -24,7 +25,6 @@ import {
   quickbooksJournalWirePayload,
   verifyDeliveredJournal,
 } from './delivery-proof'
-import { accountingBasisHash } from './effect-basis'
 import {
   type CounterpartyType,
   type PostEntryInput,

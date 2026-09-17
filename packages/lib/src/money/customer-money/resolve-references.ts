@@ -2,7 +2,7 @@
 import { type Database, schema, withAccountingCommitLock } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
-import { accountingBasisHash } from '../../postings/effect-basis'
+import { accountingBasisHash } from '../../postings/basis-hash'
 import { confirmedCustomerMovement } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
 

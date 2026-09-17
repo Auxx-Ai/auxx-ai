@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto'
 import { type AccountingDeliveryOperationEntity, type Database, schema } from '@auxx/database'
 import { and, eq, sql } from 'drizzle-orm'
 import { withAccountingCommitLock } from '../accounting-commit-lock'
-import { accountingBasisHash } from '../effect-basis'
+import { accountingBasisHash } from '../basis-hash'
 
 /** The withdrawal's operation key. `journal` keys the sends, `unsync:<n>` the withdrawals. */
 export const unsyncOperationKey = (epoch: number) => `unsync:${epoch}`

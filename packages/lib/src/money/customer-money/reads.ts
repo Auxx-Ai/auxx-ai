@@ -67,41 +67,44 @@ export async function listOrderMoneyTransactions(
     .orderBy(desc(schema.FinancialSourceAcceptance.createdAt))
   const result = new Map<string, OrderMoneyTransaction>()
   const moneyIds = [...new Set(rows.flatMap(({ money }) => (money ? [money.id] : [])))]
+  // The posting a movement produced, through its subject claim: a live subject
+  // row IS "this has been accounted for", and a reversal deletes it.
   const accountingRows = moneyIds.length
     ? await db
         .select({
-          moneyTransactionId: schema.AccountingWork.moneyTransactionId,
-          state: schema.AccountingWork.state,
-          reason: schema.AccountingWork.blockedReason,
-          effectiveDate: schema.AccountingWorkBasis.effectiveDate,
-          glPostingId: schema.AccountingEffect.glPostingId,
+          moneyTransactionId: schema.GlPostingSource.sourceId,
+          txnDate: schema.GlPosting.txnDate,
+          glPostingId: schema.GlPosting.id,
+          status: schema.GlPosting.status,
         })
-        .from(schema.AccountingWork)
-        .leftJoin(
-          schema.AccountingWorkBasis,
+        .from(schema.GlPostingSource)
+        .innerJoin(
+          schema.GlPosting,
           and(
-            eq(schema.AccountingWorkBasis.organizationId, organizationId),
-            eq(schema.AccountingWorkBasis.workId, schema.AccountingWork.id),
-            eq(schema.AccountingWorkBasis.version, schema.AccountingWork.basisVersion)
-          )
-        )
-        .leftJoin(
-          schema.AccountingEffect,
-          and(
-            eq(schema.AccountingEffect.organizationId, organizationId),
-            eq(schema.AccountingEffect.workId, schema.AccountingWork.id)
+            eq(schema.GlPosting.organizationId, schema.GlPostingSource.organizationId),
+            eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId)
           )
         )
         .where(
           and(
-            eq(schema.AccountingWork.organizationId, organizationId),
-            inArray(schema.AccountingWork.moneyTransactionId, moneyIds),
-            inArray(schema.AccountingWork.effectKind, ['customer_receipt', 'customer_refund']),
-            eq(schema.AccountingWork.operation, 'original')
+            eq(schema.GlPostingSource.organizationId, organizationId),
+            eq(schema.GlPostingSource.sourceKind, 'money_transaction'),
+            inArray(schema.GlPostingSource.sourceId, moneyIds),
+            eq(schema.GlPostingSource.linkRole, 'subject')
           )
         )
     : []
-  const accountingByMoney = new Map(accountingRows.map((row) => [row.moneyTransactionId, row]))
+  const accountingByMoney = new Map(
+    accountingRows.map((row) => [
+      row.moneyTransactionId,
+      {
+        state: (row.status === 'draft' ? 'pending' : 'accepted') as 'pending' | 'accepted',
+        reason: null,
+        effectiveDate: String(row.txnDate).slice(0, 10),
+        glPostingId: row.glPostingId,
+      },
+    ])
+  )
   for (const { acceptance, money, object, account, observation } of rows) {
     const source = readStoredCustomerMoneyObservation(observation.payload)
     let amount: { amountMinor: bigint; currency: string; currencyExponent: number } | null = null

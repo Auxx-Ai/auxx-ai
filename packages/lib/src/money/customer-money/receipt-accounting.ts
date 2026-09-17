@@ -1,9 +1,9 @@
 // packages/lib/src/money/customer-money/receipt-accounting.ts
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../errors'
 import { getPaymentGateway } from '../../payment-gateways/reads'
-import { accountingBasisHash } from '../../postings/effect-basis'
+import { accountingBasisHash } from '../../postings/basis-hash'
 import { periodKeyForDate } from '../../postings/periods'
 import { confirmedCustomerMovement } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
@@ -171,7 +171,13 @@ export async function readCustomerReceiptAccountingSource(
   }
 }
 
-/** Retry missing and blocked work fairly, including dependencies repaired after discovery. */
+/**
+ * Shopify customer receipts with no live subject posting, oldest first.
+ *
+ * The claim is the candidate list now: a receipt that has posted holds a
+ * `subject` row on `GlPostingSource`, and a reversal deletes that row, so the
+ * same query re-offers a reversed receipt without a state machine of its own.
+ */
 export async function listCustomerReceiptAccountingCandidates(
   db: Database,
   organizationId: string,
@@ -180,15 +186,6 @@ export async function listCustomerReceiptAccountingCandidates(
   const rows = await db
     .select({ id: schema.MoneyTransaction.id })
     .from(schema.MoneyTransaction)
-    .leftJoin(
-      schema.AccountingWork,
-      and(
-        eq(schema.AccountingWork.organizationId, organizationId),
-        eq(schema.AccountingWork.moneyTransactionId, schema.MoneyTransaction.id),
-        eq(schema.AccountingWork.effectKind, 'customer_receipt'),
-        eq(schema.AccountingWork.operation, 'original')
-      )
-    )
     .where(
       and(
         eq(schema.MoneyTransaction.organizationId, organizationId),
@@ -198,22 +195,14 @@ export async function listCustomerReceiptAccountingCandidates(
         JOIN ${schema.FinancialSourceAccount} account ON account."id" = object."sourceAccountId" AND account."organizationId" = object."organizationId"
         WHERE acceptance."organizationId" = ${organizationId} AND acceptance."moneyTransactionId" = ${schema.MoneyTransaction.id}
         AND account."providerKey" = 'shopify')`,
-        or(
-          isNull(schema.AccountingWork.id),
-          and(
-            inArray(schema.AccountingWork.state, ['pending', 'blocked']),
-            or(
-              isNull(schema.AccountingWork.nextAttemptAt),
-              lte(schema.AccountingWork.nextAttemptAt, new Date())
-            )
-          )
-        )
+        sql`NOT EXISTS (SELECT 1 FROM ${schema.GlPostingSource} link
+        WHERE link."organizationId" = ${organizationId}
+        AND link."sourceKind" = 'money_transaction'
+        AND link."sourceId" = ${schema.MoneyTransaction.id}
+        AND link."linkRole" = 'subject')`
       )
     )
-    .orderBy(
-      sql`COALESCE(${schema.AccountingWork.updatedAt}, ${schema.MoneyTransaction.createdAt})`,
-      asc(schema.MoneyTransaction.id)
-    )
+    .orderBy(asc(schema.MoneyTransaction.createdAt), asc(schema.MoneyTransaction.id))
     .limit(limit)
   return rows.map((row) => row.id)
 }

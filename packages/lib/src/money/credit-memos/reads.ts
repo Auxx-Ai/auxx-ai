@@ -46,7 +46,6 @@ const CREDIT_MEMO_ATTRIBUTES = [
   'credit_memo_amount_refunded',
   'credit_memo_balance',
   'credit_memo_lines',
-  'credit_memo_gl_posting',
 ] as const
 
 /** Every `credit_memo_line` attribute the module reads. */
@@ -278,14 +277,6 @@ export interface CreditMemoRecord {
   amountRefundedMinor: number
   balanceMinor: number
   lineIds: string[]
-  /**
-   * The `GlPosting` id this memo was posted into, or `null` (accounting/25 §4.1).
-   *
-   * 🛑 `null` is "no stamp", NOT "unposted". A memo is unposted when this is null
-   * OR names a posting that is `reversed` or gone (§4.2), which needs the posting
-   * row - this field alone cannot answer it.
-   */
-  glPostingId: string | null
   /** Whether the org has the `credit_memo_amount_applied` mirror to write at all. */
   hasSettlementFields: boolean
 }
@@ -343,7 +334,6 @@ export async function loadCreditMemo(
     lineIds: cells('credit_memo_lines')
       .map((row) => row.relatedEntityId)
       .filter((id): id is string => !!id),
-    glPostingId: cell('credit_memo_gl_posting')?.valueText ?? null,
     hasSettlementFields: fields.credit_memo_amount_applied !== null,
   }
 }
