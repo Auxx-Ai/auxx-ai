@@ -605,6 +605,40 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     description: 'The generated PDF for this invoice',
   },
 
+  // The paperwork that belongs with the invoice: a signed delivery note, a
+  // customer PO, a timesheet backing the hours billed.
+  //
+  // 🛑 An attachment is INTERNAL by default. Nothing here enters the invoice's PDF
+  // payload or the send attachment set unless it is explicitly chosen.
+  // Hidden from the dialogs, the table and the field list: the documents card is its
+  // only door, and a file pile is not a form row.
+  attachments: {
+    id: toFieldId('attachments'),
+    key: 'attachments',
+    label: 'Attachments',
+    type: BaseType.FILE,
+    fieldType: FieldType.FILE,
+    isSystem: true,
+    systemAttribute: 'invoice_attachments',
+    systemSortOrder: 'aK0',
+    showInPanel: false,
+    showInTable: false,
+    showInDialogs: false,
+    nullable: true,
+    options: {
+      file: { allowMultiple: true, maxFiles: 20, allowedFileTypes: ['document', 'image'] },
+    },
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+      hidden: true,
+    },
+    description: 'Supporting documents for this invoice — delivery notes, customer POs, timesheets',
+  },
+
   lineItems: {
     id: toFieldId('lineItems'),
     key: 'lineItems',

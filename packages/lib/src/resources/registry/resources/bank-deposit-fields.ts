@@ -447,6 +447,41 @@ export const BANK_DEPOSIT_FIELDS: Record<string, ResourceField> = {
     description: 'The generated deposit slip PDF for this deposit',
   },
 
+  // What the teller handed back: the stamped deposit receipt, a photo of the
+  // slip, the bank's confirmation.
+  //
+  // 🛑 The deposit slip is INTERNAL and never mailed, so nothing here has a send
+  // path to leak into — but the default holds anyway.
+  // Hidden from the dialogs, the table and the field list: the documents card is its
+  // only door, and a file pile is not a form row.
+  attachments: {
+    id: toFieldId('attachments'),
+    key: 'attachments',
+    label: 'Attachments',
+    type: BaseType.FILE,
+    fieldType: FieldType.FILE,
+    isSystem: true,
+    systemAttribute: 'bank_deposit_attachments',
+    systemSortOrder: 'aC1',
+    showInPanel: false,
+    showInTable: false,
+    showInDialogs: false,
+    nullable: true,
+    options: {
+      file: { allowMultiple: true, maxFiles: 20, allowedFileTypes: ['document', 'image'] },
+    },
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+      hidden: true,
+    },
+    description:
+      'Supporting documents for this deposit — stamped receipts, slip photos, bank confirmations',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

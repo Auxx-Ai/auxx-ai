@@ -613,6 +613,8 @@ export const VENDOR_BILL_FIELDS: Record<string, ResourceField> = {
   // Everything that is not the bill: packing slip, freight invoice, correspondence,
   // a photo of the damage. Multi, and hidden from the Details panel for the same
   // reason `document` is — the documents card renders both.
+  // Hidden from the dialogs, the table and the field list: the documents card is its
+  // only door, and a file pile is not a form row.
   attachments: {
     id: toFieldId('attachments'),
     key: 'attachments',
@@ -623,6 +625,8 @@ export const VENDOR_BILL_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'vendor_bill_attachments',
     systemSortOrder: 'aL1',
     showInPanel: false,
+    showInTable: false,
+    showInDialogs: false,
     nullable: true,
     options: {
       file: { allowMultiple: true, maxFiles: 20, allowedFileTypes: ['document', 'image'] },
@@ -633,6 +637,7 @@ export const VENDOR_BILL_FIELDS: Record<string, ResourceField> = {
       creatable: true,
       updatable: true,
       configurable: false,
+      hidden: true,
     },
     description: 'Supporting documents for this bill — packing slips, freight invoices, photos',
   },

@@ -231,6 +231,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         },
         { value: 'customer', label: 'Customer', icon: 'user' },
         { value: 'origin', label: 'Origin', icon: 'link' },
+        // The generated PDF (read-only) beside the uploads. Both fields are
+        // `showInPanel: false`, so this card is their only surface.
+        { value: 'documents', label: 'Documents', icon: 'paperclip' },
         { value: 'jobs', label: 'Jobs', icon: 'wrench', recordResource: 'work_order' },
         // Deposit visibility (deposit-accounting plan 16 §D.5) — the card itself renders
         // null when the quote has no deposit charge, so this stays in the list unconditionally.
@@ -263,6 +266,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
           label: 'Billing context',
           icon: 'calendar-clock',
         },
+        // The generated PDF (read-only) beside the uploads. Both fields are
+        // `showInPanel: false`, so this card is their only surface.
+        { value: 'documents', label: 'Documents', icon: 'paperclip' },
         {
           value: 'payments',
           label: 'Payments',
@@ -307,6 +313,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
           icon: 'arrow-left-right',
           permissionKey: 'dispatch.board.view',
         },
+        // The generated PDF (read-only) beside the uploads. Both fields are
+        // `showInPanel: false`, so this card is their only surface.
+        { value: 'documents', label: 'Documents', icon: 'paperclip' },
         { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
       ],
     },
@@ -377,6 +386,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     additionalTabs: [],
     tabCards: {
       overview: [
+        // The generated PDF (read-only) beside the uploads. Both fields are
+        // `showInPanel: false`, so this card is their only surface.
+        { value: 'documents', label: 'Documents', icon: 'paperclip' },
         { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
       ],
     },

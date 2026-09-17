@@ -392,6 +392,7 @@ export const SYSTEM_ATTRIBUTES = [
   'quote_notes',
   'quote_terms',
   'quote_pdf_asset',
+  'quote_attachments', // FILE, multi — signed acceptances, site photos, spec sheets
   'quote_line_items', // inverse of line_item_quote
   'quote_work_orders', // inverse of work_order_quote
   'quote_public_token',
@@ -515,6 +516,7 @@ export const SYSTEM_ATTRIBUTES = [
   'invoice_notes',
   'invoice_terms',
   'invoice_pdf_asset',
+  'invoice_attachments', // FILE, multi — delivery notes, customer POs, timesheets
   'invoice_billing_kind',
   'invoice_service_period_start',
   'invoice_service_period_end',
@@ -647,6 +649,7 @@ export const SYSTEM_ATTRIBUTES = [
   'credit_memo_lines', // inverse of credit_memo_line_credit_memo
   'credit_memo_applications', // inverse of credit_memo_application_credit_memo
   'credit_memo_pdf_asset', // the documents registry's pointerAttr, like invoice_pdf_asset
+  'credit_memo_attachments', // FILE, multi — complaints, damage photos, carrier reports
   'credit_memo_document', // a supporting attachment, like vendor_bill_document
   // The GlPosting this memo was posted into (accounting/25 §4.1). A denormalized
   // backlink, TEXT and not a relationship: GlPosting is a Drizzle table with no
@@ -960,6 +963,7 @@ export const SYSTEM_ATTRIBUTES = [
   'bank_deposit_reconciled_at',
   'bank_deposit_gl_posting_id', // denormalized backlink; the posting is the authority
   'bank_deposit_pdf_asset', // the rendered deposit slip
+  'bank_deposit_attachments', // FILE, multi — stamped receipts, slip photos, bank confirmations
   'payment_bank_deposit', // owning side — one deposit per payment, enforced on write
 
   // ─── Payout (HANDOFF §11.5 item 1) ──────────────────────────────
