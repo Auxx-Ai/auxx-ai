@@ -398,7 +398,9 @@ export {
   type OurPostedEntry,
   type OurPostedLine,
   PROVIDER_SYNC_POSTING_TYPE,
+  PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
   PROVIDER_SYNC_SOURCE_TYPE,
+  PROVIDER_SYNC_STATE_SETTING_KEY,
   PROVIDER_SYNCED_THROUGH_SETTING_KEY,
   type ProviderLedger,
   type ProviderLedgerEntry,
@@ -408,6 +410,10 @@ export {
   type ProviderSyncPlan,
   type ProviderSyncRange,
   type ProviderSyncReading,
+  type ProviderSyncRunRecord,
+  type ProviderSyncRunStatus,
+  type ProviderSyncScheduleConfig,
+  type ProviderSyncStateBlob,
   providerDisplayName,
 } from './provider-sync/client'
 export {
@@ -418,6 +424,7 @@ export {
   resolveProviderSyncLines,
 } from './provider-sync/plan'
 export {
+  firstDayAfterMonth,
   type PlanSyncChunksInput,
   planSyncChunks,
   providerSyncFloor,

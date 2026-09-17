@@ -1272,6 +1272,39 @@ export const SETTINGS_CATALOG = {
       'ends after it is incomplete. Not a user-facing field.',
   },
 
+  // ── The inbound sync's walk position and cadence (55 §4.4, §5.1) ───────────
+  //
+  // 🛑 **The `providerSync.` prefix is load-bearing, not a naming preference.**
+  // `updateOrganizationSetting` takes `withAccountingCommitLock` - a per-org
+  // advisory TRANSACTION lock - for every key starting `accounting.` or
+  // `ledger.`. `SyncStateStore.save()` runs after EVERY slice, so an
+  // `accounting.`-prefixed blob would grab the org-wide accounting lock at each
+  // checkpoint and serialize the whole walk against every posting, acceptance
+  // and close that org is doing while it runs. Neither key is caught by
+  // `FROZEN_SETUP_SETTING_KEYS` (the `accounting.opening` prefix plus five
+  // named keys), which is correct: both change on every run forever.
+  'providerSync.state': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'JSON',
+    defaultValue: null,
+    description:
+      "Where the inbound provider sync's walk is, plus the current and last run's counters. " +
+      'Written by the sync after every slice and read by the sync panel; not a user-facing ' +
+      'field. How far is VOUCHED for is a different value - accounting.providerSyncedThrough.',
+  },
+  // Registered ahead of its reader (unit 8) so the scheduler needs no catalog
+  // change: nothing reads this key today.
+  'providerSync.schedule': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'JSON',
+    defaultValue: null,
+    description:
+      'Cadence for the inbound provider sync, a ScheduledTriggerConfig (workflows/cron-pattern). ' +
+      'Null means the manual button is the only door. Nothing reads it yet.',
+  },
+
   // ── Where payments land (plans/accounting/tasks/done/06-deposit-grouping.md §2.3) ──
   //
   // 🛑 **Three rails get three treatments, and getting one wrong silently

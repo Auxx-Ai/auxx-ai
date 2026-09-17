@@ -3,96 +3,161 @@
 'use client'
 
 // What one run of the inbound sync actually did
-// (plans/accounting/tasks/20-two-authors-one-ledger.md §7.4).
+// (plans/accounting/tasks/55-the-inbound-sync-runs-in-a-worker.md §4.5, §4.8).
 //
-// 🛑 A COUNT IS NOT AN ANSWER. The mutation returns the whole
-// `ProviderSyncOutcome` rather than a success boolean precisely because four
-// different questions have to be answerable afterwards, and three of them are
-// about things that did NOT reach the books:
+// 🛑 A COUNT IS NOT AN ANSWER. The run blob carries counters AND an error sample
+// rather than a success boolean precisely because four different questions have
+// to be answerable afterwards, and three of them are about things that did NOT
+// reach the books:
 //
-//   1. What came across      - `written`, `alreadyPosted`, `reversed`.
-//   2. What was REFUSED      - every message, verbatim. An entry that was
-//      refused is an entry the accountant authored and this org does not have,
-//      and a silent count of them is worse than useless.
-//   3. What is waiting on a PERSON - `deferredToClosedMonths`. §7.2: the sync
-//      reopens nothing on its own, ever. It names the months and somebody with
-//      `ledgerControl` decides.
-//   4. How far it GOT        - `syncedThrough`. Short of the `to` that was
-//      asked for means the walk stopped at an unclean chunk and the months
-//      after it were never read.
+//   1. What came across      - `created`, `skipped`, `reversed`.
+//   2. What was REFUSED      - every message in `errorSample`, verbatim. An
+//      entry that was refused is an entry the accountant authored and this org
+//      does not have, and a silent count of them is worse than useless.
+//   3. What is waiting on a PERSON - `deferred`. §7.2: the sync reopens nothing
+//      on its own, ever. Somebody with `ledgerControl` decides.
+//   4. Whether the run FINISHED, and whether it is still going.
 //
 // 🛑 Reported INLINE, never as a toast - the same rule the rest of the
 // accounting module follows (ground rule 9, `entry-blockers.tsx`). A refusal
 // here names a transaction on the accountant's side; a toast would take that
 // away three seconds later.
+//
+// And a fifth, which is not about a failure at all: an entry WE authored that
+// the accountant has since edited or deleted in the provider. Nothing refused
+// it, nothing counted it - the sync compares and reports, and this card is the
+// only place that comparison is ever seen. 🛑 It is a REPORT: no repair, no
+// merge, no "fix this". Brief 20 §3.4.
 
 import { Alert, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
-import { CircleAlert, Coins, Lock, Scale, TriangleAlert } from 'lucide-react'
-import Link from 'next/link'
+import { CircleAlert, Clock, Lock, TriangleAlert, Unlink } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { formatMoney } from '~/components/money/ui/settings/format-money'
-import type { RouterOutputs } from '~/trpc/react'
-
-export type ProviderSyncOutcome = RouterOutputs['ledger']['syncProviderLedger']
-type DeferredEntry = ProviderSyncOutcome['deferredToClosedMonths'][number]
+import type { ProviderSyncRun } from '../../hooks/use-provider-sync-run'
 
 export interface ProviderSyncReportProps {
-  outcome: ProviderSyncOutcome
-  /** The org's own reporting currency, for the mismatch warning (decision 12). */
-  orgCurrency: string
+  /** The open walk, or null. Takes precedence over `lastRun` - it is happening now. */
+  currentRun: ProviderSyncRun | null
+  lastRun: ProviderSyncRun | null
+  /** The open run's heartbeat has gone quiet; the chain died (§7.4). */
+  stale: boolean
   /** `'QuickBooks Online'`, or whatever is connected. */
   providerLabel: string
   className?: string
 }
 
-/** One closed month, with what the sync wanted to do inside it. */
-interface DeferredMonth {
-  month: string
-  writes: number
-  reverses: number
+/** One reading of a run, for the row that has one line to say it in. */
+export interface ProviderSyncRunReading {
+  tone: 'running' | 'neutral' | 'warn' | 'alarm'
+  headline: string
+  /** The consequence, in the reader's terms. Null when there is nothing to add. */
+  detail: string | null
 }
 
-/** `2026-01` -> `January 2026`. Built off a fixed UTC day so no zone can shift it. */
-function monthName(month: string): string {
-  const [year, index] = month.split('-')
-  if (!year || !index) return month
-  const date = new Date(Date.UTC(Number(year), Number(index) - 1, 15))
-  return Number.isNaN(date.getTime())
-    ? month
-    : date.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
-}
-
-/** Group the deferrals by the month they are waiting on, oldest first. */
-export function groupDeferredMonths(rows: readonly DeferredEntry[]): DeferredMonth[] {
-  const byMonth = new Map<string, DeferredMonth>()
-  for (const row of rows) {
-    const existing = byMonth.get(row.month) ?? { month: row.month, writes: 0, reverses: 0 }
-    if (row.action === 'reverse') existing.reverses += 1
-    else existing.writes += 1
-    byMonth.set(row.month, existing)
-  }
-  return [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month))
+/** `m:ss`, so a run that has been going for four minutes reads as one. */
+export function elapsedLabel(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000))
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
 /**
- * The three readings of `syncedThrough`, which are NOT the same fact.
+ * Turn a run into the sentence the `Sync now` row renders.
  *
- * 🛑 `null` is not "nothing happened". The marker advances per CLEAN chunk and
- * latches shut on the first unclean one, so `null` means not one chunk of this
- * run came back clean - and the STORED marker is then left exactly where it
- * was, because "this run read nothing new" is not "nothing has ever been read".
+ * 🛑 A `stale` open run is NOT reported as running. §7.4: a chain killed
+ * mid-slice by a worker restart leaves `currentRun` open with nothing to close
+ * it, so believing the blob would show a spinner for ever on a walk that is not
+ * happening - and the honest thing to say is that it stopped and can be started
+ * again.
  *
- * ⚠️ `null` also covers a clean chunk whose marker WRITE failed, which the
- * outcome does not distinguish. Both readings say the same true thing here -
- * the marker did not move - so neither overstates coverage.
+ * @param now epoch ms, passed in so the elapsed clock is the caller's tick
+ *   rather than a `Date.now()` this function reaches for on every render
  */
-export function readSyncedThrough(
-  outcome: ProviderSyncOutcome
-): 'complete' | 'short' | 'never_advanced' {
-  if (outcome.syncedThrough === null) return 'never_advanced'
-  return outcome.syncedThrough < outcome.to ? 'short' : 'complete'
+export function describeProviderSyncRun(
+  input: { currentRun: ProviderSyncRun | null; lastRun: ProviderSyncRun | null; stale: boolean },
+  providerLabel: string,
+  now: number
+): ProviderSyncRunReading {
+  const { currentRun, lastRun, stale } = input
+
+  if (currentRun && !stale) {
+    const chunks = currentRun.pagesProcessed
+    return {
+      tone: 'running',
+      headline: `Reading ${providerLabel} - ${elapsedLabel(now - Date.parse(currentRun.startedAt))} elapsed`,
+      detail:
+        `${chunks} ${chunks === 1 ? 'month' : 'months'} read so far, ${currentRun.counters.created} ` +
+        'entries written. One provider call per month - report endpoints cannot be paged, so the ' +
+        'month is the only lever. Nothing is written until a month has been read whole.',
+    }
+  }
+
+  if (currentRun && stale) {
+    return {
+      tone: 'alarm',
+      headline: 'The last sync stopped without finishing',
+      detail:
+        `It started at ${currentRun.startedAt} and then went quiet - a worker restart mid-walk ` +
+        'leaves a run with nothing to close it. Everything already brought across stays. Press ' +
+        'Sync now to start again; it resumes from where the walk got to, not from the beginning.',
+    }
+  }
+
+  if (!lastRun) {
+    return {
+      tone: 'neutral',
+      headline: `${providerLabel} has not been read yet`,
+      detail:
+        'Depreciation, accruals, reclasses and payroll are authored there and never here. Nothing ' +
+        'of that is in these books until this runs.',
+    }
+  }
+
+  const finished = lastRun.finishedAt ?? lastRun.heartbeatAt
+  const chunks = lastRun.pagesProcessed
+  const read = `Read ${chunks} ${chunks === 1 ? 'month' : 'months'}, wrote ${lastRun.counters.created}`
+
+  if (lastRun.status === 'failed') {
+    return {
+      tone: 'alarm',
+      headline: `The last sync failed at ${finished}`,
+      detail: lastRun.error ?? 'No reason was recorded. The details are below.',
+    }
+  }
+
+  if (lastRun.status === 'partial') {
+    return {
+      tone: 'warn',
+      headline: `Last read ${finished}, and not everything came across`,
+      detail: `${read}. What was refused is below, and it is NOT in your books.`,
+    }
+  }
+
+  return { tone: 'neutral', headline: `Last read ${finished}`, detail: `${read}.` }
+}
+
+/**
+ * The one sample split by `tier`, because the four have four different remedies:
+ * their side, ours, a person with `ledgerControl`, and - for a divergence - a
+ * conversation, since nothing here repairs one.
+ *
+ * An untiered sample is an engine-level error and reads as a refusal.
+ */
+export function splitErrorSample(run: ProviderSyncRun): {
+  unbalanced: ProviderSyncRun['errorSample']
+  refused: ProviderSyncRun['errorSample']
+  diverged: ProviderSyncRun['errorSample']
+  deferred: ProviderSyncRun['errorSample']
+} {
+  return {
+    unbalanced: run.errorSample.filter((sample) => sample.tier === 'invalid'),
+    diverged: run.errorSample.filter((sample) => sample.tier === 'diverged'),
+    deferred: run.errorSample.filter((sample) => sample.tier === 'skipped'),
+    refused: run.errorSample.filter(
+      (sample) =>
+        sample.tier !== 'invalid' && sample.tier !== 'diverged' && sample.tier !== 'skipped'
+    ),
+  }
 }
 
 const TONE_VARIANT: Record<'neutral' | 'warn' | 'alarm', 'neutral' | 'warning' | 'destructive'> = {
@@ -125,122 +190,66 @@ function ReportCard({
 }
 
 /**
- * Everything one press of Sync found and did.
+ * Everything the current or last run found, under the provider rows.
  *
- * Order is deliberate: what the run is worth reading as comes FIRST (a walk
- * that stopped early makes every number under it a partial answer), then what
- * came across, then the two lists a person has to act on.
+ * Order is deliberate: what the run is worth reading as comes FIRST (a walk that
+ * stopped early makes every number under it a partial answer), then what came
+ * across, then the two lists a person has to act on.
  */
 export function ProviderSyncReport({
-  outcome,
-  orgCurrency,
+  currentRun,
+  lastRun,
+  stale,
   providerLabel,
   className,
 }: ProviderSyncReportProps) {
-  const currency = outcome.currency ?? orgCurrency
-  const coverage = readSyncedThrough(outcome)
-  const deferredMonths = groupDeferredMonths(outcome.deferredToClosedMonths)
-  const unbalanced = outcome.chunks.flatMap((chunk) => chunk.unbalanced)
-  const divergent = outcome.chunks
-    .flatMap((chunk) => chunk.ourChecks)
-    .filter((check) => check.verdict !== 'matches')
-  const currencyMismatch = outcome.currency !== null && outcome.currency !== orgCurrency
+  // A stale open run is history, not progress - `describeProviderSyncRun` says
+  // why - so the detail below it is read off the run that is actually stopped.
+  const run = currentRun && !stale ? currentRun : (currentRun ?? lastRun)
+  if (!run) return null
+
+  const { unbalanced, refused, diverged, deferred } = splitErrorSample(run)
+  // The counter is the fallback for a run recorded before the samples carried
+  // the months; it is the only number available on one of those.
+  const deferredCount = deferred.length || (run.counters.deferred ?? 0)
+  const reversed = run.counters.reversed ?? 0
 
   return (
     <div className={cn('flex flex-col gap-3', className)}>
-      {/*
-        ⚠️ THE LOUD ONE, and it goes first. The walk stops advancing the marker
-        at the first chunk that did not bring everything across, and it never
-        resumes past it - so a run that was asked for eleven months and marked
-        three read eight months it cannot vouch for. Every count below is then a
-        partial answer, and saying so after them would be saying it too late.
-      */}
-      {coverage === 'short' && (
-        <ReportCard
-          tone='alarm'
-          icon={<CircleAlert className='size-4' />}
-          title={`Only read through ${outcome.syncedThrough} - the walk stopped early`}>
-          <p className='text-sm'>
-            You asked for {outcome.from} to {outcome.to}, and {providerLabel} has only been read
-            through {outcome.syncedThrough}. The month after that came back with something this sync
-            could not bring across, and the marker never advances past an unclean month - a later
-            clean month cannot vouch for an earlier broken one. Fix what is listed below and run it
-            again; everything already brought across stays.
-          </p>
-        </ReportCard>
-      )}
+      {/* ── 1. What came across ─────────────────────────────────────────── */}
+      <div className='grid grid-cols-2 gap-2 sm:grid-cols-4'>
+        <Figure
+          label='Written'
+          value={run.counters.created}
+          hint='Entries your accountant authored'
+        />
+        <Figure
+          label='Already there'
+          value={run.counters.skipped}
+          hint='Held from an earlier run'
+        />
+        <Figure label='Reversed' value={reversed} hint={`Gone from ${providerLabel}, backed out`} />
+        <Figure label='Months read' value={run.pagesProcessed} hint='One provider call each' />
+      </div>
 
-      {coverage === 'never_advanced' && (
-        <ReportCard
-          tone='alarm'
-          icon={<CircleAlert className='size-4' />}
-          title='The synced-through marker did not move'>
-          <p className='text-sm'>
-            Not one month of {outcome.from} to {outcome.to} came back clean, so the marker is left
-            exactly where it was rather than claiming this range has been read. Anything that DID
-            come across is in the books - this is about what the statements are allowed to say about
-            themselves, not about what was written.
-          </p>
-        </ReportCard>
-      )}
-
-      {coverage === 'complete' && (
+      {run.rateLimitWaitMs > 0 && (
         <p className='text-muted-foreground text-xs'>
-          Read {outcome.from} to {outcome.to} in {outcome.chunks.length}{' '}
-          {outcome.chunks.length === 1 ? 'month' : 'months'}. Statements are now synced through{' '}
-          {outcome.syncedThrough}.
+          <Clock className='mr-1 inline size-3' />
+          {elapsedLabel(run.rateLimitWaitMs)} of this run was spent waiting on {providerLabel}'s
+          rate limit. Nothing was lost to it - the walk holds its place and reads the same month
+          again.
         </p>
       )}
 
-      {/* ── 1. What came across ─────────────────────────────────────────── */}
-      <div className='grid grid-cols-2 gap-2 sm:grid-cols-4'>
-        <Figure label='Written' value={outcome.written} hint='Entries your accountant authored' />
-        <Figure
-          label='Already there'
-          value={outcome.alreadyPosted}
-          hint='Held from an earlier run'
-        />
-        <Figure
-          label='Reversed'
-          value={outcome.reversed}
-          hint='Gone from their side, backed out here'
-        />
-        <Figure
-          label='Months read'
-          value={outcome.chunks.length}
-          hint={`${outcome.from} to ${outcome.to}`}
-        />
-      </div>
-
-      {/*
-        Decision 12: a currency mismatch WARNS, it does not refuse. Brief 19's
-        fill path refuses because it WRITES an opening position; this reads, and
-        a sync that brought nothing across because the currencies differ is less
-        useful than one that brought the entries and says the figures are not
-        directly comparable.
-      */}
-      {currencyMismatch && (
-        <ReportCard
-          tone='warn'
-          icon={<Coins className='size-4' />}
-          title={`${providerLabel} reports in ${outcome.currency}, these books are in ${orgCurrency}`}>
-          <p className='text-sm text-muted-foreground'>
-            Nothing was converted and nothing was refused. The amounts brought across are the
-            provider's own figures, so any statement mixing them with {orgCurrency} entries is
-            adding two currencies together.
-          </p>
-        </ReportCard>
-      )}
-
       {/* ── 2. What was refused. Every one of them, verbatim ─────────────── */}
-      {outcome.refusals.length > 0 && (
+      {refused.length > 0 && (
         <ReportCard
           tone='alarm'
           icon={<TriangleAlert className='size-4' />}
-          title={`${outcome.refusals.length} ${outcome.refusals.length === 1 ? 'entry was' : 'entries were'} refused and are NOT in your books`}>
+          title={`${refused.length} ${refused.length === 1 ? 'entry was' : 'entries were'} refused and are NOT in your books`}>
           <ul className='flex list-disc flex-col gap-1.5 pl-5 text-sm'>
-            {outcome.refusals.map((refusal) => (
-              <li key={refusal}>{refusal}</li>
+            {refused.map((sample) => (
+              <li key={`${sample.externalId}-${sample.error}`}>{sample.error}</li>
             ))}
           </ul>
         </ReportCard>
@@ -255,23 +264,19 @@ export function ProviderSyncReport({
       {unbalanced.length > 0 && (
         <ReportCard
           tone='alarm'
-          icon={<Scale className='size-4' />}
+          icon={<CircleAlert className='size-4' />}
           title={`${unbalanced.length} ${unbalanced.length === 1 ? 'entry does' : 'entries do'} not balance in ${providerLabel}`}>
           <p className='text-sm text-muted-foreground'>
             Never written. An entry whose debits and credits disagree would break every statement
             that ties, so it is left where it is and named here instead.
           </p>
           <ul className='flex flex-col gap-1 text-sm'>
-            {unbalanced.map((entry) => (
-              <li key={`${entry.txnType}-${entry.txnId}`} className='flex flex-wrap gap-x-2'>
-                <span className='font-medium'>
-                  {entry.txnType} {entry.txnId}
-                </span>
-                <span className='text-muted-foreground'>{entry.txnDate}</span>
-                <span className='tabular-nums text-muted-foreground'>
-                  {formatMoney(entry.totalDebitMinor, currency)} debit vs{' '}
-                  {formatMoney(entry.totalCreditMinor, currency)} credit
-                </span>
+            {unbalanced.map((sample) => (
+              <li key={sample.externalId} className='flex flex-wrap items-center gap-x-2'>
+                <Badge variant='outline' size='xs'>
+                  {sample.externalId}
+                </Badge>
+                <span className='text-muted-foreground'>{sample.error}</span>
               </li>
             ))}
           </ul>
@@ -279,65 +284,62 @@ export function ProviderSyncReport({
       )}
 
       {/*
-        §5.3, verify on read. Our OWN entries, compared against their copy
-        before ours is kept. 🛑 REPORTED, never repaired: deciding that their
-        edit wins, or that ours does, makes one entry answer to two authors,
-        which is exactly what the single-writer rule exists to prevent.
+        ── 3. What no longer matches ─────────────────────────────────────
+        🛑 Nothing failed here, which is why it needs saying out loud: an entry
+        auxx authored has been edited or deleted in the provider, and every
+        other path in this feature keys on authorship and so cannot see it.
+        Reported and left alone - repairing it would give one entry two authors.
       */}
-      {divergent.length > 0 && (
+      {diverged.length > 0 && (
         <ReportCard
           tone='warn'
-          icon={<TriangleAlert className='size-4' />}
-          title={`${divergent.length} of your own ${divergent.length === 1 ? 'entry no longer matches' : 'entries no longer match'} ${providerLabel}`}>
+          icon={<Unlink className='size-4' />}
+          title={`${diverged.length} ${diverged.length === 1 ? 'entry you' : 'entries you'} authored no longer ${diverged.length === 1 ? 'matches' : 'match'} ${providerLabel}`}>
           <p className='text-sm text-muted-foreground'>
-            Nothing was changed on either side. An entry auxx authored has one author forever, so a
-            difference here is something to go and look at, not something this sync may settle.
+            These were exported from here, and the copy in {providerLabel} has changed since.
+            Nothing is altered on either side: an entry has one author, and deciding which version
+            wins would give this one two. Both versions are named below so a person can settle it.
           </p>
           <ul className='flex flex-col gap-1 text-sm'>
-            {divergent.map((check) => (
-              <li key={check.glPostingId} className='flex flex-wrap items-center gap-x-2'>
-                <span className='font-medium'>{check.docNumber}</span>
+            {diverged.map((sample) => (
+              <li
+                key={`${sample.externalId}-${sample.error}`}
+                className='flex flex-wrap items-center gap-x-2'>
                 <Badge variant='outline' size='xs'>
-                  {check.verdict}
+                  {sample.externalId}
                 </Badge>
-                <span className='text-muted-foreground'>
-                  {check.differences.join('; ') || 'not present in their ledger for this range'}
-                </span>
+                <span className='text-muted-foreground'>{sample.error}</span>
               </li>
             ))}
           </ul>
         </ReportCard>
       )}
 
-      {/* ── 3. What is waiting on a person ──────────────────────────────── */}
-      {deferredMonths.length > 0 && (
+      {/* ── 4. What is waiting on a person ──────────────────────────────── */}
+      {deferredCount > 0 && (
         <ReportCard
           tone='warn'
           icon={<Lock className='size-4' />}
-          title={`${outcome.deferredToClosedMonths.length} ${outcome.deferredToClosedMonths.length === 1 ? 'entry is' : 'entries are'} waiting on a closed month`}>
+          title={`${deferredCount} ${deferredCount === 1 ? 'entry is' : 'entries are'} waiting on a closed month`}>
           <p className='text-sm text-muted-foreground'>
             This is the ordinary case, not a fault: December's adjusting entry arriving in February.
             The sync reopens nothing on its own. Somebody holding ledger control has to reopen the
             month and then run this again, which keeps the reopen in the audit log next to a person.
           </p>
-          <ul className='flex flex-col gap-1 text-sm'>
-            {deferredMonths.map((month) => (
-              <li key={month.month} className='flex flex-wrap items-center gap-x-2'>
-                <Link
-                  href={`/app/accounting/${month.month}`}
-                  className='font-medium hover:underline'>
-                  {monthName(month.month)}
-                </Link>
-                <span className='text-muted-foreground'>
-                  {month.writes > 0 &&
-                    `${month.writes} ${month.writes === 1 ? 'entry' : 'entries'} to write`}
-                  {month.writes > 0 && month.reverses > 0 && ', '}
-                  {month.reverses > 0 &&
-                    `${month.reverses} to reverse (gone from ${providerLabel})`}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {deferred.length > 0 && (
+            <ul className='flex flex-col gap-1 text-sm'>
+              {deferred.map((sample) => (
+                <li
+                  key={`${sample.externalId}-${sample.error}`}
+                  className='flex flex-wrap items-center gap-x-2'>
+                  <Badge variant='outline' size='xs'>
+                    {sample.externalId}
+                  </Badge>
+                  <span className='text-muted-foreground'>{sample.error}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </ReportCard>
       )}
     </div>

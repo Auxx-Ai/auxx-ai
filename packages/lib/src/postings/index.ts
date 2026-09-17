@@ -513,8 +513,11 @@ export {
 // Read their general ledger, drop everything auxx authored, check those against
 // our own copies, and write the remainder as our own rows.
 export {
+  createProviderSyncRunLedger,
+  createProviderSyncStateStore,
   type DeferredEntry,
   describeProviderSyncCoverage,
+  enqueueProviderSync,
   groupProviderLedgerEntries,
   invertAccountMap,
   isOurs,
@@ -527,7 +530,11 @@ export {
   type PlanSyncChunksInput,
   type PostProviderSyncEntryInput,
   PROVIDER_SYNC_POSTING_TYPE,
+  PROVIDER_SYNC_RUN_STALE_MS,
+  PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
+  PROVIDER_SYNC_SCHEDULED_JOB_NAME,
   PROVIDER_SYNC_SOURCE_TYPE,
+  PROVIDER_SYNC_STATE_SETTING_KEY,
   PROVIDER_SYNCED_THROUGH_SETTING_KEY,
   type ProviderLedger,
   type ProviderLedgerEntry,
@@ -540,6 +547,11 @@ export {
   type ProviderSyncPlan,
   type ProviderSyncRange,
   type ProviderSyncReading,
+  type ProviderSyncRunRecord,
+  type ProviderSyncRunStatus,
+  type ProviderSyncScheduleConfig,
+  type ProviderSyncStateBlob,
+  type ProviderSyncTrigger,
   planProviderSync,
   planSyncChunks,
   postProviderSyncEntry,
@@ -549,13 +561,17 @@ export {
   readOurPostedEntries,
   readOurProviderEntryIds,
   readProviderSyncMarker,
+  readProviderSyncRunState,
   readSyncedEntriesInRange,
+  reconcileProviderSyncSchedulers,
   recordProviderSyncedThrough,
+  removeProviderSyncScheduler,
   resolveProviderSyncLines,
   reverseSyncedEntry,
   type SyncedEntryRef,
   type SyncProviderLedgerInput,
   syncProviderLedger,
+  syncProviderSyncScheduler,
 } from './provider-sync'
 // ── plans/accounting/tasks/26 §6: billed fees, shown and never accrued ───────
 export {

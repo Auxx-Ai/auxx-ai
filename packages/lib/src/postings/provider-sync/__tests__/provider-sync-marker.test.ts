@@ -19,7 +19,7 @@ import { syncProviderLedger } from '../sync'
 import { balancedEntryLines, ledger } from './support/fixtures'
 
 const recordProviderSyncedThrough = vi.hoisted(() => vi.fn())
-const readProviderLedger = vi.hoisted(() => vi.fn())
+const fetchBatch = vi.hoisted(() => vi.fn())
 const postProviderSyncEntry = vi.hoisted(() => vi.fn())
 
 vi.mock('../marker-writes', () => ({ recordProviderSyncedThrough }))
@@ -42,7 +42,14 @@ vi.mock('../../provider', () => ({
   NONE_PROVIDER_ID: 'none',
   resolveAccountingProvider: vi.fn(async () => ({
     id: 'quickbooks',
-    readProviderLedger,
+    ledgerSlicer: () => ({
+      kind: 'ranged' as const,
+      firstCursor: (range: { from: string; to: string }) => ({
+        kind: 'token' as const,
+        value: `${range.from}..${range.to}`,
+      }),
+      fetchBatch,
+    }),
     listAccountMappings: async () => ({
       isErr: () => false,
       value: new Map([
@@ -67,19 +74,37 @@ vi.mock('../writes', () => ({
 const ORG = 'org_1'
 const db = {} as never
 
-/** One month of their work, dated inside the chunk it is answered for. */
-function monthOfTheirWork(from: string, to: string, txnId: string) {
+/**
+ * One batch, as the slicer answers it. `nextMonthStart` present means the walk
+ * continues - the driver stops the moment a slice reports no next cursor, which
+ * is what keeps these fixtures from needing a real month planner.
+ */
+function batch(value: ReturnType<typeof ledger>, nextMonthStart?: string) {
   return {
     isErr: () => false,
-    value: ledger(
-      balancedEntryLines({ txnType: 'Credit Card Expense', txnId, txnDate: from, amount: 90000 }),
-      { from, to }
-    ),
+    value: {
+      ledger: value,
+      hasMore: Boolean(nextMonthStart),
+      nextCursor: nextMonthStart
+        ? { kind: 'token' as const, value: `${nextMonthStart}..2099-12-31` }
+        : undefined,
+    },
   }
 }
 
+/** One month of their work, dated inside the chunk it is answered for. */
+function monthOfTheirWork(from: string, to: string, txnId: string, nextMonthStart?: string) {
+  return batch(
+    ledger(
+      balancedEntryLines({ txnType: 'Credit Card Expense', txnId, txnDate: from, amount: 90000 }),
+      { from, to }
+    ),
+    nextMonthStart
+  )
+}
+
 beforeEach(() => {
-  readProviderLedger.mockReset()
+  fetchBatch.mockReset()
   postProviderSyncEntry.mockReset()
   recordProviderSyncedThrough.mockReset()
   recordProviderSyncedThrough.mockResolvedValue({ isErr: () => false, value: undefined })
@@ -88,8 +113,8 @@ beforeEach(() => {
 
 describe('the marker advances', () => {
   it('stamps the end of every chunk that came back clean', async () => {
-    readProviderLedger
-      .mockResolvedValueOnce(monthOfTheirWork('2026-01-01', '2026-01-31', '101'))
+    fetchBatch
+      .mockResolvedValueOnce(monthOfTheirWork('2026-01-01', '2026-01-31', '101', '2026-02-01'))
       .mockResolvedValueOnce(monthOfTheirWork('2026-02-01', '2026-02-28', '102'))
 
     const result = await syncProviderLedger(db, ORG, { from: '2026-01-01', to: '2026-02-28' })
@@ -110,7 +135,7 @@ describe('the marker advances', () => {
     // one and no company sits outside the uniqueness index entirely, because
     // NULLs are distinct. The export path always stamped it; the inbound path
     // never did, which left 126 rows unguarded before this was fixed.
-    readProviderLedger.mockResolvedValueOnce(monthOfTheirWork('2026-01-01', '2026-01-31', '101'))
+    fetchBatch.mockResolvedValueOnce(monthOfTheirWork('2026-01-01', '2026-01-31', '101'))
 
     await syncProviderLedger(db, ORG, { from: '2026-01-01', to: '2026-01-31' })
 
@@ -121,10 +146,9 @@ describe('the marker advances', () => {
   })
 
   it('advances over an EMPTY month - a quiet month is a real answer, not a fault', async () => {
-    readProviderLedger.mockResolvedValueOnce({
-      isErr: () => false,
-      value: ledger([], { from: '2026-01-01', to: '2026-01-31', hasData: false }),
-    })
+    fetchBatch.mockResolvedValueOnce(
+      batch(ledger([], { from: '2026-01-01', to: '2026-01-31', hasData: false }))
+    )
 
     const result = await syncProviderLedger(db, ORG, { from: '2026-01-01', to: '2026-01-31' })
 
@@ -135,9 +159,9 @@ describe('the marker advances', () => {
 
 describe('the marker does NOT advance', () => {
   it('🛑 stops at a chunk that refused an entry, and never resumes past it', async () => {
-    readProviderLedger
-      .mockResolvedValueOnce(monthOfTheirWork('2026-01-01', '2026-01-31', '101'))
-      .mockResolvedValueOnce(monthOfTheirWork('2026-02-01', '2026-02-28', '102'))
+    fetchBatch
+      .mockResolvedValueOnce(monthOfTheirWork('2026-01-01', '2026-01-31', '101', '2026-02-01'))
+      .mockResolvedValueOnce(monthOfTheirWork('2026-02-01', '2026-02-28', '102', '2026-03-01'))
       .mockResolvedValueOnce(monthOfTheirWork('2026-03-01', '2026-03-31', '103'))
     // February's entry is declined; January's and March's are written.
     postProviderSyncEntry
@@ -164,10 +188,9 @@ describe('the marker does NOT advance', () => {
       txnDate: '2026-01-10',
       amount: 5000,
     }).slice(0, 1)
-    readProviderLedger.mockResolvedValueOnce({
-      isErr: () => false,
-      value: ledger(halfAnEntry, { from: '2026-01-01', to: '2026-01-31' }),
-    })
+    fetchBatch.mockResolvedValueOnce(
+      batch(ledger(halfAnEntry, { from: '2026-01-01', to: '2026-01-31' }))
+    )
 
     const result = await syncProviderLedger(db, ORG, { from: '2026-01-01', to: '2026-01-31' })
 
@@ -176,7 +199,7 @@ describe('the marker does NOT advance', () => {
   })
 
   it('leaves the stored value alone when the stamp itself fails', async () => {
-    readProviderLedger.mockResolvedValueOnce(monthOfTheirWork('2026-01-01', '2026-01-31', '101'))
+    fetchBatch.mockResolvedValueOnce(monthOfTheirWork('2026-01-01', '2026-01-31', '101'))
     recordProviderSyncedThrough.mockResolvedValue({
       isErr: () => true,
       error: new Error('settings unavailable'),

@@ -19,6 +19,7 @@ import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   __resetAccountingProvidersForTests,
+  NULL_LEDGER_SLICER,
   registerAccountingProvider,
   setConnectedProviderResolver,
 } from '../provider'
@@ -111,7 +112,7 @@ function stubProvider(answer: (input: PostEntryInput) => Result<PostEntryResult,
     id: 'stub',
     listProviderAccounts: async () => ok([]),
     readProviderBalances: async () => ok(null),
-    readProviderLedger: async () => ok(null),
+    ledgerSlicer: () => NULL_LEDGER_SLICER,
     listAccountMappings: async () => ok(new Map<string, string>()),
     setAccountMapping: async () => ok(undefined),
     clearAccountMapping: async () => ok(undefined),

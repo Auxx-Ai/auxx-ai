@@ -22,6 +22,7 @@ import {
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
   discardJournalEntry,
+  enqueueProviderSync,
   evaluateExportGate,
   GL_ACCOUNT_SUBTYPES,
   GL_ACCOUNT_TYPES,
@@ -40,6 +41,8 @@ import {
   listRoleSources,
   mintRailAccounts,
   POSTING_TYPES,
+  PROVIDER_SYNC_RUN_STALE_MS,
+  PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
   postEntry,
   postJournalEntry,
   postMonthEnd,
@@ -49,6 +52,7 @@ import {
   readAccountingBookConnectionStatus,
   readLatestPostingsByType,
   readPostingRegister,
+  readProviderSyncRunState,
   readTrialBalance,
   releaseExportsThroughGate,
   removeChartAccount,
@@ -64,7 +68,7 @@ import {
   setAccountIdentity,
   setLockedThrough,
   setRoleAssignment,
-  syncProviderLedger,
+  syncProviderSyncScheduler,
   updateChartAccount,
   updateJournalEntry,
   verifyBooksBalance,
@@ -72,7 +76,7 @@ import {
 // The comparison itself is PURE (brief 20 §8.2), so it lives on the client-safe
 // leaf beside the other planners and is imported from there rather than being
 // re-exported through the server barrel for one call site.
-import { planProviderAgreement } from '@auxx/lib/postings/client'
+import { type ProviderSyncScheduleConfig, planProviderAgreement } from '@auxx/lib/postings/client'
 import {
   clearRecurringJournalSchedule,
   listRecurringJournalTemplates,
@@ -80,6 +84,7 @@ import {
 } from '@auxx/lib/postings/recurring-journals'
 import { recurrencePatternSchema } from '@auxx/lib/recurrence'
 import { seedChartAccounts, seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
+import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'
 import { z } from 'zod'
 import { requestAuditContext } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trpc'
@@ -221,6 +226,7 @@ const draftEntry = z.object({
  * | `reverse`         | `ledger.post` |
  * | `setLockedThrough` | `ledger.control` |
  * | `syncProviderLedger` | `ledger.control` |
+ * | `providerSyncRunState` | `ledger.view` |
  *
  * `ledger` is its own L2 area rather than a corner of `billing`: `billing`
  * governs what auxx charges this org, this governs what the org's own books say
@@ -1394,9 +1400,16 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * Read the connected provider's general ledger and bring everything the
-   * accountant authored into our books
-   * (plans/accounting/tasks/20-two-authors-one-ledger.md §5-§7, §7.4).
+   * Open a walk over the connected provider's general ledger, so everything the
+   * accountant authored there reaches these books
+   * (plans/accounting/tasks/55-the-inbound-sync-runs-in-a-worker.md §2, §4.6).
+   *
+   * 🛑 **It ENQUEUES; it does not walk.** Nine months is nine sequential
+   * app-runtime round trips and the transport gives up before the walk does
+   * (§2), so the body is one bounded `add()` and the answer is a run handle
+   * rather than a `ProviderSyncOutcome`. What the run found is read back through
+   * {@link providerSyncRunState}, which survives a remount, a refresh and a
+   * dropped connection - the three things that lost the outcome before.
    *
    * 🛑 **`ledgerControl`, not `ledgerPost` and not `ledgerView`.** This is not
    * "post an entry": the sync walks from the cutover forward and RESTATES PRIOR
@@ -1406,26 +1419,16 @@ export const ledgerRouter = createTRPCRouter({
    * takes, and a bookkeeper holding `ledgerPost` posts what is in front of them
    * rather than deciding that last December is now different.
    *
-   * ⚠️ **Long-running and it reaches the provider.** One call per calendar
-   * month, because report endpoints do not paginate (§4.8) so the date range is
-   * the only lever there is. Eleven months is eleven round trips over the app
-   * Lambda. On demand only - §7.4 is explicit that the button comes before the
-   * schedule, because the first run of this against a real company file wants a
-   * person watching it.
-   *
-   * The WHOLE outcome comes back, not a count and not a success boolean: a
-   * person has to see the refusals (entries that did not come across), the
-   * closed months waiting on somebody with this same key to reopen them, and
-   * how far the "synced through" marker actually got.
-   *
    * `from` is optional and means "everything the sync is allowed to see",
    * starting the month after `accounting.cutoffPeriod`. 🛑 A `from` BELOW that
    * floor is a refusal from `planSyncChunks`, never a clamp - reading the
    * opening period back would import the balances brief 19's opening entry was
-   * derived from and double the entire opening position. It is thrown straight
-   * through, with no `try/catch`, for {@link providerAgreement}'s reason:
-   * catching and rethrowing is the only way an `AuxxError` gets flattened into
-   * a generic 500 on its way to `auxxErrorMiddleware`.
+   * derived from and double the entire opening position. The floor is asserted
+   * in the worker, where the source is built.
+   *
+   * 🛑 No `try/catch`. `enqueueProviderSync` throws `ConflictError` when a walk
+   * is already open for this org, and catching it is the only way an `AuxxError`
+   * gets flattened into a generic 500 on its way to `auxxErrorMiddleware`.
    */
   syncProviderLedger: permissionProcedure(PermissionKey.ledgerControl)
     .input(
@@ -1438,13 +1441,106 @@ export const ledgerRouter = createTRPCRouter({
     )
     .use(notDemo('sync the accounting provider ledger'))
     .mutation(async ({ ctx, input }) => {
-      const result = await syncProviderLedger(ctx.db, ctx.session.organizationId, {
+      const queued = await enqueueProviderSync({
+        organizationId: ctx.session.organizationId,
         from: input.from,
         to: input.to,
+        trigger: 'pressed',
         actorUserId: ctx.session.userId,
       })
-      if (result.isErr()) throw result.error
-      return result.value
+      // 🛑 A dropped enqueue is a press that did nothing at all - there is no
+      // sweep until §5's cadence exists - so it is surfaced rather than logged
+      // (§4.6.2). 422 rather than the truer 500: `errorFormatter` replaces every
+      // `INTERNAL_SERVER_ERROR` message with "Internal server error", and the
+      // one thing this refusal has to carry is that nothing was started.
+      if (!queued) {
+        throw new UnprocessableEntityError(
+          'The sync could not be queued, so nothing was started and nothing was read. The job ' +
+            'queue did not accept the request. Try again in a moment.',
+          { organizationId: ctx.session.organizationId }
+        )
+      }
+      return { status: 'queued' as const, from: input.from ?? null, to: input.to }
+    }),
+
+  /**
+   * The inbound sync's own run state - what the panel renders (§4.4, §4.8).
+   *
+   * 🛑 Read from the `OrganizationSetting` ROW, never through `useSettings` or
+   * `getOrganizationSetting`. Both resolve from the `orgSettings` org cache, and
+   * `providerSync.state` is written after every slice with cache invalidation
+   * deliberately skipped - so a cached read renders a blob several chunks stale.
+   * `readProviderSyncRunState` selects the row.
+   *
+   * `stale` is §7.4's display fix rather than a recovery one: a chain killed
+   * mid-slice by a worker restart leaves `currentRun` open with nothing to close
+   * it, and a panel that believed the blob would show it running for ever. The
+   * heartbeat is compared here so the browser needs no copy of the threshold -
+   * `queue.ts` is server-only and the constant would not survive the client
+   * boundary.
+   */
+  providerSyncRunState: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+    const result = await readProviderSyncRunState(ctx.session.organizationId)
+    if (result.isErr()) throw result.error
+    const { currentRun, lastRun } = result.value
+    const silentMs = currentRun ? Date.now() - Date.parse(currentRun.heartbeatAt) : 0
+    return {
+      currentRun: currentRun ?? null,
+      lastRun: lastRun ?? null,
+      /** The open run has gone quiet past the takeover threshold; a press may restart it. */
+      stale: Boolean(currentRun) && !(silentMs < PROVIDER_SYNC_RUN_STALE_MS),
+    }
+  }),
+
+  /**
+   * How often the inbound sync runs by itself (brief 55 §5.1).
+   *
+   * 🛑 NOT `setting.updateOrganizationSetting`, which is why the key is
+   * router-owned there. Writing `providerSync.schedule` and registering the
+   * BullMQ job scheduler are one act: a value written without
+   * `syncProviderSyncScheduler` is a cadence the screen claims and nothing
+   * fires, and a scheduler left registered after the value says `off` is the
+   * reverse. One door keeps them from disagreeing.
+   *
+   * 🛑 `ledgerControl`. A cadence decides when prior months get restated without
+   * anybody watching, which is the same authority the press itself takes.
+   *
+   * ⚠️ The CADENCE is an enum here rather than a free `ScheduledTriggerConfig`.
+   * The shape allows a five-minute poll; an accounting ledger read every five
+   * minutes is a rate-limit incident with nobody's name on it. Three choices is
+   * the whole vocabulary this door offers, and the config is built from them.
+   */
+  setProviderSyncSchedule: permissionProcedure(PermissionKey.ledgerControl)
+    .input(z.object({ cadence: z.enum(['off', 'twice-daily', 'daily']) }))
+    .use(notDemo('schedule the accounting provider sync'))
+    .mutation(async ({ ctx, input }) => {
+      const zone = await getOrganizationSetting({
+        organizationId: ctx.session.organizationId,
+        key: 'accounting.bookTimeZone',
+      })
+      // The books' own zone, not the browser's: a daily fire is a fire on an
+      // accounting day, and the reader may be sitting in another one.
+      const timezone = typeof zone === 'string' && zone.trim() ? zone.trim() : 'UTC'
+      const config: ProviderSyncScheduleConfig =
+        input.cadence === 'off'
+          ? { triggerInterval: 'off', timeBetweenTriggers: {}, timezone }
+          : {
+              triggerInterval: 'hours',
+              timeBetweenTriggers: {
+                hours: input.cadence === 'twice-daily' ? 12 : 24,
+                isConstant: true,
+              },
+              timezone,
+            }
+
+      await updateOrganizationSetting({
+        organizationId: ctx.session.organizationId,
+        key: PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
+        value: config,
+        db: ctx.db,
+      })
+      await syncProviderSyncScheduler(ctx.session.organizationId)
+      return { cadence: input.cadence }
     }),
 
   /**

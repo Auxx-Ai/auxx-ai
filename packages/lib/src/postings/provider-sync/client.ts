@@ -23,6 +23,15 @@
 //
 // @see plans/accounting/tasks/20-two-authors-one-ledger.md §3.1, §5, §6, §7
 
+import type { Result } from 'neverthrow'
+import type {
+  SyncCursor,
+  SyncRunCounters,
+  SyncRunErrorSample,
+  SyncState,
+} from '../../sync-core/contracts'
+import type { ScheduledTriggerConfig } from '../../workflows/cron-pattern'
+
 /**
  * One line of a provider's general ledger, already flattened by the apps-repo
  * mapper: the enclosing section's account carried down, the transaction id
@@ -276,6 +285,80 @@ export const PROVIDER_SYNC_SOURCE_TYPE = 'provider_ledger'
  */
 export const PROVIDER_SYNCED_THROUGH_SETTING_KEY = 'accounting.providerSyncedThrough'
 
+/**
+ * The setting key holding where the walk IS, as against how far is vouched for.
+ *
+ * 🛑 The `providerSync.` prefix is load-bearing: `updateOrganizationSetting`
+ * takes the org-wide accounting advisory lock for every `accounting.`/`ledger.`
+ * key, and this one is written after every slice (brief 55 §4.4).
+ */
+export const PROVIDER_SYNC_STATE_SETTING_KEY = 'providerSync.state'
+
+/**
+ * The setting key holding the cadence of the SCHEDULED door (brief 55 §5.1).
+ * Absent means the button is the only door, which is every org today.
+ */
+export const PROVIDER_SYNC_SCHEDULE_SETTING_KEY = 'providerSync.schedule'
+
+/**
+ * What `providerSync.schedule` holds: the workflow lane's
+ * {@link ScheduledTriggerConfig} plus `'off'`.
+ *
+ * The shape is reused rather than re-derived so `convertToCronPattern` is the
+ * one place a cadence becomes a cron pattern. `'off'` is a cadence a person has
+ * explicitly turned off, which reads the same as absent here and is kept apart
+ * from it so the UI can tell "never set" from "switched off".
+ */
+export interface ProviderSyncScheduleConfig
+  extends Omit<ScheduledTriggerConfig, 'triggerInterval'> {
+  triggerInterval: ScheduledTriggerConfig['triggerInterval'] | 'off'
+}
+
+/** Terminal states are derived from the run's counters, never passed in. */
+export type ProviderSyncRunStatus = 'running' | 'completed' | 'partial' | 'failed'
+
+/** One run's accumulated counters and lifecycle, as the sync panel renders it. */
+export interface ProviderSyncRunRecord {
+  /** Identity as well as a timestamp - one walk per org at a time. */
+  startedAt: string
+  /** Bumped by every slice, so a dead chain is distinguishable from a slow one. */
+  heartbeatAt: string
+  status: ProviderSyncRunStatus
+  counters: SyncRunCounters
+  errorSample: SyncRunErrorSample[]
+  pagesProcessed: number
+  rateLimitWaitMs: number
+  /** The last folded slice's idempotency key; a repeat of it is skipped (H4). */
+  lastCheckpointKey?: string
+  finishedAt?: string
+  durationMs?: number
+  /** The terminal message from a failed run. */
+  error?: string
+}
+
+/**
+ * The `providerSync.state` blob: the core's `SyncState` plus exactly one live
+ * run and the last finished one. A growing list is `SyncRun`'s job, and there is
+ * no `SyncRun` (brief 55 §4.5). jsonb - ISO strings, never `Date`.
+ */
+export interface ProviderSyncStateBlob {
+  sync?: SyncState
+  currentRun?: ProviderSyncRunRecord
+  lastRun?: ProviderSyncRunRecord
+  /**
+   * 🛑 The `startedAt` of the run whose marker is blocked, if any.
+   *
+   * "Once a chunk of THIS run came back unclean, the marker may not move again
+   * for the rest of it" is instance state on the source, and the worker rebuilds
+   * the source once per slice - so without this the flag resets between jobs and
+   * a clean July vouches for a broken June (§7.3). Scoped to the run rather than
+   * a bare boolean because a later run must start unblocked, or the marker
+   * freezes for ever.
+   */
+  markerBlockedRun?: string
+  [key: string]: unknown
+}
+
 /** How far the inbound sync has genuinely read, for one organization. */
 export interface ProviderSyncMarker {
   /**
@@ -408,4 +491,45 @@ export function describeProviderSyncCoverage(
     headline: `Synced through ${marker.syncedThrough}`,
     detail: null,
   }
+}
+
+// ─── §4.9: the slicer seam ──────────────────────────────────────────────────
+
+/** One batch of a provider's general ledger, and where the walk goes next. */
+export interface ProviderLedgerBatch {
+  /** 🛑 `from`/`to` are what the provider ECHOED, never what was asked. */
+  ledger: ProviderLedger
+  /** Where the next batch starts. Absent when `hasMore` is false. */
+  nextCursor?: SyncCursor
+  hasMore: boolean
+}
+
+/**
+ * How one provider's general ledger is walked. The adapter's ONLY say in slicing.
+ *
+ * QuickBooks slices by month because its report endpoint ignores
+ * `startposition`/`maxresults`, so the date range is the only lever; Xero's
+ * Journals feed has no date range at all and slices by `JournalNumber` offset.
+ * Everything AFTER the lines arrive - grouping by `(txnType, txnId)`, the claim
+ * index, the one-author exclusion, the closed-month deferral, the unbalanced
+ * refusal, the marker - is provider-independent and stays in `provider-sync/`.
+ * A slicer that also wrote would make "the new adapter forgot to exclude our own
+ * entries" a possible bug, and its symptom is a ledger that balances and is
+ * wrong.
+ *
+ * @see plans/accounting/tasks/55-the-inbound-sync-runs-in-a-worker.md §4.9
+ */
+export interface ProviderLedgerSlicer {
+  /** Advisory, for logs and UX. Nothing above `fetchBatch` branches on it. */
+  readonly kind: 'ranged' | 'cursor'
+  /** Where a walk over `range` starts. The range has already been proved legal. */
+  firstCursor(range: ProviderSyncRange): SyncCursor
+  /**
+   * One batch.
+   *
+   * 🛑 `null` means nothing is connected - never an empty `lines` array, which
+   * is indistinguishable from a quiet month. Same convention as
+   * `AccountingProvider.readProviderBalances`.
+   */
+  fetchBatch(orgId: string, cursor: SyncCursor): Promise<Result<ProviderLedgerBatch | null, Error>>
 }

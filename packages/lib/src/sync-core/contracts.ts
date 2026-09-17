@@ -73,7 +73,12 @@ export interface SyncRunCounters {
 /**
  * One dropped/failed record sampled for the run's error UI. `tier` classifies the
  * failure: 'invalid' = bad shape / missing identity, dropped BEFORE the write;
- * 'rejected' = the entity write itself threw. Omitted ⇒ engine-level error.
+ * 'rejected' = the entity write itself threw; 'skipped' = deliberately not
+ * written, and not a fault; 'diverged' = nothing failed, but the upstream copy of
+ * a record WE authored no longer matches ours. Omitted ⇒ engine-level error.
+ *
+ * ⚠️ 'diverged' is reported, never repaired - a source that reconciled it would
+ * make one record answer to two authors.
  *
  * This rides ALONGSIDE the numeric `SyncRunCounters` (which can't carry an array)
  * so a slice that silently drops every field value can no longer present as a clean
@@ -83,7 +88,7 @@ export interface SyncRunCounters {
 export interface SyncRunErrorSample {
   externalId: string
   error: string
-  tier?: 'invalid' | 'rejected' | 'skipped'
+  tier?: 'invalid' | 'rejected' | 'skipped' | 'diverged'
 }
 
 /**

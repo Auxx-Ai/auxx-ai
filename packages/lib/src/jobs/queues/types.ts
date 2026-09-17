@@ -76,6 +76,15 @@ export enum Queues {
   // holds a lease so two attempts at the same posting cannot both send. It is
   // kept low anyway because the far side is one company's rate-limited API.
   accountingDeliveryQueue = 'accounting-delivery',
+  // Inbound provider-ledger sync: one slice of the walk over the connected
+  // provider's general ledger (plans/accounting/tasks/55-the-inbound-sync-runs-in-a-worker.md §4.6).
+  // Off the request path for the same reason delivery is, only more so - a walk
+  // from the cutover to today is nine or more sequential app-runtime round trips
+  // inside one tRPC mutation, and the transport gave up before the walk did.
+  //
+  // Concurrency 1, unlike the queue above: two walks for one org would race the
+  // marker, which is org-scoped and singular.
+  providerSyncQueue = 'provider-sync',
   // Bulk credit memo posting (plans/accounting/tasks/done/28-how-your-books-post.md §3.1).
   // Its OWN queue at concurrency 1 for the same reason as the one above: one job
   // posts every unposted channel memo in an org as one entry per issue day, and

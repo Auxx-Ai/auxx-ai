@@ -60,6 +60,27 @@ export function providerSyncFloor(cutoffPeriod: string): Result<string, Error> {
   return ok(month === 12 ? `${pad4(year + 1)}-01-01` : `${pad4(year)}-${pad2(month + 1)}-01`)
 }
 
+/**
+ * The first day of the month AFTER `month` (`YYYY-MM`), or null when that is not
+ * a real calendar month.
+ *
+ * Where a walk over the OPEN periods starts (§5.4): `ledger.lockedThroughMonth`
+ * is the last month closed, so the one after it is the oldest still accepting
+ * entries - and a December adjusting entry made in February is in it. Null
+ * rather than a `Result` because the only caller resolves the lock through
+ * `resolvePeriodLock`, which has already refused anything that is not a month.
+ */
+export function firstDayAfterMonth(month: string): string | null {
+  const match = MONTH_PATTERN.exec(month)
+  if (!match) return null
+  const year = Number(match[1]!)
+  const monthNumber = Number(match[2]!)
+  if (monthNumber < 1 || monthNumber > 12) return null
+  return monthNumber === 12
+    ? `${pad4(year + 1)}-01-01`
+    : `${pad4(year)}-${pad2(monthNumber + 1)}-01`
+}
+
 export interface PlanSyncChunksInput {
   /** `accounting.cutoffPeriod`, `YYYY-MM`. The last month the OLD system owned. */
   cutoffPeriod: string
@@ -140,14 +161,27 @@ export function planSyncChunks(input: PlanSyncChunksInput): Result<ProviderSyncR
   }
 
   const chunks: ProviderSyncRange[] = []
-  let cursor = from
-  while (cursor <= input.to) {
-    const monthEnd = endOfMonth(cursor)
-    const chunkEnd = monthEnd < input.to ? monthEnd : input.to
-    chunks.push({ from: cursor, to: chunkEnd })
-    cursor = nextDay(chunkEnd)
+  let cursor: string | null = from
+  while (cursor) {
+    const chunk: ProviderSyncRange | null = monthChunk(cursor, input.to)
+    if (!chunk) break
+    chunks.push(chunk)
+    cursor = nextDay(chunk.to)
   }
   return ok(chunks)
+}
+
+/**
+ * The one month-sized chunk starting at `from`, clipped to `rangeEnd`.
+ *
+ * The same split {@link planSyncChunks} makes, one chunk at a time - so a
+ * ranged slicer walking a range under `SyncSource` and the up-front plan cannot
+ * disagree about where a month ends. Null when `from` is past `rangeEnd`.
+ */
+export function monthChunk(from: string, rangeEnd: string): ProviderSyncRange | null {
+  if (from > rangeEnd) return null
+  const monthEnd = endOfMonth(from)
+  return { from, to: monthEnd < rangeEnd ? monthEnd : rangeEnd }
 }
 
 /** The last day of the month a `YYYY-MM-DD` date falls in. */
@@ -162,7 +196,7 @@ function endOfMonth(date: string): string {
 }
 
 /** The day after a `YYYY-MM-DD` date. */
-function nextDay(date: string): string {
+export function nextDay(date: string): string {
   const [year, month, day] = splitDate(date)
   return isoDate(new Date(Date.UTC(year, month - 1, day + 1)))
 }

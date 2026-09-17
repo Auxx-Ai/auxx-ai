@@ -3,282 +3,157 @@
 'use client'
 
 // "Read what my accountant authored in QuickBooks and put it in my books"
-// (plans/accounting/tasks/20-two-authors-one-ledger.md §5-§7, §7.4).
+// (plans/accounting/tasks/20-two-authors-one-ledger.md §5-§7, §7.4;
+// plans/accounting/tasks/55-the-inbound-sync-runs-in-a-worker.md §2.2, §4.8).
 //
-// 🛑 A BUTTON, AND ONLY A BUTTON. §7.4 is explicit that the button comes before
-// the schedule: there is no cron, no worker job, no run-on-mount and no
-// auto-run after the agreement check. The first run of this against a real
-// company file wants a person watching it, and the drift it collects is the
-// accountant's adjusting work, which happens at close rather than on a Tuesday
-// (§8.3, the same argument the agreement view made).
+// 🛑 A BUTTON THAT ENQUEUES. Still no cron, no run-on-mount and no auto-run
+// after the agreement check - what changed is only WHERE the walk happens.
+// 20 §8.3 ("cadence: at close, plus on demand, not continuous") is an argument
+// against a SCHEDULE, and this file used to collapse it into "no background job"
+// as well. Those are separable: nine months is nine sequential app-runtime round
+// trips and the transport gives up before the walk does (55 §2), so the press
+// hands the walk to a worker and this reads the run back. The press is still the
+// only trigger that exists.
 //
-// 🛑 THE RANGE IS NOT CLAMPED HERE. `from` empty means "everything the sync is
-// allowed to see", which starts at the month after `accounting.cutoffPeriod`.
-// A `from` below that floor is a REFUSAL from lib naming both dates, and it is
-// surfaced verbatim - it is what stops the opening period being read back and
-// the entire opening position being doubled. This file must never quietly move
-// a date up to the floor to make the button work.
+// 🛑 THE RANGE PICKER IS GONE (MK, 2026-09-17). The sync always runs the cutover
+// floor -> today. Re-reading one month by hand was the recovery path for a bad
+// month, and 55 §4.2 replaces it with a better one: a `partial-retriable` slice
+// holds the cursor and the chain re-reads that month itself. The floor is still
+// never clamped here - `from` is simply not sent, and lib places it.
 //
-// ⚠️ IT IS SLOW, AND IT SAYS SO. Report endpoints do not paginate (§4.8), so
-// the sync issues one provider call per calendar month. Eleven months is eleven
-// round trips over the app Lambda and can run for minutes. tRPC gives one
-// request and one answer, so there is no per-chunk progress to stream - what
-// this can honestly show is the work it has taken on (the month count, from the
-// same pure `planSyncChunks` the server walks with) and that time is passing.
+// 🔑 THE OUTCOME SURVIVES A REMOUNT. It is read from `providerSync.state`
+// through `useProviderSyncRun`, not held in `useState`, which is 55 §2.3.2 fixed
+// by construction. The one thing that IS local state is the refusal from the
+// press itself - a `ConflictError` from the open-run guard, or a queue that
+// would not take the job - because that is a fact about this press rather than
+// about any run, and there is no run to read it off.
 
 import { PermissionKey } from '@auxx/lib/permissions/client'
-import { planSyncChunks, providerSyncFloor } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
-import { cn } from '@auxx/ui/lib/utils'
 import { RefreshCw } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useAccess } from '~/providers/capabilities-provider'
-import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
 import {
   UNKNOWN_PROVIDER_LABEL,
   useAccountingProviderStatus,
 } from '../../hooks/use-accounting-provider-status'
+import { useProviderSyncRun } from '../../hooks/use-provider-sync-run'
 import { EntryBlockers } from '../ledger/entry-blockers'
-import { ProviderSyncRangeControl, type ProviderSyncRangeMode } from './provider-sync-range-control'
-import { ProviderSyncReport } from './provider-sync-report'
+import { describeProviderSyncRun, ProviderSyncReport } from './provider-sync-report'
 
-type SyncOutcome = RouterOutputs['ledger']['syncProviderLedger']
-
-/** What `quickbooks-section.tsx` says about a disconnected org, said the same way. */
-const NOT_CONNECTED_COPY =
-  'No accounting system is connected, so there is no ledger to read. The books are kept here ' +
-  'either way and nothing is blocked by this.'
-
-export interface ProviderSyncPanelProps {
-  /** `accounting.cutoffPeriod`, `YYYY-MM`. Empty until setup has one. */
-  cutoffPeriod: string
-  /** The org's own reporting currency, for the mismatch warning. */
-  orgCurrency: string
-  /** Today in the BOOK timezone - the default `to`. */
+export interface ProviderSyncNowRowProps {
+  /** Today in the BOOK timezone - the `to` every press sends. */
   todayInBooks: string
-  className?: string
-}
-
-/** `m:ss`, so a run that has been going for four minutes reads as one. */
-function elapsedLabel(seconds: number): string {
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
 /**
- * The inbound sync: a mode, a range, a button, and everything the last press
- * found.
+ * The `Sync now` row: the button, and what the last or current run found.
  *
- * The dates are `YYYY-MM-DD` strings because that is what the procedure takes;
- * `ProviderSyncRangeControl` widens them to `Date` for the shared picker and
- * slices them back, so nothing above this line ever holds a `Date`.
+ * `to` is today in the BOOK timezone rather than the browser's - an accounting
+ * date is a calendar day in the books' own zone, and defaulting to the viewer's
+ * would put a bookkeeper in Auckland a day ahead of their own ledger.
  */
-export function ProviderSyncPanel({
-  cutoffPeriod,
-  orgCurrency,
-  todayInBooks,
-  className,
-}: ProviderSyncPanelProps) {
+export function ProviderSyncNowRow({ todayInBooks }: ProviderSyncNowRowProps) {
   const provider = useAccountingProviderStatus()
   const { can } = useAccess()
   const utils = api.useUtils()
-
-  // 🛑 `mode` is what decides whether `from` is sent at all, and `from` stays
-  // `''` for the whole of `everything` mode. Two modes rather than one blank
-  // field because `DateRange` requires both ends and cannot express the empty
-  // start that means "the cutover floor" (brief 27 §4.1).
-  const [mode, setMode] = useState<ProviderSyncRangeMode>('everything')
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState(todayInBooks)
-
-  /**
-   * The earliest date this sync may read, or `null` when the org has no usable
-   * `accounting.cutoffPeriod` and the floor cannot be placed.
-   *
-   * ⚠️ Computed in the browser only so the control can NAME it and bound its
-   * calendar. The server recomputes it and refuses below it; this is never the
-   * enforcement (`range.ts` says why a filter is the wrong shape for it).
-   */
-  const [outcome, setOutcome] = useState<SyncOutcome | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [elapsed, setElapsed] = useState(0)
-
-  const floor = useMemo(() => {
-    if (!cutoffPeriod) return null
-    const resolved = providerSyncFloor(cutoffPeriod)
-    return resolved.isOk() ? resolved.value : null
-  }, [cutoffPeriod])
-
-  /**
-   * What actually goes on the wire.
-   *
-   * 🛑 BOTH ends are derived from the mode, not just the start. `to` is state a
-   * range-mode edit can move, and reading it back in `everything` mode would
-   * sync to a date the mode's own copy does not mention - it says "to today in
-   * the books" and would have meant "to whatever you last dragged the end to".
-   */
-  const effectiveFrom = mode === 'range' ? from : ''
-  const effectiveTo = mode === 'range' ? to : todayInBooks
+  const run = useProviderSyncRun()
+  const [pressError, setPressError] = useState<string | null>(null)
 
   /**
    * 🛑 `ledgerControl`, the same rung the procedure asserts and the same one
    * `setLockedThrough` takes. This sync restates prior months - it writes into
    * closed periods and reverses entries that have vanished - so a `ledgerView`
-   * reader is shown the range and the last answer, and no button.
+   * reader is shown the last run and no button.
    */
   const canSync = can(PermissionKey.ledgerControl)
 
-  /**
-   * How many provider calls this press will make, off the SAME pure walker the
-   * server uses. Null when the range cannot be planned in the browser (no
-   * cutoff yet, a `from` below the floor, a `to` before `from`) - the server is
-   * still the authority on all three, so the button stays live and the real
-   * refusal comes back with the message that names the dates.
-   */
-  const chunks = useMemo(() => {
-    if (!cutoffPeriod) return null
-    const planned = planSyncChunks({
-      cutoffPeriod,
-      from: effectiveFrom || undefined,
-      to: effectiveTo,
-    })
-    return planned.isOk() ? planned.value : null
-  }, [cutoffPeriod, effectiveFrom, effectiveTo])
-
   const sync = api.ledger.syncProviderLedger.useMutation({
-    onSuccess: (result) => {
-      setOutcome(result)
-      setError(null)
-      // The marker every statement page renders moved, and so did the ledger.
-      utils.ledgerReports.providerSyncMarker.invalidate()
-      utils.ledger.listPostings.invalidate()
-      utils.ledger.verifyBalance.invalidate()
+    onSuccess: () => {
+      setPressError(null)
+      // The run opens in the worker a moment later; this is what starts the poll.
+      utils.ledger.providerSyncRunState.invalidate()
     },
-    onError: (mutationError) => {
-      setError(mutationError.message)
-      setOutcome(null)
-    },
+    onError: (error) => setPressError(error.message),
   })
 
-  // The one honest thing a single-request mutation can show while it walks
-  // eleven months: that it is still going, and for how long.
-  const isPending = sync.isPending
-  const startedAt = useRef(0)
-  useEffect(() => {
-    if (!isPending) return
-    startedAt.current = Date.now()
-    setElapsed(0)
-    const timer = setInterval(
-      () => setElapsed(Math.floor((Date.now() - startedAt.current) / 1000)),
-      1000
-    )
-    return () => clearInterval(timer)
-  }, [isPending])
-
+  const isRunning = Boolean(run.currentRun) && !run.stale
+  const now = useTicker(isRunning)
   const providerLabel = provider.providerLabel ?? UNKNOWN_PROVIDER_LABEL
-  const monthCount = chunks?.length ?? null
+  const reading = describeProviderSyncRun(run, providerLabel, now)
 
   return (
-    <div className={cn('flex flex-col gap-3', className)}>
-      <div className='flex flex-wrap items-end justify-between gap-2'>
-        <ProviderSyncRangeControl
-          mode={mode}
-          onModeChange={(next) => {
-            setMode(next)
-            setOutcome(null)
-            // Seeding on the way in, not on mount: `everything` mode never
-            // renders a date, so there is nothing to seed until somebody asks
-            // for a range. The current month is the narrowing people reach for,
-            // clamped up to the floor so the seed is never itself a refusal.
-            if (next === 'range' && !from) setFrom(seedRangeStart(floor, todayInBooks))
-          }}
-          from={from}
-          to={to}
-          onRangeChange={(range) => {
-            setFrom(range.from)
-            setTo(range.to)
-            setOutcome(null)
-          }}
-          floor={floor}
-          todayInBooks={todayInBooks}
-          disabled={isPending || !canSync}
-        />
+    <FieldPanelRow
+      title='Sync now'
+      description={`Read ${providerLabel}'s general ledger from the cutover forward and write everything your accountant authored there into these books. Depreciation, accruals, reclasses and payroll - the entries that are never authored here.`}>
+      <div className='flex w-full flex-col gap-2'>
+        <div className='flex items-center justify-between gap-2'>
+          <span className='text-sm'>{reading.headline}</span>
+          {canSync && (
+            <Button
+              variant='outline'
+              size='sm'
+              disabled={!provider.connected || isRunning}
+              loading={sync.isPending || isRunning}
+              loadingText={sync.isPending ? 'Starting...' : 'Reading...'}
+              onClick={() => sync.mutate({ to: todayInBooks })}>
+              <RefreshCw />
+              Sync now
+            </Button>
+          )}
+        </div>
 
-        {canSync && (
-          <Button
-            variant='outline'
-            size='sm'
-            disabled={!provider.connected}
-            loading={isPending}
-            loadingText={
-              monthCount === null
-                ? `Reading ${providerLabel}...`
-                : `Reading ${monthCount} ${monthCount === 1 ? 'month' : 'months'}...`
-            }
-            onClick={() => sync.mutate({ from: effectiveFrom || undefined, to: effectiveTo })}>
-            <RefreshCw />
-            {outcome ? 'Sync again' : 'Sync from ' + providerLabel}
-          </Button>
+        {reading.detail && <p className='text-muted-foreground text-xs'>{reading.detail}</p>}
+
+        {!canSync && (
+          <p className='text-muted-foreground text-xs'>
+            Reading the provider's ledger restates prior months, so it needs ledger control - the
+            same authority that closes and reopens a period.
+          </p>
         )}
+
+        {/*
+          Every refusal from lib is an `AuxxError` and arrives here with its own
+          message - the cutover floor naming both dates, a run already open, a
+          queue that would not take the job. The card carries it verbatim:
+          paraphrasing throws away the only part that says what to do.
+        */}
+        {pressError && <EntryBlockers blockers={[{ status: 'sync_refused', error: pressError }]} />}
       </div>
+    </FieldPanelRow>
+  )
+}
 
-      {!canSync && (
-        <p className='text-muted-foreground text-xs'>
-          Reading the provider's ledger restates prior months, so it needs ledger control - the same
-          authority that closes and reopens a period.
-        </p>
-      )}
-
-      {/*
-        The pending line. `loadingText` alone would be a spinner that says
-        nothing while eleven separate provider calls go out, which is worse than
-        no button at all - so the work is named, and the clock says it is still
-        moving.
-      */}
-      {isPending && (
-        <p className='text-muted-foreground text-xs'>
-          {monthCount === null
-            ? `Reading ${providerLabel} one month at a time.`
-            : `Reading ${effectiveFrom || floor || 'the cutover'} to ${effectiveTo} as ${monthCount} separate ${
-                monthCount === 1 ? 'request' : 'requests'
-              }, one per month - report endpoints cannot be paged, so the month is the only lever.`}{' '}
-          Nothing is written until a month has been read whole. {elapsedLabel(elapsed)} elapsed.
-        </p>
-      )}
-
-      {!provider.connected && !provider.loading && (
-        <p className='text-muted-foreground text-xs'>{NOT_CONNECTED_COPY}</p>
-      )}
-
-      {/*
-        Every refusal from lib is an `AuxxError` and arrives here with its own
-        message - the cutover floor naming both dates, a missing cutoff month, a
-        provider that answered for a range nobody asked for. The card carries it
-        verbatim: paraphrasing throws away the only part that says what to do.
-      */}
-      {error && <EntryBlockers blockers={[{ status: 'sync_refused', error }]} />}
-
-      {outcome && (
-        <ProviderSyncReport
-          outcome={outcome}
-          orgCurrency={orgCurrency}
-          providerLabel={providerLabel}
-        />
-      )}
-    </div>
+/** The detail behind the row above - refusals, unbalanced entries, deferrals. */
+export function ProviderSyncRunDetail({ className }: { className?: string }) {
+  const provider = useAccountingProviderStatus()
+  const run = useProviderSyncRun()
+  return (
+    <ProviderSyncReport
+      currentRun={run.currentRun}
+      lastRun={run.lastRun}
+      stale={run.stale}
+      providerLabel={provider.providerLabel ?? UNKNOWN_PROVIDER_LABEL}
+      className={className}
+    />
   )
 }
 
 /**
- * Where a freshly-opened range starts: the first of the current month, or the
- * floor when the floor is later than that.
+ * A once-a-second clock, and only while a walk is open.
  *
- * ⚠️ Clamped UP deliberately. An org whose cutoff is the current month has a
- * floor in the next one, and seeding below it would open the picker on a range
- * that is itself a refusal.
+ * The one honest thing a poll can add between slices: that time is passing. A
+ * run that has been going for four minutes must not look like one that started.
  */
-function seedRangeStart(floor: string | null, todayInBooks: string): string {
-  const firstOfMonth = `${todayInBooks.slice(0, 8)}01`
-  if (!floor) return firstOfMonth
-  return floor > firstOfMonth ? floor : firstOfMonth
+function useTicker(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [active])
+  return now
 }

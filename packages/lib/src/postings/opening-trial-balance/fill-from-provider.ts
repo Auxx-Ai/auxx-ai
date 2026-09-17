@@ -175,9 +175,6 @@ export async function fillOpeningTrialBalanceFromProvider(
       // `{ orgId }` alone a full reload still showed the manual instruction
       // (brief 19 section 4.5;
       // `settings/seed-document-business.ts:67` is the precedent this copies).
-      const { onCacheEvent } = await import('../../cache/invalidate')
-      await onCacheEvent('org.settings.changed', { orgId: organizationId, broadcastUserKeys: true })
-
       logger.info('Suggested the opening trial balance from the accounting provider', {
         organizationId,
         asOf: cutoverDate,

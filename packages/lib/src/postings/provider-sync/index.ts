@@ -17,16 +17,24 @@ export {
   type OurPostedEntry,
   type OurPostedLine,
   PROVIDER_SYNC_POSTING_TYPE,
+  PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
   PROVIDER_SYNC_SOURCE_TYPE,
+  PROVIDER_SYNC_STATE_SETTING_KEY,
   PROVIDER_SYNCED_THROUGH_SETTING_KEY,
   type ProviderLedger,
+  type ProviderLedgerBatch,
   type ProviderLedgerEntry,
   type ProviderLedgerLine,
+  type ProviderLedgerSlicer,
   type ProviderSyncCoverage,
   type ProviderSyncMarker,
   type ProviderSyncPlan,
   type ProviderSyncRange,
   type ProviderSyncReading,
+  type ProviderSyncRunRecord,
+  type ProviderSyncRunStatus,
+  type ProviderSyncScheduleConfig,
+  type ProviderSyncStateBlob,
   providerDisplayName,
 } from './client'
 export { readProviderSyncMarker } from './marker-reads'
@@ -38,7 +46,23 @@ export {
   planProviderSync,
   resolveProviderSyncLines,
 } from './plan'
-export { type PlanSyncChunksInput, planSyncChunks, providerSyncFloor } from './range'
+export {
+  enqueueProviderSync,
+  enqueueProviderSyncSlice,
+  PROVIDER_SYNC_JOB_NAME,
+  PROVIDER_SYNC_RUN_STALE_MS,
+  PROVIDER_SYNC_SCHEDULED_JOB_NAME,
+  type ProviderSyncJobData,
+  type ProviderSyncTrigger,
+} from './queue'
+export {
+  firstDayAfterMonth,
+  monthChunk,
+  nextDay,
+  type PlanSyncChunksInput,
+  planSyncChunks,
+  providerSyncFloor,
+} from './range'
 export {
   type ReadOurPostedEntriesInput,
   readOurPostedEntries,
@@ -47,12 +71,35 @@ export {
   type SyncedEntryRef,
 } from './reads'
 export {
+  applySyncStateToBlob,
+  blockMarkerForRun,
+  closeRunInBlob,
+  createProviderSyncRunLedger,
+  createProviderSyncStateStore,
+  isMarkerBlockedForRun,
+  readProviderSyncRunState,
+  recordSliceInBlob,
+  syncStateFromBlob,
+} from './run-state'
+export {
+  reconcileProviderSyncSchedulers,
+  removeProviderSyncScheduler,
+  syncProviderSyncScheduler,
+} from './scheduler'
+export {
   type DeferredEntry,
   type ProviderSyncChunkOutcome,
   type ProviderSyncOutcome,
   type SyncProviderLedgerInput,
   syncProviderLedger,
 } from './sync'
+export { type ChunkContext, syncOneChunk } from './sync-chunk'
+export {
+  type CreateProviderLedgerSyncSourceInput,
+  createProviderLedgerSyncSource,
+  type ProviderLedgerSyncProgress,
+  type ProviderLedgerSyncSource,
+} from './sync-source'
 export {
   type PostProviderSyncEntryInput,
   type ProviderSyncEntryOutcome,
