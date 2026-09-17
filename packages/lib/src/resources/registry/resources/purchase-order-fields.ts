@@ -639,6 +639,8 @@ export const PURCHASE_ORDER_FIELDS: Record<string, ResourceField> = {
   //
   // 🛑 An attachment is INTERNAL by default. Nothing here enters the PO's PDF
   // payload or the send attachment set unless it is explicitly chosen (P22).
+  // Hidden from the dialogs, the table and the field list: the documents card is its
+  // only door, and a file pile is not a form row.
   attachments: {
     id: toFieldId('attachments'),
     key: 'attachments',
@@ -649,6 +651,8 @@ export const PURCHASE_ORDER_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'purchase_order_attachments',
     systemSortOrder: 'aK1',
     showInPanel: false,
+    showInTable: false,
+    showInDialogs: false,
     nullable: true,
     options: {
       file: { allowMultiple: true, maxFiles: 20, allowedFileTypes: ['document', 'image'] },
@@ -659,6 +663,7 @@ export const PURCHASE_ORDER_FIELDS: Record<string, ResourceField> = {
       creatable: true,
       updatable: true,
       configurable: false,
+      hidden: true,
     },
     description:
       'Supporting documents for this purchase order — vendor order confirmations, quotes, ' +

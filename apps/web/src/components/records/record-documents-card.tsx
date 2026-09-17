@@ -201,12 +201,10 @@ function RecordDocumentsCard({
     !primaryReadOnly && primaryField && primary.displayFiles.length === 0 ? primary : attachments
   const addTargetField = addTarget === primary ? primaryField : attachmentsField
 
-  // Nothing to show AND nothing to add: an org whose definition carries neither
-  // field (short of migration 112) would otherwise grow a permanently empty
-  // section offering nothing. An empty state is only worth rendering where there
-  // is something a person can DO about it.
-  if (rows.length === 0 && uploading.length === 0 && !addTargetField) return null
-
+  // No early return on an empty card: the uploads slot is something a person can
+  // always DO something with, so the section stays put and offers Add rather than
+  // vanishing until the first file lands. Migration 167 gives every def this card
+  // serves an attachments field, so `addTargetField` is only ever absent mid-fetch.
   const isEmpty = rows.length === 0 && uploading.length === 0
 
   return (
@@ -362,6 +360,63 @@ export function PurchaseOrderDocumentsCard(props: DrawerTabProps) {
       primaryAttribute='purchase_order_pdf_asset'
       attachmentsAttribute='purchase_order_attachments'
       emptyDescription='The PDF appears here once this order is sent.'
+    />
+  )
+}
+
+/**
+ * The quote's paper. The generated slot is the quote PDF, minted by sending or
+ * previewing the quote; the uploads slot is what the customer sent back.
+ */
+export function QuoteDocumentsCard(props: DrawerTabProps) {
+  return (
+    <RecordDocumentsCard
+      {...props}
+      primaryAttribute='quote_pdf_asset'
+      attachmentsAttribute='quote_attachments'
+      emptyDescription='The PDF appears here once this quote is sent.'
+    />
+  )
+}
+
+/** The invoice PDF plus the paperwork that backs the amount billed. */
+export function InvoiceDocumentsCard(props: DrawerTabProps) {
+  return (
+    <RecordDocumentsCard
+      {...props}
+      primaryAttribute='invoice_pdf_asset'
+      attachmentsAttribute='invoice_attachments'
+      emptyDescription='The PDF appears here once this invoice is sent.'
+    />
+  )
+}
+
+/** The credit memo PDF plus the evidence for why the credit was given. */
+export function CreditMemoDocumentsCard(props: DrawerTabProps) {
+  return (
+    <RecordDocumentsCard
+      {...props}
+      primaryAttribute='credit_memo_pdf_asset'
+      attachmentsAttribute='credit_memo_attachments'
+      emptyDescription='The PDF appears here once this memo is sent.'
+    />
+  )
+}
+
+/**
+ * The deposit slip plus what the bank handed back.
+ *
+ * The slip is INTERNAL — `money/send-email.ts` refuses to mail it — so unlike the
+ * quote/invoice/memo cards above, its generated row appears on download rather
+ * than on send.
+ */
+export function BankDepositDocumentsCard(props: DrawerTabProps) {
+  return (
+    <RecordDocumentsCard
+      {...props}
+      primaryAttribute='bank_deposit_pdf_asset'
+      attachmentsAttribute='bank_deposit_attachments'
+      emptyDescription='The slip appears here once it is generated.'
     />
   )
 }

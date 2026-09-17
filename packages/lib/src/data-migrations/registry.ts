@@ -23,6 +23,7 @@ import { migration163FinancialSourceFields } from './migrations/163-financial-so
 import { migration164CreditApplicationHistory } from './migrations/164-credit-application-history'
 import { migration165AccountSubtypeClearing } from './migrations/165-account-subtype-clearing'
 import { migration166OneMappingTable } from './migrations/166-one-mapping-table'
+import { migration167DocumentAttachments } from './migrations/167-document-attachments'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -73,6 +74,8 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // valueText to optionId in the same pass), and widens with a seventh: the
   // one-migration-does-everything shape (plans/accounting/tasks/58-one-mapping-table.md §4.8).
   migration166OneMappingTable,
+  // Adds one INSERT-only field to four existing defs: the everyday widening shape.
+  migration167DocumentAttachments,
   // Re-seeds the default entity dashboards. The one entry here that is NOT just an
   // example: `apps/worker/scripts/reseed-default-dashboard.ts` re-runs its ensure
   // after a `DEFAULT_DASHBOARD_CONFIGS` template change, so it is a live routine.

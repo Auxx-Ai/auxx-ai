@@ -344,6 +344,24 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('../records/record-documents-card').then((m) => ({
       default: m.VendorBillDocumentsCard,
     })),
+  // The same card on the four sell-side/cash documents: a generated PDF slot plus
+  // an uploads slot, both `showInPanel: false`.
+  'quote:documents': () =>
+    import('../records/record-documents-card').then((m) => ({
+      default: m.QuoteDocumentsCard,
+    })),
+  'invoice:documents': () =>
+    import('../records/record-documents-card').then((m) => ({
+      default: m.InvoiceDocumentsCard,
+    })),
+  'credit_memo:documents': () =>
+    import('../records/record-documents-card').then((m) => ({
+      default: m.CreditMemoDocumentsCard,
+    })),
+  'bank_deposit:documents': () =>
+    import('../records/record-documents-card').then((m) => ({
+      default: m.BankDepositDocumentsCard,
+    })),
   // The BOM teardown checklist: what came back, and which of it is worth
   // putting on the shelf again. A CardBlock, not a RecordsBlock - it needs a
   // What physically came back: the return's lines, on the shared line grid

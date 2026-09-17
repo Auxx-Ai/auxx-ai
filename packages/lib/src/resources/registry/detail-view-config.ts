@@ -208,6 +208,9 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     sidebarCards: [
       { value: 'customer', label: 'Customer', icon: 'user' },
       { value: 'origin', label: 'Origin', icon: 'link' },
+      // Drawer parity: the same card key, from the same registry (the `purchase_order`
+      // pattern below) — a quote opened as a page must offer the same files.
+      { value: 'documents', label: 'Documents', icon: 'paperclip' },
       { value: 'jobs', label: 'Jobs', icon: 'wrench', recordResource: 'work_order' },
     ],
   },
