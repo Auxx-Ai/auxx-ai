@@ -13,9 +13,6 @@ export {
   type DeliveryObjectType,
   ExternalAccountingObject,
 } from './accounting-delivery'
-export { AccountingEffect, type AccountingEffectEntity } from './accounting-effect'
-export { AccountingWork, type AccountingWorkEntity } from './accounting-work'
-export { AccountingWorkBasis, type AccountingWorkBasisEntity } from './accounting-work-basis'
 export * from './agent'
 export * from './agent-procedure'
 export * from './agent-trigger'
@@ -116,6 +113,7 @@ export * from './free-tool-lead'
 // The general ledger (decision G6) — plans/money/design/gl-posting-tables.md
 export * from './gl-posting'
 export * from './gl-posting-line'
+export * from './gl-posting-source'
 // role -> the org's own gl_account (decision G19)
 export * from './gl-role-assignment'
 export * from './import-job'
@@ -175,7 +173,6 @@ export * from './participant'
 export * from './passkey'
 export * from './password-reset-token'
 export * from './payment-account'
-export * from './payment-transaction'
 export * from './permission-grant'
 export * from './permission-profile'
 export * from './plan'

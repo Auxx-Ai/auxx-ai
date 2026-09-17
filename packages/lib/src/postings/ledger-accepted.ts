@@ -61,6 +61,9 @@ export function didLedgerAccept(result: { status: PostResultStatus }): boolean {
     // but it is not the ledger accepting anything - callers that must not warn
     // about it want {@link isExpectedPostOutcome}, which says so by name.
     case 'not_enabled':
+    // A row exists, with lines and no doc number, and it holds no claim. The
+    // statements do not read it, so the books do not yet hold this entry.
+    case 'drafted':
       return false
 
     // 🛑 FAILS CLOSED, and the `void` is why this is not `return exhaustive`.
@@ -96,5 +99,5 @@ export function didLedgerAccept(result: { status: PostResultStatus }): boolean {
  * `ACCEPTED_POST_STATUSES` that were also asked whether the books hold an entry.
  */
 export function isExpectedPostOutcome(result: { status: PostResultStatus }): boolean {
-  return didLedgerAccept(result) || result.status === 'not_enabled'
+  return didLedgerAccept(result) || result.status === 'not_enabled' || result.status === 'drafted'
 }

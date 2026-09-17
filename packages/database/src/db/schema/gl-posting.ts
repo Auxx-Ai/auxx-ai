@@ -6,14 +6,9 @@
 // WHY THIS IS A TABLE AND NOT AN `EntityInstance`
 // `FieldValue` carries exactly two unique indexes — the PK and
 // `(entityId, fieldId, sortKey)` — so a composite uniqueness constraint across
-// two FIELDS of an instance is not merely unimplemented, it is unexpressible: a
-// unique index constrains within a row and two fields are two rows. The entire
-// double-post defence is
-// `INSERT … ON CONFLICT (organizationId, postingType, periodKey, revision) DO
-// NOTHING RETURNING *`, and nothing on the entity route can express it.
-// Provider-side idempotency (a QBO `requestid`, a deterministic `DocNumber`)
-// protects the EXPORTER; under decision P1 auxx.ai is the system of record, and
-// a ledger holding two of an entry is wrong whether or not QuickBooks noticed.
+// two FIELDS of an instance is not merely unimplemented, it is unexpressible.
+// The double-post defence is a partial unique index on `GlPostingSource`
+// (see that file), and nothing on the entity route can express it.
 
 import { createId } from '@paralleldrive/cuid2'
 import {
@@ -21,7 +16,6 @@ import {
   bigint,
   check,
   date,
-  foreignKey,
   index,
   integer,
   jsonb,
@@ -33,7 +27,7 @@ import {
   unique,
   uniqueIndex,
 } from './_shared'
-import { ExternalBookConnection } from './external-book-connection'
+import { FinancialSourceAccount } from './financial-source-account'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -87,27 +81,16 @@ export const glPostingType = pgEnum('GlPostingType', [
 ])
 
 /**
- * Lifecycle of one journal entry, in OUR books.
+ * Lifecycle of one journal entry, in OUR books: `draft -> posted -> reversed`.
  *
- * 🛑 Two values. The pair that used to sit here — `pending` and `failed` — were
- * never ledger states; they were EXPORT states wearing this column's name, and
- * a provider refusal that flipped this column to `failed` took the entry out of
- * every report while the money it described was perfectly real. See
- * {@link glPostingExportStatus} and plans/accounting/export-state-split.md.
+ * A draft has lines and no doc number and holds no claim; posting assigns both.
+ * `reversed` is terminal and belongs to the ORIGINAL of a reversal pair - the
+ * reversal itself is an ordinary `posted` entry (decision G4).
  *
- * Every ledger-side question is settled BEFORE the claim: `postEntry` takes the
- * period lock (step 1), resolves roles (2) and re-asserts balance (3) before it
- * claims (5), then writes the lines in the SAME transaction as the claim (6).
- * So a row that exists with lines under it has already passed everything we get
- * to decide, which is why `posted` is stamped there rather than after a third
- * party acknowledges it. A pre-claim refusal writes no row at all — that is why
- * there is no status describing one.
- *
- * `reversed` is terminal, and it belongs to the ORIGINAL of a reversal pair —
- * the reversal itself is an ordinary `posted` entry (decision G4: a reversal is
- * a second, opposite entry; a period that has been posted never changes shape).
+ * 🛑 `pending` and `failed` were never ledger states; they were EXPORT states
+ * wearing this column's name. See {@link glPostingExportStatus}.
  */
-export const glPostingStatus = pgEnum('GlPostingStatus', ['posted', 'reversed'])
+export const glPostingStatus = pgEnum('GlPostingStatus', ['draft', 'posted', 'reversed'])
 
 /**
  * What the EXPORT of this entry to the accounting provider did.
@@ -136,12 +119,10 @@ export const glPostingExportStatus = pgEnum('GlPostingExportStatus', [
 /** Which side of the entry a line sits on. The ONLY carrier of sign (decision G2). */
 export const glPostingDirection = pgEnum('GlPostingDirection', ['debit', 'credit'])
 
-/** One journal entry. The claim on `(org, type, period, revision)` is what this table is for. */
+/** One journal entry. The claim lives on `GlPostingSource`'s subject row, not here. */
 export const GlPosting = pgTable(
   'GlPosting',
   {
-    deliveryIntent: text().$type<'not_required' | 'manual' | 'automatic'>(),
-    intendedBookConnectionId: text(),
     id: text()
       .$defaultFn(() => createId())
       .primaryKey()
@@ -149,29 +130,6 @@ export const GlPosting = pgTable(
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-
-    /**
-     * Which BOOK this entry belongs to — accrual or cash (decision D13,
-     * plans/accounting/tasks/44-money-and-accounting-effect-contracts.md).
-     *
-     * 🛑 RESERVED, not built. Nothing writes it and nothing reads it yet. It
-     * exists now because the other half of D13 rides on
-     * `AccountingEffect.acceptedBasis`, which is immutable and sha256-hashed —
-     * adding a dimension to a frozen, hashed record later means rehashing it.
-     * Reserving the dimension costs one nullable column and one optional field;
-     * retrofitting it does not.
-     *
-     * This column is the half for the 1:1 posting families that have no
-     * `AccountingEffect` at all (a manual journal, an opening balance);
-     * otherwise those entries would have no book.
-     *
-     * ⚠️ The claim index `(organizationId, postingType, periodKey, revision)` is
-     * deliberately NOT widened to include this column. Widening the primary
-     * double-post defence is what actually lets two books hold the same period,
-     * and that belongs with the cash book and its substitution rule — neither of
-     * which is built. NULL means "the one book we keep today".
-     */
-    basis: text().$type<'accrual' | 'cash'>(),
 
     postingType: glPostingType().notNull(),
     /** `'2026-08-18'` or `'2026-08'`, or a payout/build id. Parsed by `postings/periods.ts`. */
@@ -186,17 +144,18 @@ export const GlPosting = pgTable(
      */
     revision: integer().default(0).notNull(),
 
-    /**
-     * Defaults to `posted`, not to a draft state: a row exists only once the
-     * claim and its lines have committed, and by then every ledger-side check
-     * has passed. There is no moment at which a GlPosting row is legitimately
-     * un-posted.
-     */
     status: glPostingStatus().default('posted').notNull(),
     /** The accounting date. Always explicit — providers default to their own server date. */
     txnDate: date().notNull(),
-    /** Deterministic. Also the provider's document number. <= 21 chars (QBO `DocNumber`). */
-    docNumber: text().notNull(),
+    /** Deterministic, <= 21 chars (QBO `DocNumber`). NULL while the entry is a draft. */
+    docNumber: text(),
+
+    /** Which `FinancialSourceAccount` the entry resolved through, so a summary can group by it. */
+    storeId: text().references((): AnyPgColumn => FinancialSourceAccount.id, {
+      onDelete: 'set null',
+    }),
+    /** The `payment_gateway` instance the entry resolved through. An entity record id, so no FK. */
+    railId: text(),
 
     /** ISO 4217. USD only for the cutover; asserted in the poster, never assumed. */
     currency: text().default('USD').notNull(),
@@ -223,7 +182,7 @@ export const GlPosting = pgTable(
      * from the subledger later gives a different answer once the subledger
      * moves — which is exactly the property a ledger must not have.
      */
-    draft: jsonb().notNull(),
+    built: jsonb().notNull(),
 
     /**
      * Deterministic, derived from posting identity ALONE — no run salt. Two runs
@@ -299,24 +258,6 @@ export const GlPosting = pgTable(
   },
   (table) => [
     unique('GlPosting_org_id_key').on(table.organizationId, table.id),
-    foreignKey({
-      name: 'GlPosting_intended_connection_scope_fk',
-      columns: [table.organizationId, table.intendedBookConnectionId],
-      foreignColumns: [ExternalBookConnection.organizationId, ExternalBookConnection.id],
-    }).onDelete('no action'),
-    check(
-      'GlPosting_delivery_intent_check',
-      sql`((${table.deliveryIntent} IS NULL AND ${table.intendedBookConnectionId} IS NULL) OR (${table.deliveryIntent} = 'not_required' AND ${table.intendedBookConnectionId} IS NULL) OR (${table.deliveryIntent} IN ('manual', 'automatic') AND ${table.intendedBookConnectionId} IS NOT NULL)) IS TRUE`
-    ),
-    // ── THE CLAIM. Everything else in this file is bookkeeping around this line. ──
-    uniqueIndex('GlPosting_org_type_period_revision_key').using(
-      'btree',
-      table.organizationId.asc().nullsLast(),
-      table.postingType.asc().nullsLast(),
-      table.periodKey.asc().nullsLast(),
-      table.revision.asc().nullsLast()
-    ),
-
     // A deterministic docNumber colliding is already a bug — catch it here, not at the provider.
     uniqueIndex('GlPosting_org_docNumber_key').using(
       'btree',
@@ -374,11 +315,6 @@ export const GlPosting = pgTable(
     // Walking a reversal chain back to its original.
     index('GlPosting_reversesId_idx').using('btree', table.reversesId.asc().nullsLast()),
 
-    // Reserved dimension (D13). NULL is the only value anything writes today.
-    check(
-      'GlPosting_basis_check',
-      sql`${table.basis} IS NULL OR ${table.basis} IN ('accrual','cash')`
-    ),
     check('GlPosting_totalMinor_check', sql`${table.totalMinor} >= 0`),
     check('GlPosting_revision_check', sql`${table.revision} >= 0`),
     check('GlPosting_attempts_check', sql`${table.attempts} >= 0`),

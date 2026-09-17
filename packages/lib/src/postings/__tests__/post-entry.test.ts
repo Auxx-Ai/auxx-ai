@@ -2,29 +2,15 @@
 //
 // The poster is the one place a journal entry can be written twice, and a
 // double-posted entry has no invoice and no payment to reconcile against - it
-// is not noticed until a close does not tie out. So almost every test here is
-// either a convergence test or a refusal test, and the refusals all assert the
-// same second thing: **that nothing was written**.
+// is not noticed until a close does not tie out. So most of this file is either
+// a convergence test or a refusal test, and the refusals assert the same second
+// thing: **that nothing was written**.
 //
-// ⚠️ **What the concurrency test here does and does not prove.** The database is
-// an in-memory fake whose claim insert holds a mutex and re-checks the claim
-// tuple inside it - which is what `ON CONFLICT DO NOTHING` does against an
-// uncommitted tuple, and it makes the loser's path deterministic. It proves
-// `postEntry` CONVERGES: exactly one row, exactly one `already_posted`, no
-// second claim. It does NOT prove Postgres's index behaviour.
-//
-// 🛑 The brief said "#1975 already proved this index that way - reuse the
-// harness." It did not. `packages/database/src/tests/gl-posting-schema.test.ts`
-// asserts the index's SHAPE from `getTableConfig` and says so in its own header:
-// "The live-database counterpart (the index actually rejecting a concurrent
-// duplicate) belongs to the claim path in packages/lib/src/postings/." There is
-// no live-Postgres harness to reuse. One is owed as a `post-entry.int.test.ts`
-// under `vitest.integration.config.ts`, which is the only config that does not
-// mock `@auxx/database`.
-//
-// The fake is hand-written rather than a chainable spy for the reason
-// `resolve-roles.test.ts` gives: this module issues several distinct reads and
-// writes across three tables and each has to answer differently.
+// ⚠️ The database is an in-memory fake whose `GlPostingSource` insert holds a
+// mutex and re-checks the claim tuple inside it - what `ON CONFLICT DO NOTHING`
+// does against an uncommitted tuple. It proves `postEntry` CONVERGES: one
+// posting, one `already_posted`, the loser's row rolled back. It does NOT prove
+// Postgres's partial-index behaviour; that is owed as an integration test.
 
 import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -45,16 +31,11 @@ vi.mock('../../cache', () => ({
   }),
 }))
 
-import { err, ok, type Result } from 'neverthrow'
-import { postEntry, previewEntry } from '../post-entry'
-import {
-  __resetAccountingProvidersForTests,
-  NULL_LEDGER_SLICER,
-  registerAccountingProvider,
-  setConnectedProviderResolver,
-} from '../provider'
-import type { BuiltEntry, PostEntryInput, PostEntryResult } from '../types'
-import { ProviderPostError } from '../types'
+import { listPostingsForSource } from '../list-postings'
+import { postDraft, postEntry } from '../post-entry'
+import { __resetAccountingProvidersForTests, setConnectedProviderResolver } from '../provider'
+import { reverseEntry } from '../reverse-entry'
+import type { BuiltEntry, GlPostingSourceInput } from '../types'
 
 const ORG = 'org_1'
 const CODE_FIELD = 'fld_code'
@@ -62,72 +43,21 @@ const NAME_FIELD = 'fld_name'
 const TYPE_FIELD = 'fld_type'
 const ACTIVE_FIELD = 'fld_active'
 
-// ── The fake database ──────────────────────────────────────────────────────
-
-interface PostingRow {
-  id: string
-  organizationId: string
-  postingType: string
-  periodKey: string
-  revision: number
-  /** What the LEDGER did. Only ever `posted` or `reversed`. */
-  status: string
-  /** What the EXPORT did. The column a provider's answer may touch. */
-  exportStatus: string
-  txnDate: string
-  docNumber: string
-  currency: string
-  totalMinor: number
-  draft: Record<string, unknown>
-  requestId: string
-  providerId: string | null
-  providerEntryId: string | null
-  /** WHICH instance of the provider took it. Null until an export reaches one. */
-  providerTenantId: string | null
-  postedAt: Date | null
-  postedByUserId: string | null
-  failureReason: string | null
-  attempts: number
-  reversesId: string | null
-}
-
-interface LineRow {
-  organizationId: string
-  glPostingId: string
-  lineNumber: number
-  glAccountId: string
-  accountCode: string | null
-  accountRole: string | null
-  accountName: string | null
-  direction: string
-  amountMinor: number
-  memo: string | null
-  sourceType: string
-  sourceId: string
-  counterpartyType: string | null
-  counterpartyId: string | null
-}
-
 interface Account {
   id: string
-  /** Null models an account with no code (task 15 §5). */
   code: string | null
   name: string
   accountType: string
-  isActive?: boolean
 }
 
-interface Chart {
-  role: string
-  account?: Account
-}
+// ── The fake database ──────────────────────────────────────────────────────
 
 /**
- * Walk a Drizzle `SQL` condition and collect the literal values it binds.
+ * Walk a Drizzle condition and collect the literal values it binds.
  *
  * Under `src/test/setup.ts` every `schema.X.y` is `undefined`, so a condition
- * carries its VALUES and not its columns - which is exactly enough to answer
- * "which row does this `WHERE` name", since the ids under test are distinctive.
+ * carries its VALUES and not its columns - enough to answer "which row does
+ * this WHERE name", since the ids under test are distinctive.
  */
 function boundValues(condition: unknown): string[] {
   const out: string[] = []
@@ -148,38 +78,21 @@ function boundValues(condition: unknown): string[] {
     }
   }
   visit(condition)
-  return out
+  // Drop the SQL scaffolding the walk also collects - `'('`, `' and '`, `''`.
+  // What is left is the literals, which is what a row is matched against.
+  return out.filter((value) => /^[A-Za-z0-9_.:-]+$/.test(value))
 }
 
-class UniqueViolation extends Error {
-  readonly code = '23505'
-  constructor(readonly constraint: string) {
-    super(`duplicate key value violates unique constraint "${constraint}"`)
-  }
-}
+type Row = Record<string, unknown>
 
-function createFakeDb(chart: Chart[]) {
-  const postings: PostingRow[] = []
-  const lines: LineRow[] = []
+function createFakeDb(chart: Array<{ role: string; account: Account }>) {
+  const postings: Row[] = []
+  const lines: Row[] = []
+  let sources: Row[] = []
   let seq = 0
-
-  /** Set by a conflicting claim so the follow-up SELECT reads that row. */
-  let claimLookup: ((row: PostingRow) => boolean) | null = null
   /** Awaited inside the claim's critical section, to interleave two runs. */
-  let beforeClaimCommit: (() => Promise<void>) | null = null
-  /** Makes the outcome-stamping UPDATE fail, to model a crash after the push. */
-  let updateThrows = false
-  /**
-   * Every `set()` this module issues, verbatim.
-   *
-   * The rows alone cannot answer "was this column WRITTEN": a stamp that clears
-   * `failureReason` and a row that never carried one look identical afterwards.
-   */
-  const updates: Record<string, unknown>[] = []
+  let beforeClaim: (() => Promise<void>) | null = null
 
-  // One mutex, standing in for the index tuple two concurrent claims contend
-  // on. Without it the second run's key check reads a table the first has not
-  // written to yet and both insert - which is the defect under test.
   let lock: Promise<void> = Promise.resolve()
   async function withClaimLock<T>(fn: () => Promise<T>): Promise<T> {
     const previous = lock
@@ -195,190 +108,251 @@ function createFakeDb(chart: Chart[]) {
     }
   }
 
-  const thenable = (get: () => unknown[]) => {
+  const accounts = chart.map((entry) => entry.account)
+
+  const thenable = (get: () => unknown[], filtered = false) => {
+    let condition: unknown
     const chain: Record<string, unknown> = {}
-    chain.where = () => chain
+    chain.where = (next: unknown) => {
+      condition = next
+      return chain
+    }
     chain.limit = () => chain
     chain.orderBy = () => chain
+    chain.for = () => chain
     // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
     chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
       Promise.resolve()
-        .then(() => get())
+        .then(() => {
+          if (!filtered) return get()
+          const named = boundValues(condition)
+          return get().filter((row) => matches(row as Row, named))
+        })
         .then(resolve, reject)
     return chain
   }
 
-  const accounts = chart.filter((entry) => entry.account).map((entry) => entry.account as Account)
-
-  async function runClaim(values: Record<string, unknown>): Promise<unknown[]> {
-    return withClaimLock(async () => {
-      if (beforeClaimCommit) await beforeClaimCommit()
-
-      const duplicate = postings.find(
-        (row) =>
-          row.organizationId === values.organizationId &&
-          row.postingType === values.postingType &&
-          row.periodKey === values.periodKey &&
-          row.revision === values.revision
-      )
-      if (duplicate) {
-        // ON CONFLICT (org, type, period, revision) DO NOTHING: no row back.
-        claimLookup = (row) => row === duplicate
-        return []
-      }
-
-      // 🛑 The OTHER unique indexes are NOT covered by that ON CONFLICT target,
-      // so they still raise 23505 out of a statement with an ON CONFLICT clause
-      // sitting right there. Modelled here so the poster's catch is exercised.
-      if (
-        postings.some(
-          (row) =>
-            row.organizationId === values.organizationId && row.docNumber === values.docNumber
-        )
-      ) {
-        throw new UniqueViolation('GlPosting_org_docNumber_key')
-      }
-
-      seq += 1
-      const claimed = values as unknown as Omit<PostingRow, 'id'>
-      const row: PostingRow = {
-        ...claimed,
-        id: `post_${seq}`,
-        postedAt: claimed.postedAt ?? null,
-        failureReason: claimed.failureReason ?? null,
-        attempts: claimed.attempts ?? 0,
-        providerEntryId: claimed.providerEntryId ?? null,
-        providerId: claimed.providerId ?? null,
-        providerTenantId: claimed.providerTenantId ?? null,
-      }
-      postings.push(row)
-      return [{ id: row.id, docNumber: row.docNumber, requestId: row.requestId }]
-    })
+  /**
+   * A row matches when every literal the WHERE bound is one of its own.
+   *
+   * ⚠️ AND semantics, so an `inArray` over SEVERAL ids would match none. Every
+   * read here binds at most one.
+   */
+  function matches(row: Row, named: string[]): boolean {
+    if (named.length === 0) return true
+    const own = new Set(Object.values(row).filter((v) => typeof v === 'string') as string[])
+    return named.every((value) => own.has(value) || value === ORG)
   }
 
-  const db = {
-    transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
-    // SQL lock semantics are covered by accept-entry.int.test.ts against PostgreSQL.
-    execute: async () => ({ rows: [] }),
+  /** The partial unique index: one live subject per (org, kind, id, occurrence). */
+  function claimHolder(values: Row): Row | undefined {
+    return sources.find(
+      (row) =>
+        row.linkRole === 'subject' &&
+        row.organizationId === values.organizationId &&
+        row.sourceKind === values.sourceKind &&
+        row.sourceId === values.sourceId &&
+        row.occurrence === values.occurrence
+    )
+  }
 
-    select: () => ({
-      from: (table: unknown) => {
-        if (table === schema.OrganizationSetting) {
-          return thenable(() => (h.lockedThroughMonth ? [{ value: h.lockedThroughMonth }] : []))
+  /**
+   * Rows this statement's transaction wrote, so a rollback removes exactly
+   * those - a whole-table snapshot cannot, because two claims are in flight at
+   * once and one would undo the other's committed row.
+   */
+  type Journal = Array<{ table: Row[]; row: Row }>
+
+  const makeDb = (journal: Journal | null): Record<string, unknown> => {
+    const db = {
+      transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+        const own: Journal = []
+        try {
+          return await fn(makeDb(own))
+        } catch (error) {
+          for (const { table, row } of own) {
+            const at = table.indexOf(row)
+            if (at >= 0) table.splice(at, 1)
+          }
+          throw error
         }
-        if (table === schema.GlRoleAssignment) {
-          return thenable(() =>
-            chart.map((entry) => ({
-              role: entry.role,
-              glAccountId: entry.account?.id ?? `missing_${entry.role}`,
-              markedUnused: false,
-            }))
-          )
-        }
-        if (table === schema.EntityInstance) {
-          return thenable(() => accounts.map((account) => ({ id: account.id })))
-        }
-        if (table === schema.FieldValue) {
-          return thenable(() =>
-            accounts.flatMap((account) => [
-              { entityId: account.id, fieldId: CODE_FIELD, valueText: account.code },
-              { entityId: account.id, fieldId: NAME_FIELD, valueText: account.name },
-              { entityId: account.id, fieldId: TYPE_FIELD, optionId: account.accountType },
-              {
-                entityId: account.id,
-                fieldId: ACTIVE_FIELD,
-                valueBoolean: account.isActive ?? true,
-              },
-            ])
-          )
-        }
-        if (table === schema.GlPosting) {
-          return thenable(() => {
-            const filter = claimLookup
-            claimLookup = null
-            return filter ? postings.filter(filter) : [...postings]
-          })
-        }
-        if (table === schema.GlPostingLine) {
-          return thenable(() => [...lines])
-        }
-        return thenable(() => [])
       },
-    }),
+      execute: async () => ({ rows: [] }),
 
-    insert: (table: unknown) => {
-      let captured: unknown
-      const chain: Record<string, unknown> = {}
-      chain.values = (value: unknown) => {
-        captured = value
-        return chain
-      }
-      chain.onConflictDoNothing = () => chain
-      const run = async (): Promise<unknown[]> => {
-        if (table === schema.GlPosting) {
-          return runClaim(captured as Record<string, unknown>)
+      select: () => ({
+        from: (table: unknown) => {
+          if (table === schema.OrganizationSetting) {
+            return thenable(() => (h.lockedThroughMonth ? [{ value: h.lockedThroughMonth }] : []))
+          }
+          if (table === schema.GlRoleAssignment) {
+            return thenable(() =>
+              chart.map((entry) => ({
+                role: entry.role,
+                glAccountId: entry.account.id,
+                markedUnused: false,
+              }))
+            )
+          }
+          if (table === schema.EntityInstance) {
+            return thenable(() => accounts.map((account) => ({ id: account.id })))
+          }
+          if (table === schema.FieldValue) {
+            return thenable(() =>
+              accounts.flatMap((account) => [
+                { entityId: account.id, fieldId: CODE_FIELD, valueText: account.code },
+                { entityId: account.id, fieldId: NAME_FIELD, valueText: account.name },
+                { entityId: account.id, fieldId: TYPE_FIELD, optionId: account.accountType },
+                { entityId: account.id, fieldId: ACTIVE_FIELD, valueBoolean: true },
+              ])
+            )
+          }
+          if (table === schema.GlPosting) return thenable(() => [...postings], true)
+          if (table === schema.GlPostingLine) return thenable(() => [...lines], true)
+          if (table === schema.GlPostingSource) return thenable(() => [...sources], true)
+          return thenable(() => [])
+        },
+        // `selectDistinct` is unused by this lane now; kept so a stray call is loud.
+      }),
+
+      insert: (table: unknown) => {
+        let captured: unknown
+        const chain: Record<string, unknown> = {}
+        let conflictGuarded = false
+        chain.values = (value: unknown) => {
+          captured = value
+          return chain
         }
-        lines.push(...(captured as LineRow[]))
-        return []
-      }
-      chain.returning = () => thenable2(run)
-      // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
-      chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-        run().then(resolve, reject)
-      return chain
-    },
-
-    update: (table: unknown) => {
-      let values: Record<string, unknown> = {}
-      let condition: unknown
-      const chain: Record<string, unknown> = {}
-      chain.set = (next: Record<string, unknown>) => {
-        values = next
-        return chain
-      }
-      chain.where = (next: unknown) => {
-        condition = next
-        return chain
-      }
-      // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
-      chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-        Promise.resolve()
-          .then(() => {
-            if (table !== schema.GlPosting) return
-            if (updateThrows) throw new Error('connection terminated')
-            updates.push(values)
-            const named = boundValues(condition)
-            for (const row of postings) {
-              if (!named.includes(row.id)) continue
-              for (const [key, value] of Object.entries(values)) {
-                if (key === 'attempts' && typeof value !== 'number') row.attempts += 1
-                else (row as unknown as Record<string, unknown>)[key] = value
+        chain.onConflictDoNothing = () => {
+          conflictGuarded = true
+          return chain
+        }
+        const run = async (): Promise<unknown[]> => {
+          if (table === schema.GlPosting) {
+            seq += 1
+            const row: Row = { ...(captured as Row), id: `post_${seq}` }
+            postings.push(row)
+            journal?.push({ table: postings, row })
+            return [{ id: row.id, docNumber: row.docNumber, requestId: row.requestId }]
+          }
+          if (table === schema.GlPostingSource) {
+            const values = Array.isArray(captured) ? (captured as Row[]) : [captured as Row]
+            const written: unknown[] = []
+            for (const value of values) {
+              const row: Row = { occurrence: 'original', ...value }
+              if (conflictGuarded) {
+                const held = await withClaimLock(async () => {
+                  if (beforeClaim) await beforeClaim()
+                  const holder = claimHolder(row)
+                  if (holder) return holder
+                  seq += 1
+                  row.id = `src_${seq}`
+                  sources.push(row)
+                  journal?.push({ table: sources, row })
+                  return null
+                })
+                if (held) continue
+              } else {
+                seq += 1
+                row.id = `src_${seq}`
+                sources.push(row)
+                journal?.push({ table: sources, row })
               }
+              written.push({ id: row.id })
             }
-          })
-          .then(resolve, reject)
-      return chain
-    },
-  }
+            return written
+          }
+          for (const row of captured as Row[]) {
+            lines.push(row)
+            journal?.push({ table: lines, row })
+          }
+          return []
+        }
+        chain.returning = () => ({
+          // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
+          then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+            run().then(resolve, reject),
+        })
+        // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
+        chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+          run().then(resolve, reject)
+        return chain
+      },
 
-  function thenable2(run: () => Promise<unknown[]>) {
-    return {
-      // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
-      then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-        run().then(resolve, reject),
+      update: (table: unknown) => {
+        let values: Row = {}
+        let condition: unknown
+        const chain: Record<string, unknown> = {}
+        chain.set = (next: Row) => {
+          values = next
+          return chain
+        }
+        chain.where = (next: unknown) => {
+          condition = next
+          return chain
+        }
+        // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
+        chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+          Promise.resolve()
+            .then(() => {
+              if (table !== schema.GlPosting) return
+              const named = boundValues(condition)
+              for (const row of postings) {
+                if (!named.includes(row.id as string)) continue
+                for (const [key, value] of Object.entries(values)) {
+                  // `jsonb_set` on `built` arrives as an SQL chunk; the fake
+                  // records the doc number the same way the column would.
+                  row[key] = key === 'built' ? row.built : value
+                }
+              }
+            })
+            .then(resolve, reject)
+        return chain
+      },
+
+      delete: (table: unknown) => {
+        const chain: Record<string, unknown> = {}
+        let condition: unknown
+        chain.where = (next: unknown) => {
+          condition = next
+          return chain
+        }
+        // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
+        chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+          Promise.resolve()
+            .then(() => {
+              if (table !== schema.GlPostingSource) return
+              // Column-aware, unlike `matches`: the reversal's OWN subject row
+              // carries the original's id in `sourceId`, so a value-only match
+              // would delete the claim this reversal just took.
+              const named = boundValues(condition)
+              sources = sources.filter(
+                (row) =>
+                  !(
+                    named.includes(row.glPostingId as string) &&
+                    named.includes(row.linkRole as string)
+                  )
+              )
+            })
+            .then(resolve, reject)
+        return chain
+      },
     }
+    return db
   }
 
   return {
-    db: db as never,
-    postings,
-    lines,
-    updates,
-    setBeforeClaimCommit: (fn: (() => Promise<void>) | null) => {
-      beforeClaimCommit = fn
+    db: makeDb(null) as never,
+    get postings() {
+      return postings
     },
-    setUpdateThrows: (value: boolean) => {
-      updateThrows = value
+    get lines() {
+      return lines
+    },
+    get sources() {
+      return sources
+    },
+    setBeforeClaim: (fn: (() => Promise<void>) | null) => {
+      beforeClaim = fn
     },
   }
 }
@@ -397,23 +371,21 @@ const RAW: Account = {
   name: 'Raw Materials Inventory',
   accountType: 'asset',
 }
-/** An imported account carrying no code (task 15 §5) - QuickBooks ships numbering off. */
-const NO_CODE_RAW: Account = {
-  id: 'acct_raw_nocode',
-  code: null,
-  name: 'Raw Materials Inventory',
-  accountType: 'asset',
-}
-
-const FULL_CHART: Chart[] = [
+const CHART = [
   { role: 'grni', account: GRNI },
   { role: 'inventory_raw_materials', account: RAW },
 ]
 
-const NO_CODE_CHART: Chart[] = [
-  { role: 'grni', account: GRNI },
-  { role: 'inventory_raw_materials', account: NO_CODE_RAW },
-]
+const SUBJECT: GlPostingSourceInput = {
+  sourceKind: 'goods_receipt',
+  sourceId: 'rcpt_1',
+  linkRole: 'subject',
+}
+const PARENT: GlPostingSourceInput = {
+  sourceKind: 'purchase_order',
+  sourceId: 'po_1',
+  linkRole: 'parent',
+}
 
 function receiptEntry(overrides: Partial<BuiltEntry> = {}): BuiltEntry {
   return {
@@ -455,1002 +427,342 @@ beforeEach(() => {
     ['gl_account_is_active', ACTIVE_FIELD],
   ])
   __resetAccountingProvidersForTests()
+  setConnectedProviderResolver(async () => null)
 })
 
-/**
- * The `G19` account-map half of `AccountingProvider`, stubbed to "nothing
- * mapped, nothing to map".
- *
- * `postEntry`'s own path never touches these four - resolution lives inside an
- * adapter - so a posting test states them once here rather than restating an
- * empty chart in every stub it builds.
- */
-const NO_ACCOUNT_MAP = {
-  listProviderAccounts: async () => ok([]),
-  readProviderBalances: async () => ok(null),
-  // The inbound half (brief 20 §5.1). The null slicer answers `null`, never an
-  // empty batch - see `NULL_LEDGER_SLICER`.
-  ledgerSlicer: () => NULL_LEDGER_SLICER,
-  listAccountMappings: async () => ok(new Map<string, string>()),
-  setAccountMapping: async () => ok(undefined),
-  clearAccountMapping: async () => ok(undefined),
-  // Brief 60 §5.3. Nothing in these tests un-syncs; the stub only has to exist.
-  withdrawObject: async () => err(new Error('This stub provider cannot withdraw anything.')),
-}
+// ── Draft mode ─────────────────────────────────────────────────────────────
 
-/** A provider that records what it was handed and answers however the test says. */
-function stubProvider(
-  answer: (input: PostEntryInput) => Result<PostEntryResult, Error>,
-  id = 'stub'
-) {
-  const seen: PostEntryInput[] = []
-  registerAccountingProvider(id, async () => ({
-    id,
-    ...NO_ACCOUNT_MAP,
-    resolveAccount: async (_org: string, code: string) => ok(code),
-    postEntry: async (input: PostEntryInput) => {
-      seen.push(input)
-      return answer(input)
-    },
-  }))
-  setConnectedProviderResolver(async () => id)
-  return seen
-}
-
-// ── An org with nothing connected ──────────────────────────────────────────
-
-describe('an organization with no accounting provider', () => {
-  it('builds, balances, claims and persists the entry, and reports not_connected', async () => {
-    const fake = createFakeDb(FULL_CHART)
+describe('postEntry in draft mode', () => {
+  it('writes the row, its lines and its non-subject links, and takes no claim', async () => {
+    const fake = createFakeDb(CHART)
 
     const result = await postEntry(fake.db, {
       organizationId: ORG,
       entry: receiptEntry(),
+      lock: OPEN,
+      mode: 'draft',
+      sources: [SUBJECT, PARENT],
+    })
+
+    expect(result.status).toBe('drafted')
+    expect(result.glPostingId).toBeDefined()
+    expect(result.docNumber).toBeUndefined()
+
+    const [row] = fake.postings
+    expect(row?.status).toBe('draft')
+    // 🛑 A draft has no document number and no claim. Both are what posting adds.
+    expect(row?.docNumber).toBeNull()
+    expect(row?.postedAt).toBeNull()
+    expect(fake.lines).toHaveLength(2)
+    expect(fake.sources.map((s) => s.linkRole)).toEqual(['parent'])
+  })
+
+  it('refuses a closed period before writing anything', async () => {
+    const fake = createFakeDb(CHART)
+    h.lockedThroughMonth = '2026-08'
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+      mode: 'draft',
+      sources: [SUBJECT],
+    })
+
+    expect(result.status).toBe('period_closed')
+    expect(fake.postings).toHaveLength(0)
+    expect(fake.sources).toHaveLength(0)
+  })
+})
+
+// ── Post mode and the claim ────────────────────────────────────────────────
+
+describe('postEntry in post mode', () => {
+  it('claims the subject, numbers the entry and marks it posted', async () => {
+    const fake = createFakeDb(CHART)
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+      mode: 'post',
+      sources: [SUBJECT, PARENT],
+      storeId: 'fsa_1',
+      railId: 'gw_1',
+    })
+
+    expect(result.status).toBe('not_connected')
+    expect(result.docNumber).toBe('AUXX-RCP-20260818')
+
+    const [row] = fake.postings
+    expect(row?.status).toBe('posted')
+    expect(row?.storeId).toBe('fsa_1')
+    expect(row?.railId).toBe('gw_1')
+    expect(fake.sources.map((s) => s.linkRole).sort()).toEqual(['parent', 'subject'])
+  })
+
+  it('refuses a source set with no subject, and writes nothing', async () => {
+    const fake = createFakeDb(CHART)
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+      mode: 'post',
+      sources: [PARENT],
+    })
+
+    expect(result.status).toBe('error')
+    expect(result.error).toContain('exactly one subject')
+    expect(fake.postings).toHaveLength(0)
+  })
+
+  it('converges: two runs of one source produce one posting and one already_posted', async () => {
+    const fake = createFakeDb(CHART)
+    let release = (): void => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+
+    // The first run parks inside the claim's critical section until the second
+    // has been started, so both are in flight over one source.
+    let first = true
+    fake.setBeforeClaim(async () => {
+      if (!first) return
+      first = false
+      await gate
+    })
+
+    const runA = postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+      mode: 'post',
+      sources: [SUBJECT],
+    })
+    const runB = postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+      mode: 'post',
+      sources: [SUBJECT],
+    })
+    release()
+    const [a, b] = await Promise.all([runA, runB])
+
+    const statuses = [a.status, b.status].sort()
+    expect(statuses).toEqual(['already_posted', 'not_connected'])
+    // 🛑 The loser's own row rolled back with its transaction. One claim, one
+    // posting - not two rows one of which is orphaned.
+    expect(fake.postings).toHaveLength(1)
+    expect(fake.sources.filter((s) => s.linkRole === 'subject')).toHaveLength(1)
+
+    const loser = a.status === 'already_posted' ? a : b
+    const winner = a.status === 'already_posted' ? b : a
+    expect(loser.glPostingId).toBe(winner.glPostingId)
+  })
+
+  it('lets a second occurrence of the same source claim independently', async () => {
+    const fake = createFakeDb(CHART)
+    const base = { organizationId: ORG, lock: OPEN, mode: 'post' as const }
+
+    const first = await postEntry(fake.db, {
+      ...base,
+      entry: receiptEntry(),
+      sources: [SUBJECT],
+    })
+    const second = await postEntry(fake.db, {
+      ...base,
+      entry: receiptEntry({ periodKey: '2026-08-19', txnDate: '2026-08-19' }),
+      sources: [{ ...SUBJECT, occurrence: 'writeoff_1' }],
+    })
+
+    expect(first.status).toBe('not_connected')
+    expect(second.status).toBe('not_connected')
+    expect(fake.postings).toHaveLength(2)
+  })
+})
+
+// ── postDraft ──────────────────────────────────────────────────────────────
+
+describe('postDraft', () => {
+  it('claims, numbers and flips a draft to posted', async () => {
+    const fake = createFakeDb(CHART)
+    const drafted = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+      mode: 'draft',
+      sources: [SUBJECT, PARENT],
+    })
+
+    const result = await postDraft(fake.db, {
+      organizationId: ORG,
+      glPostingId: drafted.glPostingId as string,
       lock: OPEN,
       actorUserId: 'user_1',
     })
 
-    // `not_connected` is a first-class outcome, not a degraded one: decision P1
-    // says the ledger is ours whether or not anything is connected.
-    expect(result.status).toBe('not_connected')
-    expect(result.providerId).toBe('none')
-    expect(result.providerEntryId).toBeUndefined()
+    expect(result.status).toBe('posted')
     expect(result.docNumber).toBe('AUXX-RCP-20260818')
-    expect(result.glPostingId).toBeDefined()
-
-    expect(fake.postings).toHaveLength(1)
-    const row = fake.postings[0]!
-    // Marked `posted`, not left `pending`: there is nothing in flight and
-    // nothing for a heal to find, so `pending` would park it in the retry
-    // queue forever.
-    expect(row.status).toBe('posted')
-    expect(row.postedAt).toBeInstanceOf(Date)
-    expect(row.providerId).toBe('none')
-    expect(row.providerEntryId).toBeNull()
-    expect(row.currency).toBe('USD')
-    expect(row.totalMinor).toBe(125_000)
-    expect(row.revision).toBe(0)
-    expect(row.reversesId).toBeNull()
-    expect(row.postedByUserId).toBe('user_1')
-    expect(row.requestId).toHaveLength(50)
+    expect(fake.postings[0]?.status).toBe('posted')
+    expect(fake.postings[0]?.docNumber).toBe('AUXX-RCP-20260818')
+    expect(fake.sources.filter((s) => s.linkRole === 'subject')).toHaveLength(1)
   })
 
-  it('writes both lines with 1-based numbers and a snapshot of code, role and name', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
-
-    expect(fake.lines).toHaveLength(2)
-    expect(fake.lines.map((line) => line.lineNumber)).toEqual([1, 2])
-    expect(fake.lines[0]).toMatchObject({
-      lineNumber: 1,
-      accountCode: '1310',
-      accountRole: 'inventory_raw_materials',
-      accountName: 'Raw Materials Inventory',
-      direction: 'debit',
-      amountMinor: 125_000,
-      sourceType: 'stock_movement',
-      sourceId: 'mv_1',
-    })
-    expect(fake.lines[1]).toMatchObject({
-      lineNumber: 2,
-      accountCode: '2160',
-      accountRole: 'grni',
-      direction: 'credit',
-    })
-  })
-
-  it('writes the resolved account id as the identity, beside the code snapshot', async () => {
-    // Task 15 §2: `glAccountId` is the IDENTITY the resolver resolved through
-    // `GlRoleAssignment`, not a value this test invents - it must be exactly the
-    // `gl_account` id each role was mapped to in FULL_CHART.
-    const fake = createFakeDb(FULL_CHART)
-    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
-
-    expect(fake.lines.map((line) => line.glAccountId)).toEqual([RAW.id, GRNI.id])
-  })
-
-  // Task 15 §5: a live account with no code posts exactly like one with a
-  // code - `accountCode` on the stored line is null, a snapshot of nothing,
-  // never a refusal.
-  it('posts to an account with no code and stores a null accountCode snapshot', async () => {
-    const fake = createFakeDb(NO_CODE_CHART)
-    const result = await postEntry(fake.db, {
+  it('re-checks the period lock, so a draft cannot be approved into a closed month', async () => {
+    const fake = createFakeDb(CHART)
+    const drafted = await postEntry(fake.db, {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
+      mode: 'draft',
+      sources: [SUBJECT],
     })
 
-    expect(result.status).toBe('not_connected')
-    expect(fake.lines).toHaveLength(2)
-    expect(fake.lines[0]).toMatchObject({
-      glAccountId: NO_CODE_RAW.id,
-      accountCode: null,
-      accountRole: 'inventory_raw_materials',
-      accountName: 'Raw Materials Inventory',
-    })
-    expect(fake.lines[1]).toMatchObject({ glAccountId: GRNI.id, accountCode: '2160' })
-  })
-
-  it('stores the built entry AND the resolved lines as the draft audit record', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
-
-    const draft = fake.postings[0]!.draft as {
-      v: number
-      entry: BuiltEntry
-      resolvedLines: { accountRole: string; accountCode: string }[]
-    }
-    expect(draft.v).toBe(1)
-    expect(draft.entry.lines).toHaveLength(2)
-    // Rebuilding the resolved lines from the subledger later gives a different
-    // answer once the subledger moves, which is the property a ledger must not
-    // have. So they are stored, not hinted at.
-    expect(draft.resolvedLines.map((line) => line.accountCode).sort()).toEqual(['1310', '2160'])
-  })
-})
-
-// ── The counterparty (brief 13 §1.1) ────────────────────────────────────────
-
-describe('the counterparty column', () => {
-  it('stores the counterparty on the line that carries one, and null on the one that does not', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    const entry = receiptEntry()
-    entry.lines[0]!.counterpartyType = 'customer'
-    entry.lines[0]!.counterpartyId = 'contact_1'
-
-    await postEntry(fake.db, { organizationId: ORG, entry, lock: OPEN })
-
-    expect(fake.lines[0]).toMatchObject({
-      counterpartyType: 'customer',
-      counterpartyId: 'contact_1',
-    })
-    // Absent on the input line becomes NULL on the stored row, not undefined -
-    // this is what the adapter and every reader select back.
-    expect(fake.lines[1]).toMatchObject({ counterpartyType: null, counterpartyId: null })
-  })
-
-  it('leaves both columns null when no line carries a counterparty', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
-
-    expect(fake.lines.map((line) => line.counterpartyType)).toEqual([null, null])
-    expect(fake.lines.map((line) => line.counterpartyId)).toEqual([null, null])
-  })
-})
-
-// ── The dimensions column (brief 13 §5) ─────────────────────────────────────
-
-describe('the dimensions column', () => {
-  it('stores the dimensions carried on the input line', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    const entry = receiptEntry()
-    entry.lines[0]!.dimensions = { channel: 'dealer' }
-
-    await postEntry(fake.db, { organizationId: ORG, entry, lock: OPEN })
-
-    expect(fake.lines[0]).toMatchObject({ dimensions: { channel: 'dealer' } })
-    // Absent on the input line becomes null on the stored row, never undefined.
-    expect(fake.lines[1]).toMatchObject({ dimensions: null })
-  })
-
-  it('leaves the column null when no line carries a dimension', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
-
-    expect(fake.lines.map((line) => (line as { dimensions?: unknown }).dimensions)).toEqual([
-      null,
-      null,
-    ])
-  })
-})
-
-// ── Convergence ────────────────────────────────────────────────────────────
-
-describe('the claim', () => {
-  it('converges on already_posted for a second run and writes no second row', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    const first = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-    })
-    const second = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-    })
-
-    expect(second.status).toBe('already_posted')
-    expect(second.glPostingId).toBe(first.glPostingId)
-    expect(second.docNumber).toBe(first.docNumber)
-    expect(second.providerId).toBe('none')
-    expect(fake.postings).toHaveLength(1)
-    // A second run must not append a second set of lines to the same header.
-    expect(fake.lines).toHaveLength(2)
-  })
-
-  it('mints the same requestId on both runs - no run salt', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    const seen = stubProvider(() =>
-      ok({ status: 'posted', externalId: 'qb_1', providerId: 'stub' })
-    )
-
-    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
-    const firstKey = seen[0]!.idempotencyKey
-
-    // A different fake, so the second run claims rather than converging - which
-    // is the case where a differing key would go unnoticed.
-    const other = createFakeDb(FULL_CHART)
-    await postEntry(other.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
-
-    expect(seen[1]!.idempotencyKey).toBe(firstKey)
-    // And it is the value the row was claimed with, read back rather than
-    // recomputed at the call site.
-    expect(firstKey).toBe(fake.postings[0]!.requestId)
-  })
-
-  it('lets exactly one of two concurrent runs claim the period', async () => {
-    const fake = createFakeDb(FULL_CHART)
-
-    // Yield inside the claim's critical section. Without the mutex both runs
-    // would read an empty table here and both would insert.
-    fake.setBeforeClaimCommit(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-
-    const [a, b] = await Promise.all([
-      postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN }),
-      postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN }),
-    ])
-
-    expect(fake.postings).toHaveLength(1)
-    const statuses = [a.status, b.status].sort()
-    expect(statuses).toEqual(['already_posted', 'not_connected'])
-    // The loser learns the winner's row rather than being told to retry.
-    expect(a.glPostingId).toBe(b.glPostingId)
-    expect(a.glPostingId).toBe(fake.postings[0]!.id)
-  })
-
-  it('surfaces a 23505 on an index the ON CONFLICT target does not cover', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
-
-    // A DIFFERENT claim tuple that mints the SAME document number:
-    // `buildDocNumber` strips hyphens, so '20260818' and '2026-08-18' compact
-    // to one string while the claim's third column sees two. The ON CONFLICT
-    // target therefore does not match and GlPosting_org_docNumber_key raises
-    // 23505 out of a statement that has an ON CONFLICT clause sitting there.
-    const collision = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry({ periodKey: '20260818' }),
-      lock: OPEN,
-    })
-
-    expect(collision.status).toBe('error')
-    expect(collision.failureClass).toBe('data')
-    expect(collision.retryable).toBe(false)
-    expect(collision.error).toContain('AUXX-RCP-20260818')
-    expect(collision.error).toContain('already used')
-    expect(fake.postings).toHaveLength(1)
-  })
-})
-
-// ── Refusals, and that none of them write ──────────────────────────────────
-
-describe('refusals', () => {
-  it('refuses a month-end inventory posting that carries no assertions', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry({ postingType: 'month_end_inventory', periodKey: '2026-08' }),
-      lock: OPEN,
-    })
-
-    // A month-end entry ASSERTS a balance rather than accumulating one, so the
-    // next close reads its opening figures out of this row's draft. Written
-    // without them it would hold the period - nothing can repair a claimed
-    // period - and leave the next month computing a delta from nothing. That
-    // entry balances perfectly, which is why this door exists.
-    expect(result.status).toBe('error')
-    expect(result.failureClass).toBe('data')
-    expect(result.retryable).toBe(false)
-    expect(result.error).toContain('assertions')
-    // Refused BEFORE the claim: nothing holds the period.
-    expect(fake.postings).toHaveLength(0)
-    expect(fake.lines).toHaveLength(0)
-  })
-
-  it('accepts a month-end inventory posting WITH assertions, and stores them verbatim', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    const snapshot = {
-      balances: { inventory_raw_materials: 0, inventory_wip: 0, inventory_finished_goods: 0 },
-      activityTotals: { absorbedLabor: 0, absorbedOverhead: 0, inventoryAdjustments: 0 },
-    }
-    await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry({ postingType: 'month_end_inventory', periodKey: '2026-08' }),
-      lock: OPEN,
-      assertions: { kind: 'month_end_inventory', before: snapshot, after: snapshot },
-    })
-
-    const draft = fake.postings[0]!.draft as { assertions?: { kind: string } }
-    expect(draft.assertions?.kind).toBe('month_end_inventory')
-  })
-
-  it('uses the persisted close when a caller supplies a stale open lock', async () => {
     h.lockedThroughMonth = '2026-08'
-    const fake = createFakeDb(FULL_CHART)
-    const result = await postEntry(fake.db, {
+    const result = await postDraft(fake.db, {
       organizationId: ORG,
-      entry: receiptEntry(),
+      glPostingId: drafted.glPostingId as string,
       lock: OPEN,
-    })
-    expect(result.status).toBe('period_closed')
-    expect(fake.postings).toHaveLength(0)
-    expect(fake.lines).toHaveLength(0)
-  })
-
-  it('uses an explicitly reopened database period instead of a stale closed preview', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: { lockedThroughMonth: '2026-08' },
-    })
-    expect(result.status).toBe('not_connected')
-    expect(fake.postings).toHaveLength(1)
-  })
-
-  it('refuses a closed period and writes nothing', async () => {
-    h.lockedThroughMonth = '2026-08'
-    const fake = createFakeDb(FULL_CHART)
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: { lockedThroughMonth: '2026-08' },
     })
 
     expect(result.status).toBe('period_closed')
-    expect(result.failureClass).toBe('configuration')
-    expect(result.retryable).toBe(false)
-    expect(result.error).toContain('2026-08')
-    // Absent `glPostingId` is the caller's signal that nothing was written.
-    expect(result.glPostingId).toBeUndefined()
-    expect(fake.postings).toHaveLength(0)
-    expect(fake.lines).toHaveLength(0)
+    expect(fake.postings[0]?.status).toBe('draft')
+    expect(fake.sources.filter((s) => s.linkRole === 'subject')).toHaveLength(0)
   })
 
-  it('names every unmapped role at once, and writes nothing', async () => {
-    const fake = createFakeDb([{ role: 'grni' }, { role: 'inventory_raw_materials' }])
-    const result = await postEntry(fake.db, {
+  it('refuses a posting that is not a draft', async () => {
+    const fake = createFakeDb(CHART)
+    const posted = await postEntry(fake.db, {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
+      mode: 'post',
+      sources: [SUBJECT],
     })
 
-    expect(result.status).toBe('account_unmapped')
-    expect(result.failureClass).toBe('configuration')
-    expect(result.retryable).toBe(false)
-    // A bookkeeper fixing a close needs the list, not a treasure hunt.
-    expect(result.error).toContain('grni')
-    expect(result.error).toContain('inventory_raw_materials')
-    expect(result.glPostingId).toBeUndefined()
-    expect(fake.postings).toHaveLength(0)
-  })
-
-  it('names both totals and the dollar difference on an imbalance, and writes nothing', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    const unbalanced = receiptEntry()
-    unbalanced.lines[0]!.amount = 1_234_000
-    unbalanced.lines[1]!.amount = 1_230_000
-    unbalanced.totalDebit = 1_234_000
-    unbalanced.totalCredit = 1_230_000
-
-    const result = await postEntry(fake.db, {
+    const result = await postDraft(fake.db, {
       organizationId: ORG,
-      entry: unbalanced,
+      glPostingId: posted.glPostingId as string,
       lock: OPEN,
     })
 
-    expect(result.status).toBe('unbalanced')
-    expect(result.failureClass).toBe('data')
-    // Read at 11pm on the 3rd. Both sides and the gap, in dollars.
-    expect(result.error).toContain('$12,340.00')
-    expect(result.error).toContain('$12,300.00')
-    expect(result.error).toContain('$40.00')
-    expect(fake.postings).toHaveLength(0)
-  })
-
-  it('refuses a revision above 0 that names nothing, and a revision 0 that does', async () => {
-    const fake = createFakeDb(FULL_CHART)
-
-    const orphanReversal = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-      revision: 1,
-    })
-    expect(orphanReversal.status).toBe('error')
-    expect(orphanReversal.error).toContain('must name the posting it reverses')
-
-    const originalWithParent = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-      reversesId: 'post_9',
-    })
-    expect(originalWithParent.status).toBe('error')
-    expect(fake.postings).toHaveLength(0)
-  })
-})
-
-// ── The build/payout period key ────────────────────────────────────────────
-
-describe('a posting whose period key is an id, not a date', () => {
-  // `build` keys on `build.number` and `payout` on the payout id, deliberately:
-  // two builds in one day would otherwise collide into one entry. Those keys do
-  // not parse, and `isPeriodLocked` short-circuits while nothing is closed - so
-  // this is invisible until an org closes its FIRST month.
-  const buildEntryFixture = (): BuiltEntry =>
-    receiptEntry({ postingType: 'build', periodKey: 'BLD-0007', txnDate: '2026-09-04' })
-
-  it('does not throw once a lock exists, and evaluates the lock against txnDate', async () => {
-    h.lockedThroughMonth = '2026-08'
-    const fake = createFakeDb(FULL_CHART)
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: buildEntryFixture(),
-      lock: { lockedThroughMonth: '2026-08' },
-    })
-
-    expect(result.status).toBe('not_connected')
-    expect(result.docNumber).toBe('AUXX-BLD-BLD0007')
-    expect(fake.postings).toHaveLength(1)
-  })
-
-  it('still refuses when the txnDate falls in a closed month', async () => {
-    h.lockedThroughMonth = '2026-08'
-    const fake = createFakeDb(FULL_CHART)
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry({ postingType: 'build', periodKey: 'BLD-0008', txnDate: '2026-07-30' }),
-      lock: { lockedThroughMonth: '2026-08' },
-    })
-
-    expect(result.status).toBe('period_closed')
-    expect(fake.postings).toHaveLength(0)
-  })
-
-  it('refuses rather than posting blind when neither key can be read as a period', async () => {
-    h.lockedThroughMonth = '2026-08'
-    const fake = createFakeDb(FULL_CHART)
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry({ postingType: 'build', periodKey: 'BLD-0009', txnDate: 'not-a-date' }),
-      lock: { lockedThroughMonth: '2026-08' },
-    })
-
-    // NOT `period_closed`: telling a bookkeeper to reopen a month that was
-    // never the problem is worse than telling them the key is wrong.
     expect(result.status).toBe('error')
-    expect(result.failureClass).toBe('configuration')
-    expect(fake.postings).toHaveLength(0)
+    expect(result.error).toContain('not draft')
   })
 })
 
-// ── The provider ───────────────────────────────────────────────────────────
+// ── reverseEntry ───────────────────────────────────────────────────────────
 
-describe('the provider outcome', () => {
-  it('records a successful push on the row in one update', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    stubProvider(() => ok({ status: 'posted', externalId: 'qb_77', providerId: 'stub' }))
-
-    const result = await postEntry(fake.db, {
+describe('reverseEntry', () => {
+  it('releases the original claim so the source can post again', async () => {
+    const fake = createFakeDb(CHART)
+    const posted = await postEntry(fake.db, {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
+      mode: 'post',
+      sources: [SUBJECT],
     })
 
-    expect(result.status).toBe('posted')
-    expect(result.providerEntryId).toBe('qb_77')
-    const row = fake.postings[0]!
-    expect(row.status).toBe('posted')
-    // GlPosting_posted_check is `status <> 'posted' OR postedAt IS NOT NULL`,
-    // so these two cannot be separate statements.
-    expect(row.postedAt).toBeInstanceOf(Date)
-    expect(row.providerEntryId).toBe('qb_77')
-  })
-
-  it('stamps the TENANT the adapter answered with, beside the entry id', async () => {
-    // 🛑 A provider entry id is a per-company sequence, so `qb_77` without the
-    // company it lives in is a pointer with no address space - and it can never
-    // be reconstructed afterwards, because the company connected TODAY is right
-    // only for an org that never switched. Task 24 §2.
-    const fake = createFakeDb(FULL_CHART)
-    stubProvider(() =>
-      ok({ status: 'posted', externalId: 'qb_77', providerId: 'stub', tenantId: 'realm_1' })
-    )
-
-    const result = await postEntry(fake.db, {
+    const reversal = await reverseEntry(fake.db, {
       organizationId: ORG,
-      entry: receiptEntry(),
+      glPostingId: posted.glPostingId as string,
       lock: OPEN,
     })
 
-    expect(result.providerTenantId).toBe('realm_1')
-    expect(fake.postings[0]!.providerTenantId).toBe('realm_1')
+    expect(reversal.status).toBe('not_connected')
+    expect(reversal.docNumber).toBe('AUXX-RCP-20260818-R1')
+    expect(fake.postings.find((p) => p.id === posted.glPostingId)?.status).toBe('reversed')
+
+    // 🛑 The original's subject row is GONE and the reversal's own subject names
+    // the posting it reverses, so the goods receipt is claimable again.
+    const subjects = fake.sources.filter((s) => s.linkRole === 'subject')
+    expect(subjects).toHaveLength(1)
+    expect(subjects[0]).toMatchObject({
+      sourceKind: 'gl_posting',
+      sourceId: posted.glPostingId,
+      occurrence: 'reversal',
+    })
+
+    const again = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry({ periodKey: '2026-08-20', txnDate: '2026-08-20' }),
+      lock: OPEN,
+      mode: 'post',
+      sources: [SUBJECT],
+    })
+    expect(again.status).toBe('not_connected')
+    expect(again.glPostingId).not.toBe(posted.glPostingId)
   })
 
-  it('stamps a NULL tenant for a provider that has none, rather than refusing', async () => {
-    // `NoneAccountingProvider` has no tenant and must not be forced to invent
-    // one. NULL here means "no export reached a provider", which is a normal
-    // permanent state under P1 - not a missing value to be filled in later.
-    const fake = createFakeDb(FULL_CHART)
-
-    const result = await postEntry(fake.db, {
+  it('refuses to reverse anything but a posted entry', async () => {
+    const fake = createFakeDb(CHART)
+    const drafted = await postEntry(fake.db, {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
+      mode: 'draft',
+      sources: [SUBJECT],
     })
 
-    expect(result.status).toBe('not_connected')
-    expect(result.providerTenantId).toBeUndefined()
-    expect(fake.postings[0]!.providerTenantId).toBeNull()
-  })
-
-  it('clears the refusal text on a successful export, and keeps the attempt count', async () => {
-    // Task 24 §6.2. `attempts` is the record that this export was hard and stays
-    // true after a success; `failureReason` names a refusal that no longer
-    // applies, and every screen reads the column as current.
-    const fake = createFakeDb(FULL_CHART)
-    stubProvider(() => ok({ status: 'posted', externalId: 'qb_77', providerId: 'stub' }))
-
-    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
-
-    expect(fake.updates[0]).toMatchObject({ exportStatus: 'exported', failureReason: null })
-    expect(fake.updates[0]).not.toHaveProperty('attempts')
-  })
-
-  it('passes healed and already_posted through untouched - both are successes', async () => {
-    for (const status of ['healed', 'already_posted'] as const) {
-      // The manager caches a provider instance by id, so re-registering under
-      // the same id inside the loop would keep the FIRST answer.
-      __resetAccountingProvidersForTests()
-      const fake = createFakeDb(FULL_CHART)
-      stubProvider(() => ok({ status, externalId: 'qb_9', providerId: 'stub' }))
-      const result = await postEntry(fake.db, {
-        organizationId: ORG,
-        entry: receiptEntry(),
-        lock: OPEN,
-      })
-      expect(result.status).toBe(status)
-      expect(fake.postings[0]!.status).toBe('posted')
-    }
-  })
-
-  it('routes a classified provider fault and marks the row failed', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    stubProvider(() =>
-      err(
-        new ProviderPostError('Rate limited', {
-          failureClass: 'transport',
-          providerId: 'stub',
-          faultCode: '429',
-        })
-      )
-    )
-
-    const result = await postEntry(fake.db, {
+    const result = await reverseEntry(fake.db, {
       organizationId: ORG,
-      entry: receiptEntry(),
+      glPostingId: drafted.glPostingId as string,
       lock: OPEN,
     })
 
-    // 🛑 `posted`, not `error`. The LEDGER took this entry; the provider only
-    // refused a copy of it. Asserting `error` here is what let a caller roll
-    // back a good document - see plans/accounting/export-state-split.md.
-    expect(result.status).toBe('posted')
-    expect(result.exportStatus).toBe('failed')
-    expect(result.failureClass).toBe('transport')
-    expect(result.retryable).toBe(true)
-    expect(result.error).toContain('429')
-    // The claim, the lines and the requestId all survive: `retryExport` reuses them.
-    const row = fake.postings[0]!
-    expect(row.status).toBe('posted')
-    expect(row.exportStatus).toBe('failed')
-    expect(row.attempts).toBe(1)
-    expect(row.failureReason).toContain('Rate limited')
-    expect(fake.lines).toHaveLength(2)
-  })
-
-  it('never retries a configuration or data fault the adapter classified', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    stubProvider(() =>
-      err(new ProviderPostError('Imbalanced', { failureClass: 'data', providerId: 'stub' }))
-    )
-
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-    })
-    expect(result.failureClass).toBe('data')
-    expect(result.retryable).toBe(false)
-  })
-
-  it('treats an UNCLASSIFIED provider error as not retryable', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    stubProvider(() => err(new Error('socket hang up')))
-
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-    })
-
-    // The worst case behind an unclassified throw is "the entry WAS accepted and
-    // the connection dropped". Auto-retrying that is safe only if the adapter
-    // has its own idempotency ladder, and the core cannot assume one exists.
-    // A human clicking Post again is the cheaper half of the trade.
-    expect(result.failureClass).toBe('transport')
-    expect(result.retryable).toBe(false)
-    // The EXPORT is what failed. The entry stays in the books either way.
-    expect(fake.postings[0]!.status).toBe('posted')
-    expect(fake.postings[0]!.exportStatus).toBe('failed')
-  })
-
-  it('still reports the posting when the outcome stamp itself fails', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    stubProvider(() => ok({ status: 'posted', externalId: 'qb_55', providerId: 'stub' }))
-    fake.setUpdateThrows(true)
-
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-    })
-
-    // The provider has ALREADY accepted the entry. Reporting `error` with no
-    // `glPostingId` would tell the caller nothing was written, about a row that
-    // is sitting in a general ledger.
-    expect(result.status).toBe('posted')
-    expect(result.glPostingId).toBe('post_1')
-    expect(result.providerEntryId).toBe('qb_55')
-    // The row's EXPORT state stays `pending`: pushed, unconfirmed - which is
-    // exactly what the adapter's document-number heal repairs on the next
-    // attempt. Its LEDGER state was settled by the claim and is never in doubt.
-    expect(fake.postings[0]!.status).toBe('posted')
-    expect(fake.postings[0]!.exportStatus).toBe('pending')
-  })
-
-  it('never throws, whatever the provider does', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    registerAccountingProvider('explodes', async () => ({
-      id: 'explodes',
-      ...NO_ACCOUNT_MAP,
-      resolveAccount: async (_org: string, code: string) => ok(code),
-      postEntry: async () => {
-        throw new Error('boom')
-      },
-    }))
-    setConnectedProviderResolver(async () => 'explodes')
-
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-    })
     expect(result.status).toBe('error')
-    expect(result.error).toContain('boom')
+    expect(result.error).toContain('not posted')
   })
 })
 
-// ── A pinned delivery intent (brief 62 §4) ──────────────────────────────────
+// ── listPostingsForSource ──────────────────────────────────────────────────
 
-describe('a pinned delivery intent', () => {
-  it('skips the inline provider push and reports the export as pending', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    const seen = stubProvider(() =>
-      ok({ status: 'posted', externalId: 'qb_1', providerId: 'stub' })
-    )
-
-    const result = await postEntry(fake.db, {
+describe('listPostingsForSource', () => {
+  it('returns the posting with the link role it matched on', async () => {
+    const fake = createFakeDb(CHART)
+    const posted = await postEntry(fake.db, {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
-      deliveryIntent: { kind: 'manual', connectionId: 'conn_1' },
+      mode: 'post',
+      sources: [SUBJECT, PARENT],
     })
 
-    expect(result.status).toBe('posted')
-    expect(result.exportStatus).toBe('pending')
-    // The delivery lane owns the push from here - never the provider stub.
-    expect(seen).toHaveLength(0)
-    expect(fake.postings[0]!.exportStatus).toBe('pending')
-  })
-})
-
-// ── Preview ────────────────────────────────────────────────────────────────
-
-describe('previewEntry', () => {
-  it('persists nothing', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    const preview = await previewEntry(fake.db, {
+    const bySubject = await listPostingsForSource(fake.db, {
       organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
+      sourceKind: SUBJECT.sourceKind,
+      sourceId: SUBJECT.sourceId,
+    })
+    expect(bySubject.isOk()).toBe(true)
+    expect(bySubject._unsafeUnwrap()).toHaveLength(1)
+    expect(bySubject._unsafeUnwrap()[0]).toMatchObject({
+      id: posted.glPostingId,
+      linkRole: 'subject',
+      occurrence: 'original',
     })
 
-    expect(fake.postings).toHaveLength(0)
-    expect(fake.lines).toHaveLength(0)
-    expect(preview.docNumber).toBe('AUXX-RCP-20260818')
-    expect(preview.totalMinor).toBe(125_000)
-    expect(preview.lines.map((line) => line.accountCode)).toEqual(['1310', '2160'])
-    expect(preview.lines[0]!.accountName).toBe('Raw Materials Inventory')
-    expect(preview.blockedBy).toBeUndefined()
-  })
-
-  it('still shows the lines it would post when the period is closed', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    const preview = await previewEntry(fake.db, {
+    // The parent link is what lets a purchase order list its receipts' entries.
+    const byParent = await listPostingsForSource(fake.db, {
       organizationId: ORG,
-      entry: receiptEntry(),
-      lock: { lockedThroughMonth: '2026-08' },
+      sourceKind: PARENT.sourceKind,
+      sourceId: PARENT.sourceId,
     })
-
-    expect(preview.blockedBy?.status).toBe('period_closed')
-    // The whole point of a preview is seeing the entry before it lands.
-    expect(preview.lines).toHaveLength(2)
-    expect(fake.postings).toHaveLength(0)
+    expect(byParent._unsafeUnwrap()[0]).toMatchObject({
+      id: posted.glPostingId,
+      linkRole: 'parent',
+    })
   })
 
-  it('reports the same refusal postEntry would, for an unmapped role', async () => {
-    const fake = createFakeDb([
-      { role: 'grni', account: GRNI },
-      { role: 'inventory_raw_materials' },
-    ])
-    const preview = await previewEntry(fake.db, {
+  it('answers with an empty list for a source that produced nothing', async () => {
+    const fake = createFakeDb(CHART)
+    const result = await listPostingsForSource(fake.db, {
       organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
+      sourceKind: 'goods_receipt',
+      sourceId: 'rcpt_nothing',
     })
-
-    expect(preview.blockedBy?.status).toBe('account_unmapped')
-    expect(preview.blockedBy?.error).toContain('inventory_raw_materials')
-    expect(preview.lines).toHaveLength(0)
-  })
-})
-
-// ── HANDOFF slot 1A: code lines and the inventory refusal ─────────────────
-//
-// A manual entry names accounts by CODE, so it is invisible to
-// `findWriterConflicts` in `regime.ts` by construction - a code line carries no
-// role. That is deliberate for `cash` (an opening bank balance IS a manual cash
-// line) and dangerous for the three inventory accounts, which the L1 month-end
-// entry ASSERTS to a computed balance. Two writers there is not additive: the
-// next close moves the account back and dumps the residual into the COGS plug,
-// where it reads exactly like consumption, and both entries balance.
-
-/** A two-line manual entry, coded by account number. */
-function manualEntry(codes: [string, string]): BuiltEntry {
-  return {
-    postingType: 'manual_journal',
-    periodKey: 'JNL-0007',
-    txnDate: '2026-08-18',
-    lines: [
-      {
-        accountCode: codes[0],
-        direction: 'debit',
-        amount: 50_000,
-        sourceType: 'journal_entry',
-        sourceId: 'je_1',
-        sortOrder: 0,
-      },
-      {
-        accountCode: codes[1],
-        direction: 'credit',
-        amount: 50_000,
-        sourceType: 'journal_entry',
-        sourceId: 'je_1',
-        sortOrder: 1,
-      },
-    ],
-    totalDebit: 50_000,
-    totalCredit: 50_000,
-  }
-}
-
-const RENT: Account = {
-  id: 'acct_rent',
-  code: '6200',
-  name: 'Rent Expense',
-  accountType: 'expense',
-}
-const ACCRUED: Account = {
-  id: 'acct_accrued',
-  code: '2100',
-  name: 'Accrued Liabilities',
-  accountType: 'liability',
-}
-
-/** The full chart plus two role-less accounts a human would code against. */
-const MANUAL_CHART: Chart[] = [
-  ...FULL_CHART,
-  { role: 'unused_rent', account: RENT },
-  { role: 'unused_accrued', account: ACCRUED },
-]
-
-describe('code-based entries', () => {
-  it('posts a manual entry coded by account number, with no role on the lines', async () => {
-    const fake = createFakeDb(MANUAL_CHART)
-    setConnectedProviderResolver(async () => null)
-
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: manualEntry(['6200', '2100']),
-      lock: OPEN,
-    })
-
-    expect(result.status).toBe('not_connected')
-    expect(fake.lines.map((line) => line.accountCode)).toEqual(['6200', '2100'])
-    // 🛑 Null, not the empty string: `GlPostingLine.accountRole` is nullable
-    // precisely so a coded line can say "there was no role", and `reverseEntry`
-    // branches on it to skip the drift check.
-    expect(fake.lines.map((line) => line.accountRole)).toEqual([null, null])
-  })
-
-  it('mints a document number keyed on the entry number', async () => {
-    const fake = createFakeDb(MANUAL_CHART)
-    setConnectedProviderResolver(async () => null)
-
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: manualEntry(['6200', '2100']),
-      lock: OPEN,
-    })
-    expect(result.docNumber).toBe('AUXX-JNL-JNL0007')
-  })
-
-  // `account_invalid`, not `account_unmapped`: "you never mapped this role" and
-  // "there is no such account" send two different people to two different
-  // screens, and the remedy card branches on the status.
-  it('refuses a code the chart does not hold as account_invalid, writing nothing', async () => {
-    const fake = createFakeDb(MANUAL_CHART)
-    setConnectedProviderResolver(async () => null)
-
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: manualEntry(['9999', '2100']),
-      lock: OPEN,
-    })
-
-    expect(result.status).toBe('account_invalid')
-    expect(result.error).toMatch(/9999/)
-    expect(fake.postings).toHaveLength(0)
-    expect(fake.lines).toHaveLength(0)
-  })
-
-  it('refuses an inventory account named by code, naming it and the remedy', async () => {
-    const fake = createFakeDb(MANUAL_CHART)
-    setConnectedProviderResolver(async () => null)
-
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      // 1310 carries `inventory_raw_materials` in this chart.
-      entry: manualEntry(['1310', '2100']),
-      lock: OPEN,
-    })
-
-    expect(result.status).toBe('inventory_role_refused')
-    expect(result.error).toMatch(/1310 Raw Materials Inventory/)
-    expect(result.error).toMatch(/inventory_raw_materials/)
-    expect(result.error).toMatch(/stock movement/i)
-    expect(fake.postings).toHaveLength(0)
-  })
-
-  it('surfaces the inventory refusal on a PREVIEW too, as blockedBy', async () => {
-    const fake = createFakeDb(MANUAL_CHART)
-
-    const preview = await previewEntry(fake.db, {
-      organizationId: ORG,
-      entry: manualEntry(['1310', '2100']),
-      lock: OPEN,
-    })
-
-    expect(preview.blockedBy?.status).toBe('inventory_role_refused')
-    expect(preview.blockedBy?.error).toMatch(/1310/)
-    // The lines still resolve, so the drawer can show what it WOULD have posted
-    // beside the refusal - a preview that refuses should still show its work.
-    expect(preview.lines.map((line) => line.accountCode)).toEqual(['1310', '2100'])
-  })
-
-  // 🛑 An opening trial balance MUST name the bank balance, so `cash` is
-  // deliberately outside this guard even though `SINGLE_WRITER_ROLES` includes
-  // it: `bank_deposit` is the single ROLE-emitting writer of cash, and a
-  // hand-keyed opening line carries no role.
-  it('does NOT refuse an opening entry that names the cash account', async () => {
-    const CASH: Account = { id: 'acct_cash', code: '1000', name: 'Cash', accountType: 'asset' }
-    const fake = createFakeDb([...MANUAL_CHART, { role: 'cash', account: CASH }])
-    setConnectedProviderResolver(async () => null)
-
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: {
-        ...manualEntry(['1000', '2100']),
-        postingType: 'opening_balance',
-        periodKey: '2025-12-31',
-        txnDate: '2025-12-31',
-      },
-      lock: OPEN,
-    })
-
-    // `not_exported`, not `not_connected`, even though the resolver above
-    // answers `null`: both reasons apply here and the ROUTE short-circuits
-    // first. That is the right precedence - the type-level fact is the durable
-    // one, and connecting a provider tomorrow would not make this entry export.
-    // What this test is actually about is the line below: the cash-account
-    // guard does not refuse the entry (brief 22 §5).
-    expect(result.status).toBe('not_exported')
-    expect(fake.lines.map((line) => line.accountCode)).toEqual(['1000', '2100'])
-  })
-
-  // The guard is scoped to the two types a HUMAN authors. Every other type is
-  // produced by a builder that emits roles, and `regime.ts` governs those -
-  // declared once, by a human, in that file.
-  it('leaves a role-based entry that drives inventory alone', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    setConnectedProviderResolver(async () => null)
-
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-    })
-    expect(result.status).toBe('not_connected')
-  })
-})
-
-// ── The per-line why (brief 28 §5) ──────────────────────────────────────────
-
-describe('the reasons on the draft', () => {
-  it('freezes the builder reasons into the envelope beside the entry', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    const reasons = [{ line: 1, sentence: 'Order #1 not yet paid, so accounts receivable.' }]
-    await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: { ...receiptEntry(), reasons },
-      lock: OPEN,
-    })
-
-    const draft = fake.postings[0]!.draft as { reasons?: unknown; entry: { reasons?: unknown } }
-    expect(draft.reasons).toEqual(reasons)
-    expect(draft.entry.reasons).toEqual(reasons)
-  })
-
-  it('writes no reasons field for an entry whose builder emitted none', async () => {
-    const fake = createFakeDb(FULL_CHART)
-    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
-
-    expect((fake.postings[0]!.draft as { reasons?: unknown }).reasons).toBeUndefined()
+    expect(result._unsafeUnwrap()).toEqual([])
   })
 })

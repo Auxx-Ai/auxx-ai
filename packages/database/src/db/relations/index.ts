@@ -2,11 +2,9 @@
 // Barrel export for grouped relations
 
 export {
-  accountingEffectRelations,
-  accountingWorkBasisRelations,
-  accountingWorkRelations,
   externalAccountingBookRelations,
   externalBookConnectionRelations,
+  glPostingSourceRelations,
 } from './accounting'
 export * from './build'
 export * from './commerce'

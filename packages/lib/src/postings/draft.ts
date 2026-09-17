@@ -20,10 +20,10 @@
 // a parser that fails loudly rather than letting `undefined` flow into
 // arithmetic that decides what a journal entry says.
 
-import { z } from 'zod'
 import { UnprocessableEntityError } from '../errors'
 import type {
   BuiltEntry,
+  GlPostingSourceInput,
   MonthEndInventorySnapshot,
   PostingAssertions,
   PostingReason,
@@ -41,38 +41,6 @@ export type { MonthEndInventorySnapshot, PostingAssertions } from './types'
 /** The envelope version. Bump only for a shape change readers must branch on. */
 export const POSTING_DRAFT_VERSION = 1
 
-const postingAccountingMembershipSchema = z
-  .strictObject({
-    version: z.literal(1),
-    membershipHash: z.string().regex(/^[0-9a-f]{64}$/),
-    representation: z.literal('journal'),
-    members: z
-      .array(
-        z.strictObject({
-          workId: z.string().min(1),
-          effectKey: z.string().min(1),
-          basisVersion: z.number().int().positive(),
-          basisHash: z.string().regex(/^[0-9a-f]{64}$/),
-          expectedCorrectionHeadId: z.string().min(1).nullable(),
-        })
-      )
-      .min(1),
-  })
-  .refine(
-    (value) =>
-      new Set(value.members.map((m) => m.workId)).size === value.members.length &&
-      new Set(value.members.map((m) => m.effectKey)).size === value.members.length,
-    'Accounting membership must contain distinct work and effect keys'
-  )
-
-/** Exact effect membership and correction ancestry saved with a local journal. */
-export type PostingAccountingMembership = z.infer<typeof postingAccountingMembershipSchema>
-
-/** Refuse malformed or ambiguous saved membership before using it as accounting authority. */
-export function parsePostingAccountingMembership(value: unknown): PostingAccountingMembership {
-  return postingAccountingMembershipSchema.parse(value)
-}
-
 /**
  * The audit record of WHAT WAS POSTED, verbatim.
  *
@@ -81,7 +49,6 @@ export function parsePostingAccountingMembership(value: unknown): PostingAccount
  * ledger must not have.
  */
 export interface PostingDraftV1 {
-  accountingMembership?: PostingAccountingMembership
   v: typeof POSTING_DRAFT_VERSION
   docNumber: string
   revision: number
@@ -117,6 +84,14 @@ export interface PostingDraftV1 {
    * their line numbers - and the drawer prefixes it with "Reversing:".
    */
   reasons?: PostingReason[]
+  /**
+   * What the entry is FOR, as the writer supplied it.
+   *
+   * 🛑 Frozen here because a DRAFT writes no subject row - the subject row is
+   * the claim and a draft holds none - so this is the only record of which
+   * source `postDraft` must claim when the draft is approved.
+   */
+  sources?: GlPostingSourceInput[]
 }
 
 /**
@@ -146,11 +121,10 @@ export function buildPostingDraft(input: {
   resolvedLines: Array<ResolvedPostingLine & { accountRole: string | null }>
   assertions?: PostingAssertions
   reasons?: PostingReason[]
-  accountingMembership?: PostingAccountingMembership
+  sources?: GlPostingSourceInput[]
 }): PostingDraftV1 {
   return {
     v: POSTING_DRAFT_VERSION,
-    accountingMembership: input.accountingMembership,
     docNumber: input.docNumber,
     revision: input.revision,
     memo: input.memo,
@@ -160,6 +134,7 @@ export function buildPostingDraft(input: {
     // Only ever present with content: `[]` and `undefined` both mean "no forks",
     // and storing one spelling keeps the jsonb honest about it.
     reasons: input.reasons && input.reasons.length > 0 ? input.reasons : undefined,
+    sources: input.sources && input.sources.length > 0 ? input.sources : undefined,
   }
 }
 
@@ -297,10 +272,6 @@ export function parsePostingDraft(value: unknown): PostingDraftV1 {
 
   return {
     v: POSTING_DRAFT_VERSION,
-    accountingMembership:
-      value.accountingMembership == null
-        ? undefined
-        : parsePostingAccountingMembership(value.accountingMembership),
     docNumber: String(value.docNumber ?? ''),
     revision: typeof value.revision === 'number' ? value.revision : 0,
     memo: typeof value.memo === 'string' ? value.memo : undefined,
@@ -310,5 +281,6 @@ export function parsePostingDraft(value: unknown): PostingDraftV1 {
       : [],
     assertions: parsedAssertions,
     reasons: readDraftReasons(value),
+    sources: Array.isArray(value.sources) ? (value.sources as GlPostingSourceInput[]) : undefined,
   }
 }

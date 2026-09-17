@@ -853,7 +853,7 @@ export type GlPostingType = (typeof GlPostingTypeValues)[number]
  * never ledger states; they described a push. See
  * {@link GlPostingExportStatusValues}.
  */
-export const GlPostingStatusValues = ['posted', 'reversed'] as const
+export const GlPostingStatusValues = ['draft', 'posted', 'reversed'] as const
 export type GlPostingStatus = (typeof GlPostingStatusValues)[number]
 
 /**

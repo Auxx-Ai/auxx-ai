@@ -21,19 +21,17 @@
 // it as the `-R<revision>` suffix that keeps `GlPosting_org_docNumber_key`
 // satisfiable.
 //
-// An effect-backed original's claim is released as part of the reversal, so its
-// source can be posted again - see plans/accounting/tasks/done/62-correcting-an-effect-backed-posting.md.
+// The original's subject claim is DELETED in the reversal's transaction, so its
+// source can post again (TARGET §1). The reversal writes its own subject row,
+// `(gl_posting, <original id>, occurrence 'reversal')`.
 //
 // No permission checks here. The router asserts (docs/lib-module-guide.md §6).
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq } from 'drizzle-orm'
-import { AuxxError } from '../errors'
 import { buildEntry } from './build-entry'
-import { enqueueAccountingDelivery, planAccountingDeliveryInTx } from './delivery'
 import { parsePostingDraft, readDraftReasons, requiresAssertions, reverseAssertions } from './draft'
-import type { PostingDeliveryIntent } from './insert-posting'
 import { didLedgerAccept } from './ledger-accepted'
 import type { PeriodLock } from './periods'
 import { postEntry } from './post-entry'
@@ -111,9 +109,9 @@ export async function reverseEntry(
         revision: schema.GlPosting.revision,
         status: schema.GlPosting.status,
         docNumber: schema.GlPosting.docNumber,
-        draft: schema.GlPosting.draft,
-        deliveryIntent: schema.GlPosting.deliveryIntent,
-        intendedBookConnectionId: schema.GlPosting.intendedBookConnectionId,
+        built: schema.GlPosting.built,
+        storeId: schema.GlPosting.storeId,
+        railId: schema.GlPosting.railId,
         exportStatus: schema.GlPosting.exportStatus,
       })
       .from(schema.GlPosting)
@@ -233,7 +231,7 @@ export async function reverseEntry(
     // so line N of the reversal backs out line N of the original and the same
     // sentence explains both. The drawer prefixes it with "Reversing:". Read
     // leniently - an envelope without the field is an ordinary older entry.
-    const reasons = readDraftReasons(original.draft)
+    const reasons = readDraftReasons(original.built)
     const entry = reasons ? { ...built, reasons } : built
 
     // ── The assertions, swapped ────────────────────────────────────────────
@@ -255,24 +253,8 @@ export async function reverseEntry(
     // fatal: writing the reversal without them would silently break the chain
     // the next close reads its opening figures from.
     const originalAssertions = requiresAssertions(original.postingType as PostingType)
-      ? parsePostingDraft(original.draft).assertions
+      ? parsePostingDraft(original.built).assertions
       : undefined
-
-    // ── The provider: both halves or neither (R4) ──────────────────────────
-    // A reversal inherits the original's answer rather than choosing its own:
-    // `null` is the legacy inline route, unchanged; `not_required` stays
-    // `not_required`; and a pinned destination the provider actually received
-    // is inherited so the pair travels together. An original still pending,
-    // held or failed at the provider is `not_required` on its reversal - a
-    // `reversed` row with no copy outstanding is never sent later either.
-    const deliveryIntent: PostingDeliveryIntent | undefined =
-      original.deliveryIntent === null
-        ? undefined
-        : original.deliveryIntent === 'not_required'
-          ? { kind: 'not_required' }
-          : original.exportStatus === 'exported' && original.intendedBookConnectionId
-            ? { kind: original.deliveryIntent, connectionId: original.intendedBookConnectionId }
-            : { kind: 'not_required' }
 
     logger.info('Reversing posting', {
       organizationId,
@@ -280,7 +262,6 @@ export async function reverseEntry(
       docNumber: original.docNumber,
       revision: original.revision + 1,
       lineCount: reversedLines.length,
-      deliveryIntent: deliveryIntent?.kind,
     })
 
     const result = await postEntry(db, {
@@ -292,33 +273,20 @@ export async function reverseEntry(
       lock,
       reversesId: original.id,
       revision: original.revision + 1,
-      deliveryIntent,
+      mode: 'post',
+      storeId: original.storeId,
+      railId: original.railId,
+      // The reversal's OWN subject. `markReversedInTx` deletes the original's
+      // subject rows in the same transaction, which is what frees the source.
+      sources: [
+        {
+          sourceKind: 'gl_posting',
+          sourceId: original.id,
+          linkRole: 'subject',
+          occurrence: 'reversal',
+        },
+      ],
     })
-
-    // The delivery lane, not the inline push above, carries a pinned pair.
-    // Best-effort: `sweepAccountingDeliveries` recovers a posted row that
-    // never got planned or enqueued.
-    if (
-      result.status === 'posted' &&
-      deliveryIntent &&
-      (deliveryIntent.kind === 'manual' || deliveryIntent.kind === 'automatic') &&
-      result.glPostingId
-    ) {
-      const glPostingId = result.glPostingId
-      try {
-        await db.transaction((tx) =>
-          planAccountingDeliveryInTx(tx, { organizationId, glPostingId })
-        )
-        if (deliveryIntent.kind === 'automatic')
-          await enqueueAccountingDelivery({ organizationId, glPostingId })
-      } catch (error) {
-        logger.warn('Reversal posted but its delivery was not planned; the sweep will recover it', {
-          organizationId,
-          glPostingId,
-          error: error instanceof AuxxError ? error.message : String(error),
-        })
-      }
-    }
 
     return result
   } catch (error) {

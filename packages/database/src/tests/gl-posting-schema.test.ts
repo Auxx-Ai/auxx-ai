@@ -7,9 +7,8 @@
 // silently regressed, would reintroduce the exact defect the tables exist to
 // fix:
 //
-//  - the four-column claim index IS the double-post defence. Dropping a column
-//    from it (Gap E originally specified three) makes a reversal impossible or
-//    a duplicate possible, with no error anywhere.
+//  - the claim moved to `GlPostingSource`'s partial unique subject index; this
+//    file pins that `GlPosting` no longer carries one of its own.
 //  - `GlPostingLine` having no `updatedAt` is what makes its immutability
 //    STRUCTURAL. On the entity route `updatable: false` was advisory — read by
 //    the grid and by nothing on the write path — and that is precisely what let
@@ -51,22 +50,11 @@ describe('GlPosting', () => {
     expect(GlPosting).toBe(GlPostingFromBarrel)
   })
 
-  it('carries the four-column claim index, unique', () => {
+  it('has no claim index of its own — the claim lives on GlPostingSource', () => {
     const claim = postingConfig.indexes.find(
       (i) => i.config.name === 'GlPosting_org_type_period_revision_key'
     )
-    expect(claim, 'the claim index must exist — it IS the double-post defence').toBeDefined()
-    expect(claim?.config.unique).toBe(true)
-    expect(claim?.config.columns.map((c) => (c as { name: string }).name)).toEqual([
-      'organizationId',
-      'postingType',
-      'periodKey',
-      'revision',
-    ])
-    // Unconditional: a partial claim index would let an excluded row (a
-    // reversed or failed posting) leave the period readable as unclaimed,
-    // which is the archived-exclusion leak the entity route already had.
-    expect(claim?.config.where).toBeUndefined()
+    expect(claim).toBeUndefined()
   })
 
   it('makes a duplicate document number an error rather than a provider surprise', () => {
@@ -103,9 +91,9 @@ describe('GlPosting', () => {
 
   it('keeps the audit record and the deterministic idempotency key as required columns', () => {
     const names = columnNames(postingConfig)
-    expect(names).toContain('draft')
+    expect(names).toContain('built')
     expect(names).toContain('requestId')
-    expect(postingConfig.columns.find((c) => c.name === 'draft')?.notNull).toBe(true)
+    expect(postingConfig.columns.find((c) => c.name === 'built')?.notNull).toBe(true)
     expect(postingConfig.columns.find((c) => c.name === 'requestId')?.notNull).toBe(true)
   })
 
@@ -294,6 +282,10 @@ describe('the enum vocabularies', () => {
     // The reversal itself is an ordinary `posted` entry (decision G4). Without
     // `reversed` there is no way to see that an entry has been backed out.
     expect(glPostingStatus.enumValues).toContain('reversed')
+  })
+
+  it('carries `draft` — an entry with lines, no doc number and no claim', () => {
+    expect(glPostingStatus.enumValues).toContain('draft')
   })
 
   it('matches POSTING_TYPES in packages/lib/src/postings/types.ts', () => {

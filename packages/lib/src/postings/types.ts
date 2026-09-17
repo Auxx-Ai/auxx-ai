@@ -487,9 +487,36 @@ export type PostEntryStatus =
  * literals rather than this type - which is why this exists rather than each
  * interface spelling the union out. See plans/accounting/export-state-split.md.
  */
-export const POSTING_STATUSES = ['posted', 'reversed'] as const
+export const POSTING_STATUSES = ['draft', 'posted', 'reversed'] as const
 
 export type PostingStatus = (typeof POSTING_STATUSES)[number]
+
+/**
+ * How a source relates to the posting on `GlPostingSource`.
+ *
+ * `subject` is what the entry is OF, and its row IS the claim - one live
+ * subject per `(sourceKind, sourceId, occurrence)`. `parent` lets an order list
+ * its fulfillment, receipt and refund postings in one query; `member` names what
+ * a posting summed. See plans/accounting/TARGET.md §1.
+ */
+export const POSTING_LINK_ROLES = ['subject', 'parent', 'counterparty', 'member'] as const
+
+export type PostingLinkRole = (typeof POSTING_LINK_ROLES)[number]
+
+/** One `GlPostingSource` row as a writer supplies it. `occurrence` defaults to `'original'`. */
+export interface GlPostingSourceInput {
+  sourceKind: string
+  sourceId: string
+  linkRole: PostingLinkRole
+  /**
+   * Which pass over the same source this is. `'original'` for the first entry,
+   * `'reversal'` for a reversal's own subject row, or a write-off / application
+   * id for the repeatable actions - it is the fourth column of the claim, so a
+   * second write-off against one invoice is representable and a second issuance
+   * is not.
+   */
+  occurrence?: string
+}
 
 export const POSTING_EXPORT_STATUSES = ['not_required', 'pending', 'exported', 'failed'] as const
 
@@ -675,6 +702,10 @@ export type PostResultStatus =
   // rendering "the entry could not be built" over a set of books that is simply
   // short.
   | 'revenue_incomplete'
+  // `postEntry` with `mode: 'draft'`: a `GlPosting` row exists with its lines
+  // and no doc number, holding no claim. A SUCCESS - `postDraft` promotes it -
+  // but not one the books read, so `didLedgerAccept` is false for it.
+  | 'drafted'
   | 'error'
 
 /**

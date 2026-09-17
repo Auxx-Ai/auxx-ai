@@ -13,29 +13,12 @@ export {
   type GlAccountTypeMeta,
   glAccountTypeMeta,
 } from '../resources/registry/gl-account-type-meta'
-export type {
-  AcceptedPostingResult,
-  PostingReplanResult,
-  PreparedEffectMember,
-  PreparedEffectPosting,
-} from './accept-entry'
 export { accountLabel, compareAccountsByCodeThenName, type NamedAccount } from './account-label'
 export {
   accountSubtypeLabel,
   GL_ACCOUNT_SUBTYPES,
   type GlAccountSubtypeValue,
 } from './account-subtype'
-// ── plans/accounting/tasks/25 4: one credit memo entry per period ───────────
-export {
-  type BuildCreditMemoBatchEntryInput,
-  type BuiltCreditMemoBatchEntry,
-  buildCreditMemoBatchEntry,
-  CREDIT_MEMO_CONTACT_SOURCE_TYPE,
-  type CreditMemoBatchSource,
-  creditMemoBatchPeriodKey,
-  MAX_COMPACT_CREDIT_MEMO_BATCH_KEY,
-  MAX_CREDIT_MEMO_BATCH_ATTEMPT,
-} from './build-credit-memo-batch-entry'
 // ── plans/accounting/tasks/10: credit memos, one document for "you owe us less" ──
 // PURE - reaches nothing but `errors`, `build-entry`, `build-fulfillment-entry`
 // and `period-key`, all of which are already on this surface. The write half
@@ -93,24 +76,6 @@ export {
   EXPENSE_BILL_SOURCE_TYPE,
   type ExpenseBillLineInput,
 } from './build-expense-bill-entry'
-// ── plans/money/tasks/49: one fulfillment posting per day, not per shipment ──
-// PURE. Reaches `errors`, `build-entry`, `build-fulfillment-entry`, `doc-number`
-// and `money/fulfillment-posting/types` (types and constants only, no db), all
-// of which are safe in a browser.
-export {
-  type BuildFulfillmentBatchEntryInput,
-  type BuiltFulfillmentBatchEntry,
-  buildFulfillmentBatchEntry,
-  computeShipmentAmounts,
-  FULFILLMENT_DEBIT_ACCOUNT_ROLE,
-  type FulfillmentBatchSource,
-  type FulfillmentDebitExclusionReason,
-  type FulfillmentDebitResolution,
-  fulfillmentBatchPeriodKey,
-  MAX_COMPACT_FULFILLMENT_BATCH_KEY,
-  MAX_FULFILLMENT_BATCH_ATTEMPT,
-  resolveFulfillmentDebit,
-} from './build-fulfillment-batch-entry'
 // ── HANDOFF slot 2G: the revenue side ───────────────────────────────────────
 // All three builders are PURE and reach nothing but `errors`, `build-entry` and
 // `doc-number`, which are already on this surface. `post-payout-entry.ts` is
@@ -235,21 +200,6 @@ export {
   type DocNumberInput,
 } from './doc-number'
 export {
-  type AcceptedDocumentEffectBasisV1,
-  acceptedDocumentEffectBasisSchema,
-  DOCUMENT_EFFECT_FAMILIES,
-  DOCUMENT_EFFECT_FAMILY_SPEC,
-  type DocumentAccountingBasisV1,
-  type DocumentEffectFamily,
-  type DocumentEffectPostingType,
-  type DocumentWorkBasisInput,
-  documentAccountingBasisSchema,
-  documentEffectFamilySchema,
-  documentRoleScope,
-  documentWorkBasisSchema,
-  isDocumentEffectFamily,
-} from './document-effect-types'
-export {
   type MonthEndInventorySnapshot,
   POSTING_DRAFT_VERSION,
   type PostingAssertions,
@@ -261,23 +211,6 @@ export {
 // Types only - the read touches `@auxx/database` and stays server-only,
 // exported from `./index`. The close console's card renders this shape.
 export type { DuplicateMovementEntry, DuplicateMovementFinding } from './duplicate-movements'
-export {
-  type AcceptedAccountingEffectBasisV1,
-  type AcceptedCustomerReceiptEffectBasisV1,
-  type AcceptedFulfillmentEffectBasisV1,
-  type AccountingWorkBasisInput,
-  type AccountingWorkBasisInputV1,
-  acceptedCustomerReceiptEffectBasisSchema,
-  acceptedFulfillmentEffectBasisSchema,
-  accountingWorkBasisSchema,
-  accountingWorkBasisSchemaV1,
-  type CustomerReceiptAccountingBasisV1,
-  type CustomerReceiptWorkBasisInput,
-  customerReceiptAccountingBasisSchema,
-  customerReceiptWorkBasisSchema,
-  type FulfillmentAccountingBasisV1,
-  fulfillmentAccountingBasisSchema,
-} from './effect-types'
 // The gate's prose and vocabulary. PURE - the queue panel renders findings as
 // rows, and a label that only existed on the server would have to be written a
 // second time in the browser. See `export-gate/findings.ts`'s own header.
@@ -300,7 +233,6 @@ export {
   exportGateStatus,
   liftCloseBlockerItem,
 } from './export-gate/client'
-export type { PostingDeliveryIntent } from './insert-posting'
 export {
   JOURNAL_ENTRY_POSTING_TYPE,
   type JournalEntryKindValue,
@@ -438,21 +370,6 @@ export {
   SINGLE_WRITER_ROLES,
   SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
 } from './regime'
-// ── plans/accounting/tasks/53 §7.3 (D16): the register, level A ─────────────
-// PURE. `register.ts` reaches nothing but `zod` and two type-only imports from
-// `types`, which is already on this surface. The db half is `read-register.ts`
-// and stays server-only, exported from `./index`.
-export {
-  type PostingRegister,
-  projectRegisterEntry,
-  type RegisterAccountLabel,
-  type RegisterContributionLine,
-  type RegisterDocumentRef,
-  type RegisterEffectRow,
-  type RegisterEntry,
-  registerTiesToPosting,
-  registerTotalMinor,
-} from './register'
 // ── Statements (HANDOFF slot 1E, wave 1) - pure pieces only. The reads
 // (`readTrialBalance`, `readBalanceSheet`, `readProfitAndLoss`,
 // `readCompleteness`, `readGeneralLedger`) and the PDF render touch a database
@@ -587,11 +504,13 @@ export {
   type EntryPreview,
   type FailedExport,
   type GlPostingLineInput,
+  type GlPostingSourceInput,
   MANUAL_SOURCE_EXTERNAL_ID,
   MANUAL_SOURCE_LABEL,
   MANUAL_SOURCE_PROVIDER_KEY,
   NON_FAILURE_REFUSALS,
   POSTING_EXPORT_STATUSES,
+  POSTING_LINK_ROLES,
   POSTING_STATUSES,
   POSTING_TYPES,
   type PostEntryInput,
@@ -602,6 +521,7 @@ export {
   type PostingDetailLine,
   type PostingDirection,
   type PostingExportStatus,
+  type PostingLinkRole,
   type PostingStatus,
   type PostingType,
   type PostResult,

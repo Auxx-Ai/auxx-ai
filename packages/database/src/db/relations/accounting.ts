@@ -1,43 +1,15 @@
 // packages/database/src/db/relations/accounting.ts
 import { relations } from 'drizzle-orm/relations'
 import {
-  AccountingEffect,
-  AccountingWork,
-  AccountingWorkBasis,
-  EntityInstance,
   ExternalAccountingBook,
   ExternalBookConnection,
   GlPosting,
+  GlPostingSource,
 } from '../schema'
 
-export const accountingWorkRelations = relations(AccountingWork, ({ one, many }) => ({
-  source: one(EntityInstance, {
-    fields: [AccountingWork.organizationId, AccountingWork.entityInstanceId],
-    references: [EntityInstance.organizationId, EntityInstance.id],
-  }),
-  bases: many(AccountingWorkBasis),
-}))
-export const accountingWorkBasisRelations = relations(AccountingWorkBasis, ({ one }) => ({
-  work: one(AccountingWork, {
-    fields: [AccountingWorkBasis.organizationId, AccountingWorkBasis.workId],
-    references: [AccountingWork.organizationId, AccountingWork.id],
-  }),
-}))
-export const accountingEffectRelations = relations(AccountingEffect, ({ one }) => ({
-  basis: one(AccountingWorkBasis, {
-    fields: [
-      AccountingEffect.organizationId,
-      AccountingEffect.workId,
-      AccountingEffect.basisVersion,
-    ],
-    references: [
-      AccountingWorkBasis.organizationId,
-      AccountingWorkBasis.workId,
-      AccountingWorkBasis.version,
-    ],
-  }),
+export const glPostingSourceRelations = relations(GlPostingSource, ({ one }) => ({
   posting: one(GlPosting, {
-    fields: [AccountingEffect.organizationId, AccountingEffect.glPostingId],
+    fields: [GlPostingSource.organizationId, GlPostingSource.glPostingId],
     references: [GlPosting.organizationId, GlPosting.id],
   }),
 }))

@@ -13,7 +13,6 @@ import {
   timestamp,
   unique,
 } from './_shared'
-import { AccountingEffect } from './accounting-effect'
 import { ExternalAccountingBook } from './external-accounting-book'
 import { ExternalBookConnection } from './external-book-connection'
 import { GlPosting } from './gl-posting'
@@ -137,11 +136,6 @@ export const AccountingDeliveryCoverage = pgTable(
       name: 'AccountingDeliveryCoverage_delivery_scope_fk',
       columns: [t.organizationId, t.deliveryId],
       foreignColumns: [AccountingDelivery.organizationId, AccountingDelivery.id],
-    }).onDelete('no action'),
-    foreignKey({
-      name: 'AccountingDeliveryCoverage_effect_scope_fk',
-      columns: [t.organizationId, t.effectId],
-      foreignColumns: [AccountingEffect.organizationId, AccountingEffect.id],
     }).onDelete('no action'),
     check(
       'AccountingDeliveryCoverage_component_check',

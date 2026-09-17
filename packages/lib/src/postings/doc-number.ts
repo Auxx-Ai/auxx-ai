@@ -43,35 +43,13 @@ import type { PostingType } from './types'
 export const DOC_NUMBER_MAX_LENGTH = 21
 
 /**
- * Compact an effect-group membership identity into the document-number budget:
- * `g` + 8 base36 chars (the hash's first 40 bits), so `AUXX-FUL-g1a2b3c4d` is 18
- * and a `-R<n>` reversal suffix still fits the cap. The accepting transaction
- * compares the full SHA-256 on any conflict; the prefix alone proves nothing.
+ * Was this period key minted by the retired batch lanes' group hash?
+ *
+ * Kept for `periods.ts`, which refuses to parse one as a calendar key. Nothing
+ * mints these any more; a pre-migration row can still carry one.
  */
-export function fulfillmentGroupPeriodKey(membershipHash: string): string {
-  if (!/^[a-f0-9]{64}$/.test(membershipHash)) {
-    throw new UnprocessableEntityError('Fulfillment membership requires a full SHA-256 hash')
-  }
-  return `g${Number.parseInt(membershipHash.slice(0, 10), 16).toString(36).padStart(8, '0')}`
-}
-
-/** Was this period key minted by {@link fulfillmentGroupPeriodKey}? */
 export function isGroupPeriodKey(periodKey: string): boolean {
   return /^g[0-9a-z]{8}$/.test(periodKey)
-}
-
-/**
- * A document family's claim key at generation n: bare for the first,
- * `<key>.<n>` once a reversal has freed it (`.` is free — `writeOffPeriodKey`
- * appends its attempt with no separator at all).
- */
-export function documentGenerationKey(documentKey: string, generation: number): string {
-  if (!Number.isInteger(generation) || generation < 1)
-    throw new UnprocessableEntityError(
-      `Document generation must be a whole number of at least 1, got ${String(generation)}`,
-      { documentKey, generation: String(generation) }
-    )
-  return generation === 1 ? documentKey : `${documentKey}.${generation}`
 }
 
 /**
