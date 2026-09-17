@@ -1050,6 +1050,52 @@ export const recomputeOnOrderBillingChange: EntityFieldChangeHandler = async (ev
 }
 
 /**
+ * {@link recomputeOnLineChange} and {@link recomputeOnOrderBillingChange}, driven by a
+ * COMMITTED `TxWriteScope` instead of a field-change event.
+ *
+ * `line_item` and `order` are both on the accounting guard's `guardedTypes`
+ * (`postings/source-write-guard.ts`), so every write to one runs inside that guard's
+ * transaction — and a buffered write suppresses the field-change hook chain along with the
+ * realtime frame (`create-values.ts`'s `announce`). On those two entities the totals engine
+ * therefore never fires: a line lands with no `line_item_line_total` and its document keeps
+ * whatever totals it had, which is a quote/invoice/order reading 0 against priced lines.
+ *
+ * `flushTxWriteScope` calls this per touched record after COMMIT — the first point the rows
+ * are visible to the pool handle `recomputeLineTotal` and `recomputeTotals` read through.
+ * The connector stand-down inside both is what keeps a transcribed Shopify order safe here,
+ * exactly as it does on the inline path.
+ *
+ * Entities NOT covered, deliberately: `credit_memo_line` has the same defect but its lines
+ * are composed by money's own commands, which recompute explicitly; `purchase_order_line`
+ * and `vendor_bill_line` are on neither guard list and still fire their hooks inline.
+ */
+export async function recomputeTotalsForCommittedWrite(params: {
+  organizationId: string
+  userId: string
+  entityType: string | null
+  instanceId: string
+  changedAttrs: readonly string[]
+}): Promise<void> {
+  const { organizationId, userId, entityType, instanceId } = params
+  const attrs = params.changedAttrs as readonly SystemAttribute[]
+
+  if (entityType === 'line_item') {
+    // Inline, and must be: the parent recompute reads `line_item_line_total`.
+    if (attrs.some((attr) => LINE_TOTAL_TRIGGER_ATTRS.has(attr))) {
+      await recomputeLineTotal({ organizationId, userId, lineInstanceId: instanceId })
+    }
+    if (attrs.some((attr) => LINE_TRIGGER_ATTRS.has(attr))) {
+      await markOrRecomputeLine(organizationId, userId, MONEY_TOTALS_LINE_ITEM, instanceId)
+    }
+    return
+  }
+
+  if (entityType === 'order' && attrs.some((attr) => ORDER_TRIGGER_ATTRS.has(attr))) {
+    await markOrRecomputeDocument(organizationId, userId, 'order', instanceId)
+  }
+}
+
+/**
  * Recompute hook for `purchase-order-lines` (plans/purchasing/01-build-plan.md §4.2,
  * registered under the `purchase-order-lines` apiSlug). Structurally the buy-side twin of
  * {@link recomputeOnLineChange}: rewrite the line's own total when qty/price move, then

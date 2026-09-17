@@ -86,6 +86,75 @@ export async function flushTxWriteScope(scope: TxWriteScope): Promise<void> {
   } catch (error) {
     logFailure('dirty-parents', scope.attemptId, error)
   }
+  // Money's totals engine, which the buffered lane's hook suppression silently
+  // switched off for the two entities the accounting guard wraps — see
+  // `recomputeTotalsForCommittedWrite`. Its own guard for the same reason as above.
+  try {
+    await replayMoneyTotals(scope)
+  } catch (error) {
+    logFailure('money-totals', scope.attemptId, error)
+  }
+}
+
+/**
+ * Re-run the money totals engine for every record this scope touched.
+ *
+ * Reads only what the scope already buffered — `TxWriteCreate.values` is keyed by
+ * `systemAttribute ?? fieldId` and `changes` by the same outputKey — so deciding whether a
+ * write moved a total costs no query. The two buckets never overlap: T-1 keeps a created
+ * record's own field writes out of `changes`.
+ *
+ * `runWithDirtyParents` is what makes a paste cheap: 20 created lines mark 20 dirty lines
+ * and the drain on the way out rebuilds their document ONCE, rather than each
+ * `markOrRecomputeLine` falling through to its inline branch and rebuilding it 20 times.
+ */
+async function replayMoneyTotals(scope: TxWriteScope): Promise<void> {
+  // The overflow lane already degraded to `records:invalidated`; the buckets it would read
+  // are partial, so a recompute driven off them would be arbitrary rather than wrong-ish.
+  if (scope.truncated) return
+  if (scope.created.length === 0 && Object.keys(scope.changes).length === 0) return
+
+  const [{ recomputeTotalsForCommittedWrite }, { runWithDirtyParents }, { findCachedResource }] =
+    await Promise.all([
+      import('../../money/totals-hooks'),
+      import('../../reconcilers/dirty-parents'),
+      import('../../cache'),
+    ])
+
+  const touched = new Map<string, { entityType: string | null; attrs: Set<string> }>()
+  const record = (instanceId: string, entityType: string | null, attrs: string[]): void => {
+    const entry = touched.get(instanceId) ?? { entityType, attrs: new Set<string>() }
+    for (const attr of attrs) entry.attrs.add(attr)
+    touched.set(instanceId, entry)
+  }
+
+  for (const create of scope.created) {
+    record(instanceIdOf(create.recordId), create.entityType, Object.keys(create.values))
+  }
+
+  for (const [recordId, changes] of Object.entries(scope.changes)) {
+    // `findCachedResource`, not `getCachedResource`: a change's RecordId arrives in either
+    // keyspace (§ the note on `instanceIdOf`), and only this one resolves a type slug.
+    const { entityDefinitionId } = parseRecordId(recordId as RecordId)
+    const resource = await findCachedResource(scope.organizationId, entityDefinitionId)
+    record(instanceIdOf(recordId as RecordId), resource?.entityType ?? null, Object.keys(changes))
+  }
+
+  await runWithDirtyParents(scope.organizationId, scope.actorUserId, async () => {
+    for (const [instanceId, entry] of touched) {
+      try {
+        await recomputeTotalsForCommittedWrite({
+          organizationId: scope.organizationId,
+          userId: scope.actorUserId,
+          entityType: entry.entityType,
+          instanceId,
+          changedAttrs: [...entry.attrs],
+        })
+      } catch (error) {
+        logFailure('money-totals', instanceId, error)
+      }
+    }
+  })
 }
 
 async function replayTxWriteScope(scope: TxWriteScope): Promise<void> {
