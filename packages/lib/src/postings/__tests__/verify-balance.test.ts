@@ -315,7 +315,7 @@ describe('verifyBooksBalance', () => {
 function unpostedRow(overrides: {
   glPostingId: string
   periodKey: string
-  exportStatus?: 'pending' | 'failed'
+  exportStatus?: 'pending' | 'failed' | 'exported'
   postingType?: string
   docNumber?: string
   attempts?: number
@@ -493,11 +493,90 @@ describe('listFailedExports', () => {
     })
   })
 
+  // 60 §8.1 / acceptance 11. The Synced tab is the only caller that wants an
+  // entry already in the provider's books, and it is the only one that resolves
+  // a single month. Everything else - the close console's banner, the rail
+  // tally, `export-gate` - must read exactly as it read before the option
+  // existed.
+  describe('the exported widening', () => {
+    it('asks for the outstanding two statuses unless told otherwise', async () => {
+      const { db, wheres } = recordingDb([])
+      await listFailedExports(db, ORG)
+      expect(statusesIn(wheres)).toEqual(['pending', 'failed'])
+    })
+
+    it('adds `exported` only under the option', async () => {
+      const { db, wheres } = recordingDb([])
+      await listFailedExports(db, ORG, { includeExported: true })
+      expect(statusesIn(wheres)).toEqual(['pending', 'failed', 'exported'])
+    })
+
+    it('bounds `month` to exactly that month, not cumulatively', async () => {
+      const rows = [
+        unpostedRow({ glPostingId: 'gl_jul', periodKey: '2026-07', exportStatus: 'exported' }),
+        unpostedRow({ glPostingId: 'gl_aug_day', periodKey: '2026-08-18' }),
+        unpostedRow({ glPostingId: 'gl_sep', periodKey: '2026-09' }),
+      ]
+      const result = await listFailedExports(stubDb(rows), ORG, {
+        month: '2026-08',
+        includeExported: true,
+      })
+      expect(result._unsafeUnwrap().map((r: { glPostingId: string }) => r.glPostingId)).toEqual([
+        'gl_aug_day',
+      ])
+    })
+
+    it('refuses a malformed month rather than silently matching nothing', async () => {
+      const result = await listFailedExports(stubDb([]), ORG, { month: 'last july' })
+      expect(result.isErr()).toBe(true)
+      expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+    })
+  })
+
   it('returns err rather than throwing when the read fails', async () => {
     const result = await listFailedExports(throwingDb(new Error('connection reset')), ORG)
     expect(result.isErr()).toBe(true)
   })
 })
+
+/** {@link stubDb} that also keeps every `where` argument, for the status list. */
+function recordingDb(rows: unknown[]) {
+  const wheres: unknown[] = []
+  const chain: Record<string, unknown> = {}
+  const passthrough = () => chain
+  for (const method of ['from', 'leftJoin', 'innerJoin', 'groupBy', 'orderBy', 'limit']) {
+    chain[method] = passthrough
+  }
+  chain.where = (condition: unknown) => {
+    wheres.push(condition)
+    return chain
+  }
+  // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
+  chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+    Promise.resolve(rows).then(resolve, reject)
+
+  return { db: { select: () => chain } as unknown as Database, wheres }
+}
+
+/** The export statuses the `inArray` in a recorded `where` carries, in order. */
+function statusesIn(wheres: unknown[]): string[] {
+  const found: string[] = []
+  const walk = (node: unknown) => {
+    if (typeof node === 'string') {
+      // `inArray` puts the values into the SQL's chunks as a bare array.
+      if (['pending', 'failed', 'exported'].includes(node)) found.push(node)
+      return
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item)
+      return
+    }
+    if (!node || typeof node !== 'object') return
+    for (const child of Object.values(node as Record<string, unknown>)) walk(child)
+  }
+  walk(wheres)
+  return found
+}
 
 // ── The completeness half (49 §2.4) ───────────────────────────────────────
 //

@@ -62,4 +62,24 @@ describe('syncQueueState', () => {
       )
     ).toBe('failed')
   })
+
+  // 60 §8.1. `exported` is checked FIRST, and it wins over both other axes: a
+  // delivered entry that still reads `manual` and unreleased would otherwise be
+  // offered a Sync button for a copy the provider already holds.
+  it('reads an exported posting as synced, before either other axis', () => {
+    expect(syncQueueState(row({ exportStatus: 'exported' }))).toBe('synced')
+    expect(syncQueueState(row({ exportStatus: 'exported', deliveryIntent: 'manual' }))).toBe(
+      'synced'
+    )
+    expect(
+      syncQueueState(row({ exportStatus: 'exported', deliveryIntent: 'automatic', attempts: 1 }))
+    ).toBe('synced')
+  })
+
+  it('never answers synced for the two statuses every other caller reads', () => {
+    // Acceptance 11: `listFailedExports` does not return an exported row unless
+    // asked, so the held / sending / refused tabs cannot acquire a fourth state.
+    expect(syncQueueState(row({ exportStatus: 'pending' }))).not.toBe('synced')
+    expect(syncQueueState(row({ exportStatus: 'failed' }))).not.toBe('synced')
+  })
 })

@@ -522,6 +522,72 @@ export interface PostEntryResult {
 }
 
 /**
+ * Result of removing one object we created, from the provider that holds it.
+ *
+ * `already_gone` is a SUCCESS and is reported rather than hidden: a withdrawal
+ * whose outcome was unknown is resolved by repeating it, and the repeat has to
+ * be able to say "there was nothing left to remove" without that reading as a
+ * fresh delete in the audit trail.
+ */
+export interface WithdrawResult {
+  status: 'withdrawn' | 'already_gone'
+  /** The provider's own id for the object, echoed back. */
+  externalId: string
+  /** Which provider answered - `'quickbooks'`. */
+  providerId: string
+  /** The provider's own answer, kept verbatim for the delivery operation's outcome. */
+  raw?: Record<string, unknown>
+}
+
+/**
+ * What one posting did when the sync queue asked for it to be un-synced.
+ *
+ * Deliberately the shape `SyncReleaseOutcome` already uses, so the queue renders
+ * a withdrawal's refusal the way it renders a gate refusal - the reason on the
+ * row, no status column lied to (plan 60 §3).
+ *
+ * `uncertain` is its own answer rather than an error: the delete may have
+ * landed, so nothing on the posting changed and the row keeps its *Synced*
+ * badge until a repeat settles it (§2.4).
+ */
+export interface UnsyncOutcome {
+  glPostingId: string
+  docNumber: string | null
+  status: 'withdrawn' | 'refused' | 'uncertain' | 'error'
+  /** The refusal, or what went wrong. `undefined` on `withdrawn`. */
+  message?: string
+  /** True on R5 alone - the one refusal `force: true` may override. */
+  forcible?: boolean
+}
+
+/** The tally the queue renders, plus the per-posting detail behind it. */
+export interface UnsyncResult {
+  withdrawn: number
+  /** R1-R6: we or the provider declined, and nothing was removed. */
+  refused: number
+  /** Unknown outcomes and faults - the rows a person still has to look at. */
+  failed: number
+  outcomes: UnsyncOutcome[]
+}
+
+/** One entry's answer from a bulk reversal, in `UnsyncOutcome`'s shape. */
+export interface ReverseOutcome {
+  glPostingId: string
+  docNumber: string | null
+  /** `reversed` wrote a reversing entry; anything else wrote nothing at all. */
+  status: 'reversed' | 'refused'
+  /** The refusal, verbatim from the `PostResult`. `undefined` on `reversed`. */
+  message?: string
+}
+
+/** The tally the queue renders, plus the per-posting detail behind it. */
+export interface ReverseManyResult {
+  reversed: number
+  refused: number
+  outcomes: ReverseOutcome[]
+}
+
+/**
  * Why one push failed, in the only terms the provider-agnostic core can act on.
  *
  * The core cannot classify a provider's failure itself: the thing that separates
@@ -1305,7 +1371,8 @@ export interface FailedExport {
   periodKey: string
   postingType: PostingType
   glPostingId: string
-  exportStatus: 'pending' | 'failed'
+  /** `exported` only ever arrives under `listFailedExports`' opt-in (60 §8.1). */
+  exportStatus: 'pending' | 'failed' | 'exported'
   docNumber: string
   attempts: number
   failureReason: string | null
@@ -1351,17 +1418,22 @@ export interface SyncQueueRow extends FailedExport {
 }
 
 /** The two-axis reading of a {@link SyncQueueRow}, and the queue's tab set. */
-export const SYNC_QUEUE_STATES = ['held', 'sending', 'failed'] as const
+export const SYNC_QUEUE_STATES = ['held', 'sending', 'failed', 'synced'] as const
 export type SyncQueueState = (typeof SYNC_QUEUE_STATES)[number]
 
 /**
- * Which of the three states one queue row is in.
+ * Which of the four states one queue row is in.
  *
  * Pure, and the single place the two axes are collapsed into one word - the tab
  * filter, the row badge and the bulk bar's copy all read it, so they cannot
  * disagree about what a row is.
+ *
+ * ⚠️ `synced` reaches this function only from the Synced tab's own read: every
+ * other caller asks `listFailedExports` for the outstanding two statuses and
+ * never sees an exported row at all (60 §8.1).
  */
 export function syncQueueState(row: SyncQueueRow): SyncQueueState {
+  if (row.exportStatus === 'exported') return 'synced'
   if (row.exportStatus === 'failed') return 'failed'
   // HELD is a positive claim and needs both halves: the posting was accepted
   // under the hold, and nothing has released it since. Anything else pending is

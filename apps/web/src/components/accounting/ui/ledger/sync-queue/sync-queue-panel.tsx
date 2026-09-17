@@ -34,17 +34,25 @@
 // `syncQueueState` is the one place the two collapse into a word. Three tabs,
 // never one pile.
 //
-// ## 🛑 All periods, always
+// ## 🛑 All periods, always - except on Synced
 //
 // Every other ledger surface resolves a month (`?month=YYYY-MM`). This one must
 // not: the entries it is about are a backlog that spans months, and a month
 // filter would hide every held posting from before the one on screen.
 // `listFailedExports` is called with no `through` bound, and the period picker
 // below defaults to All and narrows what is ALREADY loaded.
+//
+// **Synced is the one exception** (60 §8.1). The held backlog is small; the
+// synced set is every entry the org has ever delivered and grows without bound,
+// so that tab resolves a month, defaults to the current one, and makes its own
+// read - `includeExported` with an exact `month`. Nothing else here changes: the
+// rail tally, the banner and the other three tabs keep reading the unwidened
+// query, which never carries an exported row.
 
 import { type SyncQueueRow, syncQueueState } from '@auxx/lib/postings/client'
 import { ActionBar } from '@auxx/ui/components/action-bar'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import {
@@ -60,7 +68,17 @@ import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { CheckCircle2, CircleAlert, FileText, Loader, PanelRight, RefreshCw } from 'lucide-react'
+import {
+  CheckCheck,
+  CheckCircle2,
+  CircleAlert,
+  CloudOff,
+  FileText,
+  Loader,
+  PanelRight,
+  RefreshCw,
+  Undo2,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import {
@@ -70,6 +88,7 @@ import {
   useListSelection,
   useSelectionIds,
 } from '~/components/list-selection'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useViewportFill } from '~/hooks/use-viewport-fill'
 import { api } from '~/trpc/react'
 import { EMPTY_CELL, formatMinor, formatPeriodLabel } from '../format'
@@ -96,8 +115,27 @@ const TAB_ICON = {
   held: CheckCircle2,
   sending: Loader,
   failed: CircleAlert,
+  synced: CheckCheck,
   all: FileText,
 } as const
+
+/** How far back the Synced tab's month picker reaches. */
+const SYNCED_MONTHS = 12
+
+/** `YYYY-MM` for today, in local time - the Synced tab's default bound. */
+function currentMonth(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+}
+
+/** The last {@link SYNCED_MONTHS} months, most recent first. */
+function recentMonths(): string[] {
+  const now = new Date()
+  return Array.from({ length: SYNCED_MONTHS }, (_, index) => {
+    const month = new Date(now.getFullYear(), now.getMonth() - index, 1)
+    return `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`
+  })
+}
 
 interface SyncQueuePanelProps {
   rows: SyncQueueRow[] | undefined
@@ -110,6 +148,11 @@ interface SyncQueuePanelProps {
   providerLabel: string
   /** `ledger.post`. Without it the queue is readable and nothing can be released. */
   canSync: boolean
+  /**
+   * `ledger.control`, NOT `ledger.post` (60 E5). A viewer who may post journals
+   * still sees the Synced tab and gets no Un-sync button on it.
+   */
+  canUnsync: boolean
   /** The posting open in the drawer, so the row can show it is the one being read. */
   activePostingId: string | null
   onSelectPosting: (glPostingId: string) => void
@@ -143,10 +186,12 @@ function SyncQueueBody({
   onTabChange,
   providerLabel,
   canSync,
+  canUnsync,
   activePostingId,
   onSelectPosting,
 }: SyncQueuePanelProps) {
   const utils = api.useUtils()
+  const [confirm, ConfirmDialog] = useConfirm()
   /**
    * A floor, not a height: the empty state is `flex-1` and centres in whatever
    * room it is given, and the ledger's scroll column is auto-height - so
@@ -156,6 +201,19 @@ function SyncQueueBody({
   const panelRef = useRef<HTMLDivElement>(null)
   const panelHeight = useViewportFill(panelRef, MIN_PANEL_HEIGHT)
   const [period, setPeriod] = useState<string>(ALL_PERIODS)
+  /**
+   * The Synced tab's own bound, and the reason it is a second piece of state:
+   * `period` narrows rows already loaded, this one is a QUERY argument. A tab
+   * over every entry the org has ever delivered cannot be unbounded (60 §8.1).
+   */
+  const [syncedMonth, setSyncedMonth] = useState<string>(currentMonth)
+  const months = useMemo(recentMonths, [])
+  const isSynced = tab === 'synced'
+
+  const syncedQuery = api.ledger.failedExports.useQuery(
+    { month: syncedMonth, includeExported: true },
+    { enabled: isSynced }
+  )
 
   const selectedIds = useSelectionIds()
   const selecting = useBulkMode()
@@ -177,15 +235,30 @@ function SyncQueueBody({
    * since left.
    */
   const [refusals, setRefusals] = useState<Record<string, string>>({})
+  /**
+   * Why the last Un-sync did not remove a posting, BY POSTING. `forcible` is
+   * R5 alone - the copy was edited in the provider after we sent it - and it is
+   * the only row that is offered *Un-sync anyway*.
+   */
+  const [unsyncRefusals, setUnsyncRefusals] = useState<
+    Record<string, { message: string; forcible: boolean }>
+  >({})
+  /** Why the last Reverse did not back a posting out, BY POSTING. */
+  const [reverseRefusals, setReverseRefusals] = useState<Record<string, string>>({})
 
   const all = useMemo(() => rows ?? [], [rows])
   const tally = useMemo(() => tallySyncQueue(all), [all])
   const periods = useMemo(() => syncQueuePeriods(all), [all])
+  const syncedRows = useMemo(
+    () => filterSyncQueue(syncedQuery.data ?? [], 'synced'),
+    [syncedQuery.data]
+  )
 
   const visible = useMemo(() => {
+    if (isSynced) return syncedRows
     const byTab = filterSyncQueue(all, tab)
     return period === ALL_PERIODS ? byTab : byTab.filter((row) => row.periodKey === period)
-  }, [all, tab, period])
+  }, [all, tab, period, isSynced, syncedRows])
 
   /**
    * What shift-range and Cmd+A read: the rows actually on screen, in render
@@ -212,7 +285,9 @@ function SyncQueueBody({
   useEffect(() => {
     exitSelection()
     setRefusals({})
-  }, [tab, period])
+    setUnsyncRefusals({})
+    setReverseRefusals({})
+  }, [tab, period, syncedMonth])
 
   /** A bookmarked period that has since cleared is ordinary, not an error. */
   useEffect(() => {
@@ -271,7 +346,117 @@ function SyncQueueBody({
    */
   const syncOne = (glPostingId: string) => syncExports.mutate({ glPostingIds: [glPostingId] })
 
+  /**
+   * 🛑 **Un-sync WAITS on the provider, unlike Sync.** It is an EXPORT
+   * operation: their copy is deleted and the row comes back to Ready to sync,
+   * and our books are not touched at all (60 E1/E3). The operator is standing
+   * there for the delete, and R5 and R6 are exactly what they pressed it to find
+   * out - so the refusals land on the rows in the same breath (E8).
+   */
+  const unsyncExports = api.ledger.unsyncExports.useMutation({
+    onSuccess: (result) => {
+      exitSelection()
+      setUnsyncRefusals(
+        Object.fromEntries(
+          result.outcomes
+            .filter((outcome) => outcome.status !== 'withdrawn')
+            .map((outcome) => [
+              outcome.glPostingId,
+              {
+                message: outcome.message ?? 'It was not removed.',
+                forcible: outcome.forcible === true,
+              },
+            ])
+        )
+      )
+      refresh()
+      void syncedQuery.refetch()
+    },
+    onError: (mutationError) => {
+      toastError({ title: 'Could not un-sync', description: mutationError.message })
+    },
+  })
+
+  /**
+   * The confirm copy is 60 §8.2 verbatim. It says what is deleted, what is NOT
+   * touched, and the one consequence somebody would otherwise be surprised by:
+   * an `automatic` posting is demoted to manual, so nothing re-sends it (§2.3).
+   */
+  const runUnsync = async (glPostingIds: string[], force?: boolean) => {
+    const count = glPostingIds.length
+    const confirmed = await confirm({
+      title: `Un-sync ${count} ${count === 1 ? 'entry' : 'entries'} from ${providerLabel}?`,
+      description:
+        `The journal entries we created there will be deleted. Your books are not changed — ` +
+        `the entries stay posted here and return to Ready to sync, and they will not be sent ` +
+        `again until you sync them.`,
+      confirmText: 'Un-sync',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) unsyncExports.mutate({ glPostingIds, force })
+  }
+
+  /**
+   * 🛑 A LEDGER operation, and the only one on this panel. Un-sync beside it
+   * removes the provider's copy and leaves the books alone; this writes a new
+   * entry into them (60 E1/E2). They are deliberately different buttons with
+   * different icons, and both confirm.
+   */
+  const reverseMany = api.ledger.reverseMany.useMutation({
+    onSuccess: (result) => {
+      exitSelection()
+      setReverseRefusals(
+        Object.fromEntries(
+          result.outcomes
+            .filter((outcome) => outcome.status !== 'reversed')
+            .map((outcome) => [outcome.glPostingId, outcome.message ?? 'It was not reversed.'])
+        )
+      )
+      refresh()
+      void syncedQuery.refetch()
+      void utils.ledger.periods.invalidate()
+      void utils.ledger.listPostings.invalidate()
+    },
+    onError: (mutationError) => {
+      toastError({ title: 'The reversal could not be sent', description: mutationError.message })
+    },
+  })
+
+  /**
+   * One confirm for one row and for forty. The sentence is the same either way
+   * because the consequence is: a second, opposite entry per posting.
+   */
+  const runReverse = async (glPostingIds: string[], docNumber?: string) => {
+    const count = glPostingIds.length
+    const confirmed = await confirm({
+      title: count === 1 ? `Reverse ${docNumber || 'this posting'}?` : `Reverse ${count} postings?`,
+      description:
+        'A reversing entry is posted for the same amounts the other way round. Nothing is ' +
+        'edited or deleted, and the copies already in your accounting system are left where ' +
+        'they are. Open one entry to add a memo instead.',
+      confirmText: 'Reverse',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) reverseMany.mutate({ glPostingIds })
+  }
+
   const refusedCount = Object.keys(refusals).length
+  const listLoading = isSynced ? syncedQuery.isPending : isLoading
+  /**
+   * Selection is offered when the bulk bar would carry anything: the tab's own
+   * export verb (Sync, or Un-sync on Synced), or Reverse, which is on every tab.
+   */
+  const selectable = (isSynced ? canUnsync : canSync) || canSync
+
+  if (isSynced && syncedQuery.isError) {
+    return (
+      <p className='p-3 text-destructive text-xs'>
+        The synced entries could not be read. {syncedQuery.error.message}
+      </p>
+    )
+  }
 
   if (error) {
     return (
@@ -284,7 +469,7 @@ function SyncQueueBody({
   return (
     <div ref={panelRef} className='flex flex-col' style={{ minHeight: panelHeight }}>
       <ListToolbar>
-        {canSync && <SelectAllCheckbox listPadding={12} />}
+        {selectable && <SelectAllCheckbox listPadding={12} />}
 
         <ListToolbarGroup className='shrink-0'>
           <RadioTab
@@ -293,8 +478,15 @@ function SyncQueueBody({
             size='sm'>
             {SYNC_QUEUE_TABS.map((value) => {
               const Icon = TAB_ICON[value]
+              // ⚠️ Synced counts its OWN month's read, not `tally` - the rail's
+              // rows never carry an exported entry, so `tally.synced` is always
+              // zero and a count taken from it would read as "none, ever".
               const count =
-                value === 'all' ? tally.total : tally[value as 'held' | 'sending' | 'failed']
+                value === 'all'
+                  ? tally.total
+                  : value === 'synced'
+                    ? syncedRows.length
+                    : tally[value as 'held' | 'sending' | 'failed']
               return (
                 <RadioTabItem key={value} value={value}>
                   <Icon />
@@ -313,18 +505,33 @@ function SyncQueueBody({
               The queue is a backlog that spans months; the month the toolbar
               above resolved is irrelevant to it, and inheriting that month would
               hide every entry held from before it. This narrows what is already
-              loaded - there is no second read. */}
-          <Select value={period} onValueChange={setPeriod}>
+              loaded - there is no second read.
+
+              ⚠️ On Synced it is the other thing entirely: a required month that
+              BOUNDS the read (60 §8.1), with no All. */}
+          <Select
+            value={isSynced ? syncedMonth : period}
+            onValueChange={isSynced ? setSyncedMonth : setPeriod}>
             <SelectTrigger size='sm' className='h-7 w-44 text-xs'>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL_PERIODS}>All periods</SelectItem>
-              {periods.map((key) => (
-                <SelectItem key={key} value={key}>
-                  {formatPeriodLabel(key)}
-                </SelectItem>
-              ))}
+              {isSynced ? (
+                months.map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {formatPeriodLabel(key)}
+                  </SelectItem>
+                ))
+              ) : (
+                <>
+                  <SelectItem value={ALL_PERIODS}>All periods</SelectItem>
+                  {periods.map((key) => (
+                    <SelectItem key={key} value={key}>
+                      {formatPeriodLabel(key)}
+                    </SelectItem>
+                  ))}
+                </>
+              )}
             </SelectContent>
           </Select>
         </ListToolbarGroup>
@@ -342,7 +549,7 @@ function SyncQueueBody({
         </p>
       )}
 
-      {!isLoading && visible.length === 0 ? (
+      {!listLoading && visible.length === 0 ? (
         <EmptyState
           icon={CheckCircle2}
           title={emptyTitle(tab)}
@@ -352,7 +559,7 @@ function SyncQueueBody({
         <div className='flex flex-col gap-px p-3 pb-16'>
           <TreeRowList
             items={visible}
-            loading={isLoading}
+            loading={listLoading}
             skeletonCount={5}
             className='gap-px'
             getKey={(row: SyncQueueRow) => row.glPostingId}
@@ -363,11 +570,19 @@ function SyncQueueBody({
               const busy =
                 syncExports.isPending &&
                 syncExports.variables?.glPostingIds.includes(row.glPostingId) === true
+              const unsyncing =
+                unsyncExports.isPending &&
+                unsyncExports.variables?.glPostingIds.includes(row.glPostingId) === true
+              const unsyncRefusal = unsyncRefusals[row.glPostingId]
+              const reverseRefusal = reverseRefusals[row.glPostingId]
+              const reversing =
+                reverseMany.isPending &&
+                reverseMany.variables?.glPostingIds.includes(row.glPostingId) === true
               return (
                 <TreeRow
                   className={TREE_SECONDARY_NOTRUNCATE}
                   icon={<FileText className='size-4 text-muted-foreground' />}
-                  selectable={canSync}
+                  selectable={selectable}
                   selecting={selecting}
                   selected={selectedIds.includes(row.glPostingId)}
                   onSelectChange={(_next, event) =>
@@ -404,10 +619,20 @@ function SyncQueueBody({
                           the provider has closed arrives as a refused row
                           carrying the provider's own words.
 
-                          ONE icon for both reasons, never two - see
-                          `refusalTooltipLines`. */}
+                          ONE icon for EVERY reason, never two - the delivery's
+                          own refusal and the answer to a button pressed seconds
+                          ago share it, so a row never carries two warnings
+                          saying different things. */}
                       <RefusalWarning
-                        lines={refusalTooltipLines(row, refusals[row.glPostingId], providerLabel)}
+                        lines={refusalTooltipLines(
+                          row,
+                          {
+                            sync: refusals[row.glPostingId],
+                            unsync: unsyncRefusal?.message,
+                            reverse: reverseRefusal,
+                          },
+                          providerLabel
+                        )}
                       />
                       {row.attempts > 0 && (
                         <Badge variant='outline' size='xs'>
@@ -418,6 +643,20 @@ function SyncQueueBody({
                         <Badge variant='amber' size='xs'>
                           Delivery parked
                         </Badge>
+                      )}
+                      {/* 🛑 The words moved into the icon above; this did NOT.
+                          R5's *Un-sync anyway* is the only place `force` is
+                          reachable (60 §8.2), and an affordance inside a hover
+                          tooltip is not one. */}
+                      {unsyncRefusal?.forcible && canUnsync && (
+                        <Button
+                          variant='link'
+                          size='sm'
+                          className='h-auto p-0 text-amber-700 text-xs'
+                          disabled={unsyncExports.isPending}
+                          onClick={() => void runUnsync([row.glPostingId], true)}>
+                          Un-sync anyway
+                        </Button>
                       )}
                     </span>
                   }
@@ -433,13 +672,34 @@ function SyncQueueBody({
                         />
                         {SYNC_QUEUE_TAB_LABELS[state]}
                       </span>
+                      {/* An entry already in their books has nothing to release,
+                          so the verb on it is Un-sync and not Sync. */}
+                      {state === 'synced'
+                        ? canUnsync && (
+                            <TreeRowButton
+                              persistent
+                              tooltipText={syncQueueStateSentence(state, providerLabel)}
+                              disabled={unsyncing}
+                              onClick={() => void runUnsync([row.glPostingId])}>
+                              <CloudOff className={cn(unsyncing && 'animate-pulse')} />
+                            </TreeRowButton>
+                          )
+                        : canSync && (
+                            <TreeRowButton
+                              persistent
+                              tooltipText={syncQueueStateSentence(state, providerLabel)}
+                              disabled={busy}
+                              onClick={() => syncOne(row.glPostingId)}>
+                              <RefreshCw className={cn(busy && 'animate-spin')} />
+                            </TreeRowButton>
+                          )}
                       {canSync && (
                         <TreeRowButton
                           persistent
-                          tooltipText={syncQueueStateSentence(state, providerLabel)}
-                          disabled={busy}
-                          onClick={() => syncOne(row.glPostingId)}>
-                          <RefreshCw className={cn(busy && 'animate-spin')} />
+                          tooltipText='Reverse this posting'
+                          disabled={reverseMany.isPending}
+                          onClick={() => void runReverse([row.glPostingId], row.docNumber)}>
+                          <Undo2 className={cn(reversing && 'animate-pulse')} />
                         </TreeRowButton>
                       )}
                       <TreeRowButton
@@ -456,7 +716,7 @@ function SyncQueueBody({
                      drawer thrown open over the list is how a bulk pass gets
                      abandoned. */
                   onToggleOpen={() =>
-                    selecting && canSync
+                    selecting && selectable
                       ? toggle(row.glPostingId)
                       : onSelectPosting(row.glPostingId)
                   }
@@ -483,16 +743,51 @@ function SyncQueueBody({
         selectedCount={selectedIds.length}
         selectedLabel='selected'
         showClose
+        /* 🛑 One verb per tab. Synced rows are already in their books and have
+           nothing to release; every other row has nothing to withdraw. Offering
+           both everywhere would put a destructive provider delete one mis-click
+           from the button somebody presses forty times a month. */
         actions={[
-          {
-            id: 'sync',
-            label: `Sync to ${providerLabel}`,
-            icon: RefreshCw,
-            disabled: syncExports.isPending,
-            onClick: () => syncExports.mutate({ glPostingIds: selectedIds }),
-          },
+          ...(isSynced
+            ? canUnsync
+              ? [
+                  {
+                    id: 'unsync',
+                    label: `Un-sync from ${providerLabel}`,
+                    icon: CloudOff,
+                    variant: 'destructive' as const,
+                    disabled: unsyncExports.isPending,
+                    onClick: () => void runUnsync(selectedIds),
+                  },
+                ]
+              : []
+            : [
+                {
+                  id: 'sync',
+                  label: `Sync to ${providerLabel}`,
+                  icon: RefreshCw,
+                  disabled: syncExports.isPending,
+                  onClick: () => syncExports.mutate({ glPostingIds: selectedIds }),
+                },
+              ]),
+          /* 🛑 On EVERY tab, unlike the export verb above it. A reversal is
+             about our books and does not care whether their copy exists, so the
+             tab a row happens to be on is not a condition on it. */
+          ...(canSync
+            ? [
+                {
+                  id: 'reverse',
+                  label: 'Reverse',
+                  icon: Undo2,
+                  variant: 'destructive' as const,
+                  disabled: reverseMany.isPending,
+                  onClick: () => void runReverse(selectedIds),
+                },
+              ]
+            : []),
         ]}
       />
+      <ConfirmDialog />
     </div>
   )
 }
@@ -547,6 +842,8 @@ function emptyTitle(tab: SyncQueueTab): string {
       return 'Nothing is in flight'
     case 'failed':
       return 'Nothing has been refused'
+    case 'synced':
+      return 'Nothing was sent in this month'
     case 'all':
       return 'Everything has been synced'
   }
@@ -560,6 +857,8 @@ function emptyDescription(tab: SyncQueueTab, providerLabel: string): string {
       return `Nothing has been released to ${providerLabel} and left unacknowledged.`
     case 'failed':
       return `${providerLabel} has not refused anything. A refusal would show the reason it gave, on the row.`
+    case 'synced':
+      return `No entry from this month is in ${providerLabel}'s books. This tab is one month at a time - pick another above.`
     case 'all':
       return `Nothing is outstanding. Every posted entry is either in ${providerLabel} or is a kind that is never sent.`
   }

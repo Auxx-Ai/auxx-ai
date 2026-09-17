@@ -474,6 +474,8 @@ const NO_ACCOUNT_MAP = {
   listAccountMappings: async () => ok(new Map<string, string>()),
   setAccountMapping: async () => ok(undefined),
   clearAccountMapping: async () => ok(undefined),
+  // Brief 60 §5.3. Nothing in these tests un-syncs; the stub only has to exist.
+  withdrawObject: async () => err(new Error('This stub provider cannot withdraw anything.')),
 }
 
 /** A provider that records what it was handed and answers however the test says. */

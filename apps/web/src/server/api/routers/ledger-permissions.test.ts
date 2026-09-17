@@ -42,6 +42,13 @@ vi.mock('@auxx/lib/postings', async () => {
     // `ledgerPost`. Mocked to a successful enqueue, because the only thing under
     // test here is which rung reaches the resolver body at all.
     enqueueProviderSync: vi.fn(async () => true),
+    // 60 E5. Deleting rows out of the firm's books is the `ledgerControl` rung,
+    // not the `ledgerPost` one that releases a journal - so this sits beside
+    // `setLockedThrough`, not beside `syncExports`. Mocked to a clean tally: the
+    // only thing under test is which rung reaches the resolver body.
+    unsyncExports: vi.fn(async () =>
+      okResult({ withdrawn: 1, refused: 0, failed: 0, outcomes: [] })
+    ),
   }
 })
 
@@ -230,6 +237,34 @@ describe('ledger.syncProviderLedger', () => {
     await expect(
       ledgerCaller(settingsManageOnly()).syncProviderLedger({ to: '2026-01-31' })
     ).rejects.toMatchObject(FORBIDDEN)
+  })
+})
+
+describe('ledger.unsyncExports', () => {
+  // 🛑 60 E5 / acceptance 10. `ledger: Edit` carries `ledgerPost` - it may post
+  // journals and press Sync - and it must NOT be able to delete the provider's
+  // copy of one. Deleting the `ledgerControl` assert makes this case reach the
+  // mocked lib call and pass, which is what makes it behavioral.
+  it('refuses ledger: Edit, the rung that may post and sync', async () => {
+    await expect(
+      ledgerCaller(ledgerEdit()).unsyncExports({ glPostingIds: ['gl_1'] })
+    ).rejects.toMatchObject(FORBIDDEN)
+  })
+
+  it('admits ledger: Full', async () => {
+    await expect(
+      ledgerCaller(ledgerFull()).unsyncExports({ glPostingIds: ['gl_1'] })
+    ).resolves.toMatchObject({ withdrawn: 1 })
+  })
+
+  // ⚠️ 100, not `syncExports`' 500: this WAITS on the provider and makes two to
+  // three round trips per row inside the request (E8).
+  it('caps one call at 100 postings', async () => {
+    const ids = Array.from({ length: 101 }, (_, index) => `gl_${index}`)
+    await expect(ledgerCaller(ledgerFull()).unsyncExports({ glPostingIds: ids })).rejects.toThrow()
+    await expect(
+      ledgerCaller(ledgerFull()).unsyncExports({ glPostingIds: ids.slice(0, 100) })
+    ).resolves.toBeDefined()
   })
 })
 

@@ -28,9 +28,17 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq } from 'drizzle-orm'
 import { buildEntry } from './build-entry'
 import { parsePostingDraft, readDraftReasons, requiresAssertions, reverseAssertions } from './draft'
+import { didLedgerAccept } from './ledger-accepted'
 import type { PeriodLock } from './periods'
 import { postEntry } from './post-entry'
-import type { CounterpartyType, GlPostingLineInput, PostingType, PostResult } from './types'
+import type {
+  CounterpartyType,
+  GlPostingLineInput,
+  PostingType,
+  PostResult,
+  ReverseManyResult,
+  ReverseOutcome,
+} from './types'
 
 const logger = createScopedLogger('postings:reverse-entry')
 
@@ -263,5 +271,59 @@ export async function reverseEntry(
     const message = error instanceof Error ? error.message : String(error)
     logger.error('Reversal failed', { organizationId, glPostingId, error: message })
     return { status: 'error', failureClass: 'transport', retryable: false, error: message }
+  }
+}
+
+export interface ReverseEntriesOptions {
+  organizationId: string
+  glPostingIds: string[]
+  actorUserId?: string
+  memo?: string
+}
+
+/**
+ * Reverse several entries, one outcome per posting.
+ *
+ * Shaped on `unsyncExports`: de-duped, **never throws**, and the tallies are
+ * re-counted off the outcome array rather than incremented as it goes.
+ *
+ * 🛑 One entry at a time, deliberately sequential. Each reversal is a full
+ * `postEntry` - it claims `(postingType, periodKey, revision + 1)`, resolves
+ * accounts against the chart and writes its effects - and a batch transaction
+ * around forty of them would hold the commit lock for the length of the slowest.
+ * A row that refuses lands the rest, which is the whole point of the shape.
+ *
+ * The period lock is resolved ONCE by the caller and passed in: it cannot change
+ * mid-run, and re-reading it per row would let a close land halfway through a
+ * selection and split it.
+ */
+export async function reverseEntries(
+  db: Database,
+  options: ReverseEntriesOptions & { lock: PeriodLock }
+): Promise<ReverseManyResult> {
+  const { organizationId, actorUserId, lock, memo } = options
+  const glPostingIds = [...new Set(options.glPostingIds)]
+
+  const outcomes: ReverseOutcome[] = []
+  for (const glPostingId of glPostingIds) {
+    const result = await reverseEntry(db, {
+      organizationId,
+      glPostingId,
+      actorUserId,
+      lock,
+      memo,
+    })
+    outcomes.push({
+      glPostingId,
+      docNumber: result.docNumber ?? null,
+      status: didLedgerAccept(result) ? 'reversed' : 'refused',
+      message: didLedgerAccept(result) ? undefined : (result.error ?? 'It was not reversed.'),
+    })
+  }
+
+  return {
+    reversed: outcomes.filter((outcome) => outcome.status === 'reversed').length,
+    refused: outcomes.filter((outcome) => outcome.status === 'refused').length,
+    outcomes,
   }
 }

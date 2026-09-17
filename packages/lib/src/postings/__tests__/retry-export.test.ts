@@ -15,7 +15,7 @@
 
 import { schema } from '@auxx/database'
 import type { Result } from 'neverthrow'
-import { ok } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   __resetAccountingProvidersForTests,
@@ -116,6 +116,7 @@ function stubProvider(answer: (input: PostEntryInput) => Result<PostEntryResult,
     listAccountMappings: async () => ok(new Map<string, string>()),
     setAccountMapping: async () => ok(undefined),
     clearAccountMapping: async () => ok(undefined),
+    withdrawObject: async () => err(new Error('This stub provider cannot withdraw anything.')),
     resolveAccount: async (_org: string, code: string) => ok(code),
     postEntry: async (input: PostEntryInput) => {
       seen.push(input)

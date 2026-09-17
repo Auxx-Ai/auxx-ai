@@ -33,7 +33,7 @@ vi.mock('../../cache', () => ({
   }),
 }))
 
-import { ok } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { postEntry } from '../post-entry'
 import {
   __resetAccountingProvidersForTests,
@@ -250,6 +250,8 @@ const NO_ACCOUNT_MAP = {
   listAccountMappings: async () => ok(new Map<string, string>()),
   setAccountMapping: async () => ok(undefined),
   clearAccountMapping: async () => ok(undefined),
+  // Brief 60 §5.3. Nothing in these tests un-syncs; the stub only has to exist.
+  withdrawObject: async () => err(new Error('This stub provider cannot withdraw anything.')),
 }
 
 function registerFakeProvider(

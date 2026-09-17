@@ -61,6 +61,7 @@ import {
   resolvePeriodLock,
   restoreChartAccount,
   retryExport,
+  reverseEntries,
   reverseEntry,
   reverseJournalEntry,
   type SaveMappingRow,
@@ -69,6 +70,7 @@ import {
   setLockedThrough,
   setRoleAssignment,
   syncProviderSyncScheduler,
+  unsyncExports,
   updateChartAccount,
   updateJournalEntry,
   verifyBooksBalance,
@@ -221,9 +223,11 @@ const draftEntry = z.object({
  * | `failedExports` | `ledger.view` |
  * | `retryExport` | `ledger.post` |
  * | `syncExports` | `ledger.post` |
+ * | `unsyncExports` | `ledger.control` |
  * | `verifyBalance`   | `ledger.view` |
  * | `post`            | `ledger.post` |
  * | `reverse`         | `ledger.post` |
+ * | `reverseMany`     | `ledger.post` |
  * | `setLockedThrough` | `ledger.control` |
  * | `syncProviderLedger` | `ledger.control` |
  * | `providerSyncRunState` | `ledger.view` |
@@ -437,6 +441,43 @@ export const ledgerRouter = createTRPCRouter({
       return reverseEntry(ctx.db, {
         organizationId,
         glPostingId: input.glPostingId,
+        actorUserId: userId,
+        lock,
+        memo: input.memo,
+      })
+    }),
+
+  /**
+   * Reverse several postings in one press - the sync queue's bulk Reverse.
+   *
+   * 🛑 A LEDGER operation, unlike `unsyncExports` beside it in the same bulk
+   * bar. Every accepted row writes a NEW entry into the books and flips its
+   * original to `reversed`; nothing is edited and nothing is deleted. The copy
+   * already in the provider is left exactly where it is
+   * (plans/accounting/tasks/60-un-syncing-from-the-provider.md E1/E2).
+   *
+   * One outcome per posting and never a throw: a locked period, an entry that is
+   * not `posted` and an unmapped account all arrive as that row's `refused`
+   * message and land the rest of the selection.
+   *
+   * ⚠️ Capped at **100**, not `syncExports`' 500. A release stamps a column;
+   * each of these is a full `postEntry` - claim, resolve against the chart,
+   * write lines and effects - run sequentially inside the request.
+   */
+  reverseMany: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      z.object({
+        glPostingIds: z.array(z.string().min(1)).min(1).max(100),
+        memo: z.string().max(4000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const lock = await resolvePeriodLock(organizationId)
+
+      return reverseEntries(ctx.db, {
+        organizationId,
+        glPostingIds: input.glPostingIds,
         actorUserId: userId,
         lock,
         memo: input.memo,
@@ -1187,12 +1228,28 @@ export const ledgerRouter = createTRPCRouter({
    * was attempted and refused and carries the reason.
    */
   failedExports: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ through: z.string().min(1).optional() }).optional())
+    .input(
+      z
+        .object({
+          through: z.string().min(1).optional(),
+          /** Exactly one accounting month - what the Synced tab asks for. */
+          month: z.string().min(1).optional(),
+          /**
+           * Add the entries already in the provider's books (60 §8.1). Unbounded
+           * without `month`, which is why the Synced tab is the one surface here
+           * that resolves a month.
+           */
+          includeExported: z.boolean().optional(),
+        })
+        .optional()
+    )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
       const result = await listFailedExports(ctx.db, organizationId, {
         through: input?.through,
+        month: input?.month,
+        includeExported: input?.includeExported,
       })
       if (result.isErr()) throw result.error
       return result.value
@@ -1284,6 +1341,46 @@ export const ledgerRouter = createTRPCRouter({
       const result = await releaseExportsThroughGate(ctx.db, {
         organizationId: ctx.session.organizationId,
         glPostingIds: input.glPostingIds,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Remove the provider's copy of already-delivered entries and hold them for
+   * re-sync (plans/accounting/tasks/60-un-syncing-from-the-provider.md §7).
+   *
+   * 🛑 `ledgerControl`, not `ledgerPost` (E5). Deleting rows out of the firm's
+   * books is the authority that closes and reopens a period and runs the inbound
+   * sync, not the one that posts a journal.
+   *
+   * 🛑 An EXPORT operation, never a ledger one. Nothing here reverses, reopens a
+   * period or releases a claim - the entries stay `posted` and come back to
+   * *Ready to sync*. Backing an entry out of OUR books is `reverse`.
+   *
+   * ⚠️ Unlike `syncExports` this WAITS on the provider, and its cap is **100**,
+   * not 500 (E8): a release stamps a column and returns, while this makes two to
+   * three provider round trips per row inside the request. "We have asked to
+   * delete 40 things, check back later" is not an answer anybody can act on, and
+   * R5 and R6 are exactly what the operator pressed the button to find out. If
+   * 100 rows proves too slow the answer is a worker job with the queue polling
+   * it, not a larger cap.
+   *
+   * `force` overrides R5 alone - the row whose copy was edited in the provider
+   * after we sent it - and it discards that edit.
+   */
+  unsyncExports: permissionProcedure(PermissionKey.ledgerControl)
+    .input(
+      z.object({
+        glPostingIds: z.array(z.string().min(1)).min(1).max(100),
+        force: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await unsyncExports(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        glPostingIds: input.glPostingIds,
+        force: input.force,
       })
       if (result.isErr()) throw result.error
       return result.value

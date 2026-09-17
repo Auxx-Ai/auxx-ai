@@ -62,6 +62,8 @@ export const AccountingDelivery = pgTable(
     state: text().notNull().$type<'pending' | 'blocked' | 'delivered'>(),
     completedAt: timestamp({ withTimezone: true }),
     releasedAt: timestamp({ withTimezone: true }),
+    /** How many times this delivery has been withdrawn. Names the operation keys. */
+    attemptEpoch: integer().notNull().default(0),
   },
   (t) => [
     unique('AccountingDelivery_org_id_key').on(t.organizationId, t.id),
@@ -210,6 +212,8 @@ export const ExternalAccountingObject = pgTable(
     remoteVersion: text(),
     remoteBasis: jsonb().notNull(),
     componentCoverage: jsonb().notNull().$type<string[]>(),
+    /** When we deleted this object out of the provider. Null while it is live there. */
+    withdrawnAt: timestamp({ withTimezone: true }),
   },
   (t) => [
     unique('ExternalAccountingObject_remote_key').on(

@@ -14,11 +14,13 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
+import { toastError } from '@auxx/ui/components/toast'
 import {
   BookOpenCheck,
   CalendarClock,
   CircleHelp,
   Clock,
+  CloudOff,
   ExternalLink,
   Layers,
   Receipt,
@@ -26,6 +28,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
+import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { EntryJournal, journalLinesFromDetail } from './entry-journal'
 import { EntryRollForward } from './entry-roll-forward'
@@ -52,6 +55,8 @@ interface PostingDrawerProps {
    * see `post-result-callout.tsx`.
    */
   connectedTenantId: string | null
+  /** `ledger.control` (60 E5). Without it the provider link shows and Un-sync does not. */
+  canUnsync: boolean
   /** Reverse this posting with a memo. Owned by the caller's actions hook. */
   onReverse: (memo: string) => void
   isReversing: boolean
@@ -88,10 +93,13 @@ export function PostingDrawer({
   bookTimeZone,
   providerLabel,
   connectedTenantId,
+  canUnsync,
   onReverse,
   isReversing,
 }: PostingDrawerProps) {
   const [memo, setMemo] = useState('')
+  const [confirm, ConfirmDialog] = useConfirm()
+  const utils = api.useUtils()
   /**
    * The Register section is open, so its read is worth making. Collapsed on
    * open because it is the one read here that can be large - a daily
@@ -121,13 +129,73 @@ export function PostingDrawer({
       )
     : null
 
+  /** Nothing to put in the strip is an absent strip, not an empty flex row. */
+  const headerActions =
+    !!entryUrl || (canUnsync && detail?.exportStatus === 'exported') || detail?.status === 'posted'
+
   const assertions = detail ? readStoredAssertions(detail.draft) : null
   const reasons = detail ? readStoredReasons(detail.draft) : []
   const isReversal = !!detail?.reversesId
 
+  /**
+   * 🛑 An EXPORT operation, not a ledger one (60 E1): their copy is deleted and
+   * this entry stays posted, with its lines frozen and its effects claimed. The
+   * button that backs an entry out of OUR books is Reverse, further down.
+   */
+  const unsyncExports = api.ledger.unsyncExports.useMutation({
+    onSuccess: (result) => {
+      const refused = result.outcomes.find((outcome) => outcome.status !== 'withdrawn')
+      if (refused) {
+        toastError({
+          title: `Not removed from ${providerLabel}`,
+          description: refused.message ?? 'It was not removed.',
+        })
+        return
+      }
+      void utils.ledger.get.invalidate()
+      void utils.ledger.failedExports.invalidate()
+      void utils.ledger.listPostings.invalidate()
+    },
+    onError: (mutationError) => {
+      toastError({ title: 'Could not un-sync', description: mutationError.message })
+    },
+  })
+
+  /** The confirm copy is 60 §8.2 verbatim, in its one-entry form. */
+  async function handleUnsync() {
+    if (!postingId) return
+    const confirmed = await confirm({
+      title: `Un-sync 1 entry from ${providerLabel}?`,
+      description:
+        `The journal entries we created there will be deleted. Your books are not changed — ` +
+        `the entries stay posted here and return to Ready to sync, and they will not be sent ` +
+        `again until you sync them.`,
+      confirmText: 'Un-sync',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) unsyncExports.mutate({ glPostingIds: [postingId] })
+  }
+
   function handleReverse() {
     onReverse(memo)
     setMemo('')
+  }
+
+  /**
+   * The header has no memo field, so the confirm is what stands in for the
+   * deliberation the section's textarea used to force.
+   */
+  async function handleHeaderReverse() {
+    const confirmed = await confirm({
+      title: 'Reverse this posting?',
+      description:
+        'A reversing entry is posted for the same amounts the other way round. Nothing here is edited or deleted, and you can add a memo from the Reverse section below instead.',
+      confirmText: 'Reverse',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) handleReverse()
   }
 
   return (
@@ -160,7 +228,7 @@ export function PostingDrawer({
                       </div>
                     }>
                     <Badge variant={statusVariant(detail.status, outcome.tone)} size='sm'>
-                      {STATUS_LABEL[detail.status]}
+                      {statusBadgeLabel(detail.status, outcome.tone)}
                     </Badge>
                   </Tooltip>
                 </>
@@ -168,24 +236,56 @@ export function PostingDrawer({
             </div>
           }
           actions={
-            entryUrl && (
+            headerActions && (
               // Icon-only, the shape `payout-evidence-drawer.tsx` uses: a drawer
               // header is a narrow strip and a worded button crowds the doc
               // number out of it at 380px.
-              <Tooltip content={`View in ${providerLabel}`}>
-                <Button variant='ghost' size='icon-xs' asChild>
-                  {/* ⚠️ `aria-label` as well as the tooltip - Radix associates a
-                      tooltip with `aria-describedby` only while it is open, so
-                      an icon-only link has no accessible NAME without it. */}
-                  <a
-                    aria-label={`View in ${providerLabel}`}
-                    href={entryUrl}
-                    target='_blank'
-                    rel='noreferrer'>
-                    <ExternalLink />
-                  </a>
-                </Button>
-              </Tooltip>
+              <div className='flex items-center gap-1'>
+                {entryUrl && (
+                  <Tooltip content={`View in ${providerLabel}`}>
+                    <Button variant='ghost' size='icon-xs' asChild>
+                      {/* ⚠️ `aria-label` as well as the tooltip - Radix associates a
+                          tooltip with `aria-describedby` only while it is open, so
+                          an icon-only link has no accessible NAME without it. */}
+                      <a
+                        aria-label={`View in ${providerLabel}`}
+                        href={entryUrl}
+                        target='_blank'
+                        rel='noreferrer'>
+                        <ExternalLink />
+                      </a>
+                    </Button>
+                  </Tooltip>
+                )}
+                {/* 🛑 NOT nested under `entryUrl`. The deep link is withheld when
+                    the entry went to a company this workspace is no longer
+                    connected to; their copy still exists and is still ours to
+                    withdraw. */}
+                {canUnsync && detail?.exportStatus === 'exported' && (
+                  <Tooltip content={`Un-sync from ${providerLabel}`}>
+                    <Button
+                      variant='ghost'
+                      size='icon-xs'
+                      aria-label={`Un-sync from ${providerLabel}`}
+                      disabled={unsyncExports.isPending}
+                      onClick={() => void handleUnsync()}>
+                      <CloudOff />
+                    </Button>
+                  </Tooltip>
+                )}
+                {detail?.status === 'posted' && (
+                  <Tooltip content='Reverse this posting'>
+                    <Button
+                      variant='ghost'
+                      size='icon-xs'
+                      aria-label='Reverse this posting'
+                      disabled={isReversing}
+                      onClick={() => void handleHeaderReverse()}>
+                      <Undo2 />
+                    </Button>
+                  </Tooltip>
+                )}
+              </div>
             )
           }
           onClose={() => onOpenChange(false)}
@@ -321,19 +421,19 @@ export function PostingDrawer({
                 description='A mistake is corrected by reversing and re-entering, never by editing a posted entry.'
                 initialOpen={false}>
                 <div className='flex flex-col gap-2'>
-                  <Label htmlFor='reversal-memo'>Why is it being reversed?</Label>
+                  <Label htmlFor='reversal-memo'>Why is it being reversed? (optional)</Label>
                   <Textarea
                     id='reversal-memo'
                     value={memo}
                     onChange={(event) => setMemo(event.target.value)}
-                    placeholder='This memo is carried onto the reversing entry and is the only explanation a reader gets later.'
+                    placeholder='Carried onto the reversing entry, and the only explanation a reader gets later. Left empty, the reversal stands on its own.'
                     rows={3}
                   />
                   <div>
                     <Button
                       variant='outline'
                       size='sm'
-                      disabled={memo.trim().length === 0 || detail.status !== 'posted'}
+                      disabled={detail.status !== 'posted'}
                       loading={isReversing}
                       loadingText='Reversing...'
                       onClick={handleReverse}>
@@ -352,6 +452,7 @@ export function PostingDrawer({
             </div>
           </ScrollArea>
         )}
+        <ConfirmDialog />
       </div>
     </DockableDrawer>
   )
@@ -361,6 +462,22 @@ export function PostingDrawer({
 function statusVariant(status: PostingDetail['status'], tone: OutcomeCopy['tone']) {
   if (tone === 'failure') return 'red'
   return status === 'posted' ? 'green' : 'outline'
+}
+
+/**
+ * 🛑 TWO axes, one badge, so the label has to carry both. `status` is the
+ * LEDGER's (`Posted`, `Reversed`) and `tone` is the EXPORT's, and reading only
+ * the first put the word "Posted" on a red badge whose tooltip said the export
+ * was refused. The entry really is posted - that half was never wrong - so the
+ * export word is appended rather than swapped in.
+ *
+ * `Refused` is the sync queue's word for this state (`SYNC_QUEUE_TAB_LABELS`),
+ * not a second vocabulary. A `neutral` tone is a success with an explanation -
+ * nothing connected, export switched off - and adds nothing here.
+ */
+function statusBadgeLabel(status: PostingDetail['status'], tone: OutcomeCopy['tone']): string {
+  const label = STATUS_LABEL[status]
+  return tone === 'failure' ? `${label} · Refused` : label
 }
 
 const STATUS_LABEL: Record<PostingDetail['status'], string> = {
