@@ -8,6 +8,7 @@ import {
   type PostingAssertions,
 } from './draft'
 import { LEDGER_CURRENCY } from './ledger-currency'
+import { releaseReversedPostingClaimsInTx } from './release-claims'
 import type { BuiltEntry, PostingExportStatus, ResolvedPostingLine } from './types'
 
 /** Destination already pinned under the accounting transaction lock. */
@@ -45,26 +46,6 @@ export type ClaimOutcome =
         draft: unknown
       }
     }
-
-/** Effect-backed journals must be corrected through their immutable member lineage. */
-export async function assertPostingReversalAllowedInTx(
-  tx: Transaction,
-  organizationId: string,
-  glPostingId: string
-): Promise<void> {
-  const effects = await tx
-    .select({ id: schema.AccountingEffect.id })
-    .from(schema.AccountingEffect)
-    .where(
-      and(
-        eq(schema.AccountingEffect.organizationId, organizationId),
-        eq(schema.AccountingEffect.glPostingId, glPostingId)
-      )
-    )
-    .limit(1)
-  if (effects.length > 0)
-    throw new ConflictError('Effect-backed postings require an explicit accounting correction')
-}
 
 /** Shared commit-only header/line insertion; caller owns the transaction and accounting lock. */
 export async function insertPostingInTx(
@@ -259,7 +240,14 @@ export async function insertPostingInTx(
     ) {
       throw new ConflictError('The posting to reverse changed; reload before reversing')
     }
-    await assertPostingReversalAllowedInTx(tx, organizationId, original.id)
+    // R2/R3 (brief 62): a reversal is an undo, not a correction - it releases
+    // the original's claim so its work returns to `pending` and can be posted
+    // again, rather than refusing to reverse an effect-backed row at all.
+    await releaseReversedPostingClaimsInTx(tx, organizationId, {
+      id: original.id,
+      docNumber: original.docNumber,
+      exportStatus: original.exportStatus,
+    })
     await tx
       .update(schema.GlPosting)
       .set({ status: 'reversed' })

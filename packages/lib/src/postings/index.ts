@@ -600,6 +600,7 @@ export {
 export {
   type ReleasedAccountingClaims,
   releaseAccountingClaims,
+  releaseReversedPostingClaimsInTx,
   reopenUnclaimedAcceptedWork,
 } from './release-claims'
 // ── Statements (HANDOFF slot 1E, wave 1) ────────────────────────────────────

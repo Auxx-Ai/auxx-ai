@@ -20,6 +20,12 @@ import { withAccountingCommitLock } from '../accounting-commit-lock'
 import { acceptedCustomerCreditEffectBasisSchema } from '../credit-effect-types'
 import { captureCustomerCreditWorkInTx } from '../credit-effect-work'
 import * as docNumbers from '../doc-number'
+import { documentGenerationKey } from '../doc-number'
+import type {
+  AcceptedDocumentEffectBasisV1,
+  DocumentWorkBasisInput,
+} from '../document-effect-types'
+import { captureDocumentWorkInTx } from '../document-effect-work'
 import { correctionAccountingEffectKey } from '../effect-basis'
 import type {
   AcceptedCustomerReceiptEffectBasisV1,
@@ -155,6 +161,169 @@ async function member(effectiveDate = '2026-09-14'): Promise<PreparedEffectMembe
     line.selectedBy = 'document'
   }
   return { workId: work.id, expectedBasisVersion: 1, acceptedBasis: basis }
+}
+
+/** An `invoice_issued` document-family member, keyed on its own document number rather than a hash. */
+async function documentMember(
+  documentKey = 'INV-0042'
+): Promise<PreparedEffectMember<AcceptedDocumentEffectBasisV1> & { invoiceId: string }> {
+  const [invoiceDefinition] = await db()
+    .insert(schema.EntityDefinition)
+    .values({
+      organizationId,
+      apiSlug: 'invoices',
+      singular: 'Invoice',
+      plural: 'Invoices',
+      entityType: 'invoice',
+    })
+    .returning()
+  const [invoice] = await db()
+    .insert(schema.EntityInstance)
+    .values({ organizationId, entityDefinitionId: invoiceDefinition!.id, updatedAt: new Date() })
+    .returning()
+  const invoiceId = invoice!.id
+  const calculation = {
+    version: 1 as const,
+    family: 'invoice_issued' as const,
+    documentInstanceId: invoiceId,
+    documentKey,
+    sourceHash: SOURCE_HASH,
+    effectiveDate: '2026-09-14',
+    currency: 'USD' as const,
+    currencyExponent: 2 as const,
+    totalMinor: '100',
+    lines: [
+      {
+        lineKey: 'clearing',
+        accountRole: null,
+        glAccountId: clearingId,
+        direction: 'debit' as const,
+        amountMinor: '100',
+        counterpartyType: null,
+        counterpartyId: null,
+        dimensions: {},
+      },
+      {
+        lineKey: 'revenue',
+        accountRole: null,
+        glAccountId: revenueId,
+        direction: 'credit' as const,
+        amountMinor: '100',
+        counterpartyType: null,
+        counterpartyId: null,
+        dimensions: {},
+      },
+    ],
+  }
+  const workBasis: DocumentWorkBasisInput = {
+    version: 1,
+    status: 'ready',
+    family: 'invoice_issued',
+    documentInstanceId: invoiceId,
+    sourceHash: SOURCE_HASH,
+    effectiveDate: '2026-09-14',
+    calculation,
+  }
+  const { work } = await db().transaction((tx) =>
+    captureDocumentWorkInTx(tx, {
+      organizationId,
+      family: 'invoice_issued',
+      documentInstanceId: invoiceId,
+      eligibility: 'automatic',
+      basis: workBasis,
+    })
+  )
+  const acceptedBasis: AcceptedDocumentEffectBasisV1 = {
+    version: 1,
+    sourceBasisVersion: 1,
+    sourceHash: SOURCE_HASH,
+    policyKey: 'document_entry_v1',
+    policyVersion: 1,
+    effectiveDate: '2026-09-14',
+    bookTimeZone: 'UTC',
+    currency: 'USD',
+    currencyExponent: 2,
+    documentRefs: [{ resourceKind: 'invoice', entityInstanceId: invoiceId }],
+    calculation,
+    accountResolution: [
+      {
+        lineKey: 'clearing',
+        glAccountId: clearingId,
+        accountRole: null,
+        selectedBy: 'document',
+        configurationHash: SOURCE_HASH,
+      },
+      {
+        lineKey: 'revenue',
+        glAccountId: revenueId,
+        accountRole: null,
+        selectedBy: 'document',
+        configurationHash: SOURCE_HASH,
+      },
+    ],
+    contribution: [
+      {
+        lineKey: 'clearing',
+        glAccountId: clearingId,
+        direction: 'debit',
+        amountMinor: '100',
+        counterpartyType: null,
+        counterpartyId: null,
+        dimensions: {},
+      },
+      {
+        lineKey: 'revenue',
+        glAccountId: revenueId,
+        direction: 'credit',
+        amountMinor: '100',
+        counterpartyType: null,
+        counterpartyId: null,
+        dimensions: {},
+      },
+    ],
+  }
+  return { workId: work.id, expectedBasisVersion: 1, acceptedBasis, invoiceId }
+}
+
+function documentEntry(
+  member: PreparedEffectMember<AcceptedDocumentEffectBasisV1> & { invoiceId: string },
+  periodKey: string
+): BuiltEntry {
+  return {
+    postingType: 'invoice_issued',
+    periodKey,
+    txnDate: member.acceptedBasis.effectiveDate,
+    totalDebit: 100,
+    totalCredit: 100,
+    lines: member.acceptedBasis.contribution.map((line, sortOrder) => ({
+      glAccountId: line.glAccountId,
+      direction: line.direction,
+      amount: Number(line.amountMinor),
+      sourceType: 'invoice',
+      sourceId: member.invoiceId,
+      sortOrder,
+      dimensions: line.dimensions,
+    })),
+  }
+}
+
+function acceptDocument(
+  member: PreparedEffectMember<AcceptedDocumentEffectBasisV1>,
+  periodKey: string
+) {
+  return db().transaction((tx) =>
+    acceptEntryInTx(
+      tx,
+      {
+        organizationId,
+        actorUserId: userId,
+        members: [member],
+        entry: documentEntry(member as Parameters<typeof documentEntry>[0], periodKey),
+        deliveryIntent: { kind: 'not_required' },
+      },
+      { revalidateMemberInTx: async () => member.acceptedBasis }
+    )
+  )
 }
 
 async function receiptMember(
@@ -744,7 +913,7 @@ describe('atomic accounting acceptance against PostgreSQL', () => {
       deliveryIntent: 'automatic',
       intendedBookConnectionId: destination.id,
     })
-    expect(journal!.periodKey).toMatch(/^fg_[a-f0-9]+$/)
+    expect(journal!.periodKey).toMatch(/^g[0-9a-z]{8}$/)
     expect(journal!.postedAt).not.toBeNull()
     const effects = await db().select().from(schema.AccountingEffect)
     expect(effects).toHaveLength(2)
@@ -895,7 +1064,7 @@ describe('atomic accounting acceptance against PostgreSQL', () => {
   it('refuses a truncated membership-key collision with a different full membership hash', async () => {
     const first = await member()
     const second = await member()
-    vi.spyOn(docNumbers, 'fulfillmentGroupPeriodKey').mockReturnValue('fg_123456789')
+    vi.spyOn(docNumbers, 'fulfillmentGroupPeriodKey').mockReturnValue('g12345678')
     await accept([first])
     await expect(accept([second])).rejects.toThrow()
     const effects = await db().select().from(schema.AccountingEffect)
@@ -949,11 +1118,64 @@ describe('atomic accounting acceptance against PostgreSQL', () => {
     expect(journals.every((row) => row.status === 'posted')).toBe(true)
   })
 
-  it('refuses an ordinary reversal of effect-backed journals and retains the original claim', async () => {
+  it('a reversal releases the claim so the source can be accepted again', async () => {
     const original = await member()
     const accepted = await accept([original])
     if (accepted.status !== 'accepted' || !accepted.glPostingId)
       throw new Error('Expected original acceptance')
+
+    const reversed = await reverseEntry(db(), {
+      organizationId,
+      actorUserId: userId,
+      glPostingId: accepted.glPostingId,
+      lock: { lockedThroughMonth: null },
+    })
+    expect(reversed.status).toBe('posted')
+
+    const postings = await db().select().from(schema.GlPosting)
+    expect(postings).toHaveLength(2)
+    const originalRow = postings.find((row) => row.id === accepted.glPostingId)!
+    const reversal = postings.find((row) => row.id !== accepted.glPostingId)!
+    expect(originalRow.status).toBe('reversed')
+    expect(reversal.reversesId).toBe(originalRow.id)
+
+    expect(await db().select().from(schema.AccountingEffect)).toHaveLength(0)
+
+    const works = await db()
+      .select()
+      .from(schema.AccountingWork)
+      .where(eq(schema.AccountingWork.id, original.workId))
+    expect(works[0]!.state).toBe('pending')
+    expect(works[0]!.basisVersion).toBe(2)
+
+    const bases = await db()
+      .select()
+      .from(schema.AccountingWorkBasis)
+      .where(eq(schema.AccountingWorkBasis.workId, original.workId))
+    expect(bases).toHaveLength(2)
+
+    // `sourceBasisVersion` must match the work's bumped `basisVersion` or
+    // acceptance refuses with a calculation mismatch.
+    const reaccepted = await accept([
+      {
+        ...original,
+        expectedBasisVersion: 2,
+        acceptedBasis: { ...original.acceptedBasis, sourceBasisVersion: 2 },
+      },
+    ])
+    expect(reaccepted).toMatchObject({ status: 'accepted', existing: false })
+    if (reaccepted.status !== 'accepted') throw new Error('Expected re-acceptance')
+    expect(reaccepted.glPostingId).not.toBe(accepted.glPostingId)
+  })
+
+  it('refuses a reversal when a correction already names the effect (R5)', async () => {
+    const original = await member()
+    const accepted = await accept([original])
+    if (accepted.status !== 'accepted' || !accepted.glPostingId)
+      throw new Error('Expected original acceptance')
+    const effectId = accepted.effectIds[0]!
+    await correction(original, effectId, 'correction-blocks-reversal', null)
+
     const refused = await reverseEntry(db(), {
       organizationId,
       actorUserId: userId,
@@ -961,14 +1183,77 @@ describe('atomic accounting acceptance against PostgreSQL', () => {
       lock: { lockedThroughMonth: null },
     })
     expect(refused.status).toBe('error')
-    expect(refused.error).toContain('correction')
-    expect(await db().select().from(schema.GlPosting)).toHaveLength(1)
+    expect(refused.error).toContain('corrected')
     expect(await db().select().from(schema.AccountingEffect)).toHaveLength(1)
-    expect(await accept([original])).toMatchObject({
-      status: 'accepted',
-      existing: true,
-      glPostingId: accepted.glPostingId,
+    const postings = await db().select().from(schema.GlPosting)
+    expect(postings).toHaveLength(1)
+    expect(postings[0]!.status).toBe('posted')
+  })
+
+  it('a document family walks a generation past every reversal it collects (Q3)', async () => {
+    const documentKey = 'INV-0042'
+    const member1 = await documentMember(documentKey)
+    const accepted1 = await acceptDocument(member1, documentKey)
+    if (accepted1.status !== 'accepted' || !accepted1.glPostingId)
+      throw new Error('Expected the first issuance to accept')
+    const posting1 = (
+      await db()
+        .select()
+        .from(schema.GlPosting)
+        .where(eq(schema.GlPosting.id, accepted1.glPostingId))
+    )[0]!
+    expect(posting1.periodKey).toBe(documentKey)
+
+    const reversed1 = await reverseEntry(db(), {
+      organizationId,
+      actorUserId: userId,
+      glPostingId: accepted1.glPostingId,
+      lock: { lockedThroughMonth: null },
     })
+    expect(reversed1.status).toBe('posted')
+
+    const member2 = {
+      ...member1,
+      expectedBasisVersion: 2,
+      acceptedBasis: { ...member1.acceptedBasis, sourceBasisVersion: 2 },
+    }
+    const accepted2 = await acceptDocument(member2, documentKey)
+    expect(accepted2).toMatchObject({ status: 'accepted', existing: false })
+    if (accepted2.status !== 'accepted' || !accepted2.glPostingId)
+      throw new Error('Expected the second issuance to accept')
+    const posting2 = (
+      await db()
+        .select()
+        .from(schema.GlPosting)
+        .where(eq(schema.GlPosting.id, accepted2.glPostingId))
+    )[0]!
+    expect(posting2.periodKey).toBe(documentGenerationKey(documentKey, 2))
+    expect(posting2.docNumber.endsWith('.2')).toBe(true)
+
+    const reversed2 = await reverseEntry(db(), {
+      organizationId,
+      actorUserId: userId,
+      glPostingId: accepted2.glPostingId,
+      lock: { lockedThroughMonth: null },
+    })
+    expect(reversed2.status).toBe('posted')
+
+    const member3 = {
+      ...member1,
+      expectedBasisVersion: 3,
+      acceptedBasis: { ...member1.acceptedBasis, sourceBasisVersion: 3 },
+    }
+    const accepted3 = await acceptDocument(member3, documentKey)
+    expect(accepted3).toMatchObject({ status: 'accepted', existing: false })
+    if (accepted3.status !== 'accepted' || !accepted3.glPostingId)
+      throw new Error('Expected the third issuance to accept')
+    const posting3 = (
+      await db()
+        .select()
+        .from(schema.GlPosting)
+        .where(eq(schema.GlPosting.id, accepted3.glPostingId))
+    )[0]!
+    expect(posting3.periodKey).toBe(documentGenerationKey(documentKey, 3))
   })
 
   it('rejects a different requested accepted basis for the same accepted work', async () => {

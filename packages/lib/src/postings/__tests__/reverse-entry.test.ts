@@ -69,6 +69,9 @@ interface PostingRow {
   failureReason?: string | null
   attempts?: number
   reversesId?: string | null
+  deliveryIntent?: 'not_required' | 'manual' | 'automatic' | null
+  intendedBookConnectionId?: string | null
+  exportStatus?: string
 }
 
 interface LineRow {
@@ -309,6 +312,9 @@ function original(overrides: Partial<PostingRow> = {}): PostingRow {
     providerId: 'none',
     providerEntryId: null,
     reversesId: null,
+    deliveryIntent: null,
+    intendedBookConnectionId: null,
+    exportStatus: 'not_required',
     ...overrides,
   }
 }
@@ -705,6 +711,31 @@ describe('refusals', () => {
     expect(result.failureClass).toBe('configuration')
     expect(result.error).toContain(GRNI.id)
     expect(fake.postings).toHaveLength(1)
+  })
+})
+
+// ── The provider: both halves or neither (brief 62 §4) ─────────────────────
+
+describe('the inherited delivery intent', () => {
+  it('an original that never required a provider posts a reversal that never calls one', async () => {
+    const fake = createFakeDb({
+      postings: [original({ deliveryIntent: 'not_required', exportStatus: 'not_required' })],
+      lines: originalLines(),
+      chart: CHART,
+    })
+
+    const result = await reverseEntry(fake.db, {
+      organizationId: ORG,
+      glPostingId: 'post_1',
+      lock: OPEN,
+    })
+
+    // Not `not_connected`: that status is what the LEGACY inline route reports
+    // when it resolves a provider and finds none connected. A pinned
+    // `not_required` intent skips that call entirely.
+    expect(result.status).toBe('posted')
+    expect(result.exportStatus).toBe('not_required')
+    expect(fake.postings[1]!.exportStatus).toBe('not_required')
   })
 })
 

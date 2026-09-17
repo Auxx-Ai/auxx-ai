@@ -14,7 +14,7 @@ import {
 
 describe('postingLockKey', () => {
   it('checks fulfillment membership groups against the actual accounting date', () => {
-    const key = postingLockKey({ periodKey: 'fg_abcdef012', txnDate: '2026-08-18' })
+    const key = postingLockKey({ periodKey: 'gabcdef01', txnDate: '2026-08-18' })
     expect(key).toBe('2026-08-18')
     expect(isPeriodLocked(key, { lockedThroughMonth: '2026-08' })).toBe(true)
     expect(isPeriodLocked(key, { lockedThroughMonth: '2026-07' })).toBe(false)
@@ -27,9 +27,9 @@ describe('postingLockKey', () => {
 
   it('requires a real day for non-calendar posting identities even before any period is closed', () => {
     for (const txnDate of ['2026-08', '2026-02-30', 'not-a-date']) {
-      expect(() => postingLockKey({ periodKey: 'fg_abcdef012', txnDate })).toThrow(BadRequestError)
+      expect(() => postingLockKey({ periodKey: 'gabcdef01', txnDate })).toThrow(BadRequestError)
     }
-    expect(() => parsePeriodKey('fg_abcdef012')).toThrow(BadRequestError)
+    expect(() => parsePeriodKey('gabcdef01')).toThrow(BadRequestError)
   })
 })
 

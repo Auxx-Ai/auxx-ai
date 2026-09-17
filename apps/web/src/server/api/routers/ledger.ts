@@ -452,8 +452,10 @@ export const ledgerRouter = createTRPCRouter({
    *
    * 🛑 A LEDGER operation, unlike `unsyncExports` beside it in the same bulk
    * bar. Every accepted row writes a NEW entry into the books and flips its
-   * original to `reversed`; nothing is edited and nothing is deleted. The copy
-   * already in the provider is left exactly where it is
+   * original to `reversed`; nothing is edited and nothing is deleted, but an
+   * effect-backed original's accepted effect IS released so its source can be
+   * posted again (plans/accounting/tasks/done/62-correcting-an-effect-backed-posting.md).
+   * The copy already in the provider is left exactly where it is
    * (plans/accounting/tasks/60-un-syncing-from-the-provider.md E1/E2).
    *
    * One outcome per posting and never a throw: a locked period, an entry that is

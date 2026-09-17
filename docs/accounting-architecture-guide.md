@@ -110,7 +110,7 @@ Five properties hold the whole thing up:
 | **Posting type** | What produced it — `fulfillment`, `payment`, `manual_journal`, … (§4.1) |
 | **Role** | A provider-neutral account key a builder emits, e.g. `'grni'`. Never a number |
 | **Period key** | The summarization window: a day (`'2026-08-18'`) or a month (`'2026-08'`) |
-| **Claim** | The `(org, type, periodKey, revision)` tuple that makes a double post impossible |
+| **Claim** | The `(org, type, periodKey, revision)` tuple that makes a double post impossible — a document family's key gains a `.<n>` generation once a reversal has freed it (`62` §4.2) |
 | **Work** | `AccountingWork` — a durable obligation to book something, owned by a record or a movement |
 | **Basis** | The versioned input to that obligation. Immutable once accepted, sha256-hashed |
 | **Effect** | `AccountingEffect` — an accepted basis bound to exactly one `GlPosting` |
@@ -458,6 +458,12 @@ opposite — the check moved and a stronger one was added beside it.
 is not an exact reversal, and the negation check would correctly refuse it. Splitting needs its own
 design. Do not loosen the negation check to allow it.
 
+A **reversal** is the other verb. `reverseEntry` on an effect-backed posting releases the claim —
+coverage and effect rows deleted, the work back to `pending` at a bumped basis version — so the
+source re-enters its preview and can be accepted again as a new journal. A correction consumes the
+claim; a reversal releases it. Effect-backed originals that already carry a correction refuse to
+reverse. See `plans/accounting/tasks/done/62-correcting-an-effect-backed-posting.md`.
+
 ---
 
 ## 7. The Money Model
@@ -673,8 +679,8 @@ back to *Ready to sync*, so a corrected mapping can send it again.
 design. `exportStatus` is the only `GlPosting` column it writes; the posting stays `posted`, its
 lines stay frozen, its effects stay claimed, `AccountingDeliveryCoverage` survives unchanged, no
 source work reopens and no reversal is written. Backing an entry out of *our* books is
-`reverseEntry` — a different button with a different meaning. This is `53-D11` (delete and
-re-deliver) applied to rollback.
+`reverseEntry` — a different button with a different meaning, and since brief 62 it also releases
+an effect-backed claim (§6.3). This is `53-D11` (delete and re-deliver) applied to rollback.
 
 The state machine: `exportStatus` `exported → pending`, `providerEntryId`/`providerTenantId`
 nulled, `AccountingDelivery` back to `pending` with null `releasedAt`/`completedAt`,

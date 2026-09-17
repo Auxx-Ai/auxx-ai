@@ -21,13 +21,19 @@
 // it as the `-R<revision>` suffix that keeps `GlPosting_org_docNumber_key`
 // satisfiable.
 //
+// An effect-backed original's claim is released as part of the reversal, so its
+// source can be posted again - see plans/accounting/tasks/done/62-correcting-an-effect-backed-posting.md.
+//
 // No permission checks here. The router asserts (docs/lib-module-guide.md §6).
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq } from 'drizzle-orm'
+import { AuxxError } from '../errors'
 import { buildEntry } from './build-entry'
+import { enqueueAccountingDelivery, planAccountingDeliveryInTx } from './delivery'
 import { parsePostingDraft, readDraftReasons, requiresAssertions, reverseAssertions } from './draft'
+import type { PostingDeliveryIntent } from './insert-posting'
 import { didLedgerAccept } from './ledger-accepted'
 import type { PeriodLock } from './periods'
 import { postEntry } from './post-entry'
@@ -106,6 +112,9 @@ export async function reverseEntry(
         status: schema.GlPosting.status,
         docNumber: schema.GlPosting.docNumber,
         draft: schema.GlPosting.draft,
+        deliveryIntent: schema.GlPosting.deliveryIntent,
+        intendedBookConnectionId: schema.GlPosting.intendedBookConnectionId,
+        exportStatus: schema.GlPosting.exportStatus,
       })
       .from(schema.GlPosting)
       .where(
@@ -249,15 +258,32 @@ export async function reverseEntry(
       ? parsePostingDraft(original.draft).assertions
       : undefined
 
+    // ── The provider: both halves or neither (R4) ──────────────────────────
+    // A reversal inherits the original's answer rather than choosing its own:
+    // `null` is the legacy inline route, unchanged; `not_required` stays
+    // `not_required`; and a pinned destination the provider actually received
+    // is inherited so the pair travels together. An original still pending,
+    // held or failed at the provider is `not_required` on its reversal - a
+    // `reversed` row with no copy outstanding is never sent later either.
+    const deliveryIntent: PostingDeliveryIntent | undefined =
+      original.deliveryIntent === null
+        ? undefined
+        : original.deliveryIntent === 'not_required'
+          ? { kind: 'not_required' }
+          : original.exportStatus === 'exported' && original.intendedBookConnectionId
+            ? { kind: original.deliveryIntent, connectionId: original.intendedBookConnectionId }
+            : { kind: 'not_required' }
+
     logger.info('Reversing posting', {
       organizationId,
       glPostingId: original.id,
       docNumber: original.docNumber,
       revision: original.revision + 1,
       lineCount: reversedLines.length,
+      deliveryIntent: deliveryIntent?.kind,
     })
 
-    return await postEntry(db, {
+    const result = await postEntry(db, {
       organizationId,
       entry,
       assertions: originalAssertions ? reverseAssertions(originalAssertions) : undefined,
@@ -266,7 +292,35 @@ export async function reverseEntry(
       lock,
       reversesId: original.id,
       revision: original.revision + 1,
+      deliveryIntent,
     })
+
+    // The delivery lane, not the inline push above, carries a pinned pair.
+    // Best-effort: `sweepAccountingDeliveries` recovers a posted row that
+    // never got planned or enqueued.
+    if (
+      result.status === 'posted' &&
+      deliveryIntent &&
+      (deliveryIntent.kind === 'manual' || deliveryIntent.kind === 'automatic') &&
+      result.glPostingId
+    ) {
+      const glPostingId = result.glPostingId
+      try {
+        await db.transaction((tx) =>
+          planAccountingDeliveryInTx(tx, { organizationId, glPostingId })
+        )
+        if (deliveryIntent.kind === 'automatic')
+          await enqueueAccountingDelivery({ organizationId, glPostingId })
+      } catch (error) {
+        logger.warn('Reversal posted but its delivery was not planned; the sweep will recover it', {
+          organizationId,
+          glPostingId,
+          error: error instanceof AuxxError ? error.message : String(error),
+        })
+      }
+    }
+
+    return result
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     logger.error('Reversal failed', { organizationId, glPostingId, error: message })

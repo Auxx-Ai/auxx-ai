@@ -1166,6 +1166,30 @@ describe('the provider outcome', () => {
   })
 })
 
+// ── A pinned delivery intent (brief 62 §4) ──────────────────────────────────
+
+describe('a pinned delivery intent', () => {
+  it('skips the inline provider push and reports the export as pending', async () => {
+    const fake = createFakeDb(FULL_CHART)
+    const seen = stubProvider(() =>
+      ok({ status: 'posted', externalId: 'qb_1', providerId: 'stub' })
+    )
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+      deliveryIntent: { kind: 'manual', connectionId: 'conn_1' },
+    })
+
+    expect(result.status).toBe('posted')
+    expect(result.exportStatus).toBe('pending')
+    // The delivery lane owns the push from here - never the provider stub.
+    expect(seen).toHaveLength(0)
+    expect(fake.postings[0]!.exportStatus).toBe('pending')
+  })
+})
+
 // ── Preview ────────────────────────────────────────────────────────────────
 
 describe('previewEntry', () => {
