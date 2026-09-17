@@ -97,9 +97,12 @@ export interface CreditMemoApplicationRow {
   appliedAt: string | null
 }
 
-/** One refund `PaymentTransaction` carrying this memo, as the settlement card lists it. */
+/** One refund carrying this memo, on either rail, as the settlement card lists it. */
 export interface CreditMemoRefundRow {
+  /** A `MoneyTransaction` id when `origin` is `money`, a `PaymentTransaction` id otherwise. */
   transactionId: string
+  /** Which rail recorded it. The canonical one is `money`; `payment_transaction` is legacy. */
+  origin: 'money' | 'payment_transaction'
   provider: string
   status: string
   /** Integer minor units. */

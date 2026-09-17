@@ -59,13 +59,15 @@ import { and, eq, inArray } from 'drizzle-orm'
  *   `bank_rule_counterpart_bank_account`, `bank_transaction_bank_account`) -
  *   these name a `bank_account` instance, not a `gl_account`. A bank account's
  *   own `bank_account_gl_account` is the pointer, and it IS here.
+ * - `stock_movement_gl_account` - the name lies: the registry freezes an auxx
+ *   posting ROLE there (`'inventory_raw_materials'`), so comparing it to
+ *   account ids can never match (64 A5).
  */
 export const GL_ACCOUNT_POINTER_ATTRIBUTES: Readonly<Record<string, string>> = {
   bank_account_gl_account: 'a bank account',
   bank_rule_gl_account: 'a bank rule',
   bank_transaction_gl_account: 'a bank transaction',
   bank_transaction_suggested_gl_account: 'a bank transaction suggestion',
-  stock_movement_gl_account: 'a stock movement',
   vendor_bill_line_gl_account: 'a vendor bill line',
 }
 

@@ -20,12 +20,13 @@ import {
   previewIssueCreditMemo,
   readContactCredit,
   readCreditMemoSettlement,
-  recordManualRefund,
+  recordCreditMemoRefund,
   refundTransaction,
   settleCreditMemo,
   unapplyCreditMemo,
   voidCreditMemo,
 } from '@auxx/lib/money'
+import { postCustomerRefundAccounting } from '@auxx/lib/money/customer-money'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { z } from 'zod'
@@ -142,6 +143,11 @@ export const creditMemoRouter = createTRPCRouter({
         rail: z.enum(['manual', 'stripe']),
         /** Manual rail only. */
         method: z.enum(['cash', 'check', 'card', 'bank', 'other']).optional(),
+        /**
+         * Manual rail only: the `bank_account` the money left. Required when the
+         * method's route is `cash`, forbidden when it is `undeposited_funds`.
+         */
+        bankAccountInstanceId: z.string().min(1).nullish(),
         reference: z.string().max(200).optional(),
         note: z.string().max(2000).optional(),
         /** `YYYY-MM-DD`, manual rail only. Defaults to today. */
@@ -157,18 +163,27 @@ export const creditMemoRouter = createTRPCRouter({
 
       let transactionId: string
       if (input.rail === 'manual') {
-        const { transactionId: id } = await recordManualRefund({
+        // 64 U2: the canonical money owners, then accounting. Posting is a
+        // separate call so a misconfigured ledger refuses the journal without
+        // also refusing to record that the customer got their money back.
+        const { moneyTransactionId } = await recordCreditMemoRefund(ctx.db, {
           organizationId,
           userId,
           creditMemoInstanceId,
-          amount: input.amount,
+          amountMinor: input.amount,
           commandKey: input.commandKey,
           date: input.date ?? new Date().toISOString().slice(0, 10),
           method: input.method ?? 'other',
+          bankAccountInstanceId: input.bankAccountInstanceId ?? null,
           reference: input.reference,
           note: input.note,
         })
-        transactionId = id
+        await postCustomerRefundAccounting(ctx.db, {
+          organizationId,
+          moneyTransactionId,
+          actorUserId: userId,
+        })
+        transactionId = moneyTransactionId
       } else {
         if (!input.chargeTransactionId) {
           throw new Error('A Stripe refund needs the charge to refund against')

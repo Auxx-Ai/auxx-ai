@@ -127,7 +127,7 @@ export async function readCustomerReceiptAccountingSource(
   if (evidence.length !== 1)
     throw new UnprocessableEntityError('Receipt needs one unambiguous accepted transaction source')
   const source = evidence[0]!
-  // 58 D3/§5.6: the feed's own rail link, not a `PaymentRoute` - the processor
+  // 58 D3/§5.6: the feed's own rail link - the processor
   // kind is retired and the account below resolves through the rail scope.
   const paymentGatewayId = source.account.paymentGatewayId
   if (!paymentGatewayId)

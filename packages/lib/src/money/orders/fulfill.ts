@@ -271,7 +271,6 @@ function buildForOrder(
     // 🛑 DARK. See `build-fulfillment-entry.ts`'s header: a per-fulfillment COGS
     // leg is a second writer of `inventory_finished_goods`, which the L1
     // month-end entry asserts. It turns on with the rest of L3, as ONE change.
-    includeCogs: false,
   })
   return { built, lines: resolved }
 }

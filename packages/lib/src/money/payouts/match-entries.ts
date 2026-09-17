@@ -36,7 +36,7 @@ function referenceKey(
  * The disambiguator a receipt's own reference cannot carry by itself: two
  * gateways can report the identical order reference (a shared reference
  * misfires this exact way), and only agreement on the RAIL says which one
- * actually settled it. `PaymentRoute`'s processor kind used to carry this on
+ * actually settled it. A retired `PaymentRoute` row used to carry this on
  * the `MoneyTransaction` side; it is retired (task 58 D5) and never had a live
  * row to replace (§2.3 - zero processor `PaymentRoute` writes in production).
  * `FinancialSourceAccount.paymentGatewayId` (D3) is the one link left.

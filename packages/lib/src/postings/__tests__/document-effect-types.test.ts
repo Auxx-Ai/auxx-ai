@@ -281,12 +281,16 @@ describe('the accepted effect basis', () => {
 })
 
 describe('documentRoleScope', () => {
-  // 🛑 Byte-for-byte what `accept-entry.ts`'s `effectRoleScope` derives, or a
-  // scoped org gets a refusal describing a change nobody made.
+  // 🛑 What `accept-entry.ts`'s `effectRoleScope` resolves through, or a scoped
+  // org gets a refusal describing a change nobody made.
   it('distinguishes absent from null from a named source', () => {
     expect(documentRoleScope({})).toEqual({})
     expect(documentRoleScope({ sourceStoreId: null })).toEqual({ store: null })
     expect(documentRoleScope({ sourceStoreId: 'src_1' })).toEqual({ store: 'src_1' })
-    expect(documentRoleScope({ processorAccountId: 'pa_1' })).toEqual({ rail: 'pa_1' })
+  })
+
+  it('carries the payment gateway id as the rail scope', () => {
+    expect(documentRoleScope({ paymentGatewayId: 'pg_1' })).toEqual({ rail: 'pg_1' })
+    expect(documentRoleScope({ paymentGatewayId: null })).toEqual({})
   })
 })

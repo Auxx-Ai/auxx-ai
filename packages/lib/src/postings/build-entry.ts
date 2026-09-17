@@ -496,13 +496,12 @@ export type ScopeAxis = 'store' | 'rail'
  *
  * 🛑 **`cogs_product_cost` is WANTED and BLOCKED, not excluded** (47 §4.2).
  * Splitting revenue per store while COGS pools makes gross margin per store
- * uncomputable. It cannot be added today for a mechanical reason: both
- * `buildFulfillmentEntry` call sites pass `includeCogs: false`, so COGS is
+ * uncomputable. It cannot be added today for a mechanical reason: COGS is
  * emitted only by `build-month-end-inventory.ts` - an org-wide plug against a
  * subledger total, which has no `sourceStoreId` and by construction cannot have
  * one. Scoped now, every COGS line would resolve through the manual bucket while
- * the per-store accounts sat at zero forever. It joins this table in the pass
- * that flips `includeCogs` true under L3.
+ * the per-store accounts sat at zero forever. It joins this table when 61 I2
+ * puts COGS on the inventory entry.
  *
  * Everything else is deliberately out, and 47 §4.3 carries the reasoning per
  * role: `accounts_receivable` is settled by cash rather than by store,

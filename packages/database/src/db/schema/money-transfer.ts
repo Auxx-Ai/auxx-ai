@@ -19,7 +19,6 @@ import { FinancialSourceAccount } from './financial-source-account'
 import { FinancialSourceObject } from './financial-source-object'
 import { FinancialSourceObservation } from './financial-source-observation'
 import { Organization } from './organization'
-import { PaymentRoute } from './payment-route'
 
 /** Durable MoneyTransfer evidence with scoped financial references. */
 export const MoneyTransfer = pgTable(
@@ -48,8 +47,6 @@ export const MoneyTransfer = pgTable(
     destinationAmountMinor: bigint({ mode: 'bigint' }).notNull(),
     destinationCurrency: text().notNull(),
     destinationCurrencyExponent: integer().notNull(),
-    sourcePaymentRouteId: text(),
-    destinationPaymentRouteId: text(),
     destinationBankAccountInstanceId: text(),
     destinationExternalId: text(),
     datePrecision: text().notNull().$type<'instant' | 'date' | 'unknown'>(),
@@ -77,16 +74,6 @@ export const MoneyTransfer = pgTable(
       name: 'MoneyTransfer_currentObservationId_fk',
       columns: [t.organizationId, t.currentObservationId],
       foreignColumns: [FinancialSourceObservation.organizationId, FinancialSourceObservation.id],
-    }).onDelete('no action'),
-    foreignKey({
-      name: 'MoneyTransfer_sourcePaymentRouteId_fk',
-      columns: [t.organizationId, t.sourcePaymentRouteId],
-      foreignColumns: [PaymentRoute.organizationId, PaymentRoute.id],
-    }).onDelete('no action'),
-    foreignKey({
-      name: 'MoneyTransfer_destinationPaymentRouteId_fk',
-      columns: [t.organizationId, t.destinationPaymentRouteId],
-      foreignColumns: [PaymentRoute.organizationId, PaymentRoute.id],
     }).onDelete('no action'),
     foreignKey({
       name: 'MoneyTransfer_destinationBankAccountInstanceId_fk',

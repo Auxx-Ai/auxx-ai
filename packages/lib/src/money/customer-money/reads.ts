@@ -132,7 +132,6 @@ export async function listOrderMoneyTransactions(
         money?.occurredAt?.toISOString() ?? (source.success ? source.data.processedAt : null),
       occurredOn: money?.occurredOn ?? null,
       reportingProvider: account.providerKey,
-      processorRouteId: money?.paymentRouteId ?? null,
       sourceExternalId: object.externalId,
       status: acceptance.state,
       reason: acceptance.state === 'accepted' ? null : acceptance.reason,

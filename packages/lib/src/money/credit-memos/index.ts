@@ -46,6 +46,7 @@ export {
 } from './client'
 export {
   type CreditMemoApplicationRecord,
+  type CreditMemoForRefund,
   type CreditMemoLineRecord,
   type CreditMemoRecord,
   countUnissuedChannelCreditMemos,
@@ -61,6 +62,7 @@ export {
   loadInvoiceLinesForCredit,
   orderHadFulfillmentBefore,
   readContactCredit,
+  readCreditMemoForRefund,
   readCreditMemoSettlement,
   requireCreditMemo,
   resolveInvoiceOutstandingMinor,
@@ -68,6 +70,11 @@ export {
   sumInvoiceCreditApplications,
   sumSucceededCreditMemoRefunds,
 } from './reads'
+export {
+  type RecordCreditMemoRefundInput,
+  type RecordCreditMemoRefundResult,
+  recordCreditMemoRefund,
+} from './record-refund'
 export {
   CREDIT_MEMO_STATUS_BYPASS,
   type CreditMemoSettlementState,

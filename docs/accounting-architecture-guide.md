@@ -328,6 +328,15 @@ question the original argument correctly said had no answer. 58 also renamed `cl
 requires `bank` to sit on `GlAccountSubtype.BANK` and `clearing` on `GlAccountSubtype.CLEARING`,
 checked by `setRoleAssignment` before it writes and by `resolveRoles` on every read.
 
+🛑 **Forward events resolve through the mapping; mirrors freeze from the original** (64 A4). A
+fulfillment, a receipt or a payout asks `GlRoleAssignment` what the account is *now*. A credit-memo
+settlement, a refund of a receipt, a void or an unapply copies the account the original **posted
+to**, off the frozen basis. Both halves balance either way, so re-resolving a mirror after the
+chart moved would credit an account the money never entered and leave the other overstated with
+nothing downstream able to detect it. This is why 58 D7's *"the mapping is the authority"* and
+`build-credit-memo-entry.ts`'s *"it has to be the account the SALE debited"* are not in conflict:
+they describe the two directions.
+
 ### 5.2 `resolveRoles` — a batch, and it fails closed
 
 ```
@@ -486,7 +495,6 @@ payload is a `409`, because two different requests wearing one key is a caller b
 | `MoneyTransaction` | A confirmed movement. `purpose` ∈ `customer_receipt` \| `customer_refund` \| `vendor_payment` \| `vendor_refund` |
 | `MoneyApplication` | Append-only `apply` / `unapply` against an order, an invoice or a vendor bill |
 | `MoneyTransfer` | A payout or transfer. **Never** a fifth money purpose |
-| `PaymentRoute` | The resolved processor merchant/rail, or a manual route |
 | `MoneySourceLink` | Many immutable source observations → one movement |
 
 **Dates model two precisions.** `datePrecision` is `'instant'` (with `occurredAt`) or `'date'`

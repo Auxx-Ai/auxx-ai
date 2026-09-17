@@ -603,7 +603,7 @@ export async function materializeImportedMoneyInTx(
   await updateAcceptance(tx, acceptance.id, {
     ...base,
     state: 'accepted',
-    reason: money.paymentRouteId ? null : 'Payment processor needs to be linked',
+    reason: null,
     nextAttemptAt: null,
   })
 }

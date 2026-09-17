@@ -14,30 +14,16 @@
  *       Cr sales_tax_payable (jurisdiction dimension, when it ties)
  *                                                  this shipment's tax
  *       Cr revenue_shipping                      the order's shipping, ONCE
- *
- *   Dr cogs_product_cost      extended cost of what shipped   <- DARK, see below
- *       Cr inventory_finished_goods    same
  * ```
  *
- * ## 🛑 The COGS leg ships DARK, and it is not an oversight
+ * ## 🛑 This entry emits NO COGS leg
  *
- * Under the L1 regime the month-end entry ASSERTS all three inventory accounts
- * to the value the subledger computes, with COGS as the balancing figure. A
- * per-fulfillment COGS posting would be a SECOND writer of
- * `inventory_finished_goods`, and the two are not additive: the next close moves
- * the account back to the subledger's number and dumps the residual into the
- * COGS plug, where it reads exactly like consumption. Both entries balance.
- * Nothing downstream can detect it. `findWriterConflicts` in `regime.ts` exists
- * to refuse precisely that state.
- *
- * So the leg is written, behind {@link BuildFulfillmentEntryInput.includeCogs},
- * and NOTHING in the tree passes `true`. It turns on with the rest of L3 as ONE
- * change - `ENABLED_POSTING_TYPES` swaps `month_end_inventory` out at the same
- * moment `SINGLE_WRITER_ROLES_BY_POSTING_TYPE.fulfillment` becomes
- * `[ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS]`. Until then that map entry stays
- * `[]`, which is correct: a dark leg drives nothing.
- * See `docs/inventory-costing-architecture-guide.md` §9.3 and
- * `plans/accounting/tasks/done/01-post-revenue-to-the-ledger.md` §1.1.
+ * Under L1 the month-end entry asserts all three inventory accounts to the
+ * subledger's value with COGS as the balancing figure, so a per-fulfillment COGS
+ * posting would be a second writer of `inventory_finished_goods` that nothing
+ * downstream could detect. COGS moves onto the inventory entry with the rest of
+ * the regime switch (`plans/accounting/tasks/61-inventory-posts-like-everything-else.md`
+ * I2), not behind a flag here.
  *
  * ## Recognition is on SHIPMENT for GOODS, never on the invoice
  *
@@ -549,16 +535,6 @@ export interface BuildFulfillmentEntryInput {
    */
   includeShipping: boolean
   /**
-   * 🛑 **DARK. Nothing in the tree sets this to `true`.** See the file header:
-   * a per-fulfillment COGS posting is a second writer of an account the L1
-   * month-end entry asserts, and turning it on is the same one-shot L3 switch
-   * the buy side waits on. It exists as a parameter rather than as a comment so
-   * the leg is written, tested and reviewable before the day it matters.
-   */
-  includeCogs?: boolean
-  /** Extended standard cost of what shipped, minor units. Required when `includeCogs`. */
-  cogsMinor?: number
-  /**
    * The order's own contact, for the counterparty on the `accounts_receivable`
    * line (brief 13 §1.2) - never on revenue, tax or shipping. Null or absent
    * still posts; the export is what refuses a receivable line with none.
@@ -711,8 +687,6 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     txnDate,
     shippedLines,
     includeShipping,
-    includeCogs = false,
-    cogsMinor,
     contactInstanceId,
     taxLines,
     recognitionAllocation,
@@ -918,32 +892,6 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
       amount: shippingMinor,
       memo: `${orderNumber} - shipping, recognised once on the first fulfillment`,
       ...revenueScope,
-    })
-  }
-
-  // ── The dark leg ─────────────────────────────────────────────────────────
-  if (includeCogs) {
-    const cost = toAmountMinor(cogsMinor, `Order ${orderNumber} cost of goods shipped`)
-    if (cost <= 0) {
-      throw new UnprocessableEntityError(
-        `Order ${orderNumber} was asked for a COGS leg with a cost of ${cost}. A cost of zero is ` +
-          'a shipment nobody priced, not a free one.',
-        { orderNumber, cogsMinor: String(cost) }
-      )
-    }
-    push({
-      ...source,
-      accountRole: ACCOUNT_ROLES.COGS_PRODUCT_COST,
-      direction: 'debit',
-      amount: cost,
-      memo: `${shipmentLabel} - cost of goods shipped`,
-    })
-    push({
-      ...source,
-      accountRole: ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
-      direction: 'credit',
-      amount: cost,
-      memo: `${shipmentLabel} - relieved from finished goods`,
     })
   }
 

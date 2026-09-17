@@ -211,11 +211,10 @@ export const documentAccountingBasisSchema = z
     /**
      * Task 47 §5 role scope, in exactly the vocabulary `resolveRoles` reads.
      *
-     * 🛑 The three states are distinct and `accept-entry.ts`'s `effectRoleScope`
-     * depends on all three. ABSENT is "this family has no source axis" and
-     * resolves to the org default. `null` on `sourceStoreId` is "there was no
-     * CONNECTED source", which routes to the manual source's override. A string
-     * is the source's own id.
+     * 🛑 The three states are distinct. ABSENT is "this family has no source
+     * axis" and resolves to the org default. `null` is "there was no CONNECTED
+     * source", which routes to the manual source's override. A string is the
+     * source's own id.
      *
      * ⚠️ Preparation must resolve through {@link documentRoleScope} so it uses
      * the identical scope acceptance will re-resolve through — otherwise a
@@ -223,7 +222,6 @@ export const documentAccountingBasisSchema = z
      * nobody made.
      */
     sourceStoreId: id.nullable().optional(),
-    processorAccountId: id.optional(),
     lines: z.array(documentLineSchema).min(2),
   })
   .superRefine((value, ctx) => {
@@ -397,20 +395,20 @@ export const acceptedDocumentEffectBasisSchema = z
   })
 
 /**
- * The role scope one document's calculation resolves through.
+ * The role scope one calculation resolves through, for preparation and for
+ * acceptance's re-check — one implementation so the two cannot drift.
  *
- * 🔑 Byte-for-byte what `accept-entry.ts`'s `effectRoleScope` derives from the
- * same calculation. Preparation calls this so the two cannot drift; if they
- * drift, every scoped org gets a refusal describing a change nobody made.
+ * 🛑 `rail` is the `payment_gateway` id (58 §5.2/§5.6). Reading anything else
+ * drops the rail and silently re-resolves to the org default (64 §1).
  */
 export function documentRoleScope(calculation: {
   sourceStoreId?: string | null
-  processorAccountId?: string
+  paymentGatewayId?: string | null
 }): { store?: string | null; rail?: string } {
   return {
     ...(calculation.sourceStoreId === undefined ? {} : { store: calculation.sourceStoreId }),
-    ...(typeof calculation.processorAccountId === 'string'
-      ? { rail: calculation.processorAccountId }
+    ...(typeof calculation.paymentGatewayId === 'string'
+      ? { rail: calculation.paymentGatewayId }
       : {}),
   }
 }

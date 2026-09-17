@@ -19,7 +19,7 @@ import {
 } from '../cache'
 import { listObservedGatewayHandles } from '../payment-gateways'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../postings/provider'
-import { ENABLED_POSTING_TYPES, INVENTORY_ROLES_BY_POSTING_TYPE } from '../postings/regime'
+import { ENABLED_POSTING_TYPES, SINGLE_WRITER_ROLES_BY_POSTING_TYPE } from '../postings/regime'
 import { readRoleAssignments } from '../postings/role-assignments'
 import { resolveSetupReadiness } from '../postings/setup-readiness'
 import type { ChecklistId, GoalKey } from './client'
@@ -223,7 +223,7 @@ async function isSetupFinalized(ctx: GettingStartedContext): Promise<boolean> {
 /**
  * Every role the enabled posting regime requires has a `GlRoleAssignment`.
  *
- * ⚠️ Scoped to `INVENTORY_ROLES_BY_POSTING_TYPE` for the ENABLED types only, not
+ * ⚠️ Scoped to `SINGLE_WRITER_ROLES_BY_POSTING_TYPE` for the ENABLED types only, not
  * to all 13 roles. `ppv` and `inventory_wip` are in the vocabulary but nothing
  * emits them under L1 — PPV is a report (task 09 §3) and WIP is unreachable —
  * so demanding them would leave this goal permanently red.
@@ -231,7 +231,7 @@ async function isSetupFinalized(ctx: GettingStartedContext): Promise<boolean> {
 async function hasRequiredRoleAssignments(ctx: GettingStartedContext): Promise<boolean> {
   const required = new Set<string>()
   for (const postingType of ENABLED_POSTING_TYPES) {
-    for (const role of INVENTORY_ROLES_BY_POSTING_TYPE[postingType]) required.add(role)
+    for (const role of SINGLE_WRITER_ROLES_BY_POSTING_TYPE[postingType]) required.add(role)
   }
   if (required.size === 0) return true
 

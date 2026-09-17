@@ -107,12 +107,14 @@ vi.mock('./connect-client', () => ({
 vi.mock('./deposit', () => ({ resolveQuoteDeposit: async () => ({ depositAmount: 0 }) }))
 vi.mock('./fees', () => ({ resolveApplicationFee: () => 0 }))
 vi.mock('./receipt-email', () => ({ sendPaymentReceipt: async () => {} }))
-vi.mock('./ledger', () => ({
+vi.mock('../credit-memos/reads', () => ({
   readCreditMemoForRefund: async (params: Record<string, unknown>) => {
     const { db: _db, ...checked } = params
     h.memoChecks.push(checked)
     return h.memo
   },
+}))
+vi.mock('./ledger', () => ({
   syncInvoicePaymentState: async (params: { invoiceInstanceId: string }) => {
     h.synced.push(params.invoiceInstanceId)
   },

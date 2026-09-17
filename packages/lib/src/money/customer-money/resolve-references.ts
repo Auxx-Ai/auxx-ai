@@ -1,23 +1,22 @@
 // packages/lib/src/money/customer-money/resolve-references.ts
 import { type Database, schema, withAccountingCommitLock } from '@auxx/database'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
 import { accountingBasisHash } from '../../postings/effect-basis'
 import { confirmedCustomerMovement } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
 
-/** Explicit verified source association or manual route resolution; similarity is never evidence. */
+/** Explicit verified source association; similarity is never evidence. */
 export interface ResolveImportedMoneyReferencesInput {
   organizationId: string
   moneyTransactionId: string
-  paymentRouteId?: string
   sourceObjectIds: string[]
   commandKey: string
   actorUserId: string
   evidence: string
 }
 
-/** Link evidenced provider objects to one immutable movement and its manual payment route. */
+/** Link evidenced provider objects to one immutable movement. */
 export async function resolveImportedMoneyReferences(
   db: Database,
   input: ResolveImportedMoneyReferencesInput
@@ -32,7 +31,6 @@ export async function resolveImportedMoneyReferences(
   const objectIds = [...new Set(input.sourceObjectIds)].sort()
   const hash = accountingBasisHash({
     moneyTransactionId: input.moneyTransactionId,
-    paymentRouteId: input.paymentRouteId ?? null,
     sourceObjectIds: objectIds,
     evidence: input.evidence,
   })
@@ -56,23 +54,6 @@ export async function resolveImportedMoneyReferences(
       ),
     })
     if (!money) throw new UnprocessableEntityError('Money transaction is not in this organization')
-    if (input.paymentRouteId) {
-      const route = await tx.query.PaymentRoute.findFirst({
-        where: and(
-          eq(schema.PaymentRoute.organizationId, input.organizationId),
-          eq(schema.PaymentRoute.id, input.paymentRouteId),
-          isNull(schema.PaymentRoute.archivedAt)
-        ),
-      })
-      if (!route || route.settlementCurrency !== money.currency)
-        throw new UnprocessableEntityError(
-          'Payment route currency is incompatible; explicit conversion evidence is required'
-        )
-      if (money.paymentRouteId && money.paymentRouteId !== route.id)
-        throw new ConflictError('A resolved movement route cannot be replaced')
-      // 58 D5: `PaymentRoute` is manual-only now - a processor rail resolves
-      // through `FinancialSourceAccount.paymentGatewayId` (D3), not this door.
-    }
     for (const objectId of objectIds) {
       const object = await tx.query.FinancialSourceObject.findFirst({
         where: and(
@@ -156,11 +137,6 @@ export async function resolveImportedMoneyReferences(
         .onConflictDoNothing({
           target: [schema.MoneySourceLink.organizationId, schema.MoneySourceLink.sourceObjectId],
         })
-    if (input.paymentRouteId)
-      await tx
-        .update(schema.MoneyTransaction)
-        .set({ paymentRouteId: input.paymentRouteId })
-        .where(eq(schema.MoneyTransaction.id, money.id))
     if (objectIds.length)
       await tx
         .update(schema.FinancialSourceAcceptance)
@@ -184,12 +160,8 @@ export async function resolveImportedMoneyReferences(
       targetId: money.id,
       actorType: 'user',
       actorId: input.actorUserId,
-      previousState: { paymentRouteId: money.paymentRouteId },
-      newState: {
-        paymentRouteId: input.paymentRouteId ?? money.paymentRouteId,
-        sourceObjectIds: objectIds,
-        evidence: input.evidence,
-      },
+      previousState: {},
+      newState: { sourceObjectIds: objectIds, evidence: input.evidence },
     })
   })
 }

@@ -39,7 +39,6 @@ export interface OrderRecognitionSource {
     | null
   blockers: string[]
   sourceStoreId: string | null
-  processorRouteId: string | null
   coverage: { complete: boolean; fetched: number; accepted: number; pending: number }
 }
 
@@ -309,11 +308,6 @@ export async function readOrderRecognitionSource(
       blockers.push(`receipt ${refund.originalTransactionId} has a refund settlement`)
   }
   const moneyById = new Map(moneyRows.map((row) => [row.id, row]))
-  const processorRouteIds = [
-    ...new Set(
-      moneyRows.map((row) => row.paymentRouteId).filter((value): value is string => Boolean(value))
-    ),
-  ]
   const events: OrderRecognitionEvent[] = []
   for (const application of applications) {
     const money = moneyById.get(application.moneyTransactionId)
@@ -734,7 +728,6 @@ export async function readOrderRecognitionSource(
         : coverage.sourceStoreIds.length === 1
           ? coverage.sourceStoreIds[0]!
           : null,
-    processorRouteId: processorRouteIds.length === 1 ? processorRouteIds[0]! : null,
     coverage: {
       complete: coverage.complete,
       fetched: coverage.fetched,

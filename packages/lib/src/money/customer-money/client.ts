@@ -10,7 +10,6 @@ export interface OrderMoneyTransaction {
   occurredAt: string | null
   occurredOn: string | null
   reportingProvider: string
-  processorRouteId: string | null
   sourceExternalId: string
   status: 'pending' | 'accepted' | 'rejected' | 'blocked'
   reason: string | null

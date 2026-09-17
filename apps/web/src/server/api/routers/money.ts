@@ -940,7 +940,6 @@ export const moneyRouter = createTRPCRouter({
     .input(
       z.object({
         moneyTransactionId: z.string().min(1),
-        paymentRouteId: z.string().min(1).optional(),
         sourceObjectIds: z.array(z.string().min(1)).max(100),
         commandKey: z.string().min(1).max(200),
         evidence: z.string().trim().min(1).max(4000),
