@@ -622,4 +622,6 @@ export {
   type SyncQueueRow,
   type SyncQueueState,
   syncQueueState,
+  type UnsyncOutcome,
+  type UnsyncResult,
 } from './types'

@@ -664,6 +664,74 @@ provider-agnostic; this file is the one place that names a vendor, and it is the
 current delivery implementation. `objectType` vocabulary is neutral (`journal`, `customer`,
 `invoice`, `payment`, `credit_memo`) and the adapter maps to the provider's own names.
 
+### 9.6 Withdrawing a delivery
+
+`postings/unsync/` removes the provider's copy of an entry we already delivered and puts the row
+back to *Ready to sync*, so a corrected mapping can send it again.
+
+🔑 **Un-sync is an EXPORT operation, not a ledger operation.** That one sentence settles the
+design. `exportStatus` is the only `GlPosting` column it writes; the posting stays `posted`, its
+lines stay frozen, its effects stay claimed, `AccountingDeliveryCoverage` survives unchanged, no
+source work reopens and no reversal is written. Backing an entry out of *our* books is
+`reverseEntry` — a different button with a different meaning. This is `53-D11` (delete and
+re-deliver) applied to rollback.
+
+The state machine: `exportStatus` `exported → pending`, `providerEntryId`/`providerTenantId`
+nulled, `AccountingDelivery` back to `pending` with null `releasedAt`/`completedAt`,
+`AccountingDelivery.attemptEpoch` bumped, `ExternalAccountingObject.withdrawnAt` stamped (the row
+is kept — the audit is the point), and a new `unsync:<n>` `AccountingDeliveryOperation` recorded
+beside the spent `journal` one. The next send plans `journal:<epoch>` rather than resetting the
+spent operation, which is what `attemptEpoch` buys.
+
+🛑 **Delete first, reset second, in that order.** Steps up to the provider's confirmation write
+nothing on `GlPosting`; one transaction at the end writes all of it. A row that says *held* while
+a copy still sits in the provider's books is how the same entry gets delivered twice.
+
+🛑 **The re-send takes a fresh `requestId`.** `GlPosting.requestId` is deterministic and reused
+verbatim by every retry, and the create tool hands it to Intuit as the idempotence key — so
+re-sending after a delete under the same key can be collapsed onto the original create's cached
+response, reporting success having sent nothing. The withdrawal's operation and the next send both
+mint their own. Idempotence on attempt two rests on the `DocNumber` readback anyway, which is also
+why a delete that silently failed converges instead of double-posting.
+
+**An `automatic` posting is demoted to `manual`.** `syncQueueState` reads `automatic` as *sending*
+regardless of `releasedAt`, so without the demotion the delivery worker re-creates the object we
+just deleted, usually within the minute. Per-posting; `quickbooks.postJournalEntries` is untouched.
+
+**Refusals** are per-row outcomes, never exceptions: R1 never sent · R2 pre-pipeline
+`deliveryIntent: null` · R3 no `ExternalAccountingObject` · R4 reversed, or reversed-by · R5 the
+remote `SyncToken` no longer matches the stored `remoteVersion`, i.e. somebody edited it there
+(refused by default, `force: true` is the row's *Un-sync anyway*) · R6 the provider refuses the
+delete, in its own words.
+
+🛑 **`assertPeriodOpen` is never called here, and must not be added.** A closed month's provider
+copy is still ours to withdraw. Whether *their* books are closed is R6 and it is their answer to
+give.
+
+⚠️ **The uncertainty rule, and where the plan was wrong.** A delete whose outcome is unknown lands
+the operation `uncertain` and changes nothing on `GlPosting`, so the row keeps its *Synced* badge —
+the copy may really still be there. Recovery is a readback by `DocNumber`: absent means the delete
+landed and the reset may proceed with no second blind delete. The brief claimed
+`sweepAccountingDeliveries` would pick these up "with no new mechanism". **It does not.** The sweep
+joins `AccountingDeliveryOperation` on the *journal* operation key only, so an `unsync:<n>` row is
+invisible to it, and at the current epoch that journal operation is `succeeded`, which excludes the
+posting from the sweep's `WHERE` entirely. Recovery today is therefore interactive: a second
+Un-sync on the same posting re-claims the `uncertain` operation, finds the copy absent by readback,
+skips the delete and completes the reset. Making the sweep own this is an open follow-up on
+`delivery.ts`.
+
+⚠️ **Nothing here has been proved against a real Intuit company file.** The QuickBooks delete tool
+and every refusal sentence above were written against mocks; the brief's own gate — deploy the tool
+to a real org before writing the copy that claims to know — was not satisfied. Specifically
+unverified: that a stale `SyncToken` returns fault 5010 on a delete, that deleting a nonexistent id
+answers 610 at HTTP 400 rather than a 404 or a 200 (the tool codes for all three defensively), and
+what a QuickBooks-closed-period delete actually says. Treat R5's and R6's copy as untested until an
+org runs it.
+
+`postings/provider.ts`'s `withdrawObject` is the ninth interface method and the only one that
+removes anything. It **must** converge on "not there" rather than raising when the object is
+already gone, because that is what makes the uncertain case resolvable by retrying.
+
 ---
 
 ## 10. The Accounting-Provider Seam: Inbound

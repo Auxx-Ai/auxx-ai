@@ -260,7 +260,7 @@ beforeEach(() => {
     if (timeoutBeforeCreate) throw new Error('Network timeout')
     const found = {
       ...payload,
-      journalEntryId: 'remote-1',
+      journalEntryId: `remote-${createCount}`,
       syncToken: '0',
       lines: (payload.lines as Array<Record<string, unknown>>).map((l) => ({
         ...l,
@@ -670,6 +670,99 @@ describe('component coverage partitions one effect against real constraints', ()
     expect(
       (await db().select().from(schema.ExternalAccountingObject)).map((o) => o.objectType)
     ).toEqual(['journal'])
+  })
+})
+
+describe('a withdrawn delivery is re-sent under a new epoch', () => {
+  /** What §5.1 step 5 of plan 60 leaves behind, without the provider round trip. */
+  async function withdrawn(fixture: { glPostingId: string }) {
+    const [delivery] = await db()
+      .update(schema.AccountingDelivery)
+      .set({ state: 'pending', attemptEpoch: 1, releasedAt: null, completedAt: null })
+      .returning()
+    await db()
+      .update(schema.GlPosting)
+      .set({ exportStatus: 'pending', providerEntryId: null, providerTenantId: null })
+      .where(eq(schema.GlPosting.id, fixture.glPostingId))
+    remote = []
+    return delivery!
+  }
+
+  it('keys the first journal operation bare, at epoch zero', async () => {
+    const fixture = await accepted('manual')
+    await db().transaction((tx) => planAccountingDeliveryInTx(tx, fixture))
+    const [delivery] = await db().select().from(schema.AccountingDelivery)
+    expect(delivery!.attemptEpoch).toBe(0)
+    expect(
+      (await db().select().from(schema.AccountingDeliveryOperation)).map((o) => o.operationKey)
+    ).toEqual(['journal'])
+  })
+
+  it('plans a second operation at epoch one rather than reusing the spent one', async () => {
+    const fixture = await accepted('manual')
+    await deliverAccountingPosting(db(), { ...fixture, manual: true })
+    await withdrawn(fixture)
+    await db().transaction((tx) => planAccountingDeliveryInTx(tx, fixture))
+    const operations = await db().select().from(schema.AccountingDeliveryOperation)
+    expect(operations.map((o) => o.operationKey).sort()).toEqual(['journal', 'journal:1'])
+    expect(operations.find((o) => o.operationKey === 'journal')).toMatchObject({
+      state: 'succeeded',
+    })
+    const replanned = operations.find((o) => o.operationKey === 'journal:1')!
+    expect(replanned).toMatchObject({ state: 'pending', objectType: 'journal' })
+    // §2.2: the posting's request id is Intuit's idempotence key and is spent.
+    expect(replanned.requestId).not.toBe(
+      operations.find((o) => o.operationKey === 'journal')!.requestId
+    )
+  })
+
+  it('is idempotent, planning one operation per epoch however often it runs', async () => {
+    const fixture = await accepted('manual')
+    await deliverAccountingPosting(db(), { ...fixture, manual: true })
+    await withdrawn(fixture)
+    await db().transaction((tx) => planAccountingDeliveryInTx(tx, fixture))
+    await db().transaction((tx) => planAccountingDeliveryInTx(tx, fixture))
+    expect(await db().select().from(schema.AccountingDeliveryOperation)).toHaveLength(2)
+  })
+
+  it('claims the new epoch and creates again, keeping the spent operation untouched', async () => {
+    const fixture = await accepted('manual')
+    await deliverAccountingPosting(db(), { ...fixture, manual: true })
+    expect(createCount).toBe(1)
+    await withdrawn(fixture)
+    expect(await deliverAccountingPosting(db(), { ...fixture, manual: true })).toMatchObject({
+      exportStatus: 'exported',
+      providerEntryId: 'remote-2',
+    })
+    expect(createCount).toBe(2)
+    const objects = await db().select().from(schema.ExternalAccountingObject)
+    expect(objects.map((o) => o.externalId).sort()).toEqual(['remote-1', 'remote-2'])
+    expect(await db().select().from(schema.AccountingDeliveryCoverage)).toHaveLength(1)
+  })
+
+  it('leaves a withdrawn delivery held until it is released again', async () => {
+    const fixture = await accepted()
+    await deliverAccountingPosting(db(), fixture)
+    await withdrawn(fixture)
+    expect(await deliverAccountingPosting(db(), fixture)).toMatchObject({
+      exportStatus: 'pending',
+    })
+    expect(createCount).toBe(1)
+  })
+
+  it('lets the sweep find the epoch the delivery is actually on, not the spent one', async () => {
+    const fixture = await accepted()
+    await deliverAccountingPosting(db(), fixture)
+    await withdrawn(fixture)
+    // What pressing Sync on the re-held row leaves behind.
+    await db().update(schema.AccountingDelivery).set({ releasedAt: new Date() })
+    expect(await sweepAccountingDeliveries(db(), { organizationId, limit: 5 })).toMatchObject({
+      examined: 1,
+    })
+    expect(createCount).toBe(2)
+    expect(await sweepAccountingDeliveries(db(), { organizationId, limit: 5 })).toMatchObject({
+      examined: 0,
+    })
   })
 })
 

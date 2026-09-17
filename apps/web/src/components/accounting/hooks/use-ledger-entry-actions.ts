@@ -151,6 +151,16 @@ export function useLedgerEntryActions({
         {
           onSuccess: (result) => {
             setPostResult(result)
+            // 🛑 `reverse` returns a `PostResult` and never throws for a
+            // refusal, so `onError` cannot carry one. The drawer renders no
+            // callout, and without this a refused reversal - an effect-backed
+            // posting, a locked period - looked like a button that did nothing.
+            if (!didLedgerAccept(result)) {
+              toastError({
+                title: 'The entry was not reversed',
+                description: result.error ?? 'It was refused.',
+              })
+            }
             if (didLedgerAccept(result)) {
               setJustPosted(false)
               // A reversed month is an open month again, so the projection it

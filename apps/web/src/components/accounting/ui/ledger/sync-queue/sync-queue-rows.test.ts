@@ -41,30 +41,51 @@ const FAILED = row({
   attempts: 2,
   failureReason: 'The period is closed',
 })
+const SYNCED = row({ glPostingId: 'gl_synced', exportStatus: 'exported' })
 
 describe('tallySyncQueue', () => {
-  it('counts the three states separately, never as one pile', () => {
+  it('counts the states separately, never as one pile', () => {
     // 🛑 53 §7.2.2. `held` and `sending` are both `exportStatus: 'pending'`;
     // collapsing them makes a healthy hold read as a backlog of errors.
     expect(tallySyncQueue([HELD, HELD, SENDING, FAILED])).toEqual({
       held: 2,
       sending: 1,
       failed: 1,
+      synced: 0,
       total: 4,
     })
   })
 
+  // 60 acceptance 11: the widened read is opt-in, so the rows the rail and the
+  // banner tally never carry an exported entry and this count stays zero there.
+  it('counts an exported entry as synced and nothing else', () => {
+    expect(tallySyncQueue([HELD, SYNCED, SYNCED])).toEqual({
+      held: 1,
+      sending: 0,
+      failed: 0,
+      synced: 2,
+      total: 3,
+    })
+  })
+
   it('answers zero for an undefined read rather than throwing', () => {
-    expect(tallySyncQueue(undefined)).toEqual({ held: 0, sending: 0, failed: 0, total: 0 })
+    expect(tallySyncQueue(undefined)).toEqual({
+      held: 0,
+      sending: 0,
+      failed: 0,
+      synced: 0,
+      total: 0,
+    })
   })
 })
 
 describe('filterSyncQueue', () => {
   it('gives each tab only its own rows', () => {
-    const rows = [HELD, SENDING, FAILED]
+    const rows = [HELD, SENDING, FAILED, SYNCED]
     expect(filterSyncQueue(rows, 'held')).toEqual([HELD])
     expect(filterSyncQueue(rows, 'sending')).toEqual([SENDING])
     expect(filterSyncQueue(rows, 'failed')).toEqual([FAILED])
+    expect(filterSyncQueue(rows, 'synced')).toEqual([SYNCED])
   })
 
   it('leaves `all` alone - it is the backlog itself', () => {
@@ -90,13 +111,20 @@ describe('the copy is provider-agnostic (D14a)', () => {
   const LABEL = 'Xero'
 
   it('never says QuickBooks in a state sentence', () => {
-    for (const state of ['held', 'sending', 'failed'] as const) {
+    for (const state of ['held', 'sending', 'failed', 'synced'] as const) {
       const sentence = syncQueueStateSentence(state, LABEL)
       expect(sentence).not.toMatch(/quickbooks/i)
+      expect(sentence).toContain(LABEL)
     }
-    expect(syncQueueStateSentence('held', LABEL)).toContain(LABEL)
-    expect(syncQueueStateSentence('sending', LABEL)).toContain(LABEL)
-    expect(syncQueueStateSentence('failed', LABEL)).toContain(LABEL)
+  })
+
+  // 60 §8.3, verbatim. It is the only one of the four that does not name a
+  // problem, and the clause that matters is the one about OUR books: un-syncing
+  // is an export operation and changes nothing in the ledger (E1/E3).
+  it('says what the synced state means, and that the books do not move', () => {
+    expect(syncQueueStateSentence('synced', LABEL)).toBe(
+      "In Xero's books. Un-syncing deletes their copy and brings this back to Ready to sync; your books do not change either way."
+    )
   })
 
   it('never says QuickBooks in a tab label', () => {
@@ -113,7 +141,7 @@ describe('the copy is provider-agnostic (D14a)', () => {
   // 🔌 The refusal STRING is the provider's own words and passes through
   // verbatim; the sentence wrapped around it is ours, and it takes the label.
   it('never says QuickBooks in the row tooltip', () => {
-    const lines = refusalTooltipLines(FAILED, 'Coverage has a gap', LABEL)
+    const lines = refusalTooltipLines(FAILED, { sync: 'Coverage has a gap' }, LABEL)
     for (const line of lines) expect(line).not.toMatch(/quickbooks/i)
     expect(lines.join(' ')).toContain(LABEL)
   })
@@ -133,17 +161,39 @@ describe('refusalTooltipLines', () => {
   })
 
   it('carries an in-session plan refusal, which the row itself never records', () => {
-    expect(refusalTooltipLines(HELD, 'Coverage has a gap', 'Xero')).toEqual([
+    expect(refusalTooltipLines(HELD, { sync: 'Coverage has a gap' }, 'Xero')).toEqual([
       'The last sync did not release it. Coverage has a gap',
     ])
   })
 
-  it('puts both on ONE icon, the action you just took first', () => {
-    // Two amber dots side by side read as a rendering fault. One icon, two
-    // sentences, and the in-session one leads because it is about the button
+  // 60 §8.2: a refused un-sync and a refused reversal wrote NOTHING, so this
+  // tooltip is the only record either one leaves.
+  it('names the verb, so three refusals cannot read as one', () => {
+    expect(
+      refusalTooltipLines(
+        HELD,
+        { unsync: 'Somebody edited it after we sent it', reverse: 'The period is locked' },
+        'Xero'
+      )
+    ).toEqual([
+      'The last un-sync did not remove it. Somebody edited it after we sent it',
+      'The last reverse did not back it out. The period is locked',
+    ])
+  })
+
+  it('puts them all on ONE icon, the action you just took first', () => {
+    // Two amber dots side by side read as a rendering fault. One icon, every
+    // sentence, and the in-session ones lead because they are about the button
     // the reader just pressed.
-    expect(refusalTooltipLines(FAILED, 'Coverage has a gap', 'Xero')).toEqual([
+    expect(
+      refusalTooltipLines(
+        FAILED,
+        { sync: 'Coverage has a gap', reverse: 'Already reversed' },
+        'Xero'
+      )
+    ).toEqual([
       'The last sync did not release it. Coverage has a gap',
+      'The last reverse did not back it out. Already reversed',
       'Xero refused it. The period is closed',
     ])
   })
@@ -180,6 +230,14 @@ describe('syncQueueRailSentence', () => {
   it('names only the states that have rows', () => {
     expect(syncQueueRailSentence(tallySyncQueue([HELD, HELD]), 'Xero')).toBe(
       '2 ready to sync to Xero.'
+    )
+  })
+
+  // 60 acceptance 11. The rail is about what is OUTSTANDING; a synced entry is
+  // not, and the rail's own read never carries one anyway.
+  it('says nothing about synced entries', () => {
+    expect(syncQueueRailSentence(tallySyncQueue([HELD, SYNCED, SYNCED]), 'Xero')).toBe(
+      '1 ready to sync to Xero.'
     )
   })
 })

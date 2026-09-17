@@ -73,7 +73,7 @@
 // does not depend on recognising QuickBooks' duplicate-document-number fault
 // code (see `classifyQuickbooksFailure`).
 
-import { database } from '@auxx/database'
+import { type DeliveryObjectType, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { err, ok, type Result } from 'neverthrow'
@@ -98,6 +98,7 @@ import {
   type ProviderAccount,
   type ProviderBalanceSheet,
   ProviderPostError,
+  type WithdrawResult,
 } from '../../postings/types'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { getOrganizationSetting } from '../../settings/settings-service'
@@ -125,6 +126,8 @@ export const QUICKBOOKS_PROVIDER_ID = 'quickbooks'
 // beside it. A second copy in this file was dead and could only drift.
 const TOOL_FIND_JOURNAL_ENTRY = 'find_quickbooks_journal_entry'
 const TOOL_CREATE_JOURNAL_ENTRY = 'create_quickbooks_journal_entry'
+/** The un-sync half (brief 60 §6). Ships later than the rest - see `requireToolInputs`. */
+const TOOL_DELETE_JOURNAL_ENTRY = 'delete_quickbooks_journal_entry'
 /** Brief 19 section 3: the opening-balance suggestion's one report read. */
 const TOOL_GET_BALANCE_SHEET = 'get_quickbooks_balance_sheet'
 /** The one call that runs the seam BACKWARDS - see `createProviderAccount`. */
@@ -623,6 +626,31 @@ function buildPrivateNote(input: PostEntryInput): string {
     : composed.slice(0, PRIVATE_NOTE_MAX_LENGTH)
 }
 
+/**
+ * Refuse by NAME when the installed deployment's tool cannot take what we are
+ * about to send it, rather than calling something that is not there.
+ *
+ * The same guard `delivery.ts:542` takes before a create, restated here because
+ * that one is a private helper of the delivery path. A tool reaches an org only
+ * once the app is redeployed and the installation picks up the new catalog, so
+ * this is the ordinary state of a freshly shipped tool, not an anomaly.
+ *
+ * Returns the refusal sentence, or null when the tool is ready.
+ */
+function requireToolInputs(
+  ctx: QuickbooksToolContext,
+  toolId: string,
+  fields: readonly string[]
+): string | null {
+  const properties = ctx.tools?.find((tool) => tool.id === toolId)?.inputsJsonSchema.properties
+  if (!properties || typeof properties !== 'object') {
+    return `The installed QuickBooks app has no ${toolId}; update the app deployment first.`
+  }
+  const missing = fields.filter((field) => !(field in properties))
+  if (missing.length === 0) return null
+  return `The installed QuickBooks ${toolId} does not support ${missing.join(', ')}; update the app deployment first.`
+}
+
 /** The provider's own id for an entry QuickBooks already holds under `docNumber`. */
 async function findExistingEntryId(
   ctx: QuickbooksToolContext,
@@ -863,6 +891,104 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
           }
         )
       )
+    }
+  }
+
+  /**
+   * Remove one journal entry we created, by the id recorded when we created it.
+   *
+   * Converges: an entry QuickBooks no longer holds answers `already_gone`
+   * rather than failing, which is what lets a delete of unknown outcome be
+   * resolved by repeating it (brief 60 §5.1 step 4).
+   *
+   * `remoteVersion` is QuickBooks' `SyncToken` and is REQUIRED. Intuit refuses a
+   * delete carrying a stale one, and that refusal is the whole detection of "the
+   * accountant edited this after we sent it" (brief 60 R5) - re-reading a fresh
+   * token here would discard the edit instead of reporting it.
+   */
+  async withdrawObject(input: {
+    orgId: string
+    objectType: DeliveryObjectType
+    externalId: string
+    remoteVersion: string | null
+  }): Promise<Result<WithdrawResult, Error>> {
+    const context = { organizationId: input.orgId, externalId: input.externalId }
+
+    // `objectType` is in the signature from the start (brief 60 §5.3) even
+    // though nothing but a journal is delivered today.
+    if (input.objectType !== 'journal') {
+      return err(
+        new UnprocessableEntityError(
+          `auxx cannot remove a QuickBooks ${input.objectType}; only journal entries are delivered.`,
+          { ...context, objectType: input.objectType }
+        )
+      )
+    }
+    if (!input.externalId) {
+      return err(
+        new UnprocessableEntityError(
+          'We have no record of what was created in QuickBooks, so nothing can be removed safely.',
+          context
+        )
+      )
+    }
+    if (!input.remoteVersion) {
+      return err(
+        new UnprocessableEntityError(
+          `We have no recorded version for QuickBooks journal entry ${input.externalId}, and QuickBooks refuses a delete without one.`,
+          context
+        )
+      )
+    }
+
+    const resolved = await resolveQuickbooksContext({ organizationId: input.orgId })
+    if (!resolved.connected) {
+      return err(
+        new UnprocessableEntityError(
+          'QuickBooks is not connected, so there is nothing to remove from it.',
+          context
+        )
+      )
+    }
+    const ctx = resolved.context
+
+    const notReady = requireToolInputs(ctx, TOOL_DELETE_JOURNAL_ENTRY, [
+      'journalEntryId',
+      'syncToken',
+    ])
+    if (notReady) return err(new UnprocessableEntityError(notReady, context))
+
+    try {
+      const answer = (await ctx.callTool(TOOL_DELETE_JOURNAL_ENTRY, {
+        journalEntryId: input.externalId,
+        syncToken: input.remoteVersion,
+      })) as { journalEntryId?: string; status?: string; alreadyGone?: boolean } | undefined
+
+      const alreadyGone = Boolean(answer?.alreadyGone)
+      logger.info(
+        alreadyGone
+          ? 'QuickBooks no longer held the journal entry'
+          : 'Journal entry removed from QuickBooks',
+        {
+          ...context,
+          status: answer?.status,
+        }
+      )
+      return ok({
+        status: alreadyGone ? 'already_gone' : 'withdrawn',
+        externalId: answer?.journalEntryId ?? input.externalId,
+        providerId: QUICKBOOKS_PROVIDER_ID,
+        ...(answer ? { raw: answer as Record<string, unknown> } : {}),
+      })
+    } catch (error) {
+      // QuickBooks' own sentence, verbatim (brief 60 R6). A closed period, a
+      // stale token, a permission - every one of them is their answer to give,
+      // and there is nothing this layer could usefully add to it.
+      logger.warn('QuickBooks refused to remove a journal entry', {
+        ...context,
+        error: errorMessage(error),
+      })
+      return err(new UnprocessableEntityError(errorMessage(error), context))
     }
   }
 

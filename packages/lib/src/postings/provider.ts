@@ -14,6 +14,7 @@
 // files/storage/storage-manager.ts): an interface with an `id`, a registry of
 // lazy factories, and a cache so a provider is constructed once.
 
+import type { DeliveryObjectType } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError, UnprocessableEntityError } from '../errors'
@@ -25,6 +26,7 @@ import type {
   PostEntryResult,
   ProviderAccount,
   ProviderBalanceSheet,
+  WithdrawResult,
 } from './types'
 
 const logger = createScopedLogger('postings-provider')
@@ -35,16 +37,18 @@ export const NONE_PROVIDER_ID = 'none'
 /**
  * One accounting system auxx.ai can export postings to.
  *
- * Eight methods now (plus an optional `init`) - the "deliberately two
+ * Nine methods now (plus an optional `init`) - the "deliberately two
  * methods" this docblock used to claim went stale when `G19`'s account-mapping
  * and identity work grew the interface, and briefs 19 and 20 each added one on
  * top: resolve a code, post an entry, read the provider's own chart, read and
  * write its account map, read its balance sheet as of a date, and read its
- * general ledger over a range. Everything else an accounting integration does -
+ * general ledger over a range, and remove one object we put there. Everything
+ * else an accounting integration does -
  * customers, invoices, payments - still belongs to the app that owns that
  * integration; this interface is only the posting and chart-mapping seam.
  *
- * 🛑 Seven of the eight are write-or-map, and the two `readProvider*` reads are
+ * 🛑 Seven of the nine are write-or-map, {@link withdrawObject} is the only one
+ * that removes anything, and the two `readProvider*` reads are
  * the whole INBOUND half: they are the only way anything the accountant
  * authored reaches auxx at all (brief 20 decision 1).
  */
@@ -159,6 +163,20 @@ export interface AccountingProvider {
 
   /** Withdraw a confirmation. The account goes back to unmapped. */
   clearAccountMapping(input: ClearAccountMappingInput): Promise<Result<void, Error>>
+
+  /**
+   * Remove one object we created, by the id we recorded when we created it.
+   *
+   * MUST be safe to call on an object that is already gone: a repeat converges on
+   * "not there" rather than raising, so an uncertain delete can be resolved by
+   * retrying it.
+   */
+  withdrawObject(input: {
+    orgId: string
+    objectType: DeliveryObjectType
+    externalId: string
+    remoteVersion: string | null
+  }): Promise<Result<WithdrawResult, Error>>
 
   /**
    * Create the counterpart of one of OUR accounts in the provider's own chart -
@@ -381,6 +399,26 @@ class NoneAccountingProvider implements AccountingProvider {
       new UnprocessableEntityError(
         'No accounting system is connected, so there is no mapping to clear.',
         { organizationId: input.orgId, glAccountId: input.glAccountId }
+      )
+    )
+  }
+
+  /**
+   * 🛑 A REFUSAL, not an `already_gone`. Convergence means "the provider no
+   * longer holds it"; with nothing connected we do not know that, and answering
+   * as though we did would let a caller reset a row whose copy still sits in
+   * somebody's books.
+   */
+  async withdrawObject(input: {
+    orgId: string
+    objectType: DeliveryObjectType
+    externalId: string
+    remoteVersion: string | null
+  }): Promise<Result<WithdrawResult, Error>> {
+    return err(
+      new UnprocessableEntityError(
+        'No accounting system is connected, so there is nothing to remove from one.',
+        { organizationId: input.orgId, objectType: input.objectType, externalId: input.externalId }
       )
     )
   }

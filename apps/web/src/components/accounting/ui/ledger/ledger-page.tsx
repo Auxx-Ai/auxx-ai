@@ -416,6 +416,7 @@ export function LedgerPage() {
       bookTimeZone={bookTimeZone}
       providerLabel={providerLabel}
       connectedTenantId={provider.connectedTenantId}
+      canUnsync={canControlLedger}
       onReverse={actions.runReverse}
       isReversing={actions.isReversing}
     />
@@ -548,6 +549,10 @@ export function LedgerPage() {
                   onTabChange={(next) => void setQueueTab(next)}
                   providerLabel={providerLabel}
                   canSync={can('ledger.post')}
+                  /* 🛑 `ledger.control`, not `ledger.post` (60 E5): withdrawing
+                     rows out of the firm's books is the rung that closes a
+                     period, not the one that posts a journal. */
+                  canUnsync={canControlLedger}
                   activePostingId={postingId}
                   onSelectPosting={openPosting}
                 />

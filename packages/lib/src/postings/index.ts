@@ -731,7 +731,12 @@ export {
   type SyncReleaseOutcome,
   type SyncReleaseResult,
 } from './retry-export'
-export { type ReverseEntryOptions, reverseEntry } from './reverse-entry'
+export {
+  type ReverseEntriesOptions,
+  type ReverseEntryOptions,
+  reverseEntries,
+  reverseEntry,
+} from './reverse-entry'
 export {
   listChartAccounts,
   listChartAccountUsage,
@@ -798,10 +803,16 @@ export {
   type ProviderBalanceSheet,
   ProviderPostError,
   type ResolvedPostingLine,
+  type ReverseManyResult,
+  type ReverseOutcome,
   type RoleAssignmentRow,
   type RoleAssignmentState,
   type RoleRailAssignmentRow,
+  type UnsyncOutcome,
+  type UnsyncResult,
+  type WithdrawResult,
 } from './types'
+export { unsyncExports } from './unsync'
 export {
   type BooksBalanceDiscrepancy,
   type BooksBalanceReport,

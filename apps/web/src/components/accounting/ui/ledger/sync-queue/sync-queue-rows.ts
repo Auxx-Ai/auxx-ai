@@ -13,8 +13,8 @@ import { type SyncQueueRow, type SyncQueueState, syncQueueState } from '@auxx/li
  * is provider-agnostic and the copy has to be too.
  */
 
-/** The tab set: the three real states plus "everything". */
-export const SYNC_QUEUE_TABS = ['held', 'sending', 'failed', 'all'] as const
+/** The tab set: the four real states plus "everything". */
+export const SYNC_QUEUE_TABS = ['held', 'sending', 'failed', 'synced', 'all'] as const
 export type SyncQueueTab = (typeof SYNC_QUEUE_TABS)[number]
 
 /**
@@ -30,6 +30,7 @@ export const SYNC_QUEUE_TAB_LABELS: Record<SyncQueueTab, string> = {
   held: 'Ready to sync',
   sending: 'Sending',
   failed: 'Refused',
+  synced: 'Synced',
   all: 'All',
 }
 
@@ -38,18 +39,20 @@ export const SYNC_QUEUE_STATE_DOT: Record<SyncQueueState, string> = {
   held: 'bg-muted-foreground',
   sending: 'bg-blue-500',
   failed: 'bg-amber-500',
+  synced: 'bg-green-500',
 }
 
 export interface SyncQueueTally {
   held: number
   sending: number
   failed: number
+  synced: number
   total: number
 }
 
 /** Count each state once. `total` is every row the queue holds, all periods. */
 export function tallySyncQueue(rows: SyncQueueRow[] | undefined): SyncQueueTally {
-  const tally: SyncQueueTally = { held: 0, sending: 0, failed: 0, total: 0 }
+  const tally: SyncQueueTally = { held: 0, sending: 0, failed: 0, synced: 0, total: 0 }
   for (const row of rows ?? []) {
     tally[syncQueueState(row)]++
     tally.total++
@@ -78,6 +81,8 @@ export function syncQueueStateSentence(state: SyncQueueState, providerLabel: str
       return `Released to ${providerLabel} and not acknowledged yet. Either in flight, or claimed by a run that stopped before it finished.`
     case 'failed':
       return `${providerLabel} refused it. The entry is still in your books - only the copy is outstanding.`
+    case 'synced':
+      return `In ${providerLabel}'s books. Un-syncing deletes their copy and brings this back to Ready to sync; your books do not change either way.`
   }
 }
 
@@ -89,6 +94,10 @@ export function syncQueueStateSentence(state: SyncQueueState, providerLabel: str
  * line at all rather than "0 entries waiting". Same reason the rail no longer
  * carries the balance sweep's standing answer: a figure that reads identically
  * every day teaches people to stop reading.
+ *
+ * 🛑 `synced` is deliberately not a part of this sentence. The rail is about
+ * what is OUTSTANDING, and its rows come from the unwidened read that never
+ * carries an exported entry anyway (60 §8.1).
  */
 export function syncQueueRailSentence(tally: SyncQueueTally, providerLabel: string): string | null {
   if (tally.total === 0) return null
@@ -100,19 +109,33 @@ export function syncQueueRailSentence(tally: SyncQueueTally, providerLabel: stri
 }
 
 /**
+ * What the last button pressed on a row answered, by verb. Nothing here is
+ * persisted: a plan refusal never stamps `exportStatus: 'failed'`, and a refused
+ * un-sync or reverse wrote nothing at all, so these exist only in the panel's
+ * own state until the tab changes.
+ */
+export interface SessionRefusals {
+  /** Sync refused to release it. */
+  sync?: string
+  /** Un-sync did not remove the provider's copy (60 R1-R6). */
+  unsync?: string
+  /** Reverse did not back it out - a locked period, or it was reversed already. */
+  reverse?: string
+}
+
+/**
  * What a row's warning icon says on hover, as lines.
  *
- * 🛑 **ONE icon, not two, even though these are two different facts from two
- * different moments.** `failureReason` is the provider's own refusal, persisted
- * on the posting; `sessionRefusal` is a PLAN refusal from the Sync you just
- * pressed, which never stamps `exportStatus: 'failed'` and therefore exists
- * nowhere but in this session's memory. Both can be true at once - a row the
- * provider refused last week, re-synced today, refused by
+ * 🛑 **ONE icon, however many facts, and they come from different moments.**
+ * `failureReason` is the provider's own refusal, persisted on the posting;
+ * everything in `session` is the answer to a button pressed seconds ago and is
+ * recorded nowhere else. Several can be true at once - a row the provider
+ * refused last week, re-synced today and refused by
  * `assertCoveragePartitionsInTx` before it ever left. Two amber dots side by
- * side read as a rendering fault; one icon carrying both sentences reads as one
+ * side read as a rendering fault; one icon carrying every sentence reads as one
  * row with something to say.
  *
- * The in-session line comes FIRST: it describes the action the reader just took.
+ * The in-session lines come FIRST: they describe the action the reader just took.
  *
  * 🔌 The provider is never named here either (D14a) - `providerLabel` arrives
  * from `useAccountingProviderStatus`. The refusal STRINGS are the provider's own
@@ -120,11 +143,13 @@ export function syncQueueRailSentence(tally: SyncQueueTally, providerLabel: stri
  */
 export function refusalTooltipLines(
   row: Pick<SyncQueueRow, 'failureReason'>,
-  sessionRefusal: string | undefined,
+  session: SessionRefusals | undefined,
   providerLabel: string
 ): string[] {
   const lines: string[] = []
-  if (sessionRefusal) lines.push(`The last sync did not release it. ${sessionRefusal}`)
+  if (session?.sync) lines.push(`The last sync did not release it. ${session.sync}`)
+  if (session?.unsync) lines.push(`The last un-sync did not remove it. ${session.unsync}`)
+  if (session?.reverse) lines.push(`The last reverse did not back it out. ${session.reverse}`)
   if (row.failureReason) lines.push(`${providerLabel} refused it. ${row.failureReason}`)
   return lines
 }

@@ -76,6 +76,46 @@ const logger = createScopedLogger('accounting-delivery')
 /** How long an acceptance will wait on the queue before leaving it to the sweep. */
 const ENQUEUE_TIMEOUT_MS = 2_000
 
+/** Epoch 0 renders bare, so no row written before un-sync existed needs rewriting. */
+const journalOperationKey = (epoch: number) => (epoch === 0 ? 'journal' : `journal:${epoch}`)
+/** The same key in SQL, for the sweep's join where the epoch is only a column. */
+const journalOperationKeySql = sql`CASE WHEN ${schema.AccountingDelivery.attemptEpoch} = 0 THEN 'journal' ELSE 'journal:' || ${schema.AccountingDelivery.attemptEpoch} END`
+
+/**
+ * Give a re-opened delivery the journal operation its current epoch names.
+ *
+ * ⚠️ A fresh `requestId`, never the posting's: Intuit treats that as the
+ * idempotence key, so a re-send after an un-sync carrying it can be collapsed
+ * onto the original create's cached response. The `DocNumber` readback is the
+ * real guard - see plan 60 §2.2.
+ */
+async function planJournalOperationInTx(
+  tx: Transaction,
+  delivery: { id: string; organizationId: string; attemptEpoch: number }
+) {
+  const operationKey = journalOperationKey(delivery.attemptEpoch)
+  const [existing] = await tx
+    .select({ id: schema.AccountingDeliveryOperation.id })
+    .from(schema.AccountingDeliveryOperation)
+    .where(
+      and(
+        eq(schema.AccountingDeliveryOperation.organizationId, delivery.organizationId),
+        eq(schema.AccountingDeliveryOperation.deliveryId, delivery.id),
+        eq(schema.AccountingDeliveryOperation.operationKey, operationKey)
+      )
+    )
+    .limit(1)
+  if (existing) return
+  await tx.insert(schema.AccountingDeliveryOperation).values({
+    organizationId: delivery.organizationId,
+    deliveryId: delivery.id,
+    operationKey,
+    objectType: 'journal',
+    requestId: randomUUID(),
+    state: 'pending',
+  })
+}
+
 /** Plan complete-effect coverage before any provider work; caller owns the transaction. */
 export async function planAccountingDeliveryInTx(
   tx: Transaction,
@@ -145,17 +185,20 @@ export async function planAccountingDeliveryInTx(
     await tx.insert(schema.AccountingDeliveryOperation).values({
       organizationId,
       deliveryId: delivery!.id,
-      operationKey: 'journal',
+      operationKey: journalOperationKey(delivery!.attemptEpoch),
       objectType: 'journal',
       requestId: posting.requestId,
       state: 'pending',
     })
-  } else if (input.manual && !delivery.releasedAt) {
-    ;[delivery] = await tx
-      .update(schema.AccountingDelivery)
-      .set({ releasedAt: new Date() })
-      .where(scoped(schema.AccountingDelivery, organizationId, delivery.id))
-      .returning()
+  } else {
+    if (input.manual && !delivery.releasedAt) {
+      ;[delivery] = await tx
+        .update(schema.AccountingDelivery)
+        .set({ releasedAt: new Date() })
+        .where(scoped(schema.AccountingDelivery, organizationId, delivery.id))
+        .returning()
+    }
+    if (delivery?.state === 'pending') await planJournalOperationInTx(tx, delivery)
   }
   if (!delivery) throw new Error('Delivery creation returned no row')
   // 🛑 Brief 44 §7: coverage must PARTITION each effect's contribution before
@@ -235,7 +278,13 @@ async function loadInput(
  * next attempt must not leave the row stranded outside automation forever. The
  * lifetime count everyone reads is `GlPosting.attempts`, which is never reset.
  */
-async function claim(db: Database, organizationId: string, deliveryId: string, manual?: boolean) {
+async function claim(
+  db: Database,
+  organizationId: string,
+  delivery: { id: string; attemptEpoch: number },
+  manual?: boolean
+) {
+  const deliveryId = delivery.id
   return db.transaction(async (tx) => {
     await withAccountingCommitLock(tx, organizationId)
     let [operation] = await tx
@@ -245,7 +294,10 @@ async function claim(db: Database, organizationId: string, deliveryId: string, m
         and(
           eq(schema.AccountingDeliveryOperation.organizationId, organizationId),
           eq(schema.AccountingDeliveryOperation.deliveryId, deliveryId),
-          eq(schema.AccountingDeliveryOperation.operationKey, 'journal')
+          eq(
+            schema.AccountingDeliveryOperation.operationKey,
+            journalOperationKey(delivery.attemptEpoch)
+          )
         )
       )
       .limit(1)
@@ -531,7 +583,7 @@ export async function deliverAccountingPosting(
   const { posting, delivery } = planned
   const base = { glPostingId: posting.id, docNumber: posting.docNumber, providerId: 'quickbooks' }
   if (!delivery.releasedAt) return { ...base, status: 'posted', exportStatus: 'pending' }
-  const claimed = await claim(db, input.organizationId, delivery.id, input.manual)
+  const claimed = await claim(db, input.organizationId, delivery, input.manual)
   if (!claimed) return { ...base, status: 'posted', exportStatus: 'pending' }
   let { operation } = claimed
   const { token } = claimed
@@ -724,7 +776,7 @@ export async function sweepAccountingDeliveries(
           schema.AccountingDelivery.organizationId
         ),
         eq(schema.AccountingDeliveryOperation.deliveryId, schema.AccountingDelivery.id),
-        eq(schema.AccountingDeliveryOperation.operationKey, 'journal')
+        eq(schema.AccountingDeliveryOperation.operationKey, journalOperationKeySql)
       )
     )
     .where(
@@ -741,23 +793,30 @@ export async function sweepAccountingDeliveries(
               isNotNull(schema.AccountingDelivery.releasedAt)
             ),
             or(
-              isNull(schema.AccountingDeliveryOperation.nextAttemptAt),
-              lte(schema.AccountingDeliveryOperation.nextAttemptAt, new Date())
-            ),
-            or(
-              isNull(schema.AccountingDeliveryOperation.leaseExpiresAt),
-              lte(schema.AccountingDeliveryOperation.leaseExpiresAt, new Date())
-            ),
-            inArray(schema.AccountingDeliveryOperation.state, [
-              'pending',
-              'prepared',
-              'sending',
-              'uncertain',
-              'blocked',
-            ]),
-            // The budget. `abandoned` is already excluded by the state list
-            // above; this is what stops a transient that never resolves.
-            lt(schema.AccountingDeliveryOperation.attempts, MAX_AUTO_ATTEMPTS)
+              // A delivery re-opened at a new epoch has no operation under that
+              // key yet; planning inserts it on the attempt this row selects.
+              isNull(schema.AccountingDeliveryOperation.id),
+              and(
+                or(
+                  isNull(schema.AccountingDeliveryOperation.nextAttemptAt),
+                  lte(schema.AccountingDeliveryOperation.nextAttemptAt, new Date())
+                ),
+                or(
+                  isNull(schema.AccountingDeliveryOperation.leaseExpiresAt),
+                  lte(schema.AccountingDeliveryOperation.leaseExpiresAt, new Date())
+                ),
+                inArray(schema.AccountingDeliveryOperation.state, [
+                  'pending',
+                  'prepared',
+                  'sending',
+                  'uncertain',
+                  'blocked',
+                ]),
+                // The budget. `abandoned` is already excluded by the state list
+                // above; this is what stops a transient that never resolves.
+                lt(schema.AccountingDeliveryOperation.attempts, MAX_AUTO_ATTEMPTS)
+              )
+            )
           )
         )
       )

@@ -303,13 +303,32 @@ export type { FailedExport, SyncQueueRow } from './types'
 export async function listFailedExports(
   db: Database,
   organizationId: string,
-  options?: { through?: string }
+  options?: {
+    /** Cumulative: everything up to and including this accounting month. */
+    through?: string
+    /** Exactly this accounting month - the Synced tab's bound (60 §8.1). */
+    month?: string
+    /**
+     * Widen to `exported` as well.
+     *
+     * 🛑 Off by default, and every existing caller leaves it off. The close
+     * console's banner, the rail tally and `verify-balance`'s own report all ask
+     * this question about work that is OUTSTANDING; an org that never un-syncs
+     * anything must read identically to the way it read before the option
+     * existed (60 acceptance 11).
+     */
+    includeExported?: boolean
+  }
 ): Promise<Result<SyncQueueRow[], Error>> {
   try {
     // Normalized through `periodMonth`, which also VALIDATES: a malformed bound
     // throws `BadRequestError` here rather than silently matching nothing, and a
     // caller that passes a day key gets the month containing it.
     const throughMonth = options?.through ? periodMonth(options.through) : null
+    const exactMonth = options?.month ? periodMonth(options.month) : null
+    const statuses: ('pending' | 'failed' | 'exported')[] = options?.includeExported
+      ? ['pending', 'failed', 'exported']
+      : ['pending', 'failed']
 
     const rows = await db
       .select({
@@ -340,7 +359,7 @@ export async function listFailedExports(
           eq(schema.GlPosting.organizationId, organizationId),
           // The EXPORT's state, never the ledger's. A row whose export failed
           // is in the books and must stay in them.
-          inArray(schema.GlPosting.exportStatus, ['pending', 'failed'])
+          inArray(schema.GlPosting.exportStatus, statuses)
         )
       )
       .orderBy(asc(schema.GlPosting.periodKey), asc(schema.GlPosting.postingType))
@@ -356,6 +375,9 @@ export async function listFailedExports(
     const byPosting = new Map<string, number>()
     for (const row of rows) {
       if (throughMonth && !withinThrough(row.periodKey, throughMonth)) continue
+      // A key that is not a period at all is kept here too, for `withinThrough`'s
+      // reason: an entry that cannot be placed in a month must not vanish.
+      if (exactMonth && !inMonth(row.periodKey, exactMonth)) continue
       const releasedAt = row.releasedAt ? new Date(row.releasedAt).toISOString() : null
       const seen = byPosting.get(row.glPostingId)
       if (seen !== undefined) {
@@ -370,7 +392,7 @@ export async function listFailedExports(
         periodKey: row.periodKey,
         postingType: row.postingType as PostingType,
         glPostingId: row.glPostingId,
-        exportStatus: row.exportStatus as 'pending' | 'failed',
+        exportStatus: row.exportStatus as 'pending' | 'failed' | 'exported',
         docNumber: row.docNumber,
         attempts: row.attempts,
         failureReason: row.failureReason,
@@ -401,6 +423,15 @@ export async function listFailedExports(
 function withinThrough(periodKey: string, throughMonth: string): boolean {
   try {
     return compareMonths(periodMonth(periodKey), throughMonth) <= 0
+  } catch {
+    return true
+  }
+}
+
+/** Is `periodKey` in exactly this month? Same treatment of an unplaceable key. */
+function inMonth(periodKey: string, month: string): boolean {
+  try {
+    return periodMonth(periodKey) === month
   } catch {
     return true
   }
