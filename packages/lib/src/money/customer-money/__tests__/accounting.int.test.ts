@@ -249,8 +249,8 @@ async function seedConnectorAndCoverage() {
     .values({
       organizationId,
       sourceAccountId: sourceStoreId,
-      streamKey: 'shopify_order_transactions',
-      windowKey: 'order-fixture',
+      streamKey: 'order_transactions',
+      windowKey: orderId,
       requestedBoundary: { complete: true },
       fetchedBoundary: { complete: true },
       fetchedCount: 0,
@@ -309,9 +309,10 @@ async function createReceipt(amountMinor: bigint, externalId: string, occurredAt
       commandItemKey: 'order-application',
     })
   const payload = {
+    version: 2,
     id: externalId,
-    kind: 'CAPTURE',
-    status: 'SUCCESS',
+    kind: 'receipt',
+    status: 'confirmed',
     amount: (Number(amountMinor) / 100).toFixed(2),
     currency: 'USD',
     processedAt: occurredAt,
