@@ -1,0 +1,2 @@
+ALTER TABLE "AccountingDeliveryOperation" DROP CONSTRAINT "AccountingDeliveryOperation_state_check";--> statement-breakpoint
+ALTER TABLE "AccountingDeliveryOperation" ADD CONSTRAINT "AccountingDeliveryOperation_state_check" CHECK ("AccountingDeliveryOperation"."state" IN ('pending','prepared','sending','uncertain','blocked','abandoned','succeeded') AND "AccountingDeliveryOperation"."objectType" IN ('journal','customer','invoice','payment','credit_memo') AND "AccountingDeliveryOperation"."attempts" >= 0);

@@ -7,8 +7,9 @@ import {
   type Transaction,
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, eq, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
+import { AuxxError } from '../errors'
 import {
   type QuickbooksToolContext,
   resolveQuickbooksContext,
@@ -24,10 +25,47 @@ import {
   verifyDeliveredJournal,
 } from './delivery-proof'
 import { accountingBasisHash } from './effect-basis'
-import type { CounterpartyType, PostEntryInput, PostResult } from './types'
+import {
+  type CounterpartyType,
+  type PostEntryInput,
+  type PostResult,
+  ProviderPostError,
+} from './types'
 
 const LEASE_MS = 5 * 60_000
-const RETRY_MS = 60_000
+/**
+ * How many times the SWEEP will try one operation before leaving it to a human.
+ *
+ * 🛑 The sweep runs every 60 seconds and had no cap at all until now, so a
+ * refusal it could never fix - a receivable line with no contact - was re-sent
+ * to Intuit every minute forever (274 attempts on one dev row). Three is the
+ * budget for a failure that might be transient; past it the per-row Retry
+ * button (`retryExport`) is the only door, which is the point.
+ */
+const MAX_AUTO_ATTEMPTS = 3
+/** Backoff per attempt already spent, so a rate limit is not met with a flat minute. */
+const RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000]
+
+/**
+ * Whether a failure can only ever produce the same answer again.
+ *
+ * ⚠️ Unclassified errors are RETRYABLE here, the opposite of `post-entry.ts`'s
+ * rule, and deliberately: this path throws bare `Error`s for the genuinely
+ * transient ("no matching remote journal is visible yet", "a customer
+ * dependency has an unresolved outcome"), and those are exactly the uncertainty
+ * the sweep exists to resolve. `MAX_AUTO_ATTEMPTS` bounds them instead.
+ */
+function isPermanentDeliveryFailure(error: unknown): boolean {
+  if (error instanceof ProviderPostError) return !error.retryable
+  // 401 may be a token about to refresh, 408/429 are transport by definition.
+  if (error instanceof AuxxError)
+    return (
+      error.statusCode >= 400 &&
+      error.statusCode < 500 &&
+      ![401, 408, 429].includes(error.statusCode)
+    )
+  return false
+}
 const scoped = (
   table: { organizationId: AnyPgColumn; id: AnyPgColumn },
   organizationId: string,
@@ -188,10 +226,19 @@ async function loadInput(
   }
 }
 
-async function claim(db: Database, organizationId: string, deliveryId: string) {
+/**
+ * Take the journal operation's lease.
+ *
+ * ⚠️ `manual` resets `attempts` to zero, because that column is the SWEEP's
+ * budget and nothing else - a person pressing Retry has, by pressing it,
+ * asserted that the thing which blocked this is fixed, and a transient on that
+ * next attempt must not leave the row stranded outside automation forever. The
+ * lifetime count everyone reads is `GlPosting.attempts`, which is never reset.
+ */
+async function claim(db: Database, organizationId: string, deliveryId: string, manual?: boolean) {
   return db.transaction(async (tx) => {
     await withAccountingCommitLock(tx, organizationId)
-    const [operation] = await tx
+    let [operation] = await tx
       .select()
       .from(schema.AccountingDeliveryOperation)
       .where(
@@ -206,6 +253,7 @@ async function claim(db: Database, organizationId: string, deliveryId: string) {
     if (operation.state === 'succeeded') return { operation, token: null }
     if (operation.leaseExpiresAt && operation.leaseExpiresAt > new Date()) return null
     const token = randomUUID()
+    if (manual) operation = { ...operation, attempts: 0 }
     await tx
       .update(schema.AccountingDeliveryOperation)
       .set({
@@ -483,7 +531,7 @@ export async function deliverAccountingPosting(
   const { posting, delivery } = planned
   const base = { glPostingId: posting.id, docNumber: posting.docNumber, providerId: 'quickbooks' }
   if (!delivery.releasedAt) return { ...base, status: 'posted', exportStatus: 'pending' }
-  const claimed = await claim(db, input.organizationId, delivery.id)
+  const claimed = await claim(db, input.organizationId, delivery.id, input.manual)
   if (!claimed) return { ...base, status: 'posted', exportStatus: 'pending' }
   let { operation } = claimed
   const { token } = claimed
@@ -597,13 +645,23 @@ export async function deliverAccountingPosting(
     }
   } catch (error) {
     const reason = message(error)
+    // 🛑 An operation that MAY have sent is never abandoned: giving up on an
+    // unknown outcome is how a double-post goes unnoticed. Uncertainty is
+    // bounded by `MAX_AUTO_ATTEMPTS` instead, like every other transient.
+    const abandoned = !possibleSend && isPermanentDeliveryFailure(error)
+    // `operation.attempts` is the count BEFORE this attempt - `claim` returns
+    // the row it read - so it indexes the backoff directly.
+    const backoff =
+      RETRY_BACKOFF_MS[Math.min(operation.attempts, RETRY_BACKOFF_MS.length - 1)] ?? 60_000
     await db.transaction(async (tx) => {
       const changed = await tx
         .update(schema.AccountingDeliveryOperation)
         .set({
-          state: possibleSend ? 'uncertain' : 'blocked',
+          state: abandoned ? 'abandoned' : possibleSend ? 'uncertain' : 'blocked',
           failureReason: reason,
-          nextAttemptAt: new Date(Date.now() + RETRY_MS),
+          // Null on an abandoned row is not "due now": the sweep selects on
+          // state, and `abandoned` is not one of the states it looks at.
+          nextAttemptAt: abandoned ? null : new Date(Date.now() + backoff),
           leaseToken: null,
           leaseExpiresAt: null,
         })
@@ -629,6 +687,15 @@ export async function deliverAccountingPosting(
         })
         .where(scoped(schema.GlPosting, input.organizationId, posting.id))
     })
+    if (abandoned || operation.attempts + 1 >= MAX_AUTO_ATTEMPTS)
+      logger.warn('Accounting delivery will not be retried automatically; it needs a human', {
+        organizationId: input.organizationId,
+        glPostingId: posting.id,
+        docNumber: posting.docNumber,
+        attempts: operation.attempts + 1,
+        abandoned,
+        error: reason,
+      })
     return { ...base, status: 'posted', exportStatus: 'failed', error: reason }
   }
 }
@@ -687,7 +754,10 @@ export async function sweepAccountingDeliveries(
               'sending',
               'uncertain',
               'blocked',
-            ])
+            ]),
+            // The budget. `abandoned` is already excluded by the state list
+            // above; this is what stops a transient that never resolves.
+            lt(schema.AccountingDeliveryOperation.attempts, MAX_AUTO_ATTEMPTS)
           )
         )
       )

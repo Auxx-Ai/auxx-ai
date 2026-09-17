@@ -2738,6 +2738,13 @@
       "when": 1789604711957,
       "tag": "0390_one_mapping_table",
       "breakpoints": true
+    },
+    {
+      "idx": 391,
+      "version": "7",
+      "when": 1789621331876,
+      "tag": "0391_accounting_delivery_abandoned_state",
+      "breakpoints": true
     }
   ]
 }

@@ -16,6 +16,7 @@ vi.mock('../../money/quickbooks/quickbooks-accounting-provider', () => ({
   prepareQuickbooksJournal: vi.fn(),
 }))
 
+import { UnprocessableEntityError } from '../../errors'
 import { resolveQuickbooksContext } from '../../money/quickbooks/invoke-quickbooks-tool'
 import { prepareQuickbooksJournal } from '../../money/quickbooks/quickbooks-accounting-provider'
 import { acceptEntryInTx, type PreparedEffectMember } from '../accept-entry'
@@ -669,5 +670,71 @@ describe('component coverage partitions one effect against real constraints', ()
     expect(
       (await db().select().from(schema.ExternalAccountingObject)).map((o) => o.objectType)
     ).toEqual(['journal'])
+  })
+})
+
+describe('the sweep gives up rather than retrying one refusal forever', () => {
+  /** The sweep's own passage of time: it waits out `nextAttemptAt`, nothing else. */
+  const due = async () =>
+    db()
+      .update(schema.AccountingDeliveryOperation)
+      .set({ nextAttemptAt: new Date(Date.now() - 1000) })
+
+  it('abandons a data refusal on its first attempt without a second request', async () => {
+    const fixture = await accepted()
+    vi.mocked(prepareQuickbooksJournal).mockRejectedValue(
+      new UnprocessableEntityError('This line carries no contact.')
+    )
+    expect(await deliverAccountingPosting(db(), fixture)).toMatchObject({ exportStatus: 'failed' })
+    const [operation] = await db().select().from(schema.AccountingDeliveryOperation)
+    expect(operation).toMatchObject({ state: 'abandoned', attempts: 1, nextAttemptAt: null })
+    await due()
+    expect(await sweepAccountingDeliveries(db(), { organizationId, limit: 5 })).toMatchObject({
+      examined: 0,
+    })
+    expect(createCount).toBe(0)
+  })
+
+  it('spends three attempts on a transport failure and then leaves it to a human', async () => {
+    const fixture = await accepted()
+    vi.mocked(prepareQuickbooksJournal).mockRejectedValue(new Error('Network timeout'))
+    for (let i = 0; i < 4; i++) {
+      await due()
+      await sweepAccountingDeliveries(db(), { organizationId, limit: 5 })
+    }
+    const [operation] = await db().select().from(schema.AccountingDeliveryOperation)
+    expect(operation).toMatchObject({ state: 'blocked', attempts: 3 })
+  })
+
+  it('never abandons an operation whose send outcome is unknown', async () => {
+    const fixture = await accepted()
+    timeoutAfterCreate = true
+    await deliverAccountingPosting(db(), fixture)
+    // A 4xx now arrives on a row that HAS sent. Abandoning it would bury a
+    // journal QuickBooks may well be holding.
+    callTool.mockRejectedValue(new UnprocessableEntityError('Refused'))
+    expect(await deliverAccountingPosting(db(), fixture)).toMatchObject({ exportStatus: 'failed' })
+    expect((await db().select().from(schema.AccountingDeliveryOperation))[0]!.state).toBe(
+      'uncertain'
+    )
+  })
+
+  it('hands the budget back to the sweep when a person presses Retry', async () => {
+    const fixture = await accepted()
+    vi.mocked(prepareQuickbooksJournal).mockRejectedValue(new Error('Network timeout'))
+    for (let i = 0; i < 4; i++) {
+      await due()
+      await sweepAccountingDeliveries(db(), { organizationId, limit: 5 })
+    }
+    await due()
+    expect(await sweepAccountingDeliveries(db(), { organizationId, limit: 5 })).toMatchObject({
+      examined: 0,
+    })
+    await deliverAccountingPosting(db(), { ...fixture, manual: true })
+    expect((await db().select().from(schema.AccountingDeliveryOperation))[0]!.attempts).toBe(1)
+    await due()
+    expect(await sweepAccountingDeliveries(db(), { organizationId, limit: 5 })).toMatchObject({
+      examined: 1,
+    })
   })
 })
