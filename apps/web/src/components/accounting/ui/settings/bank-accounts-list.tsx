@@ -23,6 +23,12 @@ import type { BankAccountRow } from '@auxx/lib/banking/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ButtonSwitch } from '@auxx/ui/components/button-switch'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
@@ -31,6 +37,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import {
   ArchiveRestore,
   Building2,
+  ChevronDown,
   CreditCard,
   Landmark,
   PlugZap,
@@ -126,6 +133,8 @@ export function BankAccountsList({
         : [...current, institution]
     )
 
+  // The empty state's pair. Two sibling buttons are fine on a blank screen,
+  // where there is no search box for them to squeeze.
   const buttons = (
     <div className='flex items-center gap-2'>
       <Button variant='outline' size='sm' onClick={onConnect} loading={connecting}>
@@ -141,44 +150,58 @@ export function BankAccountsList({
 
   return (
     <div className='flex flex-col gap-3 p-3'>
-      {/* ⚠️ Two rows, not one, and NOT a wrapping row. `chart-list.tsx` puts its
-          search beside a single button; two buttons squeeze the box to about
-          forty pixels. And a `flex-wrap` row is worse than either: `InputSearch`
-          wraps its input in a `relative flex flex-1` div, so on the second line
-          that wrapper stretches the full width and swallows the buttons' clicks
-          - the row looked right and neither button could be pressed. */}
-      {/* Hidden while the list is empty: the `EmptyState` below carries the same
-          two buttons, and showing four of them on a blank screen reads as two
-          different pairs of actions. */}
+      {/* 🛑 ONE control for two routes, the `chart-list.tsx` shape. Two sibling
+          buttons squeeze `InputSearch` to about forty pixels, which is what
+          forced this toolbar across two rows before. */}
       {accounts.length > 0 && (
-        <>
-          <div className='flex items-center gap-2'>{buttons}</div>
-          {/* The search and the archived toggle share a row, which is safe where
-              the two BUTTONS above were not: `ButtonSwitch` at `xs` is narrow
-              enough that `InputSearch`'s `flex-1` still has room, and the row
-              never wraps - so the wrapper cannot stretch over a second line and
-              swallow the toggle's clicks. */}
-          <div className='flex items-center gap-2'>
-            <InputSearch
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder='Search accounts...'
+        <div className='flex items-center gap-2'>
+          <InputSearch
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder='Search accounts...'
+            className='flex-1'
+          />
+          {/* Offered only when there is something behind it. An always-present
+              toggle over an empty set advertises a state most orgs never
+              reach, and archiving is meant to be the quiet default rather
+              than a mode. */}
+          {archivedCount > 0 && (
+            <ButtonSwitch
+              label={`Show archived (${archivedCount})`}
+              size='xs'
+              checked={showArchived}
+              onCheckedChange={onShowArchivedChange}
+              className='shrink-0'
             />
-            {/* Offered only when there is something behind it. An always-present
-                toggle over an empty set advertises a state most orgs never
-                reach, and archiving is meant to be the quiet default rather
-                than a mode. */}
-            {archivedCount > 0 && (
-              <ButtonSwitch
-                label={`Show archived (${archivedCount})`}
-                size='xs'
-                checked={showArchived}
-                onCheckedChange={onShowArchivedChange}
-                className='shrink-0'
-              />
-            )}
-          </div>
-        </>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='outline' size='sm' className='shrink-0' loading={connecting}>
+                <Plus />
+                Add account
+                <ChevronDown />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end' className='min-w-[15rem]'>
+              <DropdownMenuItem onSelect={onConnect}>
+                <Landmark />
+                <span className='flex min-w-0 flex-col'>
+                  <span>Connect a bank</span>
+                  <span className='text-muted-foreground text-xs'>
+                    Pull transactions automatically
+                  </span>
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onAddManually}>
+                <Plus />
+                <span className='flex min-w-0 flex-col'>
+                  <span>Add manually</span>
+                  <span className='text-muted-foreground text-xs'>Import statements into it</span>
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       )}
 
       {isLoading ? (

@@ -59,9 +59,9 @@ import {
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
-import { Section } from '@auxx/ui/components/section'
+import { EmptySection, Section } from '@auxx/ui/components/section'
 import { cn } from '@auxx/ui/lib/utils'
-import { ArchiveRestore, PlugZap, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
+import { ArchiveRestore, Landmark, PlugZap, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useRef, useState } from 'react'
 import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
@@ -181,8 +181,12 @@ export interface BankAccountRemoval {
 export function BankAccountEditor({ account, ...rest }: BankAccountEditorProps) {
   if (!account) {
     return (
-      <div className='p-4 text-muted-foreground text-sm'>
-        Select an account to map it to your chart, or connect a bank to add one.
+      <div className='p-3'>
+        <EmptySection
+          icon={<Landmark className='size-5' />}
+          title='Pick an account'
+          description='Its mapping to your chart, its feed and its coverage show here.'
+        />
       </div>
     )
   }
