@@ -43,6 +43,7 @@ const PAYOUT_ATTRIBUTES = [
   'payout_payment_gateway',
   'payout_bank_account',
   'payout_source',
+  'payout_destination_mismatch',
 ] as const
 
 type PayoutAttribute = (typeof PAYOUT_ATTRIBUTES)[number]
@@ -237,93 +238,151 @@ export async function findPayoutByGatewayId(
   return record ?? null
 }
 
-/**
- * The `bank_account` attributes {@link findBankAccountByStripeExternalAccountId}
- * reads. Read through the entity layer directly rather than by importing
- * `banking/` - the same anti-cycle reason `money/bank-deposits/reads.ts` gives
- * for its own `readDepositBankAccount`: a `bank_account` is an `EntityInstance`
- * like any other, and `banking/` may in principle reach back into `money/`.
- */
+/** The `bank_account` attributes {@link readBankAccountSettlementDestinations} reads. */
 const PAYOUT_BANK_ACCOUNT_ATTRIBUTES = [
-  'bank_account_stripe_external_account_id',
   'bank_account_gl_account',
+  'bank_account_settlement_destinations',
 ] as const
 
 type PayoutBankAccountAttribute = (typeof PAYOUT_BANK_ACCOUNT_ATTRIBUTES)[number]
 type PayoutBankAccountFields = Record<PayoutBankAccountAttribute, { id: string } | null>
 
-/** What a payout's Stripe destination resolves to. */
-export interface PayoutBankAccountMatch {
-  bankAccountId: string
-  /** `<defId>:<instanceId>`, the shape a RELATIONSHIP write takes. */
-  recordId: string
-  /** Null when the matched account carries no chart mapping. */
-  glAccountId: string | null
-}
-
 /**
- * Resolve a Stripe payout's `destination` to the org's own `bank_account`,
- * through its CONFIRMED `stripeExternalAccountId` identity (brief 13 §2.3).
+ * Every confirmed settlement destination on the `bank_account` record(s) mapped to `glAccountId`
+ * (58 §5.4 rule 2). Read through the entity layer directly rather than by importing `banking/` -
+ * the same anti-cycle posture the deleted `findBankAccountByStripeExternalAccountId` kept: a
+ * `bank_account` is an `EntityInstance` like any other, and `banking/` may in principle reach
+ * back into `money/`.
  *
- * 🛑 Never matched on `last4` - a four-digit string is strong evidence and not
- * proof, and two accounts at one bank can share one (the same argument
- * `resolveMappedAccounts:291-298` makes about QuickBooks' `AcctNum`).
- *
- * `null` when no LIVE (non-archived) bank account in this org carries that
- * identity - the caller refuses to post rather than guessing which account.
+ * `glAccountId` is the authority (the mapped `bank` role, D7) - this is a CHECK against it, never
+ * a second resolution. Empty when nothing maps to that account, which reads as a mismatch on
+ * every reported destination, same as an unconfirmed one.
  */
-export async function findBankAccountByStripeExternalAccountId(
+export async function readBankAccountSettlementDestinations(
   db: Database,
   organizationId: string,
-  destination: string
-): Promise<PayoutBankAccountMatch | null> {
+  glAccountId: string
+): Promise<string[]> {
   const bankAccountDefId = await getCachedEntityDefId(organizationId, 'bank_account')
-  if (!bankAccountDefId) return null
+  if (!bankAccountDefId) return []
 
   const fields = (await getOrgCache()
     .from(organizationId, 'customFields')
     .bySystemAttributes([...PAYOUT_BANK_ACCOUNT_ATTRIBUTES])) as PayoutBankAccountFields
-  const stripeField = fields.bank_account_stripe_external_account_id
-  if (!stripeField) return null
+  const glField = fields.bank_account_gl_account
+  const destinationsField = fields.bank_account_settlement_destinations
+  if (!glField || !destinationsField) return []
 
-  const [match] = await db
+  const matches = await db
     .select({ entityId: schema.FieldValue.entityId })
     .from(schema.FieldValue)
     .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
     .where(
       and(
         eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, stripeField.id),
-        eq(schema.FieldValue.valueText, destination),
+        eq(schema.FieldValue.fieldId, glField.id),
+        eq(schema.FieldValue.valueText, glAccountId),
         eq(schema.EntityInstance.entityDefinitionId, bankAccountDefId),
         isNull(schema.EntityInstance.archivedAt)
       )
     )
-    .limit(1)
-  if (!match) return null
+  if (matches.length === 0) return []
 
-  const glField = fields.bank_account_gl_account
-  let glAccountId: string | null = null
-  if (glField) {
-    const [value] = await db
-      .select({ valueText: schema.FieldValue.valueText })
-      .from(schema.FieldValue)
-      .where(
-        and(
-          eq(schema.FieldValue.organizationId, organizationId),
-          eq(schema.FieldValue.entityId, match.entityId),
-          eq(schema.FieldValue.fieldId, glField.id)
-        )
+  const tags = await db
+    .select({ optionId: schema.FieldValue.optionId, valueText: schema.FieldValue.valueText })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        inArray(
+          schema.FieldValue.entityId,
+          matches.map((match) => match.entityId)
+        ),
+        eq(schema.FieldValue.fieldId, destinationsField.id)
       )
-      .limit(1)
-    glAccountId = value?.valueText?.trim() || null
+    )
+  return [
+    ...new Set(tags.map((tag) => tag.optionId ?? tag.valueText).filter((v): v is string => !!v)),
+  ]
+}
+
+/**
+ * Every open destination mismatch on one rail's payouts (58 §5.4 rule 2), for the gateway
+ * editor's readiness read (`payment-gateways/feeds.ts`).
+ *
+ * Narrowed in SQL on the rail pointer and a non-null mismatch, never read-then-filtered - the
+ * same argument `listPayouts`'s `onlyUnidentified` makes.
+ */
+export interface PayoutDestinationMismatch {
+  payoutId: string
+  number: string | null
+  message: string
+}
+
+export async function listOpenDestinationMismatches(
+  db: Database,
+  organizationId: string,
+  paymentGatewayId: string
+): Promise<PayoutDestinationMismatch[]> {
+  const ctx = await loadPayoutFieldContext(organizationId)
+  const mismatchField = ctx?.fields.payout_destination_mismatch
+  const railField = ctx?.fields.payout_payment_gateway
+  if (!ctx || !mismatchField || !railField) return []
+
+  const mismatch = alias(schema.FieldValue, 'payout_destination_mismatch_v')
+  const rail = alias(schema.FieldValue, 'payout_payment_gateway_v')
+  const number = alias(schema.FieldValue, 'payout_number_v')
+  const numberField = ctx.fields.payout_number
+
+  let query = db
+    .select({
+      id: schema.EntityInstance.id,
+      message: mismatch.valueText,
+      number: numberField ? number.valueText : sql<string | null>`null`,
+    })
+    .from(schema.EntityInstance)
+    .innerJoin(
+      mismatch,
+      and(
+        eq(mismatch.entityId, schema.EntityInstance.id),
+        eq(mismatch.organizationId, schema.EntityInstance.organizationId),
+        eq(mismatch.fieldId, mismatchField.id),
+        isNotNull(mismatch.valueText)
+      )
+    )
+    .innerJoin(
+      rail,
+      and(
+        eq(rail.entityId, schema.EntityInstance.id),
+        eq(rail.organizationId, schema.EntityInstance.organizationId),
+        eq(rail.fieldId, railField.id),
+        eq(rail.relatedEntityId, paymentGatewayId)
+      )
+    )
+    .$dynamic()
+
+  if (numberField) {
+    query = query.leftJoin(
+      number,
+      and(
+        eq(number.entityId, schema.EntityInstance.id),
+        eq(number.organizationId, schema.EntityInstance.organizationId),
+        eq(number.fieldId, numberField.id)
+      )
+    )
   }
 
-  return {
-    bankAccountId: match.entityId,
-    recordId: toRecordId(bankAccountDefId, match.entityId),
-    glAccountId,
-  }
+  const rows = await query.where(
+    and(
+      eq(schema.EntityInstance.organizationId, organizationId),
+      eq(schema.EntityInstance.entityDefinitionId, ctx.payoutDefId),
+      isNull(schema.EntityInstance.archivedAt)
+    )
+  )
+
+  return rows.flatMap((row) =>
+    row.message ? [{ payoutId: row.id, number: row.number, message: row.message }] : []
+  )
 }
 
 /** One page of payouts, newest first. */
@@ -470,6 +529,7 @@ async function hydrate(
       bankTransactionId: read('payout_bank_transaction_id')?.valueText ?? null,
       paymentGatewayId: read('payout_payment_gateway')?.relatedEntityId ?? null,
       bankAccountId: read('payout_bank_account')?.relatedEntityId ?? null,
+      destinationMismatch: read('payout_destination_mismatch')?.valueText ?? null,
       source: resolvePayoutSource(read('payout_source')?.optionId),
       createdAt: row.createdAt,
     }

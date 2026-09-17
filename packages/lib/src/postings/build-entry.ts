@@ -100,19 +100,22 @@ import type { BuiltEntry, CounterpartyType, GlPostingLineInput, PostingType } fr
  * checklist, and a row nothing can ever post to is a question with no answer.
  */
 /*
- * Two rules about what a role is NOT (brief 13 §2 and §5, 2026-09-10):
+ * Two rules about what a role is NOT (brief 13 §2 and §5, 2026-09-10) — qualified by a
+ * rail scope, brief 58 §2.4, 2026-09-16:
  *
- * - **A bank account is not a role.** A role answers which account fulfils an
- *   accounting FUNCTION; an org has several bank accounts and they are
- *   instances. `cash` was retired for this reason. A builder that moves money
- *   into or out of a bank account takes the `bank_account`'s own
- *   `glAccountId` and emits a `{ glAccountId }` line, the way the deposit does.
- * - **A gateway does not get a role, and a channel does not get an account.**
- *   There is no exception any more: `clearing_affirm` was the one, and it was
- *   retired on 2026-09-10. EVERY gateway past the card rail is a
- *   `payment_gateway` record carrying its own clearing account, Affirm
- *   included, and a channel is a `dimensions` entry on the revenue line, never
- *   a second revenue role.
+ * - **A bank account is not a role — for an ORG-WIDE map.** `cash` was retired because
+ *   "which bank" has no org-wide answer. Once the map gained a rail scope, {@link
+ *   ACCOUNT_ROLES.BANK} IS a role, admissible precisely because it can never resolve
+ *   org-wide ({@link ROLES_WITHOUT_DEFAULT}): it only ever answers "which bank THIS
+ *   RAIL pays into". A HAND-RECORDED payment still takes a `bank_account`'s own
+ *   `glAccountId` directly, unchanged.
+ * - **A gateway does not get a NAMED role, and a channel does not get an account.**
+ *   Still true: no role is ever named after one vendor (`clearing_affirm` was the one
+ *   exception, retired 2026-09-10) and a channel is still a `dimensions` entry, never a
+ *   second revenue role. What changed is that `CLEARING`, `PAYMENT_PROCESSING_FEES` and
+ *   `BANK` may now resolve DIFFERENTLY per `payment_gateway` record via
+ *   `GlRoleAssignment`'s rail scope — the account varies by rail, the role vocabulary
+ *   does not.
  */
 export const ACCOUNT_ROLES = {
   /**

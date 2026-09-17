@@ -607,6 +607,7 @@ export {
   type ResolvedPostingLine,
   type RoleAssignmentRow,
   type RoleAssignmentState,
+  type RoleRailAssignmentRow,
   type RoleSourceAssignmentRow,
   type RoleSourceRow,
   type RoleSourceScope,

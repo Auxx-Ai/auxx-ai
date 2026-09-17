@@ -32,6 +32,8 @@ export {
   resolvePaymentGatewayStatus,
   toGatewayRoutes,
 } from './client'
+export type { GatewayReadiness } from './feeds'
+export { linkFeed, readiness, unlinkFeed } from './feeds'
 export type { PaymentGatewayFieldContext } from './reads'
 export {
   getPaymentGateway,
@@ -43,7 +45,8 @@ export {
 } from './reads'
 export type { ClearingAccountBalance } from './repoint'
 export { readClearingAccountBalance } from './repoint'
-export { getGatewaySettlementReadiness, updateGatewaySettlementSettings } from './settlement'
+export type { UnlinkedFeed } from './settlement-discovery'
+export { listUnlinkedFeeds } from './settlement-discovery'
 export type {
   ArchivePaymentGatewayInput,
   CreatePaymentGatewayInput,

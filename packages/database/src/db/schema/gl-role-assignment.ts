@@ -13,8 +13,15 @@
 //     and `FieldValue` carries exactly two unique indexes — the PK and
 //     `(entityId, fieldId, sortKey)`. Decision `G6`'s argument verbatim: not
 //     unimplemented, unexpressible.
-//   - This table: `uniqueIndex(organizationId, role)`. One line, Postgres
-//     enforced, and many rows may share `glAccountId`.
+//   - This table: THREE partial unique indexes on `(organizationId, role, ...)`,
+//     never one three-column unique — Postgres treats NULLs as distinct, so a
+//     single composite would admit two org defaults for one role. The org
+//     DEFAULT (unscoped); one per `FinancialSourceAccount` via `sourceAccountId`
+//     (STORE scope, brief 47); one per `payment_gateway` + `coalesce(currency,
+//     '')` via `paymentGatewayId` (RAIL scope, brief 58 — "which bank"/"which
+//     clearing account" has no org-wide answer, so this axis exists to be
+//     scoped, never defaulted). Postgres enforced, and many rows may share
+//     `glAccountId`.
 //
 // 🛑 `gl_account` STAYS an `EntityInstance`. `RecordIdentity` is keyed on an
 // instance and has no other addressing mode, and decision `P2` hangs the

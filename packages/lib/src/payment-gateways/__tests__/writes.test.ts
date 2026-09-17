@@ -1,21 +1,32 @@
 // packages/lib/src/payment-gateways/__tests__/writes.test.ts
 //
-// The two refusals §5.3 names explicitly: two records sharing a normalised
-// handle, and a clearing account that is not an active asset account. Mocks
-// `./reads` and `../postings/chart-accounts` rather than a live db, the same
-// boundary `banking/__tests__` draws around `UnifiedCrudHandler`.
+// `createPaymentGateway`/`updatePaymentGateway` map clearing/fee through
+// `setRoleAssignment` (task 58 §3) instead of writing the six retired gateway
+// fields; account existence/type/subtype validation is `setRoleAssignment`'s
+// job now and is mocked here, not re-asserted. What is pinned:
+//
+//  - the entity write carries only the KEPT fields (name, handles, fee
+//    treatment, status, lastSettlementAt) - never a clearing/fee/settlement
+//    field, which the registry no longer declares;
+//  - `setRoleAssignment` is called with `role: 'clearing'`/`'payment_processing_fees'`,
+//    `paymentGatewayId`, and the given account, and its refusal propagates;
+//  - an update's `feeAccountId: null` clears the override with `useDefault: true`
+//    rather than mapping to nothing;
+//  - the handle-collision refusal (§5.1) is unchanged.
+//
+// Mocks `./reads`, `../../postings/role-map` and the CRUD handler rather than a
+// live db, the same boundary `banking/__tests__` draws around `UnifiedCrudHandler`.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { BadRequestError } from '../../errors'
 import type { PaymentGatewayRow } from '../client'
 
 const state = vi.hoisted(() => ({
   existing: [] as PaymentGatewayRow[],
   createCalls: [] as unknown[],
   updateCalls: [] as unknown[],
-  chartAccounts: new Map<
-    string,
-    { id: string; accountType: string; isActive: boolean; name: string }
-  >(),
+  roleAssignmentCalls: [] as Record<string, unknown>[],
+  roleAssignmentError: null as Error | null,
 }))
 
 function baseRow(overrides: Partial<PaymentGatewayRow> = {}): PaymentGatewayRow {
@@ -58,14 +69,13 @@ vi.mock('../reads', () => ({
   },
 }))
 
-vi.mock('../../postings/chart-accounts', () => ({
-  loadChartAccountsById: async (_db: unknown, _org: string, ids: string[]) => {
-    const accounts = new Map()
-    for (const id of ids) {
-      const account = state.chartAccounts.get(id)
-      if (account) accounts.set(id, account)
+vi.mock('../../postings/role-map', () => ({
+  setRoleAssignment: async (_db: unknown, options: Record<string, unknown>) => {
+    state.roleAssignmentCalls.push(options)
+    if (state.roleAssignmentError) {
+      return { isErr: () => true, isOk: () => false, error: state.roleAssignmentError }
     }
-    return { accounts, malformed: ids.filter((id) => !state.chartAccounts.has(id)) }
+    return { isErr: () => false, isOk: () => true, value: { role: options.role } }
   },
 }))
 
@@ -84,59 +94,42 @@ vi.mock('../../resources/crud', () => ({
 const { createPaymentGateway, updatePaymentGateway } = await import('../writes')
 
 const ORG = 'org_1'
-const ASSET_ACCOUNT = {
-  id: 'acct_card_clearing',
-  accountType: 'asset',
-  isActive: true,
-  name: '1200 Card Clearing',
-}
-const EXPENSE_ACCOUNT = {
-  id: 'acct_fees',
-  accountType: 'expense',
-  isActive: true,
-  name: '6100 Merchant Fees',
-}
-const LIABILITY_ACCOUNT = {
-  id: 'acct_ap',
-  accountType: 'liability',
-  isActive: true,
-  name: '2000 A/P',
-}
+const CLEARING_ACCOUNT = 'acct_card_clearing'
+const FEE_ACCOUNT = 'acct_fees'
 
 beforeEach(() => {
   state.existing = []
   state.createCalls.length = 0
   state.updateCalls.length = 0
-  state.chartAccounts = new Map([
-    [ASSET_ACCOUNT.id, ASSET_ACCOUNT],
-    [EXPENSE_ACCOUNT.id, EXPENSE_ACCOUNT],
-    [LIABILITY_ACCOUNT.id, LIABILITY_ACCOUNT],
-  ])
+  state.roleAssignmentCalls.length = 0
+  state.roleAssignmentError = null
 })
 
 describe('createPaymentGateway', () => {
-  it('refuses a clearing account that is not an active asset account', async () => {
+  it('refuses an empty clearing account before ever calling setRoleAssignment', async () => {
     const result = await createPaymentGateway({} as never, {
       organizationId: ORG,
       actorUserId: 'user_1',
       name: 'Stripe',
       handles: ['stripe'],
-      clearingAccountId: LIABILITY_ACCOUNT.id,
+      clearingAccountId: '   ',
+    })
+    expect(result.isErr()).toBe(true)
+    if (result.isErr()) expect(result.error.message).toContain('clearing account')
+    expect(state.roleAssignmentCalls).toHaveLength(0)
+  })
+
+  it('propagates setRoleAssignment refusing the clearing account', async () => {
+    state.roleAssignmentError = new BadRequestError('"2000 A/P" is a liability account.')
+    const result = await createPaymentGateway({} as never, {
+      organizationId: ORG,
+      actorUserId: 'user_1',
+      name: 'Stripe',
+      handles: ['stripe'],
+      clearingAccountId: 'acct_ap',
     })
     expect(result.isErr()).toBe(true)
     if (result.isErr()) expect(result.error.message).toContain('liability')
-  })
-
-  it('refuses a clearing account that does not exist in the chart', async () => {
-    const result = await createPaymentGateway({} as never, {
-      organizationId: ORG,
-      actorUserId: 'user_1',
-      name: 'Stripe',
-      handles: ['stripe'],
-      clearingAccountId: 'acct_missing',
-    })
-    expect(result.isErr()).toBe(true)
-    if (result.isErr()) expect(result.error.message).toContain('does not exist')
   })
 
   it('refuses two records sharing a normalised handle, naming both', async () => {
@@ -147,7 +140,7 @@ describe('createPaymentGateway', () => {
       name: 'Authorize.Net (dup)',
       // Same handle, different case - must still collide (trimmed + lower-cased).
       handles: [' Authorize_Net '],
-      clearingAccountId: ASSET_ACCOUNT.id,
+      clearingAccountId: CLEARING_ACCOUNT,
     })
     expect(result.isErr()).toBe(true)
     if (result.isErr()) {
@@ -156,38 +149,51 @@ describe('createPaymentGateway', () => {
     }
   })
 
-  it('creates a gateway with a valid asset clearing account and expense fee account', async () => {
+  it('writes only the kept fields, and maps clearing and fee through the rail scope', async () => {
     const result = await createPaymentGateway({} as never, {
       organizationId: ORG,
       actorUserId: 'user_1',
       name: 'Shopify Payments',
       handles: ['shopify_payments'],
-      clearingAccountId: ASSET_ACCOUNT.id,
-      feeAccountId: EXPENSE_ACCOUNT.id,
-      settlementSource: 'shopify_payments',
+      clearingAccountId: CLEARING_ACCOUNT,
+      feeAccountId: FEE_ACCOUNT,
     })
     expect(result.isOk()).toBe(true)
-    expect(state.createCalls).toHaveLength(1)
     expect(state.createCalls[0]).toMatchObject({
       payment_gateway_name: 'Shopify Payments',
       payment_gateway_handles: ['shopify_payments'],
-      payment_gateway_clearing_account: ASSET_ACCOUNT.id,
-      payment_gateway_fee_account: EXPENSE_ACCOUNT.id,
-      payment_gateway_settlement_source: 'shopify_payments',
     })
+    for (const retired of [
+      'payment_gateway_clearing_account',
+      'payment_gateway_fee_account',
+      'payment_gateway_settlement_source',
+    ]) {
+      expect(state.createCalls[0]).not.toHaveProperty(retired)
+    }
+    expect(state.roleAssignmentCalls).toEqual([
+      expect.objectContaining({
+        role: 'clearing',
+        paymentGatewayId: 'pg_new',
+        glAccountId: CLEARING_ACCOUNT,
+      }),
+      expect.objectContaining({
+        role: 'payment_processing_fees',
+        paymentGatewayId: 'pg_new',
+        glAccountId: FEE_ACCOUNT,
+      }),
+    ])
   })
 
-  it('refuses a fee account that is not an expense account', async () => {
-    const result = await createPaymentGateway({} as never, {
+  it('maps only clearing when no fee account is given', async () => {
+    await createPaymentGateway({} as never, {
       organizationId: ORG,
       actorUserId: 'user_1',
-      name: 'Shopify Payments',
-      handles: ['shopify_payments'],
-      clearingAccountId: ASSET_ACCOUNT.id,
-      feeAccountId: ASSET_ACCOUNT.id,
+      name: 'Affirm',
+      handles: ['affirm'],
+      clearingAccountId: CLEARING_ACCOUNT,
     })
-    expect(result.isErr()).toBe(true)
-    if (result.isErr()) expect(result.error.message).toContain('asset')
+    expect(state.roleAssignmentCalls).toHaveLength(1)
+    expect(state.roleAssignmentCalls[0]).toMatchObject({ role: 'clearing' })
   })
 
   it('refuses an empty handle list', async () => {
@@ -196,7 +202,7 @@ describe('createPaymentGateway', () => {
       actorUserId: 'user_1',
       name: 'Nothing',
       handles: ['   '],
-      clearingAccountId: ASSET_ACCOUNT.id,
+      clearingAccountId: CLEARING_ACCOUNT,
     })
     expect(result.isErr()).toBe(true)
     if (result.isErr()) expect(result.error.message).toContain('at least one handle')
@@ -204,15 +210,62 @@ describe('createPaymentGateway', () => {
 })
 
 describe('updatePaymentGateway', () => {
-  it('re-validates the clearing account on every write', async () => {
+  it('repoints clearing through setRoleAssignment', async () => {
     state.existing = [baseRow()]
     const result = await updatePaymentGateway({} as never, {
       organizationId: ORG,
       actorUserId: 'user_1',
       paymentGatewayId: 'pg_existing',
-      clearingAccountId: LIABILITY_ACCOUNT.id,
+      clearingAccountId: 'acct_new_clearing',
+    })
+    expect(result.isOk()).toBe(true)
+    expect(state.roleAssignmentCalls[0]).toMatchObject({
+      role: 'clearing',
+      paymentGatewayId: 'pg_existing',
+      glAccountId: 'acct_new_clearing',
+    })
+  })
+
+  it('propagates setRoleAssignment refusing the repoint', async () => {
+    state.existing = [baseRow()]
+    state.roleAssignmentError = new BadRequestError('"2000 A/P" is a liability account.')
+    const result = await updatePaymentGateway({} as never, {
+      organizationId: ORG,
+      actorUserId: 'user_1',
+      paymentGatewayId: 'pg_existing',
+      clearingAccountId: 'acct_ap',
     })
     expect(result.isErr()).toBe(true)
+  })
+
+  it('maps a new fee account when given one', async () => {
+    state.existing = [baseRow()]
+    await updatePaymentGateway({} as never, {
+      organizationId: ORG,
+      actorUserId: 'user_1',
+      paymentGatewayId: 'pg_existing',
+      feeAccountId: FEE_ACCOUNT,
+    })
+    expect(state.roleAssignmentCalls[0]).toMatchObject({
+      role: 'payment_processing_fees',
+      paymentGatewayId: 'pg_existing',
+      glAccountId: FEE_ACCOUNT,
+    })
+  })
+
+  it('clears the fee override back to the org default when given null', async () => {
+    state.existing = [baseRow()]
+    await updatePaymentGateway({} as never, {
+      organizationId: ORG,
+      actorUserId: 'user_1',
+      paymentGatewayId: 'pg_existing',
+      feeAccountId: null,
+    })
+    expect(state.roleAssignmentCalls[0]).toMatchObject({
+      role: 'payment_processing_fees',
+      paymentGatewayId: 'pg_existing',
+      useDefault: true,
+    })
   })
 
   it('allows renaming without touching handles or accounts', async () => {
@@ -227,6 +280,7 @@ describe('updatePaymentGateway', () => {
     expect(state.updateCalls[0]).toMatchObject({
       values: { payment_gateway_name: 'Affirm (BNPL)' },
     })
+    expect(state.roleAssignmentCalls).toHaveLength(0)
   })
 
   it('does not collide with itself when its own handle is unchanged', async () => {
@@ -255,7 +309,7 @@ describe('feeTreatment', () => {
       actorUserId: 'user_1',
       name: 'Stripe',
       handles: ['stripe'],
-      clearingAccountId: ASSET_ACCOUNT.id,
+      clearingAccountId: CLEARING_ACCOUNT,
     })
     expect(state.createCalls[0]).toMatchObject({ payment_gateway_fee_treatment: 'netted' })
   })
@@ -266,7 +320,7 @@ describe('feeTreatment', () => {
       actorUserId: 'user_1',
       name: 'Authorize.Net',
       handles: ['authorize_net'],
-      clearingAccountId: ASSET_ACCOUNT.id,
+      clearingAccountId: CLEARING_ACCOUNT,
       feeTreatment: 'billed',
     })
     expect(state.createCalls[0]).toMatchObject({ payment_gateway_fee_treatment: 'billed' })
@@ -282,7 +336,7 @@ describe('feeTreatment', () => {
       actorUserId: 'user_1',
       name: 'Stripe',
       handles: ['stripe'],
-      clearingAccountId: ASSET_ACCOUNT.id,
+      clearingAccountId: CLEARING_ACCOUNT,
       feeTreatment: 'net' as never,
     })
     expect(result.isErr()).toBe(true)

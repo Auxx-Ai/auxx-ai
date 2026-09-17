@@ -720,7 +720,9 @@ export {
   listChartAccounts,
   listChartAccountUsage,
   listRoleMap,
+  type SaveMappingRow,
   type SetRoleAssignmentOptions,
+  saveRoleAssignments,
   setRoleAssignment,
 } from './role-map'
 export { type SetLockedThroughInput, setLockedThrough } from './set-locked-through'
@@ -782,6 +784,7 @@ export {
   type ResolvedPostingLine,
   type RoleAssignmentRow,
   type RoleAssignmentState,
+  type RoleRailAssignmentRow,
 } from './types'
 export {
   type BooksBalanceDiscrepancy,

@@ -955,30 +955,35 @@ export const MANUAL_SOURCE_LABEL = 'Manual'
 
 /** One source a scopable role may be pointed at, as a settings screen renders it. */
 export interface RoleSourceRow {
-  /** `FinancialSourceAccount.id` - what `GlRoleAssignment.sourceAccountId` holds. */
+  /**
+   * `FinancialSourceAccount.id` for a `store`-axis row - what
+   * `GlRoleAssignment.sourceAccountId` holds. For a `rail`-axis row (58 §3
+   * rule 6) this is a `payment_gateway` EntityInstance id instead, what
+   * `GlRoleAssignment.paymentGatewayId` holds - a different table, same field.
+   */
   id: string
   providerKey: string
   externalAccountId: string
   /**
-   * The name to show, from `sourceAccountLabel` - the same helper the settlement
-   * list and the processor activity row use, so one account reads the same on
-   * every screen.
+   * The name to show. For a `store`-axis row, from `sourceAccountLabel` - the
+   * same helper the settlement list and the processor activity row use, so one
+   * account reads the same on every screen.
    *
    * ⚠️ 47 §13.6 said there was no name column and this row had to derive its
    * label. `FinancialSourceAccount.name` landed later (#2178), so the helper
    * prefers it and falls back to the derivation for the unnamed case: a shop
    * domain verbatim, an opaque `gid://` shortened to `Shopify Payments ···3024`.
+   * For a `rail`-axis row this is the `payment_gateway` record's own `name`.
    */
   name: string
   /**
-   * Which axes the EVIDENCE says this source carries, in
-   * `['store', 'processor']` order.
-   *
-   * 🛑 Derived from evidence, never from `providerKey`: Shopify is both a store
-   * and a processor (Shopify Payments), so the key cannot settle it. A row
-   * reached through `FinancialSourceObject` is a store; a row carrying
-   * `ProcessorBalanceEntry` or `MoneyTransfer` rows is a processor account. A
-   * row can be BOTH and then appears under both axes (47 §7.4).
+   * Which axes this source carries. A `store` comes from EVIDENCE - a row
+   * reached through `FinancialSourceObject` - because the same
+   * `FinancialSourceAccount` can be both a storefront and, historically, a
+   * merchant account; `providerKey` alone cannot settle it. A `rail` (58 §3
+   * rule 6) is not evidence at all: it is a live `payment_gateway` record,
+   * always exactly `['rail']`, never combined with `'store'` on the same row -
+   * the two now come from two different tables.
    */
   axes: ScopeAxis[]
   /** The manual bucket. Pinned first by {@link listRoleSources}. */
@@ -1000,6 +1005,29 @@ export interface RoleSourceAssignmentRow {
   sourceAccountId: string
   state: Extract<RoleAssignmentState, 'confirmed' | 'suggested'>
   /** The `gl_account` id this source's revenue lands in. */
+  accountId: string
+  /** Resolved for display. Null when the account has been archived or deleted. */
+  account: ChartAccountRow | null
+  source: string | null
+  confirmedAt: string | null
+}
+
+/**
+ * One RAIL's override of a role, and one currency sub-row within it (task 58
+ * §3 rule 2, task 59 §2.2) - the rail mirror of {@link RoleSourceAssignmentRow}.
+ *
+ * Flat, not nested: a rail may carry its own currency-less row, one or more
+ * currency rows, or only currency rows and no rail-level row at all - the
+ * screen groups by `paymentGatewayId` itself, the same way it groups
+ * {@link RoleSourceAssignmentRow} by source.
+ */
+export interface RoleRailAssignmentRow {
+  /** `payment_gateway` EntityInstance id. Matches a `RoleSourceRow.id` on the same read. */
+  paymentGatewayId: string
+  /** Settlement currency, or null for the rail's own (currency-less) row. */
+  currency: string | null
+  state: Extract<RoleAssignmentState, 'confirmed' | 'suggested'>
+  /** The `gl_account` id this rail's leg lands in. */
   accountId: string
   /** Resolved for display. Null when the account has been archived or deleted. */
   account: ChartAccountRow | null
@@ -1051,6 +1079,12 @@ export interface RoleAssignmentRow {
    * makes the settings tree a role row that expands rather than a mode to be in.
    */
   overrides: RoleSourceAssignmentRow[]
+  /**
+   * The per-rail overrides this role carries (task 58 §3 rule 2), flat and
+   * unordered by currency grouping - see {@link RoleRailAssignmentRow}. Always
+   * empty for a role whose axis is not `'rail'`.
+   */
+  railOverrides: RoleRailAssignmentRow[]
 }
 
 /**

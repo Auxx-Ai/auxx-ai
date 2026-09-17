@@ -206,14 +206,23 @@ export interface PaymentGatewayRow {
   name: string
   /** Every stored `order_payment_gateways` value this rail answers to. Raw, not normalised. */
   handles: string[]
-  /** The `gl_account` id this gateway settles into (task 15 §4 shape). No foreign key. */
+  /**
+   * The `gl_account` id this rail's `clearing` role resolves to (task 58 §3), preferring the
+   * rail's no-currency row. `''` when unmapped - this is no longer a field on the record itself.
+   */
   clearingGlAccountId: string
-  /** The `gl_account` id the processor withholds its fee into, or null (`6100` is the fallback). */
+  /** Like {@link clearingGlAccountId}, for the rail's `payment_processing_fees` role. */
   feeGlAccountId: string | null
+  /** Derived from the rail's linked live feed's `providerKey` (58 §5.5) - there is no stored enum. */
   settlementSource: PaymentGatewaySettlementSourceValue
-  /** Explicit merchant identity for settlement matching. */
+  /** The linked feed's `externalAccountId`, or null when no feed is linked. */
   processorAccountId: string | null
+  /** A currency named by one of the rail's own role rows, or null - there is no longer one answer. */
   settlementCurrency: string | null
+  /**
+   * Always null. `bank` now resolves to a `gl_account` directly (58 §3), not to a `bank_account`
+   * record, so there is no single id to answer with here - see `payment-gateways/feeds.ts`.
+   */
   bankAccountId: string | null
   /**
    * Whether the processor withholds its cut from the deposit or bills for it

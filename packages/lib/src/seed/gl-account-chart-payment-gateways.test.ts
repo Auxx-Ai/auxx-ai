@@ -93,7 +93,6 @@ describe('seedDefaultPaymentGateways', () => {
       handles: ['shopify_payments'],
       clearingAccountId: 'acct_1200',
       feeAccountId: 'acct_6100',
-      settlementSource: 'shopify_payments',
       status: 'active',
     })
   })

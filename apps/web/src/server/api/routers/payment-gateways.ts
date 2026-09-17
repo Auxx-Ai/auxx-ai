@@ -17,15 +17,17 @@
 import {
   archivePaymentGateway,
   createPaymentGateway,
-  getGatewaySettlementReadiness,
+  linkFeed,
   listGatewayHandleCensus,
   listObservedGatewayHandles,
   listPaymentGateways,
+  listUnlinkedFeeds,
   PAYMENT_GATEWAY_FEE_TREATMENTS,
   PAYMENT_GATEWAY_SETTLEMENT_SOURCES,
   PAYMENT_GATEWAY_STATUSES,
   readClearingAccountBalance,
-  updateGatewaySettlementSettings,
+  readiness,
+  unlinkFeed,
   updatePaymentGateway,
 } from '@auxx/lib/payment-gateways'
 import { suggestRail } from '@auxx/lib/payment-gateways/rail-catalogue'
@@ -40,15 +42,14 @@ const dateKey = z.iso.date()
 /**
  * The fields a person may set on a payment gateway. Deliberately thin -
  * `clearingAccountId`/`feeAccountId` name a `gl_account` instance id (task 15
- * §4 shape), and the lib refuses an unknown, inactive or wrongly-typed one at
- * write time, naming the account.
+ * §4 shape), written through `setRoleAssignment`, which refuses an unknown,
+ * inactive or wrongly-typed one at write time, naming the account.
  */
 const paymentGatewayFields = {
   name: z.string().min(1).max(200),
   handles: z.array(z.string().min(1).max(64)).min(1),
   clearingAccountId: z.string().min(1).max(64),
   feeAccountId: z.string().max(64).nullish(),
-  settlementSource: z.enum(PAYMENT_GATEWAY_SETTLEMENT_SOURCES),
   // 🛑 Whether a payout entry for this rail carries a fee leg at all (brief 26
   // §4), not a label. Optional on both writes: `netted` is the lib's default and
   // migration 156 stamped it onto every record that predates the field.
@@ -57,36 +58,53 @@ const paymentGatewayFields = {
 }
 
 export const paymentGatewaysRouter = createTRPCRouter({
-  settlementReadiness: permissionProcedure(PermissionKey.ledgerView)
+  /**
+   * Whether a rail can post: `clearing` row present, `bank` row present when a feed is linked,
+   * and any open `payout_destination_mismatch` on its payouts (task 58 §6.2). Replaces
+   * `settlementReadiness`.
+   */
+  readiness: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ gatewayId: z.string().min(1) }))
-    .query(({ ctx, input }) =>
-      getGatewaySettlementReadiness(ctx.db, {
+    .query(async ({ ctx, input }) => {
+      const result = await readiness(ctx.db, {
         organizationId: ctx.session.organizationId,
-        ...input,
+        gatewayId: input.gatewayId,
       })
-    ),
-  updateSettlementSettings: permissionProcedure(PermissionKey.ledgerControl)
-    .input(
-      z.object({
-        gatewayId: z.string().min(1),
-        patch: z.object({
-          processorAccountId: z.string().min(1).nullable().optional(),
-          settlementCurrency: z
-            .string()
-            .regex(/^[A-Z]{3}$/)
-            .nullable()
-            .optional(),
-          bankAccountId: z.string().min(1).nullable().optional(),
-        }),
-      })
-    )
-    .mutation(({ ctx, input }) =>
-      updateGatewaySettlementSettings(ctx.db, {
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /** Live processor feeds with reported activity that no rail has claimed yet, for the linker. */
+  listUnlinkedFeeds: permissionProcedure(PermissionKey.ledgerView).query(({ ctx }) =>
+    listUnlinkedFeeds(ctx.db, ctx.session.organizationId)
+  ),
+
+  /** Point one feed at this rail. Replaces the processor-account half of `updateSettlementSettings`. */
+  linkFeed: permissionProcedure(PermissionKey.ledgerControl)
+    .input(z.object({ gatewayId: z.string().min(1), sourceAccountId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await linkFeed(ctx.db, {
         organizationId: ctx.session.organizationId,
         actorUserId: ctx.session.userId,
         ...input,
       })
-    ),
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /** Clear one feed's rail pointer. */
+  unlinkFeed: permissionProcedure(PermissionKey.ledgerControl)
+    .input(z.object({ sourceAccountId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await unlinkFeed(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+        ...input,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
   /** Every payment gateway in the org, oldest first. */
   list: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ includeArchived: z.boolean().optional() }).optional())
@@ -190,7 +208,10 @@ export const paymentGatewaysRouter = createTRPCRouter({
         mintFeeAccount: z.boolean(),
         /** Overrides the suggested fee account name. */
         feeAccountName: z.string().min(1).max(200).optional(),
-        settlementSource: paymentGatewayFields.settlementSource.optional(),
+        // 🛑 Accepted and ignored (58 §5.5: "there is no enum"). The wizard's suggestion
+        // catalogue still offers one for its own display; kept here only so the caller does
+        // not have to strip it before calling. TODO(U8): drop once the wizard stops sending it.
+        settlementSource: z.enum(PAYMENT_GATEWAY_SETTLEMENT_SOURCES).optional(),
         feeTreatment: paymentGatewayFields.feeTreatment.optional(),
         /** `closed` for a rail with no recent orders (§9). Its history still routes. */
         status: z.enum(PAYMENT_GATEWAY_STATUSES).optional(),
@@ -218,7 +239,6 @@ export const paymentGatewaysRouter = createTRPCRouter({
         handles: input.handles,
         clearingAccountId: minted.value.clearing.id,
         feeAccountId: minted.value.fee?.id ?? null,
-        settlementSource: input.settlementSource ?? suggestion.settlementSource,
         feeTreatment: input.feeTreatment ?? suggestion.feeTreatment,
         status: input.status,
       })
@@ -239,7 +259,6 @@ export const paymentGatewaysRouter = createTRPCRouter({
         handles: paymentGatewayFields.handles,
         clearingAccountId: paymentGatewayFields.clearingAccountId,
         feeAccountId: paymentGatewayFields.feeAccountId,
-        settlementSource: paymentGatewayFields.settlementSource.optional(),
         feeTreatment: paymentGatewayFields.feeTreatment.optional(),
         lastSettlementAt: paymentGatewayFields.lastSettlementAt,
       })
@@ -263,7 +282,6 @@ export const paymentGatewaysRouter = createTRPCRouter({
         handles: paymentGatewayFields.handles.optional(),
         clearingAccountId: paymentGatewayFields.clearingAccountId.optional(),
         feeAccountId: paymentGatewayFields.feeAccountId,
-        settlementSource: paymentGatewayFields.settlementSource.optional(),
         feeTreatment: paymentGatewayFields.feeTreatment.optional(),
         lastSettlementAt: paymentGatewayFields.lastSettlementAt,
       })

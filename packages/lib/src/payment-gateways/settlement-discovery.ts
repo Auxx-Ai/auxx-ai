@@ -3,11 +3,15 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { accountingBasisHash } from '../postings/effect-basis'
 
-/** Discover explicit merchant identities with persisted settlement evidence and current source health. */
-export async function listSettlementSourceAccounts(
-  db: Database | Transaction,
-  organizationId: string
-) {
+/** One live processor feed with reported activity that no rail has claimed yet (58 §6.2). */
+export type UnlinkedFeed = Awaited<ReturnType<typeof listUnlinkedFeeds>>[number]
+
+/**
+ * Live processor sources with reported settlement evidence and no `paymentGatewayId` (58 §6.2) -
+ * the picker `linkFeed` reads from. Renamed from `listSettlementSourceAccounts`: a linked feed
+ * never reaches here again, so what is left really is the unlinked set.
+ */
+export async function listUnlinkedFeeds(db: Database | Transaction, organizationId: string) {
   const [entryCurrencies, payoutCurrencies] = await Promise.all([
     db
       .selectDistinct({
@@ -52,7 +56,9 @@ export async function listSettlementSourceAccounts(
         eq(account.organizationId, organizationId),
         inArray(account.id, ids),
         eq(account.environment, 'live'),
-        isNull(account.archivedAt)
+        isNull(account.archivedAt),
+        // 58 §6.2: a linked feed is not a candidate to link again.
+        isNull(account.paymentGatewayId)
       )
     )
     .orderBy(account.providerKey, account.externalAccountId, account.id)

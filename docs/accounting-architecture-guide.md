@@ -170,10 +170,29 @@ exactly one account (required, enforced); each account may serve many roles (per
 Neither a `SINGLE_SELECT` nor a `MULTI_SELECT` field on `gl_account` can express that
 (`gl-role-assignment.ts:1-18`).
 
-Since brief 47 the map is **scoped by source**: two partial unique indexes,
-`GlRoleAssignment_org_role_default_key` and `GlRoleAssignment_org_role_source_key`, admit one
-default plus N per-`FinancialSourceAccount` overrides, so two stores keep their revenue apart.
-Manual is a sentinel row, not a null.
+Since brief 47 the map is **scoped**, and brief 58 added a second axis: **three** partial unique
+indexes, never one three-column unique, because Postgres treats NULLs as distinct and a single
+composite would happily admit two org defaults for one role. `GlRoleAssignment_org_role_default_key`
+(`sourceAccountId IS NULL AND paymentGatewayId IS NULL`) is the org-wide default;
+`GlRoleAssignment_org_role_source_key` admits one row per `FinancialSourceAccount` — the **store**
+axis, unchanged since 47; `GlRoleAssignment_org_role_rail_key` admits one row per
+`(role, paymentGatewayId, coalesce(currency, ''))` — the **rail** axis, 58. The `coalesce` is what
+makes a currency-less rail row and a currencied one two rows, and two currency-less rows for one
+rail a conflict. A row is scoped to a source XOR a rail, never both
+(`GlRoleAssignment_scope_exclusive_check`), and only a rail row may carry a `currency`
+(`GlRoleAssignment_currency_rail_check`). Manual is a sentinel `FinancialSourceAccount` row, not a
+null.
+
+🔑 **A partial index and the queries that mirror its predicate change together, or they drift.**
+Widening `GlRoleAssignment_org_role_default_key` to exclude a rail row without widening every read
+that assumed the old, narrower predicate is exactly the mistake §14 records: it is not a
+theoretical risk, it is what happened building 58 (§14 item 5c).
+
+`postings/role-assignments.ts`'s `readRoleAssignments(db, orgId)` is the one door onto this table
+(58 §4.9): every row for the org, unfiltered and never joined to `gl_account` — the moment it joins
+the chart it carries the archive flag inside it, which is why it is not cached (§10.4 of 58). Eight
+production readers wrote their own `select` before it existed; each now filters in memory and owns
+only its own output shape, the same call `chart-accounts.ts` made for the read side of the chart.
 
 ### 3.4 The effect tables
 
@@ -289,12 +308,25 @@ vary by country, industry and taste. Once the chart is editable the number canno
 meaning: a customer renumbering GRNI from `2160` to `2155` would silently break posting, and the
 entry would still balance. So builders emit roles (`G8`).
 
-There are **25 roles** (`build-entry.ts:114`). `CASH` was deliberately removed: *a bank account is
-not a role*. A payout settling into one bank and the bank feed's own line for the same money could
-land in two different accounts and still balance, with nothing comparing them
-(`build-payout-entry.ts:41-49`). Cash-touching builders now name a `bank_account`'s own
-`gl_account` id, resolved through `postings/resolve-cash-account.ts` and the
-`bank_account_gl_account` pointer.
+There are **26 roles** (`build-entry.ts:117`). `CASH` was deliberately removed in brief 13: *a bank
+account is not a role*. A payout settling into one bank and the bank feed's own line for the same
+money could land in two different accounts and still balance, with nothing comparing them
+(`build-payout-entry.ts:41-49`). A hand-recorded payment still names a `bank_account`'s own
+`gl_account` id directly, resolved through `postings/resolve-cash-account.ts` and the
+`bank_account_gl_account` pointer — that path is unchanged.
+
+⚠️ **That argument was true for an org-wide map and is false once the map has a rail scope**
+(brief 58 §2.4). `BANK: 'bank'` is the 26th role, added by 58, and it is admissible precisely
+because it can never be unscoped: `ROLES_WITHOUT_DEFAULT` refuses an org-wide `bank` row, so the
+role only ever answers "which bank *this rail* pays into", never "which bank, org-wide" — the
+question the original argument correctly said had no answer. 58 also renamed `clearing_card` to
+`clearing` (the account is named for the rail, never a provider) and moved
+`payment_processing_fees` off a retired `processor` axis onto the same rail axis as `clearing` and
+`bank` (`ScopeAxis = 'store' | 'rail'`, `SCOPABLE_ROLES`, `build-entry.ts`).
+
+`bank` and `clearing` also carry a subtype pin beside `ROLE_ACCOUNT_TYPES`: `ROLE_ACCOUNT_SUBTYPES`
+requires `bank` to sit on `GlAccountSubtype.BANK` and `clearing` on `GlAccountSubtype.CLEARING`,
+checked by `setRoleAssignment` before it writes and by `resolveRoles` on every read.
 
 ### 5.2 `resolveRoles` — a batch, and it fails closed
 
@@ -303,6 +335,14 @@ ACCOUNT_ROLES  →  GlRoleAssignment  →  gl_account  →  ResolvedPostingLine
  builder emits    THIS org's map       code, name,     what a line stores
  'grni'                                type, active
 ```
+
+🔑 **A scoped role walks a chain before it reaches the diagram above.** Store roles resolve
+`(role, store) → (role, manual) → (role, null)`, unchanged since brief 47. Rail roles resolve
+`(role, rail, currency) → (role, rail, null) → (role, null)` (`resolve-roles.ts`, brief 58 §5.1).
+The org-wide default is always the last stop, never skipped, and an org with no scoped rows runs
+the byte-identical query it ran before either scope existed — `hasOverrides` short-circuits
+straight past the chain. `roleScopeAxis(role)` (`build-entry.ts`) says which chain a role reads,
+`store` or `rail`, via `SCOPABLE_ROLES`; a role absent from that table never scopes.
 
 **It is a batch.** A month-end entry touching six unmapped roles fails **once**, naming all six.
 A bookkeeper fixing a close needs the list, not a treasure hunt.
@@ -332,6 +372,15 @@ restatement.
 `listRoleMap` returns one row for **every** role, mapped or not. It is a checklist, not a table
 dump: a screen rendering only existing rows could never show what is missing, which is the single
 question the setup wizard exists to answer.
+
+🛑 **A row is scoped to a source XOR a rail, never both** (brief 58 §4.1), and `setRoleAssignment`
+refuses before either scope branch runs: naming both a `sourceAccountId` and a `paymentGatewayId`,
+or a `currency` with no `paymentGatewayId`, fails the same way an invalid role does — caught here
+as a validation message, not as a constraint name in a stack trace from the database's own
+`GlRoleAssignment_scope_exclusive_check` / `_currency_rail_check`. `ROLES_WITHOUT_DEFAULT` (`bank`
+today) is the one write `setRoleAssignment` always refuses unscoped, before it ever reaches an
+insert: §3 rule 3 of 58 — "which bank" has no org-wide answer, so an unscoped row is not merely
+unusual, it is illegal.
 
 ### 5.4 Chart provisioning
 
@@ -488,6 +537,19 @@ Three properties the module exists to keep:
 - **`depositedMinor` is transcribed** from the header, never summed from the items. Summing would
   silently correct the provider's arithmetic, and the cash leg must equal what the bank line shows.
 
+Since brief 58 **every leg is a role line** — `bank`, `payment_processing_fees`, `clearing`,
+`unidentified_receipts` — each carrying `sourceScope: { rail, currency }`. The builder names no
+account id at all, so a rail's sales debit and its payouts credit the same clearing account by
+construction rather than by two builders agreeing (`__tests__/clearing-account-per-rail.test.ts`
+is what holds them to it). `bank` has no org-wide default, so a payout whose rail has no mapped
+bank account is blocked before the entry is built, naming the rail and the currency.
+
+⚠️ **The reported destination is a check, not a resolver** (58 D7). `resolvePayoutBankAccount` and
+the Stripe-external-account match are gone: the mapping is the authority, and a destination that
+disagrees with it flags `payout_destination_mismatch` on a payout that still posts. Only Stripe
+reports one — Shopify's REST payout carries no bank account and the GraphQL field that does is
+deprecated, so a Shopify payout never suggests and never flags.
+
 Recognition is keyed on `ref.kind` — `stripe_charge`, `order`, `none` — never on a charge id. A
 source with no items posts recognition equal to gross and marks the record `imported`, so the
 screen can say *"no itemisation"* rather than *"everything recognised"*.
@@ -504,7 +566,7 @@ Five tables under `financial-source-*.ts` separate *what a provider said* from *
 
 | Table | Holds |
 | --- | --- |
-| `FinancialSourceAccount` | One connected account/store: `providerKey`, `externalAccountId`, `environment`, a human `name`, an `axis` |
+| `FinancialSourceAccount` | One connected account/store: `providerKey`, `externalAccountId`, `environment`, a human `name`, `paymentGatewayId` |
 | `FinancialSourceObservation` | An immutable record of what a provider reported |
 | `FinancialSourceAcceptance` | That an observation was accepted as evidence for a movement |
 | `FinancialSourceCoverage` | How far acquisition has progressed |
@@ -513,6 +575,12 @@ Five tables under `financial-source-*.ts` separate *what a provider said* from *
 🔑 **`FinancialSourceAccount.id` is the source scope key** (brief 47) — not the connector id, not
 the credential id. Neither of those is 1:1 with a store, and neither survives a rebuild or a
 reconnect. It is also what scopes the role map (§3.3), so two stores can keep revenue apart.
+
+`paymentGatewayId` (brief 58 §4.2, replacing an `axis` column nothing read) is the other direction:
+which rail this feed settles for, null until a person links it. A rail nothing points at is a
+manual rail. It is durable configuration a person created — the same class of thing as a bank
+account record, not connector or credential plumbing re-minted on reconnect — so it survives a
+reinstall the same way the store scope does.
 
 ⚠️ **A scope miss falls back to the default; it does not fail.** Connecting a store must never stop
 the books. This is in deliberate tension with §5.2's fail-closed rule and with the clearing-account
@@ -830,6 +898,14 @@ a checkbox showing the catalog default forever.
    [`record-delete-architecture-guide.md`](./record-delete-architecture-guide.md) is the
    authority. If both are gone, refuse with a sentence saying the contact no longer exists,
    not one saying it "has not been synced yet".
+
+5c. 🛑 **A partial unique index and the queries that mirror its predicate must change together**
+   (brief 58). Widening `GlRoleAssignment_org_role_default_key` from `sourceAccountId IS NULL` to
+   also exclude a rail row, without widening the eight `sourceAccountId IS NULL` reads that
+   assumed the old, narrower predicate, made three `ON CONFLICT` paths throw `42P10` and left five
+   reads silently choosing between an org default and a rail row rather than refusing to. The
+   index and every read that mirrors its predicate are one fact encoded twice; changing one half
+   is a partial migration, not a smaller one.
 
 ### The ones that cost a rebuild
 

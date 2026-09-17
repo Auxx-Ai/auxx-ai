@@ -60,6 +60,11 @@ import { runInTxWrite } from '../../resources/crud/tx-write-scope'
  * is not - `resolvePayoutBankAccount` and the Stripe-destination match it did
  * are gone; the mapping is the authority now, not the reported destination.
  *
+ * **A posted payout still checks the destination it reported (§5.4 rule 2, D7).** Once the entry
+ * above lands, `ingestOne` compares `gathered.destination` against the mapped bank account's
+ * `settlementDestinations` and writes `payout_destination_mismatch` when they disagree - the
+ * entry has already posted either way, so this never blocks.
+ *
  * **And it leaves a watermark on the rail (brief 27 §6.5).** After an entry
  * posts, the rail's `lastSettlementAt` is advanced to the payout's paid-at date
  * when that is later - the field used to be hand-entered and nothing derived it.
@@ -87,7 +92,12 @@ import { toRecordId } from '../../resources/resource-id'
 import { SystemUserService } from '../../users/system-user-service'
 import { type GatheredPayout, gatherPayout } from './gather'
 import { guard } from './guard'
-import { findPayoutByGatewayId, type PayoutFieldContext, requirePayoutFieldContext } from './reads'
+import {
+  findPayoutByGatewayId,
+  type PayoutFieldContext,
+  readBankAccountSettlementDestinations,
+  requirePayoutFieldContext,
+} from './reads'
 import type { PayoutHeader, PayoutSource, PayoutSourceCtx } from './source'
 import { getPayoutSource, listPayoutSources } from './source-registry'
 import type { SyncPayoutsResult } from './types'
@@ -405,11 +415,38 @@ async function ingestOne(
     }
   }
 
+  // 🛑 Rule 2 (task 58 §5.4, D7): the mapping is the authority and the entry above has already
+  // posted to it - this is a CHECK, not a second resolution. Written or cleared on every posted
+  // run, same as `blockedReason` below, so a destination confirmed after the fact clears the flag.
+  // `gathered.destination` is Stripe-only by construction (§7): `destinationHint` is populated by
+  // `sources/stripe-connect.ts` alone, so a Shopify payout's `destination` is always undefined and
+  // never reaches this branch - deliberately, not a gap (§7, D7's Shopify half unbuilt).
+  let destinationMismatch: string | null = null
+  if (gathered.destination) {
+    const bankGlAccountId = bankMapped.isOk()
+      ? bankMapped.value.get(ACCOUNT_ROLES.BANK)?.glAccountId
+      : undefined
+    if (bankGlAccountId) {
+      const destinations = await readBankAccountSettlementDestinations(
+        db,
+        organizationId,
+        bankGlAccountId
+      )
+      if (!destinations.includes(gathered.destination)) {
+        destinationMismatch =
+          `Payout ${number} reported destination ${gathered.destination}, which is not among ` +
+          `the confirmed settlement destinations for the bank account mapped to ${rail.name || rail.id}. ` +
+          'Confirm it on Accounting > Settings > Payment gateways.'
+      }
+    }
+  }
+
   await crud.update(toRecordId(fieldCtx.payoutDefId, payoutInstanceId), {
     payout_status: 'paid',
     // Cleared on success: a payout that was blocked on a prior run and has
     // since been confirmed must not keep showing the blocker banner.
     payout_blocked_reason: null,
+    payout_destination_mismatch: destinationMismatch,
     ...(post.glPostingId ? { payout_gl_posting_id: post.glPostingId } : {}),
   })
 

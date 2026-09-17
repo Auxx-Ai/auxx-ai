@@ -80,6 +80,7 @@ function roleMapRows(
     confirmedAt: null,
     axis: roleScopeAxis(role),
     overrides: [],
+    railOverrides: [],
   }))
 }
 

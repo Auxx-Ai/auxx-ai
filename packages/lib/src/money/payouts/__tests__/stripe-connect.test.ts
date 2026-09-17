@@ -48,6 +48,7 @@ const h = vi.hoisted(() => ({
   stamp: vi.fn(async (_db: unknown, _input: unknown) => ({ isErr: () => false })),
   recognise: vi.fn(async () => new Set<string>()),
   gateways: [] as unknown[],
+  readDestinations: vi.fn(async (..._args: unknown[]) => [] as string[]),
 }))
 
 vi.mock('@auxx/database', async (original) => ({
@@ -63,6 +64,7 @@ vi.mock('../reads', () => ({
   }),
   findPayoutByGatewayId: h.findPayoutByGatewayId,
   listLinkedFeedAccounts: h.listLinkedFeedAccounts,
+  readBankAccountSettlementDestinations: h.readDestinations,
 }))
 vi.mock('../../payments/account-state', () => ({
   getPaymentAccount: async () => ({ stripeAccountId: 'acct_1' }),
@@ -220,6 +222,7 @@ beforeEach(() => {
   h.create.mockResolvedValue({ instance: { id: 'inst_1' } })
   h.postPayoutEntry.mockResolvedValue({ status: 'posted', glPostingId: 'glp_1' })
   h.stamp.mockResolvedValue({ isErr: () => false })
+  h.readDestinations.mockResolvedValue([])
   h.findPayoutByGatewayId
     .mockResolvedValueOnce(null)
     .mockResolvedValueOnce({ payoutId: 'inst_1', number: 'PAY-0001', glPostingId: null })
@@ -252,14 +255,56 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
     expect(h.update).toHaveBeenCalledWith('def_payout:inst_1', {
       payout_status: 'paid',
       payout_blocked_reason: null,
+      // 58 §5.4 rule 2: the fixture's `resolveRoles` answers an EMPTY map, so
+      // there is no resolved `bank` glAccountId to check the destination against.
+      payout_destination_mismatch: null,
       payout_gl_posting_id: 'glp_1',
     })
+    expect(h.readDestinations).not.toHaveBeenCalled()
     expect(h.stamp).toHaveBeenCalledWith(expect.anything(), {
       organizationId: ORG,
       actorUserId: 'user_system',
       paymentGatewayId: 'pg_stripe',
       settledAt: '2026-09-14',
     })
+  })
+
+  it('writes payout_destination_mismatch when the mapped bank account does not confirm the reported destination (58 §5.4 rule 2, D7)', async () => {
+    // `PAYOUT.destination` ('ba_1') flows through as `gathered.destination`.
+    h.resolveRoles.mockResolvedValue({
+      isErr: () => false,
+      isOk: () => true,
+      value: new Map([['bank', { glAccountId: 'gl_bank_1' }]]),
+    })
+    h.readDestinations.mockResolvedValue(['ba_other'])
+
+    await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
+
+    expect(h.readDestinations).toHaveBeenCalledWith(expect.anything(), ORG, 'gl_bank_1')
+    expect(h.update).toHaveBeenCalledWith('def_payout:inst_1', {
+      payout_status: 'paid',
+      payout_blocked_reason: null,
+      payout_destination_mismatch: expect.stringContaining('PAY-0001'),
+      payout_gl_posting_id: 'glp_1',
+    })
+    // The entry still posted - a mismatch is a flag, never a block.
+    expect(h.postPayoutEntry).toHaveBeenCalledTimes(1)
+  })
+
+  it('writes no mismatch when the mapped bank account confirms the reported destination', async () => {
+    h.resolveRoles.mockResolvedValue({
+      isErr: () => false,
+      isOk: () => true,
+      value: new Map([['bank', { glAccountId: 'gl_bank_1' }]]),
+    })
+    h.readDestinations.mockResolvedValue(['ba_1'])
+
+    await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
+
+    expect(h.update).toHaveBeenCalledWith(
+      'def_payout:inst_1',
+      expect.objectContaining({ payout_destination_mismatch: null })
+    )
   })
 
   it('reads the payouts on the connected account, from the first-run floor, exactly as before', async () => {

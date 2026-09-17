@@ -4,7 +4,7 @@ import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import { and, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { accountingBasisHash } from '../../postings/effect-basis'
-import { listSettlementSourceAccounts } from '../settlement-discovery'
+import { listUnlinkedFeeds } from '../settlement-discovery'
 
 const db = () => getTestDb() as unknown as Database
 
@@ -161,7 +161,7 @@ describe('settlement account discovery against PostgreSQL', () => {
       .update(schema.FinancialSourceAccount)
       .set({ archivedAt: new Date() })
       .where(eq(schema.FinancialSourceAccount.id, archived.id))
-    const result = await listSettlementSourceAccounts(db(), org.id)
+    const result = await listUnlinkedFeeds(db(), org.id)
     expect(result.map((row) => row.processorAccountId).sort()).toEqual(
       [first.id, second.id, third.id].sort()
     )
@@ -186,7 +186,7 @@ describe('settlement account discovery against PostgreSQL', () => {
       .update(schema.Credential)
       .set({ requiresReauth: true })
       .where(eq(schema.Credential.id, first.credential.id))
-    let [result] = await listSettlementSourceAccounts(db(), org.id)
+    let [result] = await listUnlinkedFeeds(db(), org.id)
     expect(result!.connections).toHaveLength(2)
     expect(result!.connections.every((item) => item.verified)).toBe(true)
     expect(
@@ -196,7 +196,7 @@ describe('settlement account discovery against PostgreSQL', () => {
       .update(schema.Credential)
       .set({ metadata: { merchant: 'changed-merchant' } })
       .where(eq(schema.Credential.id, second.credential.id))
-    ;[result] = await listSettlementSourceAccounts(db(), org.id)
+    ;[result] = await listUnlinkedFeeds(db(), org.id)
     expect(
       result!.connections.find((item) => item.connectorId === second.connector.id)?.verified
     ).toBe(false)
@@ -205,7 +205,7 @@ describe('settlement account discovery against PostgreSQL', () => {
       .update(schema.AppInstallation)
       .set({ uninstalledAt: new Date() })
       .where(eq(schema.AppInstallation.id, first.installation.id))
-    ;[result] = await listSettlementSourceAccounts(db(), org.id)
+    ;[result] = await listUnlinkedFeeds(db(), org.id)
     expect(result!.connections.map((item) => item.connectorId)).toEqual([second.connector.id])
   })
 
@@ -214,7 +214,7 @@ describe('settlement account discovery against PostgreSQL', () => {
     const account = await source(org.id, 'processor-a', 'merchant/one')
     const original = await connection(org.id)
     await activity(account, 'USD', { ...original.snapshot, credentialMetadataHash: undefined })
-    let [result] = await listSettlementSourceAccounts(db(), org.id)
+    let [result] = await listUnlinkedFeeds(db(), org.id)
     expect(result!.connections[0]!.verified).toBe(false)
     const [replacement] = await db()
       .insert(schema.Credential)
@@ -233,7 +233,7 @@ describe('settlement account discovery against PostgreSQL', () => {
       .update(schema.DataConnector)
       .set({ credentialId: replacement!.id })
       .where(eq(schema.DataConnector.id, original.connector.id))
-    ;[result] = await listSettlementSourceAccounts(db(), org.id)
+    ;[result] = await listUnlinkedFeeds(db(), org.id)
     expect(result!.connections).toEqual([])
     expect(result!.processorAccountId).toBe(account.id)
   })

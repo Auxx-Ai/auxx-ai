@@ -32,11 +32,21 @@ vi.mock('../../cache', () => ({
 // through `payment-gateways/reads.ts`, which is its own subsystem with its
 // own field-provisioning story - mocked here rather than taught to the
 // hand-written `stubDb` below, which only speaks `FinancialSourceAccount`.
-const gatewayStub = vi.hoisted(() => ({ live: new Set<string>() }))
+// `listRoleSources` (assertScopableSource's read) now reaches the same
+// module for the rail axis (58 §3 rule 6, 59 V1) - stubbed empty, since none
+// of these tests assert on what it lists.
+const gatewayStub = vi.hoisted(() => ({
+  live: new Set<string>(),
+  rows: [] as Array<{ id: string; name: string }>,
+}))
 vi.mock('../../payment-gateways/reads', () => ({
   getPaymentGateway: vi.fn(async (_db: unknown, _organizationId: string, id: string) => {
     const { ok } = await import('neverthrow')
     return ok(gatewayStub.live.has(id) ? { id } : null)
+  }),
+  listPaymentGateways: vi.fn(async () => {
+    const { ok } = await import('neverthrow')
+    return ok(gatewayStub.rows)
   }),
 }))
 
@@ -86,13 +96,14 @@ interface Stub {
 }
 
 /**
- * A stub whose `FinancialSourceAccount` evidence decides each source's AXIS, the
- * way `listRoleSources` derives it from the real tables: a row reached through
- * `FinancialSourceObject` is a store, a row carrying processor balance entries
- * or transfers is a merchant account, the sentinel is a store, and a row with no
- * evidence at all is neither and is not offered.
+ * A stub whose `FinancialSourceAccount` evidence decides each STORE's axis,
+ * the way `listRoleSources` derives it from the real table: a row reached
+ * through `FinancialSourceObject` is a store, the sentinel is a store, and a
+ * row with no evidence at all is neither and is not offered. The `rail` axis
+ * comes from `gatewayStub.rows` instead (58 §3 rule 6) - a different table,
+ * mocked separately - so it is never modelled here.
  */
-function stubDb(options: { storeIds?: string[]; processorIds?: string[] } = {}): Stub {
+function stubDb(options: { storeIds?: string[] } = {}): Stub {
   const inserts: Record<string, unknown>[] = []
   const deletes: string[][] = []
   const sources = [
@@ -105,7 +116,6 @@ function stubDb(options: { storeIds?: string[]; processorIds?: string[] } = {}):
     },
   ]
   const storeIds = options.storeIds ?? [STORE]
-  const processorIds = options.processorIds ?? [STRIPE]
 
   const values = ACCOUNTS.flatMap((account) => [
     { entityId: account.id, fieldId: CODE_FIELD, valueText: account.code },
@@ -118,8 +128,6 @@ function stubDb(options: { storeIds?: string[]; processorIds?: string[] } = {}):
     if (table === schema.GlRoleAssignment) return []
     if (table === schema.FinancialSourceAccount) return sources
     if (table === schema.FinancialSourceObject) return storeIds.map((id) => ({ id }))
-    if (table === schema.ProcessorBalanceEntry) return processorIds.map((id) => ({ id }))
-    if (table === schema.MoneyTransfer) return []
     if (table === schema.EntityInstance) {
       return ACCOUNTS.filter((a) => params.includes(a.id)).map((a) => ({ id: a.id }))
     }
@@ -187,6 +195,7 @@ beforeEach(() => {
     ['gl_account_is_active', { id: ACTIVE_FIELD }],
   ])
   gatewayStub.live = new Set([GATEWAY])
+  gatewayStub.rows = []
 })
 
 describe('setRoleAssignment - which roles may name a connection', () => {
@@ -240,18 +249,23 @@ describe('setRoleAssignment - a connection must carry the role AXIS', () => {
   // §10.10. 🛑 The one that matters. A revenue role pointed at a merchant
   // account would split revenue by the rail the money settled through rather
   // than by the storefront that sold it - and the entry balances either way.
-  it('refuses a revenue role pointed at a merchant account', async () => {
+  // Since 58 §3 rule 6 a merchant account is a `payment_gateway` id, not a
+  // `FinancialSourceAccount` one, so this is what happens when a caller sends
+  // a rail's id where a connection belongs: `listRoleSources` still finds it
+  // (58 V1 lists rails beside stores), on the `rail` axis alone.
+  it('refuses a revenue role pointed at a payment gateway by connection', async () => {
     const stub = stubDb()
+    gatewayStub.rows = [{ id: GATEWAY, name: 'Stripe' }]
     const result = await setRoleAssignment(stub.db, {
       organizationId: ORG,
       role: 'revenue_product',
       glAccountId: 'acct_4001',
-      sourceAccountId: STRIPE,
+      sourceAccountId: GATEWAY,
     })
 
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(UnprocessableEntityError)
-    expect(result._unsafeUnwrapErr().message).toContain('acct_1ABC')
+    expect(result._unsafeUnwrapErr().message).toContain('Stripe')
     expect(stub.inserts).toHaveLength(0)
   })
 
@@ -311,11 +325,11 @@ describe('setRoleAssignment - a connection must carry the role AXIS', () => {
     expect(result._unsafeUnwrapErr().message).toContain('sourceAccountId')
   })
 
-  // ⚠️ A source that is BOTH - Shopify is a storefront and Shopify Payments is a
-  // processor - still carries revenue by connection; the fee role never reads
-  // a connection at all any more, whatever axes it has.
-  it('accepts revenue by connection on a source that carries both axes', async () => {
-    const stub = stubDb({ storeIds: [STORE], processorIds: [STORE] })
+  // The fee role never reads a connection at all any more (58 §3 rule 5), even
+  // one that also carries store evidence - `roleScopeAxis` refuses it before
+  // `listRoleSources` is ever consulted.
+  it('accepts revenue by connection on a storefront and refuses the fee role on it', async () => {
+    const stub = stubDb({ storeIds: [STORE] })
     expect(
       (
         await setRoleAssignment(stub.db, {

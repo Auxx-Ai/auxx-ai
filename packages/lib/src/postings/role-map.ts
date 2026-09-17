@@ -70,6 +70,7 @@ import type {
   ChartAccountRow,
   RoleAssignmentRow,
   RoleAssignmentState,
+  RoleRailAssignmentRow,
   RoleSourceAssignmentRow,
 } from './types'
 
@@ -145,20 +146,24 @@ export async function listRoleMap(
     // `sourceAccountId: null`, and without this a role with both an org
     // default and a rail override would collide on this Map's key - two DB
     // rows are legal (different partial unique indexes), one Map slot is not.
-    // Rail rows are dropped here rather than shown as overrides: this read
-    // does not understand the rail axis yet (U1c, U8), so silence is the
-    // honest answer until it does.
+    // Rail rows go into `railOverridesByRole` below, never into the default.
     const byRole = new Map(
       assignments
         .filter((row) => row.sourceAccountId == null && row.paymentGatewayId == null)
         .map((row) => [row.role, row])
     )
     const overridesByRole = new Map<string, typeof assignments>()
+    const railOverridesByRole = new Map<string, typeof assignments>()
     for (const row of assignments) {
-      if (row.sourceAccountId == null) continue
-      const list = overridesByRole.get(row.role) ?? []
-      list.push(row)
-      overridesByRole.set(row.role, list)
+      if (row.sourceAccountId != null) {
+        const list = overridesByRole.get(row.role) ?? []
+        list.push(row)
+        overridesByRole.set(row.role, list)
+      } else if (row.paymentGatewayId != null) {
+        const list = railOverridesByRole.get(row.role) ?? []
+        list.push(row)
+        railOverridesByRole.set(row.role, list)
+      }
     }
 
     // Only the accounts a mapping actually names. An org with no assignments
@@ -185,10 +190,33 @@ export async function listRoleMap(
           confirmedAt: toIso(row.confirmedAt),
         }))
 
+    /**
+     * One role's rail overrides, flat - a rail's own row and its currency
+     * sub-rows sort together by `paymentGatewayId` then `currency` (null
+     * first), so the screen groups them by rail itself (59 §2.2).
+     */
+    const railOverridesFor = (role: string): RoleRailAssignmentRow[] =>
+      (railOverridesByRole.get(role) ?? [])
+        .slice()
+        .sort((a, b) => {
+          const byGateway = (a.paymentGatewayId ?? '').localeCompare(b.paymentGatewayId ?? '')
+          return byGateway !== 0 ? byGateway : (a.currency ?? '').localeCompare(b.currency ?? '')
+        })
+        .map((row) => ({
+          paymentGatewayId: row.paymentGatewayId as string,
+          currency: row.currency,
+          state: row.confirmedAt ? ('confirmed' as const) : ('suggested' as const),
+          accountId: row.glAccountId,
+          account: accounts.get(row.glAccountId) ?? null,
+          source: row.source,
+          confirmedAt: toIso(row.confirmedAt),
+        }))
+
     const rows: RoleAssignmentRow[] = ALL_ROLES.map((role) => {
       const assignment = byRole.get(role)
       const axis = roleScopeAxis(role)
       const overrides = overridesFor(role)
+      const railOverrides = railOverridesFor(role)
       if (!assignment) {
         return {
           role,
@@ -199,6 +227,7 @@ export async function listRoleMap(
           confirmedAt: null,
           axis,
           overrides,
+          railOverrides,
         }
       }
 
@@ -222,6 +251,7 @@ export async function listRoleMap(
           confirmedAt: toIso(assignment.confirmedAt),
           axis,
           overrides,
+          railOverrides,
         }
       }
 
@@ -234,6 +264,7 @@ export async function listRoleMap(
         confirmedAt: toIso(assignment.confirmedAt),
         axis,
         overrides,
+        railOverrides,
       }
     })
 
@@ -494,10 +525,9 @@ export interface SetRoleAssignmentOptions {
  * and stamping one would erase the `G19` distinction the wizard renders -
  * "we chose this for you" versus "you chose this".
  *
- * @returns the role's row as {@link listRoleMap} would render it afterwards -
- * except for a `paymentGatewayId` write, whose rail is not in that checklist
- * yet (58 §6, U8). That write's own row is complete; it just cannot be shown
- * beside the org default until then.
+ * @returns the role's row as {@link listRoleMap} would render it afterwards,
+ * this write's scope folded in beside every other store and rail override the
+ * role already carries.
  */
 export async function setRoleAssignment(
   db: Database | Transaction,
@@ -655,6 +685,96 @@ async function setRoleAssignmentInTx(
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to set a role assignment', { error, organizationId, role })
+    return err(new AuxxError('Internal error'))
+  }
+}
+
+/** One staged edit from the Mapping tab (59 §2.4), before it becomes a {@link SetRoleAssignmentOptions}. */
+export interface SaveMappingRow {
+  /** An `ACCOUNT_ROLES` value. Anything else is a `BadRequestError`, same as {@link setRoleAssignment}. */
+  role: string
+  /** `null` is the org default; `setRoleAssignment` refuses whichever axis the role does not accept. */
+  scope: { store: string } | { rail: string } | null
+  /** Only meaningful with `scope: { rail }` - a rail row with no currency, or one currency's override. */
+  currency?: string | null
+  /** The account to map, or the two sentinels the row's picker offers beside one. */
+  value: string | 'inherit' | 'unused'
+}
+
+/** {@link SaveMappingRow} translated into the call `setRoleAssignment` already knows how to refuse. */
+function toSetRoleAssignmentOptions(
+  organizationId: string,
+  actorUserId: string | undefined,
+  row: SaveMappingRow
+): SetRoleAssignmentOptions {
+  const scopeFields: Pick<
+    SetRoleAssignmentOptions,
+    'sourceAccountId' | 'paymentGatewayId' | 'currency'
+  > =
+    row.scope && 'store' in row.scope
+      ? { sourceAccountId: row.scope.store }
+      : row.scope && 'rail' in row.scope
+        ? { paymentGatewayId: row.scope.rail, currency: row.currency ?? null }
+        : {}
+  const base = { organizationId, role: row.role, actorUserId, ...scopeFields }
+  if (row.value === 'inherit') return { ...base, useDefault: true }
+  if (row.value === 'unused') return { ...base, markedUnused: true }
+  return { ...base, glAccountId: row.value }
+}
+
+/** One staged row, for the sentence a refusal names it by (59 §2.4). */
+function describeMappingRow(row: SaveMappingRow): string {
+  const scope = !row.scope
+    ? 'the default'
+    : 'store' in row.scope
+      ? `store ${row.scope.store}`
+      : `rail ${row.scope.rail}${row.currency ? ` (${row.currency})` : ''}`
+  return `'${row.role}' on ${scope}`
+}
+
+/**
+ * Apply a whole staged Mapping-tab edit (59 §2.4) in one transaction, through
+ * {@link setRoleAssignment}'s own validation for every row - never a shortcut
+ * around it, so every refusal it carries (both scopes at once, a currency with
+ * no rail, a rail on a store-axis role, an unscoped `bank`, a type or subtype
+ * mismatch) still applies here.
+ *
+ * 🛑 **Stops at the first refused row and rolls the whole batch back.** The
+ * loop runs inside one transaction and re-throws the offending row's own
+ * `AuxxError` with its position prefixed onto the message - same class, same
+ * `statusCode`, so the screen still gets `setRoleAssignment`'s exact sentence,
+ * just told WHICH of the N staged rows it is about.
+ */
+export async function saveRoleAssignments(
+  db: Database | Transaction,
+  params: { organizationId: string; actorUserId?: string; rows: SaveMappingRow[] }
+): Promise<Result<RoleAssignmentRow[], Error>> {
+  const run = async (tx: Transaction): Promise<RoleAssignmentRow[]> => {
+    const results: RoleAssignmentRow[] = []
+    for (const [index, row] of params.rows.entries()) {
+      const result = await setRoleAssignment(
+        tx,
+        toSetRoleAssignmentOptions(params.organizationId, params.actorUserId, row)
+      )
+      if (result.isErr()) {
+        const error = result.error
+        error.message = `Row ${index + 1}, ${describeMappingRow(row)}: ${error.message}`
+        throw error
+      }
+      results.push(result.value)
+    }
+    return results
+  }
+
+  try {
+    const results = db instanceof PgTransaction ? await run(db) : await db.transaction(run)
+    return ok(results)
+  } catch (error) {
+    if (error instanceof AuxxError) return err(error)
+    logger.error('Failed to save the mapping batch', {
+      error,
+      organizationId: params.organizationId,
+    })
     return err(new AuxxError('Internal error'))
   }
 }
@@ -836,6 +956,7 @@ async function mapRole(
     // claiming none would make the settings tree drop them until the next
     // refetch.
     overrides: await readRoleOverrides(db, organizationId, role),
+    railOverrides: await readRoleRailOverrides(db, organizationId, role),
   }
 }
 
@@ -885,6 +1006,51 @@ async function readRoleOverrides(
       confirmedAt: toIso(row.confirmedAt),
     }))
     .sort((a, b) => a.sourceAccountId.localeCompare(b.sourceAccountId))
+}
+
+/** One role's per-rail overrides, resolved for display - the rail mirror of {@link readRoleOverrides}. */
+async function readRoleRailOverrides(
+  db: Database | Transaction,
+  organizationId: string,
+  role: AccountRole
+): Promise<RoleRailAssignmentRow[]> {
+  const rows = await db
+    .select({
+      glAccountId: schema.GlRoleAssignment.glAccountId,
+      source: schema.GlRoleAssignment.source,
+      confirmedAt: schema.GlRoleAssignment.confirmedAt,
+      paymentGatewayId: schema.GlRoleAssignment.paymentGatewayId,
+      currency: schema.GlRoleAssignment.currency,
+    })
+    .from(schema.GlRoleAssignment)
+    .where(
+      and(
+        eq(schema.GlRoleAssignment.organizationId, organizationId),
+        eq(schema.GlRoleAssignment.role, role),
+        isNotNull(schema.GlRoleAssignment.paymentGatewayId)
+      )
+    )
+  const scoped = rows.filter((row) => row.paymentGatewayId != null)
+  if (scoped.length === 0) return []
+  const accounts = await loadChartAccountsById(
+    db,
+    organizationId,
+    scoped.map((row) => row.glAccountId)
+  )
+  return scoped
+    .map((row) => ({
+      paymentGatewayId: row.paymentGatewayId as string,
+      currency: row.currency,
+      state: row.confirmedAt ? ('confirmed' as const) : ('suggested' as const),
+      accountId: row.glAccountId,
+      account: accounts.get(row.glAccountId) ?? null,
+      source: row.source,
+      confirmedAt: toIso(row.confirmedAt),
+    }))
+    .sort((a, b) => {
+      const byGateway = a.paymentGatewayId.localeCompare(b.paymentGatewayId)
+      return byGateway !== 0 ? byGateway : (a.currency ?? '').localeCompare(b.currency ?? '')
+    })
 }
 
 /**
@@ -1080,19 +1246,29 @@ async function mapGatewayRole(
     })
   }
 
+  // ⚠️ The role's row with THIS rail folded in, not a row describing the rail
+  // alone - the same reason the scoped branch of `mapRole` reads `current`
+  // rather than returning a bare fragment (59 §6, U8).
+  const current = await readRoleRow(db, organizationId, role)
   return {
-    role,
-    state: 'confirmed',
-    accountId: glAccountId,
-    account,
-    source: 'human',
-    confirmedAt: toIso(confirmedAt),
-    axis: 'rail',
-    // 🛑 Rail scopes aren't in this shape yet. `RoleSourceAssignmentRow` is
-    // keyed on `sourceAccountId`, and a settings screen showing this rail
-    // beside the org default is 58 §6 (U8). This write's own answer is
-    // complete; the checklist just cannot fold it in until then.
-    overrides: [],
+    ...current,
+    railOverrides: [
+      ...current.railOverrides.filter(
+        (row) => !(row.paymentGatewayId === paymentGatewayId && row.currency === currency)
+      ),
+      {
+        paymentGatewayId,
+        currency,
+        state: 'confirmed' as const,
+        accountId: glAccountId,
+        account,
+        source: 'human',
+        confirmedAt: toIso(confirmedAt),
+      },
+    ].sort((a, b) => {
+      const byGateway = a.paymentGatewayId.localeCompare(b.paymentGatewayId)
+      return byGateway !== 0 ? byGateway : (a.currency ?? '').localeCompare(b.currency ?? '')
+    }),
   }
 }
 
@@ -1100,9 +1276,9 @@ async function mapGatewayRole(
  * Delete one rail's override, so it falls back to the next link in the chain
  * (§3 rule 2) - the rail mirror of {@link clearScopedRole}.
  *
- * Returns the deletion alone, not the row it falls back to: resolving that
- * chain is `resolve-roles.ts`'s read (U2), and this file's own read,
- * `listRoleMap`, does not follow rail rows yet either (U1c, U8).
+ * Returns the role's row as `listRoleMap` renders it afterwards, like
+ * `clearScopedRole` does: resolving the fallback CHAIN is still
+ * `resolve-roles.ts`'s job (U2), this only has to say the override is gone.
  */
 async function clearGatewayRole(
   db: Database | Transaction,
@@ -1123,16 +1299,7 @@ async function clearGatewayRole(
           : isNull(schema.GlRoleAssignment.currency)
       )
     )
-  return {
-    role,
-    state: 'unmapped',
-    accountId: null,
-    account: null,
-    source: null,
-    confirmedAt: null,
-    axis: 'rail',
-    overrides: [],
-  }
+  return readRoleRow(db, organizationId, role)
 }
 
 /**
@@ -1206,6 +1373,7 @@ async function setUnusedFlag(
   // the row that was just written; a second read would be one more query for an
   // answer that cannot differ.
   const overrides = await readRoleOverrides(db, organizationId, role)
+  const railOverrides = await readRoleRailOverrides(db, organizationId, role)
   const axis = roleScopeAxis(role)
 
   if (updated.markedUnused) {
@@ -1218,6 +1386,7 @@ async function setUnusedFlag(
       confirmedAt: toIso(updated.confirmedAt),
       axis,
       overrides,
+      railOverrides,
     }
   }
 
@@ -1231,6 +1400,7 @@ async function setUnusedFlag(
     confirmedAt: toIso(updated.confirmedAt),
     axis,
     overrides,
+    railOverrides,
   }
 }
 

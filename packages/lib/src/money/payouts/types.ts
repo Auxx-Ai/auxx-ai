@@ -59,6 +59,12 @@ export interface PayoutRecord {
   /** The `bank_account` record the money landed in. Stamped when the entry posts. */
   bankAccountId: string | null
   /**
+   * Set when the source reported a destination the mapped bank account's
+   * `settlementDestinations` does not carry (58 §4.5, §5.4 rule 2, D7). The entry still posted -
+   * distinct from {@link blockedReason}, which means nothing did.
+   */
+  destinationMismatch: string | null
+  /**
    * Provenance. An `imported` payout has no itemisation, so its zero
    * unrecognised remainder means "nothing to split", never "everything
    * recognised" - the screen must say which (§4 rule 2).

@@ -463,7 +463,6 @@ export async function seedDefaultPaymentGateways(
       handles: ['shopify_payments'],
       clearingAccountId: clearingCard,
       feeAccountId: byRole.get('payment_processing_fees') ?? null,
-      settlementSource: 'shopify_payments',
       status: 'active',
     })
     if (result.isOk()) created++
