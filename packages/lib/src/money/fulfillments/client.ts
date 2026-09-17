@@ -18,7 +18,6 @@ export {
   FULFILLMENT_STATUSES,
   type Fulfillment,
   type FulfillmentLine,
-  type FulfillmentPostingStamp,
   type FulfillmentStatusValue,
 } from './types'
 

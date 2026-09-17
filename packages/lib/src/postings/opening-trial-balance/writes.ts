@@ -226,12 +226,28 @@ export async function postOpeningTrialBalance(
         actorUserId: userId,
         memo: input.memo ?? entry.memo ?? undefined,
         lock,
+        mode: 'post',
+        // The claim: one opening balance per org, ever - keyed on the cutover
+        // date rather than on the `journal_entry` record's own number (see the
+        // file header). Not the record's own draft subject; that draft is
+        // never claimed, this posting is a fresh one under its own subject.
+        sources: [
+          {
+            sourceKind: 'opening_balance',
+            sourceId: organizationId,
+            occurrence: built.cutoverDate,
+            linkRole: 'subject',
+          },
+        ],
       })
 
       if (result.glPostingId) {
         const crud = new UnifiedCrudHandler(organizationId, userId, db)
+        // `journal_entry_status` no longer exists (TARGET §1) - the record's
+        // status is read back off whichever `GlPosting` its
+        // `journal_entry_gl_posting_id` points at, and this posting call is the
+        // one place that pointer moves from the draft to the real thing.
         await crud.update(toRecordId(ctx.journalEntryDefId, entry.id) as RecordId, {
-          journal_entry_status: 'posted',
           journal_entry_gl_posting_id: result.glPostingId,
         })
       }

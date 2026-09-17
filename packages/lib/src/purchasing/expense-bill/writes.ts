@@ -278,6 +278,15 @@ export async function postExpenseBill(
   // An org that has never turned the accounting module on is a first-class
   // case, not a degraded one (task 17 §3): the bill still posts as a document,
   // and nothing is claimed, written or logged in the ledger.
+  // `resolveExpenseBill` already refused a bill with no vendor - see there.
+  const vendorCompanyInstanceId = bill.vendorCompanyInstanceId
+  if (!vendorCompanyInstanceId) {
+    throw new BadRequestError(
+      'This vendor bill has no vendor, so its payable has nobody to be owed to.',
+      { vendorBillInstanceId }
+    )
+  }
+
   let post: PostResult
   if (await isAccountingEnabled(db, organizationId)) {
     const lock = await resolvePeriodLock(organizationId)
@@ -287,6 +296,21 @@ export async function postExpenseBill(
       actorUserId: userId,
       lock,
       memo: `Bill ${bill.number || bill.internalNumber} posted`,
+      // TODO(step-1b): autoPost.expenseBill - this should be 'draft' when the
+      // avenue's autoPost setting is off. Settings work is another agent's.
+      mode: 'post',
+      sources: [
+        {
+          sourceKind: EXPENSE_BILL_SOURCE_TYPE,
+          sourceId: vendorBillInstanceId,
+          linkRole: 'subject',
+        },
+        {
+          sourceKind: 'company',
+          sourceId: vendorCompanyInstanceId,
+          linkRole: 'counterparty',
+        },
+      ],
     })
   } else {
     post = { status: 'not_enabled' }
@@ -335,7 +359,7 @@ export async function listVendorBillPostings(
 ): Promise<Array<{ glPostingId: string; docNumber: string; status: string; postingType: string }>> {
   const result = await listPostingsForSource(db, {
     organizationId: params.organizationId,
-    sourceType: EXPENSE_BILL_SOURCE_TYPE,
+    sourceKind: EXPENSE_BILL_SOURCE_TYPE,
     sourceId: params.vendorBillInstanceId,
   })
   if (result.isErr()) return []

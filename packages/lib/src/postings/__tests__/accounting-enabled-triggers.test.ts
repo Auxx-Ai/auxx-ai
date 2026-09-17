@@ -35,7 +35,6 @@ const TRIGGER_FILES = [
   // the gate moved with the build. It is still checked before ANY read.
   'money/invoices/issuance-accounting.ts',
   'money/orders/fulfill.ts',
-  'money/fulfillment-posting/run.ts',
   'money/payments/post-transaction.ts',
   // Two deposit-application lanes, and BOTH are gated. The dispatch-era one
   // posts off `PaymentAllocation`; the effects one posts off `MoneyApplication`

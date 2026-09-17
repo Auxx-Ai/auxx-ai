@@ -1,10 +1,9 @@
 // packages/lib/src/field-hooks/pre/journal-entry-delete-guard.ts
 
+import { database, schema } from '@auxx/database'
 import { parseRecordId } from '@auxx/types/resource'
-import {
-  assertJournalEntryHasNoPosting,
-  assertJournalEntryIsDraft,
-} from '../../postings/journal-entries/refusals'
+import { and, eq } from 'drizzle-orm'
+import { assertJournalEntryIsDraft } from '../../postings/journal-entries/refusals'
 import { unwrapStatusValue } from '../../resources/events/captured-values'
 import type { EntityPreDeleteHandler } from '../types'
 
@@ -20,43 +19,41 @@ import type { EntityPreDeleteHandler } from '../types'
  * hard-deleted a POSTED entry with no complaint, leaving its `GlPosting` in the
  * books pointing at a `sourceId` that no longer resolves.
  *
- * The rule is exactly the product's own, in the same two halves and the same two
- * sentences (`journal-entries/refusals.ts`): refuse anything that is not a
- * `draft`, then refuse a row that carries a `glPostingId` even when its status
- * still reads `draft`.
+ * `journal_entry_status` no longer exists (TARGET §1): the record is a pointer
+ * and its status is the linked `GlPosting`'s, read here directly rather than off
+ * a captured field value. No `journal_entry_gl_posting_id` at all reads as
+ * `draft` - a record whose companion draft failed to write has nothing posted to
+ * protect.
  *
  * ⚠️ **A draft is ALLOWED through.** The guard must not become a second,
  * stricter rule than the procedure it backs up: an unposted draft is a record a
- * person may throw away, and the product's own answer is to archive it. Anyone
- * who reaches the hard delete instead has said something more deliberate, and
- * the accounting invariant this file protects is untouched by it.
+ * person may throw away, and the product's own answer is to archive it.
  *
- * ⚠️ **It reads the CAPTURED values, not a hydrated record.** `requireJournalEntry`
- * filters `archivedAt IS NULL`, so loading through it would make an already
- * DISCARDED draft - the common case for a later hard delete - read as "not
- * found" and refuse. `captureEventData` has the values on the event already.
- *
- * No admin gate, following `parts`: the per-row
- * `record.delete` rule the mutation already asserts is the whole authorization
- * story, and the accounting rule below is about the record's state, not the
- * caller's rank.
+ * No admin gate, following `parts`: the per-row `record.delete` rule the
+ * mutation already asserts is the whole authorization story, and the accounting
+ * rule below is about the record's state, not the caller's rank.
  */
 export const guardJournalEntryDelete: EntityPreDeleteHandler = async (event) => {
   const { entityInstanceId } = parseRecordId(event.recordId)
+  const glPostingId = readText(event.values.journal_entry_gl_posting_id)
+  const status = glPostingId ? await readPostingStatus(event.organizationId, glPostingId) : 'draft'
 
-  const subject = {
-    id: entityInstanceId,
-    number: readText(event.values.journal_entry_number),
-    // 🛑 Absence reads as `draft`, matching `reads.ts`'s `toRecord`: the field
-    // carries `defaultValue: 'draft'` and a row written before the field existed
-    // has no value row at all. Reading absence as anything else would let such a
-    // row claim to be posted and become undeletable.
-    status: readText(event.values.journal_entry_status) ?? 'draft',
-    glPostingId: readText(event.values.journal_entry_gl_posting_id),
-  }
+  assertJournalEntryIsDraft(
+    { id: entityInstanceId, number: readText(event.values.journal_entry_number), status },
+    'deleted'
+  )
+}
 
-  assertJournalEntryIsDraft(subject, 'deleted')
-  assertJournalEntryHasNoPosting(subject, 'deleted')
+/** The linked `GlPosting`'s status, or `'draft'` when the row is somehow gone. */
+async function readPostingStatus(organizationId: string, glPostingId: string): Promise<string> {
+  const [row] = await database
+    .select({ status: schema.GlPosting.status })
+    .from(schema.GlPosting)
+    .where(
+      and(eq(schema.GlPosting.id, glPostingId), eq(schema.GlPosting.organizationId, organizationId))
+    )
+    .limit(1)
+  return row?.status ?? 'draft'
 }
 
 /**
@@ -64,9 +61,9 @@ export const guardJournalEntryDelete: EntityPreDeleteHandler = async (event) => 
  *
  * `unwrapStatusValue` first because the capture chain ARRAYS every
  * `ARRAY_RETURN_FIELD_TYPES` member regardless of how many values are stored -
- * `journal_entry_status` is a SINGLE_SELECT and arrives as `['posted']`, so a
- * bare `typeof === 'string'` test on it is always false. That mistake has
- * shipped twice; see `resources/events/captured-values.ts`.
+ * `journal_entry_gl_posting_id` is TEXT and arrives as `['post_1']`, so a bare
+ * `typeof === 'string'` test on it is always false. That mistake has shipped
+ * twice; see `resources/events/captured-values.ts`.
  */
 function readText(raw: unknown): string | null {
   const value = unwrapStatusValue(raw)

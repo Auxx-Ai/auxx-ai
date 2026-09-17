@@ -869,38 +869,6 @@ export const BuildSource = {
 } as const
 
 /**
- * Journal Entry Status
- * plans/accounting/tasks/done/02-manual-journal-entry.md, HANDOFF slot 1A.
- *
- * Three values, and the set is deliberately NOT `GlPosting.status`
- * (`pending | posted | failed | reversed`). They answer different questions:
- * `GlPosting.status` is what the LEDGER did with an entry, and its `pending`
- * means claimed-and-mid-push - it holds the period's unique index. This is what
- * the DRAFT is, and its `draft` means nobody has committed to anything yet,
- * which the posting table has no way to represent.
- *
- * There is no `failed`. A post that the ledger refused leaves the record in
- * `draft` with nothing stamped, because the remedy is to fix the entry and press
- * Post again - which is exactly what `draft` already means. A `failed` value
- * would be a second word for the same state and would have to be cleared by
- * hand before the retry.
- *
- * `reversed` is terminal here as it is there: an entry is corrected by a second,
- * opposite entry, never by an edit (ground rule 6).
- */
-export const JournalEntryStatus = {
-  DRAFT: 'draft',
-  POSTED: 'posted',
-  REVERSED: 'reversed',
-
-  values: [
-    { value: 'draft', label: 'Draft', color: 'gray' },
-    { value: 'posted', label: 'Posted', color: 'green' },
-    { value: 'reversed', label: 'Reversed', color: 'orange' },
-  ] satisfies FieldOptionItem[],
-} as const
-
-/**
  * Journal Entry Kind
  * plans/accounting/tasks/done/02-manual-journal-entry.md, HANDOFF decision 6.7.
  *

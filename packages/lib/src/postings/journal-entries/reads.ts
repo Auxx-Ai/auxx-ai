@@ -1,19 +1,22 @@
 // packages/lib/src/postings/journal-entries/reads.ts
 
 /**
- * Every READ over the journal-entry draft: the list, the detail, and the field
- * context both halves of the module open with.
+ * Every READ over the journal-entry pointer: the list, the detail, and the
+ * field context both halves of the module open with.
  *
  * Reads only. The writes live in `writes.ts`, because a file that both queries
  * and mutates is the first step back toward a service class
  * (`docs/lib-module-guide.md` §5).
+ *
+ * 🛑 **`status` and `lines` are not `journal_entry` fields any more** (TARGET
+ * §1). The record is a pointer; both are read off the linked `GlPosting` row,
+ * batched here rather than N+1'd per record.
  *
  * No permission checks anywhere in this file. The router asserts
  * (`docs/lib-module-guide.md` §6).
  */
 
 import { type Database, schema } from '@auxx/database'
-import { readEnvelope } from '@auxx/types/field-value'
 import { and, desc, eq, gte, inArray, isNull, lt, or, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
@@ -30,7 +33,9 @@ import type {
 import { guard } from './guard'
 
 /**
- * Every attribute a {@link JournalEntryRecord} is assembled from.
+ * Every attribute a {@link JournalEntryRecord} is assembled from, that is
+ * still a `journal_entry` field. `status` and `lines` come off the linked
+ * `GlPosting` instead - see the file header.
  *
  * All optional below: entity migration 125 provisions them, and an org that has
  * not run it must read an empty list rather than 500.
@@ -39,9 +44,7 @@ const JOURNAL_ENTRY_ATTRIBUTES = [
   'journal_entry_number',
   'journal_entry_date',
   'journal_entry_memo',
-  'journal_entry_status',
   'journal_entry_kind',
-  'journal_entry_lines',
   'journal_entry_gl_posting_id',
   'journal_entry_recurrence_rule_id',
   'journal_entry_occurrence_date',
@@ -68,9 +71,9 @@ const DEFAULT_LIMIT = 50
  * empty. The WRITE paths use {@link requireJournalEntryFieldContext} instead,
  * because a write that silently did nothing would be worse than a refusal.
  *
- * `status` and `lines` are the two that make the context usable at all: without
- * `status` there is no draft/posted distinction and every write gate reduces to
- * "yes", and without `lines` an entry has no content.
+ * `journal_entry_gl_posting_id` is the one that makes the context usable at
+ * all now: without it there is no pointer to the posting that carries the
+ * entry's status and lines.
  */
 export async function loadJournalEntryFieldContext(
   organizationId: string
@@ -80,7 +83,7 @@ export async function loadJournalEntryFieldContext(
   const fields = (await getOrgCache()
     .from(organizationId, 'customFields')
     .bySystemAttributes([...JOURNAL_ENTRY_ATTRIBUTES])) as JournalEntryFields
-  if (!fields.journal_entry_status || !fields.journal_entry_lines) return null
+  if (!fields.journal_entry_gl_posting_id || !fields.journal_entry_date) return null
   return { journalEntryDefId, fields }
 }
 
@@ -192,37 +195,30 @@ export async function listJournalEntries(
         .from(schema.EntityInstance)
         .$dynamic()
 
-      if (filters.status && ctx.fields.journal_entry_status) {
-        const statusValue = alias(schema.FieldValue, 'je_status_v')
-        // 🛑 `draft` is a LEFT join plus a null branch, and the other statuses
-        // are not. `toRecord` reads a MISSING status row as `'draft'` - the
-        // field carries `defaultValue: 'draft'`, and an entry written before
-        // the field existed has no row at all - so an inner join on
-        // `optionId = 'draft'` answered a strictly smaller set than the one the
-        // reader calls drafts: the JE list would hide an entry the drawer
-        // opens, and `?status=draft` would silently lose rows. Nothing else can
-        // be absent-by-default, so nothing else needs the branch.
-        if (filters.status === 'draft') {
-          query = query.leftJoin(
-            statusValue,
-            valueJoin(statusValue, ctx.fields.journal_entry_status.id)
+      // 🛑 Every draft carries a posting now (TARGET §1), so this is a plain
+      // INNER join through the pointer to `GlPosting.status` - there is no
+      // longer a default-value fallback to branch on, unlike `kind` below.
+      if (filters.status && ctx.fields.journal_entry_gl_posting_id) {
+        const postingIdValue = alias(schema.FieldValue, 'je_posting_v')
+        const posting = alias(schema.GlPosting, 'je_posting')
+        query = query
+          .innerJoin(
+            postingIdValue,
+            valueJoin(postingIdValue, ctx.fields.journal_entry_gl_posting_id.id)
           )
-          where.push(or(eq(statusValue.optionId, 'draft'), isNull(statusValue.optionId)) as SQL)
-        } else {
-          query = query.innerJoin(
-            statusValue,
+          .innerJoin(
+            posting,
             and(
-              valueJoin(statusValue, ctx.fields.journal_entry_status.id),
-              eq(statusValue.optionId, filters.status)
+              eq(posting.id, postingIdValue.valueText),
+              eq(posting.organizationId, organizationId)
             )
           )
-        }
+        where.push(eq(posting.status, filters.status))
       }
 
       if (filters.kinds?.length && ctx.fields.journal_entry_kind) {
         const kindValue = alias(schema.FieldValue, 'je_kind_v')
-        // 🛑 `manual` needs the same LEFT-join-plus-null branch `draft` needs
-        // above, and for the same reason: the field carries
+        // 🛑 `manual` needs a LEFT-join-plus-null branch: the field carries
         // `defaultValue: 'manual'` and `toRecord` reads a MISSING kind row as
         // `manual`, so an inner join would hide an entry the drawer opens.
         // Every other kind is written explicitly at create time.
@@ -393,7 +389,9 @@ function valueJoin(
 }
 
 /**
- * Turn a page of ids into full rows with ONE additional query.
+ * Turn a page of ids into full rows with TWO additional queries: the
+ * `journal_entry` field values, and - batched by `journal_entry_gl_posting_id`
+ * - the linked postings that carry status and lines.
  *
  * The alternative - a join per attribute on the paging query - multiplies the
  * row count and makes `LIMIT` mean something other than "this many entries".
@@ -415,7 +413,6 @@ async function hydrate(
       fieldId: schema.FieldValue.fieldId,
       valueText: schema.FieldValue.valueText,
       valueDate: schema.FieldValue.valueDate,
-      valueJson: schema.FieldValue.valueJson,
       optionId: schema.FieldValue.optionId,
     })
     .from(schema.FieldValue)
@@ -437,38 +434,86 @@ async function hydrate(
     bucket.set(value.fieldId, value)
   }
 
-  return page.map((row) => toRecord(ctx, row, byInstance.get(row.id)))
+  const postingField = ctx.fields.journal_entry_gl_posting_id
+  const glPostingIds = new Set<string>()
+  if (postingField) {
+    for (const bucket of byInstance.values()) {
+      const raw = bucket.get(postingField.id)?.valueText
+      if (raw) glPostingIds.add(raw)
+    }
+  }
+  const postingById = await readLinkedPostings(db, organizationId, [...glPostingIds])
+
+  return page.map((row) => toRecord(ctx, row, byInstance.get(row.id), postingById))
+}
+
+/** What `toRecord` needs off the linked `GlPosting` row: its status and its lines. */
+interface LinkedPosting {
+  status: JournalEntryStatusValue
+  built: unknown
+}
+
+/** The linked postings behind a page of records, batched by id. */
+async function readLinkedPostings(
+  db: Database,
+  organizationId: string,
+  glPostingIds: string[]
+): Promise<Map<string, LinkedPosting>> {
+  const byId = new Map<string, LinkedPosting>()
+  if (glPostingIds.length === 0) return byId
+
+  const rows = await db
+    .select({
+      id: schema.GlPosting.id,
+      status: schema.GlPosting.status,
+      built: schema.GlPosting.built,
+    })
+    .from(schema.GlPosting)
+    .where(
+      and(
+        eq(schema.GlPosting.organizationId, organizationId),
+        inArray(schema.GlPosting.id, glPostingIds)
+      )
+    )
+
+  for (const row of rows) {
+    byId.set(row.id, { status: row.status as JournalEntryStatusValue, built: row.built })
+  }
+  return byId
 }
 
 type ValueRow = {
   valueText: string | null
   valueDate: string | null
-  valueJson: unknown
   optionId: string | null
 }
 
 function toRecord(
   ctx: JournalEntryFieldContext,
   row: { id: string; createdAt: Date },
-  bucket: Map<string, ValueRow> | undefined
+  bucket: Map<string, ValueRow> | undefined,
+  postingById: Map<string, LinkedPosting>
 ): JournalEntryRecord {
   const read = (attribute: JournalEntryAttribute): ValueRow | undefined => {
     const field = ctx.fields[attribute]
     return field ? bucket?.get(field.id) : undefined
   }
 
+  const glPostingId = read('journal_entry_gl_posting_id')?.valueText ?? null
+  const posting = glPostingId ? postingById.get(glPostingId) : undefined
+
   return {
     id: row.id,
     number: read('journal_entry_number')?.valueText ?? null,
     date: toDateKey(read('journal_entry_date')?.valueDate ?? null),
     memo: read('journal_entry_memo')?.valueText ?? null,
-    // An entry with no status row is a `draft`: the field carries
-    // `defaultValue: 'draft'`, and reading absence as anything else would let a
-    // row written before the field existed claim to be posted.
-    status: (read('journal_entry_status')?.optionId ?? 'draft') as JournalEntryStatusValue,
+    // A record whose companion draft is missing (the second half of
+    // `createJournalEntry` never ran) reads as `draft` - there is nothing else
+    // it could be, since only a posting can move it further.
+    status: posting?.status ?? 'draft',
     kind: (read('journal_entry_kind')?.optionId ?? 'manual') as JournalEntryKindValue,
-    lines: parseLines(read('journal_entry_lines')?.valueJson),
-    glPostingId: read('journal_entry_gl_posting_id')?.valueText ?? null,
+    lines: linesFromBuilt(posting?.built),
+    glPostingId,
     recurrenceRuleId: read('journal_entry_recurrence_rule_id')?.valueText ?? null,
     occurrenceDate: read('journal_entry_occurrence_date')?.valueText ?? null,
     createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : null,
@@ -476,56 +521,32 @@ function toRecord(
 }
 
 /**
- * Read the stored lines back, discarding anything that is not a usable line.
+ * Read a draft's lines off its posting's `resolvedLines`, discarding anything
+ * that is not a usable line.
  *
- * 🛑 Tolerant on READ and strict on WRITE, deliberately. `writes.ts` validates
- * every line before it stores anything, so a malformed row here means the JSON
- * was written by something else or by an older shape - and the honest response
- * is to render what IS readable rather than to throw and make the entry
- * unopenable. `buildManualEntry` refuses the entry a second time before it can
- * post, so a dropped line cannot become a silently unbalanced posting: it
- * becomes a visible imbalance the person can see and fix.
+ * 🛑 Tolerant on READ, deliberately - the same rule the old `journal_entry_lines`
+ * parser followed. A malformed envelope means the row was written by something
+ * else, and the honest response is to render what IS readable. `buildManualEntry`
+ * refuses the entry a second time before it can post, so a dropped line cannot
+ * become a silently unbalanced posting.
  */
-export function parseLines(value: unknown): JournalEntryLine[] {
-  // TWO wrappers come off here, and both are load-bearing:
-  //
-  // 1. The field-value layer's own `{ v, meta }` envelope, which every stored
-  //    JSON value carries. `readEnvelope` is its reader and handles the
-  //    pre-envelope rows too.
-  // 2. Our `{ lines }` object, which exists because a top-level ARRAY is read
-  //    as a MULTI-VALUE write and this field is single-value - see
-  //    `JournalEntryLinesEnvelope`.
-  //
-  // A bare array is still accepted, because that is what a hand-written row
-  // would most plausibly hold and unwrapping it costs one branch.
-  const inner = readEnvelope(value).v ?? value
-  const array = Array.isArray(inner)
-    ? inner
-    : typeof inner === 'object' &&
-        inner !== null &&
-        Array.isArray((inner as { lines?: unknown }).lines)
-      ? (inner as { lines: unknown[] }).lines
-      : null
-  if (!array) return []
+export function linesFromBuilt(built: unknown): JournalEntryLine[] {
+  if (typeof built !== 'object' || built === null) return []
+  const resolvedLines = (built as { resolvedLines?: unknown }).resolvedLines
+  if (!Array.isArray(resolvedLines)) return []
+
   const lines: JournalEntryLine[] = []
-  for (const raw of array) {
+  for (const raw of resolvedLines) {
     if (typeof raw !== 'object' || raw === null) continue
     const line = raw as Record<string, unknown>
-    // 🛑 `glAccountId` only. A row is dropped, not tolerated, when it carries a
-    // legacy `accountCode` and no id: task 15's expiry means there is no
-    // stored entry to preserve, and accepting the old shape here would let a
-    // hand-written or pre-migration row silently reappear with no account.
     const glAccountId =
       typeof line.glAccountId === 'string' && line.glAccountId.trim().length > 0
         ? line.glAccountId
         : null
     const direction =
       line.direction === 'debit' || line.direction === 'credit' ? line.direction : null
-    const amountMinor = typeof line.amountMinor === 'number' ? line.amountMinor : null
+    const amountMinor = typeof line.amount === 'number' ? line.amount : null
     if (!glAccountId || !direction || amountMinor === null) continue
-    // Both fields or neither: a type with no id (or vice versa) is a malformed
-    // row, and dropping both silently is the same tolerant-read rule the rest
-    // of this function follows rather than surfacing a half-attributed line.
     const counterpartyType =
       line.counterpartyType === 'customer' || line.counterpartyType === 'vendor'
         ? line.counterpartyType

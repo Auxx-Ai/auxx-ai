@@ -40,6 +40,7 @@ import type { Result } from 'neverthrow'
 import { BadRequestError, ConflictError, UnprocessableEntityError } from '../../errors'
 import { clearBankDeposit } from '../../money/bank-deposits'
 import { didLedgerAccept } from '../../postings/ledger-accepted'
+import { listPostingsForSource } from '../../postings/list-postings'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { postEntry } from '../../postings/post-entry'
 import { reverseEntry } from '../../postings/reverse-entry'
@@ -51,6 +52,7 @@ import { guard } from '../guard'
 import { getBankAccount, requireBankAccountFieldContext } from '../reads'
 import { buildCodedBankEntry, buildTransferEntry } from './build-entry'
 import {
+  BANK_TRANSACTION_SOURCE_TYPE,
   type BankTransactionRow,
   bankLineFlow,
   bankTransactionPeriodKey,
@@ -124,7 +126,7 @@ export async function matchTransaction(
       // document it now points at credited the same cash a second time. The
       // remedy is the same one code and transfer name: undo first, which
       // REVERSES the entry, then match.
-      assertNotPosted(line)
+      await assertNotPosted(db, organizationId, transactionId)
 
       if (recordType === 'bank_transaction') {
         throw new BadRequestError(
@@ -227,7 +229,7 @@ export async function codeTransaction(
       const ctx = await requireReviewFieldContext(organizationId)
       const line = await requireBankTransaction(db, organizationId, transactionId)
       assertNotVoid(line, 'coded')
-      assertNotPosted(line)
+      await assertNotPosted(db, organizationId, transactionId)
       const txnDate = requireTxnDate(line)
 
       // 🛑 A re-code after an undo must mint a DIFFERENT key. The reversed
@@ -264,6 +266,14 @@ export async function codeTransaction(
         actorUserId,
         lock,
         memo: memo ?? line.description ?? `Bank line ${line.externalId ?? transactionId}`,
+        mode: 'post',
+        sources: [
+          {
+            sourceKind: BANK_TRANSACTION_SOURCE_TYPE,
+            sourceId: transactionId,
+            linkRole: 'subject',
+          },
+        ],
       })
 
       if (!didLedgerAccept(post)) {
@@ -284,7 +294,6 @@ export async function codeTransaction(
       await crud.update(toRecordId(ctx.bankTransactionDefId, transactionId), {
         bank_transaction_review_status: 'coded',
         bank_transaction_gl_account: glAccountId.trim(),
-        bank_transaction_gl_posting_id: post.glPostingId ?? undefined,
         bank_transaction_reviewed_at: new Date().toISOString(),
         bank_transaction_reviewed_by_user_id: actorUserId,
       })
@@ -367,7 +376,7 @@ export async function transferTransaction(
       const ctx = await requireReviewFieldContext(organizationId)
       const line = await requireBankTransaction(db, organizationId, transactionId)
       assertNotVoid(line, 'transferred')
-      assertNotPosted(line)
+      await assertNotPosted(db, organizationId, transactionId)
       const txnDate = requireTxnDate(line)
 
       if (!line.bankAccountId) {
@@ -493,6 +502,12 @@ export async function transferTransaction(
         actorUserId,
         lock,
         memo: memo ?? `Transfer between bank accounts`,
+        mode: 'post',
+        // Filed on `filedOn`, whichever leg that is - `undoReview` goes looking
+        // for the posting there, so the claim has to live there too.
+        sources: [
+          { sourceKind: BANK_TRANSACTION_SOURCE_TYPE, sourceId: filedOn.id, linkRole: 'subject' },
+        ],
       })
 
       if (!didLedgerAccept(post)) {
@@ -510,7 +525,6 @@ export async function transferTransaction(
         bank_transaction_matched_record_id: other?.id ?? counterpartBankAccountId,
         bank_transaction_matched_record_type: other ? 'bank_transaction' : 'bank_account',
         bank_transaction_gl_account: other ? undefined : (toAccountId ?? undefined),
-        bank_transaction_gl_posting_id: post.glPostingId ?? undefined,
         bank_transaction_reviewed_at: now,
         bank_transaction_reviewed_by_user_id: actorUserId,
       })
@@ -659,8 +673,9 @@ export async function excludeTransaction(
   return guard(
     async () => {
       const ctx = await requireReviewFieldContext(organizationId)
-      const line = await requireBankTransaction(db, organizationId, transactionId)
-      assertNotPosted(line)
+      // Existence check only - excluding needs nothing else off the row.
+      await requireBankTransaction(db, organizationId, transactionId)
+      await assertNotPosted(db, organizationId, transactionId)
 
       const reason = input.reason?.trim()
       if (!reason) {
@@ -740,45 +755,35 @@ export async function undoReview(
       // pair half unlinked with an entry still standing; and undoing the filing
       // leg already reverses the entry and unlinks BOTH legs, so the path being
       // named is one that exists and does the whole job.
-      if (
-        !line.glPostingId &&
-        line.matchedRecordType === 'bank_transaction' &&
-        line.matchedRecordId
-      ) {
-        const counterpart = await readCounterpartLeg(db, organizationId, line.matchedRecordId)
-        if (counterpart?.glPostingId) {
+      const ownPosting = await findLiveBankTransactionPosting(db, organizationId, transactionId)
+      if (!ownPosting && line.matchedRecordType === 'bank_transaction' && line.matchedRecordId) {
+        const counterpartPosting = await findLiveBankTransactionPosting(
+          db,
+          organizationId,
+          line.matchedRecordId
+        )
+        if (counterpartPosting) {
           throw new ConflictError(
-            `This transfer's entry is filed on bank line ${counterpart.id}, not on this one. ` +
+            `This transfer's entry is filed on bank line ${line.matchedRecordId}, not on this one. ` +
               'Undo that line instead - it reverses the entry and unlinks both legs.',
-            { undoInstead: counterpart.id, glPostingId: counterpart.glPostingId }
+            { undoInstead: line.matchedRecordId, glPostingId: counterpartPosting.id }
           )
         }
       }
 
       const warnings: string[] = []
       let post: PostResult | null = null
-      if (line.glPostingId) {
-        // ⚠️ Only a LIVE posting needs reversing. A line can carry the id of an
-        // entry that is already `reversed` or `failed` - `already_posted` hands
-        // back the existing row, and a failed claim leaves one behind - and
-        // reversing that is refused, which would strand the line as `coded`
-        // forever with no way back into the queue.
-        const [existing] = await db
-          .select({ status: schema.GlPosting.status, docNumber: schema.GlPosting.docNumber })
-          .from(schema.GlPosting)
-          .where(
-            and(
-              eq(schema.GlPosting.id, line.glPostingId),
-              eq(schema.GlPosting.organizationId, organizationId)
-            )
-          )
-          .limit(1)
-
-        if (existing?.status === 'posted') {
+      // ⚠️ The MOST RECENT posting, not `ownPosting` above - that one already
+      // excludes `reversed`, and this decision needs to tell "nothing was ever
+      // posted" (silent) apart from "posted, and already reversed by something
+      // else" (a warning).
+      const latest = await findMostRecentBankTransactionPosting(db, organizationId, transactionId)
+      if (latest) {
+        if (latest.status === 'posted') {
           const lock = await resolvePeriodLock(organizationId)
           post = await reverseEntry(db, {
             organizationId,
-            glPostingId: line.glPostingId,
+            glPostingId: latest.id,
             actorUserId,
             lock,
             memo: memo ?? `Undo bank review ${line.externalId ?? transactionId}`,
@@ -794,7 +799,7 @@ export async function undoReview(
           }
         } else {
           warnings.push(
-            `Entry ${existing?.docNumber ?? line.glPostingId} is ${existing?.status ?? 'gone'}, ` +
+            `Entry ${latest.docNumber ?? latest.id} is ${latest.status}, ` +
               'not posted, so there was nothing to reverse. The line is back in the queue.'
           )
         }
@@ -837,7 +842,6 @@ export async function undoReview(
         bank_transaction_matched_record_id: null,
         bank_transaction_matched_record_type: null,
         bank_transaction_gl_account: null,
-        bank_transaction_gl_posting_id: null,
         bank_transaction_exclude_reason: null,
         bank_transaction_reviewed_at: null,
         bank_transaction_reviewed_by_user_id: null,
@@ -861,24 +865,6 @@ export async function undoReview(
 }
 
 /**
- * The other leg of a transfer, or null when it has been removed.
- *
- * A missing counterpart is not a refusal: the leg this undo is protecting no
- * longer exists, so there is nothing to strand.
- */
-async function readCounterpartLeg(
-  db: Database,
-  organizationId: string,
-  transactionId: string
-): Promise<BankTransactionRow | null> {
-  try {
-    return await requireBankTransaction(db, organizationId, transactionId)
-  } catch {
-    return null
-  }
-}
-
-/**
  * Record, on the BANK ACCOUNT, that a line on it has produced a journal entry.
  *
  * 🛑 **Write-once, and nothing ever clears it.** Not `undoReview`, not a
@@ -889,9 +875,9 @@ async function readCounterpartLeg(
  * feature (plans/bank-connection/08-removing-a-bank-account.md §5.1).
  *
  * 🛑 Called at BOTH sites where a bank line first produces an entry - the code
- * treatment and the transfer treatment - beside the `gl_posting_id` write.
- * Missing either one puts a hole in the removal gate, and the hole is a hard
- * delete of an account whose rows are a posting's source documents.
+ * treatment and the transfer treatment. Missing either one puts a hole in the
+ * removal gate, and the hole is a hard delete of an account whose rows are a
+ * posting's source documents.
  *
  * ⚠️ Errors propagate rather than being swallowed. A stamp that failed silently
  * is exactly the hole above; a failed treatment is visible and retryable.
@@ -920,25 +906,6 @@ async function readDocumentLink(
   recordType: MatchRecordType,
   recordId: string
 ): Promise<string | null> {
-  if (recordType === 'payment_transaction') {
-    // 🛑 A COLUMN, not `metadata.bankTransactionId` (drizzle 0363). The pointer
-    // lived in the JSON blob only because `PaymentTransaction` had no typed home
-    // for it, which meant it could not be indexed, could not be constrained, and
-    // was invisible to anything that did not already know to open the blob.
-    const [row] = await db
-      .select({ bankTransactionId: schema.PaymentTransaction.bankTransactionId })
-      .from(schema.PaymentTransaction)
-      .where(
-        and(
-          eq(schema.PaymentTransaction.id, recordId),
-          eq(schema.PaymentTransaction.organizationId, organizationId)
-        )
-      )
-      .limit(1)
-    if (!row) throw new UnprocessableEntityError(`Payment ${recordId} was not found`)
-    return row.bankTransactionId ?? null
-  }
-
   const attribute =
     recordType === 'vendor_payment'
       ? 'vendor_payment_bank_transaction_id'
@@ -1027,29 +994,6 @@ async function stampDocument(
     return
   }
 
-  if (recordType === 'payment_transaction') {
-    // 🛑 Two COLUMNS, not three JSON keys (drizzle 0363). The read-modify-write
-    // of the whole blob this used to do was also a lost-update waiting to
-    // happen: it read `metadata`, spread it, and wrote it back, so anything else
-    // writing another key on the same row in between was silently discarded.
-    // Setting two columns cannot do that.
-    //
-    // There is no `confirmationSource` write any more. It carried the
-    // `bank_import` vocabulary from `VendorBillPaidSource`, but on this table it
-    // said exactly what `bankTransactionId IS NOT NULL` already says, and a
-    // second field saying so is a second field that can disagree.
-    await db
-      .update(schema.PaymentTransaction)
-      .set({ bankTransactionId: transactionId, bankClearedAt: new Date(now) })
-      .where(
-        and(
-          eq(schema.PaymentTransaction.id, recordId),
-          eq(schema.PaymentTransaction.organizationId, organizationId)
-        )
-      )
-    return
-  }
-
   const defId = await resolveDefIdForRecord(db, organizationId, recordId)
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
   if (recordType === 'vendor_payment') {
@@ -1087,27 +1031,6 @@ async function unstampDocument(
   }
 ): Promise<void> {
   const { organizationId, actorUserId, recordType, recordId } = params
-
-  if (recordType === 'payment_transaction') {
-    // Both columns, together and never one of them (drizzle 0363). A cleared
-    // date left standing on a payment with no bank line would read as "this
-    // cleared" with nothing able to say against what.
-    //
-    // ⚠️ The old version wrote `metadata.bankTransactionId = undefined` and
-    // saved the object, which is NOT a delete: `JSON.stringify` drops an
-    // `undefined` value, so it happened to work, but only because the whole blob
-    // was being rewritten. A column set to null is a delete by construction.
-    await db
-      .update(schema.PaymentTransaction)
-      .set({ bankTransactionId: null, bankClearedAt: null })
-      .where(
-        and(
-          eq(schema.PaymentTransaction.id, recordId),
-          eq(schema.PaymentTransaction.organizationId, organizationId)
-        )
-      )
-    return
-  }
 
   const defId = await resolveDefIdForRecord(db, organizationId, recordId)
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
@@ -1171,13 +1094,61 @@ function assertNotVoid(line: BankTransactionRow, verb: string): void {
   )
 }
 
+/**
+ * The bank line's current LIVE posting - `posted`, never `reversed` - or
+ * `null`. Read through `listPostingsForSource` (TARGET §1), never the
+ * `bank_transaction_gl_posting_id` stamp: the stamp holds only the latest
+ * write and a reversal does not clear it here the way `undoReview` used to.
+ */
+async function findLiveBankTransactionPosting(
+  db: Database,
+  organizationId: string,
+  transactionId: string
+): Promise<{ id: string; docNumber: string | null; status: string } | null> {
+  const postings = await listPostingsForSource(db, {
+    organizationId,
+    sourceKind: BANK_TRANSACTION_SOURCE_TYPE,
+    sourceId: transactionId,
+  })
+  if (postings.isErr()) return null
+  const live = postings.value.find((posting) => posting.status !== 'reversed')
+  return live ? { id: live.id, docNumber: live.docNumber, status: live.status } : null
+}
+
+/**
+ * The bank line's most recent posting, whatever its status - `undoReview`
+ * needs to tell "nothing was ever posted" (silent) apart from "something was
+ * posted and it is already reversed" (a warning), which
+ * {@link findLiveBankTransactionPosting} cannot answer since it excludes
+ * `reversed` by design.
+ */
+async function findMostRecentBankTransactionPosting(
+  db: Database,
+  organizationId: string,
+  transactionId: string
+): Promise<{ id: string; docNumber: string | null; status: string } | null> {
+  const postings = await listPostingsForSource(db, {
+    organizationId,
+    sourceKind: BANK_TRANSACTION_SOURCE_TYPE,
+    sourceId: transactionId,
+  })
+  if (postings.isErr()) return null
+  const [latest] = postings.value
+  return latest ? { id: latest.id, docNumber: latest.docNumber, status: latest.status } : null
+}
+
 /** A line that already produced a posting is corrected by reversal, never re-treated. */
-function assertNotPosted(line: BankTransactionRow): void {
-  if (!line.glPostingId) return
+async function assertNotPosted(
+  db: Database,
+  organizationId: string,
+  transactionId: string
+): Promise<void> {
+  const live = await findLiveBankTransactionPosting(db, organizationId, transactionId)
+  if (!live) return
   throw new ConflictError(
-    `This bank line already posted entry ${line.glPostingId}. Undo the review first - a posted ` +
+    `This bank line already posted entry ${live.id}. Undo the review first - a posted ` +
       'entry is corrected by reversing it, never by editing it.',
-    { glPostingId: line.glPostingId }
+    { glPostingId: live.id }
   )
 }
 

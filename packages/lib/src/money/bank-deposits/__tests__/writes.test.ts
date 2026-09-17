@@ -31,6 +31,7 @@ const h = vi.hoisted(() => ({
   updated: [] as Array<{ recordId: string; values: Record<string, unknown> }>,
   archived: [] as string[],
   postedEntries: [] as Array<Record<string, unknown>>,
+  postedSources: [] as Array<Record<string, unknown>[]>,
   /** Every step, in order, so "read under the lock, inside the transaction" is assertable. */
   calls: [] as string[],
   /** The `db` handle `readPaymentsByIds` was called with - the tx one, or the outer one. */
@@ -96,6 +97,7 @@ vi.mock('../../../postings/post-entry', async () => {
     LEDGER_CURRENCY: actual.LEDGER_CURRENCY,
     postEntry: async (_db: unknown, options: Record<string, unknown>) => {
       h.postedEntries.push(options.entry as Record<string, unknown>)
+      h.postedSources.push(options.sources as Record<string, unknown>[])
       return h.postResult
     },
   }
@@ -103,6 +105,16 @@ vi.mock('../../../postings/post-entry', async () => {
 
 vi.mock('../../../postings/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
+}))
+
+vi.mock('../../../postings/list-postings', () => ({
+  listPostingsForSource: async () => {
+    const glPostingId = (h.deposit as { glPostingId?: string } | null)?.glPostingId
+    return {
+      isErr: () => false,
+      value: glPostingId ? [{ id: glPostingId, status: 'posted', docNumber: null }] : [],
+    }
+  },
 }))
 
 import type { Database } from '@auxx/database'
@@ -211,6 +223,7 @@ beforeEach(() => {
   h.updated = []
   h.archived = []
   h.postedEntries = []
+  h.postedSources = []
   h.calls = []
   h.readWith = []
   h.bankAccount = bankAccount()
@@ -362,6 +375,7 @@ describe('createBankDeposit posts one cash line', () => {
       payment({ paymentId: 'pay_1', amountMinor: 100_00 }),
       payment({ paymentId: 'pay_2', recordId: 'def_payment:pay_2', amountMinor: 250_00 }),
     ]
+    h.deposit = deposit({ totalMinor: 350_00, payments: h.payments })
     await createBankDeposit(db, { ...input, paymentIds: ['pay_1', 'pay_2'] })
 
     expect(h.created[0]?.values).toMatchObject({
@@ -372,7 +386,14 @@ describe('createBankDeposit posts one cash line', () => {
     })
     const links = h.updated.filter((u) => 'payment_bank_deposit' in u.values)
     expect(links.map((u) => u.recordId)).toEqual(['def_payment:pay_1', 'def_payment:pay_2'])
-    expect(h.updated.some((u) => u.values.bank_deposit_gl_posting_id === 'glp_1')).toBe(true)
+    // No stamp write any more (TARGET §1) - the ledger card reads
+    // `listPostingsForSource`, and the subject/member links are on the posting.
+    expect(h.updated.some((u) => 'bank_deposit_gl_posting_id' in u.values)).toBe(false)
+    expect(h.postedSources[0]).toEqual([
+      { sourceKind: 'bank_deposit', sourceId: 'dep_1', linkRole: 'subject' },
+      { sourceKind: 'payment', sourceId: 'pay_1', linkRole: 'member' },
+      { sourceKind: 'payment', sourceId: 'pay_2', linkRole: 'member' },
+    ])
   })
 
   it('deduplicates a payment id sent twice rather than double counting it', async () => {

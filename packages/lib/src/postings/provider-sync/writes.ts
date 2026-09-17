@@ -65,10 +65,10 @@ export interface PostProviderSyncEntryInput {
 export interface ProviderSyncEntryOutcome {
   /**
    * `'already_posted'` is a SUCCESS, and it is the ordinary answer on a
-   * re-read: `periodKey` is their transaction id, so the claim index over
-   * `(organizationId, postingType, periodKey, revision)` already holds this
-   * transaction and converging on it is exactly what §7.1 asks for. It is why
-   * this needs no new uniqueness constraint and no new table (§0.3).
+   * re-read: the subject is their own transaction id (scoped by tenant), so
+   * the `GlPostingSource` claim already holds this transaction and converging
+   * on it is exactly what §7.1 asks for. It is why this needs no new
+   * uniqueness constraint and no new table (§0.3).
    */
   status: 'written' | 'already_posted'
   glPostingId: string
@@ -141,6 +141,18 @@ export async function postProviderSyncEntry(
     actorUserId,
     memo,
     lock,
+    mode: 'post',
+    // Step 2 retargets this to the mirror (TARGET §2); for now the subject is
+    // their own transaction id, scoped by tenant so two connected companies
+    // never contend on one claim.
+    sources: [
+      {
+        sourceKind: 'provider_transaction',
+        sourceId: entry.txnId,
+        occurrence: providerTenantId ?? 'default',
+        linkRole: 'subject',
+      },
+    ],
   })
 
   if (!isPosted(result)) {

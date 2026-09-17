@@ -13,8 +13,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   listFailedExports: vi.fn(),
   verifyBooksBalance: vi.fn(),
-  countUnpostedShipments: vi.fn(),
-  countUnpostedCreditMemos: vi.fn(),
   countUnissuedChannelCreditMemos: vi.fn(),
   listBankAccounts: vi.fn(),
   readQueueStats: vi.fn(),
@@ -23,12 +21,6 @@ const h = vi.hoisted(() => ({
 vi.mock('../../verify-balance', () => ({
   listFailedExports: h.listFailedExports,
   verifyBooksBalance: h.verifyBooksBalance,
-}))
-vi.mock('../../../money/fulfillment-posting/reads', () => ({
-  countUnpostedShipments: h.countUnpostedShipments,
-}))
-vi.mock('../../../money/credit-memo-posting', () => ({
-  countUnpostedCreditMemos: h.countUnpostedCreditMemos,
 }))
 vi.mock('../../../money/credit-memos/reads', () => ({
   countUnissuedChannelCreditMemos: h.countUnissuedChannelCreditMemos,
@@ -77,8 +69,6 @@ beforeEach(() => {
   h.verifyBooksBalance.mockResolvedValue(
     ok({ balanced: true, postingsChecked: 0, discrepancies: [] })
   )
-  h.countUnpostedShipments.mockResolvedValue(ok(0))
-  h.countUnpostedCreditMemos.mockResolvedValue(ok(0))
   h.countUnissuedChannelCreditMemos.mockResolvedValue(0)
   h.listBankAccounts.mockResolvedValue(ok([]))
   h.readQueueStats.mockResolvedValue(
@@ -131,21 +121,11 @@ describe('the candidate set', () => {
 })
 
 describe('the source completeness check', () => {
-  it('blocks a fulfillment summary whose month still owes shipments', async () => {
-    h.listFailedExports.mockResolvedValue(ok([queueRow({ glPostingId: 'p1' })]))
-    h.countUnpostedShipments.mockResolvedValue(ok(2))
-
-    const report = (await evaluateExportGate(stubDb(), ORG))._unsafeUnwrap()
-
-    const [verdict] = report.verdicts
-    expect(verdict?.status).toBe('block')
-    expect(verdict?.findings.map((finding) => finding.key)).toEqual(['unposted_shipments'])
-    expect(verdict?.message).toBe(
-      'DOC-p1 was not sent: August 2026 still holds work that would change it. ' +
-        '2 shipments are not posted. Post the fulfillments for August 2026 with the posting dialog.'
-    )
-    expect(report.blocked).toBe(1)
-  })
+  // 🛑 A fulfillment posting's only claimed stream, `unposted_shipments`, is
+  // pinned at 0 now that shipments post eagerly (step 1b, TARGET §1) - there is
+  // no batch/effect backlog left for this check to find. So a fulfillment
+  // summary can never block on `source_completeness` any more; only a credit
+  // memo's `draft_channel_memos` stream still can.
 
   it('leaves a manual journal in the same month alone', async () => {
     // 🔑 The whole reason `CLAIMED_SOURCE_STREAMS` exists. A journal somebody
@@ -154,45 +134,42 @@ describe('the source completeness check', () => {
     h.listFailedExports.mockResolvedValue(
       ok([queueRow({ glPostingId: 'p1', postingType: 'manual_journal' })])
     )
-    h.countUnpostedShipments.mockResolvedValue(ok(2))
 
     const report = (await evaluateExportGate(stubDb(), ORG))._unsafeUnwrap()
 
     expect(report.verdicts[0]?.status).toBe('clear')
     expect(report.verdicts[0]?.message).toBe(null)
     // The subledger is never even asked about a month nothing claims.
-    expect(h.countUnpostedShipments).not.toHaveBeenCalled()
+    expect(h.countUnissuedChannelCreditMemos).not.toHaveBeenCalled()
   })
 
-  it('gives a credit memo entry the two memo counts and not the shipment count', async () => {
+  it('blocks a credit memo entry whose month still holds a draft channel memo', async () => {
     h.listFailedExports.mockResolvedValue(
       ok([queueRow({ glPostingId: 'p1', postingType: 'credit_memo' })])
     )
-    h.countUnpostedShipments.mockResolvedValue(ok(5))
     h.countUnissuedChannelCreditMemos.mockResolvedValue(1)
-    h.countUnpostedCreditMemos.mockResolvedValue(ok(3))
 
     const report = (await evaluateExportGate(stubDb(), ORG))._unsafeUnwrap()
 
+    expect(report.verdicts[0]?.status).toBe('block')
     expect(report.verdicts[0]?.findings.map((finding) => finding.key)).toEqual([
       'draft_channel_memos',
-      'unposted_credit_memos',
     ])
   })
 
   it('counts a month once however many postings sit in it, and folds a day key into its month', async () => {
     h.listFailedExports.mockResolvedValue(
       ok([
-        queueRow({ glPostingId: 'p1', periodKey: '2026-08-18' }),
-        queueRow({ glPostingId: 'p2', periodKey: '2026-08-19' }),
-        queueRow({ glPostingId: 'p3', periodKey: '2026-08' }),
+        queueRow({ glPostingId: 'p1', postingType: 'credit_memo', periodKey: '2026-08-18' }),
+        queueRow({ glPostingId: 'p2', postingType: 'credit_memo', periodKey: '2026-08-19' }),
+        queueRow({ glPostingId: 'p3', postingType: 'credit_memo', periodKey: '2026-08' }),
       ])
     )
 
     await evaluateExportGate(stubDb(), ORG)
 
-    expect(h.countUnpostedShipments).toHaveBeenCalledTimes(1)
-    expect(h.countUnpostedShipments).toHaveBeenCalledWith(expect.anything(), {
+    expect(h.countUnissuedChannelCreditMemos).toHaveBeenCalledTimes(1)
+    expect(h.countUnissuedChannelCreditMemos).toHaveBeenCalledWith(expect.anything(), {
       organizationId: ORG,
       month: '2026-08',
     })
@@ -200,26 +177,25 @@ describe('the source completeness check', () => {
 
   it('does not place a payout-keyed posting in a month it cannot be in', async () => {
     h.listFailedExports.mockResolvedValue(
-      ok([queueRow({ glPostingId: 'p1', periodKey: 'po_abc123' })])
+      ok([queueRow({ glPostingId: 'p1', postingType: 'payout', periodKey: 'po_abc123' })])
     )
-    h.countUnpostedShipments.mockResolvedValue(ok(9))
 
     const report = (await evaluateExportGate(stubDb(), ORG))._unsafeUnwrap()
 
     expect(report.verdicts[0]?.status).toBe('clear')
-    expect(h.countUnpostedShipments).not.toHaveBeenCalled()
+    expect(h.countUnissuedChannelCreditMemos).not.toHaveBeenCalled()
   })
 
   it('declares the check unavailable rather than reporting a month with a hole in it', async () => {
-    h.listFailedExports.mockResolvedValue(ok([queueRow({ glPostingId: 'p1' })]))
-    h.countUnpostedShipments.mockResolvedValue(ok(2))
+    h.listFailedExports.mockResolvedValue(
+      ok([queueRow({ glPostingId: 'p1', postingType: 'credit_memo' })])
+    )
     h.countUnissuedChannelCreditMemos.mockRejectedValue(new Error('field cache down'))
 
     const report = (await evaluateExportGate(stubDb(), ORG))._unsafeUnwrap()
 
     expect(report.unavailable).toContain('source_completeness')
-    // 🛑 Fails OPEN. The two shipments are real and still unposted, but a gate
-    // that grounded the queue on a partial answer is a worse outage.
+    // 🛑 Fails OPEN rather than blocking on a partial answer.
     expect(report.verdicts[0]?.status).toBe('clear')
   })
 })

@@ -78,27 +78,6 @@ export interface JournalEntryLine {
 }
 
 /**
- * What the `journal_entry_lines` JSON column actually holds.
- *
- * 🛑 **An OBJECT wrapping the array, never the bare array.** A `FieldValue`
- * write treats a top-level array as a MULTI-VALUE write - one row per element -
- * and `journal_entry_lines` is single-value, so handing it `[lineA, lineB]`
- * fails with "single-value; received 2 values", which
- * `UnifiedCrudHandler.setFieldValues` LOGS and swallows: the update reports
- * success over an entry that is silently line-less. Found by driving the path
- * against a real org, not by a test.
- *
- * ⚠️ This is the INNER shape. The field-value layer wraps every stored JSON in
- * its own `{ v, meta }` envelope (`readEnvelope` in `@auxx/types/field-value`),
- * so the column holds `{ v: { lines: [...] } }`. `parseLines` unwraps both.
- * There is deliberately no version key here: a second `v` nested inside theirs
- * reads as a mistake every time somebody opens the row.
- */
-export interface JournalEntryLinesEnvelope {
-  lines: JournalEntryLine[]
-}
-
-/**
  * One draft, as every read path returns it and the drawer renders it.
  *
  * Nullable almost throughout because these are `FieldValue` rows on an

@@ -82,6 +82,7 @@ import { stampPaymentGatewayLastSettlement } from '../../payment-gateways/writes
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { ACCOUNT_ROLES } from '../../postings/build-entry'
 import { didLedgerAccept } from '../../postings/ledger-accepted'
+import { listPostingsForSource } from '../../postings/list-postings'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { payoutAccountUnmappedResult, postPayoutEntry } from '../../postings/post-payout-entry'
 import { resolveRoles } from '../../postings/resolve-roles'
@@ -281,6 +282,26 @@ interface IngestOutcome {
 }
 
 /**
+ * The payout's current LIVE posting - `posted`, never `reversed` - or `null`.
+ * Read through `listPostingsForSource` (TARGET §1), never the
+ * `payout_gl_posting_id` stamp.
+ */
+async function findLivePayoutPosting(
+  db: Database,
+  organizationId: string,
+  providerPayoutId: string
+): Promise<{ id: string } | null> {
+  const postings = await listPostingsForSource(db, {
+    organizationId,
+    sourceKind: 'payout',
+    sourceId: providerPayoutId,
+  })
+  if (postings.isErr()) return null
+  const live = postings.value.find((posting) => posting.status !== 'reversed')
+  return live ? { id: live.id } : null
+}
+
+/**
  * Raise (or find) the record for one payout, and post its entry when the money
  * has actually landed.
  *
@@ -302,8 +323,9 @@ async function ingestOne(
   // idempotency key (brief 27 §6.4) and what the record is stamped with.
   const existing = await findPayoutByGatewayId(db, organizationId, providerPayoutId, rail.id)
   // 🛑 Already posted is a SUCCESS and a full stop. The sync is a poll; this is
-  // the branch every steady-state run takes.
-  if (existing?.glPostingId) {
+  // the branch every steady-state run takes. Read through `listPostingsForSource`
+  // (TARGET §1), never the `payout_gl_posting_id` stamp.
+  if (await findLivePayoutPosting(db, organizationId, providerPayoutId)) {
     return { created: false, posted: false, alreadyPosted: true }
   }
 
@@ -447,7 +469,6 @@ async function ingestOne(
     // since been confirmed must not keep showing the blocker banner.
     payout_blocked_reason: null,
     payout_destination_mismatch: destinationMismatch,
-    ...(post.glPostingId ? { payout_gl_posting_id: post.glPostingId } : {}),
   })
 
   // The watermark (brief 27 §6.5), advanced AFTER the entry is in the ledger

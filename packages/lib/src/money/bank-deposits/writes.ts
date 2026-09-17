@@ -49,6 +49,7 @@ import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { ACCOUNT_ROLES, buildEntry } from '../../postings/build-entry'
 import { loadChartAccountsById } from '../../postings/chart-accounts'
 import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
+import { listPostingsForSource } from '../../postings/list-postings'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { LEDGER_CURRENCY, postEntry } from '../../postings/post-entry'
 import type { PostResult } from '../../postings/types'
@@ -336,6 +337,15 @@ export async function createBankDeposit(
           actorUserId,
           lock,
           memo: reference ? `Deposit slip ${reference}` : undefined,
+          mode: 'post',
+          sources: [
+            { sourceKind: BANK_DEPOSIT_SOURCE_TYPE, sourceId: depositId, linkRole: 'subject' },
+            ...deposit.payments.map((payment) => ({
+              sourceKind: 'payment',
+              sourceId: payment.paymentId,
+              linkRole: 'member' as const,
+            })),
+          ],
         })
       }
 
@@ -348,11 +358,6 @@ export async function createBankDeposit(
           error: post.error,
         })
         return { deposit: { ...deposit, payments: [] }, post }
-      }
-
-      if (post.glPostingId) {
-        const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-        await crud.update(deposit.recordId, { bank_deposit_gl_posting_id: post.glPostingId })
       }
 
       // 🛑 Only when the entry actually posted. `not_enabled`/`not_connected`
@@ -528,6 +533,26 @@ async function rollbackDeposit(
 }
 
 /**
+ * The deposit's current LIVE posting - `posted`, never `reversed` - or `null`.
+ * Read through `listPostingsForSource` (TARGET §1), never the
+ * `bank_deposit_gl_posting_id` stamp.
+ */
+async function findLiveBankDepositPosting(
+  db: Database,
+  organizationId: string,
+  depositId: string
+): Promise<{ id: string } | null> {
+  const postings = await listPostingsForSource(db, {
+    organizationId,
+    sourceKind: BANK_DEPOSIT_SOURCE_TYPE,
+    sourceId: depositId,
+  })
+  if (postings.isErr()) return null
+  const live = postings.value.find((posting) => posting.status !== 'reversed')
+  return live ? { id: live.id } : null
+}
+
+/**
  * Match a deposit to the bank statement line that shows it: `cleared`,
  * `clearedAt`, `bankTransactionId`.
  *
@@ -621,12 +646,13 @@ export async function updateBankDeposit(
       const values: Record<string, unknown> = {}
       if (depositDate !== undefined && depositDate !== deposit.depositDate) {
         assertIsoDate(depositDate, 'Deposit date')
-        if (deposit.glPostingId) {
+        const live = await findLiveBankDepositPosting(db, organizationId, depositId)
+        if (live) {
           throw new ConflictError(
             `Deposit ${deposit.number ?? depositId} has already posted, so its date is the ` +
               'accounting date of an immutable entry. Reverse the posting and regroup to ' +
               'change it.',
-            { glPostingId: deposit.glPostingId }
+            { glPostingId: live.id }
           )
         }
         values.bank_deposit_date = depositDate
@@ -635,7 +661,8 @@ export async function updateBankDeposit(
         if (!bankAccountId.trim()) {
           throw new BadRequestError('A deposit must name the bank account the money lands in')
         }
-        if (deposit.glPostingId) {
+        const live = await findLiveBankDepositPosting(db, organizationId, depositId)
+        if (live) {
           const label = deposit.bankAccountGlAccountId
             ? await describeDebitAccount(db, organizationId, deposit.bankAccountGlAccountId)
             : 'its bank account'
@@ -643,7 +670,7 @@ export async function updateBankDeposit(
             `Deposit ${deposit.number ?? depositId} has already posted to ${label}, and that ` +
               'account is the debit leg of an immutable entry. Reverse the posting and regroup ' +
               'to bank it elsewhere.',
-            { glPostingId: deposit.glPostingId }
+            { glPostingId: live.id }
           )
         }
         // Only reachable before the entry posts, so the id has nothing frozen
@@ -719,12 +746,13 @@ export async function unlinkPaymentsFromDeposit(
           { bankTransactionId: deposit.bankTransactionId ?? '' }
         )
       }
-      if (deposit.glPostingId) {
+      const live = await findLiveBankDepositPosting(db, organizationId, depositId)
+      if (live) {
         throw new ConflictError(
           `Deposit ${deposit.number ?? depositId} has already posted. Reverse entry ` +
-            `${deposit.glPostingId} before releasing its payments - unlinking them now would ` +
+            `${live.id} before releasing its payments - unlinking them now would ` +
             'leave the entry in the books and let the same money be banked twice.',
-          { glPostingId: deposit.glPostingId }
+          { glPostingId: live.id }
         )
       }
 
