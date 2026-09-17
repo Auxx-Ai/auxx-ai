@@ -1,22 +1,21 @@
 // packages/lib/src/money/orders/__tests__/fulfill.test.ts
 //
-// `fulfillOrder` after entity migration 153
-// (`plans/money/tasks/55-shipment-lines.md` §6.1): the `fulfillment` record and
-// the status flip are written inside one transaction via
-// `money/fulfillments/writes.ts`'s `createFulfillment`, the entry posts AFTER
-// the transaction commits, and a refused post is undone by DELETING the
-// record and restoring the status - never by patching a JSON cell.
+// `fulfillOrder` after step 1b (TARGET §1): the `fulfillment` record and the
+// status flip are written inside one transaction via
+// `money/fulfillments/writes.ts`'s `createFulfillment`, and the entry posts
+// right after the transaction commits through `postEntry` directly - there is
+// no more accounting-work capture, no acceptance queue and no stamp write.
+// A refused post retains the shipment; inventory relief runs regardless.
 //
 // `money/fulfillments` is mocked wholesale here: this file is about
-// `fulfillOrder`'s own orchestration (what it creates, what it stamps, what it
-// rolls back and when), not about the record read/write mechanics, which have
+// `fulfillOrder`'s own orchestration (what it creates, what it posts, what it
+// retains and when), not about the record read/write mechanics, which have
 // their own tests under `money/fulfillments/__tests__`.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   order: {} as Record<string, unknown>,
-  captured: vi.fn(),
   events: [] as string[],
   postResult: { status: 'posted', glPostingId: 'glp_1', docNumber: 'AUXX-FUL-ORD0012F1' } as {
     status: string
@@ -24,6 +23,8 @@ const h = vi.hoisted(() => ({
     docNumber?: string
     error?: string
   },
+  postCalls: [] as Array<Record<string, unknown>>,
+  scope: {} as Record<string, unknown>,
   updated: [] as Array<{ recordId: string; values: Record<string, unknown> }>,
   created: [] as Array<Record<string, unknown>>,
   createResult: {
@@ -31,8 +32,6 @@ const h = vi.hoisted(() => ({
     recordId: 'fulfillment:ful_1',
     lineInstanceIds: ['fl_1'],
   },
-  deleted: [] as Array<{ fulfillmentInstanceId: string }>,
-  stamped: [] as Array<{ fulfillmentInstanceId: string; patch: Record<string, unknown> }>,
   isAccountingEnabled: vi.fn(async () => true),
   /** What `buildFulfillmentEntry` was handed, so the per-line tax is assertable. */
   built: [] as Array<{ shippedLines: readonly unknown[] }>,
@@ -46,36 +45,28 @@ vi.mock('../../../postings/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
 
-vi.mock('../reads', async () => {
-  const actual = await vi.importActual<typeof import('../reads')>('../reads')
-  const { ok } = await import('neverthrow')
-  return {
-    ...actual,
-    readOrderForFulfillment: async () => ok(h.order),
-  }
-})
+// Neither mock reaches its real module (no `importActual`): the real
+// `../reads` and `../../fulfillments` graphs both terminate in
+// `UnifiedCrudHandler`, whose own real dependency chain reaches
+// `field-values/field-value-mutations.ts` - unrelated, heavy, and exactly
+// what mocking the boundary here exists to avoid pulling in.
+vi.mock('../reads', () => ({
+  readOrderForFulfillment: async () => {
+    const { ok } = await import('neverthrow')
+    return ok(h.order)
+  },
+}))
 
-vi.mock('../../fulfillments', async () => {
-  const actual = await vi.importActual<typeof import('../../fulfillments')>('../../fulfillments')
-  return {
-    // Pure and unmocked: it is what turns `order.number` into the `name` the
-    // create call carries, and the naming convention is worth asserting on.
-    defaultFulfillmentName: actual.defaultFulfillmentName,
-    createFulfillment: async (_db: unknown, input: Record<string, unknown>) => {
-      h.created.push(input)
-      return h.createResult
-    },
-    deleteFulfillment: async (_db: unknown, params: { fulfillmentInstanceId: string }) => {
-      h.deleted.push(params)
-    },
-    stampFulfillmentPosting: async (
-      _db: unknown,
-      params: { fulfillmentInstanceId: string; patch: Record<string, unknown> }
-    ) => {
-      h.stamped.push({ fulfillmentInstanceId: params.fulfillmentInstanceId, patch: params.patch })
-    },
-  }
-})
+vi.mock('../../fulfillments', () => ({
+  // The naming convention is worth asserting on, so it is reproduced here
+  // rather than imported - see `client.ts`'s real one-liner.
+  defaultFulfillmentName: (orderNumber: string | null, sequence: number) =>
+    orderNumber ? `${orderNumber}-F${sequence}` : `Shipment ${sequence}`,
+  createFulfillment: async (_db: unknown, input: Record<string, unknown>) => {
+    h.created.push(input)
+    return h.createResult
+  },
+}))
 
 vi.mock('../../../postings/build-fulfillment-entry', async (importOriginal) => {
   // `computeShipmentTotals` stays REAL: the not-enabled path calls it directly
@@ -113,30 +104,24 @@ vi.mock('../../../postings/build-fulfillment-entry', async (importOriginal) => {
 
 vi.mock('../../../postings/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
-  postEntry: async () => h.postResult,
+  postEntry: async (_db: unknown, options: Record<string, unknown>) => {
+    h.events.push('post')
+    h.postCalls.push(options)
+    return h.postResult
+  },
   previewEntry: async () => ({ lines: [] }),
+}))
+
+vi.mock('../../../postings/reverse-entry', () => ({ reverseEntry: vi.fn() }))
+vi.mock('../../../postings/list-postings', () => ({ listPostingsForSource: vi.fn() }))
+
+vi.mock('../../customer-money/reads', () => ({
+  readOrderSourceScope: async () => h.scope,
 }))
 
 vi.mock('../../../postings/accounting-commit-lock', () => ({
   withAccountingCommitLock: async () => {
     h.events.push('lock')
-  },
-}))
-vi.mock('../../fulfillment-posting/work', () => ({
-  captureFulfillmentAccountingWorkInTx: async () => {
-    h.events.push('capture')
-    h.captured()
-  },
-}))
-vi.mock('../../fulfillment-posting/run', () => ({
-  acceptFulfillmentWorkGroup: async () => {
-    h.events.push('accept')
-    if (!h.postResult.glPostingId) throw new Error(h.postResult.error)
-    return {
-      status: 'accepted',
-      glPostingId: h.postResult.glPostingId,
-      docNumber: h.postResult.docNumber,
-    }
   },
 }))
 vi.mock('../../../resources/crud/tx-write-scope', () => ({
@@ -213,7 +198,8 @@ const input = {
 
 beforeEach(() => {
   h.events = []
-  h.captured.mockClear()
+  h.postCalls = []
+  h.scope = {}
   h.order = {
     orderId: 'ord_1',
     recordId: 'def_order:ord_1',
@@ -239,12 +225,12 @@ beforeEach(() => {
     ],
     nextSequence: 1,
     shippingOwed: true,
+    contactInstanceId: 'contact_1',
+    taxLines: [],
   }
   h.postResult = { status: 'posted', glPostingId: 'glp_1', docNumber: 'AUXX-FUL-ORD0012F1' }
   h.updated = []
   h.created = []
-  h.deleted = []
-  h.stamped = []
   h.built = []
   h.relieved = []
   h.reliefResult = null
@@ -275,10 +261,44 @@ describe('fulfillOrder', () => {
     expect(statusWrite?.values.order_fulfillment_status).toBe('partial')
   })
 
-  it('captures before commit and accepts after buffered notifications flush', async () => {
+  it('locks and commits before posting - the entry posts right after the write', async () => {
     await fulfillOrder(stubDb(), input)
-    expect(h.events).toEqual(['lock', 'capture', 'commit', 'flush', 'accept'])
-    expect(h.stamped).toEqual([])
+    expect(h.events).toEqual(['lock', 'commit', 'flush', 'post'])
+  })
+
+  it('posts subject/parent/counterparty sources, storeId from the order scope, and no rail', async () => {
+    h.scope = { store: 'fsa_1' }
+    await fulfillOrder(stubDb(), input)
+
+    expect(h.postCalls).toHaveLength(1)
+    const call = h.postCalls[0]!
+    expect(call.mode).toBe('post')
+    expect(call.storeId).toBe('fsa_1')
+    // D11: a native shipment debits accounts_receivable, never a gateway's
+    // clearing account, so it never carries a rail.
+    expect(call.railId).toBeNull()
+    expect(call.sources).toEqual([
+      { sourceKind: 'fulfillment', sourceId: 'ful_1', linkRole: 'subject' },
+      { sourceKind: 'order', sourceId: 'ord_1', linkRole: 'parent' },
+      { sourceKind: 'contact', sourceId: 'contact_1', linkRole: 'counterparty' },
+    ])
+  })
+
+  it('omits the counterparty source when the order has no contact', async () => {
+    h.order.contactInstanceId = null
+    await fulfillOrder(stubDb(), input)
+
+    const call = h.postCalls[0]!
+    expect(call.sources).toEqual([
+      { sourceKind: 'fulfillment', sourceId: 'ful_1', linkRole: 'subject' },
+      { sourceKind: 'order', sourceId: 'ord_1', linkRole: 'parent' },
+    ])
+  })
+
+  it('resolves a null storeId for the manual bucket or an ambiguous scope', async () => {
+    h.scope = { store: null }
+    await fulfillOrder(stubDb(), input)
+    expect(h.postCalls[0]?.storeId).toBeNull()
   })
 
   it('returns the fulfillment it created, settled with the posting identity', async () => {
@@ -389,7 +409,7 @@ describe('fulfillOrder', () => {
     })
 
     it('relieves the actual shipment when bookkeeping refuses', async () => {
-      h.postResult = { status: 'blocked', error: 'Period locked' }
+      h.postResult = { status: 'period_closed', error: 'Period locked' }
       await fulfillOrder(stubDb(), input)
       expect(h.relieved).toHaveLength(1)
     })
@@ -406,33 +426,31 @@ describe('fulfillOrder', () => {
 
   describe('when the ledger refuses the post', () => {
     beforeEach(() => {
-      h.postResult = { status: 'blocked', error: 'Period locked' }
+      h.postResult = { status: 'period_closed', error: 'Period locked' }
     })
 
-    it('retains the fulfillment and durable accounting work', async () => {
+    it('retains the fulfillment - a refusal never rolls back the shipment', async () => {
       await fulfillOrder(stubDb(), input)
-      expect(h.deleted).toEqual([])
-      expect(h.captured).toHaveBeenCalledOnce()
+      expect(h.created).toHaveLength(1)
     })
 
     it('keeps the operational order status for the recorded shipment', async () => {
       await fulfillOrder(stubDb(), input)
 
       const statusWrites = h.updated.filter((write) => 'order_fulfillment_status' in write.values)
-      // One write from the create transaction (-> 'partial'), one from the
-      // rollback's compensating transaction (-> back to 'unfulfilled').
       expect(statusWrites.at(-1)?.values.order_fulfillment_status).toBe('partial')
     })
 
-    it('never stamps a posting that never happened', async () => {
-      await fulfillOrder(stubDb(), input)
-      expect(h.stamped).toHaveLength(0)
+    it('never posts a doc number that never happened', async () => {
+      const result = await fulfillOrder(stubDb(), input)
+      expect(result._unsafeUnwrap().fulfillment.glPosting).toBeNull()
+      expect(result._unsafeUnwrap().fulfillment.docNumber).toBeNull()
     })
 
     it('returns ok with the refusal on `post`, not an Err', async () => {
       const result = await fulfillOrder(stubDb(), input)
       expect(result.isOk()).toBe(true)
-      expect(result._unsafeUnwrap().post.status).toBe('error')
+      expect(result._unsafeUnwrap().post.status).toBe('period_closed')
     })
   })
 
@@ -441,19 +459,18 @@ describe('fulfillOrder', () => {
       h.isAccountingEnabled.mockResolvedValue(false)
     })
 
-    it('still creates the fulfillment record, using computeShipmentTotals directly', async () => {
+    it('still creates the fulfillment record, using computeShipmentTotals directly, and never posts', async () => {
       const result = await fulfillOrder(stubDb(), input)
 
       expect(result.isOk()).toBe(true)
       expect(h.created).toHaveLength(1)
-      // The real builder mock above was never called for this org.
-      expect(h.captured).toHaveBeenCalledOnce()
+      expect(h.postCalls).toHaveLength(0)
       expect(result._unsafeUnwrap().post.status).toBe('not_enabled')
     })
 
     it('does not roll back - `not_enabled` is an expected outcome, not a refusal', async () => {
-      await fulfillOrder(stubDb(), input)
-      expect(h.deleted).toHaveLength(0)
+      const result = await fulfillOrder(stubDb(), input)
+      expect(result.isOk()).toBe(true)
     })
   })
 

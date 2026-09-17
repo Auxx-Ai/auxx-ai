@@ -46,10 +46,6 @@
  */
 
 import { UnprocessableEntityError } from '../errors'
-import type {
-  FulfillmentRecognitionAllocation,
-  FulfillmentRecognitionTaxComponent,
-} from '../money/fulfillment-posting/types'
 import { ACCOUNT_ROLES, type AccountRole, buildEntry } from './build-entry'
 import { DOC_NUMBER_MAX_LENGTH } from './doc-number'
 import type { JurisdictionTaxLine } from './split-tax-by-jurisdiction'
@@ -452,6 +448,26 @@ export interface FulfillmentShippedLine {
   taxMinor?: number
   /** For the line memo. Never a lookup key. */
   name?: string
+}
+
+/** One conserved tax component share for a recognition event. */
+export interface FulfillmentRecognitionTaxComponent {
+  componentKey: string
+  amountMinor: number
+  jurisdiction: string | null
+  collector: 'merchant' | 'marketplace'
+  remitter: 'merchant' | 'marketplace'
+  withholdingEvidenceId: string | null
+}
+
+/** One shipment's frozen deposit, receivable and newly recognized tax split. */
+export interface FulfillmentRecognitionAllocation {
+  /** Helper event amount, including pretax shipment revenue and new tax. */
+  amountMinor: number
+  depositMinor: number
+  receivableMinor: number
+  taxMinor: number
+  historyHash: string
 }
 
 export interface BuildFulfillmentEntryInput {

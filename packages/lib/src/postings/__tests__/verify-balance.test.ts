@@ -16,38 +16,31 @@
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// The completeness half's three subledger counts. Mocked because they read
-// `FieldValue` through the org cache and this file's stub answers every query
-// with the same rows; what is under test here is that the sweep CARRIES them,
-// not how they are computed. They are only reached when a month is asked for.
+// The completeness half's one remaining subledger count - draft channel
+// credit memos. Mocked because it reads `FieldValue` through the org cache
+// and this file's stub answers every query with the same rows; what is under
+// test here is that the sweep CARRIES it, not how it is computed. Only
+// reached when a month is asked for.
+//
+// `unpostedShipments` and `unpostedCreditMemos` carry no count of their own
+// any more - both avenues post eagerly now (step 1b, TARGET §1), so there is
+// no batch/effect backlog left to read, and `verify-balance.ts` returns them
+// as `null` unconditionally.
 const h = vi.hoisted(() => ({
-  countUnpostedShipments:
-    vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<unknown>>(),
   countUnissuedChannelCreditMemos:
     vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<number>>(),
-  countUnpostedCreditMemos:
-    vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<unknown>>(),
 }))
 
-vi.mock('../../money/fulfillment-posting/reads', () => ({
-  countUnpostedShipments: h.countUnpostedShipments,
-}))
 vi.mock('../../money/credit-memos/reads', () => ({
   countUnissuedChannelCreditMemos: h.countUnissuedChannelCreditMemos,
 }))
-vi.mock('../../money/credit-memo-posting', () => ({
-  countUnpostedCreditMemos: h.countUnpostedCreditMemos,
-}))
 
-import { err, ok } from 'neverthrow'
 import { BadRequestError } from '../../errors'
 import { listFailedExports, verifyBooksBalance } from '../verify-balance'
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.countUnpostedShipments.mockResolvedValue(ok(0))
   h.countUnissuedChannelCreditMemos.mockResolvedValue(0)
-  h.countUnpostedCreditMemos.mockResolvedValue(ok(0))
 })
 
 const ORG = 'org_1'
@@ -592,40 +585,31 @@ describe('verifyBooksBalance completeness', () => {
     expect(report.unpostedShipments).toBeNull()
     expect(report.unissuedChannelCreditMemos).toBeNull()
     expect(report.unpostedCreditMemos).toBeNull()
-    expect(h.countUnpostedShipments).not.toHaveBeenCalled()
     expect(h.countUnissuedChannelCreditMemos).not.toHaveBeenCalled()
-    expect(h.countUnpostedCreditMemos).not.toHaveBeenCalled()
   })
 
-  it('carries all three counts for the month it was asked about', async () => {
-    h.countUnpostedShipments.mockResolvedValue(ok(7))
+  it('carries the draft count for the month it was asked about; the other two stay null', async () => {
+    // `unpostedShipments` and `unpostedCreditMemos` carry no count of their
+    // own any more (step 1b, TARGET §1) - both avenues post eagerly, so
+    // there is no batch/effect backlog left to read.
     h.countUnissuedChannelCreditMemos.mockResolvedValue(2)
-    h.countUnpostedCreditMemos.mockResolvedValue(ok(5))
 
     const report = (await verifyBooksBalance(stubDb([]), ORG, { month: '2026-08' }))._unsafeUnwrap()
 
     expect(report.month).toBe('2026-08')
-    expect(report.unpostedShipments).toBe(7)
+    expect(report.unpostedShipments).toBeNull()
     expect(report.unissuedChannelCreditMemos).toBe(2)
-    // 25 §9.1: the issued memo whose entry was never written. A different
-    // question from the draft count above it, and neither covers the other.
-    expect(report.unpostedCreditMemos).toBe(5)
-    expect(h.countUnpostedShipments).toHaveBeenCalledWith(expect.anything(), {
-      organizationId: ORG,
-      month: '2026-08',
-    })
-    expect(h.countUnpostedCreditMemos).toHaveBeenCalledWith(expect.anything(), {
+    expect(report.unpostedCreditMemos).toBeNull()
+    expect(h.countUnissuedChannelCreditMemos).toHaveBeenCalledWith(expect.anything(), {
       organizationId: ORG,
       month: '2026-08',
     })
   })
 
-  it('keeps the balance answer when a count fails, and reports the count as null', async () => {
+  it('keeps the balance answer when the draft count fails, and reports it as null', async () => {
     // ⚠️ Losing the report that proves the books tie, in order to report the one
     // that says they might be short, is the wrong trade in both directions.
-    h.countUnpostedShipments.mockResolvedValue(err(new Error('the read is broken')))
-    h.countUnpostedCreditMemos.mockResolvedValue(err(new Error('so is the netting read')))
-    h.countUnissuedChannelCreditMemos.mockRejectedValue(new Error('so is the other one'))
+    h.countUnissuedChannelCreditMemos.mockRejectedValue(new Error('the read is broken'))
 
     const result = await verifyBooksBalance(
       stubDb([

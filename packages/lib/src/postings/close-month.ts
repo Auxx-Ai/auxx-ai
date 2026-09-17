@@ -89,9 +89,7 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { AuxxError, UnprocessableEntityError } from '../errors'
-import { countUnpostedCreditMemos } from '../money/credit-memo-posting'
 import { countUnissuedChannelCreditMemos } from '../money/credit-memos/reads'
-import { countUnpostedShipments } from '../money/fulfillment-posting/reads'
 import {
   type BuiltMonthEndInventoryDraft,
   buildMonthEndInventoryEntry,
@@ -229,6 +227,8 @@ export async function postMonthEnd(
       assertions: draft.assertions,
       actorUserId,
       memo,
+      mode: 'post',
+      sources: [{ sourceKind: 'month_end', sourceId: periodKey, linkRole: 'subject' }],
     })
   } catch (error) {
     // `postEntry` documents that it never throws. This guard is here so that
@@ -333,32 +333,15 @@ async function classifyIncompleteRevenue(
   organizationId: string,
   periodKey: string
 ): Promise<CloseRefusal | null> {
-  let shipments = 0
+  // `shipments` and `unpostedMemos` are pinned at 0 rather than counted: both
+  // avenues post eagerly now (step 1b, TARGET §1), so there is no batch/effect
+  // backlog left to count. TODO(step-1b): recompute from live drafts once the
+  // per-avenue `accounting.autoPost` setting lands and a shipment or memo can
+  // sit unposted again by choice rather than by accident.
+  const shipments = 0
+  const unpostedMemos = 0
   let memos = 0
-  let unpostedMemos = 0
   try {
-    const counted = await countUnpostedShipments(db, { organizationId, month: periodKey })
-    if (counted.isErr()) {
-      logger.error('Could not count unposted shipments for the close', {
-        organizationId,
-        periodKey,
-        error: counted.error.message,
-      })
-    } else {
-      shipments = counted.value
-    }
-    // Asked BEFORE the draft count, which is the one read here that can throw:
-    // a failure over there must not silently take this answer with it.
-    const countedMemos = await countUnpostedCreditMemos(db, { organizationId, month: periodKey })
-    if (countedMemos.isErr()) {
-      logger.error('Could not count unposted credit memos for the close', {
-        organizationId,
-        periodKey,
-        error: countedMemos.error.message,
-      })
-    } else {
-      unpostedMemos = countedMemos.value
-    }
     memos = await countUnissuedChannelCreditMemos(db, { organizationId, month: periodKey })
   } catch (error) {
     logger.error('Could not check the month for unposted revenue', {

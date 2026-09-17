@@ -35,9 +35,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../errors'
-import { countUnpostedCreditMemos } from '../money/credit-memo-posting'
 import { countUnissuedChannelCreditMemos } from '../money/credit-memos/reads'
-import { countUnpostedShipments } from '../money/fulfillment-posting/reads'
 import { compareMonths, periodMonth } from './periods'
 import type {
   BooksBalanceDiscrepancy,
@@ -230,16 +228,17 @@ async function countIncompleteRevenue(
   }
 
   try {
-    const shipments = await countUnpostedShipments(db, { organizationId, month })
-    // Asked BEFORE the draft count, which is the one read here that can throw:
-    // a failure over there must not silently take this answer with it.
-    const unposted = await countUnpostedCreditMemos(db, { organizationId, month })
+    // `unpostedShipments` and `unpostedCreditMemos` are `null` - unavailable,
+    // not zero - now that both avenues post eagerly (step 1b, TARGET §1): the
+    // batch/effect backlog this used to count no longer exists. TODO(step-1b):
+    // recompute from live drafts once the per-avenue `accounting.autoPost`
+    // setting lands.
     const memos = await countUnissuedChannelCreditMemos(db, { organizationId, month })
     return {
       month,
-      unpostedShipments: shipments.isErr() ? null : shipments.value,
+      unpostedShipments: null,
       unissuedChannelCreditMemos: memos,
-      unpostedCreditMemos: unposted.isErr() ? null : unposted.value,
+      unpostedCreditMemos: null,
     }
   } catch (error) {
     logger.error('Failed to count what the month still owes the ledger', {

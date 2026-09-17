@@ -270,15 +270,17 @@ async function runFulfillmentReliefForSync(
 }
 
 /**
- * Pass 6: enqueue the automatic fulfillment posting run, and relieve
- * inventory, when - and only when - this sync's manifest shows a fulfillment
- * (or fulfillment line) record arriving.
+ * Pass 6: relieve inventory when - and only when - this sync's manifest shows
+ * a fulfillment (or fulfillment line) record arriving.
  *
- * **Never throws**, matching every other pass in this module. The posting
- * trigger and the relief run are independent business decisions on
- * independent lanes, so each gets its OWN try/catch: a failure enqueuing the
- * posting run must not stop inventory from being relieved, and a relief
- * failure must not stop revenue from being posted.
+ * **Never throws**, matching every other pass in this module.
+ *
+ * 🛑 The posting half of this pass is gone (step 1b, TARGET §1): a native
+ * shipment now posts inside `money/orders/fulfill.ts`'s own write, and there
+ * is no batch/effect lane left for a connector-written fulfillment to be
+ * swept into. A fulfillment a sync writes directly - the Shopify connector's
+ * own door - does not yet post anything from this pass; that gap is owed to
+ * whichever avenue wires the connector write path onto `postEntry` next.
  */
 export async function fulfillmentPostingTriggerPass(
   db: Database,
@@ -286,25 +288,6 @@ export async function fulfillmentPostingTriggerPass(
   manifest: SyncChangeManifest,
   resolveDef: DefEntityTypeResolver
 ): Promise<void> {
-  try {
-    const arrived = await fulfillmentsArrivedThisSync(manifest, resolveDef)
-    if (arrived) {
-      const { autoPostFulfillmentsAfterSync } = await import(
-        '../../../money/fulfillment-posting/auto'
-      )
-      await autoPostFulfillmentsAfterSync(db, organizationId)
-
-      logger.info('integrity fulfillment posting trigger pass: fulfillments arrived, enqueued', {
-        organizationId,
-      })
-    }
-  } catch (error) {
-    logger.error('integrity fulfillment posting trigger pass failed', {
-      organizationId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
-
   try {
     await runFulfillmentReliefForSync(db, organizationId, manifest, resolveDef)
   } catch (error) {

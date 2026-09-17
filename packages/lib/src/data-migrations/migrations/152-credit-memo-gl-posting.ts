@@ -5,7 +5,6 @@ import { createScopedLogger } from '@auxx/logger'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import { and, desc, eq, isNull, ne } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
-import { CREDIT_MEMO_GL_POSTING_ATTRIBUTE } from '../../money/credit-memo-posting/types'
 import { CREDIT_MEMO_SOURCE_TYPE } from '../../postings/build-credit-memo-entry'
 import type { ResourceField } from '../../resources/registry/field-types'
 import { CREDIT_MEMO_FIELDS } from '../../resources/registry/resources/credit-memo-fields'
@@ -15,6 +14,14 @@ import type { PerOrgMigration, PerOrgMigrationResult } from '../per-org'
 const logger = createScopedLogger('entity-migrations:152')
 
 const CREDIT_MEMO_ENTITY_TYPE = 'credit_memo'
+
+/**
+ * Inlined rather than imported from `money/credit-memo-posting/types` -
+ * that module is deleted (step 1b, TARGET §1: the stamp field goes with it).
+ * A data migration's job is to describe what it already applied, so the
+ * literal it provisioned stays here as a historical constant.
+ */
+const CREDIT_MEMO_GL_POSTING_ATTRIBUTE = 'credit_memo_gl_posting'
 
 /**
  * The registry KEY this migration provisions.

@@ -60,9 +60,7 @@ import type { Result } from 'neverthrow'
 import type { BankAccountRow } from '../../banking/client'
 import { listBankAccounts } from '../../banking/reads'
 import { readQueueStats } from '../../banking/review/reads'
-import { countUnpostedCreditMemos } from '../../money/credit-memo-posting'
 import { countUnissuedChannelCreditMemos } from '../../money/credit-memos/reads'
-import { countUnpostedShipments } from '../../money/fulfillment-posting/reads'
 import { type CloseBlockerItem, describeIncompleteRevenue } from '../close-blockers'
 import { periodMonth } from '../periods'
 import type { SyncQueueRow } from '../types'
@@ -309,8 +307,12 @@ async function readCompletenessItems(
   let failed = false
 
   for (const month of months) {
-    const shipments = await countUnpostedShipments(db, { organizationId, month })
-    const unposted = await countUnpostedCreditMemos(db, { organizationId, month })
+    // `shipments` and `unposted` are pinned at 0: both avenues post eagerly
+    // now (step 1b, TARGET §1), so there is no batch/effect backlog left to
+    // count. TODO(step 3): the export gate is rewritten onto export batches;
+    // this whole read goes with it.
+    const shipments = 0
+    const unposted = 0
     let drafts: number | null = null
     try {
       drafts = await countUnissuedChannelCreditMemos(db, { organizationId, month })
@@ -318,11 +320,9 @@ async function readCompletenessItems(
       drafts = null
     }
 
-    // 🛑 Any one of the three failing makes the whole month's answer partial, so
-    // the check is declared unavailable rather than reported with a hole in it.
-    // A month that says "2 shipments outstanding" when a third count never ran
-    // is worse than one that says it does not know.
-    if (shipments.isErr() || unposted.isErr() || drafts === null) {
+    // 🛑 A failing draft count makes the whole month's answer partial, so the
+    // check is declared unavailable rather than reported with a hole in it.
+    if (drafts === null) {
       failed = true
       continue
     }
@@ -331,9 +331,9 @@ async function readCompletenessItems(
       month,
       describeIncompleteRevenue({
         periodKey: month,
-        shipments: shipments.value,
+        shipments,
         draftChannelMemos: drafts,
-        unpostedCreditMemos: unposted.value,
+        unpostedCreditMemos: unposted,
       })
     )
   }

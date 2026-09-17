@@ -11,15 +11,6 @@ import type { FieldOptions } from '../custom-fields/field-options'
 // copy of the three destinations would let a form offer a value the resolver
 // does not recognise, which falls back silently.
 import { PAYMENT_ROUTE_SETTING_OPTIONS } from '../money/bank-deposits/route'
-// The same one-list rule for the two default groupings and the credit memo mode
-// (accounting brief 28 §3.1), and for `accounting.fulfillmentPosting`: each value
-// list is declared once, beside the union its reader reads, rather than restated
-// here. The lists live in their own client-safe files because the READERS (the
-// two `auto.ts` modules) enqueue BullMQ jobs and this catalog is imported by the
-// settings form.
-import { BATCH_POSTING_GROUPING_SETTING_OPTIONS } from '../money/batch-posting/setting-options'
-import { CREDIT_MEMO_POSTING_SETTING_OPTIONS } from '../money/credit-memo-posting/setting-options'
-import { FULFILLMENT_POSTING_SETTING_OPTIONS } from '../money/fulfillment-posting/setting-options'
 // Same one-list rule for the fiscal year. `reports/fiscal-year.ts` is pure and
 // already client-safe (`postings/client.ts` exports `fiscalYearStart`), so the
 // months live beside the function that consumes them rather than in a split-out
@@ -988,78 +979,12 @@ export const SETTINGS_CATALOG = {
       're-frames the reports; it rewrites no posted entry.',
   },
 
-  // ── When a shipment reaches the ledger (49 §2.4, §8.4 decision 1) ──────────
-  //
-  // A MODE, not an opening balance: it changes what happens NEXT and rewrites
-  // nothing that has already posted, so it stays editable after the first claim
-  // and is deliberately absent from the freeze the two rows above carry.
-  //
-  // ⚠️ `manual` is the default because `auto` posts without anybody looking. The
-  // preview in the posting dialog is the only review step this feature has
-  // (there is no draft posting - `GlPosting` rows are born posted), so choosing
-  // `auto` is choosing to skip the review, and that has to be a decision
-  // somebody makes rather than one they acquire by upgrading. It is also the
-  // safe direction on a first connector sync, which can carry a year of history.
-  'accounting.fulfillmentPosting': {
-    scope: 'GENERAL',
-    access: 'org',
-    fieldType: 'SINGLE_SELECT',
-    defaultValue: 'manual',
-    options: { options: [...FULFILLMENT_POSTING_SETTING_OPTIONS] },
-    description:
-      'When a shipment becomes a ledger entry. Automatic posts one fulfillment entry per ship ' +
-      'day after every connector sync; manual waits for the posting dialog, where the preview ' +
-      'is the review.',
-  },
-  // The grouping the fulfillment posting dialog opens on (accounting brief 28
-  // §3.1). A default, not a rule: the dialog may change it for one run, and the
-  // `auto` lane above posts per day regardless. Editable at any time for the
-  // same reason the mode is.
-  'accounting.fulfillmentGrouping': {
-    scope: 'GENERAL',
-    access: 'org',
-    fieldType: 'SINGLE_SELECT',
-    defaultValue: 'day',
-    options: { options: [...BATCH_POSTING_GROUPING_SETTING_OPTIONS] },
-    description:
-      'How many shipments one fulfillment entry summarises when the posting dialog opens. ' +
-      'The dialog can change it for a single run.',
-  },
-
-  // When a channel credit memo reaches the ledger (accounting brief 28 §3.1).
-  //
-  // Native memos post on issue and are not governed by this. Channel memos
-  // arrive from a connector as drafts and post only through the bulk dialog, or
-  // - with `auto` - through the same run after every sync, which also ISSUES
-  // those drafts. `manual` is the default for the reason the fulfillment mode
-  // gives, and one more: `auto` here flips document state, not only the ledger.
-  // Changing it runs nothing; it takes effect at the next sync.
-  'accounting.creditMemoPosting': {
-    scope: 'GENERAL',
-    access: 'org',
-    fieldType: 'SINGLE_SELECT',
-    defaultValue: 'manual',
-    options: { options: [...CREDIT_MEMO_POSTING_SETTING_OPTIONS] },
-    description:
-      'When a channel credit memo becomes a ledger entry. Automatic issues and posts one ' +
-      'credit memo entry per issue day after every connector sync; manual waits for the ' +
-      'posting dialog, where the preview is the review. Native memos post on issue either way.',
-  },
-  // `month`, not `day` like fulfillments: brief 25 §6 chose one entry per
-  // month for channel memos and the dialog opened on month before this setting
-  // existed (brief 28 §10 decision 6). The `auto` lane posts per day regardless
-  // of this value; a month entry re-minted after every sync would be one
-  // attempt-suffixed entry per sync.
-  'accounting.creditMemoGrouping': {
-    scope: 'GENERAL',
-    access: 'org',
-    fieldType: 'SINGLE_SELECT',
-    defaultValue: 'month',
-    options: { options: [...BATCH_POSTING_GROUPING_SETTING_OPTIONS] },
-    description:
-      'How many credit memos one entry summarises when the posting dialog opens. The dialog ' +
-      'can change it for a single run.',
-  },
+  // `accounting.fulfillmentPosting`, `creditMemoPosting`, `fulfillmentGrouping`
+  // and `creditMemoGrouping` are gone (step 1b, TARGET §1): the batch/effect
+  // lane they gated is deleted and both avenues post eagerly now.
+  // TODO(step-1b): add `accounting.autoPost.<avenue>` for `fulfillment`,
+  // `invoice`, `receipt`, `refund`, `creditMemo`, `expenseBill` (checkbox,
+  // default off) per MIGRATION.md step 1b.
 
   // The frozen auxx.ai snapshot: the December 31 physical count valued at
   // CPA-approved costs. This is the valuation layer that intentionally uncosted

@@ -1,8 +1,10 @@
 // packages/lib/src/money/fulfillments/__tests__/writes.test.ts
 //
-// `createFulfillment` / `stampFulfillmentPosting` / `deleteFulfillment`: the
-// three writes entity migration 153 put in place of the old JSON cell's
-// whole-cell replace (`plans/money/tasks/55-shipment-lines.md` §6.1).
+// `createFulfillment` / `deleteFulfillment`: the two writes entity migration
+// 153 put in place of the old JSON cell's whole-cell replace
+// (`plans/money/tasks/55-shipment-lines.md` §6.1). A fulfillment's posting is
+// never stamped on the record (TARGET §1) - `listPostingsForSource` is the
+// read.
 // `UnifiedCrudHandler` is mocked so these assert on WHAT is written - the
 // values bag, the RecordId shape linking a line to its parent - rather than on
 // the CRUD engine's own behaviour, which has its own tests.
@@ -43,7 +45,7 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
   },
 }))
 
-import { createFulfillment, deleteFulfillment, stampFulfillmentPosting } from '../writes'
+import { createFulfillment, deleteFulfillment } from '../writes'
 
 const DB = {} as Database
 
@@ -120,47 +122,6 @@ describe('createFulfillment', () => {
   it('throws naming the line when a line fails to create', async () => {
     h.bulkCreateResult = { created: [], errors: [{ index: 0, error: 'boom' }] }
     await expect(createFulfillment(DB, baseInput)).rejects.toThrow(/line 1.*boom/i)
-  })
-})
-
-describe('stampFulfillmentPosting', () => {
-  it('writes glPosting and docNumber as an ordinary field update', async () => {
-    await stampFulfillmentPosting(DB, {
-      organizationId: 'org_1',
-      actorUserId: 'user_1',
-      fulfillmentInstanceId: 'ful_1',
-      patch: { glPosting: 'gp_1', docNumber: 'AUXX-FUL-1' },
-    })
-    expect(h.updateCalls).toEqual([
-      {
-        recordId: 'fulfillment:ful_1',
-        values: { fulfillment_gl_posting: 'gp_1', fulfillment_doc_number: 'AUXX-FUL-1' },
-      },
-    ])
-  })
-
-  it('carries recomputed totals only when the caller supplies them', async () => {
-    await stampFulfillmentPosting(DB, {
-      organizationId: 'org_1',
-      actorUserId: 'user_1',
-      fulfillmentInstanceId: 'ful_1',
-      patch: { glPosting: 'gp_1', docNumber: null, totalMinor: 900, subtotalMinor: 800 },
-    })
-    expect(h.updateCalls[0]?.values).toMatchObject({
-      fulfillment_total: 900,
-      fulfillment_subtotal: 800,
-    })
-  })
-
-  it('leaves totals untouched when the patch does not carry them', async () => {
-    await stampFulfillmentPosting(DB, {
-      organizationId: 'org_1',
-      actorUserId: 'user_1',
-      fulfillmentInstanceId: 'ful_1',
-      patch: { glPosting: null, docNumber: null },
-    })
-    expect(h.updateCalls[0]?.values).not.toHaveProperty('fulfillment_total')
-    expect(h.updateCalls[0]?.values).not.toHaveProperty('fulfillment_subtotal')
   })
 })
 

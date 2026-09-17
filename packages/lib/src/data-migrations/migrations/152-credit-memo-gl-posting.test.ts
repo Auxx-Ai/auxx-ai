@@ -68,7 +68,9 @@ vi.mock('../../seed/entity-helpers', async (importOriginal) => ({
 const { migration152CreditMemoGlPosting, planStamps } = await import('./152-credit-memo-gl-posting')
 const { ALL_DATA_MIGRATIONS, PER_ORG_MIGRATIONS } = await import('../registry')
 const { CREDIT_MEMO_FIELDS } = await import('../../resources/registry/resources/credit-memo-fields')
-const { CREDIT_MEMO_GL_POSTING_ATTRIBUTE } = await import('../../money/credit-memo-posting/types')
+// Inlined, not imported: `money/credit-memo-posting/types` is deleted (step
+// 1b, TARGET §1). The migration itself keeps the literal it provisioned.
+const CREDIT_MEMO_GL_POSTING_ATTRIBUTE = 'credit_memo_gl_posting'
 
 const MIGRATION_ID = '152-credit-memo-gl-posting'
 const ORG = 'org_1'

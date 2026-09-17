@@ -23,7 +23,7 @@ import type { Database, Transaction } from '@auxx/database'
 import { UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
-import type { CreatedFulfillment, CreateFulfillmentInput, FulfillmentPostingStamp } from './types'
+import type { CreatedFulfillment, CreateFulfillmentInput } from './types'
 
 /**
  * Create one `fulfillment` record and its `fulfillment_line` children.
@@ -85,31 +85,6 @@ export async function createFulfillment(
     recordId,
     lineInstanceIds: createdLines.map((line) => line.id),
   }
-}
-
-/** Optional display projection. Accounting eligibility and subsequent arithmetic read accepted effects. */
-export async function stampFulfillmentPosting(
-  db: Database | Transaction,
-  params: {
-    organizationId: string
-    /** Who the write is attributed to. The `systemUser` for an unattended run. */
-    actorUserId: string
-    fulfillmentInstanceId: string
-    patch: FulfillmentPostingStamp
-  }
-): Promise<void> {
-  const { organizationId, actorUserId, fulfillmentInstanceId, patch } = params
-  const handler = new UnifiedCrudHandler(organizationId, actorUserId, db)
-  const recordId = toRecordId('fulfillment', fulfillmentInstanceId)
-
-  const values: Record<string, unknown> = {
-    fulfillment_gl_posting: patch.glPosting,
-    fulfillment_doc_number: patch.docNumber,
-  }
-  if (patch.totalMinor !== undefined) values.fulfillment_total = patch.totalMinor
-  if (patch.subtotalMinor !== undefined) values.fulfillment_subtotal = patch.subtotalMinor
-
-  await handler.update(recordId, values)
 }
 
 /** Delete an unaccepted fulfillment through the guarded resource boundary. */

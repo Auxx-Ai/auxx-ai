@@ -10,11 +10,10 @@
  * ⚠️ **The `fulfillment` / `fulfillment_line` record shapes and their reads and
  * writes live in `money/fulfillments`, not here** (entity migration 153,
  * `plans/money/tasks/55-shipment-lines.md` §6) - `Fulfillment`, `FulfillmentLine`,
- * `readFulfillmentsForOrder(s)`, `createFulfillment`, `stampFulfillmentPosting`
- * and `deleteFulfillment` all moved there when `order_fulfillments` stopped
- * being a JSON cell. `stampFulfillment` and `parseFulfillments`, which used to
- * export from here, no longer exist - stamping is now an ordinary field write
- * (`stampFulfillmentPosting`) and there is no JSON to parse.
+ * `readFulfillmentsForOrder(s)`, `createFulfillment` and `deleteFulfillment` all
+ * moved there when `order_fulfillments` stopped being a JSON cell. A
+ * fulfillment's posting is never stamped on the record; it is read back
+ * through `listPostingsForSource` (`postings/list-postings.ts`, TARGET §1).
  */
 
 export {
@@ -34,6 +33,7 @@ export {
   type FulfillOrderResult,
   fulfillOrder,
   previewFulfillment,
+  reverseFulfillmentPosting,
 } from './fulfill'
 export {
   loadOrderFieldContext,

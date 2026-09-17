@@ -27,7 +27,6 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import type { CustomFieldEntity } from '@auxx/database/types'
 import { and, eq, inArray } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../errors'
-import { acceptedFulfillmentEffectBasisSchema } from '../../postings/effect-types'
 import { toRecordId } from '../../resources/resource-id'
 import { financialEntityDefId, financialFields } from './field-context'
 import type { Fulfillment, FulfillmentLine, FulfillmentStatusValue } from './types'
@@ -46,8 +45,6 @@ const FULFILLMENT_ATTRIBUTES = [
   'fulfillment_subtotal',
   'fulfillment_total',
   'fulfillment_shipping_recognised',
-  'fulfillment_gl_posting',
-  'fulfillment_doc_number',
   'fulfillment_recorded_at',
 ] as const
 
@@ -283,37 +280,33 @@ export async function readFulfillmentsForOrders(
     }
   }
 
-  // Accepted membership, including a reversed journal, remains the financial authority.
-  const accepted = await db
+  // "Posted" is "holds a live subject claim" (TARGET §1) - never a stamp field.
+  // One bulk read of `GlPostingSource` joined to `GlPosting`, the same two
+  // tables `listPostingsForSource` reads, shaped for many fulfillments at once
+  // rather than one call per id.
+  const subjects = await db
     .select({
-      fulfillmentId: schema.AccountingWork.entityInstanceId,
-      basis: schema.AccountingEffect.acceptedBasis,
-      glPostingId: schema.AccountingEffect.glPostingId,
+      fulfillmentId: schema.GlPostingSource.sourceId,
+      glPostingId: schema.GlPosting.id,
       docNumber: schema.GlPosting.docNumber,
     })
-    .from(schema.AccountingEffect)
-    .innerJoin(
-      schema.AccountingWork,
-      and(
-        eq(schema.AccountingWork.id, schema.AccountingEffect.workId),
-        eq(schema.AccountingWork.organizationId, organizationId),
-        eq(schema.AccountingWork.operation, 'original')
-      )
-    )
+    .from(schema.GlPostingSource)
     .innerJoin(
       schema.GlPosting,
       and(
-        eq(schema.GlPosting.id, schema.AccountingEffect.glPostingId),
+        eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId),
         eq(schema.GlPosting.organizationId, organizationId)
       )
     )
     .where(
       and(
-        eq(schema.AccountingEffect.organizationId, organizationId),
-        inArray(schema.AccountingWork.entityInstanceId, fulfillmentIds)
+        eq(schema.GlPostingSource.organizationId, organizationId),
+        eq(schema.GlPostingSource.sourceKind, 'fulfillment'),
+        eq(schema.GlPostingSource.linkRole, 'subject'),
+        inArray(schema.GlPostingSource.sourceId, fulfillmentIds)
       )
     )
-  const acceptedById = new Map(accepted.map((row) => [row.fulfillmentId, row]))
+  const postedById = new Map(subjects.map((row) => [row.fulfillmentId, row]))
 
   for (const fulfillmentId of fulfillmentIds) {
     const bucket = fulfillmentRows.get(fulfillmentId)
@@ -345,28 +338,14 @@ export async function readFulfillmentsForOrders(
       subtotalMinor: cell('fulfillment_subtotal')?.valueNumber ?? 0,
       totalMinor: cell('fulfillment_total')?.valueNumber ?? 0,
       shippingRecognised: cell('fulfillment_shipping_recognised')?.valueBoolean ?? false,
-      glPosting: cell('fulfillment_gl_posting')?.valueText ?? null,
-      docNumber: cell('fulfillment_doc_number')?.valueText ?? null,
+      // "Posted" is "holds a live subject claim" - never a stamp field on the
+      // record (TARGET §1). `null` on both means no subject `GlPostingSource`
+      // row exists, whether because nothing was posted yet or because a
+      // reversal freed the claim and nothing has reposted.
+      glPosting: postedById.get(fulfillmentId)?.glPostingId ?? null,
+      docNumber: postedById.get(fulfillmentId)?.docNumber ?? null,
       recordedAt: cell('fulfillment_recorded_at')?.valueDate ?? '',
       lines,
-    }
-
-    const effect = acceptedById.get(fulfillmentId)
-    if (effect) {
-      const basis = acceptedFulfillmentEffectBasisSchema.parse(effect.basis)
-      const productKeys = new Set(
-        basis.accountResolution
-          .filter((line) => line.accountRole === 'revenue_product')
-          .map((line) => line.lineKey)
-      )
-      fulfillment.subtotalMinor = basis.contribution
-        .filter((line) => line.direction === 'credit' && productKeys.has(line.lineKey))
-        .reduce((total, line) => total + Number(line.amountMinor), 0)
-      fulfillment.totalMinor = basis.contribution
-        .filter((line) => line.direction === 'debit')
-        .reduce((total, line) => total + Number(line.amountMinor), 0)
-      fulfillment.glPosting = effect.glPostingId
-      fulfillment.docNumber = effect.docNumber
     }
 
     const list = byOrder.get(orderId)

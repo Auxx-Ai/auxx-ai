@@ -183,21 +183,3 @@ export interface CreatedFulfillment {
   /** One id per input line, in the same order as {@link CreateFulfillmentInput.lines}. */
   lineInstanceIds: string[]
 }
-
-/**
- * What a posting may stamp onto a fulfillment record after the ledger accepts
- * it. Everything else on the row is history and stays exactly as it was
- * written.
- */
-export interface FulfillmentPostingStamp {
-  glPosting: string | null
-  docNumber: string | null
-  /**
-   * The recognised total, when the posting that took this fulfillment computed
-   * a different one from the row's own - the bulk poster's group builder
-   * re-derives every shipment's amounts, and the record has to name what was
-   * actually posted rather than what a single-order builder once thought.
-   */
-  totalMinor?: number
-  subtotalMinor?: number
-}
