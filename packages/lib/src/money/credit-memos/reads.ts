@@ -558,39 +558,22 @@ export async function sumReservedCreditMemoRefunds(
  * Every refund carrying this memo, oldest first, whatever its status - both
  * rails in one list.
  *
- * 🛑 A canonical `MoneyRefundSettlement` and a legacy refund
- * `PaymentTransaction` can describe the SAME money, so an adopted legacy row is
- * dropped here rather than at each caller. Adoption is an explicit evidence
- * record; never deduplicate two movements merely because their amounts match.
- * `origin` is what keeps `sumReservedCreditMemoRefunds` from counting the two
- * rails twice.
+ * 🛑 Accounting migration step 0 dropped the legacy refund `PaymentTransaction`
+ * lane; the canonical `MoneyRefundSettlement` is the only rail now.
+ * `readAdoptedLegacyRefundIds` still guards against re-counting a HISTORICAL
+ * legacy refund an evidence record already adopted into a money movement.
  */
 export async function listCreditMemoRefunds(
   db: Database | Transaction,
   organizationId: string,
   creditMemoId: string
 ): Promise<CreditMemoRefundRow[]> {
-  const [legacy, settlements] = await Promise.all([
-    db.query.PaymentTransaction.findMany({
-      where: and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        eq(schema.PaymentTransaction.creditMemoInstanceId, creditMemoId),
-        eq(schema.PaymentTransaction.kind, 'refund')
-      ),
-      orderBy: asc(schema.PaymentTransaction.createdAt),
-    }),
-    db.query.MoneyRefundSettlement.findMany({
-      where: and(
-        eq(schema.MoneyRefundSettlement.organizationId, organizationId),
-        eq(schema.MoneyRefundSettlement.customerCreditMemoInstanceId, creditMemoId)
-      ),
-    }),
-  ])
-  const adoptedLegacyIds = await readAdoptedLegacyRefundIds(
-    db,
-    organizationId,
-    settlements.map((row) => row.refundTransactionId)
-  )
+  const settlements = await db.query.MoneyRefundSettlement.findMany({
+    where: and(
+      eq(schema.MoneyRefundSettlement.organizationId, organizationId),
+      eq(schema.MoneyRefundSettlement.customerCreditMemoInstanceId, creditMemoId)
+    ),
+  })
   const money = settlements.length
     ? await db.query.MoneyTransaction.findMany({
         where: and(
@@ -620,56 +603,7 @@ export async function listCreditMemoRefunds(
       createdAt: movement.createdAt.toISOString(),
     })
   }
-  for (const row of legacy) {
-    if (adoptedLegacyIds.has(row.id)) continue
-    rows.push({
-      transactionId: row.id,
-      origin: 'payment_transaction',
-      provider: row.provider,
-      status: row.status,
-      amountMinor: row.amount,
-      method: row.method ?? null,
-      reference: row.reference ?? null,
-      createdAt: row.createdAt.toISOString(),
-    })
-  }
   return rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-}
-
-/** Legacy refund ids an adoption record says canonical money already represents. */
-async function readAdoptedLegacyRefundIds(
-  db: Database | Transaction,
-  organizationId: string,
-  refundTransactionIds: string[]
-): Promise<Set<string>> {
-  const adopted = new Set<string>()
-  if (!refundTransactionIds.length) return adopted
-  const evidence = await db
-    .select({ payload: schema.FinancialSourceObservation.payload })
-    .from(schema.MoneySourceLink)
-    .innerJoin(
-      schema.FinancialSourceObservation,
-      and(
-        eq(schema.FinancialSourceObservation.organizationId, schema.MoneySourceLink.organizationId),
-        eq(schema.FinancialSourceObservation.sourceObjectId, schema.MoneySourceLink.sourceObjectId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.MoneySourceLink.organizationId, organizationId),
-        inArray(schema.MoneySourceLink.moneyTransactionId, refundTransactionIds)
-      )
-    )
-  for (const { payload } of evidence) {
-    if (
-      payload &&
-      typeof payload === 'object' &&
-      'legacyTransactionId' in payload &&
-      typeof payload.legacyTransactionId === 'string'
-    )
-      adopted.add(payload.legacyTransactionId)
-  }
-  return adopted
 }
 
 /** Integer minor units: the `succeeded` refunds carrying this memo, summed. */

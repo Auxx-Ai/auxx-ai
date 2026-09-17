@@ -1,10 +1,10 @@
-// packages/lib/src/money/payments/partial.test.ts
+// packages/lib/src/money/customer-money/partial-payment.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { resolvePartialPaymentBounds } from './partial'
+import { resolvePartialPaymentBounds } from './partial-payment'
 
 // Amounts are integer cents (the MQ1 storage convention) — e.g. 10_000 = $100.00. Only the
-// pure `resolvePartialPaymentBounds` is unit-tested here (mirrors fees.test.ts's
+// pure `resolvePartialPaymentBounds` is unit-tested here (mirrors application-fee.test.ts's
 // no-mocking-needed shape).
 
 describe('resolvePartialPaymentBounds', () => {

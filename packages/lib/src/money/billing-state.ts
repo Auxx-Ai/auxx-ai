@@ -7,13 +7,6 @@ import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { batchReadSystemValues, computeWorkOrderBillingProjection } from './billing-projection'
 import { listUninvoicedLines } from './gather'
-import {
-  collectRefundedChargeIds,
-  computeDepositFigures,
-  getAllocationTotalsByTransaction,
-  getContactCreditOnAccount,
-} from './payments/allocation-reads'
-import { listWorkOrderPayments } from './payments/ledger'
 
 const INVOICE_ROW_ATTRS = [
   'invoice_status',
@@ -76,68 +69,58 @@ export async function getWorkOrderBillingState(input: {
 }) {
   const projection = await computeWorkOrderBillingProjection(input)
   const handler = new UnifiedCrudHandler(input.organizationId, input.userId)
-  const [visits, activeVisits, installments, linkedInvoices, payments, uninvoicedLines] =
-    await Promise.all([
-      // All statuses — done visits feed eligibleVisits, the rest feed extra-work enrichment
-      // (plan money/19 §B: the client needs visit status/date to split done vs upcoming extras).
-      database.query.WorkOrderVisit.findMany({
-        where: and(
-          eq(schema.WorkOrderVisit.organizationId, input.organizationId),
-          eq(schema.WorkOrderVisit.workOrderId, input.workOrderInstanceId)
-        ),
-        orderBy: [asc(schema.WorkOrderVisit.startTime)],
-      }),
-      database.query.InvoiceVisitAllocation.findMany({
-        where: and(
-          eq(schema.InvoiceVisitAllocation.organizationId, input.organizationId),
-          eq(schema.InvoiceVisitAllocation.workOrderId, input.workOrderInstanceId),
-          eq(schema.InvoiceVisitAllocation.status, 'active')
-        ),
-      }),
-      database.query.WorkOrderBillingInstallment.findMany({
-        where: and(
-          eq(schema.WorkOrderBillingInstallment.organizationId, input.organizationId),
-          eq(schema.WorkOrderBillingInstallment.workOrderId, input.workOrderInstanceId)
-        ),
-        orderBy: [asc(schema.WorkOrderBillingInstallment.sortOrder)],
-      }),
-      handler.listFiltered({
-        entityDefinitionId: 'invoice',
-        filters: [
-          {
-            id: 'billing-state-invoices',
-            logicalOperator: 'AND',
-            conditions: [
-              {
-                id: 'billing-state-invoices-parent',
-                fieldId: 'invoice:workOrder',
-                operator: 'is',
-                value: toRecordId('work_order', input.workOrderInstanceId),
-              },
-            ],
-          },
-        ],
-        limit: 1000,
-      }),
-      listWorkOrderPayments(input),
-      listUninvoicedLines(input),
-    ])
-  // Deposit-accounting plan 16 §D.1 — held vs applied over the WO's own succeeded deposit
-  // charges (quote provenance). `payments` is already fetched above (`listWorkOrderPayments`)
-  // and includes refund rows, so refunded-charge exclusion is a pure fold — no extra query;
-  // batch the allocation totals for just those rows' ids, never N+1.
-  const depositChargeRows = payments.filter(
-    (row) => row.kind === 'charge' && row.status === 'succeeded' && row.quoteInstanceId != null
-  )
-  const depositAllocationTotals = await getAllocationTotalsByTransaction(
-    input.organizationId,
-    depositChargeRows.map((row) => row.id)
-  )
-  const { depositHeld, depositApplied } = computeDepositFigures(
-    depositChargeRows,
-    depositAllocationTotals,
-    collectRefundedChargeIds(payments)
-  )
+  const [visits, activeVisits, installments, linkedInvoices, uninvoicedLines] = await Promise.all([
+    // All statuses — done visits feed eligibleVisits, the rest feed extra-work enrichment
+    // (plan money/19 §B: the client needs visit status/date to split done vs upcoming extras).
+    database.query.WorkOrderVisit.findMany({
+      where: and(
+        eq(schema.WorkOrderVisit.organizationId, input.organizationId),
+        eq(schema.WorkOrderVisit.workOrderId, input.workOrderInstanceId)
+      ),
+      orderBy: [asc(schema.WorkOrderVisit.startTime)],
+    }),
+    database.query.InvoiceVisitAllocation.findMany({
+      where: and(
+        eq(schema.InvoiceVisitAllocation.organizationId, input.organizationId),
+        eq(schema.InvoiceVisitAllocation.workOrderId, input.workOrderInstanceId),
+        eq(schema.InvoiceVisitAllocation.status, 'active')
+      ),
+    }),
+    database.query.WorkOrderBillingInstallment.findMany({
+      where: and(
+        eq(schema.WorkOrderBillingInstallment.organizationId, input.organizationId),
+        eq(schema.WorkOrderBillingInstallment.workOrderId, input.workOrderInstanceId)
+      ),
+      orderBy: [asc(schema.WorkOrderBillingInstallment.sortOrder)],
+    }),
+    handler.listFiltered({
+      entityDefinitionId: 'invoice',
+      filters: [
+        {
+          id: 'billing-state-invoices',
+          logicalOperator: 'AND',
+          conditions: [
+            {
+              id: 'billing-state-invoices-parent',
+              fieldId: 'invoice:workOrder',
+              operator: 'is',
+              value: toRecordId('work_order', input.workOrderInstanceId),
+            },
+          ],
+        },
+      ],
+      limit: 1000,
+    }),
+    listUninvoicedLines(input),
+  ])
+  // Accounting migration step 0 dropped `PaymentTransaction`, the only source this
+  // cross-invoice payments list and its held/applied deposit figures were ever read
+  // from — quote deposits and a cross-invoice money-model read have no equivalent
+  // yet, so both are empty/zero rather than crashing. Per-invoice payments still
+  // render correctly through the invoice drawer's `listPayments`.
+  const payments: never[] = []
+  const depositHeld = 0
+  const depositApplied = 0
 
   const allocationsByVisit = new Map<string, typeof activeVisits>()
   for (const allocation of activeVisits) {
@@ -262,7 +245,7 @@ export async function getContactBillingOverview(input: {
   // Fixed query count regardless of work-order/invoice counts (plan §4.7): read the projected
   // `work_order_uninvoiced_amount`/`work_order_billing_state` fields the projector already keeps
   // fresh instead of recomputing each work order's ~11-query billing projection here.
-  const [workOrderValuesById, rows, creditOnAccount] = await Promise.all([
+  const [workOrderValuesById, rows] = await Promise.all([
     batchReadSystemValues({
       service: new FieldValueService(input.organizationId, input.userId),
       organizationId: input.organizationId,
@@ -271,10 +254,11 @@ export async function getContactBillingOverview(input: {
       attributes: ['work_order_uninvoiced_amount', 'work_order_billing_state'] as const,
     }),
     invoiceRows({ ...input, invoiceIds: invoices.ids }),
-    // Deposit-accounting plan 16 §D.4 — Σ unallocated remainders of the contact's succeeded
-    // deposit charges, via the new `contactInstanceId` column (a plain query, no FieldValue hops).
-    getContactCreditOnAccount(input.organizationId, input.contactInstanceId),
   ])
+  // Accounting migration step 0 dropped `PaymentTransaction`, the only source this Σ of
+  // unallocated deposit remainders was ever read from — quote deposits have no
+  // money-model equivalent yet, so there is no credit to report.
+  const creditOnAccount = 0
   const activeRows = rows.filter((row) => row.status !== 'void')
   const draftRows = activeRows.filter((row) => row.status === 'draft')
   const now = new Date().toISOString().split('T')[0]!

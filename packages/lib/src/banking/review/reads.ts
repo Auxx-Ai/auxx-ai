@@ -19,7 +19,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, desc, eq, gte, inArray, isNull, lte, or, type SQL, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, lte, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
@@ -536,12 +536,10 @@ export async function listMatchCandidates(
           ? [
               readVendorPaymentCandidates(db, organizationId, dateKey, absMinor, search),
               readVendorBillCandidates(db, organizationId, dateKey, absMinor, search),
-              readTransactionCandidates(db, organizationId, dateKey, absMinor, 'refund', search),
             ]
           : [
               readBankDepositCandidates(db, organizationId, dateKey, absMinor, search),
               readPayoutCandidates(db, organizationId, dateKey, absMinor, transactionId, search),
-              readTransactionCandidates(db, organizationId, dateKey, absMinor, 'charge', search),
             ]
       )
 
@@ -720,8 +718,7 @@ async function describeGlAccount(
  *
  * ⚠️ ISO strings, not `Date`s: `FieldValue.valueDate` is a `timestamp` in
  * `mode: 'string'`, so drizzle compares it as text and handing it a `Date` is a
- * type error rather than a silent coercion. `PaymentTransaction.createdAt` IS a
- * `Date`, which is why {@link windowDates} exists beside this.
+ * type error rather than a silent coercion.
  */
 function windowBounds(dateKey: string, days = CANDIDATE_DAY_WINDOW) {
   const centre = Date.parse(`${dateKey}T00:00:00.000Z`)
@@ -729,12 +726,6 @@ function windowBounds(dateKey: string, days = CANDIDATE_DAY_WINDOW) {
     from: new Date(centre - days * 86_400_000).toISOString(),
     to: new Date(centre + days * 86_400_000 + 86_399_000).toISOString(),
   }
-}
-
-/** {@link windowBounds} as real `Date`s, for the columns that are not strings. */
-function windowDates(dateKey: string, days = CANDIDATE_DAY_WINDOW) {
-  const bounds = windowBounds(dateKey, days)
-  return { from: new Date(bounds.from), to: new Date(bounds.to) }
 }
 
 /** Entity-backed candidates: one generic reader, four attribute sets. */
@@ -1023,94 +1014,6 @@ function readPayoutCandidates(
   )
 }
 
-/**
- * `PaymentTransaction` rows, which is where a customer payment actually lives.
- *
- * 🛑 **The transaction table, never the `payment` entity mirror.** `ledger.ts`
- * mints a mirror per allocation and only for a succeeded charge, so refunds get
- * no mirror at all - a matcher reading the entity would silently be unable to
- * match any money going back out, forever.
- */
-async function readTransactionCandidates(
-  db: Database,
-  organizationId: string,
-  dateKey: string,
-  absMinor: number,
-  kind: 'charge' | 'refund',
-  search?: string
-): Promise<MatchCandidate[]> {
-  const bounds = windowDates(dateKey)
-  const rows = await db
-    .select({
-      id: schema.PaymentTransaction.id,
-      amount: schema.PaymentTransaction.amount,
-      method: schema.PaymentTransaction.method,
-      reference: schema.PaymentTransaction.reference,
-      createdAt: schema.PaymentTransaction.createdAt,
-      // The bank-line pointer is a COLUMN since drizzle 0363; only the
-      // user-picked accounting date is still read out of the blob.
-      bankTransactionId: schema.PaymentTransaction.bankTransactionId,
-      metadata: schema.PaymentTransaction.metadata,
-    })
-    .from(schema.PaymentTransaction)
-    .where(
-      and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        eq(schema.PaymentTransaction.kind, kind),
-        inArray(schema.PaymentTransaction.status, ['succeeded', 'disputed']),
-        search
-          ? or(
-              and(
-                gte(schema.PaymentTransaction.createdAt, bounds.from),
-                lte(schema.PaymentTransaction.createdAt, bounds.to)
-              ),
-              sql`${schema.PaymentTransaction.reference} ILIKE ${`%${search}%`}`
-            )
-          : and(
-              gte(schema.PaymentTransaction.createdAt, bounds.from),
-              lte(schema.PaymentTransaction.createdAt, bounds.to)
-            )
-      )
-    )
-    .limit(200)
-
-  const out: MatchCandidate[] = []
-  for (const row of rows) {
-    const metadata = (row.metadata ?? {}) as { date?: string }
-    // The user-picked (possibly backdated) date rides in `metadata.date`; the
-    // row's `createdAt` is when it was KEYED, which is not the accounting date.
-    // Same rule `postPaymentTransaction` applies when it dates the entry.
-    const candidateDateKey =
-      metadata.date && /^\d{4}-\d{2}-\d{2}$/.test(metadata.date)
-        ? metadata.date
-        : toDateKey(row.createdAt)
-
-    const matchesWindow =
-      isWithinCandidateWindow(dateKey, candidateDateKey) &&
-      isWithinAmountTolerance(absMinor, row.amount)
-    const matchesText =
-      !!search && (row.reference ?? '').toLowerCase().includes(search.toLowerCase())
-    if (!matchesWindow && !matchesText) continue
-
-    out.push({
-      recordType: 'payment_transaction',
-      recordId: row.id,
-      label: `${kind === 'refund' ? 'Refund' : 'Payment'} ${row.reference || row.id.slice(0, 8)}`,
-      secondary: row.method,
-      dateKey: candidateDateKey,
-      amountMinor: Math.abs(row.amount),
-      score: scoreCandidate({
-        bankAbsMinor: absMinor,
-        candidateAbsMinor: row.amount,
-        bankDateKey: dateKey,
-        candidateDateKey,
-      }),
-      matchedToBankTransactionId: row.bankTransactionId ?? null,
-    })
-  }
-  return out
-}
-
 // ── Hydration ───────────────────────────────────────────────────────────────
 
 /**
@@ -1257,7 +1160,6 @@ function toDate(value: string | null | undefined): Date | null {
 function narrowMatchRecordType(value: string | null | undefined): MatchedRecordType | null {
   switch (value) {
     case 'vendor_payment':
-    case 'payment_transaction':
     case 'bank_deposit':
     case 'vendor_bill':
     case 'payout':

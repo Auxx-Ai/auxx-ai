@@ -1,4 +1,4 @@
-// packages/lib/src/money/payments/connect.ts
+// packages/lib/src/money/payouts/stripe-onboarding.ts
 
 import type {
   HostedProvisionCompleteCtx,
@@ -8,17 +8,20 @@ import type {
   HostedProvisionStartResult,
 } from '../../connections/hosted-provision/types'
 import { NotFoundError } from '../../errors'
-import { getPaymentAccount, upsertPaymentAccount } from './account-state'
-import { getStripeConnectClient } from './connect-client'
+import { getPaymentAccount, upsertPaymentAccount } from './stripe-account'
+import { getStripeConnectClient } from './stripe-connect-client'
 
 /**
- * Stripe Connect (Account Links) `hosted-provision` handler — money MP1 §C/§D.2. Creates a
- * Standard-equivalent controller account on first connect (merchant pays Stripe fees, carries
- * payment losses, gets the full dashboard, Stripe collects requirements — 04-payments' "merchant
- * owns disputes/compliance"), then sends the user through hosted Account Links onboarding.
- * `start` is create-or-reuse so a mid-flow `refresh_url` re-mint never provisions a second
- * account. Resolved lazily from `resolveHostedProvisionHandler` — this module must never be
- * statically imported by `connections/*`.
+ * Stripe Connect (Account Links) `hosted-provision` handler. Creates a Standard-equivalent
+ * controller account on first connect (merchant pays Stripe fees, carries payment losses, gets
+ * the full dashboard, Stripe collects requirements), then sends the user through hosted Account
+ * Links onboarding. `start` is create-or-reuse so a mid-flow `refresh_url` re-mint never
+ * provisions a second account. Resolved lazily from `resolveHostedProvisionHandler` — this
+ * module must never be statically imported by `connections/*`.
+ *
+ * Moved out of the legacy `payments/` lane (accounting migration step 0): charge collection is
+ * gone, but the payouts rail (`sources/stripe-connect.ts`) still reads Stripe payout data
+ * through the `PaymentAccount` this handler connects.
  */
 export const stripeConnectHandler: HostedProvisionHandler = {
   landingPath: '/app/dispatch/settings/payments',

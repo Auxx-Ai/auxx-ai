@@ -703,8 +703,8 @@ describe('readAging', () => {
           amountMinor: 2_000,
         }),
       ],
-      // The PaymentTransaction lookup, with no contactInstanceId - unresolvable.
-      [{ id: 'txn_1', contactInstanceId: null, reference: null, kind: 'charge' }],
+      // The MoneyTransaction lookup, with no contactInstanceId - unresolvable.
+      [{ id: 'txn_1', contactInstanceId: null, reference: null, purpose: 'customer_receipt' }],
     ])
 
     const result = await readAging(db, {

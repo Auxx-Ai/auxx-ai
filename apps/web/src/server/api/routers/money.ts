@@ -1,13 +1,12 @@
 // apps/web/src/server/api/routers/money.ts
 
-import type { PaymentTransactionEntity } from '@auxx/database'
-import { database, schema } from '@auxx/database'
 import { listBankAccounts } from '@auxx/lib/banking'
 import { getOrgCache } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { isRecordConnectorManaged } from '@auxx/lib/data-connectors'
 import { renderPreviewQuotePdf } from '@auxx/lib/documents'
 import { NotFoundError } from '@auxx/lib/errors'
+import type { InvoicePaymentRow } from '@auxx/lib/money'
 import {
   acceptInvoiceReceiptAccounting,
   addVisitExtrasToContract,
@@ -24,11 +23,9 @@ import {
   declineQuote,
   deleteInvoice,
   deleteInvoiceLine,
-  deleteManualPayment,
   disconnectPaymentAccount,
   ensureQuoteDocumentPdf,
   fulfillOrder,
-  getAllocationTotalsByTransaction,
   getBankDeposit,
   getContactBillingOverview,
   getInvoiceSchedule,
@@ -40,7 +37,7 @@ import {
   listOrderFulfillmentPostings,
   listPayouts,
   listUndepositedPayments,
-  listWorkOrderPayments,
+  listWorkOrderMoneyPayments,
   markInvoiceSent,
   markQuoteSent,
   PAYOUT_STATUSES,
@@ -54,7 +51,6 @@ import {
   readWriteOffState,
   recomputeTotals,
   recordInvoicePayment,
-  refundTransaction,
   reorderLines,
   runCreditMemoPosting,
   runFulfillmentPosting,
@@ -71,9 +67,9 @@ import {
 import type { CreditMemoPostingGrouping, FulfillmentPostingGrouping } from '@auxx/lib/money/client'
 import { resolvePaymentRoute } from '@auxx/lib/money/client'
 import {
-  adoptNativeStripeMoney,
   listOrderMoneyTransactions,
   postCustomerReceiptAccounting,
+  postCustomerRefundAccounting,
   readOrderMoneyCoverage,
   resolveImportedMoneyReferences,
 } from '@auxx/lib/money/customer-money'
@@ -88,7 +84,6 @@ import {
 } from '@auxx/lib/recurrence'
 import { getOrganizationSetting } from '@auxx/lib/settings'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
-import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 
@@ -138,57 +133,6 @@ const moneyAdminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   capabilities.assert(PermissionKey.dispatchBoardManage)
   return next({ ctx: { capabilities } })
 })
-
-/**
- * Shape a `PaymentTransaction` ledger row for the payments list UI (money MI1 build spec
- * §E.2 row shape) — shared by `listPayments` (per-invoice, invoice-drawer),
- * `listPaymentsForWorkOrder` (cross-invoice, job page), and `listPaymentsForQuote` (quote
- * drawer deposit card) so the row shape can't drift between call sites.
- * `invoiceInstanceId`/`quoteInstanceId`/`workOrderInstanceId` (money MP2 §B.9) let the client
- * tell a "held" deposit (`invoiceInstanceId === null`) apart from an "applied" one.
- *
- * `allocatedAmount` (deposit-accounting plan 16 §D.3) is server-computed by the caller (batched
- * via `getAllocationTotalsByTransaction` — never a per-row query) and passed in rather than
- * read here, so every call site is forced to prove it isn't N+1-ing. `heldAmount` is derived:
- * `max(0, amount - allocatedAmount)` for a succeeded charge (the only rows a deposit can still
- * be "held" on), `0` for anything else (refunds, pending/failed/canceled/disputed charges) —
- * `isDeposit` (`quoteInstanceId != null`) is left for the client to derive, same as today.
- */
-function mapPaymentRow(row: PaymentTransactionEntity, allocatedAmount: number) {
-  const heldAmount =
-    row.kind === 'charge' && row.status === 'succeeded'
-      ? Math.max(0, row.amount - allocatedAmount)
-      : 0
-  return {
-    id: row.id,
-    amount: row.amount,
-    kind: row.kind,
-    status: row.status,
-    date: (row.metadata as { date?: string } | null)?.date ?? row.createdAt.toISOString(),
-    method: row.method,
-    reference: row.reference,
-    note: row.note,
-    provider: row.provider,
-    createdByUserId: row.createdByUserId,
-    stripeRefundId: row.stripeRefundId,
-    refundedTransactionId: row.refundedTransactionId,
-    invoiceInstanceId: row.invoiceInstanceId,
-    quoteInstanceId: row.quoteInstanceId,
-    workOrderInstanceId: row.workOrderInstanceId,
-    allocatedAmount,
-    heldAmount,
-  }
-}
-
-/** Batch-map a list of ledger rows through {@link mapPaymentRow}, fetching every row's
- * allocation total in one query (`getAllocationTotalsByTransaction`) instead of per row. */
-async function mapPaymentRows(organizationId: string, rows: PaymentTransactionEntity[]) {
-  const allocationTotals = await getAllocationTotalsByTransaction(
-    organizationId,
-    rows.map((row) => row.id)
-  )
-  return rows.map((row) => mapPaymentRow(row, allocationTotals.get(row.id) ?? 0))
-}
 
 /**
  * How much the bulk fulfillment posting batches (plans/money/tasks/49 §2.3).
@@ -260,6 +204,18 @@ const creditMemoPostingShape = {
    * silently.
    */
   issueDrafts: z.boolean(),
+}
+
+/** {@link listPayments}'s exact row shape — kept explicit so `listPaymentsForQuote`'s
+ * empty return (quote deposits have no money-model source yet) doesn't infer `never[]`. */
+type PaymentListRow = InvoicePaymentRow & {
+  createdByUserId: null
+  stripeRefundId: null
+  refundedTransactionId: null
+  invoiceInstanceId: string | null
+  quoteInstanceId: null
+  workOrderInstanceId: null
+  heldAmount: number
 }
 
 export const moneyRouter = createTRPCRouter({
@@ -730,12 +686,10 @@ export const moneyRouter = createTRPCRouter({
     }),
 
   /**
-   * Undo a recorded payment.
-   *
-   * 🔑 Two lanes, and the id says which. A legacy `PaymentTransaction` is
-   * deleted outright, as it always was. A money-model receipt is VOIDED — an
+   * Undo a recorded payment. One lane now: a money-model receipt is VOIDED — an
    * immutable, hashed effect cannot be deleted, so the mistake is corrected by
-   * a second, reversing entry (task 54 unit 3).
+   * a second, reversing entry (task 54 unit 3; step 0 of the accounting
+   * migration drops the legacy `PaymentTransaction` delete branch alongside it).
    */
   deletePayment: moneyAdminProcedure
     .input(
@@ -743,24 +697,11 @@ export const moneyRouter = createTRPCRouter({
         transactionId: z.string(),
         /** Carried onto the correction's journal memo. */
         reason: z.string().max(500).optional(),
-        /** Idempotency key for the money lane; ignored by the legacy one. */
+        /** Idempotency key. */
         commandKey: z.string().min(1).max(200).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const legacy = await ctx.db.query.PaymentTransaction.findFirst({
-        where: and(
-          eq(schema.PaymentTransaction.organizationId, ctx.session.organizationId),
-          eq(schema.PaymentTransaction.id, input.transactionId)
-        ),
-        columns: { id: true },
-      })
-      if (legacy)
-        return deleteManualPayment({
-          organizationId: ctx.session.organizationId,
-          userId: ctx.session.user.id,
-          transactionId: input.transactionId,
-        })
       await voidInvoicePayment(ctx.db, {
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
@@ -770,20 +711,22 @@ export const moneyRouter = createTRPCRouter({
       })
     }),
 
+  /**
+   * Post accounting for an already-recorded customer refund `MoneyTransaction`
+   * (accounting migration step 0 — the legacy Stripe-charge `refundTransaction`
+   * is gone). `postCustomerRefundAccounting` only accepts a refund settled
+   * against a credit memo today; a direct, no-credit-memo refund has no
+   * accounting door yet, so this stays unreachable from `listPayments`'s
+   * money-only rows (`payments-list.tsx` never offers Refund for `provider:
+   * 'money'`) until that gap is closed.
+   */
   refundTransaction: moneyAdminProcedure
-    .input(
-      z.object({
-        transactionId: z.string(),
-        /** Integer minor units; absent = everything still refundable on the charge. */
-        amount: z.number().int().positive().optional(),
-      })
-    )
+    .input(z.object({ transactionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      return refundTransaction({
+      return postCustomerRefundAccounting(ctx.db, {
         organizationId: ctx.session.organizationId,
-        userId: ctx.session.user.id,
-        transactionId: input.transactionId,
-        amount: input.amount,
+        moneyTransactionId: input.transactionId,
+        actorUserId: ctx.session.user.id,
       })
     }),
 
@@ -819,36 +762,22 @@ export const moneyRouter = createTRPCRouter({
     .input(z.object({ invoiceRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.invoiceRecordId)
-      const rows = await database.query.PaymentTransaction.findMany({
-        where: and(
-          eq(schema.PaymentTransaction.organizationId, ctx.session.organizationId),
-          eq(schema.PaymentTransaction.invoiceInstanceId, entityInstanceId)
-        ),
-        orderBy: asc(schema.PaymentTransaction.createdAt),
+      // Accounting migration step 0: the money model is the only lane —
+      // `PaymentTransaction` is gone.
+      const money = await listInvoiceMoneyPayments(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        invoiceInstanceId: entityInstanceId,
       })
-      // Task 54: both lanes, until unit 7 drops `PaymentTransaction`. New
-      // payments land in the money model; anything legacy still renders beside
-      // them, and the two id spaces never collide.
-      const [legacy, money] = await Promise.all([
-        mapPaymentRows(ctx.session.organizationId, rows),
-        listInvoiceMoneyPayments(ctx.db, {
-          organizationId: ctx.session.organizationId,
-          invoiceInstanceId: entityInstanceId,
-        }),
-      ])
-      return [
-        ...legacy,
-        ...money.map((row) => ({
-          ...row,
-          createdByUserId: null,
-          stripeRefundId: null,
-          refundedTransactionId: null,
-          invoiceInstanceId: entityInstanceId,
-          quoteInstanceId: null,
-          workOrderInstanceId: null,
-          heldAmount: 0,
-        })),
-      ]
+      return money.map((row) => ({
+        ...row,
+        createdByUserId: null,
+        stripeRefundId: null,
+        refundedTransactionId: null,
+        invoiceInstanceId: entityInstanceId,
+        quoteInstanceId: null,
+        workOrderInstanceId: null,
+        heldAmount: 0,
+      }))
     }),
 
   /**
@@ -862,20 +791,23 @@ export const moneyRouter = createTRPCRouter({
     .input(z.object({ workOrderRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId: workOrderInstanceId } = parseRecordId(input.workOrderRecordId)
-      const rows = await listWorkOrderPayments({
+      // Accounting migration step 0: the money model is the only lane —
+      // `PaymentTransaction` is gone, and with it the held-deposit-with-no-invoice
+      // branch the legacy read had (quote deposits have no money-model source).
+      const rows = await listWorkOrderMoneyPayments(ctx.db, {
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         workOrderInstanceId,
       })
-
-      const mapped = await mapPaymentRows(ctx.session.organizationId, rows)
-      const invoiceRecordIdByRow = new Map(rows.map((row) => [row.id, row.invoiceInstanceId]))
-      return mapped.map((row) => ({
+      return rows.map((row) => ({
         ...row,
-        // Held deposits (money MP2 §B.6/§B.9) have no invoice until settle — null, not a crash.
-        invoiceRecordId: invoiceRecordIdByRow.get(row.id)
-          ? toRecordId('invoice', invoiceRecordIdByRow.get(row.id)!)
-          : null,
+        createdByUserId: null,
+        stripeRefundId: null,
+        refundedTransactionId: null,
+        quoteInstanceId: null,
+        workOrderInstanceId,
+        heldAmount: 0,
+        invoiceRecordId: toRecordId('invoice', row.invoiceInstanceId),
       }))
     }),
 
@@ -887,17 +819,12 @@ export const moneyRouter = createTRPCRouter({
    */
   listPaymentsForQuote: moneyViewProcedure
     .input(z.object({ quoteRecordId: recordIdSchema }))
-    .query(async ({ ctx, input }) => {
-      const { entityInstanceId: quoteInstanceId } = parseRecordId(input.quoteRecordId)
-      const rows = await database.query.PaymentTransaction.findMany({
-        where: and(
-          eq(schema.PaymentTransaction.organizationId, ctx.session.organizationId),
-          eq(schema.PaymentTransaction.quoteInstanceId, quoteInstanceId)
-        ),
-        orderBy: asc(schema.PaymentTransaction.createdAt),
-      })
-
-      return mapPaymentRows(ctx.session.organizationId, rows)
+    .query(async (): Promise<PaymentListRow[]> => {
+      // Accounting migration step 0 dropped `PaymentTransaction`, the only
+      // source this read ever had — quote deposits have no money-model
+      // equivalent yet (no `MoneyTransaction` writer records one). Empty until
+      // that lane is built; the deposit card renders its "no payments" state.
+      return []
     }),
 
   // ─── Send flow (money MQ2 build spec §E.5) ──────────────────────────────
@@ -947,23 +874,6 @@ export const moneyRouter = createTRPCRouter({
     )
     .mutation(({ ctx, input }) =>
       resolveImportedMoneyReferences(ctx.db, {
-        ...input,
-        organizationId: ctx.session.organizationId,
-        actorUserId: ctx.session.userId,
-      })
-    ),
-
-  adoptNativeStripeMoney: permissionProcedure(PermissionKey.ledgerControl)
-    .input(
-      z.object({
-        legacyTransactionId: z.string().min(1),
-        shopifySourceObjectId: z.string().min(1),
-        commandKey: z.string().min(1).max(200),
-        evidence: z.string().trim().min(1).max(4000),
-      })
-    )
-    .mutation(({ ctx, input }) =>
-      adoptNativeStripeMoney(ctx.db, {
         ...input,
         organizationId: ctx.session.organizationId,
         actorUserId: ctx.session.userId,

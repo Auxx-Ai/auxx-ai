@@ -1,8 +1,11 @@
-// packages/lib/src/money/payments/account-state.ts
-// The `PaymentAccount` data layer for money MP1 (07-mp1-build.md §D.4). Functional module (no
-// model class, repo rule) — direct drizzle + thrown `AuxxError`s, matching MI1's `ledger.ts`
-// style. The `stripeConnectHandler` (`connect.ts`) and the `money` router (§L) both compose
-// these — this file is the ONLY writer to the `PaymentAccount` table.
+// packages/lib/src/money/payouts/stripe-account.ts
+// The `PaymentAccount` data layer. Functional module (no model class, repo rule) — direct
+// drizzle + thrown `AuxxError`s. `stripe-onboarding.ts`'s handler and the payouts rail
+// (`sources/stripe-connect.ts`) both compose these — this file is the ONLY writer to the
+// `PaymentAccount` table. Moved out of the legacy `payments/` lane (accounting migration
+// step 0): charge collection is gone, but a connected `PaymentAccount` is still what the
+// payouts rail reads Stripe payout data through, and the money router's Settings › Payments
+// page still connects/disconnects/refreshes it.
 
 import { deleteCredential } from '@auxx/credentials/store'
 import type { PaymentAccountEntity, PaymentAccountInsert } from '@auxx/database'
@@ -10,9 +13,9 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { NotFoundError } from '../../errors'
-import { getStripeConnectClient } from './connect-client'
+import { getStripeConnectClient } from './stripe-connect-client'
 
-const logger = createScopedLogger('money:payments:account-state')
+const logger = createScopedLogger('money:payouts:stripe-account')
 
 /** Fields `upsertPaymentAccount` can create-or-update — all beyond the key are optional. */
 export interface UpsertPaymentAccountInput {
@@ -47,7 +50,7 @@ export async function getPaymentAccount(
  * the fields present on `input` are written — omitted fields are left untouched on an existing
  * row (and fall back to their column default on first insert). Callers: the `stripeConnectHandler`
  * `start` (persists the acct id the moment it's created), `complete`/`onPersisted` (stamps
- * onboarding state + the Credential id), `syncAccountState` (§D.4), and `disconnectPaymentAccount`.
+ * onboarding state + the Credential id), `syncAccountState`, and `disconnectPaymentAccount`.
  */
 export async function upsertPaymentAccount(
   input: UpsertPaymentAccountInput
@@ -77,8 +80,8 @@ export async function upsertPaymentAccount(
 /**
  * Refresh `chargesEnabled`/`detailsSubmitted`/`defaultCurrency` from Stripe (`accounts.retrieve`
  * — platform-level, no `stripeAccount` header needed to look up an account by id). Called by the
- * `hosted-provision` return route, the `account.updated` webhook (§F), and the settings page's
- * "Refresh status" button (§G).
+ * `hosted-provision` return route, the `account.updated` webhook, and the settings page's
+ * "Refresh status" button.
  */
 export async function syncAccountState(
   organizationId: string,
@@ -98,13 +101,13 @@ export async function syncAccountState(
 }
 
 /**
- * Disconnect the org's Stripe account (`money.disconnectPayments`, §L/§C.6): stamps
- * `disconnectedAt` and nulls `credentialId`, deleting the underlying Credential row when one
- * exists. The `acct_…` itself is left alone — it persists at Stripe, and a reconnect re-enters
- * onboarding and finds the same account (`stripeConnectHandler.start`). Note:
- * `PaymentAccount.credentialId` FKs `onDelete: 'set null'`, so a generic connection-delete
- * elsewhere would also null this column — this path additionally stamps `disconnectedAt` and
- * removes the Credential explicitly for the "Disconnect" button's own path.
+ * Disconnect the org's Stripe account (`money.disconnectPayments`): stamps `disconnectedAt` and
+ * nulls `credentialId`, deleting the underlying Credential row when one exists. The `acct_…`
+ * itself is left alone — it persists at Stripe, and a reconnect re-enters onboarding and finds
+ * the same account (`stripeConnectHandler.start`). Note: `PaymentAccount.credentialId` FKs
+ * `onDelete: 'set null'`, so a generic connection-delete elsewhere would also null this column —
+ * this path additionally stamps `disconnectedAt` and removes the Credential explicitly for the
+ * "Disconnect" button's own path.
  */
 export async function disconnectPaymentAccount(
   organizationId: string

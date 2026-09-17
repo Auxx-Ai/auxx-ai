@@ -1,18 +1,21 @@
-// packages/lib/src/money/payments/deposit.ts
+// packages/lib/src/money/quote-deposit.ts
 // Deposit amount math for money MP2 §B.4 (deposits on quote acceptance, pre-payment model).
 // `computeDepositAmount` is pure — no Stripe import, no DB access — same shape as
-// `resolveApplicationFee` (fees.ts) and `computeDiscountAmount` (totals.ts), unit-tested the
-// same way (deposit.test.ts, sibling to fees.test.ts). `resolveQuoteDeposit` is the I/O
-// wrapper that reads the per-quote override (falling back to the org default setting) and
-// feeds it through the pure function — used by the public quote payload (§B.5) and the
-// deposit checkout route (§B.7).
+// `resolveApplicationFee` (payouts/application-fee.ts) and `computeDiscountAmount` (totals.ts),
+// unit-tested the same way. `resolveQuoteDeposit` is the I/O wrapper that reads the per-quote
+// override (falling back to the org default setting) and feeds it through the pure function —
+// used by the public quote payload (§B.5). Moved out of the legacy `payments/` lane (accounting
+// migration step 0): the AMOUNT a quote deposit resolves to is not Stripe-specific and still
+// renders on the public quote page even though quote-deposit Checkout has no money-model
+// equivalent yet.
 
+import type { Database } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
-import { getOrgCache } from '../../cache'
-import { UnifiedCrudHandler } from '../../resources/crud'
-import { getOrganizationSetting } from '../../settings/settings-service'
+import { getOrgCache } from '../cache'
+import { UnifiedCrudHandler } from '../resources/crud'
+import { getOrganizationSetting } from '../settings/settings-service'
 
 /** `quote_deposit_type` / `documents.quote.depositType` values. */
 export type QuoteDepositType = 'none' | 'percent' | 'fixed'
@@ -107,3 +110,19 @@ export async function resolveQuoteDeposit(
     depositAmount: computeDepositAmount(total, resolvedType, depositValue ?? 0),
   }
 }
+
+/**
+ * Apply held quote-deposit charges to a freshly created invoice — a no-op since accounting
+ * migration step 0 dropped `PaymentTransaction`, the only source a held deposit charge was
+ * ever recorded against. Quote deposits have no money-model equivalent yet; kept as a named
+ * door (rather than deleting the call sites in `billing-commands.ts`/`gather.ts`) so a future
+ * money-model deposit lane has one place to wire back in.
+ */
+export async function applyHeldDepositsToInvoice(_params: {
+  organizationId: string
+  userId: string
+  workOrderInstanceId: string
+  invoiceInstanceId: string
+  invoiceTotal: number
+  db?: Database
+}): Promise<void> {}

@@ -1,12 +1,10 @@
 // packages/lib/src/money/convert-quote.ts
 
-import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { toRecordId } from '@auxx/types/resource'
-import { and, eq, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import type { FileValue } from '../field-values/converters'
@@ -89,29 +87,16 @@ export async function findActiveJobForQuote(
  * Stamp succeeded deposit charges for a quote onto its work order (MP2 §B.6). Covers a
  * deposit paid before any work order existed — at auto-convert, at manual convert, or
  * (money plan 20 §C) at accept time when an early-converted job already exists.
- * Idempotent via `isNull(workOrderInstanceId)`. A direct write, not routed through
- * `ledger.ts` — the plan sanctions this as the one exception to that file being the sole
- * PaymentTransaction writer, since it's stamping linkage, not settling money.
+ *
+ * Accounting migration step 0 dropped `PaymentTransaction`, the only source a
+ * quote deposit was ever recorded against — quote deposits have no money-model
+ * equivalent yet, so there is nothing left to stamp.
  */
-export async function stampQuoteDepositsOnWorkOrder(params: {
+export async function stampQuoteDepositsOnWorkOrder(_params: {
   organizationId: string
   quoteInstanceId: string
   workOrderInstanceId: string
-}): Promise<void> {
-  const { organizationId, quoteInstanceId, workOrderInstanceId } = params
-  await database
-    .update(schema.PaymentTransaction)
-    .set({ workOrderInstanceId })
-    .where(
-      and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        eq(schema.PaymentTransaction.quoteInstanceId, quoteInstanceId),
-        eq(schema.PaymentTransaction.kind, 'charge'),
-        eq(schema.PaymentTransaction.status, 'succeeded'),
-        isNull(schema.PaymentTransaction.workOrderInstanceId)
-      )
-    )
-}
+}): Promise<void> {}
 
 /**
  * Convert an approved quote into a work order (money MQ1 build spec §F.4). Copies

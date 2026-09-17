@@ -1,7 +1,7 @@
-// packages/lib/src/money/payments/fees.test.ts
+// packages/lib/src/money/payouts/application-fee.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { resolveApplicationFee } from './fees'
+import { resolveApplicationFee } from './application-fee'
 
 // Amounts are integer cents (the MQ1 storage convention) — e.g. 10_000 = $100.00.
 // `PAYMENTS_APPLICATION_FEE_PERCENT` has a registry default of '2' and no env var is set

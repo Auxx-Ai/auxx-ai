@@ -1,11 +1,11 @@
-// packages/lib/src/money/payments/deposit.test.ts
+// packages/lib/src/money/quote-deposit.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { computeDepositAmount } from './deposit'
+import { computeDepositAmount } from './quote-deposit'
 
 // Amounts are integer cents (the MQ1 storage convention) — e.g. 10_000 = $100.00. Only the
 // pure `computeDepositAmount` is unit-tested here — `resolveQuoteDeposit` hits the DB/org
-// settings and isn't covered by this file (mirrors fees.test.ts's no-mocking-needed shape).
+// settings and isn't covered by this file (mirrors application-fee.test.ts's no-mocking shape).
 
 describe('computeDepositAmount', () => {
   it('computes a percent-of-total deposit', () => {

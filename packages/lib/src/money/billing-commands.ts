@@ -24,7 +24,7 @@ import {
   syncWorkOrderBillingProjection,
 } from './billing-projection'
 import { copyLineOntoInvoice, createInvoiceShell, LINE_COPY_ATTRS } from './gather'
-import { applyHeldDepositsToInvoice } from './payments/ledger'
+import { applyHeldDepositsToInvoice } from './quote-deposit'
 import { recomputeTotals } from './totals-hooks'
 import type {
   AddVisitExtrasToContractInput,

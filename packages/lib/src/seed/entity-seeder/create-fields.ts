@@ -29,7 +29,6 @@ import { MEETING_FIELDS } from '../../resources/registry/resources/meeting-field
 import { ORDER_FIELDS } from '../../resources/registry/resources/order-fields'
 import { PARCEL_FIELDS } from '../../resources/registry/resources/parcel-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
-import { PAYMENT_FIELDS } from '../../resources/registry/resources/payment-fields'
 import { PAYMENT_GATEWAY_FIELDS } from '../../resources/registry/resources/payment-gateway-fields'
 import { PAYOUT_FIELDS } from '../../resources/registry/resources/payout-fields'
 import { PERSONAL_INBOX_FIELDS } from '../../resources/registry/resources/personal-inbox-fields'
@@ -94,7 +93,6 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   catalog_item: CATALOG_ITEM_FIELDS,
   catalog_group: CATALOG_GROUP_FIELDS,
   invoice: INVOICE_FIELDS,
-  payment: PAYMENT_FIELDS,
   product: PRODUCT_FIELDS,
   order: ORDER_FIELDS,
   purchase_order: PURCHASE_ORDER_FIELDS,

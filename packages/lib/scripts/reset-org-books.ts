@@ -177,8 +177,6 @@ const CLEARED_SEQUENCE_SCOPES: readonly string[] = [...CLEARED_TYPES, 'build_bat
  * cascade nobody printed is a row count that appears to vanish.
  */
 const SIDE_TABLES = [
-  { name: 'PaymentAllocation', table: schema.PaymentAllocation },
-  { name: 'PaymentTransaction', table: schema.PaymentTransaction },
   { name: 'InvoiceLineAllocation', table: schema.InvoiceLineAllocation },
   { name: 'InvoiceScheduleAllocation', table: schema.InvoiceScheduleAllocation },
   { name: 'InvoiceVisitAllocation', table: schema.InvoiceVisitAllocation },

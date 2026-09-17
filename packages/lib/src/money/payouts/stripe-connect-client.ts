@@ -1,9 +1,13 @@
-// packages/lib/src/money/payments/connect-client.ts
-// Lazy Stripe client for money MP1 (Stripe Connect payment collection — 07-mp1-build.md §D.1).
+// packages/lib/src/money/payouts/stripe-connect-client.ts
+// Lazy Stripe client for Connect calls — account onboarding (`stripe-onboarding.ts`), the
+// payouts rail (`sources/stripe-connect.ts`) and the Financial Connections bank feed
+// (`banking/feed/fc-client.ts`, `data-connectors/connectors/stripe-financial-connections.ts`).
 // Physically separate from `@auxx/billing`'s Stripe singleton (subscription-shaped, wrong
-// webhook/secret) — this module is the ONLY place MP1 constructs a `Stripe` instance, though it
-// reuses `STRIPE_SECRET_KEY` (the same platform account) since connected-account calls are
-// scoped per request via `{ stripeAccount }`, not a second client/key.
+// webhook/secret) — this module is the ONLY place Connect calls construct a `Stripe` instance,
+// though it reuses `STRIPE_SECRET_KEY` (the same platform account) since connected-account calls
+// are scoped per request via `{ stripeAccount }`, not a second client/key. Moved out of the
+// legacy `payments/` lane (accounting migration step 0) — nothing here is charge-collection
+// specific.
 
 import { configService } from '@auxx/credentials'
 import Stripe from 'stripe'

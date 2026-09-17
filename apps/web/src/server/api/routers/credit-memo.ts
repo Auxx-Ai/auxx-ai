@@ -21,7 +21,6 @@ import {
   readContactCredit,
   readCreditMemoSettlement,
   recordCreditMemoRefund,
-  refundTransaction,
   settleCreditMemo,
   unapplyCreditMemo,
   voidCreditMemo,
@@ -127,11 +126,14 @@ export const creditMemoRouter = createTRPCRouter({
     }),
 
   /**
-   * Pay part of an issued memo's balance back. `manual` records a succeeded
-   * refund row on the spot; `stripe` initiates a (partial) refund of the named
-   * charge and the webhook flips it to succeeded. Both rows carry the memo, so
-   * `settleCreditMemo` sums them; it is run here too so a manual refund lands
-   * `settled` in the same call.
+   * Pay part of an issued memo's balance back: records a succeeded refund row
+   * on the spot, then posts its accounting. `settleCreditMemo` is run here too
+   * so the refund lands `settled` in the same call.
+   *
+   * The Stripe rail (initiating a live refund of a named charge) went with the
+   * legacy `PaymentTransaction` lane it refunded (accounting migration step 0)
+   * — refunding a customer is manual until a native Stripe refund door is
+   * rebuilt on the money model.
    */
   refund: permissionProcedure(PermissionKey.ledgerPost)
     .input(
@@ -140,20 +142,16 @@ export const creditMemoRouter = createTRPCRouter({
         commandKey: z.string().min(1).max(200),
         /** Integer minor units, at most the memo's balance. */
         amount: z.number().int().positive(),
-        rail: z.enum(['manual', 'stripe']),
-        /** Manual rail only. */
         method: z.enum(['cash', 'check', 'card', 'bank', 'other']).optional(),
         /**
-         * Manual rail only: the `bank_account` the money left. Required when the
-         * method's route is `cash`, forbidden when it is `undeposited_funds`.
+         * The `bank_account` the money left. Required when the method's route
+         * is `cash`, forbidden when it is `undeposited_funds`.
          */
         bankAccountInstanceId: z.string().min(1).nullish(),
         reference: z.string().max(200).optional(),
         note: z.string().max(2000).optional(),
-        /** `YYYY-MM-DD`, manual rail only. Defaults to today. */
+        /** `YYYY-MM-DD`. Defaults to today. */
         date: calendarDaySchema.optional(),
-        /** Stripe rail only: the `succeeded` charge to refund against. */
-        chargeTransactionId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -161,50 +159,33 @@ export const creditMemoRouter = createTRPCRouter({
       const userId = ctx.session.userId
       const { entityInstanceId: creditMemoInstanceId } = parseRecordId(input.creditMemoRecordId)
 
-      let transactionId: string
-      if (input.rail === 'manual') {
-        // 64 U2: the canonical money owners, then accounting. Posting is a
-        // separate call so a misconfigured ledger refuses the journal without
-        // also refusing to record that the customer got their money back.
-        const { moneyTransactionId } = await recordCreditMemoRefund(ctx.db, {
-          organizationId,
-          userId,
-          creditMemoInstanceId,
-          amountMinor: input.amount,
-          commandKey: input.commandKey,
-          date: input.date ?? new Date().toISOString().slice(0, 10),
-          method: input.method ?? 'other',
-          bankAccountInstanceId: input.bankAccountInstanceId ?? null,
-          reference: input.reference,
-          note: input.note,
-        })
-        await postCustomerRefundAccounting(ctx.db, {
-          organizationId,
-          moneyTransactionId,
-          actorUserId: userId,
-        })
-        transactionId = moneyTransactionId
-      } else {
-        if (!input.chargeTransactionId) {
-          throw new Error('A Stripe refund needs the charge to refund against')
-        }
-        const { transactionId: id } = await refundTransaction({
-          organizationId,
-          userId,
-          transactionId: input.chargeTransactionId,
-          amount: input.amount,
-          commandKey: input.commandKey,
-          creditMemoInstanceId,
-        })
-        transactionId = id
-      }
+      // 64 U2: the canonical money owners, then accounting. Posting is a
+      // separate call so a misconfigured ledger refuses the journal without
+      // also refusing to record that the customer got their money back.
+      const { moneyTransactionId } = await recordCreditMemoRefund(ctx.db, {
+        organizationId,
+        userId,
+        creditMemoInstanceId,
+        amountMinor: input.amount,
+        commandKey: input.commandKey,
+        date: input.date ?? new Date().toISOString().slice(0, 10),
+        method: input.method ?? 'other',
+        bankAccountInstanceId: input.bankAccountInstanceId ?? null,
+        reference: input.reference,
+        note: input.note,
+      })
+      await postCustomerRefundAccounting(ctx.db, {
+        organizationId,
+        moneyTransactionId,
+        actorUserId: userId,
+      })
 
       const settlement = await settleCreditMemo(ctx.db, {
         organizationId,
         userId,
         creditMemoInstanceId,
       })
-      return { transactionId, ...settlement }
+      return { transactionId: moneyTransactionId, ...settlement }
     }),
 
   /** Total, applied, refunded, balance, and the application and refund rows behind them. */

@@ -1,10 +1,9 @@
-// packages/lib/src/money/payments/partial.ts
-// Partial-payment amount bounds for money MP2 §C (partial/custom amounts on `/pay`) and §H's
-// test-plan extraction. Pure function — no Stripe import, no DB access — same shape as
-// `resolveApplicationFee` (fees.ts) and `computeDepositAmount` (deposit.ts), unit-tested the
-// same way (partial.test.ts, sibling to fees.test.ts). Used both server-side (`createStripeCheckout`'s
-// `[min, balance]` validation) and to pre-compute `PublicInvoicePayload.minPaymentAmount` so the
-// client never re-derives the percent math.
+// packages/lib/src/money/customer-money/partial-payment.ts
+// Partial-payment amount bounds for the public pay page's custom-amount support and its
+// test-plan extraction. Pure function — no DB access. Moved out of the legacy `payments/`
+// lane (accounting migration step 0): the bounds math itself is not Stripe- or
+// PaymentTransaction-specific, and `public-token.ts` still shows the minimum a customer may
+// pay even though the Checkout button behind it is gone.
 
 /** Result of {@link resolvePartialPaymentBounds}. */
 export interface PartialPaymentBounds {

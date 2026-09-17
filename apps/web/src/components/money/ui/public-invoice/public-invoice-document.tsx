@@ -27,16 +27,13 @@ import { ProcessingPoller } from './processing-poller'
 interface PublicInvoiceDocumentProps {
   token: string
   payload: PublicInvoicePayload
-  checkoutState: string | undefined
-  checkoutError: string | undefined
 }
 
-export function PublicInvoiceDocument({
-  token,
-  payload,
-  checkoutState,
-  checkoutError,
-}: PublicInvoiceDocumentProps) {
+export function PublicInvoiceDocument({ token, payload }: PublicInvoiceDocumentProps) {
+  // Accounting migration step 0 dropped the Stripe Checkout flow that populated these — the
+  // page is read-only until online payment collection is rebuilt on the money model.
+  const checkoutState: string | undefined = undefined
+  const checkoutError: string | undefined = undefined
   const {
     number,
     status,

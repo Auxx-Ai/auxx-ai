@@ -1,9 +1,5 @@
 // packages/lib/src/field-hooks/pre/quote-deposit-guard.ts
 
-import { database, schema } from '@auxx/database'
-import { parseRecordId } from '@auxx/types/resource'
-import { and, eq } from 'drizzle-orm'
-import { BadRequestError } from '../../errors'
 import { unwrapStatusValue } from '../../resources/hooks/lifecycle-status-guard'
 import type { FieldPreHookHandler } from '../types'
 
@@ -33,21 +29,8 @@ export const guardQuoteDraftReturnWithPaidDeposit: FieldPreHookHandler = async (
   // note above on why unwrapping only the array was a guard that could never fire.
   if (unwrapStatusValue(event.newValue) !== 'draft') return event.newValue
 
-  const quoteInstanceId = parseRecordId(event.recordId).entityInstanceId
-  const deposit = await database.query.PaymentTransaction.findFirst({
-    where: and(
-      eq(schema.PaymentTransaction.organizationId, event.organizationId),
-      eq(schema.PaymentTransaction.quoteInstanceId, quoteInstanceId),
-      eq(schema.PaymentTransaction.kind, 'charge'),
-      eq(schema.PaymentTransaction.status, 'succeeded')
-    ),
-    columns: { id: true },
-  })
-  if (deposit) {
-    throw new BadRequestError(
-      'Cannot return this quote to draft — a deposit has been paid against it.'
-    )
-  }
-
+  // Accounting migration step 0 dropped `PaymentTransaction`, the only source
+  // a quote deposit was ever recorded against — quote deposits have no
+  // money-model equivalent yet, so there is nothing left to check here.
   return event.newValue
 }

@@ -6,7 +6,7 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
-import { and, eq, gt } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import type { PdfPhotoRef, QuotePdfContact, QuotePdfLineItem } from '../documents/payload'
 import type {
@@ -17,9 +17,7 @@ import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { quietSession } from '../resources/crud/write-origin'
 import { getOrganizationSetting } from '../settings/settings-service'
-import { getPaymentAccount } from './payments/account-state'
-import { getInvoiceDepositApplied } from './payments/allocation-reads'
-import { resolvePartialPaymentBounds } from './payments/partial'
+import { resolvePartialPaymentBounds } from './customer-money/partial-payment'
 import type { DiscountType } from './types'
 
 /**
@@ -107,35 +105,17 @@ export function buildPayUrl(token: string): string {
   return `${WEBAPP_URL}/pay/${token}`
 }
 
-/** How long a `pending` Checkout row keeps the public page in its "processing" state. */
-const PROCESSING_WINDOW_MS = 30 * 60 * 1000
-
 /**
  * Flip an abandoned Checkout's `pending` ledger row to `canceled` (money MP1 §I) — called by
- * the pay page when the shopper lands back via `cancel_url` (`?checkout=cancel&tx=…`). Guarded
- * by the token AND the row's invoice/provider/kind/status, so the public `tx` param can only
- * ever cancel the invoice's own pending Stripe charge — never anything else, never twice.
- * Safe even if the shopper later pays the (still-open) Stripe session anyway: the webhook's
- * `markChargeSucceeded` flips `canceled → succeeded` and the payment settles normally.
+ * the pay page when the shopper lands back via `cancel_url` (`?checkout=cancel&tx=…`).
+ *
+ * Accounting migration step 0 dropped `PaymentTransaction`, the only source an invoice
+ * Checkout session was ever recorded against — there is no pending row left to cancel.
  */
-export async function cancelAbandonedCheckout(token: string, transactionId: string): Promise<void> {
-  const resolved = await resolveInvoiceByPublicToken(token)
-  if (!resolved) return
-
-  await database
-    .update(schema.PaymentTransaction)
-    .set({ status: 'canceled' })
-    .where(
-      and(
-        eq(schema.PaymentTransaction.id, transactionId),
-        eq(schema.PaymentTransaction.organizationId, resolved.organizationId),
-        eq(schema.PaymentTransaction.invoiceInstanceId, resolved.invoiceInstanceId),
-        eq(schema.PaymentTransaction.provider, 'stripe'),
-        eq(schema.PaymentTransaction.kind, 'charge'),
-        eq(schema.PaymentTransaction.status, 'pending')
-      )
-    )
-}
+export async function cancelAbandonedCheckout(
+  _token: string,
+  _transactionId: string
+): Promise<void> {}
 
 /**
  * The single "can this org accept a Stripe payment right now" predicate — connected,
@@ -245,39 +225,17 @@ export async function getPublicInvoicePayload(token: string): Promise<PublicInvo
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
 
-  const [
-    { payload },
-    account,
-    pendingCharge,
-    allowPartialPayments,
-    partialPaymentMinPercent,
-    depositApplied,
-  ] = await Promise.all([
+  const [{ payload }, allowPartialPayments, partialPaymentMinPercent] = await Promise.all([
     buildInvoicePdfPayload({ organizationId, userId: systemUserId, invoiceRecordId }),
-    getPaymentAccount(organizationId),
-    database.query.PaymentTransaction.findFirst({
-      // Time-bounded: a `pending` row is minted at Checkout CREATION, so its bare existence
-      // only means a session was opened, not that money moved. Rows the shopper explicitly
-      // canceled out of get flipped by `cancelAbandonedCheckout`; silently-abandoned tabs
-      // age out of this window instead of wedging the page in "processing" forever. The
-      // webhook remains the truth — a stale session paid after the window still settles.
-      where: and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        eq(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceId),
-        eq(schema.PaymentTransaction.provider, 'stripe'),
-        eq(schema.PaymentTransaction.kind, 'charge'),
-        eq(schema.PaymentTransaction.status, 'pending'),
-        gt(schema.PaymentTransaction.updatedAt, new Date(Date.now() - PROCESSING_WINDOW_MS))
-      ),
-      columns: { id: true },
-    }),
     getOrganizationSetting({ organizationId, key: 'documents.invoice.allowPartialPayments' }),
     getOrganizationSetting({ organizationId, key: 'documents.invoice.partialPaymentMinPercent' }),
-    // Deposit-accounting plan 16 §E — labeled breakout, see the field doc on the payload type.
-    getInvoiceDepositApplied(organizationId, invoiceInstanceId),
   ])
-
-  const paymentsEnabled = isPaymentsConnected(account)
+  // Accounting migration step 0 dropped `PaymentTransaction` and the Checkout/webhook
+  // routes it backed — there is no online payment collection to gate, report a pending
+  // session for, or apply a deposit from until that lane is rebuilt on the money model.
+  const pendingCharge = null
+  const depositApplied = 0
+  const paymentsEnabled = false
   const minPaymentAmount = resolvePartialPaymentBounds(
     payload.balance,
     Number(partialPaymentMinPercent ?? 10)

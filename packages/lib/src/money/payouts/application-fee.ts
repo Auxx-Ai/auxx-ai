@@ -1,6 +1,7 @@
-// packages/lib/src/money/payments/fees.ts
-// Application fee resolution for money MP1 (07-mp1-build.md §D.3). Pure function — no Stripe
-// import, no DB access — so it's trivially unit-testable (see fees.test.ts).
+// packages/lib/src/money/payouts/application-fee.ts
+// Application fee resolution for the payouts rail. Pure function — no Stripe import, no DB
+// access. Moved out of the legacy `payments/` lane (accounting migration step 0): the platform
+// fee it resolves is the Connect payout's own fee, not a charge-collection concern.
 
 import { configService } from '@auxx/credentials'
 
@@ -14,8 +15,7 @@ export interface PaymentAccountFeeInput {
  * Resolve the platform application fee for a charge, in minor units (integer cents). The
  * per-org `PaymentAccount.applicationFeePercent` override wins when set; otherwise falls back
  * to `PAYMENTS_APPLICATION_FEE_PERCENT` (default `'2'`, i.e. 2%). The result is always clamped
- * to `[0, amount]` — a tiny invoice rounds the fee to 0 rather than ever blocking the payment
- * (money 04-payments.md fee-floor note).
+ * to `[0, amount]` — a tiny invoice rounds the fee to 0 rather than ever blocking the payment.
  */
 export function resolveApplicationFee(
   paymentAccount: PaymentAccountFeeInput | null,

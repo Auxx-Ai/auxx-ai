@@ -50,20 +50,15 @@ function resolveRows(rows: BillingInstallmentInput[], contractValue: number, tar
   return resolved
 }
 
-async function heldDepositAmount(db: Database, organizationId: string, workOrderId: string) {
-  const rows = await db.query.PaymentTransaction.findMany({
-    where: and(
-      eq(schema.PaymentTransaction.organizationId, organizationId),
-      eq(schema.PaymentTransaction.workOrderInstanceId, workOrderId),
-      eq(schema.PaymentTransaction.status, 'succeeded')
-    ),
-    columns: { amount: true, invoiceInstanceId: true, kind: true },
-  })
-  return rows.reduce(
-    (sum, row) =>
-      row.invoiceInstanceId === null && row.kind === 'charge' ? sum + row.amount : sum,
-    0
-  )
+// Accounting migration step 0 dropped `PaymentTransaction`, the only source a
+// held quote deposit was ever recorded against — quote deposits have no
+// money-model equivalent yet, so there is nothing left to hold.
+async function heldDepositAmount(
+  _db: Database,
+  _organizationId: string,
+  _workOrderId: string
+): Promise<number> {
+  return 0
 }
 
 /** Replace pending installments while preserving drafted and issued schedule history. */

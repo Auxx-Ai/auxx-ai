@@ -42,17 +42,20 @@ export const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
 }
 
 /**
- * The four documents a bank line can corroborate, plus the fifth pointer a
+ * The three documents a bank line can corroborate, plus the fourth pointer a
  * transfer uses.
  *
  * 🛑 `bank_transaction` is in this list because a transfer's two legs match
  * EACH OTHER (03 §3.3). It is not a document, and `matchTransaction` refuses it
  * - only `transferTransaction` may write it, because a transfer also has to
  * post the one cash-to-cash entry that a document match must never post.
+ *
+ * `payment_transaction` (matching a customer charge/refund) went with the
+ * legacy `PaymentTransaction` lane it matched against (accounting migration
+ * step 0) — `MoneyTransaction` has no bank-line column to record a match onto.
  */
 export const MATCH_RECORD_TYPES = [
   'vendor_payment',
-  'payment_transaction',
   'bank_deposit',
   'vendor_bill',
   'payout',
@@ -86,7 +89,6 @@ export type MatchedRecordType = (typeof MATCHED_RECORD_TYPES)[number]
 
 export const MATCH_RECORD_TYPE_LABELS: Record<MatchRecordType, string> = {
   vendor_payment: 'Vendor payment',
-  payment_transaction: 'Customer payment',
   bank_deposit: 'Bank deposit',
   vendor_bill: 'Vendor bill',
   payout: 'Payout',

@@ -12,7 +12,6 @@ import { createEntityDefinitions } from '../../seed/entity-seeder/create-entity-
 import { createAllFields } from '../../seed/entity-seeder/create-fields'
 import { linkRelationships } from '../../seed/entity-seeder/link-relationships'
 import type { EntityDefMap } from '../../seed/entity-seeder/types'
-import { refundTransaction } from '../payments/stripe-rail'
 import { applyCreditMemo, unapplyCreditMemo } from './apply'
 import { runCreditCommand } from './command'
 import {
@@ -24,10 +23,6 @@ import {
 } from './reads'
 import { voidCreditMemo } from './writes'
 
-const provider = vi.hoisted(() => ({ refund: vi.fn() }))
-vi.mock('../payments/connect-client', () => ({
-  getStripeConnectClient: () => ({ refunds: { create: provider.refund } }),
-}))
 vi.mock('@auxx/redis', async (original) => ({
   ...(await original<typeof import('@auxx/redis')>()),
   getRedisClient: async () => {
@@ -69,7 +64,6 @@ async function value(
     })
 }
 beforeEach(async () => {
-  provider.refund.mockReset().mockResolvedValue({ id: 're_fixture' })
   const org = await createTestOrganization()
   const user = await createTestUser()
   organizationId = org.id
@@ -203,18 +197,41 @@ describe('credit applications using existing entities', () => {
             amount: 7000,
             db: tx as unknown as Database,
           })
-          const [row] = await tx
-            .insert(schema.PaymentTransaction)
+          const [command] = await tx
+            .insert(schema.MoneyCommand)
             .values({
               organizationId,
-              provider: 'stripe',
-              kind: 'refund',
-              status: 'pending',
-              amount: 7000,
+              commandKey: 'refund-money',
+              kind: 'test_credit_reservation_money',
+              payloadHash: 'fixture',
+              actorSnapshot: {},
+              resultIds: {},
+            })
+            .returning()
+          const [money] = await tx
+            .insert(schema.MoneyTransaction)
+            .values({
+              organizationId,
+              purpose: 'customer_refund',
+              amountMinor: 7000n,
               currency: 'USD',
-              creditMemoInstanceId: memoId,
-              contactInstanceId: contactId,
-              updatedAt: new Date(),
+              currencyExponent: 2,
+              datePrecision: 'date',
+              occurredOn: '2026-09-15',
+              partyInstanceId: contactId,
+              recordedByCommandId: command!.id,
+            })
+            .returning()
+          const [row] = await tx
+            .insert(schema.MoneyRefundSettlement)
+            .values({
+              organizationId,
+              refundTransactionId: money!.id,
+              amountMinor: 7000n,
+              disposition: 'customer_credit',
+              customerCreditMemoInstanceId: memoId,
+              commandId: command!.id,
+              commandItemKey: 'refund',
             })
             .returning()
           return { transactionId: row!.id }
@@ -229,21 +246,18 @@ describe('credit applications using existing entities', () => {
         db(),
         { organizationId, userId, commandKey: 'rollback', kind: 'test', payload: {} },
         async (tx) => {
-          await tx.insert(schema.PaymentTransaction).values({
+          await tx.insert(schema.MoneyCommand).values({
             organizationId,
-            provider: 'manual',
-            kind: 'refund',
-            status: 'succeeded',
-            amount: 100,
-            currency: 'USD',
-            creditMemoInstanceId: memoId,
-            updatedAt: new Date(),
+            commandKey: 'rollback-proof',
+            kind: 'test',
+            payloadHash: 'fixture',
+            actorSnapshot: {},
+            resultIds: {},
           })
           throw new Error('rollback proof')
         }
       )
     ).rejects.toThrow('rollback proof')
-    expect(await db().query.PaymentTransaction.findMany()).toHaveLength(0)
     expect(await db().query.MoneyCommand.findMany()).toHaveLength(0)
   })
   it('rejects generic application edits and deletion', async () => {
@@ -262,7 +276,7 @@ describe('credit applications using existing entities', () => {
       new UnifiedCrudHandler(organizationId, userId, db()).delete(recordId)
     ).rejects.toThrow(/history cannot be deleted/)
   })
-  it('counts canonical refunds and pending native reservations before applying credit', async () => {
+  it('counts canonical refunds before applying credit', async () => {
     const [command] = await db()
       .insert(schema.MoneyCommand)
       .values({
@@ -296,19 +310,9 @@ describe('credit applications using existing entities', () => {
       commandId: command!.id,
       commandItemKey: 'refund',
     })
-    await db().insert(schema.PaymentTransaction).values({
-      organizationId,
-      provider: 'stripe',
-      kind: 'refund',
-      status: 'pending',
-      amount: 2000,
-      currency: 'USD',
-      creditMemoInstanceId: memoId,
-      updatedAt: new Date(),
-    })
-    await expect(apply(3000, 'over')).rejects.toThrow(/exceeds/)
-    await apply(2000, 'remaining')
-    expect(await sumCreditMemoApplications(db(), organizationId, memoId)).toBe(2000)
+    await expect(apply(5000, 'over')).rejects.toThrow(/exceeds/)
+    await apply(4000, 'remaining')
+    expect(await sumCreditMemoApplications(db(), organizationId, memoId)).toBe(4000)
   })
   it('serializes void against a new application', async () => {
     const outcomes = await Promise.allSettled([
@@ -352,77 +356,41 @@ describe('credit applications using existing entities', () => {
   })
 
   it('refuses to void credit reserved for an in-flight refund', async () => {
-    await db().insert(schema.PaymentTransaction).values({
+    const [command] = await db()
+      .insert(schema.MoneyCommand)
+      .values({
+        organizationId,
+        commandKey: 'in-flight-refund',
+        kind: 'fixture',
+        payloadHash: 'fixture',
+        actorSnapshot: {},
+        resultIds: {},
+      })
+      .returning()
+    const [money] = await db()
+      .insert(schema.MoneyTransaction)
+      .values({
+        organizationId,
+        purpose: 'customer_refund',
+        amountMinor: 1000n,
+        currency: 'USD',
+        currencyExponent: 2,
+        datePrecision: 'date',
+        occurredOn: '2026-09-15',
+        recordedByCommandId: command!.id,
+      })
+      .returning()
+    await db().insert(schema.MoneyRefundSettlement).values({
       organizationId,
-      provider: 'stripe',
-      kind: 'refund',
-      status: 'pending',
-      amount: 1000,
-      currency: 'USD',
-      creditMemoInstanceId: memoId,
-      updatedAt: new Date(),
+      refundTransactionId: money!.id,
+      amountMinor: 1000n,
+      disposition: 'customer_credit',
+      customerCreditMemoInstanceId: memoId,
+      commandId: command!.id,
+      commandItemKey: 'refund',
     })
     await expect(
       voidCreditMemo(db(), { organizationId, userId, creditMemoInstanceId: memoId })
     ).rejects.toThrow(/pending refund/)
-  })
-  it('retries an unknown Stripe outcome with the saved refund ID and original account', async () => {
-    const [account] = await db()
-      .insert(schema.PaymentAccount)
-      .values({
-        organizationId,
-        provider: 'stripe',
-        stripeAccountId: 'acct_original',
-        updatedAt: new Date(),
-      })
-      .returning()
-    const [charge] = await db()
-      .insert(schema.PaymentTransaction)
-      .values({
-        organizationId,
-        paymentAccountId: account!.id,
-        provider: 'stripe',
-        kind: 'charge',
-        status: 'succeeded',
-        stripeChargeId: 'ch_original',
-        amount: 10000,
-        currency: 'USD',
-        contactInstanceId: contactId,
-        updatedAt: new Date(),
-      })
-      .returning()
-    const input = {
-      organizationId,
-      userId,
-      transactionId: charge!.id,
-      creditMemoInstanceId: memoId,
-      amount: 7000,
-      commandKey: 'refund-retry',
-    }
-    provider.refund.mockRejectedValueOnce(new Error('connection lost'))
-    await expect(refundTransaction(input)).rejects.toThrow('connection lost')
-    const [pending] = await db().query.PaymentTransaction.findMany({
-      where: eq(schema.PaymentTransaction.kind, 'refund'),
-    })
-    expect(pending).toMatchObject({ status: 'pending', amount: 7000 })
-    await expect(apply(4000, 'competing')).rejects.toThrow(/exceeds/)
-    await db()
-      .update(schema.PaymentAccount)
-      .set({ stripeAccountId: 'acct_changed' })
-      .where(eq(schema.PaymentAccount.id, account!.id))
-    expect(await refundTransaction(input)).toEqual({ transactionId: pending!.id })
-    expect(await refundTransaction(input)).toEqual({ transactionId: pending!.id })
-    expect(provider.refund).toHaveBeenCalledTimes(2)
-    for (const call of provider.refund.mock.calls)
-      expect(call).toEqual([
-        { charge: 'ch_original', amount: 7000, refund_application_fee: true },
-        { stripeAccount: 'acct_original', idempotencyKey: pending!.id },
-      ])
-    expect(
-      await db().query.PaymentTransaction.findMany({
-        where: eq(schema.PaymentTransaction.kind, 'refund'),
-      })
-    ).toHaveLength(1)
-    expect(await db().query.PaymentAllocation.findMany()).toHaveLength(0)
   })
 })

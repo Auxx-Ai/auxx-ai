@@ -544,7 +544,8 @@ async function hydratePayments(
   // Currency lives on the ledger row, not on the entity mirror: the `payment`
   // def carries amount/date/method and no currency at all. Reading it here is
   // what lets `createBankDeposit` refuse a mixed-currency deposit by name rather
-  // than posting one at an implied 1.0 rate.
+  // than posting one at an implied 1.0 rate. `payment_transaction_id` names a
+  // `MoneyTransaction` now that the legacy `PaymentTransaction` lane is gone.
   const transactionIds = [
     ...new Set(
       page
@@ -555,12 +556,12 @@ async function hydratePayments(
   const currencies = new Map<string, string>()
   if (transactionIds.length > 0) {
     const transactions = await db
-      .select({ id: schema.PaymentTransaction.id, currency: schema.PaymentTransaction.currency })
-      .from(schema.PaymentTransaction)
+      .select({ id: schema.MoneyTransaction.id, currency: schema.MoneyTransaction.currency })
+      .from(schema.MoneyTransaction)
       .where(
         and(
-          eq(schema.PaymentTransaction.organizationId, organizationId),
-          inArray(schema.PaymentTransaction.id, transactionIds)
+          eq(schema.MoneyTransaction.organizationId, organizationId),
+          inArray(schema.MoneyTransaction.id, transactionIds)
         )
       )
     for (const transaction of transactions) currencies.set(transaction.id, transaction.currency)

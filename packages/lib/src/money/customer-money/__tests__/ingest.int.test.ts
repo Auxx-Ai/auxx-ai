@@ -5,7 +5,6 @@ import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { z } from 'zod'
 import { accountingBasisHash } from '../../../postings/effect-basis'
-import { adoptNativeStripeMoney } from '../adopt-native-stripe'
 import type { customerMoneyObservationSchema } from '../contracts'
 import { materializeImportedMoneyInTx } from '../ingest'
 import { reconcileOrderPaymentEvidence, stageOrderPaymentEvidenceInTx } from '../record-evidence'
@@ -337,43 +336,6 @@ describe('customer money source acceptance against PostgreSQL', () => {
     expect(coverage!.fetchedCount).toBe(1)
     expect(coverage!.pendingCount).toBe(1)
     expect(coverage!.complete).toBe(false)
-  })
-  it('adopts real native Stripe identity into the Shopify movement without extra money or application', async () => {
-    const source = await staged()
-    await accept(source.id)
-    const [money] = await db().select().from(schema.MoneyTransaction)
-    const [account] = await db()
-      .insert(schema.PaymentAccount)
-      .values({ organizationId, provider: 'stripe', stripeAccountId: 'acct_fixture' })
-      .returning()
-    const [native] = await db()
-      .insert(schema.PaymentTransaction)
-      .values({
-        organizationId,
-        paymentAccountId: account!.id,
-        provider: 'stripe',
-        kind: 'charge',
-        status: 'succeeded',
-        amount: 6000,
-        currency: 'USD',
-        stripeChargeId: 'ch_fixture',
-        contactInstanceId: money!.partyInstanceId,
-      })
-      .returning()
-    const input = {
-      organizationId,
-      legacyTransactionId: native!.id,
-      shopifySourceObjectId: source.sourceObjectId,
-      commandKey: 'verified-stripe',
-      actorUserId: 'fixture-actor',
-      evidence: 'Verified Stripe charge reference from merchant records',
-    }
-    expect(await adoptNativeStripeMoney(db(), input)).toEqual({ moneyTransactionId: money!.id })
-    await adoptNativeStripeMoney(db(), input)
-    expect(await db().select().from(schema.MoneyTransaction)).toHaveLength(1)
-    expect(await db().select().from(schema.MoneyApplication)).toHaveLength(1)
-    expect(await db().select().from(schema.MoneySourceLink)).toHaveLength(2)
-    expect(await db().select().from(schema.GlPosting)).toHaveLength(0)
   })
   it('settles a partial refund once and survives a reconnect with the same store identity', async () => {
     const capture = await staged()
