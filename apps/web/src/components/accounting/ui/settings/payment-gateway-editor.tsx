@@ -513,6 +513,7 @@ function RailRoleCurrencyRow({
   return (
     <MappingScopeRow
       depth={2}
+      nested
       title={currency}
       value={value}
       onChange={(next) => onCommit(role, currency, next)}
@@ -547,6 +548,7 @@ function CurrencyDraft({
   return (
     <MappingScopeRow
       depth={2}
+      nested
       title={
         <AutosizeInput
           value={code}

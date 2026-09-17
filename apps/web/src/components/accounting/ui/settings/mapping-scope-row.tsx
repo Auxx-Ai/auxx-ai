@@ -13,8 +13,10 @@ export interface MappingScopeRowProps {
   /** Usually the scope's name; an editable `AutosizeInput` for an unconfirmed currency-code draft (59 §2.2). */
   title: ReactNode
   icon?: ReactNode
-  /** 0 for a role row (the Mapping tab's own default), 1 for a store/rail scope row, 2 for a currency row nested under a rail (task 59 §2.2). */
-  depth?: 0 | 1 | 2
+  /** Indent level. The Mapping tab nests under a statement-type header (role 1, scope 2, currency 3); the gateway editor has no header (role 1, currency 2). */
+  depth?: 0 | 1 | 2 | 3
+  /** Tint this row as a child of the row above it. Not derived from `depth` - the two screens number their levels differently. */
+  nested?: boolean
   value: MappingAccountValue
   onChange: (value: string | 'inherit') => void
   /** Omit for a role with no default, e.g. `bank` (task 58 §3 rule 3) — a currency row's Inherit names the rail's own row, not the org default. */
@@ -28,10 +30,14 @@ export interface MappingScopeRowProps {
   mismatchMessage?: string
   /** A `bank` rail with no linked feed: forces the picker disabled, drops Inherit, and shows this as secondary text. */
   noFeedLinked?: boolean
-  /** Rail scope row only (`depth` 1): hover "+ currency" to add a currency sub-row. */
+  /** A rail scope row: hover "+ currency" to add a currency sub-row. */
   onAddCurrency?: () => void
   /** Viewer lacks `ledgerControl` — every control disabled, no hover actions. */
   disabled?: boolean
+  /** A role row with scopes beneath it. `TreeRow` renders its own chevron. */
+  expandable?: boolean
+  isOpen?: boolean
+  onToggleOpen?: () => void
   /** A role row's "Mark unused"/"Mark used again" — the one hover action neither a scope nor a currency row carries. */
   extraActions?: ReactNode
   children?: ReactNode
@@ -47,6 +53,7 @@ export function MappingScopeRow({
   title,
   icon,
   depth = 1,
+  nested = false,
   value,
   onChange,
   inheritedAccountName,
@@ -58,6 +65,9 @@ export function MappingScopeRow({
   noFeedLinked = false,
   onAddCurrency,
   disabled = false,
+  expandable = false,
+  isOpen,
+  onToggleOpen,
   extraActions,
   children,
 }: MappingScopeRowProps) {
@@ -72,8 +82,10 @@ export function MappingScopeRow({
       depth={depth}
       icon={icon}
       title={<span className='truncate'>{title}</span>}
-      rowClassName={TREE_ROW_NESTED_TINT}
-      secondaryFill
+      rowClassName={nested ? TREE_ROW_NESTED_TINT : undefined}
+      expandable={expandable}
+      isOpen={isOpen}
+      onToggleOpen={onToggleOpen}
       secondary={
         <ScopeRowSecondary
           notMapped={notMapped}
@@ -97,26 +109,32 @@ export function MappingScopeRow({
             subtypePin={subtypePin}
             disabled={disabled || noFeedLinked}
           />
-          {!disabled && (
-            <div className='flex items-center gap-1'>
-              {depth === 1 && onAddCurrency && (
-                <TreeRowButton tooltipText='Add a currency' onClick={onAddCurrency}>
-                  <Plus />
-                </TreeRowButton>
-              )}
-              {suggested && onConfirmSuggested && (
-                <TreeRowButton tooltipText='Confirm suggested account' onClick={onConfirmSuggested}>
-                  <Check />
-                </TreeRowButton>
-              )}
-              {canRevert && (
-                <TreeRowButton tooltipText='Use default' onClick={() => onChange('inherit')}>
-                  <RotateCcw />
-                </TreeRowButton>
-              )}
-              {extraActions}
-            </div>
-          )}
+          {/* Fixed width, always rendered: a row with three actions and a row
+              with none must put their pickers on the same column. */}
+          <div className='flex w-[4.5rem] shrink-0 items-center justify-end gap-1'>
+            {!disabled && (
+              <>
+                {onAddCurrency && (
+                  <TreeRowButton tooltipText='Add a currency' onClick={onAddCurrency}>
+                    <Plus />
+                  </TreeRowButton>
+                )}
+                {suggested && onConfirmSuggested && (
+                  <TreeRowButton
+                    tooltipText='Confirm suggested account'
+                    onClick={onConfirmSuggested}>
+                    <Check />
+                  </TreeRowButton>
+                )}
+                {canRevert && (
+                  <TreeRowButton tooltipText='Use default' onClick={() => onChange('inherit')}>
+                    <RotateCcw />
+                  </TreeRowButton>
+                )}
+                {extraActions}
+              </>
+            )}
+          </div>
         </div>
       }>
       {children}

@@ -445,105 +445,115 @@ function RoleBlock({
     return null
   }
 
+  const scopeRows = visibleSources.map((source) =>
+    role.axis === 'store' ? (
+      <StoreScopeRow
+        key={source.id}
+        role={role}
+        source={source}
+        optimistic={optimistic}
+        onCommit={onCommit}
+        onConfirm={onConfirm}
+        canControl={canControl}
+      />
+    ) : (
+      <RailScopeRow
+        key={source.id}
+        role={role}
+        rail={source}
+        noFeedLinked={isBank && !railsWithFeed.has(source.id)}
+        mismatch={mismatchByRail.get(source.id)}
+        optimistic={optimistic}
+        onCommit={onCommit}
+        onConfirm={onConfirm}
+        canControl={canControl}
+        currencyDrafts={currencyDrafts[`${role.role}:${source.id}`] ?? []}
+        onAddDraft={() =>
+          setCurrencyDrafts((prev) => ({
+            ...prev,
+            [`${role.role}:${source.id}`]: [...(prev[`${role.role}:${source.id}`] ?? []), ''],
+          }))
+        }
+        onDraftChange={(index, value) =>
+          setCurrencyDrafts((prev) => {
+            const list = [...(prev[`${role.role}:${source.id}`] ?? [])]
+            list[index] = value
+            return { ...prev, [`${role.role}:${source.id}`]: list }
+          })
+        }
+        onDraftCommitted={(index) =>
+          setCurrencyDrafts((prev) => {
+            const list = (prev[`${role.role}:${source.id}`] ?? []).filter((_, i) => i !== index)
+            return { ...prev, [`${role.role}:${source.id}`]: list }
+          })
+        }
+      />
+    )
+  )
+
+  // 🛑 ONE row per role, never a wrapper plus a nested copy of itself: the
+  // role's own picker belongs on the role's own row (59 §2.2).
+  if (isBank) {
+    return (
+      <TreeRow
+        depth={1}
+        icon={<Icon className='size-4 text-muted-foreground' />}
+        title={ACCOUNT_ROLE_LABELS[roleKey] ?? role.role}
+        expandable={expandable}
+        isOpen={isOpen}
+        onToggleOpen={onToggleOpen}
+        trailing={
+          <BankRoleTrailing role={role} rails={visibleSources} railsWithFeed={railsWithFeed} />
+        }>
+        {scopeRows}
+      </TreeRow>
+    )
+  }
+
   return (
-    <TreeRow
+    <MappingScopeRow
       depth={1}
       icon={<Icon className='size-4 text-muted-foreground' />}
       title={ACCOUNT_ROLE_LABELS[roleKey] ?? role.role}
-      secondaryFill
       expandable={expandable}
-      chevronOnHover={expandable}
       isOpen={isOpen}
       onToggleOpen={onToggleOpen}
-      rowClassName={role.state === 'unused' ? 'opacity-60' : undefined}>
-      {isBank ? (
-        <BankRoleRow role={role} rails={visibleSources} railsWithFeed={railsWithFeed} />
-      ) : (
-        <MappingScopeRow
-          depth={0}
-          title={ACCOUNT_ROLE_LABELS[roleKey] ?? role.role}
-          value={defaultValue}
-          onChange={(next) =>
-            onCommit(defaultKeyStr, {
-              role: role.role,
-              scope: null,
-              value: next === 'inherit' ? (role.accountId ?? 'unused') : next,
-            })
-          }
-          filterTypes={filterTypes}
-          subtypePin={subtypePin}
-          suggested={!(defaultKeyStr in optimistic) && role.state === 'suggested'}
-          onConfirmSuggested={
-            role.accountId
-              ? () => onConfirm({ role: role.role, scope: null, value: role.accountId! })
-              : undefined
-          }
-          disabled={!canControl}
-          extraActions={
-            canControl &&
-            role.state !== 'unmapped' && (
-              <TreeRowButton
-                tooltipText={role.state === 'unused' ? 'Mark used again' : 'Mark unused'}
-                onClick={() =>
-                  setRole.mutate({ role: role.role, markedUnused: role.state !== 'unused' })
-                }>
-                {role.state === 'unused' ? <RotateCcw /> : <Ban />}
-              </TreeRowButton>
-            )
-          }
-        />
-      )}
-      {visibleSources.map((source) =>
-        role.axis === 'store' ? (
-          <StoreScopeRow
-            key={source.id}
-            role={role}
-            source={source}
-            optimistic={optimistic}
-            onCommit={onCommit}
-            onConfirm={onConfirm}
-            canControl={canControl}
-          />
-        ) : (
-          <RailScopeRow
-            key={source.id}
-            role={role}
-            rail={source}
-            noFeedLinked={isBank && !railsWithFeed.has(source.id)}
-            mismatch={mismatchByRail.get(source.id)}
-            optimistic={optimistic}
-            onCommit={onCommit}
-            onConfirm={onConfirm}
-            canControl={canControl}
-            currencyDrafts={currencyDrafts[`${role.role}:${source.id}`] ?? []}
-            onAddDraft={() =>
-              setCurrencyDrafts((prev) => ({
-                ...prev,
-                [`${role.role}:${source.id}`]: [...(prev[`${role.role}:${source.id}`] ?? []), ''],
-              }))
-            }
-            onDraftChange={(index, value) =>
-              setCurrencyDrafts((prev) => {
-                const list = [...(prev[`${role.role}:${source.id}`] ?? [])]
-                list[index] = value
-                return { ...prev, [`${role.role}:${source.id}`]: list }
-              })
-            }
-            onDraftCommitted={(index) =>
-              setCurrencyDrafts((prev) => {
-                const list = (prev[`${role.role}:${source.id}`] ?? []).filter((_, i) => i !== index)
-                return { ...prev, [`${role.role}:${source.id}`]: list }
-              })
-            }
-          />
+      value={defaultValue}
+      onChange={(next) =>
+        onCommit(defaultKeyStr, {
+          role: role.role,
+          scope: null,
+          value: next === 'inherit' ? (role.accountId ?? 'unused') : next,
+        })
+      }
+      filterTypes={filterTypes}
+      subtypePin={subtypePin}
+      suggested={!(defaultKeyStr in optimistic) && role.state === 'suggested'}
+      onConfirmSuggested={
+        role.accountId
+          ? () => onConfirm({ role: role.role, scope: null, value: role.accountId! })
+          : undefined
+      }
+      disabled={!canControl}
+      extraActions={
+        canControl &&
+        role.state !== 'unmapped' && (
+          <TreeRowButton
+            tooltipText={role.state === 'unused' ? 'Mark used again' : 'Mark unused'}
+            onClick={() =>
+              setRole.mutate({ role: role.role, markedUnused: role.state !== 'unused' })
+            }>
+            {role.state === 'unused' ? <RotateCcw /> : <Ban />}
+          </TreeRowButton>
         )
-      )}
-    </TreeRow>
+      }>
+      {scopeRows}
+    </MappingScopeRow>
   )
 }
 
-/** `bank`: no picker, no default - "Per rail", counting rails with a linked feed (58 §3 rule 3). */
-function BankRoleRow({
+/** `bank`: no picker and no default, so its own row counts rails instead (58 §3 rule 3). */
+function BankRoleTrailing({
   role,
   rails,
   railsWithFeed,
@@ -557,18 +567,14 @@ function BankRoleRow({
     role.railOverrides.some((o) => o.paymentGatewayId === r.id && o.currency === null)
   )
   return (
-    <TreeRow
-      depth={0}
-      icon={<CreditCard className='size-4 text-muted-foreground' />}
-      title={ACCOUNT_ROLE_LABELS.bank}
-      secondaryFill
-      secondary={<span className='text-muted-foreground text-xs'>Per rail</span>}
-      trailing={
-        <Badge variant='secondary' size='xs'>
-          {mapped.length} of {needing.length} rails
-        </Badge>
-      }
-    />
+    <div className='flex items-center gap-1.5'>
+      <span className='text-muted-foreground text-xs'>Per rail</span>
+      <Badge variant='secondary' size='xs'>
+        {mapped.length} of {needing.length} rails
+      </Badge>
+      {/* The same fixed slot every picker row reserves, so the columns agree. */}
+      <div className='w-[4.5rem] shrink-0' />
+    </div>
   )
 }
 
@@ -596,7 +602,8 @@ function StoreScopeRow({
 
   return (
     <MappingScopeRow
-      depth={1}
+      depth={2}
+      nested
       icon={<Store className='size-4 text-muted-foreground' />}
       title={source.name}
       value={value}
@@ -673,7 +680,8 @@ function RailScopeRow({
 
   return (
     <MappingScopeRow
-      depth={1}
+      depth={2}
+      nested
       icon={<CreditCard className='size-4 text-muted-foreground' />}
       title={rail.name}
       value={value}
@@ -781,7 +789,8 @@ function CurrencyRow({
 
   return (
     <MappingScopeRow
-      depth={2}
+      depth={3}
+      nested
       title={currency}
       value={value}
       onChange={(next) =>
@@ -828,7 +837,8 @@ function CurrencyDraftRow({
   const valid = /^[A-Z]{3}$/.test(code) && !existing.has(code)
   return (
     <MappingScopeRow
-      depth={2}
+      depth={3}
+      nested
       title={
         <AutosizeInput
           value={code}
