@@ -1,6 +1,12 @@
 // packages/lib/src/resources/registry/resources/payout-source-fields.ts
 import { financialSourceField, financialSourceRelationship } from './financial-source-fields'
-/** Normal mapped fields for payout source records. */
+/**
+ * Normal mapped fields for payout source records.
+ *
+ * Deliberately NOT wrapped in `defineResourceFields`: `payout-fields.ts` maps
+ * these keys under a `source_` prefix and needs the literal key shape a
+ * declared map hides.
+ */
 export const PAYOUT_SOURCE_FIELDS = {
   sourceKey: financialSourceField(
     'source_sourceKey',

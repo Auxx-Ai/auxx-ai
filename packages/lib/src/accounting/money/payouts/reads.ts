@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/money/payouts/reads.ts
 
 /**
- * Every READ over payouts.
+ * Every READ over payouts. The def-and-field contexts live in `fields.ts`.
  *
  * Reads only. The writes live in `sync.ts`, because a file that both queries and
  * mutates is the first step back toward a service class
@@ -16,84 +16,24 @@ import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, desc, eq, gt, inArray, isNotNull, isNull, or, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../../cache'
-import { UnprocessableEntityError } from '../../../errors'
-import { toRecordId } from '../../../resources/resource-id'
+import {
+  inPageOrder,
+  readSystemRecords,
+  type SystemRecord,
+  systemValueJoin,
+} from '../../../resources/system-records'
 import { resolvePayoutStatus } from './client'
+import {
+  loadPayoutBankAccountFieldContext,
+  loadPayoutFieldContext,
+  PAYOUT_SOURCE_ATTRIBUTES,
+  type PayoutAttribute,
+} from './fields'
 import { guard } from './guard'
-import { loadPayoutSourceSummaries, PAYOUT_SOURCE_ATTRIBUTES } from './source-reads'
+import { loadPayoutSourceSummaries } from './source-reads'
 import type { ListPayoutsFilters, PayoutRecord, PayoutSourceValue } from './types'
 
-/** Every `payout` attribute a {@link PayoutRecord} is assembled from. */
-const PAYOUT_ATTRIBUTES = [
-  ...PAYOUT_SOURCE_ATTRIBUTES,
-  'payout_number',
-  'payout_gateway_id',
-  'payout_status',
-  'payout_paid_at',
-  'payout_currency',
-  'payout_deposited',
-  'payout_gross',
-  'payout_fees',
-  'payout_net',
-  'payout_unrecognised_net',
-  'payout_unrecognised_count',
-  'payout_blocked_reason',
-  'payout_bank_transaction_id',
-  'payout_payment_gateway',
-  'payout_bank_account',
-  'payout_source',
-  'payout_destination_mismatch',
-] as const
-
-type PayoutAttribute = (typeof PAYOUT_ATTRIBUTES)[number]
-type PayoutFields = Record<PayoutAttribute, { id: string } | null>
-
 const DEFAULT_LIMIT = 100
-
-/** The resolved def and field ids every payout read and write needs. */
-export interface PayoutFieldContext {
-  payoutDefId: string
-  fields: PayoutFields
-}
-
-/**
- * Resolve the `payout` def and its fields, or `null` when the org has not run
- * entity migration 133 yet.
- *
- * `null` rather than a throw so a list surface on an unmigrated org renders
- * empty instead of 500ing. The WRITE path calls
- * {@link requirePayoutFieldContext}: a sync that silently did nothing would be
- * worse than a refusal, because the clearing account would keep filling and
- * nobody would be told why.
- */
-export async function loadPayoutFieldContext(
-  organizationId: string
-): Promise<PayoutFieldContext | null> {
-  const payoutDefId = await getCachedEntityDefId(organizationId, 'payout')
-  if (!payoutDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...PAYOUT_ATTRIBUTES])) as PayoutFields
-  // Without the gateway id there is no idempotency key, and without the status
-  // there is nothing to transition. Either missing means the def is half-seeded.
-  if (!fields.payout_gateway_id || !fields.payout_status) return null
-  return { payoutDefId, fields }
-}
-
-/** {@link loadPayoutFieldContext}, as the refusal a write path needs. */
-export async function requirePayoutFieldContext(
-  organizationId: string
-): Promise<PayoutFieldContext> {
-  const ctx = await loadPayoutFieldContext(organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Payouts are not available until the payout entity and its fields are provisioned ' +
-        '(entity migration 133)'
-    )
-  }
-  return ctx
-}
 
 /** One live feed linked to a rail (task 58 §5.5): a `FinancialSourceAccount` a person has pointed at a `payment_gateway`. */
 export interface LinkedFeedAccount {
@@ -181,7 +121,7 @@ export async function findPayoutByGatewayId(
   gatewayId: string,
   paymentGatewayId: string | null = null
 ): Promise<PayoutRecord | null> {
-  const ctx = await loadPayoutFieldContext(organizationId)
+  const ctx = await loadPayoutFieldContext(db, organizationId)
   if (!ctx?.fields.payout_gateway_id) return null
 
   const value = alias(schema.FieldValue, 'payout_gateway_id_v')
@@ -192,35 +132,23 @@ export async function findPayoutByGatewayId(
   const byPair = paymentGatewayId !== null && railField !== null
 
   let query = db
-    .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
+    .select({ id: schema.EntityInstance.id })
     .from(schema.EntityInstance)
     .innerJoin(
       value,
-      and(
-        eq(value.entityId, schema.EntityInstance.id),
-        eq(value.organizationId, schema.EntityInstance.organizationId),
-        eq(value.fieldId, ctx.fields.payout_gateway_id.id),
-        eq(value.valueText, gatewayId)
-      )
+      and(systemValueJoin(value, ctx.fields.payout_gateway_id.id), eq(value.valueText, gatewayId))
     )
     .$dynamic()
 
   const where: SQL[] = [
     eq(schema.EntityInstance.organizationId, organizationId),
-    eq(schema.EntityInstance.entityDefinitionId, ctx.payoutDefId),
+    eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
     isNull(schema.EntityInstance.archivedAt),
   ]
 
   if (byPair) {
     // LEFT join: a row with no pointer at all must still come back.
-    query = query.leftJoin(
-      rail,
-      and(
-        eq(rail.entityId, schema.EntityInstance.id),
-        eq(rail.organizationId, schema.EntityInstance.organizationId),
-        eq(rail.fieldId, railField.id)
-      )
-    )
+    query = query.leftJoin(rail, systemValueJoin(rail, railField.id))
     const pointerMatches = or(
       isNull(rail.relatedEntityId),
       eq(rail.relatedEntityId, paymentGatewayId)
@@ -234,18 +162,10 @@ export async function findPayoutByGatewayId(
   const [row] = await query.where(and(...where)).limit(1)
 
   if (!row) return null
-  const [record] = await hydrate(db, organizationId, ctx, [row])
+  const records = await readSystemRecords(db, organizationId, ctx, { ids: [row.id] })
+  const [record] = await hydrate(db, organizationId, records)
   return record ?? null
 }
-
-/** The `bank_account` attributes {@link readBankAccountSettlementDestinations} reads. */
-const PAYOUT_BANK_ACCOUNT_ATTRIBUTES = [
-  'bank_account_gl_account',
-  'bank_account_settlement_destinations',
-] as const
-
-type PayoutBankAccountAttribute = (typeof PAYOUT_BANK_ACCOUNT_ATTRIBUTES)[number]
-type PayoutBankAccountFields = Record<PayoutBankAccountAttribute, { id: string } | null>
 
 /**
  * Every confirmed settlement destination on the `bank_account` record(s) mapped to `glAccountId`
@@ -263,46 +183,45 @@ export async function readBankAccountSettlementDestinations(
   organizationId: string,
   glAccountId: string
 ): Promise<string[]> {
-  const bankAccountDefId = await getCachedEntityDefId(organizationId, 'bank_account')
-  if (!bankAccountDefId) return []
+  const ctx = await loadPayoutBankAccountFieldContext(db, organizationId)
+  if (!ctx?.fields.bank_account_gl_account) return []
 
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...PAYOUT_BANK_ACCOUNT_ATTRIBUTES])) as PayoutBankAccountFields
-  const glField = fields.bank_account_gl_account
-  const destinationsField = fields.bank_account_settlement_destinations
-  if (!glField || !destinationsField) return []
-
+  // Value-keyed: which records hold THIS gl account. The reader answers by id,
+  // so the lookup stays a SQL filter on the value join.
+  const glValue = alias(schema.FieldValue, 'bank_account_gl_account_v')
   const matches = await db
-    .select({ entityId: schema.FieldValue.entityId })
-    .from(schema.FieldValue)
-    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .innerJoin(
+      glValue,
+      and(
+        systemValueJoin(glValue, ctx.fields.bank_account_gl_account.id),
+        eq(glValue.valueText, glAccountId)
+      )
+    )
     .where(
       and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, glField.id),
-        eq(schema.FieldValue.valueText, glAccountId),
-        eq(schema.EntityInstance.entityDefinitionId, bankAccountDefId),
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
         isNull(schema.EntityInstance.archivedAt)
       )
     )
   if (matches.length === 0) return []
 
-  const tags = await db
-    .select({ optionId: schema.FieldValue.optionId, valueText: schema.FieldValue.valueText })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(
-          schema.FieldValue.entityId,
-          matches.map((match) => match.entityId)
-        ),
-        eq(schema.FieldValue.fieldId, destinationsField.id)
-      )
-    )
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    ids: matches.map((match) => match.id),
+  })
+  // TAGS (58 §4.4): one row per destination, the typed text written AS the
+  // `optionId`, so the open-tag fallback to `valueText` has no typed shape.
   return [
-    ...new Set(tags.map((tag) => tag.optionId ?? tag.valueText).filter((v): v is string => !!v)),
+    ...new Set(
+      records.flatMap((record) =>
+        record
+          .rows('bank_account_settlement_destinations')
+          .map((value) => value.optionId ?? value.valueText)
+          .filter((destination): destination is string => !!destination)
+      )
+    ),
   ]
 }
 
@@ -324,65 +243,41 @@ export async function listOpenDestinationMismatches(
   organizationId: string,
   paymentGatewayId: string
 ): Promise<PayoutDestinationMismatch[]> {
-  const ctx = await loadPayoutFieldContext(organizationId)
+  const ctx = await loadPayoutFieldContext(db, organizationId)
   const mismatchField = ctx?.fields.payout_destination_mismatch
   const railField = ctx?.fields.payout_payment_gateway
   if (!ctx || !mismatchField || !railField) return []
 
   const mismatch = alias(schema.FieldValue, 'payout_destination_mismatch_v')
   const rail = alias(schema.FieldValue, 'payout_payment_gateway_v')
-  const number = alias(schema.FieldValue, 'payout_number_v')
-  const numberField = ctx.fields.payout_number
 
-  let query = db
-    .select({
-      id: schema.EntityInstance.id,
-      message: mismatch.valueText,
-      number: numberField ? number.valueText : sql<string | null>`null`,
-    })
+  const rows = await db
+    .select({ id: schema.EntityInstance.id })
     .from(schema.EntityInstance)
     .innerJoin(
       mismatch,
-      and(
-        eq(mismatch.entityId, schema.EntityInstance.id),
-        eq(mismatch.organizationId, schema.EntityInstance.organizationId),
-        eq(mismatch.fieldId, mismatchField.id),
-        isNotNull(mismatch.valueText)
-      )
+      and(systemValueJoin(mismatch, mismatchField.id), isNotNull(mismatch.valueText))
     )
     .innerJoin(
       rail,
+      and(systemValueJoin(rail, railField.id), eq(rail.relatedEntityId, paymentGatewayId))
+    )
+    .where(
       and(
-        eq(rail.entityId, schema.EntityInstance.id),
-        eq(rail.organizationId, schema.EntityInstance.organizationId),
-        eq(rail.fieldId, railField.id),
-        eq(rail.relatedEntityId, paymentGatewayId)
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
+        isNull(schema.EntityInstance.archivedAt)
       )
     )
-    .$dynamic()
+  if (rows.length === 0) return []
 
-  if (numberField) {
-    query = query.leftJoin(
-      number,
-      and(
-        eq(number.entityId, schema.EntityInstance.id),
-        eq(number.organizationId, schema.EntityInstance.organizationId),
-        eq(number.fieldId, numberField.id)
-      )
-    )
-  }
-
-  const rows = await query.where(
-    and(
-      eq(schema.EntityInstance.organizationId, organizationId),
-      eq(schema.EntityInstance.entityDefinitionId, ctx.payoutDefId),
-      isNull(schema.EntityInstance.archivedAt)
-    )
-  )
-
-  return rows.flatMap((row) =>
-    row.message ? [{ payoutId: row.id, number: row.number, message: row.message }] : []
-  )
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    ids: rows.map((row) => row.id),
+  })
+  return records.flatMap((record) => {
+    const message = record.text('payout_destination_mismatch')
+    return message ? [{ payoutId: record.id, number: record.text('payout_number'), message }] : []
+  })
 }
 
 /** One page of payouts, newest first. */
@@ -393,28 +288,23 @@ export async function listPayouts(
   const { organizationId, status, onlyUnidentified, limit, offset } = params
   return guard(
     async () => {
-      const ctx = await loadPayoutFieldContext(organizationId)
+      const ctx = await loadPayoutFieldContext(db, organizationId)
       if (!ctx) return []
 
       const where: SQL[] = [
         eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.payoutDefId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
         isNull(schema.EntityInstance.archivedAt),
       ]
 
-      let query = db
-        .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-        .from(schema.EntityInstance)
-        .$dynamic()
+      let query = db.select({ id: schema.EntityInstance.id }).from(schema.EntityInstance).$dynamic()
 
       if (status && ctx.fields.payout_status) {
         const statusValue = alias(schema.FieldValue, 'payout_status_v')
         query = query.innerJoin(
           statusValue,
           and(
-            eq(statusValue.entityId, schema.EntityInstance.id),
-            eq(statusValue.organizationId, schema.EntityInstance.organizationId),
-            eq(statusValue.fieldId, ctx.fields.payout_status.id),
+            systemValueJoin(statusValue, ctx.fields.payout_status.id),
             eq(statusValue.optionId, status)
           )
         )
@@ -428,9 +318,7 @@ export async function listPayouts(
         query = query.innerJoin(
           unidentified,
           and(
-            eq(unidentified.entityId, schema.EntityInstance.id),
-            eq(unidentified.organizationId, schema.EntityInstance.organizationId),
-            eq(unidentified.fieldId, ctx.fields.payout_unrecognised_net.id),
+            systemValueJoin(unidentified, ctx.fields.payout_unrecognised_net.id),
             // `> 0` and not `!= 0`: the builder refuses a negative remainder
             // outright, so a stored value is never below zero.
             gt(unidentified.valueNumber, 0)
@@ -445,7 +333,9 @@ export async function listPayouts(
         .offset(offset ?? 0)
 
       if (rows.length === 0) return []
-      const records = await hydrate(db, organizationId, ctx, rows)
+      const ids = rows.map((row) => row.id)
+      const page = await readSystemRecords(db, organizationId, ctx, { ids })
+      const records = await hydrate(db, organizationId, inPageOrder(page, ids))
       const summaries = await loadPayoutSourceSummaries(db, organizationId, records)
       return records.map((record) => ({
         ...record,
@@ -457,85 +347,43 @@ export async function listPayouts(
   )
 }
 
-/** Assemble {@link PayoutRecord}s from one page of instances. */
+/** Assemble {@link PayoutRecord}s from one page of system records. */
 async function hydrate(
   db: Database,
   organizationId: string,
-  ctx: PayoutFieldContext,
-  page: { id: string; createdAt: Date }[]
+  page: SystemRecord<PayoutAttribute>[]
 ): Promise<PayoutRecord[]> {
-  const ids = page.map((row) => row.id)
-  const fieldIds = Object.values(ctx.fields)
-    .filter((field): field is { id: string } => field != null)
-    .map((field) => field.id)
-
-  const values = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      valueNumber: schema.FieldValue.valueNumber,
-      valueDate: schema.FieldValue.valueDate,
-      optionId: schema.FieldValue.optionId,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, ids),
-        inArray(schema.FieldValue.fieldId, fieldIds)
-      )
-    )
-
-  const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
-  for (const value of values) {
-    let bucket = byInstance.get(value.entityId)
-    if (!bucket) {
-      bucket = new Map()
-      byInstance.set(value.entityId, bucket)
-    }
-    bucket.set(value.fieldId, value)
-  }
-
-  const records: PayoutRecord[] = page.map((row) => {
-    const read = (attr: PayoutAttribute) => {
-      const id = ctx.fields[attr]?.id
-      return id ? (byInstance.get(row.id)?.get(id) ?? null) : null
-    }
-    const money = (attr: PayoutAttribute) => Number(read(attr)?.valueNumber ?? 0)
-    const isoDay = (attr: PayoutAttribute) => {
-      const raw = read(attr)?.valueDate
-      return raw ? toDateKey(raw) : null
-    }
+  const records: PayoutRecord[] = page.map((record) => {
+    const paidAt = record.date('payout_paid_at')
+    const money = (attribute: PayoutAttribute) => record.number(attribute) ?? 0
     return {
       reportedFields: Object.fromEntries(
-        PAYOUT_SOURCE_ATTRIBUTES.map((attr) => [
-          attr,
-          read(attr)?.valueText ?? read(attr)?.valueNumber ?? null,
+        PAYOUT_SOURCE_ATTRIBUTES.map((attribute) => [
+          attribute,
+          record.text(attribute) ?? record.number(attribute),
         ])
       ),
-      payoutId: row.id,
-      recordId: toRecordId(ctx.payoutDefId, row.id),
-      number: read('payout_number')?.valueText ?? null,
-      gatewayId: read('payout_gateway_id')?.valueText ?? null,
-      status: resolvePayoutStatus(read('payout_status')?.optionId),
-      paidAt: isoDay('payout_paid_at'),
-      currency: read('payout_currency')?.valueText ?? null,
+      payoutId: record.id,
+      recordId: record.recordId,
+      number: record.text('payout_number'),
+      gatewayId: record.text('payout_gateway_id'),
+      status: resolvePayoutStatus(record.option('payout_status')),
+      paidAt: paidAt ? toDateKey(paidAt) : null,
+      currency: record.text('payout_currency'),
       depositedMinor: money('payout_deposited'),
       grossMinor: money('payout_gross'),
       feesMinor: money('payout_fees'),
       netMinor: money('payout_net'),
       unrecognisedNetMinor: money('payout_unrecognised_net'),
       unrecognisedCount: money('payout_unrecognised_count'),
-      blockedReason: read('payout_blocked_reason')?.valueText ?? null,
-      bankTransactionId: read('payout_bank_transaction_id')?.valueText ?? null,
-      paymentGatewayId: read('payout_payment_gateway')?.relatedEntityId ?? null,
-      bankAccountId: read('payout_bank_account')?.relatedEntityId ?? null,
+      blockedReason: record.text('payout_blocked_reason'),
+      bankTransactionId: record.text('payout_bank_transaction_id'),
+      paymentGatewayId: record.related('payout_payment_gateway'),
+      bankAccountId: record.related('payout_bank_account'),
       glPostingId: null,
-      destinationMismatch: read('payout_destination_mismatch')?.valueText ?? null,
-      source: resolvePayoutSource(read('payout_source')?.optionId),
-      createdAt: row.createdAt,
+      destinationMismatch: record.text('payout_destination_mismatch'),
+      source: resolvePayoutSource(record.option('payout_source')),
+      createdAt: record.createdAt ?? new Date(0),
     }
   })
   return withLivePostings(db, organizationId, records)

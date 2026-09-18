@@ -23,7 +23,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
-import { getCachedEntityDefId } from '../../../cache'
+import { systemDefId } from '../../../resources/system-records'
 import type { PayoutItem } from './source'
 
 /**
@@ -126,7 +126,7 @@ export async function readRecognisedOrderIds(
 ): Promise<Set<string>> {
   if (externalIds.length === 0) return new Set()
 
-  const orderDefId = await getCachedEntityDefId(organizationId, 'order')
+  const orderDefId = await systemDefId(db, organizationId, 'order')
   if (!orderDefId) return new Set()
 
   const rows = await db

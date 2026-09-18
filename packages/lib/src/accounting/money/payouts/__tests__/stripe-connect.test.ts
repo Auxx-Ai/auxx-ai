@@ -64,11 +64,13 @@ vi.mock('../../../../resources/crud/tx-write-flush', () => ({ flushTxWriteScope:
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: async () => true,
 }))
-vi.mock('../reads', () => ({
+vi.mock('../fields', () => ({
   requirePayoutFieldContext: async () => ({
-    payoutDefId: 'def_payout',
+    defId: 'def_payout',
     fields: { payout_payment_gateway: { id: 'f_pg' } },
   }),
+}))
+vi.mock('../reads', () => ({
   findPayoutByGatewayId: h.findPayoutByGatewayId,
   listLinkedFeedAccounts: h.listLinkedFeedAccounts,
   readBankAccountSettlementDestinations: h.readDestinations,

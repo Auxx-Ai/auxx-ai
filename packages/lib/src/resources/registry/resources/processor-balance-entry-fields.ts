@@ -1,7 +1,8 @@
 // packages/lib/src/resources/registry/resources/processor-balance-entry-fields.ts
+import { defineResourceFields } from '../system-attributes'
 import { financialSourceField, financialSourceRelationship } from './financial-source-fields'
 /** Normal mapped fields for processor balance records. */
-export const PROCESSOR_BALANCE_ENTRY_FIELDS = {
+export const PROCESSOR_BALANCE_ENTRY_FIELDS = defineResourceFields({
   sourceKey: financialSourceField('sourceKey', 'Source identity', 'processor_balance_source_key'),
   providerKey: financialSourceField(
     'providerKey',
@@ -79,4 +80,4 @@ export const PROCESSOR_BALANCE_ENTRY_FIELDS = {
     'payout',
     'processorEntries'
   ),
-}
+})

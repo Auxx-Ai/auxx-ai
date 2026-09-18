@@ -6,7 +6,17 @@ import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { PayoutSource } from '../enum-values'
 import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 import { PAYOUT_SOURCE_FIELDS } from './payout-source-fields'
+
+/** `PAYOUT_SOURCE_FIELDS` under `source_`-prefixed keys, typed so the attributes stay literal for `pickSystemAttributes`. */
+function sourceFields<F extends Record<string, ResourceField>>(
+  fields: F
+): { [K in keyof F & string as `source_${K}`]: F[K] } {
+  return Object.fromEntries(
+    Object.entries(fields).map(([key, field]) => [`source_${key}`, field])
+  ) as { [K in keyof F & string as `source_${K}`]: F[K] }
+}
 
 /**
  * A payout's life. `paid` is the only status that carries a posting.
@@ -62,10 +72,8 @@ export const PAYOUT_STATUS_OPTIONS = [
  * `gl_account`: the door is Accounting > Banking > Payouts, and a payout is only
  * ever created by the sync - there is no create dialog to reach.
  */
-export const PAYOUT_FIELDS: Record<string, ResourceField> = {
-  ...Object.fromEntries(
-    Object.entries(PAYOUT_SOURCE_FIELDS).map(([key, field]) => [`source_${key}`, field])
-  ),
+export const PAYOUT_FIELDS = defineResourceFields({
+  ...sourceFields(PAYOUT_SOURCE_FIELDS),
   evidence: {
     id: toFieldId('evidence'),
     key: 'evidence',
@@ -564,4 +572,4 @@ export const PAYOUT_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

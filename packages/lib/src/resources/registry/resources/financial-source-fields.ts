@@ -14,13 +14,15 @@ import type { ResourceField } from '../field-types'
  * fields (like `order`) must pass an explicit, unique value per call — see
  * `order-fields.ts`'s `z1`-`z8` block.
  */
-export function financialSourceField(
+export function financialSourceField<A extends SystemAttribute>(
   key: string,
   label: string,
-  attribute: SystemAttribute,
+  attribute: A,
   kind: 'text' | 'json' | 'boolean' | 'number' = 'text',
   sortOrder = 'a1'
-): ResourceField {
+  // The attribute stays LITERAL in the return type so `pickSystemAttributes`
+  // can check a helper-built field the way it checks a declared one.
+): ResourceField & { systemAttribute: A } {
   const types = {
     text: [BaseType.STRING, FieldType.TEXT],
     json: [BaseType.JSON, FieldType.JSON],
@@ -51,15 +53,15 @@ export function financialSourceField(
 }
 
 /** A standard record relationship, resolved by the normal connector relationship pass. */
-export function financialSourceRelationship(
+export function financialSourceRelationship<A extends SystemAttribute>(
   key: string,
   label: string,
-  attribute: SystemAttribute,
+  attribute: A,
   resource: string,
   inverseKey: string,
   many = false,
   sortOrder = 'a1'
-): ResourceField {
+): ResourceField & { systemAttribute: A } {
   return {
     ...financialSourceField(key, label, attribute, 'text', sortOrder),
     type: BaseType.RELATION,
