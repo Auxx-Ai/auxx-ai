@@ -1,6 +1,6 @@
 // apps/web/src/components/accounting/ui/settings/__tests__/posting-columns.test.ts
 
-import type { PostingPolicy } from '@auxx/lib/postings/client'
+import type { PostingPolicy } from '@auxx/lib/accounting/ledger/client'
 import { describe, expect, it } from 'vitest'
 import {
   NOT_POSTING_SECTION_UNITS,

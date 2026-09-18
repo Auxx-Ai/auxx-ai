@@ -2,8 +2,8 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, inArray } from 'drizzle-orm'
+import { periodKeyForDate } from '../../accounting/ledger/periods/periods'
 import { UnprocessableEntityError } from '../../errors'
-import { periodKeyForDate } from '../../postings/periods'
 import { readFulfillmentsForOrder } from '../fulfillments/reads'
 import { readOrderMoneyCoverage } from './reads'
 import {

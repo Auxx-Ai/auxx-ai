@@ -50,12 +50,12 @@ const h = vi.hoisted(() => ({
   dbUpdates: [] as Record<string, unknown>[],
 }))
 
-vi.mock('../../../../postings/post-entry', () => ({ postEntry: h.postEntry }))
-vi.mock('../../../../postings/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
-vi.mock('../../../../postings/list-postings', () => ({
+vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
+vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
+vi.mock('../../../ledger/reads/list-postings', () => ({
   listPostingsForSource: h.listPostingsForSource,
 }))
-vi.mock('../../../../postings/period-lock', () => ({
+vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ mode: 'ledger', lockedThroughMonth: null }),
 }))
 vi.mock('../../../../money/bank-deposits', () => ({ clearBankDeposit: h.clearBankDeposit }))

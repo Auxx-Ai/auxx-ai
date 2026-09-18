@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const listChartAccounts = vi.fn()
-vi.mock('../../../postings/role-map', () => ({
+vi.mock('../../ledger/roles/role-map', () => ({
   listChartAccounts: (...a: unknown[]) => listChartAccounts(...a),
 }))
 
@@ -22,7 +22,7 @@ vi.mock('../provider', () => ({
 
 import type { Database } from '@auxx/database'
 import { err, ok } from 'neverthrow'
-import type { ChartAccountRow, ProviderAccount } from '../../../postings/types'
+import type { ChartAccountRow, ProviderAccount } from '../../ledger/types'
 import { createAndLinkProviderAccount } from '../create-provider-account'
 
 const ORG = 'org1'

@@ -34,20 +34,22 @@ const h = vi.hoisted(() => ({
 vi.mock('../../../cache', () => ({
   getOrgCache: () => ({ from: () => ({ bySystemAttributes: h.bySystemAttributes }) }),
 }))
-vi.mock('../../../postings/accounting-enabled', () => ({
+vi.mock('../../../accounting/ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
-vi.mock('../../../postings/period-lock', () => ({
+vi.mock('../../../accounting/ledger/periods/period-lock', () => ({
   resolvePeriodLock: h.resolvePeriodLock,
 }))
 // `postEntry` is the one seam. `buildWriteOffEntry` stays real, which is what
 // keeps the period-key and occurrence assertions below meaningful.
-vi.mock('../../../postings/post-entry', () => ({
+vi.mock('../../../accounting/ledger/post/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
   previewEntry: h.previewEntry,
   postEntry: h.postEntry,
 }))
-vi.mock('../../../postings/auto-post', () => ({ readAutoPostMode: h.readAutoPostMode }))
+vi.mock('../../../accounting/ledger/post/auto-post', () => ({
+  readAutoPostMode: h.readAutoPostMode,
+}))
 vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: h.getOrganizationSetting,
 }))

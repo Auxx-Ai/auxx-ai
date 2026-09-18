@@ -27,15 +27,15 @@
 // browser half; `assertAccountingSetupUnfrozen` on the server is what actually
 // refuses, on both the settings write and `ledgerOpening.save`.
 
-import type { OpeningTrialBalanceRow } from '@auxx/lib/accounting/opening/client'
-import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import {
   ACCOUNT_ROLES,
   openingDifference,
   openingDifferenceRows,
   readSettingMinorUnits,
   summariseOpeningTrialBalance,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
+import type { OpeningTrialBalanceRow } from '@auxx/lib/accounting/opening/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'

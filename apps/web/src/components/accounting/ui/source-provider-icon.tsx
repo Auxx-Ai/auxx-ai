@@ -2,7 +2,7 @@
 
 'use client'
 
-import { MANUAL_SOURCE_PROVIDER_KEY } from '@auxx/lib/postings/client'
+import { MANUAL_SOURCE_PROVIDER_KEY } from '@auxx/lib/accounting/ledger/client'
 import { cn } from '@auxx/ui/lib/utils'
 import { Landmark, Store } from 'lucide-react'
 import { sourceVisualRef } from '~/components/icons/source-brands'

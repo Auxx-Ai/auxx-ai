@@ -18,18 +18,18 @@
 import type { Database } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { BadRequestError, NotFoundError } from '../../errors'
-import { FieldValueService } from '../../field-values/field-value-service'
-import { isAccountingEnabled } from '../../postings/accounting-enabled'
-import { todayInBookTimeZone } from '../../postings/book-time-zone'
 import {
   type BuildWriteOffEntryInput,
   buildWriteOffEntry,
-} from '../../postings/build-write-off-entry'
-import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
-import { resolvePeriodLock } from '../../postings/period-lock'
-import { LEDGER_CURRENCY, previewEntry } from '../../postings/post-entry'
-import type { EntryPreview, PostResult } from '../../postings/types'
+} from '../../accounting/ledger/builders/write-off'
+import { resolvePeriodLock } from '../../accounting/ledger/periods/period-lock'
+import { isExpectedPostOutcome } from '../../accounting/ledger/post/ledger-accepted'
+import { LEDGER_CURRENCY, previewEntry } from '../../accounting/ledger/post/post-entry'
+import { isAccountingEnabled } from '../../accounting/ledger/setup/accounting-enabled'
+import { todayInBookTimeZone } from '../../accounting/ledger/setup/book-time-zone'
+import type { EntryPreview, PostResult } from '../../accounting/ledger/types'
+import { BadRequestError, NotFoundError } from '../../errors'
+import { FieldValueService } from '../../field-values/field-value-service'
 import { acceptInvoiceWriteOffAccounting } from './write-off-accounting'
 import {
   countWriteOffPostings,

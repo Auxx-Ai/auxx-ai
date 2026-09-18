@@ -42,7 +42,7 @@ const h = vi.hoisted(() => ({
   autoPostMode: 'post' as 'draft' | 'post',
 }))
 
-vi.mock('../../../postings/accounting-enabled', () => ({
+vi.mock('../../../accounting/ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
 
@@ -69,11 +69,12 @@ vi.mock('../../fulfillments', () => ({
   },
 }))
 
-vi.mock('../../../postings/build-fulfillment-entry', async (importOriginal) => {
+vi.mock('../../../accounting/ledger/builders/fulfillment', async (importOriginal) => {
   // `computeShipmentTotals` stays REAL: the not-enabled path calls it directly
   // (never the mocked builder below), and its arithmetic is what the
   // "accounting not enabled" tests below assert against.
-  const actual = await importOriginal<typeof import('../../../postings/build-fulfillment-entry')>()
+  const actual =
+    await importOriginal<typeof import('../../../accounting/ledger/builders/fulfillment')>()
   return {
     computeShipmentTotals: (input: Parameters<typeof actual.computeShipmentTotals>[0]) => {
       h.built.push({ shippedLines: [...input.lines] })
@@ -103,7 +104,7 @@ vi.mock('../../../postings/build-fulfillment-entry', async (importOriginal) => {
   }
 })
 
-vi.mock('../../../postings/post-entry', () => ({
+vi.mock('../../../accounting/ledger/post/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
   postEntryInTx: async (_tx: unknown, options: Record<string, unknown>) => {
     h.events.push('post')
@@ -115,14 +116,16 @@ vi.mock('../../../postings/post-entry', () => ({
   previewEntry: async () => ({ lines: [] }),
 }))
 
-vi.mock('../../../postings/reverse-entry', () => ({ reverseEntry: vi.fn() }))
-vi.mock('../../../postings/list-postings', () => ({ listPostingsForSource: vi.fn() }))
+vi.mock('../../../accounting/ledger/post/reverse-entry', () => ({ reverseEntry: vi.fn() }))
+vi.mock('../../../accounting/ledger/reads/list-postings', () => ({
+  listPostingsForSource: vi.fn(),
+}))
 
 vi.mock('../../customer-money/reads', () => ({
   readOrderSourceScope: async () => h.scope,
 }))
 
-vi.mock('../../../postings/accounting-commit-lock', () => ({
+vi.mock('../../../accounting/ledger/post/accounting-commit-lock', () => ({
   withAccountingCommitLock: async () => {
     h.events.push('lock')
   },
@@ -140,11 +143,13 @@ vi.mock('../../../resources/crud/tx-write-flush', () => ({
   },
 }))
 
-vi.mock('../../../postings/period-lock', () => ({
+vi.mock('../../../accounting/ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 
-vi.mock('../../../postings/auto-post', () => ({ readAutoPostMode: async () => h.autoPostMode }))
+vi.mock('../../../accounting/ledger/post/auto-post', () => ({
+  readAutoPostMode: async () => h.autoPostMode,
+}))
 
 vi.mock('../../../relief', async () => {
   const { ok } = await import('neverthrow')

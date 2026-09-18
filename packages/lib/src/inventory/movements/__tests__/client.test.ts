@@ -3,7 +3,7 @@
 // Nothing here touches a database, the org cache or the logger.
 
 import { describe, expect, it } from 'vitest'
-import { ACCOUNT_ROLES } from '../../../postings/client'
+import { ACCOUNT_ROLES } from '../../../accounting/ledger/client'
 import {
   computeExtendedCost,
   DEFAULT_RECEIPT_INVENTORY_ROLE,

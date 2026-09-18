@@ -4,7 +4,7 @@
 // cron; for every other trigger kind it is a sentence, so the helper answers
 // null and the page prints the sentence.
 
-import { POSTING_POLICY, type PostingTrigger } from '@auxx/lib/postings/client'
+import { POSTING_POLICY, type PostingTrigger } from '@auxx/lib/accounting/ledger/client'
 import { describe, expect, it } from 'vitest'
 import { describeNextFire, nextScheduledFire } from './posting-schedule'
 

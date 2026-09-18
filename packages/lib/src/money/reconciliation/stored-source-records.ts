@@ -4,8 +4,8 @@ import { schema, type Transaction } from '@auxx/database'
 import { readEnvelope } from '@auxx/types/field-value'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { and, eq, inArray, sql } from 'drizzle-orm'
+import { accountingBasisHash } from '../../accounting/ledger/builders/basis-hash'
 import { ConflictError } from '../../errors'
-import { accountingBasisHash } from '../../postings/basis-hash'
 import type {
   PayoutRecordEvidence,
   ProcessorRecordEvidence,

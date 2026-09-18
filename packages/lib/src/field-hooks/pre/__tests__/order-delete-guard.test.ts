@@ -21,11 +21,13 @@ const h = vi.hoisted(() => ({
   getOrganizationSetting: vi.fn(),
 }))
 
-vi.mock('../../../postings/list-postings', () => ({
+vi.mock('../../../accounting/ledger/reads/list-postings', () => ({
   listPostingsForSource: h.listPostingsForSource,
 }))
 
-vi.mock('../../../postings/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
+vi.mock('../../../accounting/ledger/periods/period-lock', () => ({
+  resolvePeriodLock: h.resolvePeriodLock,
+}))
 vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: h.getOrganizationSetting,
 }))

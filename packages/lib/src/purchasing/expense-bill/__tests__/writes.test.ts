@@ -32,24 +32,24 @@ vi.mock('@auxx/database', async () => {
   const enums = await import('../../../../../database/src/enums')
   return { schema, ...enums, database: {} }
 })
-vi.mock('../../../postings/accounting-enabled', () => ({
+vi.mock('../../../accounting/ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
 vi.mock('../../../cache', () => ({
   getEntityDefIdResolver: async () => (type: string) => type,
 }))
-vi.mock('../../../postings/list-postings', () => ({
+vi.mock('../../../accounting/ledger/reads/list-postings', () => ({
   listPostingsForSource: h.listPostingsForSource,
 }))
-vi.mock('../../../postings/period-lock', () => ({
+vi.mock('../../../accounting/ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
-vi.mock('../../../postings/post-entry', () => ({
+vi.mock('../../../accounting/ledger/post/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
   postEntry: h.postEntry,
   previewEntry: vi.fn(async () => ({ docNumber: 'AUXX-EXB-BILL0007', lines: [] })),
 }))
-vi.mock('../../../postings/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
+vi.mock('../../../accounting/ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
 vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: async () => null,
 }))

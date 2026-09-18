@@ -58,7 +58,7 @@ import {
   type ChartAccountRow,
   type GlAccountSubtypeValue,
   type GlAccountTypeValue,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection } from '@auxx/ui/components/section'

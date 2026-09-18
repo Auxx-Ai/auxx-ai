@@ -69,7 +69,7 @@ vi.mock('../reads', () => ({
   },
 }))
 
-vi.mock('../../../postings/role-map', () => ({
+vi.mock('../../ledger/roles/role-map', () => ({
   setRoleAssignment: async (_db: unknown, options: Record<string, unknown>) => {
     state.roleAssignmentCalls.push(options)
     if (state.roleAssignmentError) {

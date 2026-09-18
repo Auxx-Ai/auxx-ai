@@ -7,9 +7,9 @@
 import { database, schema } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { ProviderPostError, type WithdrawResult } from '../../../../postings/types'
 import { exportObjectTypeLabel } from '../../../export/client'
 import { exportPaymentSchema, PAYMENT_OBJECT_TYPE } from '../../../export/payloads/payment'
+import { ProviderPostError, type WithdrawResult } from '../../../ledger/types'
 import type {
   ProviderObjectContext,
   ReadObjectRef,

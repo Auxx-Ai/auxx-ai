@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { UnprocessableEntityError } from '../../../errors'
-import type { GlAccountTypeValue } from '../../../postings/default-chart'
+import type { GlAccountTypeValue } from '../../ledger/chart/default-chart'
 import {
   NATURAL_BALANCE_DIRECTION,
   netIncome,

@@ -12,7 +12,7 @@ import type {
   PostingDirection,
   PostingStatus,
   PostingType,
-} from '../../../postings/types'
+} from '../../ledger/types'
 
 /** What the record IS, which decides the posting type it becomes. */
 export type JournalEntryKindValue =

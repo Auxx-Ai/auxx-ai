@@ -4,7 +4,7 @@
 //
 // 🛑 Nothing here mirrors a lib type any more. `RoleAssignmentRow`,
 // `RoleAssignmentState` and `ChartAccountRow` are imported straight from
-// `@auxx/lib/postings/client` at every call site, because `ledger.roleMap` and
+// `@auxx/lib/accounting/ledger/client` at every call site, because `ledger.roleMap` and
 // `ledger.chartAccounts` now return exactly those shapes. What is left below is
 // presentation the server has no opinion about: the badge palette for the five
 // statement classifications, the two roles the L1 regime never emits, and how an
@@ -25,7 +25,7 @@ import {
   type GlAccountTypeValue,
   glAccountTypeMeta,
   type ProviderAccount,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { getIcon } from '@auxx/ui/components/icon-data'
 import { Landmark, type LucideIcon } from 'lucide-react'
@@ -91,7 +91,7 @@ export function accountTypeIcon(type: string): LucideIcon {
  * COGS on the P&L, never a code prefix. Optional: most accounts carry none.
  *
  * Derived from `GL_ACCOUNT_SUBTYPES` and `accountSubtypeLabel`, both
- * client-exported from `@auxx/lib/postings/client`, rather than reaching into
+ * client-exported from `@auxx/lib/accounting/ledger/client`, rather than reaching into
  * the registry's `GlAccountSubtype.values` (server-only).
  */
 export const ACCOUNT_SUBTYPE_OPTIONS: Array<{

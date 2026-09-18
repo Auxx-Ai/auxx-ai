@@ -17,9 +17,9 @@
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError, UnprocessableEntityError } from '../../errors'
-import type { GlAccountSubtypeValue } from '../../postings/account-subtype'
-import type { GlAccountTypeValue } from '../../postings/default-chart'
-import type { ProviderAccount, ProviderBalanceSheet, WithdrawResult } from '../../postings/types'
+import type { GlAccountSubtypeValue } from '../ledger/chart/account-subtype'
+import type { GlAccountTypeValue } from '../ledger/chart/default-chart'
+import type { ProviderAccount, ProviderBalanceSheet, WithdrawResult } from '../ledger/types'
 import type { ProviderLedgerSlicer } from '../mirror/client'
 
 const logger = createScopedLogger('postings-provider')

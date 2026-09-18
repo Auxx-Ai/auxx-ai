@@ -1,0 +1,719 @@
+// packages/lib/src/accounting/ledger/chart/chart-write.ts
+
+/**
+ * The chart of accounts, WRITTEN: create, update and remove one `gl_account`.
+ *
+ * `G7` has said the chart is the org's own document since it was seeded, and
+ * every piece of machinery downstream is built on that premise - `G8` exists
+ * only because the chart is editable, and `GlPostingLine.glAccountId` has no
+ * foreign key only because the chart is editable. Until this file there was no
+ * writer but `seedDefaultChartOfAccounts`, which runs once at migration time.
+ *
+ * ## The invariant this module exists for
+ *
+ * 🛑 `mapRole` (`role-map.ts`) validates the pair (role, account) from the
+ * ROLE's side: not archived, active, and `accountType === ROLE_ACCOUNT_TYPES[role]`.
+ * `resolveRoles` re-checks the identical three at post time. **Editing the
+ * account is the other half of that pair**, and every one of those checks is
+ * bypassable without the guards below: map `grni` to a liability account, then
+ * change that account's type to `revenue`. Both writes pass, the resulting entry
+ * still BALANCES, and nothing downstream can detect it - which is exactly what
+ * `ROLE_ACCOUNT_TYPES`' header says about a type mismatch.
+ *
+ * So this file owns the same three refusals from the account's side ({@link I1},
+ * {@link I2}, {@link I3} below), plus code uniqueness, which the handler gives.
+ *
+ * ## What is deliberately NOT guarded
+ *
+ * ⚠️ **`code` and `name` are the org's, unconditionally.** Both are safe:
+ *
+ * - a RENAME cannot touch history - `GlPostingLine.accountName` is a snapshot
+ *   taken at post time, for exactly this reason
+ * - a RENUMBER cannot touch role resolution - `GlRoleAssignment.glAccountId`
+ *   names the INSTANCE, not the code, which is `G8` doing its job
+ *
+ * 🛑 **Since task 15, a RENUMBER no longer detaches anything either.** A posted
+ * line stores `glAccountId` - the account's IDENTITY - with no foreign key, so
+ * every line ever posted to this account keeps reading as one row on every
+ * statement no matter what its code becomes. Only ARCHIVING or deleting the
+ * account detaches its history (`listChartAccountUsage` in `role-map.ts` is the
+ * count for THAT caution, not for a renumber - see `Remove` below).
+ *
+ * ## Removal is ARCHIVE, never delete
+ *
+ * See {@link removeChartAccount}. Three independent reasons, any one sufficient.
+ *
+ * No permission checks here. The router asserts `ledgerPost`
+ * (`docs/lib-module-guide.md` §6).
+ */
+
+import { type Database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { err, ok, type Result } from 'neverthrow'
+import {
+  AuxxError,
+  BadRequestError,
+  NotFoundError,
+  UniqueValueConflictError,
+  UnprocessableEntityError,
+} from '../../../errors'
+import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
+import { toRecordId } from '../../../resources/resource-id'
+import { ACCOUNT_ROLE_LABELS, type AccountRole, ROLE_ACCOUNT_TYPES } from '../builders/entry'
+import { readRoleAssignments } from '../roles/role-assignments'
+import type { ChartAccountRow } from '../types'
+import { accountLabel } from './account-label'
+import type { GlAccountSubtypeValue } from './account-subtype'
+import {
+  type ChartAccountFields,
+  loadChartAccountFields,
+  readChartAccountValues,
+} from './chart-accounts'
+import type { GlAccountTypeValue } from './default-chart'
+import { describeGlAccountPointers, findGlAccountPointers } from './gl-account-pointers'
+
+const logger = createScopedLogger('postings:chart-write')
+
+/**
+ * What an unprovisioned chart refuses a WRITER with.
+ *
+ * `role-map.ts` and `resolve-roles.ts` each pass their own sentence to the same
+ * shared check, deliberately - the fact is one, the advice is not. This one is
+ * read by somebody who just clicked Create.
+ */
+const NOT_PROVISIONED =
+  'The chart of accounts is not provisioned for this organization - gl_account_code / gl_account_type are missing. Run the entity migrations.'
+
+/**
+ * The `gl_account` attributes, as the crud handler wants them keyed.
+ *
+ * A `type` and not an `interface`: the handler takes `Record<string, unknown>`,
+ * and only a type alias carries the implicit index signature that satisfies it.
+ */
+type AccountValues = {
+  gl_account_code?: string | null
+  gl_account_name?: string
+  gl_account_type?: GlAccountTypeValue
+  gl_account_is_active?: boolean
+  gl_account_subtype?: GlAccountSubtypeValue | null
+}
+
+/** A role that still posts to an account, and the account row it points at. */
+interface LiveRole {
+  role: AccountRole
+  glAccountId: string
+}
+
+export interface CreateChartAccountOptions {
+  organizationId: string
+  /**
+   * The account number. Optional (task 15 §5): a chart imported from a
+   * provider that ships with numbering off, or one a person keeps by name
+   * alone, has no code at all. Blank and `null` mean the same thing. Unique
+   * per org among non-null codes; `UniqueValueConflictError` if taken.
+   */
+  code?: string | null
+  name: string
+  accountType: GlAccountTypeValue
+  /** Defaults to `true`, matching the field's registry default. */
+  isActive?: boolean
+  /** The second fact about the account (task 13 §3), e.g. `cost_of_goods_sold`. */
+  subtype?: GlAccountSubtypeValue | null
+  /** Who is doing this. Attributed on the write - never a system session. */
+  actorUserId: string
+}
+
+export interface UpdateChartAccountOptions {
+  organizationId: string
+  accountId: string
+  /** `null` or a blank string clears the code. Omit to leave it unchanged. */
+  code?: string | null
+  name?: string
+  accountType?: GlAccountTypeValue
+  isActive?: boolean
+  subtype?: GlAccountSubtypeValue | null
+  actorUserId: string
+}
+
+export interface RemoveChartAccountOptions {
+  organizationId: string
+  accountId: string
+  actorUserId: string
+}
+
+/**
+ * Add one account to the org's chart.
+ *
+ * Only `name` and `accountType` are required (task 15 §5 - `code` used to be a
+ * third, and is no longer: the account id is the identity and a code is a
+ * label the account may not carry). There is no default for `accountType` and
+ * this module invents none: a statement classification is what every role
+ * compatibility check is made against, and guessing one would defeat the only
+ * reason the type is read.
+ *
+ * @returns the account exactly as `listChartAccounts` would render it.
+ */
+export async function createChartAccount(
+  db: Database,
+  options: CreateChartAccountOptions
+): Promise<Result<ChartAccountRow, Error>> {
+  const { organizationId, actorUserId } = options
+
+  try {
+    const code = options.code?.trim() || null
+    const name = options.name.trim()
+    if (!name) throw new BadRequestError('An account needs a name.', { organizationId })
+
+    const { fields, defId } = await loadChartTarget(organizationId)
+    if (code) await assertCodeIsFree(db, organizationId, code, fields)
+
+    const handler = crudHandler(db, organizationId, actorUserId)
+    const created = await namingTheCode(code, () =>
+      handler.create(defId, {
+        gl_account_code: code,
+        gl_account_name: name,
+        gl_account_type: options.accountType,
+        gl_account_is_active: options.isActive ?? true,
+        gl_account_subtype: options.subtype ?? null,
+      } satisfies AccountValues)
+    )
+
+    return ok(await readBack(db, organizationId, created.instance.id, fields))
+  } catch (error) {
+    if (error instanceof AuxxError) return err(error)
+    logger.error('Failed to create a chart account', { error, organizationId })
+    return err(new AuxxError('Internal error'))
+  }
+}
+
+/**
+ * Change one account. Only the keys present are written.
+ *
+ * Two of the four fields are guarded, and both guards are about a role that
+ * still posts here - see the file header.
+ */
+export async function updateChartAccount(
+  db: Database,
+  options: UpdateChartAccountOptions
+): Promise<Result<ChartAccountRow, Error>> {
+  const { organizationId, accountId, actorUserId } = options
+
+  try {
+    const { fields, defId } = await loadChartTarget(organizationId)
+    const account = await requireAccount(db, organizationId, accountId, fields)
+
+    const values: AccountValues = {}
+
+    if (options.code !== undefined) {
+      // `null` or a blank string clears the code (task 15 §5) - the account id
+      // is the identity, so removing the label leaves a perfectly postable
+      // account.
+      const code = options.code?.trim() || null
+      // Only when it actually moves: re-asserting an account's own code is a
+      // no-op the person cannot tell apart from any other save, and checking it
+      // would make the account collide with itself.
+      if (code && code !== account.code) {
+        await assertCodeIsFree(db, organizationId, code, fields, accountId)
+      }
+      values.gl_account_code = code
+    }
+
+    if (options.name !== undefined) {
+      const name = options.name.trim()
+      if (!name) throw new BadRequestError('An account needs a name.', { organizationId })
+      values.gl_account_name = name
+    }
+
+    // ── I1: a type change may not break a role that posts here ──────────────
+    //
+    // 🛑 The guard the whole module exists for. `mapRole` refuses to point a
+    // role at an incompatible account; without this, the same illegal pair is
+    // reachable by mapping first and retyping second, and the resulting entry
+    // BALANCES.
+    if (options.accountType !== undefined && options.accountType !== account.accountType) {
+      const live = await liveRolesFor(db, organizationId, accountId)
+      for (const { role } of live) {
+        const expected = ROLE_ACCOUNT_TYPES[role]
+        if (expected !== options.accountType) {
+          throw new UnprocessableEntityError(
+            `Cannot make ${accountLabel(account)} ${article(options.accountType)} account: '${role}' (${ACCOUNT_ROLE_LABELS[role]}) posts here and must be mapped to ${article(expected)} account. Repoint the role first, or mark it unused.`,
+            { organizationId, accountId, role }
+          )
+        }
+      }
+      values.gl_account_type = options.accountType
+    }
+
+    // ── I2: deactivating an account a role still posts to ───────────────────
+    //
+    // `resolveRoles` refuses a mapped-inactive account at POST time, naming the
+    // role. Refusing here turns a refused close next month into a refused click
+    // now, which is the same trade `mapRole` makes.
+    if (options.isActive !== undefined && options.isActive !== account.isActive) {
+      if (options.isActive === false) {
+        await assertNoLiveRole(
+          db,
+          organizationId,
+          accountId,
+          account,
+          'deactivate',
+          'Reactivating it later is a click; a refused close is not.'
+        )
+        await assertNoPointer(db, organizationId, accountId, account, 'deactivate')
+      }
+      values.gl_account_is_active = options.isActive
+    }
+
+    if (options.subtype !== undefined) {
+      values.gl_account_subtype = options.subtype
+    }
+
+    if (Object.keys(values).length > 0) {
+      const handler = crudHandler(db, organizationId, actorUserId)
+      await namingTheCode(values.gl_account_code ?? account.code, () =>
+        handler.update(toRecordId(defId, accountId), values)
+      )
+    }
+
+    return ok(await readBack(db, organizationId, accountId, fields))
+  } catch (error) {
+    if (error instanceof AuxxError) return err(error)
+    logger.error('Failed to update a chart account', { error, organizationId, accountId })
+    return err(new AuxxError('Internal error'))
+  }
+}
+
+/**
+ * Take one account out of the chart.
+ *
+ * 🛑 **This ARCHIVES. `handler.delete` appears nowhere in this module**, and
+ * three independent reasons say so - any one of them sufficient:
+ *
+ *  1. Every reader already excludes archived rows **in the query**
+ *     (`listChartAccounts`, `loadChartAccountsById`, `resolveRoles`). Archiving
+ *     IS removal as far as the chart, the role picker and the resolver are
+ *     concerned.
+ *  2. `seedDefaultChartOfAccounts` reads existing codes INCLUDING archived rows,
+ *     deliberately, so a re-seed does not resurrect what somebody removed:
+ *     *"Someone who archived an account did not ask for it back."* A hard delete
+ *     forfeits that - the next migration re-run puts the account straight back.
+ *  3. A hard delete cascades away any `RecordIdentity` on the row, which is the
+ *     connected provider's own account id (`P2`). `scripts/reset-gl-chart.ts`
+ *     refuses to do that even in a dev wipe.
+ *
+ * Posted history is unaffected either way: `GlPostingLine` snapshots the code
+ * and the name and has no foreign key to the instance.
+ */
+export async function removeChartAccount(
+  db: Database,
+  options: RemoveChartAccountOptions
+): Promise<Result<{ id: string }, Error>> {
+  const { organizationId, accountId, actorUserId } = options
+
+  try {
+    const { fields, defId } = await loadChartTarget(organizationId)
+    const account = await requireAccount(db, organizationId, accountId, fields)
+
+    // ── I3: removing an account a role still posts to ───────────────────────
+    await assertNoLiveRole(
+      db,
+      organizationId,
+      accountId,
+      account,
+      'remove',
+      'A role pointing at a removed account fails the close closed, naming the role.'
+    )
+
+    // ── I4: removing an account a TEXT pointer still names ───────────────────
+    await assertNoPointer(db, organizationId, accountId, account, 'remove')
+
+    const handler = crudHandler(db, organizationId, actorUserId)
+    await handler.archive(toRecordId(defId, accountId))
+
+    return ok({ id: accountId })
+  } catch (error) {
+    if (error instanceof AuxxError) return err(error)
+    logger.error('Failed to remove a chart account', { error, organizationId, accountId })
+    return err(new AuxxError('Internal error'))
+  }
+}
+
+/**
+ * Put a removed account back into the chart.
+ *
+ * The counterpart to {@link removeChartAccount}, and the reason that one
+ * archives rather than deletes: the row, its code, its provider identity and its
+ * posted history are all still there, so coming back is a flag flip rather than
+ * a re-creation.
+ *
+ * 🛑 No role is reassigned. `removeChartAccount` refuses while a live role still
+ * points here, so a restored account arrives role-less by construction, and
+ * quietly re-pointing a role at it would decide where money lands on somebody's
+ * behalf.
+ *
+ * ⚠️ The code uniqueness gate excludes archived rows, so an org that created a
+ * NEW `1310` after removing the old one now holds two - and this restore is what
+ * would surface that. It is allowed on purpose: refusing here would leave the
+ * account unreachable with no way to rename either row. The chart list shows
+ * both, and renaming one is a click.
+ */
+export async function restoreChartAccount(
+  db: Database,
+  options: RemoveChartAccountOptions
+): Promise<Result<{ id: string }, Error>> {
+  const { organizationId, accountId, actorUserId } = options
+
+  try {
+    const { defId } = await loadChartTarget(organizationId)
+    const handler = crudHandler(db, organizationId, actorUserId)
+    await handler.restore(toRecordId(defId, accountId))
+
+    return ok({ id: accountId })
+  } catch (error) {
+    if (error instanceof AuxxError) return err(error)
+    logger.error('Failed to restore a chart account', { error, organizationId, accountId })
+    return err(new AuxxError('Internal error'))
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Internals
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The handler every write in this module goes through.
+ *
+ * 🛑 **`capabilities: undefined` and NOT `requestPath: true`**, which the
+ * handler reads as "internal caller, no enforcement". That is correct here and
+ * is not an oversight: the router has already asserted `ledgerPost`, and
+ * re-asserting the generic RECORDS capability underneath it would hand the chart
+ * to anyone with records-Full and ledger-None - the authorization inversion this
+ * whole surface was built to avoid.
+ *
+ * The session is the default interactive one built from `actorUserId`. **Not**
+ * `seedSession` / `quietSession`: a person renaming an account is exactly the
+ * write that should be attributable, and the quiet lane also suppresses the
+ * events a rename should emit.
+ *
+ * Going through the handler at all (rather than writing `FieldValue` by hand) is
+ * what buys the uniqueness gate on `code`, `assertRequiredFieldsPresent`, and the
+ * `SINGLE_SELECT` -> `optionId` write for `accountType` that the decode reads
+ * back out of `optionId`.
+ */
+function crudHandler(db: Database, organizationId: string, actorUserId: string) {
+  return new UnifiedCrudHandler(organizationId, actorUserId, db, undefined)
+}
+
+/**
+ * Re-message a unique-code collision so it says which code collided.
+ *
+ * `validateUniqueFields` throws `"Code must be unique: value already exists"`,
+ * which is true and useless - and only the MESSAGE crosses tRPC, since the
+ * error serialises as a plain 409. `code` is the only unique field on
+ * `gl_account`, so any conflict from a chart write is that one, and the sentence
+ * a person needs is the whole of "4000 is already in use".
+ *
+ * ⚠️ **Kept deliberately, and it cannot fire today.** {@link assertCodeIsFree}
+ * now refuses a duplicate before the handler is ever called, and the two gates
+ * this wrapper was written to catch are both inert for this caller anyway (see
+ * that function's header for why). It stays as the belt to that pre-check's
+ * braces: it costs one `try`, it is already tested, and the moment either gate
+ * is repaired - which is the point of the second stage of this fix - it starts
+ * carrying real conflicts again, including the concurrent-write race the
+ * pre-check knowingly does not close. Do not delete it as dead code without
+ * reading both.
+ */
+async function namingTheCode<T>(code: string | null, write: () => Promise<T>): Promise<T> {
+  try {
+    return await write()
+  } catch (error) {
+    // No code to name a collision with (task 15 §5): a write with no code can
+    // never trip the uniqueness gate below, so the original error is exact.
+    if (code && error instanceof UniqueValueConflictError) {
+      throw new UniqueValueConflictError({
+        message: `${code} is already in use by another account in this chart.`,
+        conflictingValue: code,
+        fieldId: error.fieldId,
+        existingEntityId: error.existingEntityId,
+      })
+    }
+    throw error
+  }
+}
+
+/** The four field ids and the `gl_account` definition, resolved together. */
+async function loadChartTarget(
+  organizationId: string
+): Promise<{ fields: ChartAccountFields; defId: string }> {
+  const fields = await loadChartAccountFields(organizationId, NOT_PROVISIONED)
+  const defId = fields.code.entityDefinitionId
+  if (!defId) {
+    throw new UnprocessableEntityError(
+      'The chart of accounts is not provisioned for this organization - gl_account_code is not attached to an entity definition. Run the entity migrations.',
+      { organizationId }
+    )
+  }
+  return { fields, defId }
+}
+
+/**
+ * The account as it stands, or `NotFoundError`.
+ *
+ * Archived rows are excluded by {@link loadLiveAccount}'s query, so "archived"
+ * and "does not exist" produce one answer - the same collapse every other reader
+ * of this chart makes.
+ */
+async function requireAccount(
+  db: Database,
+  organizationId: string,
+  accountId: string,
+  fields: ChartAccountFields
+): Promise<ChartAccountRow> {
+  const account = await loadLiveAccount(db, organizationId, accountId, fields)
+  if (!account) {
+    throw new NotFoundError(
+      `Account ${accountId} does not exist in this organization, or has been removed.`,
+      { organizationId, accountId }
+    )
+  }
+  return account
+}
+
+/**
+ * Re-read the account after a write, and refuse if it came back undecodable.
+ *
+ * ⚠️ **This is the §2.2 guard, not a convenience.** `UnifiedCrudHandler` resolves
+ * fields through the org cache and SILENTLY DROPS a value whose field it cannot
+ * resolve - the failure that once wrote 784 accounts across 28 orgs with the one
+ * field that mattered missing, and logged success. A dropped `gl_account_type`
+ * produces an account the decode classifies as malformed, which means it vanishes
+ * from the very list it was just created in. `loadChartAccountFields` above makes
+ * that structurally unlikely; this makes it impossible to go unnoticed.
+ */
+async function readBack(
+  db: Database,
+  organizationId: string,
+  accountId: string,
+  fields: ChartAccountFields
+): Promise<ChartAccountRow> {
+  const account = await loadLiveAccount(db, organizationId, accountId, fields)
+  if (!account) {
+    throw new AuxxError(
+      `The account was written but could not be read back with a code and a type (${accountId}). The write may have dropped a field value; nothing further has been changed.`,
+      { organizationId, accountId }
+    )
+  }
+  return account
+}
+
+/** One live (non-archived) account, decoded, or undefined. */
+/**
+ * "an asset", "a liability". Three of the five `GlAccountTypeValue`s take "an",
+ * so a hardcoded "a" is wrong more often than not.
+ */
+function article(accountType: string): string {
+  return /^[aeiou]/i.test(accountType) ? `an ${accountType}` : `a ${accountType}`
+}
+
+/**
+ * Refuse a code another live account in this chart already holds.
+ *
+ * Called only for a non-empty `code` (task 15 §5): uniqueness applies among
+ * non-null codes, and a blank or absent code is never a collision - every
+ * account without one shares that, by design.
+ *
+ * 🛑 **This is THE uniqueness guard for the chart, and it has to live here.**
+ * The two gates below it both fail to stop a duplicate, which is why a
+ * collision used to return HTTP 200 carrying the OLD code, with no message
+ * anywhere and the editor pane left disagreeing with the list:
+ *
+ *  1. `UnifiedCrudHandler.validateUniqueFields` reads its candidate as
+ *     `values[field.id]`, keyed by **CustomField id**. This module keys
+ *     `AccountValues` by **systemAttribute** (`gl_account_code`), exactly as
+ *     `setFieldValues` invites callers to, so the lookup is `undefined` and the
+ *     whole gate `continue`s past it.
+ *  2. The field-value layer's own uniqueness gate DOES throw - and
+ *     `setValuesForEntity`'s per-field loop catches it, logs it, records
+ *     `state: 'failed'` and carries on. Nothing reads that state (it is written
+ *     in two places and inspected in none), so the throw never reaches
+ *     `handler.update` and {@link namingTheCode} never sees it.
+ *
+ * `readBack` cannot cover for either: a dropped `code` leaves a perfectly
+ * well-formed account, so it decodes fine and reports success.
+ *
+ * ⚠️ **Check-then-write, and knowingly so.** Two concurrent creates could still
+ * both pass. There is no backstop to lose: `gl_account_code` is a `FieldValue`
+ * row with no database unique index, so the behaviour this replaces had the
+ * identical race and merely hid it behind a silent no-op. Closing it properly
+ * means a partial index on the field-value table, which is its own change.
+ */
+async function assertCodeIsFree(
+  db: Database,
+  organizationId: string,
+  code: string,
+  fields: ChartAccountFields,
+  excludeAccountId?: string
+): Promise<void> {
+  const holders = await db
+    .select({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, fields.code.id),
+        eq(schema.FieldValue.valueText, code)
+      )
+    )
+
+  const candidates = holders.map((row) => row.entityId).filter((id) => id !== excludeAccountId)
+  if (candidates.length === 0) return
+
+  // An ARCHIVED account keeps its code and does not block a new one: every
+  // reader of this chart excludes archived rows, so the code is free as far as
+  // the chart, the role picker and the resolver are concerned. That matches
+  // `removeChartAccount`'s contract, where removal IS archival.
+  const live = await db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        inArray(schema.EntityInstance.id, candidates),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+    .limit(1)
+
+  if (live.length === 0) return
+
+  throw new UniqueValueConflictError({
+    message: `${code} is already in use by another account in this chart.`,
+    conflictingValue: code,
+    fieldId: fields.code.id,
+    existingEntityId: live[0]?.id,
+  })
+}
+
+async function loadLiveAccount(
+  db: Database,
+  organizationId: string,
+  accountId: string,
+  fields: ChartAccountFields
+): Promise<ChartAccountRow | undefined> {
+  const live = await db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.id, accountId),
+        // Archived is absent, exactly as every other reader of this chart has it.
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+    .limit(1)
+
+  if (live.length === 0) return undefined
+
+  const read = await readChartAccountValues(db, organizationId, [accountId], fields)
+  return read.accounts.get(accountId)
+}
+
+/**
+ * The roles that still post to this account.
+ *
+ * ⚠️ "Still posts" means a `GlRoleAssignment` row that is **not**
+ * `markedUnused`. That is the same exemption `listRoleMap`'s precedence table
+ * derives as the `unused` state, and it is the only state that exempts: a role
+ * the org has explicitly said it does not use is not a reason to refuse
+ * anything. Filtered from `readRoleAssignments` rather than through
+ * `listRoleMap`, which re-reads the whole chart to decode every role's account
+ * and this needs neither.
+ */
+async function liveRolesFor(
+  db: Database,
+  organizationId: string,
+  accountId: string
+): Promise<LiveRole[]> {
+  const rows = (await readRoleAssignments(db, organizationId)).filter(
+    (row) => row.glAccountId === accountId && !row.markedUnused
+  )
+
+  return rows
+    .filter((row) => (ROLE_ACCOUNT_TYPES as Record<string, string>)[row.role] !== undefined)
+    .map((row) => ({ role: row.role as AccountRole, glAccountId: row.glAccountId }))
+}
+
+/**
+ * Refuse `verb` while any role still posts to this account, naming the first.
+ *
+ * The message names the role, its label and what to do next, because that is the
+ * standard the role map's refusals already set - "Could not save" throws away the
+ * only sentence that says what to do.
+ */
+/**
+ * Refuse while a `payment_gateway`, bank account, rule or line still NAMES this
+ * account (I4).
+ *
+ * 🛑 **The sibling of {@link assertNoLiveRole}, and it exists because that one
+ * is not enough.** `assertNoLiveRole` reads `GlRoleAssignment`, which is the
+ * only pointer the chart used to have. Since brief 13 §5.3 a `payment_gateway`
+ * carries its own clearing account, and task 15 gave bank accounts, rules,
+ * transactions, stock movements and vendor bill lines the same shape - eight
+ * fields holding a `gl_account` id, none of them a role and none of them a
+ * relationship.
+ *
+ * Removing here is an ARCHIVE, and every reader of the chart excludes archived
+ * rows in the query, so an archived account reads to `loadChartAccountsById` as
+ * *missing*. A gateway left naming one therefore fails at POST time with
+ * "the chart has no active account with id ...", which is a refused close
+ * standing in for a refused click - the trade `assertNoLiveRole`'s own comment
+ * describes, made once more.
+ *
+ * ⚠️ This became reachable for `1210 Affirm Clearing` on 2026-09-10, when
+ * `clearing_affirm` was deleted: the role had been doing double duty, routing
+ * Affirm money AND protecting its account from removal. Moving the routing to a
+ * `payment_gateway` record moved the first and silently dropped the second.
+ * That is the bug this guard closes.
+ */
+async function assertNoPointer(
+  db: Database,
+  organizationId: string,
+  accountId: string,
+  account: ChartAccountRow,
+  verb: 'deactivate' | 'remove'
+): Promise<void> {
+  const pointers = await findGlAccountPointers(db, organizationId, [accountId])
+  const named = describeGlAccountPointers(pointers)
+  if (!named) return
+
+  throw new UnprocessableEntityError(
+    `Cannot ${verb} ${accountLabel(account)}: ${named} still points at it. ` +
+      `Repoint it first - an account that is ${verb === 'remove' ? 'removed' : 'inactive'} reads as missing to ` +
+      'every chart reader, so the next posting that needs it refuses.',
+    {
+      organizationId,
+      accountId,
+      pointers: pointers.map((pointer) => `${pointer.attribute}:${pointer.entityId}`).join(','),
+    }
+  )
+}
+
+async function assertNoLiveRole(
+  db: Database,
+  organizationId: string,
+  accountId: string,
+  account: ChartAccountRow,
+  verb: 'deactivate' | 'remove',
+  consequence: string
+): Promise<void> {
+  const live = await liveRolesFor(db, organizationId, accountId)
+  if (live.length === 0) return
+
+  const named = live.map(({ role }) => `'${role}' (${ACCOUNT_ROLE_LABELS[role]})`).join(', ')
+  throw new UnprocessableEntityError(
+    `Cannot ${verb} ${accountLabel(account)}: ${named} ${live.length === 1 ? 'posts' : 'post'} here. Repoint ${live.length === 1 ? 'the role' : 'those roles'} on the Roles tab first, or mark ${live.length === 1 ? 'it' : 'them'} unused. ${consequence}`,
+    { organizationId, accountId, roles: live.map((row) => row.role).join(',') }
+  )
+}

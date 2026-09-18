@@ -17,8 +17,6 @@
  * See docs/lib-module-guide.md §7.
  */
 
-import { hashedPeriodKey } from '../../../postings/period-key'
-import { isPeriodLocked, type PeriodLock, periodMonth } from '../../../postings/periods'
 // The `recurrence` BARREL, not its `/client` subpath: that file carries a
 // `'use client'` directive, and the materializer imports this module on the
 // server, where the directive would turn every export into a client-reference
@@ -30,6 +28,8 @@ import {
   type RecurrenceOccurrence,
   type RecurrencePattern,
 } from '../../../recurrence'
+import { hashedPeriodKey } from '../../ledger/periods/period-key'
+import { isPeriodLocked, type PeriodLock, periodMonth } from '../../ledger/periods/periods'
 
 /**
  * The `RecurrenceRule.subjectType` a journal template's schedule is stored

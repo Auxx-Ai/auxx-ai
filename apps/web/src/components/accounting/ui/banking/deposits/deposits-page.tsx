@@ -34,9 +34,9 @@
 // seconds cannot.
 
 import { FieldType } from '@auxx/database/enums'
+import type { PostResultStatus } from '@auxx/lib/accounting/ledger/client'
 import { groupByDay } from '@auxx/lib/money/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
-import type { PostResultStatus } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'

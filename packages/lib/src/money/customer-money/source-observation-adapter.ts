@@ -1,7 +1,7 @@
 // packages/lib/src/money/customer-money/source-observation-adapter.ts
 import { schema, type Transaction } from '@auxx/database'
 import { and, eq, isNull, sql } from 'drizzle-orm'
-import { accountingBasisHash } from '../../postings/basis-hash'
+import { accountingBasisHash } from '../../accounting/ledger/builders/basis-hash'
 import { customerMoneyObservationSchema } from './contracts'
 
 /** Stored observations contain shared financial facts; provider translation happens in the source app. */

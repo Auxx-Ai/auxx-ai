@@ -24,19 +24,19 @@
 import { type Database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { ACCOUNT_ROLES } from '../../postings/build-entry'
-import { cutoverDateFor } from '../../postings/build-opening-balance-entry'
-import { getPosting } from '../../postings/read-posting'
-import { INVENTORY_ROLES } from '../../postings/regime'
-import { loadRoleAccountCodes } from '../../postings/resolve-roles'
-import { listChartAccounts } from '../../postings/role-map'
-import {
-  OPENING_BASELINE_SETTING_KEYS,
-  summariseOpeningTrialBalance,
-} from '../../postings/setup-readiness'
 import { readOrganizationSettings } from '../../settings/read'
 import type { JournalEntryLine, JournalEntryRecord } from '../journals/entries/client'
 import { listJournalEntries } from '../journals/entries/reads'
+import { ACCOUNT_ROLES } from '../ledger/builders/entry'
+import { cutoverDateFor } from '../ledger/builders/opening-balance'
+import { getPosting } from '../ledger/reads/read-posting'
+import { INVENTORY_ROLES } from '../ledger/roles/regime'
+import { loadRoleAccountCodes } from '../ledger/roles/resolve-roles'
+import { listChartAccounts } from '../ledger/roles/role-map'
+import {
+  OPENING_BASELINE_SETTING_KEYS,
+  summariseOpeningTrialBalance,
+} from '../ledger/setup/setup-readiness'
 import {
   OPENING_TRIAL_BALANCE_KIND,
   type OpeningTrialBalancePosting,

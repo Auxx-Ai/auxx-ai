@@ -56,8 +56,8 @@
 
 import { database, schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
+import { findGlAccountPointers } from '../src/accounting/ledger/chart/gl-account-pointers'
 import { getOrgCache } from '../src/cache'
-import { findGlAccountPointers } from '../src/postings/gl-account-pointers'
 
 const RETIRED_ROLE_ATTRIBUTE = 'gl_account_role'
 

@@ -1,13 +1,13 @@
 // apps/web/src/components/accounting/ui/setup-wizard/wizard-opening-tb-page.tsx
 'use client'
 
-import type { OpeningTrialBalanceRow } from '@auxx/lib/accounting/opening/client'
 import {
   ACCOUNT_ROLES,
   OPENING_BASELINE_SETTING_KEYS,
   readSettingMinorUnits,
   summariseOpeningTrialBalance,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
+import type { OpeningTrialBalanceRow } from '@auxx/lib/accounting/opening/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { AlertTriangle } from 'lucide-react'

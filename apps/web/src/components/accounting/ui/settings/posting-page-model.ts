@@ -28,7 +28,7 @@ import {
   type PostingType,
   SUMMARY_GRAIN_AVENUES,
   type SummaryGrainAvenue,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 import {
   ArrowDownToLine,
   Ban,

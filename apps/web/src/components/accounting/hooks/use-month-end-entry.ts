@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { CloseBlockerItem } from '@auxx/lib/postings/client'
+import type { CloseBlockerItem } from '@auxx/lib/accounting/ledger/client'
 import type { LedgerBlocker } from '~/components/accounting/ui/ledger/entry-blockers'
 import { api } from '~/trpc/react'
 

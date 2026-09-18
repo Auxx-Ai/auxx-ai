@@ -4,7 +4,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, isNull, lt, lte, or, sql } from 'drizzle-orm'
-import { readExportSettings } from '../../postings/read-export-settings'
+import { readExportSettings } from '../ledger/setup/read-export-settings'
 import { MAX_AUTO_ATTEMPTS, type SendExportBatchResult, sendExportBatch } from './send'
 
 const logger = createScopedLogger('postings:export-sweep')

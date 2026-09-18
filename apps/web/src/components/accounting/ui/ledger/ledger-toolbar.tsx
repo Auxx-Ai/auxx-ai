@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { ClosePeriod } from '@auxx/lib/postings/client'
+import type { ClosePeriod } from '@auxx/lib/accounting/ledger/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,

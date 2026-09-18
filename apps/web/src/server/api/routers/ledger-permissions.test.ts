@@ -27,8 +27,8 @@ const USER_ID = 'usr_cuid000000000000000000000'
 
 const okResult = <T>(value: T) => ({ isErr: () => false as const, value })
 
-vi.mock('@auxx/lib/postings', async () => {
-  const actual = await vi.importActual<Record<string, unknown>>('@auxx/lib/postings')
+vi.mock('@auxx/lib/accounting/ledger', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@auxx/lib/accounting/ledger')
   return {
     ...actual,
     assertAccountingSetupUnfrozen: vi.fn(async () => undefined),
@@ -144,7 +144,7 @@ const { CapabilitySet } = await import('@auxx/lib/permissions/capabilities/capab
 const { ledgerRouter } = await import('./ledger')
 const { bankingRouter } = await import('./banking')
 const { settingsRouter } = await import('./setting')
-const { GL_ACCOUNT_TYPES, ACCOUNT_ROLES } = await import('@auxx/lib/postings')
+const { GL_ACCOUNT_TYPES, ACCOUNT_ROLES } = await import('@auxx/lib/accounting/ledger')
 const { BANK_ACCOUNT_TYPES } = await import('@auxx/lib/accounting/banking')
 const { seedDefaultPaymentGateways } = await import('@auxx/lib/seed')
 

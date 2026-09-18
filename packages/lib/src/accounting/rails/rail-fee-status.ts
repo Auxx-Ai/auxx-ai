@@ -59,9 +59,9 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError } from '../../errors'
-import { ACCOUNT_ROLES } from '../../postings/build-entry'
-import { parsePeriodKey } from '../../postings/periods'
-import { readRoleAssignments } from '../../postings/role-assignments'
+import { ACCOUNT_ROLES } from '../ledger/builders/entry'
+import { parsePeriodKey } from '../ledger/periods/periods'
+import { readRoleAssignments } from '../ledger/roles/role-assignments'
 import type { PaymentGatewayFeeTreatmentValue, PaymentGatewayRow } from './client'
 // 🛑 The LEAF, never `../payment-gateways` - the barrel re-exports `writes.ts`,
 // which imports `postings/chart-accounts`, and `postings/index.ts` re-exports

@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { PostResult, PostResultStatus } from '@auxx/lib/postings/client'
+import type { PostResult, PostResultStatus } from '@auxx/lib/accounting/ledger/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { CheckCircle2, CircleSlash, PlugZap, TriangleAlert } from 'lucide-react'
 import type { ComponentType } from 'react'

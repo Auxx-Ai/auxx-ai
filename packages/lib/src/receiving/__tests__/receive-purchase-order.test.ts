@@ -76,7 +76,7 @@ vi.mock('../../field-hooks/post/purchase-order-line-rollups', () => ({
 
 // The posting seam has its own tests (`postings/__tests__/post-inventory-movement.test.ts`);
 // this file is about how MANY times it is called, and with what members.
-vi.mock('../../postings/post-inventory-movement', () => ({
+vi.mock('../../accounting/ledger/post/post-inventory-movement', () => ({
   postInventoryMovementInTx: (...args: unknown[]) => h.postSpy(...args),
   exportInventoryMovement: (...args: unknown[]) => h.exportSpy(...args),
   inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),

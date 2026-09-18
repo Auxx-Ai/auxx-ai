@@ -6,7 +6,7 @@ import {
   ACCOUNT_ROLE_LABELS,
   type AccountRole,
   type PostingAssertions,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 import {
   Table,
   TableBody,

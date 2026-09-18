@@ -26,14 +26,14 @@
 // 🛑 No success toast (CLAUDE.md). Adopting is additive and idempotent, so
 // there is nothing here for `useConfirm` to gate either.
 
-import type { ChartAccountRow } from '@auxx/lib/postings/client'
+import type { ChartAccountRow } from '@auxx/lib/accounting/ledger/client'
 import {
   ACCOUNT_ROLE_LABELS,
   CHART_PACK_KEYS,
   CHART_PACKS,
   type ChartPackKey,
   type DefaultChartAccount,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Dialog, DialogContent, DialogFooter } from '@auxx/ui/components/dialog'

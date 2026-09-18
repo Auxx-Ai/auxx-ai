@@ -47,15 +47,15 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError } from '../../errors'
-import { createChartAccount } from '../../postings/chart-write'
+import { GlAccountType } from '../../resources/registry/enum-values'
+import { createChartAccount } from '../ledger/chart/chart-write'
 import {
   CLEARING_ACCOUNT_CODE_BAND,
   MERCHANT_FEE_ACCOUNT_CODE_BAND,
-} from '../../postings/default-chart'
-import { nextAccountCode } from '../../postings/next-account-code'
-import { listChartAccounts } from '../../postings/role-map'
-import type { ChartAccountRow } from '../../postings/types'
-import { GlAccountType } from '../../resources/registry/enum-values'
+} from '../ledger/chart/default-chart'
+import { nextAccountCode } from '../ledger/chart/next-account-code'
+import { listChartAccounts } from '../ledger/roles/role-map'
+import type { ChartAccountRow } from '../ledger/types'
 
 const logger = createScopedLogger('postings:mint-rail-accounts')
 

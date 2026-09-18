@@ -47,7 +47,7 @@ vi.mock('../../../../resources/crud/unified-handler', () => ({
   },
 }))
 
-vi.mock('../../../../postings/post-entry', () => ({
+vi.mock('../../../ledger/post/post-entry', () => ({
   postEntry: async () => ({ status: 'drafted', glPostingId: 'draft_generated' }),
   postDraft: async (_db: unknown, options: Record<string, unknown>) => {
     h.posted.push(options)
@@ -56,18 +56,18 @@ vi.mock('../../../../postings/post-entry', () => ({
   previewEntry: async () => ({}),
 }))
 
-vi.mock('../../../../postings/reverse-entry', () => ({ reverseEntry: async () => h.postResult }))
+vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: async () => h.postResult }))
 
-vi.mock('../../../../postings/draft-lines', () => ({
+vi.mock('../../../ledger/post/draft-lines', () => ({
   updateDraftLines: async () => ({ isErr: () => false }),
   discardDraftPosting: async () => ({ isErr: () => false }),
 }))
 
-vi.mock('../../../../postings/period-lock', () => ({
+vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 
-vi.mock('../../../../postings/read-posting', () => ({
+vi.mock('../../../ledger/reads/read-posting', () => ({
   readPostingLineSourceIds: async () => okResult(h.winningSourceIds),
 }))
 

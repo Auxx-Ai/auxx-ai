@@ -48,7 +48,7 @@ vi.mock('../../../cache', () => ({
   getOrgCache: () => ({ get: async () => h.settings }),
   getCachedEntityDefId: async () => 'def_bank_deposit',
 }))
-vi.mock('../../../postings/accounting-enabled', () => ({
+vi.mock('../../../accounting/ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
 
@@ -88,9 +88,9 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
   },
 }))
 
-vi.mock('../../../postings/post-entry', async () => {
-  const actual = await vi.importActual<typeof import('../../../postings/post-entry')>(
-    '../../../postings/post-entry'
+vi.mock('../../../accounting/ledger/post/post-entry', async () => {
+  const actual = await vi.importActual<typeof import('../../../accounting/ledger/post/post-entry')>(
+    '../../../accounting/ledger/post/post-entry'
   )
   return {
     LEDGER_CURRENCY: actual.LEDGER_CURRENCY,
@@ -102,11 +102,11 @@ vi.mock('../../../postings/post-entry', async () => {
   }
 })
 
-vi.mock('../../../postings/period-lock', () => ({
+vi.mock('../../../accounting/ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 
-vi.mock('../../../postings/list-postings', () => ({
+vi.mock('../../../accounting/ledger/reads/list-postings', () => ({
   listPostingsForSource: async () => {
     const glPostingId = (h.deposit as { glPostingId?: string } | null)?.glPostingId
     return {
@@ -117,7 +117,7 @@ vi.mock('../../../postings/list-postings', () => ({
 }))
 
 import type { Database } from '@auxx/database'
-import { ACCOUNT_ROLES } from '../../../postings/build-entry'
+import { ACCOUNT_ROLES } from '../../../accounting/ledger/builders/entry'
 import {
   clearBankDeposit,
   createBankDeposit,

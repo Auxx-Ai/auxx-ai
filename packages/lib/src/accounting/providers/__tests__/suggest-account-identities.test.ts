@@ -9,7 +9,7 @@
 // so there is no reader downstream that could ever catch it.
 
 import { describe, expect, it } from 'vitest'
-import type { ChartAccountRow, ProviderAccount } from '../../../postings/types'
+import type { ChartAccountRow, ProviderAccount } from '../../ledger/types'
 import {
   isMappableTo,
   suggestAccountIdentities,

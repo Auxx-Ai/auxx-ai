@@ -1,7 +1,7 @@
 // apps/web/src/components/accounting/ui/setup-wizard/wizard-costing-page.tsx
 'use client'
 
-import { readSettingMinorUnits } from '@auxx/lib/postings/client'
+import { readSettingMinorUnits } from '@auxx/lib/accounting/ledger/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { ArrowUpRight } from 'lucide-react'

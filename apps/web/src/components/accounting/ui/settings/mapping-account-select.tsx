@@ -1,7 +1,7 @@
 // apps/web/src/components/accounting/ui/settings/mapping-account-select.tsx
 'use client'
 
-import type { GlAccountSubtypeValue, GlAccountTypeValue } from '@auxx/lib/postings/client'
+import type { GlAccountSubtypeValue, GlAccountTypeValue } from '@auxx/lib/accounting/ledger/client'
 import { Command, CommandDetailItem, CommandGroup, CommandInput } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { useMemo, useState } from 'react'

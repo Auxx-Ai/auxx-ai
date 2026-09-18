@@ -1,7 +1,7 @@
 // apps/web/src/components/accounting/ui/settings/mapping-scope-row.tsx
 'use client'
 
-import type { GlAccountSubtypeValue, GlAccountTypeValue } from '@auxx/lib/postings/client'
+import type { GlAccountSubtypeValue, GlAccountTypeValue } from '@auxx/lib/accounting/ledger/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { TREE_ROW_NESTED_TINT, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { Check, Plus, RotateCcw, Sparkles, TriangleAlert } from 'lucide-react'

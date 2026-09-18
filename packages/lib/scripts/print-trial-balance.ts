@@ -8,9 +8,9 @@
 
 import { database, schema } from '@auxx/database'
 import { inArray } from 'drizzle-orm'
+import { verifyBooksBalance } from '../src/accounting/ledger/post/verify-balance'
 import { readBalanceSheet } from '../src/accounting/reports/balance-sheet'
 import { readTrialBalance } from '../src/accounting/reports/trial-balance'
-import { verifyBooksBalance } from '../src/postings/verify-balance'
 
 async function firstOrgWithPostedEntries(): Promise<string | null> {
   const [row] = await database

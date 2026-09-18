@@ -1,8 +1,11 @@
 // packages/lib/src/field-hooks/pre/build-delete-guard.ts
 
 import { parseRecordId } from '@auxx/types/resource'
+import {
+  describeSettledPeriods,
+  settledPeriodsFor,
+} from '../../accounting/ledger/periods/settled-periods'
 import { BadRequestError } from '../../errors'
-import { describeSettledPeriods, settledPeriodsFor } from '../../postings/settled-periods'
 import { unwrapRelationId } from '../../resources/events/captured-values'
 import type { EntityPreDeleteEvent, EntityPreDeleteHandler } from '../types'
 import { readMovementsByRelation } from './guarded-movements'

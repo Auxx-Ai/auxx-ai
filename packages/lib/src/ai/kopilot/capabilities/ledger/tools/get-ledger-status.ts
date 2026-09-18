@@ -1,10 +1,10 @@
 // packages/lib/src/ai/kopilot/capabilities/ledger/tools/get-ledger-status.ts
 
+import { readMonthActivity } from '../../../../../accounting/ledger/periods/month-activity'
+import { findDuplicateBankMovements } from '../../../../../accounting/ledger/post/duplicate-movements'
+import { verifyBooksBalance } from '../../../../../accounting/ledger/post/verify-balance'
 import { readRailFeeStatus } from '../../../../../accounting/rails/rail-fee-status'
 import { PermissionKey } from '../../../../../permissions/capabilities/registry'
-import { findDuplicateBankMovements } from '../../../../../postings/duplicate-movements'
-import { readMonthActivity } from '../../../../../postings/month-activity'
-import { verifyBooksBalance } from '../../../../../postings/verify-balance'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 

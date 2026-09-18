@@ -19,9 +19,9 @@
 // gives: every `accounting.*` key is `GENERAL` scope, so the draft is narrowed
 // to `POSTING_PAGE_INPUT_KEYS` and diffs only against those.
 
+import type { PostingPolicy, PostingType } from '@auxx/lib/accounting/ledger/client'
 import { PAYMENT_ROUTE_SETTING_KEYS } from '@auxx/lib/money/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
-import type { PostingPolicy, PostingType } from '@auxx/lib/postings/client'
 import type { SettingKey, SettingValue } from '@auxx/lib/settings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

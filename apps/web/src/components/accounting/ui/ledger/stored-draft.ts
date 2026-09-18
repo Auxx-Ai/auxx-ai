@@ -5,7 +5,7 @@ import type {
   MonthEndInventorySnapshot,
   PostingAssertions,
   PostingLinkRole,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 
 /**
  * Read the assertions off a `PostingDetail.draft`, which crosses the wire as
@@ -20,7 +20,7 @@ import type {
  * exact failure task 09's contract exists to prevent.
  *
  * ⚠️ Narrowed by hand rather than through lib's `parsePostingDraft`, which is
- * not exported from `@auxx/lib/postings/client` and, more importantly, THROWS.
+ * not exported from `@auxx/lib/accounting/ledger/client` and, more importantly, THROWS.
  * A throw is the right answer on the server, where a malformed envelope must
  * stop a close. In a drawer it would blank the whole panel - including the
  * journal entry, which is stored separately and is still perfectly readable - so

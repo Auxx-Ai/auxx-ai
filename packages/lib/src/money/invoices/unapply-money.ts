@@ -20,9 +20,9 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
+import { didLedgerAccept } from '../../accounting/ledger/post/ledger-accepted'
+import { isAccountingEnabled } from '../../accounting/ledger/setup/accounting-enabled'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
-import { isAccountingEnabled } from '../../postings/accounting-enabled'
-import { didLedgerAccept } from '../../postings/ledger-accepted'
 import { runMoneyCommand } from '../commands/run-money-command'
 import { reverseDepositApplicationAccounting } from '../customer-money/deposit-application-accounting'
 import { syncInvoicePaymentState } from './payment-state'

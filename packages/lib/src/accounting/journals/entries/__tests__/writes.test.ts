@@ -83,7 +83,7 @@ vi.mock('../../../../resources/crud/unified-handler', () => ({
   },
 }))
 
-vi.mock('../../../../postings/post-entry', () => ({
+vi.mock('../../../ledger/post/post-entry', () => ({
   postEntry: async (_db: unknown, options: Record<string, unknown>) => {
     h.posted.push(options)
     return h.draftResult
@@ -102,14 +102,14 @@ vi.mock('../../../../postings/post-entry', () => ({
   }),
 }))
 
-vi.mock('../../../../postings/reverse-entry', () => ({
+vi.mock('../../../ledger/post/reverse-entry', () => ({
   reverseEntry: async (_db: unknown, options: Record<string, unknown>) => {
     h.reversed.push(options)
     return h.postResult
   },
 }))
 
-vi.mock('../../../../postings/draft-lines', () => ({
+vi.mock('../../../ledger/post/draft-lines', () => ({
   updateDraftLines: async (_db: unknown, options: Record<string, unknown>) => {
     h.draftLinesUpdated.push(options)
     return { isErr: () => false }
@@ -120,7 +120,7 @@ vi.mock('../../../../postings/draft-lines', () => ({
   },
 }))
 
-vi.mock('../../../../postings/period-lock', () => ({
+vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 

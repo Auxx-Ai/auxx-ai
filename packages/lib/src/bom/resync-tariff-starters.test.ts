@@ -147,7 +147,7 @@ vi.mock('./tariff-schedule', () => ({
     return out
   },
 }))
-vi.mock('../postings/book-time-zone', () => ({
+vi.mock('../accounting/ledger/setup/book-time-zone', () => ({
   readBookTimeZoneOrUtc: async () => 'UTC',
 }))
 

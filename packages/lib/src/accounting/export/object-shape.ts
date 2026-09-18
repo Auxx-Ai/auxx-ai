@@ -4,8 +4,8 @@
 // do not fit that object's shape. PURE - no db, no io; the caller resolves line
 // roles and the counterparty and passes them in.
 
-import type { AccountRole } from '../../postings/build-entry'
-import type { CounterpartyType, PostingDirection, PostingType } from '../../postings/types'
+import type { AccountRole } from '../ledger/builders/entry'
+import type { CounterpartyType, PostingDirection, PostingType } from '../ledger/types'
 import { BILL_OBJECT_TYPE, type ExportBillPayload, exportBillSchema } from './payloads/bill'
 import {
   CREDIT_MEMO_OBJECT_TYPE,

@@ -18,7 +18,7 @@
 // No permission checks here. The router asserts (docs/lib-module-guide.md §6).
 
 import type { Database } from '@auxx/database'
-import type { PeriodLock } from '../../postings/periods'
+import type { PeriodLock } from '../ledger/periods/periods'
 import type {
   OurEntryCheck,
   ProviderLedger,

@@ -16,8 +16,8 @@ import {
   reverseJournalEntry,
   updateJournalEntry,
 } from '../src/accounting/journals/entries'
-import { listChartAccounts, verifyBooksBalance } from '../src/postings'
-import { listPostings, listPostingsForSource } from '../src/postings/list-postings'
+import { listChartAccounts, verifyBooksBalance } from '../src/accounting/ledger'
+import { listPostings, listPostingsForSource } from '../src/accounting/ledger/reads/list-postings'
 
 function show(label: string, value: unknown) {
   console.log(`\n── ${label} ──`)

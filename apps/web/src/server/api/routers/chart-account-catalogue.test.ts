@@ -81,7 +81,7 @@ const { ORG_ID, USER_ID, ACCOUNT_ID, world, gate, seedChartAccounts, restoreChar
  * about the ROUTER. What is under test is "a code not in the catalogue is
  * refused by name", which needs a catalogue, not this catalogue.
  */
-vi.mock('@auxx/lib/postings', () => ({
+vi.mock('@auxx/lib/accounting/ledger', () => ({
   DEFAULT_CHART_OF_ACCOUNTS: [
     { code: '1000', name: 'Cash', accountType: 'asset' },
     { code: '1100', name: 'Accounts Receivable', accountType: 'asset' },

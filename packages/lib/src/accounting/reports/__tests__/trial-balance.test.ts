@@ -11,11 +11,11 @@
 import type { Database } from '@auxx/database'
 import { err, ok } from 'neverthrow'
 import { describe, expect, it, vi } from 'vitest'
-import type { ChartAccountRow } from '../../../postings/types'
+import type { ChartAccountRow } from '../../ledger/types'
 
-vi.mock('../../../postings/role-map', () => ({ listChartAccounts: vi.fn() }))
+vi.mock('../../ledger/roles/role-map', () => ({ listChartAccounts: vi.fn() }))
 
-import { listChartAccounts } from '../../../postings/role-map'
+import { listChartAccounts } from '../../ledger/roles/role-map'
 import { readTrialBalance } from '../trial-balance'
 
 const ORG = 'org_1'

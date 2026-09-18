@@ -20,7 +20,7 @@ import {
   type PostingPolicy,
   type PostingTemplateLine,
   type RoleAssignmentRow,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 import type { SettingConfig } from '@auxx/lib/settings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

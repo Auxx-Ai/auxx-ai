@@ -41,10 +41,12 @@
 import { type Database, schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../postings/accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
+vi.mock('../../accounting/ledger/post/accounting-commit-lock', () => ({
+  withAccountingCommitLock: vi.fn(),
+}))
 
-import { ACCOUNT_ROLES } from '../../postings/build-entry'
-import { CHART_PACKS } from '../../postings/default-chart'
+import { ACCOUNT_ROLES } from '../../accounting/ledger/builders/entry'
+import { CHART_PACKS } from '../../accounting/ledger/chart/default-chart'
 
 const h = vi.hoisted(() => ({
   creates: [] as { entityDefinitionId: string; values: Record<string, unknown> }[],

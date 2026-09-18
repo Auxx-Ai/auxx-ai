@@ -2,8 +2,8 @@
 
 'use client'
 
-import type { EntryPreview, PostResult, PostResultStatus } from '@auxx/lib/postings/client'
-import { didLedgerAccept } from '@auxx/lib/postings/client'
+import type { EntryPreview, PostResult, PostResultStatus } from '@auxx/lib/accounting/ledger/client'
+import { didLedgerAccept } from '@auxx/lib/accounting/ledger/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {

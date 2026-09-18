@@ -20,7 +20,7 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../errors'
-import type { GlAccountSubtypeValue } from '../../postings/account-subtype'
+import type { GlAccountSubtypeValue } from '../ledger/chart/account-subtype'
 import { netIncome } from './statement-math'
 import { readTrialBalance, type TrialBalanceRow } from './trial-balance'
 

@@ -5,12 +5,12 @@
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
-import { listChartAccounts } from '../../../../postings/role-map'
-import { ProviderPostError, type WithdrawResult } from '../../../../postings/types'
 import {
   CREDIT_MEMO_OBJECT_TYPE,
   exportCreditMemoSchema,
 } from '../../../export/payloads/credit-memo'
+import { listChartAccounts } from '../../../ledger/roles/role-map'
+import { ProviderPostError, type WithdrawResult } from '../../../ledger/types'
 import type {
   ProviderObjectContext,
   ReadObjectRef,

@@ -9,7 +9,7 @@ import {
   readPinnedAccountingConnectionInTx,
 } from '../book-connections'
 
-vi.mock('../../../postings/accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
+vi.mock('../../ledger/post/accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
 vi.mock('../../../cache', () => ({ getCachedInstalledApps: vi.fn() }))
 
 import { getCachedInstalledApps } from '../../../cache'

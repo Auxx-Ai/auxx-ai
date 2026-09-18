@@ -24,6 +24,10 @@
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
+import {
+  linkMovementsToPosting,
+  reversePostingForMovement,
+} from '../../accounting/ledger/post/post-inventory-movement'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import {
   BadRequestError,
@@ -31,10 +35,6 @@ import {
   NotFoundError,
   UnprocessableEntityError,
 } from '../../errors'
-import {
-  linkMovementsToPosting,
-  reversePostingForMovement,
-} from '../../postings/post-inventory-movement'
 import { StockMovementType } from '../../resources/registry/enum-values'
 import { guard } from './guard'
 import type { MovementRecord } from './types'

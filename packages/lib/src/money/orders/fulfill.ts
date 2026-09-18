@@ -6,31 +6,31 @@ import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { calendarDayToInstant, isDayKeyShape } from '@auxx/utils/calendar-day'
 import type { Result } from 'neverthrow'
-import { BadRequestError, UnprocessableEntityError } from '../../errors'
-import { withAccountingCommitLock } from '../../postings/accounting-commit-lock'
-import { isAccountingEnabled } from '../../postings/accounting-enabled'
-import { readAutoPostMode } from '../../postings/auto-post'
 import {
   type BuiltFulfillmentEntry,
   buildFulfillmentEntry,
   computeShipmentTotals,
-} from '../../postings/build-fulfillment-entry'
-import { listPostingsForSource } from '../../postings/list-postings'
-import { resolvePeriodLock } from '../../postings/period-lock'
+} from '../../accounting/ledger/builders/fulfillment'
+import { resolvePeriodLock } from '../../accounting/ledger/periods/period-lock'
+import { withAccountingCommitLock } from '../../accounting/ledger/post/accounting-commit-lock'
+import { readAutoPostMode } from '../../accounting/ledger/post/auto-post'
 import {
   exportPostedEntry,
   type InTxPostResult,
   LEDGER_CURRENCY,
   postEntryInTx,
   previewEntry,
-} from '../../postings/post-entry'
-import { reverseEntry } from '../../postings/reverse-entry'
+} from '../../accounting/ledger/post/post-entry'
+import { reverseEntry } from '../../accounting/ledger/post/reverse-entry'
+import { listPostingsForSource } from '../../accounting/ledger/reads/list-postings'
+import { isAccountingEnabled } from '../../accounting/ledger/setup/accounting-enabled'
 import type {
   BuiltEntry,
   EntryPreview,
   GlPostingSourceInput,
   PostResult,
-} from '../../postings/types'
+} from '../../accounting/ledger/types'
+import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import { type FulfillmentLineToRelieve, relieveFulfillmentLines } from '../../relief'
 import { flushTxWriteScope } from '../../resources/crud/tx-write-flush'
 import { runInTxWrite } from '../../resources/crud/tx-write-scope'

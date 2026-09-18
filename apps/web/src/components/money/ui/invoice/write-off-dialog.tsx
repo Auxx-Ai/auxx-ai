@@ -9,7 +9,7 @@
 // can be overridden to any expense account in the chart.
 
 import { FieldType } from '@auxx/database/enums'
-import { didLedgerAccept } from '@auxx/lib/postings/client'
+import { didLedgerAccept } from '@auxx/lib/accounting/ledger/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {

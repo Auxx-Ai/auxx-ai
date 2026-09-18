@@ -1,8 +1,11 @@
 // packages/lib/src/field-hooks/pre/purchase-order-delete-guard.ts
 
 import { parseRecordId } from '@auxx/types/resource'
+import {
+  describeSettledPeriods,
+  settledPeriodsFor,
+} from '../../accounting/ledger/periods/settled-periods'
 import { BadRequestError } from '../../errors'
-import { describeSettledPeriods, settledPeriodsFor } from '../../postings/settled-periods'
 import type { EntityPreDeleteHandler } from '../types'
 import { readMovementsByRelation } from './guarded-movements'
 import { findRelatedInstanceIds } from './related-rows'

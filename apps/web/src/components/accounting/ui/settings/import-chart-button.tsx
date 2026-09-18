@@ -17,7 +17,7 @@
 // only) - "12 added, 41 already here" is the whole point of the mutation and
 // belongs next to the button that triggered it.
 
-import type { ChartImportResult } from '@auxx/lib/postings/client'
+import type { ChartImportResult } from '@auxx/lib/accounting/ledger/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { CloudDownload } from 'lucide-react'

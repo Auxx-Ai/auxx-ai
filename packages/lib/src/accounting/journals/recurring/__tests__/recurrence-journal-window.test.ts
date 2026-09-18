@@ -15,14 +15,14 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import type { RecurrencePattern } from '../../../../recurrence'
 import {
   buildDocNumber,
   DOC_NUMBER_MAX_LENGTH,
   DOC_NUMBER_PREFIX,
-} from '../../../../postings/doc-number'
-import { MAX_COMPACT_PERIOD_KEY } from '../../../../postings/period-key'
-import type { PeriodLock } from '../../../../postings/periods'
-import type { RecurrencePattern } from '../../../../recurrence'
+} from '../../../ledger/builders/doc-number'
+import { MAX_COMPACT_PERIOD_KEY } from '../../../ledger/periods/period-key'
+import type { PeriodLock } from '../../../ledger/periods/periods'
 import {
   planRecurringOccurrences,
   RECURRING_JOURNAL_DOC_PREFIX,

@@ -29,7 +29,9 @@ vi.mock('../../../cache', () => ({
   getOrgCache: () => ({ from: () => ({ bySystemAttributes: h.bySystemAttributes }) }),
 }))
 
-vi.mock('../../../postings/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
+vi.mock('../../../accounting/ledger/periods/period-lock', () => ({
+  resolvePeriodLock: h.resolvePeriodLock,
+}))
 vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: h.getOrganizationSetting,
 }))

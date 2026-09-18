@@ -1,7 +1,7 @@
 // packages/lib/src/money/customer-money/reads.ts
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
-import type { RoleSourceScope } from '../../postings/types'
+import type { RoleSourceScope } from '../../accounting/ledger/types'
 import type { OrderMoneyTransaction } from './client'
 import { exactSourceMoney } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'

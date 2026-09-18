@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/rails/settlement-discovery.ts
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
-import { accountingBasisHash } from '../../postings/basis-hash'
+import { accountingBasisHash } from '../ledger/builders/basis-hash'
 
 /** One live processor feed with reported activity that no rail has claimed yet (58 §6.2). */
 export type UnlinkedFeed = Awaited<ReturnType<typeof listUnlinkedFeeds>>[number]

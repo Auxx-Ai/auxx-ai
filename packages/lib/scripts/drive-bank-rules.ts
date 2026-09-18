@@ -19,8 +19,8 @@ import {
   getTransactionMatchRow,
   suggestFromHistory,
 } from '../src/accounting/banking/rules'
+import { listChartAccounts } from '../src/accounting/ledger/roles/role-map'
 import { getCachedEntityDefId } from '../src/cache'
-import { listChartAccounts } from '../src/postings/role-map'
 import { UnifiedCrudHandler } from '../src/resources/crud/unified-handler'
 import { toRecordId } from '../src/resources/resource-id'
 

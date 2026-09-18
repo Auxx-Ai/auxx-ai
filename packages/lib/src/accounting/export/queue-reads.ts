@@ -6,7 +6,7 @@ import { type Database, schema } from '@auxx/database'
 import { and, asc, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError } from '../../errors'
-import type { PostingType } from '../../postings/types'
+import type { PostingType } from '../ledger/types'
 import type { ExportBatchState } from './client'
 
 /** One posting inside a batch, in the words the row expands to. */

@@ -10,6 +10,12 @@
 
 import { database, schema } from '@auxx/database'
 import { and, eq, isNotNull } from 'drizzle-orm'
+import {
+  ENABLED_POSTING_TYPES,
+  SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
+} from '../accounting/ledger/roles/regime'
+import { readRoleAssignments } from '../accounting/ledger/roles/role-assignments'
+import { resolveSetupReadiness } from '../accounting/ledger/setup/setup-readiness'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../accounting/providers/provider'
 import { listObservedGatewayHandles } from '../accounting/rails'
 import {
@@ -19,9 +25,6 @@ import {
   getCachedMembers,
   getOrgCache,
 } from '../cache'
-import { ENABLED_POSTING_TYPES, SINGLE_WRITER_ROLES_BY_POSTING_TYPE } from '../postings/regime'
-import { readRoleAssignments } from '../postings/role-assignments'
-import { resolveSetupReadiness } from '../postings/setup-readiness'
 import type { ChecklistId, GoalKey } from './client'
 import type { GettingStartedContext } from './types'
 

@@ -1,6 +1,6 @@
 // apps/web/src/components/accounting/ui/gl-account-picker.test.ts
 
-import type { ChartAccountRow } from '@auxx/lib/postings/client'
+import type { ChartAccountRow } from '@auxx/lib/accounting/ledger/client'
 import { describe, expect, it } from 'vitest'
 import { groupAccountsByType } from './gl-account-picker'
 

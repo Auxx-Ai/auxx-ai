@@ -18,7 +18,7 @@
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BadRequestError, UnprocessableEntityError } from '../../../errors'
-import type { ChartAccountRow } from '../../../postings/types'
+import type { ChartAccountRow } from '../../ledger/types'
 
 const h = vi.hoisted(() => ({
   /** The chart `listChartAccounts` answers with. */
@@ -29,14 +29,14 @@ const h = vi.hoisted(() => ({
   createError: null as { index: number; error: Error } | null,
 }))
 
-vi.mock('../../../postings/role-map', () => ({
+vi.mock('../../ledger/roles/role-map', () => ({
   listChartAccounts: async () => {
     const { ok } = await import('neverthrow')
     return ok(h.chart)
   },
 }))
 
-vi.mock('../../../postings/chart-write', () => ({
+vi.mock('../../ledger/chart/chart-write', () => ({
   createChartAccount: async (_db: unknown, options: Record<string, unknown>) => {
     const { err, ok } = await import('neverthrow')
     const index = h.creates.length

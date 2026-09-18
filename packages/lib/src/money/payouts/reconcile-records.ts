@@ -2,7 +2,7 @@
 import { type Database, schema, type Transaction, withAccountingCommitLock } from '@auxx/database'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { and, eq, gt, inArray, or, sql } from 'drizzle-orm'
-import { accountingBasisHash } from '../../postings/basis-hash'
+import { accountingBasisHash } from '../../accounting/ledger/builders/basis-hash'
 import { exactEvidenceMinor, isOutgoingPayoutEntry } from '../customer-money/evidence-contracts'
 import {
   type PayoutRecordEvidence,

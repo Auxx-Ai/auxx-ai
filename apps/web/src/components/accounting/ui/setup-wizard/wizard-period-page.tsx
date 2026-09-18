@@ -2,7 +2,7 @@
 'use client'
 
 import { detectTimezone } from '@auxx/config/client'
-import { isValidTimeZone } from '@auxx/lib/postings/client'
+import { isValidTimeZone } from '@auxx/lib/accounting/ledger/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { forwardRef, useImperativeHandle } from 'react'

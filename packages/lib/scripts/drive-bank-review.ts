@@ -28,11 +28,11 @@ import {
   transferTransaction,
   undoReview,
 } from '../src/accounting/banking/review'
+import { createChartAccount } from '../src/accounting/ledger/chart/chart-write'
+import { verifyBooksBalance } from '../src/accounting/ledger/post/verify-balance'
+import { listChartAccounts } from '../src/accounting/ledger/roles/role-map'
 import { getCachedEntityDefId } from '../src/cache'
 import { listBankDeposits } from '../src/money/bank-deposits'
-import { createChartAccount } from '../src/postings/chart-write'
-import { listChartAccounts } from '../src/postings/role-map'
-import { verifyBooksBalance } from '../src/postings/verify-balance'
 import { UnifiedCrudHandler } from '../src/resources/crud/unified-handler'
 import { toRecordId } from '../src/resources/resource-id'
 

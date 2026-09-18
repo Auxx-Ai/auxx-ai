@@ -39,20 +39,20 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
+import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
+import { type RecordId, toRecordId } from '../../../resources/resource-id'
 import {
   type BuiltManualEntry,
   buildManualEntry,
   MANUAL_ENTRY_SOURCE_TYPE,
   type ManualPostingType,
-} from '../../../postings/build-manual-entry'
-import { discardDraftPosting, updateDraftLines } from '../../../postings/draft-lines'
-import { resolvePeriodLock } from '../../../postings/period-lock'
-import { postDraft, postEntry, previewEntry } from '../../../postings/post-entry'
-import { readPostingLineSourceIds } from '../../../postings/read-posting'
-import { reverseEntry } from '../../../postings/reverse-entry'
-import type { EntryPreview, GlPostingSourceInput, PostResult } from '../../../postings/types'
-import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
-import { type RecordId, toRecordId } from '../../../resources/resource-id'
+} from '../../ledger/builders/manual'
+import { resolvePeriodLock } from '../../ledger/periods/period-lock'
+import { discardDraftPosting, updateDraftLines } from '../../ledger/post/draft-lines'
+import { postDraft, postEntry, previewEntry } from '../../ledger/post/post-entry'
+import { reverseEntry } from '../../ledger/post/reverse-entry'
+import { readPostingLineSourceIds } from '../../ledger/reads/read-posting'
+import type { EntryPreview, GlPostingSourceInput, PostResult } from '../../ledger/types'
 import { recurringJournalPeriodKey } from '../recurring/client'
 import {
   JOURNAL_ENTRY_POSTING_TYPE,

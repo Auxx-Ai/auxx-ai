@@ -1,8 +1,8 @@
 // packages/lib/src/accounting/providers/quickbooks/__tests__/account-types.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { GL_ACCOUNT_SUBTYPES } from '../../../../postings/account-subtype'
-import { GL_ACCOUNT_TYPES } from '../../../../postings/default-chart'
+import { GL_ACCOUNT_SUBTYPES } from '../../../ledger/chart/account-subtype'
+import { GL_ACCOUNT_TYPES } from '../../../ledger/chart/default-chart'
 import { quickbooksAccountType } from '../account-types'
 
 describe('quickbooksAccountType', () => {

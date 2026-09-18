@@ -12,8 +12,8 @@
 // account (1190) must render as a negative asset rather than being reclassified.
 
 import { UnprocessableEntityError } from '../../errors'
-import type { GlAccountTypeValue } from '../../postings/default-chart'
-import type { PostingDirection } from '../../postings/types'
+import type { GlAccountTypeValue } from '../ledger/chart/default-chart'
+import type { PostingDirection } from '../ledger/types'
 
 /**
  * Which side of a line INCREASES each of the five statement classifications.

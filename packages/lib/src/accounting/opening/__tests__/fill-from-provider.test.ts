@@ -91,15 +91,15 @@ vi.mock('../../journals/entries/writes', () => ({
   },
 }))
 
-vi.mock('../../../postings/role-map', () => ({
+vi.mock('../../ledger/roles/role-map', () => ({
   listChartAccounts: async () => ({ isErr: () => false, value: h.chart }),
 }))
 
-vi.mock('../../../postings/resolve-roles', () => ({
+vi.mock('../../ledger/roles/resolve-roles', () => ({
   loadRoleAccountCodes: async () => h.roleAccounts,
 }))
 
-vi.mock('../../../postings/read-posting', () => ({
+vi.mock('../../ledger/reads/read-posting', () => ({
   getPosting: async (_db: unknown, _org: string, id: string) => ({
     isErr: () => false,
     value: {
@@ -112,11 +112,11 @@ vi.mock('../../../postings/read-posting', () => ({
   }),
 }))
 
-vi.mock('../../../postings/period-lock', () => ({
+vi.mock('../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 
-vi.mock('../../../postings/settled-periods', () => ({
+vi.mock('../../ledger/periods/settled-periods', () => ({
   assertAccountingSetupUnfrozen: async (_org: string, keys: readonly string[]) => {
     if (h.standingPostings === 0) return
     const { ConflictError } = await import('../../../errors')
@@ -129,7 +129,7 @@ vi.mock('../../../postings/settled-periods', () => ({
 }))
 
 const postEntry = vi.fn(async () => h.postResult)
-vi.mock('../../../postings/post-entry', () => ({
+vi.mock('../../ledger/post/post-entry', () => ({
   postEntry: (...args: unknown[]) => postEntry(...(args as [])),
   previewEntry: async (
     _db: unknown,

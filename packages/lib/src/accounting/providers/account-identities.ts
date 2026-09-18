@@ -34,9 +34,9 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
-import { accountLabel } from '../../postings/account-label'
-import { listChartAccounts } from '../../postings/role-map'
-import type { AccountIdentityRow, ChartAccountRow, ProviderAccount } from '../../postings/types'
+import { accountLabel } from '../ledger/chart/account-label'
+import { listChartAccounts } from '../ledger/roles/role-map'
+import type { AccountIdentityRow, ChartAccountRow, ProviderAccount } from '../ledger/types'
 import { resolveAccountingProvider, supportsCreatingProviderAccounts } from './provider'
 import {
   classificationArticle,

@@ -8,13 +8,13 @@
 // predicate from `SETUP_READINESS_SETTING_KEYS`, so the keys the readiness
 // answer is computed over can never drift from the ones the predicate declares.
 // `OPENING_BASELINE_SETTING_KEYS` and `FINALIZED_SETUP_STATE` are also exported
-// from `@auxx/lib/postings/client` if a caller wants them by reference.
+// from `@auxx/lib/accounting/ledger/client` if a caller wants them by reference.
 
 import {
   minorUnitError,
   SETUP_READINESS_SETTING_KEYS,
   type SettingsRecord,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 
 /** Every `accounting.*` / `manufacturing.*` key these pages touch. */
 export const ACCOUNTING_KEYS = {
@@ -164,7 +164,7 @@ export {
   minorUnitError,
   readSettingMinorUnits as readMinorUnits,
   readSettingText as readText,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 
 /** True when every value in `record` under `keys` is a legal minor-unit amount. */
 export function everyMinorUnitValid(record: Record<string, unknown>, keys: readonly string[]) {

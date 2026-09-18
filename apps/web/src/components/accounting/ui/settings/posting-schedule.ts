@@ -8,7 +8,7 @@
 // has a next fire; an event, console or inbound trigger is a sentence, not a
 // time, and returns null here so the caller prints the sentence instead.
 
-import type { PostingTrigger } from '@auxx/lib/postings/client'
+import type { PostingTrigger } from '@auxx/lib/accounting/ledger/client'
 import { Cron } from 'croner'
 
 /** The next fire of a `schedule` trigger strictly after `now`, or null for every other kind. */
