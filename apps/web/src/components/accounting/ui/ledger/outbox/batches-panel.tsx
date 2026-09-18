@@ -292,15 +292,18 @@ export function BatchesPanel({
                       <RefreshCw className={cn(retrying && 'animate-spin')} />
                     </TreeRowButton>
                   )}
-                  {tab === 'sent' && canRollback && (
-                    <TreeRowButton
-                      persistent
-                      tooltipText={`Roll back from ${providerLabel}`}
-                      disabled={rollingBack}
-                      onClick={() => void runRollback([batch.id])}>
-                      <Undo2 className={cn(rollingBack && 'animate-pulse')} />
-                    </TreeRowButton>
-                  )}
+                  {/* A failed batch that names an object is the read-back orphan: it exists at
+                      the provider and this button is the only door to it. */}
+                  {(tab === 'sent' || (tab === 'failed' && batch.providerObjectId)) &&
+                    canRollback && (
+                      <TreeRowButton
+                        persistent
+                        tooltipText={`Roll back from ${providerLabel}`}
+                        disabled={rollingBack}
+                        onClick={() => void runRollback([batch.id])}>
+                        <Undo2 className={cn(rollingBack && 'animate-pulse')} />
+                      </TreeRowButton>
+                    )}
                 </>
               }
               // A transaction-mode batch IS one posting, so the button opens it;
