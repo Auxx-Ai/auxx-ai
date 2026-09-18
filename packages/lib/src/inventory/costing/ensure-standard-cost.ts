@@ -37,7 +37,6 @@ import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
-import type { StandardCostComponents } from '../../builds/types'
 import { getOrgCache } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
@@ -55,6 +54,7 @@ import {
   type StandardCostFields,
   type StandardCostWriteContext,
 } from './standard-cost-queries'
+import type { StandardCostComponents } from './types'
 
 const logger = createScopedLogger('builds:ensure-standard-cost')
 

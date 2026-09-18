@@ -151,7 +151,7 @@ vi.mock('../../../accounting/ledger/post/auto-post', () => ({
   readAutoPostMode: async () => h.autoPostMode,
 }))
 
-vi.mock('../../../relief', async () => {
+vi.mock('../../../inventory/relief', async () => {
   const { ok } = await import('neverthrow')
   return {
     relieveFulfillmentLines: async (

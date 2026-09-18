@@ -596,7 +596,7 @@ async function orderDemandPass(
 ): Promise<void> {
   try {
     const { LINE_DEMAND_TRIGGER_ATTRS, ORDER_DEMAND_TRIGGER_ATTRS } = await import(
-      '../../builds/drift-hooks'
+      '../../inventory/builds/drift-hooks'
     )
 
     const lineInstanceIds = new Set<string>()
@@ -644,7 +644,7 @@ async function orderDemandPass(
     }
     if (orderInstanceIds.size === 0) return
 
-    const { reconcileOrdersFromSync } = await import('../../builds/drift-reconciler')
+    const { reconcileOrdersFromSync } = await import('../../inventory/builds/drift-reconciler')
     await reconcileOrdersFromSync(organizationId, [...orderInstanceIds])
 
     logger.info('integrity order-demand pass done', {

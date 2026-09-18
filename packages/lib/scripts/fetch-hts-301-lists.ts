@@ -2,12 +2,12 @@
 //
 // Maintainer's tool for the Section 301 list memberships
 // (plans/money/tasks/32-tariff-starter-catalogue.md §1.4, revised — see the
-// header of `src/bom/tariff-301-memberships.ts` for why this moved out of the
+// header of `src/inventory/tariffs/tariff-301-memberships.ts` for why this moved out of the
 // hand-kept half of the catalogue).
 //
 // Fetches the HTSUS chapter 99 PDF, extracts the four enumerations in U.S.
 // note 20 to subchapter III, and writes
-// `packages/lib/src/bom/tariff-301-memberships.json` as one entry per 8-digit
+// `packages/lib/src/inventory/tariffs/tariff-301-memberships.json` as one entry per 8-digit
 // subheading pointing at the list keys that cover it.
 //
 //   pnpm --filter @auxx/lib exec tsx scripts/fetch-hts-301-lists.ts
@@ -34,7 +34,7 @@ const SOURCE_URL =
   'https://hts.usitc.gov/reststop/file?release=currentRelease&filename=Chapter%2099'
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
-const OUTPUT_PATH = path.join(scriptDir, '../src/bom/tariff-301-memberships.json')
+const OUTPUT_PATH = path.join(scriptDir, '../src/inventory/tariffs/tariff-301-memberships.json')
 
 /**
  * The four enumerations, keyed by the `TARIFF_ACTIONS` key they feed.

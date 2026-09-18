@@ -17,7 +17,7 @@
 // this popover was opened from.
 
 import { FieldType } from '@auxx/database/enums'
-import { skipReasonLabel } from '@auxx/lib/builds/client'
+import { skipReasonLabel } from '@auxx/lib/inventory/builds/client'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'

@@ -2,8 +2,9 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { absorbsConversionCost, resolvePartKind, standardCostDrift } from '@auxx/lib/builds/client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { standardCostDrift } from '@auxx/lib/inventory/builds/client'
+import { absorbsConversionCost, resolvePartKind } from '@auxx/lib/inventory/costing/client'
 import { CostSource, parseRecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Badge, type Variant } from '@auxx/ui/components/badge'

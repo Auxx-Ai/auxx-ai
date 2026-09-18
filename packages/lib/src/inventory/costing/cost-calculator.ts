@@ -9,7 +9,6 @@ import { toRecordId } from '@auxx/types/resource'
 import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
-import { loadTariffSchedule } from '../../bom/tariff-schedule'
 import { getOrgCache, requireCachedEntityDefId } from '../../cache'
 import { toFieldType } from '../../field-values/stored-field-type'
 import {
@@ -17,6 +16,7 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../../realtime'
+import { loadTariffSchedule } from '../tariffs/tariff-schedule'
 import { type CostWrite, writeCostValues } from './cost-writer'
 import {
   computeLandedCost,

@@ -38,7 +38,7 @@
 import { database as db, schema } from '@auxx/database'
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { requireCachedEntityDefId } from '../src/cache'
-import { backfillFulfillmentRelief } from '../src/relief'
+import { backfillFulfillmentRelief } from '../src/inventory/relief'
 
 const ORG_ARG = process.argv[2] ?? ''
 const args = process.argv.slice(3)

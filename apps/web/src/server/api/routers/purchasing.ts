@@ -1,6 +1,21 @@
 // apps/web/src/server/api/routers/purchasing.ts
 
 import { type Database, schema } from '@auxx/database'
+import { getCachedEntityDefId, getOrgCache } from '@auxx/lib/cache'
+import { NotFoundError, UnprocessableEntityError } from '@auxx/lib/errors'
+import { computeExtendedCost, reverseMovement } from '@auxx/lib/inventory/movements'
+import {
+  adjustStock,
+  bulkOpenStockBalance,
+  bulkSetPartKind,
+  getLastReceiptCost,
+  getPartReceiptHistory,
+  listOpeningStockCandidates,
+  listReceipts,
+  openStockBalance,
+  receivePurchaseOrder,
+  receiveStock,
+} from '@auxx/lib/inventory/receiving'
 import {
   adoptTariffStarters,
   applyTariffResync,
@@ -11,10 +26,7 @@ import {
   loadTariffMemberships,
   planTariffResync,
   TARIFF_STARTERS_VERSION,
-} from '@auxx/lib/bom'
-import { getCachedEntityDefId, getOrgCache } from '@auxx/lib/cache'
-import { NotFoundError, UnprocessableEntityError } from '@auxx/lib/errors'
-import { computeExtendedCost, reverseMovement } from '@auxx/lib/inventory/movements'
+} from '@auxx/lib/inventory/tariffs'
 import { markPurchaseOrderSent } from '@auxx/lib/money'
 import { PermissionKey } from '@auxx/lib/permissions'
 import {
@@ -43,18 +55,6 @@ import {
   voidExpenseBill,
 } from '@auxx/lib/purchasing'
 import { INTAKE_TIERS } from '@auxx/lib/purchasing/intake/client'
-import {
-  adjustStock,
-  bulkOpenStockBalance,
-  bulkSetPartKind,
-  getLastReceiptCost,
-  getPartReceiptHistory,
-  listOpeningStockCandidates,
-  listReceipts,
-  openStockBalance,
-  receivePurchaseOrder,
-  receiveStock,
-} from '@auxx/lib/receiving'
 import { parseRecordId, type RecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -319,7 +319,7 @@ async function requireDefId(organizationId: string, entityType: string): Promise
  * anything is committed.
  *
  * **Every procedure here is the permission gate for the lib call underneath it.**
- * `@auxx/lib/receiving` contains no access checks by design — both its module
+ * `@auxx/lib/inventory/receiving` contains no access checks by design — both its module
  * headers say so explicitly — so if a gate is missing here it is missing
  * everywhere. The authority is per-definition, resolved from the org cache and
  * asserted against the request's `CapabilitySet`:
@@ -384,7 +384,7 @@ export const purchasingRouter = createTRPCRouter({
    *
    * `markPurchaseOrderSent` throws its `AuxxError` directly rather than returning a
    * `Result` — it is a `@auxx/lib/money` lifecycle mutation and follows that
-   * module's convention, not `@auxx/lib/receiving`'s. `auxxErrorMiddleware` maps it,
+   * module's convention, not `@auxx/lib/inventory/receiving`'s. `auxxErrorMiddleware` maps it,
    * so there is nothing to unwrap here.
    */
   markPurchaseOrderSent: capabilityProcedure

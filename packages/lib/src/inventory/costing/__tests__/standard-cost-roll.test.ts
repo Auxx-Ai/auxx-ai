@@ -5,9 +5,8 @@
 // arithmetic over an in-memory graph, so it needs no `vi.mock` at all.
 
 import { describe, expect, it } from 'vitest'
-import type { PartKindValue } from '../../../builds/client'
-import type { AbsorptionRates } from '../../../builds/types'
 import { UnprocessableEntityError } from '../../../errors'
+import type { PartKindValue } from '../client'
 import {
   computeStandardCosts,
   type StandardCostRollInputs,
@@ -15,6 +14,7 @@ import {
   widenToAncestors,
   widenToUnvaluedDescendants,
 } from '../standard-cost-roll'
+import type { AbsorptionRates } from '../types'
 
 const MOTOR = 'part_motor'
 const TUBE = 'part_tube'

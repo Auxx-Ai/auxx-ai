@@ -104,7 +104,7 @@ vi.mock('../../../money/catalog-pricing', () => ({
   syncCatalogItemPricing: h.syncCatalogItemPricing,
 }))
 
-vi.mock('../../../bom/tariff-schedule', () => ({
+vi.mock('../../tariffs/tariff-schedule', () => ({
   loadTariffSchedule: h.loadTariffSchedule,
 }))
 

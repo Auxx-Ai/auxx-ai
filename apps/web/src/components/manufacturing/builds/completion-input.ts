@@ -8,11 +8,11 @@
 // state, not by two expressions that happen to agree today.
 //
 // 🛑 Nothing here computes money. The five cost numbers come from
-// `summarizeBuildCompletion` in `@auxx/lib/builds/client`, which is the same
+// `summarizeBuildCompletion` in `@auxx/lib/inventory/builds/client`, which is the same
 // function `completeBuild` runs on the server, so the variance on screen is the
 // variance that gets frozen.
 
-import type { BuildComponentLine } from '@auxx/lib/builds/client'
+import type { BuildComponentLine } from '@auxx/lib/inventory/builds/client'
 
 /** One override the person actually typed, keyed by the consumed part. */
 export type OverrideMap = Readonly<Record<string, number>>

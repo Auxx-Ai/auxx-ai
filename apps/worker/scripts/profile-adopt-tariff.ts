@@ -10,7 +10,7 @@
  *     apps/worker/scripts/profile-adopt-tariff.ts 8503.00.95.46 CN
  */
 import { database, schema } from '@auxx/database'
-import { adoptTariffStarters } from '@auxx/lib/bom'
+import { adoptTariffStarters } from '@auxx/lib/inventory/tariffs'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import { eq, sql } from 'drizzle-orm'
 

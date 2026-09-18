@@ -21,8 +21,8 @@
 // own — `ReceiveStockForm`, `StockAdjustmentForm`, `BuildPartForm`. Each resets
 // by unmounting, which a pane swap gives for free.
 
-import { resolvePartKind } from '@auxx/lib/builds/client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { resolvePartKind } from '@auxx/lib/inventory/costing/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { menuItemStyles } from '@auxx/ui/components/menu-styles'

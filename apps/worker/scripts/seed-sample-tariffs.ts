@@ -33,8 +33,8 @@
  * (socket head cap screws, other), which does.
  */
 import { database, schema } from '@auxx/database'
-import { adoptTariffStarters } from '@auxx/lib/bom'
 import { getOrgCache } from '@auxx/lib/cache'
+import { adoptTariffStarters } from '@auxx/lib/inventory/tariffs'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import { and, eq } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'

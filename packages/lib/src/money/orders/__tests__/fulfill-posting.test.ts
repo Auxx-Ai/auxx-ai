@@ -100,7 +100,7 @@ vi.mock('../../../resources/crud/tx-write-scope', () => ({
   }),
 }))
 vi.mock('../../../resources/crud/tx-write-flush', () => ({ flushTxWriteScope: async () => {} }))
-vi.mock('../../../relief', () => ({
+vi.mock('../../../inventory/relief', () => ({
   relieveFulfillmentLines: async () =>
     ok({
       movementIds: [],

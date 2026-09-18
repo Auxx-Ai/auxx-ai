@@ -20,7 +20,7 @@
 // we make, is 412 units over eight months plausible* — which is also why parts
 // are the expandable axis and periods are the axis you scan.
 
-import type { BackfillPartPlan, BackfillPlan } from '@auxx/lib/builds/client'
+import type { BackfillPartPlan, BackfillPlan } from '@auxx/lib/inventory/builds/client'
 import {
   Table,
   TableBody,

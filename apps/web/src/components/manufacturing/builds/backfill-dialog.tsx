@@ -54,7 +54,7 @@ import {
   type BackfillGrouping,
   type BackfillRunSummary,
   type BackfillStatus,
-} from '@auxx/lib/builds/client'
+} from '@auxx/lib/inventory/builds/client'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { toastError } from '@auxx/ui/components/toast'

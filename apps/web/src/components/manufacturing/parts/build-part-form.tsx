@@ -20,7 +20,7 @@
 // same arithmetic is how a preview and a write come to disagree.
 
 import { FieldType } from '@auxx/database/enums'
-import { summarizeBuildCompletion } from '@auxx/lib/builds/client'
+import { summarizeBuildCompletion } from '@auxx/lib/inventory/builds/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

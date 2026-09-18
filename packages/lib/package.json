@@ -352,24 +352,6 @@
       "import": "./dist/availability/client.mjs",
       "default": "./src/availability/client.ts"
     },
-    "./bom": {
-      "types": "./src/bom/index.ts",
-      "source": "./src/bom/index.ts",
-      "import": "./dist/bom/index.mjs",
-      "default": "./src/bom/index.ts"
-    },
-    "./builds": {
-      "types": "./src/builds/index.ts",
-      "source": "./src/builds/index.ts",
-      "import": "./dist/builds/index.mjs",
-      "default": "./src/builds/index.ts"
-    },
-    "./builds/client": {
-      "types": "./src/builds/client.ts",
-      "source": "./src/builds/client.ts",
-      "import": "./dist/builds/client.mjs",
-      "default": "./src/builds/client.ts"
-    },
     "./cache": {
       "types": "./src/cache/index.ts",
       "source": "./src/cache/index.ts",
@@ -880,6 +862,18 @@
       "import": "./dist/interactions/index.mjs",
       "default": "./src/interactions/index.ts"
     },
+    "./inventory/builds": {
+      "types": "./src/inventory/builds/index.ts",
+      "source": "./src/inventory/builds/index.ts",
+      "import": "./dist/inventory/builds/index.mjs",
+      "default": "./src/inventory/builds/index.ts"
+    },
+    "./inventory/builds/client": {
+      "types": "./src/inventory/builds/client.ts",
+      "source": "./src/inventory/builds/client.ts",
+      "import": "./dist/inventory/builds/client.mjs",
+      "default": "./src/inventory/builds/client.ts"
+    },
     "./inventory/costing": {
       "types": "./src/inventory/costing/index.ts",
       "source": "./src/inventory/costing/index.ts",
@@ -903,6 +897,24 @@
       "source": "./src/inventory/movements/client.ts",
       "import": "./dist/inventory/movements/client.mjs",
       "default": "./src/inventory/movements/client.ts"
+    },
+    "./inventory/receiving": {
+      "types": "./src/inventory/receiving/index.ts",
+      "source": "./src/inventory/receiving/index.ts",
+      "import": "./dist/inventory/receiving/index.mjs",
+      "default": "./src/inventory/receiving/index.ts"
+    },
+    "./inventory/receiving/client": {
+      "types": "./src/inventory/receiving/client.ts",
+      "source": "./src/inventory/receiving/client.ts",
+      "import": "./dist/inventory/receiving/client.mjs",
+      "default": "./src/inventory/receiving/client.ts"
+    },
+    "./inventory/tariffs": {
+      "types": "./src/inventory/tariffs/index.ts",
+      "source": "./src/inventory/tariffs/index.ts",
+      "import": "./dist/inventory/tariffs/index.mjs",
+      "default": "./src/inventory/tariffs/index.ts"
     },
     "./jobs": {
       "types": "./src/jobs/index.ts",
@@ -1413,18 +1425,6 @@
       "source": "./src/realtime/client/index.ts",
       "import": "./dist/realtime/client/index.mjs",
       "default": "./src/realtime/client/index.ts"
-    },
-    "./receiving": {
-      "types": "./src/receiving/index.ts",
-      "source": "./src/receiving/index.ts",
-      "import": "./dist/receiving/index.mjs",
-      "default": "./src/receiving/index.ts"
-    },
-    "./receiving/client": {
-      "types": "./src/receiving/client.ts",
-      "source": "./src/receiving/client.ts",
-      "import": "./dist/receiving/client.mjs",
-      "default": "./src/receiving/client.ts"
     },
     "./record-layout": {
       "types": "./src/record-layout/index.ts",
