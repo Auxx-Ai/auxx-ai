@@ -50,7 +50,7 @@ import { assertFinancialRecordCanDelete } from './financial-record-binding'
 import { assertRecordRowsEditable } from './record-row-access'
 import { flushTxWriteScope } from './tx-write-flush'
 import { runInTxWrite } from './tx-write-scope'
-import type { ResolvedEntityDefinition } from './types'
+import type { ReadOptions, RecordNode, ResolvedEntityDefinition } from './types'
 import {
   archiveEntity,
   type BulkDeleteResult,
@@ -83,6 +83,7 @@ import {
   querySystemResourceIdsPaged,
   resolveEntityIdFromCache,
 } from './unified-handler-queries'
+import { type RecordReadContext, readRecords } from './whole-record-read'
 import { interactiveSession, sessionLane, type WriteSession } from './write-origin'
 import {
   getAmbientWriteDb,
@@ -1145,6 +1146,39 @@ export class UnifiedCrudHandler {
       this.capabilities
     )
     return service.getResourcesByIds(recordIds)
+  }
+
+  /**
+   * Read whole records — values plus expanded `include` relationships — under
+   * this handler's own scope (plans/apps/outbound/01-records-api.md §1). A
+   * record the principal can't see is absent from the result, never `null`
+   * (same non-enumeration contract as {@link getByIds}); a `fields`/`include`
+   * key a def doesn't have is simply absent on that node.
+   *
+   * @param recordIds - RecordIds to read, may span definitions
+   * @param opts - One selection applied to every id in the call
+   */
+  async getRecords(
+    recordIds: RecordId[],
+    opts: ReadOptions = {}
+  ): Promise<Record<RecordId, RecordNode>> {
+    return readRecords(this.recordReadContext(), recordIds, opts)
+  }
+
+  /** {@link getRecords} for one id. `null` when the principal can't see it. */
+  async getRecord(recordId: RecordId, opts?: ReadOptions): Promise<RecordNode | null> {
+    const nodes = await this.getRecords([recordId], opts)
+    return nodes[recordId] ?? null
+  }
+
+  private recordReadContext(): RecordReadContext {
+    return {
+      db: this.db,
+      organizationId: this.organizationId,
+      getByIds: (recordIds) => this.getByIds(recordIds),
+      batchGetValues: (params) => this.fieldValueService.batchGetValues(params),
+      getCustomFields: (entityDefinitionId) => this.getCustomFieldsCached(entityDefinitionId),
+    }
   }
 
   /**

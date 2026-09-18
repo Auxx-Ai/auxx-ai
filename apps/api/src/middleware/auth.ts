@@ -17,6 +17,9 @@ import { internalAuthMiddleware } from './internal-auth'
  * via the `Authorization: Internal <signature>` scheme.
  */
 export const authMiddleware = createMiddleware<AppContext>(async (c, next) => {
+  // A prior principal is already trusted — only our own middleware can `c.set` it.
+  if (c.get('userId')) return next()
+
   const authHeader = c.req.header('Authorization')
 
   // Delegate to internal auth middleware for service-to-service calls

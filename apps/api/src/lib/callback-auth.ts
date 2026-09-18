@@ -16,7 +16,12 @@ import { errorResponse } from './response'
 export function verifyCallbackAuth(
   c: Context,
   scope: CallbackScope
-): { installationId: string; organizationId: string; connectionId?: string } | null {
+): {
+  installationId: string
+  organizationId: string
+  connectionId?: string
+  userId?: string
+} | null {
   const installationId = c.req.header('X-App-Installation-Id')
 
   if (!installationId) {
@@ -72,5 +77,6 @@ export function verifyCallbackAuth(
     installationId,
     organizationId: result.organizationId ?? '',
     connectionId: result.connectionId,
+    userId: result.userId,
   }
 }

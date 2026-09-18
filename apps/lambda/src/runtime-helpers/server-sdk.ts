@@ -180,6 +180,43 @@ export interface Connection {
 }
 
 /**
+ * Local mirror of `@auxx/sdk/server`'s `ReadOptions`/`RecordNode`
+ * (plans/apps/outbound/01-records-api.md §1/§3). Same reason as the error
+ * classes above: `@auxx/sdk/server` is types-only at build time, externalized
+ * to this runtime's `AUXX_SERVER_SDK` global, so there is no shared runtime
+ * import to reuse — only the shape needs to agree.
+ */
+export interface ReadOptions {
+  fields?: string[]
+  include?: Record<string, ReadOptions>
+}
+
+/** See {@link ReadOptions}. */
+export interface RecordNode {
+  recordId: string
+  entityDefinitionId: string
+  displayName: string | null
+  values: Record<string, unknown>
+  included: Record<string, RecordNode | RecordNode[]>
+  redacted: string[]
+}
+
+/** Local mirror of `@auxx/sdk/server`'s `ResourceNode` (plan §4); the route returns it verbatim. */
+export interface ResourceNode {
+  id: string
+  entityDefinitionId: string
+  apiSlug: string
+  entityType?: string
+  type: 'system' | 'custom'
+  label: string
+  plural: string
+  icon: string
+  color: string
+  dataConnectorId?: string
+  fields: Array<Record<string, unknown> & { id: string; key: string; label: string }>
+}
+
+/**
  * Webhook handler metadata
  *
  * Represents a registered webhook handler for receiving external events.
@@ -326,6 +363,15 @@ export interface ServerSDK {
   findContactByPhone: (input: {
     phone: string
   }) => Promise<{ recordId: string; displayName: string | null } | null>
+  // Whole-record reads (plans/apps/outbound/01-records-api.md §3). Backed by
+  // /api/v1/organizations/:handle/records/read — a different lane from the
+  // /api/v1/sdk/entities/* value-I/O routes above: these read under the
+  // invoking user's own capabilities, not app field ownership.
+  getRecord: (recordId: string, opts?: ReadOptions) => Promise<RecordNode | null>
+  getRecords: (recordIds: string[], opts?: ReadOptions) => Promise<Record<string, RecordNode>>
+  // Schema reads (plan §4), same lane and principal as the record reads.
+  getResources: () => Promise<ResourceNode[]>
+  getResource: (idOrSlug: string) => Promise<ResourceNode | null>
   // Error classes re-exported from `@auxx/sdk/server`. App code constructs these
   // via the externalized global, so they must be real constructors here.
   ConnectionExpiredError: typeof ConnectionExpiredError
@@ -1052,6 +1098,69 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
         entity: { recordId: string; displayName: string | null } | null
       }
       return data.entity ?? null
+    },
+
+    /**
+     * Read a single record — its own field values plus expanded `include`
+     * relationships — under the invoking user's capabilities. `null` when
+     * the record doesn't exist OR that user can't see it.
+     */
+    getRecord: async (recordId: string, opts?: ReadOptions): Promise<RecordNode | null> => {
+      const response = await sdkFetch({
+        method: 'POST',
+        url: `${context.apiUrl}/api/v1/organizations/${context.organization.handle}/records/read`,
+        headers: getCallbackHeaders('entities'),
+        body: { recordIds: [recordId], fields: opts?.fields, include: opts?.include },
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to get record: ${response.status}`)
+      }
+      const data = response.data as Record<string, RecordNode>
+      return data[recordId] ?? null
+    },
+
+    /** {@link getRecord} for a batch of ids — the route the POST route already serves. */
+    getRecords: async (
+      recordIds: string[],
+      opts?: ReadOptions
+    ): Promise<Record<string, RecordNode>> => {
+      const response = await sdkFetch({
+        method: 'POST',
+        url: `${context.apiUrl}/api/v1/organizations/${context.organization.handle}/records/read`,
+        headers: getCallbackHeaders('entities'),
+        body: { recordIds, fields: opts?.fields, include: opts?.include },
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to get records: ${response.status}`)
+      }
+      return response.data as Record<string, RecordNode>
+    },
+
+    /** Every resource the invoking user can see, all fields included. */
+    getResources: async (): Promise<ResourceNode[]> => {
+      const response = await sdkFetch({
+        method: 'GET',
+        url: `${context.apiUrl}/api/v1/organizations/${context.organization.handle}/resources`,
+        headers: getCallbackHeaders('entities'),
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to get resources: ${response.status}`)
+      }
+      return response.data as ResourceNode[]
+    },
+
+    /** One resource by def id, `entityType` or `apiSlug`; `null` on 404 (missing or hidden). */
+    getResource: async (idOrSlug: string): Promise<ResourceNode | null> => {
+      const response = await sdkFetch({
+        method: 'GET',
+        url: `${context.apiUrl}/api/v1/organizations/${context.organization.handle}/resources/${encodeURIComponent(idOrSlug)}`,
+        headers: getCallbackHeaders('entities'),
+      })
+      if (response.status === 404) return null
+      if (response.status !== 200) {
+        throw new Error(`Failed to get resource: ${response.status}`)
+      }
+      return response.data as ResourceNode
     },
 
     /**
