@@ -9,6 +9,7 @@ import { toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
+import { firstTyped } from '../field-values/client'
 import type { FileValue } from '../field-values/converters'
 import { FieldValueService } from '../field-values/field-value-service'
 import { extractRelationshipRecordIds } from '../field-values/relationship-field'
@@ -22,14 +23,6 @@ const logger = createScopedLogger('money:convert-quote')
  * stage. Early converts (draft/sent) are the "customer said yes on the phone" flow; the
  * client shows a confirm dialog before them. */
 const CONVERTIBLE_QUOTE_STATUSES = new Set(['draft', 'sent', 'approved'])
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /**
  * Unwrap a `getFieldValues()` map entry for a FILE field into its raw `{ ref, caption?,

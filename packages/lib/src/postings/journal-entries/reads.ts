@@ -22,6 +22,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { NotFoundError, UnprocessableEntityError } from '../../errors'
+import { valueJoin } from '../../field-values/read-kit'
 import { parsePeriodKey } from '../periods'
 import type {
   JournalEntryKindValue,
@@ -371,24 +372,6 @@ function monthBoundsUtc(periodKey: string): { start: string; end: string } {
 }
 
 /**
- * Join predicate for "this instance's value of <field>".
- *
- * Takes the alias OBJECT and composes with `eq`, so drizzle emits the table as
- * an identifier. A hand-written `sql` fragment interpolating a table binds it as
- * a parameter instead, which is a mistake this codebase has already paid for.
- */
-function valueJoin(
-  table: ReturnType<typeof alias<typeof schema.FieldValue, string>>,
-  fieldId: string
-): SQL | undefined {
-  return and(
-    eq(table.entityId, schema.EntityInstance.id),
-    eq(table.organizationId, schema.EntityInstance.organizationId),
-    eq(table.fieldId, fieldId)
-  )
-}
-
-/**
  * Turn a page of ids into full rows with TWO additional queries: the
  * `journal_entry` field values, and - batched by `journal_entry_gl_posting_id`
  * - the linked postings that carry status and lines.
@@ -505,7 +488,7 @@ function toRecord(
   return {
     id: row.id,
     number: read('journal_entry_number')?.valueText ?? null,
-    date: toDateKey(read('journal_entry_date')?.valueDate ?? null),
+    date: parseDateKeyOrNull(read('journal_entry_date')?.valueDate ?? null),
     memo: read('journal_entry_memo')?.valueText ?? null,
     // A record whose companion draft is missing (the second half of
     // `createJournalEntry` never ran) reads as `draft` - there is nothing else
@@ -575,7 +558,7 @@ export function linesFromBuilt(built: unknown): JournalEntryLine[] {
  * reader west of UTC, which is the one presentation bug a bookkeeper cannot
  * argue with. `writes.ts` stores midnight UTC, so slicing is exact.
  */
-function toDateKey(value: string | null): string | null {
+function parseDateKeyOrNull(value: string | null): string | null {
   if (!value) return null
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10)

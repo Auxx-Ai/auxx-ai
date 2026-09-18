@@ -8,6 +8,7 @@ import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { fromZonedTime } from 'date-fns-tz'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../cache'
+import { firstTyped } from '../field-values/client'
 import { FieldValueService } from '../field-values/field-value-service'
 import { expandOccurrences, RECURRENCE_HORIZON_DAYS, type RecurrencePattern } from '../recurrence'
 import { UnifiedCrudHandler } from '../resources/crud'
@@ -71,12 +72,6 @@ const BILLING_PROJECTION_BYPASS = new Set([
   ...INVOICE_PROJECTION_ATTRS,
   ...CONTACT_PROJECTION_ATTRS,
 ])
-
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 function extractFieldValue(
   values: Map<string, TypedFieldValue | TypedFieldValue[]>,

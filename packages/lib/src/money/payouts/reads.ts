@@ -12,6 +12,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
+import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, desc, eq, gt, inArray, isNotNull, isNull, or, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
@@ -503,6 +504,10 @@ async function hydrate(
       return id ? (byInstance.get(row.id)?.get(id) ?? null) : null
     }
     const money = (attr: PayoutAttribute) => Number(read(attr)?.valueNumber ?? 0)
+    const isoDay = (attr: PayoutAttribute) => {
+      const raw = read(attr)?.valueDate
+      return raw ? toDateKey(raw) : null
+    }
     return {
       reportedFields: Object.fromEntries(
         PAYOUT_SOURCE_ATTRIBUTES.map((attr) => [
@@ -515,7 +520,7 @@ async function hydrate(
       number: read('payout_number')?.valueText ?? null,
       gatewayId: read('payout_gateway_id')?.valueText ?? null,
       status: resolvePayoutStatus(read('payout_status')?.optionId),
-      paidAt: toIsoDay(read('payout_paid_at')?.valueDate),
+      paidAt: isoDay('payout_paid_at'),
       currency: read('payout_currency')?.valueText ?? null,
       depositedMinor: money('payout_deposited'),
       grossMinor: money('payout_gross'),
@@ -563,11 +568,6 @@ async function withLivePostings(
       ? { ...record, glPostingId: byGateway.get(record.gatewayId) ?? null }
       : record
   )
-}
-
-function toIsoDay(value: string | Date | null | undefined): string | null {
-  if (!value) return null
-  return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10)
 }
 
 /**

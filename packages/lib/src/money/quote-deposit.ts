@@ -12,6 +12,7 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { getOrgCache } from '../cache'
+import { firstTyped } from '../field-values/client'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { readOrganizationSettings } from '../settings/read'
 import { listWorkOrderDepositReceipts } from './checkout/reads'
@@ -19,15 +20,6 @@ import { applyMoneyToInvoice } from './invoices/apply-money'
 
 /** `quote_deposit_type` / `documents.quote.depositType` values. */
 export type QuoteDepositType = 'none' | 'percent' | 'fixed'
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned (the
- * SINGLE_SELECT/MULTI_SELECT/RELATIONSHIP read convention — see `ARRAY_RETURN_FIELD_TYPES`). */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /**
  * Resolve the deposit amount for a quote, in integer cents. Pure — no I/O — clamped to

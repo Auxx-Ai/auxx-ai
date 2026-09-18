@@ -6,13 +6,13 @@
 // `reanchorSequenceRuns`.
 
 import { type Database, schema } from '@auxx/database'
-import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { addDays, setHours, setMilliseconds, setMinutes, setSeconds } from 'date-fns'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
+import { firstTyped } from '../field-values/client'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { SystemUserService } from '../users/system-user-service'
 
@@ -30,14 +30,6 @@ export interface AnchorStepConfig {
 function parseHHMM(value: string): [number, number] {
   const [h, m] = value.split(':').map((part) => Number(part))
   return [h ?? 0, m ?? 0]
-}
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
 }
 
 /**

@@ -74,10 +74,9 @@ import { fromZonedTime } from 'date-fns-tz'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../cache'
 import { UnprocessableEntityError } from '../errors'
+import { readBookTimeZoneOrUtc } from '../postings/book-time-zone'
 import { periodKeyForDate } from '../postings/periods'
-import { OPENING_BASELINE_SETTING_KEYS } from '../postings/setup-readiness'
 import { recordNumbering } from '../records/record-numbering'
-import { getOrganizationSetting } from '../settings/settings-service'
 import type {
   BackfillBucket,
   BackfillPlan,
@@ -287,7 +286,7 @@ async function prepareRun(organizationId: string): Promise<RunContext> {
     getOrgCache()
       .from(organizationId, 'customFields')
       .bySystemAttributes(['build_period_start', 'build_period_end', 'build_batch_run'] as const),
-    readBookTimeZone(organizationId),
+    readBookTimeZoneOrUtc(organizationId),
   ])
 
   if (!fields.build_period_start || !fields.build_period_end) {
@@ -390,15 +389,6 @@ async function executeBucket(
     // is what the person has to go and fix.
     recordLeftInProgress(summary, bucket, build.buildId, completed.error.message)
   }
-}
-
-/** `accounting.bookTimeZone`, or `'UTC'` for an org that keeps no books yet. */
-async function readBookTimeZone(organizationId: string): Promise<string> {
-  const value = await getOrganizationSetting({
-    organizationId,
-    key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
-  })
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : 'UTC'
 }
 
 /**

@@ -5,6 +5,7 @@
 // its arguments, which is what lets the B7 identity below be asserted as an
 // identity rather than as one worked example.
 
+import { roundMinorUnits } from '@auxx/utils/currency'
 import { describe, expect, it } from 'vitest'
 import {
   absorbedRate,
@@ -18,7 +19,6 @@ import {
   componentConsumption,
   resolveAbsorptionRates,
   resolveBuildStatus,
-  roundMinorUnits,
   summarizeBuildCompletion,
   unitsStarted,
 } from '../client'

@@ -2,6 +2,7 @@
 // Pure landed-cost math, the inventory-ROLE map and the money rounding rules.
 // Nothing here touches a database, the org cache or the logger.
 
+import { roundMinorUnits } from '@auxx/utils/currency'
 import { describe, expect, it } from 'vitest'
 import { ACCOUNT_ROLES } from '../../postings/client'
 import {
@@ -13,7 +14,6 @@ import {
   INVENTORY_ROLE_BY_PART_KIND,
   type ReceiptCostInputs,
   resolveInventoryRoleForPartKind,
-  roundMinorUnits,
 } from '../client'
 
 const terms = (overrides: Partial<ReceiptCostInputs> = {}): ReceiptCostInputs => ({

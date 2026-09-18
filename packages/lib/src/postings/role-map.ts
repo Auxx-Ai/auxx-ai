@@ -42,6 +42,7 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toIso } from '@auxx/utils/calendar-day'
 import { and, count, eq, isNotNull, isNull } from 'drizzle-orm'
 import { PgTransaction } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
@@ -1444,19 +1445,4 @@ function warnMalformed(
     })
   }
   return read.accounts
-}
-
-/**
- * Serialise a timestamp column to ISO, tolerating a driver that already did.
- *
- * Same reasoning as `read-posting.ts`: Drizzle maps `timestamp` to a `Date`, a
- * stub or a raw pool can hand back the string, and an unparseable value becomes
- * `null` rather than the string `'Invalid Date'`, which a screen would render as
- * though it were a time.
- */
-function toIso(value: Date | string | null | undefined): string | null {
-  if (value === null || value === undefined) return null
-  if (typeof value === 'string') return value
-  const time = value.getTime()
-  return Number.isNaN(time) ? null : value.toISOString()
 }

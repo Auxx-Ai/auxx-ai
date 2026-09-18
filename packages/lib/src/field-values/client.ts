@@ -1,11 +1,20 @@
 // packages/lib/src/field-values/client.ts
 
+import type { TypedFieldValue } from '@auxx/types'
+
 /**
  * Client-side utilities for working with TypedFieldValue.
  * Import types directly from '@auxx/types/field-value'.
  */
 
 export type { RecordId } from '@auxx/types/resource'
+
+// Unwrap a getFieldValues() entry: single/multi-value fields both return TypedFieldValue | TypedFieldValue[].
+// `unknown` (not the narrower union) so a caller reading an event's untyped oldValue/newValue doesn't need to cast first.
+export function firstTyped(entry: unknown): TypedFieldValue | undefined {
+  if (!entry) return undefined
+  return (Array.isArray(entry) ? entry[0] : entry) as TypedFieldValue | undefined
+}
 // CALC expression evaluator (client-safe) - re-exported from @auxx/utils
 export {
   CALC_FUNCTIONS,

@@ -17,11 +17,13 @@
  */
 
 import { type Database, schema } from '@auxx/database'
+import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
+import { valueJoin } from '../../field-values/read-kit'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
 import { methodsRoutedToUndepositedFunds, resolveBankDepositStatus } from './client'
 import { guard } from './guard'
@@ -266,7 +268,7 @@ export async function readDepositBankAccount(
 }
 
 /**
- * A stored date value, as `YYYY-MM-DD`.
+ * A stored date value, as `YYYY-MM-DD` (`@auxx/utils/calendar-day`'s `toDateKey`).
  *
  * 🛑 `FieldValue.valueDate` is a `timestamp(3) with time zone` in `mode: 'string'`,
  * so a DATE field written as `'2026-09-03'` reads back as
@@ -282,27 +284,6 @@ export async function readDepositBankAccount(
  * was written, and re-parsing it through a local `Date` would move it a day in
  * either direction west or east of UTC.
  */
-function toIsoDay(raw: string | null | undefined): string | null {
-  return raw ? raw.slice(0, 10) : null
-}
-
-/** An aliased `FieldValue` table, as `alias()` returns it. */
-type FieldValueAlias = ReturnType<typeof alias<typeof schema.FieldValue, string>>
-
-/**
- * Join predicate for "this instance's value of <field>".
- *
- * Takes the alias OBJECT and composes with `eq`, so drizzle emits the table as
- * an identifier. A hand-written `sql` fragment interpolating a table binds it as
- * a parameter instead, a mistake this codebase has already paid for.
- */
-function valueJoin(table: FieldValueAlias, fieldId: string): SQL | undefined {
-  return and(
-    eq(table.entityId, schema.EntityInstance.id),
-    eq(table.organizationId, schema.EntityInstance.organizationId),
-    eq(table.fieldId, fieldId)
-  )
-}
 
 /**
  * Receipts that are waiting to be banked: routed to `undeposited_funds` by the
@@ -657,11 +638,15 @@ async function hydrateDeposits(
       const raw = read(attr)?.valueDate
       return raw ? new Date(raw) : null
     }
+    const isoDay = (attr: DepositAttribute) => {
+      const raw = read(attr)?.valueDate
+      return raw ? toDateKey(raw) : null
+    }
     return {
       depositId: row.id,
       recordId: toRecordId(ctx.depositDefId, row.id),
       number: read('bank_deposit_number')?.valueText ?? null,
-      depositDate: toIsoDay(read('bank_deposit_date')?.valueDate),
+      depositDate: isoDay('bank_deposit_date'),
       bankAccountId: read('bank_deposit_bank_account_record')?.relatedEntityId ?? null,
       bankAccountGlAccountId: read('bank_deposit_bank_account')?.valueText ?? null,
       reference: read('bank_deposit_reference')?.valueText ?? null,

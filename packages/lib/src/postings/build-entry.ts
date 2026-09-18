@@ -10,6 +10,7 @@
 // than returning a `Result`. Per docs/lib-module-guide.md, `Result` is for
 // runtime failure; a builder that cannot balance its own arithmetic is a bug.
 
+import { isAtPrecision } from '@auxx/utils/currency'
 import { UnprocessableEntityError } from '../errors'
 // Plain data, no io - the same direction `account-subtype.ts` already takes.
 import { GlAccountSubtype } from '../resources/registry/enum-values'
@@ -559,8 +560,9 @@ interface DraftLine {
   counterpartyId?: string
 }
 
+// `isAtPrecision(amount)` with no decimals is `Number.isFinite && Number.isInteger`; this wraps it in the AuxxError this file's callers need (`@auxx/utils` can't throw one).
 function assertMinorUnits(amount: number, label: string): void {
-  if (!Number.isFinite(amount) || !Number.isInteger(amount)) {
+  if (!isAtPrecision(amount)) {
     throw new UnprocessableEntityError(
       `${label} must be an integer number of minor units, got ${String(amount)}`,
       { amount: String(amount) }

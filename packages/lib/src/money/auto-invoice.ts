@@ -23,6 +23,7 @@ import {
 } from '../dispatch/recurring/materialize'
 import { BadRequestError } from '../errors'
 import type { EntityFieldChangeHandler } from '../field-hooks/types'
+import { firstTyped } from '../field-values/client'
 import { FieldValueService } from '../field-values/field-value-service'
 import { expandOccurrences, type RecurrencePattern, recurrencePatternSchema } from '../recurrence'
 import { UnifiedCrudHandler } from '../resources/crud'
@@ -44,14 +45,6 @@ const logger = createScopedLogger('money:auto-invoice')
 
 type RecurrenceRuleRow = typeof schema.RecurrenceRule.$inferSelect
 type WorkOrderVisitRow = typeof schema.WorkOrderVisit.$inferSelect
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /** Local calendar date (`YYYY-MM-DD`, local midnight in `timezone`) as a UTC instant — the
  * same local-date/UTC-instant convention `recurrence/expand.ts` and M2c's materializer use.

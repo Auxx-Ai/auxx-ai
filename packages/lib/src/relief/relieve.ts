@@ -53,6 +53,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { roundMinorUnits } from '@auxx/utils/currency'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { batchRecalculateQoH } from '../bom/qoh'
@@ -67,7 +68,7 @@ import {
   postInventoryMovementInTx,
 } from '../postings/post-inventory-movement'
 import type { PostResult } from '../postings/types'
-import { resolveInventoryRoleForPartKind, roundMinorUnits } from '../receiving/client'
+import { resolveInventoryRoleForPartKind } from '../receiving/client'
 import { StockMovementCostBasis, StockMovementType } from '../resources/registry/enum-values'
 import type { WrittenStockMovement } from '../stock-movements'
 import {

@@ -32,6 +32,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toMinor } from '@auxx/utils/currency'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../errors'
@@ -246,17 +247,4 @@ async function countIncompleteRevenue(
       unpostedCreditMemos: null,
     }
   }
-}
-
-/**
- * Coerce one aggregate to integer minor units.
- *
- * `bigint`/`numeric` cross the wire as strings, and the schema's own columns
- * cross as numbers because Drizzle maps them. Both arrive here, so both are
- * handled in one place rather than at four call sites. A value that is neither
- * is a driver change, and `NaN` would compare unequal to everything and be
- * reported as a discrepancy, which is the safe direction.
- */
-function toMinor(value: string | number): number {
-  return typeof value === 'number' ? value : Number(value)
 }

@@ -20,6 +20,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
+import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
@@ -35,7 +36,6 @@ import {
   mergeCoverageGaps,
   resolveBankAccountStatus,
   resolveBankAccountType,
-  toDateKey,
 } from './client'
 import { guard } from './guard'
 // The leaf, not `./rules`: the barrel drags the rule evaluator and the

@@ -1,13 +1,14 @@
 // packages/lib/src/money/purchase-order-lifecycle.ts
 
 import { database, schema } from '@auxx/database'
-import type { RecordId, TypedFieldValue } from '@auxx/types'
+import type { RecordId } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq, sql } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
+import { firstTyped } from '../field-values/client'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import type { MoneyMutationInput } from './types'
@@ -24,14 +25,6 @@ import type { MoneyMutationInput } from './types'
 export interface PurchaseOrderLifecycleInput extends MoneyMutationInput {
   /** EntityInstance id of the purchase order (not the RecordId). */
   purchaseOrderInstanceId: string
-}
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
 }
 
 /** Assert the order is currently at `expected` status, else reject with a clear message. */

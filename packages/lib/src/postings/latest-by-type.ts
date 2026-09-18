@@ -22,6 +22,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toDateKey } from '@auxx/utils/calendar-day'
 import { asc, desc, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../errors'
@@ -89,14 +90,4 @@ function toLatest(row: LatestRow): LatestPostingByType {
     docNumber: row.docNumber,
     status: row.status as PostingStatus,
   }
-}
-
-/**
- * Keep a Postgres `date` as `YYYY-MM-DD`. Drizzle's `date()` is string-mode, so
- * this is a pass-through in production; the `Date` branch keeps the accounting
- * date from acquiring a time and a zone on its way to a browser.
- */
-function toDateKey(value: Date | string): string {
-  if (typeof value === 'string') return value
-  return value.toISOString().slice(0, 10)
 }

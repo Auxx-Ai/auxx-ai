@@ -8,6 +8,7 @@ import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getOrgCache } from '../cache'
 import type { EntityFieldChangeHandler, EntityPostDeleteHandler } from '../field-hooks/types'
+import { firstTyped } from '../field-values/client'
 import { FieldValueService } from '../field-values/field-value-service'
 import { readFieldRelations, readFieldScalars } from '../field-values/read-field-scalars'
 import { UnifiedCrudHandler } from '../resources/crud'
@@ -75,14 +76,6 @@ export const MATCHABLE_STATUSES = new Set(['draft', 'awaiting_receipt', 'matched
 
 /** Statuses the match wrote itself, and may therefore reset to `draft`. */
 const MATCH_WRITTEN_STATUSES = new Set(['awaiting_receipt', 'matched', 'exception'])
-
-/** Unwrap a `getFieldValues()` entry — single-value fields can still come back as arrays. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 function readString(
   values: Map<string, TypedFieldValue | TypedFieldValue[]>,

@@ -46,6 +46,7 @@
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
+import { toDate } from '@auxx/utils/calendar-day'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { readFieldRelations, readFieldScalars } from '../field-values/read-field-scalars'
@@ -314,19 +315,6 @@ function isDateArmOverdue(expectedAt: Date | null, asOf: Date): boolean {
     DEFAULT_MATCH_TOLERANCE,
     asOf
   )
-}
-
-/**
- * `FieldValue.valueDate` is `timestamp(..., { mode: 'string' })`, so a scalar read
- * hands back an ISO STRING and not a `Date` — the twin of `match-hook.ts`'s `date`
- * helper, and wrong in the same way if it forgets that. An unparseable value
- * degrades to `null`, which reads as "no expected date" and leaves the bill alone.
- */
-function toDate(value: unknown): Date | null {
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
-  if (typeof value !== 'string' || !value) return null
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
 function chunks(ids: readonly string[]): string[][] {

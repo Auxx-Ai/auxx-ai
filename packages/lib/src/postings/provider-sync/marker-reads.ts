@@ -21,9 +21,9 @@
 
 import type { Result } from 'neverthrow'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { todayInBookTimeZone } from '../book-time-zone'
 import { periodKeyForDate } from '../periods'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../provider'
-import { OPENING_BASELINE_SETTING_KEYS } from '../setup-readiness'
 import { PROVIDER_SYNCED_THROUGH_SETTING_KEY, type ProviderSyncMarker } from './client'
 import { guard } from './guard'
 
@@ -77,30 +77,3 @@ export async function readProviderSyncMarker(
 }
 
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
-
-/**
- * Today as the BOOKS reckon it - the day in `accounting.bookTimeZone`.
- *
- * `describeProviderSyncCoverage` compares it against the sync position, so a
- * zone one side or the other of a date line decides whether a statement carries
- * a warning for a few hours. That is the whole consequence, which is why this
- * NEVER throws where `readBookTimeZone` does: an unset or malformed zone falls
- * back to UTC rather than failing the marker, and a marker that failed would
- * take the sentence off every statement in the product to protect a date that
- * is off by one day at worst. The posting paths, where the same mistake puts an
- * entry in the wrong month permanently, refuse instead - see
- * `recurring-journals/book-time-zone.ts`.
- */
-async function todayInBookTimeZone(organizationId: string): Promise<string> {
-  const raw = await getOrganizationSetting({
-    organizationId,
-    key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
-  })
-  const zone = typeof raw === 'string' ? raw.trim() : ''
-  try {
-    return periodKeyForDate(new Date(), 'day', zone || 'UTC')
-  } catch {
-    // `Intl.DateTimeFormat` throws `RangeError` on an unrecognised zone.
-    return periodKeyForDate(new Date())
-  }
-}

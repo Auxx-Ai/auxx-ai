@@ -19,6 +19,7 @@ import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
+import { firstTyped } from '../../field-values/client'
 import { listPaymentGateways } from '../../payment-gateways/reads'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { getPaymentAccount } from '../payouts/stripe-account'
@@ -30,16 +31,10 @@ export const QUOTE_DEPOSIT_COMMAND_KIND = 'stripe_quote_deposit'
 /** The `MoneyCommand.kind` an invoice checkout is recorded under. */
 export const INVOICE_CHECKOUT_COMMAND_KIND = 'stripe_invoice_checkout'
 
-/** Unwrap a `getFieldValues()` map entry - takes the first value if array-returned. */
-export function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
-
 /** An `EntityInstance` id out of a relationship-typed field value, or null. */
-function relatedInstanceId(entry: TypedFieldValue | TypedFieldValue[] | undefined): string | null {
+export function relatedInstanceId(
+  entry: TypedFieldValue | TypedFieldValue[] | undefined
+): string | null {
   const typed = firstTyped(entry)
   return typed?.type === 'relationship' ? parseRecordId(typed.recordId).entityInstanceId : null
 }

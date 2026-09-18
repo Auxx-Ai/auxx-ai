@@ -10,6 +10,8 @@ import {
   minorUnitExponent,
   parseMajorToMinor,
   roundMinor,
+  roundMinorUnits,
+  toMinor,
 } from '../currency'
 
 describe('formatCurrencyCompact', () => {
@@ -187,6 +189,31 @@ describe('isAtPrecision', () => {
 
   it('rejects NaN outright', () => {
     expect(isAtPrecision(Number.NaN, 5, 'USD')).toBe(false)
+  })
+
+  it('at 6 decimals (USD, places=4), scales the tolerance down rather than up', () => {
+    expect(isAtPrecision(5, 6)).toBe(true)
+    expect(isAtPrecision(5.3, 6)).toBe(true)
+    expect(isAtPrecision(5 + 1e-9, 6)).toBe(false)
+  })
+})
+
+describe('roundMinorUnits', () => {
+  it('keeps a RATE at five major-unit places, never a whole minor unit', () => {
+    expect(roundMinorUnits(4442.975)).toBe(4442.975)
+    expect(roundMinorUnits(4442.9754)).toBe(4442.975)
+    expect(roundMinorUnits(4400)).toBe(4400)
+    expect(roundMinorUnits(0)).toBe(0)
+  })
+})
+
+describe('toMinor', () => {
+  it('passes a number through unchanged', () => {
+    expect(toMinor(1999)).toBe(1999)
+  })
+
+  it('coerces a numeric string (a pg aggregate) to a number', () => {
+    expect(toMinor('1999')).toBe(1999)
   })
 })
 

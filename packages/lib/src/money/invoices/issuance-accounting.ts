@@ -16,13 +16,14 @@ import { createScopedLogger } from '@auxx/logger'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { readAutoPostMode } from '../../postings/auto-post'
+import { todayInBookTimeZone } from '../../postings/book-time-zone'
 import { buildInvoiceEntry, INVOICE_SOURCE_TYPE } from '../../postings/build-invoice-entry'
 import { findLiveSubjectPosting } from '../../postings/list-postings'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { postEntry } from '../../postings/post-entry'
 import { reverseEntry } from '../../postings/reverse-entry'
 import type { GlPostingSourceInput, PostResult } from '../../postings/types'
-import { loadInvoiceForIssuance, todayInBookTimeZone } from './issuance-reads'
+import { loadInvoiceForIssuance } from './issuance-reads'
 
 const logger = createScopedLogger('money-invoice-issuance-accounting')
 

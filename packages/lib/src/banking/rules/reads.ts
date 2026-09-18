@@ -10,12 +10,13 @@
  */
 
 import { type Database, schema } from '@auxx/database'
+import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, asc, eq, ilike, inArray, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import { toRecordId } from '../../resources/resource-id'
-import { daysBetween, toDateKey } from '../client'
+import { daysBetween } from '../client'
 import {
   type BankRuleAction,
   type BankRuleConditions,

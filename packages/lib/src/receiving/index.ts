@@ -12,7 +12,6 @@ export {
   type ReceiptCostInputs,
   type ReceiptCostParts,
   resolveInventoryRoleForPartKind,
-  roundMinorUnits,
 } from './client'
 export { openStockBalance } from './open-stock-balance'
 export { listOpeningStockCandidates } from './opening-stock-queries'

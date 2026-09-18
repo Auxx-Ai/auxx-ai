@@ -78,6 +78,16 @@ export function roundMinor(
   return Math.round(minorUnits * scale) / scale
 }
 
+/** Round a money value to a RATE field's precision (`RATE_DECIMALS`) — never an AMOUNT, which rounds to a whole minor unit via `Math.round` directly. */
+export function roundMinorUnits(value: number): number {
+  return roundMinor(value, RATE_DECIMALS)
+}
+
+/** Coerce a `FieldValue`/aggregate column's raw minor-unit amount (`pg` numeric aggregates arrive as strings) to a number, without rounding or validating it. */
+export function toMinor(value: string | number): number {
+  return typeof value === 'number' ? value : Number(value)
+}
+
 /**
  * Whether a minor-unit amount is exactly representable at the field's
  * precision. `isAtPrecision(1.594, 5)` is true; `isAtPrecision(1.5941, 5)` and

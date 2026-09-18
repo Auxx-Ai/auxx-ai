@@ -146,7 +146,9 @@ vi.mock('./tariff-schedule', () => ({
     }
     return out
   },
-  readBookTimeZone: async () => 'UTC',
+}))
+vi.mock('../postings/book-time-zone', () => ({
+  readBookTimeZoneOrUtc: async () => 'UTC',
 }))
 
 import { BadRequestError, NotFoundError } from '../errors'

@@ -1,13 +1,14 @@
 // packages/lib/src/money/invoice-lifecycle.ts
 
 import { database, schema } from '@auxx/database'
-import type { RecordId, TypedFieldValue } from '@auxx/types'
+import type { RecordId } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
+import { firstTyped } from '../field-values/client'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { listInvoiceAllocations, releaseInvoiceAllocations } from './billing-allocations'
@@ -15,14 +16,6 @@ import { syncInvoiceBillingProjection, syncWorkOrderBillingProjection } from './
 import { listInvoiceMoneyPayments } from './invoices/payment-reads'
 import { postInvoiceIssuance, reverseInvoiceIssuance } from './invoices/post-invoice'
 import type { InvoiceLifecycleInput } from './types'
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /** Read an invoice's current `invoice_status`. */
 async function getInvoiceStatus(

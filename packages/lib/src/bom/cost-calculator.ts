@@ -10,13 +10,14 @@ import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { toFieldType } from '../field-values/stored-field-type'
+import { readBookTimeZoneOrUtc } from '../postings/book-time-zone'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../realtime'
 import { type CostWrite, writeCostValues } from './cost-writer'
-import { loadTariffSchedule, readBookTimeZone } from './tariff-schedule'
+import { loadTariffSchedule } from './tariff-schedule'
 import {
   computeLandedCost,
   resolveOfferTariff,
@@ -260,7 +261,7 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
     if (classified.length > 0) {
       const [schedule, timeZone] = await Promise.all([
         loadTariffSchedule(database, orgId),
-        readBookTimeZone(orgId),
+        readBookTimeZoneOrUtc(orgId),
       ])
       const now = new Date()
       for (const entry of classified) {

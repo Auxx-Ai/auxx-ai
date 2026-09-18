@@ -17,6 +17,7 @@ import { ensureDocumentPdf, ensureDocumentPdfViaQueue } from '../documents'
 // id/entityType pairing from, so this is the same source of truth with none of the weight.
 import { DOCUMENT_TYPE_DESCRIPTORS } from '../documents/client'
 import { BadRequestError } from '../errors'
+import { firstTyped } from '../field-values/client'
 import { formatToDisplayValue } from '../field-values/formatter'
 import { extractRelationshipRecordIds } from '../field-values/relationship-field'
 import type { PlaceholderResolutionContext } from '../placeholders'
@@ -33,14 +34,6 @@ import { markQuoteSent } from './quote-lifecycle'
 import { buildQuoteViewUrl, ensureQuotePublicToken } from './quote-public-token'
 
 const logger = createScopedLogger('money-send-email')
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /**
  * Everything that used to be a `documentType === 'invoice' ? … : <quote>` ternary in

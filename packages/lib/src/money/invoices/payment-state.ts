@@ -21,24 +21,16 @@
  */
 
 import { type Database, database } from '@auxx/database'
-import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getOrgCache } from '../../cache'
+import { firstTyped } from '../../field-values/client'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { sumInvoiceCreditApplications } from '../credit-memos/reads'
 import type { SyncInvoicePaymentStateInput } from '../types'
 import { listInvoiceMoneyPayments } from './payment-reads'
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /**
  * The bypass this projection carries. It names `invoice_status` and nothing else — this

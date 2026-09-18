@@ -1,19 +1,11 @@
 // packages/lib/src/dispatch/create-from-ticket.ts
 
-import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { getOrgCache } from '../cache'
+import { firstTyped } from '../field-values/client'
 import { UnifiedCrudHandler } from '../resources/crud'
 import type { CreateFromTicketInput } from './types'
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /**
  * Create a work order from a ticket (01 §8 SECONDARY intake path). Copies the ticket's

@@ -2,7 +2,6 @@
 
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { database, schema } from '@auxx/database'
-import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
@@ -13,6 +12,7 @@ import type {
   DocumentBrandingSettings,
   DocumentBusinessSettings,
 } from '../documents/resolve-settings'
+import { firstTyped } from '../field-values/client'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { quietSession } from '../resources/crud/write-origin'
@@ -42,14 +42,6 @@ const QUIET_PUBLIC_TOKEN = quietSession(
  * dynamic `import()` to avoid a static circular dependency (the repo's established
  * lazy-import fix for this exact shape — see the realtime-barrel/app-runtime precedents).
  */
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /**
  * Mint-or-fetch an invoice's `publicToken` (money MP1 build spec §H) — the unguessable

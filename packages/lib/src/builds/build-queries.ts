@@ -24,6 +24,7 @@ import type { Result } from 'neverthrow'
 import { loadDirectSubparts } from '../bom/subpart-graph'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
+import { valueJoin } from '../field-values/read-kit'
 import { computeExtendedCost, resolveInventoryRoleForPartKind } from '../receiving/client'
 import { toRecordId } from '../resources/resource-id'
 import {
@@ -284,9 +285,6 @@ export async function listUnpostedBuilds(
   )
 }
 
-/** An aliased `FieldValue` table, as `alias()` returns it. */
-type FieldValueAlias = ReturnType<typeof alias<typeof schema.FieldValue, string>>
-
 /** A LEFT JOIN whose joined row must be absent or empty. See {@link listUnpostedBuilds}. */
 interface AbsentValueJoin {
   fieldId: string
@@ -372,21 +370,6 @@ async function queryBuilds(
 
   if (rows.length === 0) return []
   return hydrateBuilds(db, organizationId, ctx, rows)
-}
-
-/**
- * Join predicate for "this instance's value of <field>".
- *
- * Takes the alias OBJECT and composes with `eq`, so drizzle emits the table as
- * an identifier. A hand-written `sql` fragment interpolating a table binds it as
- * a parameter instead, which is a mistake this codebase has already paid for.
- */
-function valueJoin(table: FieldValueAlias, fieldId: string): SQL | undefined {
-  return and(
-    eq(table.entityId, schema.EntityInstance.id),
-    eq(table.organizationId, schema.EntityInstance.organizationId),
-    eq(table.fieldId, fieldId)
-  )
 }
 
 /**

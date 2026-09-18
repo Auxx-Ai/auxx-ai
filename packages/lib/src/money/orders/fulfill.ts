@@ -4,6 +4,7 @@
 
 import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { calendarDayToInstant, isDayKeyShape } from '@auxx/utils/calendar-day'
 import type { Result } from 'neverthrow'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import { withAccountingCommitLock } from '../../postings/accounting-commit-lock'
@@ -73,20 +74,9 @@ export interface FulfillOrderResult {
 
 /** `YYYY-MM-DD`, and nothing else. A posting's date is a contract, not a hint. */
 function assertIsoDate(value: string, label: string): void {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+  if (!isDayKeyShape(value)) {
     throw new BadRequestError(`${label} must be a YYYY-MM-DD date, got "${value}"`)
   }
-}
-
-/**
- * A calendar day as the noon-UTC instant `fulfillment_shipped_at` (a DATETIME
- * field) stores. Noon rather than midnight so no timezone's local rendering of
- * the instant crosses into the adjacent calendar day - the same convention
- * `money/credit-memos/writes.ts`'s `calendarDayToInstant` uses for
- * `credit_memo_issued_at`.
- */
-function calendarDayToInstant(day: string): string {
-  return `${day}T12:00:00.000Z`
 }
 
 /**

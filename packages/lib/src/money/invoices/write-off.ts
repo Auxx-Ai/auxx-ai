@@ -21,6 +21,7 @@ import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { BadRequestError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
+import { todayInBookTimeZone } from '../../postings/book-time-zone'
 import {
   type BuildWriteOffEntryInput,
   buildWriteOffEntry,
@@ -29,7 +30,6 @@ import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { LEDGER_CURRENCY, previewEntry } from '../../postings/post-entry'
 import type { EntryPreview, PostResult } from '../../postings/types'
-import { todayInBookTimeZone } from './issuance-reads'
 import { acceptInvoiceWriteOffAccounting } from './write-off-accounting'
 import {
   countWriteOffPostings,

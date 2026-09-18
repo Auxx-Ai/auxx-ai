@@ -124,18 +124,3 @@ export async function loadTariffSchedule(
   }
   return byCode
 }
-
-/**
- * The org's `accounting.bookTimeZone`, or `UTC` when it has never been set.
- *
- * The zone every schedule lookup on the server resolves in - the same rule
- * `gather-month-end-inventory.ts` applies to period membership. Imported lazily
- * the way `bom-cost-triggers.ts` reaches the settings service: the setting
- * graph is not something the cost calculator should load for orgs that have
- * never classified an offer.
- */
-export async function readBookTimeZone(organizationId: string): Promise<string> {
-  const { getOrganizationSetting } = await import('../settings/settings-service')
-  const value = await getOrganizationSetting({ organizationId, key: 'accounting.bookTimeZone' })
-  return typeof value === 'string' && value.trim().length > 0 ? value : 'UTC'
-}

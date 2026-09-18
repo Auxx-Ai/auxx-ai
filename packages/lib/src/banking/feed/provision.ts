@@ -44,10 +44,9 @@ import {
 } from '../../data-connectors/mutations'
 import type { FieldMapping } from '../../data-connectors/types'
 import { UnprocessableEntityError } from '../../errors'
-import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
+import { readBookTimeZoneOrUtc } from '../../postings/book-time-zone'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
-import { getOrganizationSetting } from '../../settings/settings-service'
 import { requireBankAccountFieldContext } from '../reads'
 
 const logger = createScopedLogger('banking-feed')
@@ -158,7 +157,7 @@ export async function provisionBankFeed(
           bankAccountRecordId,
           // Stamped again below - the connector row has no id until it exists.
           connectorId: '',
-          bookTimeZone: await readBookTimeZone(organizationId),
+          bookTimeZone: await readBookTimeZoneOrUtc(organizationId),
         },
       },
     },
@@ -243,15 +242,6 @@ async function repairBankFeed(
     bank_account_status: facts.ready ? 'connected' : 'disconnected',
   })
   return { bankAccountId: bankAccount.entityId, connectorId }
-}
-
-/** The org's book timezone, or UTC. See `FinancialConnectionsFilters.bookTimeZone`. */
-async function readBookTimeZone(organizationId: string): Promise<string> {
-  const setting = await getOrganizationSetting({
-    organizationId,
-    key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
-  })
-  return typeof setting === 'string' && setting.trim() ? setting.trim() : 'UTC'
 }
 
 /** Both streams and their mappings, in the shape the sink expects. */

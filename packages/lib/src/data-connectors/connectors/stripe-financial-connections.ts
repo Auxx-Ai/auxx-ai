@@ -169,12 +169,12 @@ interface FcCursor {
   refreshAfter?: string
 }
 
-function encodeCursor(value: FcCursor): SyncCursor {
+function encodeFcCursor(value: FcCursor): SyncCursor {
   return { kind: 'token', value: JSON.stringify(value) }
 }
 
 /** Tolerant of a malformed or legacy value - a bad cursor restarts, never fails a sync. */
-function decodeCursor(cursor: SyncCursor | undefined): FcCursor | null {
+function decodeFcCursor(cursor: SyncCursor | undefined): FcCursor | null {
   if (!cursor?.value) return null
   try {
     const parsed = JSON.parse(cursor.value) as FcCursor
@@ -465,7 +465,7 @@ async function* transactionStream(
   args: ConnectorFetchArgs,
   filters: FinancialConnectionsFilters
 ): AsyncIterable<ConnectorYield> {
-  const resumed = decodeCursor(args.state.backfillCursor)
+  const resumed = decodeFcCursor(args.state.backfillCursor)
   const refreshAfter =
     resumed?.refreshAfter ??
     (args.mode === 'incremental'
@@ -500,7 +500,7 @@ async function* transactionStream(
     const last = page.data[page.data.length - 1]
     if (page.has_more && last) {
       startingAfter = last.id
-      yield { __checkpoint: true, cursor: encodeCursor({ startingAfter, refreshAfter }) }
+      yield { __checkpoint: true, cursor: encodeFcCursor({ startingAfter, refreshAfter }) }
       continue
     }
 

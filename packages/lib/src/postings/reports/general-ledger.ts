@@ -29,6 +29,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toMinor } from '@auxx/utils/currency'
 import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
@@ -417,9 +418,4 @@ function assertDayFormat(date: string, label: string): void {
   if (!DAY_PATTERN.test(date)) {
     throw new UnprocessableEntityError(`${label} must be YYYY-MM-DD, got "${date}"`, { date })
   }
-}
-
-/** `SUM(bigint)` arrives as a `numeric` string - coerce once here, as every other statement does. */
-function toMinor(value: string | number): number {
-  return typeof value === 'number' ? value : Number(value)
 }

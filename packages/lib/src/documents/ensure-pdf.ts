@@ -2,7 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { getConnectionOptions, getRedisClient } from '@auxx/redis'
-import { extractValue, type TypedFieldValue } from '@auxx/types'
+import { extractValue } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId } from '@auxx/types/resource'
 import { QueueEvents } from 'bullmq'
@@ -27,6 +27,7 @@ const QUIET_PDF_POINTER = quietSession(
   'machine-owned pointer to a freshly rendered PDF asset — not a user edit, so no timeline entry (realtime is open, plan 04 O-7)'
 )
 
+import { firstTyped } from '../field-values/client'
 import type { DocumentPdfPayload } from './payload'
 import { getDocumentType, type RegisteredDocumentType } from './registry'
 import { renderDocumentPdf } from './render'
@@ -68,14 +69,6 @@ function getRegisteredOrThrow(documentType: DocumentType): RegisteredDocumentTyp
     throw new Error(`Unregistered document type: ${documentType}`)
   }
   return registered
-}
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
 }
 
 const ASSET_REF_PREFIX = 'asset:'

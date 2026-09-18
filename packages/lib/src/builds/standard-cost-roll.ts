@@ -35,13 +35,13 @@
  * their new standard picks up the old one.
  */
 
+import { roundMinorUnits } from '@auxx/utils/currency'
 import { UnprocessableEntityError } from '../errors'
 import {
   absorbedRate,
   absorbsConversionCost,
   type PartKindValue,
   resolveAbsorptionRates,
-  roundMinorUnits,
 } from './client'
 import type { AbsorptionRates, SkippedPart, StandardCostComponents } from './types'
 

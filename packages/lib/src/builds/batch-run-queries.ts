@@ -48,6 +48,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
+import { toDate } from '@auxx/utils/calendar-day'
 import { and, eq, isNotNull, isNull, type SQL } from 'drizzle-orm'
 import { type AnyPgColumn, alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
@@ -404,17 +405,4 @@ function ownValue(
  */
 function fieldId(field: { id: string } | null | undefined): string {
   return field?.id ?? '__unmaterialised__'
-}
-
-/**
- * Read a date column back as a `Date`.
- *
- * `FieldValue.valueDate` is declared `mode: 'string'`, and an unparseable value
- * is `null` rather than an Invalid Date: an Invalid Date compares false against
- * everything, so it would silently vanish from the period arithmetic much later.
- */
-function toDate(value: string | Date | null | undefined): Date | null {
-  if (value == null) return null
-  const parsed = value instanceof Date ? value : new Date(value)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
 }

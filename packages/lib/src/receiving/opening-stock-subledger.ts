@@ -73,6 +73,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
+import { toMinor } from '@auxx/utils/currency'
 import { and, eq, isNull, notInArray, or, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
@@ -362,7 +363,7 @@ function isOpeningStockInventoryRole(value: string): value is OpeningStockInvent
  * rather than rounded away.
  */
 function toMinorUnits(role: string, raw: string | number): number {
-  const value = typeof raw === 'number' ? raw : Number(raw)
+  const value = toMinor(raw)
   if (!Number.isFinite(value)) {
     throw new UnprocessableEntityError(
       `The opening stock total for ${role} is not a number: ${String(raw)}.`,

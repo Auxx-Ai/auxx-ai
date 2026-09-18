@@ -15,6 +15,7 @@
 
 import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
 import { batchRecalculateQoH } from '../bom/qoh'
 import { ensureStandardCost } from '../builds/ensure-standard-cost'
@@ -31,7 +32,6 @@ import {
   computeReceiptLandedCost,
   type ReceiptCostInputs,
   resolveInventoryRoleForPartKind,
-  roundMinorUnits,
 } from './client'
 import { assertCostFieldsMaterialized } from './cost-fields'
 import { guard } from './guard'

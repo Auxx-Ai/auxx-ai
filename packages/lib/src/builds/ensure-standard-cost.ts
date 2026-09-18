@@ -35,6 +35,7 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
+import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
@@ -46,7 +47,6 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../realtime'
-import { roundMinorUnits } from './client'
 import { guard } from './guard'
 import {
   loadStandardCostWriteContext,

@@ -13,6 +13,7 @@ import type {
   DocumentBrandingSettings,
   DocumentBusinessSettings,
 } from '../documents/resolve-settings'
+import { firstTyped } from '../field-values/client'
 import { FieldValueService } from '../field-values/field-value-service'
 import { getAsset } from '../files/assets'
 import { getAssetContent } from '../files/assets/content'
@@ -45,14 +46,6 @@ const QUIET_PUBLIC_TOKEN = quietSession(
  * via a dynamic `import()` for the same defensive reason (the repo's established
  * lazy-import fix for this exact shape — see `public-token.ts`'s module doc comment).
  */
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /**
  * Mint-or-fetch a quote's `publicToken` (v5 build spec 01) — the unguessable capability token

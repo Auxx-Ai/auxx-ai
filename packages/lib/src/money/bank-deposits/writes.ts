@@ -41,6 +41,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { isDayKeyShape } from '@auxx/utils/calendar-day'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
@@ -78,7 +79,7 @@ const logger = createScopedLogger('bank-deposits')
 
 /** `YYYY-MM-DD`, and nothing else. A posting's date is a contract, not a hint. */
 function assertIsoDate(value: string, label: string): void {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+  if (!isDayKeyShape(value)) {
     throw new BadRequestError(`${label} must be a YYYY-MM-DD date, got "${value}"`)
   }
 }
