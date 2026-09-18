@@ -28,7 +28,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../cache', () => ({ getOrgCache: h.getOrgCache }))
 vi.mock('./labels', () => ({ getEligibleClassificationTags: h.getEligibleClassificationTags }))
-vi.mock('./guard', () => ({ guardClassification: h.guardClassification }))
+vi.mock('./classification-gate', () => ({ guardClassification: h.guardClassification }))
 vi.mock('./classify', () => ({ classifyMessage: h.classifyMessage }))
 vi.mock('./apply', () => ({
   applyClassificationTag: h.applyClassificationTag,

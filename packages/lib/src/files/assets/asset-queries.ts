@@ -37,9 +37,10 @@ import { and, asc, desc, eq, isNull, lt, type SQL } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import type { AuxxError } from '../../errors'
 import { NotFoundError } from '../../errors'
+import { unwrap } from '../../utils/guard'
 import type { AssetKind, MediaAssetWithRelations } from '../core/types'
 import type { FilesCtx } from '../ctx'
-import { guard, unwrap } from '../guard'
+import { guard } from '../guard'
 
 /**
  * A version row with its `StorageLocation` joined in.

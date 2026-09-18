@@ -1,5 +1,6 @@
 // packages/lib/src/agents/procedures/authoring/index.ts
 
+export { checkBodyPreservation } from './body-preservation'
 export { buildProcedureDoc, emptyDoc, ProcedureBuildError } from './build-doc'
 export { docToDsl } from './doc-to-dsl'
 export {
@@ -14,7 +15,6 @@ export {
   type ProcedureDslSubProcedure,
   validateProcedureDsl,
 } from './dsl'
-export { checkBodyPreservation } from './guard'
 export {
   collectOpaqueOccurrences,
   type OpaqueOccurrence,

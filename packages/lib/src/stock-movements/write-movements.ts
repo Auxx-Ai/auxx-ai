@@ -44,7 +44,7 @@ import { getCachedEntityDefId } from '../cache'
 import { UnprocessableEntityError } from '../errors'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { isRecordId, type RecordId, toRecordId } from '../resources/resource-id'
-import { guard } from './guard'
+import { createGuard } from '../utils/guard'
 import type {
   StockMovementInput,
   StockMovementLinks,
@@ -53,6 +53,8 @@ import type {
   WrittenStockMovement,
 } from './types'
 import { buildStockMovementValues, type ResolvedStockMovementLinks } from './values'
+
+const guard = createGuard('stock-movements')
 
 /** The entity type a bare link id resolves against, for every link but the two that point at a `stock_movement` itself. */
 const LINK_ENTITY_TYPES = {

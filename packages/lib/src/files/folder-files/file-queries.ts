@@ -57,9 +57,10 @@ import {
 import type { Result } from 'neverthrow'
 import type { AuxxError } from '../../errors'
 import { ConflictError, NotFoundError } from '../../errors'
+import { unwrap } from '../../utils/guard'
 import type { FileSearchResult, FolderFileWithRelations } from '../core/types'
 import type { FilesCtx } from '../ctx'
-import { guard, unwrap } from '../guard'
+import { guard } from '../guard'
 
 /**
  * A `FileVersion` row with its `StorageLocation` joined in.

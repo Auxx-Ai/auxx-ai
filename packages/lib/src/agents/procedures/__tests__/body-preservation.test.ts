@@ -1,9 +1,9 @@
 // packages/lib/src/agents/procedures/__tests__/authoring-guard.test.ts
 
 import { describe, expect, it } from 'vitest'
+import { checkBodyPreservation } from '../authoring/body-preservation'
 import { docToDsl } from '../authoring/doc-to-dsl'
 import type { ProcedureDsl } from '../authoring/dsl'
-import { checkBodyPreservation } from '../authoring/guard'
 import type { CodeBlockMapEntry, TiptapDoc, TiptapNode } from '../nodes'
 
 const t = (text: string): TiptapNode => ({ type: 'text', text })

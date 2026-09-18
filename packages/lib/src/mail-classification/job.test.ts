@@ -14,7 +14,7 @@ const h = vi.hoisted(() => ({
   rerun: vi.fn(),
 }))
 
-vi.mock('./guard', () => ({ guardClassification: h.guard }))
+vi.mock('./classification-gate', () => ({ guardClassification: h.guard }))
 vi.mock('./classify', () => ({ classifyMessage: h.classify }))
 // ⚠️ PARTIAL. `toClassificationMarker` is kept REAL so the marker's contents are
 // asserted against the actual builder rather than a paraphrase of it — and so a

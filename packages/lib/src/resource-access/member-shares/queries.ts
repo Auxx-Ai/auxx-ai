@@ -12,6 +12,7 @@ import { AuxxError, BadRequestError } from '../../errors'
 import { satisfiesRung } from '../../permissions/capabilities/rung'
 import type { Lens } from '../../permissions/visibility'
 import { getThreadLensBatch } from '../../permissions/visibility'
+import { createGuard } from '../../utils/guard'
 import { isInboxDef, isMailSharingDef } from '../mail-sharing-defs'
 import { hasPermission } from '../resource-access-service'
 import {
@@ -22,6 +23,7 @@ import {
 } from './classify'
 
 const logger = createScopedLogger('member-shares')
+const guard = createGuard('member-shares')
 
 const RA = schema.ResourceAccess
 
@@ -142,16 +144,6 @@ export function memberGranteePredicate(organizationId: string, userId: string): 
 function assertSameOrg(ctxOrganizationId: string, paramOrganizationId: string): void {
   if (ctxOrganizationId !== paramOrganizationId) {
     throw new BadRequestError('Organization scope mismatch')
-  }
-}
-
-async function guard<T>(fn: () => Promise<T>, message: string): Promise<Result<T, AuxxError>> {
-  try {
-    return ok(await fn())
-  } catch (error) {
-    if (error instanceof AuxxError) return err(error)
-    logger.error(message, { error })
-    return err(new AuxxError('Internal error'))
   }
 }
 
