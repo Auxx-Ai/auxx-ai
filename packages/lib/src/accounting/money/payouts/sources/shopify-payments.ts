@@ -12,13 +12,13 @@
  * carried as the context's handle. The tools page to exhaustion and refuse on
  * any short read, so what arrives here is the whole answer or a throw.
  *
- * ## Recognition is by ORDER, not by charge (27 §4 rule 1, R3)
+ * ## Recognition is the stored match, not these items
  *
- * No connector writes `PaymentTransaction`, so a Shopify item recognised on a
- * charge id would recognise nothing and credit the whole deposit to `2450`.
- * Each balance transaction names `source_order_id`, the numeric REST `Order.id`
- * the Shopify connector writes as the order's `externalId`; that is the ref.
- * A row with no order (a fee, an adjustment, a reserve) is `none`.
+ * `gather.ts` splits a Shopify payout off the `ProcessorBalanceEntry` rows the
+ * financial connector files for the same `(sourceAccountId, payoutExternalId)`
+ * (`plans/accounting/payout-links.md` §11.3). What `listItems` returns is the
+ * item count and the fee arithmetic for a feed that has no such rows; its refs
+ * are all `none`.
  *
  * ## Which record is the Shopify Payments rail (task 58 §5.5)
  *
@@ -236,7 +236,16 @@ export function toHeaderStatus(status: ShopifyPayoutStatus): PayoutHeader['statu
   }
 }
 
-/** One balance transaction as a split item: the order it settled, or `none`. */
+/**
+ * One balance transaction as a split item.
+ *
+ * 🛑 **`ref` is always `none` now, and that is not a regression - it is where
+ * the split moved to** (`plans/accounting/payout-links.md` §11.3). A Shopify
+ * payout is split off its `ProcessorBalanceEntry` rows, which carry the stored
+ * match; these items only reach `splitPayout` when the financial connector has
+ * never observed this feed, and the order-id walk that used to answer them said
+ * "the order is here", never "this charge is settled by that receipt".
+ */
 export function toItem(txn: ShopifyPayoutTransactionRecord): PayoutItem {
   return {
     externalId: txn.id,
@@ -244,7 +253,7 @@ export function toItem(txn: ShopifyPayoutTransactionRecord): PayoutItem {
     // Shopify reports the fee as a positive number withheld; the entry wants
     // it positive too, and `direction` carries the sign.
     feeMinor: txn.feeMinor,
-    ref: txn.sourceOrderId ? { kind: 'order', id: txn.sourceOrderId } : { kind: 'none' },
+    ref: { kind: 'none' },
   }
 }
 

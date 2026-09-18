@@ -11,8 +11,16 @@
  * `source.ts`'s (type imports only, erased at build).
  */
 
+import type { MatchState } from './match-reasons'
 import type { PayoutHeader, PayoutItem } from './source'
 
+export {
+  MATCH_STATE_FOR_REASON,
+  type MatchReason,
+  type MatchState,
+  PROCESSOR_MATCH_REASONS,
+  PROCESSOR_MATCH_STATES,
+} from './match-reasons'
 export type { PayoutHeader, PayoutItem, PayoutItemRef } from './source'
 
 /** A payout's life. Only `paid` carries a posting. */
@@ -92,6 +100,76 @@ export function splitPayout(items: PayoutItem[], recognised: ReadonlySet<string>
     unrecognisedNetMinor,
     unrecognisedCount,
   }
+}
+
+/**
+ * One `ProcessorBalanceEntry` row, reduced to what {@link splitStoredEntries}
+ * needs. Amounts are integer minor units; the row stores them as `bigint`.
+ */
+export interface StoredPayoutEntry {
+  type: string
+  matchState: MatchState | null
+  grossMinor: number
+  feeMinor: number
+  netMinor: number
+}
+
+/**
+ * The split of a payout whose feed has evidence rows: recognition IS the stored
+ * match (`plans/accounting/payout-links.md` §11.3).
+ *
+ * `matched` is recognised. `pending`, `suggested` and `unmatchable` are not, and
+ * their net lands in `unidentified_receipts` the same way an unrecognised item
+ * always has - a later match is what reverses and re-posts the entry (§13 Q6).
+ * A fee, an adjustment or anything else that is never matched carries no state
+ * and is unrecognised by construction, exactly as its `ref.kind: 'none'` item
+ * was in the lane this replaces.
+ *
+ * 🛑 The caller excludes `isOutgoingTransfer` rows: that item IS the payout, not
+ * something the entry summed (§13 Q2).
+ */
+export function splitStoredEntries(entries: readonly StoredPayoutEntry[]): PayoutSplit {
+  let grossMinor = 0
+  let feesMinor = 0
+  let unrecognisedNetMinor = 0
+  let unrecognisedCount = 0
+
+  for (const entry of entries) {
+    if (entry.matchState === 'matched') {
+      grossMinor += entry.grossMinor
+      feesMinor += entry.feeMinor
+      continue
+    }
+    unrecognisedNetMinor += entry.netMinor
+    unrecognisedCount += 1
+  }
+
+  return {
+    grossMinor,
+    feesMinor,
+    netMinor: grossMinor - feesMinor,
+    unrecognisedNetMinor,
+    unrecognisedCount,
+  }
+}
+
+/** Add two feeds' splits of one payout. One feed is the ordinary case; the sum is the general one. */
+export function sumSplits(splits: readonly PayoutSplit[]): PayoutSplit {
+  const total: PayoutSplit = {
+    grossMinor: 0,
+    feesMinor: 0,
+    netMinor: 0,
+    unrecognisedNetMinor: 0,
+    unrecognisedCount: 0,
+  }
+  for (const split of splits) {
+    total.grossMinor += split.grossMinor
+    total.feesMinor += split.feesMinor
+    total.netMinor += split.netMinor
+    total.unrecognisedNetMinor += split.unrecognisedNetMinor
+    total.unrecognisedCount += split.unrecognisedCount
+  }
+  return total
 }
 
 /**

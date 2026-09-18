@@ -217,6 +217,39 @@ describe('canonical financial record storage', () => {
     const [row] = await getTestDb().select().from(schema.MoneyTransfer)
     expect(row!.externalId).toBe('p1')
   })
+  it('preserves a stored match when the same entry is observed again', async () => {
+    await write([evidence('p-match')])
+    const [before] = await getTestDb()
+      .select()
+      .from(schema.ProcessorBalanceEntry)
+      .where(eq(schema.ProcessorBalanceEntry.organizationId, organizationId))
+    await getTestDb()
+      .update(schema.ProcessorBalanceEntry)
+      .set({
+        matchState: 'matched',
+        matchedMoneyTransactionId: 'mt-vouched',
+        matchReason: 'manual',
+        matchedBy: actorUserId,
+      })
+      .where(eq(schema.ProcessorBalanceEntry.id, before!.id))
+    // A new acquisition with a changed fee, so the upsert's `set` really runs.
+    const again = evidence('p-match')
+    again.acquisition = { id: 'acquisition-p-match-2', startedAt: '2026-09-16T01:00:00Z' }
+    again.membership.entries[0]!.fee = '4.00'
+    again.membership.entries[0]!.net = '96.00'
+    await write([again])
+    const [after] = await getTestDb()
+      .select()
+      .from(schema.ProcessorBalanceEntry)
+      .where(eq(schema.ProcessorBalanceEntry.id, before!.id))
+    expect(after!.feeMinor).toBe(400n)
+    expect(after).toMatchObject({
+      matchState: 'matched',
+      matchedMoneyTransactionId: 'mt-vouched',
+      matchReason: 'manual',
+      matchedBy: actorUserId,
+    })
+  })
   it('uses a fixed number of storage queries within a batch', async () => {
     const queries: string[] = []
     const db = drizzle(getTestDb().$client, {

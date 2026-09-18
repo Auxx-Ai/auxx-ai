@@ -130,6 +130,12 @@
       "import": "./dist/accounting/money/payouts/index.mjs",
       "default": "./src/accounting/money/payouts/index.ts"
     },
+    "./accounting/money/payouts/client": {
+      "types": "./src/accounting/money/payouts/client.ts",
+      "source": "./src/accounting/money/payouts/client.ts",
+      "import": "./dist/accounting/money/payouts/client.mjs",
+      "default": "./src/accounting/money/payouts/client.ts"
+    },
     "./accounting/money/payouts/sources": {
       "types": "./src/accounting/money/payouts/sources.ts",
       "source": "./src/accounting/money/payouts/sources.ts",

@@ -49,6 +49,9 @@ const h = vi.hoisted(() => ({
   recognise: vi.fn(async () => new Set<string>()),
   gateways: [] as unknown[],
   readDestinations: vi.fn(async (..._args: unknown[]) => [] as string[]),
+  listPayoutMemberEntryIds: vi.fn(async (..._args: unknown[]) => [] as string[]),
+  countPayoutEntryAttempts: vi.fn(async (..._args: unknown[]) => 0),
+  syncStoredMatches: vi.fn(async () => new Map()),
   listPostingsForSource: vi.fn(async (..._args: unknown[]) => ({
     isErr: () => false,
     isOk: () => true,
@@ -71,10 +74,22 @@ vi.mock('../fields', () => ({
   }),
 }))
 vi.mock('../reads', () => ({
+  countPayoutEntryAttempts: h.countPayoutEntryAttempts,
   findPayoutByGatewayId: h.findPayoutByGatewayId,
   listLinkedFeedAccounts: h.listLinkedFeedAccounts,
+  listPayoutFeedAccountIds: async (
+    _db: unknown,
+    _organizationId: string,
+    _providerKey: string,
+    railId: string
+  ) =>
+    (await h.listLinkedFeedAccounts())
+      .filter((feed) => feed.paymentGatewayId === railId)
+      .map((feed) => feed.id),
+  listPayoutMemberEntryIds: h.listPayoutMemberEntryIds,
   readBankAccountSettlementDestinations: h.readDestinations,
 }))
+vi.mock('../match-sync', () => ({ syncStoredMatches: h.syncStoredMatches }))
 vi.mock('../../stripe-connect/account', () => ({
   getPaymentAccount: async () => ({ stripeAccountId: 'acct_1' }),
 }))
@@ -214,6 +229,8 @@ const EXPECTED_ENTRY_INPUT = {
   organizationId: ORG,
   actorUserId: 'user_system',
   payoutId: 'po_1',
+  payoutInstanceId: 'inst_1',
+  memberEntryIds: [],
   payoutNumber: 'PAY-0001',
   rail: 'pg_stripe',
   currency: 'USD',
@@ -241,6 +258,8 @@ beforeEach(() => {
   h.stamp.mockResolvedValue({ isErr: () => false })
   h.readDestinations.mockResolvedValue([])
   h.listPostingsForSource.mockResolvedValue({ isErr: () => false, isOk: () => true, value: [] })
+  h.listPayoutMemberEntryIds.mockResolvedValue([])
+  h.countPayoutEntryAttempts.mockResolvedValue(0)
   h.findPayoutByGatewayId
     .mockResolvedValueOnce(null)
     .mockResolvedValueOnce({ payoutId: 'inst_1', number: 'PAY-0001', glPostingId: null })
@@ -370,6 +389,7 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
     expect(h.stamp).not.toHaveBeenCalled()
   })
 
+  // payout-links.md §11.5: the live posting is looked up by the RECORD's id.
   it('stops at the live-posting lookup when the payout already carries a posting', async () => {
     h.findPayoutByGatewayId.mockReset()
     h.findPayoutByGatewayId.mockResolvedValue({ payoutId: 'inst_1', number: 'PAY-0001' })
@@ -382,8 +402,52 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
     const result = await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
 
     expect(result._unsafeUnwrap()).toMatchObject({ seen: 1, alreadyPosted: 1, created: 0 })
+    expect(h.listPostingsForSource).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: ORG,
+      sourceKind: 'payout',
+      sourceId: 'inst_1',
+    })
     expect(h.balanceList).not.toHaveBeenCalled()
     expect(h.create).not.toHaveBeenCalled()
+  })
+
+  // A payout auxx has never seen has no record, so there is nothing to look a
+  // posting up by - the sync must go on and create it.
+  it('looks up no posting at all when the payout has no record yet', async () => {
+    await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
+
+    expect(h.listPostingsForSource).not.toHaveBeenCalled()
+    expect(h.create).toHaveBeenCalledTimes(1)
+  })
+
+  // §5: the members are the evidence rows of the feeds linked to this rail,
+  // keyed on the provider's payout id, and they reach the posting untouched.
+  it('keys a re-post on its own document number, so the reversed entry does not block it', async () => {
+    // 🛑 `GlPosting_org_docNumber_key` is a full unique index and the reversed
+    // entry keeps `AUXX-PAY-PAY0001`. Without the suffix the re-post T26 asks
+    // for refuses on the number, and the payout stays unbooked.
+    h.countPayoutEntryAttempts.mockResolvedValue(1)
+
+    await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
+
+    expect(h.postPayoutEntry).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ payoutNumber: 'PAY-0001-R2' })
+    )
+  })
+
+  it('passes the payout the processor entries it settled, as members', async () => {
+    h.listPayoutMemberEntryIds.mockResolvedValue(['pbe_1', 'pbe_2'])
+
+    await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
+
+    expect(h.listPayoutMemberEntryIds).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: ORG,
+      sourceAccountIds: [LINKED_FEED.id],
+      payoutExternalId: 'po_1',
+    })
+    const [, input] = h.postPayoutEntry.mock.calls[0] as [unknown, Record<string, unknown>]
+    expect(input.memberEntryIds).toEqual(['pbe_1', 'pbe_2'])
   })
 })
 

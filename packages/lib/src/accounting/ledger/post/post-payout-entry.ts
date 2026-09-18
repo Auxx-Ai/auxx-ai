@@ -29,6 +29,17 @@ const logger = createScopedLogger('postings:payout')
 
 export interface PostPayoutEntryOptions extends BuildPayoutEntryInput {
   organizationId: string
+  /**
+   * The `payout` record's `EntityInstance` id - the subject row's `sourceId`,
+   * NOT the provider's payout id, because every `LedgerCard` looks a posting up
+   * by the record's own instance id (`plans/accounting/payout-links.md` §11.5).
+   */
+  payoutInstanceId: string
+  /**
+   * The `ProcessorBalanceEntry` ids this payout's clearing credit summed; one
+   * `member` row each (§5). Empty for a feed with no evidence rows.
+   */
+  memberEntryIds?: readonly string[]
   actorUserId?: string
   /** Source ownership is checked inside the ledger acceptance transaction. */
   beforeCommit?: (tx: Transaction) => Promise<void>
@@ -69,7 +80,8 @@ export async function postPayoutEntry(
   db: Database,
   options: PostPayoutEntryOptions
 ): Promise<PostResult> {
-  const { organizationId, actorUserId, beforeCommit, ...input } = options
+  const { organizationId, actorUserId, beforeCommit, payoutInstanceId, memberEntryIds, ...input } =
+    options
 
   if (!(await isAccountingEnabled(db, organizationId))) {
     return { status: 'not_enabled' }
@@ -87,12 +99,23 @@ export async function postPayoutEntry(
       memo: input.memo ?? `Payout ${built.periodKey}`,
       mode: 'post',
       railId: input.rail,
-      sources: [{ sourceKind: 'payout', sourceId: input.payoutId, linkRole: 'subject' }],
+      sources: [
+        { sourceKind: 'payout', sourceId: payoutInstanceId, linkRole: 'subject' },
+        // What the clearing credit summed, durable from here (§5). The
+        // outgoing-transfer item is not one of them and the caller excludes it.
+        ...(memberEntryIds ?? []).map((entryId) => ({
+          sourceKind: 'processor_balance_entry',
+          sourceId: entryId,
+          linkRole: 'member' as const,
+        })),
+      ],
     })
 
     logger.info('Posted a payout entry', {
       organizationId,
       payoutId: input.payoutId,
+      payoutInstanceId,
+      members: memberEntryIds?.length ?? 0,
       periodKey: built.periodKey,
       grossMinor: built.grossMinor,
       status: post.status,

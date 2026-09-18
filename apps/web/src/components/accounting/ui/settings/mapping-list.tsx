@@ -47,7 +47,8 @@ import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { Ban, CreditCard, Plus, RotateCcw, Sparkles, Store, X } from 'lucide-react'
+import { Ban, CreditCard, Plus, RotateCcw, Sparkles, Store, Unlink, X } from 'lucide-react'
+import Link from 'next/link'
 import { useQueryState } from 'nuqs'
 import type { Dispatch, SetStateAction } from 'react'
 import { useCallback, useMemo, useState } from 'react'
@@ -108,6 +109,10 @@ export function MappingList({
 }) {
   const roleMap = api.ledger.roleMap.useQuery()
   const gateways = api.paymentGateway.list.useQuery()
+  // The mirror of `bank`'s "no feed linked" gate: a feed with reported activity
+  // and no rail refuses every payout match, silently
+  // (`plans/accounting/payout-links.md` §10.4, "Prevention at setup").
+  const unlinkedFeeds = api.paymentGateway.listUnlinkedFeeds.useQuery()
   const utils = api.useUtils()
   // The Inherit fallback's own label (D8) - same cached `ledger.chartAccounts`
   // read every picker on this tab already shares.
@@ -234,6 +239,31 @@ export function MappingList({
 
   return (
     <div className='flex flex-1 flex-col gap-3 p-3 sm:p-6'>
+      {(unlinkedFeeds.data ?? []).length > 0 && (
+        <div className='flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/40'>
+          <div className='flex flex-wrap items-center gap-2'>
+            <Unlink className='size-4 shrink-0 text-amber-600 dark:text-amber-400' />
+            <span className='text-sm'>
+              {unlinkedFeeds.data?.length} processor feed
+              {unlinkedFeeds.data?.length === 1 ? '' : 's'} are not linked to a payment gateway.
+              Nothing they settle can be matched to a customer payment.
+            </span>
+            <Button variant='outline' size='sm' className='ml-auto shrink-0' asChild>
+              <Link href='/app/accounting/settings/payment-gateways'>Link a feed</Link>
+            </Button>
+          </div>
+          <ul className='flex flex-wrap gap-1.5 ps-6'>
+            {(unlinkedFeeds.data ?? []).map((feed) => (
+              <li key={feed.processorAccountId}>
+                <Badge variant='outline' size='xs'>
+                  {feed.name ?? `${feed.providerKey} ${feed.externalAccountId}`}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {suggestedEdits.length > 0 && (
         <div className='flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/40'>
           <Sparkles className='size-4 shrink-0 text-amber-600 dark:text-amber-400' />

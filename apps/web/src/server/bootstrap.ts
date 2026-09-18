@@ -29,8 +29,9 @@ export async function ensureWebAppInitialized(): Promise<void> {
     // every organization resolves to the null provider and nothing is exported.
     registerAccountingProviders()
     // Same shape, one registry over: the payout pipeline knows only the
-    // `PayoutSource` interface, and the `payout.paid` webhook and "Sync now"
-    // both run it in this process (brief 27 §4, §7).
+    // `PayoutSource` interface, and "Sync now" runs it in this process (brief 27
+    // §4, §7). The nightly `payoutSyncJob` is the other door and registers in the
+    // worker; there is no payout webhook.
     registerPayoutSources()
     logger.info('Web app initialization completed successfully')
   })()

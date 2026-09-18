@@ -1,10 +1,13 @@
 // packages/lib/src/accounting/money/payouts/__tests__/evidence-reads.test.ts
 import type { Database } from '@auxx/database'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { PayoutRecordEvidence } from '../../customer-money/record-contracts'
 
-const state = vi.hoisted(() => ({ matches: vi.fn() }))
-vi.mock('../match-entries', () => ({ matchProcessorEntries: state.matches }))
+// The payout def/field context resolves through the org cache, which needs a
+// live database. This file is about the transfer reads; `payoutInstanceId`
+// takes its no-context path, which is also what an org short of the payout
+// entity migration gets.
+vi.mock('../fields', () => ({ loadPayoutFieldContext: vi.fn(async () => null) }))
 
 import {
   getPayoutEvidence,
@@ -21,7 +24,9 @@ function database(results: unknown[][]) {
     const chain = {
       from: () => chain,
       innerJoin: () => chain,
+      leftJoin: () => chain,
       where: () => chain,
+      groupBy: () => chain,
       orderBy: () => chain,
       limit: (limit: number) => {
         limits.push(limit)
@@ -169,16 +174,13 @@ const coverage = {
     ],
   },
 }
-beforeEach(() => {
-  state.matches.mockReset()
-  state.matches.mockResolvedValue(new Map())
-})
 describe('bounded provider-independent payout reads', () => {
   it.each([
     10, 100,
   ])('lists %s saved assessments in one query without re-running matching', async (count) => {
     const { db, select, limits } = database([
       Array.from({ length: count + 1 }, (_, index) => joined(transfer(index))),
+      [],
     ])
     const result = await listPayoutEvidence(db, { organizationId: 'org', limit: count })
     expect(result.items).toHaveLength(count)
@@ -192,14 +194,15 @@ describe('bounded provider-independent payout reads', () => {
     // The day the list sorts on, then the id — an id alone cannot place a page
     // boundary in a date-ordered list.
     expect(result.nextCursor).toBe(`2026-09-15|transfer-${count - 1}`)
-    expect(select).toHaveBeenCalledOnce()
+    // The page, then one grouped read of the open match counts. Never the matcher.
+    expect(select).toHaveBeenCalledTimes(2)
     expect(limits).toEqual([count + 1])
-    expect(state.matches).not.toHaveBeenCalled()
+    expect(result.items[0]).toMatchObject({ needsMatchingCount: 0, dominantMatchReason: null })
   })
   it('does not display a previous complete assessment while current evidence is pending', async () => {
     const row = transfer()
     row.reconciliationState = 'pending'
-    const { db } = database([[joined(row)], [{ payload: { current: true } }]])
+    const { db } = database([[joined(row)], [{ payload: { current: true } }], []])
     const detail = await getPayoutEvidence(db, { organizationId: 'org', id: row.id })
     expect(detail).toMatchObject({
       reconciliationState: 'pending',
@@ -207,6 +210,10 @@ describe('bounded provider-independent payout reads', () => {
       constituentNetMinor: null,
       differenceMinor: null,
       sourceObservation: { current: true },
+      // No `payout` field context, so no record and therefore no posting to
+      // key the drawer's ledger card on (§11.5).
+      payoutInstanceId: null,
+      livePostingId: null,
     })
   })
   it('pages history without reading all past membership observations', async () => {
@@ -225,7 +232,7 @@ describe('bounded provider-independent payout reads', () => {
     expect(limits).toEqual([21])
   })
   it('reads exact immutable membership without requiring separately materialized activity rows', async () => {
-    const { db, select } = database([[joined()], [coverage], [{ payload: evidence() }]])
+    const { db, select } = database([[joined()], [coverage], [{ payload: evidence() }], []])
     const result = await listProcessorBalanceEntries(db, {
       organizationId: 'org',
       transferId: 'transfer-1',
@@ -239,9 +246,12 @@ describe('bounded provider-independent payout reads', () => {
       sourceTransactionId: 'opaque/source/id',
       providerKey: 'processor-other',
     })
-    expect(state.matches).toHaveBeenCalledOnce()
-    expect(state.matches.mock.calls[0]![2][0].sourceReference.externalId).toBe('opaque/source/id')
-    expect(select).toHaveBeenCalledTimes(3)
+    // The stored match, never a recomputed one: an unobserved row reads as null.
+    expect(result.items[0]).toMatchObject({ matchState: null, matchReason: null, orderHint: null })
+    // 🛑 No materialised row, so no id the match mutations could resolve — the
+    // drawer renders the row and offers it no actions.
+    expect(result.items[0]).toMatchObject({ entryRowId: null })
+    expect(select).toHaveBeenCalledTimes(4)
     const cursor = JSON.parse(Buffer.from(result.nextCursor!, 'base64url').toString())
     expect(cursor).toMatchObject({
       headerObservationId: 'header-last',
@@ -249,7 +259,7 @@ describe('bounded provider-independent payout reads', () => {
       pageIndex: 0,
       offset: 1,
     })
-    const next = database([[joined()], [coverage], [{ payload: evidence() }]])
+    const next = database([[joined()], [coverage], [{ payload: evidence() }], []])
     const page2 = await listProcessorBalanceEntries(next.db, {
       organizationId: 'org',
       transferId: 'transfer-1',
@@ -282,12 +292,11 @@ describe('bounded provider-independent payout reads', () => {
       })
     ).rejects.toThrow('Payout membership changed')
     expect(select).toHaveBeenCalledTimes(2)
-    expect(state.matches).not.toHaveBeenCalled()
   })
   it('does not coerce malformed membership money into a zero amount', async () => {
     const payload = evidence()
     payload.membership.entries[0]!.gross = 'not money'
-    const { db } = database([[joined()], [coverage], [{ payload }]])
+    const { db } = database([[joined()], [coverage], [{ payload }], []])
     await expect(
       listProcessorBalanceEntries(db, {
         organizationId: 'org',
@@ -295,9 +304,8 @@ describe('bounded provider-independent payout reads', () => {
         limit: 20,
       })
     ).rejects.toThrow('membership amount is invalid')
-    expect(state.matches).not.toHaveBeenCalled()
   })
-  it('passes one complete current activity batch to exact source matching', async () => {
+  it('reads one complete current activity batch off the stored match columns', async () => {
     const rows = Array.from({ length: 100 }, (_, index) => ({
       account,
       entry: {
@@ -316,6 +324,10 @@ describe('bounded provider-independent payout reads', () => {
         sourceOrderId: null,
         sourceReference: null,
         isOutgoingTransfer: false,
+        matchState: index === 0 ? 'unmatchable' : 'pending',
+        matchedMoneyTransactionId: null,
+        matchReason: index === 0 ? 'ambiguous' : 'no_receipt',
+        matchedBy: null,
       },
     }))
     const { db, select } = database([rows])
@@ -325,8 +337,12 @@ describe('bounded provider-independent payout reads', () => {
       unassignedOnly: true,
     })
     expect(result.items).toHaveLength(100)
+    // One query: nothing is matched, so neither the applied documents nor the
+    // order hints have anything to look up.
     expect(select).toHaveBeenCalledOnce()
-    expect(state.matches).toHaveBeenCalledOnce()
-    expect(state.matches.mock.calls[0]![2]).toHaveLength(100)
+    expect(result.items[0]).toMatchObject({ matchState: 'unmatchable', matchReason: 'ambiguous' })
+    expect(result.items[1]).toMatchObject({ matchState: 'pending', matchReason: 'no_receipt' })
+    // A materialised row IS the entry, so its own id is what the drawer acts on.
+    expect(result.items[0]).toMatchObject({ entryRowId: 'entry-0' })
   })
 })

@@ -143,6 +143,8 @@ const PAYOUT = {
   sourceCurrencyExponent: 2,
   status: 'paid',
   blockers: [] as string[],
+  needsMatchingCount: 0,
+  dominantMatchReason: null as string | null,
 }
 
 const renderPage = () =>
@@ -212,6 +214,25 @@ describe('payouts filter toolbar', () => {
       target: { value: 'po_1' },
     })
     expect(screen.getByText('Clear')).toBeInTheDocument()
+  })
+
+  it('narrows to the worklist and counts as row-two dirt', () => {
+    renderPage()
+    expect(state.listInput?.needsMatching).toBeUndefined()
+
+    fireEvent.click(screen.getByText('Needs matching'))
+    expect(state.listInput?.needsMatching).toBe(true)
+    expect(screen.getByText('Clear')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Clear'))
+    expect(state.listInput?.needsMatching).toBeUndefined()
+  })
+
+  it('shows the open count and the dominant code on a row that has one', () => {
+    state.payouts = [{ ...PAYOUT, needsMatchingCount: 16, dominantMatchReason: 'no_rail' }]
+    renderPage()
+    expect(screen.getByText('16 need matching')).toBeInTheDocument()
+    expect(screen.getByText('Feed has no gateway')).toBeInTheDocument()
   })
 
   it('renders only on the payouts tab', () => {

@@ -13,7 +13,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { toDateKey } from '@auxx/utils/calendar-day'
-import { and, desc, eq, gt, inArray, isNotNull, isNull, or, type SQL, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNotNull, isNull, like, or, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import {
@@ -85,6 +85,90 @@ export async function listLinkedFeedAccounts(
         ]
       : []
   )
+}
+
+/**
+ * How many entries this payout has already claimed a document number for,
+ * counting a reversed one - so a re-post can take the next.
+ *
+ * 🛑 Not `listPostingsForSource`: reversing DELETES the original's subject row
+ * (`markReversedInTx`), which is what frees the payout to post again, so the
+ * posting history cannot be read off the source rows. `GlPosting_org_docNumber_key`
+ * is a full unique index and the reversed entry keeps its number, so a re-post
+ * on the same key would refuse. Counts DISTINCT period keys because a reversal
+ * shares its original's.
+ */
+export async function countPayoutEntryAttempts(
+  db: Database,
+  organizationId: string,
+  payoutNumber: string
+): Promise<number> {
+  const rows = await db
+    .selectDistinct({ periodKey: schema.GlPosting.periodKey })
+    .from(schema.GlPosting)
+    .where(
+      and(
+        eq(schema.GlPosting.organizationId, organizationId),
+        eq(schema.GlPosting.postingType, 'payout'),
+        or(
+          eq(schema.GlPosting.periodKey, payoutNumber),
+          like(schema.GlPosting.periodKey, `${payoutNumber}-R%`)
+        )
+      )
+    )
+  return rows.length
+}
+
+/**
+ * The feeds one payout source context reads for: every live
+ * `FinancialSourceAccount` of this `providerKey` linked to THIS rail.
+ *
+ * The evidence rows of a payout are scoped by these ids - it is how `gather.ts`
+ * finds its split and how `sync.ts` finds the posting's `member` rows, and the
+ * two must agree or the entry would name items it did not sum.
+ */
+export async function listPayoutFeedAccountIds(
+  db: Database,
+  organizationId: string,
+  providerKey: string,
+  paymentGatewayId: string
+): Promise<string[]> {
+  const feeds = await listLinkedFeedAccounts(db, organizationId, providerKey)
+  return feeds.filter((feed) => feed.paymentGatewayId === paymentGatewayId).map((feed) => feed.id)
+}
+
+/**
+ * The `ProcessorBalanceEntry` ids one payout settled, for the posting's `member`
+ * rows (`plans/accounting/payout-links.md` §5).
+ *
+ * Keyed on `(sourceAccountId, payoutExternalId)` - the provider's own id, which
+ * is what the evidence lane stores - over `ProcessorBalanceEntry_payout_idx`.
+ * The outgoing-transfer item is excluded: it is the payout itself, not something
+ * the entry summed (§13 Q2). An empty answer is ordinary: a feed the evidence
+ * lane has never observed has no rows to name.
+ */
+export async function listPayoutMemberEntryIds(
+  db: Database,
+  params: {
+    organizationId: string
+    sourceAccountIds: readonly string[]
+    payoutExternalId: string
+  }
+): Promise<string[]> {
+  const { organizationId, sourceAccountIds, payoutExternalId } = params
+  if (sourceAccountIds.length === 0) return []
+  const rows = await db
+    .select({ id: schema.ProcessorBalanceEntry.id })
+    .from(schema.ProcessorBalanceEntry)
+    .where(
+      and(
+        eq(schema.ProcessorBalanceEntry.organizationId, organizationId),
+        inArray(schema.ProcessorBalanceEntry.sourceAccountId, [...sourceAccountIds]),
+        eq(schema.ProcessorBalanceEntry.payoutExternalId, payoutExternalId),
+        eq(schema.ProcessorBalanceEntry.isOutgoingTransfer, false)
+      )
+    )
+  return rows.map((row) => row.id)
 }
 
 /**
@@ -375,8 +459,10 @@ async function withLivePostings(
   organizationId: string,
   records: PayoutRecord[]
 ): Promise<PayoutRecord[]> {
-  const gatewayIds = records.map((r) => r.gatewayId).filter((id): id is string => !!id)
-  if (gatewayIds.length === 0) return records
+  // The subject row names the `payout` record's instance id, never the
+  // provider's payout id (`plans/accounting/payout-links.md` §11.5).
+  const instanceIds = records.map((record) => record.payoutId)
+  if (instanceIds.length === 0) return records
   const rows = await db
     .select({ sourceId: schema.GlPostingSource.sourceId, glPostingId: schema.GlPosting.id })
     .from(schema.GlPostingSource)
@@ -386,14 +472,14 @@ async function withLivePostings(
         eq(schema.GlPostingSource.organizationId, organizationId),
         eq(schema.GlPostingSource.sourceKind, 'payout'),
         eq(schema.GlPostingSource.linkRole, 'subject'),
-        inArray(schema.GlPostingSource.sourceId, gatewayIds),
+        inArray(schema.GlPostingSource.sourceId, instanceIds),
         eq(schema.GlPosting.status, 'posted')
       )
     )
-  const byGateway = new Map(rows.map((row) => [row.sourceId, row.glPostingId]))
+  const byInstance = new Map(rows.map((row) => [row.sourceId, row.glPostingId]))
   return records.map((record) =>
-    record.gatewayId && byGateway.has(record.gatewayId)
-      ? { ...record, glPostingId: byGateway.get(record.gatewayId) ?? null }
+    byInstance.has(record.payoutId)
+      ? { ...record, glPostingId: byInstance.get(record.payoutId) ?? null }
       : record
   )
 }

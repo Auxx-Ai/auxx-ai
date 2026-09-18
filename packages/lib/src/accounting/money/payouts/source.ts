@@ -15,10 +15,9 @@
  *
  * ## The three rules the contract carries (§4)
  *
- * 1. **Recognition is keyed on `ref.kind`, never on a charge id.** A Stripe
- *    item says `stripe_charge`, a Shopify item says `order`, a processor fee
- *    says `none`. `recognise.ts` answers each kind with its own lookup and
- *    `splitPayout` (`client.ts`) is otherwise unchanged.
+ * 1. **A feed the evidence lane observes is split off its stored match**
+ *    (`gather.ts`), and this contract's items are the fallback for one that is
+ *    not. `recognise.ts` answers `stripe_charge`; everything else is `none`.
  * 2. **A source with no items posts recognition equal to gross.** `totals`
  *    fills the split, the unrecognised remainder is zero by construction, and
  *    the record says `source: imported` so the screen can say "no itemisation"
@@ -55,20 +54,19 @@ export type PayoutSourceId = Exclude<PaymentGatewaySettlementSourceValue, 'manua
 export type PayoutSourceKind = 'api' | 'file'
 
 /**
- * What auxx could recognise one settled item against.
+ * What auxx could recognise one settled item against, on a feed with no
+ * `ProcessorBalanceEntry` rows (`plans/accounting/payout-links.md` §11.3).
  *
- * - `stripe_charge`: a `PaymentTransaction` row, by `stripeChargeId` or
- *   `stripeRefundId` (a refund is a negative item on its charge's side).
- * - `order`: the synced order, by the connector's own upstream id - for Shopify
- *   the numeric REST `Order.id`, which is `balance_transaction.source_order_id`
- *   and the connector's `externalId` in one keyspace (gap-a §1.2).
+ * - `stripe_charge`: a `MoneyTransaction`, through `FinancialSourceObject` →
+ *   `MoneySourceLink` (a refund is a negative item on its charge's side).
  * - `none`: nothing auxx could hold a record for - a processor's monthly fee,
  *   an adjustment, a transfer. Always unrecognised.
+ *
+ * There is no `order` kind. Recognising a Shopify item by its `source_order_id`
+ * said "the order is here", never "this $60 arrived", and the stored match says
+ * the second (§6.1); a Shopify Payments payout is split off its evidence rows.
  */
-export type PayoutItemRef =
-  | { kind: 'stripe_charge'; id: string }
-  | { kind: 'order'; id: string }
-  | { kind: 'none' }
+export type PayoutItemRef = { kind: 'stripe_charge'; id: string } | { kind: 'none' }
 
 /** One settled item inside a payout, reduced to what the split needs. */
 export interface PayoutItem {

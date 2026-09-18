@@ -10,6 +10,7 @@ import {
 import { getOrganizationSetting } from '../../../settings/settings-service'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import { periodKeyForDate } from '../../ledger/periods/periods'
+import { pokePendingMatchesForSourceObject } from '../payouts/match-poke'
 import { confirmedCustomerMovement } from './contracts'
 import {
   readStoredCustomerMoneyObservation,
@@ -340,6 +341,8 @@ export async function materializeImportedMoneyInTx(
       .update(schema.MoneyCommand)
       .set({ resultIds: { moneyTransactionId: money!.id } })
       .where(eq(schema.MoneyCommand.id, command!.id))
+    // The receipt a payout item has been waiting for has just arrived (§9.2).
+    await pokePendingMatchesForSourceObject(tx, organizationId, object.id)
   }
   if (!money) throw new Error('Money materialization failed')
   const base = {

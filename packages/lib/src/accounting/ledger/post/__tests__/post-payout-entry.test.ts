@@ -27,6 +27,7 @@ const OPTIONS = {
   organizationId: ORG,
   actorUserId: 'user_1',
   payoutId: 'po_1',
+  payoutInstanceId: 'inst_1',
   payoutNumber: 'PO-0007',
   rail: 'gateway_1',
   currency: 'USD',
@@ -60,6 +61,28 @@ describe('accounting enabled', () => {
     expect(h.resolvePeriodLock).toHaveBeenCalledTimes(1)
     expect(h.postEntry).toHaveBeenCalledTimes(1)
     expect(result).toEqual({ status: 'posted', glPostingId: 'gl_1', docNumber: 'AUXX-PAY-PO0007' })
+  })
+
+  // plans/accounting/payout-links.md §11.5: the subject is the RECORD, because
+  // that is the id every `LedgerCard` looks a posting up by.
+  it('claims the payout record, not the provider payout id', async () => {
+    await postPayoutEntry(db, OPTIONS)
+
+    const [, input] = h.postEntry.mock.calls[0] as [unknown, { sources: unknown[] }]
+    expect(input.sources).toEqual([
+      { sourceKind: 'payout', sourceId: 'inst_1', linkRole: 'subject' },
+    ])
+  })
+
+  it('writes one member row per processor entry beside the subject', async () => {
+    await postPayoutEntry(db, { ...OPTIONS, memberEntryIds: ['pbe_1', 'pbe_2'] })
+
+    const [, input] = h.postEntry.mock.calls[0] as [unknown, { sources: unknown[] }]
+    expect(input.sources).toEqual([
+      { sourceKind: 'payout', sourceId: 'inst_1', linkRole: 'subject' },
+      { sourceKind: 'processor_balance_entry', sourceId: 'pbe_1', linkRole: 'member' },
+      { sourceKind: 'processor_balance_entry', sourceId: 'pbe_2', linkRole: 'member' },
+    ])
   })
 })
 
