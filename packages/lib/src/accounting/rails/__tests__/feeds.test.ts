@@ -49,7 +49,7 @@ vi.mock('../reads', () => ({
   }),
 }))
 
-vi.mock('../../../postings/role-assignments', () => ({
+vi.mock('../../ledger/roles/role-assignments', () => ({
   readRoleAssignments: async () => state.roleAssignments,
 }))
 

@@ -15,14 +15,16 @@ import { schema } from '@auxx/database'
 import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../../postings/accounting-commit-lock', () => ({
+vi.mock('../../../accounting/ledger/post/accounting-commit-lock', () => ({
   withAccountingCommitLock: vi.fn(),
 }))
-vi.mock('../../../postings/period-lock', () => ({
+vi.mock('../../../accounting/ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 // Gate 1 is on for this file: what is under test is the posting, not the draft.
-vi.mock('../../../postings/auto-post', () => ({ readAutoPostMode: async () => 'post' }))
+vi.mock('../../../accounting/ledger/post/auto-post', () => ({
+  readAutoPostMode: async () => 'post',
+}))
 
 const h = vi.hoisted(() => ({
   fields: new Map<string, string>([
@@ -42,7 +44,9 @@ vi.mock('../../../cache', () => ({
   }),
 }))
 
-vi.mock('../../../postings/accounting-enabled', () => ({ isAccountingEnabled: async () => true }))
+vi.mock('../../../accounting/ledger/setup/accounting-enabled', () => ({
+  isAccountingEnabled: async () => true,
+}))
 
 const ORDER = {
   orderId: 'ord_1',
@@ -109,11 +113,11 @@ vi.mock('../../../relief', () => ({
     }),
 }))
 
+import { listPostingsForSource } from '../../../accounting/ledger/reads/list-postings'
 import {
   __resetAccountingProvidersForTests,
   setConnectedProviderResolver,
 } from '../../../accounting/providers/provider'
-import { listPostingsForSource } from '../../../postings/list-postings'
 import { fulfillOrder, reverseFulfillmentPosting } from '../fulfill'
 
 const ORG = 'org_1'

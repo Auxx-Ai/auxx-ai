@@ -108,7 +108,7 @@ vi.mock('../../../bom/tariff-schedule', () => ({
   loadTariffSchedule: h.loadTariffSchedule,
 }))
 
-vi.mock('../../../postings/book-time-zone', () => ({
+vi.mock('../../../accounting/ledger/setup/book-time-zone', () => ({
   readBookTimeZoneOrUtc: h.readBookTimeZoneOrUtc,
 }))
 

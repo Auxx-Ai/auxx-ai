@@ -20,7 +20,7 @@
 import type { Database } from '@auxx/database'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../../../errors'
-import { loadChartAccountsById } from '../../../postings/chart-accounts'
+import { loadChartAccountsById } from '../../ledger/chart/chart-accounts'
 import { HISTORY_SAMPLE_SIZE, MIN_HISTORY_MATCHES, type SuggestionResult } from './client'
 import { findTransferCandidate, getTransactionMatchRow, listHistoryMatches } from './reads'
 

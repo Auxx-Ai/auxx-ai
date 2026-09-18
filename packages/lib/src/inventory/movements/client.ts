@@ -15,7 +15,7 @@
 // this stays a client-safe import. `ACCOUNT_ROLES` is the ONLY copy of the role
 // vocabulary since decision `G19` retired the `GlAccountRole` registry enum
 // along with the `gl_account.role` field it existed to populate.
-import { ACCOUNT_ROLES, type AccountRole } from '../../postings/client'
+import { ACCOUNT_ROLES, type AccountRole } from '../../accounting/ledger/client'
 
 /**
  * How a part's classification decides which inventory account a receipt lands in

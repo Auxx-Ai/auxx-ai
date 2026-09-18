@@ -61,7 +61,9 @@ vi.mock('@auxx/database', async (original) => ({
   withAccountingCommitLock: async () => {},
 }))
 vi.mock('../../../resources/crud/tx-write-flush', () => ({ flushTxWriteScope: async () => {} }))
-vi.mock('../../../postings/accounting-enabled', () => ({ isAccountingEnabled: async () => true }))
+vi.mock('../../../accounting/ledger/setup/accounting-enabled', () => ({
+  isAccountingEnabled: async () => true,
+}))
 vi.mock('../reads', () => ({
   requirePayoutFieldContext: async () => ({
     payoutDefId: 'def_payout',
@@ -86,12 +88,12 @@ vi.mock('../../../accounting/rails/reads', () => ({
 vi.mock('../../../accounting/rails/writes', () => ({
   stampPaymentGatewayLastSettlement: h.stamp,
 }))
-vi.mock('../../../postings/post-payout-entry', async (importOriginal) => ({
+vi.mock('../../../accounting/ledger/post/post-payout-entry', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   postPayoutEntry: h.postPayoutEntry,
 }))
-vi.mock('../../../postings/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
-vi.mock('../../../postings/list-postings', () => ({
+vi.mock('../../../accounting/ledger/roles/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
+vi.mock('../../../accounting/ledger/reads/list-postings', () => ({
   listPostingsForSource: h.listPostingsForSource,
 }))
 // This file is about Stripe alone; keep the shopify_payments source (registered

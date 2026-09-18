@@ -14,7 +14,7 @@
  * poster.
  */
 
-import type { PostResultStatus } from '../../../postings/types'
+import type { PostResultStatus } from '../../ledger/types'
 import type { PaymentGatewayFeeTreatmentValue, PaymentGatewayRow } from '../../rails/client'
 import { daysBetween } from '../client'
 

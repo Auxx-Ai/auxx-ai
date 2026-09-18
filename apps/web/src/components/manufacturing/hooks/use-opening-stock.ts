@@ -27,16 +27,16 @@
 // write resolved 1310 off the stored `component`, which is exactly the
 // disagreement the paragraph above forbids.
 
+import {
+  ACCOUNT_ROLES,
+  cutoverDateFor,
+  OPENING_BASELINE_SETTING_KEYS,
+} from '@auxx/lib/accounting/ledger/client'
 import { normalizeCalendarDayIso, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import {
   computeExtendedCost,
   resolveInventoryRoleForPartKind,
 } from '@auxx/lib/inventory/movements/client'
-import {
-  ACCOUNT_ROLES,
-  cutoverDateFor,
-  OPENING_BASELINE_SETTING_KEYS,
-} from '@auxx/lib/postings/client'
 import { PartKind, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import { useCallback, useMemo, useState } from 'react'

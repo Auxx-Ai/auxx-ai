@@ -4,7 +4,7 @@
 // the export queue, the ledger summary view and the Posting settings page's
 // per-avenue export row - nowhere else names these, so there is one spelling.
 
-import type { ExportAvenue } from '@auxx/lib/postings/client'
+import type { ExportAvenue } from '@auxx/lib/accounting/ledger/client'
 
 export const EXPORT_AVENUE_LABEL: Record<ExportAvenue, string> = {
   fulfillment: 'Fulfillment',

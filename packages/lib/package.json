@@ -76,6 +76,18 @@
       "import": "./dist/accounting/journals/recurring/index.mjs",
       "default": "./src/accounting/journals/recurring/index.ts"
     },
+    "./accounting/ledger": {
+      "types": "./src/accounting/ledger/index.ts",
+      "source": "./src/accounting/ledger/index.ts",
+      "import": "./dist/accounting/ledger/index.mjs",
+      "default": "./src/accounting/ledger/index.ts"
+    },
+    "./accounting/ledger/client": {
+      "types": "./src/accounting/ledger/client.ts",
+      "source": "./src/accounting/ledger/client.ts",
+      "import": "./dist/accounting/ledger/client.mjs",
+      "default": "./src/accounting/ledger/client.ts"
+    },
     "./accounting/mirror": {
       "types": "./src/accounting/mirror/index.ts",
       "source": "./src/accounting/mirror/index.ts",
@@ -1287,18 +1299,6 @@
       "source": "./src/posthog/posthog-client.ts",
       "import": "./dist/posthog/posthog-client.mjs",
       "default": "./src/posthog/posthog-client.ts"
-    },
-    "./postings": {
-      "types": "./src/postings/index.ts",
-      "source": "./src/postings/index.ts",
-      "import": "./dist/postings/index.mjs",
-      "default": "./src/postings/index.ts"
-    },
-    "./postings/client": {
-      "types": "./src/postings/client.ts",
-      "source": "./src/postings/client.ts",
-      "import": "./dist/postings/client.mjs",
-      "default": "./src/postings/client.ts"
     },
     "./presence": {
       "types": "./src/presence/index.ts",

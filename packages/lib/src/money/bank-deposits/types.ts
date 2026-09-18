@@ -9,7 +9,7 @@
  * this file is working in integers.
  */
 
-import type { PostResult } from '../../postings/types'
+import type { PostResult } from '../../accounting/ledger/types'
 import type { RecordId } from '../../resources/resource-id'
 import type { BankDepositStatus } from './client'
 

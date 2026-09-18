@@ -32,8 +32,8 @@
  * company happens to hold no example of.
  */
 
-import type { GlAccountSubtypeValue } from '../../../postings/account-subtype'
-import type { GlAccountTypeValue } from '../../../postings/default-chart'
+import type { GlAccountSubtypeValue } from '../../ledger/chart/account-subtype'
+import type { GlAccountTypeValue } from '../../ledger/chart/default-chart'
 
 /** One QuickBooks type pair, both halves always present. */
 export interface QuickbooksAccountType {

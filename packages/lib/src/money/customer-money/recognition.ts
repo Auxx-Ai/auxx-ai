@@ -1,6 +1,7 @@
 // packages/lib/src/money/customer-money/recognition.ts
+
+import { accountingBasisHash } from '../../accounting/ledger/builders/basis-hash'
 import { UnprocessableEntityError } from '../../errors'
-import { accountingBasisHash } from '../../postings/basis-hash'
 
 /** Canonical dated events; amounts are exact minor units, never order paid-status estimates. */
 export type OrderRecognitionEvent = {

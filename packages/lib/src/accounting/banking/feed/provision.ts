@@ -44,9 +44,9 @@ import {
 } from '../../../data-connectors/mutations'
 import type { FieldMapping } from '../../../data-connectors/types'
 import { UnprocessableEntityError } from '../../../errors'
-import { readBookTimeZoneOrUtc } from '../../../postings/book-time-zone'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
+import { readBookTimeZoneOrUtc } from '../../ledger/setup/book-time-zone'
 import { requireBankAccountFieldContext } from '../reads'
 
 const logger = createScopedLogger('banking-feed')

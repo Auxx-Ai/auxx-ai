@@ -24,7 +24,7 @@ import type {
   PostingLinkRole,
   PostingStatus,
   PostingType,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
 import { Skeleton } from '@auxx/ui/components/skeleton'

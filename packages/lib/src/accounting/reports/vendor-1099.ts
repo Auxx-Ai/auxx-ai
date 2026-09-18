@@ -27,8 +27,8 @@ import { alias } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { AuxxError, BadRequestError } from '../../errors'
-import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { OPENING_BASELINE_SETTING_KEYS } from '../ledger/setup/setup-readiness'
 import {
   VENDOR_1099_THRESHOLD_MINOR,
   type Vendor1099Row,

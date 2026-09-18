@@ -2,8 +2,8 @@
 
 'use client'
 
-import type { PostResult } from '@auxx/lib/postings/client'
-import { didLedgerAccept } from '@auxx/lib/postings/client'
+import type { PostResult } from '@auxx/lib/accounting/ledger/client'
+import { didLedgerAccept } from '@auxx/lib/accounting/ledger/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useState } from 'react'
 import { api } from '~/trpc/react'

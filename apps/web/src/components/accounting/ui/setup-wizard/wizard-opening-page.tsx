@@ -6,7 +6,7 @@ import {
   openingDifference,
   openingDifferenceRows,
   readSettingMinorUnits,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { AlertTriangle, Check } from 'lucide-react'

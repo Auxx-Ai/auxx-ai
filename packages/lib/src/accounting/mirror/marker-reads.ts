@@ -20,9 +20,9 @@
 // @see plans/accounting/tasks/20-two-authors-one-ledger.md §7.3
 
 import type { Result } from 'neverthrow'
-import { todayInBookTimeZone } from '../../postings/book-time-zone'
-import { periodKeyForDate } from '../../postings/periods'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { periodKeyForDate } from '../ledger/periods/periods'
+import { todayInBookTimeZone } from '../ledger/setup/book-time-zone'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../providers/provider'
 import { PROVIDER_SYNCED_THROUGH_SETTING_KEY, type ProviderSyncMarker } from './client'
 import { guard } from './guard'

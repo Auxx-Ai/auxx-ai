@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { UnprocessableEntityError } from '../../../errors'
-import type { ProviderBalanceRow } from '../../../postings/types'
+import type { ProviderBalanceRow } from '../../ledger/types'
 import { signedBalance } from '../../reports/statement-math'
 import type { TrialBalanceRow } from '../../reports/trial-balance'
 import { planProviderAgreement } from '../provider-agreement'

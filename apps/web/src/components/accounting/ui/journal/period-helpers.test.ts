@@ -1,6 +1,6 @@
 // apps/web/src/components/accounting/ui/journal/period-helpers.test.ts
 
-import type { ClosePeriod } from '@auxx/lib/postings/client'
+import type { ClosePeriod } from '@auxx/lib/accounting/ledger/client'
 import { describe, expect, it } from 'vitest'
 import {
   firstDayOfPeriod,

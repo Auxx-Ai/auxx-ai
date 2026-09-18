@@ -5,11 +5,11 @@
 // nothing about a slice changes because a cron opened it.
 
 import { createScopedLogger } from '@auxx/logger'
+import { resolvePeriodLock } from '../../accounting/ledger/periods/period-lock'
+import { periodKeyForDate } from '../../accounting/ledger/periods/periods'
+import { OPENING_BASELINE_SETTING_KEYS } from '../../accounting/ledger/setup/setup-readiness'
 import { enqueueProviderSync, firstDayAfterMonth, providerSyncFloor } from '../../accounting/mirror'
 import { ConflictError } from '../../errors'
-import { resolvePeriodLock } from '../../postings/period-lock'
-import { periodKeyForDate } from '../../postings/periods'
-import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import type { JobContext } from '../types'
 

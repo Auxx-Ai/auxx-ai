@@ -64,20 +64,20 @@ import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull } from 'drizzle-orm'
 import {
+  CHART_PACK_KEYS,
+  CHART_PACKS,
+  type ChartPackKey,
+  type DefaultChartAccount,
+} from '../accounting/ledger/chart/default-chart'
+import { withAccountingCommitLock } from '../accounting/ledger/post/accounting-commit-lock'
+import { readRoleAssignments } from '../accounting/ledger/roles/role-assignments'
+import { ensureManualSourceAccount } from '../accounting/ledger/roles/source-scope'
+import {
   createPaymentGateway,
   listPaymentGateways,
   normaliseGatewayHandle,
 } from '../accounting/rails'
 import { getCachedEntityDefId } from '../cache'
-import { withAccountingCommitLock } from '../postings/accounting-commit-lock'
-import {
-  CHART_PACK_KEYS,
-  CHART_PACKS,
-  type ChartPackKey,
-  type DefaultChartAccount,
-} from '../postings/default-chart'
-import { readRoleAssignments } from '../postings/role-assignments'
-import { ensureManualSourceAccount } from '../postings/source-scope'
 import { seedSession, UnifiedCrudHandler } from '../resources/crud'
 import { SystemUserService } from '../users/system-user-service'
 

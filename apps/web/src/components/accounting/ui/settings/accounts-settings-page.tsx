@@ -35,8 +35,12 @@
 // `catalog_item`'s one required field (task 15 §5 made the code optional), and
 // a validation refusal belongs on an act somebody knowingly performed.
 
+import type {
+  AccountRole,
+  ChartAccountRow,
+  RoleAssignmentRow,
+} from '@auxx/lib/accounting/ledger/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
-import type { AccountRole, ChartAccountRow, RoleAssignmentRow } from '@auxx/lib/postings/client'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'

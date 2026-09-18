@@ -5,8 +5,8 @@
 
 import { toRecordId } from '@auxx/types/resource'
 import { UnprocessableEntityError } from '../../../../errors'
-import type { ChartAccountRow, ProviderAccount } from '../../../../postings/types'
 import { UnifiedCrudHandler } from '../../../../resources/crud'
+import type { ChartAccountRow, ProviderAccount } from '../../../ledger/types'
 import { readQuickbooksIdField, writeQuickbooksIdField } from '../identity-field'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
 import { errorMessage, requireToolInputs } from './shared'

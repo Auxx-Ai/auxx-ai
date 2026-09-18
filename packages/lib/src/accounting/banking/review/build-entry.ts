@@ -41,8 +41,8 @@
  */
 
 import { UnprocessableEntityError } from '../../../errors'
-import { buildEntry } from '../../../postings/build-entry'
-import type { BuiltEntry, GlPostingLineInput } from '../../../postings/types'
+import { buildEntry } from '../../ledger/builders/entry'
+import type { BuiltEntry, GlPostingLineInput } from '../../ledger/types'
 import { BANK_TRANSACTION_SOURCE_TYPE, bankLineFlow } from './client'
 
 /** The posting type both shapes claim. In both union copies since drizzle 0361. */

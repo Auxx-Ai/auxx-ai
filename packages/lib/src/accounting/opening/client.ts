@@ -7,10 +7,10 @@
 // directive would turn every export into a client-reference proxy there. See
 // docs/lib-module-guide.md section 7.
 
-import { compareAccountsByCodeThenName } from '../../postings/account-label'
-import { GL_ACCOUNT_TYPES, type GlAccountTypeValue } from '../../postings/default-chart'
-import type { ChartAccountRow, PostingStatus } from '../../postings/types'
 import type { JournalEntryLine, JournalEntryRecord } from '../journals/entries/client'
+import { compareAccountsByCodeThenName } from '../ledger/chart/account-label'
+import { GL_ACCOUNT_TYPES, type GlAccountTypeValue } from '../ledger/chart/default-chart'
+import type { ChartAccountRow, PostingStatus } from '../ledger/types'
 
 /**
  * The setting key the opening trial balance's FREEZE is asserted against.

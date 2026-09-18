@@ -1,9 +1,9 @@
 // apps/web/src/server/api/routers/setting.ts
 
+import { assertAccountingSetupUnfrozen } from '@auxx/lib/accounting/ledger'
 import { getOrgCache, getUserCache, onCacheEvent } from '@auxx/lib/cache'
 import { BadRequestError } from '@auxx/lib/errors'
 import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
-import { assertAccountingSetupUnfrozen } from '@auxx/lib/postings'
 import {
   batchUpdateOrganizationSettings,
   isSettingKey,

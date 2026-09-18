@@ -4,7 +4,7 @@
 // fallback when a posting's lines do not fit its object's shape.
 
 import { describe, expect, it } from 'vitest'
-import type { AccountRole } from '../../../postings/build-entry'
+import type { AccountRole } from '../../ledger/builders/entry'
 import {
   type ShapeForPostingInput,
   type ShapeForPostingLine,

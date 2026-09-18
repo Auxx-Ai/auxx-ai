@@ -14,7 +14,7 @@ const h = vi.hoisted(() => ({
   setPayloads: [] as Array<Record<string, unknown>>,
 }))
 
-vi.mock('../../postings/accounting-commit-lock', () => ({
+vi.mock('../../accounting/ledger/post/accounting-commit-lock', () => ({
   withAccountingCommitLock: async () => {},
 }))
 

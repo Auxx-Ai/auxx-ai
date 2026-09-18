@@ -36,7 +36,7 @@ vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: vi.fn(async () => '2025-12'),
 }))
 
-vi.mock('../../../postings/period-lock', () => ({
+vi.mock('../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: vi.fn(async () => ({ lockedThroughMonth: null })),
 }))
 

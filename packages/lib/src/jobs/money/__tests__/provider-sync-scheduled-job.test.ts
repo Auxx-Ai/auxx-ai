@@ -20,7 +20,7 @@ vi.mock('../../../accounting/mirror', async (importOriginal) => ({
   enqueueProviderSync,
 }))
 
-vi.mock('../../../postings/period-lock', () => ({
+vi.mock('../../../accounting/ledger/periods/period-lock', () => ({
   resolvePeriodLock: vi.fn(async () => ({ lockedThroughMonth: state.lockedThroughMonth })),
 }))
 

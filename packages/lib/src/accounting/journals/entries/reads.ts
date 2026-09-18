@@ -22,8 +22,8 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../../cache'
 import { NotFoundError, UnprocessableEntityError } from '../../../errors'
-import { parsePeriodKey } from '../../../postings/periods'
 import { systemValueJoin } from '../../../resources/system-records'
+import { parsePeriodKey } from '../../ledger/periods/periods'
 import type {
   JournalEntryKindValue,
   JournalEntryLine,

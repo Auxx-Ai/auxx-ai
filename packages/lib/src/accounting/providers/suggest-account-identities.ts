@@ -29,13 +29,9 @@
  * know that the number they recognised belonged to the wrong section.
  */
 
-import { accountLabel } from '../../postings/account-label'
-import { accountSubtypeLabel, type GlAccountSubtypeValue } from '../../postings/account-subtype'
-import type {
-  AccountSuggestionReason,
-  ChartAccountRow,
-  ProviderAccount,
-} from '../../postings/types'
+import { accountLabel } from '../ledger/chart/account-label'
+import { accountSubtypeLabel, type GlAccountSubtypeValue } from '../ledger/chart/account-subtype'
+import type { AccountSuggestionReason, ChartAccountRow, ProviderAccount } from '../ledger/types'
 
 /**
  * Which provider `accountType` strings a subtype may map to (`13` §3.2).

@@ -14,7 +14,7 @@
 // over cached settings for the checklist widget. Writing the arithmetic twice
 // is what would rot.
 
-import type { SetupReadiness } from '@auxx/lib/postings/client'
+import type { SetupReadiness } from '@auxx/lib/accounting/ledger/client'
 import { toActorId } from '@auxx/types/actor'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

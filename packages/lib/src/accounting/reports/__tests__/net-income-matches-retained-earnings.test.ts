@@ -12,17 +12,17 @@ import { describe, expect, it, vi } from 'vitest'
 import type { TrialBalance, TrialBalanceRow } from '../trial-balance'
 
 vi.mock('../trial-balance', () => ({ readTrialBalance: vi.fn() }))
-vi.mock('../../../postings/resolve-roles', () => ({ loadRoleAccountCodes: vi.fn() }))
+vi.mock('../../ledger/roles/resolve-roles', () => ({ loadRoleAccountCodes: vi.fn() }))
 // The balance sheet reads the chart once and hands it to every trial-balance
 // read, so it touches `role-map` directly.
-vi.mock('../../../postings/role-map', () => ({ listChartAccounts: vi.fn() }))
+vi.mock('../../ledger/roles/role-map', () => ({ listChartAccounts: vi.fn() }))
 // The fiscal-year month is one settings read, and `settings-service` reaches
 // `@auxx/database`. January keeps these fixtures on the calendar-year boundary
 // they were written against; `fiscal-year.test.ts` covers the other eleven.
 vi.mock('../fiscal-year-setting', () => ({ resolveFiscalYearStartMonth: vi.fn(async () => 1) }))
 
-import { loadRoleAccountCodes } from '../../../postings/resolve-roles'
-import { listChartAccounts } from '../../../postings/role-map'
+import { loadRoleAccountCodes } from '../../ledger/roles/resolve-roles'
+import { listChartAccounts } from '../../ledger/roles/role-map'
 import { readBalanceSheet } from '../balance-sheet'
 import { readProfitAndLoss } from '../profit-and-loss'
 import { readTrialBalance } from '../trial-balance'

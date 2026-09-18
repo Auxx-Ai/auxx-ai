@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { ChartAccountRow } from '@auxx/lib/postings/client'
+import type { ChartAccountRow } from '@auxx/lib/accounting/ledger/client'
 import { api } from '~/trpc/react'
 
 /**

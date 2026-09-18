@@ -16,11 +16,11 @@ import type { Database } from '@auxx/database'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { ok } from 'neverthrow'
 import { describe, expect, it, vi } from 'vitest'
-import type { ChartAccountRow } from '../../../postings/types'
+import type { ChartAccountRow } from '../../ledger/types'
 
-vi.mock('../../../postings/role-map', () => ({ listChartAccounts: vi.fn() }))
+vi.mock('../../ledger/roles/role-map', () => ({ listChartAccounts: vi.fn() }))
 
-import { listChartAccounts } from '../../../postings/role-map'
+import { listChartAccounts } from '../../ledger/roles/role-map'
 import { toGeneralLedgerRows } from '../adapters'
 import { GENERAL_LEDGER_MAX_LINES, readGeneralLedger } from '../general-ledger'
 

@@ -1,12 +1,12 @@
 // apps/web/src/components/accounting/ui/setup-wizard/wizard-done-page.tsx
 'use client'
 
-import type { PostResultStatus } from '@auxx/lib/postings/client'
+import type { PostResultStatus } from '@auxx/lib/accounting/ledger/client'
 import {
   didLedgerAccept,
   resolveSetupReadiness,
   SETUP_READINESS_SETTING_KEYS,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 import type { SettingKey } from '@auxx/lib/settings/client'
 import { Button } from '@auxx/ui/components/button'
 import { AlertTriangle, Check, PartyPopper } from 'lucide-react'

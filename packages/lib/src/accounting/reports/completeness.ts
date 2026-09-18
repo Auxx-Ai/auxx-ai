@@ -29,9 +29,9 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../errors'
-import { POSTING_POLICIES, POSTING_POLICY } from '../../postings/policy'
-import { ENABLED_POSTING_TYPES } from '../../postings/regime'
-import { POSTING_TYPES, type PostingType } from '../../postings/types'
+import { POSTING_POLICIES, POSTING_POLICY } from '../ledger/post/policy'
+import { ENABLED_POSTING_TYPES } from '../ledger/roles/regime'
+import { POSTING_TYPES, type PostingType } from '../ledger/types'
 
 const logger = createScopedLogger('postings:reports:completeness')
 

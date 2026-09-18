@@ -6,7 +6,7 @@ import type {
   CloseBlockerItem,
   CloseBlockerItemKey,
   PostResultStatus,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 import { Button } from '@auxx/ui/components/button'
 import { GridTreeRow, INDENT_REM } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'

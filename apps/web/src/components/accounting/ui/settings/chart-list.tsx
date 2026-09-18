@@ -29,7 +29,11 @@
 // from `accounts` and stays fully usable while `map.isPending`, while
 // `map.isError`, and with no provider connected at all.
 
-import type { AccountRole, ChartAccountRow, GlAccountTypeValue } from '@auxx/lib/postings/client'
+import type {
+  AccountRole,
+  ChartAccountRow,
+  GlAccountTypeValue,
+} from '@auxx/lib/accounting/ledger/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

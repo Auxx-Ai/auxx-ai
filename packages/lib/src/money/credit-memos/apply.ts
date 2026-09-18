@@ -12,9 +12,9 @@
 
 import type { Database } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
+import { settledPeriodsFor } from '../../accounting/ledger/periods/settled-periods'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, ConflictError, NotFoundError } from '../../errors'
-import { settledPeriodsFor } from '../../postings/settled-periods'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { syncInvoicePaymentState } from '../invoices/payment-state'
 import { runCreditCommand } from './command'

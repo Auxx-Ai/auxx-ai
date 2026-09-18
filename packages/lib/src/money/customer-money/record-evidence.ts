@@ -1,8 +1,8 @@
 // packages/lib/src/money/customer-money/record-evidence.ts
 import { type Database, schema, type Transaction, withAccountingCommitLock } from '@auxx/database'
 import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
+import { accountingBasisHash } from '../../accounting/ledger/builders/basis-hash'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
-import { accountingBasisHash } from '../../postings/basis-hash'
 import { customerMoneyObservationSchema, orderPaymentEvidenceSchema } from './contracts'
 import { materializeImportedMoneyInTx } from './ingest'
 import type { FinancialWriteProvenance } from './record-storage'

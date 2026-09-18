@@ -30,9 +30,9 @@ import {
   findBankFeedAccountForConnector,
   reapBankFeedAccount,
 } from '../../accounting/banking/feed/reaper'
+import { periodKeyForDate } from '../../accounting/ledger/periods/periods'
 import { readProviderAccountId } from '../../connections/hosted-provision/types'
 import { getStripeConnectClient } from '../../money/stripe-connect/client'
-import { periodKeyForDate } from '../../postings/periods'
 import type { SyncCursor } from '../../sync-core/contracts'
 import { STRIPE_FC_CONNECTOR_TYPE } from './stripe-financial-connections-type'
 import type {

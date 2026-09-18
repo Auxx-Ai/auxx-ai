@@ -20,17 +20,23 @@ const h = vi.hoisted(() => ({
   readAutoPostMode: vi.fn(async () => 'post'),
 }))
 
-vi.mock('../../../postings/accounting-enabled', () => ({
+vi.mock('../../../accounting/ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
-vi.mock('../../../postings/auto-post', () => ({ readAutoPostMode: h.readAutoPostMode }))
-vi.mock('../../../postings/post-entry', () => ({ postEntry: h.postEntry }))
-vi.mock('../../../postings/list-postings', () => ({
+vi.mock('../../../accounting/ledger/post/auto-post', () => ({
+  readAutoPostMode: h.readAutoPostMode,
+}))
+vi.mock('../../../accounting/ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
+vi.mock('../../../accounting/ledger/reads/list-postings', () => ({
   findLiveSubjectPosting: h.findLiveSubjectPosting,
 }))
-vi.mock('../../../postings/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
-vi.mock('../../../postings/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
-vi.mock('../../../postings/setup-readiness', () => ({ FINALIZED_SETUP_STATE: 'finalized' }))
+vi.mock('../../../accounting/ledger/periods/period-lock', () => ({
+  resolvePeriodLock: h.resolvePeriodLock,
+}))
+vi.mock('../../../accounting/ledger/roles/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
+vi.mock('../../../accounting/ledger/setup/setup-readiness', () => ({
+  FINALIZED_SETUP_STATE: 'finalized',
+}))
 vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: h.getOrganizationSetting,
 }))

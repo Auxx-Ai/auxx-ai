@@ -16,12 +16,12 @@ vi.mock('../../providers/book-connections', () => ({
 }))
 
 const readExportSettings = vi.fn()
-vi.mock('../../../postings/read-export-settings', () => ({
+vi.mock('../../ledger/setup/read-export-settings', () => ({
   readExportSettings: (...a: unknown[]) => readExportSettings(...a),
 }))
 
 const readLedgerSummary = vi.fn()
-vi.mock('../../../postings/reads/ledger-summary', () => ({
+vi.mock('../../ledger/reads/ledger-summary', () => ({
   readLedgerSummary: (...a: unknown[]) => readLedgerSummary(...a),
 }))
 

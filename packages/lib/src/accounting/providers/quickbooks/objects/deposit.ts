@@ -5,8 +5,8 @@
 // `find` tool - `requestId` (layer 3) is the only idempotency net.
 
 import { err, ok, type Result } from 'neverthrow'
-import { ProviderPostError, type WithdrawResult } from '../../../../postings/types'
 import { DEPOSIT_OBJECT_TYPE, exportDepositSchema } from '../../../export/payloads/deposit'
+import { ProviderPostError, type WithdrawResult } from '../../../ledger/types'
 import type {
   ProviderObjectContext,
   ReadObjectRef,

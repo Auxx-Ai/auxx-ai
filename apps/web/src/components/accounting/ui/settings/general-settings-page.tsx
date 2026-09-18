@@ -21,8 +21,8 @@
 // standard cost.
 
 import { FieldType } from '@auxx/database/enums'
+import { isValidTimeZone, resolveSetupReadiness } from '@auxx/lib/accounting/ledger/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
-import { isValidTimeZone, resolveSetupReadiness } from '@auxx/lib/postings/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { CalendarRange, ExternalLink, Lock, Scale, Send } from 'lucide-react'

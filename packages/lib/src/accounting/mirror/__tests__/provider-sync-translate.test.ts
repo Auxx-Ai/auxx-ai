@@ -15,8 +15,8 @@ const postEntry = vi.hoisted(() => vi.fn())
 const reverseEntry = vi.hoisted(() => vi.fn())
 
 vi.mock('../reads', () => ({ readMirrorForTranslation: readMirror }))
-vi.mock('../../../postings/post-entry', () => ({ postEntry }))
-vi.mock('../../../postings/reverse-entry', () => ({ reverseEntry }))
+vi.mock('../../ledger/post/post-entry', () => ({ postEntry }))
+vi.mock('../../ledger/post/reverse-entry', () => ({ reverseEntry }))
 
 import type { MirrorEntry } from '../reads'
 import { translateMirrorRange } from '../translate'

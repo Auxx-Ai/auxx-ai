@@ -44,8 +44,8 @@
 
 import { err, ok, type Result } from 'neverthrow'
 import { type AuxxErrorDetails, UnprocessableEntityError } from '../../errors'
-import { parsePeriodKey } from '../../postings/periods'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { parsePeriodKey } from '../ledger/periods/periods'
 
 /** The catalog keys this module reads. Nothing else in the read path names them. */
 // Declared in `setup-readiness.ts` - the client-safe half - because the setup
@@ -54,12 +54,12 @@ import { getOrganizationSetting } from '../../settings/settings-service'
 export {
   FINALIZED_SETUP_STATE,
   OPENING_BASELINE_SETTING_KEYS,
-} from '../../postings/setup-readiness'
+} from '../ledger/setup/setup-readiness'
 
 import {
   FINALIZED_SETUP_STATE,
   OPENING_BASELINE_SETTING_KEYS,
-} from '../../postings/setup-readiness'
+} from '../ledger/setup/setup-readiness'
 
 /**
  * The frozen opening position the first month-end entry is measured against.

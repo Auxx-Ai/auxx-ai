@@ -2,12 +2,12 @@
 
 'use client'
 
-import { PermissionKey } from '@auxx/lib/permissions/client'
 import {
   type ChartAccountRow,
   GL_ACCOUNT_TYPES,
   type GlAccountTypeValue,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,

@@ -2,10 +2,10 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { parseRecordId } from '@auxx/types/resource'
 import { and, eq, or, sql } from 'drizzle-orm'
+import { accountingBasisHash } from '../../accounting/ledger/builders/basis-hash'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
 import type { FinancialRecordType } from '../../money/customer-money/record-contracts'
 import type { FinancialWriteProvenance } from '../../money/customer-money/record-storage'
-import { accountingBasisHash } from '../../postings/basis-hash'
 import type { MutationContext } from './unified-handler-mutations'
 
 /** Financial resources use the normal record identity with typed storage for source facts. */

@@ -41,7 +41,7 @@ import { and, eq, isNotNull } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../../../cache'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { deleteRecordIdentity } from '../../../identity'
-import type { ProviderAccount } from '../../../postings/client'
+import type { ProviderAccount } from '../../ledger/client'
 import { QUICKBOOKS_SOURCE, writeQuickbooksIdField } from './identity-field'
 import type { QuickbooksToolContext } from './invoke-quickbooks-tool'
 

@@ -40,9 +40,6 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { UnprocessableEntityError } from '../../errors'
-import { resolvePeriodLock } from '../../postings/period-lock'
-import type { PeriodLock } from '../../postings/periods'
-import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import type {
   SliceResult,
@@ -50,6 +47,9 @@ import type {
   SyncSliceCtx,
   SyncSource,
 } from '../../sync-core/contracts'
+import { resolvePeriodLock } from '../ledger/periods/period-lock'
+import type { PeriodLock } from '../ledger/periods/periods'
+import { OPENING_BASELINE_SETTING_KEYS } from '../ledger/setup/setup-readiness'
 import { readActiveBookCompanyId } from '../providers/book-connections'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../providers/provider'
 import type { ProviderLedgerSlicer, ProviderSyncRange } from './client'

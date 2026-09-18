@@ -27,23 +27,23 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, isNull } from 'drizzle-orm'
-import { getPaymentGateway } from '../../accounting/rails/reads'
-import { AuxxError, UnprocessableEntityError } from '../../errors'
-import { isAccountingEnabled } from '../../postings/accounting-enabled'
-import { readAutoPostMode } from '../../postings/auto-post'
-import { toLedgerMinor } from '../../postings/basis-hash'
-import { ACCOUNT_ROLES, buildEntry } from '../../postings/build-entry'
-import { resolvePeriodLock } from '../../postings/period-lock'
-import { periodKeyForDate } from '../../postings/periods'
-import { postEntry } from '../../postings/post-entry'
-import { resolveBankAccountGlAccountInTx } from '../../postings/resolve-cash-account'
-import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
+import { toLedgerMinor } from '../../accounting/ledger/builders/basis-hash'
+import { ACCOUNT_ROLES, buildEntry } from '../../accounting/ledger/builders/entry'
+import { resolveBankAccountGlAccountInTx } from '../../accounting/ledger/chart/resolve-cash-account'
+import { resolvePeriodLock } from '../../accounting/ledger/periods/period-lock'
+import { periodKeyForDate } from '../../accounting/ledger/periods/periods'
+import { readAutoPostMode } from '../../accounting/ledger/post/auto-post'
+import { postEntry } from '../../accounting/ledger/post/post-entry'
+import { isAccountingEnabled } from '../../accounting/ledger/setup/accounting-enabled'
+import { OPENING_BASELINE_SETTING_KEYS } from '../../accounting/ledger/setup/setup-readiness'
 import type {
   BuiltEntry,
   GlPostingLineInput,
   GlPostingSourceInput,
   PostResult,
-} from '../../postings/types'
+} from '../../accounting/ledger/types'
+import { getPaymentGateway } from '../../accounting/rails/reads'
+import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { readOrganizationSettings } from '../../settings/read'
 import { loadInvoiceForIssuance } from './issuance-reads'
 

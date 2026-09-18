@@ -77,6 +77,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import { listChartAccounts } from '../src/accounting/ledger'
 import {
   clearQuickbooksAccountMapping,
   readQuickbooksAccountMap,
@@ -85,7 +86,6 @@ import { getOrgCache } from '../src/cache'
 import { onCacheEvent } from '../src/cache/invalidate'
 import { freshBackfillState } from '../src/data-connectors/slice-orchestrator'
 import { deleteEntityInstances } from '../src/entity-instances'
-import { listChartAccounts } from '../src/postings'
 import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'
 
 const ORG_ARG = process.argv[2] ?? ''

@@ -4,8 +4,8 @@ import { type Database, database, schema, type Transaction } from '@auxx/databas
 import { fromDatabase } from '@auxx/services/shared/utils'
 import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { withAccountingCommitLock } from '../accounting/ledger/post/accounting-commit-lock'
 import { sweepEntityFieldValues } from '../field-values/sweep-entity-references'
-import { withAccountingCommitLock } from '../postings/accounting-commit-lock'
 import { sweepResourceAccessForInstances } from '../resource-access/sweep-instances'
 
 /** Parameters for deleting an entity instance */

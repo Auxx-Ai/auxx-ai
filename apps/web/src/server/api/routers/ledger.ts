@@ -29,37 +29,6 @@ import {
   setRecurringJournalSchedule,
 } from '@auxx/lib/accounting/journals/recurring'
 import {
-  enqueueProviderSync,
-  PROVIDER_SYNC_RUN_STALE_MS,
-  PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
-  readProviderSyncRunState,
-  syncProviderSyncScheduler,
-} from '@auxx/lib/accounting/mirror'
-import type { ProviderSyncScheduleConfig } from '@auxx/lib/accounting/mirror/client'
-import {
-  accountingOpeningPolicySchema,
-  activateAccountingBookConnection,
-  confirmSuggestedIdentities,
-  createAndLinkProviderAccount,
-  listAccountIdentities,
-  readAccountingBookConnectionStatus,
-  readActiveBookConnection,
-  repairAccountingBookConnection,
-  resolveAccountingProvider,
-  setAccountIdentity,
-} from '@auxx/lib/accounting/providers'
-import { planProviderAgreement } from '@auxx/lib/accounting/providers/client'
-import { mintRailAccounts } from '@auxx/lib/accounting/rails'
-// The naming catalogue is PURE and client-safe (brief 26 §7.2), so it lives on
-// its own leaf subpath and is imported from there rather than through the
-// `payment-gateways` barrel, which reaches Drizzle and the org cache.
-import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
-import { readTrialBalance } from '@auxx/lib/accounting/reports'
-import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
-import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
-import { getPaymentAccount } from '@auxx/lib/money'
-import { PermissionKey } from '@auxx/lib/permissions'
-import {
   ACCOUNT_ROLES,
   assertAccountingSetupUnfrozen,
   CHART_PACK_KEYS,
@@ -95,7 +64,38 @@ import {
   setRoleAssignment,
   updateChartAccount,
   verifyBooksBalance,
-} from '@auxx/lib/postings'
+} from '@auxx/lib/accounting/ledger'
+import {
+  enqueueProviderSync,
+  PROVIDER_SYNC_RUN_STALE_MS,
+  PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
+  readProviderSyncRunState,
+  syncProviderSyncScheduler,
+} from '@auxx/lib/accounting/mirror'
+import type { ProviderSyncScheduleConfig } from '@auxx/lib/accounting/mirror/client'
+import {
+  accountingOpeningPolicySchema,
+  activateAccountingBookConnection,
+  confirmSuggestedIdentities,
+  createAndLinkProviderAccount,
+  listAccountIdentities,
+  readAccountingBookConnectionStatus,
+  readActiveBookConnection,
+  repairAccountingBookConnection,
+  resolveAccountingProvider,
+  setAccountIdentity,
+} from '@auxx/lib/accounting/providers'
+import { planProviderAgreement } from '@auxx/lib/accounting/providers/client'
+import { mintRailAccounts } from '@auxx/lib/accounting/rails'
+// The naming catalogue is PURE and client-safe (brief 26 §7.2), so it lives on
+// its own leaf subpath and is imported from there rather than through the
+// `payment-gateways` barrel, which reaches Drizzle and the org cache.
+import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
+import { readTrialBalance } from '@auxx/lib/accounting/reports'
+import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
+import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
+import { getPaymentAccount } from '@auxx/lib/money'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { recurrencePatternSchema } from '@auxx/lib/recurrence'
 import { seedChartAccounts, seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
 import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'
@@ -185,7 +185,7 @@ const optionalMonthKey = z.object({
  * One line of a journal-entry DRAFT, as the drawer stores it.
  *
  * 🛑 `amountMinor` is INTEGER MINOR UNITS. Dollars never cross this wire:
- * `toMinorUnits` from `@auxx/lib/postings/client` is the single conversion and
+ * `toMinorUnits` from `@auxx/lib/accounting/ledger/client` is the single conversion and
  * it runs in the browser, at the `CurrencyInput` boundary. Zod checks that it is
  * a number and no more - `buildManualEntry` refuses a zero, a negative and a
  * fraction of a cent, and it names the ROW while doing it, which a Zod issue

@@ -5,7 +5,7 @@ import { fromDatabase } from '@auxx/services/shared/utils'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { PgTransaction } from 'drizzle-orm/pg-core'
 import { err, ok } from 'neverthrow'
-import { withAccountingCommitLock } from '../postings/accounting-commit-lock'
+import { withAccountingCommitLock } from '../accounting/ledger/post/accounting-commit-lock'
 // Leaf-file import on purpose: the crud barrel pulls in UnifiedCrudHandler,
 // which imports this package's barrel — write-session-als itself only touches
 // node:async_hooks, so no runtime cycle this way.

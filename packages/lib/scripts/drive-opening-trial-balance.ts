@@ -12,6 +12,8 @@
 //   npx dotenv -- npx tsx packages/lib/scripts/drive-opening-trial-balance.ts <organizationId>
 
 import { database } from '@auxx/database'
+import { verifyBooksBalance } from '../src/accounting/ledger/post/verify-balance'
+import { listChartAccounts } from '../src/accounting/ledger/roles/role-map'
 import {
   postOpeningTrialBalance,
   previewOpeningTrialBalance,
@@ -19,8 +21,6 @@ import {
   saveOpeningTrialBalance,
 } from '../src/accounting/opening'
 import { onCacheEvent } from '../src/cache'
-import { listChartAccounts } from '../src/postings/role-map'
-import { verifyBooksBalance } from '../src/postings/verify-balance'
 import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'
 
 const organizationId = process.argv[2]

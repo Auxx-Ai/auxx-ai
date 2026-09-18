@@ -8,20 +8,20 @@ import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { err, ok, type Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../../../errors'
-import { accountLabel } from '../../../../postings/account-label'
-import { listChartAccounts } from '../../../../postings/role-map'
-import {
-  type ChartAccountRow,
-  type CounterpartyType,
-  ProviderPostError,
-  type WithdrawResult,
-} from '../../../../postings/types'
 import { UnifiedCrudHandler } from '../../../../resources/crud'
 import {
   type ExportJournalPayload,
   JOURNAL_OBJECT_TYPE,
   parseExportJournal,
 } from '../../../export/payloads/journal'
+import { accountLabel } from '../../../ledger/chart/account-label'
+import { listChartAccounts } from '../../../ledger/roles/role-map'
+import {
+  type ChartAccountRow,
+  type CounterpartyType,
+  ProviderPostError,
+  type WithdrawResult,
+} from '../../../ledger/types'
 import type {
   ProviderObjectContext,
   ReadObjectRef,

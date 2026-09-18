@@ -19,10 +19,10 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import { BadRequestError, ConflictError, NotFoundError } from '../../errors'
-import { ACCOUNT_ROLES } from '../../postings/build-entry'
-import { setRoleAssignment } from '../../postings/role-map'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { toRecordId } from '../../resources/resource-id'
+import { ACCOUNT_ROLES } from '../ledger/builders/entry'
+import { setRoleAssignment } from '../ledger/roles/role-map'
 import {
   normaliseGatewayHandle,
   PAYMENT_GATEWAY_FEE_TREATMENTS,

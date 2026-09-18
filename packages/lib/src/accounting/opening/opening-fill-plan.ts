@@ -25,10 +25,10 @@
 
 import { formatCurrency } from '@auxx/utils'
 import { UnprocessableEntityError } from '../../errors'
-import { accountLabel } from '../../postings/account-label'
-import { ACCOUNT_ROLES } from '../../postings/build-entry'
-import { summariseOpeningTrialBalance } from '../../postings/setup-readiness'
-import type { ProviderBalanceRow, ProviderBalanceSheet } from '../../postings/types'
+import { ACCOUNT_ROLES } from '../ledger/builders/entry'
+import { accountLabel } from '../ledger/chart/account-label'
+import { summariseOpeningTrialBalance } from '../ledger/setup/setup-readiness'
+import type { ProviderBalanceRow, ProviderBalanceSheet } from '../ledger/types'
 import type { OpeningTrialBalanceRow } from './client'
 
 /** The three inventory roles this planner extracts, and the setting field each fills. */

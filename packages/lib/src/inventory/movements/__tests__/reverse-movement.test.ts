@@ -411,7 +411,7 @@ describe('reverseMovement — the refusals', () => {
 
 // The posting seam has its own test (`postings/__tests__/post-inventory-movement.test.ts`);
 // this file is about the movements. `vi.mock` is hoisted, so placement is free.
-vi.mock('../../../postings/post-inventory-movement', () => ({
+vi.mock('../../../accounting/ledger/post/post-inventory-movement', () => ({
   postInventoryMovementInTx: async () => null,
   exportInventoryMovement: async () => null,
   inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),

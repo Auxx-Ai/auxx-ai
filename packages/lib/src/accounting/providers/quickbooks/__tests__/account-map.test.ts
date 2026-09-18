@@ -116,7 +116,7 @@ vi.mock('../identity-field', () => ({
 }))
 
 const { readQuickbooksAccountMap } = await import('../account-map')
-const { planChartImport } = await import('../../../../postings/chart-import-plan')
+const { planChartImport } = await import('../../../ledger/chart/chart-import-plan')
 
 const PARAMS = { organizationId: 'org1', installationId: 'inst1', connectionId: 'conn1' }
 

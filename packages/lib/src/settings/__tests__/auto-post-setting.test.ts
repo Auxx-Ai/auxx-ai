@@ -5,7 +5,7 @@
 // `credit-memo-posting-setting.test.ts`, whose keys and reader modules are gone.
 
 import { describe, expect, it } from 'vitest'
-import { AUTO_POST_AVENUES, autoPostSettingKey } from '../../postings/auto-post'
+import { AUTO_POST_AVENUES, autoPostSettingKey } from '../../accounting/ledger/post/auto-post'
 import { SETTINGS_CATALOG } from '../catalog'
 import { normalizeSettingValue } from '../normalize-setting-value'
 

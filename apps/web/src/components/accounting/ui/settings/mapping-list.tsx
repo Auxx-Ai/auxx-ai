@@ -28,7 +28,7 @@ import {
   type RoleAssignmentRow,
   type RoleRailAssignmentRow,
   type RoleSourceRow,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/ledger/client'
 import { AutosizeInput } from '@auxx/ui/components/autosize-input'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

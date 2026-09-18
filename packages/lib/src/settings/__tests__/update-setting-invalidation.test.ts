@@ -28,7 +28,7 @@ const h = vi.hoisted(() => ({
   log: [] as string[],
 }))
 
-vi.mock('../../postings/accounting-commit-lock', () => ({
+vi.mock('../../accounting/ledger/post/accounting-commit-lock', () => ({
   withAccountingCommitLock: async () => {},
 }))
 

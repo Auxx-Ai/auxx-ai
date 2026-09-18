@@ -33,7 +33,7 @@ vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: vi.fn(async () => '2025-12'),
 }))
 
-vi.mock('../../../postings/period-lock', () => ({ resolvePeriodLock }))
+vi.mock('../../ledger/periods/period-lock', () => ({ resolvePeriodLock }))
 
 vi.mock('../../providers/book-connections', () => ({
   readActiveBookCompanyId: vi.fn(async () => '9341453857213446'),

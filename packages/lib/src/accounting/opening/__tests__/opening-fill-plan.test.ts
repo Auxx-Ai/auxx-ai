@@ -6,8 +6,8 @@
 
 import { describe, expect, it } from 'vitest'
 import { UnprocessableEntityError } from '../../../errors'
-import { ACCOUNT_ROLES } from '../../../postings/build-entry'
-import type { ProviderBalanceRow, ProviderBalanceSheet } from '../../../postings/types'
+import { ACCOUNT_ROLES } from '../../ledger/builders/entry'
+import type { ProviderBalanceRow, ProviderBalanceSheet } from '../../ledger/types'
 import type { OpeningTrialBalanceRow } from '../client'
 import { rowsToJournalEntryLines } from '../client'
 import { planProviderOpeningFill } from '../opening-fill-plan'

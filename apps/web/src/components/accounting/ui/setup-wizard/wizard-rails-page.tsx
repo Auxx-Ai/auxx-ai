@@ -2,7 +2,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { ACCOUNT_ROLES } from '@auxx/lib/postings/client'
+import { ACCOUNT_ROLES } from '@auxx/lib/accounting/ledger/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

@@ -5,8 +5,8 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
-import { ProviderPostError, type WithdrawResult } from '../../../../postings/types'
 import { BILL_OBJECT_TYPE, exportBillSchema } from '../../../export/payloads/bill'
+import { ProviderPostError, type WithdrawResult } from '../../../ledger/types'
 import type {
   ProviderObjectContext,
   ReadObjectRef,

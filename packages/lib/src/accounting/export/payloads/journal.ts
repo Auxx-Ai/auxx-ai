@@ -4,7 +4,7 @@
 // 4 (MIGRATION step 4). Moved unchanged from `../payload.ts`.
 
 import { z } from 'zod/v4'
-import { accountingBasisHash } from '../../../postings/basis-hash'
+import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 
 /** The only object type step 3 built. A plain string, not a DB enum. */
 export const JOURNAL_OBJECT_TYPE = 'journal'

@@ -11,7 +11,7 @@ import type { Database } from '@auxx/database'
 import { err, ok } from 'neverthrow'
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../../postings/resolve-roles', () => ({ loadRoleAccountCodes: vi.fn() }))
+vi.mock('../../ledger/roles/resolve-roles', () => ({ loadRoleAccountCodes: vi.fn() }))
 vi.mock('../trial-balance', () => ({ readTrialBalance: vi.fn() }))
 vi.mock('../../../cache', () => ({ getCachedEntityDefId: vi.fn(), getOrgCache: vi.fn() }))
 vi.mock('../../../field-values/read-field-scalars', () => ({
@@ -21,8 +21,8 @@ vi.mock('../../../field-values/read-field-scalars', () => ({
 
 import { getCachedEntityDefId, getOrgCache } from '../../../cache'
 import { readFieldRelations, readFieldScalars } from '../../../field-values/read-field-scalars'
-import { buildExpenseBillEntry } from '../../../postings/build-expense-bill-entry'
-import { loadRoleAccountCodes } from '../../../postings/resolve-roles'
+import { buildExpenseBillEntry } from '../../ledger/builders/expense-bill'
+import { loadRoleAccountCodes } from '../../ledger/roles/resolve-roles'
 import {
   AGING_UNAPPLIED_GROUP_ID,
   type Aging,

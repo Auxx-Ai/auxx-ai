@@ -26,8 +26,8 @@
 import { formatCurrency } from '@auxx/utils'
 import { err, ok, type Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
-import { accountLabel } from '../../postings/account-label'
-import type { GlPostingLineInput } from '../../postings/types'
+import { accountLabel } from '../ledger/chart/account-label'
+import type { GlPostingLineInput } from '../ledger/types'
 import {
   isOurs,
   type OurEntryCheck,

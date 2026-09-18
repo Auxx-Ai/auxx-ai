@@ -7,8 +7,8 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
+import { WRITE_OFF_SOURCE_TYPE } from '../../accounting/ledger/builders/write-off'
 import { getOrgCache } from '../../cache'
-import { WRITE_OFF_SOURCE_TYPE } from '../../postings/build-write-off-entry'
 
 const INVOICE_ATTRIBUTES = [
   'invoice_status',

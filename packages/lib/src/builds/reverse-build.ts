@@ -50,12 +50,12 @@
 import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
-import { BadRequestError, ConflictError, UnprocessableEntityError } from '../errors'
-import { type StockMovementInput, writeStockMovements } from '../inventory/movements'
 import {
   linkMovementsToPosting,
   reverseInventoryMovementPosting,
-} from '../postings/post-inventory-movement'
+} from '../accounting/ledger/post/post-inventory-movement'
+import { BadRequestError, ConflictError, UnprocessableEntityError } from '../errors'
+import { type StockMovementInput, writeStockMovements } from '../inventory/movements'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { BuildStatus, StockMovementCostBasis } from '../resources/registry/enum-values'
 import { toRecordId } from '../resources/resource-id'

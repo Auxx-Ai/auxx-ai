@@ -31,7 +31,7 @@ vi.mock('../../../cache', () => ({
   }),
 }))
 
-vi.mock('../../../postings/resolve-roles', () => ({
+vi.mock('../../../accounting/ledger/roles/resolve-roles', () => ({
   resolveRoles: vi.fn(async () => {
     const { ok, err } = await import('neverthrow')
     if (h.grniShouldErr) {

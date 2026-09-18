@@ -38,8 +38,8 @@
  */
 
 import type { Database } from '@auxx/database'
+import { findLiveSubjectPosting } from '../../accounting/ledger/reads/list-postings'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
-import { findLiveSubjectPosting } from '../../postings/list-postings'
 import { applyMoneyToInvoice } from './apply-money'
 import { unapplyMoneyFromInvoice } from './unapply-money'
 

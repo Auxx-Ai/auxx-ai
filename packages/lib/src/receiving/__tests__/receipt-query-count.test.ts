@@ -225,7 +225,7 @@ vi.mock('../../inventory/costing/ensure-standard-cost', async () => {
 
 // The posting seam has its own tests. Mocked here so the receipt's own
 // `inventory_movement` entry adds no SELECTs of its own to the budget below.
-vi.mock('../../postings/post-inventory-movement', () => ({
+vi.mock('../../accounting/ledger/post/post-inventory-movement', () => ({
   postInventoryMovementInTx: async () => null,
   exportInventoryMovement: async () => null,
   inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),

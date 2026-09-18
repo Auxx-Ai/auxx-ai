@@ -3,7 +3,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { didLedgerAccept } from '@auxx/lib/postings/client'
+import { didLedgerAccept } from '@auxx/lib/accounting/ledger/client'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

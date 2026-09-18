@@ -3,9 +3,9 @@
 import { database, schema } from '@auxx/database'
 import { parseRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
+import { settledPeriodsFor } from '../../accounting/ledger/periods/settled-periods'
 import { BadRequestError } from '../../errors'
 import { CREDIT_MEMO_POSTED_STATUSES } from '../../money/credit-memos/client'
-import { settledPeriodsFor } from '../../postings/settled-periods'
 import { unwrapStatusValue } from '../../resources/events/captured-values'
 import type { EntityPreDeleteEvent, EntityPreDeleteHandler } from '../types'
 

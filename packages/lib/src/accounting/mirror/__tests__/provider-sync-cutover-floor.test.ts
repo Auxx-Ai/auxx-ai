@@ -15,7 +15,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { UnprocessableEntityError } from '../../../errors'
-import { cutoverDateFor } from '../../../postings/build-opening-balance-entry'
+import { cutoverDateFor } from '../../ledger/builders/opening-balance'
 import { planSyncChunks, providerSyncFloor } from '../range'
 
 describe('the cutover floor', () => {

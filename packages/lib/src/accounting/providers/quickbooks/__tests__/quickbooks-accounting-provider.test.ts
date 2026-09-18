@@ -39,7 +39,7 @@ vi.mock('../invoke-quickbooks-tool', () => ({
 // itself still comes through the real `callTool` below, because how this adapter
 // reads a provider chart is exactly what these tests are for.
 const listChartAccounts = vi.fn()
-vi.mock('../../../../postings/role-map', () => ({
+vi.mock('../../../ledger/roles/role-map', () => ({
   listChartAccounts: (...a: unknown[]) => listChartAccounts(...a),
 }))
 
@@ -68,8 +68,8 @@ vi.mock('../upsert-customer', () => ({
   readQuickbooksCustomerFields: (...a: unknown[]) => readQuickbooksCustomerFields(...a),
 }))
 
-import { ProviderPostError } from '../../../../postings/types'
 import type { ExportJournalLine, ExportJournalPayload } from '../../../export/payloads/journal'
+import { ProviderPostError } from '../../../ledger/types'
 import {
   createQuickbooksAccountingProvider,
   QUICKBOOKS_PROVIDER_ID,

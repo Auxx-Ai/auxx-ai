@@ -31,8 +31,8 @@ import {
   transferTransaction,
   undoReview,
 } from '@auxx/lib/accounting/banking/review'
+import { didLedgerAccept, type PostResultStatus } from '@auxx/lib/accounting/ledger/client'
 import { PermissionKey } from '@auxx/lib/permissions'
-import { didLedgerAccept, type PostResultStatus } from '@auxx/lib/postings/client'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 

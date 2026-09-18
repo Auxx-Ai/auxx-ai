@@ -6,7 +6,7 @@
 // rather than three stacked `SettingsFieldRow`s - see `posting-page-model.ts`
 // for why this is keyed on the AVENUE rather than on the policy's own type.
 
-import type { SummaryGrain } from '@auxx/lib/postings/client'
+import type { SummaryGrain } from '@auxx/lib/accounting/ledger/client'
 import {
   Select,
   SelectContent,

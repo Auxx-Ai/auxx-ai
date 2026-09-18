@@ -33,7 +33,7 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('../gather', () => ({ gatherPayout: h.gatherPayout }))
-vi.mock('../../../postings/accounting-enabled', () => ({
+vi.mock('../../../accounting/ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
 vi.mock('../reads', () => ({

@@ -3,7 +3,7 @@ import { type Database, schema } from '@auxx/database'
 import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import { and, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { accountingBasisHash } from '../../../postings/basis-hash'
+import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import { listUnlinkedFeeds } from '../settlement-discovery'
 
 const db = () => getTestDb() as unknown as Database

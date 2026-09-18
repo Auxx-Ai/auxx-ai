@@ -2,9 +2,9 @@
 
 'use client'
 
+import type { ChartAccountRow, ProviderAccount } from '@auxx/lib/accounting/ledger/client'
+import { GL_ACCOUNT_TYPES, type GlAccountTypeValue } from '@auxx/lib/accounting/ledger/client'
 import { isMappableTo } from '@auxx/lib/accounting/providers/client'
-import type { ChartAccountRow, ProviderAccount } from '@auxx/lib/postings/client'
-import { GL_ACCOUNT_TYPES, type GlAccountTypeValue } from '@auxx/lib/postings/client'
 import {
   Command,
   CommandDetailItem,

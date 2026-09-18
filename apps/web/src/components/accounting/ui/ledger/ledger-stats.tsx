@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { BooksBalanceReport, ClosePeriod } from '@auxx/lib/postings/client'
+import type { BooksBalanceReport, ClosePeriod } from '@auxx/lib/accounting/ledger/client'
 import { StatCards } from '@auxx/ui/components/stat-card'
 import { BookOpenCheck, FileText, Lock, Scale } from 'lucide-react'
 import { EMPTY_CELL } from './format'

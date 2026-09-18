@@ -17,8 +17,8 @@
 
 import { err, ok, type Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
-import { accountLabel, compareAccountsByCodeThenName } from '../../postings/account-label'
-import type { ProviderBalanceRow } from '../../postings/types'
+import { accountLabel, compareAccountsByCodeThenName } from '../ledger/chart/account-label'
+import type { ProviderBalanceRow } from '../ledger/types'
 import type { TrialBalanceRow } from '../reports/trial-balance'
 
 /**

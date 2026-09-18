@@ -1,9 +1,9 @@
 // packages/lib/src/money/customer-money/resolve-references.ts
 import { type Database, schema, withAccountingCommitLock } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
+import { accountingBasisHash } from '../../accounting/ledger/builders/basis-hash'
 import { recordAudit } from '../../audit-log'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
-import { accountingBasisHash } from '../../postings/basis-hash'
 import { confirmedCustomerMovement } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
 

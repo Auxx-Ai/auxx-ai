@@ -1,4 +1,4 @@
-import type { PostingDetailLine, ResolvedPostingLine } from '@auxx/lib/postings/client'
+import type { PostingDetailLine, ResolvedPostingLine } from '@auxx/lib/accounting/ledger/client'
 import { toRecordId } from '@auxx/lib/resources/client'
 import type { ReactNode } from 'react'
 import { useResource } from '~/components/resources'

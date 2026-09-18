@@ -1,6 +1,6 @@
 // apps/web/src/components/accounting/ui/journal/period-helpers.ts
 
-import type { ClosePeriod } from '@auxx/lib/postings/client'
+import type { ClosePeriod } from '@auxx/lib/accounting/ledger/client'
 
 /**
  * Pure date/period helpers the JE drawer needs and that nothing in `ledger/`

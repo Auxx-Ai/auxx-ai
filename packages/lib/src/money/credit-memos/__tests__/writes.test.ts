@@ -26,18 +26,18 @@ vi.mock('@auxx/database', async () => {
   const enums = await import('../../../../../database/src/enums')
   return { schema, ...enums, database: {} }
 })
-vi.mock('../../../postings/accounting-enabled', () => ({
+vi.mock('../../../accounting/ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
 vi.mock('../../../cache', () => ({
   getEntityDefIdResolver: async () => (type: string) => type,
   getOrgCache: () => ({ from: () => ({ bySystemAttributes: async () => ({}) }) }),
 }))
-vi.mock('../../../postings/build-credit-memo-entry', () => ({
+vi.mock('../../../accounting/ledger/builders/credit-memo', () => ({
   buildCreditMemoEntry: h.buildCreditMemoEntry,
 }))
-vi.mock('../../../postings/period-lock', () => ({ resolvePeriodLock: vi.fn() }))
-vi.mock('../../../postings/post-entry', () => ({
+vi.mock('../../../accounting/ledger/periods/period-lock', () => ({ resolvePeriodLock: vi.fn() }))
+vi.mock('../../../accounting/ledger/post/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
   previewEntry: vi.fn(),
 }))

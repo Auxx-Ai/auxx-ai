@@ -19,11 +19,11 @@ import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import type { FieldOptions } from '../../field-values/converters'
-import { ACCOUNT_ROLES } from '../../postings/build-entry'
-import { readRoleAssignments } from '../../postings/role-assignments'
 import { buildOptionIndex, resolveOptionId } from '../../resources/registry/option-helpers'
 import { toRecordId } from '../../resources/resource-id'
 import { systemDefId, systemFieldMap } from '../../resources/system-records'
+import { ACCOUNT_ROLES } from '../ledger/builders/entry'
+import { readRoleAssignments } from '../ledger/roles/role-assignments'
 import {
   type GatewayHandleCensusRow,
   normaliseGatewayHandle,
