@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * `pending` until the bank shows the deposit, `cleared` once it has been matched
@@ -80,7 +80,7 @@ export const BANK_DEPOSIT_STATUS_OPTIONS = [
  *
  * Money is integer minor units ({@link BANK_DEPOSIT_FIELDS.totalMinor}).
  */
-export const BANK_DEPOSIT_FIELDS: Record<string, ResourceField> = {
+export const BANK_DEPOSIT_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -480,4 +480,4 @@ export const BANK_DEPOSIT_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

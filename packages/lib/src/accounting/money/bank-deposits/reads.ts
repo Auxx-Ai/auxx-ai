@@ -21,11 +21,20 @@ import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../../cache'
-import { UnprocessableEntityError } from '../../../errors'
-import { type RecordId, toRecordId } from '../../../resources/resource-id'
-import { systemValueJoin } from '../../../resources/system-records'
+import { getOrgCache } from '../../../cache'
+import type { RecordId } from '../../../resources/resource-id'
+import {
+  inPageOrder,
+  readSystemRecords,
+  type SystemRecord,
+  systemValueJoin,
+} from '../../../resources/system-records'
 import { methodsRoutedToUndepositedFunds, resolveBankDepositStatus } from './client'
+import {
+  type BankDepositAttribute,
+  type DepositBankAccountContext,
+  loadBankDepositFieldContext,
+} from './fields'
 import { guard } from './guard'
 import type {
   BankDepositDetail,
@@ -47,59 +56,6 @@ const RECEIPT_COLUMNS = {
   bankDepositInstanceId: schema.MoneyTransaction.bankDepositInstanceId,
 } as const
 
-/** Every `bank_deposit` attribute a {@link BankDepositRecord} is assembled from. */
-const DEPOSIT_ATTRIBUTES = [
-  'bank_deposit_number',
-  'bank_deposit_date',
-  'bank_deposit_bank_account',
-  'bank_deposit_bank_account_record',
-  'bank_deposit_reference',
-  'bank_deposit_status',
-  'bank_deposit_total',
-  'bank_deposit_bank_transaction_id',
-  'bank_deposit_cleared_at',
-  'bank_deposit_reconciled_at',
-] as const
-
-/**
- * The `bank_account` attributes a deposit needs to name the account it is banked
- * into.
- *
- * 🛑 Read through the entity layer rather than by importing `banking/`.
- * `banking/review/writes.ts` already imports `clearBankDeposit` from this
- * module, so a `money -> banking` import would close a cycle - the same
- * backwards edge `plans/bank-connection/09-data-connector-debt.md` D1 was about,
- * one feature over. A `bank_account` is an `EntityInstance` like any other and
- * this module already resolves `payment` and `bank_deposit` exactly this way.
- */
-const BANK_ACCOUNT_ATTRIBUTES = [
-  'bank_account_name',
-  'bank_account_gl_account',
-  'bank_account_has_posted',
-] as const
-
-type DepositAttribute = (typeof DEPOSIT_ATTRIBUTES)[number]
-
-type DepositFields = Record<DepositAttribute, { id: string } | null>
-
-type BankAccountAttribute = (typeof BANK_ACCOUNT_ATTRIBUTES)[number]
-
-type BankAccountFields = Record<BankAccountAttribute, { id: string } | null>
-
-const DEFAULT_LIMIT = 100
-
-/** The resolved def and field ids every deposit read needs. */
-export interface BankDepositFieldContext {
-  depositDefId: string
-  fields: DepositFields
-}
-
-/** The resolved `bank_account` def and the fields a deposit reads off it. */
-export interface DepositBankAccountContext {
-  bankAccountDefId: string
-  fields: BankAccountFields
-}
-
 /** The account a deposit is banked into, as this module needs it. */
 export interface DepositBankAccount {
   id: string
@@ -110,105 +66,7 @@ export interface DepositBankAccount {
   archivedAt: Date | null
 }
 
-/**
- * Resolve the `bank_deposit` def and its fields, or `null` when the org has not
- * run entity migration 125 yet.
- *
- * `null` rather than a throw so a list surface on an unmigrated org renders
- * empty instead of 500ing. The WRITE paths call
- * {@link requireBankDepositFieldContext} instead: a write that silently did
- * nothing would be worse than a refusal.
- */
-export async function loadBankDepositFieldContext(
-  organizationId: string
-): Promise<BankDepositFieldContext | null> {
-  const depositDefId = await getCachedEntityDefId(organizationId, 'bank_deposit')
-  if (!depositDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...DEPOSIT_ATTRIBUTES])) as DepositFields
-  // Without `status` and `total` there is no deposit at all: the freeze rule and
-  // the sum-must-equal-the-payments rule both reduce to "yes".
-  if (!fields.bank_deposit_status || !fields.bank_deposit_total) return null
-  return { depositDefId, fields }
-}
-
-/** {@link loadBankDepositFieldContext}, as the refusal a write path needs. */
-export async function requireBankDepositFieldContext(
-  organizationId: string
-): Promise<BankDepositFieldContext> {
-  const ctx = await loadBankDepositFieldContext(organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Bank deposits are not available until the bank deposit entity and its fields are ' +
-        'provisioned (entity migration 125)'
-    )
-  }
-  return ctx
-}
-
-/**
- * {@link requireBankDepositFieldContext} plus the link to the bank account.
- *
- * 🛑 Separate from the plain require, and only the CREATE path asks for it. A
- * deposit written without the link records the GL code alone, and a code cannot
- * be resolved back to an account (several map to one), so the row would sit
- * permanently outside the removal gate - the hole entity migration 135 closes.
- *
- * ⚠️ Clearing and correcting must NOT go through here. Neither writes the link,
- * and refusing them on an org that has 125 but not yet 135 would break matching
- * a bank line to a deposit that already exists - a path this field has nothing
- * to do with, between a deploy and the migration run.
- */
-export async function requireBankDepositWriteContext(
-  organizationId: string
-): Promise<BankDepositFieldContext> {
-  const ctx = await requireBankDepositFieldContext(organizationId)
-  if (!ctx.fields.bank_deposit_bank_account_record) {
-    throw new UnprocessableEntityError(
-      'Recording a bank deposit is not available until the deposit bank account link is ' +
-        'provisioned (entity migration 135)'
-    )
-  }
-  return ctx
-}
-
-/**
- * Resolve the `bank_account` def and the fields a deposit reads off it.
- *
- * `null` when the org has no `bank_account` def, which is every org short of
- * entity migration 125.
- */
-export async function loadDepositBankAccountContext(
-  organizationId: string
-): Promise<DepositBankAccountContext | null> {
-  const bankAccountDefId = await getCachedEntityDefId(organizationId, 'bank_account')
-  if (!bankAccountDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...BANK_ACCOUNT_ATTRIBUTES])) as BankAccountFields
-  return { bankAccountDefId, fields }
-}
-
-/**
- * {@link loadDepositBankAccountContext}, as the refusal a write path needs.
- *
- * 🛑 The chart mapping is required, not optional. Without
- * `bank_account_gl_account` there is no account to debit and a deposit could
- * only be posted by guessing at a code the operator never named.
- */
-export async function requireDepositBankAccountContext(
-  organizationId: string
-): Promise<DepositBankAccountContext> {
-  const ctx = await loadDepositBankAccountContext(organizationId)
-  if (!ctx?.fields.bank_account_gl_account) {
-    throw new UnprocessableEntityError(
-      'Banking a payment is not available until the bank account entity and its chart mapping ' +
-        'are provisioned (entity migration 125)'
-    )
-  }
-  return ctx
-}
+const DEFAULT_LIMIT = 100
 
 /**
  * One bank account, by id, org-scoped.
@@ -223,67 +81,20 @@ export async function readDepositBankAccount(
   ctx: DepositBankAccountContext,
   bankAccountId: string
 ): Promise<DepositBankAccount | null> {
-  const [instance] = await db
-    .select({ id: schema.EntityInstance.id, archivedAt: schema.EntityInstance.archivedAt })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.bankAccountDefId),
-        eq(schema.EntityInstance.id, bankAccountId)
-      )
-    )
-    .limit(1)
-  if (!instance) return null
-
-  const fieldIds = [
-    ctx.fields.bank_account_name?.id,
-    ctx.fields.bank_account_gl_account?.id,
-  ].filter((id): id is string => !!id)
-  const values = fieldIds.length
-    ? await db
-        .select({ fieldId: schema.FieldValue.fieldId, valueText: schema.FieldValue.valueText })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            eq(schema.FieldValue.entityId, instance.id),
-            inArray(schema.FieldValue.fieldId, fieldIds)
-          )
-        )
-    : []
-  const byField = new Map(values.map((row) => [row.fieldId, row.valueText]))
-  const read = (attr: BankAccountAttribute) => {
-    const id = ctx.fields[attr]?.id
-    return id ? (byField.get(id) ?? null) : null
-  }
+  const [record] = await readSystemRecords(db, organizationId, ctx, {
+    ids: [bankAccountId],
+    includeArchived: true,
+  })
+  if (!record) return null
 
   return {
-    id: instance.id,
-    recordId: toRecordId(ctx.bankAccountDefId, instance.id),
-    name: read('bank_account_name')?.trim() || null,
-    glAccountId: read('bank_account_gl_account')?.trim() || null,
-    archivedAt: instance.archivedAt,
+    id: record.id,
+    recordId: record.recordId,
+    name: record.text('bank_account_name')?.trim() || null,
+    glAccountId: record.text('bank_account_gl_account')?.trim() || null,
+    archivedAt: record.archivedAt,
   }
 }
-
-/**
- * A stored date value, as `YYYY-MM-DD` (`@auxx/utils/calendar-day`'s `toDateKey`).
- *
- * 🛑 `FieldValue.valueDate` is a `timestamp(3) with time zone` in `mode: 'string'`,
- * so a DATE field written as `'2026-09-03'` reads back as
- * `'2026-09-03 00:00:00+00'`. Every consumer of this module's `depositDate` and
- * payment `date` is typed and compared as `YYYY-MM-DD`: `updateBankDeposit`
- * compares the caller's date against the stored one to decide whether the date
- * actually changed, `groupByDay` keys its sections on the string, and the deposit
- * slip renders it. Without this slice the comparison ALWAYS differs, so an edit
- * that only changed the reference is refused with a `ConflictError` about a date
- * nobody touched, and the slip's day sections split one day into two.
- *
- * Sliced rather than parsed: the stored instant is midnight UTC of the day that
- * was written, and re-parsing it through a local `Date` would move it a day in
- * either direction west or east of UTC.
- */
 
 /**
  * Receipts that are waiting to be banked: routed to `undeposited_funds` by the
@@ -456,19 +267,18 @@ export async function listBankDeposits(
   const { organizationId, status, limit, offset } = params
   return guard(
     async () => {
-      const ctx = await loadBankDepositFieldContext(organizationId)
+      const ctx = await loadBankDepositFieldContext(db, organizationId)
       if (!ctx) return []
 
       const where: SQL[] = [
         eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.depositDefId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
         isNull(schema.EntityInstance.archivedAt),
       ]
 
-      let query = db
-        .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-        .from(schema.EntityInstance)
-        .$dynamic()
+      // Paged in SQL, because `readSystemRecords` has no `limit`/`offset`: the
+      // page is cut here and its ids handed to the reader.
+      let query = db.select({ id: schema.EntityInstance.id }).from(schema.EntityInstance).$dynamic()
 
       if (status && ctx.fields.bank_deposit_status) {
         const statusValue = alias(schema.FieldValue, 'bank_deposit_status_v')
@@ -488,7 +298,9 @@ export async function listBankDeposits(
         .offset(offset ?? 0)
 
       if (rows.length === 0) return []
-      return hydrateDeposits(db, organizationId, ctx, rows)
+      const ids = rows.map((row) => row.id)
+      const page = await readSystemRecords(db, organizationId, ctx, { ids })
+      return inPageOrder(page, ids).map(toBankDepositRecord)
     },
     'Failed to list bank deposits',
     { organizationId }
@@ -517,27 +329,17 @@ export async function readBankDepositDetail(
   organizationId: string,
   depositId: string
 ): Promise<BankDepositDetail | null> {
-  const ctx = await loadBankDepositFieldContext(organizationId)
+  const ctx = await loadBankDepositFieldContext(db, organizationId)
   if (!ctx) return null
 
-  const [instance] = await db
-    .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.id, depositId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.depositDefId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .limit(1)
-  if (!instance) return null
-
-  const [record] = await hydrateDeposits(db, organizationId, ctx, [instance])
+  // Def-scoped, org-scoped and live-only, all inside the reader's own instance query.
+  const [record] = await readSystemRecords(db, organizationId, ctx, { ids: [depositId] })
   if (!record) return null
 
-  return { ...record, payments: await readDepositPayments(db, organizationId, depositId) }
+  return {
+    ...toBankDepositRecord(record),
+    payments: await readDepositPayments(db, organizationId, depositId),
+  }
 }
 
 /**
@@ -588,74 +390,45 @@ export async function readPaymentsByIds(
   return hydrateReceipts(db, organizationId, rows)
 }
 
-/** Turn a page of deposit ids into full rows with ONE additional query. */
-async function hydrateDeposits(
-  db: Database,
-  organizationId: string,
-  ctx: BankDepositFieldContext,
-  page: { id: string; createdAt: Date }[]
-): Promise<BankDepositRecord[]> {
-  const ids = page.map((row) => row.id)
-  const fieldIds = Object.values(ctx.fields)
-    .filter((field): field is { id: string } => field != null)
-    .map((field) => field.id)
-
-  const values = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      valueNumber: schema.FieldValue.valueNumber,
-      valueDate: schema.FieldValue.valueDate,
-      optionId: schema.FieldValue.optionId,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, ids),
-        inArray(schema.FieldValue.fieldId, fieldIds)
-      )
-    )
-
-  const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
-  for (const value of values) {
-    let bucket = byInstance.get(value.entityId)
-    if (!bucket) {
-      bucket = new Map()
-      byInstance.set(value.entityId, bucket)
-    }
-    bucket.set(value.fieldId, value)
+/**
+ * One system record, as a {@link BankDepositRecord}.
+ *
+ * 🛑 `bank_deposit_date` is sliced to `YYYY-MM-DD`. `FieldValue.valueDate` is a
+ * `timestamp(3) with time zone` in `mode: 'string'`, so a DATE field written as
+ * `'2026-09-03'` reads back as `'2026-09-03 00:00:00+00'`, and every consumer of
+ * `depositDate` compares it as a day: `updateBankDeposit` decides whether the
+ * date actually changed from it, `groupByDay` keys its sections on it, the slip
+ * renders it. Unsliced, an edit that only changed the reference is refused with
+ * a `ConflictError` about a date nobody touched.
+ *
+ * Sliced rather than parsed: the stored instant is midnight UTC of the day that
+ * was written, and re-parsing it through a local `Date` would move it a day.
+ */
+function toBankDepositRecord(record: SystemRecord<BankDepositAttribute>): BankDepositRecord {
+  const instant = (attribute: BankDepositAttribute) => {
+    const value = record.date(attribute)
+    return value ? new Date(value) : null
   }
-
-  return page.map((row) => {
-    const read = (attr: DepositAttribute) => {
-      const id = ctx.fields[attr]?.id
-      return id ? (byInstance.get(row.id)?.get(id) ?? null) : null
-    }
-    const date = (attr: DepositAttribute) => {
-      const raw = read(attr)?.valueDate
-      return raw ? new Date(raw) : null
-    }
-    const isoDay = (attr: DepositAttribute) => {
-      const raw = read(attr)?.valueDate
-      return raw ? toDateKey(raw) : null
-    }
-    return {
-      depositId: row.id,
-      recordId: toRecordId(ctx.depositDefId, row.id),
-      number: read('bank_deposit_number')?.valueText ?? null,
-      depositDate: isoDay('bank_deposit_date'),
-      bankAccountId: read('bank_deposit_bank_account_record')?.relatedEntityId ?? null,
-      bankAccountGlAccountId: read('bank_deposit_bank_account')?.valueText ?? null,
-      reference: read('bank_deposit_reference')?.valueText ?? null,
-      status: resolveBankDepositStatus(read('bank_deposit_status')?.optionId),
-      totalMinor: Math.round(read('bank_deposit_total')?.valueNumber ?? 0),
-      bankTransactionId: read('bank_deposit_bank_transaction_id')?.valueText ?? null,
-      clearedAt: date('bank_deposit_cleared_at'),
-      reconciledAt: date('bank_deposit_reconciled_at'),
-      createdAt: row.createdAt,
-    }
-  })
+  const day = record.date('bank_deposit_date')
+  return {
+    depositId: record.id,
+    recordId: record.recordId,
+    number: record.text('bank_deposit_number'),
+    depositDate: day ? toDateKey(day) : null,
+    // `related()` answers null unless the row carries `relatedEntityDefinitionId`;
+    // the id alone is what this field has always been read by and what the
+    // removal gate needs, so fall through to the stored column.
+    bankAccountId:
+      record.related('bank_deposit_bank_account_record') ??
+      record.rows('bank_deposit_bank_account_record')[0]?.relatedEntityId ??
+      null,
+    bankAccountGlAccountId: record.text('bank_deposit_bank_account'),
+    reference: record.text('bank_deposit_reference'),
+    status: resolveBankDepositStatus(record.option('bank_deposit_status')),
+    totalMinor: Math.round(record.number('bank_deposit_total') ?? 0),
+    bankTransactionId: record.text('bank_deposit_bank_transaction_id'),
+    clearedAt: instant('bank_deposit_cleared_at'),
+    reconciledAt: instant('bank_deposit_reconciled_at'),
+    createdAt: record.createdAt ?? new Date(0),
+  }
 }

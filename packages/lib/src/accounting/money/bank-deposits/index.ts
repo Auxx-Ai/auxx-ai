@@ -27,13 +27,15 @@ export {
 } from './client'
 export {
   type BankDepositFieldContext,
+  loadBankDepositFieldContext,
+  requireBankDepositFieldContext,
+} from './fields'
+export {
   getBankDeposit,
   listBankDeposits,
   listUndepositedPayments,
-  loadBankDepositFieldContext,
   readBankDepositDetail,
   readDepositPayments,
-  requireBankDepositFieldContext,
 } from './reads'
 export type {
   BankDepositDetail,

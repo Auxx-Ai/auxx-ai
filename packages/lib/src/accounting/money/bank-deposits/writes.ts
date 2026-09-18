@@ -56,16 +56,18 @@ import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import type { PostResult } from '../../ledger/types'
 import { BANK_DEPOSIT_SOURCE_TYPE, isBankDepositFrozen, resolvePaymentRoute } from './client'
-import { guard } from './guard'
 import {
-  type DepositBankAccount,
   loadBankDepositFieldContext,
-  readBankDepositDetail,
-  readDepositBankAccount,
-  readPaymentsByIds,
   requireBankDepositFieldContext,
   requireBankDepositWriteContext,
   requireDepositBankAccountContext,
+} from './fields'
+import { guard } from './guard'
+import {
+  type DepositBankAccount,
+  readBankDepositDetail,
+  readDepositBankAccount,
+  readPaymentsByIds,
 } from './reads'
 import type {
   BankDepositDetail,
@@ -178,7 +180,7 @@ export async function createBankDeposit(
         throw new BadRequestError('Select at least one payment to bank')
       }
 
-      const depositCtx = await requireBankDepositWriteContext(organizationId)
+      const depositCtx = await requireBankDepositWriteContext(db, organizationId)
       const settings = await getOrgCache().get(organizationId, 'orgSettings')
 
       // ── The read, the checks and the writes, in ONE locked transaction ──
@@ -249,7 +251,7 @@ export async function createBankDeposit(
         }
 
         const crud = new UnifiedCrudHandler(organizationId, actorUserId, txDb)
-        const created = await crud.create(depositCtx.depositDefId, {
+        const created = await crud.create(depositCtx.defId, {
           bank_deposit_date: depositDate,
           bank_deposit_bank_account: bankAccountGlAccountId,
           bank_deposit_bank_account_record: bankAccount.recordId,
@@ -411,7 +413,7 @@ async function requireDepositTarget(
   organizationId: string,
   bankAccountId: string
 ): Promise<DepositBankAccount & { glAccountId: string }> {
-  const ctx = await requireDepositBankAccountContext(organizationId)
+  const ctx = await requireDepositBankAccountContext(db, organizationId)
   const account = await readDepositBankAccount(db, organizationId, ctx, bankAccountId)
   if (!account) {
     throw new UnprocessableEntityError('That bank account does not exist in this organization')
@@ -590,7 +592,7 @@ export async function clearBankDeposit(
 
   return guard(
     async () => {
-      await requireBankDepositFieldContext(organizationId)
+      await requireBankDepositFieldContext(db, organizationId)
       const deposit = await readBankDepositDetail(db, organizationId, depositId)
       if (!deposit) throw new UnprocessableEntityError('That bank deposit does not exist')
 
@@ -646,7 +648,7 @@ export async function updateBankDeposit(
 
   return guard(
     async () => {
-      await requireBankDepositFieldContext(organizationId)
+      await requireBankDepositFieldContext(db, organizationId)
       const deposit = await readBankDepositDetail(db, organizationId, depositId)
       if (!deposit) throw new UnprocessableEntityError('That bank deposit does not exist')
 
@@ -719,7 +721,7 @@ export async function updateBankDeposit(
  * that would 500 on an org short of entity migration 125.
  */
 export async function hasBankDeposits(organizationId: string): Promise<boolean> {
-  return (await loadBankDepositFieldContext(organizationId)) != null
+  return (await loadBankDepositFieldContext(undefined, organizationId)) != null
 }
 
 /** Re-exported so the router can type its `post` field without reaching into `postings`. */

@@ -52,13 +52,20 @@ vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
 
-vi.mock('../reads', () => ({
-  requireBankDepositFieldContext: async () => ({ depositDefId: 'def_bank_deposit', fields: {} }),
+vi.mock('../fields', () => ({
+  requireBankDepositFieldContext: async () => ({ defId: 'def_bank_deposit', fields: {} }),
   requireBankDepositWriteContext: async () => ({
-    depositDefId: 'def_bank_deposit',
+    defId: 'def_bank_deposit',
     fields: { bank_deposit_bank_account_record: { id: 'fld_account' } },
   }),
-  loadBankDepositFieldContext: async () => ({ depositDefId: 'def_bank_deposit', fields: {} }),
+  loadBankDepositFieldContext: async () => ({ defId: 'def_bank_deposit', fields: {} }),
+  requireDepositBankAccountContext: async () => ({
+    defId: 'def_bank_account',
+    fields: { bank_account_gl_account: { id: 'fld_gl' } },
+  }),
+}))
+
+vi.mock('../reads', () => ({
   readPaymentsByIds: async (db: unknown) => {
     h.calls.push('read-payments')
     h.readWith.push(db)
@@ -66,10 +73,6 @@ vi.mock('../reads', () => ({
   },
   readBankDepositDetail: async () => h.deposit,
   readDepositPayments: async () => [],
-  requireDepositBankAccountContext: async () => ({
-    bankAccountDefId: 'def_bank_account',
-    fields: { bank_account_gl_account: { id: 'fld_gl' } },
-  }),
   readDepositBankAccount: async () => h.bankAccount,
 }))
 
