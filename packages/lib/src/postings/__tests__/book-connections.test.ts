@@ -7,7 +7,6 @@ import {
   activateAccountingBookConnectionInTx,
   quickbooksCompanyId,
   readPinnedAccountingConnectionInTx,
-  resolveFulfillmentDeliveryIntentInTx,
 } from '../book-connections'
 
 vi.mock('../accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
@@ -112,56 +111,6 @@ describe('accounting connection bridge', () => {
     for (const metadata of [null, {}, { realmId: 123 }, { realmId: ' ' }])
       expect(() => quickbooksCompanyId(metadata)).toThrow()
     expect(quickbooksCompanyId({ realmId: 'realm_a' })).toBe('realm_a')
-  })
-  it('pins automatic intent using the connection identity', async () => {
-    const { tx } = fixture()
-    expect(await resolveFulfillmentDeliveryIntentInTx(tx, 'org', '2026-09-12')).toEqual({
-      kind: 'automatic',
-      connectionId: 'connection_a',
-    })
-  })
-  it('holds delivery for manual release when the existing export switch is off', async () => {
-    const { tx, rows } = fixture()
-    rows.OrganizationSetting = [{ key: 'quickbooks.postJournalEntries', value: false }]
-    expect(await resolveFulfillmentDeliveryIntentInTx(tx, 'org', '2026-09-12')).toEqual({
-      kind: 'manual',
-      connectionId: 'connection_a',
-    })
-  })
-  it('does not replay periods before the explicit export boundary', async () => {
-    const { tx } = fixture()
-    expect(await resolveFulfillmentDeliveryIntentInTx(tx, 'org', '2026-08-31')).toEqual({
-      kind: 'not_required',
-    })
-  })
-  it('blocks an installed legacy provider until its explicit opening choice is bridged', async () => {
-    const { tx, query } = fixture()
-    query.ExternalBookConnection.findFirst.mockResolvedValue(undefined)
-    await expect(resolveFulfillmentDeliveryIntentInTx(tx, 'org', '2026-09-12')).rejects.toThrow(
-      'explicit export start date'
-    )
-  })
-  it('blocks disconnected historical books even after uninstall', async () => {
-    const { tx, query } = fixture()
-    query.ExternalBookConnection.findFirst.mockResolvedValue(undefined)
-    query.ExternalAccountingBook.findMany.mockResolvedValue([{ id: 'book_a' }])
-    installed(false)
-    await expect(resolveFulfillmentDeliveryIntentInTx(tx, 'org', '2026-09-12')).rejects.toThrow()
-  })
-  it('allows local-only when no installation or historical accounting book exists', async () => {
-    const { tx, query } = fixture()
-    query.ExternalBookConnection.findFirst.mockResolvedValue(undefined)
-    installed(false)
-    expect(await resolveFulfillmentDeliveryIntentInTx(tx, 'org', '2026-09-12')).toEqual({
-      kind: 'not_required',
-    })
-  })
-  it('does not turn authoritative read failures into local-only intent', async () => {
-    const { tx, query } = fixture()
-    query.ExternalBookConnection.findFirst.mockRejectedValue(new Error('database unavailable'))
-    await expect(resolveFulfillmentDeliveryIntentInTx(tx, 'org', '2026-09-12')).rejects.toThrow(
-      'database unavailable'
-    )
   })
   it('refuses credentials for a different company before delivery', async () => {
     const { tx, query } = fixture()

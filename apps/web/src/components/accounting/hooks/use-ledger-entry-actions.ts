@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { EntryPreview, PostResult, PostResultStatus } from '@auxx/lib/postings/client'
+import type { EntryPreview, PostResult } from '@auxx/lib/postings/client'
 import { didLedgerAccept } from '@auxx/lib/postings/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useState } from 'react'
@@ -111,7 +111,7 @@ export function useLedgerEntryActions({
   /** Everything the books-level reads show changes the moment a month lands. */
   const refreshBooks = useCallback(() => {
     void utils.ledger.periods.invalidate()
-    void utils.ledger.failedExports.invalidate()
+    void utils.ledger.exportBatches.invalidate()
     void utils.ledger.verifyBalance.invalidate()
   }, [utils])
 

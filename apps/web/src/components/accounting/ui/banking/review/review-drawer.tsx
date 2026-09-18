@@ -118,11 +118,7 @@ export function ReviewDrawer({
 
   const undo = api.bankingReview.undo.useMutation({
     onSuccess: async (result) => {
-      if (
-        result.post &&
-        result.post.status !== 'posted' &&
-        result.post.status !== 'not_connected'
-      ) {
+      if (result.post && result.post.status !== 'posted') {
         setBlockers([
           {
             status: result.post.status as LedgerBlocker['status'],

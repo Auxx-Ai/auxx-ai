@@ -214,25 +214,15 @@ export type { DuplicateMovementEntry, DuplicateMovementFinding } from './duplica
 // The gate's prose and vocabulary. PURE - the queue panel renders findings as
 // rows, and a label that only existed on the server would have to be written a
 // second time in the browser. See `export-gate/findings.ts`'s own header.
+// TARGET §3: the export batch's own state vocabulary and prose.
 export {
-  CLAIMED_SOURCE_STREAMS,
-  claimedSourceStreams,
-  describeBankCoverageGap,
-  describeUnbalancedEntry,
-  describeUnreviewedBankLines,
-  EXPORT_GATE_CHECKS,
-  type ExportGateCheck,
-  type ExportGateFinding,
-  type ExportGateFindingKey,
-  type ExportGateReport,
-  type ExportGateSeverity,
-  type ExportGateStatus,
-  type ExportGateVerdict,
-  exportGateLead,
-  exportGateMessage,
-  exportGateStatus,
-  liftCloseBlockerItem,
-} from './export-gate/client'
+  EXPORT_BATCH_STATES,
+  EXPORT_BATCH_TABS,
+  type ExportBatchState,
+  type ExportBatchTab,
+  exportBatchStateHint,
+  exportBatchStateLabel,
+} from './export/client'
 // TARGET §3: the export batch's settings. `readExportSettings` stays
 // server-only (`./index`) - these three reach nothing but `../types`.
 export {
@@ -514,25 +504,19 @@ export {
   type ClosePeriod,
   type CounterpartyType,
   type EntryPreview,
-  type FailedExport,
   type GlPostingLineInput,
   type GlPostingSourceInput,
   MANUAL_SOURCE_EXTERNAL_ID,
   MANUAL_SOURCE_LABEL,
   MANUAL_SOURCE_PROVIDER_KEY,
   NON_FAILURE_REFUSALS,
-  POSTING_EXPORT_STATUSES,
   POSTING_LINK_ROLES,
   POSTING_STATUSES,
   POSTING_TYPES,
-  type PostEntryInput,
-  type PostEntryResult,
-  type PostEntryStatus,
   type PostFailureClass,
   type PostingDetail,
   type PostingDetailLine,
   type PostingDirection,
-  type PostingExportStatus,
   type PostingLinkRole,
   type PostingStatus,
   type PostingType,
@@ -549,10 +533,4 @@ export {
   type RoleSourceAssignmentRow,
   type RoleSourceRow,
   type RoleSourceScope,
-  SYNC_QUEUE_STATES,
-  type SyncQueueRow,
-  type SyncQueueState,
-  syncQueueState,
-  type UnsyncOutcome,
-  type UnsyncResult,
 } from './types'

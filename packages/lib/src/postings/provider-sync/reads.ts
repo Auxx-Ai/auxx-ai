@@ -15,7 +15,6 @@ import { type Database, schema } from '@auxx/database'
 import {
   and,
   asc,
-  between,
   eq,
   gte,
   inArray,
@@ -25,6 +24,7 @@ import {
   ne,
   or,
   type SQL,
+  sql,
 } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import type { OurPostedEntry, OurPostedLine, ProviderLedgerLine, ProviderSyncRange } from './client'
@@ -32,32 +32,18 @@ import { PROVIDER_LEDGER_SOURCE_KIND, PROVIDER_SYNC_POSTING_TYPE } from './clien
 import { guard } from './guard'
 
 /**
- * Every provider transaction id this organization holds for an entry **auxx
- * authored** - the set {@link isOurs} is keyed on.
+ * Every provider transaction id this organization holds for an object **auxx
+ * sent** - the set {@link isOurs} is keyed on.
  *
  * 🛑🛑 **Completeness is the whole safety property.** The general ledger report
- * contains every journal entry auxx has ever pushed. An id missing from this
- * set is an entry of ours that the sync writes back as though the accountant
- * had authored it, doubling it. Both copies balance, every statement still
- * ties, and nothing downstream can detect it. One indexed query over
- * `GlPosting_org_provider_entry_key`, no filtering in memory, no pagination.
+ * contains every journal entry auxx has ever pushed. An id missing from this set
+ * is an object of ours that the sync writes back as though the accountant had
+ * authored it, doubling it.
  *
- * 🔧 **`provider_sync` rows are EXCLUDED, and that is deliberate.** Their
- * `providerEntryId` is the accountant's transaction id on the accountant's
- * entry - carried as provenance, not as authorship. Including them would make
- * every entry we have ever imported read as "ours" on the next pass, so §5.3
- * would compare their entry against our copy of their entry and answer
- * `'matches'` forever, while a real edit by the accountant to their own entry
- * would be reported as an edit of OURS and never restated.
- *
- * It cannot cause a double either way: the claim index over
- * `(organizationId, postingType, periodKey, revision)` already holds
- * `('provider_sync', <their txn id>, 0)`, so a second write of the same
- * transaction converges to `already_posted` rather than posting again.
- *
- * `status` is deliberately NOT filtered. A reversed entry of ours still exists
- * in their register under the same id, and its reversal is a separate entry
- * with its own id; treating either as "not ours" would write one of them back.
+ * Read off `ExportBatch`, which since the export batch (TARGET §3) is the only
+ * record of what auxx put in the provider's books. A withdrawn batch is
+ * excluded because its copy is gone from their register too, so it can never
+ * appear in a walk.
  */
 export async function readOurProviderEntryIds(
   db: Database,
@@ -66,42 +52,42 @@ export async function readOurProviderEntryIds(
   return guard(
     async () => {
       const rows = await db
-        .select({ providerEntryId: schema.GlPosting.providerEntryId })
-        .from(schema.GlPosting)
+        .select({ providerObjectId: schema.ExportBatch.providerObjectId })
+        .from(schema.ExportBatch)
         .where(
           and(
-            eq(schema.GlPosting.organizationId, organizationId),
-            isNotNull(schema.GlPosting.providerEntryId),
-            ne(schema.GlPosting.postingType, PROVIDER_SYNC_POSTING_TYPE)
+            eq(schema.ExportBatch.organizationId, organizationId),
+            eq(schema.ExportBatch.state, 'sent'),
+            isNotNull(schema.ExportBatch.providerObjectId)
           )
         )
       const ids = new Set<string>()
-      for (const row of rows) if (row.providerEntryId) ids.add(row.providerEntryId)
+      for (const row of rows) if (row.providerObjectId) ids.add(row.providerObjectId)
       return ids
     },
-    'Failed to read the provider entry ids this organization authored',
+    'Failed to read the provider object ids this organization sent',
     { organizationId }
   )
 }
 
 export interface ReadOurPostedEntriesInput extends ProviderSyncRange {
   /**
-   * The transaction ids the chunk actually carried. Our entries are read for
+   * The transaction ids the chunk actually carried. Our objects are read for
    * the UNION of these and the date range: an id that appeared is compared,
-   * and an id that did not appear but whose entry is dated in range is the
+   * and an id that did not appear but whose object is dated in range is the
    * `'missing'` case (§3.5's delete, detected for free).
    */
   providerEntryIds: readonly string[]
 }
 
 /**
- * Our own copies of the entries §5.3 checks, with their lines.
+ * What we SENT, for §5.3's comparison.
  *
- * Scoped to entries auxx authored, for {@link readOurProviderEntryIds}'s
- * reason, and to `posted` ones: a `reversed` entry is no longer standing in our
- * books, so "theirs differs from ours" is not a statement about it.
- *
- * Two queries, never N+1: the headers, then every line for them in one read.
+ * 🔑 Read off the batch's FROZEN payload, not off `GlPostingLine`. The payload
+ * is what left, and in Summary mode one provider object carries many postings -
+ * so re-deriving the comparison from the detail ledger would compare a hundred
+ * postings against one remote entry and report every one of them as divergent.
+ * `glPostingId` names the first member, for a label.
  */
 export async function readOurPostedEntries(
   db: Database,
@@ -110,83 +96,88 @@ export async function readOurPostedEntries(
 ): Promise<Result<OurPostedEntry[], Error>> {
   return guard(
     async () => {
-      const inRange = between(schema.GlPosting.txnDate, input.from, input.to)
-      // `inArray` with an empty list compiles to a contradiction on some
-      // drivers and to `IN ()` - a syntax error - on others, so an empty set
-      // simply drops the clause.
       const appeared: SQL | undefined =
         input.providerEntryIds.length > 0
-          ? inArray(schema.GlPosting.providerEntryId, [...input.providerEntryIds])
+          ? inArray(schema.ExportBatch.providerObjectId, [...input.providerEntryIds])
           : undefined
 
-      const headers = await db
+      const batches = await db
         .select({
-          id: schema.GlPosting.id,
-          providerEntryId: schema.GlPosting.providerEntryId,
-          docNumber: schema.GlPosting.docNumber,
-          txnDate: schema.GlPosting.txnDate,
+          id: schema.ExportBatch.id,
+          providerObjectId: schema.ExportBatch.providerObjectId,
+          payload: schema.ExportBatch.payload,
         })
-        .from(schema.GlPosting)
+        .from(schema.ExportBatch)
         .where(
           and(
-            eq(schema.GlPosting.organizationId, organizationId),
-            isNotNull(schema.GlPosting.providerEntryId),
-            ne(schema.GlPosting.postingType, PROVIDER_SYNC_POSTING_TYPE),
-            eq(schema.GlPosting.status, 'posted'),
-            appeared ? or(inRange, appeared) : inRange
+            eq(schema.ExportBatch.organizationId, organizationId),
+            eq(schema.ExportBatch.state, 'sent'),
+            isNotNull(schema.ExportBatch.providerObjectId),
+            appeared
+              ? or(inRangeByPayloadDate(input.from, input.to), appeared)
+              : inRangeByPayloadDate(input.from, input.to)
           )
         )
+      if (batches.length === 0) return []
 
-      if (headers.length === 0) return []
-
-      const lineRows = await db
+      const members = await db
         .select({
-          glPostingId: schema.GlPostingLine.glPostingId,
-          glAccountId: schema.GlPostingLine.glAccountId,
-          accountCode: schema.GlPostingLine.accountCode,
-          accountName: schema.GlPostingLine.accountName,
-          direction: schema.GlPostingLine.direction,
-          amountMinor: schema.GlPostingLine.amountMinor,
+          batchId: schema.ExportBatchPosting.batchId,
+          glPostingId: schema.ExportBatchPosting.glPostingId,
         })
-        .from(schema.GlPostingLine)
+        .from(schema.ExportBatchPosting)
         .where(
           and(
-            eq(schema.GlPostingLine.organizationId, organizationId),
+            eq(schema.ExportBatchPosting.organizationId, organizationId),
             inArray(
-              schema.GlPostingLine.glPostingId,
-              headers.map((header) => header.id)
-            )
+              schema.ExportBatchPosting.batchId,
+              batches.map((batch) => batch.id)
+            ),
+            isNull(schema.ExportBatchPosting.withdrawnAt)
           )
         )
-        .orderBy(asc(schema.GlPostingLine.lineNumber))
+      const firstMember = new Map<string, string>()
+      for (const member of members)
+        if (!firstMember.has(member.batchId)) firstMember.set(member.batchId, member.glPostingId)
 
-      const linesByPostingId = new Map<string, OurPostedLine[]>()
-      for (const row of lineRows) {
-        const lines = linesByPostingId.get(row.glPostingId) ?? []
-        lines.push({
-          glAccountId: row.glAccountId,
-          // The SNAPSHOTS frozen on the line, never the live chart.
-          accountCode: row.accountCode ?? null,
-          accountName: row.accountName ?? null,
-          direction: row.direction as 'debit' | 'credit',
-          amountMinor: toMinor(row.amountMinor),
-        })
-        linesByPostingId.set(row.glPostingId, lines)
-      }
-
-      return headers.map((header) => ({
-        glPostingId: header.id,
-        // Non-null by the `isNotNull` predicate above.
-        providerEntryId: header.providerEntryId ?? '',
-        // Non-null: `status = 'posted'` above always carries a doc number.
-        docNumber: header.docNumber ?? '',
-        txnDate: toDateKey(header.txnDate),
-        lines: linesByPostingId.get(header.id) ?? [],
-      }))
+      return batches.map((batch) => {
+        const payload = batch.payload as {
+          docNumber?: string
+          txnDate?: string
+          lines?: Array<{
+            glAccountId?: string
+            accountCode?: string | null
+            direction?: string
+            amountMinor?: number
+          }>
+        }
+        return {
+          glPostingId: firstMember.get(batch.id) ?? batch.id,
+          providerEntryId: batch.providerObjectId ?? '',
+          docNumber: payload.docNumber ?? '',
+          txnDate: toDateKey(payload.txnDate ?? ''),
+          lines: (payload.lines ?? []).map(
+            (line): OurPostedLine => ({
+              glAccountId: line.glAccountId ?? '',
+              accountCode: line.accountCode ?? null,
+              // The batch payload carries no account NAME - nothing joins on it
+              // and the difference report falls back to the code.
+              accountName: null,
+              direction: line.direction === 'credit' ? 'credit' : 'debit',
+              amountMinor: toMinor(line.amountMinor ?? 0),
+            })
+          ),
+        }
+      })
     },
-    'Failed to read our own exported entries for the provider comparison',
+    'Failed to read our own sent batches for the provider comparison',
     { organizationId, from: input.from, to: input.to }
   )
+}
+
+/** The payload's own accounting date, compared as the string it is stored as. */
+function inRangeByPayloadDate(from: string, to: string): SQL {
+  return sql`${schema.ExportBatch.payload}->>'txnDate' BETWEEN ${from} AND ${to}`
 }
 
 /**

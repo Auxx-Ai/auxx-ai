@@ -14,43 +14,98 @@
 // files/storage/storage-manager.ts): an interface with an `id`, a registry of
 // lazy factories, and a cache so a provider is constructed once.
 
-import type { DeliveryObjectType } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError, UnprocessableEntityError } from '../errors'
 import type { GlAccountSubtypeValue } from './account-subtype'
 import type { GlAccountTypeValue } from './default-chart'
 import type { ProviderLedgerSlicer } from './provider-sync/client'
-import type {
-  PostEntryInput,
-  PostEntryResult,
-  ProviderAccount,
-  ProviderBalanceSheet,
-  WithdrawResult,
-} from './types'
+import type { ProviderAccount, ProviderBalanceSheet, WithdrawResult } from './types'
 
 const logger = createScopedLogger('postings-provider')
+
+/**
+ * Who the adapter is acting for, on one call.
+ *
+ * `connectionId` pins the destination: a batch carries the connection it was
+ * built against, so a cutover mid-export sends to the company it started with
+ * or refuses, rather than silently redirecting.
+ */
+export interface ProviderObjectContext {
+  organizationId: string
+  connectionId: string
+  actorUserId?: string
+}
+
+/**
+ * One object to create at the provider.
+ *
+ * 🛑 `payload` is OPAQUE above the seam and its shape belongs to `objectType`,
+ * not to the interface: a second accounting provider (Xero) implements the same
+ * three methods over the same three words. No posting or batch vocabulary
+ * appears here on purpose (MIGRATION step 3).
+ */
+export interface SendObjectInput {
+  objectType: string
+  payload: Record<string, unknown>
+  /** Deterministic, derived from the batch identity. The provider must be idempotent on it. */
+  idempotencyKey: string
+}
+
+export interface SendObjectResult {
+  /** `already_exists` means the provider held it and nothing was written. */
+  status: 'sent' | 'already_exists' | 'not_connected' | 'disabled'
+  /** The provider's own id. `''` when nothing was sent. */
+  externalId: string
+  /** The provider's concurrency token, which a later withdrawal needs. */
+  remoteVersion: string | null
+  providerId: string
+  /** Which instance of the provider answered - a QuickBooks realm, a Xero tenant. */
+  tenantId?: string
+}
+
+/** What to look for. Both halves are supplied because no provider offers both. */
+export interface ReadObjectRef {
+  objectType: string
+  externalId: string | null
+  docNumber: string | null
+}
+
+/**
+ * What the provider holds, as far as it can say.
+ *
+ * `unsupported` is an honest answer and not a failure: a provider with no
+ * per-object read cannot prove a send landed, and a caller that read silence as
+ * proof would be verifying nothing. See {@link AccountingProvider.readObject}.
+ */
+export interface ReadObjectResult {
+  status: 'found' | 'gone' | 'unsupported'
+  externalId: string | null
+  remoteVersion: string | null
+  docNumber: string | null
+  /** Integer minor units, when the read reports a total. */
+  totalMinor: number | null
+  /** The provider's rendering of what it holds, hashed the way we hash ours. */
+  payloadHash: string | null
+}
+
+/** One object to remove, by the id and version recorded when it was created. */
+export interface WithdrawObjectInput {
+  objectType: string
+  externalId: string
+  remoteVersion: string | null
+}
 
 /** The id of the null provider. Reserved - no adapter may register under it. */
 export const NONE_PROVIDER_ID = 'none'
 
 /**
- * One accounting system auxx.ai can export postings to.
+ * One accounting system auxx.ai can export objects to.
  *
- * Nine methods now (plus an optional `init`) - the "deliberately two
- * methods" this docblock used to claim went stale when `G19`'s account-mapping
- * and identity work grew the interface, and briefs 19 and 20 each added one on
- * top: resolve a code, post an entry, read the provider's own chart, read and
- * write its account map, read its balance sheet as of a date, and read its
- * general ledger over a range, and remove one object we put there. Everything
- * else an accounting integration does -
- * customers, invoices, payments - still belongs to the app that owns that
- * integration; this interface is only the posting and chart-mapping seam.
- *
- * 🛑 Seven of the nine are write-or-map, {@link withdrawObject} is the only one
- * that removes anything, and the two `readProvider*` reads are
- * the whole INBOUND half: they are the only way anything the accountant
- * authored reaches auxx at all (brief 20 decision 1).
+ * Three object methods - {@link sendObject}, {@link readObject},
+ * {@link withdrawObject} - plus the chart and account-map seam `G19` needs and
+ * the two inbound reads brief 20 added. The object three are generic over an
+ * opaque payload so a second provider implements them unchanged.
  */
 export interface AccountingProvider {
   readonly id: string
@@ -69,17 +124,29 @@ export interface AccountingProvider {
   resolveAccount(orgId: string, code: string): Promise<Result<string, Error>>
 
   /**
-   * Push one balanced entry.
+   * Create one object from a frozen payload.
    *
    * MUST be idempotent on `input.idempotencyKey`: a retry after a timeout has to
-   * converge on the entry already posted rather than post a second one. A
+   * converge on the object already there rather than create a second one. A
    * double-posted journal entry has no invoice or payment to reconcile against
    * and is not noticed until a close does not tie out.
-   *
-   * The entry handed here is already balanced - `buildEntry` refuses to produce
-   * an unbalanced one. An adapter must not silently repair amounts.
    */
-  postEntry(input: PostEntryInput): Promise<Result<PostEntryResult, Error>>
+  sendObject(
+    ctx: ProviderObjectContext,
+    input: SendObjectInput
+  ): Promise<Result<SendObjectResult, Error>>
+
+  /**
+   * Read one object back, so a send can be proved rather than assumed.
+   *
+   * 🛑 Answer `unsupported` rather than inventing a result when the provider has
+   * no per-object read. The caller degrades to comparing the document number and
+   * the total, and it can only choose to if it is told.
+   */
+  readObject(
+    ctx: ProviderObjectContext,
+    ref: ReadObjectRef
+  ): Promise<Result<ReadObjectResult, Error>>
 
   /**
    * The connected system's own chart, for the `G19` mapping screen.
@@ -171,12 +238,10 @@ export interface AccountingProvider {
    * "not there" rather than raising, so an uncertain delete can be resolved by
    * retrying it.
    */
-  withdrawObject(input: {
-    orgId: string
-    objectType: DeliveryObjectType
-    externalId: string
-    remoteVersion: string | null
-  }): Promise<Result<WithdrawResult, Error>>
+  withdrawObject(
+    ctx: ProviderObjectContext,
+    input: WithdrawObjectInput
+  ): Promise<Result<WithdrawResult, Error>>
 
   /**
    * Create the counterpart of one of OUR accounts in the provider's own chart -
@@ -338,13 +403,35 @@ class NoneAccountingProvider implements AccountingProvider {
     return ok(code)
   }
 
-  async postEntry(input: PostEntryInput): Promise<Result<PostEntryResult, Error>> {
-    logger.debug('No accounting provider connected - posting stays internal', {
-      organizationId: input.organizationId,
-      glPostingId: input.glPostingId,
-      docNumber: input.docNumber,
+  async sendObject(
+    ctx: ProviderObjectContext,
+    input: SendObjectInput
+  ): Promise<Result<SendObjectResult, Error>> {
+    logger.debug('No accounting provider connected - the batch stays internal', {
+      organizationId: ctx.organizationId,
+      objectType: input.objectType,
     })
-    return ok({ status: 'not_connected', externalId: '', providerId: NONE_PROVIDER_ID })
+    return ok({
+      status: 'not_connected',
+      externalId: '',
+      remoteVersion: null,
+      providerId: NONE_PROVIDER_ID,
+    })
+  }
+
+  /** Nothing to read back, and saying so is what stops a caller treating silence as proof. */
+  async readObject(
+    _ctx: ProviderObjectContext,
+    ref: ReadObjectRef
+  ): Promise<Result<ReadObjectResult, Error>> {
+    return ok({
+      status: 'unsupported',
+      externalId: ref.externalId,
+      remoteVersion: null,
+      docNumber: ref.docNumber,
+      totalMinor: null,
+      payloadHash: null,
+    })
   }
 
   /**
@@ -409,16 +496,18 @@ class NoneAccountingProvider implements AccountingProvider {
    * as though we did would let a caller reset a row whose copy still sits in
    * somebody's books.
    */
-  async withdrawObject(input: {
-    orgId: string
-    objectType: DeliveryObjectType
-    externalId: string
-    remoteVersion: string | null
-  }): Promise<Result<WithdrawResult, Error>> {
+  async withdrawObject(
+    ctx: ProviderObjectContext,
+    input: WithdrawObjectInput
+  ): Promise<Result<WithdrawResult, Error>> {
     return err(
       new UnprocessableEntityError(
         'No accounting system is connected, so there is nothing to remove from one.',
-        { organizationId: input.orgId, objectType: input.objectType, externalId: input.externalId }
+        {
+          organizationId: ctx.organizationId,
+          objectType: input.objectType,
+          externalId: input.externalId,
+        }
       )
     )
   }

@@ -54,6 +54,12 @@ export interface ApplyMoneyToInvoiceInput {
   effectiveDate: string
   /** Idempotency key. A retry returns the first run's application id. */
   commandKey: string
+  /**
+   * The quote this money was held against, when it was a quote deposit
+   * (MIGRATION follow-up 7). Stamped on the row rather than read back off
+   * `MoneyCommand.actorSnapshot`.
+   */
+  quoteInstanceId?: string
 }
 
 export interface ApplyMoneyToInvoiceResult extends Record<string, string> {
@@ -200,6 +206,7 @@ export async function applyMoneyToInvoice(
           effectiveDate: input.effectiveDate,
           commandId,
           commandItemKey: 'apply_to_invoice',
+          ...(input.quoteInstanceId ? { quoteInstanceId: input.quoteInstanceId } : {}),
         })
         .returning({ id: schema.MoneyApplication.id })
       if (!application) throw new Error('Money application insert returned no row')

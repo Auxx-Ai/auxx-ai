@@ -5,7 +5,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { sweepCustomerReceiptAccounting } from '../../money/customer-money/accounting'
 import { sweepDepositApplicationAccounting } from '../../money/customer-money/deposit-application-accounting'
 import { sweepImportedCustomerMoney } from '../../money/customer-money/ingest'
-import { sweepAccountingDeliveries } from '../../postings/delivery'
+import { sweepExportBatches } from '../../postings/export'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('accounting-recovery-job')
@@ -75,14 +75,16 @@ export async function accountingRecoveryJob(ctx: JobContext): Promise<void> {
         })
       }
     }
+    // Gate 2's scheduled half: batches whose avenue auto-sends, and failed ones
+    // past their backoff. A held batch is never touched here.
     try {
-      await sweepAccountingDeliveries(database, {
+      await sweepExportBatches(database, {
         organizationId: organization.id,
         limit: 5,
         timeBudgetMs: Math.max(1, deadline - Date.now()),
       })
     } catch (error) {
-      logger.warn('Accounting delivery recovery needs retry', {
+      logger.warn('Export batch recovery needs retry', {
         organizationId: organization.id,
         error: error instanceof Error ? error.message : String(error),
       })

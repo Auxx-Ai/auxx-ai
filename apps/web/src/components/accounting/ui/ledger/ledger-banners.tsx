@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { SyncQueueRow } from '@auxx/lib/postings/client'
+import type { ExportBatchRow } from '@auxx/lib/postings'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
@@ -19,7 +19,7 @@ interface LedgerBannersProps {
   hasOpenPeriod: boolean
   periodLabel: string
   /** The whole queue, all periods. This component takes only the refusals out of it. */
-  exports: SyncQueueRow[]
+  exports: ExportBatchRow[]
   /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
   providerLabel: string
   onOpenSyncQueue: () => void
@@ -56,14 +56,11 @@ export function LedgerBanners({
   onReviewLock,
   onNextPeriod,
 }: LedgerBannersProps) {
-  /**
-   * 🛑 REFUSALS only (53 §7.2.2). With the hold on, every posted entry rests at
-   * `exportStatus: 'pending'`, so a banner keyed on the whole queue would be
-   * open on every visit forever - and a banner that is always there is one
-   * nobody reads by the time something has actually gone wrong. What is merely
-   * HELD is the sync queue's, and the rail is the door to it.
-   */
-  const refused = exports.filter((row) => row.exportStatus === 'failed')
+  // 🛑 REFUSALS only. With the hold on, every batch rests `ready`, so a banner
+  // keyed on the whole queue would be open on every visit forever - and a banner
+  // that is always there is one nobody reads by the time something has actually
+  // gone wrong. What is merely HELD is the export queue's.
+  const refused = exports.filter((row) => row.state === 'failed')
   const nothingToSay = hasPeriod && hasOpenPeriod && refused.length === 0 && blockers.length === 0
   // 🛑 `null`, not an empty padded div. The column this sits in has no padding
   // of its own (every `Section` under it pads itself), so a wrapper that always

@@ -76,40 +76,73 @@ import {
 import { listChartAccounts } from '../src/postings'
 import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'
 
-// TODO(step-3): `release-claims.ts` (step 1a) went with `AccountingWork` /
-// `AccountingEffect`; `GlPostingSource` cascades on `GlPosting` delete, so the
-// claim itself needs no release any more. `AccountingDelivery` and its two
-// child tables are still `ON DELETE NO ACTION` until step 3 drops them, so a
-// posting with a delivery row still has to be cleared first.
-async function releaseDeliveryRows(
+// `GlPostingSource` cascades on `GlPosting` delete, so the claim itself needs no
+// release. `ExportBatchPosting` is `ON DELETE NO ACTION` against the posting, so
+// a batched posting still has to be cleared first (TARGET §3).
+async function releaseExportBatchRows(
   organizationId: string,
   glPostingIds: readonly string[]
 ): Promise<number> {
   if (!glPostingIds.length) return 0
-  const deliveries = await db
-    .select({ id: schema.AccountingDelivery.id })
-    .from(schema.AccountingDelivery)
+  const members = await db
+    .select({ batchId: schema.ExportBatchPosting.batchId })
+    .from(schema.ExportBatchPosting)
     .where(
       and(
-        eq(schema.AccountingDelivery.organizationId, organizationId),
-        inArray(schema.AccountingDelivery.glPostingId, [...glPostingIds])
+        eq(schema.ExportBatchPosting.organizationId, organizationId),
+        inArray(schema.ExportBatchPosting.glPostingId, [...glPostingIds])
       )
     )
-  const deliveryIds = deliveries.map((row) => row.id)
-  if (!deliveryIds.length) return 0
-  for (const table of [schema.AccountingDeliveryCoverage, schema.AccountingDeliveryOperation])
-    await db
-      .delete(table)
-      .where(and(eq(table.organizationId, organizationId), inArray(table.deliveryId, deliveryIds)))
+  const batchIds = [...new Set(members.map((row) => row.batchId))]
+  if (!batchIds.length) return 0
   await db
-    .delete(schema.AccountingDelivery)
+    .delete(schema.ExportBatchPosting)
     .where(
       and(
-        eq(schema.AccountingDelivery.organizationId, organizationId),
-        inArray(schema.AccountingDelivery.id, deliveryIds)
+        eq(schema.ExportBatchPosting.organizationId, organizationId),
+        inArray(schema.ExportBatchPosting.batchId, batchIds)
       )
     )
-  return deliveryIds.length
+  await db
+    .delete(schema.ExportBatch)
+    .where(
+      and(
+        eq(schema.ExportBatch.organizationId, organizationId),
+        inArray(schema.ExportBatch.id, batchIds)
+      )
+    )
+  return batchIds.length
+}
+
+/** Which of these postings a SENT batch already put in the provider's books. */
+async function readSentProviderObjects(
+  organizationId: string,
+  glPostingIds: readonly string[]
+): Promise<Map<string, string>> {
+  if (!glPostingIds.length) return new Map()
+  const rows = await db
+    .select({
+      glPostingId: schema.ExportBatchPosting.glPostingId,
+      providerObjectId: schema.ExportBatch.providerObjectId,
+    })
+    .from(schema.ExportBatchPosting)
+    .innerJoin(
+      schema.ExportBatch,
+      and(
+        eq(schema.ExportBatch.organizationId, schema.ExportBatchPosting.organizationId),
+        eq(schema.ExportBatch.id, schema.ExportBatchPosting.batchId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.ExportBatchPosting.organizationId, organizationId),
+        inArray(schema.ExportBatchPosting.glPostingId, [...glPostingIds]),
+        eq(schema.ExportBatch.state, 'sent')
+      )
+    )
+  const sent = new Map<string, string>()
+  for (const row of rows) if (row.providerObjectId) sent.set(row.glPostingId, row.providerObjectId)
+  return sent
 }
 
 const ORG_ARG = process.argv[2] ?? ''
@@ -282,7 +315,6 @@ async function main() {
   // means "entries whose export was refused", and deleting one throws away a
   // real entry. That is right for a dev reset and wrong everywhere else, which
   // is why the summary says so.
-  if (FAILED_ONLY) where.push(eq(schema.GlPosting.exportStatus, 'failed'))
   if (PERIOD) where.push(eq(schema.GlPosting.periodKey, PERIOD))
 
   const postings = await db
@@ -294,38 +326,38 @@ async function main() {
       status: schema.GlPosting.status,
       docNumber: schema.GlPosting.docNumber,
       totalMinor: schema.GlPosting.totalMinor,
-      providerId: schema.GlPosting.providerId,
-      providerEntryId: schema.GlPosting.providerEntryId,
-      attempts: schema.GlPosting.attempts,
-      failureReason: schema.GlPosting.failureReason,
     })
     .from(schema.GlPosting)
     .where(and(...where))
     // Descending revision is also the delete order `reversesId`'s RESTRICT forces.
     .orderBy(desc(schema.GlPosting.revision))
 
+  const sentObjects = await readSentProviderObjects(
+    org.id,
+    postings.map((p) => p.id)
+  )
+
   if (postings.length === 0) {
     console.log('postings: none in scope - already clean\n')
   } else {
     console.log(`postings: ${postings.length} row(s), highest revision first`)
     for (const p of postings) {
-      const exported = p.providerEntryId ? ` EXPORTED ${p.providerId}:${p.providerEntryId}` : ''
+      const sent = sentObjects.get(p.id)
       console.log(
         `  ${p.status.padEnd(8)} rev${p.revision} ${p.postingType.padEnd(19)}` +
           ` ${(p.docNumber ?? '').padEnd(22)} ${money(p.totalMinor).padStart(13)}` +
-          ` attempts=${p.attempts}${exported}`
+          `${sent ? ` SENT as ${sent}` : ''}`
       )
-      if (p.failureReason) console.log(`           ${p.failureReason.slice(0, 150)}`)
     }
     console.log('')
   }
 
   // ── 2. Guard: anything already on the provider ────────────────────────────
 
-  const exportedRows = postings.filter((p) => p.providerEntryId !== null)
+  const exportedRows = postings.filter((p) => sentObjects.has(p.id))
   if (exportedRows.length > 0 && !FORCE) {
     console.error(
-      `🛑 REFUSING. ${exportedRows.length} posting(s) carry a providerEntryId and are already in\n` +
+      `🛑 REFUSING. ${exportedRows.length} posting(s) sit in a SENT export batch and are already in\n` +
         '   the accounting system. Deleting our row orphans a real journal entry over there and\n' +
         '   leaves the next close computing its delta against a snapshot the provider no longer\n' +
         '   agrees with.\n\n' +
@@ -422,13 +454,13 @@ async function main() {
 
   // ── 5. Do it ──────────────────────────────────────────────────────────────
 
-  // Deliveries and coverage first: those FKs are ON DELETE NO ACTION.
-  // `GlPostingSource` cascades, so the claim itself needs nothing here.
-  const releasedDeliveries = await releaseDeliveryRows(
+  // Batches first: `ExportBatchPosting`'s FK to the posting is ON DELETE NO
+  // ACTION. `GlPostingSource` cascades, so the claim needs nothing here.
+  const releasedBatches = await releaseExportBatchRows(
     org.id,
     postings.map((p) => p.id)
   )
-  if (releasedDeliveries) console.log(`released ${releasedDeliveries} delivery(ies)`)
+  if (releasedBatches) console.log(`released ${releasedBatches} export batch(es)`)
 
   for (const p of postings) {
     await db

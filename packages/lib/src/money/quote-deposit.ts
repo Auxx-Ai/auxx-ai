@@ -148,6 +148,8 @@ export async function applyHeldDepositsToInvoice(params: {
       amountMinor,
       effectiveDate,
       commandKey: `deposit-apply:${receipt.moneyTransactionId}:${params.invoiceInstanceId}`,
+      // Follow-up 7: the quote the deposit came from, carried onto the row.
+      ...(receipt.quoteInstanceId ? { quoteInstanceId: receipt.quoteInstanceId } : {}),
     })
     remaining -= amountMinor
   }

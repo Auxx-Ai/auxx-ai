@@ -395,7 +395,7 @@ describe('fulfillOrder against the real poster', () => {
 
     expect(result.isOk()).toBe(true)
     const { fulfillment, post } = result._unsafeUnwrap()
-    expect(post.status).toBe('not_connected')
+    expect(post.status).toBe('posted')
     expect(post.glPostingId).toBeDefined()
     expect(fulfillment.glPosting).toBe(post.glPostingId)
 
@@ -440,7 +440,7 @@ describe('fulfillOrder against the real poster', () => {
       fulfillmentInstanceId: 'ful_1',
       actorUserId: USER,
     })
-    expect(reversal?.status).toBe('not_connected')
+    expect(reversal?.status).toBe('posted')
 
     const bySubject = await listPostingsForSource(fake.db, {
       organizationId: ORG,

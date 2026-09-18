@@ -5,7 +5,6 @@ import { reconcileConnectorSchedulers } from '@auxx/lib/data-connectors'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { reconcileSourceSchedulers } from '@auxx/lib/knowledge-sources'
 import { reconcileProviderSyncSchedulers } from '@auxx/lib/postings'
-import { startAccountingDeliveryWorker } from './worker-definitions/accounting-delivery-worker'
 import { startAiAgentWorker } from './worker-definitions/ai-agent-worker'
 import { startAiAutofillWorker } from './worker-definitions/ai-autofill-worker'
 import { startAppTriggerWorker } from './worker-definitions/app-trigger-worker'
@@ -22,6 +21,7 @@ import { startEmailWorker } from './worker-definitions/email-worker'
 import { startEnrichmentWorker } from './worker-definitions/enrichment-worker'
 import { startEvalRunWorker } from './worker-definitions/eval-run-worker'
 import { startEventHandlersWorker, startEventsWorker } from './worker-definitions/events-worker'
+import { startExportBatchWorker } from './worker-definitions/export-batch-worker'
 import { startKBSyncWorker } from './worker-definitions/kb-sync-worker'
 import { startKnowledgeSourceWorker } from './worker-definitions/knowledge-source-worker'
 import { startLearnedExtractionWorker } from './worker-definitions/learned-extraction-worker'
@@ -135,7 +135,7 @@ export async function startWorkers() {
   // External accounting delivery worker: pushes ONE accepted journal to the
   // pinned books per job. This is what keeps a bulk posting run off the
   // QuickBooks round trips - see the worker definition.
-  const accountingDeliveryWorker = startAccountingDeliveryWorker()
+  const exportBatchWorker = startExportBatchWorker()
 
   // Inbound provider-ledger sync worker: one slice of the walk per job, chained
   // by the runner's directive. Concurrency 1 - see the worker definition for why
@@ -190,7 +190,7 @@ export async function startWorkers() {
     knowledgeSourceWorker,
     dataConnectorWorker,
     documentPdfWorker,
-    accountingDeliveryWorker,
+    exportBatchWorker,
     providerSyncWorker,
     mailClassificationWorker,
     purchaseIntakeWorker,

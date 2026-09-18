@@ -153,7 +153,6 @@ const POST_OK: PostResult = {
   status: 'posted',
   glPostingId: 'gl_1',
   docNumber: 'GL-MEI-2026-08-0',
-  providerId: 'none',
 }
 
 beforeEach(() => {

@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { SyncQueueRow } from '@auxx/lib/postings/client'
+import type { ExportBatchRow } from '@auxx/lib/postings'
 import { ModuleSidebar } from '@auxx/ui/components/module-sidebar'
 import {
   SidebarGroup,
@@ -14,10 +14,36 @@ import {
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { BookOpenCheck, FileClock, RefreshCw } from 'lucide-react'
 import { useLedgerSidebarStore } from '~/components/accounting/stores/ledger-sidebar-store'
-import {
-  syncQueueRailSentence,
-  tallySyncQueue,
-} from '~/components/accounting/ui/ledger/sync-queue/sync-queue-rows'
+
+interface ExportQueueTally {
+  ready: number
+  sending: number
+  failed: number
+  total: number
+}
+
+/** 🛑 `sent` is not counted: the rail is about what is OUTSTANDING. */
+function tallyExportBatches(rows: ExportBatchRow[] | undefined): ExportQueueTally {
+  const tally = { ready: 0, sending: 0, failed: 0, total: 0 }
+  for (const row of rows ?? []) {
+    if (row.state === 'ready') tally.ready++
+    else if (row.state === 'sending') tally.sending++
+    else if (row.state === 'failed') tally.failed++
+    else continue
+    tally.total++
+  }
+  return tally
+}
+
+/** Null when nothing is outstanding - a figure that reads the same every day is one nobody reads. */
+function exportQueueRailSentence(tally: ExportQueueTally, providerLabel: string): string | null {
+  if (tally.total === 0) return null
+  const parts: string[] = []
+  if (tally.ready > 0) parts.push(`${tally.ready} ready to send`)
+  if (tally.sending > 0) parts.push(`${tally.sending} sending`)
+  if (tally.failed > 0) parts.push(`${tally.failed} refused`)
+  return `${parts.join(', ')} to ${providerLabel}.`
+}
 
 /** Which of the three things the ledger's content column is showing. */
 export type LedgerView = 'closeout' | 'sync-queue' | 'drafts'
@@ -52,7 +78,7 @@ interface LedgerSidebarProps {
   view: LedgerView
   onSelectView: (view: LedgerView) => void
   /** Everything in the books and not in the provider's, ALL periods. */
-  syncQueue: SyncQueueRow[] | undefined
+  syncQueue: ExportBatchRow[] | undefined
   /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
   providerLabel: string
   /** How many drafts the month on screen holds - `ledger.listDrafts`' own count, not `syncQueue`'s. */
@@ -99,8 +125,8 @@ export function LedgerSidebar({
   const open = useLedgerSidebarStore((state) => state.open)
   const setOpen = useLedgerSidebarStore((state) => state.setOpen)
 
-  const tally = tallySyncQueue(syncQueue)
-  const queueSentence = syncQueueRailSentence(tally, providerLabel)
+  const tally = tallyExportBatches(syncQueue)
+  const queueSentence = exportQueueRailSentence(tally, providerLabel)
 
   return (
     <ModuleSidebar open={open} onOpenChange={setOpen} className={SECONDARY_SURFACE}>

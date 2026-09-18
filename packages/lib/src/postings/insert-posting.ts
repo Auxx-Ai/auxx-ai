@@ -8,12 +8,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { ConflictError } from '../errors'
 import { buildPostingDraft, type PostingAssertions } from './draft'
 import { LEDGER_CURRENCY } from './ledger-currency'
-import type {
-  BuiltEntry,
-  GlPostingSourceInput,
-  PostingExportStatus,
-  ResolvedPostingLine,
-} from './types'
+import type { BuiltEntry, GlPostingSourceInput, ResolvedPostingLine } from './types'
 
 /** One line after resolution, paired with the role it was resolved FROM. */
 export interface PreparedLine {
@@ -34,14 +29,11 @@ export interface ClaimHolderRow {
   id: string
   docNumber: string | null
   status: string
-  exportStatus: PostingExportStatus
-  providerId: string | null
-  providerEntryId: string | null
   built: unknown
 }
 
 export type ClaimOutcome =
-  | { kind: 'claimed'; row: { id: string; docNumber: string | null; requestId: string } }
+  | { kind: 'claimed'; row: { id: string; docNumber: string | null } }
   | { kind: 'existing'; row: ClaimHolderRow }
 
 export interface InsertPostingInput {
@@ -51,7 +43,6 @@ export interface InsertPostingInput {
   reversesId?: string
   /** NULL for a draft: a draft holds no claim and gets no number until it posts. */
   docNumber: string | null
-  requestId: string
   totalMinor: number
   lines: PreparedLine[]
   /** At least one `subject`. The subject row is the claim; see {@link claimSubjectInTx}. */
@@ -161,9 +152,8 @@ export async function insertSourceLinksInTx(
 export async function insertPostingInTx(
   tx: Transaction,
   input: InsertPostingInput
-): Promise<{ id: string; docNumber: string | null; requestId: string }> {
-  const { organizationId, entry, revision, reversesId, docNumber, requestId, totalMinor, lines } =
-    input
+): Promise<{ id: string; docNumber: string | null }> {
+  const { organizationId, entry, revision, reversesId, docNumber, totalMinor, lines } = input
   const posted = input.status === 'posted'
 
   const [row] = await tx
@@ -177,7 +167,6 @@ export async function insertPostingInTx(
       // `GlPosting_posted_check` is `status <> 'posted' OR postedAt IS NOT NULL`,
       // so the timestamp is part of the same INSERT rather than a later UPDATE.
       postedAt: posted ? new Date() : null,
-      exportStatus: posted ? 'pending' : 'not_required',
       txnDate: entry.txnDate,
       docNumber,
       storeId: input.storeId ?? null,
@@ -197,7 +186,6 @@ export async function insertPostingInTx(
         reasons: entry.reasons,
         sources: input.sources,
       }),
-      requestId,
       // A reversal names its original in the INSERT. `GlPosting_reversal_check`
       // makes inserting-then-linking impossible.
       reversesId: reversesId ?? null,
@@ -206,7 +194,6 @@ export async function insertPostingInTx(
     .returning({
       id: schema.GlPosting.id,
       docNumber: schema.GlPosting.docNumber,
-      requestId: schema.GlPosting.requestId,
     })
 
   if (!row) throw new Error('GlPosting insert returned no row')
@@ -310,9 +297,6 @@ export async function readClaimHolderInTx(
       id: schema.GlPosting.id,
       docNumber: schema.GlPosting.docNumber,
       status: schema.GlPosting.status,
-      exportStatus: schema.GlPosting.exportStatus,
-      providerId: schema.GlPosting.providerId,
-      providerEntryId: schema.GlPosting.providerEntryId,
       built: schema.GlPosting.built,
     })
     .from(schema.GlPosting)
@@ -327,7 +311,7 @@ export async function readClaimHolderInTx(
   if (!found) {
     throw new Error(`The claim names posting ${input.glPostingId}, which does not exist.`)
   }
-  return { ...found, exportStatus: found.exportStatus as PostingExportStatus }
+  return found
 }
 
 /** Assign the doc number and flip a draft to `posted`, in the claim's transaction. */
@@ -337,7 +321,6 @@ export async function markPostedInTx(
     organizationId: string
     glPostingId: string
     docNumber: string
-    requestId: string
     actorUserId?: string
   }
 ): Promise<void> {
@@ -347,8 +330,6 @@ export async function markPostedInTx(
       status: 'posted',
       postedAt: new Date(),
       docNumber: input.docNumber,
-      requestId: input.requestId,
-      exportStatus: 'pending',
       ...(input.actorUserId ? { postedByUserId: input.actorUserId } : {}),
       built: sql`jsonb_set(${schema.GlPosting.built}, '{docNumber}', ${JSON.stringify(input.docNumber)}::jsonb)`,
     })

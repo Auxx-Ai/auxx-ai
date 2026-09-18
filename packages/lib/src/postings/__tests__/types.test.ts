@@ -24,13 +24,9 @@
 // column cannot store is an INSERT that fails at a close, on the one night
 // nobody wants to debug an enum.
 
-import {
-  GlPostingExportStatusValues,
-  GlPostingStatusValues,
-  GlPostingTypeValues,
-} from '@auxx/database/enums'
+import { GlPostingStatusValues, GlPostingTypeValues } from '@auxx/database/enums'
 import { describe, expect, it } from 'vitest'
-import { POSTING_EXPORT_STATUSES, POSTING_STATUSES, POSTING_TYPES } from '../types'
+import { POSTING_STATUSES, POSTING_TYPES } from '../types'
 
 describe('the posting-type vocabulary is one vocabulary', () => {
   it('POSTING_TYPES and the GlPostingType storage values hold exactly the same set', () => {
@@ -60,36 +56,22 @@ describe('the posting-type vocabulary is one vocabulary', () => {
   })
 })
 
-describe('the posting-status vocabulary is two vocabularies, held apart', () => {
-  // The export split (#2065). One column used to answer both of these, and when
-  // they disagreed the ledger lost: a provider refusing a COPY of an entry
-  // stamped the row `failed`, and every report counts `['posted','reversed']`,
-  // so a real entry left the books. See plans/accounting/export-state-split.md.
+describe('the posting-status vocabulary says only what the LEDGER did', () => {
+  // A provider refusing a COPY of an entry once stamped the row `failed`, and
+  // every report counts `['posted','reversed']`, so a real entry left the books.
+  // What the export did lives on `ExportBatch` now (TARGET §3).
 
   it('POSTING_STATUSES and the GlPostingStatus storage values hold exactly the same set', () => {
     expect([...POSTING_STATUSES].sort()).toEqual([...GlPostingStatusValues].sort())
   })
 
-  it('POSTING_EXPORT_STATUSES and the GlPostingExportStatus storage values match too', () => {
-    expect([...POSTING_EXPORT_STATUSES].sort()).toEqual([...GlPostingExportStatusValues].sort())
-  })
-
-  // 🛑 The load-bearing pair. A provider's answer must never be representable on
-  // the ledger's column, and the ledger's answer must never be representable on
-  // the export's - the moment either is, the two can be confused again by
-  // exactly the assignment that caused the defect.
+  // 🛑 Load-bearing. A provider's answer must never be representable here.
   it('gives the ledger no way to say a provider refused something', () => {
     expect(POSTING_STATUSES).not.toContain('failed')
     expect(POSTING_STATUSES).not.toContain('pending')
   })
 
-  it('gives the export no way to say an entry is in the books', () => {
-    expect(POSTING_EXPORT_STATUSES).not.toContain('posted')
-    expect(POSTING_EXPORT_STATUSES).not.toContain('reversed')
-  })
-
   it('names no status twice', () => {
     expect(new Set(POSTING_STATUSES).size).toBe(POSTING_STATUSES.length)
-    expect(new Set(POSTING_EXPORT_STATUSES).size).toBe(POSTING_EXPORT_STATUSES.length)
   })
 })

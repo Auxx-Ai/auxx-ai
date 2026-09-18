@@ -21,7 +21,7 @@ const jobMappings = {
  * provider's general ledger per job, re-enqueueing itself until the range is
  * exhausted (plans/accounting/tasks/55-the-inbound-sync-runs-in-a-worker.md §4.6).
  *
- * 🛑 Concurrency 1, and unlike `accounting-delivery-worker.ts` beside it that IS
+ * 🛑 Concurrency 1, and unlike `export-batch-worker.ts` beside it that IS
  * a correctness cap. A delivery targets one journal and holds a lease on it; a
  * walk is org-scoped and singular - two of them would share one cursor and one
  * `accounting.providerSyncedThrough`, and the marker means "this range has been

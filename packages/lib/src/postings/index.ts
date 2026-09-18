@@ -40,10 +40,10 @@ export {
   activateAccountingBookConnectionInTx,
   type PinnedAccountingConnection,
   readAccountingBookConnectionStatus,
+  readActiveBookConnection,
   readPinnedAccountingConnection,
   readPinnedAccountingConnectionInTx,
   repairAccountingBookConnection,
-  resolveFulfillmentDeliveryIntentInTx,
 } from './book-connections'
 // ── plans/accounting/tasks/10: credit memos, one document for "you owe us less" ──
 export {
@@ -213,18 +213,6 @@ export {
   packState,
 } from './default-chart'
 export {
-  deliverAccountingPosting,
-  planAccountingDeliveryInTx,
-  sweepAccountingDeliveries,
-} from './delivery'
-export {
-  assertCoveragePartitionsInTx,
-  type CoverageComponent,
-  contributionLineKeys,
-  findCoveragePartitionProblems,
-  saveComponentCoverageInTx,
-} from './delivery-coverage'
-export {
   buildDocNumber,
   DOC_NUMBER_MAX_LENGTH,
   DOC_NUMBER_PREFIX,
@@ -252,28 +240,34 @@ export {
   type FindDuplicateBankMovementsOptions,
   findDuplicateBankMovements,
 } from './duplicate-movements'
+// TARGET §3: the export batch - build, send, roll back, release, sweep.
 export {
-  CLAIMED_SOURCE_STREAMS,
-  claimedSourceStreams,
-  describeBankCoverageGap,
-  describeUnbalancedEntry,
-  describeUnreviewedBankLines,
-  type EvaluateExportGateInput,
-  EXPORT_GATE_CHECKS,
-  type ExportGateCheck,
-  type ExportGateFinding,
-  type ExportGateFindingKey,
-  type ExportGateReport,
-  type ExportGateSeverity,
-  type ExportGateStatus,
-  type ExportGateVerdict,
-  evaluateExportGate,
-  exportGateLead,
-  exportGateMessage,
-  exportGateStatus,
-  liftCloseBlockerItem,
-  releaseExportsThroughGate,
-} from './export-gate'
+  type BuildExportBatchesInput,
+  type BuildExportBatchesResult,
+  buildExportBatches,
+  countOutstandingExportBatches,
+  type ExportBatchMember,
+  type ExportBatchRow,
+  type ExportJournalPayload,
+  enqueueExportBatch,
+  exportJournalSchema,
+  hashExportPayload,
+  JOURNAL_OBJECT_TYPE,
+  type ListExportBatchesInput,
+  listExportBatches,
+  MAX_AUTO_ATTEMPTS,
+  parseExportJournal,
+  type ReleaseExportBatchesResult,
+  type RollbackExportBatchResult,
+  releaseExportBatches,
+  retryExportBatch,
+  rollbackExportBatch,
+  type SendExportBatchResult,
+  type SendExportBatchStatus,
+  type SweepExportBatchesInput,
+  sendExportBatch,
+  sweepExportBatches,
+} from './export'
 // TARGET §3: the export batch's settings, beside `autoPost`.
 export {
   avenueOfPostingType,
@@ -636,12 +630,6 @@ export {
   resolveRoles,
 } from './resolve-roles'
 export {
-  releaseExportsForSync,
-  retryExport,
-  type SyncReleaseOutcome,
-  type SyncReleaseResult,
-} from './retry-export'
-export {
   type ReverseEntriesOptions,
   type ReverseEntryOptions,
   reverseEntries,
@@ -698,9 +686,6 @@ export {
   NON_FAILURE_REFUSALS,
   POSTING_STATUSES,
   POSTING_TYPES,
-  type PostEntryInput,
-  type PostEntryResult,
-  type PostEntryStatus,
   type PostFailureClass,
   type PostingDetail,
   type PostingDetailLine,
@@ -718,16 +703,10 @@ export {
   type RoleAssignmentRow,
   type RoleAssignmentState,
   type RoleRailAssignmentRow,
-  type UnsyncOutcome,
-  type UnsyncResult,
   type WithdrawResult,
 } from './types'
-export { unsyncExports } from './unsync'
 export {
   type BooksBalanceDiscrepancy,
   type BooksBalanceReport,
-  type FailedExport,
-  listFailedExports,
-  type SyncQueueRow,
   verifyBooksBalance,
 } from './verify-balance'

@@ -26,17 +26,11 @@ import {
   GlPosting,
   type GlPostingEntity,
   glPostingDirection,
-  glPostingExportStatus,
   glPostingStatus,
   glPostingType,
 } from '../db/schema/gl-posting'
 import type { GlPostingLineEntity } from '../db/schema/gl-posting-line'
-import {
-  GlPostingDirectionValues,
-  GlPostingExportStatusValues,
-  GlPostingStatusValues,
-  GlPostingTypeValues,
-} from '../enums'
+import { GlPostingDirectionValues, GlPostingStatusValues, GlPostingTypeValues } from '../enums'
 
 const postingConfig = getTableConfig(GlPosting)
 const lineConfig = getTableConfig(GlPostingLine)
@@ -66,16 +60,6 @@ describe('GlPosting', () => {
     ])
   })
 
-  it('maps one provider entry to one posting, only once it has been pushed', () => {
-    const provider = postingConfig.indexes.find(
-      (i) => i.config.name === 'GlPosting_org_provider_entry_key'
-    )
-    expect(provider?.config.unique).toBe(true)
-    // Partial ON PURPOSE here: `providerEntryId` is NULL until a successful
-    // push, and an org with no accounting provider never populates it.
-    expect(provider?.config.where).toBeDefined()
-  })
-
   it('holds the amount as bigint minor units, never a float and never int4', () => {
     const total = postingConfig.columns.find((c) => c.name === 'totalMinor')
     // int4 tops out at 2,147,483,647 minor units — $21,474,836.47 — and this
@@ -89,20 +73,30 @@ describe('GlPosting', () => {
     expectTypeOf<GlPostingEntity['totalMinor']>().toEqualTypeOf<number>()
   })
 
-  it('keeps the audit record and the deterministic idempotency key as required columns', () => {
+  it('keeps the audit record as a required column', () => {
     const names = columnNames(postingConfig)
     expect(names).toContain('built')
-    expect(names).toContain('requestId')
     expect(postingConfig.columns.find((c) => c.name === 'built')?.notNull).toBe(true)
-    expect(postingConfig.columns.find((c) => c.name === 'requestId')?.notNull).toBe(true)
+  })
+
+  it('carries no export columns — the export lives on `ExportBatch` (TARGET §3)', () => {
+    const names = columnNames(postingConfig)
+    for (const gone of [
+      'exportStatus',
+      'providerId',
+      'providerEntryId',
+      'providerTenantId',
+      'requestId',
+      'attempts',
+      'failureReason',
+    ])
+      expect(names).not.toContain(gone)
   })
 
   it('leaves the counters as int4 — only money widened', () => {
     // A guard against a future "widen the amounts" sweep taking the counters
-    // with it. `revision` is a reversal ordinal, `attempts` a retry count;
-    // neither is money and neither is going anywhere near 2^31.
+    // with it. `revision` is a reversal ordinal; it is not money.
     expect(postingConfig.columns.find((c) => c.name === 'revision')?.getSQLType()).toBe('integer')
-    expect(postingConfig.columns.find((c) => c.name === 'attempts')?.getSQLType()).toBe('integer')
     expect(lineConfig.columns.find((c) => c.name === 'lineNumber')?.getSQLType()).toBe('integer')
   })
 
@@ -258,7 +252,6 @@ describe('the enum vocabularies', () => {
   it('keeps the Drizzle enums and the client-safe value lists in step', () => {
     expect(glPostingType.enumValues).toEqual([...GlPostingTypeValues])
     expect(glPostingStatus.enumValues).toEqual([...GlPostingStatusValues])
-    expect(glPostingExportStatus.enumValues).toEqual([...GlPostingExportStatusValues])
     expect(glPostingDirection.enumValues).toEqual([...GlPostingDirectionValues])
   })
 
@@ -268,14 +261,11 @@ describe('the enum vocabularies', () => {
   // the generator DELETES these entries rather than refreshing them. They are
   // maintained by hand, and this assertion is the only thing that notices when
   // somebody forgets. Do not "fix" a failure here by running the generator.
-  it('holds the ledger and the export status apart', () => {
-    // The export split (#2065). A provider's answer may never land on `status`:
-    // that is what took a real entry out of the books when QuickBooks refused a
-    // copy of it.
+  it('holds the ledger and the export apart', () => {
+    // A provider's answer may never land on `status`; what the export did lives
+    // on `ExportBatch` (TARGET §3).
     expect(glPostingStatus.enumValues).not.toContain('failed')
     expect(glPostingStatus.enumValues).not.toContain('pending')
-    expect(glPostingExportStatus.enumValues).toContain('failed')
-    expect(glPostingExportStatus.enumValues).toContain('not_required')
   })
 
   it('carries `reversed` — the terminal state of the ORIGINAL of a reversal pair', () => {

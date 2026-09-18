@@ -401,10 +401,10 @@ describe('createBankDeposit posts one cash line', () => {
     expect(h.created[0]?.values.bank_deposit_total).toBe(100_00)
   })
 
-  it('treats a not_connected ledger as a success, not a failure', async () => {
-    // An org with no accounting system connected is a first-class case: the
-    // entry is built, balanced and persisted, and simply never pushed.
-    h.postResult = { status: 'not_connected' }
+  it('treats an org with nothing connected as a success, not a failure', async () => {
+    // A first-class case: the entry is built, balanced and persisted, and its
+    // export batch simply never reaches a provider (decision P1).
+    h.postResult = { status: 'posted', glPostingId: 'gl_1' }
     const result = await createBankDeposit(db, input)
     expect(result.isOk()).toBe(true)
     expect(h.archived).toHaveLength(0)

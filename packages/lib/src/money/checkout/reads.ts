@@ -181,6 +181,8 @@ export interface QuoteDepositReceipt {
   occurredAt: string
   reference: string | null
   workOrderInstanceId: string | null
+  /** The quote the deposit was collected against. */
+  quoteInstanceId: string | null
 }
 
 /**
@@ -247,6 +249,7 @@ export async function listQuoteDepositReceipts(
       reference: row.reference,
       workOrderInstanceId:
         (row.snapshot as { workOrderInstanceId?: string } | null)?.workOrderInstanceId ?? null,
+      quoteInstanceId,
     }))
     .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
 }
@@ -335,6 +338,7 @@ export async function listWorkOrderDepositReceipts(
       occurredAt: row.occurredAt?.toISOString() ?? `${row.occurredOn}T00:00:00.000Z`,
       reference: row.reference,
       workOrderInstanceId,
+      quoteInstanceId: row.quoteInstanceId ?? null,
     }))
     .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
 }

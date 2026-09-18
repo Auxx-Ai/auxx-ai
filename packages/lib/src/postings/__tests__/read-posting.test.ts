@@ -43,12 +43,8 @@ interface PostingRow {
   currency: string
   totalMinor: number
   built: unknown
-  providerId: string | null
-  providerEntryId: string | null
   postedAt: Date | null
   postedByUserId: string | null
-  failureReason: string | null
-  attempts: number
   createdAt: Date
 }
 
@@ -172,12 +168,8 @@ const POSTING: PostingRow = {
   currency: 'USD',
   totalMinor: 250_000,
   built: DRAFT,
-  providerId: 'quickbooks',
-  providerEntryId: 'qbo_991',
   postedAt: new Date('2026-09-01T04:12:00.000Z'),
   postedByUserId: 'usr_1',
-  failureReason: null,
-  attempts: 1,
   createdAt: new Date('2026-09-01T04:11:59.000Z'),
 }
 
@@ -218,11 +210,7 @@ describe('getPosting - the header', () => {
       revision: 0,
       reversesId: null,
       currency: 'USD',
-      providerId: 'quickbooks',
-      providerEntryId: 'qbo_991',
       postedByUserId: 'usr_1',
-      failureReason: null,
-      attempts: 1,
       lines: [],
     })
   })
@@ -241,25 +229,13 @@ describe('getPosting - the header', () => {
 
   it('returns nulls as nulls rather than as undefined', async () => {
     const stub = stubDb({
-      postings: [
-        {
-          ...POSTING,
-          providerId: null,
-          providerEntryId: null,
-          postedAt: null,
-          postedByUserId: null,
-          failureReason: 'QuickBooks said 6140',
-        },
-      ],
+      postings: [{ ...POSTING, postedAt: null, postedByUserId: null }],
       lines: [],
     })
     const detail = (await getPosting(stub.db, ORG, 'gp_1'))._unsafeUnwrap()
 
-    expect(detail.providerId).toBeNull()
-    expect(detail.providerEntryId).toBeNull()
     expect(detail.postedAt).toBeNull()
     expect(detail.postedByUserId).toBeNull()
-    expect(detail.failureReason).toBe('QuickBooks said 6140')
   })
 
   // 🛑 The header's own recorded total, never SUM(lines). If the two disagree

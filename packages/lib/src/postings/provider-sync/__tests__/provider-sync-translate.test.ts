@@ -82,8 +82,8 @@ beforeEach(() => {
   readMirror.mockReset()
   postEntry.mockReset()
   reverseEntry.mockReset()
-  postEntry.mockResolvedValue({ status: 'not_exported', glPostingId: 'glp_1', docNumber: 'PSY-1' })
-  reverseEntry.mockResolvedValue({ status: 'not_exported', glPostingId: 'glp_2' })
+  postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'glp_1', docNumber: 'PSY-1' })
+  reverseEntry.mockResolvedValue({ status: 'posted', glPostingId: 'glp_2' })
 })
 
 describe('an entry the accountant authored', () => {

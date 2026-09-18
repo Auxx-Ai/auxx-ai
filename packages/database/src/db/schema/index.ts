@@ -3,16 +3,6 @@
 
 export * from './_shared'
 export * from './account'
-export {
-  AccountingDelivery,
-  AccountingDeliveryCoverage,
-  type AccountingDeliveryCoverageEntity,
-  type AccountingDeliveryEntity,
-  AccountingDeliveryOperation,
-  type AccountingDeliveryOperationEntity,
-  type DeliveryObjectType,
-  ExternalAccountingObject,
-} from './accounting-delivery'
 export * from './agent'
 export * from './agent-procedure'
 export * from './agent-trigger'
@@ -87,6 +77,7 @@ export * from './eval-case'
 export * from './eval-run'
 export * from './eval-suite-run'
 export * from './event'
+export * from './export-batch'
 export * from './export-job'
 export {
   ExternalAccountingBook,

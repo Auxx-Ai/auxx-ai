@@ -14,6 +14,7 @@ import {
   accountingOpeningPolicySchema,
   activateAccountingBookConnection,
   assertAccountingSetupUnfrozen,
+  buildExportBatches,
   CHART_PACK_KEYS,
   confirmSuggestedIdentities,
   createAndLinkProviderAccount,
@@ -25,7 +26,6 @@ import {
   discardJournalEntry,
   EXPORT_AVENUES,
   enqueueProviderSync,
-  evaluateExportGate,
   GL_ACCOUNT_SUBTYPES,
   GL_ACCOUNT_TYPES,
   getJournalEntry,
@@ -35,7 +35,7 @@ import {
   listChartAccounts,
   listChartAccountUsage,
   listClosePeriods,
-  listFailedExports,
+  listExportBatches,
   listJournalEntries,
   listPostings,
   listPostingsForSource,
@@ -55,23 +55,24 @@ import {
   readLedgerSummary,
   readProviderSyncRunState,
   readTrialBalance,
-  releaseExportsThroughGate,
+  releaseExportBatches,
   removeChartAccount,
   repairAccountingBookConnection,
   resolveAccountingProvider,
   resolvePeriodLock,
   restoreChartAccount,
-  retryExport,
+  retryExportBatch,
   reverseEntries,
   reverseEntry,
   reverseJournalEntry,
+  rollbackExportBatch,
   type SaveMappingRow,
   saveRoleAssignments,
+  sendExportBatch,
   setAccountIdentity,
   setLockedThrough,
   setRoleAssignment,
   syncProviderSyncScheduler,
-  unsyncExports,
   updateChartAccount,
   updateJournalEntry,
   verifyBooksBalance,
@@ -79,7 +80,11 @@ import {
 // The comparison itself is PURE (brief 20 §8.2), so it lives on the client-safe
 // leaf beside the other planners and is imported from there rather than being
 // re-exported through the server barrel for one call site.
-import { type ProviderSyncScheduleConfig, planProviderAgreement } from '@auxx/lib/postings/client'
+import {
+  EXPORT_BATCH_STATES,
+  type ProviderSyncScheduleConfig,
+  planProviderAgreement,
+} from '@auxx/lib/postings/client'
 import {
   clearRecurringJournalSchedule,
   listRecurringJournalTemplates,
@@ -1036,177 +1041,128 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * Every entry that IS in the books and is not in the accounting system - the
-   * close console's export queue.
+   * The export queue: one row per {@link ExportBatch}, expandable to the
+   * postings it rolls up (TARGET §3, §6).
    *
-   * 🛑 Renamed from `unpostedPeriods` by the export split. The old name and the
-   * old banner both said an entry was missing from the books, which was true
-   * only because a refused push used to take it out of them. Nothing here is
-   * unposted; what is outstanding is the copy.
-   *
-   * `pending` and `failed` come back distinct rather than collapsed, because
-   * they call for different actions: `pending` is owed and has not been refused
-   * (in flight, or claimed by a run that died before the push), while `failed`
-   * was attempted and refused and carries the reason.
+   * A read, and `ledgerView`: asking changes nothing.
    */
-  failedExports: permissionProcedure(PermissionKey.ledgerView)
-    .input(
-      z
-        .object({
-          through: z.string().min(1).optional(),
-          /** Exactly one accounting month - what the Synced tab asks for. */
-          month: z.string().min(1).optional(),
-          /**
-           * Add the entries already in the provider's books (60 §8.1). Unbounded
-           * without `month`, which is why the Synced tab is the one surface here
-           * that resolves a month.
-           */
-          includeExported: z.boolean().optional(),
+  exportBatches: createTRPCRouter({
+    list: permissionProcedure(PermissionKey.ledgerView)
+      .input(
+        z
+          .object({
+            /** One accounting month, `'2026-09'`. Bounds the read by DETAIL date. */
+            month: z.string().min(1).optional(),
+            state: z.enum(EXPORT_BATCH_STATES).optional(),
+          })
+          .optional()
+      )
+      .query(async ({ ctx, input }) => {
+        const result = await listExportBatches(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          ...(input?.month ? { month: input.month } : {}),
+          ...(input?.state ? { state: input.state } : {}),
         })
-        .optional()
-    )
-    .query(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
 
-      const result = await listFailedExports(ctx.db, organizationId, {
-        through: input?.through,
-        month: input?.month,
-        includeExported: input?.includeExported,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  /**
-   * Is the ledger ready to be sent? Checked against the SOURCE and the BANK,
-   * before anything leaves (53 D12, §2.1, §8 risk 1).
-   *
-   * 🛑 Not a comparison of two general ledgers. D12 settled that: divergence we
-   * cause is PREVENTED at the gate, and the only two-GL surface that needs
-   * comparing is the one the firm itself authors, which is a different unit.
-   *
-   * A read, and `ledgerView` rather than `ledgerPost`, because asking changes
-   * nothing: the gate writes no flag and is evaluated fresh at the moment of
-   * asking. `syncExports` runs the same evaluation for itself, so this endpoint
-   * exists to render the answer BEFORE somebody presses Sync, not to authorise
-   * it.
-   *
-   * ⚠️ `report.unavailable` names the checks that never ran. A caller that
-   * renders "ready" without reading it will report a green gate for questions
-   * nobody asked.
-   */
-  exportGate: permissionProcedure(PermissionKey.ledgerView)
-    .input(
-      z
-        .object({
-          /** Restrict to these postings. Omit for the whole sync queue. */
-          glPostingIds: z.array(z.string().min(1)).max(500).optional(),
-          /** Bound by accounting month, inclusive. `'2026-08'`. */
-          through: z.string().min(1).optional(),
+    /**
+     * Build every batch a month still owes.
+     *
+     * 🛑 `ledgerPost`: building freezes a payload out of posted entries and is
+     * the act that decides what leaves. It sends nothing - `autoSend` and the
+     * sweep, or an explicit release, do that.
+     */
+    build: permissionProcedure(PermissionKey.ledgerPost)
+      .input(monthKey)
+      .mutation(async ({ ctx, input }) => {
+        const result = await buildExportBatches(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          from: `${input.periodKey}-01`,
+          to: `${input.periodKey}-31`,
         })
-        .optional()
-    )
-    .query(async ({ ctx, input }) => {
-      const result = await evaluateExportGate(ctx.db, ctx.session.organizationId, {
-        glPostingIds: input?.glPostingIds,
-        through: input?.through,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
 
-  /**
-   * Push one already-posted entry to the accounting system again.
-   *
-   * 🛑 This never re-posts and never touches `GlPosting.status`. It replays the
-   * entry's own lines under its own `requestId`, so the provider's idempotency
-   * contract fires on exactly the case it exists for. The usual reason it now
-   * succeeds is that somebody mapped the account the first attempt named.
-   */
-  retryExport: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ glPostingId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
+    /**
+     * Send one batch and WAIT on the provider.
+     *
+     * The one-row door: a single row pressed on its own wants the refusal back
+     * in the same breath. Use `release` for a bulk bar.
+     */
+    send: permissionProcedure(PermissionKey.ledgerPost)
+      .input(z.object({ batchId: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await sendExportBatch(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          batchId: input.batchId,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
 
-      const result = await retryExport(ctx.db, {
-        organizationId,
-        glPostingId: input.glPostingId,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
+    /** Send a failed batch again, now, and reset the sweep's attempt budget. */
+    retry: permissionProcedure(PermissionKey.ledgerPost)
+      .input(z.object({ batchId: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await retryExportBatch(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          batchId: input.batchId,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
 
-  /**
-   * Release held entries to the accounting system - the sync queue's bulk
-   * action (plans/accounting/tasks/53-two-modes-one-ledger.md §7.2).
-   *
-   * 🛑 This RELEASES and returns; it does not wait on the provider. With the
-   * hold on, a posting rests `pending` with its delivery unreleased, and this
-   * stamps `releasedAt` and hands the journal to the delivery worker. An export
-   * is three to five sequential round trips to a rate-limited third party and a
-   * bulk bar acts on forty rows at once, so doing it inline is a request nobody
-   * holds open. `retryExport` above stays the one-row door, precisely because a
-   * single row pressed on its own wants the refusal back in the same breath.
-   *
-   * ⚠️ 500 is a ceiling on ONE call, not on the queue: the read behind it is
-   * unbounded on purpose. It exists so a select-all over an eighteen-month
-   * backlog cannot open five thousand transactions inside one request.
-   */
-  syncExports: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ glPostingIds: z.array(z.string().min(1)).min(1).max(500) }))
-    .mutation(async ({ ctx, input }) => {
-      // 🛑 Through the PRE-EXPORT GATE (53 D12), not straight at the release. A
-      // posting the books are not ready to stand behind comes back `skipped`
-      // with the reason on its own row, and never reaches the delivery worker.
-      // The gate fails OPEN, so an organization whose subledgers are unreachable
-      // is not grounded - see `postings/export-gate/reads.ts`.
-      const result = await releaseExportsThroughGate(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        glPostingIds: input.glPostingIds,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
+    /**
+     * Hand held batches to the export worker, once.
+     *
+     * 🛑 It RELEASES and returns; it does not wait on the provider. A send is
+     * three to five sequential round trips to a rate-limited third party and a
+     * bulk bar acts on forty rows at once.
+     *
+     * ⚠️ 500 is a ceiling on ONE call, not on the queue.
+     */
+    release: permissionProcedure(PermissionKey.ledgerPost)
+      .input(z.object({ batchIds: z.array(z.string().min(1)).min(1).max(500) }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await releaseExportBatches(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          batchIds: input.batchIds,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
 
-  /**
-   * Remove the provider's copy of already-delivered entries and hold them for
-   * re-sync (plans/accounting/tasks/60-un-syncing-from-the-provider.md §7).
-   *
-   * 🛑 `ledgerControl`, not `ledgerPost` (E5). Deleting rows out of the firm's
-   * books is the authority that closes and reopens a period and runs the inbound
-   * sync, not the one that posts a journal.
-   *
-   * 🛑 An EXPORT operation, never a ledger one. Nothing here reverses, reopens a
-   * period or releases a claim - the entries stay `posted` and come back to
-   * *Ready to sync*. Backing an entry out of OUR books is `reverse`.
-   *
-   * ⚠️ Unlike `syncExports` this WAITS on the provider, and its cap is **100**,
-   * not 500 (E8): a release stamps a column and returns, while this makes two to
-   * three provider round trips per row inside the request. "We have asked to
-   * delete 40 things, check back later" is not an answer anybody can act on, and
-   * R5 and R6 are exactly what the operator pressed the button to find out. If
-   * 100 rows proves too slow the answer is a worker job with the queue polling
-   * it, not a larger cap.
-   *
-   * `force` overrides R5 alone - the row whose copy was edited in the provider
-   * after we sent it - and it discards that edit.
-   */
-  unsyncExports: permissionProcedure(PermissionKey.ledgerControl)
-    .input(
-      z.object({
-        glPostingIds: z.array(z.string().min(1)).min(1).max(100),
-        force: z.boolean().optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const result = await unsyncExports(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        glPostingIds: input.glPostingIds,
-        force: input.force,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
+    /**
+     * Remove the provider's copy of a sent batch and free its postings for the
+     * next build (TARGET §3, "Late changes follow Synder").
+     *
+     * 🛑 `ledgerControl`, not `ledgerPost`. Deleting rows out of the firm's
+     * books is the authority that closes and reopens a period, not the one that
+     * posts a journal.
+     *
+     * 🛑 An EXPORT operation, never a ledger one. Nothing here reverses, reopens
+     * a period or releases a claim - the postings stay `posted` and come back to
+     * *Ready*. Backing an entry out of OUR books is `reverse`.
+     *
+     * ⚠️ Unlike `release` this WAITS on the provider, and it is one batch per
+     * call: the refusals are exactly what the operator pressed the button to
+     * find out.
+     */
+    rollback: permissionProcedure(PermissionKey.ledgerControl)
+      .input(z.object({ batchId: z.string().min(1), force: z.boolean().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await rollbackExportBatch(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          batchId: input.batchId,
+          ...(input.force === undefined ? {} : { force: input.force }),
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+  }),
 
   /**
    * Prove that debits equal credits across every posted entry.

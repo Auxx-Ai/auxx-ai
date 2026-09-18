@@ -90,19 +90,13 @@ export async function getPosting(
         txnDate: schema.GlPosting.txnDate,
         docNumber: schema.GlPosting.docNumber,
         status: schema.GlPosting.status,
-        exportStatus: schema.GlPosting.exportStatus,
         revision: schema.GlPosting.revision,
         reversesId: schema.GlPosting.reversesId,
         currency: schema.GlPosting.currency,
         totalMinor: schema.GlPosting.totalMinor,
         built: schema.GlPosting.built,
-        providerId: schema.GlPosting.providerId,
-        providerEntryId: schema.GlPosting.providerEntryId,
-        providerTenantId: schema.GlPosting.providerTenantId,
         postedAt: schema.GlPosting.postedAt,
         postedByUserId: schema.GlPosting.postedByUserId,
-        failureReason: schema.GlPosting.failureReason,
-        attempts: schema.GlPosting.attempts,
         createdAt: schema.GlPosting.createdAt,
       })
       .from(schema.GlPosting)
@@ -168,7 +162,6 @@ export async function getPosting(
       txnDate: toDateKey(posting.txnDate),
       docNumber: posting.docNumber,
       status: posting.status as PostingDetail['status'],
-      exportStatus: posting.exportStatus as PostingDetail['exportStatus'],
       revision: posting.revision,
       reversesId: posting.reversesId ?? null,
       currency: posting.currency,
@@ -177,16 +170,8 @@ export async function getPosting(
       lines,
       // Verbatim. Unparsed on purpose.
       draft: posting.built,
-      providerId: posting.providerId ?? null,
-      providerEntryId: posting.providerEntryId ?? null,
-      // Which company that id belongs to. NULL means no export ever reached a
-      // provider - never "reconstruct it from whatever is connected now", which
-      // is the one answer `GlPosting.providerTenantId` exists to refuse.
-      providerTenantId: posting.providerTenantId ?? null,
       postedAt: toIso(posting.postedAt),
       postedByUserId: posting.postedByUserId ?? null,
-      failureReason: posting.failureReason ?? null,
-      attempts: posting.attempts,
       createdAt: toIso(posting.createdAt) ?? '',
     })
   } catch (error) {

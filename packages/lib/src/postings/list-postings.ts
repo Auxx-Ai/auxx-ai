@@ -206,8 +206,6 @@ const POSTING_COLUMNS = {
   txnDate: schema.GlPosting.txnDate,
   docNumber: schema.GlPosting.docNumber,
   status: schema.GlPosting.status,
-  exportStatus: schema.GlPosting.exportStatus,
-  failureReason: schema.GlPosting.failureReason,
   revision: schema.GlPosting.revision,
   reversesId: schema.GlPosting.reversesId,
   totalMinor: schema.GlPosting.totalMinor,
@@ -222,8 +220,6 @@ type PostingRow = {
   txnDate: Date | string
   docNumber: string | null
   status: string
-  exportStatus: string
-  failureReason: string | null
   revision: number
   reversesId: string | null
   totalMinor: string | number
@@ -239,8 +235,6 @@ function toSummary(row: PostingRow): PostingSummary {
     txnDate: toDateKey(row.txnDate),
     docNumber: row.docNumber ?? '',
     status: row.status as PostingSummary['status'],
-    exportStatus: row.exportStatus as PostingSummary['exportStatus'],
-    failureReason: row.failureReason ?? null,
     revision: row.revision,
     reversesId: row.reversesId ?? null,
     // The header's own recorded total, NOT a sum of the lines. See the header.

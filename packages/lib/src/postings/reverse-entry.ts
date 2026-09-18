@@ -144,7 +144,6 @@ export async function reverseEntryInTx(
         built: schema.GlPosting.built,
         storeId: schema.GlPosting.storeId,
         railId: schema.GlPosting.railId,
-        exportStatus: schema.GlPosting.exportStatus,
       })
       .from(schema.GlPosting)
       .where(

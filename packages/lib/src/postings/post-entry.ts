@@ -34,17 +34,19 @@
 //
 // No permission checks here. The router asserts (docs/lib-module-guide.md §6).
 
-import { createHash } from 'node:crypto'
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { formatCurrency } from '@auxx/utils'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { AuxxError, BadRequestError, databaseErrorCodes, UnprocessableEntityError } from '../errors'
 import { accountLabel } from './account-label'
 import { withAccountingCommitLock } from './accounting-commit-lock'
 import { type CloseBlockerItem, describeUnmappedRoles } from './close-blockers'
 import { buildDocNumber } from './doc-number'
 import { type PostingAssertions, parsePostingDraft, requiresAssertions } from './draft'
+import { buildExportBatches } from './export/build-batches'
+import { sendExportBatch } from './export/send'
+import { avenueOfPostingType, readExportSettings } from './export-settings'
 import {
   type ClaimHolderRow,
   type ClaimOutcome,
@@ -60,20 +62,16 @@ import {
 import { LEDGER_CURRENCY } from './ledger-currency'
 import { resolvePeriodLock } from './period-lock'
 import { assertPeriodOpen, type PeriodLock, parsePeriodKey, postingLockKey } from './periods'
-import { NONE_ACCOUNTING_PROVIDER, resolveAccountingProvider } from './provider'
-import { EXPORT_ROUTE_BY_POSTING_TYPE, INVENTORY_ROLES } from './regime'
+import { INVENTORY_ROLES } from './regime'
 import { loadRoleAccountCodes, type RoleSourceScope, resolveAccountLines } from './resolve-roles'
 import type {
   BuiltEntry,
   GlPostingSourceInput,
-  PostEntryInput,
-  PostEntryStatus,
   PostFailureClass,
   PostingType,
   PostResult,
   PostResultStatus,
 } from './types'
-import { ProviderPostError } from './types'
 
 const logger = createScopedLogger('postings:post-entry')
 
@@ -94,7 +92,6 @@ export { LEDGER_CURRENCY } from './ledger-currency'
  * value that fits everywhere stays portable, and widening it later would mean
  * re-keying entries that are already in a ledger.
  */
-const REQUEST_ID_MAX_LENGTH = 50
 
 /**
  * Minor units to a string a bookkeeper reads - `1234000` -> `$12,340.00`.
@@ -336,7 +333,6 @@ async function findInventoryAccountRefusal(
 
 export interface PreparedEntry {
   docNumber: string
-  requestId: string
   lines: PreparedLine[]
   totalMinor: number
   /** Set when the entry must not be claimed. Everything above is best-effort. */
@@ -555,41 +551,10 @@ export async function prepareEntry(
 
   return {
     docNumber,
-    requestId: buildRequestId({
-      organizationId,
-      postingType: entry.postingType,
-      periodKey: entry.periodKey,
-      revision,
-    }),
     lines,
     totalMinor: totalDebit,
     refusal,
   }
-}
-
-/**
- * The deterministic idempotency key handed to a provider.
- *
- * 🛑 **No run salt.** It is derived from the posting IDENTITY alone -
- * organization, type, period, revision - so two runs of the same period produce
- * the same key. A random key guarantees nothing, because the retry carries a
- * different one, and the retry is the only case provider-side idempotency
- * exists for.
- *
- * Written to `GlPosting.requestId` at claim time and read back from the row by
- * every push, never recomputed at the call site: recomputing is how a formula
- * change silently re-keys entries that are already in a provider's register.
- */
-export function buildRequestId(input: {
-  organizationId: string
-  postingType: PostingType
-  periodKey: string
-  revision: number
-}): string {
-  return createHash('sha256')
-    .update(`${input.organizationId}:${input.postingType}:${input.periodKey}:${input.revision}`)
-    .digest('hex')
-    .slice(0, REQUEST_ID_MAX_LENGTH)
 }
 
 /** Postgres `unique_violation`, however Drizzle happens to have wrapped it. */
@@ -687,7 +652,6 @@ async function writePostingInTx(
     revision,
     reversesId,
     docNumber: mode === 'post' ? prepared.docNumber : null,
-    requestId: prepared.requestId,
     totalMinor: prepared.totalMinor,
     lines: prepared.lines,
     sources,
@@ -729,15 +693,15 @@ class AlreadyClaimed extends Error {
 }
 
 /**
- * What a freshly claimed row still owes the provider once its transaction has
+ * What a freshly claimed row still owes the export once its transaction has
  * committed. Absent on a draft, on `already_posted` and on every refusal.
  */
 export interface PendingEntryExport {
   organizationId: string
   glPostingId: string
-  input: PostEntryInput
-  /** `EXPORT_ROUTE_BY_POSTING_TYPE` said `'none'`, so this never reaches the org's provider. */
-  routedToNone: boolean
+  postingType: PostingType
+  txnDate: string
+  docNumber: string
 }
 
 /** A {@link PostResult} plus the export a committed claim still owes. */
@@ -904,11 +868,9 @@ export async function postEntryInTx(
   const claim = outcome.claim
 
   if (claim.kind === 'existing') {
-    // A SUCCESS, and since the export split it is a HONEST one: the row that
-    // holds this claim is in the books, whatever its export did.
-    //
-    // Logged at info, never as an error: training everyone to ignore this
-    // channel is how a real double-post would go unnoticed.
+    // A SUCCESS: the row that holds this claim is in the books, whatever its
+    // export did. Logged at info, never as an error - training everyone to
+    // ignore this channel is how a real double-post would go unnoticed.
     logger.info('Source already claimed - not posting again', {
       organizationId,
       postingType: entry.postingType,
@@ -916,161 +878,75 @@ export async function postEntryInTx(
       revision,
       glPostingId: claim.row.id,
       existingStatus: claim.row.status,
-      existingExportStatus: claim.row.exportStatus,
     })
     return {
       status: 'already_posted',
-      exportStatus: claim.row.exportStatus,
       glPostingId: claim.row.id,
       docNumber: claim.row.docNumber ?? undefined,
-      providerId: claim.row.providerId ?? undefined,
-      providerEntryId: claim.row.providerEntryId ?? undefined,
     }
   }
 
   const glPostingId = claim.row.id
-  // `EXPORT_ROUTE_BY_POSTING_TYPE` is read HERE and nowhere else - the route
-  // table is the one place that decides whether an entry ever leaves.
   return {
     status: 'posted',
-    exportStatus: 'pending',
     glPostingId,
     docNumber,
     pendingExport: {
       organizationId,
       glPostingId,
-      routedToNone: EXPORT_ROUTE_BY_POSTING_TYPE[entry.postingType] === 'none',
-      input: {
-        organizationId,
-        glPostingId,
-        revision,
-        postingType: entry.postingType,
-        periodKey: entry.periodKey,
-        txnDate: entry.txnDate,
-        docNumber: claim.row.docNumber ?? docNumber,
-        lines: prepared.lines.map((line) => line.resolved),
-        // Read back from the claimed row, never recomputed. The row is the
-        // record of what key this entry was pushed under.
-        idempotencyKey: claim.row.requestId,
-        memo,
-      },
+      postingType: entry.postingType,
+      txnDate: entry.txnDate,
+      docNumber: claim.row.docNumber ?? docNumber,
     },
   }
 }
 
 /**
- * Hand a committed entry to whichever provider the organization has connected,
- * and record what happened.
+ * Build and send this entry's own export batch, if the org asked for that.
  *
  * **Never throws.** Called AFTER the claim's transaction commits - see
  * {@link postEntryInTx}'s 🛑.
+ *
+ * Only the Transaction-mode, `autoSend`-on case does anything here. Everything
+ * else is the sweep's and the export queue's work: a summary batch cannot be
+ * built from one posting, and a held avenue is waiting for a person (TARGET §4).
  */
 export async function exportPostedEntry(
   db: Database,
   pending: PendingEntryExport
 ): Promise<PostResult> {
-  const { organizationId, glPostingId, input, routedToNone } = pending
-  const docNumber = input.docNumber
-
+  const { organizationId, glPostingId, postingType, txnDate, docNumber } = pending
+  const posted: PostResult = { status: 'posted', glPostingId, docNumber }
   try {
-    // `'none'` short-circuits to `NONE_ACCOUNTING_PROVIDER` instead of the org's
-    // connected one. Do not branch other posting types here.
-    const provider = routedToNone
-      ? NONE_ACCOUNTING_PROVIDER
-      : await resolveAccountingProvider(organizationId)
+    const avenue = avenueOfPostingType(postingType)
+    if (!avenue) return posted
+    const settings = await readExportSettings(db, organizationId)
+    if (settings.mode !== 'transaction' || !settings.autoSend[avenue]) return posted
 
-    const pushed = await provider.postEntry(input)
-
-    if (pushed.isErr()) {
-      const failure = classifyProviderFailure(pushed.error, provider.id)
-      await stampOutcome(organizationId, glPostingId, () =>
-        recordExportFailure(db, {
-          organizationId,
-          glPostingId,
-          providerId: provider.id,
-          reason: failure.error,
-        })
-      )
-      logger.error('The provider refused the EXPORT. The entry is posted', {
+    const built = await buildExportBatches(db, {
+      organizationId,
+      from: txnDate,
+      to: txnDate,
+      glPostingIds: [glPostingId],
+    })
+    if (built.isErr()) {
+      logger.warn('Could not build the export batch for a posted entry; the sweep will', {
         organizationId,
         glPostingId,
-        docNumber,
-        providerId: provider.id,
-        failureClass: failure.failureClass,
-        retryable: failure.retryable,
-        error: failure.error,
+        error: built.error.message,
       })
-      // 🛑 `posted`, not `error`. The ledger took this entry and a third party
-      // declining a COPY of it changes none of that. The export problem is on
-      // the row, on this result, logged above, and in `listFailedExports`.
-      return {
-        status: 'posted',
-        exportStatus: 'failed',
-        glPostingId,
-        docNumber,
-        providerId: provider.id,
-        ...failure,
-      }
+      return posted
     }
-
-    const result = pushed.value
-
-    // 🛑 A `'none'` ROUTE is not a missing integration, and must not say it is.
-    // `NONE_ACCOUNTING_PROVIDER` answers `not_connected` because it has nothing
-    // to push to, but it was handed this entry by the route table rather than by
-    // the org's lack of a provider (brief 22 §5).
-    const status: PostEntryStatus =
-      routedToNone && result.status === 'not_connected' ? 'not_exported' : result.status
-
-    // Nothing was pushed and nothing is owed. `not_exported` joins the set
-    // because it pushed nothing BY DESIGN - an export is never coming.
-    const exportStatus =
-      status === 'not_connected' || status === 'disabled' || status === 'not_exported'
-        ? ('not_required' as const)
-        : ('exported' as const)
-    await stampOutcome(organizationId, glPostingId, () =>
-      markExported(db, {
-        organizationId,
-        glPostingId,
-        providerId: result.providerId,
-        providerEntryId: result.externalId || null,
-        // The company the id above belongs to. `null` for `none` and for every
-        // adapter that has no tenant - see `markExported`.
-        providerTenantId: result.tenantId || null,
-        exportStatus,
-      })
-    )
-
-    logger.info('Entry posted', {
+    for (const batchId of built.value.batchIds)
+      await sendExportBatch(db, { organizationId, batchId })
+    return posted
+  } catch (error) {
+    logger.error('Exporting a posted entry failed; the sweep will pick it up', {
       organizationId,
       glPostingId,
-      docNumber,
-      providerId: result.providerId,
-      providerStatus: result.status,
-      lineCount: input.lines.length,
+      error: error instanceof Error ? error.message : String(error),
     })
-
-    return {
-      status,
-      exportStatus,
-      glPostingId,
-      docNumber,
-      providerId: result.providerId,
-      providerEntryId: result.externalId || undefined,
-      providerTenantId: result.tenantId || undefined,
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    logger.error('Exporting a posted entry failed', { organizationId, glPostingId, error: message })
-    return {
-      status: 'posted',
-      exportStatus: 'failed',
-      glPostingId,
-      docNumber,
-      failureClass: 'transport',
-      retryable: false,
-      error: message,
-    }
+    return posted
   }
 }
 
@@ -1114,149 +990,6 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
   const { pendingExport, ...posted } = result
   if (!pendingExport) return posted
   return exportPostedEntry(db, pendingExport)
-}
-
-/**
- * Classify a provider's failure.
- *
- * The core cannot classify a provider's fault itself - what separates a
- * permanent fault from a transient one is that provider's own error vocabulary
- * - so an adapter returns {@link ProviderPostError} and this routes it.
- *
- * 🛑 **An unclassified `Error` is treated as NOT retryable.** The argument is
- * asymmetric cost. An unclassified throw out of an adapter includes the worst
- * case there is: the entry WAS accepted and the connection dropped on the way
- * back. Retrying that is safe only if the adapter has its own idempotency
- * ladder, and the core cannot assume one exists - that is the entire reason
- * this seam is provider-agnostic. Against that, the cost of refusing to
- * auto-retry a transient 503 is one human clicking Post again, and under
- * decision G5 a human is already watching. So: mark it, do not retry it, and
- * let an adapter that knows better say so by returning a `ProviderPostError`.
- */
-function classifyProviderFailure(
-  error: Error,
-  providerId: string
-): { error: string; failureClass: PostFailureClass; retryable: boolean } {
-  if (error instanceof ProviderPostError) {
-    return {
-      error: error.faultCode
-        ? `${error.message} (${providerId} fault ${error.faultCode})`
-        : error.message,
-      failureClass: error.failureClass,
-      retryable: error.retryable,
-    }
-  }
-  return { error: error.message, failureClass: 'transport', retryable: false }
-}
-
-/**
- * Run the outcome stamp, and never let its failure rewrite the ANSWER.
- *
- * By the time either stamp runs the provider has already answered, so a failure
- * here is a bookkeeping failure and not a posting one. Letting it reach
- * `postEntry`'s outer catch would return `{ status: 'error' }` with no
- * `glPostingId` - and an absent `glPostingId` is documented as the caller's
- * signal that NOTHING WAS WRITTEN, which would be a lie about an entry that is
- * sitting in a general ledger.
- *
- * The row is left `pending`, which is the correct state for it: claimed, pushed,
- * unconfirmed. That is precisely the crash-in-flight case the adapter's layer-2
- * document-number heal exists to repair on the next attempt.
- */
-async function stampOutcome(
-  organizationId: string,
-  glPostingId: string,
-  stamp: () => Promise<void>
-): Promise<void> {
-  try {
-    await stamp()
-  } catch (error) {
-    logger.error('Posting outcome could not be recorded - the row stays pending', {
-      organizationId,
-      glPostingId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
-}
-
-/**
- * Stamp the EXPORT's success. Never the ledger's - that was settled in the
- * claim, and this function must not be able to unsettle it.
- *
- * `not_connected` and `disabled` land here too, as `not_required`: an
- * organization with no accounting system has nothing in flight and nothing to
- * heal, and leaving it `pending` would park every entry it ever writes in the
- * export queue forever. `providerId` is `'none'`, `providerEntryId` stays NULL -
- * which is also why `GlPosting_org_provider_entry_key` is partial - and so does
- * `providerTenantId`, because nothing reached a provider to have a tenant at.
- *
- * ⚠️ `attempts` is NOT reset. It is the record that this export was hard, which
- * is the thing worth keeping when somebody asks why a month took three days.
- *
- * 🛑 `failureReason` IS cleared, and the asymmetry with `attempts` is deliberate
- * (task 24 §6.2). A count of attempts stays true after a success; the REASON the
- * last attempt failed does not - it names a refusal that no longer applies to a
- * row that is now exported, and every screen that reads the column reads it as
- * current. `retry-export.ts` clears it in the same breath, and the two must stay
- * in step.
- */
-async function markExported(
-  db: Database,
-  input: {
-    organizationId: string
-    glPostingId: string
-    providerId: string
-    providerEntryId: string | null
-    providerTenantId: string | null
-    exportStatus: 'exported' | 'not_required'
-  }
-): Promise<void> {
-  await db
-    .update(schema.GlPosting)
-    .set({
-      exportStatus: input.exportStatus,
-      providerId: input.providerId,
-      providerEntryId: input.providerEntryId,
-      providerTenantId: input.providerTenantId,
-      failureReason: null,
-    })
-    .where(
-      and(
-        eq(schema.GlPosting.id, input.glPostingId),
-        eq(schema.GlPosting.organizationId, input.organizationId)
-      )
-    )
-}
-
-/**
- * Stamp a refused push.
- *
- * 🛑 **`status` is not in this statement and must never be.** The entry is in
- * the books; a third party declining a copy of it does not change that. This is
- * the whole defect `plans/accounting/export-state-split.md` exists to close, and
- * a `status` write here reopens it.
- *
- * The row keeps its claim, its lines and its `requestId`, which is exactly what
- * `retryExport` replays.
- */
-async function recordExportFailure(
-  db: Database,
-  input: { organizationId: string; glPostingId: string; providerId: string; reason: string }
-): Promise<void> {
-  await db
-    .update(schema.GlPosting)
-    .set({
-      exportStatus: 'failed',
-      failureReason: input.reason,
-      providerId: input.providerId,
-      attempts: sql`${schema.GlPosting.attempts} + 1`,
-    })
-    .where(
-      and(
-        eq(schema.GlPosting.id, input.glPostingId),
-        eq(schema.GlPosting.organizationId, input.organizationId)
-      )
-    )
 }
 
 export interface PostDraftOptions {
@@ -1384,15 +1117,9 @@ export async function postDraftInTx(
     organizationId,
     glPostingId,
     docNumber: prepared.docNumber,
-    requestId: prepared.requestId,
     actorUserId,
   })
 
   logger.info('Draft posted', { organizationId, glPostingId, docNumber: prepared.docNumber })
-  return {
-    status: 'posted',
-    exportStatus: 'pending',
-    glPostingId,
-    docNumber: prepared.docNumber,
-  }
+  return { status: 'posted', glPostingId, docNumber: prepared.docNumber }
 }

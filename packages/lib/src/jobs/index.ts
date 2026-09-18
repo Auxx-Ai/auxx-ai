@@ -313,10 +313,10 @@ export {
   threadProviderStatusSyncJob,
 } from './messages/thread-provider-status-sync-job'
 export {
-  ACCOUNTING_DELIVERY_JOB_NAME,
-  type AccountingDeliveryJobData,
-  accountingDeliveryJob,
-} from './money/accounting-delivery-job'
+  EXPORT_BATCH_JOB_NAME,
+  type ExportBatchJobData,
+  exportBatchJob,
+} from './money/export-batch-job'
 export {
   PROVIDER_SYNC_JOB_NAME,
   type ProviderSyncJobData,

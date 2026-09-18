@@ -567,7 +567,7 @@ describe('postEntry in post mode', () => {
       railId: 'gw_1',
     })
 
-    expect(result.status).toBe('not_connected')
+    expect(result.status).toBe('posted')
     expect(result.docNumber).toBe('AUXX-RCP-20260818')
 
     const [row] = fake.postings
@@ -627,7 +627,7 @@ describe('postEntry in post mode', () => {
     const [a, b] = await Promise.all([runA, runB])
 
     const statuses = [a.status, b.status].sort()
-    expect(statuses).toEqual(['already_posted', 'not_connected'])
+    expect(statuses).toEqual(['already_posted', 'posted'])
     // 🛑 The loser's own row rolled back with its transaction. One claim, one
     // posting - not two rows one of which is orphaned.
     expect(fake.postings).toHaveLength(1)
@@ -653,8 +653,8 @@ describe('postEntry in post mode', () => {
       sources: [{ ...SUBJECT, occurrence: 'writeoff_1' }],
     })
 
-    expect(first.status).toBe('not_connected')
-    expect(second.status).toBe('not_connected')
+    expect(first.status).toBe('posted')
+    expect(second.status).toBe('posted')
     expect(fake.postings).toHaveLength(2)
   })
 })
@@ -748,7 +748,7 @@ describe('reverseEntry', () => {
       lock: OPEN,
     })
 
-    expect(reversal.status).toBe('not_connected')
+    expect(reversal.status).toBe('posted')
     expect(reversal.docNumber).toBe('AUXX-RCP-20260818-R1')
     expect(fake.postings.find((p) => p.id === posted.glPostingId)?.status).toBe('reversed')
 
@@ -769,7 +769,7 @@ describe('reverseEntry', () => {
       mode: 'post',
       sources: [SUBJECT],
     })
-    expect(again.status).toBe('not_connected')
+    expect(again.status).toBe('posted')
     expect(again.glPostingId).not.toBe(posted.glPostingId)
   })
 

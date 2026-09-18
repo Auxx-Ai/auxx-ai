@@ -6,6 +6,7 @@ import {
   check,
   date,
   foreignKey,
+  index,
   pgTable,
   sql,
   text,
@@ -34,6 +35,12 @@ export const MoneyApplication = pgTable(
     orderInstanceId: text(),
     invoiceInstanceId: text(),
     vendorBillInstanceId: text(),
+    /**
+     * The quote this money was originally held against, when it was a quote
+     * deposit. Not part of the one-document check below: it names where the
+     * money CAME FROM, not what this application relieves.
+     */
+    quoteInstanceId: text(),
     appliedAt: timestamp({ withTimezone: true }).notNull(),
     effectiveDate: date().notNull(),
     reversesApplicationId: text(),
@@ -73,6 +80,7 @@ export const MoneyApplication = pgTable(
       foreignColumns: [t.organizationId, t.id],
     }).onDelete('no action'),
     unique('MoneyApplication_command_key').on(t.organizationId, t.commandId, t.commandItemKey),
+    index('MoneyApplication_quote_idx').on(t.organizationId, t.quoteInstanceId),
     check(
       'MoneyApplication_shape_check',
       sql`${t.amountMinor} > 0 AND num_nonnulls(${t.orderInstanceId}, ${t.invoiceInstanceId}, ${t.vendorBillInstanceId}) = 1 AND ((${t.operation} = 'apply' AND ${t.reversesApplicationId} IS NULL) OR (${t.operation} = 'unapply' AND ${t.reversesApplicationId} IS NOT NULL))`

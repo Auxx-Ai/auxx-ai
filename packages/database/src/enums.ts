@@ -851,24 +851,10 @@ export type GlPostingType = (typeof GlPostingTypeValues)[number]
  * ordinary `posted` entry (decision G4).
  *
  * 🛑 `pending` and `failed` were retired by the export split (#2065). They were
- * never ledger states; they described a push. See
- * {@link GlPostingExportStatusValues}.
+ * never ledger states; they described a push, which now lives on `ExportBatch`.
  */
 export const GlPostingStatusValues = ['draft', 'posted', 'reversed'] as const
 export type GlPostingStatus = (typeof GlPostingStatusValues)[number]
-
-/**
- * What the EXPORT of one entry to the accounting provider did. Nothing on this
- * enum may change what the books say — decision P1 makes the accounting system
- * an exporter and auxx.ai the system of record.
- */
-export const GlPostingExportStatusValues = [
-  'not_required',
-  'pending',
-  'exported',
-  'failed',
-] as const
-export type GlPostingExportStatus = (typeof GlPostingExportStatusValues)[number]
 
 /** Which side of the entry a line sits on. The ONLY carrier of sign (decision G2). */
 export const GlPostingDirectionValues = ['debit', 'credit'] as const

@@ -73,18 +73,30 @@
 // does not depend on recognising QuickBooks' duplicate-document-number fault
 // code (see `classifyQuickbooksFailure`).
 
-import { type DeliveryObjectType, database } from '@auxx/database'
+import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { err, ok, type Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
 import { accountLabel } from '../../postings/account-label'
+import { readPinnedAccountingConnection } from '../../postings/book-connections'
+import {
+  type ExportJournalPayload,
+  JOURNAL_OBJECT_TYPE,
+  parseExportJournal,
+} from '../../postings/export/payload'
 import type {
   AccountingProvider,
   ClearAccountMappingInput,
   CreateProviderAccountInput,
   CreateProviderAccountResult,
+  ProviderObjectContext,
+  ReadObjectRef,
+  ReadObjectResult,
+  SendObjectInput,
+  SendObjectResult,
   SetAccountMappingInput,
+  WithdrawObjectInput,
 } from '../../postings/provider'
 import type { ProviderLedgerSlicer } from '../../postings/provider-sync/client'
 import { listChartAccounts } from '../../postings/role-map'
@@ -92,8 +104,6 @@ import { validateProviderMapping } from '../../postings/suggest-account-identiti
 import {
   type ChartAccountRow,
   type CounterpartyType,
-  type PostEntryInput,
-  type PostEntryResult,
   type PostFailureClass,
   type ProviderAccount,
   type ProviderBalanceSheet,
@@ -134,7 +144,7 @@ const TOOL_GET_BALANCE_SHEET = 'get_quickbooks_balance_sheet'
 const TOOL_CREATE_ACCOUNT = 'create_quickbooks_account'
 
 /** QuickBooks caps `PrivateNote` at 4000 characters and rejects a longer one. */
-const PRIVATE_NOTE_MAX_LENGTH = 4000
+const _PRIVATE_NOTE_MAX_LENGTH = 4000
 
 /** The QuickBooks id-map field for a `contact` synced as a `Customer`. */
 const QBO_CUSTOMER_ID_FIELD_KEY = 'qboCustomerId'
@@ -478,7 +488,7 @@ async function resolveMappedAccounts(
  * id - and this is the one place that becomes a QuickBooks `Customer` or
  * `Vendor` id, the same hop `resolveMappedAccounts` makes for an account.
  *
- * Takes the whole {@link PostEntryInput} rather than a bare line array so a
+ * Takes the whole journal rather than a bare line array so a
  * refusal can name the document (`input.docNumber`), matching
  * `resolveMappedAccounts`'s account-naming register.
  *
@@ -495,7 +505,7 @@ async function resolveMappedAccounts(
  */
 async function resolveOrCreateCounterparties(
   ctx: QuickbooksToolContext,
-  input: PostEntryInput,
+  input: ExportJournalPayload,
   ourChart: readonly ChartAccountRow[]
 ): Promise<Result<Map<string, QuickbooksEntity>, Error>> {
   const byId = new Map(ourChart.map((row) => [row.id, row]))
@@ -505,12 +515,8 @@ async function resolveOrCreateCounterparties(
   // each rather than once per line.
   const distinct = new Map<string, { type: CounterpartyType; id: string }>()
   for (const line of input.lines) {
-    if (line.counterpartyType && line.counterpartyId) {
-      distinct.set(counterpartyKey(line.counterpartyType, line.counterpartyId), {
-        type: line.counterpartyType,
-        id: line.counterpartyId,
-      })
-    }
+    if (line.counterparty)
+      distinct.set(counterpartyKey(line.counterparty.type, line.counterparty.id), line.counterparty)
   }
 
   const resolved = new Map<string, QuickbooksEntity>()
@@ -580,14 +586,14 @@ async function resolveOrCreateCounterparties(
     const ourNoun = subtype === 'accounts_receivable' ? 'contact' : 'company'
     const label = account ? accountLabel(account) : (line.accountCode ?? line.glAccountId)
 
-    if (!line.counterpartyType || !line.counterpartyId) {
+    if (!line.counterparty) {
       problems.add(
         `${input.docNumber} posts to ${label}, and QuickBooks cannot accept a ${kind} line ` +
           `without a ${qbNoun}. This line carries no ${ourNoun}.`
       )
       continue
     }
-    const key = counterpartyKey(line.counterpartyType, line.counterpartyId)
+    const key = counterpartyKey(line.counterparty.type, line.counterparty.id)
     if (unsynced.has(key)) {
       // 🛑 The upsert's own sentence wins when there is one. It names the
       // contact and what to do; the generic "has not been synced yet" below
@@ -608,22 +614,6 @@ async function resolveOrCreateCounterparties(
     return err(new UnprocessableEntityError([...problems].join(' ')))
   }
   return ok(resolved)
-}
-
-/**
- * Compose the layer-4 forensic stamp.
- *
- * 🛑 The `auxx:gl:<type>:<period>:<id>` prefix is the format a human greps the
- * QBO register for and must not drift. An entry memo is appended after it, and
- * only the memo half is truncated to stay inside QuickBooks' 4000-character cap.
- */
-function buildPrivateNote(input: PostEntryInput): string {
-  const stamp = `auxx:gl:${input.postingType}:${input.periodKey}:${input.glPostingId}`
-  if (!input.memo) return stamp
-  const composed = `${stamp} ${input.memo}`
-  return composed.length <= PRIVATE_NOTE_MAX_LENGTH
-    ? composed
-    : composed.slice(0, PRIVATE_NOTE_MAX_LENGTH)
 }
 
 /**
@@ -651,14 +641,20 @@ function requireToolInputs(
   return `The installed QuickBooks ${toolId} does not support ${missing.join(', ')}; update the app deployment first.`
 }
 
-/** The provider's own id for an entry QuickBooks already holds under `docNumber`. */
-async function findExistingEntryId(
+/** What QuickBooks holds under one `DocNumber`, or undefined when it holds none. */
+async function findExistingEntry(
   ctx: QuickbooksToolContext,
   docNumber: string
-): Promise<string | undefined> {
+): Promise<{ externalId: string; syncToken: string | null } | undefined> {
   const found = await ctx.callTool(TOOL_FIND_JOURNAL_ENTRY, { docNumber })
-  const entry = found?.journalEntries?.[0]
-  return entry?.journalEntryId ? String(entry.journalEntryId) : undefined
+  const entry = found?.journalEntries?.[0] as
+    | { journalEntryId?: unknown; syncToken?: unknown }
+    | undefined
+  if (!entry?.journalEntryId) return undefined
+  return {
+    externalId: String(entry.journalEntryId),
+    syncToken: typeof entry.syncToken === 'string' ? entry.syncToken : null,
+  }
 }
 
 /**
@@ -906,17 +902,14 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
    * accountant edited this after we sent it" (brief 60 R5) - re-reading a fresh
    * token here would discard the edit instead of reporting it.
    */
-  async withdrawObject(input: {
-    orgId: string
-    objectType: DeliveryObjectType
-    externalId: string
-    remoteVersion: string | null
-  }): Promise<Result<WithdrawResult, Error>> {
-    const context = { organizationId: input.orgId, externalId: input.externalId }
+  async withdrawObject(
+    ctx: ProviderObjectContext,
+    input: WithdrawObjectInput
+  ): Promise<Result<WithdrawResult, Error>> {
+    const context = { organizationId: ctx.organizationId, externalId: input.externalId }
 
-    // `objectType` is in the signature from the start (brief 60 §5.3) even
-    // though nothing but a journal is delivered today.
-    if (input.objectType !== 'journal') {
+    // Only a journal is sent today; step 4 adds the native objects.
+    if (input.objectType !== JOURNAL_OBJECT_TYPE) {
       return err(
         new UnprocessableEntityError(
           `auxx cannot remove a QuickBooks ${input.objectType}; only journal entries are delivered.`,
@@ -941,7 +934,7 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
       )
     }
 
-    const resolved = await resolveQuickbooksContext({ organizationId: input.orgId })
+    const resolved = await resolveQuickbooksContext({ organizationId: ctx.organizationId })
     if (!resolved.connected) {
       return err(
         new UnprocessableEntityError(
@@ -950,16 +943,16 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
         )
       )
     }
-    const ctx = resolved.context
+    const tool = resolved.context
 
-    const notReady = requireToolInputs(ctx, TOOL_DELETE_JOURNAL_ENTRY, [
+    const notReady = requireToolInputs(tool, TOOL_DELETE_JOURNAL_ENTRY, [
       'journalEntryId',
       'syncToken',
     ])
     if (notReady) return err(new UnprocessableEntityError(notReady, context))
 
     try {
-      const answer = (await ctx.callTool(TOOL_DELETE_JOURNAL_ENTRY, {
+      const answer = (await tool.callTool(TOOL_DELETE_JOURNAL_ENTRY, {
         journalEntryId: input.externalId,
         syncToken: input.remoteVersion,
       })) as { journalEntryId?: string; status?: string; alreadyGone?: boolean } | undefined
@@ -1088,31 +1081,49 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
   }
 
   /**
-   * Push one balanced entry to the QuickBooks general ledger.
+   * Create one journal entry in QuickBooks from a frozen, provider-neutral
+   * payload.
    *
-   * Never throws. Every outcome is a `Result` - a success carries a
-   * `PostEntryResult`, a failure a `ProviderPostError` carrying the class the
-   * core routes on.
-   *
-   * `already_posted` and `healed` are SUCCESSES and are logged as such. Logging
-   * a routine converged re-run as a failure trains everyone to ignore the
-   * channel, and that channel is the only warning a real double-post arrives on.
+   * The four idempotency layers are unchanged in substance: our `DocNumber` is
+   * the natural key (layer 1), a pre-flight lookup by it HEALS rather than
+   * re-posts (layer 2), `requestId` is the batch's own deterministic key
+   * (layer 3), and the `PrivateNote` stamp the batch composed is the forensic
+   * trail (layer 4).
    */
-  async postEntry(input: PostEntryInput): Promise<Result<PostEntryResult, Error>> {
-    const { organizationId, docNumber } = input
+  async sendObject(
+    ctx: ProviderObjectContext,
+    input: SendObjectInput
+  ): Promise<Result<SendObjectResult, Error>> {
+    if (input.objectType !== JOURNAL_OBJECT_TYPE) {
+      return err(
+        new UnprocessableEntityError(
+          `auxx cannot create a QuickBooks ${input.objectType}; only journal entries are sent.`,
+          { organizationId: ctx.organizationId, objectType: input.objectType }
+        )
+      )
+    }
+    const organizationId = ctx.organizationId
+    let journal: ExportJournalPayload
+    try {
+      journal = parseExportJournal(input.payload)
+    } catch (error) {
+      return err(
+        new ProviderPostError(
+          `The frozen export payload is not a journal: ${errorMessage(error)}`,
+          {
+            failureClass: 'data',
+            providerId: QUICKBOOKS_PROVIDER_ID,
+          }
+        )
+      )
+    }
+    const docNumber = journal.docNumber
 
     try {
       // The org's own switch, separate from invoice sync on purpose: a journal
       // entry hits the financial statements directly, with no invoice or payment
       // to reconcile it against, so turning on invoice sync must never turn this
       // on as a side effect.
-      //
-      // Off resolves to `disabled`, NOT `not_connected`. Both are successes and
-      // in both the entry is built, balanced and persisted with nothing pushed
-      // (P1) - but the remedies differ. `disabled` means QuickBooks IS connected
-      // and somebody can flip a switch; `not_connected` means there is no
-      // integration at all. Merging them makes the fix unguessable from the
-      // record, which is what the close console has to show a reader.
       const enabled = await getOrganizationSetting({
         organizationId,
         key: 'quickbooks.postJournalEntries',
@@ -1122,167 +1133,220 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
           organizationId,
           docNumber,
         })
-        return ok({ status: 'disabled', externalId: '', providerId: QUICKBOOKS_PROVIDER_ID })
+        return ok({
+          status: 'disabled',
+          externalId: '',
+          remoteVersion: null,
+          providerId: QUICKBOOKS_PROVIDER_ID,
+        })
       }
 
-      const resolved = await resolveQuickbooksContext({ organizationId })
-      if (!resolved.connected) {
-        return ok({ status: 'not_connected', externalId: '', providerId: QUICKBOOKS_PROVIDER_ID })
-      }
-      const ctx = resolved.context
+      const resolved = await this.contextFor(ctx)
+      if (!resolved)
+        return ok({
+          status: 'not_connected',
+          externalId: '',
+          remoteVersion: null,
+          providerId: QUICKBOOKS_PROVIDER_ID,
+        })
+      const tool = resolved
 
-      // ── Resolve every account before anything is written ─────────────────
-      // By `glAccountId` (task 15 §2.3), not by the frozen code: one call for
-      // the whole entry, collecting every problem rather than stopping at the
-      // first, and immune to a renumber that happened after this line posted -
-      // exactly what a `retry-export.ts` replay needs.
+      // Resolve every account by `glAccountId` in ONE call, collecting every
+      // problem rather than stopping at the first - and immune to a renumber
+      // that happened after the batch was built.
       const accounts = await resolveMappedAccounts(
-        ctx,
-        input.lines.map((line) => line.glAccountId)
+        tool,
+        journal.lines.map((line) => line.glAccountId)
       )
-      if (accounts.isErr()) {
+      if (accounts.isErr())
         return err(
           new ProviderPostError(accounts.error.message, {
             failureClass: 'configuration',
             providerId: QUICKBOOKS_PROVIDER_ID,
           })
         )
-      }
 
-      // ── Resolve every counterparty a receivable or payable line names ────
-      // Brief 13 §1.3: the same "resolve the whole entry, collect every
-      // problem" shape as the accounts above, over OUR chart rather than
-      // QuickBooks' - `resolveCounterparties` reads `subtype` off it to know
-      // which lines even need one.
       const ourChart = await listChartAccounts(database, organizationId)
-      if (ourChart.isErr()) {
+      if (ourChart.isErr())
         return err(
           new ProviderPostError(ourChart.error.message, {
             failureClass: 'configuration',
             providerId: QUICKBOOKS_PROVIDER_ID,
           })
         )
-      }
-      const counterparties = await resolveOrCreateCounterparties(ctx, input, ourChart.value)
-      if (counterparties.isErr()) {
+      const counterparties = await resolveOrCreateCounterparties(tool, journal, ourChart.value)
+      if (counterparties.isErr())
         return err(
           new ProviderPostError(counterparties.error.message, {
             failureClass: 'configuration',
             providerId: QUICKBOOKS_PROVIDER_ID,
           })
         )
-      }
 
       const lines: QboJournalLine[] = []
-      for (const line of [...input.lines].sort((a, b) => a.sortOrder - b.sortOrder)) {
+      for (const line of [...journal.lines].sort((a, b) => a.sortOrder - b.sortOrder)) {
         // `resolveMappedAccounts` refuses unless every id resolved, so a miss
         // here is unreachable rather than merely unlikely.
         const account = accounts.value.get(line.glAccountId)
         if (!account) continue
-        const entity =
-          line.counterpartyType && line.counterpartyId
-            ? counterparties.value.get(counterpartyKey(line.counterpartyType, line.counterpartyId))
-            : undefined
         lines.push({
-          amountMinor: line.amount,
+          amountMinor: line.amountMinor,
           postingType: line.direction === 'debit' ? 'Debit' : 'Credit',
           accountId: account.id,
           accountName: account.fullyQualifiedName,
           ...(line.memo && { description: line.memo }),
-          ...(entity && { entity }),
+          ...(line.counterparty && {
+            entity: counterparties.value.get(
+              counterpartyKey(line.counterparty.type, line.counterparty.id)
+            ),
+          }),
         })
       }
 
-      // ── Layer 2: query by DocNumber, and HEAL rather than re-post ────────
-      // A hit here means a previous run posted and then died before the id was
-      // recorded. Posting again would duplicate the entry in a real general
-      // ledger, so we return the id and let the core write it back.
-      const existingId = await findExistingEntryId(ctx, docNumber)
-      if (existingId) {
-        logger.warn('QuickBooks already holds this DocNumber - healing, not re-posting', {
+      // Layer 2. A hit means a previous attempt created and then died before the
+      // id was recorded; creating again would duplicate a real journal entry.
+      const existing = await findExistingEntry(tool, docNumber)
+      if (existing) {
+        logger.warn('QuickBooks already holds this DocNumber - adopting, not re-posting', {
           organizationId,
-          glPostingId: input.glPostingId,
           docNumber,
-          providerEntryId: existingId,
+          providerEntryId: existing.externalId,
         })
         return ok({
-          status: 'healed',
-          externalId: existingId,
+          status: 'already_exists',
+          externalId: existing.externalId,
+          remoteVersion: existing.syncToken,
           providerId: QUICKBOOKS_PROVIDER_ID,
-          ...(ctx.realmId && { tenantId: ctx.realmId }),
+          ...(tool.realmId && { tenantId: tool.realmId }),
         })
       }
 
-      // ── Layer 3 (requestid) + layer 4 (the forensic note) ────────────────
-      // `requestId` is `input.idempotencyKey` VERBATIM. The core derived it from
-      // the posting identity and stored it on `GlPosting.requestId`; deriving
-      // another one here would break the guarantee it exists to provide.
-      const created = await ctx.callTool(TOOL_CREATE_JOURNAL_ENTRY, {
+      const created = await tool.callTool(TOOL_CREATE_JOURNAL_ENTRY, {
         lines,
-        txnDate: input.txnDate,
+        txnDate: journal.txnDate,
         docNumber,
-        privateNote: buildPrivateNote(input),
+        privateNote: journal.privateNote,
         requestId: input.idempotencyKey,
+        currency: journal.currency,
       })
-
-      const providerEntryId = created?.journalEntry?.journalEntryId
-      if (!providerEntryId) {
+      const entry = created?.journalEntry as
+        | { journalEntryId?: unknown; syncToken?: unknown }
+        | undefined
+      if (!entry?.journalEntryId)
         return err(
           new ProviderPostError('QuickBooks returned no journal entry id', {
             failureClass: 'data',
             providerId: QUICKBOOKS_PROVIDER_ID,
           })
         )
-      }
 
-      logger.info('Journal entry posted to QuickBooks', {
+      logger.info('Journal entry created in QuickBooks', {
         organizationId,
-        glPostingId: input.glPostingId,
         docNumber,
-        providerEntryId: String(providerEntryId),
+        providerEntryId: String(entry.journalEntryId),
         lineCount: lines.length,
       })
-
       return ok({
-        status: 'posted',
-        externalId: String(providerEntryId),
+        status: 'sent',
+        externalId: String(entry.journalEntryId),
+        remoteVersion: typeof entry.syncToken === 'string' ? entry.syncToken : null,
         providerId: QUICKBOOKS_PROVIDER_ID,
-        // 🛑 The REALM the entry actually went to, stamped on the row beside its
-        // id (task 24 §2). A QuickBooks entry id is a per-company sequence, so
-        // recording `147` without the company it belongs to is a pointer with no
-        // address space - and it can never be reconstructed later, because the
-        // realm connected TODAY is right only for an org that never switched.
-        // `resolveQuickbooksContext` already resolved it; there is no lookup here.
-        ...(ctx.realmId && { tenantId: ctx.realmId }),
+        // The REALM the entry went to. A QuickBooks entry id is a per-company
+        // sequence, so an id without its company is a pointer with no address
+        // space - and it can never be reconstructed later.
+        ...(tool.realmId && { tenantId: tool.realmId }),
       })
     } catch (error) {
-      return this.recoverOrClassify(input, error)
+      return this.recoverOrClassify({ organizationId, docNumber }, error)
     }
   }
 
   /**
-   * The net under the create: before reporting a failure, ask QuickBooks whether
+   * Read one journal back, by the document number it was sent under.
+   *
+   * 🛑 A DOCUMENT-NUMBER lookup, not a per-object read: the QuickBooks app's
+   * catalog has no `get_quickbooks_journal_entry` yet (MIGRATION step 2,
+   * "Provider read tools"), so this proves the object exists and returns its
+   * `SyncToken` but cannot produce a hash of what QuickBooks holds. When the
+   * per-object read ships, this returns `payloadHash` and the caller's
+   * comparison tightens with no change above the seam.
+   */
+  async readObject(
+    ctx: ProviderObjectContext,
+    ref: ReadObjectRef
+  ): Promise<Result<ReadObjectResult, Error>> {
+    const absent: ReadObjectResult = {
+      status: 'unsupported',
+      externalId: ref.externalId,
+      remoteVersion: null,
+      docNumber: ref.docNumber,
+      totalMinor: null,
+      payloadHash: null,
+    }
+    if (ref.objectType !== JOURNAL_OBJECT_TYPE || !ref.docNumber) return ok(absent)
+    const tool = await this.contextFor(ctx)
+    if (!tool) return ok(absent)
+    if (requireToolInputs(tool, TOOL_FIND_JOURNAL_ENTRY, ['docNumber'])) return ok(absent)
+    try {
+      const found = await findExistingEntry(tool, ref.docNumber)
+      if (!found)
+        return ok({
+          status: 'gone',
+          externalId: ref.externalId,
+          remoteVersion: null,
+          docNumber: ref.docNumber,
+          totalMinor: null,
+          payloadHash: null,
+        })
+      return ok({
+        status: 'found',
+        externalId: found.externalId,
+        remoteVersion: found.syncToken,
+        docNumber: ref.docNumber,
+        totalMinor: null,
+        payloadHash: null,
+      })
+    } catch (error) {
+      return err(new UnprocessableEntityError(errorMessage(error), { docNumber: ref.docNumber }))
+    }
+  }
+
+  /**
+   * The tool context for the connection a batch is PINNED to, not for whatever
+   * is connected now: a cutover mid-export must not silently redirect an
+   * object into another company's books.
+   */
+  private async contextFor(ctx: ProviderObjectContext): Promise<QuickbooksToolContext | null> {
+    const pinned = await readPinnedAccountingConnection(
+      database,
+      ctx.organizationId,
+      ctx.connectionId
+    )
+    const resolved = await resolveQuickbooksContext({
+      organizationId: ctx.organizationId,
+      pinnedCredentialId: pinned.credentialId,
+      expectedCompanyId: pinned.companyId,
+      ...(ctx.actorUserId ? { actorUserId: ctx.actorUserId } : {}),
+    })
+    if (!resolved.connected) return null
+    if (resolved.context.installationId !== pinned.appInstallationId)
+      throw new UnprocessableEntityError('The pinned accounting installation changed')
+    return resolved.context
+  }
+
+  /**
+   * The net under a create: before reporting a failure, ask QuickBooks whether
    * it took the entry anyway.
    *
-   * Two cases converge here and both are success-ish:
-   *
-   * - a duplicate-document-number fault, which means QuickBooks already holds an
-   *   entry under this `DocNumber`;
-   * - a POST that landed but whose response never came back (a timeout, a
-   *   dropped connection), which is invisible from the error alone.
-   *
-   * Adopting the id costs one read and is the difference between converging and
-   * duplicating a journal entry. Note it returns `already_posted` rather than
-   * `healed`: `healed` is reserved for layer 2's pre-flight discovery, so the
-   * two are distinguishable in the record.
-   *
-   * The query is skipped for a `configuration` failure, where it could not
-   * succeed either - an expired token cannot read any more than it can write.
+   * Two cases converge here and both are success-ish: a duplicate-document-number
+   * fault, and a POST that landed but whose response never came back. Adopting
+   * the id costs one read and is the difference between converging and
+   * duplicating a journal entry.
    */
   private async recoverOrClassify(
-    input: PostEntryInput,
+    input: { organizationId: string; docNumber: string },
     error: unknown
-  ): Promise<Result<PostEntryResult, Error>> {
+  ): Promise<Result<SendObjectResult, Error>> {
     const { failureClass, faultCode } = classifyQuickbooksFailure(error)
     const isDuplicate = faultCode !== undefined && DUPLICATE_DOC_NUMBER_FAULT_CODES.has(faultCode)
 
@@ -1290,29 +1354,26 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
       try {
         const resolved = await resolveQuickbooksContext({ organizationId: input.organizationId })
         if (resolved.connected) {
-          const adopted = await findExistingEntryId(resolved.context, input.docNumber)
+          const adopted = await findExistingEntry(resolved.context, input.docNumber)
           if (adopted) {
             logger.warn('Create failed but QuickBooks holds the entry - adopting its id', {
-              organizationId: input.organizationId,
-              glPostingId: input.glPostingId,
-              docNumber: input.docNumber,
-              providerEntryId: adopted,
+              ...input,
+              providerEntryId: adopted.externalId,
               faultCode,
             })
             return ok({
-              status: 'already_posted',
-              externalId: adopted,
+              status: 'already_exists',
+              externalId: adopted.externalId,
+              remoteVersion: adopted.syncToken,
               providerId: QUICKBOOKS_PROVIDER_ID,
               ...(resolved.context.realmId && { tenantId: resolved.context.realmId }),
             })
           }
         }
       } catch (recoveryError) {
-        // The recovery read is best-effort. Its own failure must never replace
-        // the original one, which is the failure worth reporting.
+        // Best-effort. Its own failure must never replace the original one.
         logger.debug('Recovery query after a failed create did not complete', {
-          organizationId: input.organizationId,
-          docNumber: input.docNumber,
+          ...input,
           error: errorMessage(recoveryError),
         })
       }
@@ -1322,16 +1383,12 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
     // DocNumber will be rejected again, forever.
     const finalClass: PostFailureClass = isDuplicate ? 'data' : failureClass
     const message = errorMessage(error)
-
-    logger.error('QuickBooks journal entry post failed', {
-      organizationId: input.organizationId,
-      glPostingId: input.glPostingId,
-      docNumber: input.docNumber,
+    logger.error('QuickBooks journal entry create failed', {
+      ...input,
       failureClass: finalClass,
       faultCode,
       error: message,
     })
-
     return err(
       new ProviderPostError(message, {
         failureClass: finalClass,
@@ -1351,56 +1408,4 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
  */
 export function createQuickbooksAccountingProvider(): AccountingProvider {
   return new QuickbooksAccountingProvider()
-}
-
-/** Resolve a journal against an explicitly pinned context; remote writes are delegated to its durable tool wrapper. */
-export async function prepareQuickbooksJournal(
-  ctx: QuickbooksToolContext,
-  input: PostEntryInput
-): Promise<{ toolInput: Record<string, unknown>; mappingBasis: Record<string, unknown> }> {
-  if (!ctx.realmId) throw new Error('QuickBooks company identity is missing')
-  const accounts = await resolveMappedAccounts(
-    ctx,
-    input.lines.map((line) => line.glAccountId)
-  )
-  if (accounts.isErr()) throw accounts.error
-  const chart = await listChartAccounts(database, input.organizationId)
-  if (chart.isErr()) throw chart.error
-  const parties = await resolveOrCreateCounterparties(ctx, input, chart.value)
-  if (parties.isErr()) throw parties.error
-  const lines = [...input.lines]
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((line) => {
-      const account = accounts.value.get(line.glAccountId)
-      if (!account) throw new Error(`Unmapped account ${line.glAccountId}`)
-      if (!Number.isSafeInteger(line.amount) || line.amount <= 0)
-        throw new Error('Unsafe journal amount')
-      const entity =
-        line.counterpartyType && line.counterpartyId
-          ? parties.value.get(counterpartyKey(line.counterpartyType, line.counterpartyId))
-          : undefined
-      return {
-        amountMinor: line.amount,
-        postingType: line.direction === 'debit' ? 'Debit' : 'Credit',
-        accountId: account.id,
-        ...(line.memo ? { description: line.memo } : {}),
-        ...(entity ? { entity } : {}),
-      }
-    })
-  return {
-    toolInput: {
-      lines,
-      txnDate: input.txnDate,
-      docNumber: input.docNumber,
-      privateNote: buildPrivateNote(input),
-      requestId: input.idempotencyKey,
-      currency: 'USD',
-    },
-    mappingBasis: {
-      companyId: ctx.realmId,
-      credentialId: ctx.connectionId,
-      accounts: Object.fromEntries([...accounts.value].map(([id, account]) => [id, account.id])),
-      counterparties: Object.fromEntries(parties.value),
-    },
-  }
 }

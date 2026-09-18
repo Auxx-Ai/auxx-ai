@@ -8,16 +8,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
-import {
-  ArrowLeftRight,
-  ClipboardCheck,
-  Clock3,
-  FileText,
-  Layers,
-  Lock,
-  Plus,
-  RefreshCw,
-} from 'lucide-react'
+import { ArrowLeftRight, ClipboardCheck, Clock3, FileText, Layers, Lock, Plus } from 'lucide-react'
 import { parseAsBoolean, parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useRef } from 'react'
 import { useAccountingMonth } from '~/components/accounting/hooks/use-accounting-month'
@@ -63,8 +54,7 @@ import { LedgerToolbar } from './ledger-toolbar'
 import { MonthEndEntrySection } from './month-end-entry-section'
 import { PostingDrawer } from './posting-drawer'
 import { RevisionStrip } from './revision-strip'
-import { SyncQueuePanel } from './sync-queue/sync-queue-panel'
-import { SYNC_QUEUE_TABS } from './sync-queue/sync-queue-rows'
+import { SYNC_QUEUE_TABS, SyncQueuePanel } from './sync-queue/sync-queue-panel'
 
 /** The setting that declares how far the books are closed. `DOCUMENTS` scope. */
 const LOCKED_THROUGH_KEY = 'ledger.lockedThroughMonth'
@@ -173,7 +163,7 @@ export function LedgerPage() {
    */
   const openSyncQueue = useCallback(() => {
     void setDraftsOpen(null)
-    void setQueueTab('held')
+    void setQueueTab('ready')
   }, [setQueueTab, setDraftsOpen])
   const closeSyncQueue = useCallback(() => {
     void setPostingId(null)
@@ -267,7 +257,7 @@ export function LedgerPage() {
     actions,
   })
 
-  const failedExportsQuery = api.ledger.failedExports.useQuery({})
+  const exportBatchesQuery = api.ledger.exportBatches.list.useQuery({})
   // The Drafts rail badge and the Drafts panel read the same query (TARGET §4
   // gate 1) - one hook, so the count in the rail cannot disagree with the list
   // under it. Skipped while no month has resolved, same as every other
@@ -492,7 +482,7 @@ export function LedgerPage() {
         <LedgerSidebar
           view={isSyncQueueOpen ? 'sync-queue' : draftsOpen ? 'drafts' : 'closeout'}
           onSelectView={selectView}
-          syncQueue={failedExportsQuery.data}
+          syncQueue={exportBatchesQuery.data}
           providerLabel={providerLabel}
           draftCount={draftsQuery.data?.length ?? 0}
         />
@@ -548,21 +538,7 @@ export function LedgerPage() {
                    the section header made two affordances for one act and only
                    one of them looked like navigation. */
 
-                <SyncQueuePanel
-                  rows={failedExportsQuery.data}
-                  isLoading={failedExportsQuery.isPending}
-                  error={failedExportsQuery.isError ? failedExportsQuery.error.message : null}
-                  tab={queueTab ?? 'held'}
-                  onTabChange={(next) => void setQueueTab(next)}
-                  providerLabel={providerLabel}
-                  canSync={can('ledger.post')}
-                  /* 🛑 `ledger.control`, not `ledger.post` (60 E5): withdrawing
-                     rows out of the firm's books is the rung that closes a
-                     period, not the one that posts a journal. */
-                  canUnsync={canControlLedger}
-                  activePostingId={postingId}
-                  onSelectPosting={openPosting}
-                />
+                <SyncQueuePanel tab={queueTab ?? 'ready'} />
               ) : draftsOpen ? (
                 /* Scoped to the month on screen, like Closeout - unlike the
                    sync queue above. `activePeriodKey` is always resolved here:
@@ -585,7 +561,7 @@ export function LedgerPage() {
                     hasPeriod={!!activePeriodKey}
                     hasOpenPeriod={period.hasOpenPeriod}
                     periodLabel={periodLabel}
-                    exports={failedExportsQuery.data ?? []}
+                    exports={exportBatchesQuery.data ?? []}
                     providerLabel={providerLabel}
                     onOpenSyncQueue={openSyncQueue}
                     blockers={activePeriodKey ? entry.blockers : []}

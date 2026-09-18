@@ -7,13 +7,7 @@
 // directive would turn every export into a client-reference proxy there. See
 // docs/lib-module-guide.md section 7.
 
-import type {
-  CounterpartyType,
-  PostingDirection,
-  PostingExportStatus,
-  PostingStatus,
-  PostingType,
-} from '../types'
+import type { CounterpartyType, PostingDirection, PostingStatus, PostingType } from '../types'
 
 /** What the record IS, which decides the posting type it becomes. */
 export type JournalEntryKindValue =
@@ -150,14 +144,6 @@ export interface PostingSummary {
   txnDate: string
   docNumber: string
   status: PostingStatus
-  /**
-   * What the EXPORT did. Rendered beside `status`, never instead of it: an entry
-   * whose push was refused is in the books, and a screen that shows only
-   * `status` says nothing at all about the copy that never went out.
-   */
-  exportStatus: PostingExportStatus
-  /** Why the export was refused. Never why a posting was refused - there is no such row. */
-  failureReason: string | null
   revision: number
   /** The posting this one reverses, when it is a reversal. */
   reversesId: string | null
