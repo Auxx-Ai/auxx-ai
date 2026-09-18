@@ -30,8 +30,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * The drizzle chain `readQuickbooksAccountMap` builds, reduced to what it
- * actually consumes: `findFirst` for the `CustomField`, and
- * `select().from().where()` awaited for the `FieldValue` rows.
+ * actually consumes: `select().from().where()` awaited for the `FieldValue`
+ * rows. The `CustomField` itself comes off the org cache (`findAppField`).
  *
  * `rowsFor` records the `where` it was handed so a test can assert on the
  * SHAPE of the query rather than only on its result - a filter added inside the
@@ -47,11 +47,6 @@ const world = {
 }
 
 const database = {
-  query: {
-    CustomField: {
-      findFirst: vi.fn(async () => world.field),
-    },
-  },
   select: vi.fn(() => ({
     from: (table: { _name?: string }) => {
       world.fromTables.push(table?._name ?? 'unknown')
@@ -112,6 +107,7 @@ vi.mock('../../../../field-values/field-value-service', () => ({ FieldValueServi
 vi.mock('../../../../identity', () => ({ deleteRecordIdentity: vi.fn() }))
 vi.mock('../identity-field', () => ({
   QUICKBOOKS_SOURCE: 'quickbooks',
+  findAppField: vi.fn(async () => world.field),
   writeQuickbooksIdField: vi.fn(),
 }))
 

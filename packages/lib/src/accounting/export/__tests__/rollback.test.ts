@@ -71,6 +71,7 @@ function fakeDb(row: unknown) {
 function provider(over: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'mock',
+    capabilities: { withdrawRequiresVersion: true },
     withdrawObject: vi.fn(async () =>
       ok({ status: 'withdrawn' as const, externalId: 'qbo_184', providerId: 'mock' })
     ),
@@ -181,6 +182,17 @@ describe('refusals come back as results, with the reason on them', () => {
         })
       )._unsafeUnwrap()
     ).toMatchObject({ status: 'withdrawn' })
+  })
+
+  it('does not ask for a version from a provider that needs none', async () => {
+    const mock = provider({ capabilities: { withdrawRequiresVersion: false } })
+    resolveAccountingProvider.mockResolvedValue(mock)
+    const { db } = fakeDb(batch({ providerSyncToken: null }))
+
+    const result = await rollbackExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'withdrawn' })
+    expect(mock.withdrawObject).toHaveBeenCalled()
   })
 
   it('refuses a batch that is not there', async () => {

@@ -115,6 +115,23 @@ describe('the lease', () => {
     })
   })
 
+  it('keeps the idempotency key within the limit the provider declares', async () => {
+    const mock = provider({ limits: { idempotencyKeyLength: 50 } })
+    resolveAccountingProvider.mockResolvedValue(mock)
+    const { db } = fakeDb(batch())
+
+    await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    const sentWith = (i: number) =>
+      (mock.sendObject.mock.calls[i] as unknown as [unknown, { idempotencyKey: string }])[1]
+    expect(sentWith(0).idempotencyKey).toHaveLength(50)
+    // The same batch derives the same key on a retry.
+    await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+    expect(sentWith(mock.sendObject.mock.calls.length - 1).idempotencyKey).toBe(
+      sentWith(0).idempotencyKey
+    )
+  })
+
   it('answers leased_elsewhere rather than sending a second copy', async () => {
     resolveAccountingProvider.mockResolvedValue(provider())
     const { db } = fakeDb(batch(), { leaseTaken: true })
@@ -225,6 +242,44 @@ describe('the readback', () => {
 
     expect(result._unsafeUnwrap().status).toBe('sent')
     expect(sets[1]).toMatchObject({ state: 'sent' })
+  })
+
+  it("compares the provider's total with the payload's, not the postings' gross", async () => {
+    // A payout deposit: gross 7714728 across the postings, 7518398 net to the bank.
+    const netToBank = 7518398
+    const readsBack = (totalMinor: number) =>
+      provider({
+        readObject: vi.fn(async () =>
+          ok({
+            status: 'found' as const,
+            externalId: 'qbo_184',
+            remoteVersion: '0',
+            docNumber: 'AUXX-PAY-PAY0264',
+            totalMinor,
+            payloadHash: null,
+          })
+        ),
+      })
+    const deposit = () =>
+      batch({
+        totalMinor: 7714728,
+        payload: { docNumber: 'AUXX-PAY-PAY0264', totalMinor: netToBank },
+      })
+
+    resolveAccountingProvider.mockResolvedValue(readsBack(netToBank))
+    const accepted = await sendExportBatch(fakeDb(deposit()).db, {
+      organizationId: ORG,
+      batchId: 'batch_1',
+    })
+    expect(accepted._unsafeUnwrap()).toMatchObject({ status: 'sent' })
+
+    resolveAccountingProvider.mockResolvedValue(readsBack(7714728))
+    const refused = await sendExportBatch(fakeDb(deposit()).db, {
+      organizationId: ORG,
+      batchId: 'batch_1',
+    })
+    expect(refused._unsafeUnwrap()).toMatchObject({ status: 'failed' })
+    expect(refused._unsafeUnwrap().error).toContain(`the ${netToBank} this batch sent`)
   })
 
   it('refuses when the document number the provider holds is not the one we sent', async () => {

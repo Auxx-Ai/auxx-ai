@@ -54,6 +54,7 @@ vi.mock('../account-map', async (importOriginal) => ({
 // it only threads one through to this call.
 const readQuickbooksIdField = vi.fn()
 vi.mock('../identity-field', () => ({
+  findAppField: vi.fn(),
   readQuickbooksIdField: (...a: unknown[]) => readQuickbooksIdField(...a),
 }))
 
@@ -271,6 +272,13 @@ describe('the exported surface', () => {
     expect(built.id).toBe(QUICKBOOKS_PROVIDER_ID)
     expect(typeof built.sendObject).toBe('function')
     expect(typeof built.resolveAccount).toBe('function')
+    expect(built.limits).toMatchObject({
+      idempotencyKeyLength: 50,
+      docNumberLength: 21,
+      noteLength: 4000,
+    })
+    expect(built.capabilities?.objects.journal).toEqual({ readsBack: 'docNumber' })
+    expect(built.capabilities?.withdrawRequiresVersion).toBe(true)
   })
 })
 

@@ -117,7 +117,8 @@ export async function rollbackExportBatch(
           'Nothing was sent for this batch, so there is nothing to remove from the provider.',
         postingsFreed: 0,
       })
-    if (!batch.providerSyncToken && !input.force)
+    const provider = await resolveAccountingProvider(organizationId)
+    if (provider.capabilities?.withdrawRequiresVersion && !batch.providerSyncToken && !input.force)
       return ok({
         batchId,
         status: 'refused',
@@ -138,7 +139,6 @@ export async function rollbackExportBatch(
         })
     }
 
-    const provider = await resolveAccountingProvider(organizationId)
     const ctx: ProviderObjectContext = { organizationId, connectionId: batch.connectionId }
     const withdrawn = await provider.withdrawObject(ctx, {
       objectType: batch.objectType,

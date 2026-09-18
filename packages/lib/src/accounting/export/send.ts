@@ -130,8 +130,12 @@ function readbackMismatch(
   const expected = (batch.payload as { docNumber?: unknown }).docNumber
   if (read.docNumber !== null && typeof expected === 'string' && read.docNumber !== expected)
     return `The provider holds document ${read.docNumber} where this batch sent ${expected}.`
-  if (read.totalMinor !== null && read.totalMinor !== batch.totalMinor)
-    return `The provider's total ${read.totalMinor} does not match this batch's ${batch.totalMinor}.`
+  // What we SENT, not the postings' gross: a Deposit's total is the net of its
+  // fee line, and the payload already carries the provider's own figure.
+  const sent = (batch.payload as { totalMinor?: unknown }).totalMinor
+  const expectedTotal = typeof sent === 'number' ? sent : batch.totalMinor
+  if (read.totalMinor !== null && read.totalMinor !== expectedTotal)
+    return `The provider's total ${read.totalMinor} does not match the ${expectedTotal} this batch sent.`
   return null
 }
 
@@ -163,7 +167,10 @@ export async function sendExportBatch(
       payload: batch.payload,
       // Derived from the batch identity alone, so every retry carries the same
       // key and the provider's idempotency guarantee fires where it exists.
-      idempotencyKey: hashExportPayload([batch.id, batch.payloadHash]),
+      idempotencyKey: hashExportPayload([batch.id, batch.payloadHash]).slice(
+        0,
+        provider.limits?.idempotencyKeyLength
+      ),
     })
     if (sent.isErr()) return ok(await fail(db, batch, token, sent.error.message))
     const result = sent.value

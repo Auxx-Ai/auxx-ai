@@ -15,6 +15,7 @@ import { avenueOfPostingType } from '../ledger/setup/export-settings'
 import { readExportSettings } from '../ledger/setup/read-export-settings'
 import type { CounterpartyType, PostingType } from '../ledger/types'
 import { readActiveBookConnection } from '../providers/book-connections'
+import { type AccountingProviderLimits, resolveAccountingProvider } from '../providers/provider'
 import { type ShapeForPostingLine, shapeForPosting, wantsSalesReceipt } from './object-shape'
 import {
   type ExportJournalPayload,
@@ -22,6 +23,7 @@ import {
   hashExportPayload,
   JOURNAL_OBJECT_TYPE,
 } from './payloads'
+import { PRIVATE_NOTE_MAX_LENGTH } from './payloads/shared'
 
 const logger = createScopedLogger('postings:export:build-batches')
 
@@ -288,15 +290,19 @@ function toShapeLine(line: typeof schema.GlPostingLine.$inferSelect): ShapeForPo
 }
 
 /** `auxx:gl:<type>:<date>:<id>` - the stamp a human greps the provider's register for. */
-function stamp(parts: string[], memo?: string): string {
-  const composed = memo ? `${parts.join(':')} ${memo}` : parts.join(':')
-  return composed.slice(0, 4000)
+function stamp(parts: string[], limits: AccountingProviderLimits | undefined): string {
+  return parts.join(':').slice(0, Math.min(PRIVATE_NOTE_MAX_LENGTH, limits?.noteLength ?? Infinity))
 }
 
 /** A summary batch has no posting to borrow a number from, so it mints one. */
-function summaryDocNumber(avenue: string, grainKey: string, scope: string): string {
+function summaryDocNumber(
+  avenue: string,
+  grainKey: string,
+  scope: string,
+  limits: AccountingProviderLimits | undefined
+): string {
   const docNumber = `AUXX-SUM-${hashExportPayload([avenue, grainKey, scope]).slice(0, 12)}`
-  if (docNumber.length > DOC_NUMBER_MAX_LENGTH)
+  if (docNumber.length > Math.min(DOC_NUMBER_MAX_LENGTH, limits?.docNumberLength ?? Infinity))
     throw new UnprocessableEntityError(`Summary document number '${docNumber}' is over the cap`)
   return docNumber
 }
@@ -350,6 +356,7 @@ export async function buildExportBatches(
       return ok({ built: 0, batchIds: [], skippedBeforeCutover: 0, connected: false })
 
     const settings = await readExportSettings(organizationId)
+    const { limits } = await resolveAccountingProvider(organizationId)
     const cutover =
       settings.cutover && settings.cutover > connection.exportFromDate
         ? settings.cutover
@@ -498,6 +505,7 @@ export async function buildExportBatches(
           },
           lines: allLines.map(toShapeLine),
           roleByGlAccountId,
+          limits,
           counterparty,
           exportShape,
           fullyPaidAtShipment: fullyPaidByFulfillment.get(row.id),
@@ -556,8 +564,8 @@ export async function buildExportBatches(
       const payload = exportJournalSchema.parse({
         v: 1,
         txnDate: group.txnDateTo,
-        docNumber: summaryDocNumber(group.avenue, group.grainKey, scope),
-        privateNote: stamp(['auxx', 'sum', group.avenue, group.grainKey, scope]),
+        docNumber: summaryDocNumber(group.avenue, group.grainKey, scope, limits),
+        privateNote: stamp(['auxx', 'sum', group.avenue, group.grainKey, scope], limits),
         currency: 'USD',
         totalMinor: group.totalMinor,
         lines: group.lines.map((line, index) => ({

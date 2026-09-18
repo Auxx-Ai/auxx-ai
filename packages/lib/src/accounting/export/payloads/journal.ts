@@ -5,6 +5,7 @@
 
 import { z } from 'zod/v4'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
+import { PRIVATE_NOTE_MAX_LENGTH } from './shared'
 
 /** The only object type step 3 built. A plain string, not a DB enum. */
 export const JOURNAL_OBJECT_TYPE = 'journal'
@@ -37,7 +38,7 @@ export const exportJournalSchema = z
     txnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     docNumber: z.string().min(1).max(21),
     /** The forensic stamp a human greps the provider's register for. */
-    privateNote: z.string().max(4000),
+    privateNote: z.string().max(PRIVATE_NOTE_MAX_LENGTH),
     currency: z.literal('USD'),
     totalMinor: z.number().int().nonnegative(),
     lines: z.array(exportJournalLineSchema).min(2),

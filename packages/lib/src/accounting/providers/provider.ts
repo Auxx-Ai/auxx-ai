@@ -48,8 +48,50 @@ export interface ProviderObjectContext {
 export interface SendObjectInput {
   objectType: string
   payload: Record<string, unknown>
-  /** Deterministic, derived from the batch identity. The provider must be idempotent on it. */
+  /** Deterministic, derived from the batch identity and already within {@link AccountingProviderLimits}. The provider must be idempotent on it. */
   idempotencyKey: string
+}
+
+/**
+ * Hard caps the provider's API enforces, declared by the adapter and honoured
+ * above the seam - the channels' `PlatformCapabilities` pattern. Undefined
+ * means no cap worth surfacing. Company settings (automated tax, multi-currency,
+ * subsidiaries, whether account numbers stick) are NOT here: they vary per
+ * connection, not per provider.
+ */
+export interface AccountingProviderLimits {
+  /** Longest idempotency key the create call accepts. QuickBooks 50, Xero 128. */
+  idempotencyKeyLength?: number
+  /** Longest document number. QuickBooks 21, Xero 255; the ledger adopts the smallest as its own cap. */
+  docNumberLength?: number
+  /** Longest private note / line memo. QuickBooks and Xero 4000, NetSuite 999. */
+  noteLength?: number
+  /** Longest customer or vendor display name. */
+  nameLength?: number
+  /** Most rows one query returns; the mirror sync chunks to it. */
+  pageSize?: number
+  /** The provider's published throttle, for the sweep's pacing. */
+  rateLimit?: { perMinute?: number; perDay?: number; concurrent?: number }
+}
+
+/** How one object type can be proved after a send. `docNumber` finds it but reports no total. */
+export interface AccountingObjectCapability {
+  readsBack: 'object' | 'docNumber' | 'none'
+}
+
+/**
+ * What the provider can do, declared once so no consumer probes the adapter.
+ * `objects` is keyed by `ExportBatch.objectType`; a type absent here is shaped
+ * to `journal` at build time rather than refused at send time.
+ */
+export interface AccountingProviderCapabilities {
+  objects: Readonly<Record<string, AccountingObjectCapability>>
+  /** The withdrawal needs the version recorded at create time (QuickBooks `SyncToken`). */
+  withdrawRequiresVersion: boolean
+  /** Whether a withdrawn object is gone or voided in place (Xero, NetSuite void). */
+  withdrawIs: 'delete' | 'void'
+  canCreateAccounts: boolean
+  objectUrls: boolean
 }
 
 export interface SendObjectResult {
@@ -115,6 +157,8 @@ export const NONE_PROVIDER_ID = 'none'
  */
 export interface AccountingProvider {
   readonly id: string
+  readonly limits?: AccountingProviderLimits
+  readonly capabilities?: AccountingProviderCapabilities
 
   /** Optional one-time setup. Called once, by the manager, before first use. */
   init?(): Promise<void>

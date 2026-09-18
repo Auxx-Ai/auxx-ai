@@ -48,6 +48,8 @@ import type { ProviderLedgerSlicer } from '../../mirror/client'
 import { readPinnedAccountingConnection } from '../book-connections'
 import type {
   AccountingProvider,
+  AccountingProviderCapabilities,
+  AccountingProviderLimits,
   ClearAccountMappingInput,
   CreateProviderAccountInput,
   CreateProviderAccountResult,
@@ -146,6 +148,32 @@ for (const objectType of EXPORT_OBJECT_TYPES) {
  */
 export class QuickbooksAccountingProvider implements AccountingProvider {
   readonly id = QUICKBOOKS_PROVIDER_ID
+  // The caps the app's tool schemas enforce (`.max(...)` in `create-quickbooks-*.tool.tsx`).
+  readonly limits: AccountingProviderLimits = {
+    idempotencyKeyLength: 50,
+    docNumberLength: 21,
+    noteLength: 4000,
+    pageSize: 1000,
+    // Intuit's published throttle per realm.
+    rateLimit: { perMinute: 500, concurrent: 10 },
+  }
+  readonly capabilities: AccountingProviderCapabilities = {
+    objects: {
+      // No `get_quickbooks_journal_entry`: a journal is found by its DocNumber and reports no total.
+      journal: { readsBack: 'docNumber' },
+      sales_receipt: { readsBack: 'object' },
+      invoice: { readsBack: 'object' },
+      payment: { readsBack: 'object' },
+      credit_memo: { readsBack: 'object' },
+      refund_receipt: { readsBack: 'object' },
+      deposit: { readsBack: 'object' },
+      bill: { readsBack: 'object' },
+    },
+    withdrawRequiresVersion: true,
+    withdrawIs: 'delete',
+    canCreateAccounts: true,
+    objectUrls: true,
+  }
 
   /**
    * Resolve one auxx account CODE to its QuickBooks account id.
