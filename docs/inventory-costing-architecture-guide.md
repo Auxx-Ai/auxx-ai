@@ -599,7 +599,9 @@ one until a year of margins is wrong.
 value is the classification *as of the movement*.
 
 **Historical movements have NULL costs and stay NULL.** They predate the regime and are not
-postable; any `listUnpostedMovements` must filter `unitCost IS NOT NULL`.
+postable, so any reader of unposted movements has to filter `unitCost IS NOT NULL` (no such
+reader exists today — the close's check counts movements that are not in an entry, which is a
+different question).
 
 #### An `adjust` is valued at standard cost, in BOTH directions (`G12`)
 
@@ -900,7 +902,7 @@ correctness argument here, not convenience.
 🛑 **Retracted, 2026-09-01:** this section used to end "`numeric` would be right if sub-cent
 precision were ever needed; it is not." A real vendor quotation (fasteners priced per thousand,
 `$0.01594` each) falsified that: whole-cent rates misstated every one of 30 lines on a real
-purchase order (`plans/money/tasks/31-sub-cent-rates.md`). Sub-cent precision **is** needed, on
+purchase order (`plans/money/tasks/done/31-sub-cent-rates.md`). Sub-cent precision **is** needed, on
 rates. The argument against `numeric` above still stands unchanged; it was never about whether a
 fraction of a cent exists, it was about the GL speaking minor units. What changed is which of this
 subsystem's `CURRENCY` fields are integers.

@@ -129,7 +129,9 @@ packages/lib/src/
     providers/   the AccountingProvider seam, book connections, quickbooks/
     rails/       payment rails, rail accounts, rail fee status
     money/       MoneyTransaction / MoneyApplication, invoice payments, deposits,
-                 payouts, checkout, stripe-connect
+                 payouts, checkout, stripe-connect, and the two evidence
+                 reconcilers (customer-money/order-evidence-reconciler.ts,
+                 payouts/payout-reconciler.ts)
     banking/     feed/ import/ review/ rules/
   inventory/     movements/ costing/ receiving/ builds/ relief/ bom/ tariffs/
   sales/         quotes, orders, fulfillments, invoice issuance, credit memos, billing, totals
@@ -148,10 +150,14 @@ issuance and lifecycle are `sales/invoices`; recording a payment against that in
 `sales/credit-memos` because the record is a sales document — and `apply.ts` / `settle.ts` call
 into `accounting/money` from there.
 
-**One barrel per top-level module.** `accounting/money/index.ts` exists;
-`accounting/money/invoice-payments/index.ts` does not, and neither do
-`sales/{quotes,invoices,billing,totals}`. A consumer wanting one slice imports the deeper
-subpath. Client code imports `<module>/client`, never a barrel.
+**A subfolder keeps the barrel it already has; a new one gets none by default.** Around thirty
+subfolder `index.ts` files exist under `accounting/` — every `ledger/` child, `money/`'s
+`bank-deposits` / `checkout` / `commands` / `customer-money`, `banking/`'s four, `journals/`'s two
+— and they stay. What the moves did *not* do is mint new ones: `accounting/money/invoice-payments`
+and `sales/{quotes,invoices,billing,totals}` have none, because nothing imports them as a unit. A
+subfolder is a filing decision first and an export surface only when a consumer wants the subpath,
+which `generate:exports` then picks up for free. Client code imports `<module>/client`, never a
+barrel.
 
 ### 2.2 Direction, and the eighteen edges that go the other way
 
@@ -418,7 +424,7 @@ mint `AUXX-undefined-…`.
 ⚠️ **`builders/basis-hash.ts` and `builders/basis-dimension.ts` are not builders.** `basis-hash`
 is the pure half of the deleted effect layer — canonical JSON and the two USD minor-unit
 converters — and nothing in `ledger/` imports it; its live callers are `providers/book-connections`,
-`money/checkout/deposit-accounting` and `money/reconciliation/stored-source-records`.
+`money/checkout/deposit-accounting` and `money/customer-money/stored-source-records`.
 `basis-dimension` is a reserved `'accrual' | 'cash'` enum, exported and used by nothing.
 
 ### 5.4 The poster — `post-entry.ts`
@@ -899,13 +905,25 @@ the currency. ⚠️ `post-payout-entry.ts` **resolves nothing itself and must n
 destination that disagrees flags `payout_destination_mismatch` on a payout that still posts. Only
 Stripe reports one.
 
-⚠️ **Two exported functions are named `reconcileFinancialRecords`.** One in
-`money/reconciliation/reconcile-records.ts` (the router, which fans changed records out by entity
-type) and one in `money/payouts/reconcile-records.ts` (the payout assessment); the router imports
-the second aliased as `reconcilePayoutRecords`, and `payouts/index.ts` re-exports it under the
-bare name. The word "reconcile" already carries four meanings in this cluster — `totals`,
-`billing`, `match` and `drift` reconcilers are all parent rebuilds, and this one is an evidence
-assessment.
+**Keeping evidence current is two `defineParentReconciler`s, not a router.** A fired record
+rule *marks*; the drain rebuilds once per parent after commit, however many per-field rules fired.
+`customer-money/order-evidence-reconciler.ts` owns order payment evidence and
+`payouts/payout-reconciler.ts` owns the payout assessment (`payouts/assess-payouts.ts`), which is
+the degenerate case of the primitive: a marked `payout` or `processor_balance_entry` **is** the
+parent, so there is no `resolve` and the work is `rebuildBatch` because one assessment covers a
+whole batch.
+
+🔑 **The order reconciler is one key with kind-tagged ids** — `order:<id>`, `line_item:<id>`,
+`customer_transaction:<id>` — and `resolve` maps all three onto order instance ids. Two keys would
+be the obvious shape, but then an order and its own lines dirtied by one write drain twice.
+
+⚠️ **The sync's bulk path calls the batch entry points directly** rather than marking
+(`customer-money/record-events.ts`'s `reconcileFinancialRecordsAfterBulk`): nothing opens a
+dirty-parent scope at sync finalize, so a mark per record would run one assessment per record.
+
+⚠️ The word "reconcile" carries five meanings in this cluster. `totals`, `billing`, `match` and
+`drift` reconcilers are parent rebuilds; these two are an evidence *assessment* wearing the same
+primitive, which is why the payout function is named `assessPayouts` and not `reconcile…`.
 
 🛑 **The `rails.ts` clearing balance is the ACCOUNT's, never the rail's** — nothing stamps a
 gateway onto a `GlPostingLine`, so two rails sharing an account get the same balance with
@@ -968,7 +986,7 @@ a Sales Receipt or an Invoice (§11.3).
 
 `MoneyTransfer` and `ProcessorBalanceEntry` extend an existing canonical `EntityInstance`
 identity, with ordinary `FieldValue`s carrying provider facts and shared domain events doing
-reconciliation (`money/reconciliation/`). Whether that is the right physical shape is
+reconciliation (§8.5's two reconcilers). Whether that is the right physical shape is
 [still open](../plans/accounting/decisions.md) — see §15 item 15.
 
 ---

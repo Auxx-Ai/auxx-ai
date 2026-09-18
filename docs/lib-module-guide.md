@@ -242,12 +242,15 @@ packages/lib/src/
 
 Three rules come with that shape:
 
-- **One barrel per top-level module.** `accounting/money/index.ts` exists;
-  `accounting/money/invoice-payments/index.ts` does not, and neither do
-  `sales/quotes|invoices|billing|totals`. A subfolder is a filing decision, not
-  an export surface — a consumer that wants one slice imports the deeper
-  subpath (`@auxx/lib/purchasing/bill-intake/client`), which `generate:exports`
-  picks up for free.
+- **A subfolder keeps the barrel it already has; a new subfolder gets none
+  unless a consumer needs the subpath.** Around thirty subfolder `index.ts`
+  files exist under `accounting/` and they stay. But
+  `accounting/money/invoice-payments` and `sales/quotes|invoices|billing|totals`
+  have none, because nothing imports them as a unit — a subfolder is a filing
+  decision first, and an export surface only when something asks for one. A
+  consumer that wants one slice imports the deeper subpath
+  (`@auxx/lib/purchasing/bill-intake/client`), which `generate:exports` picks up
+  for free.
 - **Cut by what the record is, not by which table a function writes.** An
   invoice's issuance and lifecycle are `sales/invoices`; recording a payment
   against it writes a `MoneyTransaction`, so it is `accounting/money`.
