@@ -17,9 +17,10 @@ import { and, desc, eq, gt, inArray, isNotNull, isNull, or, type SQL, sql } from
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import {
-  inPageOrder,
   readSystemRecords,
   type SystemRecord,
+  systemInstanceColumns,
+  systemRecordScope,
   systemValueJoin,
 } from '../../../resources/system-records'
 import { resolvePayoutStatus } from './client'
@@ -140,11 +141,7 @@ export async function findPayoutByGatewayId(
     )
     .$dynamic()
 
-  const where: SQL[] = [
-    eq(schema.EntityInstance.organizationId, organizationId),
-    eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-    isNull(schema.EntityInstance.archivedAt),
-  ]
+  const where: SQL[] = [systemRecordScope(organizationId, ctx.defId)]
 
   if (byPair) {
     // LEFT join: a row with no pointer at all must still come back.
@@ -199,13 +196,7 @@ export async function readBankAccountSettlementDestinations(
         eq(glValue.valueText, glAccountId)
       )
     )
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
+    .where(and(systemRecordScope(organizationId, ctx.defId)))
   if (matches.length === 0) return []
 
   const records = await readSystemRecords(db, organizationId, ctx, {
@@ -262,13 +253,7 @@ export async function listOpenDestinationMismatches(
       rail,
       and(systemValueJoin(rail, railField.id), eq(rail.relatedEntityId, paymentGatewayId))
     )
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
+    .where(and(systemRecordScope(organizationId, ctx.defId)))
   if (rows.length === 0) return []
 
   const records = await readSystemRecords(db, organizationId, ctx, {
@@ -291,13 +276,9 @@ export async function listPayouts(
       const ctx = await loadPayoutFieldContext(db, organizationId)
       if (!ctx) return []
 
-      const where: SQL[] = [
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-        isNull(schema.EntityInstance.archivedAt),
-      ]
+      const where: SQL[] = [systemRecordScope(organizationId, ctx.defId)]
 
-      let query = db.select({ id: schema.EntityInstance.id }).from(schema.EntityInstance).$dynamic()
+      let query = db.select(systemInstanceColumns).from(schema.EntityInstance).$dynamic()
 
       if (status && ctx.fields.payout_status) {
         const statusValue = alias(schema.FieldValue, 'payout_status_v')
@@ -333,9 +314,8 @@ export async function listPayouts(
         .offset(offset ?? 0)
 
       if (rows.length === 0) return []
-      const ids = rows.map((row) => row.id)
-      const page = await readSystemRecords(db, organizationId, ctx, { ids })
-      const records = await hydrate(db, organizationId, inPageOrder(page, ids))
+      const page = await readSystemRecords(db, organizationId, ctx, { instances: rows })
+      const records = await hydrate(db, organizationId, page)
       const summaries = await loadPayoutSourceSummaries(db, organizationId, records)
       return records.map((record) => ({
         ...record,

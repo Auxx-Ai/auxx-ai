@@ -28,13 +28,14 @@ import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import { toRecordId } from '../../resources/resource-id'
 import {
-  inPageOrder,
   readSystemRecords,
   type SystemFieldContext,
   type SystemRecord,
   systemDefId,
   systemFieldMap,
   systemFields,
+  systemInstanceColumns,
+  systemRecordScope,
   systemValueJoin,
 } from '../../resources/system-records'
 import { loadDirectSubparts } from '../bom/subpart-graph'
@@ -296,13 +297,9 @@ async function queryBuilds(
   const limit = filters.limit ?? DEFAULT_LIMIT
   const offset = filters.offset ?? 0
 
-  const where: SQL[] = [
-    eq(schema.EntityInstance.organizationId, organizationId),
-    eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-    isNull(schema.EntityInstance.archivedAt),
-  ]
+  const where: SQL[] = [systemRecordScope(organizationId, ctx.defId)]
 
-  let query = db.select({ id: schema.EntityInstance.id }).from(schema.EntityInstance).$dynamic()
+  let query = db.select(systemInstanceColumns).from(schema.EntityInstance).$dynamic()
 
   if (filters.status && ctx.fields.build_status) {
     const statusValue = alias(schema.FieldValue, 'build_status_v')
@@ -361,9 +358,8 @@ async function queryBuilds(
     .offset(offset)
 
   if (rows.length === 0) return []
-  const ids = rows.map((row) => row.id)
-  const records = await readSystemRecords(db, organizationId, ctx, { ids })
-  return inPageOrder(records, ids).map(toBuildRecord)
+  const records = await readSystemRecords(db, organizationId, ctx, { instances: rows })
+  return records.map(toBuildRecord)
 }
 
 function toBuildRecord(record: SystemRecord<BuildAttribute>): BuildRecord {
@@ -426,14 +422,7 @@ export async function lockBuild(
   const [instance] = await tx
     .select({ id: schema.EntityInstance.id })
     .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.id, buildId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
+    .where(and(eq(schema.EntityInstance.id, buildId), systemRecordScope(organizationId, ctx.defId)))
     .for('update')
 
   if (!instance) throw new NotFoundError(`Build ${buildId} not found`)

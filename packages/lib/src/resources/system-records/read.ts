@@ -3,7 +3,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import type { RecordId, TypedFieldValue } from '@auxx/types'
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, type SQL } from 'drizzle-orm'
 import { rowsToTypedValues } from '../../field-values/field-value-helpers'
 import type { FieldValueRow } from '../../field-values/types'
 import { getInstanceId, toRecordId } from '../resource-id'
@@ -43,6 +43,14 @@ export interface SystemRecord<A extends string> {
 
 export interface ReadSystemRecordsOptions<A extends string> {
   ids?: readonly string[]
+  /**
+   * The rows a paginated `EntityInstance` query already selected through
+   * {@link systemInstanceColumns}, in the order it returned them — skips the
+   * instance query, so `ids`, `by` and `orderBy` no longer apply. Every row is
+   * checked against `organizationId`, `ctx.defId` and `includeArchived`; a page
+   * built without {@link systemRecordScope} throws rather than leaking.
+   */
+  instances?: readonly SystemInstanceRow[]
   includeArchived?: boolean
   orderBy?: 'createdAt' | 'updatedAt'
   /** Children of these parents: instances whose relationship field `attribute` points at one of `in`. */
@@ -53,11 +61,11 @@ export interface ReadSystemRecordsOptions<A extends string> {
 
 /**
  * Instances of `ctx.defId` with their cells, in two chunked queries (three with
- * `by`, one with `cells: false`). No permission checks — the router asserts and
- * hands down its scope.
+ * `by`, one with `cells: false`, one with `instances`). No permission checks —
+ * the router asserts and hands down its scope.
  *
- * There is no `limit`/`offset`: a paginated list pages the instance query
- * itself with `systemValueJoin` and then hands the page's ids back here.
+ * There is no `limit`/`offset`: a paginated list pages the instance query itself
+ * with `systemValueJoin` and hands the rows back through `instances`.
  */
 export async function readSystemRecords<A extends string>(
   db: Database | Transaction,
@@ -68,8 +76,27 @@ export async function readSystemRecords<A extends string>(
   options: ReadSystemRecordsOptions<NoInfer<A>> = {}
 ): Promise<SystemRecord<A>[]> {
   const { includeArchived = false, orderBy = 'createdAt', cells = true } = options
-  let ids = options.ids ? [...new Set(options.ids)] : undefined
+  const instances = options.instances
+    ? ownPage(options.instances, organizationId, ctx.defId, includeArchived)
+    : await readOwnInstances(db, organizationId, ctx, options, includeArchived, orderBy)
+  if (instances.length === 0) return []
 
+  const values = cells
+    ? await readValues(db, organizationId, instances, fieldIdsOf(ctx))
+    : new Map<string, Map<string, FieldValueRow[]>>()
+  return instances.map((instance) => buildRecord(ctx, instance, values.get(instance.id)))
+}
+
+/** The `ids`/`by` path: resolve the wanted ids, read their instance rows, sort them. */
+async function readOwnInstances<A extends string>(
+  db: Database | Transaction,
+  organizationId: string,
+  ctx: SystemFieldContext<A>,
+  options: ReadSystemRecordsOptions<NoInfer<A>>,
+  includeArchived: boolean,
+  orderBy: 'createdAt' | 'updatedAt'
+): Promise<SystemInstanceRow[]> {
+  let ids = options.ids ? [...new Set(options.ids)] : undefined
   if (options.by) {
     const children = await readChildIds(db, organizationId, ctx, options.by)
     const wanted = ids ? new Set(ids) : null
@@ -78,26 +105,12 @@ export async function readSystemRecords<A extends string>(
   if (ids && ids.length === 0) return []
 
   const instances = await readInstances(db, organizationId, ctx.defId, ids, includeArchived)
-  if (instances.length === 0) return []
   // `?.`: both columns are NOT NULL, but a row handed in short must not crash the sort.
   instances.sort(
     (a, b) =>
       (a[orderBy]?.getTime() ?? 0) - (b[orderBy]?.getTime() ?? 0) || a.id.localeCompare(b.id)
   )
-
-  const values = cells
-    ? await readValues(db, organizationId, instances, fieldIdsOf(ctx))
-    : new Map<string, Map<string, FieldValueRow[]>>()
-  return instances.map((instance) => buildRecord(ctx, instance, values.get(instance.id)))
-}
-
-/** The records in the order a paginated instance query returned their ids — {@link readSystemRecords} orders by `createdAt`, which is not the page's order. */
-export function inPageOrder<A extends string>(
-  records: SystemRecord<A>[],
-  ids: readonly string[]
-): SystemRecord<A>[] {
-  const byId = new Map(records.map((record) => [record.id, record]))
-  return ids.map((id) => byId.get(id)).filter((record): record is SystemRecord<A> => record != null)
+  return instances
 }
 
 /** The ids of every instance whose `by.attribute` relationship points at one of `by.in`. */
@@ -127,11 +140,65 @@ async function readChildIds<A extends string>(
   return [...out]
 }
 
-type InstanceRow = {
+/** The `EntityInstance` columns a record is built from. */
+export type SystemInstanceRow = {
   id: string
+  organizationId: string
+  entityDefinitionId: string
   createdAt: Date
   updatedAt: Date
   archivedAt: Date | null
+}
+
+/** The `select()` shape a paginated caller hands back through `instances`. */
+export const systemInstanceColumns = {
+  id: schema.EntityInstance.id,
+  organizationId: schema.EntityInstance.organizationId,
+  entityDefinitionId: schema.EntityInstance.entityDefinitionId,
+  createdAt: schema.EntityInstance.createdAt,
+  updatedAt: schema.EntityInstance.updatedAt,
+  archivedAt: schema.EntityInstance.archivedAt,
+}
+
+/** The org / def / archived predicate every read of a system record is scoped by — the one spelling, so a paging query cannot drop a third of it. */
+export function systemRecordScope(
+  organizationId: string,
+  defId: string,
+  options: { includeArchived?: boolean } = {}
+): SQL {
+  return and(
+    eq(schema.EntityInstance.organizationId, organizationId),
+    eq(schema.EntityInstance.entityDefinitionId, defId),
+    ...(options.includeArchived ? [] : [isNull(schema.EntityInstance.archivedAt)])
+  ) as SQL
+}
+
+/**
+ * A handed-in page, checked against the scope the reader would have applied itself.
+ *
+ * Throws rather than filtering: a mismatch is a paging query missing a
+ * {@link systemRecordScope} predicate, and silently dropping the rows would hand
+ * back a short page with nothing to say why.
+ */
+function ownPage(
+  instances: readonly SystemInstanceRow[],
+  organizationId: string,
+  defId: string,
+  includeArchived: boolean
+): SystemInstanceRow[] {
+  for (const row of instances) {
+    if (row.organizationId !== organizationId || row.entityDefinitionId !== defId) {
+      throw new Error(
+        `readSystemRecords: instance ${row.id} is not in ${organizationId}/${defId} — the paging query is missing systemRecordScope()`
+      )
+    }
+    if (!includeArchived && row.archivedAt) {
+      throw new Error(
+        `readSystemRecords: instance ${row.id} is archived — page it with systemRecordScope(…, { includeArchived: true }) and read it the same way`
+      )
+    }
+  }
+  return [...instances]
 }
 
 async function readInstances(
@@ -140,30 +207,21 @@ async function readInstances(
   defId: string,
   ids: string[] | undefined,
   includeArchived: boolean
-): Promise<InstanceRow[]> {
+): Promise<SystemInstanceRow[]> {
   const scope = (extra?: ReturnType<typeof inArray>) =>
-    and(
-      eq(schema.EntityInstance.organizationId, organizationId),
-      eq(schema.EntityInstance.entityDefinitionId, defId),
-      ...(includeArchived ? [] : [isNull(schema.EntityInstance.archivedAt)]),
-      ...(extra ? [extra] : [])
-    )
-  const columns = {
-    id: schema.EntityInstance.id,
-    createdAt: schema.EntityInstance.createdAt,
-    updatedAt: schema.EntityInstance.updatedAt,
-    archivedAt: schema.EntityInstance.archivedAt,
-  }
+    and(systemRecordScope(organizationId, defId, { includeArchived }), ...(extra ? [extra] : []))
   if (!ids)
-    return db.select(columns).from(schema.EntityInstance).where(scope()) as Promise<InstanceRow[]>
+    return db.select(systemInstanceColumns).from(schema.EntityInstance).where(scope()) as Promise<
+      SystemInstanceRow[]
+    >
 
-  const out: InstanceRow[] = []
+  const out: SystemInstanceRow[] = []
   for (const chunk of chunked(ids)) {
     const rows = await db
-      .select(columns)
+      .select(systemInstanceColumns)
       .from(schema.EntityInstance)
       .where(scope(inArray(schema.EntityInstance.id, chunk)))
-    out.push(...(rows as InstanceRow[]))
+    out.push(...(rows as SystemInstanceRow[]))
   }
   return out
 }
@@ -172,7 +230,7 @@ async function readInstances(
 async function readValues(
   db: Database | Transaction,
   organizationId: string,
-  instances: InstanceRow[],
+  instances: SystemInstanceRow[],
   fieldIds: string[]
 ): Promise<Map<string, Map<string, FieldValueRow[]>>> {
   const out = new Map<string, Map<string, FieldValueRow[]>>()
@@ -207,7 +265,7 @@ async function readValues(
 
 function buildRecord<A extends string>(
   ctx: SystemFieldContext<A>,
-  instance: InstanceRow,
+  instance: SystemInstanceRow,
   bucket: Map<string, FieldValueRow[]> | undefined
 ): SystemRecord<A> {
   const typed = new Map<A, TypedFieldValue[]>()

@@ -40,7 +40,12 @@ import type { Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
 import { SUBPART_FIELDS } from '../../resources/registry/resources/subpart-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
-import { systemDefId, systemFieldMap, systemValueJoin } from '../../resources/system-records'
+import {
+  optionalFieldId,
+  systemDefId,
+  systemFieldMap,
+  systemValueJoin,
+} from '../../resources/system-records'
 import { resolvePartKind } from '../costing/client'
 import { readPartQuantitiesOnHand } from './auto-build-queries'
 import type { BackfillCoverage, BackfillDemandLine, BackfillPlanInput } from './backfill-types'
@@ -221,17 +226,21 @@ async function readDemandLines(
         isNotNull(linePartValue.relatedEntityId)
       )
     )
-    .leftJoin(lineQtyValue, systemValueJoin(lineQtyValue, fieldId(fields.line_item_qty)))
+    .leftJoin(lineQtyValue, systemValueJoin(lineQtyValue, optionalFieldId(fields.line_item_qty)))
     .leftJoin(
       orderPlacedValue,
-      systemValueJoin(orderPlacedValue, fieldId(fields.order_placed_at), orderInstance)
+      systemValueJoin(orderPlacedValue, optionalFieldId(fields.order_placed_at), orderInstance)
     )
     // A LEFT JOIN plus `IS NULL`, so an order with no cancellation ROW at all is
     // kept alongside one whose row is present and empty. An inner join would
     // drop the first group, which is almost every order there is.
     .leftJoin(
       orderCancelledValue,
-      systemValueJoin(orderCancelledValue, fieldId(fields.order_cancelled_at), orderInstance)
+      systemValueJoin(
+        orderCancelledValue,
+        optionalFieldId(fields.order_cancelled_at),
+        orderInstance
+      )
     )
     .where(
       and(
@@ -347,12 +356,18 @@ async function readCoverage(
     // so the status filter already excludes them. Asserted anyway, because the
     // day a reversal can be raised against an open build this read would start
     // counting production that nets out to nothing.
-    .leftJoin(reversalValue, systemValueJoin(reversalValue, fieldId(ctx.fields.build_reversal_of)))
+    .leftJoin(
+      reversalValue,
+      systemValueJoin(reversalValue, optionalFieldId(ctx.fields.build_reversal_of))
+    )
     .leftJoin(
       periodStartValue,
-      systemValueJoin(periodStartValue, fieldId(ctx.fields.build_period_start))
+      systemValueJoin(periodStartValue, optionalFieldId(ctx.fields.build_period_start))
     )
-    .leftJoin(periodEndValue, systemValueJoin(periodEndValue, fieldId(ctx.fields.build_period_end)))
+    .leftJoin(
+      periodEndValue,
+      systemValueJoin(periodEndValue, optionalFieldId(ctx.fields.build_period_end))
+    )
     .where(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),
@@ -455,25 +470,4 @@ async function readHasBom(
     if (row.parentPartId) hasBom.set(row.parentPartId, true)
   }
   return hasBom
-}
-
-/**
- * A materialised field's id, or a sentinel that matches no row.
- *
- * Every optional field below is reached through a LEFT JOIN, so joining on an
- * id that cannot exist gives exactly the behaviour an unmaterialised field
- * should have — the column reads `null`, and the `coalesce` fallback or the
- * `IS NULL` predicate above it takes over. The alternative, adding the join
- * conditionally, changes drizzle's nullability type on every branch and is what
- * turns one static query into four.
- *
- * 🛑 It follows that a MISSING field is silently indistinguishable from an
- * empty value here. That is safe only because every field it is used on is
- * optional by design: none of them is a filter whose absence would WIDEN the
- * answer. The four whose absence would — `build_part`, `build_status`,
- * `build_quantity_planned`, `build_order` — are required outright above, for
- * the reason `reconcile-queries.ts` gives about silently dropped filters.
- */
-function fieldId(field: { id: string } | null | undefined): string {
-  return field?.id ?? '__unmaterialised__'
 }

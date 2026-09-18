@@ -16,7 +16,7 @@ vi.mock('@auxx/database', async () => ({
 
 import { schema } from '@auxx/database'
 import type { SystemFieldContext } from '../fields'
-import { inPageOrder, readSystemRecords } from '../read'
+import { readSystemRecords } from '../read'
 
 type Attribute =
   | 'name'
@@ -93,6 +93,8 @@ function db(rows: { instances?: unknown[]; values?: unknown[]; children?: unknow
 function instance(id: string, extra: object = {}) {
   return {
     id,
+    organizationId: ORG,
+    entityDefinitionId: ctx.defId,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-02'),
     archivedAt: null,
@@ -397,22 +399,70 @@ describe('readSystemRecords, by parent', () => {
   })
 })
 
-describe('inPageOrder', () => {
-  it('restores the page order the reader replaced with createdAt', async () => {
-    const { conn } = db({
-      instances: [instance('b'), instance('a'), instance('c')],
-      values: [],
+describe('instances', () => {
+  it('skips the instance query and keeps the page order', async () => {
+    const { conn, calls } = db({
+      values: [valueRow('c', 'f_name', 'c0', { valueText: 'Stripe' })],
     })
-    const page = ['c', 'a', 'b']
-    const records = await readSystemRecords(conn, ORG, ctx, { ids: page })
+    const page = [instance('c'), instance('a'), instance('b')]
 
-    expect(inPageOrder(records, page).map((record) => record.id)).toEqual(page)
+    const records = await readSystemRecords(conn, ORG, ctx, { instances: page })
+
+    // ONE query: the values read. The page's own query already read the rows.
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.table).toBe(schema.FieldValue)
+    expect(records.map((record) => record.id)).toEqual(['c', 'a', 'b'])
+    expect(records[0]?.text('name')).toBe('Stripe')
   })
 
-  it('drops an id the reader did not return', async () => {
-    const { conn } = db({ instances: [instance('a')], values: [] })
-    const records = await readSystemRecords(conn, ORG, ctx, { ids: ['a', 'gone'] })
+  it('reads no query at all for an empty page', async () => {
+    const { conn, calls } = db({})
 
-    expect(inPageOrder(records, ['gone', 'a']).map((record) => record.id)).toEqual(['a'])
+    expect(await readSystemRecords(conn, ORG, ctx, { instances: [] })).toEqual([])
+    expect(calls).toHaveLength(0)
+  })
+
+  it('carries the page rows own columns onto the record', async () => {
+    const { conn } = db({ values: [] })
+    const archivedAt = new Date('2026-03-04')
+
+    const [record] = await readSystemRecords(conn, ORG, ctx, {
+      instances: [instance('a', { archivedAt })],
+      includeArchived: true,
+    })
+
+    expect(record?.archivedAt).toEqual(archivedAt)
+  })
+
+  it('refuses a page from another org', async () => {
+    const { conn } = db({ values: [] })
+
+    await expect(
+      readSystemRecords(conn, ORG, ctx, {
+        instances: [instance('a'), instance('b', { organizationId: 'org_2' })],
+      })
+    ).rejects.toThrow('not in org_1/def_1')
+  })
+
+  it('refuses a page from another entity definition', async () => {
+    const { conn } = db({ values: [] })
+
+    await expect(
+      readSystemRecords(conn, ORG, ctx, {
+        instances: [instance('a', { entityDefinitionId: 'def_2' })],
+      })
+    ).rejects.toThrow('not in org_1/def_1')
+  })
+
+  it('refuses an archived row unless the read asked for one', async () => {
+    const { conn } = db({ values: [] })
+    const archived = [instance('a', { archivedAt: new Date('2026-03-04') })]
+
+    await expect(readSystemRecords(conn, ORG, ctx, { instances: archived })).rejects.toThrow(
+      'is archived'
+    )
+    await expect(
+      readSystemRecords(conn, ORG, ctx, { instances: archived, includeArchived: true })
+    ).resolves.toHaveLength(1)
   })
 })

@@ -44,11 +44,12 @@ import { LINE_ITEM_FIELDS } from '../resources/registry/resources/line-item-fiel
 import { pickSystemAttributes } from '../resources/registry/system-attributes'
 import { type RecordId, toRecordId } from '../resources/resource-id'
 import {
-  inPageOrder,
   readSystemRecords,
   type SystemRecord,
   systemFieldMap,
   systemFields,
+  systemInstanceColumns,
+  systemRecordScope,
   systemValueJoin,
 } from '../resources/system-records'
 import {
@@ -213,13 +214,9 @@ export async function listReturns(
 
       const limit = Math.min(filters.limit ?? DEFAULT_LIMIT, MAX_LIMIT)
       const offset = filters.offset ?? 0
-      const where: SQL[] = [
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-        isNull(schema.EntityInstance.archivedAt),
-      ]
+      const where: SQL[] = [systemRecordScope(organizationId, ctx.defId)]
 
-      let query = db.select({ id: schema.EntityInstance.id }).from(schema.EntityInstance).$dynamic()
+      let query = db.select(systemInstanceColumns).from(schema.EntityInstance).$dynamic()
 
       // The risk view narrows the status set rather than owning it, so
       // `status: ['received'], creditedNotInspected: true` means what it reads
@@ -284,9 +281,8 @@ export async function listReturns(
         .offset(offset)
 
       if (rows.length === 0) return []
-      const page = rows.map((row) => row.id)
-      const records = await readSystemRecords(db, organizationId, ctx, { ids: page })
-      return hydrateReturns(db, organizationId, ctx, inPageOrder(records, page))
+      const records = await readSystemRecords(db, organizationId, ctx, { instances: rows })
+      return hydrateReturns(db, organizationId, ctx, records)
     },
     'Failed to list returns',
     { organizationId, filters }
@@ -500,13 +496,7 @@ export async function readReturnedQuantityClaimsBatch(
       )
     )
     .leftJoin(quantityValue, systemValueJoin(quantityValue, quantityField.id))
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
+    .where(and(systemRecordScope(organizationId, ctx.defId)))
 
   for (const row of rows) {
     if (!row.lineItemId) continue
@@ -823,7 +813,7 @@ export async function readUnlinkedCreditMemosForOrder(
     const returnValue = alias(schema.FieldValue, 'cm_ret_v')
 
     const rows = await db
-      .select({ id: schema.EntityInstance.id })
+      .select(systemInstanceColumns)
       .from(schema.EntityInstance)
       .innerJoin(orderValue, systemValueJoin(orderValue, orderField.id))
       // A LEFT JOIN plus IS NULL, not a NOT EXISTS: the row is one-to-one
@@ -832,8 +822,7 @@ export async function readUnlinkedCreditMemosForOrder(
       .leftJoin(returnValue, systemValueJoin(returnValue, returnField.id))
       .where(
         and(
-          eq(schema.EntityInstance.organizationId, organizationId),
-          isNull(schema.EntityInstance.archivedAt),
+          systemRecordScope(organizationId, ctx.defId),
           eq(orderValue.relatedEntityId, orderId),
           isNull(returnValue.relatedEntityId)
         )
@@ -841,10 +830,9 @@ export async function readUnlinkedCreditMemosForOrder(
       .orderBy(desc(schema.EntityInstance.createdAt))
 
     if (rows.length === 0) return []
-    const page = rows.map((row) => row.id)
-    const records = await readSystemRecords(db, organizationId, ctx, { ids: page })
+    const records = await readSystemRecords(db, organizationId, ctx, { instances: rows })
 
-    return inPageOrder(records, page).map((record) => ({
+    return records.map((record) => ({
       creditMemoId: record.id,
       number: record.text('credit_memo_number'),
       total: record.number('credit_memo_total'),

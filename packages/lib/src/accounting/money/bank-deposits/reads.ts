@@ -24,9 +24,10 @@ import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../../cache'
 import type { RecordId } from '../../../resources/resource-id'
 import {
-  inPageOrder,
   readSystemRecords,
   type SystemRecord,
+  systemInstanceColumns,
+  systemRecordScope,
   systemValueJoin,
 } from '../../../resources/system-records'
 import { methodsRoutedToUndepositedFunds, resolveBankDepositStatus } from './client'
@@ -270,15 +271,11 @@ export async function listBankDeposits(
       const ctx = await loadBankDepositFieldContext(db, organizationId)
       if (!ctx) return []
 
-      const where: SQL[] = [
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-        isNull(schema.EntityInstance.archivedAt),
-      ]
+      const where: SQL[] = [systemRecordScope(organizationId, ctx.defId)]
 
       // Paged in SQL, because `readSystemRecords` has no `limit`/`offset`: the
-      // page is cut here and its ids handed to the reader.
-      let query = db.select({ id: schema.EntityInstance.id }).from(schema.EntityInstance).$dynamic()
+      // page is cut here and its rows handed to the reader.
+      let query = db.select(systemInstanceColumns).from(schema.EntityInstance).$dynamic()
 
       if (status && ctx.fields.bank_deposit_status) {
         const statusValue = alias(schema.FieldValue, 'bank_deposit_status_v')
@@ -298,9 +295,8 @@ export async function listBankDeposits(
         .offset(offset ?? 0)
 
       if (rows.length === 0) return []
-      const ids = rows.map((row) => row.id)
-      const page = await readSystemRecords(db, organizationId, ctx, { ids })
-      return inPageOrder(page, ids).map(toBankDepositRecord)
+      const page = await readSystemRecords(db, organizationId, ctx, { instances: rows })
+      return page.map(toBankDepositRecord)
     },
     'Failed to list bank deposits',
     { organizationId }

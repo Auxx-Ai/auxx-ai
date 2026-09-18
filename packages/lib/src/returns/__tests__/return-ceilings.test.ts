@@ -29,6 +29,8 @@ vi.mock('../../resources/system-records', async () => ({
   systemFields: h.systemFields,
   readSystemRecords: h.readSystemRecords,
   systemValueJoin: () => undefined,
+  systemRecordScope: () => undefined,
+  systemInstanceColumns: {},
 }))
 
 vi.mock('../fields', () => ({
