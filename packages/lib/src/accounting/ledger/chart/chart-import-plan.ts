@@ -134,7 +134,9 @@ export function planChartImport(
     create.push({
       providerAccount: account,
       code: account.number?.trim() || null,
-      name: account.name,
+      // The full `Parent:Child` path: the chart has no parent field, and leaf
+      // names repeat across a provider's sub-account trees.
+      name: account.fullyQualifiedName || account.name,
       accountType: account.classification,
       subtype: PROVIDER_ACCOUNT_TYPE_SUBTYPE[account.accountType] ?? null,
     })
