@@ -1,25 +1,18 @@
 // scripts/ci/raw-query-ratchet.js
 //
-// A RATCHET, not a gate. Two tables have exactly one module that should query them
-// (`audit-log/` writes `AuditLog`; `connections/`/`credentials/` read `Credential`) —
-// see docs/lib-module-guide.md §8 and plans/accounting/LIB-LAYOUT.md §3c. A caller
-// outside that module that writes the query by hand instead of widening the export
-// drifts from it silently: `postings/set-locked-through.ts` hand-typed `ipAddress` /
-// `userAgent` / `sessionId` as columns instead of `AuditInput.context`, and none of
-// its four `insert(schema.AuditLog)` siblings went through `toAuditRow`, so their
-// `visibility` default was whatever the column default said rather than what the
-// module's one writer applies.
-//
-// This can't be a gate: nine files still read `schema.Credential` directly pending a
-// follow-up sweep (LIB-LAYOUT.md §3c). It can be a ratchet — a NEW bypass, or a
-// listed file growing a second one, is a regression; the baseline only ever shrinks.
+// A RATCHET, not a gate. `audit-log/` is the one module that should write
+// `AuditLog`; `connections/`/`credentials/` the only ones that should read
+// `Credential` (docs/lib-module-guide.md §8). Nine files still read `Credential`
+// directly pending a follow-up sweep, so this can't be a gate — it can ratchet: a
+// NEW bypass, or a listed file growing a second one, fails; the baseline only
+// ever shrinks.
 //
 //   node scripts/ci/raw-query-ratchet.js
 //   node scripts/ci/raw-query-ratchet.js --update   # re-record the baseline
 //
-// The baseline keys on `<rule>` -> `{ <repo-relative file>: <hit count> }`, mirroring
-// typecheck-ratchet.js's `<file>::<code>` shape for the same reason: line numbers
-// churn on unrelated edits.
+// The baseline keys on `<rule>` -> `{ <repo-relative file>: <hit count> }`,
+// mirroring typecheck-ratchet.js's `<file>::<code>` shape: line numbers churn on
+// unrelated edits.
 
 import { globSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
@@ -36,16 +29,18 @@ const LIB_SRC = join(ROOT, 'packages', 'lib', 'src')
 const RULES = [
   {
     name: 'auditLogInsert',
-    label: 'insert(schema.AuditLog) outside audit-log/',
-    pattern: /insert\(schema\.AuditLog\)/,
+    label: 'insert(AuditLog) outside audit-log/',
+    // `schema.` is optional — record-audit.ts itself imports the bare `AuditLog`
+    // binding, so a bypass can too.
+    pattern: /insert\((schema\.)?AuditLog\)/,
     exemptDirs: ['audit-log'],
   },
   {
     name: 'credentialFrom',
-    label: 'raw schema.Credential read outside connections/ and credentials/',
-    // Both Drizzle read shapes: `.from(schema.Credential)` and the relational
-    // `db.query.Credential.findFirst/findMany(...)`.
-    pattern: /from\(schema\.Credential\)|\bquery\.Credential\.\w+\(/,
+    label: 'raw Credential read outside connections/ and credentials/',
+    // Both Drizzle read shapes, each with or without the `schema.` prefix:
+    // `.from((schema.)Credential)` and `db.query.Credential.findFirst/findMany(...)`.
+    pattern: /from\((schema\.)?Credential\)|\bquery\.Credential\.\w+\(/,
     exemptDirs: ['connections', 'credentials'],
   },
 ]

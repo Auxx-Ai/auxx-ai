@@ -6,21 +6,24 @@ import type { AuditLogError } from './errors'
 import type { AuditInput } from './types'
 
 /**
- * Append one immutable row to the audit log. Both write paths funnel through here:
- * direct request-layer writes (with IP/UA in `input.context`) and the bus-projection
- * handler (no context). Functional — returns a Result, never throws, so callers can
- * fire-and-forget without risking the surrounding request. Pass `db` (a `Transaction`)
- * to commit the row atomically with the change it describes.
+ * Append one immutable row to the audit log. On the default global `database` this
+ * is fire-and-forget (returns a Result, never throws) for request-layer and
+ * bus-projection writes; pass an explicit `db`/`Transaction` to commit the row
+ * atomically with the change it describes — on that path an insert failure THROWS
+ * (rolling back the transaction) instead of returning `err`, because a swallowed
+ * failure there would silently commit the change with no audit row.
  */
 export function recordAudit(
   input: AuditInput,
   db: Database | Transaction = database
 ): ResultAsync<void, AuditLogError> {
+  const insert = db
+    .insert(AuditLog)
+    .values(toAuditRow(input))
+    .then(() => undefined)
+  if (db !== database) return ResultAsync.fromSafePromise(insert)
   return ResultAsync.fromPromise(
-    db
-      .insert(AuditLog)
-      .values(toAuditRow(input))
-      .then(() => undefined),
+    insert,
     (cause): AuditLogError => ({
       code: 'AUDIT_WRITE_FAILED',
       message: `Failed to write audit log "${input.category}:${input.action}"`,
