@@ -21,8 +21,9 @@ import { runInTxWrite } from '../../../resources/crud/tx-write-scope'
  * the rail the source reads for and the handle it reaches its provider with;
  * the {@link PayoutSource} registered under `ctx.sourceId` lists the payouts and
  * their items; `gather.ts` splits them; this file writes. {@link syncPayouts}
- * is the org-level door (the `payout.paid` webhook, the "Sync now" button, the
- * nightly sweep): it asks every registered `api` source for the org's contexts
+ * is the org-level door - the nightly `payoutSyncJob` and the "Sync now" button
+ * are the whole set; there is no payout webhook - and it asks every registered
+ * `api` source for the org's contexts
  * and runs each. {@link syncPayoutSource} is the door for ONE context, which is
  * what a file import hands over.
  *
@@ -95,7 +96,13 @@ import { stampPaymentGatewayLastSettlement } from '../../rails/writes'
 import { type PayoutFieldContext, requirePayoutFieldContext } from './fields'
 import { type GatheredPayout, gatherPayout } from './gather'
 import { guard } from './guard'
-import { findPayoutByGatewayId, readBankAccountSettlementDestinations } from './reads'
+import {
+  countPayoutEntryAttempts,
+  findPayoutByGatewayId,
+  listPayoutFeedAccountIds,
+  listPayoutMemberEntryIds,
+  readBankAccountSettlementDestinations,
+} from './reads'
 import type { PayoutHeader, PayoutSource, PayoutSourceCtx } from './source'
 import { getPayoutSource, listPayoutSources } from './source-registry'
 import type { SyncPayoutsResult } from './types'
@@ -282,20 +289,48 @@ interface IngestOutcome {
  * The payout's current LIVE posting - `posted`, never `reversed` - or `null`.
  * Read through `listPostingsForSource` (TARGET §1), never the
  * `payout_gl_posting_id` stamp.
+ *
+ * Keyed on the `payout` record's instance id, which is what the subject row
+ * names (`plans/accounting/payout-links.md` §11.5): no record is no posting.
  */
 async function findLivePayoutPosting(
   db: Database,
   organizationId: string,
-  providerPayoutId: string
+  payoutInstanceId: string
 ): Promise<{ id: string } | null> {
   const postings = await listPostingsForSource(db, {
     organizationId,
     sourceKind: 'payout',
-    sourceId: providerPayoutId,
+    sourceId: payoutInstanceId,
   })
   if (postings.isErr()) return null
   const live = postings.value.find((posting) => posting.status !== 'reversed')
   return live ? { id: live.id } : null
+}
+
+/**
+ * The `ProcessorBalanceEntry` ids this payout's entry will name as `member`
+ * rows: the evidence-lane rows under any feed of this source that is linked to
+ * this context's rail (`plans/accounting/payout-links.md` §5).
+ *
+ * Empty is expected, never an error: a feed the financial connector has not
+ * observed - Stripe Connect today - posts a subject and no members.
+ */
+async function resolveMemberEntryIds(
+  db: Database,
+  ctx: PayoutSourceCtx,
+  providerPayoutId: string
+): Promise<string[]> {
+  return listPayoutMemberEntryIds(db, {
+    organizationId: ctx.organizationId,
+    sourceAccountIds: await listPayoutFeedAccountIds(
+      db,
+      ctx.organizationId,
+      ctx.sourceId,
+      ctx.rail.id
+    ),
+    payoutExternalId: providerPayoutId,
+  })
 }
 
 /**
@@ -321,8 +356,9 @@ async function ingestOne(
   const existing = await findPayoutByGatewayId(db, organizationId, providerPayoutId, rail.id)
   // 🛑 Already posted is a SUCCESS and a full stop. The sync is a poll; this is
   // the branch every steady-state run takes. Read through `listPostingsForSource`
-  // (TARGET §1), never the `payout_gl_posting_id` stamp.
-  if (await findLivePayoutPosting(db, organizationId, providerPayoutId)) {
+  // (TARGET §1), never the `payout_gl_posting_id` stamp. No record yet means no
+  // posting yet, because the subject row names the record.
+  if (existing && (await findLivePayoutPosting(db, organizationId, existing.payoutId))) {
     return { created: false, posted: false, alreadyPosted: true }
   }
 
@@ -369,6 +405,15 @@ async function ingestOne(
   // role scope both key on the ISO code uppercased.
   const currency = gathered.currency.toUpperCase()
 
+  // 🛑 A RE-POST needs its own document number. `GlPosting_org_docNumber_key` is
+  // a full unique index and a reversed entry keeps its number, so a payout the
+  // T26 correction backed out (`plans/accounting/payout-links.md` §13 Q6) would
+  // refuse on the number it already used and stay unbooked. The attempt count
+  // suffixes the KEY only; `payout_number` never moves and every message below
+  // still says it.
+  const attempts = await countPayoutEntryAttempts(db, organizationId, number)
+  const entryNumber = attempts === 0 ? number : `${number}-R${attempts + 1}`
+
   /** Stamp the reason on the record and return the pre-claim result. Nothing is built. */
   const block = async (reason: string): Promise<PostResult> => {
     logger.warn('Payout blocked before its entry was built', {
@@ -403,7 +448,9 @@ async function ingestOne(
       organizationId,
       actorUserId,
       payoutId: providerPayoutId,
-      payoutNumber: number,
+      payoutInstanceId,
+      memberEntryIds: await resolveMemberEntryIds(db, ctx, providerPayoutId),
+      payoutNumber: entryNumber,
       rail: rail.id,
       currency,
       grossMinor: gathered.split.grossMinor,
@@ -642,7 +689,7 @@ export async function reverseFailedPayout(
 
       // Never posted, so there is nothing to back out - just record the failure.
       // Read through `listPostingsForSource` (TARGET §1), never a stamp field.
-      const live = await findLivePayoutPosting(db, organizationId, gatewayPayoutId)
+      const live = await findLivePayoutPosting(db, organizationId, record.payoutId)
       if (!live) {
         await crud.update(recordId, { payout_status: 'failed' })
         return { reversed: false }

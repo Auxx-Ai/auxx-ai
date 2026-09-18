@@ -7,7 +7,9 @@ import {
   type PayoutRecordEvidence,
   payoutRecordEvidenceSchema,
 } from '../customer-money/record-contracts'
-import { type MatchableProcessorEntry, matchProcessorEntries } from './match-entries'
+import type { MatchReason, MatchState } from './match-reasons'
+import { syncStoredMatches } from './match-sync'
+import { reverseStalePayoutPosting } from './repost-writes'
 
 const OWNER_BATCH_SIZE = 100
 const OBSERVATION_BATCH_SIZE = 100
@@ -35,7 +37,10 @@ type Assessment = {
   total: bigint
   unmatchedCount: number
   entryCount: number
-  matchedBasis: Array<[string, string | null]>
+  /** `[entryId, matchState, matchedMoneyTransactionId, matchReason]`, from the stored columns. */
+  matchedBasis: Array<[string, MatchState, string | null, MatchReason | null]>
+  /** Live postings this payout's stored match has made wrong (§13 Q6). */
+  stalePostingIds: string[]
   observations: string[]
   pageCount: number
   coverage: typeof schema.FinancialSourceCoverage.$inferSelect | null
@@ -52,12 +57,18 @@ function pages(value: unknown): Array<{ id: string; index: number }> {
   )
 }
 
+/** What one chunk's assessment wrote, and the postings it found stale (§13 Q6). */
+interface AssessOutcome {
+  changed: number
+  stale: Array<{ transferId: string; glPostingId: string }>
+}
+
 async function assessTransfers(
   tx: Transaction,
   organizationId: string,
   transfers: Transfer[]
-): Promise<number> {
-  if (!transfers.length) return 0
+): Promise<AssessOutcome> {
+  if (!transfers.length) return { changed: 0, stale: [] }
   const observations = await tx
     .select()
     .from(schema.FinancialSourceObservation)
@@ -93,6 +104,7 @@ async function assessTransfers(
       unmatchedCount: 0,
       entryCount: 0,
       matchedBasis: [],
+      stalePostingIds: [],
       observations: [],
       pageCount: 0,
       coverage: null,
@@ -165,8 +177,6 @@ async function assessTransfers(
           assessment.reasons.add('A committed payout membership observation is missing')
         }
     }
-    const matchable: MatchableProcessorEntry[] = []
-    const matchOwners = new Map<string, Assessment>()
     for (const row of pageRows) {
       const parsed = payoutRecordEvidenceSchema.safeParse(row.payload)
       for (const { assessment, index } of pageOwners.get(row.id) ?? []) {
@@ -219,19 +229,6 @@ async function assessTransfers(
               assessment.unsupported = true
               assessment.reasons.add('Processor activity requires separate classification')
             } else if (!isOutgoingPayoutEntry(entry.type)) assessment.total += net
-            if (entry.type === 'charge' || entry.type === 'refund') {
-              const id = JSON.stringify([assessment.transfer.id, row.id, entry.id])
-              matchable.push({
-                id,
-                sourceAccountId: assessment.transfer.sourceAccountId,
-                sourceReference: entry.sourceReference,
-                type: entry.type,
-                grossMinor: gross,
-                currency: entry.currency,
-                currencyExponent: entry.currencyExponent,
-              })
-              matchOwners.set(id, assessment)
-            }
           } catch {
             assessment.unsupported = true
             assessment.reasons.add('Processor entry has invalid or unsupported money evidence')
@@ -239,13 +236,25 @@ async function assessTransfers(
         }
       }
     }
-    const matches = await matchProcessorEntries(tx, organizationId, matchable)
-    for (const entry of matchable) {
-      const assessment = matchOwners.get(entry.id)!
-      const moneyId = matches.get(entry.id) ?? null
-      assessment.matchedBasis.push([entry.id, moneyId])
-      if (!moneyId) assessment.unmatchedCount++
-    }
+  }
+  // The match works on the stored rows, never on the envelope (§9.3): the
+  // envelope has no row id to write to, and the stored answer is what the drawer
+  // and the basis hash both read.
+  const stored = await syncStoredMatches(
+    tx,
+    organizationId,
+    assessments.map(({ transfer }) => ({
+      key: transfer.id,
+      sourceAccountId: transfer.sourceAccountId,
+      payoutExternalId: transfer.externalId,
+    }))
+  )
+  for (const assessment of assessments) {
+    const summary = stored.get(assessment.transfer.id)
+    if (!summary) continue
+    assessment.matchedBasis = summary.basis
+    assessment.unmatchedCount = summary.unmatchedCount
+    assessment.stalePostingIds = summary.stalePostingIds
   }
   const changes = assessments.flatMap((assessment) => {
     const { transfer, header } = assessment
@@ -269,6 +278,14 @@ async function assessTransfers(
     if (assessment.unmatchedCount)
       blockers.push(
         `${assessment.unmatchedCount} processor entries have no verified matching customer movement`
+      )
+    // Written from the stored state, not from the reversal attempt that follows
+    // this transaction: a reversal that lands clears the fact on the next pass,
+    // and one refused by a closed period leaves the blocker standing.
+    if (assessment.stalePostingIds.length)
+      blockers.push(
+        'This payout was posted before its items were matched, so its entry must be reversed ' +
+          'and re-posted'
       )
     const result: PayoutReconciliationResult = {
       state,
@@ -325,20 +342,39 @@ async function assessTransfers(
           reconciledAt: sql`excluded."reconciledAt"`,
         },
       })
-  return changes.length
+  return {
+    changed: changes.length,
+    stale: assessments.flatMap((assessment) =>
+      assessment.stalePostingIds.map((glPostingId) => ({
+        transferId: assessment.transfer.id,
+        glPostingId,
+      }))
+    ),
+  }
 }
 
-/** Reconcile canonical transfer IDs in bounded transactions, preserving source-write serialization. */
+/**
+ * Reconcile canonical transfer IDs in bounded transactions, preserving
+ * source-write serialization.
+ *
+ * A payout whose stored match has outgrown its posting is reversed here, once,
+ * AFTER its chunk commits (§13 Q6) - never inside the assessment transaction,
+ * which holds the accounting commit lock. The re-post is `sweepPayouts`'s: the
+ * reversal is what frees the subject claim it needs.
+ */
 export async function reconcileTransferIds(
   db: Database,
   organizationId: string,
-  ids: string[]
+  ids: string[],
+  options?: { reverseStale?: boolean }
 ): Promise<number> {
+  const reverseStale = options?.reverseStale ?? true
   const uniqueIds = [...new Set(ids)]
   let changed = 0
+  const reassess = new Set<string>()
   for (let offset = 0; offset < uniqueIds.length; offset += OWNER_BATCH_SIZE) {
     const chunk = uniqueIds.slice(offset, offset + OWNER_BATCH_SIZE)
-    changed += await db.transaction(async (tx) => {
+    const outcome = await db.transaction(async (tx) => {
       await withAccountingCommitLock(tx, organizationId)
       const transfers = await tx
         .select()
@@ -351,7 +387,20 @@ export async function reconcileTransferIds(
         )
       return assessTransfers(tx, organizationId, transfers)
     })
+    changed += outcome.changed
+    if (!reverseStale) continue
+    for (const { transferId, glPostingId } of outcome.stale) {
+      const reversal = await reverseStalePayoutPosting(db, { organizationId, glPostingId })
+      if (reversal.reversed) reassess.add(transferId)
+    }
   }
+  // One more pass, with no second round of reversals: the postings are
+  // `reversed` now, so this pass finds nothing stale and drops the blocker it
+  // wrote a moment ago.
+  if (reassess.size)
+    changed += await reconcileTransferIds(db, organizationId, [...reassess], {
+      reverseStale: false,
+    })
   return changed
 }
 

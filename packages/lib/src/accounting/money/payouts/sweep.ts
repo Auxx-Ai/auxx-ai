@@ -6,17 +6,17 @@
  * `postPayoutEntry` shipped in #2054 with no caller at all, so `1200` was
  * debited gross at every card sale and never credited: the clearing account grew
  * without bound and the processing fee was never expensed (HANDOFF §11.5 item
- * 1). This module is the trigger, and `payout.paid` in `applyStripeEvent` is the
- * other one.
+ * 1). This module is the trigger, run nightly by
+ * `jobs/maintenance/payout-sync-job.ts`; the other door is the "Sync now"
+ * button, which calls `syncPayouts` for one org (`money.ts` router).
  *
- * ## Why BOTH a webhook and a sweep
+ * ## Why a sweep and not a webhook
  *
- * The webhook is a prompt and the sweep is the guarantee. A webhook can be
- * unsubscribed in the Stripe dashboard, dropped, or arrive while the worker is
- * down, and a payout that is never ingested leaves clearing overstated with
- * nothing to say so. Both doors run the same idempotent `syncPayouts`, which
- * keys on the (rail, gateway id) pair, so a payout reached twice is a no-op the
- * second time.
+ * There is no payout webhook any more: the `payout.paid` door went with the
+ * legacy Stripe event handler, and the only `applyStripeEvent` left is
+ * `banking/feed`'s. A poll is what both remaining doors do, and both run the
+ * same idempotent `syncPayouts`, which keys on the (rail, gateway id) pair, so
+ * a payout reached twice is a no-op the second time.
  *
  * ## Which orgs it walks (brief 27 §7)
  *

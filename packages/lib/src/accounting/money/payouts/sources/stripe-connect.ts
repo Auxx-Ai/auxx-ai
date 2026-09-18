@@ -71,11 +71,11 @@ function stripeAccountIdOf(ctx: PayoutSourceCtx): string {
  * Every org holding a connected, non-disconnected `PaymentAccount` - one row
  * per org that ever ran Stripe Connect, so a scan of a few hundred rows.
  *
- * 🛑 A DISCONNECTED account is skipped here, and that is a deliberate
- * difference from `applyStripeEvent`'s `payout.paid` case, which does not skip.
- * A payout event that arrives for a disconnected account is real money that
- * settled and needs booking; polling an account whose authorization auxx no
- * longer holds would just 401 on every run forever.
+ * 🛑 A DISCONNECTED account is skipped here: polling an account whose
+ * authorization auxx no longer holds would just 401 on every run forever. Its
+ * payouts reach the ledger only if someone reconnects, because the `payout.paid`
+ * webhook that used to book them regardless no longer exists - the nightly sweep
+ * and the "Sync now" button are the whole set of doors.
  */
 async function listOrganizations(db: Database): Promise<string[]> {
   const accounts = await db

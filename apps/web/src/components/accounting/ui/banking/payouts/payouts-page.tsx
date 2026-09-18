@@ -5,10 +5,7 @@
 // Accounting > Banking > Payouts (task 49 §3-§5; ui-plan.md §2.6).
 //
 // What the PROVIDER reported: `payoutEvidence.*`, exact `string` minor units,
-// per-row source currency, membership and reconciliation state, and an
-// explicit statement that posting is not enabled (a `Posting` row in the
-// drawer's Details, task 50 - it is a constant, not a per-payout fact, so it
-// is not a badge on the row). The sibling page, Settlements
+// per-row source currency, membership and reconciliation state. The sibling page, Settlements
 // (`banking/settlements/settlements-page.tsx`), is what auxx POSTED from it -
 // a different question, answered from a different query, on a route of its
 // own.
@@ -22,7 +19,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { AlertTriangle, Inbox, Landmark, PanelRight, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Inbox, Landmark, Link2Off, PanelRight, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -38,6 +35,7 @@ import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { EMPTY_CELL } from '../../ledger/format'
 import { formatEvidenceAmount } from './evidence-format'
+import { MATCH_REASON_LABEL } from './match-reason-copy'
 import { PayoutEvidenceDrawer } from './payout-evidence-drawer'
 import {
   EMPTY_PAYOUT_FILTERS,
@@ -56,7 +54,7 @@ const BREADCRUMBS = [
 ]
 
 const PAGE_DESCRIPTION =
-  'Inspect imported payouts and processor activity, exactly as the provider reported them. Settlement posting is not enabled for these payouts.'
+  'Inspect imported payouts and processor activity, exactly as the provider reported them. What auxx posted from them is on Settlements.'
 
 type PayoutsTab = 'payouts' | 'unassigned' | 'issues'
 
@@ -329,6 +327,7 @@ function PayoutList({
       search: filters.search.trim() || undefined,
       from: filters.from || undefined,
       to: filters.to || undefined,
+      needsMatching: filters.needsMatching || undefined,
     }),
     [filters]
   )
@@ -480,6 +479,22 @@ function PayoutList({
                     <Badge variant='outline' size='xs'>
                       Reconciliation pending
                     </Badge>
+                  )}
+                  {/* The worklist's own count and the code that explains most of
+                      it (§10.4) - the two facts that decide whether this payout
+                      is worth opening. */}
+                  {payout.needsMatchingCount > 0 && (
+                    <>
+                      <Badge variant='amber' size='xs'>
+                        <Link2Off />
+                        {payout.needsMatchingCount} need matching
+                      </Badge>
+                      {payout.dominantMatchReason && (
+                        <Badge variant='outline' size='xs'>
+                          {MATCH_REASON_LABEL[payout.dominantMatchReason]}
+                        </Badge>
+                      )}
+                    </>
                   )}
                 </span>
               }

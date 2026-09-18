@@ -108,10 +108,30 @@ describe('refusals', () => {
     )
   })
 
-  it('refuses a payout that settles nothing', () => {
+  it('refuses a payout that deposits nothing', () => {
     expect(() =>
       buildPayoutEntry({ ...BASE, grossMinor: 0, feesMinor: 0, netMinor: 0 })
     ).toThrowError(/moves nothing/)
+  })
+
+  it('posts a payout none of whose items are matched yet, wholly to unidentified receipts', () => {
+    // T26 (`plans/accounting/payout-links.md` §13 Q6): the order connector being
+    // behind is the ordinary case, and the deposit still reached the bank.
+    const built = buildPayoutEntry({
+      ...BASE,
+      grossMinor: 0,
+      feesMinor: 0,
+      netMinor: 0,
+      unrecognisedNetMinor: 500_000,
+    })
+
+    expect(built.depositedMinor).toBe(500_000)
+    expect(
+      built.entry.lines.map((line) => [line.accountRole, line.direction, line.amount])
+    ).toEqual([
+      ['bank', 'debit', 500_000],
+      ['unidentified_receipts', 'credit', 500_000],
+    ])
   })
 
   it('refuses a bare gateway id as the key, naming the length', () => {

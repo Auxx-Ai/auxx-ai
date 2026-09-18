@@ -3,12 +3,14 @@
 'use client'
 
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { Button } from '@auxx/ui/components/button'
 import { CollapsedJson } from '@auxx/ui/components/collapsed-json'
 import { MetricCell, MetricGrid } from '@auxx/ui/components/metric-grid'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   Banknote,
+  BookOpenCheck,
   Braces,
   CalendarClock,
   Clock,
@@ -17,10 +19,15 @@ import {
   Receipt,
   Scale,
 } from 'lucide-react'
+import Link from 'next/link'
 import { api } from '~/trpc/react'
+import { LedgerCard } from '../../ledger-card'
 import { formatEvidenceAmount, formatEvidenceDate } from './evidence-format'
 import { PayoutSourceHistory } from './payout-source-history'
 import { ProcessorActivity } from './processor-activity'
+
+/** Accounting > Settings > Payment gateways — where a feed is pointed at a rail. */
+const PAYMENT_GATEWAYS_HREF = '/app/accounting/settings/payment-gateways'
 
 /**
  * The body of the payout drawer: independent totals, source completeness and
@@ -132,6 +139,24 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
 
       {/* Not a `Section`, so it carries its own padding - see the drawer's 🛑. */}
       <div className='flex flex-col gap-3 border-b p-3'>
+        {/* 🛑 Feed-level, not per row (§10.4): one missing `paymentGatewayId`
+            refuses every candidate for every item on this feed, so a banner is
+            the honest count and sixteen identical row notes are not. */}
+        {(payout.dominantMatchReason === 'no_rail' || !payout.paymentGatewayId) &&
+          payout.needsMatchingCount > 0 && (
+            <Alert variant='warning'>
+              <AlertTitle>Link this feed to a payment gateway</AlertTitle>
+              <AlertDescription className='flex flex-col items-start gap-2'>
+                <span>
+                  This source account settles no payment gateway, so no customer payment can be
+                  matched to its items.
+                </span>
+                <Button variant='outline' size='sm' asChild>
+                  <Link href={PAYMENT_GATEWAYS_HREF}>Open payment gateways</Link>
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
         {payout.blockers.length > 0 && (
           <Alert variant='warning'>
             <AlertTitle>Evidence needs review</AlertTitle>
@@ -152,24 +177,34 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
             the page. The blocker is the sentence worth keeping. `nextActions`
             is still on the DTO; nothing reads it now.
 
-            The line below is the two CONSTANTS the Details section used to
-            spend a labelled row each on. Neither varies by payout - they are
-            facts about the feature, not about this row - so they are one muted
-            sentence rather than two cells reading "Not assessed". */}
+            The line below is a CONSTANT the Details section used to spend a
+            labelled row on. It does not vary by payout. */}
         <p className='text-muted-foreground text-xs'>
-          Bank confirmation is not assessed, and settlement posting is not enabled for these
-          payouts.
+          Bank confirmation is not assessed for these payouts.
         </p>
       </div>
 
       <Section
         title='Processor activity'
         icon={<Receipt className='size-4' />}
-        secondary={`${payout.entryCount} imported`}
+        secondary={
+          payout.needsMatchingCount > 0
+            ? `${payout.entryCount} imported · ${payout.needsMatchingCount} need matching`
+            : `${payout.entryCount} imported`
+        }
         description='The outgoing payout is retained here and excluded from the constituent net.'
         collapsible={false}>
-        <ProcessorActivity transferId={payout.id} />
+        <ProcessorActivity transferId={payout.id} livePostingId={payout.livePostingId} />
       </Section>
+
+      {/* 🛑 Keyed on the `payout` RECORD's instance id, not the provider's payout
+          id: that is what the posting's subject row names since §11.5, and it is
+          what every other ledger card passes. No record yet means no posting. */}
+      {payout.payoutInstanceId && (
+        <Section title='Accounting' icon={<BookOpenCheck className='size-4' />} collapsible={false}>
+          <LedgerCard entityInstanceId={payout.payoutInstanceId} sourceKind='payout' />
+        </Section>
+      )}
 
       <PayoutSourceHistory payoutId={payout.id} />
 

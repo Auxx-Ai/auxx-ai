@@ -241,9 +241,16 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
     number
   )
 
-  if (grossMinor <= 0) {
+  // 🛑 The DEPOSIT is what decides whether there is an entry, not the recognised
+  // gross. A payout none of whose items are matched yet is the ordinary case
+  // when the order connector is behind (`plans/accounting/payout-links.md` §4),
+  // and T26 says post it anyway with the whole deposit in
+  // `unidentified_receipts`; refusing on `grossMinor` made that decision
+  // unreachable for exactly the payout it was written for.
+  if (netMinor + unrecognisedNetMinor <= 0) {
     throw new UnprocessableEntityError(
-      `Payout ${number} settles ${grossMinor}. A payout that moves nothing has no entry.`,
+      `Payout ${number} deposits ${netMinor + unrecognisedNetMinor}. A payout that moves nothing ` +
+        'has no entry.',
       { payoutNumber: number, grossMinor: String(grossMinor) }
     )
   }
@@ -328,15 +335,20 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       sortOrder: 1,
     })
   }
-  lines.push({
-    ...source,
-    accountRole: ACCOUNT_ROLES.CLEARING,
-    sourceScope,
-    direction: 'credit',
-    amount: grossMinor,
-    memo: `Payout ${number} - gross settled`,
-    sortOrder: 2,
-  })
+  // Dropped at zero like the other two: a payout not one item of which is
+  // matched yet relieves no clearing, and a zero line is not postable anyway
+  // (`GlPostingLine_amount_check`).
+  if (grossMinor !== 0) {
+    lines.push({
+      ...source,
+      accountRole: ACCOUNT_ROLES.CLEARING,
+      sourceScope,
+      direction: 'credit',
+      amount: grossMinor,
+      memo: `Payout ${number} - gross settled`,
+      sortOrder: 2,
+    })
+  }
   // Dropped when zero, like the fee leg: the ordinary payout recognises
   // everything in it, and an org that has never taken a charge outside auxx has
   // no reason to have mapped `unidentified_receipts`.

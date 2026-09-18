@@ -617,9 +617,9 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
       {
         name: 'Fast door',
-        value: 'Stripe payout.paid webhook',
+        value: 'Sync now',
         sentence:
-          'A payout.paid event posts the same payout the moment it arrives; the daily run is the guarantee behind it for a webhook that was dropped or unsubscribed.',
+          'Sync now on the Payouts page reads and posts the payouts of one rail immediately; there is no payout webhook, so the nightly run is what catches everything else.',
       },
     ],
     records: [PAYMENT_GATEWAYS_RECORD, BANK_ACCOUNTS_RECORD],

@@ -15,6 +15,7 @@ import {
 let organizationId: string
 let actorUserId: string
 let payoutDefId: string
+let processorDefId: string
 
 function evidence(id: string, providerKey = 'gateway_a'): PayoutRecordEvidence {
   const entry = {
@@ -65,17 +66,44 @@ function evidence(id: string, providerKey = 'gateway_a'): PayoutRecordEvidence {
   }
 }
 
+/**
+ * The payout header AND its items. Both lanes write both, and since T2 the
+ * assessment's match state comes off the `ProcessorBalanceEntry` rows rather
+ * than the observation envelope, so a header-only fixture would report every
+ * payout as having nothing to match.
+ */
 async function write(envelopes: PayoutRecordEvidence[]) {
-  return writeFinancialRecords(getTestDb(), {
+  const results = await writeFinancialRecords(getTestDb(), {
     organizationId,
     actorUserId,
-    records: envelopes.map((envelope) => ({
-      entityType: 'payout' as const,
-      entityDefinitionId: payoutDefId,
-      evidence: envelope,
-    })),
+    records: envelopes.flatMap((envelope) => [
+      {
+        entityType: 'payout' as const,
+        entityDefinitionId: payoutDefId,
+        evidence: envelope,
+      },
+      ...envelope.membership.entries.map((entry, rowIndex) => ({
+        entityType: 'processor_balance_entry' as const,
+        entityDefinitionId: processorDefId,
+        evidence: {
+          version: 2 as const,
+          externalId: entry.id,
+          sourceAccount: envelope.sourceAccount,
+          acquisition: envelope.acquisition,
+          page: {
+            id: envelope.membership.page?.id ?? envelope.acquisition.id,
+            index: envelope.membership.page?.index ?? 0,
+            rowIndex,
+          },
+          entry,
+          raw: entry.raw,
+          rejectionReason: null,
+        },
+      })),
+    ]),
     provenance: { source: 'import', ref: 'fixture-import' },
   })
+  return results.filter((result) => result.entityType === 'payout')
 }
 
 beforeEach(async () => {
@@ -103,6 +131,7 @@ beforeEach(async () => {
     ])
     .returning()
   payoutDefId = definitions.find((row) => row.entityType === 'payout')!.id
+  processorDefId = definitions.find((row) => row.entityType === 'processor_balance_entry')!.id
 })
 
 describe('shared payout records and event reconciliation against PostgreSQL', () => {
@@ -345,7 +374,9 @@ describe('shared payout records and event reconciliation against PostgreSQL', ()
     const nextChunk = await count(101)
     expect(hundred).toBe(ten)
     expect(nextChunk).toBeGreaterThan(hundred)
-    expect(hundred).toBeLessThanOrEqual(12)
+    // 12 before T2; the stored match pass adds its own flat families (the
+    // entry rows, their accounts, the frozen ids and one batched correction).
+    expect(hundred).toBeLessThanOrEqual(16)
     expect(nextChunk).toBeLessThanOrEqual(hundred * 2)
   })
 })

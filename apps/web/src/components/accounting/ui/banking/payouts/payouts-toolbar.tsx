@@ -17,6 +17,7 @@ import {
   CircleAlert,
   CircleCheck,
   CircleX,
+  Link2Off,
   List,
   type LucideIcon,
   Send,
@@ -45,6 +46,8 @@ export interface PayoutFilters {
   search: string
   from: string
   to: string
+  /** The accountant's worklist: payouts holding an open item (§10.4). One SQL `EXISTS`. */
+  needsMatching: boolean
 }
 
 export const EMPTY_PAYOUT_FILTERS: PayoutFilters = {
@@ -53,6 +56,7 @@ export const EMPTY_PAYOUT_FILTERS: PayoutFilters = {
   search: '',
   from: '',
   to: '',
+  needsMatching: false,
 }
 
 /**
@@ -253,7 +257,7 @@ export function PayoutsToolbar({ filters, onChange }: PayoutsToolbarProps) {
   // 🛑 Only row two counts as dirty. The account and the status are the VIEW -
   // they live in the URL and a Clear that reset them would drop the link
   // somebody arrived on, which is the opposite of what the button is for.
-  const dirty = !!filters.search || !!filters.from || !!filters.to
+  const dirty = !!filters.search || !!filters.from || !!filters.to || filters.needsMatching
 
   return (
     <div className='sticky top-0 z-10 shrink-0 backdrop-blur-sm'>
@@ -293,6 +297,21 @@ export function PayoutsToolbar({ filters, onChange }: PayoutsToolbarProps) {
             placeholder='Search payout id'
             className='h-7'
           />
+        </ListToolbarGroup>
+
+        <ListToolbarGroup className='shrink-0'>
+          {/* A toggle, not a fourth status tab: it crosses the status axis - an
+              already-paid payout is exactly the one whose items still need
+              matching. */}
+          <Button
+            variant={filters.needsMatching ? 'secondary' : 'ghost'}
+            size='sm'
+            className='h-7'
+            aria-pressed={filters.needsMatching}
+            onClick={() => set('needsMatching', !filters.needsMatching)}>
+            <Link2Off />
+            Needs matching
+          </Button>
         </ListToolbarGroup>
 
         <ListToolbarGroup className='shrink-0'>

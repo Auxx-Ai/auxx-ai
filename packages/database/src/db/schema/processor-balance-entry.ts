@@ -50,6 +50,23 @@ export const ProcessorBalanceEntry = pgTable(
     sourceId: text(),
     sourceType: text(),
     isOutgoingTransfer: boolean().notNull(),
+    /** Null for types never matched (fee, adjustment, transfers, unknown). */
+    matchState: text().$type<'pending' | 'suggested' | 'matched' | 'unmatchable'>(),
+    /** The receipt: the match when `matched`, the candidate when `suggested`. */
+    matchedMoneyTransactionId: text(),
+    /** A code, never free text — the union is mirrored in `@auxx/lib` `money/payouts/match-reasons.ts`. */
+    matchReason: text().$type<
+      | 'no_receipt'
+      | 'no_rail'
+      | 'no_reference'
+      | 'ambiguous'
+      | 'amount_differs'
+      | 'rail_differs'
+      | 'manual'
+    >(),
+    /** User id when a person matched or accepted; null for the matcher. */
+    matchedBy: text(),
+    matchedAt: timestamp({ withTimezone: true }),
   },
   (t) => [
     unique('ProcessorBalanceEntry_org_id_key').on(t.organizationId, t.id),
@@ -79,6 +96,15 @@ export const ProcessorBalanceEntry = pgTable(
       t.sourceAccountId,
       t.payoutExternalId
     ),
+    index('ProcessorBalanceEntry_matched_money_idx').on(
+      t.organizationId,
+      t.matchedMoneyTransactionId
+    ),
+    // The pending sweep, the receipt-side poke and the "needs matching" filter
+    // all read only these three states, so the index skips settled rows.
+    index('ProcessorBalanceEntry_open_match_idx')
+      .on(t.organizationId, t.matchState)
+      .where(sql`${t.matchState} IN ('pending', 'suggested', 'unmatchable')`),
     check(
       'ProcessorBalanceEntry_currency_check',
       sql`${t.currency} ~ '^[A-Z]{3}$' AND ${t.currencyExponent} BETWEEN 0 AND 4`

@@ -13,8 +13,9 @@ const logger = createScopedLogger('payout-sources')
  * (`plans/accounting/tasks/27-a-settlement-from-anywhere.md` §4, §7).
  *
  * 🛑 **Every process that runs the payout sync must call this at boot** - web
- * (the `payout.paid` webhook and the "Sync now" button) AND the worker (the
- * nightly `payoutSyncJob`), beside `registerAccountingProviders()`, which the
+ * (the "Sync now" button) AND the worker (the nightly `payoutSyncJob`, which is
+ * the only other door: there is no payout webhook), beside
+ * `registerAccountingProviders()`, which the
  * same two boot sequences already call for the same reason. The pipeline
  * (`payouts/sync.ts`) knows only the `PayoutSource` interface; with an empty
  * registry `syncPayouts` finds no context for any org, lists nothing, and the

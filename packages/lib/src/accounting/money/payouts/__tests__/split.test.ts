@@ -85,33 +85,6 @@ describe('splitPayout', () => {
     expect(split.unrecognisedNetMinor).toBe(0)
   })
 
-  it('recognises an `order` ref by its id exactly as it does a charge', () => {
-    // brief 27 §4 rule 1: the split is kind-blind. Which lookup put `1001` in
-    // the set is `recognise.ts`'s business.
-    const split = splitPayout(
-      [
-        {
-          externalId: 'bt_1',
-          grossMinor: 30_000,
-          feeMinor: 900,
-          ref: { kind: 'order', id: '1001' },
-        },
-        {
-          externalId: 'bt_2',
-          grossMinor: 20_000,
-          feeMinor: 600,
-          ref: { kind: 'order', id: '1002' },
-        },
-      ],
-      new Set(['1001'])
-    )
-
-    expect(split.grossMinor).toBe(30_000)
-    expect(split.feesMinor).toBe(900)
-    expect(split.unrecognisedNetMinor).toBe(19_400)
-    expect(split.unrecognisedCount).toBe(1)
-  })
-
   it('recognises nothing, without erroring, on an org that just connected', () => {
     const split = splitPayout([charge('a', 100_000, 3_200)], new Set())
 

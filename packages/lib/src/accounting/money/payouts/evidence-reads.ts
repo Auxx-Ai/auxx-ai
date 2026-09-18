@@ -1,11 +1,15 @@
 // packages/lib/src/accounting/money/payouts/evidence-reads.ts
 import { type Database, schema } from '@auxx/database'
-import { and, asc, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { z } from 'zod'
 import { BadRequestError, ConflictError } from '../../../errors'
+import { systemDefId, systemRecordScope, systemValueJoin } from '../../../resources/system-records'
 import { exactEvidenceMinor } from '../customer-money/evidence-contracts'
 import { payoutRecordEvidenceSchema } from '../customer-money/record-contracts'
-import { matchProcessorEntries } from './match-entries'
+import { loadPayoutFieldContext } from './fields'
+import { type CandidateDocument, readApplicationDocuments } from './match-candidates'
+import type { MatchReason } from './match-reasons'
 
 type PageInput = { organizationId: string; limit: number; cursor?: string }
 /**
@@ -27,11 +31,13 @@ type EvidenceFilters = {
   /** `YYYY-MM-DD`, inclusive. Both optional and independently usable. */
   from?: string
   to?: string
+  /** Only payouts holding an item in `pending`, `suggested` or `unmatchable` — the accountant's worklist (§10.4). */
+  needsMatching?: boolean
 }
 type Transfer = typeof schema.MoneyTransfer.$inferSelect
 type Account = Pick<
   typeof schema.FinancialSourceAccount.$inferSelect,
-  'providerKey' | 'externalAccountId' | 'environment'
+  'providerKey' | 'externalAccountId' | 'environment' | 'paymentGatewayId'
 >
 type Entry = typeof schema.ProcessorBalanceEntry.$inferSelect
 type ActivityRow = Pick<
@@ -51,7 +57,20 @@ type ActivityRow = Pick<
   | 'sourceReference'
   | 'isOutgoingTransfer'
   | 'sourceAccountId'
->
+  | 'matchState'
+  | 'matchedMoneyTransactionId'
+  | 'matchReason'
+  | 'matchedBy'
+> & {
+  /**
+   * The `ProcessorBalanceEntry.id` the match mutations take.
+   *
+   * 🛑 NOT `id`: a membership row's `id` is `[pageId, entryId]`, a synthetic key
+   * for an observation payload row, and `acceptMatch`/`matchEntry` would 404 on
+   * it. Null when the evidence lane has not materialised a row for this item.
+   */
+  rowId: string | null
+}
 const pageSize = (limit: number) => Math.min(100, Math.max(1, limit))
 const resultSchema = z.object({
   state: z.enum(['complete', 'incomplete', 'unsupported']),
@@ -78,10 +97,78 @@ function connectorId(value: unknown): string | null {
   if (!value || typeof value !== 'object' || !('connectorId' in value)) return null
   return typeof value.connectorId === 'string' ? value.connectorId : null
 }
-function transferDto(row: Transfer, account: Account, snapshot: unknown) {
+/** How many of a payout's items are still open, and the code that explains most of them. */
+export interface OpenMatchSummary {
+  needsMatchingCount: number
+  dominantMatchReason: MatchReason | null
+}
+
+const NO_OPEN_MATCHES: OpenMatchSummary = { needsMatchingCount: 0, dominantMatchReason: null }
+
+/** Every payout in the page that still has an open item, in one grouped query on the partial index. */
+async function openMatchSummaries(
+  db: Database,
+  organizationId: string,
+  transfers: readonly Pick<Transfer, 'id' | 'sourceAccountId' | 'externalId'>[]
+): Promise<Map<string, OpenMatchSummary>> {
+  const summaries = new Map<string, OpenMatchSummary>()
+  if (!transfers.length) return summaries
+  const rows = await db
+    .select({
+      sourceAccountId: schema.ProcessorBalanceEntry.sourceAccountId,
+      payoutExternalId: schema.ProcessorBalanceEntry.payoutExternalId,
+      matchReason: schema.ProcessorBalanceEntry.matchReason,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(schema.ProcessorBalanceEntry)
+    .where(
+      and(
+        eq(schema.ProcessorBalanceEntry.organizationId, organizationId),
+        inArray(schema.ProcessorBalanceEntry.matchState, ['pending', 'suggested', 'unmatchable']),
+        inArray(
+          schema.ProcessorBalanceEntry.sourceAccountId,
+          Array.from(new Set(transfers.map((row) => row.sourceAccountId)))
+        ),
+        inArray(
+          schema.ProcessorBalanceEntry.payoutExternalId,
+          Array.from(new Set(transfers.map((row) => row.externalId)))
+        )
+      )
+    )
+    .groupBy(
+      schema.ProcessorBalanceEntry.sourceAccountId,
+      schema.ProcessorBalanceEntry.payoutExternalId,
+      schema.ProcessorBalanceEntry.matchReason
+    )
+  const byScope = new Map<string, Array<{ reason: MatchReason | null; count: number }>>()
+  for (const row of rows) {
+    const key = `${row.sourceAccountId}:${row.payoutExternalId}`
+    const list = byScope.get(key) ?? []
+    list.push({ reason: row.matchReason, count: Number(row.count) })
+    byScope.set(key, list)
+  }
+  for (const transfer of transfers) {
+    const list = byScope.get(`${transfer.sourceAccountId}:${transfer.externalId}`)
+    if (!list?.length) continue
+    const dominant = [...list].sort((a, b) => b.count - a.count)[0]!
+    summaries.set(transfer.id, {
+      needsMatchingCount: list.reduce((total, row) => total + row.count, 0),
+      dominantMatchReason: dominant.reason,
+    })
+  }
+  return summaries
+}
+
+function transferDto(
+  row: Transfer,
+  account: Account,
+  snapshot: unknown,
+  matching: OpenMatchSummary = NO_OPEN_MATCHES
+) {
   const result = resultSchema.safeParse(row.reconciliationResult)
   const current = row.reconciliationState !== 'pending' && result.success ? result.data : null
   return {
+    ...matching,
     id: row.id,
     externalId: row.externalId,
     providerKey: account.providerKey,
@@ -91,6 +178,8 @@ function transferDto(row: Transfer, account: Account, snapshot: unknown) {
     // selected for the drift check below; carried out so a badge can say `test`
     // rather than letting a sandbox payout look like a real one.
     environment: account.environment,
+    /** The rail this feed settles, or null — the `no_rail` banner's own fact (§10.4). */
+    paymentGatewayId: account.paymentGatewayId,
     status: row.status,
     sourceAmountMinor: row.sourceAmountMinor.toString(),
     sourceCurrency: row.sourceCurrency,
@@ -125,6 +214,7 @@ function transferQuery(db: Database) {
         providerKey: schema.FinancialSourceAccount.providerKey,
         externalAccountId: schema.FinancialSourceAccount.externalAccountId,
         environment: schema.FinancialSourceAccount.environment,
+        paymentGatewayId: schema.FinancialSourceAccount.paymentGatewayId,
       },
       snapshot: schema.FinancialSourceObservation.reportingInstallationSnapshot,
       acquisitionId: sql<
@@ -225,7 +315,10 @@ export async function listPayoutEvidence(db: Database, input: PageInput & Eviden
           : undefined,
         input.status ? eq(schema.MoneyTransfer.status, input.status) : undefined,
         input.from ? sql`${occurredDay()} >= ${input.from}::date` : undefined,
-        input.to ? sql`${occurredDay()} <= ${input.to}::date` : undefined
+        input.to ? sql`${occurredDay()} <= ${input.to}::date` : undefined,
+        input.needsMatching
+          ? sql`EXISTS (SELECT 1 FROM ${schema.ProcessorBalanceEntry} open WHERE open."organizationId" = ${schema.MoneyTransfer.organizationId} AND open."sourceAccountId" = ${schema.MoneyTransfer.sourceAccountId} AND open."payoutExternalId" = ${schema.MoneyTransfer.externalId} AND open."matchState" IN ('pending', 'suggested', 'unmatchable'))`
+          : undefined
       )
     )
     /* Newest payout first, by the PROVIDER's date — the date the row leads
@@ -235,10 +328,16 @@ export async function listPayoutEvidence(db: Database, input: PageInput & Eviden
        the rows that have no date at all. */
     .orderBy(sql`${occurredDay()} DESC NULLS LAST`, desc(schema.MoneyTransfer.id))
     .limit(limit + 1)
+  const page = rows.slice(0, limit)
+  const matching = await openMatchSummaries(
+    db,
+    input.organizationId,
+    page.map(({ transfer }) => transfer)
+  )
   return {
-    items: rows
-      .slice(0, limit)
-      .map(({ transfer, account, snapshot }) => transferDto(transfer, account, snapshot)),
+    items: page.map(({ transfer, account, snapshot }) =>
+      transferDto(transfer, account, snapshot, matching.get(transfer.id))
+    ),
     nextCursor: rows.length > limit ? encodePayoutCursor(rows[limit - 1]!.transfer) : null,
   }
 }
@@ -281,6 +380,82 @@ export async function listPayoutSourceAccounts(
     )
 }
 
+/**
+ * The `payout` RECORD this transfer raised, by the pair `findPayoutByGatewayId`
+ * keys on — the id the posting's subject row names since §11.5.
+ *
+ * One select for the instance id alone; the hydrated record `findPayoutByGatewayId`
+ * returns is more than the ledger card's `sourceId` needs.
+ */
+async function payoutInstanceId(
+  db: Database,
+  organizationId: string,
+  gatewayPayoutId: string,
+  paymentGatewayId: string | null
+): Promise<string | null> {
+  const ctx = await loadPayoutFieldContext(db, organizationId)
+  if (!ctx?.fields.payout_gateway_id) return null
+  const value = alias(schema.FieldValue, 'payout_gateway_id_v')
+  const rail = alias(schema.FieldValue, 'payout_payment_gateway_v')
+  const railField = ctx.fields.payout_payment_gateway
+  let query = db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .innerJoin(
+      value,
+      and(
+        systemValueJoin(value, ctx.fields.payout_gateway_id.id),
+        eq(value.valueText, gatewayPayoutId)
+      )
+    )
+    .$dynamic()
+  // An unstamped row still matches, the same adoption `findPayoutByGatewayId` documents.
+  if (paymentGatewayId !== null && railField !== null) {
+    query = query
+      .leftJoin(rail, systemValueJoin(rail, railField.id))
+      .orderBy(sql`${rail.relatedEntityId} IS NULL`)
+  }
+  const [found] = await query
+    .where(
+      and(
+        systemRecordScope(organizationId, ctx.defId),
+        paymentGatewayId !== null && railField !== null
+          ? sql`(${rail.relatedEntityId} IS NULL OR ${rail.relatedEntityId} = ${paymentGatewayId})`
+          : undefined
+      )
+    )
+    .limit(1)
+  return found?.id ?? null
+}
+
+/** The payout posting that currently stands for this record — `null` once it is reversed. */
+async function livePostingId(
+  db: Database,
+  organizationId: string,
+  instanceId: string
+): Promise<string | null> {
+  const [row] = await db
+    .select({ id: schema.GlPosting.id })
+    .from(schema.GlPostingSource)
+    .innerJoin(
+      schema.GlPosting,
+      and(
+        eq(schema.GlPosting.organizationId, schema.GlPostingSource.organizationId),
+        eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.GlPostingSource.organizationId, organizationId),
+        eq(schema.GlPostingSource.sourceKind, 'payout'),
+        eq(schema.GlPostingSource.sourceId, instanceId),
+        ne(schema.GlPosting.status, 'reversed')
+      )
+    )
+    .limit(1)
+  return row?.id ?? null
+}
+
 /** Inspect the current header and persisted assessment without loading all membership history. */
 export async function getPayoutEvidence(
   db: Database,
@@ -305,9 +480,20 @@ export async function getPayoutEvidence(
       )
     )
     .limit(1)
+  const matching = await openMatchSummaries(db, input.organizationId, [row.transfer])
+  const instanceId = await payoutInstanceId(
+    db,
+    input.organizationId,
+    row.transfer.externalId,
+    row.account.paymentGatewayId
+  )
   return {
-    ...transferDto(row.transfer, row.account, row.snapshot),
+    ...transferDto(row.transfer, row.account, row.snapshot, matching.get(row.transfer.id)),
     sourceObservation: observation?.payload ?? null,
+    /** The `payout` record the ledger card is keyed on (§11.5). Null until the sync raises one. */
+    payoutInstanceId: instanceId,
+    /** Set while a non-reversed posting names that record — what freezes a matched item (§9.1). */
+    livePostingId: instanceId ? await livePostingId(db, input.organizationId, instanceId) : null,
   }
 }
 
@@ -359,19 +545,78 @@ export async function listPayoutEvidenceHistory(
   }
 }
 
+/** The §6.2 navigation aid: the order an item names, when a connector has synced it. */
+async function orderHints(
+  db: Database,
+  organizationId: string,
+  sourceOrderIds: readonly string[]
+): Promise<Map<string, { instanceId: string; displayName: string | null }>> {
+  const ids = [...new Set(sourceOrderIds)]
+  if (!ids.length) return new Map()
+  const orderDefId = await systemDefId(db, organizationId, 'order')
+  if (!orderDefId) return new Map()
+  const rows = await db
+    .select({
+      externalId: schema.DataConnectorItem.externalId,
+      instanceId: schema.DataConnectorItem.entityInstanceId,
+      displayName: schema.EntityInstance.displayName,
+    })
+    .from(schema.DataConnectorItem)
+    .innerJoin(
+      schema.EntityInstance,
+      and(
+        eq(schema.EntityInstance.organizationId, schema.DataConnectorItem.organizationId),
+        eq(schema.EntityInstance.id, schema.DataConnectorItem.entityInstanceId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.DataConnectorItem.organizationId, organizationId),
+        eq(schema.DataConnectorItem.entityDefinitionId, orderDefId),
+        inArray(schema.DataConnectorItem.externalId, ids),
+        isNotNull(schema.DataConnectorItem.entityInstanceId),
+        isNull(schema.DataConnectorItem.archivedAt)
+      )
+    )
+  return new Map(
+    rows.map((row) => [
+      row.externalId,
+      { instanceId: row.instanceId!, displayName: row.displayName },
+    ])
+  )
+}
+
+/**
+ * The drawer's item rows, read off the STORED match columns.
+ *
+ * 🛑 Never recomputed here. The reconcile owns the match (§9), and a read that
+ * re-derived it would disagree with the blockers on the payout beside it and
+ * would silently ignore an accept or a manual match.
+ */
 async function entryDtos(
   db: Database,
   organizationId: string,
   rows: ActivityRow[],
   accounts: Map<string, Account>
 ) {
-  const matches = await matchProcessorEntries(db, organizationId, rows)
+  const [documents, hints] = await Promise.all([
+    readApplicationDocuments(
+      db,
+      organizationId,
+      rows.flatMap((row) => (row.matchedMoneyTransactionId ? [row.matchedMoneyTransactionId] : []))
+    ),
+    orderHints(
+      db,
+      organizationId,
+      rows.flatMap((row) => (row.sourceOrderId ? [row.sourceOrderId] : []))
+    ),
+  ])
   return rows.map((row) => {
     const account = accounts.get(row.sourceAccountId)
     if (!account) throw new ConflictError('Processor source account is missing. Refresh evidence.')
-    const matchedMoneyTransactionId = matches.get(row.id) ?? null
     return {
       id: row.id,
+      entryRowId: row.rowId,
       externalId: row.externalId,
       type: row.type,
       grossMinor: row.grossMinor.toString(),
@@ -384,12 +629,15 @@ async function entryDtos(
       sourceTransactionId: row.sourceTransactionId,
       sourceOrderId: row.sourceOrderId,
       sourceReference: row.sourceReference,
-      matchedMoneyTransactionId,
-      matchState: matchedMoneyTransactionId
-        ? ('matched' as const)
-        : ['charge', 'refund'].includes(row.type)
-          ? ('unmatched' as const)
-          : ('unsupported' as const),
+      matchedMoneyTransactionId: row.matchedMoneyTransactionId,
+      matchState: row.matchState,
+      matchReason: row.matchReason,
+      matchedBy: row.matchedBy,
+      /** The order or invoice the matched receipt is applied to. Empty until matched. */
+      matchedDocuments: row.matchedMoneyTransactionId
+        ? (documents.get(row.matchedMoneyTransactionId) ?? ([] as CandidateDocument[]))
+        : [],
+      orderHint: row.sourceOrderId ? (hints.get(row.sourceOrderId) ?? null) : null,
       isOutgoingTransfer: row.isOutgoingTransfer,
       sourceAccountId: row.sourceAccountId,
       externalAccountId: account.externalAccountId,
@@ -397,6 +645,47 @@ async function entryDtos(
       environment: account.environment,
     }
   })
+}
+
+/**
+ * The stored match for membership rows, which are read out of an observation
+ * page and so carry the envelope's entry id rather than a row id.
+ *
+ * Keyed `(sourceAccountId, type, externalId)` — the way `FinancialSourceObject`
+ * is keyed, because `externalId` alone collides across types (§9.3).
+ */
+async function storedMatchesByEntryKey(
+  db: Database,
+  organizationId: string,
+  sourceAccountId: string,
+  externalIds: readonly string[]
+): Promise<
+  Map<
+    string,
+    Pick<Entry, 'id' | 'matchState' | 'matchedMoneyTransactionId' | 'matchReason' | 'matchedBy'>
+  >
+> {
+  const ids = [...new Set(externalIds)]
+  if (!ids.length) return new Map()
+  const rows = await db
+    .select({
+      id: schema.ProcessorBalanceEntry.id,
+      externalId: schema.ProcessorBalanceEntry.externalId,
+      type: schema.ProcessorBalanceEntry.type,
+      matchState: schema.ProcessorBalanceEntry.matchState,
+      matchedMoneyTransactionId: schema.ProcessorBalanceEntry.matchedMoneyTransactionId,
+      matchReason: schema.ProcessorBalanceEntry.matchReason,
+      matchedBy: schema.ProcessorBalanceEntry.matchedBy,
+    })
+    .from(schema.ProcessorBalanceEntry)
+    .where(
+      and(
+        eq(schema.ProcessorBalanceEntry.organizationId, organizationId),
+        eq(schema.ProcessorBalanceEntry.sourceAccountId, sourceAccountId),
+        inArray(schema.ProcessorBalanceEntry.externalId, ids)
+      )
+    )
+  return new Map(rows.map((row) => [`${row.type}:${row.externalId}`, row]))
 }
 const membershipCursorSchema = z.object({
   acquisitionId: z.string(),
@@ -504,12 +793,20 @@ async function membershipEntries(
     )
   const offset = cursor?.offset ?? 0
   const selected = evidence.membership.entries.slice(offset, offset + limit)
+  const stored = await storedMatchesByEntryKey(
+    db,
+    input.organizationId,
+    transfer.sourceAccountId,
+    selected.map((entry) => entry.id)
+  )
   const rows: ActivityRow[] = []
   for (const entry of selected) {
     if (input.unassignedOnly && entry.payoutId !== null) continue
+    const match = stored.get(`${entry.type}:${entry.id}`)
     try {
       rows.push({
         id: JSON.stringify([page.id, entry.id]),
+        rowId: match?.id ?? null,
         externalId: entry.id,
         sourceAccountId: transfer.sourceAccountId,
         type: entry.type,
@@ -524,6 +821,10 @@ async function membershipEntries(
         sourceOrderId: entry.sourceOrderId,
         sourceReference: entry.sourceReference ?? null,
         isOutgoingTransfer: entry.type === 'outgoing_transfer',
+        matchState: match?.matchState ?? null,
+        matchedMoneyTransactionId: match?.matchedMoneyTransactionId ?? null,
+        matchReason: match?.matchReason ?? null,
+        matchedBy: match?.matchedBy ?? null,
       })
     } catch {
       throw new ConflictError(
@@ -568,6 +869,7 @@ export async function listProcessorBalanceEntries(
         providerKey: schema.FinancialSourceAccount.providerKey,
         externalAccountId: schema.FinancialSourceAccount.externalAccountId,
         environment: schema.FinancialSourceAccount.environment,
+        paymentGatewayId: schema.FinancialSourceAccount.paymentGatewayId,
       },
     })
     .from(schema.ProcessorBalanceEntry)
@@ -595,7 +897,7 @@ export async function listProcessorBalanceEntries(
     items: await entryDtos(
       db,
       input.organizationId,
-      page.map((row) => row.entry),
+      page.map((row) => ({ ...row.entry, rowId: row.entry.id })),
       new Map(page.map(({ entry, account }) => [entry.sourceAccountId, account]))
     ),
     nextCursor: rows.length > limit ? rows[limit - 1]!.entry.id : null,

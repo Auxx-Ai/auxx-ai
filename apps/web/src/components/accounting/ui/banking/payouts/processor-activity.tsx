@@ -2,9 +2,11 @@
 
 'use client'
 
+import type { MatchReason, MatchState } from '@auxx/lib/accounting/money/payouts/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { toastError } from '@auxx/ui/components/toast'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import {
@@ -19,8 +21,17 @@ import {
 import { type ReactNode, useState } from 'react'
 import { SourceAccountBadge } from '~/components/accounting/ui/source-account-badge'
 import { EmptyState } from '~/components/global/empty-state'
+import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { formatEvidenceAmount, formatEvidenceDate } from './evidence-format'
+import { MatchCandidateDialog } from './match-candidate-dialog'
+import {
+  MATCH_REASON_COPY,
+  MATCH_REASON_LABEL,
+  MATCH_STATE_LABEL,
+  MATCH_STATE_VARIANT,
+} from './match-reason-copy'
+import { type LinkedDocument, RecordChipLink } from './record-chip-link'
 
 /**
  * Exact keys only — `processorActivityKindSchema` (evidence-contracts.ts) is the
@@ -78,15 +89,58 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
 export function ProcessorActivity({
   transferId,
   unassignedOnly,
+  livePostingId,
 }: {
   transferId?: string
   unassignedOnly?: boolean
+  /**
+   * The payout's live posting, when the drawer knows of one. A posted entry
+   * already summed its matched items, so unmatching one would leave the ledger
+   * claiming a receipt the item no longer names (§9.1).
+   */
+  livePostingId?: string | null
 }) {
   const query = api.payoutEvidence.entries.useInfiniteQuery(
     { transferId, unassignedOnly, limit: 50 },
     { getNextPageParam: (page) => page.nextCursor ?? undefined }
   )
   const entries = query.data?.pages.flatMap((page) => page.items) ?? []
+
+  const utils = api.useUtils()
+  const [confirm, ConfirmDialog] = useConfirm()
+  const [pickerEntryId, setPickerEntryId] = useState<string | null>(null)
+
+  const invalidate = () => utils.payoutEvidence.invalidate()
+  const onError = (title: string) => (error: { message: string }) =>
+    toastError({ title, description: error.message })
+
+  const acceptMatch = api.payoutEvidence.acceptMatch.useMutation({
+    onSuccess: invalidate,
+    onError: onError('Error accepting the match'),
+  })
+  const matchEntry = api.payoutEvidence.matchEntry.useMutation({
+    onSuccess: async () => {
+      setPickerEntryId(null)
+      await invalidate()
+    },
+    onError: onError('Error matching the item'),
+  })
+  const unmatchEntry = api.payoutEvidence.unmatchEntry.useMutation({
+    onSuccess: invalidate,
+    onError: onError('Error unmatching the item'),
+  })
+
+  const askUnmatch = async (entryId: string) => {
+    const confirmed = await confirm({
+      title: 'Unmatch this item?',
+      description:
+        'The item goes back to pending and the next assessment will try again. The customer payment is untouched.',
+      confirmText: 'Unmatch',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) unmatchEntry.mutate({ entryId })
+  }
 
   // Each row starts CLOSED and opening one is tracked as the exception — the
   // inverse of `payout-source-history.tsx`, which opens every row because the
@@ -156,11 +210,10 @@ export function ProcessorActivity({
                         Outgoing payout
                       </Badge>
                     )}
-                    <Badge
-                      variant={entry.matchState === 'matched' ? 'outline' : 'secondary'}
-                      size='sm'>
-                      {entry.isOutgoingTransfer ? 'Not applicable' : entry.matchState}
-                    </Badge>
+                    <MatchBadges
+                      matchState={entry.isOutgoingTransfer ? null : entry.matchState}
+                      matchReason={entry.matchReason}
+                    />
                   </span>
                 }
                 actions={
@@ -172,50 +225,83 @@ export function ProcessorActivity({
                 expandable
                 isOpen={openIds.has(entry.id)}
                 onToggleOpen={() => toggleOpen(entry.id)}>
-                <dl className='flex flex-col gap-1.5 pt-1 pb-2 ps-6 pe-2'>
-                  <DetailRow label='Gross'>
-                    <span className='font-mono tabular-nums'>
-                      {formatEvidenceAmount(
-                        entry.grossMinor,
-                        entry.currency,
-                        entry.currencyExponent
+                <div className='flex flex-col gap-1.5 pt-1 pb-2 ps-6 pe-2'>
+                  <dl className='flex flex-col gap-1.5'>
+                    <DetailRow label='Gross'>
+                      <span className='font-mono tabular-nums'>
+                        {formatEvidenceAmount(
+                          entry.grossMinor,
+                          entry.currency,
+                          entry.currencyExponent
+                        )}
+                      </span>
+                    </DetailRow>
+                    <DetailRow label='Fee'>
+                      <span className='font-mono tabular-nums'>
+                        {formatEvidenceAmount(
+                          entry.feeMinor,
+                          entry.currency,
+                          entry.currencyExponent
+                        )}
+                      </span>
+                    </DetailRow>
+                    <DetailRow label='Source account'>
+                      <SourceAccountBadge
+                        providerKey={entry.providerKey}
+                        externalAccountId={entry.externalAccountId}
+                        environment={entry.environment}
+                        size='sm'
+                      />
+                    </DetailRow>
+                    {entry.sourceTransactionId && (
+                      <DetailRow label='Transaction'>{entry.sourceTransactionId}</DetailRow>
+                    )}
+                    {entry.sourceOrderId && (
+                      <DetailRow label='Order'>{entry.sourceOrderId}</DetailRow>
+                    )}
+                    {entry.matchedMoneyTransactionId && (
+                      <DetailRow label='Payment'>{entry.matchedMoneyTransactionId}</DetailRow>
+                    )}
+                    {entry.matchedDocuments.length > 0 && (
+                      <DetailRow label='Applied to'>
+                        <span className='flex flex-wrap justify-end gap-1'>
+                          {entry.matchedDocuments.map((document: LinkedDocument) => (
+                            <RecordChipLink key={document.instanceId} document={document} />
+                          ))}
+                        </span>
+                      </DetailRow>
+                    )}
+                    {/* The §6.2 navigation aid, never the proof: it is worth
+                      showing exactly where there is no receipt to point at. */}
+                    {entry.orderHint &&
+                      (entry.matchReason === 'no_receipt' || entry.type === 'adjustment') && (
+                        <DetailRow label='Named order'>
+                          <RecordChipLink
+                            document={{
+                              kind: 'order',
+                              instanceId: entry.orderHint.instanceId,
+                              displayName: entry.orderHint.displayName,
+                            }}
+                          />
+                        </DetailRow>
                       )}
-                    </span>
-                  </DetailRow>
-                  <DetailRow label='Fee'>
-                    <span className='font-mono tabular-nums'>
-                      {formatEvidenceAmount(entry.feeMinor, entry.currency, entry.currencyExponent)}
-                    </span>
-                  </DetailRow>
-                  <DetailRow label='Source account'>
-                    <SourceAccountBadge
-                      providerKey={entry.providerKey}
-                      externalAccountId={entry.externalAccountId}
-                      environment={entry.environment}
-                      size='sm'
-                    />
-                  </DetailRow>
-                  {entry.sourceTransactionId && (
-                    <DetailRow label='Transaction'>{entry.sourceTransactionId}</DetailRow>
-                  )}
-                  {entry.sourceOrderId && (
-                    <DetailRow label='Order'>{entry.sourceOrderId}</DetailRow>
-                  )}
-                  {entry.matchedMoneyTransactionId && (
-                    <DetailRow label='Payment'>{entry.matchedMoneyTransactionId}</DetailRow>
-                  )}
-                  {!entry.isOutgoingTransfer && entry.matchState === 'unmatched' && (
+                  </dl>
+                  {!entry.isOutgoingTransfer && entry.matchReason && (
                     <p className='text-muted-foreground text-xs'>
-                      Import the related payment evidence, then refresh. An order reference alone
-                      does not establish a payment match.
+                      {MATCH_REASON_COPY[entry.matchReason as MatchReason]}
                     </p>
                   )}
-                  {!entry.isOutgoingTransfer && entry.matchState === 'unsupported' && (
-                    <p className='text-muted-foreground text-xs'>
-                      This activity needs a supported accounting classification before posting.
-                    </p>
-                  )}
-                </dl>
+                  <MatchActions
+                    entryRowId={entry.entryRowId}
+                    matchState={entry.isOutgoingTransfer ? null : entry.matchState}
+                    livePostingId={livePostingId ?? null}
+                    accepting={acceptMatch.isPending}
+                    unmatching={unmatchEntry.isPending}
+                    onAccept={(entryId) => acceptMatch.mutate({ entryId })}
+                    onMatchManually={setPickerEntryId}
+                    onUnmatch={askUnmatch}
+                  />
+                </div>
               </TreeRow>
             )
           }}
@@ -230,6 +316,112 @@ export function ProcessorActivity({
           Load more activity
         </Button>
       )}
+      <MatchCandidateDialog
+        entryId={pickerEntryId}
+        onOpenChange={(open) => !open && setPickerEntryId(null)}
+        onPick={(moneyTransactionId) =>
+          pickerEntryId && matchEntry.mutate({ entryId: pickerEntryId, moneyTransactionId })
+        }
+        saving={matchEntry.isPending}
+      />
+      <ConfirmDialog />
     </>
+  )
+}
+
+/** The item's state, and the code that explains it — the §10.4 pair, never one without the other. */
+function MatchBadges({
+  matchState,
+  matchReason,
+}: {
+  matchState: MatchState | null
+  matchReason: MatchReason | null
+}) {
+  if (!matchState) {
+    return (
+      <Badge variant='outline' size='sm'>
+        Not applicable
+      </Badge>
+    )
+  }
+  return (
+    <>
+      <Badge variant={MATCH_STATE_VARIANT[matchState]} size='sm'>
+        {MATCH_STATE_LABEL[matchState]}
+      </Badge>
+      {matchReason && (
+        <Badge variant='outline' size='sm'>
+          {MATCH_REASON_LABEL[matchReason]}
+        </Badge>
+      )}
+    </>
+  )
+}
+
+/**
+ * The one click out of each state (§10.4).
+ *
+ * 🛑 Keyed on `entryRowId`, the materialised `ProcessorBalanceEntry`. A drawer
+ * row read out of an observation page has a synthetic id the mutations cannot
+ * resolve, so it gets no actions rather than a button that 404s.
+ */
+function MatchActions({
+  entryRowId,
+  matchState,
+  livePostingId,
+  accepting,
+  unmatching,
+  onAccept,
+  onMatchManually,
+  onUnmatch,
+}: {
+  entryRowId: string | null
+  matchState: MatchState | null
+  livePostingId: string | null
+  accepting: boolean
+  unmatching: boolean
+  onAccept: (entryId: string) => void
+  onMatchManually: (entryId: string) => void
+  onUnmatch: (entryId: string) => void
+}) {
+  if (!entryRowId || !matchState) return null
+  const canMatchManually =
+    matchState === 'pending' || matchState === 'suggested' || matchState === 'unmatchable'
+  const posted = !!livePostingId
+
+  return (
+    <div className='flex flex-wrap items-center gap-2 pt-1'>
+      {matchState === 'suggested' && (
+        <Button
+          size='sm'
+          variant='outline'
+          loading={accepting}
+          onClick={() => onAccept(entryRowId)}>
+          Accept
+        </Button>
+      )}
+      {canMatchManually && (
+        <Button size='sm' variant='outline' onClick={() => onMatchManually(entryRowId)}>
+          Match manually
+        </Button>
+      )}
+      {matchState === 'matched' && (
+        <>
+          <Button
+            size='sm'
+            variant='outline'
+            disabled={posted}
+            loading={unmatching}
+            onClick={() => onUnmatch(entryRowId)}>
+            Unmatch
+          </Button>
+          {posted && (
+            <span className='text-muted-foreground text-xs'>
+              This payout is posted. Reverse the entry to unmatch.
+            </span>
+          )}
+        </>
+      )}
+    </div>
   )
 }

@@ -2,11 +2,18 @@
 
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { recoverPayoutReconciliationPage } from '../../accounting/money/payouts/assess-payouts'
+import {
+  reconcileTransferIds,
+  recoverPayoutReconciliationPage,
+} from '../../accounting/money/payouts/assess-payouts'
+import { listTransfersWithOpenMatches } from '../../accounting/money/payouts/match-sync'
 import { sweepPayouts } from '../../accounting/money/payouts/sweep'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('payout-sync-job')
+
+/** One night's pending pass. Bounded: the full recovery walk behind it has no cap. */
+const OPEN_MATCH_PAGE = 500
 
 /**
  * Recover persisted financial records in bounded pages, then run legacy payout sources
@@ -15,6 +22,18 @@ const logger = createScopedLogger('payout-sync-job')
  */
 export async function payoutSyncJob(ctx: JobContext): Promise<void> {
   logger.info('Running payout sync sweep', { jobId: ctx.jobId })
+  // Pending-only first (§9.2): the payouts still waiting on the other feed are
+  // the ones a night can actually change, and they are one index read away. The
+  // full walk below stays as the disaster path.
+  let pending = 0
+  for (const [organizationId, ids] of await listTransfersWithOpenMatches(
+    database,
+    OPEN_MATCH_PAGE
+  )) {
+    ctx.throwIfCancelled()
+    pending += await reconcileTransferIds(database, organizationId, ids)
+  }
+  logger.info('Open payout matches reconciled', { jobId: ctx.jobId, changed: pending })
   let cursor =
     typeof ctx.data?.reconciliationCursor === 'string' ? ctx.data.reconciliationCursor : undefined
   let changed = 0

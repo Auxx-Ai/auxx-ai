@@ -36,8 +36,9 @@ import { EmptyRow } from '~/components/drawers/cards/related-record-row'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
+import { RecordChipLink } from './banking/payouts/record-chip-link'
 import { EntryJournal, journalLinesFromDetail } from './ledger/entry-journal'
-import { formatAccountingDate, formatMinor, humanizePostingType } from './ledger/format'
+import { EMPTY_CELL, formatAccountingDate, formatMinor, humanizePostingType } from './ledger/format'
 import { ExportBatchStateBadge } from './ledger/outbox/export-batch-badge'
 
 /** One row of `ledger.listPostingsForSource`'s expected result. */
@@ -52,7 +53,11 @@ export interface SourcePosting {
   linkRole: PostingLinkRole
 }
 
-export interface LedgerCardProps extends DrawerTabProps {
+// `recordId` and `record` are optional here, unlike on a drawer tab: the payout
+// evidence drawer mounts this card on a record it reached through a
+// `MoneyTransfer`, so it has the instance id and no `RecordId`.
+export interface LedgerCardProps extends Partial<DrawerTabProps> {
+  entityInstanceId: string
   /**
    * The `sourceKind` this record's postings are linked under on
    * `GlPostingSource` (`'order'`, `'invoice'`, `'money_transaction'`,
@@ -105,6 +110,18 @@ export function LedgerCard({ entityInstanceId, sourceKind }: LedgerCardProps) {
   const postings = (postingsQuery.data ?? []) as SourcePosting[]
   const loading = postingsQuery.isPending
 
+  // The backward read of `plans/accounting/payout-links.md` §10.3: which payout
+  // posting swept the receipts this document was paid by. Only orders and
+  // invoices have one - `sweepingPostings` takes no other document.
+  const sweepKind = sourceKind === 'order' || sourceKind === 'invoice' ? sourceKind : null
+  const sweepsQuery = api.payoutEvidence.sweepingPostings.useQuery(
+    sweepKind === 'invoice'
+      ? { invoiceInstanceId: entityInstanceId }
+      : { orderInstanceId: entityInstanceId },
+    { enabled: !!sweepKind && !!entityInstanceId }
+  )
+  const sweeps = sweepsQuery.data ?? []
+
   // The batch state badge (step 3 part C, TARGET §4 gate 2) - the same
   // unbounded `exportBatches.list` read the queue and the drawer's Export
   // section both use, so this card's badge cannot disagree with either. No
@@ -118,7 +135,7 @@ export function LedgerCard({ entityInstanceId, sourceKind }: LedgerCardProps) {
     return map
   }, [exportBatchesQuery.data])
 
-  if (!loading && postings.length === 0) {
+  if (!loading && postings.length === 0 && sweeps.length === 0) {
     return <EmptyRow label='Nothing posted yet' />
   }
 
@@ -164,6 +181,50 @@ export function LedgerCard({ entityInstanceId, sourceKind }: LedgerCardProps) {
           />
         )}
       />
+
+      {/* A second list, not extra rows in the first: a sweep row has no total of
+          its own (the payout's entry is about the whole payout, not this
+          document), so it cannot fill the amount column the rows above end on. */}
+      {sweeps.length > 0 && (
+        <TreeRowList
+          items={sweeps}
+          getKey={(sweep) => `${sweep.glPostingId}:${sweep.entryId}`}
+          renderRow={(sweep) => (
+            <TreeRow
+              className={TREE_SECONDARY_NOTRUNCATE}
+              icon={<BookOpenCheck className='size-4' />}
+              title={
+                <span className='truncate text-sm'>
+                  Swept by payout <span className='font-mono'>{sweep.docNumber ?? EMPTY_CELL}</span>
+                </span>
+              }
+              description={formatAccountingDate(sweep.txnDate, bookTimeZone)}
+              secondary={
+                <span className='flex items-center gap-1.5'>
+                  <Badge
+                    variant={STATUS_VARIANT[sweep.status as PostingStatus] ?? 'outline'}
+                    size='xs'>
+                    {STATUS_LABEL[sweep.status as PostingStatus] ?? sweep.status}
+                  </Badge>
+                  <Badge variant='outline' size='xs'>
+                    Swept
+                  </Badge>
+                  {sweep.payoutSourceId && (
+                    <RecordChipLink
+                      document={{
+                        kind: 'payout',
+                        instanceId: sweep.payoutSourceId,
+                        displayName: 'Open payout',
+                      }}
+                    />
+                  )}
+                </span>
+              }
+              onToggleOpen={() => setOpenPostingId(sweep.glPostingId)}
+            />
+          )}
+        />
+      )}
 
       <PostingLinesDialog
         postingId={openPostingId}

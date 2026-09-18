@@ -250,27 +250,19 @@ describe('SHOPIFY_PAYMENTS_PAYOUT_SOURCE.listPayouts', () => {
 })
 
 describe('SHOPIFY_PAYMENTS_PAYOUT_SOURCE.listItems', () => {
-  it('maps transactions to items: order refs, none for an adjustment, the payout row skipped', async () => {
+  it('maps transactions to items with no ref at all, the payout row skipped', async () => {
     const [header] = await SHOPIFY_PAYMENTS_PAYOUT_SOURCE.listPayouts(ctx, SINCE)
     const items = await SHOPIFY_PAYMENTS_PAYOUT_SOURCE.listItems!(ctx, header!)
 
     expect(h.callTool).toHaveBeenCalledWith('list_shopify_payout_transactions', {
       payoutId: '987654',
     })
+    // The split moved to the stored match (§11.3); `source_order_id` said the
+    // order was here, never that this charge was settled by that receipt.
     expect(items).toEqual([
-      {
-        externalId: 't_a',
-        grossMinor: 100_000,
-        feeMinor: 3_200,
-        ref: { kind: 'order', id: '5001' },
-      },
-      {
-        externalId: 't_b',
-        grossMinor: 60_000,
-        feeMinor: 2_000,
-        ref: { kind: 'order', id: '5002' },
-      },
-      { externalId: 't_r', grossMinor: -10_000, feeMinor: 0, ref: { kind: 'order', id: '5001' } },
+      { externalId: 't_a', grossMinor: 100_000, feeMinor: 3_200, ref: { kind: 'none' } },
+      { externalId: 't_b', grossMinor: 60_000, feeMinor: 2_000, ref: { kind: 'none' } },
+      { externalId: 't_r', grossMinor: -10_000, feeMinor: 0, ref: { kind: 'none' } },
       { externalId: 't_adj', grossMinor: -2_500, feeMinor: 0, ref: { kind: 'none' } },
     ])
   })
