@@ -1,9 +1,16 @@
 // packages/credentials/src/lambda-auth/__tests__/callback-token.test.ts
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createHmac } from 'node:crypto'
+import { describe, expect, it } from 'vitest'
 import { createCallbackToken, verifyCallbackToken } from '../callback-token'
 
 const TEST_SECRET = 'test-callback-secret-for-hmac-signing'
+
+/** Forge a token payload directly (bypassing `createCallbackToken`) so tests can assert on malformed shapes. */
+function signPayload(data: string, secret: string): string {
+  const mac = createHmac('sha256', secret).update(`callback:v1:${data}`).digest('hex')
+  return Buffer.from(`${data}.${mac}`).toString('base64url')
+}
 
 describe('callback-token', () => {
   describe('round-trip', () => {
@@ -166,6 +173,137 @@ describe('callback-token', () => {
       })
 
       expect(result.valid).toBe(false)
+    })
+  })
+
+  describe('keyed optional claims', () => {
+    it('round-trips connectionId alone', () => {
+      const token = createCallbackToken({
+        installationId: 'inst_123',
+        organizationId: 'org_456',
+        scope: 'entities',
+        secret: TEST_SECRET,
+        connectionId: 'conn_1',
+      })
+
+      const result = verifyCallbackToken({
+        token,
+        expectedInstallationId: 'inst_123',
+        expectedScope: 'entities',
+        secret: TEST_SECRET,
+      })
+
+      expect(result.valid).toBe(true)
+      expect(result.connectionId).toBe('conn_1')
+      expect(result.userId).toBeUndefined()
+    })
+
+    it('round-trips userId alone', () => {
+      const token = createCallbackToken({
+        installationId: 'inst_123',
+        organizationId: 'org_456',
+        scope: 'entities',
+        secret: TEST_SECRET,
+        userId: 'usr_1',
+      })
+
+      const result = verifyCallbackToken({
+        token,
+        expectedInstallationId: 'inst_123',
+        expectedScope: 'entities',
+        secret: TEST_SECRET,
+      })
+
+      expect(result.valid).toBe(true)
+      expect(result.userId).toBe('usr_1')
+      expect(result.connectionId).toBeUndefined()
+    })
+
+    it('round-trips connectionId and userId together, order-independent of minting', () => {
+      const token = createCallbackToken({
+        installationId: 'inst_123',
+        organizationId: 'org_456',
+        scope: 'entities',
+        secret: TEST_SECRET,
+        connectionId: 'conn_1',
+        userId: 'usr_1',
+      })
+
+      const result = verifyCallbackToken({
+        token,
+        expectedInstallationId: 'inst_123',
+        expectedScope: 'entities',
+        secret: TEST_SECRET,
+      })
+
+      expect(result.valid).toBe(true)
+      expect(result.connectionId).toBe('conn_1')
+      expect(result.userId).toBe('usr_1')
+    })
+
+    it('carries neither claim when neither is minted (webhooks/settings, unchanged 5-field form)', () => {
+      const token = createCallbackToken({
+        installationId: 'inst_123',
+        organizationId: 'org_456',
+        scope: 'webhooks',
+        secret: TEST_SECRET,
+      })
+
+      const result = verifyCallbackToken({
+        token,
+        expectedInstallationId: 'inst_123',
+        expectedScope: 'webhooks',
+        secret: TEST_SECRET,
+      })
+
+      expect(result.valid).toBe(true)
+      expect(result.connectionId).toBeUndefined()
+      expect(result.userId).toBeUndefined()
+    })
+
+    it('rejects an unknown optional claim key', () => {
+      const data = `entities:inst_123:org_456:${Date.now() + 60_000}:nonce:x=evil`
+      const forgedToken = signPayload(data, TEST_SECRET)
+
+      const result = verifyCallbackToken({
+        token: forgedToken,
+        expectedInstallationId: 'inst_123',
+        expectedScope: 'entities',
+        secret: TEST_SECRET,
+      })
+
+      expect(result.valid).toBe(false)
+      expect(result.error).toBe('Malformed token payload')
+    })
+
+    it('rejects a duplicate claim key', () => {
+      const data = `entities:inst_123:org_456:${Date.now() + 60_000}:nonce:c=conn_1:c=conn_2`
+      const forgedToken = signPayload(data, TEST_SECRET)
+
+      const result = verifyCallbackToken({
+        token: forgedToken,
+        expectedInstallationId: 'inst_123',
+        expectedScope: 'entities',
+        secret: TEST_SECRET,
+      })
+
+      expect(result.valid).toBe(false)
+      expect(result.error).toBe('Malformed token payload')
+    })
+
+    it('rejects a claim with no `=`', () => {
+      const data = `entities:inst_123:org_456:${Date.now() + 60_000}:nonce:garbage`
+      const forgedToken = signPayload(data, TEST_SECRET)
+
+      const result = verifyCallbackToken({
+        token: forgedToken,
+        expectedInstallationId: 'inst_123',
+        expectedScope: 'entities',
+        secret: TEST_SECRET,
+      })
+
+      expect(result.valid).toBe(false)
+      expect(result.error).toBe('Malformed token payload')
     })
   })
 })

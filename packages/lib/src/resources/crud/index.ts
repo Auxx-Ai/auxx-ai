@@ -9,6 +9,8 @@ export type {
   CrudResultFailure,
   CrudResultSuccess,
   FindByFieldOptions,
+  ReadOptions,
+  RecordNode,
   TransformedData,
   UpdateRecordOptions,
 } from './types'
