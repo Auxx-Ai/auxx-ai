@@ -395,8 +395,7 @@ function toBuildRecord(record: SystemRecord<BuildAttribute>): BuildRecord {
     reversalOfBuildId: record.related('build_reversal_of'),
     orderRevision: record.text('build_order_revision'),
     batchRun: record.number('build_batch_run'),
-    // `EntityInstance.createdAt` is NOT NULL in the schema; the reader types it defensively.
-    createdAt: record.createdAt ?? new Date(0),
+    createdAt: record.createdAt,
   }
 }
 

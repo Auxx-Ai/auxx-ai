@@ -415,13 +415,7 @@ function toBankDepositRecord(record: SystemRecord<BankDepositAttribute>): BankDe
     recordId: record.recordId,
     number: record.text('bank_deposit_number'),
     depositDate: day ? toDateKey(day) : null,
-    // `related()` answers null unless the row carries `relatedEntityDefinitionId`;
-    // the id alone is what this field has always been read by and what the
-    // removal gate needs, so fall through to the stored column.
-    bankAccountId:
-      record.related('bank_deposit_bank_account_record') ??
-      record.rows('bank_deposit_bank_account_record')[0]?.relatedEntityId ??
-      null,
+    bankAccountId: record.related('bank_deposit_bank_account_record'),
     bankAccountGlAccountId: record.text('bank_deposit_bank_account'),
     reference: record.text('bank_deposit_reference'),
     status: resolveBankDepositStatus(record.option('bank_deposit_status')),
@@ -429,6 +423,6 @@ function toBankDepositRecord(record: SystemRecord<BankDepositAttribute>): BankDe
     bankTransactionId: record.text('bank_deposit_bank_transaction_id'),
     clearedAt: instant('bank_deposit_cleared_at'),
     reconciledAt: instant('bank_deposit_reconciled_at'),
-    createdAt: record.createdAt ?? new Date(0),
+    createdAt: record.createdAt,
   }
 }

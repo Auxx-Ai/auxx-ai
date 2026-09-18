@@ -900,11 +900,6 @@ function linkedCreditMemoExists(db: Database, organizationId: string, memoFieldI
   )
 }
 
-/** `EntityInstance.createdAt` is NOT NULL in the schema; the reader types it defensively. */
-function createdAtOf(record: { createdAt: Date | null }): Date {
-  return record.createdAt ?? new Date(0)
-}
-
 function toDate(iso: string | null): Date | null {
   return iso ? new Date(iso) : null
 }
@@ -970,7 +965,7 @@ async function hydrateReturns(
         creditMemoIds.length > 0 &&
         status !== null &&
         PRE_INSPECTION_RETURN_STATUSES.includes(status),
-      createdAt: createdAtOf(record),
+      createdAt: record.createdAt,
     }
   })
 }
@@ -1022,7 +1017,7 @@ function toReturnLineRecord(
     inspectionNotes: record.text('return_line_inspection_notes'),
     inspectedByUserId: record.actor('return_line_inspected_by'),
     inspectedAt: toDate(record.date('return_line_inspected_at')),
-    createdAt: createdAtOf(record),
+    createdAt: record.createdAt,
   }
 }
 
@@ -1044,6 +1039,6 @@ function toReturnPartLineRecord(
     sortOrder: record.text('return_part_line_sort_order'),
     unitCost: record.number('return_part_line_unit_cost'),
     movementId: record.related('return_part_line_movement'),
-    createdAt: createdAtOf(record),
+    createdAt: record.createdAt,
   }
 }

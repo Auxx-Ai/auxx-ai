@@ -146,6 +146,26 @@ describe('readSystemRecords', () => {
     expect(row?.text('status')).toBeNull()
   })
 
+  it('answers related() with the instance id when the row carries no def id', async () => {
+    // `rowToTypedValue` mints an empty `RecordId` without both halves, so the
+    // cell loses the edge; `related()` falls back to the stored column, which
+    // is what the salvage and un-apply idempotency reads key on.
+    const { conn } = db({
+      instances: [instance('a')],
+      values: [
+        valueRow('a', 'f_order', 'a0', {
+          relatedEntityId: 'inst_o1',
+          relatedEntityDefinitionId: null,
+        }),
+      ],
+    })
+
+    const [row] = await readSystemRecords(conn, ORG, ctx)
+
+    expect(row?.related('order')).toBe('inst_o1')
+    expect(row?.cell('order')).toMatchObject({ type: 'relationship', recordId: '' })
+  })
+
   it('reads a checkbox and an actor without touching the columns', async () => {
     const { conn } = db({
       instances: [instance('a')],

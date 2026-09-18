@@ -714,7 +714,12 @@ export async function readCreditMemoSettlement(
     // The number alone, not the whole `INVOICE_ATTRIBUTES` slice: this is a label.
     const ctx = await systemFields(db, organizationId, 'invoice', ['invoice_number'] as const)
     if (ctx?.fields.invoice_number) {
-      for (const record of await readSystemRecords(db, organizationId, ctx, { ids: invoiceIds })) {
+      // An archived invoice still has to resolve to its number, or the label reads empty.
+      const invoices = await readSystemRecords(db, organizationId, ctx, {
+        ids: invoiceIds,
+        includeArchived: true,
+      })
+      for (const record of invoices) {
         invoiceNumbers.set(record.id, record.text('invoice_number') ?? '')
       }
     }

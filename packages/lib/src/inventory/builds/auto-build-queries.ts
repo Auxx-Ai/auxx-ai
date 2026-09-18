@@ -102,7 +102,7 @@ export async function loadAutoBuildOrders(
 
   return orders.map((order) => ({
     orderId: order.id,
-    placedAt: parseDate(order.date('order_placed_at')) ?? order.createdAt ?? new Date(0),
+    placedAt: parseDate(order.date('order_placed_at')) ?? order.createdAt,
     cancelledAt: parseDate(order.date('order_cancelled_at')),
     lines: linesByOrder.get(order.id) ?? [],
   }))
