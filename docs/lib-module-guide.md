@@ -93,29 +93,25 @@ in a worker or a seed script. Throw the matching `AuxxError` subclass from
 Two working styles, both correct:
 
 **A. Imperative body + a module `guard()`** — best when a function has several
-early-exit business rules. `snippets/guard.ts` is the whole pattern in 31 lines:
+early-exit business rules. Create a scoped guard from the factory in `utils/guard.ts`:
 
 ```ts
-// packages/lib/src/snippets/guard.ts
-export async function guard<T>(
-  fn: () => Promise<T>,
-  logMessage: string,
-  meta: Record<string, unknown> = {}
-): Promise<Result<T, AuxxError>> {
-  try {
-    return ok(await fn())
-  } catch (error) {
-    if (error instanceof AuxxError) return err(error)
-    logger.error(logMessage, { error, ...meta })
-    return err(new AuxxError('Internal error'))
-  }
-}
+// packages/lib/src/snippets/some-mutations.ts
+import { createGuard } from '../utils/guard'
+
+const guard = createGuard('snippets')
+
+// Inside a function:
+return guard(
+  async () => { … throw new NotFoundError(…) … },
+  'Failed to create snippet',
+  { snippetId }
+)
 ```
 
 Inside the body you just `throw new NotFoundError(...)` and read like normal
-code; the wrapper converts. Copy this file into a new module — it's small enough
-that duplicating it beats a shared abstraction, and it lets each module bind its
-own `createScopedLogger` scope.
+code; the wrapper converts. Each module binds its own `createScopedLogger` scope
+so a refused operation is greppable per module.
 
 **B. Explicit `err()` returns** — best when the failure set is small and the
 signature should document it. `sequences/crud.ts`:

@@ -13,7 +13,7 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import type { AuxxError } from '../errors'
-import { guard } from './guard'
+import { createGuard } from '../utils/guard'
 import { sendMailtoUnsubscribe } from './mailto-send'
 import { postOneClickUnsubscribe } from './one-click-post'
 import type {
@@ -27,6 +27,7 @@ import { getMailUnsubscribe, resolveUnsubscribeTarget } from './unsubscribe-quer
 import { recordUnsubscribeSignal } from './unsubscribe-signal'
 
 const logger = createScopedLogger('mail-unsubscribe')
+const guard = createGuard('mail-unsubscribe')
 
 /**
  * Unsubscribe one inbox from one bulk-mail group.

@@ -48,6 +48,7 @@ import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import type { JobContext } from '../jobs/types/job-context'
 import { applyClassificationTag, markMessageClassified, toClassificationMarker } from './apply'
+import { guardClassification } from './classification-gate'
 import { classifyMessage } from './classify'
 import {
   MAIL_CLASSIFICATION_INBOX_IDS_SETTING,
@@ -68,7 +69,6 @@ import {
   type MailReclassifySampleStatus,
   type MailReclassifyUndoReport,
 } from './client'
-import { guardClassification } from './guard'
 import { getEligibleClassificationTags } from './labels'
 import type { MailClassificationContext } from './types'
 

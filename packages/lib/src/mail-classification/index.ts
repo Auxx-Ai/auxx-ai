@@ -4,6 +4,8 @@
 
 // Write path (§3.3, C9)
 export { applyClassificationTag, markMessageClassified, toClassificationMarker } from './apply'
+// The §3.1 exit ladder
+export { guardClassification, type MailClassificationGateInput } from './classification-gate'
 // The one model call (§3.2)
 export {
   buildClassificationPrompt,
@@ -49,8 +51,6 @@ export {
 } from './client'
 // The `then`-side door (§4)
 export { enqueueMailClassification } from './enqueue'
-// The §3.1 exit ladder
-export { guardClassification, type MailClassificationGateInput } from './guard'
 // The BullMQ worker (§4)
 export {
   type MailClassificationJobData,

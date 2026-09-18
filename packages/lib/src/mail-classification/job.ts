@@ -18,9 +18,9 @@ import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { JobContext } from '../jobs/types/job-context'
 import { applyClassificationTag, markMessageClassified, toClassificationMarker } from './apply'
+import { guardClassification } from './classification-gate'
 import { classifyMessage } from './classify'
 import type { MailClassificationSkipReason } from './client'
-import { guardClassification } from './guard'
 import { rerunMailFiltersAfterClassification } from './rerun-filters'
 
 const logger = createScopedLogger('mail-classification')

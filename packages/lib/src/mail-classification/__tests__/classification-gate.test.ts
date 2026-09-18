@@ -1,4 +1,4 @@
-// packages/lib/src/mail-classification/guard.test.ts
+// packages/lib/src/mail-classification/__tests__/classification-gate.test.ts
 // The §3.1 exit ladder. Two properties are pinned per exit: the RIGHT reason
 // comes back, and nothing more expensive than that exit ran.
 //
@@ -14,17 +14,17 @@ const h = vi.hoisted(() => ({
   getThreadTagIds: vi.fn(),
 }))
 
-vi.mock('../cache', () => ({
+vi.mock('../../cache', () => ({
   getOrgCache: () => ({ get: h.orgCacheGet }),
 }))
-vi.mock('./labels', () => ({
+vi.mock('../labels', () => ({
   getEligibleClassificationTags: h.getEligibleClassificationTags,
 }))
-vi.mock('../field-values/relationship-queries', () => ({
+vi.mock('../../field-values/relationship-queries', () => ({
   getThreadTagIds: h.getThreadTagIds,
 }))
 
-import { guardClassification } from './guard'
+import { guardClassification } from '../classification-gate'
 
 /**
  * A `db` whose `select()` chain resolves the next queued row set. `select` is a

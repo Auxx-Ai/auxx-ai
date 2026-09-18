@@ -43,8 +43,9 @@
 
 import type { Result } from 'neverthrow'
 import { type AuxxError, BadRequestError } from '../../errors'
+import { unwrap } from '../../utils/guard'
 import type { FilesCtx, FilesDeps } from '../ctx'
-import { guard, unwrap } from '../guard'
+import { guard } from '../guard'
 import { presignUpload, startMultipartUpload } from '../storage/presign'
 import { buildUploadConfig } from './config'
 import { getUploadHandler, requiresEntityId } from './handlers'
