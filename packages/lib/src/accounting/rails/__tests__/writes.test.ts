@@ -52,10 +52,7 @@ function baseRow(overrides: Partial<PaymentGatewayRow> = {}): PaymentGatewayRow 
 }
 
 vi.mock('../reads', () => ({
-  requirePaymentGatewayFieldContext: async () => ({
-    paymentGatewayDefId: 'def_pg',
-    fields: {},
-  }),
+  requirePaymentGatewayDefId: async () => 'def_pg',
   listPaymentGateways: async () => ({
     isErr: () => false,
     isOk: () => true,

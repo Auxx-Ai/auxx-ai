@@ -19,6 +19,18 @@ import { schema } from '@auxx/database'
 import { getTableName } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+/** The registry field type behind each attribute; `readSystemRecords` shapes a stored row by it. */
+const FIELD_TYPES = vi.hoisted<Record<string, string>>(() => ({
+  payment_gateway_name: 'TEXT',
+  payment_gateway_handles: 'TAGS',
+  payment_gateway_fee_treatment: 'SINGLE_SELECT',
+  payment_gateway_status: 'SINGLE_SELECT',
+  payment_gateway_last_settlement_at: 'DATE',
+  payment_gateway_last_fee_booked_at: 'DATE',
+  order_payment_gateways: 'TAGS',
+  order_placed_at: 'DATE',
+}))
+
 const state = vi.hoisted(() => ({
   tables: new Map<string, unknown[][]>(),
   gatewayFieldOptions: null as unknown,
@@ -35,12 +47,15 @@ vi.mock('../../../cache', () => ({
         Object.fromEntries(
           attrs.map((attr) => {
             if (attr === 'order_payment_gateways') {
-              return [attr, { id: attr, options: state.gatewayFieldOptions }]
+              return [
+                attr,
+                { id: attr, type: FIELD_TYPES[attr], options: state.gatewayFieldOptions },
+              ]
             }
             if (attr === 'order_placed_at') {
-              return [attr, state.placedAtField ? { id: attr } : null]
+              return [attr, state.placedAtField ? { id: attr, type: FIELD_TYPES[attr] } : null]
             }
-            return [attr, { id: attr }]
+            return [attr, { id: attr, type: FIELD_TYPES[attr] }]
           })
         ),
     }),
@@ -81,9 +96,9 @@ function script(censusRows: unknown[], gateways: { instances: unknown[]; values:
   queue(schema.FieldValue, censusRows)
   queue(schema.EntityInstance, gateways.instances)
   if (gateways.instances.length > 0) {
+    queue(schema.FieldValue, gateways.values)
     queue(schema.GlRoleAssignment, [])
     queue(schema.FinancialSourceAccount, [])
-    queue(schema.FieldValue, gateways.values)
   }
 }
 

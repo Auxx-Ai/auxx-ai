@@ -32,7 +32,7 @@ import {
   type PaymentGatewayStatusValue,
 } from './client'
 import { guard } from './guard'
-import { getPaymentGateway, listPaymentGateways, requirePaymentGatewayFieldContext } from './reads'
+import { getPaymentGateway, listPaymentGateways, requirePaymentGatewayDefId } from './reads'
 
 const logger = createScopedLogger('payment-gateways')
 
@@ -113,7 +113,7 @@ export async function createPaymentGateway(
   const { organizationId, actorUserId } = input
   return guard(
     async () => {
-      const ctx = await requirePaymentGatewayFieldContext(organizationId)
+      const defId = await requirePaymentGatewayDefId(organizationId)
 
       const name = input.name?.trim()
       if (!name) {
@@ -141,7 +141,7 @@ export async function createPaymentGateway(
       await assertHandlesAvailable(db, organizationId, name, handles)
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-      const created = await crud.create(ctx.paymentGatewayDefId, {
+      const created = await crud.create(defId, {
         payment_gateway_name: name,
         payment_gateway_handles: handles,
         payment_gateway_fee_treatment: feeTreatment,
@@ -204,7 +204,7 @@ export async function updatePaymentGateway(
   const { organizationId, actorUserId, paymentGatewayId } = input
   return guard(
     async () => {
-      const ctx = await requirePaymentGatewayFieldContext(organizationId)
+      const defId = await requirePaymentGatewayDefId(organizationId)
 
       const existing = await getPaymentGateway(db, organizationId, paymentGatewayId)
       if (existing.isErr()) throw existing.error
@@ -285,7 +285,7 @@ export async function updatePaymentGateway(
 
       if (Object.keys(patch).length > 0) {
         const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-        await crud.update(toRecordId(ctx.paymentGatewayDefId, paymentGatewayId), patch)
+        await crud.update(toRecordId(defId, paymentGatewayId), patch)
       }
 
       const row = await getPaymentGateway(db, organizationId, paymentGatewayId)
@@ -318,7 +318,7 @@ export async function archivePaymentGateway(
   const { organizationId, actorUserId, paymentGatewayId } = input
   return guard(
     async () => {
-      const ctx = await requirePaymentGatewayFieldContext(organizationId)
+      const defId = await requirePaymentGatewayDefId(organizationId)
       const existing = await getPaymentGateway(db, organizationId, paymentGatewayId)
       if (existing.isErr()) throw existing.error
       if (!existing.value) {
@@ -329,7 +329,7 @@ export async function archivePaymentGateway(
       }
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-      await crud.update(toRecordId(ctx.paymentGatewayDefId, paymentGatewayId), {
+      await crud.update(toRecordId(defId, paymentGatewayId), {
         payment_gateway_status: 'closed',
       })
 
@@ -372,7 +372,7 @@ export async function stampPaymentGatewayLastSettlement(
         throw new BadRequestError(`"${settledAt}" is not a YYYY-MM-DD date`)
       }
 
-      const ctx = await requirePaymentGatewayFieldContext(organizationId)
+      const defId = await requirePaymentGatewayDefId(organizationId)
       // A closed rail still settles its last payouts, so archived rows are read too.
       const existing = await getPaymentGateway(db, organizationId, paymentGatewayId, {
         includeArchived: true,
@@ -386,7 +386,7 @@ export async function stampPaymentGatewayLastSettlement(
       if (held && held >= settledAt) return { advanced: false }
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-      await crud.update(toRecordId(ctx.paymentGatewayDefId, paymentGatewayId), {
+      await crud.update(toRecordId(defId, paymentGatewayId), {
         payment_gateway_last_settlement_at: settledAt,
       })
       return { advanced: true }
