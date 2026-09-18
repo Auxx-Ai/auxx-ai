@@ -15,7 +15,11 @@ import { WizardOpeningPage } from './wizard-opening-page'
 import { WizardOpeningTbPage } from './wizard-opening-tb-page'
 import { WizardPeriodPage } from './wizard-period-page'
 import { WizardRailsPage } from './wizard-rails-page'
-import type { WizardLeaveDirection, WizardStepHandle } from './wizard-step-handle'
+import {
+  leaveCurrentPage,
+  type WizardLeaveDirection,
+  type WizardStepHandle,
+} from './wizard-step-handle'
 import { WizardWelcomePage } from './wizard-welcome-page'
 
 // This list has been reordered twice, for two different reasons.
@@ -141,8 +145,14 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
 
   const index = PAGES.indexOf(page)
 
-  /** Ask the current page (if it registered a handle) whether it is safe to navigate away. */
-  const attemptLeave = (direction: WizardLeaveDirection) => {
+  /**
+   * Ask the current page (if it registered a handle) whether it is safe to navigate away.
+   *
+   * 🛑 AWAITED. A page whose save is not optimistic resolves only once the write has landed and
+   * its query has been refetched - see `WizardStepHandle.tryAdvance`. Advancing before that let
+   * the finalize page read the pre-save answer.
+   */
+  const attemptLeave = (direction: WizardLeaveDirection, onAllowed: () => void) => {
     const handle =
       page === 'period'
         ? periodRef.current
@@ -153,20 +163,32 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
             : page === 'costing'
               ? costingRef.current
               : null
-    return handle?.tryAdvance(direction) ?? true
+    return leaveCurrentPage(handle, direction, onAllowed)
   }
 
-  const goNext = () => {
-    if (attemptLeave('next')) setPage(PAGES[Math.min(index + 1, PAGES.length - 1)] ?? 'done')
+  // One lock for all three exits. `attemptLeave` can now be in flight for as long as a save takes,
+  // and without this a second Continue would run `tryAdvance` against a page that is already
+  // leaving - two saves of the same draft, or a skipped page.
+  const [leaving, setLeaving] = useState(false)
+
+  const leaveVia = async (direction: WizardLeaveDirection, onAllowed: () => void) => {
+    if (leaving) return
+    setLeaving(true)
+    try {
+      await attemptLeave(direction, onAllowed)
+    } finally {
+      setLeaving(false)
+    }
   }
-  const goBack = () => {
-    if (attemptLeave('back')) setPage(PAGES[Math.max(index - 1, 0)] ?? 'welcome')
-  }
-  const finish = () => {
-    if (!attemptLeave('exit')) return
-    setWizardCompleted.mutate({ checklist: 'accounting' })
-    onOpenChange(false)
-  }
+
+  const goNext = () =>
+    leaveVia('next', () => setPage(PAGES[Math.min(index + 1, PAGES.length - 1)] ?? 'done'))
+  const goBack = () => leaveVia('back', () => setPage(PAGES[Math.max(index - 1, 0)] ?? 'welcome'))
+  const finish = () =>
+    leaveVia('exit', () => {
+      setWizardCompleted.mutate({ checklist: 'accounting' })
+      onOpenChange(false)
+    })
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && finish()}>
@@ -213,10 +235,10 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
 
         {page !== 'done' && (
           <DialogFooter className='border-t px-4 py-3 sm:justify-between'>
-            <Button variant='ghost' size='sm' onClick={finish}>
+            <Button variant='ghost' size='sm' onClick={finish} disabled={leaving}>
               Set up later
             </Button>
-            <Button variant='outline' size='sm' onClick={goNext}>
+            <Button variant='outline' size='sm' onClick={goNext} loading={leaving}>
               {page === 'welcome' ? 'Get started' : 'Continue'}
             </Button>
           </DialogFooter>
