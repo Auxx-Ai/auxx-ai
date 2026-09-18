@@ -13,7 +13,11 @@ const h = vi.hoisted(() => ({
   getInstallationDeployment: vi.fn(
     async (_input: unknown): Promise<unknown> => ({
       isErr: () => false,
-      value: { serverBundleSha: 'sha_1', installation: { id: 'inst_1' } },
+      value: {
+        serverBundleSha: 'sha_1',
+        installation: { id: 'inst_1' },
+        deployment: { catalog: { tools: [] } },
+      },
     })
   ),
   resolveAppConnectionForRuntime: vi.fn(

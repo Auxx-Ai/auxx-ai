@@ -27,6 +27,15 @@ const KNOWN_ABSENT = {
   entity_group: ['FIELD_REGISTRY', 'RESOURCE_FIELD_REGISTRY'],
   /** Seeded by the entity seeder, but not exposed as an editable resource. */
   tag: ['RESOURCE_FIELD_REGISTRY'],
+  /**
+   * The hidden `payment` entity mirror's field registry
+   * (`resources/payment-fields.ts`) was deleted with the legacy payment lane
+   * (accounting migration step 0) — but the def itself, `invoice.payments` /
+   * `bank_deposit.payments` and `money/bank-deposits/` still read and write it
+   * for orgs that already have one, so it stays in `SYSTEM_ENTITIES`. A new org
+   * gets the def with zero custom fields, same as `entity_group`.
+   */
+  payment: ['FIELD_REGISTRY', 'RESOURCE_FIELD_REGISTRY'],
 } as const satisfies Record<string, readonly string[]>
 
 function absentFrom(entityType: string, registry: string): boolean {

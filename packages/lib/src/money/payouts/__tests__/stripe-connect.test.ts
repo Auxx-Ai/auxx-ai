@@ -49,6 +49,11 @@ const h = vi.hoisted(() => ({
   recognise: vi.fn(async () => new Set<string>()),
   gateways: [] as unknown[],
   readDestinations: vi.fn(async (..._args: unknown[]) => [] as string[]),
+  listPostingsForSource: vi.fn(async (..._args: unknown[]) => ({
+    isErr: () => false,
+    isOk: () => true,
+    value: [] as { id: string; status: string }[],
+  })),
 }))
 
 vi.mock('@auxx/database', async (original) => ({
@@ -66,10 +71,10 @@ vi.mock('../reads', () => ({
   listLinkedFeedAccounts: h.listLinkedFeedAccounts,
   readBankAccountSettlementDestinations: h.readDestinations,
 }))
-vi.mock('../../payments/account-state', () => ({
+vi.mock('../stripe-account', () => ({
   getPaymentAccount: async () => ({ stripeAccountId: 'acct_1' }),
 }))
-vi.mock('../../payments/connect-client', () => ({
+vi.mock('../stripe-connect-client', () => ({
   getStripeConnectClient: () => ({
     payouts: { list: h.payoutsList },
     balanceTransactions: { list: h.balanceList },
@@ -86,6 +91,14 @@ vi.mock('../../../postings/post-payout-entry', async (importOriginal) => ({
   postPayoutEntry: h.postPayoutEntry,
 }))
 vi.mock('../../../postings/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
+vi.mock('../../../postings/list-postings', () => ({
+  listPostingsForSource: h.listPostingsForSource,
+}))
+// This file is about Stripe alone; keep the shopify_payments source (registered
+// alongside it by `registerPayoutSources`) a no-op rather than hitting the real DB.
+vi.mock('../../../apps/invoke-app-tool', () => ({
+  resolveAppToolContext: async () => ({ connected: false }),
+}))
 vi.mock('../../../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
     withDatabase() {
@@ -223,6 +236,7 @@ beforeEach(() => {
   h.postPayoutEntry.mockResolvedValue({ status: 'posted', glPostingId: 'glp_1' })
   h.stamp.mockResolvedValue({ isErr: () => false })
   h.readDestinations.mockResolvedValue([])
+  h.listPostingsForSource.mockResolvedValue({ isErr: () => false, isOk: () => true, value: [] })
   h.findPayoutByGatewayId
     .mockResolvedValueOnce(null)
     .mockResolvedValueOnce({ payoutId: 'inst_1', number: 'PAY-0001', glPostingId: null })
@@ -352,9 +366,14 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
     expect(h.stamp).not.toHaveBeenCalled()
   })
 
-  it('stops at the pair lookup when the payout already carries a posting', async () => {
+  it('stops at the live-posting lookup when the payout already carries a posting', async () => {
     h.findPayoutByGatewayId.mockReset()
-    h.findPayoutByGatewayId.mockResolvedValue({ payoutId: 'inst_1', glPostingId: 'glp_old' })
+    h.findPayoutByGatewayId.mockResolvedValue({ payoutId: 'inst_1', number: 'PAY-0001' })
+    h.listPostingsForSource.mockResolvedValue({
+      isErr: () => false,
+      isOk: () => true,
+      value: [{ id: 'glp_old', status: 'posted' }],
+    })
 
     const result = await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
 

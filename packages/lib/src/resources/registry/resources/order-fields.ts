@@ -37,42 +37,59 @@ const ORDER_DISCOUNT_TYPE_OPTIONS = [
  * and written only by the totals engine.
  */
 export const ORDER_FIELDS: Record<string, ResourceField> = {
+  // `z1`-`z8`: hidden/internal fields, grouped with `paymentEvidence` (`z9`)
+  // below rather than sharing the default `financialSourceField` sort order
+  // ('a1') that `order_number` also uses — eight fields at one code collapsed
+  // every mixed sort to insertion order (data-migrations 149/157's own
+  // uniqueness checks).
   paymentSourceProvider: financialSourceField(
     'paymentSourceProvider',
     'Payment source provider',
-    'order_payment_source_provider'
+    'order_payment_source_provider',
+    'text',
+    'z1'
   ),
   paymentSourceAccount: financialSourceField(
     'paymentSourceAccount',
     'Payment source account',
-    'order_payment_source_account'
+    'order_payment_source_account',
+    'text',
+    'z2'
   ),
   paymentSourceEnvironment: financialSourceField(
     'paymentSourceEnvironment',
     'Payment environment',
-    'order_payment_source_environment'
+    'order_payment_source_environment',
+    'text',
+    'z3'
   ),
   paymentSourceOrderId: financialSourceField(
     'paymentSourceOrderId',
     'Source order ID',
-    'order_payment_source_order_id'
+    'order_payment_source_order_id',
+    'text',
+    'z4'
   ),
   paymentSourceUpdatedAt: financialSourceField(
     'paymentSourceUpdatedAt',
     'Payment source updated at',
-    'order_payment_source_updated_at'
+    'order_payment_source_updated_at',
+    'text',
+    'z5'
   ),
   paymentSourceComplete: financialSourceField(
     'paymentSourceComplete',
     'Payment source complete',
     'order_payment_source_complete',
-    'boolean'
+    'boolean',
+    'z6'
   ),
   paymentSourceCount: financialSourceField(
     'paymentSourceCount',
     'Source transaction count',
     'order_payment_source_count',
-    'number'
+    'number',
+    'z7'
   ),
   paymentTransactions: financialSourceRelationship(
     'paymentTransactions',
@@ -80,7 +97,8 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     'order_payment_transactions',
     'customer_transaction',
     'order',
-    true
+    true,
+    'z8'
   ),
   paymentEvidence: {
     id: toFieldId('paymentEvidence'),
