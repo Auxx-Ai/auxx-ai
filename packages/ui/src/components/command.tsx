@@ -653,6 +653,8 @@ interface CommandDetailItemProps {
   onSelect?: () => void
   disabled?: boolean
   className?: string
+  /** Tree indent level (e.g. a chart-of-accounts sub-account) — pads the row and draws a thin connector, like `TreeRow`. */
+  depth?: number
 }
 
 /**
@@ -679,6 +681,7 @@ function CommandDetailItem({
   value,
   onSelect,
   disabled,
+  depth = 0,
   className,
 }: CommandDetailItemProps) {
   const leading = icon ?? (iconId ? <EntityIcon iconId={iconId} color={color} size='sm' /> : null)
@@ -703,11 +706,20 @@ function CommandDetailItem({
       value={value}
       onSelect={onSelect}
       disabled={disabled}
+      style={depth > 0 ? { paddingLeft: `calc(0.5rem + ${depth * 14}px)` } : undefined}
       className={cn(
         'group/cmd-item flex items-center gap-2',
         slideActions && 'relative overflow-hidden',
         className
       )}>
+      {/* One thin connector per row, at the ancestor column, reusing TreeRow's `bg-border` token. */}
+      {depth > 0 && (
+        <span
+          aria-hidden
+          className='absolute inset-y-0 w-px bg-border'
+          style={{ left: `calc(0.5rem + ${(depth - 1) * 14 + 7}px)` }}
+        />
+      )}
       {framedLeading && <span className='shrink-0 text-muted-foreground'>{framedLeading}</span>}
       <div className='flex min-w-0 flex-1 items-center gap-1.5'>
         <span className='min-w-0 truncate text-sm'>{title}</span>

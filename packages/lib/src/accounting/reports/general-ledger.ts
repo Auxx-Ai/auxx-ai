@@ -116,6 +116,12 @@ export interface GeneralLedger {
   /** `YYYY-MM-DD`, inclusive. */
   to: string
   /**
+   * The org's live chart, read once for this read (CHART-HIERARCHY.md §5) -
+   * `toGeneralLedgerRows` uses it to label a nested account by its path
+   * rather than re-reading the chart in the adapter.
+   */
+  chart: ChartAccountRow[]
+  /**
    * Accounts with at least one line in the range, or a non-zero opening
    * balance. An account that was untouched and started at zero is omitted:
    * a general ledger listing every empty account is unreadable, and the trial
@@ -272,6 +278,7 @@ export async function readGeneralLedger(
       organizationId,
       from,
       to,
+      chart: chartResult.value,
       accounts,
       totalDebitMinor,
       totalCreditMinor,

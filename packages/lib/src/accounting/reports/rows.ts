@@ -31,7 +31,12 @@ export interface StatementColumn {
 export interface StatementRow {
   id: string
   label: string
-  depth: 0 | 1 | 2
+  /**
+   * Nesting level. Was `0 | 1 | 2`; widened for CHART-HIERARCHY.md §5 - a
+   * sub-account under a sub-account under a section pushes past 2, and the
+   * cap on chart depth is 5 (D4), not 2.
+   */
+  depth: number
   kind: 'section' | 'line' | 'subtotal' | 'total' | 'computed'
   /** Minor units, one per column. `null` renders `EMPTY_CELL`. */
   values: Array<number | null>

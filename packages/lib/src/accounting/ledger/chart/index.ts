@@ -6,6 +6,15 @@ export {
   GL_ACCOUNT_SUBTYPES,
   type GlAccountSubtypeValue,
 } from './account-subtype'
+export {
+  type AccountNode,
+  accountDepth,
+  accountPath,
+  accountPathLabel,
+  buildAccountTree,
+  descendantIds,
+  sortChartTree,
+} from './account-tree'
 // ── plans/accounting/tasks/16: the chart import ─────────────────────────────
 export { type ImportChartOptions, importChartFromProvider } from './chart-import'
 export {

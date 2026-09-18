@@ -43,6 +43,7 @@ const OUR_CHART: ChartAccountRow[] = [
     accountType: 'asset',
     isActive: true,
     subtype: null,
+    parentId: null,
   },
   {
     id: 'gl2160',
@@ -51,6 +52,7 @@ const OUR_CHART: ChartAccountRow[] = [
     accountType: 'liability',
     isActive: true,
     subtype: null,
+    parentId: null,
   },
   {
     id: 'gl5090',
@@ -59,6 +61,7 @@ const OUR_CHART: ChartAccountRow[] = [
     accountType: 'expense',
     isActive: true,
     subtype: null,
+    parentId: null,
   },
 ]
 
@@ -71,6 +74,7 @@ function providerAccount(over: Partial<ProviderAccount> = {}): ProviderAccount {
     accountType: 'Other Current Asset',
     classification: 'asset',
     active: true,
+    parentId: null,
     ...over,
   }
 }
@@ -181,6 +185,7 @@ describe('listAccountIdentities - the checklist', () => {
       accountType: 'asset',
       isActive: true,
       subtype: 'bank',
+      parentId: null,
     }
     listChartAccounts.mockResolvedValue(ok([bankAccount]))
     const arProviderAccount = providerAccount({
@@ -288,6 +293,7 @@ describe('setAccountIdentity - the confirmation', () => {
       accountType: 'asset',
       isActive: true,
       subtype: 'bank',
+      parentId: null,
     }
     listChartAccounts.mockResolvedValue(ok([bankAccount]))
     const arProviderAccount = providerAccount({
@@ -320,6 +326,7 @@ describe('setAccountIdentity - the confirmation', () => {
       accountType: 'asset',
       isActive: true,
       subtype: 'bank',
+      parentId: null,
     }
     listChartAccounts.mockResolvedValue(ok([bankAccount]))
     const bankProviderAccount = providerAccount({ id: '50', accountType: 'Bank' })

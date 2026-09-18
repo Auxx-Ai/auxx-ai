@@ -140,7 +140,7 @@ async function buildPayload<K extends StatementKind>(
       rangeLabel: compareAsOf ? `As of ${asOf}, compared to ${compareAsOf}` : `As of ${asOf}`,
       asOfForKey: asOf,
       columns: balanceSheetColumns(result.value),
-      rows: toBalanceSheetRows(result.value, result.value.compare),
+      rows: toBalanceSheetRows(result.value, result.value.compare, result.value.chart),
       statementThrough: asOf,
     }
   }
@@ -163,7 +163,7 @@ async function buildPayload<K extends StatementKind>(
             },
           ]
         : [{ key: 'primary', label: `${from} to ${to}`, align: 'right', signed: true }],
-      rows: toProfitAndLossRows(result.value, result.value.compare),
+      rows: toProfitAndLossRows(result.value, result.value.compare, result.value.chart),
       statementThrough: to,
     }
   }

@@ -3,6 +3,10 @@
 'use client'
 
 import {
+  type AccountNode,
+  accountPath,
+  accountPathLabel,
+  buildAccountTree,
   type ChartAccountRow,
   GL_ACCOUNT_TYPES,
   type GlAccountTypeValue,
@@ -27,6 +31,7 @@ import { AccountLabel } from '~/components/accounting/ui/account-label'
 import {
   accountMatchesSearch,
   formatAccountLabel,
+  formatAccountPath,
 } from '~/components/accounting/ui/account-label-format'
 import {
   type AccountLinkState,
@@ -98,17 +103,45 @@ export function GlAccountList({
     [accounts, filterTypes, search]
   )
 
+  // Direct-child counts over the WHOLE chart, not the filtered group, so a
+  // parent's "N sub-accounts" secondary stays accurate under an active search.
+  const childCountByParentId = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const account of accounts) {
+      if (account.parentId) counts.set(account.parentId, (counts.get(account.parentId) ?? 0) + 1)
+    }
+    return counts
+  }, [accounts])
+
   return (
     <CommandList>
       <CommandEmpty>{isLoading ? 'Loading…' : 'No accounts match.'}</CommandEmpty>
       {groups.map((group) => (
         <CommandGroup key={group.type} heading={accountTypeLabel(group.type)}>
-          {group.accounts.map((account) => {
+          {group.entries.map(({ account, depth }) => {
             const optionValue = selectBy === 'id' ? account.id : account.code
+            const childCount = childCountByParentId.get(account.id) ?? 0
+            // Ancestors only, no leaf (D8) - depth 0 has none.
+            const ancestorPath =
+              depth > 0
+                ? accountPath(accounts, account.id)
+                    .slice(0, -1)
+                    .map((ancestor) => ancestor.name)
+                    .join(': ')
+                : ''
+            const inactiveReason = account.isActive
+              ? null
+              : 'This account is inactive and cannot be posted to.'
+            const description = inactiveReason
+              ? ancestorPath
+                ? `${ancestorPath} · ${inactiveReason}`
+                : inactiveReason
+              : ancestorPath || undefined
             return (
               <CommandDetailItem
                 key={account.id}
                 value={account.id}
+                depth={depth}
                 // The group's classification, drawn on every row in it. Both
                 // strings come from `GL_ACCOUNT_TYPE_META` through
                 // `accounts-types.ts`, so the glyph and the colour here are the
@@ -117,15 +150,22 @@ export function GlAccountList({
                 iconId={accountTypeIconId(group.type)}
                 color={accountTypeColor(group.type)}
                 title={formatAccountLabel(account)}
-                description={
-                  account.isActive ? undefined : 'This account is inactive and cannot be posted to.'
-                }
+                description={description}
                 secondary={
-                  linkStates && (
-                    <AccountLinkMark
-                      state={linkStates.get(account.id) ?? 'unlinked'}
-                      providerLabel={providerLabel ?? null}
-                    />
+                  (childCount > 0 || linkStates) && (
+                    <span className='flex items-center gap-1.5'>
+                      {childCount > 0 && (
+                        <span className='text-muted-foreground text-xs'>
+                          {childCount} sub-account{childCount === 1 ? '' : 's'}
+                        </span>
+                      )}
+                      {linkStates && (
+                        <AccountLinkMark
+                          state={linkStates.get(account.id) ?? 'unlinked'}
+                          providerLabel={providerLabel ?? null}
+                        />
+                      )}
+                    </span>
                   )
                 }
                 disabled={!account.isActive}
@@ -297,6 +337,14 @@ export interface GlAccountPickerProps {
   placeholder?: string
   className?: string
   triggerProps?: PickerTriggerOptions
+  /**
+   * Account ids to drop from the list entirely — the chart-hierarchy editor's
+   * parent picker excludes the account itself and every descendant
+   * (`descendantIds`), since either would create a cycle `chart-write.ts`
+   * would refuse anyway. Filtered out of the fetched chart before grouping,
+   * so an excluded id never appears even as a disabled row.
+   */
+  excludeIds?: ReadonlySet<string>
 }
 
 /**
@@ -343,8 +391,16 @@ export function GlAccountPicker({
   placeholder = 'Select account…',
   className,
   triggerProps,
+  excludeIds,
 }: GlAccountPickerProps) {
-  const { accounts, isLoading } = useChartAccounts()
+  const { accounts: allAccounts, isLoading } = useChartAccounts()
+  const accounts = useMemo(
+    () =>
+      excludeIds && excludeIds.size > 0
+        ? allAccounts.filter((a) => !excludeIds.has(a.id))
+        : allAccounts,
+    [allAccounts, excludeIds]
+  )
   const [open, setOpen] = useState(false)
   // 🛑 Both dialogs are siblings of the `Popover`, never children of its
   // content: Radix unmounts closed popover content, so a dialog opened from a
@@ -356,6 +412,11 @@ export function GlAccountPicker({
     () =>
       accounts.find((account) => (selectBy === 'id' ? account.id : account.code) === value) ?? null,
     [accounts, value, selectBy]
+  )
+  // Ancestors only, no leaf - `AccountLabel`'s `path` prop appends the leaf itself.
+  const selectedAncestors = useMemo(
+    () => (selected ? accountPath(accounts, selected.id).slice(0, -1) : []),
+    [accounts, selected]
   )
 
   function handleOpenChange(next: boolean) {
@@ -385,7 +446,17 @@ export function GlAccountPicker({
           }}
           asCombobox
           className={cn('h-auto min-h-8 w-full ps-0 pe-1', className, triggerProps?.className)}>
-          {selected && <AccountLabel account={selected} className='text-sm' />}
+          {selected && (
+            <AccountLabel
+              account={selected}
+              path={
+                selectedAncestors.length > 0
+                  ? formatAccountPath(selectedAncestors, selected)
+                  : undefined
+              }
+              className='text-sm'
+            />
+          )}
         </PickerTrigger>
       </PopoverTrigger>
       <PopoverContent
@@ -502,16 +573,55 @@ function AccountLinkMark({
   )
 }
 
+/** One row of a group's option list, in tree order (D9), with its indent level. */
+interface AccountGroupEntry {
+  account: ChartAccountRow
+  depth: number
+}
+
 /** One statement-classification section of the picker's option list. */
 interface AccountGroup {
   type: GlAccountTypeValue
-  accounts: ChartAccountRow[]
+  entries: AccountGroupEntry[]
+}
+
+function flattenAccountTree(nodes: readonly AccountNode[]): AccountGroupEntry[] {
+  const flat: AccountGroupEntry[] = []
+  for (const node of nodes) {
+    flat.push({ account: node.account, depth: node.depth })
+    flat.push(...flattenAccountTree(node.children))
+  }
+  return flat
+}
+
+/**
+ * One type group's rows as a tree, filtered by search. A match is the account's
+ * own code/name OR its {@link accountPathLabel} (D8); a matching account's
+ * ancestors stay in the result too - real, selectable accounts kept only so the
+ * indent still reads, per §7 "Picker".
+ */
+function accountsInGroup(rows: ChartAccountRow[], search: string): AccountGroupEntry[] {
+  const flat = flattenAccountTree(buildAccountTree(rows))
+  if (!search.trim()) return flat
+
+  const matchedIds = rows
+    .filter((account) => accountMatchesSearch(account, search, accountPathLabel(rows, account.id)))
+    .map((account) => account.id)
+  const visibleIds = new Set<string>()
+  for (const id of matchedIds) {
+    for (const ancestor of accountPath(rows, id)) visibleIds.add(ancestor.id)
+  }
+  return flat.filter((entry) => visibleIds.has(entry.account.id))
 }
 
 /**
  * Groups the chart in {@link GL_ACCOUNT_TYPES} (statement) order, applying
- * `filterTypes` and a case-insensitive code/name search. Empty groups are
- * dropped rather than rendered with a heading and nothing under it.
+ * `filterTypes` and building each group's own tree (D3: a child always shares
+ * its parent's type, so a group's rows are exactly what `buildAccountTree`
+ * needs; an out-of-group parent - data corruption - degrades to that row
+ * being its own root, the same way the tree builder treats any unknown
+ * parent). Empty groups are dropped rather than rendered with a heading and
+ * nothing under it.
  *
  * Pure and exported so grouping/ordering can be unit-tested without a tRPC
  * provider.
@@ -526,9 +636,10 @@ export function groupAccountsByType(
   return GL_ACCOUNT_TYPES.filter((type) => !allowed || allowed.has(type))
     .map((type) => ({
       type,
-      accounts: accounts.filter(
-        (account) => account.accountType === type && accountMatchesSearch(account, search)
+      entries: accountsInGroup(
+        accounts.filter((account) => account.accountType === type),
+        search
       ),
     }))
-    .filter((group) => group.accounts.length > 0)
+    .filter((group) => group.entries.length > 0)
 }

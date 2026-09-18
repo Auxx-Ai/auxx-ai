@@ -21,6 +21,8 @@ import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../errors'
 import type { GlAccountSubtypeValue } from '../ledger/chart/account-subtype'
+import { listChartAccounts } from '../ledger/roles/role-map'
+import type { ChartAccountRow } from '../ledger/types'
 import { netIncome } from './statement-math'
 import { readTrialBalance, type TrialBalanceRow } from './trial-balance'
 
@@ -65,6 +67,12 @@ export interface ProfitAndLossSnapshot {
 export interface ProfitAndLoss extends ProfitAndLossSnapshot {
   organizationId: string
   compare: ProfitAndLossSnapshot | null
+  /**
+   * The org's live chart, read once for both ranges (CHART-HIERARCHY.md §5) -
+   * `toProfitAndLossRows` uses it to nest a sub-account under its parent
+   * rather than re-reading the chart in the adapter.
+   */
+  chart: ChartAccountRow[]
 }
 
 export interface ReadProfitAndLossOptions {
@@ -100,17 +108,24 @@ export async function readProfitAndLoss(
   const { organizationId, from, to, compare } = options
 
   try {
-    const primary = await computeSnapshot(db, organizationId, from, to)
+    // Read ONCE for both ranges - the same reasoning `readBalanceSheet` gives:
+    // both compose `readTrialBalance`, which would otherwise read its own
+    // copy per call, over a chart that cannot change mid-read.
+    const chartResult = await listChartAccounts(db, organizationId)
+    if (chartResult.isErr()) return err(chartResult.error)
+    const chart = chartResult.value
+
+    const primary = await computeSnapshot(db, organizationId, from, to, chart)
     if (primary.isErr()) return err(primary.error)
 
     let compareSnapshot: ProfitAndLossSnapshot | null = null
     if (compare) {
-      const compared = await computeSnapshot(db, organizationId, compare.from, compare.to)
+      const compared = await computeSnapshot(db, organizationId, compare.from, compare.to, chart)
       if (compared.isErr()) return err(compared.error)
       compareSnapshot = compared.value
     }
 
-    return ok({ organizationId, ...primary.value, compare: compareSnapshot })
+    return ok({ organizationId, ...primary.value, compare: compareSnapshot, chart })
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to read the profit and loss statement', {
@@ -127,9 +142,10 @@ async function computeSnapshot(
   db: Database,
   organizationId: string,
   from: string,
-  to: string
+  to: string,
+  chart: readonly ChartAccountRow[]
 ): Promise<Result<ProfitAndLossSnapshot, Error>> {
-  const tb = await readTrialBalance(db, { organizationId, from, to })
+  const tb = await readTrialBalance(db, { organizationId, from, to, chart })
   if (tb.isErr()) return err(tb.error)
 
   const revenue = tb.value.rows.filter((row) => row.accountType === 'revenue').map(toRow)

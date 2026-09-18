@@ -35,6 +35,7 @@ const CLEARING: ChartAccountRow = {
   accountType: 'asset',
   isActive: true,
   subtype: null,
+  parentId: null,
 }
 
 const CREATED: ProviderAccount = {
@@ -45,6 +46,27 @@ const CREATED: ProviderAccount = {
   accountType: 'Other Current Asset',
   classification: 'asset',
   active: true,
+  parentId: null,
+}
+
+const SALES: ChartAccountRow = {
+  id: 'gl_sales',
+  code: null,
+  name: 'Sales',
+  accountType: 'revenue',
+  isActive: true,
+  subtype: null,
+  parentId: null,
+}
+
+const PRODUCT_INCOME: ChartAccountRow = {
+  id: 'gl_product_income',
+  code: null,
+  name: 'Product Income',
+  accountType: 'revenue',
+  isActive: true,
+  subtype: null,
+  parentId: 'gl_sales',
 }
 
 /** A provider that can create, with every call spied on. */
@@ -254,5 +276,55 @@ describe('createAndLinkProviderAccount - what it refuses, and writes nothing', (
 
     expect(result._unsafeUnwrapErr().message).toContain('already match by name')
     expect(p.setAccountMapping).not.toHaveBeenCalled()
+  })
+})
+
+describe('createAndLinkProviderAccount - a sub-account (CHART-HIERARCHY §6)', () => {
+  it("refuses when the parent has no counterpart yet, naming it and 'first'", async () => {
+    listChartAccounts.mockResolvedValue(ok([SALES, PRODUCT_INCOME]))
+    const p = provider()
+    resolveAccountingProvider.mockResolvedValue(p)
+
+    const result = await createAndLinkProviderAccount(db, {
+      organizationId: ORG,
+      glAccountId: 'gl_product_income',
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('Sales')
+    expect(result._unsafeUnwrapErr().message).toContain('first')
+    expect(p.createProviderAccount).not.toHaveBeenCalled()
+  })
+
+  it('passes the resolved parentProviderId once the parent is mapped', async () => {
+    listChartAccounts.mockResolvedValue(ok([SALES, PRODUCT_INCOME]))
+    const p = provider({
+      listAccountMappings: vi.fn(async () => ok(new Map([['gl_sales', 'qbo_sales']]))),
+      createProviderAccount: vi.fn(async () =>
+        ok({
+          account: {
+            ...CREATED,
+            id: 'qbo_product_income',
+            name: 'Product Income',
+            fullyQualifiedName: 'Sales:Product Income',
+            classification: 'revenue' as const,
+            parentId: 'qbo_sales',
+          },
+          outcome: 'created' as const,
+          numberDropped: false,
+        })
+      ),
+    })
+    resolveAccountingProvider.mockResolvedValue(p)
+
+    const result = await createAndLinkProviderAccount(db, {
+      organizationId: ORG,
+      glAccountId: 'gl_product_income',
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(p.createProviderAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ glAccountId: 'gl_product_income', parentProviderId: 'qbo_sales' })
+    )
   })
 })

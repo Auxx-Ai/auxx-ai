@@ -20,6 +20,7 @@ import { AuxxError } from '../../errors'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { loadRoleAccountCodes } from '../ledger/roles/resolve-roles'
 import { listChartAccounts } from '../ledger/roles/role-map'
+import type { ChartAccountRow } from '../ledger/types'
 import { fiscalYearStart, previousCalendarDay } from './fiscal-year'
 import { resolveFiscalYearStartMonth } from './fiscal-year-setting'
 import { netIncome, type RetainedEarnings, retainedEarnings } from './statement-math'
@@ -42,6 +43,12 @@ export interface TrialBalanceStatement {
   asOf: string
   /** The first day of the fiscal year `asOf` falls in. Revenue and expense rows start here. */
   fiscalYearStart: string
+  /**
+   * The org's live chart, read once for this statement (CHART-HIERARCHY.md
+   * §5) - `toTrialBalanceStatementRows` uses it to label a nested account by
+   * its path rather than re-reading the chart in the adapter.
+   */
+  chart: ChartAccountRow[]
   /**
    * Balance-sheet rows cumulative through `asOf`; revenue and expense rows over
    * `[fiscalYearStart, asOf]` only. A DELETED account (`accountType: null`) stays
@@ -151,6 +158,7 @@ export async function readTrialBalanceStatement(
       organizationId,
       asOf,
       fiscalYearStart: fyStart,
+      chart,
       rows,
       retainedEarnings: {
         ...re,

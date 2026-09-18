@@ -49,6 +49,7 @@ function account(overrides: Partial<ChartAccountRow> & { code: string | null }):
     accountType: 'asset',
     isActive: true,
     subtype: null,
+    parentId: null,
     ...overrides,
   }
 }

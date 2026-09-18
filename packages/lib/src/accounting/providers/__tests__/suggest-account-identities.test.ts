@@ -24,6 +24,7 @@ function ours(over: Partial<ChartAccountRow> = {}): ChartAccountRow {
     accountType: 'asset',
     isActive: true,
     subtype: null,
+    parentId: null,
     ...over,
   }
 }
@@ -37,6 +38,7 @@ function theirs(over: Partial<ProviderAccount> = {}): ProviderAccount {
     accountType: 'Other Current Asset',
     classification: 'asset',
     active: true,
+    parentId: null,
     ...over,
   }
 }
@@ -127,6 +129,35 @@ describe('matching by name', () => {
       [theirs({ id: '1' }), theirs({ id: '2' })]
     )
     expect(suggestions).toHaveLength(0)
+  })
+
+  it('prefers a candidate whose path matches ours over a bare leaf match (D8)', () => {
+    // The case D8 calls out by name: two banks both keep a "Checking", and only
+    // the path tells them apart.
+    const parent = ours({ id: 'gl_parent', code: null, name: 'Chase Bank' })
+    const child = ours({ id: 'gl_child', code: null, name: 'Checking', parentId: 'gl_parent' })
+
+    const suggestions = suggestAccountIdentities(
+      [parent, child],
+      [
+        theirs({ id: 'wrong', name: 'Checking', fullyQualifiedName: 'Wells Fargo:Checking' }),
+        theirs({ id: 'right', name: 'Checking', fullyQualifiedName: 'Chase Bank:Checking' }),
+      ]
+    )
+
+    expect(suggestions.find((s) => s.glAccountId === 'gl_child')?.account.id).toBe('right')
+  })
+
+  it('falls back to the bare leaf match when nothing agrees on the whole path', () => {
+    const parent = ours({ id: 'gl_parent', code: null, name: 'Chase Bank' })
+    const child = ours({ id: 'gl_child', code: null, name: 'Checking', parentId: 'gl_parent' })
+
+    const suggestions = suggestAccountIdentities(
+      [parent, child],
+      [theirs({ id: 'only', name: 'Checking', fullyQualifiedName: 'Checking' })]
+    )
+
+    expect(suggestions.find((s) => s.glAccountId === 'gl_child')?.account.id).toBe('only')
   })
 
   it('prefers the number match over the name match', () => {

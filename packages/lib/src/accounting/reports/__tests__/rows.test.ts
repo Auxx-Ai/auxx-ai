@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/reports/__tests__/rows.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { computedRow, statementSection, toCsvRows, totalRow } from '../rows'
+import { computedRow, type StatementRow, statementSection, toCsvRows, totalRow } from '../rows'
 
 describe('statementSection', () => {
   it('sums its lines into the section total, and into a labelled total row', () => {
@@ -65,5 +65,48 @@ describe('toCsvRows', () => {
     const rows = [totalRow('t', 'Total', [null])]
     const csv = toCsvRows(rows, [{ key: 'value', label: 'Value' }])
     expect(csv).toContain('Total,')
+  })
+
+  it('indents a nested sub-account two levels under its section (CHART-HIERARCHY.md §5)', () => {
+    const rows: StatementRow[] = [
+      {
+        id: 'revenue',
+        label: 'Revenue',
+        depth: 0,
+        kind: 'section',
+        values: [400_00],
+        children: [
+          {
+            id: 'sales',
+            label: '4000 Sales',
+            depth: 1,
+            kind: 'line',
+            values: [100_00],
+            children: [
+              {
+                id: 'product',
+                label: '4010 Product Income',
+                depth: 2,
+                kind: 'line',
+                values: [250_00],
+              },
+              {
+                id: 'sales:total',
+                label: 'Total Sales',
+                depth: 2,
+                kind: 'subtotal',
+                values: [350_00],
+              },
+            ],
+          },
+        ],
+      },
+    ]
+    const csv = toCsvRows(rows, [{ key: 'value', label: 'Value' }])
+
+    expect(csv).toContain('Revenue,400.00')
+    expect(csv).toContain('  4000 Sales,100.00')
+    expect(csv).toContain('    4010 Product Income,250.00')
+    expect(csv).toContain('    Total Sales,350.00')
   })
 })

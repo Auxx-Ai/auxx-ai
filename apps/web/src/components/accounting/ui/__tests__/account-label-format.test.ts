@@ -1,7 +1,12 @@
 // apps/web/src/components/accounting/ui/__tests__/account-label-format.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { accountChipText, accountMatchesSearch, formatAccountLabel } from '../account-label-format'
+import {
+  accountChipText,
+  accountMatchesSearch,
+  formatAccountLabel,
+  formatAccountPath,
+} from '../account-label-format'
 
 const numbered = { code: '1310', name: 'Inventory Raw Materials' }
 const unnumbered = { code: null, name: 'Bank Fees' }
@@ -42,5 +47,33 @@ describe('accountMatchesSearch', () => {
     expect(accountMatchesSearch(unnumbered, '13')).toBe(false)
     expect(accountMatchesSearch(unnumbered, 'fees')).toBe(true)
     expect(accountMatchesSearch(unnumbered, '   ')).toBe(true)
+  })
+
+  it('matches against an optional path when code and name miss', () => {
+    expect(accountMatchesSearch(numbered, 'sales', 'Sales: 1310 · Inventory Raw Materials')).toBe(
+      true
+    )
+    expect(accountMatchesSearch(numbered, 'nope', 'Sales: 1310 · Inventory Raw Materials')).toBe(
+      false
+    )
+    expect(accountMatchesSearch(numbered, 'raw mat')).toBe(true) // no path needed when the name matches
+  })
+})
+
+describe('formatAccountPath', () => {
+  it('joins bare ancestor names with the leaf accountLabel (D8)', () => {
+    expect(formatAccountPath([{ name: 'Sales' }], numbered)).toBe(
+      'Sales: 1310 · Inventory Raw Materials'
+    )
+  })
+
+  it('is just the leaf label with no ancestors', () => {
+    expect(formatAccountPath([], numbered)).toBe('1310 · Inventory Raw Materials')
+  })
+
+  it('joins multiple ancestors root-first', () => {
+    expect(formatAccountPath([{ name: 'Sales' }, { name: 'Product Income' }], numbered)).toBe(
+      'Sales: Product Income: 1310 · Inventory Raw Materials'
+    )
   })
 })

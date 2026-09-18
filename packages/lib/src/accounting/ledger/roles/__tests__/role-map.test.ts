@@ -301,6 +301,7 @@ describe('listRoleMap - the four derived states', () => {
       accountType: 'liability',
       isActive: true,
       subtype: null,
+      parentId: null,
     })
   })
 
@@ -565,6 +566,7 @@ describe('listChartAccounts', () => {
       accountType: 'expense',
       isActive: false,
       subtype: null,
+      parentId: null,
     })
   })
 

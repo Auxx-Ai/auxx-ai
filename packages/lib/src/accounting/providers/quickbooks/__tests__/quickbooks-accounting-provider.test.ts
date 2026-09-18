@@ -1170,6 +1170,18 @@ describe('createProviderAccount - the seam run backwards', () => {
     expect(createCall(callTool)).not.toHaveProperty('acctNum')
   })
 
+  it('sends parentId only when the caller resolved one (CHART-HIERARCHY §6)', async () => {
+    const callTool = connectCreate()
+    await provider.createProviderAccount({ ...input, parentProviderId: '55' })
+    expect(createCall(callTool)).toMatchObject({ parentId: '55' })
+  })
+
+  it('omits parentId entirely for a top-level account', async () => {
+    const callTool = connectCreate()
+    await provider.createProviderAccount(input)
+    expect(createCall(callTool)).not.toHaveProperty('parentId')
+  })
+
   it('returns the account in the same shape the chart read speaks', async () => {
     connectCreate()
     const result = await provider.createProviderAccount(input)
@@ -1181,6 +1193,7 @@ describe('createProviderAccount - the seam run backwards', () => {
       accountType: 'Other Current Asset',
       classification: 'asset',
       active: true,
+      parentId: null,
     })
     expect(result._unsafeUnwrap().outcome).toBe('created')
     expect(result._unsafeUnwrap().numberDropped).toBe(false)

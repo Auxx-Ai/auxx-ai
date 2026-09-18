@@ -31,6 +31,7 @@
 
 import { accountLabel } from '../ledger/chart/account-label'
 import { accountSubtypeLabel, type GlAccountSubtypeValue } from '../ledger/chart/account-subtype'
+import { accountPath } from '../ledger/chart/account-tree'
 import type { AccountSuggestionReason, ChartAccountRow, ProviderAccount } from '../ledger/types'
 
 /**
@@ -178,7 +179,7 @@ export function suggestAccountIdentities(
       continue
     }
 
-    const byName = pickByName(compatible, account)
+    const byName = pickByName(compatible, account, accounts)
     if (byName) suggestions.push({ glAccountId: account.id, account: byName, reason: 'name' })
   }
 
@@ -188,16 +189,28 @@ export function suggestAccountIdentities(
 /**
  * The one provider account sharing this account's name, or null.
  *
- * Matches either the plain name or the fully-qualified one, because a provider
- * that nests accounts reports `'Sales:Product Income'` where our chart simply
- * says `'Product Income'`, and either spelling agreeing is the same evidence.
+ * D8: an account WITH a parent is tried against its full path first -
+ * `'Sales:Product Income'` - so `'Checking'` under two banks does not tie on
+ * the bare leaf when one candidate agrees on the whole path. Only when that
+ * misses does this fall back to the plain-or-fully-qualified leaf match,
+ * because a provider that nests accounts reports `'Sales:Product Income'`
+ * where a top-level account of ours simply says `'Product Income'`, and
+ * either spelling agreeing is the same evidence.
  *
  * Ambiguity yields null rather than the first hit - see the header.
  */
 function pickByName(
   compatible: readonly ProviderAccount[],
-  account: ChartAccountRow
+  account: ChartAccountRow,
+  chart: readonly ChartAccountRow[]
 ): ProviderAccount | null {
+  const path = accountPath(chart, account.id)
+  if (path.length > 1) {
+    const wantedPath = normName(path.map((row) => row.name).join(':'))
+    const byPath = pickOne(compatible, (c) => normName(c.fullyQualifiedName) === wantedPath)
+    if (byPath) return byPath
+  }
+
   const wanted = normName(account.name)
   if (!wanted) return null
 

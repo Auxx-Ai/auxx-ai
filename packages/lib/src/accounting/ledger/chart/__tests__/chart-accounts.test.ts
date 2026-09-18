@@ -57,6 +57,7 @@ const NAME_FIELD = 'fld_name'
 const TYPE_FIELD = 'fld_type'
 const ACTIVE_FIELD = 'fld_active'
 const SUBTYPE_FIELD = 'fld_subtype'
+const PARENT_FIELD = 'fld_parent'
 
 const FIELDS: ChartAccountFields = {
   code: { id: CODE_FIELD, entityDefinitionId: DEF },
@@ -64,6 +65,7 @@ const FIELDS: ChartAccountFields = {
   type: { id: TYPE_FIELD },
   active: { id: ACTIVE_FIELD },
   subtype: { id: SUBTYPE_FIELD },
+  parent: { id: PARENT_FIELD },
 }
 
 /** A `FieldValue` row with only the column under test populated. */
@@ -72,7 +74,15 @@ function value(
   fieldId: string,
   populated: Partial<ChartAccountValueRow>
 ): ChartAccountValueRow {
-  return { entityId, fieldId, valueText: null, optionId: null, valueBoolean: null, ...populated }
+  return {
+    entityId,
+    fieldId,
+    valueText: null,
+    optionId: null,
+    valueBoolean: null,
+    relatedEntityId: null,
+    ...populated,
+  }
 }
 
 beforeEach(() => {
@@ -82,6 +92,7 @@ beforeEach(() => {
     ['gl_account_type', { id: TYPE_FIELD, entityDefinitionId: DEF }],
     ['gl_account_is_active', { id: ACTIVE_FIELD, entityDefinitionId: DEF }],
     ['gl_account_subtype', { id: SUBTYPE_FIELD, entityDefinitionId: DEF }],
+    ['gl_account_parent', { id: PARENT_FIELD, entityDefinitionId: DEF }],
   ])
 })
 
@@ -90,13 +101,14 @@ beforeEach(() => {
 describe('ACCOUNT_ATTRIBUTES', () => {
   // The list both readers share. If one of these disappears, a caller silently
   // stops reading an attribute rather than failing.
-  it('is the five attributes an account is made of', () => {
+  it('is the six attributes an account is made of', () => {
     expect([...ACCOUNT_ATTRIBUTES]).toEqual([
       'gl_account_code',
       'gl_account_name',
       'gl_account_type',
       'gl_account_is_active',
       'gl_account_subtype',
+      'gl_account_parent',
     ])
   })
 })
@@ -121,7 +133,34 @@ describe('decodeChartAccounts', () => {
       accountType: 'liability',
       isActive: true,
       subtype: null,
+      parentId: null,
     })
+  })
+
+  it('reads the parent id from relatedEntityId when the org has the field', () => {
+    const { accounts } = decodeChartAccounts(
+      [
+        value('a1', CODE_FIELD, { valueText: '4100' }),
+        value('a1', TYPE_FIELD, { optionId: 'revenue' }),
+        value('a1', PARENT_FIELD, { relatedEntityId: 'a0' }),
+      ],
+      FIELDS
+    )
+    expect(accounts.get('a1')?.parentId).toBe('a0')
+  })
+
+  // An org not yet stamped by the CHART-HIERARCHY per-org migration has no
+  // `gl_account_parent` field at all - every row decodes top-level.
+  it('decodes parentId: null when the org has no gl_account_parent field', () => {
+    const fields: ChartAccountFields = { ...FIELDS, parent: null }
+    const { accounts } = decodeChartAccounts(
+      [
+        value('a1', CODE_FIELD, { valueText: '4100' }),
+        value('a1', TYPE_FIELD, { optionId: 'revenue' }),
+      ],
+      fields
+    )
+    expect(accounts.get('a1')?.parentId).toBeNull()
   })
 
   // Task 13 §3 / 15 §5: the second fact about an account, read the same way the
@@ -252,6 +291,7 @@ describe('decodeChartAccounts', () => {
       accountType: 'asset',
       isActive: true,
       subtype: null,
+      parentId: null,
     })
   })
 
@@ -288,17 +328,20 @@ describe('loadChartAccountFields', () => {
       type: { id: TYPE_FIELD },
       active: { id: ACTIVE_FIELD },
       subtype: { id: SUBTYPE_FIELD },
+      parent: { id: PARENT_FIELD },
     })
   })
 
-  it('tolerates the three optional fields being absent', async () => {
+  it('tolerates the four optional fields being absent', async () => {
     h.fields.delete('gl_account_name')
     h.fields.delete('gl_account_is_active')
     h.fields.delete('gl_account_subtype')
+    h.fields.delete('gl_account_parent')
     const fields = await loadChartAccountFields(ORG, 'nope')
     expect(fields.name).toBeNull()
     expect(fields.active).toBeNull()
     expect(fields.subtype).toBeNull()
+    expect(fields.parent).toBeNull()
   })
 
   // Task 15 §5's own concern: an org not yet stamped by entity migration 144
@@ -382,6 +425,7 @@ describe('loadChartAccountsById', () => {
       accountType: 'asset',
       isActive: true,
       subtype: null,
+      parentId: null,
     })
   })
 

@@ -10,6 +10,14 @@
 // toXRows(model) }`. That is what "each read returns BOTH its typed model and
 // `rows: StatementRow[]`" means in practice - see `ledger-reports.ts`.
 
+import { accountLabel } from '../ledger/chart/account-label'
+import {
+  type AccountNode,
+  accountPath,
+  accountPathLabel,
+  buildAccountTree,
+} from '../ledger/chart/account-tree'
+import type { ChartAccountRow } from '../ledger/types'
 import type { BalanceSheetRow, BalanceSheetSnapshot } from './balance-sheet'
 import type { GeneralLedger } from './general-ledger'
 import type { ProfitAndLossRow, ProfitAndLossSnapshot } from './profit-and-loss'
@@ -24,6 +32,120 @@ import {
 import type { TrialBalance } from './trial-balance'
 import type { TrialBalanceStatement } from './trial-balance-statement'
 
+/**
+ * Nest a section's flat account lines under their chart parents
+ * (CHART-HIERARCHY.md §5): a parent gets its own line (its own balance, even
+ * when zero), its children follow at `depth + 1`, then a `Total <parent>`
+ * subtotal - own balance plus every descendant, per column - at the same
+ * depth as the children. `makeLine` is whatever the caller already builds for
+ * a flat line (id, label, values, meta); this only decides WHERE each line
+ * sits and adds the subtotals.
+ *
+ * An ancestor with no row of its own in `rows` (no postings, or simply not a
+ * balance-sheet/P&L account this period) still renders as a connecting line,
+ * at zero, because the subtotal below it is what a reader is looking for
+ * (plan §5) - built directly from the chart row rather than through
+ * `makeLine`, which has nothing to call it with.
+ *
+ * `inChart: false` rows (deleted accounts) are never nested - there is no
+ * live chart row to hang them from - and stay flat at the section's own
+ * `depth`, exactly as before.
+ *
+ * Falls back to a flat `rows.map(makeLine)` when no chart is given, or when
+ * none of `rows` has a live chart account: existing callers that do not pass
+ * a chart see no change in behaviour.
+ *
+ * `belongs` (default: always true) gates which ancestor gets pulled in: a
+ * statement like the P&L calls this once per subsection, and a parent whose
+ * `belongs` disagrees with its child's section must not connect the two - the
+ * child instead renders as a root at the section's own depth.
+ */
+export function nestAccountLines<T extends { glAccountId: string; inChart: boolean }>(
+  rows: readonly T[],
+  chart: readonly ChartAccountRow[] | undefined,
+  depth: number,
+  makeLine: (row: T) => StatementRow,
+  belongs: (account: ChartAccountRow) => boolean = () => true
+): StatementRow[] {
+  const inChartRows = rows.filter((row) => row.inChart)
+  const outOfChartLines = rows
+    .filter((row) => !row.inChart)
+    .map((row) => ({ ...makeLine(row), depth }))
+
+  if (!chart || chart.length === 0 || inChartRows.length === 0) {
+    return [...inChartRows.map((row) => ({ ...makeLine(row), depth })), ...outOfChartLines]
+  }
+
+  const byId = new Map(inChartRows.map((row) => [row.glAccountId, row]))
+
+  // Every account this section needs to connect its rows to their roots - the
+  // rows themselves, plus every ancestor the chart names for them, even one
+  // with no row of its own - walked nearest-parent-first, and stopping at the
+  // first ancestor `belongs` rejects, since an excluded link breaks the chain
+  // to everything above it too.
+  const neededIds = new Set(byId.keys())
+  for (const id of byId.keys()) {
+    const ancestors = accountPath(chart, id).slice(0, -1)
+    for (let i = ancestors.length - 1; i >= 0; i--) {
+      const ancestor = ancestors[i] as ChartAccountRow
+      if (!belongs(ancestor)) break
+      neededIds.add(ancestor.id)
+    }
+  }
+  const subsetChart = chart.filter((account) => neededIds.has(account.id))
+  const tree = buildAccountTree(subsetChart)
+
+  const columnCount = Math.max(1, ...inChartRows.map((row) => makeLine(row).values.length))
+  const zeroValues = (): Array<number | null> => Array.from({ length: columnCount }, () => 0)
+
+  const lineFor = (account: ChartAccountRow): StatementRow => {
+    const row = byId.get(account.id)
+    if (row) return makeLine(row)
+    return {
+      id: account.id,
+      label: accountLabel(account),
+      kind: 'line',
+      depth,
+      values: zeroValues(),
+      meta: {
+        glAccountId: account.id,
+        accountCode: account.code,
+        accountName: account.name,
+        accountType: account.accountType,
+      },
+    }
+  }
+
+  const linesById = new Map(subsetChart.map((account) => [account.id, lineFor(account)]))
+
+  function subtreeTotal(node: AccountNode): Array<number | null> {
+    const total = [...(linesById.get(node.account.id)?.values ?? zeroValues())]
+    for (const child of node.children) {
+      const childTotal = subtreeTotal(child)
+      for (let i = 0; i < columnCount; i++) total[i] = (total[i] ?? 0) + (childTotal[i] ?? 0)
+    }
+    return total
+  }
+
+  function visit(node: AccountNode, d: number): StatementRow[] {
+    const ownLine = { ...(linesById.get(node.account.id) as StatementRow), depth: d }
+    if (node.children.length === 0) return [ownLine]
+
+    const childLines = node.children.flatMap((child) => visit(child, d + 1))
+    const subtotal: StatementRow = {
+      id: `${node.account.id}:total`,
+      label: `Total ${node.account.name}`,
+      kind: 'subtotal',
+      depth: d + 1,
+      values: subtreeTotal(node),
+    }
+    return [ownLine, ...childLines, subtotal]
+  }
+
+  const nested = tree.flatMap((node) => visit(node, depth))
+  return [...nested, ...outOfChartLines]
+}
+
 /** The trial balance's own columns, in the order `toTrialBalanceRows` fills them. */
 export const TRIAL_BALANCE_COLUMNS: StatementColumn[] = [
   { key: 'debit', label: 'Debit', align: 'right' },
@@ -37,34 +159,52 @@ export const TRIAL_BALANCE_COLUMNS: StatementColumn[] = [
  * read itself (`GROUP BY glAccountId`, no statement grouping) - a screen that
  * wants sections filters by `accountType` on the underlying `TrialBalance`
  * rather than on this shape.
+ *
+ * A trial balance stays flat even after CHART-HIERARCHY.md (§5): rather than
+ * nesting, a sub-account's `label` is its full `accountPathLabel` (D8,
+ * `Sales: 4020 Product Income`) when `chart` is given, and `meta.accountCode`/
+ * `accountName` are left off so the screen renders that path text instead of
+ * running it through `AccountLabel`'s code-track split - see
+ * `statement-table.tsx`'s `labelNode`. A top-level account is unaffected: its
+ * path IS its `accountLabel`, and the code-track rendering is unchanged.
  */
-export function toTrialBalanceRows(tb: TrialBalance): StatementRow[] {
-  const lines: StatementRow[] = tb.rows.map((row) => ({
-    // The IDENTITY (task 15), not the code: two rows can no longer collide
-    // because an account was renumbered mid-history.
-    id: row.glAccountId,
-    label: row.inChart
-      ? [row.accountCode, row.accountName].filter(Boolean).join(' ')
-      : row.accountCode || row.accountName || row.glAccountId,
-    depth: 0,
-    kind: 'line',
-    values: [row.debitMinor, row.creditMinor, row.balanceMinor],
-    meta: {
-      glAccountId: row.glAccountId,
-      accountCode: row.accountCode,
-      accountName: row.accountName,
-      // 🛑 The trial balance is FLAT - no sections, by design (see above) - so
-      // the row's icon is the only thing on the screen saying which statement
-      // an account belongs to. Without this every row wore the same fallback
-      // glyph while the chart of accounts two clicks away grouped the same
-      // accounts under five different ones. Null for an account whose type the
-      // chart no longer holds, which `glAccountTypeMeta` handles.
-      accountType: row.accountType ?? undefined,
-      note: row.inChart
-        ? undefined
-        : 'This account has posted lines but has been deleted from the current chart of accounts.',
-    },
-  }))
+export function toTrialBalanceRows(
+  tb: TrialBalance,
+  chart?: readonly ChartAccountRow[]
+): StatementRow[] {
+  const lines: StatementRow[] = tb.rows.map((row) => {
+    const nested = !!chart && row.inChart && accountPath(chart, row.glAccountId).length > 1
+    const label = row.inChart
+      ? chart
+        ? accountPathLabel(chart, row.glAccountId) ||
+          accountLabel({ code: row.accountCode, name: row.accountName })
+        : accountLabel({ code: row.accountCode, name: row.accountName })
+      : row.accountCode || row.accountName || row.glAccountId
+    return {
+      // The IDENTITY (task 15), not the code: two rows can no longer collide
+      // because an account was renumbered mid-history.
+      id: row.glAccountId,
+      label,
+      depth: 0,
+      kind: 'line',
+      values: [row.debitMinor, row.creditMinor, row.balanceMinor],
+      meta: {
+        glAccountId: row.glAccountId,
+        accountCode: nested ? undefined : row.accountCode,
+        accountName: nested ? undefined : row.accountName,
+        // 🛑 The trial balance is FLAT - no sections, by design (see above) - so
+        // the row's icon is the only thing on the screen saying which statement
+        // an account belongs to. Without this every row wore the same fallback
+        // glyph while the chart of accounts two clicks away grouped the same
+        // accounts under five different ones. Null for an account whose type the
+        // chart no longer holds, which `glAccountTypeMeta` handles.
+        accountType: row.accountType ?? undefined,
+        note: row.inChart
+          ? undefined
+          : 'This account has posted lines but has been deleted from the current chart of accounts.',
+      },
+    }
+  })
 
   return [...lines, totalRow('total', 'Total', [tb.totalDebitMinor, tb.totalCreditMinor, null])]
 }
@@ -79,15 +219,18 @@ export function toTrialBalanceRows(tb: TrialBalance): StatementRow[] {
  * and the reader meets retained earnings where retained earnings belongs.
  */
 export function toTrialBalanceStatementRows(tb: TrialBalanceStatement): StatementRow[] {
-  const lines = toTrialBalanceRows({
-    organizationId: tb.organizationId,
-    from: tb.fiscalYearStart,
-    to: tb.asOf,
-    rows: tb.rows,
-    totalDebitMinor: tb.totalDebitMinor,
-    totalCreditMinor: tb.totalCreditMinor,
-    balanced: tb.balanced,
-  }).slice(0, -1)
+  const lines = toTrialBalanceRows(
+    {
+      organizationId: tb.organizationId,
+      from: tb.fiscalYearStart,
+      to: tb.asOf,
+      rows: tb.rows,
+      totalDebitMinor: tb.totalDebitMinor,
+      totalCreditMinor: tb.totalCreditMinor,
+      balanced: tb.balanced,
+    },
+    tb.chart
+  ).slice(0, -1)
 
   // 🛑 Omitted when zero, unlike the balance sheet's `re-current`. A first-year
   // org has no prior years to roll up, and a zero row here would read as an
@@ -149,10 +292,16 @@ function findCompare(
  * retained-earnings rows inside Equity (per {@link BalanceSheetSnapshot.retainedEarnings}),
  * and a final "Total liabilities and equity" total row for the verdict strip
  * to compare against Assets' own subtotal.
+ *
+ * `chart` (the same read `readBalanceSheet` already made once for every
+ * snapshot) nests a sub-account under its parent within each section via
+ * {@link nestAccountLines} - CHART-HIERARCHY.md §5. Omit it and every section
+ * renders flat, exactly as before.
  */
 export function toBalanceSheetRows(
   bs: BalanceSheetSnapshot,
-  compare?: BalanceSheetSnapshot | null
+  compare?: BalanceSheetSnapshot | null,
+  chart?: readonly ChartAccountRow[]
 ): StatementRow[] {
   const two = (
     value: number,
@@ -172,7 +321,7 @@ export function toBalanceSheetRows(
     compareTotal: number | undefined,
     extraChildren: StatementRow[] = []
   ): StatementRow => {
-    const children: StatementRow[] = rows.map((row) => ({
+    const makeLine = (row: BalanceSheetRow): StatementRow => ({
       // The IDENTITY (task 15), not the code - see `toTrialBalanceRows`.
       id: row.glAccountId,
       label: row.inChart
@@ -190,7 +339,14 @@ export function toBalanceSheetRows(
           ? undefined
           : 'This account has posted lines but has been deleted from the current chart of accounts.',
       },
-    }))
+    })
+    const children: StatementRow[] = nestAccountLines(
+      rows,
+      chart,
+      1,
+      makeLine,
+      (account) => account.accountType === accountType
+    )
     children.push(...extraChildren)
     children.push({
       id: `${id}:total`,
@@ -291,10 +447,17 @@ export function toBalanceSheetRows(
 /**
  * The P&L as `StatementRow[]`: Revenue, Cost of goods sold (5xxx expense),
  * gross profit, Operating expenses, net income.
+ *
+ * `chart` nests a sub-account under its parent within each of Revenue, COGS
+ * and Operating expenses via {@link nestAccountLines} - CHART-HIERARCHY.md
+ * §5. Each section passes its own `belongs` predicate, which is what keeps a
+ * parent split from a child by the COGS/operating-expense `subtype` boundary
+ * in one section instead of rendering (and subtotalling) in both.
  */
 export function toProfitAndLossRows(
   pl: ProfitAndLossSnapshot,
-  compare?: ProfitAndLossSnapshot | null
+  compare?: ProfitAndLossSnapshot | null,
+  chart?: readonly ChartAccountRow[]
 ): StatementRow[] {
   const two = (
     value: number,
@@ -304,26 +467,36 @@ export function toProfitAndLossRows(
 
   const lines = (
     rows: readonly ProfitAndLossRow[],
-    compareRows: readonly ProfitAndLossRow[]
+    compareRows: readonly ProfitAndLossRow[],
+    belongs: (account: ChartAccountRow) => boolean
   ): StatementRow[] =>
-    rows.map((row) => ({
-      // The IDENTITY (task 15), not the code - see `toTrialBalanceRows`.
-      id: row.glAccountId,
-      label: row.inChart
-        ? [row.accountCode, row.accountName].filter(Boolean).join(' ')
-        : row.accountCode || row.accountName || row.glAccountId,
-      depth: 1,
-      kind: 'line' as const,
-      values: two(row.balanceMinor, compareRows, row.glAccountId),
-      meta: {
-        glAccountId: row.glAccountId,
-        accountCode: row.accountCode,
-        accountName: row.accountName,
-        note: row.inChart
-          ? undefined
-          : 'This account has posted lines but has been deleted from the current chart of accounts.',
-      },
-    }))
+    nestAccountLines(
+      rows,
+      chart,
+      1,
+      (row) => ({
+        // The IDENTITY (task 15), not the code - see `toTrialBalanceRows`.
+        id: row.glAccountId,
+        label: row.inChart
+          ? [row.accountCode, row.accountName].filter(Boolean).join(' ')
+          : row.accountCode || row.accountName || row.glAccountId,
+        depth: 1,
+        kind: 'line' as const,
+        values: two(row.balanceMinor, compareRows, row.glAccountId),
+        meta: {
+          glAccountId: row.glAccountId,
+          accountCode: row.accountCode,
+          accountName: row.accountName,
+          note: row.inChart
+            ? undefined
+            : 'This account has posted lines but has been deleted from the current chart of accounts.',
+        },
+      }),
+      belongs
+    )
+
+  const isCogs = (account: ChartAccountRow) =>
+    account.accountType === 'expense' && account.subtype === 'cost_of_goods_sold'
 
   const revenueSection: StatementRow = {
     id: 'revenue',
@@ -333,7 +506,7 @@ export function toProfitAndLossRows(
     meta: { accountType: 'revenue' },
     values: compare ? [pl.totalRevenueMinor, compare.totalRevenueMinor] : [pl.totalRevenueMinor],
     children: [
-      ...lines(pl.revenue, compare?.revenue ?? []),
+      ...lines(pl.revenue, compare?.revenue ?? [], (account) => account.accountType === 'revenue'),
       totalRow(
         'revenue:total',
         'Total revenue',
@@ -350,7 +523,7 @@ export function toProfitAndLossRows(
     meta: { accountType: 'expense' },
     values: compare ? [pl.totalCogsMinor, compare.totalCogsMinor] : [pl.totalCogsMinor],
     children: [
-      ...lines(pl.cogs, compare?.cogs ?? []),
+      ...lines(pl.cogs, compare?.cogs ?? [], isCogs),
       {
         id: 'cogs:total',
         label: 'Total cost of goods sold',
@@ -377,7 +550,11 @@ export function toProfitAndLossRows(
       ? [pl.totalOperatingExpensesMinor, compare.totalOperatingExpensesMinor]
       : [pl.totalOperatingExpensesMinor],
     children: [
-      ...lines(pl.operatingExpenses, compare?.operatingExpenses ?? []),
+      ...lines(
+        pl.operatingExpenses,
+        compare?.operatingExpenses ?? [],
+        (account) => account.accountType === 'expense' && account.subtype !== 'cost_of_goods_sold'
+      ),
       totalRow(
         'operating-expenses:total',
         'Total operating expenses',
@@ -441,11 +618,19 @@ const BALANCE_COLUMN = 2
  * ahead of every account, saying so in the label - so it survives into the CSV
  * and the PDF, where a `truncated: true` field on a JSON response does not
  * reach the person actually reading the ledger.
+ *
+ * The general ledger stays flat, like the trial balance (CHART-HIERARCHY.md
+ * §5): a sub-account's section label is its `accountPathLabel` (D8), and
+ * `meta.accountCode`/`accountName` are left off a nested account for the same
+ * reason `toTrialBalanceRows` leaves them off - so the screen renders the
+ * path text rather than `AccountLabel`'s code-track split.
  */
 export function toGeneralLedgerRows(gl: GeneralLedger): StatementRow[] {
   const sections = gl.accounts.map((account) => {
+    const nested = !!account.accountName && accountPath(gl.chart, account.glAccountId).length > 1
     const label = account.accountName
-      ? [account.accountCode, account.accountName].filter(Boolean).join(' ')
+      ? accountPathLabel(gl.chart, account.glAccountId) ||
+        [account.accountCode, account.accountName].filter(Boolean).join(' ')
       : (account.accountCode ?? account.glAccountId)
 
     const lines: StatementLineInput[] = [
@@ -484,8 +669,8 @@ export function toGeneralLedgerRows(gl: GeneralLedger): StatementRow[] {
     if (closing) closing.values[BALANCE_COLUMN] = account.endingBalanceMinor
     section.meta = {
       glAccountId: account.glAccountId,
-      accountCode: account.accountCode,
-      accountName: account.accountName,
+      accountCode: nested ? undefined : account.accountCode,
+      accountName: nested ? undefined : account.accountName,
       accountType: account.accountType ?? undefined,
       note: account.accountType
         ? undefined

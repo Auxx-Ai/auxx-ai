@@ -70,6 +70,12 @@ export interface BalanceSheet extends BalanceSheetSnapshot {
   organizationId: string
   /** The second snapshot, when `compareAsOf` was given. */
   compare: BalanceSheetSnapshot | null
+  /**
+   * The org's live chart, read once for both snapshots (CHART-HIERARCHY.md
+   * §5) - `toBalanceSheetRows` uses it to nest a sub-account under its parent
+   * rather than re-reading the chart in the adapter.
+   */
+  chart: ChartAccountRow[]
 }
 
 export interface ReadBalanceSheetOptions {
@@ -157,7 +163,7 @@ export async function readBalanceSheet(
       compare = compared.value
     }
 
-    return ok({ organizationId, ...primary.value, compare })
+    return ok({ organizationId, ...primary.value, compare, chart })
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to read the balance sheet', { error, organizationId, asOf, compareAsOf })

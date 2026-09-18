@@ -56,6 +56,7 @@ import {
   type AccountIdentityRow,
   type AccountRole,
   type ChartAccountRow,
+  descendantIds,
   type GlAccountSubtypeValue,
   type GlAccountTypeValue,
 } from '@auxx/lib/accounting/ledger/client'
@@ -63,7 +64,8 @@ import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Check, Landmark, Trash2 } from 'lucide-react'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
 import { ProviderAccountPicker } from '~/components/accounting/ui/provider-account-picker'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -73,10 +75,12 @@ import {
   ACCOUNT_SUBTYPE_OPTIONS,
   ACCOUNT_SUGGESTION_REASON_COPY,
   ACCOUNT_TYPE_OPTIONS,
+  accountTypeLockReason,
   type ChartDraftHandle,
   type ChartMapView,
   formatProviderAccount,
   isMappingBroken,
+  resolveAccountTypeForParent,
 } from './accounts-types'
 
 /**
@@ -94,8 +98,28 @@ function firstSelected(value: unknown): string | null {
   return (value as string) || null
 }
 
+/**
+ * The parent picker's candidate exclusion set: the account itself and every
+ * descendant (CHART-HIERARCHY.md §7) - either would create a cycle
+ * `chart-write.ts` refuses anyway. PURE, exported for its tests.
+ */
+export function parentPickerExcludeIds(
+  accounts: ChartAccountRow[],
+  accountId: string
+): Set<string> {
+  return new Set([accountId, ...descendantIds(accounts, accountId)])
+}
+
 /** Which field a refusal belongs to. Routed from the patch key that caused it. */
-type FieldKey = 'code' | 'name' | 'accountType' | 'isActive' | 'subtype' | 'mapping' | 'form'
+type FieldKey =
+  | 'code'
+  | 'name'
+  | 'accountType'
+  | 'isActive'
+  | 'subtype'
+  | 'parentId'
+  | 'mapping'
+  | 'form'
 
 /** The writable attributes, as the form holds them. */
 interface AccountValues {
@@ -107,6 +131,8 @@ interface AccountValues {
   isActive: boolean
   /** What puts this account under COGS on the P&L (task 13 §3). Rarely set. */
   subtype: GlAccountSubtypeValue | null
+  /** `null` is top level (CHART-HIERARCHY.md §1 D1). */
+  parentId: string | null
 }
 
 /** One create's payload. Every field is settled by the time this is built. */
@@ -117,6 +143,8 @@ export interface NewChartAccount {
   accountType: GlAccountTypeValue
   isActive: boolean
   subtype?: GlAccountSubtypeValue | null
+  /** Omit or `null` for top level. */
+  parentId?: string | null
 }
 
 /**
@@ -130,6 +158,8 @@ export interface ChartAccountPatch {
   accountType?: GlAccountTypeValue
   isActive?: boolean
   subtype?: GlAccountSubtypeValue | null
+  /** `null` moves the account to top level. Omit to leave it unchanged. */
+  parentId?: string | null
 }
 
 interface ChartAccountEditorProps {
@@ -206,6 +236,7 @@ export function ChartAccountEditor({
       <ChartAccountForm
         key={draft.draftId}
         account={null}
+        accounts={accounts}
         roles={[]}
         postedLines={0}
         onDraftChange={onDraftChange}
@@ -239,6 +270,7 @@ export function ChartAccountEditor({
     <ChartAccountForm
       key={account.id}
       account={account}
+      accounts={accounts}
       roles={roles}
       postedLines={usage[account.id] ?? 0}
       onDraftChange={onDraftChange}
@@ -270,6 +302,7 @@ export function ChartAccountEditor({
  */
 function ChartAccountForm({
   account,
+  accounts,
   roles,
   postedLines,
   onDraftChange,
@@ -282,6 +315,8 @@ function ChartAccountForm({
   canControl,
 }: {
   account: ChartAccountRow | null
+  /** The org's whole chart - the parent picker's candidate pool and exclusion set. */
+  accounts: ChartAccountRow[]
   roles: AccountRole[]
   postedLines: number
 } & Pick<
@@ -301,6 +336,7 @@ function ChartAccountForm({
     accountType: account?.accountType ?? null,
     isActive: account?.isActive ?? true,
     subtype: account?.subtype ?? null,
+    parentId: account?.parentId ?? null,
   })
   const [values, setValues] = useState<AccountValues>(valuesRef.current)
   const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({})
@@ -354,6 +390,7 @@ function ChartAccountForm({
         accountType: patch.accountType ?? undefined,
         isActive: patch.isActive,
         subtype: patch.subtype,
+        parentId: patch.parentId,
       }
       if (patch.code !== undefined) wire.code = patch.code.trim() || null
       void onUpdate(recordId, wire).catch((error: unknown) => {
@@ -389,6 +426,7 @@ function ChartAccountForm({
         accountType: snapshot.accountType,
         isActive: snapshot.isActive,
         subtype: snapshot.subtype,
+        parentId: snapshot.parentId,
       })
 
       // Flip the commit target FIRST - a keystroke landing while we settle below
@@ -407,6 +445,7 @@ function ChartAccountForm({
       }
       if (latest.isActive !== snapshot.isActive) changed.isActive = latest.isActive
       if (latest.subtype !== snapshot.subtype) changed.subtype = latest.subtype
+      if (latest.parentId !== snapshot.parentId) changed.parentId = latest.parentId
       if (Object.keys(changed).length > 0) await onUpdate(created.id, changed)
 
       onDraftCommitted(created.id)
@@ -471,6 +510,22 @@ function ChartAccountForm({
     }
   }, [onRemove])
 
+  // The parent picker's candidate pool excludes the account itself and every
+  // descendant - either would create a cycle `chart-write.ts` refuses anyway.
+  // `undefined` for a not-yet-created draft: nothing to exclude yet.
+  const excludeIds = useMemo(
+    () => (account ? parentPickerExcludeIds(accounts, account.id) : undefined),
+    [account, accounts]
+  )
+
+  // D3: a sub-account shares its parent's statement type, so Type locks once
+  // this account has a parent or live children.
+  const typeLockReason = accountTypeLockReason({
+    parentId: values.parentId,
+    accountId: account?.id,
+    accounts,
+  })
+
   return (
     // `min-h-0` + `ScrollArea`: this pane sits inside a sticky container capped
     // at the viewport height (`accounts-settings-page.tsx`), so content taller
@@ -528,7 +583,7 @@ function ChartAccountForm({
               fieldType={FieldType.SINGLE_SELECT}
               fieldOptions={{ options: ACCOUNT_TYPE_OPTIONS }}
               value={values.accountType}
-              disabled={!canControl}
+              disabled={!canControl || !!typeLockReason}
               triggerProps={{ className: 'w-full ps-0 pe-1' }}
               onChange={(value) => {
                 const next = firstSelected(value)
@@ -536,7 +591,39 @@ function ChartAccountForm({
               }}
               placeholder='Select account type'
             />
+            {typeLockReason && (
+              <p className='mt-1 text-muted-foreground text-xs'>{typeLockReason}</p>
+            )}
             <FieldError message={errors.accountType} />
+          </FieldPanelRow>
+
+          <FieldPanelRow
+            title='Parent account'
+            type={BaseType.RELATION}
+            showIcon
+            description="Nests this account under another of the same statement type. A parent's own balance still shows on the P&L or the balance sheet, with a subtotal for its sub-accounts below it.">
+            <GlAccountPicker
+              value={values.parentId}
+              onChange={(next) => {
+                // D3: a chosen parent locks Type to the parent's, so the type
+                // has to be set here too - otherwise `canCreate` stays wedged
+                // on `accountType === null` with no way left to set it, since
+                // the lock this same change triggers disables the Type select.
+                const nextType = resolveAccountTypeForParent(
+                  next,
+                  accounts,
+                  valuesRef.current.accountType
+                )
+                commit('parentId', { parentId: next, accountType: nextType })
+              }}
+              selectBy='id'
+              filterTypes={values.accountType ? [values.accountType] : undefined}
+              excludeIds={excludeIds}
+              disabled={!canControl}
+              placeholder='No parent - top level'
+              triggerProps={{ className: 'w-full ps-0 pe-1' }}
+            />
+            <FieldError message={errors.parentId} />
           </FieldPanelRow>
 
           <FieldPanelRow

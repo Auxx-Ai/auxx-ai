@@ -370,6 +370,8 @@ export interface CreateProviderAccountInput {
   classification: GlAccountTypeValue
   /** Our second fact about the account, when it has one. */
   subtype: GlAccountSubtypeValue | null
+  /** The PROVIDER's own id of our account's parent, when it has one and that parent is already mapped (CHART-HIERARCHY §6). */
+  parentProviderId?: string | null
   actorUserId?: string
 }
 

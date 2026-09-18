@@ -29,10 +29,14 @@
 // from `accounts` and stays fully usable while `map.isPending`, while
 // `map.isError`, and with no provider connected at all.
 
-import type {
-  AccountRole,
-  ChartAccountRow,
-  GlAccountTypeValue,
+import {
+  type AccountNode,
+  type AccountRole,
+  accountPath,
+  accountPathLabel,
+  buildAccountTree,
+  type ChartAccountRow,
+  type GlAccountTypeValue,
 } from '@auxx/lib/accounting/ledger/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
@@ -48,7 +52,6 @@ import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
-import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import {
   BookOpen,
@@ -83,6 +86,49 @@ import {
 } from './accounts-types'
 import { ImportChartButton } from './import-chart-button'
 
+/**
+ * One statement-type group's accounts as a tree, over `groupVisible` (the
+ * archived toggle already applied, search not). With `matchedIds` (a search is
+ * active), a match's ancestors stay in the tree even when their own text does
+ * not match, so the indent still reads - the same rule
+ * `gl-account-picker.tsx`'s `accountsInGroup` follows. `null` means no search:
+ * every visible account in the group renders.
+ *
+ * PURE and exported for its tests.
+ */
+export function chartGroupTree(
+  groupVisible: ChartAccountRow[],
+  matchedIds: ReadonlySet<string> | null
+): AccountNode[] {
+  if (!matchedIds) return buildAccountTree(groupVisible)
+
+  const keepIds = new Set<string>()
+  for (const id of matchedIds) {
+    for (const ancestor of accountPath(groupVisible, id)) keepIds.add(ancestor.id)
+  }
+  return buildAccountTree(groupVisible.filter((account) => keepIds.has(account.id)))
+}
+
+/**
+ * Every account id in `nodes`, depth-first in the same order
+ * `ChartAccountListRow` draws them - a search's non-matching ancestors
+ * (kept by `chartGroupTree` for context) included. What the selection
+ * store's Cmd+A and shift-range read, instead of the search-filtered list
+ * alone, which drops exactly those ancestor rows even though they render
+ * with a checkbox like everything else. PURE, exported for its tests.
+ */
+export function flattenAccountIds(nodes: AccountNode[]): string[] {
+  const ids: string[] = []
+  const visit = (list: AccountNode[]) => {
+    for (const node of list) {
+      ids.push(node.account.id)
+      visit(node.children)
+    }
+  }
+  visit(nodes)
+  return ids
+}
+
 interface ChartListProps {
   accounts: ChartAccountRow[]
   /** True while `ledger.chartAccounts` is in flight. An empty chart and an
@@ -97,6 +143,8 @@ interface ChartListProps {
   onAddDraft: () => void
   /** Opens the catalogue picker (`chart-packs-dialog.tsx`). */
   onAddFromCatalogue: () => void
+  /** Opens the create dialog with this account preset as the parent (CHART-HIERARCHY.md §7). */
+  onAddSubAccount: (account: ChartAccountRow) => void
   /** Archives one account. Confirms and reports its own refusal. */
   onRemoveAccount: (id: string) => void
   /** Puts a removed account back. */
@@ -130,6 +178,7 @@ export function ChartList({
   draft,
   onAddDraft,
   onAddFromCatalogue,
+  onAddSubAccount,
   onRemoveAccount,
   onRestoreAccount,
   showArchived,
@@ -148,9 +197,17 @@ export function ChartList({
   // this tab is for, and a group that starts shut hides the link badges the
   // rows exist to carry.
   const [collapsed, setCollapsed] = useState<GlAccountTypeValue[]>([])
+  // Collapsed ACCOUNTS, same default-open rule - a parent with children starts
+  // expanded, exactly as a type group does.
+  const [collapsedAccounts, setCollapsedAccounts] = useState<string[]>([])
 
   const toggleGroup = (type: GlAccountTypeValue) =>
     setCollapsed((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]))
+
+  const toggleAccount = (id: string) =>
+    setCollapsedAccounts((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
 
   // 29 rows, recomputed per keystroke of the search box. A `useMemo` here would
   // cost more to read than the loop costs to run.
@@ -166,14 +223,52 @@ export function ChartList({
   ).length
 
   const visible = showArchived ? accounts : live
+  // Search matches the path too (D8), so "sales" finds `Product Income` nested
+  // under `Sales` even though neither its own code nor its name says "sales".
   const filtered = search
-    ? visible.filter((account) => accountMatchesSearch(account, search))
+    ? visible.filter((account) =>
+        accountMatchesSearch(account, search, accountPathLabel(visible, account.id))
+      )
     : visible
+
+  // Direct-child counts over the whole VISIBLE chart (the archived toggle
+  // applied, search not) - the same rule `gl-account-picker.tsx`'s own
+  // "N sub-accounts" follows, so a parent's count stays accurate while a
+  // search narrows which of its children are actually on screen.
+  const childCountByParentId = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const account of visible) {
+      if (account.parentId) counts.set(account.parentId, (counts.get(account.parentId) ?? 0) + 1)
+    }
+    return counts
+  }, [visible])
+
+  // Each statement-type group's tree, built once and shared by the render loop
+  // below and `visibleIds` - the same `chartGroupTree` call must not run twice
+  // per render, and the search-ancestor rows it adds have to reach the
+  // selection store exactly as they reach the screen.
+  const groupTrees = useMemo(
+    () =>
+      ACCOUNT_TYPE_OPTIONS.map(({ value: type, label }) => {
+        const group = filtered.filter((account) => account.accountType === type)
+        const groupVisible = visible.filter((account) => account.accountType === type)
+        const tree = chartGroupTree(
+          groupVisible,
+          search ? new Set(group.map((account) => account.id)) : null
+        )
+        return { type, label, group, tree }
+      }),
+    [filtered, visible, search]
+  )
 
   // 🛑 The selection store's idea of "every item" is what shift-range and Cmd+A
   // read, so it tracks what is actually ON SCREEN - filtered by the search and
-  // by the archived toggle, in render order. Feeding it the whole chart would
-  // let Cmd+A select rows the reader cannot see.
+  // by the archived toggle, in render order, PLUS the ancestors `chartGroupTree`
+  // keeps for a search hit's context (`flattenAccountIds`). Those ancestor rows
+  // render with the identical selection checkbox, so a plain `filtered.map(id)`
+  // here left them clickable but unreachable by Cmd+A or a shift-range. Feeding
+  // it the whole chart would go too far the other way and let Cmd+A select rows
+  // the reader cannot see.
   //
   // 🛑 `pruneSelection: false` because this list HIDES rows rather than losing
   // them. Typing in the search narrows the visible set, and the default pruning
@@ -182,7 +277,10 @@ export function ChartList({
   // left one selected. A row that a bulk action really does remove leaves the
   // selection when the bar calls `exit()` on done.
   const setItemIds = useListSelection((state) => state.setItemIds)
-  const visibleIds = useMemo(() => filtered.map((account) => account.id), [filtered])
+  const visibleIds = useMemo(
+    () => groupTrees.flatMap(({ tree }) => flattenAccountIds(tree)),
+    [groupTrees]
+  )
   useEffect(() => {
     setItemIds(visibleIds, { pruneSelection: false })
   }, [visibleIds, setItemIds])
@@ -392,13 +490,12 @@ export function ChartList({
               🛑 A `TreeRow` parent, not a `Section`, for the reason
               `role-map-list.tsx` gives: both levels are then the same primitive
               and the connector draws the nesting. */}
-          {ACCOUNT_TYPE_OPTIONS.map(({ value: type, label }) => {
-            const GroupIcon = accountTypeIcon(type)
-            const group = filtered.filter((account) => account.accountType === type)
+          {groupTrees.map(({ type, label, group, tree }) => {
             // An empty group headed "no accounts here" is noise. A chart that
             // has no equity accounts should read as four groups, not five.
             if (group.length === 0) return null
 
+            const GroupIcon = accountTypeIcon(type)
             const groupLinked = group.filter(
               (account) => map.byAccountId.get(account.id)?.state === 'confirmed'
             ).length
@@ -425,27 +522,33 @@ export function ChartList({
                     {map.connected && !map.isPending ? ` · ${groupLinked} linked` : ''}
                   </span>
                 }>
-                <TreeRowList
-                  items={group}
-                  getKey={(account: ChartAccountRow) => account.id}
-                  renderRow={(account: ChartAccountRow) => (
-                    <ChartAccountListRow
-                      key={account.id}
-                      account={account}
-                      roles={rolesByAccountId.get(account.id) ?? []}
-                      map={map}
-                      selectedId={selectedId}
-                      onSelect={onSelect}
-                      onAcceptSuggestion={onAcceptSuggestion}
-                      acceptingAccountId={acceptingAccountId}
-                      onCreateInProvider={onCreateInProvider}
-                      creatingAccountId={creatingAccountId}
-                      onRemoveAccount={onRemoveAccount}
-                      onRestoreAccount={onRestoreAccount}
-                      canControl={canControl}
-                    />
-                  )}
-                />
+                {/* `TreeRowList` is a flat list (its own "show more" collapse
+                    does not nest); a tree of accounts nests the same way
+                    `statement-table.tsx` and `role-map-list.tsx` do - each
+                    row rendered directly in `TreeRow`'s own `children` slot,
+                    recursively, so the connector line draws itself. */}
+                {tree.map((node) => (
+                  <ChartAccountListRow
+                    key={node.account.id}
+                    node={node}
+                    rolesByAccountId={rolesByAccountId}
+                    childCountByParentId={childCountByParentId}
+                    forceOpen={!!search}
+                    collapsedAccounts={collapsedAccounts}
+                    onToggleAccount={toggleAccount}
+                    map={map}
+                    selectedId={selectedId}
+                    onSelect={onSelect}
+                    onAcceptSuggestion={onAcceptSuggestion}
+                    acceptingAccountId={acceptingAccountId}
+                    onCreateInProvider={onCreateInProvider}
+                    creatingAccountId={creatingAccountId}
+                    onRemoveAccount={onRemoveAccount}
+                    onRestoreAccount={onRestoreAccount}
+                    onAddSubAccount={onAddSubAccount}
+                    canControl={canControl}
+                  />
+                ))}
               </TreeRow>
             )
           })}
@@ -500,8 +603,14 @@ function AccountLinkBadge({ state }: { state: AccountLinkState }) {
 }
 
 interface ChartAccountListRowProps {
-  account: ChartAccountRow
-  roles: AccountRole[]
+  node: AccountNode
+  rolesByAccountId: Map<string, AccountRole[]>
+  /** Direct-child counts, keyed by parent id - see `ChartList`'s own comment. */
+  childCountByParentId: Map<string, number>
+  /** A search is active - every parent renders open, the type groups' own rule. */
+  forceOpen: boolean
+  collapsedAccounts: string[]
+  onToggleAccount: (id: string) => void
   map: ChartMapView
   selectedId: string | null
   onSelect: (id: string | null) => void
@@ -511,20 +620,30 @@ interface ChartAccountListRowProps {
   creatingAccountId: string | null
   onRemoveAccount: (id: string) => void
   onRestoreAccount: (id: string) => void
+  onAddSubAccount: (account: ChartAccountRow) => void
   canControl: boolean
 }
 
 /**
- * One account in the chart list.
+ * One account in the chart list, and its sub-accounts nested inside it.
  *
  * 🛑 A COMPONENT, not a `renderRow` closure, because it calls `useIsSelected`.
  * A hook inside a render callback runs in the PARENT's hook order, and this list
  * filters - so the hook count would change between renders the moment somebody
  * typed in the search box.
+ *
+ * 🛑 Recurses through `TreeRow`'s own `children` slot, the way
+ * `statement-table.tsx`'s `StatementTableRow` and `role-map-list.tsx` nest -
+ * `TreeRowList` has no such recursion (its own "show more" collapse is a flat
+ * list), so this is the primitive that draws the connector line itself.
  */
 function ChartAccountListRow({
-  account,
-  roles,
+  node,
+  rolesByAccountId,
+  childCountByParentId,
+  forceOpen,
+  collapsedAccounts,
+  onToggleAccount,
   map,
   selectedId,
   onSelect,
@@ -534,12 +653,20 @@ function ChartAccountListRow({
   creatingAccountId,
   onRemoveAccount,
   onRestoreAccount,
+  onAddSubAccount,
   canControl,
 }: ChartAccountListRowProps) {
+  const { account, depth, children } = node
   const selecting = useBulkMode()
   const isSelected = useIsSelected(account.id)
   const toggle = useListSelection((state) => state.toggle)
   const isPending = useIsPending(account.id)
+  const roles = rolesByAccountId.get(account.id) ?? []
+
+  const hasChildren = children.length > 0
+  // Default OPEN, same rule the type groups follow - collapsing is opt-in.
+  const isOpen = forceOpen || !collapsedAccounts.includes(account.id)
+  const childCount = childCountByParentId.get(account.id) ?? 0
 
   const identity = map.byAccountId.get(account.id)
   // Gated on the LOADED map for the same reason the badge is: a
@@ -556,9 +683,11 @@ function ChartAccountListRow({
   const AccountIcon = accountTypeIcon(account.accountType)
   return (
     <TreeRow
-      depth={1}
+      depth={depth + 1}
       icon={<AccountIcon className='size-4 text-muted-foreground' />}
       title={<AccountLabel account={account} className='text-sm' />}
+      expandable={hasChildren}
+      isOpen={isOpen}
       // 🛑 Selection is always AVAILABLE and only PINNED in bulk mode: the
       // checkbox cross-fades with the row's icon on hover, so an ordinary reader
       // never sees one and a person mid-selection sees them all.
@@ -568,7 +697,11 @@ function ChartAccountListRow({
       onSelectChange={(_next, event) => toggle(account.id, { shiftKey: event.shiftKey })}
       selectLabel={`Select ${account.code ? `${account.code} ` : ''}${account.name}`}
       secondaryFill
-      onToggleOpen={() => onSelect(account.id)}
+      // Selecting a parent must not select its children (CHART-HIERARCHY.md
+      // §7) - the row click opens the detail pane, exactly as a leaf's does,
+      // and the chevron (rendered because `expandable`) owns expand/collapse.
+      onToggleOpen={hasChildren ? () => onToggleAccount(account.id) : undefined}
+      onRowClick={() => onSelect(account.id)}
       rowClassName={cn(
         'bg-primary-100/50 hover:bg-primary-100',
         selectedId === account.id && 'bg-primary-100 ring-1 ring-primary-200',
@@ -607,6 +740,14 @@ function ChartAccountListRow({
               </TreeRowButton>
             ) : (
               <>
+                {/* Hover-revealed, like Remove beside it - every live account
+                    can take a sub-account, so pinning it would put one more
+                    button on every row in the chart. */}
+                <TreeRowButton
+                  tooltipText='Add sub-account'
+                  onClick={() => onAddSubAccount(account)}>
+                  <Plus />
+                </TreeRowButton>
                 {suggestion && (
                   <TreeRowButton
                     persistent
@@ -669,6 +810,11 @@ function ChartAccountListRow({
                 under already says the statement type, and
                 repeating it on every row under it is the badge
                 saying what the heading just said. */}
+          {childCount > 0 && (
+            <span>
+              {childCount} sub-account{childCount === 1 ? '' : 's'}
+            </span>
+          )}
           {/* ⚠️ Archived and inactive are different states and
                 must not read the same. Inactive is an account
                 the org keeps but will not post to; archived is
@@ -704,7 +850,31 @@ function ChartAccountListRow({
             </span>
           )}
         </span>
-      }
-    />
+      }>
+      {hasChildren
+        ? children.map((child) => (
+            <ChartAccountListRow
+              key={child.account.id}
+              node={child}
+              rolesByAccountId={rolesByAccountId}
+              childCountByParentId={childCountByParentId}
+              forceOpen={forceOpen}
+              collapsedAccounts={collapsedAccounts}
+              onToggleAccount={onToggleAccount}
+              map={map}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              onAcceptSuggestion={onAcceptSuggestion}
+              acceptingAccountId={acceptingAccountId}
+              onCreateInProvider={onCreateInProvider}
+              creatingAccountId={creatingAccountId}
+              onRemoveAccount={onRemoveAccount}
+              onRestoreAccount={onRestoreAccount}
+              onAddSubAccount={onAddSubAccount}
+              canControl={canControl}
+            />
+          ))
+        : undefined}
+    </TreeRow>
   )
 }

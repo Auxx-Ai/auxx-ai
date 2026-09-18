@@ -111,7 +111,9 @@ vi.mock('../identity-field', () => ({
   writeQuickbooksIdField: vi.fn(),
 }))
 
-const { readQuickbooksAccountMap } = await import('../account-map')
+const { readQuickbooksAccountMap, toProviderAccount, resolveDerivedParents } = await import(
+  '../account-map'
+)
 const { planChartImport } = await import('../../../ledger/chart/chart-import-plan')
 
 const PARAMS = { organizationId: 'org1', installationId: 'inst1', connectionId: 'conn1' }
@@ -199,6 +201,7 @@ describe('a removed account across a Refresh', () => {
     classification: 'expense' as const,
     accountType: 'Expense',
     active: true,
+    parentId: null,
   })
 
   it('is not recreated, because the map still names it', async () => {
@@ -234,5 +237,70 @@ describe('a removed account across a Refresh', () => {
 
     expect(plan.create.map((row) => row.name)).toEqual(['Job Materials'])
     expect(plan.alreadyImported).toEqual([])
+  })
+})
+
+// TODO(accounting): delete this whole describe block once `list_quickbooks_accounts`
+// returns `ParentRef` and `toProviderAccount` trusts it alone - see the module header.
+describe('toProviderAccount / resolveDerivedParents - the ParentRef fallback', () => {
+  const mapped = (over: Partial<Parameters<typeof toProviderAccount>[0]> = {}) => ({
+    id: '1',
+    name: 'Checking',
+    fullyQualifiedName: 'Checking',
+    acctNum: null,
+    accountType: 'Bank',
+    classification: 'Asset',
+    active: true,
+    ...over,
+  })
+
+  it('trusts an explicit parentId from the tool, once it sends one', () => {
+    const account = toProviderAccount(mapped({ id: '2', parentId: '1' }))
+    expect(account?.parentId).toBe('1')
+  })
+
+  it('defaults to null - top level - when the tool sends nothing', () => {
+    const account = toProviderAccount(mapped())
+    expect(account?.parentId).toBeNull()
+  })
+
+  it('resolveDerivedParents matches a `Parent:Child` prefix to its account in the same list', () => {
+    const parent = toProviderAccount(
+      mapped({ id: '1', name: 'Sales', fullyQualifiedName: 'Sales' })
+    )!
+    const child = toProviderAccount(
+      mapped({ id: '2', name: 'Product Income', fullyQualifiedName: 'Sales:Product Income' })
+    )!
+
+    const [resolvedParent, resolvedChild] = resolveDerivedParents([parent, child])
+
+    expect(resolvedParent?.parentId).toBeNull()
+    expect(resolvedChild?.parentId).toBe('1')
+  })
+
+  it('never crosses classifications when matching the prefix', () => {
+    // Same fully-qualified prefix, wrong section - must not resolve to it.
+    const wrongSectionParent = toProviderAccount(
+      mapped({ id: '1', name: 'Sales', fullyQualifiedName: 'Sales', classification: 'Revenue' })
+    )!
+    const child = toProviderAccount(
+      mapped({ id: '2', name: 'Product Income', fullyQualifiedName: 'Sales:Product Income' })
+    )!
+
+    const [, resolvedChild] = resolveDerivedParents([wrongSectionParent, child])
+
+    expect(resolvedChild?.parentId).toBeNull()
+  })
+
+  it('leaves a top-level account alone - no colon, nothing to resolve', () => {
+    const account = toProviderAccount(mapped({ fullyQualifiedName: 'Checking' }))!
+    expect(resolveDerivedParents([account])[0]?.parentId).toBeNull()
+  })
+
+  it('leaves an unresolvable prefix as null rather than throwing', () => {
+    const child = toProviderAccount(
+      mapped({ id: '2', name: 'Product Income', fullyQualifiedName: 'Sales:Product Income' })
+    )!
+    expect(resolveDerivedParents([child])[0]?.parentId).toBeNull()
   })
 })

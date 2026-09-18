@@ -20,13 +20,14 @@
 // primitive every statement, the aging report and this grid render through, and
 // its edit mode exists for this screen.
 
-import type { GlAccountTypeValue } from '@auxx/lib/accounting/ledger/client'
-import { GL_ACCOUNT_TYPES } from '@auxx/lib/accounting/ledger/client'
+import type { ChartAccountRow, GlAccountTypeValue } from '@auxx/lib/accounting/ledger/client'
+import { accountDepth, GL_ACCOUNT_TYPES, sortChartTree } from '@auxx/lib/accounting/ledger/client'
 import type { OpeningTrialBalanceRow } from '@auxx/lib/accounting/opening/client'
 import { formatAccountLabel } from '../account-label-format'
 import { formatMinor } from '../ledger/format'
 import type { StatementColumn, StatementRow } from '../reports/statement-table'
 import { StatementTable } from '../reports/statement-table'
+import { useChartAccounts } from '../use-chart-accounts'
 import { accountTypeLabel } from './accounts-types'
 import { FrozenLock } from './frozen-lock'
 
@@ -241,10 +242,15 @@ export function OpeningTbGrid({
   onCellChange,
   verdict,
 }: OpeningTbGridProps) {
+  // The shared chart fetch (`AccountLabel`, `GlAccountPicker` read the same
+  // query) - just for `parentId`, which `OpeningTrialBalanceRow` does not
+  // carry. Empty while loading, which `withTreeOrder`/`accountDepth` both
+  // degrade to "flat, unindented" for, so the grid never blocks on it.
+  const { accounts } = useChartAccounts()
   return (
     <StatementTable
       columns={COLUMNS}
-      rows={toStatementRows(rows, currency, lockReason)}
+      rows={toStatementRows(rows, currency, lockReason, accounts)}
       currency={currency}
       mode={readOnly ? 'read' : 'edit'}
       // 🛑 Open. The reports open collapsed because a statement is something you
@@ -262,6 +268,27 @@ export function OpeningTbGrid({
 }
 
 /**
+ * Reorder one type's rows into the chart's tree order (D9), a sub-account
+ * following its parent rather than sitting wherever code-then-name put it.
+ *
+ * A row whose account is not in `chart` (still loading, or archived out from
+ * under an existing opening balance) keeps its incoming position - the sort
+ * is stable and an unmatched id sorts last among matched ones, which is
+ * "unindented, wherever it already was" rather than a jump.
+ */
+function withTreeOrder(
+  inType: readonly OpeningTrialBalanceRow[],
+  chartOfType: readonly ChartAccountRow[]
+): OpeningTrialBalanceRow[] {
+  const order = new Map(sortChartTree(chartOfType).map((account, index) => [account.id, index]))
+  return [...inType].sort(
+    (a, b) =>
+      (order.get(a.accountId) ?? Number.MAX_SAFE_INTEGER) -
+      (order.get(b.accountId) ?? Number.MAX_SAFE_INTEGER)
+  )
+}
+
+/**
  * Group the chart into statement sections, each with a subtotal, then a grand
  * total.
  *
@@ -273,19 +300,30 @@ export function OpeningTbGrid({
  * An account type with no accounts renders no section at all: a chart that has
  * been edited down to four types should not show an empty Revenue heading with
  * a zero subtotal under it.
+ *
+ * Within a type, rows are reordered into TREE order (`withTreeOrder`,
+ * CHART-HIERARCHY.md §5) and a sub-account's row sits at
+ * `depth: 1 + accountDepth(...)` - one step deeper per chart level, the same
+ * indent `TreeRow` already gives a nested statement row. These rows are still
+ * flat SIBLINGS in one section's `children` (no per-parent subtotal - the
+ * type's own total is unchanged), so the extra depth is cosmetic only.
  */
 function toStatementRows(
   rows: readonly OpeningTrialBalanceRow[],
   currency: string,
-  lockReason: string
+  lockReason: string,
+  chart: readonly ChartAccountRow[]
 ): StatementRow[] {
   const out: StatementRow[] = []
   let totalDebit = 0
   let totalCredit = 0
 
   for (const accountType of GL_ACCOUNT_TYPES) {
-    const inType = rows.filter((row) => row.accountType === (accountType as GlAccountTypeValue))
-    if (inType.length === 0) continue
+    const rowsOfType = rows.filter((row) => row.accountType === (accountType as GlAccountTypeValue))
+    if (rowsOfType.length === 0) continue
+
+    const chartOfType = chart.filter((account) => account.accountType === accountType)
+    const inType = withTreeOrder(rowsOfType, chartOfType)
 
     const labels = sectionLabels(accountType as GlAccountTypeValue)
 
@@ -299,7 +337,7 @@ function toStatementRows(
       children.push({
         id: `${ACCOUNT_ROW_PREFIX}${row.accountId}`,
         label: formatAccountLabel({ code: row.accountCode, name: row.accountName }),
-        depth: 1,
+        depth: 1 + accountDepth(chart, row.accountId),
         // 🛑 `computed`, not `line`, is what makes a locked row read-only:
         // `StatementTable`'s edit mode puts a `CurrencyInput` in a `line` and
         // nowhere else. A `disabled` prop on the input would have been a second

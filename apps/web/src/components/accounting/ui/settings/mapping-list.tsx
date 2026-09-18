@@ -22,6 +22,7 @@
 import {
   ACCOUNT_ROLE_LABELS,
   type AccountRole,
+  type ChartAccountRow,
   type GlAccountSubtypeValue,
   type GlAccountTypeValue,
   ROLE_ACCOUNT_TYPES,
@@ -51,7 +52,13 @@ import { useQueryState } from 'nuqs'
 import type { Dispatch, SetStateAction } from 'react'
 import { useCallback, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
-import { ACCOUNT_TYPE_OPTIONS, accountTypeIcon, formatAccount } from './accounts-types'
+import { useChartAccounts } from '../gl-account-picker'
+import {
+  ACCOUNT_TYPE_OPTIONS,
+  accountTypeIcon,
+  formatAccount,
+  formatAccountRow,
+} from './accounts-types'
 import type { MappingAccountValue } from './mapping-account-select'
 import { MappingScopeRow } from './mapping-scope-row'
 
@@ -102,6 +109,9 @@ export function MappingList({
   const roleMap = api.ledger.roleMap.useQuery()
   const gateways = api.paymentGateway.list.useQuery()
   const utils = api.useUtils()
+  // The Inherit fallback's own label (D8) - same cached `ledger.chartAccounts`
+  // read every picker on this tab already shares.
+  const { accounts } = useChartAccounts()
 
   const roles = useMemo(() => roleMap.data?.roles ?? [], [roleMap.data])
   const sources = useMemo(() => roleMap.data?.sources ?? [], [roleMap.data])
@@ -319,6 +329,7 @@ export function MappingList({
                 renderRow={(row: RoleAssignmentRow) => (
                   <RoleBlock
                     role={row}
+                    accounts={accounts}
                     stores={stores}
                     rails={rails}
                     railsWithFeed={railsWithFeed}
@@ -384,6 +395,8 @@ function hasOverride(role: RoleAssignmentRow, source: RoleSourceRow): boolean {
 
 interface RoleBlockProps {
   role: RoleAssignmentRow
+  /** The org's whole chart - the Inherit fallback's own path-aware label (D8). */
+  accounts: ChartAccountRow[]
   stores: RoleSourceRow[]
   rails: RoleSourceRow[]
   railsWithFeed: Set<string>
@@ -403,6 +416,7 @@ interface RoleBlockProps {
 
 function RoleBlock({
   role,
+  accounts,
   stores,
   rails,
   railsWithFeed,
@@ -450,6 +464,7 @@ function RoleBlock({
       <StoreScopeRow
         key={source.id}
         role={role}
+        accounts={accounts}
         source={source}
         optimistic={optimistic}
         onCommit={onCommit}
@@ -460,6 +475,7 @@ function RoleBlock({
       <RailScopeRow
         key={source.id}
         role={role}
+        accounts={accounts}
         rail={source}
         noFeedLinked={isBank && !railsWithFeed.has(source.id)}
         mismatch={mismatchByRail.get(source.id)}
@@ -580,6 +596,7 @@ function BankRoleTrailing({
 
 function StoreScopeRow({
   role,
+  accounts,
   source,
   optimistic,
   onCommit,
@@ -587,6 +604,7 @@ function StoreScopeRow({
   canControl,
 }: {
   role: RoleAssignmentRow
+  accounts: ChartAccountRow[]
   source: RoleSourceRow
   optimistic: Record<string, MappingAccountValue>
   onCommit: (key: string, edit: MappingEdit) => void
@@ -598,7 +616,7 @@ function StoreScopeRow({
   const persisted: MappingAccountValue = override ? override.accountId : 'inherit'
   const key = storeKey(role.role, source.id)
   const value = key in optimistic ? optimistic[key]! : persisted
-  const inheritedName = role.account ? formatAccount(role.account) : null
+  const inheritedName = role.account ? formatAccountRow(accounts, role.account) : null
 
   return (
     <MappingScopeRow
@@ -627,6 +645,7 @@ function StoreScopeRow({
 
 function RailScopeRow({
   role,
+  accounts,
   rail,
   noFeedLinked,
   mismatch,
@@ -640,6 +659,7 @@ function RailScopeRow({
   onDraftCommitted,
 }: {
   role: RoleAssignmentRow
+  accounts: ChartAccountRow[]
   rail: RoleSourceRow
   noFeedLinked: boolean
   mismatch: string | undefined
@@ -658,7 +678,11 @@ function RailScopeRow({
   const persisted: MappingAccountValue = own ? own.accountId : isBank ? null : 'inherit'
   const key = railKey(role.role, rail.id)
   const value = key in optimistic ? optimistic[key]! : persisted
-  const inheritedName = isBank ? null : role.account ? formatAccount(role.account) : null
+  const inheritedName = isBank
+    ? null
+    : role.account
+      ? formatAccountRow(accounts, role.account)
+      : null
 
   const currencyRows = role.railOverrides.filter(
     (o) => o.paymentGatewayId === rail.id && o.currency !== null
@@ -703,6 +727,7 @@ function RailScopeRow({
         <CurrencyRow
           key={o.currency}
           role={role}
+          accounts={accounts}
           rail={rail}
           currency={o.currency as string}
           override={o}
@@ -717,6 +742,7 @@ function RailScopeRow({
         <CurrencyRow
           key={currency}
           role={role}
+          accounts={accounts}
           rail={rail}
           currency={currency}
           override={undefined}
@@ -753,6 +779,7 @@ function RailScopeRow({
 
 function CurrencyRow({
   role,
+  accounts,
   rail,
   currency,
   override,
@@ -763,6 +790,7 @@ function CurrencyRow({
   canControl,
 }: {
   role: RoleAssignmentRow
+  accounts: ChartAccountRow[]
   rail: RoleSourceRow
   currency: string
   override: RoleRailAssignmentRow | undefined
@@ -780,11 +808,11 @@ function CurrencyRow({
   // The currency row's Inherit names the RAIL's own row, never the org default
   // (58 §3 rule 2; `bank` has no fallback beyond it - task 59 §2.2).
   const inheritedName = railOwn?.account
-    ? formatAccount(railOwn.account)
+    ? formatAccountRow(accounts, railOwn.account)
     : isBank
       ? null
       : role.account
-        ? formatAccount(role.account)
+        ? formatAccountRow(accounts, role.account)
         : null
 
   return (

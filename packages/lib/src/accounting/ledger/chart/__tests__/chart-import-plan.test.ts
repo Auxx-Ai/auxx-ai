@@ -23,6 +23,7 @@ function providerAccount(over: Partial<ProviderAccount> = {}): ProviderAccount {
     accountType: 'Bank',
     classification: 'asset',
     active: true,
+    parentId: null,
     ...over,
   }
 }
@@ -77,30 +78,37 @@ describe('create', () => {
     expect(plan.create.find((c) => c.providerAccount.id === 'p2')?.code).toBeNull()
   })
 
-  it('names a sub-account by its full path, so repeated leaf names stay apart', () => {
+  // Reverses commit 2a027b6c0's stopgap: with a real parent field, a
+  // sub-account is named by its own leaf name again, and its provider parent
+  // travels alongside on `providerParentId` - repeated leaf names stay apart
+  // through the parent, not through a name that duplicates the whole path.
+  it('names a sub-account by its leaf, and carries its provider parent id', () => {
     const plan = planChartImport(
       [
         providerAccount({
           id: 'p1',
           name: 'Job Materials',
           fullyQualifiedName: 'Job Expenses:Job Materials',
+          parentId: 'p_job_expenses',
         }),
         providerAccount({
           id: 'p2',
           name: 'Job Materials',
           fullyQualifiedName: 'Landscaping Services:Job Materials',
+          parentId: 'p_landscaping',
         }),
-        providerAccount({ id: 'p3', name: 'Checking', fullyQualifiedName: '' }),
+        providerAccount({ id: 'p3', name: 'Checking', fullyQualifiedName: 'Checking' }),
       ],
       EMPTY_CHART,
       new Map(),
       roleMap()
     )
 
-    expect(plan.create.map((c) => c.name)).toEqual([
-      'Job Expenses:Job Materials',
-      'Landscaping Services:Job Materials',
-      'Checking',
+    expect(plan.create.map((c) => c.name)).toEqual(['Job Materials', 'Job Materials', 'Checking'])
+    expect(plan.create.map((c) => c.providerParentId)).toEqual([
+      'p_job_expenses',
+      'p_landscaping',
+      null,
     ])
   })
 
@@ -155,6 +163,114 @@ describe('create', () => {
         glAccountId: 'gl1',
       },
     ])
+  })
+})
+
+describe('create order - topological', () => {
+  it('places a parent before its child, even when the provider lists the child first', () => {
+    const plan = planChartImport(
+      [
+        providerAccount({ id: 'child', name: 'Product Income', parentId: 'parent' }),
+        providerAccount({ id: 'parent', name: 'Sales' }),
+      ],
+      EMPTY_CHART,
+      new Map(),
+      roleMap()
+    )
+
+    expect(plan.create.map((c) => c.providerAccount.id)).toEqual(['parent', 'child'])
+  })
+
+  it('leaves a parent outside this batch for the writer to resolve, unordered', () => {
+    // The parent is already imported (or skipped) - nothing here to place before
+    // the child, and `providerParentId` is still carried for the writer's own
+    // `providerId -> glAccountId` map to resolve or skip.
+    const plan = planChartImport(
+      [providerAccount({ id: 'child', name: 'Product Income', parentId: 'not-in-this-batch' })],
+      EMPTY_CHART,
+      new Map(),
+      roleMap()
+    )
+
+    expect(plan.create[0]?.providerParentId).toBe('not-in-this-batch')
+  })
+})
+
+describe('reparent - a refresh only adds what the provider has (CHART-HIERARCHY §6)', () => {
+  const REVENUE_ROW: ChartAccountRow = {
+    id: 'gl1',
+    code: null,
+    name: 'Product Income',
+    accountType: 'revenue',
+    subtype: null,
+    parentId: null,
+    isActive: true,
+  }
+
+  it('repoints an already-imported account whose provider row gained a parent', () => {
+    const plan = planChartImport(
+      [
+        providerAccount({
+          id: 'p1',
+          name: 'Product Income',
+          fullyQualifiedName: 'Sales:Product Income',
+          accountType: 'Income',
+          classification: 'revenue',
+          parentId: 'p_sales',
+        }),
+      ],
+      [REVENUE_ROW],
+      new Map([['gl1', 'p1']]),
+      roleMap()
+    )
+
+    expect(plan.reparent).toEqual([
+      { glAccountId: 'gl1', providerParentId: 'p_sales', leafName: null },
+    ])
+  })
+
+  it('restores the leaf name when the existing row still carries the full-path stopgap name', () => {
+    const plan = planChartImport(
+      [
+        providerAccount({
+          id: 'p1',
+          name: 'Product Income',
+          fullyQualifiedName: 'Sales:Product Income',
+          accountType: 'Income',
+          classification: 'revenue',
+          parentId: 'p_sales',
+        }),
+      ],
+      [{ ...REVENUE_ROW, name: 'Sales:Product Income' }],
+      new Map([['gl1', 'p1']]),
+      roleMap()
+    )
+
+    expect(plan.reparent).toEqual([
+      { glAccountId: 'gl1', providerParentId: 'p_sales', leafName: 'Product Income' },
+    ])
+  })
+
+  it('does nothing when our chart already has the parent set', () => {
+    const plan = planChartImport(
+      [providerAccount({ id: 'p1', name: 'Product Income', parentId: 'p_sales' })],
+      [{ ...REVENUE_ROW, parentId: 'gl_sales' }],
+      new Map([['gl1', 'p1']]),
+      roleMap()
+    )
+
+    expect(plan.reparent).toEqual([])
+  })
+
+  it('does nothing when the provider account has no parent at all', () => {
+    const plan = planChartImport(
+      [providerAccount({ id: 'p1', name: 'Product Income' })],
+      [REVENUE_ROW],
+      new Map([['gl1', 'p1']]),
+      roleMap()
+    )
+
+    expect(plan.reparent).toEqual([])
   })
 })
 
