@@ -59,7 +59,6 @@ export function PostingDrawerHost({ postingId, onClose, onSelectPosting }: Posti
   })
 
   const providerLabel = provider.providerLabel ?? UNKNOWN_PROVIDER_LABEL
-  const { connectedTenantId } = provider
   const { currencyCode, bookTimeZone } = period
   const isReversing = reverse.isPending
   const reverseMutate = reverse.mutate
@@ -78,7 +77,6 @@ export function PostingDrawerHost({ postingId, onClose, onSelectPosting }: Posti
         currencyCode={currencyCode}
         bookTimeZone={bookTimeZone}
         providerLabel={providerLabel}
-        connectedTenantId={connectedTenantId}
         onOpenExportQueue={(tab) => router.push(`/app/accounting?queue=${tab}`)}
         onReverse={(memo) => {
           if (!postingId) return
@@ -97,7 +95,6 @@ export function PostingDrawerHost({ postingId, onClose, onSelectPosting }: Posti
       currencyCode,
       bookTimeZone,
       providerLabel,
-      connectedTenantId,
       router,
       reverseMutate,
       isReversing,

@@ -192,3 +192,83 @@ describe('refusals come back as results, with the reason on them', () => {
     )
   })
 })
+
+// Plan 67 §5.4: a Payment must be withdrawn before the Invoice it applies to.
+// `select()` here answers each call from `responses` in order (batch, then
+// the invoice's own members, then the live payment batches) - the same
+// per-call sequencing `ledger-summary.test.ts` uses, since the shared
+// `fakeDb` above answers every `select()` from the one fixed row.
+function fakeSequentialDb(responses: unknown[][]) {
+  let call = 0
+  const sets: Array<Record<string, unknown>> = []
+  const selectChain: Record<string, unknown> = {}
+  for (const method of ['from', 'where', 'limit']) selectChain[method] = () => selectChain
+  // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
+  selectChain.then = (resolve: (v: unknown) => unknown) => {
+    const rows = responses[call] ?? []
+    call += 1
+    return Promise.resolve(rows).then(resolve)
+  }
+
+  const update = () => {
+    let values: Record<string, unknown> = {}
+    const chain: Record<string, unknown> = {}
+    chain.set = (next: Record<string, unknown>) => {
+      values = next
+      return chain
+    }
+    chain.where = () => chain
+    chain.returning = async () => {
+      sets.push(values)
+      return [{ id: 'ebp_1' }]
+    }
+    // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
+    chain.then = (resolve: (v: unknown) => unknown) => {
+      sets.push(values)
+      return Promise.resolve([]).then(resolve)
+    }
+    return chain
+  }
+
+  const db = {
+    select: () => selectChain,
+    transaction: (fn: (tx: unknown) => unknown) => fn({ update }),
+  } as unknown as Database
+  return { db, sets }
+}
+
+describe('the rollback order guard (plan 67 §5.4)', () => {
+  it('refuses to withdraw an invoice while a sent payment still applies to it, naming the payment', async () => {
+    resolveAccountingProvider.mockResolvedValue(provider())
+    const { db } = fakeSequentialDb([
+      [batch({ objectType: 'invoice' })],
+      [{ glPostingId: 'gp_1' }],
+      [
+        {
+          id: 'batch_payment_1',
+          payload: { appliesTo: { glPostingId: 'gp_1' }, docNumber: 'AUXX-PAY-1' },
+        },
+      ],
+    ])
+
+    const result = await rollbackExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'refused' })
+    expect(result._unsafeUnwrap().message).toContain('AUXX-PAY-1')
+  })
+
+  it('allows the withdraw when no live payment applies to any of its members', async () => {
+    const mock = provider()
+    resolveAccountingProvider.mockResolvedValue(mock)
+    const { db } = fakeSequentialDb([
+      [batch({ objectType: 'invoice' })],
+      [{ glPostingId: 'gp_1' }],
+      [],
+    ])
+
+    const result = await rollbackExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'withdrawn' })
+    expect(mock.withdrawObject).toHaveBeenCalled()
+  })
+})

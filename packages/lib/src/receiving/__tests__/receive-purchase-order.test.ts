@@ -1,27 +1,43 @@
 // packages/lib/src/receiving/__tests__/receive-purchase-order.test.ts
-// The multi-line receipt. `receiveStock` is mocked (it has its own suite and its
-// own database dependencies) and the org cache and the one field-value read are
-// faked, so nothing here needs a database — what is asserted is the CONTRACT:
-// the price comes from the purchase order line and nowhere else, the whole set
-// is validated before the first movement, and nothing is allocated any more.
+// The multi-line receipt. `UnifiedCrudHandler`, the org cache, the part-kind
+// read, `ensureStandardCost` and the posting seam are all mocked, so nothing
+// here needs a database — what is asserted is the CONTRACT: the price comes
+// from the purchase order line and nowhere else, the whole set is validated
+// before the first movement, nothing is allocated any more, and the WHOLE
+// receipt posts ONE inventory entry with every line's movement as a member —
+// never one entry per line (the bug this file now guards against).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { BadRequestError, UnprocessableEntityError } from '../../errors'
-import type { MovementRecord, ReceivePurchaseOrderLineInput } from '../types'
+import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
+import type { ReceivePurchaseOrderLineInput } from '../types'
 
 const h = vi.hoisted(() => ({
-  receiveSpy: vi.fn(),
-  /** One call per `db.select(...)`, so "one query for the whole set" is assertable. */
+  createSpy: vi.fn(async (..._args: unknown[]) => ({ instance: { id: 'mv_1' } })),
+  /** One call per `db.select(...)` on the caller's own connection. */
   selectSpy: vi.fn(),
   /** systemAttributes the org has materialised. */
   materialised: new Set<string>(),
+  /** entityType -> def id; a missing key models a def the org does not have. */
+  defs: new Map<string, string>(),
   /** `purchase_order_line` instance id -> its stored expected unit price. */
   prices: new Map<string, number | null>(),
+  /** The raw `purchase_order_line_purchase_order` relation rows the org holds. */
+  orderIds: [] as (string | null)[],
+  partKind: null as string | null,
+  ensureSpy: vi.fn(),
+  postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
+  exportSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
   /** The batched roll-up this door runs once the whole receipt is committed. */
   settleSpy: vi.fn(),
 }))
 
 vi.mock('../../cache', () => ({
+  getCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => h.defs.get(entityType)),
+  requireCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => {
+    const id = h.defs.get(entityType)
+    if (!id) throw new Error(`EntityDefinition not found for entityType: ${entityType}`)
+    return id
+  }),
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: string[]) =>
@@ -32,6 +48,25 @@ vi.mock('../../cache', () => ({
   }),
 }))
 
+vi.mock('../../resources/crud/unified-handler', () => ({
+  UnifiedCrudHandler: class {
+    create = h.createSpy
+  },
+}))
+
+vi.mock('../receipt-queries', async () => {
+  const { ok } = await import('neverthrow')
+  return {
+    readPartKind: vi.fn(async () => ok(h.partKind)),
+  }
+})
+
+// A part's first receipt gives it a standard cost. Mocked here because the
+// real one reads the standard-cost fields, and this file has no database.
+vi.mock('../../builds/ensure-standard-cost', () => ({
+  ensureStandardCost: h.ensureSpy,
+}))
+
 vi.mock('../../field-hooks/post/purchase-order-line-rollups', () => ({
   PURCHASE_ORDER_LINE_ROLLUPS: {
     received: { targetAttr: 'purchase_order_line_quantity_received' },
@@ -39,50 +74,42 @@ vi.mock('../../field-hooks/post/purchase-order-line-rollups', () => ({
   recalculatePurchaseOrderLineRollups: (...args: unknown[]) => h.settleSpy(...args),
 }))
 
-vi.mock('../receive-stock', async () => {
-  const { ok } = await import('neverthrow')
-  return {
-    receiveStock: vi.fn(async (_db, _org, _user, input) => {
-      h.receiveSpy(input)
-      return ok({
-        movementId: `mv_${input.partId}`,
-        recordId: `def_mv:mv_${input.partId}`,
-        partInstanceId: input.partId,
-        quantity: input.quantity,
-        unitCost: input.unitCost,
-        extendedCost: Math.round(input.unitCost * input.quantity),
-        vendorUnitPrice: input.vendorUnitPrice ?? null,
-        vendorPartId: input.vendorPartId ?? null,
-        glAccount: '1310',
-        occurredAt: input.occurredAt,
-        purchaseOrderLineId: input.purchaseOrderLineId ?? null,
-      } satisfies MovementRecord)
-    }),
-  }
-})
+// The posting seam has its own tests (`postings/__tests__/post-inventory-movement.test.ts`);
+// this file is about how MANY times it is called, and with what members.
+vi.mock('../../postings/post-inventory-movement', () => ({
+  postInventoryMovementInTx: (...args: unknown[]) => h.postSpy(...args),
+  exportInventoryMovement: (...args: unknown[]) => h.exportSpy(...args),
+  inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
+}))
 
 import { receivePurchaseOrder } from '../receive-purchase-order'
 
 const ORG = 'org_1'
 const USER = 'user_1'
+const PRICE_ATTR = 'purchase_order_line_expected_unit_price'
+const ORDER_ATTR = 'purchase_order_line_purchase_order'
+const COST_ATTRS = ['stock_movement_unit_cost', 'stock_movement_cost_basis']
 
 /**
- * The one read this module makes: `select({...}).from(FieldValue).where(...)`,
- * resolving to whatever `h.prices` holds.
+ * The write and its posting share one transaction, so the stub has to run it.
+ * Routed by the projection's keys: `resolvePurchaseOrderId` projects only
+ * `relatedEntityId`, `readExpectedUnitPrices` projects `entityId`/`valueNumber`.
  */
 const db = {
-  select: (projection: unknown) => {
+  select: (projection: Record<string, unknown>) => {
     h.selectSpy(projection)
+    const keys = Object.keys(projection).sort().join(',')
     return {
       from: () => ({
         where: async () =>
-          [...h.prices.entries()].map(([entityId, valueNumber]) => ({ entityId, valueNumber })),
+          keys === 'relatedEntityId'
+            ? h.orderIds.map((relatedEntityId) => ({ relatedEntityId }))
+            : [...h.prices.entries()].map(([entityId, valueNumber]) => ({ entityId, valueNumber })),
       }),
     }
   },
+  transaction: async (fn: (tx: unknown) => unknown) => fn(db),
 } as never
-
-const PRICE_ATTR = 'purchase_order_line_expected_unit_price'
 
 const line = (
   overrides: Partial<ReceivePurchaseOrderLineInput> = {}
@@ -95,12 +122,29 @@ const line = (
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.settleSpy.mockResolvedValue(undefined)
-  h.materialised = new Set([PRICE_ATTR])
+  h.materialised = new Set([PRICE_ATTR, ORDER_ATTR, ...COST_ATTRS])
+  h.defs = new Map([
+    ['part', 'def_part'],
+    ['stock_movement', 'def_mv'],
+    ['vendor_part', 'def_vp'],
+    ['purchase_order_line', 'def_pol'],
+  ])
   h.prices = new Map([
     ['pol_1', 1000],
     ['pol_2', 500],
+    ['pol_3', 300],
   ])
+  h.orderIds = ['po_1']
+  h.partKind = null
+  h.settleSpy.mockResolvedValue(undefined)
+  h.postSpy.mockResolvedValue(null)
+  h.exportSpy.mockResolvedValue(null)
+  h.ensureSpy.mockImplementation(async (_db: unknown, _org: string, partIds: string[]) => {
+    const { ok } = await import('neverthrow')
+    return ok({ writtenPartIds: partIds })
+  })
+  let counter = 0
+  h.createSpy.mockImplementation(async () => ({ instance: { id: `mv_${++counter}` } }))
 })
 
 async function expectErr(promise: ReturnType<typeof receivePurchaseOrder>) {
@@ -109,16 +153,16 @@ async function expectErr(promise: ReturnType<typeof receivePurchaseOrder>) {
   return result._unsafeUnwrapErr()
 }
 
-/** The `ReceiveStockInput` handed to `receiveStock` for line `index`. */
-function receivedInput(index: number): Record<string, unknown> {
-  return h.receiveSpy.mock.calls[index]![0]
+/** The values bag handed to `UnifiedCrudHandler.create` for movement `index`. */
+function writtenValues(index: number): Record<string, unknown> {
+  return h.createSpy.mock.calls[index]![1] as Record<string, unknown>
 }
 
 describe('receivePurchaseOrder — validation', () => {
   it('refuses a receipt with no lines', async () => {
     const error = await expectErr(receivePurchaseOrder(db, ORG, USER, { lines: [] }))
     expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.receiveSpy).not.toHaveBeenCalled()
+    expect(h.createSpy).not.toHaveBeenCalled()
   })
 
   it('refuses a line with no part', async () => {
@@ -153,14 +197,27 @@ describe('receivePurchaseOrder — validation', () => {
       })
     )
     expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.receiveSpy).not.toHaveBeenCalled()
+    expect(h.createSpy).not.toHaveBeenCalled()
   })
 
   it('refuses to write before the purchase order price field is provisioned', async () => {
     h.materialised.delete(PRICE_ATTR)
     const error = await expectErr(receivePurchaseOrder(db, ORG, USER, { lines: [line()] }))
     expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.receiveSpy).not.toHaveBeenCalled()
+    expect(h.createSpy).not.toHaveBeenCalled()
+  })
+
+  it('refuses to write before the stock movement cost fields are provisioned', async () => {
+    h.materialised.delete('stock_movement_unit_cost')
+    const error = await expectErr(receivePurchaseOrder(db, ORG, USER, { lines: [line()] }))
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    expect(h.createSpy).not.toHaveBeenCalled()
+  })
+
+  it('fails with NotFound when the org has no stock_movement definition', async () => {
+    h.defs.delete('stock_movement')
+    const error = await expectErr(receivePurchaseOrder(db, ORG, USER, { lines: [line()] }))
+    expect(error).toBeInstanceOf(NotFoundError)
   })
 })
 
@@ -168,8 +225,8 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
   it('values the movement at the stored expected unit price of its line', async () => {
     h.prices = new Map([['pol_1', 1250]])
     await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 4 })] })
-    expect(receivedInput(0).unitCost).toBe(1250)
-    expect(receivedInput(0).vendorUnitPrice).toBe(1250)
+    expect(writtenValues(0).stock_movement_unit_cost).toBe(1250)
+    expect(writtenValues(0).stock_movement_vendor_unit_price).toBe(1250)
   })
 
   it('🛑 ignores a price asserted by the client', async () => {
@@ -181,8 +238,8 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
       // it; the runtime must not honour it either.
       lines: [{ ...line(), unitPrice: 20_000, weight: 12 } as ReceivePurchaseOrderLineInput],
     })
-    expect(receivedInput(0).unitCost).toBe(1250)
-    expect(receivedInput(0).vendorUnitPrice).toBe(1250)
+    expect(writtenValues(0).stock_movement_unit_cost).toBe(1250)
+    expect(writtenValues(0).stock_movement_vendor_unit_price).toBe(1250)
   })
 
   it('prices each line from its OWN purchase order line', async () => {
@@ -193,16 +250,11 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
     await receivePurchaseOrder(db, ORG, USER, {
       lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
     })
-    expect(receivedInput(0).unitCost).toBe(1250)
-    expect(receivedInput(1).unitCost).toBe(99)
+    expect(writtenValues(0).stock_movement_unit_cost).toBe(1250)
+    expect(writtenValues(1).stock_movement_unit_cost).toBe(99)
   })
 
   it('reads every price in ONE query, not one per line', async () => {
-    h.prices = new Map([
-      ['pol_1', 100],
-      ['pol_2', 200],
-      ['pol_3', 300],
-    ])
     await receivePurchaseOrder(db, ORG, USER, {
       lines: [
         line(),
@@ -210,8 +262,10 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
         line({ partId: 'part_3', purchaseOrderLineId: 'pol_3' }),
       ],
     })
-    expect(h.selectSpy).toHaveBeenCalledTimes(1)
-    expect(h.receiveSpy).toHaveBeenCalledTimes(3)
+    // One for the prices, one for the shared parent purchase order — neither
+    // scales with the line count.
+    expect(h.selectSpy).toHaveBeenCalledTimes(2)
+    expect(h.createSpy).toHaveBeenCalledTimes(3)
   })
 
   it.each([
@@ -231,7 +285,7 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
     expect(error).toBeInstanceOf(UnprocessableEntityError)
     // The whole set is priced before the first movement, so the GOOD line is not
     // written either — a half-received shipment is worse than a rejected one.
-    expect(h.receiveSpy).not.toHaveBeenCalled()
+    expect(h.createSpy).not.toHaveBeenCalled()
   })
 
   it('names the offending line in the refusal', async () => {
@@ -253,7 +307,7 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
       receivePurchaseOrder(db, ORG, USER, { lines: [line({ vendorPartId: 'vp_1' })] })
     )
     expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.receiveSpy).not.toHaveBeenCalled()
+    expect(h.createSpy).not.toHaveBeenCalled()
   })
 })
 
@@ -264,7 +318,7 @@ describe('receivePurchaseOrder — nothing is allocated at receipt', () => {
     // bill's number now (section 4.2).
     h.prices = new Map([['pol_1', 1000]])
     await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 10 })] })
-    expect(receivedInput(0).unitCost).toBe(1000)
+    expect(writtenValues(0).stock_movement_unit_cost).toBe(1000)
   })
 
   it('values two receipts of the same line identically', async () => {
@@ -272,9 +326,10 @@ describe('receivePurchaseOrder — nothing is allocated at receipt', () => {
     // receipts of one line, three of them carrying the whole freight charge.
     h.prices = new Map([['pol_1', 1250]])
     await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 99_997 })] })
+    const firstReceiptCost = writtenValues(0).stock_movement_unit_cost
     await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 1 })] })
-    expect(receivedInput(0).unitCost).toBe(1250)
-    expect(receivedInput(1).unitCost).toBe(1250)
+    expect(firstReceiptCost).toBe(1250)
+    expect(writtenValues(1).stock_movement_unit_cost).toBe(1250)
   })
 })
 
@@ -287,19 +342,23 @@ describe('receivePurchaseOrder — one movement per line', () => {
       ],
     })
     expect(result.isOk()).toBe(true)
-    expect(result._unsafeUnwrap()).toHaveLength(2)
-    expect(receivedInput(0).purchaseOrderLineId).toBe('pol_1')
-    expect(receivedInput(1).purchaseOrderLineId).toBe('pol_2')
+    const records = result._unsafeUnwrap()
+    expect(records).toHaveLength(2)
+    expect(records[0]!.purchaseOrderLineId).toBe('pol_1')
+    expect(records[1]!.purchaseOrderLineId).toBe('pol_2')
+    expect(writtenValues(0).stock_movement_purchase_order_line).toBe('def_pol:pol_1')
+    expect(writtenValues(1).stock_movement_purchase_order_line).toBe('def_pol:pol_2')
   })
 
   it('stamps one shared accounting date across every line', async () => {
     const occurredAt = new Date('2026-02-11T00:00:00.000Z')
-    await receivePurchaseOrder(db, ORG, USER, {
+    const result = await receivePurchaseOrder(db, ORG, USER, {
       lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
       occurredAt,
     })
-    expect(receivedInput(0).occurredAt).toBe(occurredAt)
-    expect(receivedInput(1).occurredAt).toBe(occurredAt)
+    const records = result._unsafeUnwrap()
+    expect(records[0]!.occurredAt).toBe(occurredAt)
+    expect(records[1]!.occurredAt).toBe(occurredAt)
   })
 
   it('carries the reference and reason onto every movement', async () => {
@@ -308,37 +367,143 @@ describe('receivePurchaseOrder — one movement per line', () => {
       reference: 'PS-4471',
       reason: 'Split delivery',
     })
-    expect(receivedInput(1).reference).toBe('PS-4471')
-    expect(receivedInput(1).reason).toBe('Split delivery')
+    expect(writtenValues(1).stock_movement_reference).toBe('PS-4471')
+    expect(writtenValues(1).stock_movement_reason).toBe('Split delivery')
   })
 
   it('passes the supplier part through when the line names one', async () => {
     await receivePurchaseOrder(db, ORG, USER, { lines: [line({ vendorPartId: 'vp_1' })] })
-    expect(receivedInput(0).vendorPartId).toBe('vp_1')
+    expect(writtenValues(0).stock_movement_vendor_part).toBe('def_vp:vp_1')
+  })
+
+  it("stamps the GL account resolved from the line's own part kind", async () => {
+    h.partKind = 'finished_good'
+    await receivePurchaseOrder(db, ORG, USER, { lines: [line()] })
+    expect(writtenValues(0).stock_movement_gl_account).toBe('inventory_finished_goods')
   })
 })
 
 describe('receivePurchaseOrder — failure propagation', () => {
   it('surfaces a per-line failure with its own status, not as a generic 500', async () => {
-    const { receiveStock } = await import('../receive-stock')
-    const { err } = await import('neverthrow')
-    vi.mocked(receiveStock).mockResolvedValueOnce(
-      err(new UnprocessableEntityError('Refusing to write a receipt at zero cost.'))
+    h.createSpy.mockRejectedValueOnce(
+      new UnprocessableEntityError('Refusing to write a receipt at zero cost.')
     )
     const error = await expectErr(receivePurchaseOrder(db, ORG, USER, { lines: [line()] }))
     expect(error).toBeInstanceOf(UnprocessableEntityError)
   })
 
-  it('stops at the first failing line rather than pressing on', async () => {
-    const { receiveStock } = await import('../receive-stock')
-    const { err } = await import('neverthrow')
-    vi.mocked(receiveStock).mockResolvedValueOnce(err(new UnprocessableEntityError('nope')))
+  it('stops at the first failing line rather than writing or posting the rest', async () => {
+    h.createSpy.mockRejectedValueOnce(new UnprocessableEntityError('nope'))
     await expectErr(
       receivePurchaseOrder(db, ORG, USER, {
         lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
       })
     )
-    expect(h.receiveSpy).toHaveBeenCalledTimes(0)
+    expect(h.createSpy).toHaveBeenCalledTimes(1)
+    expect(h.postSpy).not.toHaveBeenCalled()
+    expect(h.settleSpy).not.toHaveBeenCalled()
+  })
+})
+
+// 🛑 The fix this file exists to pin: `plans/accounting/STATE.md` §0(c) — a PO
+// receipt used to post once PER RECEIVED LINE (by delegating to `receiveStock`,
+// which opens its own transaction and posts its own entry, once per call) instead
+// of once per goods receipt (TARGET §5).
+describe('receivePurchaseOrder — one posting for the whole receipt', () => {
+  it('posts ONCE for a multi-line receipt, with every movement linked as a member', async () => {
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [
+        line({ partId: 'part_1', purchaseOrderLineId: 'pol_1' }),
+        line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' }),
+        line({ partId: 'part_3', purchaseOrderLineId: 'pol_3' }),
+      ],
+    })
+
+    expect(h.postSpy).toHaveBeenCalledTimes(1)
+    const input = h.postSpy.mock.calls[0]![1] as {
+      kind: string
+      subject: { sourceKind: string; sourceId: string }
+      movements: unknown[]
+    }
+    expect(input.kind).toBe('receive')
+    // The first movement anchors the claim; every movement — itself included —
+    // is still linked as a member below.
+    expect(input.subject).toEqual({ sourceKind: 'stock_movement', sourceId: 'mv_1' })
+    expect(input.movements).toHaveLength(3)
+  })
+
+  it('still posts exactly once for a single-line receipt', async () => {
+    await receivePurchaseOrder(db, ORG, USER, { lines: [line()] })
+    expect(h.postSpy).toHaveBeenCalledTimes(1)
+    const input = h.postSpy.mock.calls[0]![1] as { movements: unknown[] }
+    expect(input.movements).toHaveLength(1)
+  })
+
+  it('links the purchase order every line belongs to as the posting’s parent', async () => {
+    h.orderIds = ['po_1']
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [
+        line({ partId: 'part_1', purchaseOrderLineId: 'pol_1' }),
+        line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' }),
+      ],
+    })
+    const input = h.postSpy.mock.calls[0]![1] as {
+      parent?: { sourceKind: string; sourceId: string }
+    }
+    expect(input.parent).toEqual({ sourceKind: 'purchase_order', sourceId: 'po_1' })
+  })
+
+  it('refuses a receipt whose lines belong to more than one purchase order', async () => {
+    h.orderIds = ['po_1', 'po_2']
+    const error = await expectErr(
+      receivePurchaseOrder(db, ORG, USER, {
+        lines: [
+          line({ partId: 'part_1', purchaseOrderLineId: 'pol_1' }),
+          line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' }),
+        ],
+      })
+    )
+    expect(error).toBeInstanceOf(BadRequestError)
+    // Refused before anything is written — a receipt naming two orders has
+    // nowhere honest to put a single `parent` link.
+    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(h.postSpy).not.toHaveBeenCalled()
+  })
+
+  it('posts with no parent when the order relation is not materialised', async () => {
+    h.materialised.delete(ORDER_ATTR)
+    await receivePurchaseOrder(db, ORG, USER, { lines: [line()] })
+    const input = h.postSpy.mock.calls[0]![1] as { parent?: unknown }
+    expect(input.parent).toBeUndefined()
+  })
+
+  it('exports the posted entry once, after the transaction commits', async () => {
+    h.postSpy.mockResolvedValueOnce({ status: 'posted', glPostingId: 'gl_1' })
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
+    })
+    expect(h.exportSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('posts before the roll-up settles, both after every movement is written', async () => {
+    const order: string[] = []
+    h.createSpy.mockImplementation(async () => {
+      order.push('movement')
+      return { instance: { id: `mv_${order.length}` } }
+    })
+    h.postSpy.mockImplementation(async () => {
+      order.push('post')
+      return null
+    })
+    h.settleSpy.mockImplementation(async () => {
+      order.push('settle')
+    })
+
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
+    })
+
+    expect(order).toEqual(['movement', 'movement', 'post', 'settle'])
   })
 })
 
@@ -348,10 +513,6 @@ describe('receivePurchaseOrder — the roll-up is settled once, not once per lin
     // lifecycle rule per row, and that rule derives the entire purchase order.
     // Ten lines meant ten identical derivations. One batched call knows the
     // whole set and does it once.
-    h.prices = new Map([
-      ['pol_1', 100],
-      ['pol_2', 200],
-    ])
     await receivePurchaseOrder(db, ORG, USER, {
       lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
     })
@@ -362,24 +523,6 @@ describe('receivePurchaseOrder — the roll-up is settled once, not once per lin
       ['pol_1', 'pol_2'],
       expect.objectContaining({ targetAttr: 'purchase_order_line_quantity_received' })
     )
-  })
-
-  it('settles AFTER every movement, never between them', async () => {
-    const order: string[] = []
-    h.receiveSpy.mockImplementation(() => order.push('movement'))
-    h.settleSpy.mockImplementation(async () => {
-      order.push('settle')
-    })
-    h.prices = new Map([
-      ['pol_1', 100],
-      ['pol_2', 200],
-    ])
-
-    await receivePurchaseOrder(db, ORG, USER, {
-      lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
-    })
-
-    expect(order).toEqual(['movement', 'movement', 'settle'])
   })
 
   it('does not settle when the receipt was refused before writing anything', async () => {

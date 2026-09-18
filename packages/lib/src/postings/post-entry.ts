@@ -46,7 +46,7 @@ import { buildDocNumber } from './doc-number'
 import { type PostingAssertions, parsePostingDraft } from './draft'
 import { buildExportBatches } from './export/build-batches'
 import { sendExportBatch } from './export/send'
-import { avenueOfPostingType, readExportSettings } from './export-settings'
+import { avenueOfPostingType } from './export-settings'
 import {
   type ClaimHolderRow,
   type ClaimOutcome,
@@ -62,6 +62,7 @@ import {
 import { LEDGER_CURRENCY } from './ledger-currency'
 import { resolvePeriodLock } from './period-lock'
 import { assertPeriodOpen, type PeriodLock, parsePeriodKey, postingLockKey } from './periods'
+import { readExportSettings } from './read-export-settings'
 import { INVENTORY_ROLES } from './regime'
 import { loadRoleAccountCodes, type RoleSourceScope, resolveAccountLines } from './resolve-roles'
 import type {

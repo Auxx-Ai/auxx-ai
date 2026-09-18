@@ -4,6 +4,7 @@ import {
   type AnyPgColumn,
   check,
   foreignKey,
+  jsonb,
   pgTable,
   sql,
   text,
@@ -42,6 +43,10 @@ export const FinancialSourceAccount = pgTable(
     name: text(),
     /** The rail this feed settles for. Null until a person links it; a rail nothing points at is manual. */
     paymentGatewayId: text(),
+    /** T14: `auto` sends a fully paid fulfillment as a Sales Receipt, else Invoice + Payment. */
+    exportShape: text().notNull().default('auto').$type<'auto' | 'invoice'>(),
+    /** Summary mode's placeholder customer at the provider, keyed by provider id: `{ quickbooks: { customerId } }`. */
+    providerCustomerRef: jsonb().$type<Record<string, { customerId: string }>>(),
   },
   (t) => [
     unique('FinancialSourceAccount_org_id_key').on(t.organizationId, t.id),

@@ -4,7 +4,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, isNull, lt, lte, or, sql } from 'drizzle-orm'
-import { readExportSettings } from '../export-settings'
+import { readExportSettings } from '../read-export-settings'
 import { MAX_AUTO_ATTEMPTS, type SendExportBatchResult, sendExportBatch } from './send'
 
 const logger = createScopedLogger('postings:export-sweep')
@@ -54,7 +54,10 @@ export async function sweepExportBatches(
       )
     )
     .orderBy(
-      sql`${schema.ExportBatch.nextAttemptAt} ASC NULLS FIRST`,
+      // Plan 67 §5.2: a Payment waits on the invoice its `appliesTo` names, so
+      // sending in document-date order sends the invoice first without either
+      // object knowing about the other's existence.
+      sql`(${schema.ExportBatch.payload}->>'txnDate') ASC`,
       asc(schema.ExportBatch.createdAt)
     )
     .limit(limit)

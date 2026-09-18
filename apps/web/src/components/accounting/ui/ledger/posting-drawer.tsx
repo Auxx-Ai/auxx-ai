@@ -33,7 +33,6 @@ import { EntryJournal, journalLinesFromDetail } from './entry-journal'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatAuditTimestamp, formatPeriodLabel } from './format'
 import { LedgerSourceLink } from './ledger-source-link'
-import { providerBatchObjectUrl } from './post-result-callout'
 import { readStoredAssertions, readStoredReasons, readStoredSources } from './stored-draft'
 import { ExportBatchStateBadge } from './sync-queue/export-batch-badge'
 
@@ -49,11 +48,6 @@ interface PostingDrawerProps {
   currencyCode: string
   bookTimeZone: string
   providerLabel: string
-  /**
-   * Which company this workspace is connected to now - `null` when nothing is
-   * authorized. See `post-result-callout.tsx`'s {@link providerBatchObjectUrl}.
-   */
-  connectedTenantId: string | null
   /** Close this drawer and open the export queue on the batch's own tab. */
   onOpenExportQueue: (tab: ExportBatchTab) => void
   /** Reverse this posting with a memo. Owned by the caller's actions hook. */
@@ -91,7 +85,6 @@ export function PostingDrawer({
   currencyCode,
   bookTimeZone,
   providerLabel,
-  connectedTenantId,
   onOpenExportQueue,
   onReverse,
   isReversing,
@@ -301,22 +294,16 @@ export function PostingDrawer({
                   <div className='flex flex-col gap-2'>
                     <div className='flex items-center gap-2'>
                       <ExportBatchStateBadge state={exportBatch.state} size='sm' />
-                      {(() => {
-                        const url = providerBatchObjectUrl(
-                          !!connectedTenantId,
-                          exportBatch.providerObjectId
-                        )
-                        return url ? (
-                          <a
-                            href={url}
-                            target='_blank'
-                            rel='noreferrer'
-                            className='inline-flex items-center gap-1 text-primary-600 text-xs hover:underline'>
-                            {exportBatch.providerObjectId}
-                            <ExternalLink className='size-3' />
-                          </a>
-                        ) : null
-                      })()}
+                      {exportBatch.providerObjectUrl ? (
+                        <a
+                          href={exportBatch.providerObjectUrl}
+                          target='_blank'
+                          rel='noreferrer'
+                          className='inline-flex items-center gap-1 text-primary-600 text-xs hover:underline'>
+                          {exportBatch.providerObjectId}
+                          <ExternalLink className='size-3' />
+                        </a>
+                      ) : null}
                     </div>
                     {exportBatch.state === 'failed' && exportBatch.lastError && (
                       <p className='text-destructive text-xs'>{exportBatch.lastError}</p>

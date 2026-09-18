@@ -20,6 +20,8 @@ export interface ExportBatchMember {
 
 export interface ExportBatchRow {
   id: string
+  /** Which `ExternalAccountingBook` this batch was sent to - the queue's deep-link guard. */
+  bookId: string
   state: ExportBatchState
   mode: 'transaction' | 'summary'
   avenue: string
@@ -126,6 +128,7 @@ export async function listExportBatches(
         .filter((batch) => !input.month || byBatch.has(batch.id))
         .map((batch) => ({
           id: batch.id,
+          bookId: batch.bookId,
           state: batch.state,
           mode: batch.mode,
           avenue: batch.avenue,

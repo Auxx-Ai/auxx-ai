@@ -9,7 +9,7 @@ import { and, eq, isNull, lte, or } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../../errors'
 import { type ProviderObjectContext, resolveAccountingProvider } from '../provider'
-import { hashExportPayload } from './payload'
+import { hashExportPayload } from './payloads/journal'
 
 const logger = createScopedLogger('postings:export-send')
 
@@ -27,6 +27,8 @@ export type SendExportBatchStatus =
   | 'disabled'
   | 'leased_elsewhere'
   | 'failed'
+  /** A dependency - a Payment's invoice - has not sent yet (plan 67 §5.2). */
+  | 'waiting'
 
 export interface SendExportBatchResult {
   batchId: string
@@ -173,6 +175,19 @@ export async function sendExportBatch(
       const attempts = Math.max(0, batch.attempts - 1)
       await releaseOwned(db, batch, token, { state: 'ready', attempts })
       return ok({ batchId, status: result.status, attempts })
+    }
+
+    if (result.status === 'waiting') {
+      // Plan 67 §5.2: a Payment waiting on its invoice is not a fault either -
+      // it releases the lease and waits for the invoice's own batch to send,
+      // which the sweep's `txnDate, createdAt` order normally does first.
+      const attempts = Math.max(0, batch.attempts - 1)
+      await releaseOwned(db, batch, token, {
+        state: 'ready',
+        attempts,
+        lastError: result.waitingReason ?? 'Waiting for a dependency to send',
+      })
+      return ok({ batchId, status: 'waiting', attempts })
     }
 
     const read = await provider.readObject(ctx, {

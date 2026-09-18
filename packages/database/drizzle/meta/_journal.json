@@ -2647,6 +2647,13 @@
       "when": 1789697665268,
       "tag": "0377_accounting_target",
       "breakpoints": true
+    },
+    {
+      "idx": 378,
+      "version": "7",
+      "when": 1789705160683,
+      "tag": "0378_native_provider_objects",
+      "breakpoints": true
     }
   ]
 }

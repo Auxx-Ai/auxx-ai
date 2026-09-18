@@ -68,7 +68,10 @@ vi.mock('../upsert-customer', () => ({
   readQuickbooksCustomerFields: (...a: unknown[]) => readQuickbooksCustomerFields(...a),
 }))
 
-import type { ExportJournalLine, ExportJournalPayload } from '../../../postings/export/payload'
+import type {
+  ExportJournalLine,
+  ExportJournalPayload,
+} from '../../../postings/export/payloads/journal'
 import { ProviderPostError } from '../../../postings/types'
 import {
   createQuickbooksAccountingProvider,

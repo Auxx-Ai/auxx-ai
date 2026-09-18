@@ -304,6 +304,33 @@ describe('failure and backoff', () => {
     expect(sets[1]).toMatchObject({ state: 'ready', attempts: 0 })
   })
 
+  // Plan 67 §5.2: a Payment waiting on its invoice is not a fault either.
+  it('returns a waiting batch to ready without burning an attempt, recording why', async () => {
+    resolveAccountingProvider.mockResolvedValue(
+      provider({
+        sendObject: vi.fn(async () =>
+          ok({
+            status: 'waiting',
+            externalId: '',
+            remoteVersion: null,
+            providerId: 'quickbooks',
+            waitingReason: 'Waiting for invoice AUXX-INV-1 to send',
+          })
+        ),
+      })
+    )
+    const { db, sets } = fakeDb(batch({ attempts: 0 }))
+
+    const result = await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'waiting', attempts: 0 })
+    expect(sets[1]).toMatchObject({
+      state: 'ready',
+      attempts: 0,
+      lastError: 'Waiting for invoice AUXX-INV-1 to send',
+    })
+  })
+
   it('a manual retry resets the budget a person has asserted is spent for a reason', async () => {
     resolveAccountingProvider.mockResolvedValue(provider())
     const { db, sets } = fakeDb(batch({ state: 'failed', attempts: 3 }))
