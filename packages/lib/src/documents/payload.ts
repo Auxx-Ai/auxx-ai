@@ -10,6 +10,7 @@ import { stableHash } from '@auxx/utils/hash'
 import { getOrgCache } from '../cache'
 import type { ConditionGroup } from '../conditions'
 import { NotFoundError } from '../errors'
+import { firstTyped } from '../field-values/client'
 import type { FileValue } from '../field-values/converters'
 import { formatToDisplayValue } from '../field-values/formatter'
 import type { TypedFieldValueResult } from '../field-values/types'
@@ -300,14 +301,6 @@ export type DocumentPdfPayload =
   // apparent cycle (returns/evidence-pack-payload imports `loadPdfContact` from
   // this file) is erased at compile time and nothing circular exists at runtime.
   | ReturnEvidencePackPdfPayload
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /**
  * Extract a payload-safe photo list from a batched FILE field-value read (plan 37b §5) —

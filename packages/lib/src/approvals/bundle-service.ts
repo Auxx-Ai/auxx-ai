@@ -174,7 +174,7 @@ export async function listBundles(
       sql`(${schema.AiSuggestion.ownerUserId} = ${args.ownerId} OR ${schema.AiSuggestion.ownerUserId} IS NULL)`
     )
   }
-  const cursor = decodeCursor(args.cursor)
+  const cursor = decodeBundleCursor(args.cursor)
   if (cursor) {
     conditions.push(
       sql`(${schema.AiSuggestion.createdAt}, ${schema.AiSuggestion.id}) < (${cursor.createdAt}, ${cursor.id})`
@@ -191,7 +191,7 @@ export async function listBundles(
   const hasMore = rows.length > limit
   const items = hasMore ? rows.slice(0, limit) : rows
   const last = items[items.length - 1]
-  const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : undefined
+  const nextCursor = hasMore && last ? encodeBundleCursor(last.createdAt, last.id) : undefined
 
   return Result.ok({ items, nextCursor })
 }
@@ -238,11 +238,11 @@ export async function countBundles(
   return Result.ok({ count: row?.value ?? 0 })
 }
 
-function encodeCursor(createdAt: Date, id: string): string {
+function encodeBundleCursor(createdAt: Date, id: string): string {
   return Buffer.from(`${createdAt.toISOString()}|${id}`).toString('base64url')
 }
 
-function decodeCursor(cursor?: string): { createdAt: Date; id: string } | undefined {
+function decodeBundleCursor(cursor?: string): { createdAt: Date; id: string } | undefined {
   if (!cursor) return undefined
   try {
     const decoded = Buffer.from(cursor, 'base64url').toString('utf8')

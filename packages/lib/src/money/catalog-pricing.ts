@@ -13,12 +13,12 @@
 import { database, schema } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import type { TypedFieldValue } from '@auxx/types'
 import { buildFieldValueKey, type FieldId, type FieldValueKey } from '@auxx/types/field'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import type { EntityFieldChangeHandler } from '../field-hooks/types'
+import { firstTyped } from '../field-values/client'
 import { createFieldValueContext } from '../field-values/field-value-helpers'
 import { setValueWithType } from '../field-values/field-value-mutations'
 import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
@@ -239,14 +239,6 @@ async function readCurrentNumber(
 }
 
 // ─── Event value extraction (door 1 hooks) ──────────────────────────
-
-/** `EntityFieldChangeEvent.oldValue`/`newValue` is array-wrapped for RELATIONSHIP fields. */
-function firstTyped(value: unknown): TypedFieldValue | undefined {
-  if (value == null) return undefined
-  return Array.isArray(value)
-    ? (value[0] as TypedFieldValue | undefined)
-    : (value as TypedFieldValue)
-}
 
 function relationshipEntityInstanceId(value: unknown): string | null {
   const typed = firstTyped(value)

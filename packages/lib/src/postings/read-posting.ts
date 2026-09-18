@@ -53,6 +53,8 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toDateKey, toIso } from '@auxx/utils/calendar-day'
+import { toMinor } from '@auxx/utils/currency'
 import { and, asc, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, NotFoundError } from '../errors'
@@ -179,49 +181,6 @@ export async function getPosting(
     logger.error('Failed to read posting', { error, organizationId, glPostingId: id })
     return err(new AuxxError('Internal error'))
   }
-}
-
-/**
- * Serialise a timestamp column to ISO, tolerating a driver that already did.
- *
- * Drizzle maps `timestamp` to a `Date`, but a stub, a raw pool and a future
- * driver setting can all hand back the string form. Both arrive here rather than
- * at four call sites, and an unparseable value becomes `null` rather than the
- * string `'Invalid Date'`, which a screen would render as though it were a time.
- */
-function toIso(value: Date | string | null): string | null {
-  if (value === null || value === undefined) return null
-  if (typeof value === 'string') return value
-  const time = value.getTime()
-  return Number.isNaN(time) ? null : value.toISOString()
-}
-
-/**
- * Keep a Postgres `date` as `YYYY-MM-DD`.
- *
- * Drizzle's `date()` is string-mode, so this is a pass-through in production.
- * The `Date` branch exists because the accounting date must never acquire a time
- * and a zone on its way to a browser: `new Date('2026-08-31').toISOString()` in
- * a negative-offset zone renders as August 30, and a month-end entry dated the
- * previous month is the one presentation bug a bookkeeper cannot argue with.
- * `toISOString().slice(0, 10)` is UTC by definition, which is what the column
- * already means.
- */
-function toDateKey(value: Date | string): string {
-  if (typeof value === 'string') return value
-  return value.toISOString().slice(0, 10)
-}
-
-/**
- * Coerce a `bigint`-backed amount to integer minor units.
- *
- * `bigint({ mode: 'number' })` crosses the wire as a number through Drizzle, but
- * an aggregate or a raw driver read hands back the `numeric` string form. Same
- * reasoning as `verify-balance.ts`'s `toMinor`: handle both in one place rather
- * than trusting the driver at every field.
- */
-function toMinor(value: string | number): number {
-  return typeof value === 'number' ? value : Number(value)
 }
 
 /**

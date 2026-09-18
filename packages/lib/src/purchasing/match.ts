@@ -1,5 +1,6 @@
 // packages/lib/src/purchasing/match.ts
 
+import { toDateKey } from '@auxx/utils/calendar-day'
 import { isAtPrecision, minorToMajorString, RATE_DECIMALS } from '@auxx/utils/currency'
 import { BadRequestError } from '../errors'
 import { roundCents } from '../money/totals'
@@ -339,17 +340,6 @@ export function matchBill(
 }
 
 /**
- * A date as `YYYY-MM-DD`, UTC.
- *
- * These strings are STORED on the record (`vendor_bill_match_notes`), so they get
- * the same treatment the money in them gets: no locale, no timezone, no symbol —
- * a format that cannot become wrong later because the reader's settings changed.
- */
-function isoDate(value: Date): string {
-  return value.toISOString().slice(0, 10)
-}
-
-/**
  * One reason, as a human reads it in the exception queue. Line numbers are
  * 1-based here and 0-based in `MatchReason.lineIndex` — the queue is read by
  * someone holding the paper invoice, where the first line is line 1.
@@ -376,7 +366,7 @@ export function describeMatchReason(reason: MatchReason, currencyCode = 'USD'): 
   const money = (value: number) => minorToMajorString(Math.round(value), currencyCode)
   switch (reason.code) {
     case 'receipt_overdue':
-      return `Line ${line}: billed ${reason.quantityBilled} but only ${reason.quantityReceived} received, more than ${reason.graceDays} days past the expected ${isoDate(reason.expectedAt)}`
+      return `Line ${line}: billed ${reason.quantityBilled} but only ${reason.quantityReceived} received, more than ${reason.graceDays} days past the expected ${toDateKey(reason.expectedAt)}`
     case 'quantity_under_billed':
       return `Line ${line}: billed ${reason.quantityBilled} against ${reason.quantityReceived} received`
     case 'price_variance':
@@ -411,7 +401,7 @@ export function describeAwaitingLine(awaiting: AwaitingLine): string {
   const line = awaiting.lineIndex + 1
   const outstanding = awaiting.quantityBilled - awaiting.quantityReceived
   const when = awaiting.expectedAt
-    ? `expected ${isoDate(awaiting.expectedAt)}`
+    ? `expected ${toDateKey(awaiting.expectedAt)}`
     : 'no expected date on the order'
   return `Line ${line}: awaiting receipt of ${outstanding} of ${awaiting.quantityBilled} billed (${when})`
 }

@@ -13,16 +13,11 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId } from '@auxx/types/resource'
 import type { EntityFieldChangeHandler } from '../field-hooks/types'
+import { firstTyped } from '../field-values/client'
 import { enrollInvoiceSentSequences, enrollWorkOrderCompletedSequences } from './hooks'
 import { reanchorSequenceRuns } from './reanchor'
 
 const logger = createScopedLogger('sequences-field-change-hooks')
-
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 function extractStringValue(value: unknown): string | undefined {
   const typed = firstTyped(value as TypedFieldValue | TypedFieldValue[] | undefined)

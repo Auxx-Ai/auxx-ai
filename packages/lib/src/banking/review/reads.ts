@@ -19,15 +19,17 @@
  */
 
 import { type Database, schema } from '@auxx/database'
+import { toDate, toDateKey } from '@auxx/utils/calendar-day'
 import { and, desc, eq, gte, inArray, isNull, lte, or, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { NotFoundError, UnprocessableEntityError } from '../../errors'
+import { valueJoin } from '../../field-values/read-kit'
 import { loadChartAccountsById } from '../../postings/chart-accounts'
 import { listPostingsForSource } from '../../postings/list-postings'
 import { toRecordId } from '../../resources/resource-id'
-import { type BankAccountRow, toDateKey } from '../client'
+import type { BankAccountRow } from '../client'
 import { guard } from '../guard'
 import { listBankAccounts, readCoverage } from '../reads'
 import {
@@ -174,24 +176,6 @@ export interface ListForReviewFilters {
   amountMax?: number
   limit?: number
   offset?: number
-}
-
-/**
- * An aliased `FieldValue` table, as `alias()` returns it.
- *
- * Copied from `money/bank-deposits/reads.ts` for the reason its comment gives:
- * composing with `eq` against the alias OBJECT makes drizzle emit the table as
- * an identifier, where a hand-written `sql` fragment interpolating it binds it
- * as a parameter - a mistake this codebase has already paid for.
- */
-type FieldValueAlias = ReturnType<typeof alias<typeof schema.FieldValue, string>>
-
-function valueJoin(table: FieldValueAlias, fieldId: string): SQL | undefined {
-  return and(
-    eq(table.entityId, schema.EntityInstance.id),
-    eq(table.organizationId, schema.EntityInstance.organizationId),
-    eq(table.fieldId, fieldId)
-  )
 }
 
 /**
@@ -1287,13 +1271,6 @@ function narrowReviewStatus(value: string | null | undefined): ReviewStatus {
  */
 function narrowBankStatus(value: string | null | undefined): BankStatus {
   return value === 'pending' || value === 'void' ? value : 'posted'
-}
-
-/** `FieldValue.valueDate` is a `mode: 'string'` timestamp; the read models hold `Date`. */
-function toDate(value: string | null | undefined): Date | null {
-  if (!value) return null
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
 function narrowMatchRecordType(value: string | null | undefined): MatchedRecordType | null {

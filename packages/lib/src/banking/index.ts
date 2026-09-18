@@ -34,7 +34,6 @@ export {
   resolveBankAccountStatus,
   resolveBankAccountType,
   shiftDateKey,
-  toDateKey,
 } from './client'
 // ── The Stripe Financial Connections feed (HANDOFF slot 3A) ───────────────────
 //

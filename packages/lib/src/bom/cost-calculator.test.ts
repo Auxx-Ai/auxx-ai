@@ -19,7 +19,7 @@ const h = vi.hoisted(() => ({
   // The schedule read behind a classified offer (task 30 §1). Keyed by
   // `tariff_code` instance id; empty unless a test loads one.
   loadTariffSchedule: vi.fn(async () => new Map<string, unknown[]>()),
-  readBookTimeZone: vi.fn(async () => 'UTC'),
+  readBookTimeZoneOrUtc: vi.fn(async () => 'UTC'),
 }))
 
 function nextRows(): unknown[] {
@@ -106,7 +106,10 @@ vi.mock('../money/catalog-pricing', () => ({
 
 vi.mock('./tariff-schedule', () => ({
   loadTariffSchedule: h.loadTariffSchedule,
-  readBookTimeZone: h.readBookTimeZone,
+}))
+
+vi.mock('../postings/book-time-zone', () => ({
+  readBookTimeZoneOrUtc: h.readBookTimeZoneOrUtc,
 }))
 
 import {
@@ -668,7 +671,7 @@ describe('loadOrgPricingData — the tariff schedule (task 30 §1)', () => {
     const { vendorPrices } = await loadOrgPricingData(ORG)
 
     expect(h.loadTariffSchedule).toHaveBeenCalledTimes(1)
-    expect(h.readBookTimeZone).toHaveBeenCalledWith(ORG)
+    expect(h.readBookTimeZoneOrUtc).toHaveBeenCalledWith(ORG)
     expect(vendorPrices).toEqual([expect.objectContaining({ id: 'vp_motor', tariffRate: 27 })])
   })
 
@@ -693,7 +696,7 @@ describe('loadOrgPricingData — the tariff schedule (task 30 §1)', () => {
     queue(vendorPartRows('vp_motor', MOTOR, 1999), [], [])
     await loadOrgPricingData(ORG)
     expect(h.loadTariffSchedule).not.toHaveBeenCalled()
-    expect(h.readBookTimeZone).not.toHaveBeenCalled()
+    expect(h.readBookTimeZoneOrUtc).not.toHaveBeenCalled()
   })
 
   it('a classified offer whose code has no rows resolves to no duty, not to a failure', async () => {

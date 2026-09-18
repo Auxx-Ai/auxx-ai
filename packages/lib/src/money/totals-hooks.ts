@@ -2,7 +2,6 @@
 
 import { type Database, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
@@ -10,6 +9,7 @@ import { getOrgCache } from '../cache'
 import { isFieldConnectorManaged } from '../data-connectors/managed-fields'
 import { BadRequestError } from '../errors'
 import type { EntityFieldChangeHandler, EntityPostDeleteHandler } from '../field-hooks/types'
+import { firstTyped } from '../field-values/client'
 import { FieldValueService } from '../field-values/field-value-service'
 import { readFieldScalars } from '../field-values/read-field-scalars'
 import { UnifiedCrudHandler } from '../resources/crud'
@@ -36,14 +36,6 @@ import type {
 } from './types'
 
 const logger = createScopedLogger('money:totals-hooks')
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /**
  * Fields on `line-items` whose write should trigger a recompute (money MQ1 build

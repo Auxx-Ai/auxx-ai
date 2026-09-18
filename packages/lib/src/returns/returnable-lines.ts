@@ -12,10 +12,11 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, asc, eq, inArray, isNull, type SQL } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
+import { valueJoin } from '../field-values/read-kit'
 import { type RecordId, toRecordId } from '../resources/resource-id'
 import { guard } from './guard'
 import { readReturnCeiling, readReturnedQuantityClaims } from './reads'
@@ -270,22 +271,4 @@ async function readPartNames(
     if (row.title != null) names.set(row.partId, row.title)
   }
   return names
-}
-
-/** An aliased `FieldValue` table, as `alias()` returns it. */
-type FieldValueAlias = ReturnType<typeof alias<typeof schema.FieldValue, string>>
-
-/**
- * Join predicate for "this instance's value of <field>".
- *
- * Copied from `reads.ts` rather than imported: it is not exported there, and
- * duplicating three lines is cheaper than widening that module's surface for
- * one caller.
- */
-function valueJoin(table: FieldValueAlias, fieldId: string): SQL | undefined {
-  return and(
-    eq(table.entityId, schema.EntityInstance.id),
-    eq(table.organizationId, schema.EntityInstance.organizationId),
-    eq(table.fieldId, fieldId)
-  )
 }

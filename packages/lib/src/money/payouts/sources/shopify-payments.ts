@@ -43,6 +43,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, eq, isNull } from 'drizzle-orm'
 import { type AppToolContext, resolveAppToolContext } from '../../../apps/invoke-app-tool'
 import { BadRequestError, ForbiddenError, UnprocessableEntityError } from '../../../errors'
@@ -163,7 +164,7 @@ async function resolveContexts(
 
 /** Every payout dated on or after `since`, oldest first (the tool sorts by date, then id). */
 async function listPayouts(ctx: PayoutSourceCtx, since: Date): Promise<PayoutHeader[]> {
-  const output = await callShopifyTool(ctx, LIST_PAYOUTS_TOOL, { since: toIsoDay(since) })
+  const output = await callShopifyTool(ctx, LIST_PAYOUTS_TOOL, { since: toDateKey(since) })
   const payouts = collectionOf<ShopifyPayoutRecord>(output, 'payouts', LIST_PAYOUTS_TOOL)
   return payouts.map(toHeader)
 }
@@ -304,11 +305,6 @@ function collectionOf<T>(output: unknown, key: string, toolId: string): T[] {
     )
   }
   return collection as T[]
-}
-
-/** The pipeline hands a `Date`; the tool wants Shopify's inclusive `YYYY-MM-DD` floor, in UTC. */
-function toIsoDay(date: Date): string {
-  return date.toISOString().slice(0, 10)
 }
 
 /** The Shopify Payments source, registered by `money/payout-sources.ts`. */

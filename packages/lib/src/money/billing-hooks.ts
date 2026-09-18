@@ -1,7 +1,6 @@
 // packages/lib/src/money/billing-hooks.ts
 
 import { database, schema } from '@auxx/database'
-import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -13,6 +12,7 @@ import type {
   EntityPreDeleteHandler,
   FieldPreHookHandler,
 } from '../field-hooks'
+import { firstTyped } from '../field-values/client'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { assertBillingConfigurationCompatible } from './billing-config'
 // Only the (never-registered) `syncBillingOnContactChange` still calls a projector
@@ -84,12 +84,6 @@ const INVOICE_BILLING_TRIGGER_ATTRS = new Set([
   'invoice_balance',
   'invoice_total',
 ])
-
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 function scalar(value: unknown): unknown {
   if (Array.isArray(value)) return scalar(value[0])

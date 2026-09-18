@@ -24,11 +24,11 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toDateKey } from '@auxx/utils/calendar-day'
 import { err, type Result } from 'neverthrow'
 import { BadRequestError, NotFoundError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
-import { toDateKey } from '../client'
 import { codeTransaction, excludeTransaction, transferTransaction } from '../review/writes'
 import {
   BANK_RULE_ACTIONS,

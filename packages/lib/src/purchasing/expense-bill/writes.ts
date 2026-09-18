@@ -33,11 +33,13 @@
 import { type Database, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
+import { calendarDayToInstant } from '@auxx/utils/calendar-day'
 import { getEntityDefIdResolver } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { readAutoPostMode } from '../../postings/auto-post'
+import { todayInBookTimeZone } from '../../postings/book-time-zone'
 import {
   type BuiltExpenseBillEntry,
   buildExpenseBillEntry,
@@ -47,12 +49,9 @@ import {
 import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { listPostingsForSource } from '../../postings/list-postings'
 import { resolvePeriodLock } from '../../postings/period-lock'
-import { periodKeyForDate } from '../../postings/periods'
 import { LEDGER_CURRENCY, postEntry, previewEntry } from '../../postings/post-entry'
 import { reverseEntry } from '../../postings/reverse-entry'
-import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
 import type { EntryPreview, PostResult } from '../../postings/types'
-import { getOrganizationSetting } from '../../settings/settings-service'
 import {
   loadVendorBillLines,
   requireVendorBill,
@@ -79,27 +78,6 @@ const POSTABLE_BILL_STATUSES: ReadonlySet<string> = new Set([
 ])
 
 const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/
-
-/** Today, in the org's own book time zone - falls back to UTC while setup is incomplete. */
-async function todayInBookTimeZone(organizationId: string): Promise<string> {
-  const raw = await getOrganizationSetting({
-    organizationId,
-    key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
-  })
-  const bookTimeZone = typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'UTC'
-  return periodKeyForDate(new Date(), 'day', bookTimeZone)
-}
-
-/**
- * A calendar day written into a DATETIME field.
- *
- * Noon UTC rather than midnight, so the instant renders as the SAME calendar day
- * in every zone from UTC-12 to UTC+11. The ledger reads only the day back
- * (`reads.ts` slices it), so the hour carries no meaning beyond display.
- */
-function calendarDayToInstant(day: string): string {
-  return `${day}T12:00:00.000Z`
-}
 
 /**
  * A writer for the bill's own fields.

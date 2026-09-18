@@ -21,6 +21,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { startOfDayInstant } from '@auxx/utils/calendar-day'
+import { toMinor } from '@auxx/utils/currency'
 import { and, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
@@ -328,8 +329,4 @@ async function loadCompany1099Info(
     })
   }
   return result
-}
-
-function toMinor(value: string | number): number {
-  return typeof value === 'number' ? value : Number(value)
 }

@@ -13,6 +13,7 @@
 
 import { type Database, database, schema } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
+import { calendarDayToInstant } from '@auxx/utils/calendar-day'
 import { and, count, eq } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
@@ -24,6 +25,7 @@ import {
 } from '../../payment-gateways/client'
 import { listPaymentGateways } from '../../payment-gateways/reads'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
+import { todayInBookTimeZone } from '../../postings/book-time-zone'
 import {
   type BuiltCreditMemoEntry,
   buildCreditMemoEntry,
@@ -31,9 +33,7 @@ import {
 } from '../../postings/build-credit-memo-entry'
 import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { resolvePeriodLock } from '../../postings/period-lock'
-import { periodKeyForDate } from '../../postings/periods'
 import { LEDGER_CURRENCY, previewEntry } from '../../postings/post-entry'
-import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
 import type { EntryPreview, PostResult } from '../../postings/types'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { getOrganizationSetting } from '../../settings/settings-service'
@@ -59,31 +59,10 @@ import { CREDIT_MEMO_STATUS_BYPASS, settleCreditMemo } from './settle'
 
 const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/
 
-/** Today, in the org's own book time zone - falls back to UTC while setup is incomplete. */
-async function todayInBookTimeZone(organizationId: string): Promise<string> {
-  const raw = await getOrganizationSetting({
-    organizationId,
-    key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
-  })
-  const bookTimeZone = typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'UTC'
-  return periodKeyForDate(new Date(), 'day', bookTimeZone)
-}
-
 /** The org's document currency, or the ledger's when the setting is blank. */
 async function organizationCurrency(organizationId: string): Promise<string> {
   const raw = await getOrganizationSetting({ organizationId, key: 'organization.currency' })
   return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : LEDGER_CURRENCY
-}
-
-/**
- * A calendar day written into a DATETIME field.
- *
- * Noon UTC rather than midnight, so the instant renders as the SAME calendar day
- * in every zone from UTC-12 to UTC+11. The ledger reads only the day back
- * (`reads.ts` slices it), so the hour carries no meaning beyond display.
- */
-function calendarDayToInstant(day: string): string {
-  return `${day}T12:00:00.000Z`
 }
 
 /** A writer for the fields the status wall protects. Mirrors `settle.ts`'s. */

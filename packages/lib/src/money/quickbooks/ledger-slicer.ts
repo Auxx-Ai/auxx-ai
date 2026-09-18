@@ -41,11 +41,11 @@ const TOOL_GET_GENERAL_LEDGER = 'get_quickbooks_general_ledger'
  */
 const CURSOR_SEPARATOR = '..'
 
-function encodeCursor(monthStart: string, rangeEnd: string): SyncCursor {
+function encodeLedgerSliceCursor(monthStart: string, rangeEnd: string): SyncCursor {
   return { kind: 'token', value: `${monthStart}${CURSOR_SEPARATOR}${rangeEnd}` }
 }
 
-function decodeCursor(cursor: SyncCursor): { monthStart: string; rangeEnd: string } {
+function decodeLedgerSliceCursor(cursor: SyncCursor): { monthStart: string; rangeEnd: string } {
   const [monthStart, rangeEnd] = cursor.value.split(CURSOR_SEPARATOR)
   if (!monthStart || !rangeEnd) {
     throw new UnprocessableEntityError(
@@ -87,14 +87,14 @@ class QuickbooksLedgerSlicer implements ProviderLedgerSlicer {
   readonly kind = 'ranged' as const
 
   firstCursor(range: ProviderSyncRange): SyncCursor {
-    return encodeCursor(range.from, range.to)
+    return encodeLedgerSliceCursor(range.from, range.to)
   }
 
   async fetchBatch(
     orgId: string,
     cursor: SyncCursor
   ): Promise<Result<ProviderLedgerBatch | null, Error>> {
-    const { monthStart, rangeEnd } = decodeCursor(cursor)
+    const { monthStart, rangeEnd } = decodeLedgerSliceCursor(cursor)
     const chunk = monthChunk(monthStart, rangeEnd)
     if (!chunk) {
       return err(
@@ -142,7 +142,7 @@ class QuickbooksLedgerSlicer implements ProviderLedgerSlicer {
     return ok({
       ledger,
       hasMore,
-      nextCursor: hasMore ? encodeCursor(nextDay(chunk.to), rangeEnd) : undefined,
+      nextCursor: hasMore ? encodeLedgerSliceCursor(nextDay(chunk.to), rangeEnd) : undefined,
     })
   }
 }

@@ -98,10 +98,11 @@ import { alias } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
 import { AuxxError, BadRequestError, NotFoundError } from '../errors'
+import { readBookTimeZoneOrUtc } from '../postings/book-time-zone'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { loadTariffMemberships } from './tariff-301-memberships'
 import { findHtsGeneral, loadHtsGeneral } from './tariff-hts-general'
-import { loadTariffSchedule, readBookTimeZone } from './tariff-schedule'
+import { loadTariffSchedule } from './tariff-schedule'
 import {
   expandTariffStarter,
   type StarterAction,
@@ -402,7 +403,7 @@ export async function planTariffResync(
     ),
     loadHtsGeneral(),
     loadTariffMemberships(),
-    readBookTimeZone(organizationId),
+    readBookTimeZoneOrUtc(organizationId),
   ])
   const now = deps?.now ?? new Date()
 

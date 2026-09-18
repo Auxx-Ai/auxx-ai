@@ -18,9 +18,10 @@ import { type Database, schema } from '@auxx/database'
 import { and, desc, eq, gte, inArray, isNull, lte, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { loadTariffSchedule, readBookTimeZone } from '../bom/tariff-schedule'
+import { loadTariffSchedule } from '../bom/tariff-schedule'
 import { resolveOfferTariff } from '../bom/vendor-cost'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
+import { readBookTimeZoneOrUtc } from '../postings/book-time-zone'
 import type { ReceiptCostInputs } from './client'
 import { guard } from './guard'
 import type { ListReceiptsFilters, ReceiptRow } from './types'
@@ -427,7 +428,7 @@ async function resolveScheduledRate(
 
   const [schedule, timeZone] = await Promise.all([
     loadTariffSchedule(db, organizationId, [tariffCodeId]),
-    readBookTimeZone(organizationId),
+    readBookTimeZoneOrUtc(organizationId),
   ])
   return resolveOfferTariff({ tariffRate: null, tariffCodeId }, schedule, atDate, timeZone).rate
 }

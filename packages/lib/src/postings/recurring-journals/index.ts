@@ -8,7 +8,6 @@
 // this barrel: the writes pull `UnifiedCrudHandler` and the whole server graph
 // behind it.
 
-export { readBookTimeZone } from './book-time-zone'
 export {
   planRecurringOccurrences,
   RECURRING_JOURNAL_DOC_PREFIX,

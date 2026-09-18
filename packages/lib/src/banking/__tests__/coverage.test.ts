@@ -8,6 +8,7 @@
 //
 // So it is tested exhaustively and with no database. Everything here is pure.
 
+import { toDateKey } from '@auxx/utils/calendar-day'
 import { describe, expect, it } from 'vitest'
 import {
   COVERAGE_GAP_DAYS,
@@ -15,7 +16,6 @@ import {
   daysBetween,
   mergeCoverageGaps,
   shiftDateKey,
-  toDateKey,
 } from '../client'
 
 describe('date-key arithmetic', () => {

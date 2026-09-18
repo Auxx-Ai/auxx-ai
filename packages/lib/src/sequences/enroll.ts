@@ -10,7 +10,6 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
@@ -18,6 +17,7 @@ import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { getOrgCache } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
+import { firstTyped } from '../field-values/client'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { startSystemWorkflowRun } from '../workflows/system-workflow-run'
 import { SEQUENCE_ENROLL_MAX_RECIPIENTS } from './client'
@@ -25,14 +25,6 @@ import { isSuppressed, normalizeEmail } from './suppression'
 import type { EnrollRecipientResult, EnrollRecipientsInput } from './types'
 
 const logger = createScopedLogger('sequences-enroll')
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /**
  * Enroll up to 50 recipients (contacts) into a published, enabled sequence.

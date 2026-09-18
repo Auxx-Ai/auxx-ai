@@ -12,6 +12,8 @@
 // No permission checks here. The router asserts (docs/lib-module-guide.md §6).
 
 import { type Database, schema } from '@auxx/database'
+import { toDateKey } from '@auxx/utils/calendar-day'
+import { toMinor } from '@auxx/utils/currency'
 import {
   and,
   asc,
@@ -178,24 +180,6 @@ export async function readOurPostedEntries(
 /** The payload's own accounting date, compared as the string it is stored as. */
 function inRangeByPayloadDate(from: string, to: string): SQL {
   return sql`${schema.ExportBatch.payload}->>'txnDate' BETWEEN ${from} AND ${to}`
-}
-
-/**
- * Keep a Postgres `date` as `YYYY-MM-DD`.
- *
- * Drizzle's `date()` is string-mode, so this is a pass-through in production.
- * The `Date` branch exists because the accounting date must never acquire a
- * time and a zone: `new Date('2026-08-31')` read through a local getter renders
- * as August 30 west of Greenwich, and §5.3's range test is a string compare
- * against exactly this value.
- */
-function toDateKey(value: Date | string): string {
-  return typeof value === 'string' ? value : value.toISOString().slice(0, 10)
-}
-
-/** `bigint({ mode: 'number' })` crosses as a number through Drizzle and as a string through a raw driver. */
-function toMinor(value: string | number): number {
-  return typeof value === 'number' ? value : Number(value)
 }
 
 /** The `ExternalAccountingBook` the org's active connection points at, or null. */

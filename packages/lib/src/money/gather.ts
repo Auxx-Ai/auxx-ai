@@ -9,6 +9,7 @@ import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
+import { firstTyped } from '../field-values/client'
 import type { FileValue } from '../field-values/converters'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
@@ -32,14 +33,6 @@ import type {
   UninvoicedLine,
 } from './types'
 import type { LineItemUnit } from './units'
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /**
  * Unwrap a `getFieldValues()` map entry for a FILE field into its raw `{ ref, caption?,

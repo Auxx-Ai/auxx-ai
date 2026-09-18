@@ -1,6 +1,6 @@
 // packages/lib/src/purchasing/allocate-landed-cost.ts
 
-import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
+import { isAtPrecision, RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 import { BadRequestError } from '../errors'
 import { roundCents } from '../money/totals'
 import type { AllocationBasis, AllocationHeader, AllocationLine } from './types'
@@ -19,8 +19,9 @@ import type { AllocationBasis, AllocationHeader, AllocationLine } from './types'
 
 const BASES: readonly AllocationBasis[] = ['value', 'quantity', 'weight']
 
+// `isAtPrecision(value)` with no decimals is `Number.isFinite && Number.isInteger`; this wraps it in the AuxxError this file's callers need (`@auxx/utils` can't throw one).
 function assertMinorUnits(value: number, label: string): void {
-  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+  if (!isAtPrecision(value)) {
     throw new BadRequestError(`${label} must be an integer amount in minor units`)
   }
 }

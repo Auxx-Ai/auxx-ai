@@ -4,10 +4,12 @@ import { describe, expect, it } from 'vitest'
 import {
   addDaysToDayKey,
   addMonthsToDayKey,
+  calendarDayToInstant,
   dayKeyInZone,
   dayKeyOfLocalDate,
   daysBetween,
   endOfMonthDay,
+  isDayKeyShape,
   localDateOfDayKey,
   monthKeyOfDay,
   monthsBetween,
@@ -16,7 +18,11 @@ import {
   startOfDayInstant,
   startOfMonthDay,
   startOfMonthInstant,
+  toCalendarDay,
+  toDate,
+  toDateKey,
   todayInZone,
+  toIso,
 } from '../calendar-day'
 
 describe('calendar arithmetic', () => {
@@ -111,5 +117,50 @@ describe('calendar widgets', () => {
     expect(dayKeyOfLocalDate(localDateOfDayKey('2026-09-16'))).toBe('2026-09-16')
     expect(dayKeyOfLocalDate(localDateOfDayKey('2026-01-01'))).toBe('2026-01-01')
     expect(dayKeyOfLocalDate(localDateOfDayKey('2026-12-31'))).toBe('2026-12-31')
+  })
+})
+
+describe('loose parsing (a value read off a row)', () => {
+  it('toDateKey: slices a Date to its UTC day, and passes a string through unsliced', () => {
+    expect(toDateKey(new Date('2026-01-31T23:59:59.999Z'))).toBe('2026-01-31')
+    expect(toDateKey('2026-01-31')).toBe('2026-01-31')
+    expect(toDateKey('2026-01-31T19:00:00.000-05:00')).toBe('2026-01-31')
+  })
+
+  it('toDate: a Date, an ISO string, or garbage, as a Date or null', () => {
+    const date = new Date('2026-01-31T00:00:00.000Z')
+    expect(toDate(date)).toBe(date)
+    expect(toDate('2026-01-31T00:00:00.000Z')?.toISOString()).toBe('2026-01-31T00:00:00.000Z')
+    expect(toDate('')).toBeNull()
+    expect(toDate(null)).toBeNull()
+    expect(toDate(undefined)).toBeNull()
+    expect(toDate(new Date('nonsense'))).toBeNull()
+  })
+
+  it('toIso: a Date or an already-ISO string, as an ISO string or null', () => {
+    expect(toIso(new Date('2026-01-31T00:00:00.000Z'))).toBe('2026-01-31T00:00:00.000Z')
+    expect(toIso('2026-01-31T00:00:00.000Z')).toBe('2026-01-31T00:00:00.000Z')
+    expect(toIso(null)).toBeNull()
+    expect(toIso(undefined)).toBeNull()
+    expect(toIso(new Date('nonsense'))).toBeNull()
+  })
+
+  it('toCalendarDay: an ISO instant string sliced to its day, null below 10 chars or non-string', () => {
+    expect(toCalendarDay('2026-01-31T00:00:00.000Z')).toBe('2026-01-31')
+    expect(toCalendarDay('2026-01-31')).toBe('2026-01-31')
+    expect(toCalendarDay('2026-01')).toBeNull()
+    expect(toCalendarDay(null)).toBeNull()
+    expect(toCalendarDay(undefined)).toBeNull()
+  })
+
+  it('calendarDayToInstant: noon UTC, so no zone renders the adjacent day', () => {
+    expect(calendarDayToInstant('2026-01-31')).toBe('2026-01-31T12:00:00.000Z')
+  })
+
+  it('isDayKeyShape: shape only, not calendar validity', () => {
+    expect(isDayKeyShape('2026-01-31')).toBe(true)
+    expect(isDayKeyShape('2026-13-40')).toBe(true)
+    expect(isDayKeyShape('2026-01')).toBe(false)
+    expect(isDayKeyShape('not-a-date')).toBe(false)
   })
 })

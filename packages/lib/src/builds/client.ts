@@ -10,7 +10,7 @@
  * (`docs/lib-module-guide.md` section 7).
  */
 
-import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
+import { roundMinorUnits } from '@auxx/utils/currency'
 import type { AbsorptionRates } from './types'
 
 /** The three values `part_kind` can hold. Mirrors `PartKind` in the registry. */
@@ -52,23 +52,6 @@ export function resolvePartKind(raw: string | null | undefined): PartKindValue {
  */
 export function absorbsConversionCost(partKind: PartKindValue): boolean {
   return BUILT_PART_KINDS.has(partKind)
-}
-
-/**
- * Round a money value to a RATE field's precision (`RATE_DECIMALS`).
- *
- * 🛑 For RATES ONLY - a standard cost, an absorption rate, a per-part
- * override. `CURRENCY` is cents in a `doublePrecision` column and
- * `computeLandedCost` can emit a fractional-cent tariff term (Gap C section
- * 1.7, R11), so a rate is kept at five major-unit places rather than
- * collapsed to a whole minor unit - rates never round, only amounts do. An
- * AMOUNT (an absorbed run cost, a produced value, anything posted) must round
- * to a whole minor unit with `Math.round` directly, never through this
- * function: the write guard on a CURRENCY field checks the field's declared
- * precision, and an amount field's precision is the currency's exponent.
- */
-export function roundMinorUnits(value: number): number {
-  return roundMinor(value, RATE_DECIMALS)
 }
 
 /**

@@ -19,11 +19,11 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
-import { toDateKey } from '../client'
 import { loadBankAccountFieldContext, loadBankTransactionFieldContext } from '../reads'
 
 const logger = createScopedLogger('banking-feed')

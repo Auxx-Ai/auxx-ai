@@ -182,10 +182,10 @@ function evidenceDay(row: Pick<Transfer, 'occurredOn' | 'occurredAt'>): string |
  * no relation to that order — so an id-only cursor cannot say where in the sort
  * the previous page stopped.
  */
-const encodeCursor = (row: Pick<Transfer, 'id' | 'occurredOn' | 'occurredAt'>) =>
+const encodePayoutCursor = (row: Pick<Transfer, 'id' | 'occurredOn' | 'occurredAt'>) =>
   `${evidenceDay(row) ?? ''}|${row.id}`
 
-function decodeCursor(raw: string): { day: string | null; id: string } {
+function decodePayoutCursor(raw: string): { day: string | null; id: string } {
   const split = raw.indexOf('|')
   const day = split === -1 ? '' : raw.slice(0, split)
   const id = split === -1 ? '' : raw.slice(split + 1)
@@ -218,7 +218,7 @@ export async function listPayoutEvidence(db: Database, input: PageInput & Eviden
     .where(
       and(
         eq(schema.MoneyTransfer.organizationId, input.organizationId),
-        input.cursor ? afterCursor(decodeCursor(input.cursor)) : undefined,
+        input.cursor ? afterCursor(decodePayoutCursor(input.cursor)) : undefined,
         search ? sql`${schema.MoneyTransfer.externalId} ILIKE ${`%${search}%`}` : undefined,
         input.sourceAccountId
           ? eq(schema.MoneyTransfer.sourceAccountId, input.sourceAccountId)
@@ -239,7 +239,7 @@ export async function listPayoutEvidence(db: Database, input: PageInput & Eviden
     items: rows
       .slice(0, limit)
       .map(({ transfer, account, snapshot }) => transferDto(transfer, account, snapshot)),
-    nextCursor: rows.length > limit ? encodeCursor(rows[limit - 1]!.transfer) : null,
+    nextCursor: rows.length > limit ? encodePayoutCursor(rows[limit - 1]!.transfer) : null,
   }
 }
 

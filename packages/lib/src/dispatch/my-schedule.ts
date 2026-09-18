@@ -18,6 +18,7 @@ import { and, asc, eq, gte, inArray, lt } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { resolveDocumentSettings } from '../documents'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
+import { firstTyped } from '../field-values/client'
 import { createVisitInvoice } from '../money/billing-commands'
 import { computeWorkOrderBillingProjection } from '../money/billing-projection'
 import { UnifiedCrudHandler } from '../resources/crud'
@@ -27,14 +28,6 @@ import { getWorkOrderProjections } from './work-order-fields'
 import { resolveUserWorkerIds } from './workers'
 
 type WorkOrderVisitRow = typeof schema.WorkOrderVisit.$inferSelect
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /**
  * Load a visit and enforce the assignee guard (08 §6, 45-teams.md §5.3) — a worker touches only

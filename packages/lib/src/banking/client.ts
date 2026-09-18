@@ -108,11 +108,6 @@ export const COVERAGE_GAP_DAYS = 7
 
 const MS_PER_DAY = 86_400_000
 
-/** `YYYY-MM-DD` for a Date or an ISO string, in UTC. Never a locale format. */
-export function toDateKey(value: Date | string): string {
-  return (typeof value === 'string' ? value : value.toISOString()).slice(0, 10)
-}
-
 /** Parse a `YYYY-MM-DD` key to the UTC epoch millis of its midnight. */
 function dateKeyToUtc(key: string): number {
   return Date.parse(`${key}T00:00:00.000Z`)

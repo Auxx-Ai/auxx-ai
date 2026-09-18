@@ -34,6 +34,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../cache'
 import { NotFoundError } from '../errors'
+import { valueJoin } from '../field-values/read-kit'
 import { type RecordId, toRecordId } from '../resources/resource-id'
 import {
   loadReturnFieldContext,
@@ -742,25 +743,6 @@ function resolveStatusFilter(filters: ListReturnsFilters): readonly ReturnStatus
   if (!filters.creditedNotInspected) return filters.status
   if (!filters.status) return PRE_INSPECTION_RETURN_STATUSES
   return filters.status.filter((status) => PRE_INSPECTION_RETURN_STATUSES.includes(status))
-}
-
-/** An aliased `FieldValue` table, as `alias()` returns it. */
-type FieldValueAlias = ReturnType<typeof alias<typeof schema.FieldValue, string>>
-
-/**
- * Join predicate for "this instance's value of <field>".
- *
- * Takes the alias OBJECT and composes with `eq`, so drizzle emits the table as
- * an identifier. A hand-written `sql` fragment interpolating a table binds it
- * as a parameter instead, which is a mistake this codebase has already paid
- * for.
- */
-function valueJoin(table: FieldValueAlias, fieldId: string): SQL | undefined {
-  return and(
-    eq(table.entityId, schema.EntityInstance.id),
-    eq(table.organizationId, schema.EntityInstance.organizationId),
-    eq(table.fieldId, fieldId)
-  )
 }
 
 /**

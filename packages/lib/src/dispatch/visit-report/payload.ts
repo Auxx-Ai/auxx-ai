@@ -8,7 +8,6 @@
 // PDF building blocks + `resolvePhotoRef` from the documents module.
 
 import { database, schema } from '@auxx/database'
-import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { type AddressStructValue, formatAddress } from '@auxx/utils/address'
@@ -20,6 +19,7 @@ import {
   resolveDocumentSettings,
 } from '../../documents/resolve-settings'
 import { NotFoundError } from '../../errors'
+import { firstTyped } from '../../field-values/client'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { listVisitQcItems } from '../qc'
 import { getDispatchWorker } from '../workers'
@@ -61,14 +61,6 @@ export interface VisitReportPayload {
   contact: QuotePdfContact
   items: VisitReportChecklistItem[]
   settings: ResolvedDocumentSettings
-}
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
 }
 
 /**

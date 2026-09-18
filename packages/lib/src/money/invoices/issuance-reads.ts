@@ -7,9 +7,6 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
-import { periodKeyForDate } from '../../postings/periods'
-import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
-import { getOrganizationSetting } from '../../settings/settings-service'
 
 const INVOICE_ATTRIBUTES = [
   'invoice_number',
@@ -96,14 +93,4 @@ export async function loadInvoiceForIssuance(
     contactInstanceId:
       (cf.invoice_contact ? byField.get(cf.invoice_contact.id)?.relatedEntityId : null) ?? null,
   }
-}
-
-/** Today, in the org's own book time zone - falls back to UTC while setup is incomplete. */
-export async function todayInBookTimeZone(organizationId: string): Promise<string> {
-  const raw = await getOrganizationSetting({
-    organizationId,
-    key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
-  })
-  const bookTimeZone = typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'UTC'
-  return periodKeyForDate(new Date(), 'day', bookTimeZone)
 }

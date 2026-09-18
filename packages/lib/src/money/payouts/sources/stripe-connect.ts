@@ -31,6 +31,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import type Stripe from 'stripe'
 import { BadRequestError } from '../../../errors'
@@ -207,7 +208,8 @@ export function toHeader(payout: Stripe.Payout): PayoutHeader {
   const destination = resolveDestinationId(payout.destination)
   return {
     providerPayoutId: payout.id,
-    paidAt: toIsoDay(payout.arrival_date),
+    // Stripe reports `arrival_date` as UNIX seconds; the ledger dates in `YYYY-MM-DD`.
+    paidAt: toDateKey(new Date(payout.arrival_date * 1000)),
     currency: payout.currency,
     status: toHeaderStatus(payout.status),
     depositedMinor: payout.amount,
@@ -256,11 +258,6 @@ function resolveChargeId(txn: Stripe.BalanceTransaction): string | null {
   if (!source) return null
   const id = typeof source === 'string' ? source : source.id
   return id.startsWith('ch_') || id.startsWith('py_') || id.startsWith('re_') ? id : null
-}
-
-/** Stripe reports `arrival_date` as UNIX seconds; the ledger dates in `YYYY-MM-DD`. */
-function toIsoDay(unixSeconds: number): string {
-  return new Date(unixSeconds * 1000).toISOString().slice(0, 10)
 }
 
 /** The Stripe Connect source, registered by `money/payout-sources.ts`. */

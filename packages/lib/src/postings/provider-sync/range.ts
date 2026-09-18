@@ -18,6 +18,7 @@
 //
 // @see plans/accounting/tasks/20-two-authors-one-ledger.md §5.4, §11.3, §12.11
 
+import { toDateKey } from '@auxx/utils/calendar-day'
 import { err, ok, type Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
 import type { ProviderSyncRange } from './client'
@@ -192,23 +193,19 @@ function endOfMonth(date: string): string {
   // wall-clock date, and any local getter puts December 31 into November for
   // half the world.
   const last = new Date(Date.UTC(year, month, 0))
-  return isoDate(last)
+  return toDateKey(last)
 }
 
 /** The day after a `YYYY-MM-DD` date. */
 export function nextDay(date: string): string {
   const [year, month, day] = splitDate(date)
-  return isoDate(new Date(Date.UTC(year, month - 1, day + 1)))
+  return toDateKey(new Date(Date.UTC(year, month - 1, day + 1)))
 }
 
 function splitDate(date: string): [number, number, number] {
   const match = DAY_PATTERN.exec(date)
   if (!match) throw new UnprocessableEntityError(`"${date}" is not a YYYY-MM-DD date.`, { date })
   return [Number(match[1]!), Number(match[2]!), Number(match[3]!)]
-}
-
-function isoDate(value: Date): string {
-  return `${pad4(value.getUTCFullYear())}-${pad2(value.getUTCMonth() + 1)}-${pad2(value.getUTCDate())}`
 }
 
 function pad2(value: number): string {

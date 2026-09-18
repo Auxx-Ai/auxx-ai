@@ -1,21 +1,13 @@
 // packages/lib/src/dispatch/convert-to-work-order.ts
 
-import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { getOrgCache } from '../cache'
+import { firstTyped } from '../field-values/client'
 import { FieldValueService } from '../field-values/field-value-service'
 import { convertQuoteToWorkOrder } from '../money/convert-quote'
 import { UnifiedCrudHandler } from '../resources/crud'
 import type { ConvertRequestToWorkOrderInput } from './types'
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 /**
  * Convert a service request into a work order (01 §8/§9 PRIMARY intake path). Copies the

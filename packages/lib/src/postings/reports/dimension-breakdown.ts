@@ -12,6 +12,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toMinor } from '@auxx/utils/currency'
 import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../errors'
@@ -123,9 +124,4 @@ export async function readDimensionBreakdown(
     })
     return err(new AuxxError('Internal error'))
   }
-}
-
-/** A number the driver may have handed back as text. */
-function toMinor(value: string | number): number {
-  return typeof value === 'number' ? value : Number(value)
 }

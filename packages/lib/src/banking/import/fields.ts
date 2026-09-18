@@ -12,10 +12,10 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
-import { toDateKey } from '../client'
 
 // Mirrors `banking/review/client.ts`'s own constant. Inlined rather than
 // imported across the import/review sibling boundary - this is the one place

@@ -11,17 +11,10 @@ import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
+import { firstTyped } from '../field-values/client'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { SystemUserService } from '../users/system-user-service'
 import { type AnchorSubjectKind, computeAnchorTarget, resolveSubjectAnchorDate } from './anchor'
-
-/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
-function firstTyped(
-  entry: TypedFieldValue | TypedFieldValue[] | undefined
-): TypedFieldValue | undefined {
-  if (!entry) return undefined
-  return Array.isArray(entry) ? entry[0] : entry
-}
 
 function relationshipRecordId(typed: TypedFieldValue | undefined): RecordId | undefined {
   return typed?.type === 'relationship' ? typed.recordId : undefined

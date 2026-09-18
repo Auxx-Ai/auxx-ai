@@ -19,6 +19,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toMinor } from '@auxx/utils/currency'
 import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../errors'
@@ -224,13 +225,4 @@ export async function readTrialBalance(
     logger.error('Failed to read the trial balance', { error, organizationId, from, to })
     return err(new AuxxError('Internal error'))
   }
-}
-
-/**
- * Coerce a `SUM(bigint)` aggregate (`numeric`, arrives as a string) to a JS
- * number. Same reasoning as `verify-balance.ts`'s `toMinor` - do it once here
- * rather than trusting the driver at every call site.
- */
-function toMinor(value: string | number): number {
-  return typeof value === 'number' ? value : Number(value)
 }

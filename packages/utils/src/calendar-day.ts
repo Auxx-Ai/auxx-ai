@@ -38,6 +38,11 @@ export type DayKey = string
 /** A calendar month, `'2026-08'`. */
 export type MonthKey = string
 
+/** Shape only — `'2026-13-40'` passes. Callers needing a real calendar day should round-trip through {@link dateOf}/{@link keyOf} instead. */
+export function isDayKeyShape(value: string): boolean {
+  return DAY_PATTERN.test(value)
+}
+
 /**
  * A day key as a local `Date` at MIDDAY, or an invalid `Date`.
  *
@@ -133,6 +138,11 @@ export function dayKeyInZone(date: Date, timeZone: string): DayKey {
   return formatInTimeZone(date, timeZone, 'yyyy-MM-dd')
 }
 
+/** A `Date`, or an already-formatted key (a Drizzle `date` string-mode column, or an external payload), as `YYYY-MM-DD` UTC — the zone every ledger timestamp is stored in. */
+export function toDateKey(value: Date | string): DayKey {
+  return (typeof value === 'string' ? value : dayKeyInZone(value, 'UTC')).slice(0, 10)
+}
+
 /** Today's calendar day in `timeZone`. Never the viewer's zone unless you pass it. */
 export function todayInZone(timeZone: string, now: Date = new Date()): DayKey {
   return dayKeyInZone(now, timeZone)
@@ -171,4 +181,32 @@ export function dayKeyOfLocalDate(date: Date): DayKey {
 /** Midday local, so a `Date` round-tripped through a picker never slips a day. */
 export function localDateOfDayKey(dayKey: DayKey): Date {
   return dateOf(dayKey)
+}
+
+// ── Loose parsing (a value read off a row, of unknown shape) ───────────────
+
+/** A `Date`, an ISO/date-like string, or anything else, as a valid `Date` or `null`. */
+export function toDate(value: unknown): Date | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  if (typeof value !== 'string' || !value) return null
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+/** A `Date` or an already-ISO string, as an ISO string — `null` for `null`/`undefined`/an invalid `Date`. */
+export function toIso(value: Date | string | null | undefined): string | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string') return value
+  const time = value.getTime()
+  return Number.isNaN(time) ? null : value.toISOString()
+}
+
+/** `FieldValue.valueDate` arrives as an ISO instant; the accounting date is the calendar day, sliced, never re-zoned. */
+export function toCalendarDay(raw: string | null | undefined): DayKey | null {
+  return typeof raw === 'string' && raw.length >= 10 ? raw.slice(0, 10) : null
+}
+
+/** A calendar day written into a DATETIME field, at noon UTC so no zone's local rendering crosses into the adjacent day. */
+export function calendarDayToInstant(day: DayKey): string {
+  return `${day}T12:00:00.000Z`
 }

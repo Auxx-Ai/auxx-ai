@@ -37,7 +37,7 @@ export {
   normalizeHtsCode,
   searchHtsGeneral,
 } from './tariff-hts-general'
-export { loadTariffSchedule, readBookTimeZone } from './tariff-schedule'
+export { loadTariffSchedule } from './tariff-schedule'
 export type {
   ActionKey,
   StarterAction,

@@ -33,6 +33,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
+import { toDate } from '@auxx/utils/calendar-day'
 import { and, eq, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { alias } from 'drizzle-orm/pg-core'
@@ -554,19 +555,4 @@ function ownValue(
  */
 function fieldId(field: { id: string } | null | undefined): string {
   return field?.id ?? '__unmaterialised__'
-}
-
-/**
- * Read a date column back as a `Date`.
- *
- * `FieldValue.valueDate` is declared `mode: 'string'` while a `timestamptz`
- * expression comes back from the driver already parsed, so both shapes reach
- * here. An unparseable value is `null` rather than an Invalid Date, because an
- * Invalid Date compares false against everything and would silently vanish from
- * the arithmetic much later.
- */
-function toDate(value: string | Date | null | undefined): Date | null {
-  if (value == null) return null
-  const parsed = value instanceof Date ? value : new Date(value)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
 }

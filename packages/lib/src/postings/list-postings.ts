@@ -26,6 +26,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toDateKey, toIso } from '@auxx/utils/calendar-day'
 import { and, desc, eq, gte, inArray, lt, ne } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../errors'
@@ -268,25 +269,6 @@ function monthBounds(periodKey: string): { first: string; next: string } | null 
   const nextYear = month === 12 ? year + 1 : year
   const nextMonth = month === 12 ? 1 : month + 1
   return { first: `${year}-${pad(month)}-01`, next: `${nextYear}-${pad(nextMonth)}-01` }
-}
-
-function toIso(value: Date | string | null): string | null {
-  if (value === null || value === undefined) return null
-  if (typeof value === 'string') return value
-  const time = value.getTime()
-  return Number.isNaN(time) ? null : value.toISOString()
-}
-
-/**
- * Keep a Postgres `date` as `YYYY-MM-DD`.
- *
- * Drizzle's `date()` is string-mode, so this is a pass-through in production.
- * The `Date` branch exists because the accounting date must never acquire a time
- * and a zone on its way to a browser - see `read-posting.ts`'s note.
- */
-function toDateKey(value: Date | string): string {
-  if (typeof value === 'string') return value
-  return value.toISOString().slice(0, 10)
 }
 
 /**
