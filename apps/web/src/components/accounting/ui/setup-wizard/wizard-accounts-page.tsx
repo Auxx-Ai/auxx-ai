@@ -46,7 +46,7 @@ const STATE_ORDER: Record<RoleAssignmentState, number> = {
 }
 
 /**
- * Page 5 of `AccountingSetupWizard` - a READ-ONLY summary of the account role map.
+ * `AccountingSetupWizard`'s account-roles page - a READ-ONLY summary of the account role map.
  *
  * 🛑 Deliberately not an editor. The full map, with the account picker and the reason each account
  * was suggested, lives on `settings/accounts` and this page links there rather than shipping a

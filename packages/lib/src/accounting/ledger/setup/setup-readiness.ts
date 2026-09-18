@@ -67,6 +67,23 @@ export const OPENING_BASELINE_SETTING_KEYS = {
 export const FINALIZED_SETUP_STATE = 'finalized' as const
 
 /**
+ * The org's declaration that its books begin at the cutover, so there is no
+ * opening entry to make.
+ *
+ * 🛑 An affirmation rather than an inference. An empty grid means both "we
+ * started from nothing" and "I have not filled this in yet", and the second is
+ * the failure the opening-balance refusals exist to catch - so the first needs
+ * a signal of its own. Only the "nothing entered" branch is suppressed; an
+ * entered-but-unbalanced trial balance is still refused.
+ */
+export const OPENING_FROM_NOTHING_SETTING_KEY = 'accounting.openingFromNothing' as const
+
+/** Whether the org declared it carries no opening balances. */
+export function readOpeningFromNothing(settings: SettingsRecord): boolean {
+  return settings[OPENING_FROM_NOTHING_SETTING_KEY] === true
+}
+
+/**
  * The absorption rates, which live under `manufacturing.*` rather than
  * `accounting.*` because they predate this module - `G9` calls them business
  * inputs, not a fixture gap.
@@ -93,6 +110,7 @@ export const SETUP_READINESS_SETTING_KEYS = [
   'accounting.qboOpeningRawMaterials',
   'accounting.qboOpeningWip',
   'accounting.qboOpeningFinishedGoods',
+  OPENING_FROM_NOTHING_SETTING_KEY,
   ...Object.values(ABSORPTION_RATE_SETTING_KEYS),
 ] as const
 
@@ -267,9 +285,14 @@ const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/
 /**
  * Resolve every settings-derived setup requirement.
  *
- * Coarse on purpose - one requirement per wizard page, matching
- * `ACCOUNTING_GOAL_KEYS`. Cutoff and book timezone are two inputs on one page
- * and are reported as one row.
+ * Coarse on purpose - one requirement per wizard page, and every key here is a
+ * goal in `ACCOUNTING_GOAL_KEYS`. Cutoff and book timezone are two inputs on one
+ * page and are reported as one row.
+ *
+ * 🛑 The two lists must stay in step. `set-opening-trial-balance` was a
+ * requirement here with no goal key for three briefs, so `WIZARD_GOAL_KEYS`
+ * could not name it and an org finished setup with no opening entry and was
+ * never asked again (plans/accounting/WIZARD-REVIEW.md F1).
  *
  * @param context what this predicate cannot read out of settings. Optional, and
  *   an omitted `openingTrialBalance` reads as met - see
@@ -339,11 +362,17 @@ export function resolveSetupReadiness(
 
   // The fourth requirement, and the only one whose input is not a setting.
   // Absent context reads as met; `SetupReadinessContext` says why.
+  //
+  // `fromNothing` suppresses the empty branch ONLY. A grid somebody entered and
+  // left out of balance is still out of balance, whatever they declared.
   const trialBalance = context.openingTrialBalance
+  const fromNothing = readOpeningFromNothing(settings)
   const trialBalanceReason = !trialBalance
     ? undefined
     : trialBalance.rows === 0
-      ? 'No opening trial balance entered. Every account with a balance at the cutover needs one.'
+      ? fromNothing
+        ? undefined
+        : 'No opening trial balance entered. Every account with a balance at the cutover needs one.'
       : trialBalance.debitMinor !== trialBalance.creditMinor
         ? `The opening trial balance is out of balance by ${Math.abs(trialBalance.debitMinor - trialBalance.creditMinor)} ` +
           'cents. It has to balance before it can post - a plug account to make it balance is the ' +

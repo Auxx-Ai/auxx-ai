@@ -7,8 +7,11 @@
 // requirement they never looked up.
 
 import { describe, expect, it } from 'vitest'
+import { ACCOUNTING_GOAL_KEYS } from '../../../../getting-started/client'
 import {
+  OPENING_FROM_NOTHING_SETTING_KEY,
   openingTrialBalanceDifference,
+  readOpeningFromNothing,
   resolveSetupReadiness,
   SETUP_READINESS_SETTING_KEYS,
   type SettingsRecord,
@@ -93,6 +96,18 @@ describe('summariseOpeningTrialBalance', () => {
   })
 })
 
+describe('the requirement keys and the checklist goal keys', () => {
+  it('🛑 every requirement this predicate emits is a goal in ACCOUNTING_GOAL_KEYS', () => {
+    // The invariant F1 caught: `set-opening-trial-balance` was emitted here with
+    // no goal key for three briefs, so `WIZARD_GOAL_KEYS` could not name it and
+    // an org finished setup with no opening entry and was never asked again. The
+    // file header claimed the two lists matched; nothing checked it.
+    const emitted = resolveSetupReadiness(settings()).requirements.map((r) => r.key)
+    const goals = new Set<string>(ACCOUNTING_GOAL_KEYS)
+    expect(emitted.filter((key) => !goals.has(key))).toEqual([])
+  })
+})
+
 describe('resolveSetupReadiness: the opening trial balance requirement', () => {
   it('reports it MET when no context is given, and says nothing about it', () => {
     // 🛑 The `getting-started/signals.ts` contract. That caller runs server-side
@@ -121,6 +136,47 @@ describe('resolveSetupReadiness: the opening trial balance requirement', () => {
     const row = requirement(readiness, 'set-opening-trial-balance')
     expect(row.met).toBe(false)
     expect(row.reason).toMatch(/No opening trial balance entered/)
+  })
+
+  it('accepts an EMPTY trial balance once the org declares it starts from nothing', () => {
+    // The case brief 03 had no way to reach: a business whose books begin at the
+    // cutover has no opening entry to make, and `buildOpeningBalanceEntry` says
+    // so itself. Without an explicit signal the refusal cannot tell that apart
+    // from "I have not filled this in yet", so both were refused.
+    const readiness = resolveSetupReadiness(
+      settings({ [OPENING_FROM_NOTHING_SETTING_KEY]: true }),
+      { openingTrialBalance: { debitMinor: 0, creditMinor: 0, rows: 0 } }
+    )
+    const row = requirement(readiness, 'set-opening-trial-balance')
+    expect(row.met).toBe(true)
+    expect(row.reason).toBeUndefined()
+    expect(readiness.settingsReady).toBe(true)
+  })
+
+  it('🛑 still refuses an ENTERED trial balance that does not balance, from-nothing or not', () => {
+    // The declaration suppresses the empty branch ONLY. A plug account is the
+    // worst thing that can happen on this page and a checkbox must not open a
+    // door to one.
+    const readiness = resolveSetupReadiness(
+      settings({ [OPENING_FROM_NOTHING_SETTING_KEY]: true }),
+      { openingTrialBalance: { debitMinor: 500_00, creditMinor: 400_00, rows: 4 } }
+    )
+    const row = requirement(readiness, 'set-opening-trial-balance')
+    expect(row.met).toBe(false)
+    expect(row.reason).toMatch(/out of balance by 10000/)
+    expect(row.reason).toMatch(/plug account/)
+  })
+
+  it('reads only a literal `true` as the declaration', () => {
+    // The key is absent on every org that has never seen the checkbox, and a
+    // truthy-but-not-true value must not silently disable the refusal.
+    expect(readOpeningFromNothing(settings())).toBe(false)
+    expect(readOpeningFromNothing(settings({ [OPENING_FROM_NOTHING_SETTING_KEY]: 'yes' }))).toBe(
+      false
+    )
+    expect(readOpeningFromNothing(settings({ [OPENING_FROM_NOTHING_SETTING_KEY]: true }))).toBe(
+      true
+    )
   })
 
   it('names the difference in cents when it does not balance', () => {

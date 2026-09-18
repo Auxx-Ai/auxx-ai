@@ -1352,8 +1352,23 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'manual', label: 'Manual' },
         { value: 'provider', label: 'Provider' },
+        { value: 'none', label: 'None' },
       ],
     },
+  },
+  // The decision, kept separate from `accounting.openingSource`'s provenance: a
+  // business whose books begin at the cutover has no opening entry to make, and
+  // an empty grid cannot tell that apart from one nobody has filled in yet.
+  'accounting.openingFromNothing': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    defaultValue: false,
+    description:
+      'The organization declares it started trading at the cutoff and carries no opening ' +
+      'balances. Suppresses the "nothing entered" refusal on the opening trial balance; an ' +
+      'entered-but-unbalanced grid is still refused. Starts with accounting.opening, so it ' +
+      'freezes by prefix once the ledger holds a standing entry.',
   },
   'accounting.openingSourceAsOf': {
     scope: 'GENERAL',

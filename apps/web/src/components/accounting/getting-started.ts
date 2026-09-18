@@ -62,14 +62,24 @@ const GOALS: Record<AccountingGoalKey, Omit<GettingStartedGoal, 'key'>> = {
     docsPath: '/help/accounting/route-payment-rails',
   },
   'set-opening-balances': {
-    label: 'Enter your opening balances',
+    label: 'Enter your opening inventory',
     description:
       'Record the inventory you were carrying at the cutoff, and reconcile it against what your accounting provider says.',
     iconId: 'banknote',
     color: 'green',
-    ctaText: 'Enter balances',
+    ctaText: 'Enter inventory',
     href: '/app/accounting/settings/opening',
     docsPath: '/help/accounting/set-opening-balances',
+  },
+  'set-opening-trial-balance': {
+    label: 'Enter your opening trial balance',
+    description:
+      'What every account in your chart was worth at the cutoff, as one balanced entry. Import it from QuickBooks, or say your books start from nothing.',
+    iconId: 'equal',
+    color: 'green',
+    ctaText: 'Enter trial balance',
+    href: '/app/accounting/settings/opening',
+    docsPath: '/help/accounting/set-opening-trial-balance',
   },
   'finalize-setup': {
     label: 'Finalize your setup',

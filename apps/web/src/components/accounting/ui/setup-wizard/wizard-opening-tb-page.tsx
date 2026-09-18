@@ -4,11 +4,14 @@
 import {
   ACCOUNT_ROLES,
   OPENING_BASELINE_SETTING_KEYS,
+  OPENING_FROM_NOTHING_SETTING_KEY,
   readSettingMinorUnits,
   summariseOpeningTrialBalance,
 } from '@auxx/lib/accounting/ledger/client'
 import type { OpeningTrialBalanceRow } from '@auxx/lib/accounting/opening/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { Checkbox } from '@auxx/ui/components/checkbox'
+import { Label } from '@auxx/ui/components/label'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { AlertTriangle } from 'lucide-react'
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react'
@@ -33,8 +36,15 @@ const LOCK_REASON =
   'its delta from, so it has one authority.'
 
 /**
- * Page 3b of `AccountingSetupWizard` - the opening trial balance
+ * The opening trial balance
  * (plans/accounting/tasks/done/03-opening-balances.md, ui-plan §2.2).
+ *
+ * 🛑 **"These books start from nothing" is an affirmation, not an inference.** An empty grid means
+ * both *"we started from nothing"* and *"I have not filled this in yet"*, and the second is exactly
+ * what the refusal below exists to catch - so the first needs its own signal. Ticking it zeroes
+ * nothing and posts nothing; it records `accounting.openingFromNothing` and suppresses the
+ * "nothing entered" branch ONLY. A grid somebody entered and left out of balance is still refused
+ * (plans/accounting/WIZARD-REVIEW.md §4).
  *
  * 🛑 **Continue is refused while the difference is non-zero.** This is the one
  * page in the wizard where "fill it in later" is not a survivable answer: a
@@ -64,9 +74,13 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
     // The browser's copy of the three inventory figures, and of where the
     // grid's numbers came from. Fresher than the server read - see
     // `overlayInventorySettings`.
-    const { getSetting } = useSettings({ scope: 'GENERAL' })
-    const openingSource =
-      getSetting('accounting.openingSource') === 'provider' ? 'provider' : 'manual'
+    const { getSetting, batchUpdateOrganizationSettings } = useSettings({ scope: 'GENERAL' })
+    const fromNothing = getSetting(OPENING_FROM_NOTHING_SETTING_KEY) === true
+    const openingSource = fromNothing
+      ? 'none'
+      : getSetting('accounting.openingSource') === 'provider'
+        ? 'provider'
+        : 'manual'
     const save = api.ledgerOpening.save.useMutation({
       onSuccess: () => utils.ledgerOpening.get.invalidate(),
     })
@@ -123,7 +137,9 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
 
     const currency = opening.data?.currency ?? 'USD'
     const cutoverDate = opening.data?.cutoverDate ?? null
-    const unbalanced = summary.rows === 0 || summary.differenceMinor !== 0
+    // `fromNothing` clears the empty case and nothing else: an entered grid that does not balance
+    // is still unbalanced, whatever was declared.
+    const unbalanced = summary.rows === 0 ? !fromNothing : summary.differenceMinor !== 0
 
     // 🛑 Dirty is "what is on screen differs from what the server holds", not
     // "somebody typed in a cell". The three locked rows are overlaid at render
@@ -147,6 +163,15 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
     // in - the refusal has to be on screen BEFORE the typing, not after. Found
     // by driving the wizard on an org that had already posted.
     const frozen = opening.data?.frozen ?? false
+
+    // Ticking it records the DECISION and the provenance together; `openingSource: 'none'` is what
+    // `openingEvidenceInstruction` reads to stop asking for bank statements nobody needs.
+    const setFromNothing = (next: boolean) => {
+      batchUpdateOrganizationSettings([
+        { key: OPENING_FROM_NOTHING_SETTING_KEY, value: next },
+        ...(next ? [{ key: 'accounting.openingSource', value: 'none' as const }] : []),
+      ])
+    }
 
     const persist = () => {
       if (frozen) return
@@ -190,14 +215,16 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
             status: 'unbalanced',
             error:
               summary.rows === 0
-                ? 'Nothing has been entered yet. Fill in what each account was worth at the cutover before continuing.'
+                ? 'Nothing has been entered yet. Fill in what each account was worth at the cutover \u2014 or tick "These books start from nothing" if your business began trading at the cutoff.'
                 : 'Debits and credits do not agree. Find the missing balance, and never add a plug account to make it agree.',
           })
           return false
         }
         setRefusal(null)
-        // Back and "Set up later" save whatever is there and let the user out.
-        if (dirty || overlayDirty) persist()
+        // Back and "Set up later" save whatever is there and let the user out. An org that
+        // declared it starts from nothing has nothing to save: `buildOpeningBalanceEntry` refuses
+        // an empty entry, and a zero-row draft would only reach it to be refused.
+        if ((dirty || overlayDirty) && !(fromNothing && summary.rows === 0)) persist()
         return true
       },
     }))
@@ -245,9 +272,35 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
           </p>
         </div>
 
-        <div className='flex justify-end'>
+        <div className='flex flex-wrap items-center justify-between gap-2'>
+          {/*
+            The affirmation, beside the import rather than under the grid: these are the two ways
+            not to type 35 rows by hand, and a person who has one of them should see the other.
+            Disabled once anything is entered - the declaration is about an EMPTY trial balance,
+            and ticking it over a filled grid would say two things at once.
+          */}
+          <div className='flex items-center gap-2'>
+            <Checkbox
+              id='opening-from-nothing'
+              checked={fromNothing}
+              disabled={frozen || summary.rows > 0}
+              onCheckedChange={(checked) => setFromNothing(checked === true)}
+            />
+            <Label
+              htmlFor='opening-from-nothing'
+              className='font-normal text-muted-foreground text-sm'>
+              These books start from nothing
+            </Label>
+          </div>
           <OpeningFillButton frozen={frozen} cutoverDate={cutoverDate} />
         </div>
+
+        {fromNothing && summary.rows === 0 && (
+          <p className='text-muted-foreground text-xs'>
+            No opening entry will be posted. Your ledger starts empty at {cutoverDate}, which is
+            right for a business that began trading at the cutoff and wrong for one that did not.
+          </p>
+        )}
 
         {/* The scroller, and no border of its own any more: `StatementTable`
             brings its own frame, and two nested rounded borders read as a box
@@ -283,6 +336,7 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
             creditMinor={summary.creditMinor}
             rowCount={summary.rows}
             currency={currency}
+            fromNothing={fromNothing}
           />
         </div>
       </div>
@@ -304,13 +358,15 @@ function VerdictStrip({
   creditMinor,
   rowCount,
   currency,
+  fromNothing,
 }: {
   debitMinor: number
   creditMinor: number
   rowCount: number
   currency: string
+  fromNothing: boolean
 }) {
-  const verdict = openingVerdict(debitMinor, creditMinor, rowCount, currency)
+  const verdict = openingVerdict(debitMinor, creditMinor, rowCount, currency, fromNothing)
   return (
     <Alert variant={verdict.ok ? 'success' : 'destructive'} className='bg-background'>
       <AlertTitle>{verdict.label}</AlertTitle>

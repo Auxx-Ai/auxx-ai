@@ -8,14 +8,19 @@
 // `dispatch` signals are plain existence checks — no seeded example workers/records exist.
 // Reads come from the per-org cache; only limit-1 DB lookups touch the database directly.
 
-import { database, schema } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
 import { and, eq, isNotNull } from 'drizzle-orm'
 import {
   ENABLED_POSTING_TYPES,
   SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
 } from '../accounting/ledger/roles/regime'
 import { readRoleAssignments } from '../accounting/ledger/roles/role-assignments'
-import { resolveSetupReadiness } from '../accounting/ledger/setup/setup-readiness'
+import {
+  readOpeningFromNothing,
+  resolveSetupReadiness,
+  summariseOpeningTrialBalance,
+} from '../accounting/ledger/setup/setup-readiness'
+import { findOpeningTrialBalanceEntry } from '../accounting/opening/reads'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../accounting/providers/provider'
 import { listObservedGatewayHandles } from '../accounting/rails'
 import {
@@ -172,7 +177,7 @@ async function hasScheduledVisit(ctx: GettingStartedContext): Promise<boolean> {
 
 // ── accounting checklist signals ──
 //
-// 🛑 Three of the six delegate to `resolveSetupReadiness` rather than
+// 🛑 Three of the seven delegate to `resolveSetupReadiness` rather than
 // re-implementing the arithmetic. That predicate is ALSO what the accounting
 // settings pages call client-side against hydrated `useSettings`, and writing
 // the same rules twice is the thing that rots: the two copies drift and the
@@ -216,6 +221,31 @@ const hasAccountingPeriod = (ctx: GettingStartedContext) =>
 const hasOpeningBalances = (ctx: GettingStartedContext) =>
   settingsRequirementMet(ctx, 'set-opening-balances')
 const hasCostingRates = (ctx: GettingStartedContext) => settingsRequirementMet(ctx, 'set-costing')
+
+/**
+ * The opening trial balance exists and balances.
+ *
+ * 🛑 The only accounting signal that does NOT go through
+ * `settingsRequirementMet`. The trial balance is a `journal_entry` record, not a
+ * setting, so `resolveSetupReadiness` cannot see it from the org cache and
+ * treats an absent summary as met - which is right for that predicate and wrong
+ * for a checklist row whose whole job is to say whether it was entered.
+ *
+ * `readOpeningFromNothing` short-circuits it for an org that declared it carries
+ * no opening balances: there is no entry to make, so the goal is done.
+ */
+async function hasOpeningTrialBalance(ctx: GettingStartedContext): Promise<boolean> {
+  const settings = await getOrgCache().get(ctx.organizationId, 'orgSettings')
+  if (readOpeningFromNothing(settings as Record<string, unknown>)) return true
+
+  const db = ctx.db ?? database
+  const entry = await findOpeningTrialBalanceEntry(db as Database, ctx.organizationId)
+  if (!entry) return false
+  const summary = summariseOpeningTrialBalance(
+    entry.lines.map((line) => ({ direction: line.direction, amountMinor: line.amountMinor }))
+  )
+  return summary.rows > 0 && summary.debitMinor === summary.creditMinor
+}
 
 /** `accounting.setupState === 'finalized'`. */
 async function isSetupFinalized(ctx: GettingStartedContext): Promise<boolean> {
@@ -326,6 +356,7 @@ const AUTO_SIGNALS: Record<ChecklistId, Partial<Record<GoalKey, Signal>>> = {
     'map-accounts': hasRequiredRoleAssignments,
     'route-payment-rails': hasRoutedPaymentRails,
     'set-opening-balances': hasOpeningBalances,
+    'set-opening-trial-balance': hasOpeningTrialBalance,
     'finalize-setup': isSetupFinalized,
     'post-first-entry': hasPostedEntry,
   },

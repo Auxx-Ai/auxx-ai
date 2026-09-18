@@ -45,6 +45,11 @@ import { WizardWelcomePage } from './wizard-welcome-page'
 // accounts this page just created, so it has to come after. Skippable like
 // every other page - `P1` again.
 //
+// 🛑 This order has now changed three times, so the page files name themselves ("the rails page")
+// rather than their position. Four headers still said "Page 3"/"Page 6" for a page that had moved
+// (plans/accounting/WIZARD-REVIEW.md F5); a number that goes stale on every reorder is not what the
+// header is for. Keep it that way.
+//
 // Ten pages.
 const PAGES = [
   'welcome',

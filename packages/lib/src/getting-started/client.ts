@@ -69,6 +69,11 @@ export const DISPATCH_GOAL_KEYS = [
  * grid was therefore empty with nothing the person could do about it. That
  * reorder never propagated to this list, so the checklist kept sending people
  * to enter opening balances before they had a chart to enter them against.
+ *
+ * ⤵️ **`set-opening-trial-balance` added 2026-09-18.** `resolveSetupReadiness`
+ * had emitted it as a requirement since brief 19 with no goal key to match, so
+ * the wizard's own gate could not check the one page the wizard exists to get
+ * right (plans/accounting/WIZARD-REVIEW.md F1).
  */
 export const ACCOUNTING_GOAL_KEYS = [
   'set-accounting-period',
@@ -76,6 +81,7 @@ export const ACCOUNTING_GOAL_KEYS = [
   'map-accounts',
   'route-payment-rails',
   'set-opening-balances',
+  'set-opening-trial-balance',
   'finalize-setup',
   'post-first-entry',
 ] as const

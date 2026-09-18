@@ -1,7 +1,7 @@
 // apps/web/src/components/accounting/ui/setup-wizard/wizard-connect-page.tsx
 'use client'
 
-// Page 6 of `AccountingSetupWizard` - connect the accounting system, immediately
+// `AccountingSetupWizard`'s connect page - the accounting system, immediately
 // before the page that maps the chart onto it.
 //
 // 🛑 THIS STEP IS SKIPPABLE, AND IT MUST STAY SKIPPABLE. Decision `P1` makes
