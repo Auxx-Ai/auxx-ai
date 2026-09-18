@@ -588,8 +588,6 @@ function BankRoleTrailing({
       <Badge variant='secondary' size='xs'>
         {mapped.length} of {needing.length} rails
       </Badge>
-      {/* The same fixed slot every picker row reserves, so the columns agree. */}
-      <div className='w-[4.5rem] shrink-0' />
     </div>
   )
 }
