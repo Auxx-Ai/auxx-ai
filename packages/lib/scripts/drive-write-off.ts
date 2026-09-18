@@ -9,7 +9,7 @@
 import { closePools, database } from '@auxx/database'
 import { verifyBooksBalance } from '../src/accounting/ledger/post/verify-balance'
 import { readVendor1099Summary } from '../src/accounting/reports/vendor-1099'
-import { writeOffInvoice } from '../src/money/invoices/write-off'
+import { writeOffInvoice } from '../src/sales/invoices/write-off'
 
 // DemoOrg1, owner markus@auxx.ai (HANDOFF §9a).
 const ORG_ID = 'abgwpa1l81reht2zmwrcihfu'

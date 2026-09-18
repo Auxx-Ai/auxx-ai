@@ -1,7 +1,7 @@
 // apps/web/src/app/(public)/quote/[token]/decline/route.ts
 
 import { AuxxError } from '@auxx/lib/errors'
-import { buildQuoteViewUrl, declineQuoteByToken } from '@auxx/lib/money'
+import { buildQuoteViewUrl, declineQuoteByToken } from '@auxx/lib/sales'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 

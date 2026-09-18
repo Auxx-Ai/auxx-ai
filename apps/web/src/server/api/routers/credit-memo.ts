@@ -13,6 +13,8 @@
 // anything that writes to the books or moves A/R, `ledgerView` for the reads and
 // the preview. Record ids cross the wire as `RecordId`.
 
+import { postCustomerRefundAccounting } from '@auxx/lib/accounting/money/customer-money'
+import { PermissionKey } from '@auxx/lib/permissions'
 import {
   applyCreditMemo,
   issueCreditMemo,
@@ -25,9 +27,7 @@ import {
   settleCreditMemo,
   unapplyCreditMemo,
   voidCreditMemo,
-} from '@auxx/lib/money'
-import { postCustomerRefundAccounting } from '@auxx/lib/money/customer-money'
-import { PermissionKey } from '@auxx/lib/permissions'
+} from '@auxx/lib/sales'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '../trpc'

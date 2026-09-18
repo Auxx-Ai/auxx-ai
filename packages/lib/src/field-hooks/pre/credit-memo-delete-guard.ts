@@ -5,8 +5,8 @@ import { parseRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { settledPeriodsFor } from '../../accounting/ledger/periods/settled-periods'
 import { BadRequestError } from '../../errors'
-import { CREDIT_MEMO_POSTED_STATUSES } from '../../money/credit-memos/client'
 import { unwrapStatusValue } from '../../resources/events/captured-values'
+import { CREDIT_MEMO_POSTED_STATUSES } from '../../sales/credit-memos/client'
 import type { EntityPreDeleteEvent, EntityPreDeleteHandler } from '../types'
 
 /**

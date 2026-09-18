@@ -100,7 +100,7 @@ vi.mock('../../../realtime', () => ({
   publishFieldValueUpdates: h.publishFieldValueUpdates,
 }))
 
-vi.mock('../../../money/catalog-pricing', () => ({
+vi.mock('../../../sales/totals/catalog-pricing', () => ({
   syncCatalogItemPricing: h.syncCatalogItemPricing,
 }))
 

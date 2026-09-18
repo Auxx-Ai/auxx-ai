@@ -2,8 +2,8 @@
 
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { recoverPayoutReconciliationPage } from '../../money/payouts/reconcile-records'
-import { sweepPayouts } from '../../money/payouts/sweep'
+import { recoverPayoutReconciliationPage } from '../../accounting/money/payouts/reconcile-records'
+import { sweepPayouts } from '../../accounting/money/payouts/sweep'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('payout-sync-job')

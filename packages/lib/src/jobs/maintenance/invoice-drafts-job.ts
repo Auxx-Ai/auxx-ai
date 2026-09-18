@@ -1,7 +1,7 @@
 // packages/lib/src/jobs/maintenance/invoice-drafts-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { sweepInvoiceDrafts } from '../../money/auto-invoice'
+import { sweepInvoiceDrafts } from '../../sales/invoices/auto-invoice'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('invoice-drafts-job')

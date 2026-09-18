@@ -48,8 +48,8 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
-import { isLiveFulfillment } from '../../money/fulfillments/client'
-import { readFulfillmentsForOrders } from '../../money/fulfillments/reads'
+import { isLiveFulfillment } from '../../sales/fulfillments/client'
+import { readFulfillmentsForOrders } from '../../sales/fulfillments/reads'
 import type {
   ReturnIntakeCandidate,
   ReturnIntakeOrderOption,

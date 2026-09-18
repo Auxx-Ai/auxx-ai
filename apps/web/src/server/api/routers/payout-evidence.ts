@@ -1,6 +1,5 @@
 // apps/web/src/server/api/routers/payout-evidence.ts
 
-import { NotFoundError } from '@auxx/lib/errors'
 import {
   getPayoutEvidence,
   listPayoutEvidence,
@@ -8,7 +7,8 @@ import {
   listPayoutSourceAccounts,
   listProcessorBalanceEntries,
   listRejectedProcessorEvidence,
-} from '@auxx/lib/money/payouts'
+} from '@auxx/lib/accounting/money/payouts'
+import { NotFoundError } from '@auxx/lib/errors'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '../trpc'

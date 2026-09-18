@@ -33,7 +33,7 @@ vi.mock('../../../cache', () => ({
   requireCachedEntityDefId: async () => 'def_order',
 }))
 
-vi.mock('../../../money/fulfillments', () => ({
+vi.mock('../../../sales/fulfillments', () => ({
   isLiveFulfillment: (f: { status: string }) => f.status !== 'cancelled',
   readFulfillmentsForOrders: async (
     _db: unknown,

@@ -17,6 +17,7 @@
 
 import { database } from '@auxx/database'
 import { convertRequestToWorkOrder } from '@auxx/lib/dispatch'
+import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import {
   approveQuote,
   computeDocumentTotals,
@@ -26,8 +27,7 @@ import {
   markQuoteSent,
   recomputeTotals,
   reorderLines,
-} from '@auxx/lib/money'
-import { UnifiedCrudHandler } from '@auxx/lib/resources'
+} from '@auxx/lib/sales'
 import { getOrganizationSetting } from '@auxx/lib/settings'
 
 /** Build a RecordId string without pulling in `@auxx/types` (not a worker dependency). */

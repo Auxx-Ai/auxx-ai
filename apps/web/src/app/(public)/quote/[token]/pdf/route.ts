@@ -1,7 +1,7 @@
 // apps/web/src/app/(public)/quote/[token]/pdf/route.ts
 
 import { encodeContentDisposition } from '@auxx/lib/files/server'
-import { getQuotePdfByToken } from '@auxx/lib/money'
+import { getQuotePdfByToken } from '@auxx/lib/sales'
 import { NextResponse } from 'next/server'
 
 /**

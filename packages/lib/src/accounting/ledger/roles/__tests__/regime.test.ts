@@ -9,7 +9,7 @@ import {
   DEFAULT_PAYMENT_ROUTES,
   type PaymentRouteMethod,
   resolvePaymentRoute,
-} from '../../../../money/bank-deposits/route'
+} from '../../../money/bank-deposits/route'
 import { ACCOUNT_ROLES } from '../../builders/entry'
 import { PAYMENT_ROUTE_ROLE } from '../../builders/payment'
 import { POSTING_TYPES, type PostingType } from '../../types'

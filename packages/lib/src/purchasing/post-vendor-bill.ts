@@ -22,7 +22,7 @@ import { resolvePeriodLock } from '../accounting/ledger/periods/period-lock'
 import { postEntry } from '../accounting/ledger/post/post-entry'
 import { isAccountingEnabled } from '../accounting/ledger/setup/accounting-enabled'
 import type { PostResult } from '../accounting/ledger/types'
-import { roundCents } from '../money/totals'
+import { roundCents } from '../sales/totals/totals'
 import type { MatchLine } from './types'
 
 const logger = createScopedLogger('purchasing:post-vendor-bill')

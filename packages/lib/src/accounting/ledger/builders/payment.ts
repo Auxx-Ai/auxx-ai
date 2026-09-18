@@ -88,7 +88,7 @@
  */
 
 import { UnprocessableEntityError } from '../../../errors'
-import type { PaymentRoute } from '../../../money/bank-deposits/client'
+import type { PaymentRoute } from '../../money/bank-deposits/client'
 import { hashedPeriodKey } from '../periods/period-key'
 import type { BuiltEntry, GlPostingLineInput, PostingType } from '../types'
 import { ACCOUNT_ROLES, type AccountRole, buildEntry } from './entry'

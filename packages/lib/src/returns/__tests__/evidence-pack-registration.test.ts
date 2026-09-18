@@ -21,7 +21,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { DOCUMENT_TYPE_DESCRIPTORS } from '../../documents/client'
-import { DOCUMENT_EMAIL_PROFILES } from '../../money/send-email'
+import { DOCUMENT_EMAIL_PROFILES } from '../../sales/send-email'
 import { RETURN_EVIDENCE_PACK_DOCUMENT_TYPE } from '../evidence-pack'
 
 describe('return_evidence_pack is a registered document type', () => {

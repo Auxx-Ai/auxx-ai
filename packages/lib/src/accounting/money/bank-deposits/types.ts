@@ -1,0 +1,150 @@
+// packages/lib/src/accounting/money/bank-deposits/types.ts
+
+/**
+ * The shapes the bank-deposit reads return and the writes accept
+ * (plans/accounting/tasks/done/06-deposit-grouping.md).
+ *
+ * Every money figure is INTEGER MINOR UNITS. `FieldValue.valueNumber` is a
+ * double, so each read converts once, here, and every consumer downstream of
+ * this file is working in integers.
+ */
+
+import type { RecordId } from '../../../resources/resource-id'
+import type { PostResult } from '../../ledger/types'
+import type { BankDepositStatus } from './client'
+
+/**
+ * One received payment that has not been banked yet - a row in the left list.
+ *
+ * MIGRATION follow-up 9: every field is read straight off the `MoneyTransaction`
+ * row (or, for `invoiceInstanceId`/`invoiceName`, its `MoneyApplication`) - there
+ * is no `payment` entity mirror behind it anymore.
+ */
+export interface UndepositedPaymentRow {
+  /** `MoneyTransaction.id` of the receipt. */
+  paymentId: string
+  /** Integer minor units. Always > 0 for a row that can be banked. */
+  amountMinor: number
+  /** `YYYY-MM-DD`, the date the payment was received. Null when unset. */
+  date: string | null
+  /** `PaymentMethod` - `cash`, `check`, ... Null when unset. */
+  method: string | null
+  /** Cheque number, card last four, whatever the payer wrote. */
+  reference: string | null
+  /** The invoice this payment applies to, for the "who paid" column. */
+  invoiceInstanceId: string | null
+  /** The invoice's display name, so the list does not have to resolve it. */
+  invoiceName: string | null
+  /** ISO 4217, off the `MoneyTransaction` row. */
+  currency: string
+}
+
+/** One recorded bank deposit. */
+export interface BankDepositRecord {
+  /** `EntityInstance.id` of the `bank_deposit` record. */
+  depositId: string
+  recordId: RecordId
+  /** `DEP-0001`. Issued by the create hook and never edited. */
+  number: string | null
+  /** `YYYY-MM-DD`. THE accounting date of the posting. */
+  depositDate: string | null
+  /**
+   * `EntityInstance.id` of the `bank_account` the money was banked into.
+   *
+   * Null on a deposit recorded before migration 135, and on one whose code named
+   * more than one account so the backfill refused to guess.
+   */
+  bankAccountId: string | null
+  /**
+   * The `gl_account` id the entry POSTED to, frozen when it was built (task 15
+   * §4). Never a code.
+   *
+   * 🛑 Not derived from {@link bankAccountId}: re-mapping a bank account to a
+   * different chart account must not restate a deposit that posted to the old
+   * one.
+   */
+  bankAccountGlAccountId: string | null
+  reference: string | null
+  status: BankDepositStatus
+  /** Integer minor units. Equals the sum of {@link BankDepositDetail.payments}. */
+  totalMinor: number
+  /** The matched bank statement line. Non-null means the deposit is frozen. */
+  bankTransactionId: string | null
+  clearedAt: Date | null
+  reconciledAt: Date | null
+  createdAt: Date
+}
+
+/** One deposit with the payments it grouped. */
+export interface BankDepositDetail extends BankDepositRecord {
+  payments: UndepositedPaymentRow[]
+}
+
+/** Filters for {@link listUndepositedPayments}. All narrow in SQL. */
+export interface ListUndepositedFilters {
+  /** One `PaymentMethod`. Absent means every method routed to undeposited funds. */
+  method?: string
+  /** `YYYY-MM-DD` inclusive lower bound on the payment date. */
+  from?: string
+  /** `YYYY-MM-DD` inclusive upper bound on the payment date. */
+  to?: string
+  limit?: number
+  offset?: number
+}
+
+/** Filters for {@link listBankDeposits}. */
+export interface ListBankDepositsFilters {
+  status?: BankDepositStatus
+  limit?: number
+  offset?: number
+}
+
+/** Input for {@link createBankDeposit}. */
+export interface CreateBankDepositInput {
+  /** `MoneyTransaction.id` of every receipt being banked. At least one. */
+  paymentIds: string[]
+  /** `YYYY-MM-DD`. The date the deposit hits the bank, and the posting's date. */
+  depositDate: string
+  /**
+   * `EntityInstance.id` of the `bank_account` the money is banked into.
+   *
+   * 🛑 An ACCOUNT, never a chart code. The code is read off the account's own
+   * mapping, because the bank feed posts every line on that account against the
+   * same mapping - a free choice from the chart puts the deposit and the
+   * statement line it exists to match into two different accounts, and nothing
+   * catches that (match candidates are found by amount and date).
+   */
+  bankAccountId: string
+  reference?: string
+}
+
+/**
+ * What {@link createBankDeposit} returns: the record, and what the ledger did
+ * with it.
+ *
+ * The two are separate because `postEntry` never throws - `not_connected` is a
+ * first-class success and a locked period is a refusal, not an error - so the
+ * caller needs both halves to render the right thing.
+ */
+export interface CreateBankDepositResult {
+  deposit: BankDepositDetail
+  post: PostResult
+}
+
+/** Input for {@link clearBankDeposit}. */
+export interface ClearBankDepositInput {
+  depositId: string
+  /** The bank statement line this deposit matched. */
+  bankTransactionId: string
+  /** When the bank credited it. Defaults to now. */
+  clearedAt?: Date
+}
+
+/** Input for {@link updateBankDeposit}. Every field is optional. */
+export interface UpdateBankDepositInput {
+  depositId: string
+  depositDate?: string
+  /** `EntityInstance.id` of the `bank_account`. Frozen once the entry posts. */
+  bankAccountId?: string
+  reference?: string
+}

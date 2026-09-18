@@ -12,7 +12,7 @@ import {
   documentEmailProfile,
   documentTypeOf,
   recordDocumentSendSignal,
-} from '../../money/send-email'
+} from '../../sales/send-email'
 import type { AuxxEvent, MessageSentEvent } from '../types'
 
 /**

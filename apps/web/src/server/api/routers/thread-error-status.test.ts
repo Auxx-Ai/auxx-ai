@@ -70,7 +70,7 @@ vi.mock('@auxx/lib/email', () => ({ getUserOrganizationId: () => ORG_ID }))
 vi.mock('@auxx/lib/drafts', () => ({ DraftService: class {} }))
 vi.mock('@auxx/lib/messages', () => ({ MessageSenderService: class {} }))
 vi.mock('@auxx/lib/providers', () => ({ ProviderRegistryService: class {} }))
-vi.mock('@auxx/lib/money', () => ({
+vi.mock('@auxx/lib/sales', () => ({
   markInvoiceSent: vi.fn(),
   markQuoteSent: vi.fn(),
   recordDocumentSendSignal: vi.fn(),

@@ -46,11 +46,11 @@ import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import type { EntityFieldChangeEvent } from '../../field-hooks/types'
 import type { CachedField } from '../../field-values/types'
-import type { TotalledDocumentType } from '../../money/totals-hooks'
 import type {
   ManifestFieldChange,
   SyncChangeManifest,
 } from '../../record-rules/sync-manifest-types'
+import type { TotalledDocumentType } from '../../sales/totals/totals-hooks'
 
 const logger = createScopedLogger('finalize-integrity')
 
@@ -131,7 +131,7 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
     await fulfillmentPostingTriggerPass(db, organizationId, manifest, resolveDef)
 
     const { reconcileFinancialRecordsAfterBulk } = await import(
-      '../../money/reconciliation/record-events'
+      '../../accounting/money/reconciliation/record-events'
     )
     await reconcileFinancialRecordsAfterBulk(db, organizationId, manifest, resolveDef)
   } catch (error) {
@@ -307,7 +307,7 @@ async function totalsPass(
   resolveDef: DefFieldResolver
 ): Promise<void> {
   try {
-    const totalsHooks = await import('../../money/totals-hooks')
+    const totalsHooks = await import('../../sales/totals/totals-hooks')
     const hasAny = (keys: string[], set: ReadonlySet<SystemAttribute>) =>
       keys.some((key) => set.has(key as SystemAttribute))
 

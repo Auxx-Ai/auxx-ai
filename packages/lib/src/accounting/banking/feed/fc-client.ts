@@ -18,7 +18,7 @@
 import { listCredentials } from '@auxx/credentials/store'
 import { createScopedLogger } from '@auxx/logger'
 import type Stripe from 'stripe'
-import { getStripeConnectClient } from '../../../money/stripe-connect/client'
+import { getStripeConnectClient } from '../../money/stripe-connect/client'
 
 const logger = createScopedLogger('banking-feed')
 

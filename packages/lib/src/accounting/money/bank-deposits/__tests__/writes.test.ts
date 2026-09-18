@@ -1,0 +1,672 @@
+// packages/lib/src/accounting/money/bank-deposits/__tests__/writes.test.ts
+//
+// Everything this file asserts is a REFUSAL or the exact shape of the one entry
+// a deposit posts, because both are things that go wrong without anything
+// downstream noticing:
+//
+//  - a cheque in two deposits makes "which deposit was this in" unanswerable,
+//    and the second deposit still balances;
+//  - a mixed-currency deposit posts the sum at an implied 1.0 rate;
+//  - a card grouped into a deposit asserts a gross the bank never credited;
+//  - a deposit whose entry the ledger refused would otherwise sit there having
+//    consumed its payments while moving no money.
+//
+// The collaborators are mocked rather than faked: `reads.ts` is exercised
+// against the real database by the driven pass, and what is worth pinning here
+// is the DECISION ladder in front of them.
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const h = vi.hoisted(() => ({
+  settings: {} as Record<string, unknown>,
+  payments: [] as Array<Record<string, unknown>>,
+  deposit: null as Record<string, unknown> | null,
+  postResult: { status: 'posted', glPostingId: 'glp_1', docNumber: 'AUXX-DEP-DEP0001' } as {
+    status: string
+    glPostingId?: string
+    docNumber?: string
+    error?: string
+  },
+  created: [] as Array<{ defId: string; values: Record<string, unknown> }>,
+  updated: [] as Array<{ recordId: string; values: Record<string, unknown> }>,
+  /** `MoneyTransaction.bankDepositInstanceId` writes - `createBankDeposit`'s
+   * link, and `rollbackDeposit`/`unlinkPaymentsFromDeposit`'s clear. */
+  moneyTransactionUpdates: [] as Array<Record<string, unknown>>,
+  archived: [] as string[],
+  postedEntries: [] as Array<Record<string, unknown>>,
+  postedSources: [] as Array<Record<string, unknown>[]>,
+  /** Every step, in order, so "read under the lock, inside the transaction" is assertable. */
+  calls: [] as string[],
+  /** The `db` handle `readPaymentsByIds` was called with - the tx one, or the outer one. */
+  readWith: [] as unknown[],
+  /** What `readDepositBankAccount` answers. Null stands in for "no such account". */
+  bankAccount: null as Record<string, unknown> | null,
+  isAccountingEnabled: vi.fn(),
+}))
+
+vi.mock('../../../../cache', () => ({
+  getOrgCache: () => ({ get: async () => h.settings }),
+  getCachedEntityDefId: async () => 'def_bank_deposit',
+}))
+vi.mock('../../../ledger/setup/accounting-enabled', () => ({
+  isAccountingEnabled: h.isAccountingEnabled,
+}))
+
+vi.mock('../reads', () => ({
+  requireBankDepositFieldContext: async () => ({ depositDefId: 'def_bank_deposit', fields: {} }),
+  requireBankDepositWriteContext: async () => ({
+    depositDefId: 'def_bank_deposit',
+    fields: { bank_deposit_bank_account_record: { id: 'fld_account' } },
+  }),
+  loadBankDepositFieldContext: async () => ({ depositDefId: 'def_bank_deposit', fields: {} }),
+  readPaymentsByIds: async (db: unknown) => {
+    h.calls.push('read-payments')
+    h.readWith.push(db)
+    return h.payments
+  },
+  readBankDepositDetail: async () => h.deposit,
+  readDepositPayments: async () => [],
+  requireDepositBankAccountContext: async () => ({
+    bankAccountDefId: 'def_bank_account',
+    fields: { bank_account_gl_account: { id: 'fld_gl' } },
+  }),
+  readDepositBankAccount: async () => h.bankAccount,
+}))
+
+vi.mock('../../../../resources/crud/unified-handler', () => ({
+  UnifiedCrudHandler: class {
+    async create(defId: string, values: Record<string, unknown>) {
+      h.created.push({ defId, values })
+      return { instance: { id: 'dep_1' } }
+    }
+    async update(recordId: string, values: Record<string, unknown>) {
+      h.updated.push({ recordId, values })
+    }
+    async archive(recordId: string) {
+      h.archived.push(recordId)
+    }
+  },
+}))
+
+vi.mock('../../../ledger/post/post-entry', async () => {
+  const actual = await vi.importActual<typeof import('../../../ledger/post/post-entry')>(
+    '../../../ledger/post/post-entry'
+  )
+  return {
+    LEDGER_CURRENCY: actual.LEDGER_CURRENCY,
+    postEntry: async (_db: unknown, options: Record<string, unknown>) => {
+      h.postedEntries.push(options.entry as Record<string, unknown>)
+      h.postedSources.push(options.sources as Record<string, unknown>[])
+      return h.postResult
+    },
+  }
+})
+
+vi.mock('../../../ledger/periods/period-lock', () => ({
+  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
+}))
+
+vi.mock('../../../ledger/reads/list-postings', () => ({
+  listPostingsForSource: async () => {
+    const glPostingId = (h.deposit as { glPostingId?: string } | null)?.glPostingId
+    return {
+      isErr: () => false,
+      value: glPostingId ? [{ id: glPostingId, status: 'posted', docNumber: null }] : [],
+    }
+  },
+}))
+
+import type { Database } from '@auxx/database'
+import { ACCOUNT_ROLES } from '../../../ledger/builders/entry'
+import {
+  clearBankDeposit,
+  createBankDeposit,
+  unlinkPaymentsFromDeposit,
+  updateBankDeposit,
+} from '../writes'
+
+const ORG = 'org_1'
+const USER = 'user_1'
+
+/**
+ * `.update(MoneyTransaction).set(values).where(...)` stands in for the raw
+ * `bankDepositInstanceId` write - MIGRATION follow-up 9's replacement for the
+ * `payment_bank_deposit` FieldValue link. `.where()`'s real drizzle condition
+ * (built from the real, unmocked `@auxx/database` schema) is never decoded here,
+ * same as `lockPayments`' `.where()` below - only `.set()`'s payload matters.
+ */
+function updateChain(target: Array<Record<string, unknown>>): Record<string, unknown> {
+  const chain: Record<string, unknown> = {}
+  chain.set = (values: Record<string, unknown>) => {
+    target.push(values)
+    return chain
+  }
+  chain.where = () => chain
+  // biome-ignore lint/suspicious/noThenProperty: chainable drizzle query-builder stub
+  chain.then = (resolve: (v: unknown) => unknown) => resolve(undefined)
+  return chain
+}
+
+/**
+ * The transaction handle `createBankDeposit` is given. Its `select` chain stands
+ * in for `lockPayments`' `SELECT ... FOR UPDATE`, and it records that the lock
+ * was taken so the ordering assertions below have something to read.
+ */
+const tx = {
+  select: () => {
+    const chain: Record<string, unknown> = {}
+    for (const key of ['from', 'where', 'orderBy']) chain[key] = () => chain
+    chain.for = (mode: string) => {
+      h.calls.push(`lock:${mode}`)
+      return Promise.resolve([])
+    }
+    return chain
+  },
+  update: () => updateChain(h.moneyTransactionUpdates),
+}
+const db = {
+  transaction: async (fn: (handle: unknown) => unknown) => {
+    h.calls.push('begin')
+    const result = await fn(tx)
+    h.calls.push('commit')
+    return result
+  },
+  update: () => updateChain(h.moneyTransactionUpdates),
+} as unknown as Database
+
+function payment(overrides: Record<string, unknown> = {}) {
+  return {
+    paymentId: 'pay_1',
+    amountMinor: 100_00,
+    date: '2026-09-01',
+    method: 'check',
+    reference: '1041',
+    invoiceInstanceId: null,
+    invoiceName: 'INV-0001',
+    currency: 'USD',
+    bankDepositId: null,
+    ...overrides,
+  }
+}
+
+function deposit(overrides: Record<string, unknown> = {}) {
+  return {
+    depositId: 'dep_1',
+    recordId: 'def_bank_deposit:dep_1',
+    number: 'DEP-0001',
+    depositDate: '2026-09-03',
+    bankAccountId: 'acct_1',
+    bankAccountGlAccountId: '1000',
+    reference: null,
+    status: 'pending',
+    totalMinor: 100_00,
+    bankTransactionId: null,
+    clearedAt: null,
+    reconciledAt: null,
+    glPostingId: null,
+    createdAt: new Date('2026-09-03T00:00:00Z'),
+    payments: [payment()],
+    ...overrides,
+  }
+}
+
+const input = {
+  organizationId: ORG,
+  actorUserId: USER,
+  paymentIds: ['pay_1'],
+  depositDate: '2026-09-03',
+  bankAccountId: 'acct_1',
+}
+
+/** The account the deposit is banked into, mapped to `1000` unless a test says otherwise. */
+function bankAccount(overrides: Record<string, unknown> = {}) {
+  const id = (overrides.id as string) ?? 'acct_1'
+  return {
+    name: 'Business Checking',
+    glAccountId: '1000',
+    archivedAt: null,
+    ...overrides,
+    id,
+    // Derived, so overriding `id` cannot leave the record id pointing at the
+    // account the test was moving away from.
+    recordId: `def_bank_account:${id}`,
+  }
+}
+
+beforeEach(() => {
+  h.settings = {}
+  h.payments = [payment()]
+  h.deposit = deposit()
+  h.postResult = { status: 'posted', glPostingId: 'glp_1' }
+  h.created = []
+  h.updated = []
+  h.moneyTransactionUpdates = []
+  h.archived = []
+  h.postedEntries = []
+  h.postedSources = []
+  h.calls = []
+  h.readWith = []
+  h.bankAccount = bankAccount()
+  h.isAccountingEnabled.mockReset()
+  h.isAccountingEnabled.mockResolvedValue(true)
+})
+
+describe('createBankDeposit refusals', () => {
+  it('refuses an empty selection', async () => {
+    const result = await createBankDeposit(db, { ...input, paymentIds: [] })
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toMatch(/at least one payment/i)
+  })
+
+  it('refuses a date that is not YYYY-MM-DD', async () => {
+    const result = await createBankDeposit(db, { ...input, depositDate: '3 September' })
+    expect(result._unsafeUnwrapErr().message).toMatch(/YYYY-MM-DD/)
+  })
+
+  it('refuses a blank bank account', async () => {
+    const result = await createBankDeposit(db, { ...input, bankAccountId: '  ' })
+    expect(result._unsafeUnwrapErr().message).toMatch(/bank account/i)
+  })
+
+  it('refuses a bank account that is not in this organization', async () => {
+    h.bankAccount = null
+    const result = await createBankDeposit(db, input)
+    expect(result._unsafeUnwrapErr().message).toMatch(/does not exist/i)
+    expect(h.created).toHaveLength(0)
+  })
+
+  it('refuses an archived bank account by name', async () => {
+    h.bankAccount = bankAccount({ archivedAt: new Date('2026-08-01T00:00:00Z') })
+    const result = await createBankDeposit(db, input)
+    expect(result._unsafeUnwrapErr().message).toMatch(/Business Checking is archived/)
+    expect(h.created).toHaveLength(0)
+  })
+
+  // 🛑 The whole reason the input is an id: an unmapped account has no code to
+  // debit, and the alternative to refusing is posting to one nobody named.
+  it('refuses a bank account with no chart mapping, and posts nothing', async () => {
+    h.bankAccount = bankAccount({ glAccountId: null })
+    const result = await createBankDeposit(db, input)
+    expect(result._unsafeUnwrapErr().message).toMatch(/not mapped to an account in the chart/i)
+    expect(h.created).toHaveLength(0)
+    expect(h.postedEntries).toHaveLength(0)
+  })
+
+  it('refuses a payment that is already in a deposit, and writes nothing', async () => {
+    h.payments = [payment({ bankDepositId: 'dep_0' })]
+    const result = await createBankDeposit(db, input)
+    expect(result._unsafeUnwrapErr().message).toMatch(/already in a bank deposit/i)
+    expect(h.created).toHaveLength(0)
+    expect(h.postedEntries).toHaveLength(0)
+  })
+
+  it('refuses a payment id that does not resolve', async () => {
+    h.payments = []
+    const result = await createBankDeposit(db, input)
+    expect(result._unsafeUnwrapErr().message).toMatch(/no longer exist/i)
+  })
+
+  it('refuses a rail that does not route through undeposited funds, naming the method', async () => {
+    h.payments = [payment({ method: 'card' })]
+    const result = await createBankDeposit(db, input)
+    const message = result._unsafeUnwrapErr().message
+    expect(message).toMatch(/do not route through undeposited funds/i)
+    expect(message).toContain('card')
+    expect(h.created).toHaveLength(0)
+  })
+
+  it('refuses mixed currencies explicitly rather than posting at an implied 1.0 rate', async () => {
+    h.payments = [payment(), payment({ paymentId: 'pay_2', currency: 'CAD' })]
+    const result = await createBankDeposit(db, { ...input, paymentIds: ['pay_1', 'pay_2'] })
+    const message = result._unsafeUnwrapErr().message
+    expect(message).toMatch(/cannot mix currencies/i)
+    expect(message).toContain('implied 1.0 rate')
+  })
+
+  it('refuses a single currency that is not the ledger currency', async () => {
+    h.payments = [payment({ currency: 'CAD' })]
+    const result = await createBankDeposit(db, input)
+    expect(result._unsafeUnwrapErr().message).toMatch(/ledger is kept in USD/i)
+  })
+
+  it('refuses a total that is not a positive whole number of minor units', async () => {
+    h.payments = [payment({ amountMinor: 0 })]
+    const result = await createBankDeposit(db, input)
+    expect(result._unsafeUnwrapErr().message).toMatch(/positive whole number/i)
+  })
+})
+
+describe('createBankDeposit posts one cash line', () => {
+  it('posts Dr <the chosen bank account, by id> Cr undeposited_funds for the summed total', async () => {
+    h.payments = [
+      payment({ paymentId: 'pay_1', amountMinor: 100_00 }),
+      payment({ paymentId: 'pay_2', amountMinor: 250_00 }),
+    ]
+    h.deposit = deposit({ totalMinor: 350_00, payments: h.payments })
+
+    const result = await createBankDeposit(db, { ...input, paymentIds: ['pay_1', 'pay_2'] })
+    expect(result.isOk()).toBe(true)
+
+    const entry = h.postedEntries[0] as {
+      postingType: string
+      periodKey: string
+      txnDate: string
+      lines: Array<{ accountRole: string; direction: string; amount: number; sourceId: string }>
+    }
+    expect(entry.postingType).toBe('bank_deposit')
+    // Keys on the deposit's own NUMBER, never a date: two deposits can be banked
+    // in one day, and a cuid is over the 21-character document-number cap.
+    expect(entry.periodKey).toBe('DEP-0001')
+    expect(entry.txnDate).toBe('2026-09-03')
+    expect(entry.lines).toHaveLength(2)
+    // 🛑 An ID line, not the `cash` role (task 15 §4). The role resolves to
+    // exactly one account, so an org with `1000 Checking` and `1020 Savings`
+    // would post every deposit into whichever one the role names and never
+    // move the other, with the entry balancing either way and the field the
+    // operator filled in surviving only in the memo.
+    expect(entry.lines[0]).toMatchObject({
+      glAccountId: '1000',
+      direction: 'debit',
+      amount: 350_00,
+      sourceId: 'dep_1',
+    })
+    expect(entry.lines[0]?.accountRole).toBeUndefined()
+    expect(entry.lines[1]).toMatchObject({
+      accountRole: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
+      direction: 'credit',
+      amount: 350_00,
+    })
+  })
+
+  it('banks into the SECOND bank account when that is the one named', async () => {
+    h.bankAccount = bankAccount({ id: 'acct_2', glAccountId: '1020' })
+    await createBankDeposit(db, { ...input, bankAccountId: 'acct_2' })
+
+    const entry = h.postedEntries[0] as {
+      lines: Array<{ glAccountId?: string; accountRole?: string; memo?: string }>
+    }
+    expect(entry.lines[0]?.glAccountId).toBe('1020')
+    expect(entry.lines[0]?.memo).toContain('1020')
+    expect(h.created[0]?.values.bank_deposit_bank_account).toBe('1020')
+  })
+
+  it('stamps the total on the record and links every payment to it', async () => {
+    h.payments = [
+      payment({ paymentId: 'pay_1', amountMinor: 100_00 }),
+      payment({ paymentId: 'pay_2', amountMinor: 250_00 }),
+    ]
+    h.deposit = deposit({ totalMinor: 350_00, payments: h.payments })
+    await createBankDeposit(db, { ...input, paymentIds: ['pay_1', 'pay_2'] })
+
+    expect(h.created[0]?.values).toMatchObject({
+      bank_deposit_date: '2026-09-03',
+      bank_deposit_bank_account: '1000',
+      bank_deposit_status: 'pending',
+      bank_deposit_total: 350_00,
+    })
+    // MIGRATION follow-up 9: one bulk write to `MoneyTransaction.bankDepositInstanceId`,
+    // never a `payment_bank_deposit` FieldValue link.
+    expect(h.moneyTransactionUpdates).toEqual([{ bankDepositInstanceId: 'dep_1' }])
+    // No stamp write any more (TARGET §1) - the ledger card reads
+    // `listPostingsForSource`, and the subject/member links are on the posting.
+    expect(h.updated.some((u) => 'bank_deposit_gl_posting_id' in u.values)).toBe(false)
+    expect(h.postedSources[0]).toEqual([
+      { sourceKind: 'bank_deposit', sourceId: 'dep_1', linkRole: 'subject' },
+      { sourceKind: 'money_transaction', sourceId: 'pay_1', linkRole: 'member' },
+      { sourceKind: 'money_transaction', sourceId: 'pay_2', linkRole: 'member' },
+    ])
+  })
+
+  it('deduplicates a payment id sent twice rather than double counting it', async () => {
+    await createBankDeposit(db, { ...input, paymentIds: ['pay_1', 'pay_1'] })
+    expect(h.created[0]?.values.bank_deposit_total).toBe(100_00)
+  })
+
+  it('treats an org with nothing connected as a success, not a failure', async () => {
+    // A first-class case: the entry is built, balanced and persisted, and its
+    // export batch simply never reaches a provider (decision P1).
+    h.postResult = { status: 'posted', glPostingId: 'gl_1' }
+    const result = await createBankDeposit(db, input)
+    expect(result.isOk()).toBe(true)
+    expect(h.archived).toHaveLength(0)
+  })
+
+  // 🛑 task 17 §3: an org that has never turned accounting on still banks its
+  // payments - the deposit is real whether or not the ledger exists.
+  it('groups the deposit and answers not_enabled without building or posting an entry', async () => {
+    h.isAccountingEnabled.mockResolvedValue(false)
+    const result = await createBankDeposit(db, input)
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().post).toEqual({ status: 'not_enabled' })
+    expect(h.postedEntries).toHaveLength(0)
+    expect(h.created).toHaveLength(1)
+    expect(h.archived).toHaveLength(0)
+    // Nothing posted, so the write-once high-water mark must not be stamped.
+    expect(h.updated.some((u) => 'bank_account_has_posted' in u.values)).toBe(false)
+  })
+
+  it('rolls the deposit back when the ledger refuses the entry', async () => {
+    h.postResult = { status: 'period_closed', error: 'That month is closed' }
+    const result = await createBankDeposit(db, input)
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().post.status).toBe('period_closed')
+    // Nothing was posted, so there is nothing to reverse - and leaving the
+    // payments consumed by a deposit that moved no money would make them
+    // ungroupable forever.
+    expect(h.archived).toEqual(['def_bank_deposit:dep_1'])
+    expect(h.moneyTransactionUpdates).toContainEqual({ bankDepositInstanceId: null })
+  })
+})
+
+describe('createBankDeposit reads its payments under the lock, inside the transaction', () => {
+  // 🛑 `MoneyTransaction.bankDepositInstanceId` carries no unique index that can
+  // express "at most one deposit per payment" over it. So the already-banked
+  // refusal IS the constraint, and a refusal read outside the transaction is a
+  // read-modify-write race: two operators banking overlapping selections both
+  // see `bankDepositId: null`, both pass, and both post a cash line for the same
+  // cheque. Cash is then overstated by that cheque and both entries balance.
+  it('takes SELECT ... FOR UPDATE before it reads the payments', async () => {
+    await createBankDeposit(db, input)
+    expect(h.calls.indexOf('lock:update')).toBeGreaterThan(h.calls.indexOf('begin'))
+    expect(h.calls.indexOf('read-payments')).toBeGreaterThan(h.calls.indexOf('lock:update'))
+  })
+
+  it('reads the payments with the TRANSACTION handle, never the outer one', async () => {
+    await createBankDeposit(db, input)
+    expect(h.readWith).toEqual([tx])
+  })
+
+  it('reads them before the commit, not after', async () => {
+    await createBankDeposit(db, input)
+    expect(h.calls.indexOf('read-payments')).toBeLessThan(h.calls.indexOf('commit'))
+  })
+
+  it('rolls the whole transaction back when a payment turns out to be banked', async () => {
+    h.payments = [payment({ bankDepositId: 'dep_0' })]
+    const result = await createBankDeposit(db, input)
+    expect(result._unsafeUnwrapErr().message).toMatch(/already in a bank deposit/i)
+    // The refusal is raised from inside `db.transaction`, so postgres rolls the
+    // create and every link back rather than leaving a half-built deposit.
+    expect(h.calls).toContain('begin')
+    expect(h.calls).not.toContain('commit')
+    expect(h.created).toHaveLength(0)
+  })
+})
+
+describe('unlinkPaymentsFromDeposit', () => {
+  // MIGRATION follow-up 9: one bulk write to `MoneyTransaction.bankDepositInstanceId`.
+  // The raw `DELETE FROM "FieldValue"` this replaced skipped hooks, events and
+  // the org cache: the payment read as un-banked in the database and as banked
+  // in every cache and subscriber that had already seen it.
+  it('releases every payment in one write, not a raw delete', async () => {
+    h.deposit = deposit({
+      glPostingId: null,
+      payments: [payment(), payment({ paymentId: 'pay_2' })],
+    })
+
+    const result = await unlinkPaymentsFromDeposit(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      depositId: 'dep_1',
+    })
+
+    expect(result._unsafeUnwrap()).toBe(2)
+    expect(h.moneyTransactionUpdates).toEqual([{ bankDepositInstanceId: null }])
+  })
+
+  // Releasing the payments of a POSTED deposit leaves `Dr <bank> Cr
+  // undeposited_funds` in the books with nothing behind it, and lets the same
+  // cheques be banked a second time - cash counted twice, both entries balanced.
+  it('refuses once the deposit has posted, naming the entry to reverse', async () => {
+    h.deposit = deposit({ glPostingId: 'glp_1' })
+    const result = await unlinkPaymentsFromDeposit(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      depositId: 'dep_1',
+    })
+    expect(result._unsafeUnwrapErr().message).toContain('glp_1')
+    expect(h.moneyTransactionUpdates).toHaveLength(0)
+  })
+
+  it('refuses once the deposit is matched to a bank line', async () => {
+    h.deposit = deposit({ status: 'cleared', bankTransactionId: 'bt_9' })
+    const result = await unlinkPaymentsFromDeposit(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      depositId: 'dep_1',
+    })
+    expect(result._unsafeUnwrapErr().message).toContain('bt_9')
+    expect(h.moneyTransactionUpdates).toHaveLength(0)
+  })
+})
+
+describe('clearBankDeposit', () => {
+  it('sets status, clearedAt and the bank line in one write', async () => {
+    const result = await clearBankDeposit(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      depositId: 'dep_1',
+      bankTransactionId: 'bt_9',
+      clearedAt: new Date('2026-09-05T00:00:00Z'),
+    })
+    expect(result.isOk()).toBe(true)
+    expect(h.updated[0]?.values).toEqual({
+      bank_deposit_status: 'cleared',
+      bank_deposit_cleared_at: '2026-09-05T00:00:00.000Z',
+      bank_deposit_bank_transaction_id: 'bt_9',
+    })
+  })
+
+  it('refuses a second clear, naming the line it already matched', async () => {
+    h.deposit = deposit({ status: 'cleared', bankTransactionId: 'bt_9' })
+    const result = await clearBankDeposit(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      depositId: 'dep_1',
+      bankTransactionId: 'bt_10',
+    })
+    expect(result._unsafeUnwrapErr().message).toContain('bt_9')
+  })
+
+  it('refuses a blank bank line', async () => {
+    const result = await clearBankDeposit(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      depositId: 'dep_1',
+      bankTransactionId: '  ',
+    })
+    expect(result._unsafeUnwrapErr().message).toMatch(/name the bank line/i)
+  })
+})
+
+describe('updateBankDeposit', () => {
+  it('edits reference and account while the deposit is still pending', async () => {
+    h.bankAccount = bankAccount({ id: 'acct_2', glAccountId: '1010' })
+    const result = await updateBankDeposit(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      depositId: 'dep_1',
+      reference: ' slip-77 ',
+      bankAccountId: 'acct_2',
+    })
+    expect(result.isOk()).toBe(true)
+    // Both halves move together, and only here: after the entry posts the
+    // branch below refuses, so the code can never drift from the relationship.
+    expect(h.updated[0]?.values).toEqual({
+      bank_deposit_bank_account_record: 'def_bank_account:acct_2',
+      bank_deposit_bank_account: '1010',
+      bank_deposit_reference: 'slip-77',
+    })
+  })
+
+  it('refuses once the deposit is matched, naming the bank line', async () => {
+    h.deposit = deposit({ status: 'cleared', bankTransactionId: 'bt_9' })
+    const result = await updateBankDeposit(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      depositId: 'dep_1',
+      reference: 'nope',
+    })
+    const message = result._unsafeUnwrapErr().message
+    expect(message).toContain('bt_9')
+    expect(message).toMatch(/reverse its posting/i)
+    expect(h.updated).toHaveLength(0)
+  })
+
+  it('freezes the date once the entry has posted, even while pending', async () => {
+    // The deposit date IS the posting's txnDate, and a posted entry is
+    // immutable. Editing it here would leave the record claiming one accounting
+    // date and the ledger holding another.
+    h.deposit = deposit({ glPostingId: 'glp_1' })
+    const result = await updateBankDeposit(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      depositId: 'dep_1',
+      depositDate: '2026-09-04',
+    })
+    expect(result._unsafeUnwrapErr().message).toMatch(/already posted/i)
+    expect(h.updated).toHaveLength(0)
+  })
+
+  it('lets an unposted pending deposit move its date', async () => {
+    const result = await updateBankDeposit(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      depositId: 'dep_1',
+      depositDate: '2026-09-04',
+    })
+    expect(result.isOk()).toBe(true)
+    expect(h.updated[0]?.values).toEqual({ bank_deposit_date: '2026-09-04' })
+  })
+
+  // 🛑 The bank account is now the DEBIT LEG of the entry, not a memo string.
+  // Editing it after the post would leave the slip saying the money is in
+  // savings while the balance sheet keeps it in checking, and the bank
+  // reconciliation of BOTH accounts would be wrong.
+  it('freezes the bank account once the entry has posted, even while pending', async () => {
+    h.deposit = deposit({ glPostingId: 'glp_1' })
+    const result = await updateBankDeposit(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      depositId: 'dep_1',
+      bankAccountId: 'acct_2',
+    })
+    expect(result._unsafeUnwrapErr().message).toMatch(/already posted/i)
+    expect(h.updated).toHaveLength(0)
+  })
+
+  // The date has always behaved this way; re-sending the SAME account must not
+  // become a refusal just because the deposit has posted.
+  it('lets a posted deposit re-send the account it already has', async () => {
+    h.deposit = deposit({ glPostingId: 'glp_1', bankAccountId: 'acct_1' })
+    const result = await updateBankDeposit(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      depositId: 'dep_1',
+      bankAccountId: 'acct_1',
+      reference: 'slip-88',
+    })
+    expect(result.isOk()).toBe(true)
+    expect(h.updated[0]?.values).toEqual({ bank_deposit_reference: 'slip-88' })
+  })
+})

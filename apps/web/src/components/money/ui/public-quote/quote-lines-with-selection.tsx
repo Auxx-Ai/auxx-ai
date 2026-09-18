@@ -16,7 +16,7 @@ import {
   type DiscountType,
   formatLineItemUnit,
   type LineItemUnit,
-} from '@auxx/lib/money/client'
+} from '@auxx/lib/sales/client'
 import { cn } from '@auxx/ui/lib/utils'
 import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { Fragment, useMemo, useState } from 'react'

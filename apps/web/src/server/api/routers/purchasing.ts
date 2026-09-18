@@ -27,7 +27,6 @@ import {
   planTariffResync,
   TARIFF_STARTERS_VERSION,
 } from '@auxx/lib/inventory/tariffs'
-import { markPurchaseOrderSent } from '@auxx/lib/money'
 import { PermissionKey } from '@auxx/lib/permissions'
 import {
   allocateLandedCost,
@@ -45,6 +44,7 @@ import {
   getBillIntakeRunForBill,
   getIntakeDraft,
   linkBillLines,
+  markPurchaseOrderSent,
   matchBill,
   postExpenseBill,
   previewExpenseBill,

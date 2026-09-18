@@ -64,7 +64,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getOrgCache, requireCachedEntityDefId } from '../../cache'
-import { isLiveFulfillment, readFulfillmentsForOrders } from '../../money/fulfillments'
+import { isLiveFulfillment, readFulfillmentsForOrders } from '../../sales/fulfillments'
 import { guard } from './guard'
 import { type FulfillmentLineToRelieve, relieveFulfillmentLines } from './relieve'
 

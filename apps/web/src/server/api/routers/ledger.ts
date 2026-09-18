@@ -73,6 +73,7 @@ import {
   syncProviderSyncScheduler,
 } from '@auxx/lib/accounting/mirror'
 import type { ProviderSyncScheduleConfig } from '@auxx/lib/accounting/mirror/client'
+import { getPaymentAccount } from '@auxx/lib/accounting/money'
 import {
   accountingOpeningPolicySchema,
   activateAccountingBookConnection,
@@ -94,7 +95,6 @@ import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
 import { readTrialBalance } from '@auxx/lib/accounting/reports'
 import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
 import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
-import { getPaymentAccount } from '@auxx/lib/money'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { recurrencePatternSchema } from '@auxx/lib/recurrence'
 import { seedChartAccounts, seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'

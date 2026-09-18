@@ -14,16 +14,16 @@ import { getFieldId } from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { stableHash } from '@auxx/utils/hash'
 import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
+import {
+  FinancialSourceIdentityConflictError,
+  recordStaleFinancialObservation,
+  StaleFinancialSourceRevisionError,
+} from '../../accounting/money/customer-money/source-write-errors'
 import { resolveConnectorFieldRef } from '../../agents/bindings/resolve'
 import { getCachedFieldMap } from '../../cache'
 import { NotFoundError, UniqueValueConflictError } from '../../errors'
 import { fieldValueSchemas } from '../../field-values/field-value-validator'
 import { upsertRecordIdentity } from '../../identity'
-import {
-  FinancialSourceIdentityConflictError,
-  recordStaleFinancialObservation,
-  StaleFinancialSourceRevisionError,
-} from '../../money/customer-money/source-write-errors'
 import { toRecordId } from '../../resources/resource-id'
 import { buildWriteKeyToFieldId } from '../field-id-resolver'
 import {

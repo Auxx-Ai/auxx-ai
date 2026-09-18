@@ -1,7 +1,7 @@
 // apps/web/src/components/money/hooks/use-catalog-items.ts
 
-import type { LineItemUnit } from '@auxx/lib/money/client'
 import type { RecordId } from '@auxx/lib/resources/client'
+import type { LineItemUnit } from '@auxx/lib/sales/client'
 import { useMemo } from 'react'
 import {
   type AllRecordsItem,

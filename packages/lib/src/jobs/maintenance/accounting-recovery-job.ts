@@ -3,9 +3,9 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import { sweepExportBatches } from '../../accounting/export'
-import { sweepCustomerReceiptAccounting } from '../../money/customer-money/accounting'
-import { sweepDepositApplicationAccounting } from '../../money/customer-money/deposit-application-accounting'
-import { sweepImportedCustomerMoney } from '../../money/customer-money/ingest'
+import { sweepCustomerReceiptAccounting } from '../../accounting/money/customer-money/accounting'
+import { sweepDepositApplicationAccounting } from '../../accounting/money/customer-money/deposit-application-accounting'
+import { sweepImportedCustomerMoney } from '../../accounting/money/customer-money/ingest'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('accounting-recovery-job')

@@ -1,0 +1,259 @@
+// packages/lib/src/sales/public-token.ts
+
+import { WEBAPP_URL } from '@auxx/config/urls'
+import { database, schema } from '@auxx/database'
+import { extractValue } from '@auxx/types'
+import { toRecordId } from '@auxx/types/resource'
+import { generateId } from '@auxx/utils'
+import { eq } from 'drizzle-orm'
+import {
+  isCheckoutAvailable,
+  sumInvoiceDepositApplications,
+} from '../accounting/money/checkout/reads'
+import { resolvePartialPaymentBounds } from '../accounting/money/customer-money/partial-payment'
+import { getOrgCache } from '../cache'
+import type { PdfPhotoRef, QuotePdfContact, QuotePdfLineItem } from '../documents/payload'
+import type {
+  DocumentBrandingSettings,
+  DocumentBusinessSettings,
+} from '../documents/resolve-settings'
+import { firstTyped } from '../field-values/client'
+import { FieldValueService } from '../field-values/field-value-service'
+import { UnifiedCrudHandler } from '../resources/crud'
+import { quietSession } from '../resources/crud/write-origin'
+import { readOrganizationSettings } from '../settings/read'
+import type { DiscountType } from './types'
+
+/**
+ * C5 (plan 04 §3), and the silence here is LOAD-BEARING, not incidental (O-5).
+ * Tier-1 `fieldValues:updated` carries raw stored values to a room gated only on
+ * org membership plus `canViewEntity(defId)`. A public token is a bearer
+ * capability — the public resolver is org-agnostic by design — so broadcasting
+ * it to every member with def-level view on invoices is a WIDER audience than the
+ * read path grants. Un-suppressing this is a confidentiality regression, not a
+ * fidelity improvement.
+ */
+const QUIET_PUBLIC_TOKEN = quietSession(
+  'a public token is a bearer capability; tier-1 frames carry raw values to a def-room audience wider than the token read path grants (plan 04 O-5)'
+)
+
+/**
+ * The public `/pay/{token}` capability-token machinery (money MP1 build spec §H/§I). Kept
+ * free of any static import of `documents/payload.ts` — that module imports
+ * `ensureInvoicePublicToken` from here (to inject the pay-link into the PDF payload/content
+ * hash), so `getPublicInvoicePayload` below reaches back into `buildInvoicePdfPayload` via a
+ * dynamic `import()` to avoid a static circular dependency (the repo's established
+ * lazy-import fix for this exact shape — see the realtime-barrel/app-runtime precedents).
+ */
+
+/**
+ * Mint-or-fetch an invoice's `publicToken` (money MP1 build spec §H) — the unguessable
+ * capability token backing `/pay/{token}`. Idempotent: reads first, only writes when empty.
+ * Writes bypass `invoice_public_token`'s `creatable:false`/`updatable:false` capability the
+ * same way `invoice_pdf_asset` does — `FieldValueService` is a sanctioned-writer path that
+ * structurally skips the system CRUD capability check (the `convert-quote.ts` precedent).
+ * A rare concurrent double-mint (two callers racing on an empty field) is acceptable — both
+ * writes are valid tokens and the last one wins; nothing depends on token stability across
+ * that narrow window.
+ */
+export async function ensureInvoicePublicToken(
+  organizationId: string,
+  invoiceInstanceId: string
+): Promise<string> {
+  const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
+  const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
+  const handler = new UnifiedCrudHandler(organizationId, systemUserId)
+  const cache = getOrgCache()
+
+  const cf = await cache
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['invoice_public_token'] as const)
+  const field = cf.invoice_public_token
+  if (!field) {
+    // Field not provisioned on this org yet (pre-036 org that hasn't run the migration) —
+    // nothing to mint against. Callers treat an empty token as "payments unavailable".
+    return ''
+  }
+
+  const existingValues = await handler.getFieldValues(invoiceRecordId, [field.id])
+  const existingTyped = firstTyped(existingValues.get(field.id))
+  const existing = existingTyped ? (extractValue(existingTyped) as string) : undefined
+  if (existing) return existing
+
+  const token = generateId()
+  const fieldValueService = new FieldValueService(
+    organizationId,
+    systemUserId,
+    undefined,
+    undefined,
+    { session: QUIET_PUBLIC_TOKEN }
+  )
+  await fieldValueService.setValuesForEntity({
+    recordId: invoiceRecordId,
+    values: [{ fieldId: field.id, value: token }],
+  })
+
+  return token
+}
+
+/** Build the absolute `/pay/{token}` URL from a minted token. */
+export function buildPayUrl(token: string): string {
+  return `${WEBAPP_URL}/pay/${token}`
+}
+
+/**
+ * The single "can this org accept a Stripe payment right now" predicate — connected,
+ * chargesEnabled, not disconnected (money MP1 build spec §J/§I). Centralized so the three
+ * pay-link gates (email, PDF, public page) can't drift out of sync with each other.
+ */
+export function isPaymentsConnected(
+  account: {
+    chargesEnabled: boolean
+    disconnectedAt: Date | null
+    credentialId: string | null
+  } | null
+): boolean {
+  return !!(account?.chargesEnabled && !account.disconnectedAt && account.credentialId)
+}
+
+/**
+ * Resolve an invoice by its public `publicToken` — org-agnostic by design (the token IS the
+ * capability, money MP1 build spec §I). Reads `FieldValue` directly rather than through
+ * `UnifiedCrudHandler`/the org cache, since the caller doesn't know the organization yet.
+ * `entityDefinitionId` is checked against the literal `'invoice'` type-slug (the
+ * `send-email.ts`/`gather.ts` convention: `toRecordId('invoice', id)` stamps this literal,
+ * not the def's cuid) as a defensive belt on top of the systemAttribute check.
+ */
+export async function resolveInvoiceByPublicToken(
+  token: string
+): Promise<{ organizationId: string; invoiceInstanceId: string } | null> {
+  if (!token) return null
+
+  const row = await database.query.FieldValue.findFirst({
+    where: eq(schema.FieldValue.valueText, token),
+    with: { field: true },
+  })
+  if (!row) return null
+  if (row.entityDefinitionId !== 'invoice') return null
+  if (row.field?.systemAttribute !== 'invoice_public_token') return null
+
+  return { organizationId: row.organizationId, invoiceInstanceId: row.entityId }
+}
+
+/** One rendered line on the public pay page. */
+export type PublicInvoiceLine = QuotePdfLineItem
+
+/** Everything the public `/pay/[token]` page needs to render (money MP1 build spec §I). */
+export interface PublicInvoicePayload {
+  number: string
+  status: string
+  issuedAt: string
+  dueDate: string | null
+  terms: string | null
+  contact: QuotePdfContact
+  lines: PublicInvoiceLine[]
+  /** Header-level photos (plan 37b §6), `invoice_photos` — already internal-filtered by
+   * `buildInvoicePdfPayload`. Backs the "Photos" gallery section on the public pay page. */
+  photos: PdfPhotoRef[]
+  /** Integer cents. */
+  subtotal: number
+  discountType: DiscountType | null
+  discountValue: number | null
+  /** Integer cents. */
+  discountAmount: number
+  taxName: string | null
+  taxRate: number | null
+  /** Integer cents. */
+  taxTotal: number
+  /** Integer cents. */
+  total: number
+  /** Integer cents. */
+  amountPaid: number
+  /** Integer cents. */
+  balance: number
+  /** Integer cents — deposit-accounting plan 16 §E. Σ allocation amounts posted against this
+   * invoice from succeeded quote-deposit charges (refund copies net back to zero). `0` when no
+   * deposit was ever applied — the "Deposit applied" line only renders when this is positive.
+   * Already netted into `amountPaid`/`balance` above (allocations ARE the payment math, §C.1)
+   * — this is purely the labeled breakout line, not additional money. */
+  depositApplied: number
+  currency: string
+  business: DocumentBusinessSettings
+  branding: DocumentBrandingSettings
+  /** Org has a connected, chargesEnabled, non-disconnected `PaymentAccount` — gates the Pay button. */
+  paymentsEnabled: boolean
+  /** A pending Stripe charge ledger row exists for this invoice — never render "Paid" while true. */
+  processingPayment: boolean
+  /** `documents.invoice.allowPartialPayments` — lets the pay page accept a custom amount. */
+  allowPartialPayments: boolean
+  /** Integer cents — the smallest amount the pay page will submit, per
+   * `documents.invoice.partialPaymentMinPercent` (money MP2 §C). Pre-computed here via
+   * `resolvePartialPaymentBounds` so the client never re-derives the percent math. */
+  minPaymentAmount: number
+}
+
+/**
+ * The public pay-page payload builder (money MP1 build spec §I). Resolves the token,
+ * reuses `buildInvoicePdfPayload` (documents MQ2/MI1 payload shaping, read-only) for the
+ * branded-document fields, then layers on the two payment-gating flags the public page needs.
+ * Returns `null` on an unknown/stale token — the route's `notFound()` trigger.
+ */
+export async function getPublicInvoicePayload(token: string): Promise<PublicInvoicePayload | null> {
+  const resolved = await resolveInvoiceByPublicToken(token)
+  if (!resolved) return null
+  const { organizationId, invoiceInstanceId } = resolved
+
+  // Dynamic import — see the module-doc comment above for why this can't be a static import.
+  const { buildInvoicePdfPayload } = await import('../documents/payload')
+
+  const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
+  const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
+
+  const [{ payload }, paymentSettings] = await Promise.all([
+    buildInvoicePdfPayload({ organizationId, userId: systemUserId, invoiceRecordId }),
+    readOrganizationSettings(organizationId, [
+      'documents.invoice.allowPartialPayments',
+      'documents.invoice.partialPaymentMinPercent',
+    ] as const),
+  ])
+  const allowPartialPayments = paymentSettings['documents.invoice.allowPartialPayments']
+  const [paymentsEnabled, depositApplied] = await Promise.all([
+    isCheckoutAvailable(organizationId),
+    sumInvoiceDepositApplications(database, organizationId, invoiceInstanceId),
+  ])
+  const minPaymentAmount = resolvePartialPaymentBounds(
+    payload.balance,
+    Number(paymentSettings['documents.invoice.partialPaymentMinPercent'] ?? 10)
+  ).min
+
+  return {
+    number: payload.number,
+    status: payload.status,
+    issuedAt: payload.issuedAt,
+    dueDate: payload.dueDate,
+    terms: payload.terms,
+    contact: payload.contact,
+    lines: payload.lines,
+    photos: payload.photos ?? [],
+    subtotal: payload.subtotal,
+    discountType: payload.discountType,
+    discountValue: payload.discountValue,
+    discountAmount: payload.discountAmount,
+    taxName: payload.taxName,
+    taxRate: payload.taxRate,
+    taxTotal: payload.taxTotal,
+    total: payload.total,
+    amountPaid: payload.amountPaid,
+    balance: payload.balance,
+    depositApplied,
+    currency: payload.settings.currency,
+    business: payload.settings.business,
+    branding: payload.settings.branding,
+    paymentsEnabled,
+    // Nothing is recorded until Stripe confirms, so an in-flight checkout is only
+    // knowable from the browser's own return - the page reads `?checkout=success`.
+    processingPayment: false,
+    allowPartialPayments: !!allowPartialPayments,
+    minPaymentAmount,
+  }
+}

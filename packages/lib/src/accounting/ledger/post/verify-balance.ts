@@ -36,7 +36,7 @@ import { toMinor } from '@auxx/utils/currency'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../../errors'
-import { countUnissuedChannelCreditMemos } from '../../../money/credit-memos/reads'
+import { countUnissuedChannelCreditMemos } from '../../../sales/credit-memos/reads'
 import type { BooksBalanceDiscrepancy, BooksBalanceReport, PostingType } from '../types'
 
 const logger = createScopedLogger('postings:verify-balance')

@@ -223,7 +223,7 @@ async function runFulfillmentReliefForSync(
   if (orderIds.length === 0) return
 
   const { readFulfillmentsForOrders, isLiveFulfillment } = await import(
-    '../../../money/fulfillments'
+    '../../../sales/fulfillments'
   )
   const byOrder = await readFulfillmentsForOrders(db, { organizationId, orderIds })
 

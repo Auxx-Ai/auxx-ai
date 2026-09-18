@@ -6,7 +6,7 @@ import {
   BILLING_BASIS_LABELS,
   BILLING_TIMING_LABELS,
   COMPATIBLE_BILLING_TIMINGS,
-} from '@auxx/lib/money/client'
+} from '@auxx/lib/sales/client'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import {

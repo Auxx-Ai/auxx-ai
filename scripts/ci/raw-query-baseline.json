@@ -8,7 +8,7 @@
     "packages/lib/src/cache/providers/mcp-servers-provider.ts": 1,
     "packages/lib/src/channels/quo-channel.ts": 1,
     "packages/lib/src/jobs/maintenance/oauth2-token-refresh-scanner-job.ts": 3,
-    "packages/lib/src/money/customer-money/source-observation-adapter.ts": 1,
+    "packages/lib/src/accounting/money/customer-money/source-observation-adapter.ts": 1,
     "packages/lib/src/resources/crud/financial-record-binding.ts": 1
   }
 }

@@ -31,8 +31,8 @@ import {
 import { createChartAccount } from '../src/accounting/ledger/chart/chart-write'
 import { verifyBooksBalance } from '../src/accounting/ledger/post/verify-balance'
 import { listChartAccounts } from '../src/accounting/ledger/roles/role-map'
+import { listBankDeposits } from '../src/accounting/money/bank-deposits'
 import { getCachedEntityDefId } from '../src/cache'
-import { listBankDeposits } from '../src/money/bank-deposits'
 import { UnifiedCrudHandler } from '../src/resources/crud/unified-handler'
 import { toRecordId } from '../src/resources/resource-id'
 

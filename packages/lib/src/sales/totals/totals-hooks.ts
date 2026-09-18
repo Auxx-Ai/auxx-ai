@@ -1,0 +1,1213 @@
+// packages/lib/src/sales/totals/totals-hooks.ts
+
+import { type Database, database } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { extractValue } from '@auxx/types'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import type { SystemAttribute } from '@auxx/types/system-attribute'
+import { syncInvoicePaymentState } from '../../accounting/money/invoice-payments/payment-state'
+import { getOrgCache } from '../../cache'
+import { isFieldConnectorManaged } from '../../data-connectors/managed-fields'
+import { BadRequestError } from '../../errors'
+import type { EntityFieldChangeHandler, EntityPostDeleteHandler } from '../../field-hooks/types'
+import { firstTyped } from '../../field-values/client'
+import { FieldValueService } from '../../field-values/field-value-service'
+import { readFieldScalars } from '../../field-values/read-field-scalars'
+import { UnifiedCrudHandler } from '../../resources/crud'
+import { unwrapRelationId } from '../../resources/events/captured-values'
+import type {
+  DiscountType,
+  DocumentBillingInputs,
+  DocumentTotals,
+  LineForTotals,
+  RecomputeTotalsInput,
+} from '../types'
+import {
+  computeAllocatedDocumentTotals,
+  computeDocumentTotals,
+  computeLineTotal,
+  roundCents,
+} from './totals'
+import {
+  MONEY_TOTALS_LINE_ITEM,
+  MONEY_TOTALS_PURCHASE_ORDER_LINE,
+  markOrRecomputeDocument,
+  markOrRecomputeLine,
+} from './totals-reconciler'
+
+const logger = createScopedLogger('money:totals-hooks')
+
+/**
+ * Fields on `line-items` whose write should trigger a recompute (money MQ1 build
+ * spec §F.2). The rel triggers (`line_item_quote` / `line_item_work_order`) catch
+ * attach/detach side effects — a line just linked to a quote needs its contribution
+ * folded into that quote's totals. Exported so the finalize integrity passes
+ * (`events/handlers/finalize-integrity-passes.ts`) can match manifest change keys
+ * against the exact same trigger vocabulary as this hook.
+ */
+export const LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'line_item_qty',
+  'line_item_unit_price',
+  'line_item_taxable',
+  'line_item_discount',
+  'line_item_optional', // selection toggles a line's contribution, not its own total (plan 18 §2)
+  'line_item_optional_selected',
+  'line_item_quote',
+  'line_item_work_order',
+  'line_item_invoice', // attach/detach recomputes the invoice (money MI1 build spec §G.1)
+  'line_item_order', // attach/detach recomputes the order (08 §5.4)
+])
+
+/** Subset of {@link LINE_TRIGGER_ATTRS} that also requires rewriting `line_item_line_total`. */
+export const LINE_TOTAL_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'line_item_qty',
+  'line_item_unit_price',
+])
+
+/** Fields on `quotes` whose write should trigger a recompute (money MQ1 build spec §F.2). */
+export const QUOTE_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'quote_discount_type',
+  'quote_discount_value',
+  'quote_tax_rate',
+])
+
+/** Fields on `invoices` whose write should trigger a recompute (money MI1 build spec §G.1). */
+export const INVOICE_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'invoice_discount_type',
+  'invoice_discount_value',
+  'invoice_tax_rate',
+])
+
+/**
+ * Fields on `orders` whose write should trigger a recompute (08 §5.4).
+ *
+ * `order_shipping_total` joined this set in money plan 37 §6/§8: unlike
+ * `purchase_order_shipping_total` (a `PURCHASE_ORDER_TRIGGER_ATTRS` member because the PO adds
+ * it on top via `statedAdditionAttrs`), the order's shipping folds INSIDE `computeDocumentTotals`
+ * (see `rateBilling`'s `shippingAttr`), so a change to it has to reach the same recompute path
+ * discount/tax already do.
+ */
+export const ORDER_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'order_discount_type',
+  'order_discount_value',
+  'order_tax_rate',
+  'order_shipping_total',
+])
+
+/**
+ * Fields on `purchase-orders` whose write should trigger a recompute
+ * (plans/purchasing/01-build-plan.md §4.1).
+ *
+ * Note what is NOT here and what is: a PO has no `_discount_type` and no `_tax_rate`
+ * (a supplier discount arrives as a flat number and a supplier states their tax, they
+ * do not quote us a rate), but it DOES have `_shipping_total` and `_tax_total` as human
+ * inputs that land in the total. Deriving these names from `attrPrefix` the way the three
+ * sell-side sets are derived would produce three attributes that do not exist.
+ */
+export const PURCHASE_ORDER_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'purchase_order_discount_value',
+  'purchase_order_shipping_total',
+  'purchase_order_tax_total',
+])
+
+/** Fields on `purchase-order-lines` whose write should trigger a recompute (§4.2). */
+export const PURCHASE_ORDER_LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'purchase_order_line_quantity_ordered',
+  'purchase_order_line_expected_unit_price',
+  'purchase_order_line_purchase_order',
+])
+
+/** Subset of the above that also requires rewriting `purchase_order_line_line_total`. */
+export const PURCHASE_ORDER_LINE_TOTAL_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'purchase_order_line_quantity_ordered',
+  'purchase_order_line_expected_unit_price',
+])
+
+/** The **totalled** documents. `work_order` owns lines but stores no totals; so does `vendor_bill`,
+ * whose totals are TRANSCRIBED from the supplier's document rather than computed (01 §5.4b) —
+ * recomputing them would silently correct the arithmetic error the three-way match exists to find. */
+export type TotalledDocumentType = 'quote' | 'invoice' | 'order' | 'purchase_order' | 'credit_memo'
+
+/**
+ * Fields on `credit-memo-lines` whose write should trigger a recompute
+ * (plans/accounting/tasks/done/10-credit-memos.md section 2.5). The rel trigger catches
+ * attach/detach; `subtotal` and `tax_total` are here because both are FACTS the parent
+ * sums (a channel line's subtotal is transcribed, its unit price derived from it), so a
+ * direct edit to either must re-sum the memo even though neither is `qty * unit_price`.
+ */
+export const CREDIT_MEMO_LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'credit_memo_line_qty',
+  'credit_memo_line_unit_price',
+  'credit_memo_line_subtotal',
+  'credit_memo_line_tax_total',
+  'credit_memo_line_credit_memo',
+])
+
+/** Subset of {@link CREDIT_MEMO_LINE_TRIGGER_ATTRS} that also rewrites `credit_memo_line_subtotal`. */
+export const CREDIT_MEMO_LINE_TOTAL_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'credit_memo_line_qty',
+  'credit_memo_line_unit_price',
+])
+
+/**
+ * The line entity a document's totals are summed from, and the attributes that make up
+ * one line's contribution. Parameterized rather than hardcoded to `line_item` because a
+ * `purchase_order_line` is deliberately NOT a `line_item` (01 §4.2): it has a buy price
+ * and none of the sell-side vocabulary.
+ *
+ * The three optional modifier attributes are the sell-side vocabulary. A buy-side line
+ * simply omits them, and every read below is already `undefined`-guarded, so nothing needs
+ * a document-type check to skip them.
+ */
+interface LineTotalsSpec {
+  /** The line's `entityType`, for `listFiltered` and `toRecordId`. */
+  lineEntityType: string
+  qtyAttr: SystemAttribute
+  unitPriceAttr: SystemAttribute
+  lineTotalAttr: SystemAttribute
+  taxableAttr?: SystemAttribute
+  optionalAttr?: SystemAttribute
+  optionalSelectedAttr?: SystemAttribute
+  /**
+   * A per-line TRANSCRIBED tax amount. When set, the document's `_tax_total` is the sum of
+   * these and the header's tax rate is never consulted: a credit memo's tax is carried line
+   * by line from the invoice or the channel and is never recomputed from a rate
+   * (plans/accounting/tasks/10 section 3.1).
+   */
+  lineTaxAttr?: SystemAttribute
+  /**
+   * The line NET after every allocated discount, written ONLY by a document spec with
+   * `allocatesHeaderDiscount` (29 §2.3). `lineTotalAttr` stays GROSS (`qty x unitPrice`)
+   * for every document; this is where the `order` spec puts each line's share of the
+   * header discount. A quote or invoice never writes it.
+   */
+  netTotalAttr?: SystemAttribute
+}
+
+/** Every sell-side document's lines are `line_item`s, so the four share one spec. */
+const LINE_ITEM_TOTALS_SPEC: LineTotalsSpec = {
+  lineEntityType: 'line_item',
+  qtyAttr: 'line_item_qty',
+  unitPriceAttr: 'line_item_unit_price',
+  lineTotalAttr: 'line_item_line_total',
+  netTotalAttr: 'line_item_net_total',
+  taxableAttr: 'line_item_taxable',
+  optionalAttr: 'line_item_optional',
+  optionalSelectedAttr: 'line_item_optional_selected',
+}
+
+/** A purchasing line: quantity ordered, expected buy price. No taxable, no optional. */
+const PURCHASE_ORDER_LINE_TOTALS_SPEC: LineTotalsSpec = {
+  lineEntityType: 'purchase_order_line',
+  qtyAttr: 'purchase_order_line_quantity_ordered',
+  unitPriceAttr: 'purchase_order_line_expected_unit_price',
+  lineTotalAttr: 'purchase_order_line_line_total',
+}
+
+/**
+ * A credit memo line: its `subtotal` is the line total the parent sums, and its tax is a
+ * transcribed amount summed onto the parent rather than derived from a rate. No taxable
+ * flag (the tax is stated, not computed) and no optional flag.
+ */
+const CREDIT_MEMO_LINE_TOTALS_SPEC: LineTotalsSpec = {
+  lineEntityType: 'credit_memo_line',
+  qtyAttr: 'credit_memo_line_qty',
+  unitPriceAttr: 'credit_memo_line_unit_price',
+  lineTotalAttr: 'credit_memo_line_subtotal',
+  lineTaxAttr: 'credit_memo_line_tax_total',
+}
+
+/**
+ * How a document's own header money fields fold into its total.
+ *
+ * ⚠️ These are LOOKUPS, not ternaries, for the reason spelled out at `LINE_SCHEMAS` in
+ * `line-builder/line-values.ts`: `billingPrefix` was once
+ * `documentType === 'invoice' ? 'invoice' : 'quote'`, which silently mapped every other
+ * document to the QUOTE prefix — a document reading and writing another document's
+ * `quote_tax_rate`. A new document type must never join a boolean-shaped expression.
+ */
+interface DocumentBillingSpec {
+  /** Header attr holding the discount shape, or `null` when the document has only one. */
+  discountTypeAttr: SystemAttribute | null
+  /** Used when `discountTypeAttr` is `null`. */
+  fixedDiscountType: DiscountType | null
+  /** Header attr holding the discount value, or `null` when the document has no discount. */
+  discountValueAttr: SystemAttribute | null
+  /** Header attr holding the tax RATE percent, or `null` when the document states an amount. */
+  taxRateAttr: SystemAttribute | null
+  /**
+   * Header attr holding a stated shipping amount, folded INSIDE `computeDocumentTotals`
+   * (money plan 37 §6) — `null` for every document but `order`. Distinct from
+   * `statedAdditionAttrs` below: this one is read into `DocumentBillingInputs.shipping` and
+   * added by the pure formula itself, not bolted on after the call.
+   */
+  shippingAttr: SystemAttribute | null
+  /**
+   * Header attrs whose STATED amounts are added on top of the computed total. Empty on the
+   * sell side, where freight and tax are either lines or derived from a rate.
+   */
+  statedAdditionAttrs: SystemAttribute[]
+  /** Whether the engine writes `<prefix>_tax_total`. False when it is a human input. */
+  writesTaxTotal: boolean
+}
+
+/**
+ * The sell-side billing shape: a typed discount plus a tax rate, both on the header.
+ *
+ * Only `order` carries a `shippingAttr` (money plan 37 §6): quote and invoice have no
+ * shipping term, on purpose (§11) — a per-prefix derivation here would otherwise expect
+ * `quote_shipping_total` / `invoice_shipping_total` fields that do not exist.
+ */
+function rateBilling(prefix: 'quote' | 'invoice' | 'order'): DocumentBillingSpec {
+  return {
+    discountTypeAttr: `${prefix}_discount_type` as SystemAttribute,
+    fixedDiscountType: null,
+    discountValueAttr: `${prefix}_discount_value` as SystemAttribute,
+    taxRateAttr: `${prefix}_tax_rate` as SystemAttribute,
+    shippingAttr: prefix === 'order' ? 'order_shipping_total' : null,
+    statedAdditionAttrs: [],
+    writesTaxTotal: true,
+  }
+}
+
+/**
+ * Per-document knobs for {@link recomputeDocumentTotals} (08 §5.4). Everything else —
+ * the billing read, the line read, `computeDocumentTotals`, the mirror write — is shared,
+ * and the systemAttribute names are all derived from `attrPrefix`.
+ */
+interface DocumentTotalsSpec {
+  /** systemAttribute + field-id prefix: `quote_discount_type`, `quote_subtotal`, … */
+  attrPrefix: TotalledDocumentType
+  /** Which entity this document's lines are, and which attributes they carry. */
+  line: LineTotalsSpec
+  /** How the header's own money fields fold into the total. */
+  billing: DocumentBillingSpec
+  /** The line's owning relation, as a resource field id. */
+  lineRelFieldId: string
+  /** Extra conditions ANDed onto the line query. */
+  extraLineConditions: Array<{
+    id: string
+    fieldId: string
+    operator: 'is' | 'empty'
+    value: string | null
+  }>
+  /**
+   * Passed straight through to `setValuesForEntity`. `true` forces a publish (the
+   * builder's totals footer updates via realtime); **`undefined` is not the same as
+   * `false`** — undefined means "publish unless the session is declared silent"
+   * (`field-value-mutations.ts:2667`), which is what the invoice path has always done.
+   */
+  publishEvents?: boolean
+  /**
+   * When set, the mirrors are written only while the header's status attr holds one of
+   * `editableValues`. A credit memo's lines are frozen once it is issued (section 2.4), and
+   * its posted entry ties to the totals that stood at issue; a late line write must not
+   * move them.
+   */
+  frozenStatus?: { attr: SystemAttribute; editableValues: ReadonlySet<string> }
+  /** Optional trailing side effect, run after the mirrors are written. */
+  afterWrite?: (params: {
+    organizationId: string
+    userId: string
+    documentInstanceId: string
+    db?: Database
+  }) => Promise<void>
+  /**
+   * The header discount is pushed DOWN onto the lines (29 §12 item 7, §2.3):
+   * each line's share of it is subtracted from its GROSS `lineTotalAttr` and
+   * the result written to `netTotalAttr` (`computeAllocatedDocumentTotals`),
+   * `_subtotal` is Σ of those nets, and `_total` is `subtotal + tax + shipping`
+   * with no discount left to subtract.
+   *
+   * `lineTotalAttr` itself is never touched by this: it stays `qty x unitPrice`
+   * (the line hook's own write) on every document, which is what Shopify's
+   * admin shows per line and what a customer expects the line to match (MK,
+   * 2026-09-14). With no discount the allocation of zero makes the net EQUAL
+   * the gross, so `netTotalAttr` always carries a value on an allocating
+   * document once it has been recomputed, and the ledger can read it first
+   * and fall back to the gross total only where it is null.
+   *
+   * Only `order` sets it. A quote or invoice keeps the discount on the header,
+   * where `build-invoice-entry.ts` derives it from the stored total, and
+   * never writes `netTotalAttr` at all.
+   */
+  allocatesHeaderDiscount?: boolean
+}
+
+const DOCUMENT_TOTALS_SPECS: Record<TotalledDocumentType, DocumentTotalsSpec> = {
+  quote: {
+    attrPrefix: 'quote',
+    line: LINE_ITEM_TOTALS_SPEC,
+    billing: rateBilling('quote'),
+    lineRelFieldId: 'line_item:quote',
+    extraLineConditions: [],
+    publishEvents: true,
+  },
+  invoice: {
+    attrPrefix: 'invoice',
+    line: LINE_ITEM_TOTALS_SPEC,
+    billing: rateBilling('invoice'),
+    lineRelFieldId: 'line_item:invoice',
+    // The §B.3 invariant: an invoice's own lines never carry a work order, so a WO
+    // source line stamped with `line_item_invoice` must not contribute twice.
+    extraLineConditions: [
+      {
+        id: 'invoice-lines-workorder',
+        fieldId: 'line_item:workOrder',
+        operator: 'empty',
+        value: null,
+      },
+    ],
+    // Deliberately left undefined — see the field doc above.
+    // A total change can move `balance` and flip `paid` ↔ `partially_paid` even
+    // though no payment was recorded (§E.4).
+    afterWrite: ({ organizationId, userId, documentInstanceId, db }) =>
+      syncInvoicePaymentState({
+        organizationId,
+        userId,
+        invoiceInstanceId: documentInstanceId,
+        db,
+      }),
+  },
+  order: {
+    attrPrefix: 'order',
+    line: LINE_ITEM_TOTALS_SPEC,
+    billing: rateBilling('order'),
+    lineRelFieldId: 'line_item:order',
+    // No work-order exclusion (that invariant is about an invoice's own lines) and no
+    // payment ledger (08 §5.4).
+    extraLineConditions: [],
+    publishEvents: true,
+    // A native order's header discount lands on its lines as `line_item_net_total`, so
+    // `order_subtotal` is Σ net and `order_total = subtotal + tax + shipping` - the shape
+    // the fulfillment and payment entries are computed on, and the shape a connector
+    // order already has (29 §2.3, §12 item 7). `line_item_line_total` stays gross. A
+    // connector-managed order never reaches the write: the stand-down below covers the
+    // line writes too.
+    allocatesHeaderDiscount: true,
+  },
+  purchase_order: {
+    attrPrefix: 'purchase_order',
+    line: PURCHASE_ORDER_LINE_TOTALS_SPEC,
+    // The buy-side shape (01 §4.1). A supplier discount is a flat amount — there is no
+    // `purchase_order_discount_type` field to read a shape from — and freight and tax
+    // arrive STATED on the header rather than derived from a rate, so both are added on
+    // top and `purchase_order_tax_total` stays a human input the engine must not overwrite.
+    billing: {
+      discountTypeAttr: null,
+      fixedDiscountType: 'amount',
+      discountValueAttr: 'purchase_order_discount_value',
+      taxRateAttr: null,
+      // `null`, not `'purchase_order_shipping_total'`: the PO already adds its shipping via
+      // `statedAdditionAttrs` below (added AFTER `computeDocumentTotals`, not inside it), so
+      // setting both here would double-count it.
+      shippingAttr: null,
+      statedAdditionAttrs: ['purchase_order_shipping_total', 'purchase_order_tax_total'],
+      writesTaxTotal: false,
+    },
+    lineRelFieldId: 'purchase_order_line:purchaseOrder',
+    extraLineConditions: [],
+    publishEvents: true,
+  },
+  credit_memo: {
+    attrPrefix: 'credit_memo',
+    line: CREDIT_MEMO_LINE_TOTALS_SPEC,
+    // No discount, no rate, no shipping: a memo's subtotal is the sum of its line subtotals
+    // and its tax the sum of its line tax totals, both transcribed (10 section 2.5).
+    billing: {
+      discountTypeAttr: null,
+      fixedDiscountType: null,
+      discountValueAttr: null,
+      taxRateAttr: null,
+      shippingAttr: null,
+      statedAdditionAttrs: [],
+      writesTaxTotal: true,
+    },
+    lineRelFieldId: 'credit_memo_line:creditMemo',
+    extraLineConditions: [],
+    publishEvents: true,
+    frozenStatus: { attr: 'credit_memo_status', editableValues: new Set(['draft']) },
+  },
+}
+
+/**
+ * Recompute a totalled document's `subtotal`/`taxTotal`/`total` from its current lines +
+ * billing fields and write the mirrors via `FieldValueService`. The single source of truth
+ * for "what are this document's totals right now" — called by both the field-change hooks
+ * below and the `money.recomputeTotals` router mutation (delete path + drift escape,
+ * §F.2/§G.2).
+ *
+ * Generalized across quote/invoice/order (08 §5.4): the quote and invoice branches were
+ * ~110-line near-duplicates differing in three places, which {@link DOCUMENT_TOTALS_SPECS}
+ * now names explicitly. The legacy `{ quoteInstanceId }` shape (no `documentType`/
+ * `documentInstanceId`) is still accepted so existing quote call sites keep compiling.
+ */
+export async function recomputeTotals(
+  input: RecomputeTotalsInput & { db?: Database }
+): Promise<void> {
+  const { organizationId, userId } = input
+  const documentType = input.documentType ?? 'quote'
+  const documentInstanceId = input.documentInstanceId ?? input.quoteInstanceId
+  if (!documentInstanceId) {
+    throw new BadRequestError(
+      'recomputeTotals requires a documentInstanceId (or legacy quoteInstanceId)'
+    )
+  }
+
+  await recomputeDocumentTotals({
+    organizationId,
+    userId,
+    documentType,
+    documentInstanceId,
+    db: input.db,
+  })
+}
+
+/** The one parameterized recompute behind every document type. */
+async function recomputeDocumentTotals(params: {
+  organizationId: string
+  userId: string
+  documentType: TotalledDocumentType
+  documentInstanceId: string
+  db?: Database
+}): Promise<void> {
+  const { organizationId, userId, documentType, documentInstanceId, db } = params
+  const spec = DOCUMENT_TOTALS_SPECS[documentType]
+  const documentRecordId = toRecordId(documentType, documentInstanceId)
+  const handler = new UnifiedCrudHandler(organizationId, userId, db)
+  const cache = getOrgCache()
+
+  const headerAttrs = [
+    spec.billing.discountTypeAttr,
+    spec.billing.discountValueAttr,
+    spec.billing.taxRateAttr,
+    spec.billing.shippingAttr,
+    spec.frozenStatus?.attr ?? null,
+    ...spec.billing.statedAdditionAttrs,
+  ].filter((a): a is SystemAttribute => a !== null)
+
+  /**
+   * The mirrors this engine writes. Read in the SAME `getFieldValues` call as the
+   * billing inputs — same query, more ids, no extra round trip — so the write can be
+   * skipped when nothing moved (`purchase-order-line-rollups.ts:288` does the same for
+   * its single roll-up value).
+   *
+   * `_tax_total` is listed only when the engine OWNS it: a PO's is a human input
+   * (`writesTaxTotal: false`), and reading it here to compare against a number we never
+   * write would refuse every no-op.
+   */
+  const mirrorAttrs: SystemAttribute[] = [
+    `${spec.attrPrefix}_subtotal` as SystemAttribute,
+    `${spec.attrPrefix}_total` as SystemAttribute,
+    ...(spec.billing.writesTaxTotal ? [`${spec.attrPrefix}_tax_total` as SystemAttribute] : []),
+  ]
+
+  const lineAttrs = [
+    spec.line.lineTotalAttr,
+    spec.line.taxableAttr,
+    spec.line.optionalAttr,
+    spec.line.optionalSelectedAttr,
+    spec.line.lineTaxAttr,
+    // The stored net is compared against the allocation when the discount lives on
+    // the lines - see `allocatesHeaderDiscount`. Same query, one more id.
+    ...(spec.allocatesHeaderDiscount ? [spec.line.netTotalAttr] : []),
+  ].filter((a): a is SystemAttribute => a !== undefined)
+
+  const cf = await cache
+    .from(organizationId, 'customFields')
+    .bySystemAttributes<SystemAttribute>([...headerAttrs, ...mirrorAttrs, ...lineAttrs])
+
+  const discountTypeField = spec.billing.discountTypeAttr
+    ? cf[spec.billing.discountTypeAttr]
+    : undefined
+  const discountValueField = spec.billing.discountValueAttr
+    ? cf[spec.billing.discountValueAttr]
+    : undefined
+  const taxRateField = spec.billing.taxRateAttr ? cf[spec.billing.taxRateAttr] : undefined
+  const shippingField = spec.billing.shippingAttr ? cf[spec.billing.shippingAttr] : undefined
+
+  const headerFieldIds = [...headerAttrs, ...mirrorAttrs]
+    .map((a) => cf[a]?.id)
+    .filter((id): id is string => !!id)
+  const headerValues = await handler.getFieldValues(documentRecordId, headerFieldIds)
+
+  const readNumber = (fieldId: string | undefined): number | null => {
+    if (!fieldId) return null
+    const typed = firstTyped(headerValues.get(fieldId))
+    return typed ? (extractValue(typed) as number) : null
+  }
+
+  const discountTypeTyped = discountTypeField
+    ? firstTyped(headerValues.get(discountTypeField.id))
+    : undefined
+
+  // The freeze: a document past its editable statuses keeps the totals its posted entry
+  // tied to. Read in the same header call as everything else, so it costs nothing.
+  if (spec.frozenStatus) {
+    const statusField = cf[spec.frozenStatus.attr]
+    const statusTyped = statusField ? firstTyped(headerValues.get(statusField.id)) : undefined
+    const status = statusTyped ? (extractValue(statusTyped) as string) : undefined
+    if (status && !spec.frozenStatus.editableValues.has(status)) {
+      logger.debug('totals recompute skipped - document is past its editable statuses', {
+        organizationId,
+        documentType,
+        documentInstanceId,
+        status,
+      })
+      return
+    }
+  }
+
+  const billing: DocumentBillingInputs = {
+    // A document with no `_discount_type` field carries a single fixed shape (a supplier
+    // discount is always a flat amount), never the quote's default by accident.
+    discountType: discountTypeTyped
+      ? (extractValue(discountTypeTyped) as DiscountType)
+      : spec.billing.fixedDiscountType,
+    discountValue: readNumber(discountValueField?.id),
+    taxRate: readNumber(taxRateField?.id),
+    shipping: readNumber(shippingField?.id),
+  }
+
+  // Stated header amounts (buy-side freight + tax). Empty on the sell side, so this sums
+  // to 0 and the three existing documents keep their arithmetic byte-for-byte.
+  const statedAdditions = spec.billing.statedAdditionAttrs.reduce(
+    (sum, attr) => sum + (readNumber(cf[attr]?.id) ?? 0),
+    0
+  )
+
+  const { ids: lineInstanceIds } = await handler.listFiltered({
+    entityDefinitionId: spec.line.lineEntityType,
+    filters: [
+      {
+        id: `${documentType}-lines`,
+        logicalOperator: 'AND',
+        conditions: [
+          {
+            id: `${documentType}-lines-parent`,
+            fieldId: spec.lineRelFieldId,
+            operator: 'is',
+            value: documentRecordId,
+          },
+          ...spec.extraLineConditions,
+        ],
+      },
+    ],
+    limit: 1000,
+  })
+
+  const lineTotalField = cf[spec.line.lineTotalAttr]
+  const lines: LineForTotalsWithTax[] = lineTotalField
+    ? await readLinesForTotals(db, organizationId, spec, cf, lineInstanceIds)
+    : []
+
+  /**
+   * The header discount, on the header or on the lines (29 §12 item 7). When it is on
+   * the lines, `lineWrites` is every line whose stored NET is not its allocated net -
+   * which sets the net back to the gross too, on the recompute that follows a discount
+   * being removed, because the allocation of zero is the gross. The gross column is
+   * never in this list.
+   *
+   * An org that has not run entity migration 157 has no `netTotalAttr` field to write:
+   * the header mirrors still land, the net writes are dropped, and the ledger falls
+   * back to the gross total for that org (29 §2.3).
+   */
+  let computed: DocumentTotals
+  let lineWrites: Array<{ lineInstanceId: string; value: number | null }> = []
+  const netTotalAttr = spec.allocatesHeaderDiscount ? spec.line.netTotalAttr : undefined
+  if (spec.allocatesHeaderDiscount) {
+    const allocated = computeAllocatedDocumentTotals(lines, billing)
+    computed = allocated.totals
+    if (netTotalAttr && cf[netTotalAttr]) {
+      lineWrites = allocated.lines.flatMap((line) =>
+        line.lineTotal === line.storedNetTotal
+          ? []
+          : [{ lineInstanceId: line.lineInstanceId, value: line.lineTotal }]
+      )
+    }
+  } else {
+    computed = computeDocumentTotals(lines, billing)
+  }
+
+  // Transcribed line tax replaces the rate-derived figure wholesale: the two are never
+  // combined, and with no rate on the header `computed.taxTotal` is zero anyway.
+  const totals = spec.line.lineTaxAttr
+    ? {
+        ...computed,
+        taxTotal: roundCents(lines.reduce((sum, line) => sum + (line.lineTax ?? 0), 0)),
+        total: roundCents(
+          computed.total -
+            computed.taxTotal +
+            lines.reduce((sum, line) => sum + (line.lineTax ?? 0), 0)
+        ),
+      }
+    : computed
+
+  const values: Array<{ fieldId: string; value: number }> = [
+    { fieldId: `${spec.attrPrefix}_subtotal`, value: totals.subtotal },
+    { fieldId: `${spec.attrPrefix}_total`, value: roundCents(totals.total + statedAdditions) },
+  ]
+  // Only when the engine owns it. A PO's `tax_total` is typed off the supplier's
+  // acknowledgement and is an INPUT to the total, so writing a derived 0 over it would
+  // both destroy the entry and drop it from the total on the next recompute.
+  if (spec.billing.writesTaxTotal) {
+    values.push({ fieldId: `${spec.attrPrefix}_tax_total`, value: totals.taxTotal })
+  }
+
+  /**
+   * Skip a write that would store what is already stored.
+   *
+   * The hook fires once per changed FIELD, and several of its triggers move no total at
+   * all — `line_item_taxable` on a document with no tax rate, a rel write that re-links a
+   * line to the parent it already had, the second of two attributes set in one line write.
+   * Each of those previously re-entered the field-value layer, the realtime publisher and
+   * the sync manifest to store an identical number.
+   *
+   * Conservative by construction: unless EVERY value is already present and equal, the
+   * write happens. A mirror the org has not materialised has no field id, so `readNumber`
+   * returns null, nothing matches, and the write proceeds exactly as before.
+   *
+   * 🛑 `afterWrite` still runs. `syncInvoicePaymentState` reads more than these three
+   * numbers — a payment recorded elsewhere moves `balance` and can flip
+   * `paid` <-> `partially_paid` with the totals unchanged — and `money.recomputeTotals`
+   * is documented as the manual drift escape, so it must stay a real refresh.
+   */
+  const unchanged =
+    lineWrites.length === 0 &&
+    values.every((v) => {
+      const current = readNumber(cf[v.fieldId as SystemAttribute]?.id)
+      return current !== null && current === v.value
+    })
+
+  if (!unchanged) {
+    /**
+     * The totals stand-down (money plan 37 §6): a synced order's totals are transcribed
+     * from the connector, not computed, so the engine must never overwrite them. One call
+     * per RECORD, keyed on `${prefix}_total` — if a connector manages the total it manages
+     * the whole mirror set (the sink binds subtotal/tax/shipping/total together, §6.1), so
+     * checking every mirror individually would be redundant round trips for the same
+     * answer. Gated on `!unchanged` so a no-op recompute never pays this lookup either.
+     * `managedFields` stores `<defId>:<fieldId>` refs, so the lookup takes the concrete
+     * field id, never the attribute name; an org that has not materialised the mirror has
+     * no id and is never managed.
+     */
+    const totalFieldId = cf[`${spec.attrPrefix}_total` as SystemAttribute]?.id
+    const managed = totalFieldId
+      ? await isFieldConnectorManaged(
+          db ?? database,
+          organizationId,
+          documentInstanceId,
+          totalFieldId
+        )
+      : false
+
+    if (managed) {
+      logger.debug('totals recompute skipped — connector-managed record', {
+        organizationId,
+        documentType,
+        documentInstanceId,
+      })
+    } else {
+      const fieldValueService = new FieldValueService(organizationId, userId, db)
+      // The lines first, so anything reading them off the header's realtime event
+      // sees the nets the header was summed from. `netTotalAttr` is in no trigger
+      // set (`LINE_TRIGGER_ATTRS`, the billing hooks, the finalize passes), so these
+      // writes re-enter nothing - `recomputeOnLineChange` exits on its filter.
+      // `lineWrites` is empty unless `netTotalAttr` resolved above.
+      if (netTotalAttr) {
+        for (const write of lineWrites) {
+          await fieldValueService.setValuesForEntity({
+            recordId: toRecordId(spec.line.lineEntityType, write.lineInstanceId),
+            values: [{ fieldId: netTotalAttr, value: write.value }],
+            publishEvents: true,
+          })
+        }
+      }
+      await fieldValueService.setValuesForEntity({
+        recordId: documentRecordId,
+        values,
+        publishEvents: spec.publishEvents,
+      })
+    }
+  }
+
+  await spec.afterWrite?.({ organizationId, userId, documentInstanceId, db })
+}
+
+/**
+ * Every line's contribution to its document, in ONE query per 200-id chunk.
+ *
+ * ⚠️ This replaced a serial `getFieldValues` per line — `await` inside a `for`
+ * over an id list capped at 1000 — which made a 20-line document cost ~20
+ * round trips per hook fire, and the hook fires once per changed FIELD. A
+ * 20-line bulk paste therefore issued 40 recomputes, each re-reading every
+ * line that existed so far. See `plans/events/08-derived-parent-reconciler-plan.md` §1.
+ *
+ * The set-based read itself lives in {@link readFieldScalars} — why it is raw
+ * rather than `batchGetValues` or `fetchResourceSnapshots` is recorded there, and
+ * it now has three callers.
+ *
+ * One entry per id in `lineInstanceIds`, in that order, INCLUDING a line with no
+ * stored values at all — the previous loop pushed an entry per id unconditionally
+ * and `computeDocumentTotals` counts a null `lineTotal` as a zero contribution.
+ */
+/**
+ * A line's contribution plus, for a document with `lineTaxAttr`, its transcribed tax -
+ * and, for one with `allocatesHeaderDiscount`, the identity and stored NET the net write
+ * is compared against. `lineTotal` is always the stored GROSS (`lineTotalAttr`, the line
+ * hook's own `qty x unitPrice`); `storedNetTotal` is what `netTotalAttr` holds today, or
+ * null on a document that does not allocate or a line never recomputed since 157.
+ */
+type LineForTotalsWithTax = LineForTotals & {
+  lineTax?: number | null
+  lineInstanceId: string
+  storedNetTotal: number | null
+}
+
+async function readLinesForTotals(
+  db: Database | undefined,
+  organizationId: string,
+  spec: DocumentTotalsSpec,
+  cf: Partial<Record<SystemAttribute, { id: string } | null>>,
+  lineInstanceIds: string[]
+): Promise<LineForTotalsWithTax[]> {
+  if (lineInstanceIds.length === 0) return []
+
+  const idFor = (attr: SystemAttribute | undefined): string | undefined =>
+    attr ? (cf[attr]?.id ?? undefined) : undefined
+
+  const lineTotalFieldId = idFor(spec.line.lineTotalAttr)
+  const taxableFieldId = idFor(spec.line.taxableAttr)
+  const optionalFieldId = idFor(spec.line.optionalAttr)
+  const optionalSelectedFieldId = idFor(spec.line.optionalSelectedAttr)
+  const lineTaxFieldId = idFor(spec.line.lineTaxAttr)
+  const netTotalFieldId = spec.allocatesHeaderDiscount ? idFor(spec.line.netTotalAttr) : undefined
+
+  const fieldIds = [
+    lineTotalFieldId,
+    taxableFieldId,
+    optionalFieldId,
+    optionalSelectedFieldId,
+    lineTaxFieldId,
+    netTotalFieldId,
+  ].filter((id): id is string => !!id)
+  if (fieldIds.length === 0) return lineInstanceIds.map(emptyLineForTotals)
+
+  const byLine = await readFieldScalars(db, organizationId, lineInstanceIds, fieldIds)
+
+  return lineInstanceIds.map((lineInstanceId) => {
+    const values = byLine.get(lineInstanceId)
+    if (!values) return emptyLineForTotals(lineInstanceId)
+
+    const read = (fieldId: string | undefined): unknown =>
+      fieldId && values.has(fieldId) ? values.get(fieldId) : undefined
+
+    const stored = read(lineTotalFieldId)
+    const storedNet = read(netTotalFieldId)
+    const taxable = read(taxableFieldId)
+    const optional = read(optionalFieldId)
+    const optionalSelected = read(optionalSelectedFieldId)
+    const lineTax = read(lineTaxFieldId)
+
+    return {
+      lineInstanceId,
+      // The GROSS as the line hook wrote it (`qty x unitPrice`). On an allocating
+      // document the engine subtracts each line's discount share from this and
+      // writes the result to `netTotalAttr`; the gross column is never rewritten
+      // here, so it is always safe to read as the allocation's input.
+      lineTotal: stored == null ? null : (stored as number),
+      storedNetTotal: storedNet == null ? null : (storedNet as number),
+      // A line entity with no `taxable` field is wholly taxable as far as the math is
+      // concerned — with `taxRate` null (the buy side) that distinction never surfaces.
+      taxable: taxable == null ? true : (taxable as boolean),
+      optional: optional == null ? undefined : (optional as boolean),
+      optionalSelected: optionalSelected == null ? undefined : (optionalSelected as boolean),
+      lineTax: lineTax == null ? null : (lineTax as number),
+    }
+  })
+}
+
+/** A line the query returned nothing for — the previous loop's all-absent case. */
+function emptyLineForTotals(lineInstanceId: string): LineForTotalsWithTax {
+  return {
+    lineInstanceId,
+    storedNetTotal: null,
+    lineTotal: null,
+    taxable: true,
+    optional: undefined,
+    optionalSelected: undefined,
+  }
+}
+
+/**
+ * Recompute + write a single line's `line_item_line_total` from its current qty/unitPrice
+ * (`publishEvents` ON — the builder's lineTotal cell updates via realtime). Extracted from
+ * {@link recomputeOnLineChange} step 1 so the finalize integrity passes can run it per
+ * imported/synced line; behavior is identical to the hook's inline version. No-ops when the
+ * org lacks the qty/unitPrice fields.
+ */
+export async function recomputeLineTotal(params: {
+  organizationId: string
+  userId: string
+  lineInstanceId: string
+  /** Defaults to `line_item` — the finalize integrity passes call it that way. */
+  line?: LineTotalsSpec
+  db?: Database
+}): Promise<void> {
+  const { organizationId, userId, lineInstanceId, db } = params
+  const line = params.line ?? LINE_ITEM_TOTALS_SPEC
+  const lineRecordId = toRecordId(line.lineEntityType, lineInstanceId)
+  const handler = new UnifiedCrudHandler(organizationId, userId, db)
+
+  const cf = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes<SystemAttribute>([line.qtyAttr, line.unitPriceAttr, line.lineTotalAttr])
+  const qtyField = cf[line.qtyAttr]
+  const unitPriceField = cf[line.unitPriceAttr]
+  if (!qtyField || !unitPriceField) return
+
+  // The totals stand-down (money plan 37 §6): a connector-transcribed line's own total must
+  // never be overwritten by the engine — the sink already wrote the true `lineTotal`. The
+  // lookup takes the concrete field id (`managedFields` stores `<defId>:<fieldId>` refs).
+  const lineTotalFieldId = cf[line.lineTotalAttr]?.id
+  const lineManaged = lineTotalFieldId
+    ? await isFieldConnectorManaged(
+        db ?? database,
+        organizationId,
+        lineInstanceId,
+        lineTotalFieldId
+      )
+    : false
+  if (lineManaged) {
+    logger.debug('line total recompute skipped — connector-managed record', {
+      organizationId,
+      lineInstanceId,
+      lineTotalAttr: line.lineTotalAttr,
+    })
+    return
+  }
+
+  const values = await handler.getFieldValues(lineRecordId, [qtyField.id, unitPriceField.id])
+  const qtyTyped = firstTyped(values.get(qtyField.id))
+  const unitPriceTyped = firstTyped(values.get(unitPriceField.id))
+  const qty = qtyTyped ? (extractValue(qtyTyped) as number) : 0
+  const unitPrice = unitPriceTyped ? (extractValue(unitPriceTyped) as number) : null
+
+  const fieldValueService = new FieldValueService(organizationId, userId, db)
+  await fieldValueService.setValuesForEntity({
+    recordId: lineRecordId,
+    values: [{ fieldId: line.lineTotalAttr, value: computeLineTotal(qty, unitPrice) }],
+    publishEvents: true,
+  })
+}
+
+/**
+ * Resolve which document a line's contribution folds into — the parent quote, else the
+ * parent invoice but ONLY when `line_item_work_order` is empty (§B.3/§G.1: a WO source
+ * line stamped with `line_item_invoice` must never recompute the invoice; only the
+ * invoice's own copies do). Extracted from {@link recomputeOnLineChange} steps 2-3 —
+ * same reads, same precedence — so the finalize integrity passes can collect DISTINCT
+ * parents across a run before recomputing each once. Returns null when the line hangs
+ * off no recomputable document.
+ */
+export async function resolveLineParentDocument(params: {
+  organizationId: string
+  userId: string
+  lineInstanceId: string
+}): Promise<{ documentType: TotalledDocumentType; documentInstanceId: string } | null> {
+  const { organizationId, userId, lineInstanceId } = params
+  const lineRecordId = toRecordId('line_item', lineInstanceId)
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+
+  const cf = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([
+      'line_item_quote',
+      'line_item_invoice',
+      'line_item_order',
+      'line_item_work_order',
+    ] as const)
+
+  // Resolve the parent quote — work_order lines have no stored totals in MQ1, skip.
+  if (cf.line_item_quote) {
+    const quoteValues = await handler.getFieldValues(lineRecordId, [cf.line_item_quote.id])
+    const quoteTyped = firstTyped(quoteValues.get(cf.line_item_quote.id))
+    if (quoteTyped?.type === 'relationship' && quoteTyped.recordId) {
+      const { entityInstanceId: quoteInstanceId } = parseRecordId(quoteTyped.recordId)
+      return { documentType: 'quote', documentInstanceId: quoteInstanceId }
+    }
+  }
+
+  // Resolve the parent invoice — ONLY when this line has no work order (§B.3/§G.1): a
+  // WO source line stamped with `line_item_invoice` must never recompute the invoice.
+  if (cf.line_item_invoice && cf.line_item_work_order) {
+    const relValues = await handler.getFieldValues(lineRecordId, [
+      cf.line_item_invoice.id,
+      cf.line_item_work_order.id,
+    ])
+    const invoiceTyped = firstTyped(relValues.get(cf.line_item_invoice.id))
+    const workOrderTyped = firstTyped(relValues.get(cf.line_item_work_order.id))
+    const hasWorkOrder = workOrderTyped?.type === 'relationship' && !!workOrderTyped.recordId
+    if (!hasWorkOrder && invoiceTyped?.type === 'relationship' && invoiceTyped.recordId) {
+      const { entityInstanceId: invoiceInstanceId } = parseRecordId(invoiceTyped.recordId)
+      return { documentType: 'invoice', documentInstanceId: invoiceInstanceId }
+    }
+  }
+
+  // Resolve the parent order (08 §5.4). Last in precedence because it is the newest
+  // slot and the only one a line can hold alongside nothing else — an order line is
+  // never also a quote or invoice line.
+  if (cf.line_item_order) {
+    const orderValues = await handler.getFieldValues(lineRecordId, [cf.line_item_order.id])
+    const orderTyped = firstTyped(orderValues.get(cf.line_item_order.id))
+    if (orderTyped?.type === 'relationship' && orderTyped.recordId) {
+      const { entityInstanceId: orderInstanceId } = parseRecordId(orderTyped.recordId)
+      return { documentType: 'order', documentInstanceId: orderInstanceId }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Recompute hook for `line-items` (money MQ1 build spec §F.2, registered under the
+ * `line-items` apiSlug in `field-hooks/register-hooks.ts`). Steps:
+ *
+ * 1. If `qty`/`unitPrice` changed, recompute + write `line_item_line_total`
+ *    ({@link recomputeLineTotal}).
+ * 2. Resolve the line's parent document ({@link resolveLineParentDocument}: quote first,
+ *    else invoice-without-work-order) and recompute+write its mirrored totals.
+ *
+ * No recursion: the fields this hook writes (`line_total`, `net_total`, `subtotal`/
+ * `tax_total`/`total`) are not in {@link LINE_TRIGGER_ATTRS}, {@link QUOTE_TRIGGER_ATTRS}, or
+ * {@link INVOICE_TRIGGER_ATTRS}, so re-entry exits immediately on the systemAttribute filter.
+ */
+export const recomputeOnLineChange: EntityFieldChangeHandler = async (event) => {
+  const attr = event.field.systemAttribute as SystemAttribute | undefined
+  if (!attr || !LINE_TRIGGER_ATTRS.has(attr)) return
+
+  const { organizationId, userId } = event
+  const { entityInstanceId: lineInstanceId } = parseRecordId(event.recordId)
+
+  // Stays INLINE, and must: the parent recompute reads `line_item_line_total`,
+  // so the line's own total has to be written before the drain runs.
+  if (LINE_TOTAL_TRIGGER_ATTRS.has(attr)) {
+    await recomputeLineTotal({ organizationId, userId, lineInstanceId })
+  }
+
+  // The parent is resolved in the DRAIN, not here (plan 08 phase 2). Walking the
+  // quote -> invoice -> order ladder per fire cost up to three round trips, and
+  // the hook fires once per changed field; the batched resolver walks it for the
+  // whole paste in one query.
+  await markOrRecomputeLine(organizationId, userId, MONEY_TOTALS_LINE_ITEM, lineInstanceId)
+}
+
+/**
+ * Recompute hook for `quotes` (money MQ1 build spec §F.2, registered under the
+ * `quotes` apiSlug). Fires when the quote's own billing fields change
+ * (discount type/value, tax rate) and recomputes+writes its mirrored totals.
+ */
+export const recomputeOnQuoteBillingChange: EntityFieldChangeHandler = async (event) => {
+  const attr = event.field.systemAttribute as SystemAttribute | undefined
+  if (!attr || !QUOTE_TRIGGER_ATTRS.has(attr)) return
+
+  const { entityInstanceId: quoteInstanceId } = parseRecordId(event.recordId)
+  await markOrRecomputeDocument(event.organizationId, event.userId, 'quote', quoteInstanceId)
+}
+
+/**
+ * Recompute hook for `invoices` (money MI1 build spec §G.1, registered under the `invoices`
+ * apiSlug). Fires when the invoice's own billing fields change (discount type/value, tax
+ * rate) and recomputes+writes its mirrored totals.
+ */
+export const recomputeOnInvoiceBillingChange: EntityFieldChangeHandler = async (event) => {
+  const attr = event.field.systemAttribute as SystemAttribute | undefined
+  if (!attr || !INVOICE_TRIGGER_ATTRS.has(attr)) return
+
+  const { entityInstanceId: invoiceInstanceId } = parseRecordId(event.recordId)
+  await markOrRecomputeDocument(event.organizationId, event.userId, 'invoice', invoiceInstanceId)
+}
+
+/**
+ * Recompute hook for `orders` (08 §5.4, registered under the `orders` apiSlug). Fires when
+ * the order's own billing fields change (discount type/value, tax rate) and recomputes +
+ * writes its mirrored totals.
+ */
+export const recomputeOnOrderBillingChange: EntityFieldChangeHandler = async (event) => {
+  const attr = event.field.systemAttribute as SystemAttribute | undefined
+  if (!attr || !ORDER_TRIGGER_ATTRS.has(attr)) return
+
+  const { entityInstanceId: orderInstanceId } = parseRecordId(event.recordId)
+  await markOrRecomputeDocument(event.organizationId, event.userId, 'order', orderInstanceId)
+}
+
+/**
+ * {@link recomputeOnLineChange} and {@link recomputeOnOrderBillingChange}, driven by a
+ * COMMITTED `TxWriteScope` instead of a field-change event.
+ *
+ * `line_item` and `order` are both on the accounting guard's `guardedTypes`
+ * (`postings/source-write-guard.ts`), so every write to one runs inside that guard's
+ * transaction — and a buffered write suppresses the field-change hook chain along with the
+ * realtime frame (`create-values.ts`'s `announce`). On those two entities the totals engine
+ * therefore never fires: a line lands with no `line_item_line_total` and its document keeps
+ * whatever totals it had, which is a quote/invoice/order reading 0 against priced lines.
+ *
+ * `flushTxWriteScope` calls this per touched record after COMMIT — the first point the rows
+ * are visible to the pool handle `recomputeLineTotal` and `recomputeTotals` read through.
+ * The connector stand-down inside both is what keeps a transcribed Shopify order safe here,
+ * exactly as it does on the inline path.
+ *
+ * Entities NOT covered, deliberately: `credit_memo_line` has the same defect but its lines
+ * are composed by money's own commands, which recompute explicitly; `purchase_order_line`
+ * and `vendor_bill_line` are on neither guard list and still fire their hooks inline.
+ */
+export async function recomputeTotalsForCommittedWrite(params: {
+  organizationId: string
+  userId: string
+  entityType: string | null
+  instanceId: string
+  changedAttrs: readonly string[]
+}): Promise<void> {
+  const { organizationId, userId, entityType, instanceId } = params
+  const attrs = params.changedAttrs as readonly SystemAttribute[]
+
+  if (entityType === 'line_item') {
+    // Inline, and must be: the parent recompute reads `line_item_line_total`.
+    if (attrs.some((attr) => LINE_TOTAL_TRIGGER_ATTRS.has(attr))) {
+      await recomputeLineTotal({ organizationId, userId, lineInstanceId: instanceId })
+    }
+    if (attrs.some((attr) => LINE_TRIGGER_ATTRS.has(attr))) {
+      await markOrRecomputeLine(organizationId, userId, MONEY_TOTALS_LINE_ITEM, instanceId)
+    }
+    return
+  }
+
+  if (entityType === 'order' && attrs.some((attr) => ORDER_TRIGGER_ATTRS.has(attr))) {
+    await markOrRecomputeDocument(organizationId, userId, 'order', instanceId)
+  }
+}
+
+/**
+ * Recompute hook for `purchase-order-lines` (plans/purchasing/01-build-plan.md §4.2,
+ * registered under the `purchase-order-lines` apiSlug). Structurally the buy-side twin of
+ * {@link recomputeOnLineChange}: rewrite the line's own total when qty/price move, then
+ * recompute the parent PO's mirrors.
+ *
+ * The parent resolution is one read rather than {@link resolveLineParentDocument}'s ladder
+ * because a `purchase_order_line` has exactly one possible parent — it is not a `line_item`
+ * and can never hang off a quote, invoice, order or work order.
+ *
+ * No recursion: `purchase_order_line_line_total`, `purchase_order_subtotal` and
+ * `purchase_order_total` are in neither trigger set, so re-entry exits on the filter.
+ */
+export const recomputeOnPurchaseOrderLineChange: EntityFieldChangeHandler = async (event) => {
+  const attr = event.field.systemAttribute as SystemAttribute | undefined
+  if (!attr || !PURCHASE_ORDER_LINE_TRIGGER_ATTRS.has(attr)) return
+
+  const { organizationId, userId } = event
+  const { entityInstanceId: lineInstanceId } = parseRecordId(event.recordId)
+
+  if (PURCHASE_ORDER_LINE_TOTAL_TRIGGER_ATTRS.has(attr)) {
+    await recomputeLineTotal({
+      organizationId,
+      userId,
+      lineInstanceId,
+      line: PURCHASE_ORDER_LINE_TOTALS_SPEC,
+    })
+  }
+
+  await markOrRecomputeLine(
+    organizationId,
+    userId,
+    MONEY_TOTALS_PURCHASE_ORDER_LINE,
+    lineInstanceId
+  )
+}
+
+/**
+ * Recompute hook for `purchase-orders` (§4.1, registered under the `purchase-orders`
+ * apiSlug). Fires when the order's own stated money fields change — the flat discount, the
+ * freight and the supplier's stated tax — and rewrites `subtotal` + `total`.
+ */
+export const recomputeOnPurchaseOrderBillingChange: EntityFieldChangeHandler = async (event) => {
+  const attr = event.field.systemAttribute as SystemAttribute | undefined
+  if (!attr || !PURCHASE_ORDER_TRIGGER_ATTRS.has(attr)) return
+
+  const { entityInstanceId: purchaseOrderInstanceId } = parseRecordId(event.recordId)
+  await markOrRecomputeDocument(
+    event.organizationId,
+    event.userId,
+    'purchase_order',
+    purchaseOrderInstanceId
+  )
+}
+
+/**
+ * Recompute hook for `credit-memo-lines` (plans/accounting/tasks/10 section 2.5, registered
+ * under the `credit-memo-lines` apiSlug). The memo twin of {@link recomputeOnLineChange}:
+ * rewrite the line's own `subtotal` when a person edits qty or unit price, then re-sum the
+ * parent memo's subtotal, tax and total.
+ *
+ * The parent is one read rather than {@link resolveLineParentDocument}'s ladder, because a
+ * `credit_memo_line` has exactly one possible parent. The re-sum is skipped by the engine
+ * itself once the memo has left `draft` (`frozenStatus`), so a late line write cannot move
+ * totals a posted entry tied to.
+ *
+ * 🛑 `recomputeLineTotal` stands down for a connector-managed line, and the sync lane fires
+ * no post hooks at all, so a channel line's transcribed `subtotal` is never re-multiplied
+ * from the unit price the connector derived by division.
+ */
+export const recomputeOnCreditMemoLineChange: EntityFieldChangeHandler = async (event) => {
+  const attr = event.field.systemAttribute as SystemAttribute | undefined
+  if (!attr || !CREDIT_MEMO_LINE_TRIGGER_ATTRS.has(attr)) return
+
+  const { organizationId, userId } = event
+  const { entityInstanceId: lineInstanceId } = parseRecordId(event.recordId)
+
+  if (CREDIT_MEMO_LINE_TOTAL_TRIGGER_ATTRS.has(attr)) {
+    await recomputeLineTotal({
+      organizationId,
+      userId,
+      lineInstanceId,
+      line: CREDIT_MEMO_LINE_TOTALS_SPEC,
+    })
+  }
+
+  const cf = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['credit_memo_line_credit_memo'] as const)
+  if (!cf.credit_memo_line_credit_memo) return
+
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const values = await handler.getFieldValues(toRecordId('credit_memo_line', lineInstanceId), [
+    cf.credit_memo_line_credit_memo.id,
+  ])
+  const parentTyped = firstTyped(values.get(cf.credit_memo_line_credit_memo.id))
+  if (parentTyped?.type !== 'relationship' || !parentTyped.recordId) return
+
+  const { entityInstanceId: creditMemoInstanceId } = parseRecordId(parentTyped.recordId)
+  await markOrRecomputeDocument(organizationId, userId, 'credit_memo', creditMemoInstanceId)
+}
+
+/**
+ * After a credit memo line is deleted, re-sum its parent memo. Deletes fire no
+ * field-change hooks, so without this a removed line would leave the memo's
+ * subtotal, tax and total standing at what the line used to contribute - the
+ * same gap `syncBillingAfterLineDelete` closes for an invoice line. The parent
+ * is read off the values `deleteEntity` captured before the row went. A line
+ * cascaded by its memo's own delete never reaches this hook: the engine skips
+ * post-delete hooks for cascaded records because their parent is dying.
+ * Inline rather than marked, like the invoice precedent, so the totals are on
+ * the row before anything else reads them; the engine's `frozenStatus` still
+ * no-ops once the memo has left `draft`.
+ */
+export const recomputeCreditMemoAfterLineDelete: EntityPostDeleteHandler = async (event) => {
+  const creditMemoInstanceId = unwrapRelationId(event.values.credit_memo_line_credit_memo)
+  if (!creditMemoInstanceId) return
+  await recomputeTotals({
+    organizationId: event.organizationId,
+    userId: event.userId,
+    documentType: 'credit_memo',
+    documentInstanceId: creditMemoInstanceId,
+  })
+}

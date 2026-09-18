@@ -1,7 +1,7 @@
 // apps/web/src/app/(public)/quote/[token]/accept/route.ts
 
 import { AuxxError } from '@auxx/lib/errors'
-import { acceptQuoteByToken, buildQuoteViewUrl } from '@auxx/lib/money'
+import { acceptQuoteByToken, buildQuoteViewUrl } from '@auxx/lib/sales'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 

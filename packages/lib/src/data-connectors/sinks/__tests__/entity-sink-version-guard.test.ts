@@ -28,7 +28,7 @@ vi.mock('../../../agents/bindings/resolve', () => ({ resolveConnectorFieldRef: v
 vi.mock('../../field-id-resolver', () => ({ buildWriteKeyToFieldId: vi.fn() }))
 
 const { legacyMoneyWrite } = vi.hoisted(() => ({ legacyMoneyWrite: vi.fn() }))
-vi.mock('../../../money/customer-money/ingest', () => ({
+vi.mock('../../../accounting/money/customer-money/ingest', () => ({
   ingestShopifyOrderMoney: legacyMoneyWrite,
 }))
 vi.mock('../../reconciliation', () => ({ archiveExternalId: vi.fn() }))

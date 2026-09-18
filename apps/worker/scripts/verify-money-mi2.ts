@@ -30,6 +30,8 @@ import {
   setVisitStatus,
 } from '@auxx/lib/dispatch'
 import { AuxxError } from '@auxx/lib/errors'
+import { expandOccurrences, type RecurrencePattern } from '@auxx/lib/recurrence'
+import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import {
   approveQuote,
   clearInvoiceSchedule,
@@ -40,9 +42,7 @@ import {
   markQuoteSent,
   setInvoiceSchedule,
   sweepInvoiceDrafts,
-} from '@auxx/lib/money'
-import { expandOccurrences, type RecurrencePattern } from '@auxx/lib/recurrence'
-import { UnifiedCrudHandler } from '@auxx/lib/resources'
+} from '@auxx/lib/sales'
 import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'
 
 /** Build a RecordId string without pulling in `@auxx/types` (not a worker dependency). */

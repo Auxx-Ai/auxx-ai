@@ -140,7 +140,7 @@ vi.mock('@auxx/lib/mail-schedule', () => ({
   updateScheduledMessage: vi.fn(async () => undefined),
   updateScheduledMessageStatus: vi.fn(async () => undefined),
 }))
-vi.mock('@auxx/lib/money', () => ({
+vi.mock('@auxx/lib/sales', () => ({
   markInvoiceSent: vi.fn(async () => undefined),
   markQuoteSent: vi.fn(async () => undefined),
   recordDocumentSendSignal: vi.fn(async () => undefined),

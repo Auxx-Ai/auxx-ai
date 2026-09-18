@@ -1,8 +1,8 @@
 // packages/lib/src/field-hooks/pre/quote-deposit-guard.ts
 
 import { parseRecordId } from '@auxx/types/resource'
+import { hasQuoteDeposit } from '../../accounting/money/checkout/reads'
 import { BadRequestError } from '../../errors'
-import { hasQuoteDeposit } from '../../money/checkout/reads'
 import { unwrapStatusValue } from '../../resources/hooks/lifecycle-status-guard'
 import type { FieldPreHookHandler } from '../types'
 

@@ -100,6 +100,42 @@
       "import": "./dist/accounting/mirror/client.mjs",
       "default": "./src/accounting/mirror/client.ts"
     },
+    "./accounting/money": {
+      "types": "./src/accounting/money/index.ts",
+      "source": "./src/accounting/money/index.ts",
+      "import": "./dist/accounting/money/index.mjs",
+      "default": "./src/accounting/money/index.ts"
+    },
+    "./accounting/money/client": {
+      "types": "./src/accounting/money/client.ts",
+      "source": "./src/accounting/money/client.ts",
+      "import": "./dist/accounting/money/client.mjs",
+      "default": "./src/accounting/money/client.ts"
+    },
+    "./accounting/money/customer-money": {
+      "types": "./src/accounting/money/customer-money/index.ts",
+      "source": "./src/accounting/money/customer-money/index.ts",
+      "import": "./dist/accounting/money/customer-money/index.mjs",
+      "default": "./src/accounting/money/customer-money/index.ts"
+    },
+    "./accounting/money/customer-money/client": {
+      "types": "./src/accounting/money/customer-money/client.ts",
+      "source": "./src/accounting/money/customer-money/client.ts",
+      "import": "./dist/accounting/money/customer-money/client.mjs",
+      "default": "./src/accounting/money/customer-money/client.ts"
+    },
+    "./accounting/money/payouts": {
+      "types": "./src/accounting/money/payouts/index.ts",
+      "source": "./src/accounting/money/payouts/index.ts",
+      "import": "./dist/accounting/money/payouts/index.mjs",
+      "default": "./src/accounting/money/payouts/index.ts"
+    },
+    "./accounting/money/payouts/sources": {
+      "types": "./src/accounting/money/payouts/sources.ts",
+      "source": "./src/accounting/money/payouts/sources.ts",
+      "import": "./dist/accounting/money/payouts/sources.mjs",
+      "default": "./src/accounting/money/payouts/sources.ts"
+    },
     "./accounting/opening": {
       "types": "./src/accounting/opening/index.ts",
       "source": "./src/accounting/opening/index.ts",
@@ -1120,42 +1156,6 @@
       "import": "./dist/messages/index.mjs",
       "default": "./src/messages/index.ts"
     },
-    "./money": {
-      "types": "./src/money/index.ts",
-      "source": "./src/money/index.ts",
-      "import": "./dist/money/index.mjs",
-      "default": "./src/money/index.ts"
-    },
-    "./money/client": {
-      "types": "./src/money/client.ts",
-      "source": "./src/money/client.ts",
-      "import": "./dist/money/client.mjs",
-      "default": "./src/money/client.ts"
-    },
-    "./money/customer-money": {
-      "types": "./src/money/customer-money/index.ts",
-      "source": "./src/money/customer-money/index.ts",
-      "import": "./dist/money/customer-money/index.mjs",
-      "default": "./src/money/customer-money/index.ts"
-    },
-    "./money/customer-money/client": {
-      "types": "./src/money/customer-money/client.ts",
-      "source": "./src/money/customer-money/client.ts",
-      "import": "./dist/money/customer-money/client.mjs",
-      "default": "./src/money/customer-money/client.ts"
-    },
-    "./money/payouts": {
-      "types": "./src/money/payouts/index.ts",
-      "source": "./src/money/payouts/index.ts",
-      "import": "./dist/money/payouts/index.mjs",
-      "default": "./src/money/payouts/index.ts"
-    },
-    "./money/payouts/sources": {
-      "types": "./src/money/payouts/sources.ts",
-      "source": "./src/money/payouts/sources.ts",
-      "import": "./dist/money/payouts/sources.mjs",
-      "default": "./src/money/payouts/sources.ts"
-    },
     "./notifications": {
       "types": "./src/notifications/index.ts",
       "source": "./src/notifications/index.ts",
@@ -1575,6 +1575,18 @@
       "source": "./src/returns/intake/group.ts",
       "import": "./dist/returns/intake/group.mjs",
       "default": "./src/returns/intake/group.ts"
+    },
+    "./sales": {
+      "types": "./src/sales/index.ts",
+      "source": "./src/sales/index.ts",
+      "import": "./dist/sales/index.mjs",
+      "default": "./src/sales/index.ts"
+    },
+    "./sales/client": {
+      "types": "./src/sales/client.ts",
+      "source": "./src/sales/client.ts",
+      "import": "./dist/sales/client.mjs",
+      "default": "./src/sales/client.ts"
     },
     "./seed": {
       "types": "./src/seed/index.ts",

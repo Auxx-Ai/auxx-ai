@@ -31,7 +31,7 @@ const h = vi.hoisted(() => ({
     vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<number>>(),
 }))
 
-vi.mock('../../../../money/credit-memos/reads', () => ({
+vi.mock('../../../../sales/credit-memos/reads', () => ({
   countUnissuedChannelCreditMemos: h.countUnissuedChannelCreditMemos,
 }))
 

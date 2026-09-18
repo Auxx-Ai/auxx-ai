@@ -17,19 +17,18 @@
  */
 
 import { database } from '@auxx/database'
+import { deleteManualPayment, recordManualPayment } from '@auxx/lib/accounting/money'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { AuxxError } from '@auxx/lib/errors'
+import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import {
   computeDocumentTotals,
   createInvoiceFromWorkOrder,
   deleteInvoice,
   deleteInvoiceLine,
-  deleteManualPayment,
   listUninvoicedLines,
-  recordManualPayment,
   voidInvoice,
-} from '@auxx/lib/money'
-import { UnifiedCrudHandler } from '@auxx/lib/resources'
+} from '@auxx/lib/sales'
 import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'
 
 /** Build a RecordId string without pulling in `@auxx/types` (not a worker dependency). */
