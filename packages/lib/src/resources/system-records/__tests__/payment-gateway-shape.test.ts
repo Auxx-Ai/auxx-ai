@@ -20,12 +20,21 @@ vi.mock('@auxx/database', async () => ({
 
 import { schema } from '@auxx/database'
 import { PAYMENT_GATEWAY_FIELDS } from '../../registry/resources/payment-gateway-fields'
-import { systemAttributes } from '../../registry/system-attributes'
+import { pickSystemAttributes } from '../../registry/system-attributes'
 import { systemFields } from '../fields'
 import { readSystemRecords } from '../read'
 
 const ORG = 'org_1'
-const ATTRIBUTES = systemAttributes(PAYMENT_GATEWAY_FIELDS)
+// The PICK, not the whole map: `payment_gateway_payouts` is the inverse of a
+// has-many, so a whole-map read costs one FieldValue row per payout per gateway.
+const ATTRIBUTES = pickSystemAttributes(PAYMENT_GATEWAY_FIELDS, [
+  'payment_gateway_name',
+  'payment_gateway_handles',
+  'payment_gateway_fee_treatment',
+  'payment_gateway_status',
+  'payment_gateway_last_settlement_at',
+  'payment_gateway_last_fee_booked_at',
+] as const)
 
 const FIELDS = {
   payment_gateway_name: { id: 'f_name', type: 'TEXT' },
@@ -90,9 +99,11 @@ beforeEach(() => {
 })
 
 describe('payment_gateway through the primitive', () => {
-  it('takes its attribute list from the registry', () => {
+  it('takes its attribute list from the registry, and only what it reads', () => {
     expect(ATTRIBUTES).toContain('payment_gateway_name')
     expect(ATTRIBUTES).toContain('payment_gateway_handles')
+    // 🛑 The has-many inverse is never fetched to shape one row.
+    expect(ATTRIBUTES).not.toContain('payment_gateway_payouts')
   })
 
   it('assembles the same row payment-gateways/reads.ts assembles by hand', async () => {

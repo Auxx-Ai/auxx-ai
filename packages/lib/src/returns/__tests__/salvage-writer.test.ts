@@ -57,9 +57,9 @@ vi.mock('../../cache', () => ({
   getCachedEntityDefId: async (_orgId: string, entityType: string) => h.defIds[entityType] ?? null,
 }))
 
-vi.mock('../field-context', () => ({
+vi.mock('../fields', () => ({
   requireReturnPartLineFieldContext: async () => ({
-    returnPartLineDefId: 'def_return_part_line',
+    defId: 'def_return_part_line',
     fields: {},
   }),
 }))

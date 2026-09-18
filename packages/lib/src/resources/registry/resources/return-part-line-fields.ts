@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * The warehouse's disposition for one node of the teardown tree
@@ -72,7 +72,7 @@ export const RETURN_PART_LINE_STATUS_OPTIONS = [
  * cannot reproduce the number a year from now. The movement freezes the output,
  * and a correction is priced at what was frozen, never re-priced.
  */
-export const RETURN_PART_LINE_FIELDS: Record<string, ResourceField> = {
+export const RETURN_PART_LINE_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -542,4 +542,4 @@ export const RETURN_PART_LINE_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

@@ -5,7 +5,7 @@ import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { OrderChannel, OrderFinancialStatus, OrderFulfillmentStatus } from '../enum-values'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 import { financialSourceField, financialSourceRelationship } from './financial-source-fields'
 
 /**
@@ -36,7 +36,7 @@ const ORDER_DISCOUNT_TYPE_OPTIONS = [
  * Money is stored in **integer minor units** (`subtotal`, `taxTotal`, `total`)
  * and written only by the totals engine.
  */
-export const ORDER_FIELDS: Record<string, ResourceField> = {
+export const ORDER_FIELDS = defineResourceFields({
   // `z1`-`z8`: hidden/internal fields, grouped with `paymentEvidence` (`z9`)
   // below rather than sharing the default `financialSourceField` sort order
   // ('a1') that `order_number` also uses — eight fields at one code collapsed
@@ -1118,4 +1118,4 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

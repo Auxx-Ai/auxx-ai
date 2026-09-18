@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * The PHYSICAL lifecycle of a return (plans/money/tasks/54-returns.md §3.3).
@@ -127,7 +127,7 @@ export const RETURN_REASON_SEED_OPTIONS = [
  *
  * Money amounts are integer MINOR UNITS.
  */
-export const RETURN_FIELDS: Record<string, ResourceField> = {
+export const RETURN_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -1040,4 +1040,4 @@ export const RETURN_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})
