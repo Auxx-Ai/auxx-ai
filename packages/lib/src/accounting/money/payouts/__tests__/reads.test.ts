@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   getCachedEntityDefId: vi.fn(async () => null as string | null),
-  bySystemAttributes: vi.fn(async () => ({}) as Record<string, { id: string } | null>),
+  bySystemAttributes: vi.fn(async () => ({}) as Record<string, unknown>),
 }))
 
 vi.mock('../../../rails/reads', () => ({ listPaymentGateways: async () => ok([]) }))
@@ -25,6 +25,7 @@ import { schema } from '@auxx/database'
 import type { SQL } from 'drizzle-orm'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { findPayoutByGatewayId, listPayouts } from '../reads'
+import { fieldStubs } from './support/field-stubs'
 
 const ORG = 'org_1'
 
@@ -90,11 +91,13 @@ describe('findPayoutByGatewayId', () => {
 
   beforeEach(() => {
     h.getCachedEntityDefId.mockResolvedValue(PAYOUT_DEF)
-    h.bySystemAttributes.mockResolvedValue({
-      payout_gateway_id: { id: GATEWAY_ID_FIELD },
-      payout_status: { id: 'f_status' },
-      payout_payment_gateway: { id: RAIL_FIELD },
-    })
+    h.bySystemAttributes.mockResolvedValue(
+      fieldStubs({
+        payout_gateway_id: GATEWAY_ID_FIELD,
+        payout_status: 'f_status',
+        payout_payment_gateway: RAIL_FIELD,
+      })
+    )
   })
 
   it('narrows on the rail OR a null pointer when a rail is given - the same id on another rail is a different row', async () => {
@@ -134,8 +137,7 @@ describe('findPayoutByGatewayId', () => {
 
   it('falls back to the id-only lookup on an org short of migration 157, whose rows are all unstamped', async () => {
     h.bySystemAttributes.mockResolvedValue({
-      payout_gateway_id: { id: GATEWAY_ID_FIELD },
-      payout_status: { id: 'f_status' },
+      ...fieldStubs({ payout_gateway_id: GATEWAY_ID_FIELD, payout_status: 'f_status' }),
       payout_payment_gateway: null,
     })
     const captured: Captured = { leftJoins: 0, orderBy: [], where: undefined }
@@ -182,9 +184,7 @@ describe('listPayouts', () => {
 
   beforeEach(() => {
     h.getCachedEntityDefId.mockResolvedValue(PAYOUT_DEF)
-    h.bySystemAttributes.mockResolvedValue(
-      Object.fromEntries(Object.entries(FIELD_IDS).map(([attr, id]) => [attr, { id }]))
-    )
+    h.bySystemAttributes.mockResolvedValue(fieldStubs(FIELD_IDS))
   })
 
   it('hydrates ordinary source fields into the settlement summary without changing posting values', async () => {
@@ -194,10 +194,12 @@ describe('listPayouts', () => {
       payout_source_currency_exponent: { valueNumber: 2 },
       payout_source_status: { valueText: 'paid' },
     }
-    h.bySystemAttributes.mockResolvedValue({
-      ...Object.fromEntries(Object.entries(FIELD_IDS).map(([attr, id]) => [attr, { id }])),
-      ...Object.fromEntries(Object.keys(sourceFields).map((attr) => [attr, { id: attr }])),
-    })
+    h.bySystemAttributes.mockResolvedValue(
+      fieldStubs({
+        ...FIELD_IDS,
+        ...Object.fromEntries(Object.keys(sourceFields).map((attr) => [attr, attr])),
+      })
+    )
     const db = stubPayoutsDb({
       entityInstance: [{ id: 'payout_1', createdAt: new Date('2026-09-15') }],
       fieldValue: Object.entries(sourceFields).map(([fieldId, value]) => ({
@@ -251,18 +253,30 @@ describe('listPayouts', () => {
   // ── brief 27 §6.1: the rail, the bank account and the provenance ──────────
 
   it('reads the rail and bank-account pointers off relatedEntityId, and the source off its option', async () => {
-    h.bySystemAttributes.mockResolvedValue({
-      ...Object.fromEntries(Object.entries(FIELD_IDS).map(([attr, id]) => [attr, { id }])),
-      payout_payment_gateway: { id: 'f_rail' },
-      payout_bank_account: { id: 'f_bank' },
-      payout_source: { id: 'f_source' },
-    })
+    h.bySystemAttributes.mockResolvedValue(
+      fieldStubs({
+        ...FIELD_IDS,
+        payout_payment_gateway: 'f_rail',
+        payout_bank_account: 'f_bank',
+        payout_source: 'f_source',
+      })
+    )
     const db = stubPayoutsDb({
       entityInstance: [{ id: 'payout_1', createdAt: new Date('2026-09-10') }],
       fieldValue: [
         { entityId: 'payout_1', fieldId: FIELD_IDS.payout_gateway_id, valueText: 'po_1' },
-        { entityId: 'payout_1', fieldId: 'f_rail', relatedEntityId: 'pg_stripe' },
-        { entityId: 'payout_1', fieldId: 'f_bank', relatedEntityId: 'ba_1' },
+        {
+          entityId: 'payout_1',
+          fieldId: 'f_rail',
+          relatedEntityId: 'pg_stripe',
+          relatedEntityDefinitionId: 'def_gateway',
+        },
+        {
+          entityId: 'payout_1',
+          fieldId: 'f_bank',
+          relatedEntityId: 'ba_1',
+          relatedEntityDefinitionId: 'def_bank_account',
+        },
         { entityId: 'payout_1', fieldId: 'f_source', optionId: 'imported' },
       ],
     })

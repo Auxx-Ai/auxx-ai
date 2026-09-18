@@ -21,7 +21,7 @@ const h = vi.hoisted(() => ({
   requirePayoutFieldContext: vi.fn(
     async () =>
       ({
-        payoutDefId: 'def_payout',
+        defId: 'def_payout',
         fields: { payout_payment_gateway: { id: 'f_pg' } },
       }) as never
   ),
@@ -36,8 +36,10 @@ vi.mock('../gather', () => ({ gatherPayout: h.gatherPayout }))
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
-vi.mock('../reads', () => ({
+vi.mock('../fields', () => ({
   requirePayoutFieldContext: h.requirePayoutFieldContext,
+}))
+vi.mock('../reads', () => ({
   findPayoutByGatewayId: vi.fn(),
   listLinkedFeedAccounts: h.listLinkedFeedAccounts,
 }))

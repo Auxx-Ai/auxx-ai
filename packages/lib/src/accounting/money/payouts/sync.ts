@@ -79,6 +79,7 @@ import type { Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../../errors'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
+import { systemValueJoin } from '../../../resources/system-records'
 import { SystemUserService } from '../../../users/system-user-service'
 import { ACCOUNT_ROLES } from '../../ledger/builders/entry'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
@@ -91,14 +92,10 @@ import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import type { PostResult } from '../../ledger/types'
 import { listPaymentGateways } from '../../rails/reads'
 import { stampPaymentGatewayLastSettlement } from '../../rails/writes'
+import { type PayoutFieldContext, requirePayoutFieldContext } from './fields'
 import { type GatheredPayout, gatherPayout } from './gather'
 import { guard } from './guard'
-import {
-  findPayoutByGatewayId,
-  type PayoutFieldContext,
-  readBankAccountSettlementDestinations,
-  requirePayoutFieldContext,
-} from './reads'
+import { findPayoutByGatewayId, readBankAccountSettlementDestinations } from './reads'
 import type { PayoutHeader, PayoutSource, PayoutSourceCtx } from './source'
 import { getPayoutSource, listPayoutSources } from './source-registry'
 import type { SyncPayoutsResult } from './types'
@@ -148,7 +145,7 @@ export async function syncPayouts(
       // also skips the provider calls and the `payout` entity write.
       if (!(await isAccountingEnabled(db, organizationId))) return emptyResult()
 
-      const fieldCtx = await requirePayoutFieldContext(organizationId)
+      const fieldCtx = await requirePayoutFieldContext(db, organizationId)
 
       // Read ONCE per run, not once per source or payout: the rail is both half
       // of every payout's idempotency key and the clearing side of every entry,
@@ -224,7 +221,7 @@ export async function syncPayoutSource(
   return guard(
     async () => {
       if (!(await isAccountingEnabled(db, ctx.organizationId))) return emptyResult()
-      const fieldCtx = await requirePayoutFieldContext(ctx.organizationId)
+      const fieldCtx = await requirePayoutFieldContext(db, ctx.organizationId)
       const actor =
         actorUserId ?? (await SystemUserService.getSystemUserForActions(ctx.organizationId))
       return runSource(db, ctx, { actorUserId: actor, fieldCtx, now })
@@ -339,14 +336,11 @@ async function ingestOne(
       await withAccountingCommitLock(tx, organizationId)
       const scopedCrud = crud.withDatabase(tx)
       if (!instanceId) {
-        const record = await scopedCrud.create(fieldCtx.payoutDefId, payoutValues(gathered, ctx))
+        const record = await scopedCrud.create(fieldCtx.defId, payoutValues(gathered, ctx))
         instanceId = record.instance.id
         created = true
       } else {
-        await scopedCrud.update(
-          toRecordId(fieldCtx.payoutDefId, instanceId),
-          payoutValues(gathered, ctx)
-        )
+        await scopedCrud.update(toRecordId(fieldCtx.defId, instanceId), payoutValues(gathered, ctx))
       }
     })
   )
@@ -383,7 +377,7 @@ async function ingestOne(
       payoutId: providerPayoutId,
       reason,
     })
-    await crud.update(toRecordId(fieldCtx.payoutDefId, payoutInstanceId), {
+    await crud.update(toRecordId(fieldCtx.defId, payoutInstanceId), {
       payout_blocked_reason: reason,
     })
     return payoutAccountUnmappedResult(reason)
@@ -463,7 +457,7 @@ async function ingestOne(
     }
   }
 
-  await crud.update(toRecordId(fieldCtx.payoutDefId, payoutInstanceId), {
+  await crud.update(toRecordId(fieldCtx.defId, payoutInstanceId), {
     payout_status: 'paid',
     // Cleared on success: a payout that was blocked on a prior run and has
     // since been confirmed must not keep showing the blocker banner.
@@ -584,19 +578,12 @@ async function readEarliestPayoutCreatedAt(
 
   const where: SQL[] = [
     eq(schema.EntityInstance.organizationId, ctx.organizationId),
-    eq(schema.EntityInstance.entityDefinitionId, fieldCtx.payoutDefId),
+    eq(schema.EntityInstance.entityDefinitionId, fieldCtx.defId),
   ]
 
   if (railField) {
     const pointer = alias(schema.FieldValue, 'payout_payment_gateway_v')
-    query = query.leftJoin(
-      pointer,
-      and(
-        eq(pointer.entityId, schema.EntityInstance.id),
-        eq(pointer.organizationId, schema.EntityInstance.organizationId),
-        eq(pointer.fieldId, railField.id)
-      )
-    )
+    query = query.leftJoin(pointer, systemValueJoin(pointer, railField.id))
     const pointerMatches = or(
       isNull(pointer.relatedEntityId),
       eq(pointer.relatedEntityId, ctx.rail.id)
@@ -637,7 +624,7 @@ export async function reverseFailedPayout(
 
   return guard(
     async () => {
-      const ctx = await requirePayoutFieldContext(organizationId)
+      const ctx = await requirePayoutFieldContext(db, organizationId)
       // Id-only: a `payout.failed` webhook names the provider's id and nothing
       // else, so this matches on the id alone across every rail.
       const record = await findPayoutByGatewayId(db, organizationId, gatewayPayoutId)
@@ -651,7 +638,7 @@ export async function reverseFailedPayout(
 
       const actor = actorUserId ?? (await SystemUserService.getSystemUserForActions(organizationId))
       const crud = new UnifiedCrudHandler(organizationId, actor, db)
-      const recordId = toRecordId(ctx.payoutDefId, record.payoutId)
+      const recordId = toRecordId(ctx.defId, record.payoutId)
 
       // Never posted, so there is nothing to back out - just record the failure.
       // Read through `listPostingsForSource` (TARGET §1), never a stamp field.

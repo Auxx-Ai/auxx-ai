@@ -5,22 +5,6 @@ import { listPaymentGateways } from '../../rails/reads'
 import { exactEvidenceMinor } from '../customer-money/evidence-contracts'
 import type { PayoutRecord } from './types'
 
-/** Ordinary source fields needed by the settlement list. */
-export const PAYOUT_SOURCE_ATTRIBUTES = [
-  'payout_source_source_key',
-  'payout_source_provider_key',
-  'payout_source_account_id',
-  'payout_source_environment',
-  'payout_source_external_id',
-  'payout_source_amount',
-  'payout_source_currency',
-  'payout_source_currency_exponent',
-  'payout_source_status',
-  'payout_source_issued_at',
-  'payout_source_issued_on',
-  'payout_source_rejection_reason',
-] as const
-
 /** Reported payout facts and current settlement configuration, not a posted settlement. */
 export interface PayoutSourceSummary {
   amountMinor: string | null
