@@ -131,9 +131,9 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
     await fulfillmentPostingTriggerPass(db, organizationId, manifest, resolveDef)
 
     const { reconcileFinancialRecordsAfterBulk } = await import(
-      '../../accounting/money/reconciliation/record-events'
+      '../../accounting/money/customer-money/record-events'
     )
-    await reconcileFinancialRecordsAfterBulk(db, organizationId, manifest, resolveDef)
+    await reconcileFinancialRecordsAfterBulk(db, organizationId, manifest)
   } catch (error) {
     logger.error('integrity passes failed', {
       organizationId,

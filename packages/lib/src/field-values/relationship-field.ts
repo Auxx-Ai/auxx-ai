@@ -3,7 +3,7 @@
 import type { RelationshipFieldValue } from '@auxx/types/field-value'
 import type { RecordId } from '@auxx/types/resource'
 import { isMultiRelationship, isSingleRelationship, type RelationshipType } from '@auxx/utils'
-import { isRecordId, toRecordId } from '../resources/resource-id'
+import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 
 // Re-export relationship type utilities from @auxx/utils
 export { isMultiRelationship, isSingleRelationship, type RelationshipType }
@@ -112,6 +112,28 @@ export function getRelationshipRedactedCount(value: unknown): number {
     }
   }
   return 0
+}
+
+/**
+ * Entity instance ids behind a relationship value in ANY of the three shapes an
+ * event payload carries it in: a bare instance id, a `RecordId` string, or
+ * `{ recordId }`. The bare form is what a raw `relatedEntityId` looks like when a
+ * rule's `previousValues` or a sync delta reports the old value of a relationship.
+ */
+export function relationshipInstanceIds(value: unknown): string[] {
+  const items = Array.isArray(value) ? value : [value]
+  const ids: string[] = []
+  for (const item of items) {
+    if (typeof item === 'string' && item && !isRecordId(item)) {
+      ids.push(item)
+      continue
+    }
+    for (const recordId of extractRelationshipRecordIds(item)) {
+      const { entityInstanceId } = parseRecordId(recordId)
+      if (entityInstanceId) ids.push(entityInstanceId)
+    }
+  }
+  return ids
 }
 
 // Re-export from resource-id for convenience

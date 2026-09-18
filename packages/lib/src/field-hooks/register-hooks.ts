@@ -1,7 +1,7 @@
 // packages/lib/src/field-hooks/register-hooks.ts
 
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import { registerFinancialRecordRules } from '../accounting/money/reconciliation/record-events'
+import { registerFinancialRecordRules } from '../accounting/money/customer-money/record-events'
 import {
   ensureVisitOnWorkOrderCreate,
   syncVisitPinsOnAddressNormalized,

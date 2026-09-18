@@ -1,17 +1,16 @@
 // packages/lib/src/accounting/money/payouts/__tests__/record-reconciliation.int.test.ts
 import { schema } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
-import { toRecordId } from '@auxx/types/resource'
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { PayoutRecordEvidence } from '../../customer-money/record-contracts'
 import { writeFinancialRecords } from '../../customer-money/record-storage'
 import {
-  reconcileFinancialRecords,
+  assessPayouts,
   reconcileTransferIds,
   recoverPayoutReconciliationPage,
-} from '../reconcile-records'
+} from '../assess-payouts'
 
 let organizationId: string
 let actorUserId: string
@@ -113,15 +112,7 @@ describe('shared payout records and event reconciliation against PostgreSQL', ()
     const [other] = await write([evidence('p1', 'gateway_b')])
     expect(replay!.id).toBe(first!.id)
     expect(other!.id).not.toBe(first!.id)
-    await reconcileFinancialRecords(getTestDb(), {
-      organizationId,
-      recordIds: [
-        toRecordId(payoutDefId, first!.id),
-        toRecordId(payoutDefId, first!.id),
-        toRecordId(payoutDefId, other!.id),
-      ],
-      cause: 'bulk-complete',
-    })
+    await assessPayouts(getTestDb(), organizationId, [first!.id, first!.id, other!.id])
     const transfers = await getTestDb().select().from(schema.MoneyTransfer)
     expect(transfers).toHaveLength(2)
     for (const row of transfers)
@@ -342,11 +333,11 @@ describe('shared payout records and event reconciliation against PostgreSQL', ()
     })
     const count = async (size: number) => {
       queries.length = 0
-      await reconcileFinancialRecords(measured, {
+      await assessPayouts(
+        measured,
         organizationId,
-        recordIds: records.slice(0, size).map((row) => toRecordId(payoutDefId, row.id)),
-        cause: 'bulk-complete',
-      })
+        records.slice(0, size).map((row) => row.id)
+      )
       return queries.filter((query) => !/^insert into "MoneyTransfer"/.test(query)).length
     }
     const ten = await count(10)

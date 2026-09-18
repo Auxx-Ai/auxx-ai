@@ -2,7 +2,7 @@
 
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { recoverPayoutReconciliationPage } from '../../accounting/money/payouts/reconcile-records'
+import { recoverPayoutReconciliationPage } from '../../accounting/money/payouts/assess-payouts'
 import { sweepPayouts } from '../../accounting/money/payouts/sweep'
 import type { JobContext } from '../types/job-context'
 

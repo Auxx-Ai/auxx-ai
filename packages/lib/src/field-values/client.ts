@@ -79,6 +79,7 @@ export {
   isSingleRelationship,
   parseRecordId,
   type RelationshipType,
+  relationshipInstanceIds,
   toRecordId,
   toRecordIds,
 } from './relationship-field'
