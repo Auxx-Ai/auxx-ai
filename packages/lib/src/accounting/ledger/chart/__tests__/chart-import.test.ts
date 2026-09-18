@@ -45,7 +45,7 @@ function providerAccount(over: Partial<ProviderAccount> = {}): ProviderAccount {
   return {
     id: 'p1',
     name: 'Checking',
-    fullyQualifiedName: 'Checking',
+    fullyQualifiedName: over.name ?? 'Checking',
     number: null,
     accountType: 'Bank',
     classification: 'asset',

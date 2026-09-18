@@ -77,6 +77,33 @@ describe('create', () => {
     expect(plan.create.find((c) => c.providerAccount.id === 'p2')?.code).toBeNull()
   })
 
+  it('names a sub-account by its full path, so repeated leaf names stay apart', () => {
+    const plan = planChartImport(
+      [
+        providerAccount({
+          id: 'p1',
+          name: 'Job Materials',
+          fullyQualifiedName: 'Job Expenses:Job Materials',
+        }),
+        providerAccount({
+          id: 'p2',
+          name: 'Job Materials',
+          fullyQualifiedName: 'Landscaping Services:Job Materials',
+        }),
+        providerAccount({ id: 'p3', name: 'Checking', fullyQualifiedName: '' }),
+      ],
+      EMPTY_CHART,
+      new Map(),
+      roleMap()
+    )
+
+    expect(plan.create.map((c) => c.name)).toEqual([
+      'Job Expenses:Job Materials',
+      'Landscaping Services:Job Materials',
+      'Checking',
+    ])
+  })
+
   it('stamps classification as accountType and the declared inverse as subtype', () => {
     const plan = planChartImport(
       [providerAccount({ id: 'p1', accountType: 'Bank', classification: 'asset' })],
