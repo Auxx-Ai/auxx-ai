@@ -124,21 +124,52 @@ async function restore(client: pg.PoolClient, table: string, rows: Array<Record<
 }
 
 /**
- * Steps 4 and 5 of MIGRATION.md §0b, which belong to the wave that edits the
- * entity data migrations. Fill in once `157`-`167` have been rewritten.
+ * Steps 4 and 5 of MIGRATION.md §0b, as of step 1b part D.
  *
- * TODO(accounting): delete the `DataMigration` ledger rows for whichever of
- * `157-payout-rail-and-order-payment-fields`, `159-vendor-bill-line-vendor-code`,
- * `160-gateway-settlement-fields`, `161-financial-record-fields`,
- * `162-order-payment-evidence`, `163-financial-source-fields`,
- * `164-credit-application-history`, `165-account-subtype-clearing`,
- * `166-one-mapping-table` and `167-document-attachments` are deleted outright
- * (rows for edited migrations stay; the id is unchanged), then remove the fields
- * the edited migrations no longer add from every org's entity definitions
- * through the registry's field-removal helper, never SQL.
+ * Step 4 — none of `157`-`167` were deleted outright this wave, so
+ * {@link DELETED_MIGRATION_IDS} is empty and there is no ledger row to drop.
+ * `152-credit-memo-gl-posting` ran in production and is untouched by this
+ * list on purpose: it stays registered (its id is a permanent ledger key -
+ * see `registry.ts`'s own `RETIRED_ID_NUMBERS` header), and its `up()` is
+ * edited in place to a no-op rather than removed. `157-payout-rail-and-order-
+ * payment-fields` is edited too (it no longer provisions `paymentGlPosting`)
+ * - also not a deletion, so its row stays as well.
+ *
+ * Step 5 — the six GL-posting stamp fields 157/152 provisioned (or, for the
+ * other four, whatever local seed first added them) are removed by entity
+ * data migration `168-remove-gl-posting-stamp-fields`, which is a normal
+ * `PER_ORG_MIGRATIONS` entry and goes through `db.delete(schema.CustomField)`
+ * in `packages/lib` - the "registry's field-removal helper" §0b means, never
+ * raw SQL. This script cannot run it directly: `packages/database` is tier 1
+ * and must not import `@auxx/lib` (tier 3). It runs when §0b step 6's data-
+ * migration runner (a separate command, after this script) applies pending
+ * migrations - `168` is one, for every org this script's caller reconciles.
  */
-async function reconcileDataMigrations(_client: pg.PoolClient): Promise<void> {
-  console.log('⏭  data-migration ledger and entity fields: not this wave (§0b steps 4-5)')
+const DELETED_MIGRATION_IDS: readonly string[] = []
+
+/** The six fields migration 168 removes, named here only for the log line. */
+const REMOVED_STAMP_ATTRIBUTES = [
+  'fulfillment_gl_posting',
+  'credit_memo_gl_posting',
+  'payout_gl_posting_id',
+  'bank_deposit_gl_posting_id',
+  'bank_transaction_gl_posting_id',
+  'order_payment_gl_posting',
+] as const
+
+async function reconcileDataMigrations(client: pg.PoolClient): Promise<void> {
+  if (DELETED_MIGRATION_IDS.length > 0) {
+    const deleted = await client.query('delete from "DataMigration" where id = any($1::text[])', [
+      DELETED_MIGRATION_IDS,
+    ])
+    console.log(`🧹 dropped ${deleted.rowCount} DataMigration ledger row(s)`)
+  } else {
+    console.log('⏭  no migration ids deleted outright this wave - nothing to drop from the ledger')
+  }
+  console.log(
+    `⏭  ${REMOVED_STAMP_ATTRIBUTES.length} GL-posting stamp fields (${REMOVED_STAMP_ATTRIBUTES.join(', ')}) ` +
+      'are removed by entity data migration 168, not here - run the data-migration runner next'
+  )
 }
 
 async function main() {

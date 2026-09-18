@@ -74,8 +74,43 @@ import {
   readQuickbooksAccountMap,
 } from '../src/money/quickbooks/account-map'
 import { listChartAccounts } from '../src/postings'
-import { releaseAccountingClaims } from '../src/postings/release-claims'
 import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'
+
+// TODO(step-3): `release-claims.ts` (step 1a) went with `AccountingWork` /
+// `AccountingEffect`; `GlPostingSource` cascades on `GlPosting` delete, so the
+// claim itself needs no release any more. `AccountingDelivery` and its two
+// child tables are still `ON DELETE NO ACTION` until step 3 drops them, so a
+// posting with a delivery row still has to be cleared first.
+async function releaseDeliveryRows(
+  organizationId: string,
+  glPostingIds: readonly string[]
+): Promise<number> {
+  if (!glPostingIds.length) return 0
+  const deliveries = await db
+    .select({ id: schema.AccountingDelivery.id })
+    .from(schema.AccountingDelivery)
+    .where(
+      and(
+        eq(schema.AccountingDelivery.organizationId, organizationId),
+        inArray(schema.AccountingDelivery.glPostingId, [...glPostingIds])
+      )
+    )
+  const deliveryIds = deliveries.map((row) => row.id)
+  if (!deliveryIds.length) return 0
+  for (const table of [schema.AccountingDeliveryCoverage, schema.AccountingDeliveryOperation])
+    await db
+      .delete(table)
+      .where(and(eq(table.organizationId, organizationId), inArray(table.deliveryId, deliveryIds)))
+  await db
+    .delete(schema.AccountingDelivery)
+    .where(
+      and(
+        eq(schema.AccountingDelivery.organizationId, organizationId),
+        inArray(schema.AccountingDelivery.id, deliveryIds)
+      )
+    )
+  return deliveryIds.length
+}
 
 const ORG_ARG = process.argv[2] ?? ''
 const args = process.argv.slice(3)
@@ -387,19 +422,13 @@ async function main() {
 
   // ── 5. Do it ──────────────────────────────────────────────────────────────
 
-  // Effects, deliveries and coverage first: those FKs are ON DELETE NO ACTION,
-  // and releasing them is also what puts the work behind them back to `pending`
-  // instead of stranding it on `accepted` with no journal.
-  const released = await releaseAccountingClaims(
-    db,
+  // Deliveries and coverage first: those FKs are ON DELETE NO ACTION.
+  // `GlPostingSource` cascades, so the claim itself needs nothing here.
+  const releasedDeliveries = await releaseDeliveryRows(
     org.id,
     postings.map((p) => p.id)
   )
-  if (released.effects)
-    console.log(
-      `released ${released.effects} effect(s) and ${released.deliveries} delivery(ies); ` +
-        `${released.reopened} work row(s) back to pending`
-    )
+  if (releasedDeliveries) console.log(`released ${releasedDeliveries} delivery(ies)`)
 
   for (const p of postings) {
     await db

@@ -45,7 +45,6 @@ const DEPOSIT_ATTRIBUTES = [
   'bank_deposit_bank_transaction_id',
   'bank_deposit_cleared_at',
   'bank_deposit_reconciled_at',
-  'bank_deposit_gl_posting_id',
 ] as const
 
 /**
@@ -825,7 +824,6 @@ async function hydrateDeposits(
       bankTransactionId: read('bank_deposit_bank_transaction_id')?.valueText ?? null,
       clearedAt: date('bank_deposit_cleared_at'),
       reconciledAt: date('bank_deposit_reconciled_at'),
-      glPostingId: read('bank_deposit_gl_posting_id')?.valueText ?? null,
       createdAt: row.createdAt,
     }
   })

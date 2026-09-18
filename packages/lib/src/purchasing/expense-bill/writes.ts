@@ -37,6 +37,7 @@ import { getEntityDefIdResolver } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
+import { readAutoPostMode } from '../../postings/auto-post'
 import {
   type BuiltExpenseBillEntry,
   buildExpenseBillEntry,
@@ -290,15 +291,14 @@ export async function postExpenseBill(
   let post: PostResult
   if (await isAccountingEnabled(db, organizationId)) {
     const lock = await resolvePeriodLock(organizationId)
+    const mode = await readAutoPostMode(db, organizationId, 'expenseBill')
     post = await postEntry(db, {
       organizationId,
       entry: built.entry,
       actorUserId: userId,
       lock,
       memo: `Bill ${bill.number || bill.internalNumber} posted`,
-      // TODO(step-1b): autoPost.expenseBill - this should be 'draft' when the
-      // avenue's autoPost setting is off. Settings work is another agent's.
-      mode: 'post',
+      mode,
       sources: [
         {
           sourceKind: EXPENSE_BILL_SOURCE_TYPE,

@@ -5,8 +5,7 @@
 // CUID (`<cuid>:<instanceId>`) or the slug (`payout:<instanceId>`). The guard
 // used to look the definition up by `id` ONLY, so the slug form missed, the type
 // came back null, and the function RETURNED CLEAN — financial history deleted
-// with no `ConflictError`. Its sibling `accountingSourceType`
-// (`postings/source-write-guard.ts`) has always matched `id OR entityType`.
+// with no `ConflictError`.
 //
 // Every case below asserts the THROW, never merely "did not crash": the bug was
 // a silent early return, so a test that only checks the call completes passes on

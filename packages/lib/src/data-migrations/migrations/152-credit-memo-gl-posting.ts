@@ -127,11 +127,14 @@ export const migration152CreditMemoGlPosting = {
       return { ...state, alreadyUpToDate: true, memosBackfilled: 0 }
     }
 
+    // TODO(step-1b): the registry key is gone (TARGET §1) - `glPosting` is
+    // retired and migration 168 removes it from every org that still has it.
+    // A missing key here is that retirement, not a registry bug: this
+    // migration ran in production and stays for the historical record, but
+    // it has nothing left to create.
     const field = CREDIT_MEMO_FIELDS[NEW_FIELD_KEY]
     if (!field) {
-      throw new Error(
-        `credit-memo-fields registry is missing the key "${NEW_FIELD_KEY}" (migration 152)`
-      )
+      return { ...state, alreadyUpToDate: true, memosBackfilled: 0 }
     }
     const fields: Record<string, ResourceField> = { [NEW_FIELD_KEY]: field }
 

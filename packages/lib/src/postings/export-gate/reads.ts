@@ -210,7 +210,7 @@ function judge(row: SyncQueueRow, evidence: GateEvidence): ExportGateVerdict {
 
   const discrepancy = evidence.unbalanced.get(row.glPostingId)
   if (discrepancy) {
-    findings.push(describeUnbalancedEntry({ docNumber: row.docNumber, ...discrepancy }))
+    findings.push(describeUnbalancedEntry({ docNumber: row.docNumber ?? '', ...discrepancy }))
   }
 
   // 🛑 Only the streams this posting type is a CLAIM about. See
@@ -234,13 +234,13 @@ function judge(row: SyncQueueRow, evidence: GateEvidence): ExportGateVerdict {
 
   return {
     glPostingId: row.glPostingId,
-    docNumber: row.docNumber,
+    docNumber: row.docNumber ?? '',
     postingType: row.postingType,
     periodKey: row.periodKey,
     status: exportGateStatus(findings),
     findings,
     message: exportGateMessage({
-      docNumber: row.docNumber,
+      docNumber: row.docNumber ?? '',
       periodKey: row.periodKey,
       findings,
     }),

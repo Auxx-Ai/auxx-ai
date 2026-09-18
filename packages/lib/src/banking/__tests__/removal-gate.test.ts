@@ -6,11 +6,12 @@
  *
  * 🛑 `resolveRemoval` has exactly ONE term - `hasEverPosted` - and every test
  * here exists to keep it that way. The failure this guards against is somebody
- * "simplifying" the gate to read the transaction rows instead: `undoReview` sets
- * `bank_transaction_gl_posting_id` back to null, so a row-derived predicate
- * flips back to false while the `GlPosting` it reversed and the reversal itself
- * both stay in the books forever. An account that permanently changed the ledger
- * would become hard-deletable again the moment somebody undid the last review.
+ * "simplifying" the gate to read the transaction rows instead: reversing a
+ * line's posting (TARGET §1) releases its `GlPostingSource` claim, so a
+ * row-derived predicate flips back to false while the `GlPosting` it reversed
+ * and the reversal itself both stay in the books forever. An account that
+ * permanently changed the ledger would become hard-deletable again the moment
+ * somebody undid the last review.
  *
  * Tested the way `import/reverse.ts`'s `refusalReason` is: pure, exhaustive, and
  * without a single double.

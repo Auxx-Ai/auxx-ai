@@ -534,8 +534,7 @@ async function rollbackDeposit(
 
 /**
  * The deposit's current LIVE posting - `posted`, never `reversed` - or `null`.
- * Read through `listPostingsForSource` (TARGET §1), never the
- * `bank_deposit_gl_posting_id` stamp.
+ * Read through `listPostingsForSource` (TARGET §1), never a stamp field.
  */
 async function findLiveBankDepositPosting(
   db: Database,

@@ -131,28 +131,13 @@ export async function assertCoveragePartitionsInTx(
     byEffect.set(row.effectId, components)
   }
 
-  const partial = [...byEffect]
-    .filter(([, components]) =>
-      components.some((component) => component.componentKey !== WHOLE_EFFECT_COMPONENT_KEY)
-    )
-    .map(([effectId]) => effectId)
+  // TODO(step-3): `AccountingEffect` is gone (step 1a) - a partial component's
+  // contribution line keys can no longer be read back, so `lineKeysByEffect`
+  // stays empty and `findCoveragePartitionProblems` reports every partial
+  // component as covering an "unknown" line. Nothing writes a partial
+  // component today (only `whole_effect` rows exist), so this is inert until
+  // native per-line coverage returns in step 3/4.
   const lineKeysByEffect = new Map<string, string[]>()
-  if (partial.length) {
-    const effects = await tx
-      .select({
-        id: schema.AccountingEffect.id,
-        acceptedBasis: schema.AccountingEffect.acceptedBasis,
-      })
-      .from(schema.AccountingEffect)
-      .where(
-        and(
-          eq(schema.AccountingEffect.organizationId, input.organizationId),
-          inArray(schema.AccountingEffect.id, partial)
-        )
-      )
-    for (const effect of effects)
-      lineKeysByEffect.set(effect.id, contributionLineKeys(effect.acceptedBasis))
-  }
 
   const problems: string[] = []
   for (const effectId of input.effectIds) {

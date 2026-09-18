@@ -123,7 +123,7 @@ export async function listClosePeriods(
 /** The effective posting for one month, or nothing. */
 interface EffectivePosting {
   id: string
-  docNumber: string
+  docNumber: string | null
   totalMinor: number
   postedAt: Date | null
   revision: number

@@ -46,7 +46,6 @@ import {
   hasFieldTypeChangeHooks,
 } from '../field-hooks/registry'
 import type { FieldPreHookEvent } from '../field-hooks/types'
-import { withAccountingFieldMutation } from '../postings/source-write-guard'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
@@ -529,17 +528,7 @@ export async function setValue(
   ctx: FieldValueContext,
   params: SetValueInput
 ): Promise<TypedFieldValue[]> {
-  return withAccountingFieldMutation(
-    ctx,
-    [
-      {
-        recordId: params.recordId,
-        fields: [{ fieldId: params.fieldId, value: params.value }],
-        operation: 'set',
-      },
-    ],
-    (scoped) => setValueUnguarded(scoped, params)
-  )
+  return setValueUnguarded(ctx, params)
 }
 
 async function setValueUnguarded(
@@ -784,17 +773,7 @@ export async function setValueWithType(
   ctx: FieldValueContext,
   params: SetValueWithTypeInput
 ): Promise<TypedFieldValue[]> {
-  return withAccountingFieldMutation(
-    ctx,
-    [
-      {
-        recordId: params.recordId,
-        fields: [{ fieldId: params.fieldId, value: params.value }],
-        operation: 'set',
-      },
-    ],
-    (scoped) => setValueWithTypeUnguarded(scoped, params)
-  )
+  return setValueWithTypeUnguarded(ctx, params)
 }
 
 async function setValueWithTypeUnguarded(
@@ -1055,17 +1034,7 @@ export async function addValue(
   ctx: FieldValueContext,
   params: AddValueInput
 ): Promise<TypedFieldValue> {
-  return withAccountingFieldMutation(
-    ctx,
-    [
-      {
-        recordId: params.recordId,
-        fields: [{ fieldId: params.fieldId, value: params.value }],
-        operation: 'change',
-      },
-    ],
-    (scoped) => addValueUnguarded(scoped, params)
-  )
+  return addValueUnguarded(ctx, params)
 }
 
 async function addValueUnguarded(
@@ -1184,17 +1153,7 @@ export async function removeValue(ctx: FieldValueContext, valueId: string): Prom
     columns: { entityId: true, entityDefinitionId: true, fieldId: true },
   })
   if (!target) return
-  return withAccountingFieldMutation(
-    ctx,
-    [
-      {
-        recordId: toRecordId(target.entityDefinitionId!, target.entityId),
-        fields: [{ fieldId: target.fieldId }],
-        operation: 'change',
-      },
-    ],
-    (scoped) => removeValueUnguarded(scoped, valueId)
-  )
+  return removeValueUnguarded(ctx, valueId)
 }
 
 async function removeValueUnguarded(ctx: FieldValueContext, valueId: string): Promise<void> {
@@ -1262,17 +1221,7 @@ export async function setPrimaryValue(
   ctx: FieldValueContext,
   params: SetPrimaryValueInput
 ): Promise<TypedFieldValue[]> {
-  return withAccountingFieldMutation(
-    ctx,
-    [
-      {
-        recordId: params.recordId,
-        fields: [{ fieldId: params.fieldId, value: undefined }],
-        operation: 'change',
-      },
-    ],
-    (scoped) => setPrimaryValueUnguarded(scoped, params)
-  )
+  return setPrimaryValueUnguarded(ctx, params)
 }
 
 async function setPrimaryValueUnguarded(
@@ -1361,17 +1310,7 @@ export async function deleteValue(
   ctx: FieldValueContext,
   params: DeleteValueInput
 ): Promise<number> {
-  return withAccountingFieldMutation(
-    ctx,
-    [
-      {
-        recordId: params.recordId,
-        fields: [{ fieldId: params.fieldId, value: undefined }],
-        operation: 'change',
-      },
-    ],
-    (scoped) => deleteValueUnguarded(scoped, params)
-  )
+  return deleteValueUnguarded(ctx, params)
 }
 
 async function deleteValueUnguarded(
@@ -1419,17 +1358,7 @@ export async function addRelationValues(
   ctx: FieldValueContext,
   params: AddRelationValuesInput
 ): Promise<void> {
-  return withAccountingFieldMutation(
-    ctx,
-    [
-      {
-        recordId: params.recordId,
-        fields: [{ fieldId: params.fieldId, value: params.relatedRecordIds }],
-        operation: 'change',
-      },
-    ],
-    (scoped) => addRelationValuesUnguarded(scoped, params)
-  )
+  return addRelationValuesUnguarded(ctx, params)
 }
 
 async function addRelationValuesUnguarded(
@@ -1530,17 +1459,7 @@ export async function removeRelationValues(
   ctx: FieldValueContext,
   params: RemoveRelationValuesInput
 ): Promise<void> {
-  return withAccountingFieldMutation(
-    ctx,
-    [
-      {
-        recordId: params.recordId,
-        fields: [{ fieldId: params.fieldId, value: undefined }],
-        operation: 'change',
-      },
-    ],
-    (scoped) => removeRelationValuesUnguarded(scoped, params)
-  )
+  return removeRelationValuesUnguarded(ctx, params)
 }
 
 async function removeRelationValuesUnguarded(
@@ -1609,15 +1528,7 @@ export async function addRelationValuesBulk(
   ctx: FieldValueContext,
   params: AddRelationValuesBulkInput
 ): Promise<{ inserted: number; skipped: number }> {
-  return withAccountingFieldMutation(
-    ctx,
-    params.recordIds.map((recordId) => ({
-      recordId,
-      fields: [{ fieldId: params.fieldId, value: params.relatedRecordIds }],
-      operation: 'change' as const,
-    })),
-    (scoped) => addRelationValuesBulkUnguarded(scoped, params)
-  )
+  return addRelationValuesBulkUnguarded(ctx, params)
 }
 
 async function addRelationValuesBulkUnguarded(
@@ -1824,15 +1735,7 @@ export async function removeRelationValuesBulk(
   ctx: FieldValueContext,
   params: RemoveRelationValuesBulkInput
 ): Promise<{ removed: number }> {
-  return withAccountingFieldMutation(
-    ctx,
-    params.recordIds.map((recordId) => ({
-      recordId,
-      fields: [{ fieldId: params.fieldId, value: undefined }],
-      operation: 'change' as const,
-    })),
-    (scoped) => removeRelationValuesBulkUnguarded(scoped, params)
-  )
+  return removeRelationValuesBulkUnguarded(ctx, params)
 }
 
 async function removeRelationValuesBulkUnguarded(
@@ -2094,17 +1997,7 @@ export async function addValues(
     skipPublishEvents?: boolean
   }
 ): Promise<TypedFieldValue[]> {
-  return withAccountingFieldMutation(
-    ctx,
-    [
-      {
-        recordId: params.recordId,
-        fields: [{ fieldId: params.fieldId, value: params.values }],
-        operation: 'change',
-      },
-    ],
-    (scoped) => addValuesUnguarded(scoped, params)
-  )
+  return addValuesUnguarded(ctx, params)
 }
 
 async function addValuesUnguarded(
@@ -2323,17 +2216,7 @@ export async function removeValues(
     skipPublishEvents?: boolean
   }
 ): Promise<void> {
-  return withAccountingFieldMutation(
-    ctx,
-    [
-      {
-        recordId: params.recordId,
-        fields: [{ fieldId: params.fieldId, value: undefined }],
-        operation: 'change',
-      },
-    ],
-    (scoped) => removeValuesUnguarded(scoped, params)
-  )
+  return removeValuesUnguarded(ctx, params)
 }
 
 async function removeValuesUnguarded(
@@ -2497,15 +2380,7 @@ export async function addValuesBulk(
     values: unknown[]
   }
 ): Promise<{ inserted: number; skipped: number }> {
-  return withAccountingFieldMutation(
-    ctx,
-    params.recordIds.map((recordId) => ({
-      recordId,
-      fields: [{ fieldId: params.fieldId, value: params.values }],
-      operation: 'change' as const,
-    })),
-    (scoped) => addValuesBulkUnguarded(scoped, params)
-  )
+  return addValuesBulkUnguarded(ctx, params)
 }
 
 async function addValuesBulkUnguarded(
@@ -2742,15 +2617,7 @@ export async function removeValuesBulk(
     values: unknown[]
   }
 ): Promise<{ removed: number }> {
-  return withAccountingFieldMutation(
-    ctx,
-    params.recordIds.map((recordId) => ({
-      recordId,
-      fields: [{ fieldId: params.fieldId, value: undefined }],
-      operation: 'change' as const,
-    })),
-    (scoped) => removeValuesBulkUnguarded(scoped, params)
-  )
+  return removeValuesBulkUnguarded(ctx, params)
 }
 
 async function removeValuesBulkUnguarded(
@@ -2979,17 +2846,7 @@ export async function setValueWithBuiltIn(
   ctx: FieldValueContext,
   params: SetValueWithBuiltInInput
 ): Promise<SetValueResult> {
-  return withAccountingFieldMutation(
-    ctx,
-    [
-      {
-        recordId: params.recordId,
-        fields: [{ fieldId: params.fieldId, value: params.value }],
-        operation: 'set',
-      },
-    ],
-    (scoped) => setValueWithBuiltInUnguarded(scoped, params)
-  )
+  return setValueWithBuiltInUnguarded(ctx, params)
 }
 
 async function setValueWithBuiltInUnguarded(
@@ -3669,11 +3526,7 @@ export async function setValuesForEntity(
   ctx: FieldValueContext,
   params: SetValuesForEntityInput
 ): Promise<SetValuesResult[]> {
-  return withAccountingFieldMutation(
-    ctx,
-    [{ recordId: params.recordId, fields: params.values, operation: 'set' }],
-    (scoped) => setValuesForEntityUnguarded(scoped, params)
-  )
+  return setValuesForEntityUnguarded(ctx, params)
 }
 
 async function setValuesForEntityUnguarded(
@@ -3704,11 +3557,7 @@ export async function writeValuesForEntity(
   ctx: FieldValueContext,
   params: SetValuesForEntityInput
 ): Promise<WriteValuesForEntityResult> {
-  return withAccountingFieldMutation(
-    ctx,
-    [{ recordId: params.recordId, fields: params.values, operation: 'set' }],
-    (scoped) => writeValuesForEntityUnguarded(scoped, params)
-  )
+  return writeValuesForEntityUnguarded(ctx, params)
 }
 
 async function writeValuesForEntityUnguarded(
@@ -4042,15 +3891,7 @@ export async function setBulkValues(
   ctx: FieldValueContext,
   params: SetBulkValuesInput
 ): Promise<{ count: number }> {
-  return withAccountingFieldMutation(
-    ctx,
-    params.recordIds.map((recordId) => ({
-      recordId,
-      fields: params.values,
-      operation: 'set' as const,
-    })),
-    (scoped) => setBulkValuesUnguarded(scoped, params)
-  )
+  return setBulkValuesUnguarded(ctx, params)
 }
 
 async function setBulkValuesUnguarded(

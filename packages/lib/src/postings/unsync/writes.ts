@@ -173,9 +173,8 @@ export async function markUnsyncFailed(
  * The state table in §2.1 is the contract for what this writes, and two entries
  * in it are not obvious:
  *
- * - `deliveryIntent` is demoted to `manual` even when it was `automatic`. The
- *   sweep reads `automatic` as *sending* regardless of `releasedAt` and would
- *   re-create in the provider, within the minute, the object just deleted (§2.3).
+ * - TODO(step-3): `GlPosting.deliveryIntent` is gone (§0b) - every posting is
+ *   manual now, so there is nothing left here to demote.
  * - `providerId` is LEFT ALONE. Which system answered is history, and history is
  *   not undone by withdrawing from it.
  */
@@ -251,7 +250,6 @@ export async function saveWithdrawal(
         providerEntryId: null,
         providerTenantId: null,
         failureReason: null,
-        deliveryIntent: 'manual',
       })
       .where(
         and(

@@ -341,7 +341,6 @@ export async function listFailedExports(
         txnDate: schema.GlPosting.txnDate,
         totalMinor: schema.GlPosting.totalMinor,
         currency: schema.GlPosting.currency,
-        deliveryIntent: schema.GlPosting.deliveryIntent,
         releasedAt: schema.AccountingDelivery.releasedAt,
         deliveryState: schema.AccountingDelivery.state,
       })
@@ -398,7 +397,9 @@ export async function listFailedExports(
         txnDate: row.txnDate,
         totalMinor: toMinor(row.totalMinor),
         currency: row.currency,
-        deliveryIntent: row.deliveryIntent,
+        // TODO(step-3): `GlPosting.deliveryIntent` is gone (§0b); every posting
+        // reads as 'manual' until the export batch replaces this queue.
+        deliveryIntent: 'manual',
         releasedAt,
         deliveryState: row.deliveryState,
       })

@@ -367,28 +367,9 @@ export const PAYOUT_FIELDS: Record<string, ResourceField> = {
       'amount alone does not say whether it is one big charge or forty small ones',
   },
 
-  glPostingId: {
-    id: toFieldId('glPostingId'),
-    key: 'glPostingId',
-    label: 'GL Posting',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'payout_gl_posting_id',
-    systemSortOrder: 'aC',
-    showInPanel: false,
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description:
-      'The posting this payout became. TEXT and not a RELATIONSHIP because GlPosting is a ' +
-      'Drizzle table with no EntityDefinition to point at - the journal_entry precedent',
-  },
+  // `glPostingId` (`payout_gl_posting_id`) is gone (step 1b, TARGET §1): a
+  // payout's postings are read through `listPostingsForSource`, off
+  // `GlPostingSource`, never off a stamp field.
 
   destination: {
     id: toFieldId('destination'),

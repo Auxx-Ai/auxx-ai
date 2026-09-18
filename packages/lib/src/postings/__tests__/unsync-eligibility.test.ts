@@ -74,10 +74,14 @@ describe('readUnsyncTarget', () => {
     expect(result.eligible === false && result.reason).toContain('was never sent')
   })
 
-  it('R2: refuses a row that predates the delivery pipeline', async () => {
-    const result = await read(stubDb([posting({ deliveryIntent: null })]))
+  it('R2 is retired: a legacy row with no deliveryIntent now falls through to R3', async () => {
+    // `GlPosting.deliveryIntent` is gone (§0b, TARGET §1) - the column that
+    // used to mark "predates the delivery pipeline" cannot be read any more,
+    // so a row with no delivery lands on R3's ordinary refusal instead of a
+    // dedicated R2 sentence.
+    const result = await read(stubDb([posting({ deliveryIntent: null })], [], [], []))
 
-    expect(result.eligible === false && result.reason).toContain('predates the delivery pipeline')
+    expect(result.eligible === false && result.reason).toContain('no record of what was created')
   })
 
   it('R3: refuses when nothing records what was created there, and names the provider', async () => {

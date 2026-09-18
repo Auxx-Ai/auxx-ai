@@ -240,6 +240,11 @@ export {
   requiresAssertions,
   reverseAssertions,
 } from './draft'
+export {
+  discardDraftPosting,
+  type UpdateDraftLinesInput,
+  updateDraftLines,
+} from './draft-lines'
 // ── plans/accounting/tasks/18: two feeds, one author, unit 1 ───────────────
 export {
   type DuplicateMovementEntry,

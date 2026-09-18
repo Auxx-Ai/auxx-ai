@@ -25,6 +25,7 @@ import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { NotFoundError, UnprocessableEntityError } from '../../errors'
 import { loadChartAccountsById } from '../../postings/chart-accounts'
+import { listPostingsForSource } from '../../postings/list-postings'
 import { toRecordId } from '../../resources/resource-id'
 import { type BankAccountRow, toDateKey } from '../client'
 import { guard } from '../guard'
@@ -65,7 +66,6 @@ const TRANSACTION_ATTRIBUTES = [
   'bank_transaction_exclude_reason',
   'bank_transaction_reviewed_at',
   'bank_transaction_reviewed_by_user_id',
-  'bank_transaction_gl_posting_id',
   'bank_transaction_rule_id',
 ] as const
 
@@ -607,32 +607,26 @@ export async function readHistory(
         })
       }
 
-      if (line.glPostingId) {
-        const [posting] = await db
-          .select({
-            id: schema.GlPosting.id,
-            docNumber: schema.GlPosting.docNumber,
-            status: schema.GlPosting.status,
-            postedAt: schema.GlPosting.postedAt,
-          })
-          .from(schema.GlPosting)
-          .where(
-            and(
-              eq(schema.GlPosting.id, line.glPostingId),
-              eq(schema.GlPosting.organizationId, organizationId)
-            )
-          )
-          .limit(1)
-        if (posting) {
-          entries.push({
-            kind: 'posted',
-            label: posting.status === 'reversed' ? 'Posting reversed' : 'Posted to the ledger',
-            detail: posting.docNumber,
-            at: posting.postedAt,
-            glPostingId: posting.id,
-            docNumber: posting.docNumber,
-          })
-        }
+      // The most recent posting, whatever its status - read through
+      // `listPostingsForSource` (TARGET §1), not `line.glPostingId`: that field
+      // is now the LIVE claim only, and a reversed line's claim is released
+      // entirely, so it would silently drop the "Posting reversed" entry the
+      // moment the reversal that produced it committed.
+      const postings = await listPostingsForSource(db, {
+        organizationId,
+        sourceKind: BANK_TRANSACTION_SOURCE_TYPE,
+        sourceId: transactionId,
+      })
+      const posting = postings.isOk() ? postings.value[0] : undefined
+      if (posting) {
+        entries.push({
+          kind: 'posted',
+          label: posting.status === 'reversed' ? 'Posting reversed' : 'Posted to the ledger',
+          detail: posting.docNumber,
+          at: posting.postedAt ? new Date(posting.postedAt) : null,
+          glPostingId: posting.id,
+          docNumber: posting.docNumber,
+        })
       }
 
       if (line.ruleId) {
@@ -1056,6 +1050,28 @@ async function hydrateTransactions(
         )
     : []
 
+  // The live posting each line currently claims, read through `GlPostingSource`
+  // (TARGET §1) rather than the retired `bank_transaction_gl_posting_id` stamp:
+  // a reversal releases the claim entirely (the row simply stops appearing
+  // here), where the stamp used to need `undoReview` to clear it by hand.
+  const livePostings = ids.length
+    ? await db
+        .select({
+          sourceId: schema.GlPostingSource.sourceId,
+          glPostingId: schema.GlPostingSource.glPostingId,
+        })
+        .from(schema.GlPostingSource)
+        .where(
+          and(
+            eq(schema.GlPostingSource.organizationId, organizationId),
+            eq(schema.GlPostingSource.sourceKind, BANK_TRANSACTION_SOURCE_TYPE),
+            eq(schema.GlPostingSource.linkRole, 'subject'),
+            inArray(schema.GlPostingSource.sourceId, ids)
+          )
+        )
+    : []
+  const glPostingIdBySourceId = new Map(livePostings.map((row) => [row.sourceId, row.glPostingId]))
+
   const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
   for (const value of values) {
     let bucket = byInstance.get(value.entityId)
@@ -1112,7 +1128,7 @@ async function hydrateTransactions(
       excludeReason: read(row.id, 'bank_transaction_exclude_reason')?.valueText ?? null,
       reviewedAt: toDate(read(row.id, 'bank_transaction_reviewed_at')?.valueDate),
       reviewedByUserId: read(row.id, 'bank_transaction_reviewed_by_user_id')?.valueText ?? null,
-      glPostingId: read(row.id, 'bank_transaction_gl_posting_id')?.valueText ?? null,
+      glPostingId: glPostingIdBySourceId.get(row.id) ?? null,
       ruleId: read(row.id, 'bank_transaction_rule_id')?.valueText ?? null,
       suggestedGlAccountId:
         readSuggestion(row.id, 'bank_transaction_suggested_gl_account')?.valueText ?? null,

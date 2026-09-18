@@ -228,8 +228,3 @@ describe('D-11 — the inverse write announces itself', () => {
     expect(recordTxWriteChange).not.toHaveBeenCalled()
   })
 })
-
-vi.mock('../../postings/source-write-guard', () => ({
-  withAccountingFieldMutation: (ctx: unknown, _input: unknown, fn: (ctx: unknown) => unknown) =>
-    fn(ctx),
-}))

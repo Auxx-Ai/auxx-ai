@@ -42,7 +42,7 @@ interface PostingRow {
   reversesId: string | null
   currency: string
   totalMinor: number
-  draft: unknown
+  built: unknown
   providerId: string | null
   providerEntryId: string | null
   postedAt: Date | null
@@ -171,7 +171,7 @@ const POSTING: PostingRow = {
   reversesId: null,
   currency: 'USD',
   totalMinor: 250_000,
-  draft: DRAFT,
+  built: DRAFT,
   providerId: 'quickbooks',
   providerEntryId: 'qbo_991',
   postedAt: new Date('2026-09-01T04:12:00.000Z'),
@@ -424,7 +424,7 @@ describe('getPosting - the stored draft', () => {
   // that could refuse a legacy row.
   it('does not parse or validate the envelope', async () => {
     const junk = { v: 99, nothing: 'the schema recognises' }
-    const stub = stubDb({ postings: [{ ...POSTING, draft: junk }], lines: [] })
+    const stub = stubDb({ postings: [{ ...POSTING, built: junk }], lines: [] })
     const result = await getPosting(stub.db, ORG, 'gp_1')
 
     expect(result.isOk()).toBe(true)

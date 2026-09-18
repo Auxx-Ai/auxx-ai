@@ -22,11 +22,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { ConflictError, NotFoundError } from '../errors'
-import {
-  deliverAccountingPosting,
-  enqueueAccountingDelivery,
-  planAccountingDeliveryInTx,
-} from './delivery'
+import { enqueueAccountingDelivery, planAccountingDeliveryInTx } from './delivery'
 import { resolveAccountingProvider } from './provider'
 import { EXPORT_ROUTE_BY_POSTING_TYPE } from './regime'
 import type {
@@ -78,8 +74,7 @@ export async function retryExport(
         docNumber: schema.GlPosting.docNumber,
         requestId: schema.GlPosting.requestId,
         exportStatus: schema.GlPosting.exportStatus,
-        draft: schema.GlPosting.draft,
-        deliveryIntent: schema.GlPosting.deliveryIntent,
+        built: schema.GlPosting.built,
       })
       .from(schema.GlPosting)
       .where(
@@ -94,10 +89,8 @@ export async function retryExport(
       return err(new NotFoundError('Posting not found', { glPostingId, organizationId }))
     }
 
-    if (row.deliveryIntent != null) {
-      return ok(await deliverAccountingPosting(db, { ...input, manual: true }))
-    }
-
+    // TODO(step-3): `GlPosting.deliveryIntent` is gone (§0b), so there is no
+    // delivery pipeline to defer to any more - every retry pushes inline.
     // `exported` is a no-op success rather than a refusal: two people pressing
     // Retry on the same row should both be told it is exported, not one of them
     // handed an error for having been second.
@@ -106,7 +99,7 @@ export async function retryExport(
         status: 'already_posted',
         exportStatus: 'exported',
         glPostingId,
-        docNumber: row.docNumber,
+        docNumber: row.docNumber ?? undefined,
       })
     }
 
@@ -191,7 +184,7 @@ export async function retryExport(
       dimensions: (line.dimensions as Record<string, string> | null) ?? undefined,
     }))
 
-    const draft = (row.draft ?? {}) as { memo?: unknown }
+    const draft = (row.built ?? {}) as { memo?: unknown }
     const provider = await resolveAccountingProvider(organizationId)
 
     const payload: PostEntryInput = {
@@ -201,7 +194,8 @@ export async function retryExport(
       postingType: row.postingType,
       periodKey: row.periodKey,
       txnDate: row.txnDate,
-      docNumber: row.docNumber,
+      // Non-null: a row with an export to retry was posted, which assigns one.
+      docNumber: row.docNumber ?? '',
       lines,
       // The row's own key, never a fresh one. See the JSDoc.
       idempotencyKey: row.requestId,
@@ -239,7 +233,7 @@ export async function retryExport(
         status: 'posted',
         exportStatus: 'failed',
         glPostingId,
-        docNumber: row.docNumber,
+        docNumber: row.docNumber ?? undefined,
         providerId: provider.id,
         error: reason,
       })
@@ -287,7 +281,7 @@ export async function retryExport(
       status: result.status,
       exportStatus,
       glPostingId,
-      docNumber: row.docNumber,
+      docNumber: row.docNumber ?? undefined,
       providerId: result.providerId,
       providerEntryId: result.externalId || undefined,
       providerTenantId: result.tenantId || undefined,
@@ -326,26 +320,17 @@ export interface SyncReleaseResult {
  * Release held journals to the delivery worker - the sync queue's bulk action
  * (plans/accounting/tasks/53-two-modes-one-ledger.md §7.2).
  *
- * 🛑 **Releases; does not push.** With the hold on
- * (`quickbooks.postJournalEntries` off) a posting rests with `exportStatus:
- * 'pending'` and its `AccountingDelivery.releasedAt` null, and the ONE thing
- * standing between it and the provider is that stamp. This writes it - through
- * `planAccountingDeliveryInTx`, which is the same call the delivery path makes
- * and which creates the delivery row when the worker has not planned one yet -
- * and then enqueues the ordinary delivery job.
+ * 🛑 **Releases; does not push.** This hands each row to
+ * `planAccountingDeliveryInTx` (which creates the delivery row when the
+ * worker has not planned one yet) and enqueues the ordinary delivery job -
+ * never `deliverAccountingPosting` per row, the way {@link retryExport} does
+ * for one: an export is three to five sequential round trips to a
+ * rate-limited third party, and a bulk bar acts on a backlog of them at once.
  *
- * ⚠️ Why not just call `deliverAccountingPosting` per posting, the way
- * {@link retryExport} does for one row: an export is three to five sequential
- * round trips to a rate-limited third party, and a bulk bar exists to act on
- * forty of them at once. Done inline that is an HTTP request nobody's proxy will
- * hold open. The queue is the mechanism that already exists for exactly this -
- * see `enqueueAccountingDelivery`'s own header - and losing an enqueue is
- * survivable because the row is committed released and `sweepAccountingDeliveries`
- * finds precisely the rows nothing woke up for.
- *
- * ⚠️ So the per-row button and this are NOT the same operation and should not be
- * made the same. One row pressed on its own wants the provider's answer back in
- * the same breath ({@link retryExport}); forty rows want to stop being held.
+ * TODO(step-3): `GlPosting.deliveryIntent` is gone (§0b) - every row is
+ * treated as manual intent now, so there is no "legacy row" branch left to
+ * fall back to `retryExport` for; `planAccountingDeliveryInTx` itself handles
+ * every row uniformly until the export batch replaces this queue.
  *
  * **Never throws.** One posting refusing does not stop the rest - the whole
  * point of a bulk action over a backlog is that it reports the exceptions rather
@@ -366,7 +351,6 @@ export async function releaseExportsForSync(
         id: schema.GlPosting.id,
         docNumber: schema.GlPosting.docNumber,
         exportStatus: schema.GlPosting.exportStatus,
-        deliveryIntent: schema.GlPosting.deliveryIntent,
       })
       .from(schema.GlPosting)
       .where(
@@ -393,33 +377,12 @@ export async function releaseExportsForSync(
         outcomes.push({ ...base, status: 'exported' })
         continue
       }
-      if (row.exportStatus === 'not_required' || row.deliveryIntent === 'not_required') {
+      if (row.exportStatus === 'not_required') {
         outcomes.push({
           ...base,
           status: 'skipped',
           message: `${row.docNumber} is not exported: nothing is connected, pushing is switched off, or this kind of entry is never sent.`,
         })
-        continue
-      }
-      if (row.deliveryIntent === null) {
-        // A row that predates the delivery pipeline has no delivery to release.
-        // `planAccountingDeliveryInTx` throws on it by design, so it takes the
-        // one path that does work for it - the inline push - rather than being
-        // reported as a failure of a mechanism it was never in.
-        const replayed = await retryExport(db, { organizationId, glPostingId })
-        if (replayed.isErr()) {
-          outcomes.push({ ...base, status: 'error', message: replayed.error.message })
-        } else if (replayed.value.exportStatus === 'exported') {
-          outcomes.push({ ...base, status: 'exported' })
-        } else if (replayed.value.exportStatus === 'failed') {
-          outcomes.push({
-            ...base,
-            status: 'error',
-            message: ('error' in replayed.value && replayed.value.error) || 'Refused.',
-          })
-        } else {
-          outcomes.push({ ...base, status: 'released' })
-        }
         continue
       }
 

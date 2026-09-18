@@ -95,7 +95,7 @@ export async function getPosting(
         reversesId: schema.GlPosting.reversesId,
         currency: schema.GlPosting.currency,
         totalMinor: schema.GlPosting.totalMinor,
-        draft: schema.GlPosting.draft,
+        built: schema.GlPosting.built,
         providerId: schema.GlPosting.providerId,
         providerEntryId: schema.GlPosting.providerEntryId,
         providerTenantId: schema.GlPosting.providerTenantId,
@@ -176,7 +176,7 @@ export async function getPosting(
       totalMinor: toMinor(posting.totalMinor),
       lines,
       // Verbatim. Unparsed on purpose.
-      draft: posting.draft,
+      draft: posting.built,
       providerId: posting.providerId ?? null,
       providerEntryId: posting.providerEntryId ?? null,
       // Which company that id belongs to. NULL means no export ever reached a

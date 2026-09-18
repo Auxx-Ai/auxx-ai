@@ -163,6 +163,16 @@ export async function materializeRecurringJournals(
             lines: template.lines,
             recurrenceRuleId: rule.id,
             occurrenceDate: occurrence.occurrenceDate,
+            // The claim is the TEMPLATE'S occurrence, not this generated
+            // record: two records raised for one occurrence (a sweep race)
+            // must collide on this claim when promoted, not on the doc
+            // number's unique constraint.
+            subject: {
+              sourceKind: 'recurring_journal',
+              sourceId: templateId,
+              linkRole: 'subject',
+              occurrence: occurrence.occurrenceDate,
+            },
           })
           if (created.isErr()) throw created.error
           outcome.generated.push(created.value.id)

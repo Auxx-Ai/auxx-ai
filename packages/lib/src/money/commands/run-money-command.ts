@@ -43,8 +43,7 @@ export interface MoneyCommandOptions {
  * everything that hangs off them. It was extracted verbatim from
  * `credit-memos/command.ts`'s `runCreditCommand`, which had been the de-facto
  * runner for non-credit work for some time — the legacy payments lane called it
- * for refunds (`payments/stripe-rail.ts`, `payments/ledger.ts`) — while its name
- * and its error strings claimed otherwise.
+ * for refunds too — while its name and its error strings claimed otherwise.
  *
  * ## 🔑 Why the command row exists at all
  *

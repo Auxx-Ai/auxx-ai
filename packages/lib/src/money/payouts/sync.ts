@@ -654,7 +654,9 @@ export async function reverseFailedPayout(
       const recordId = toRecordId(ctx.payoutDefId, record.payoutId)
 
       // Never posted, so there is nothing to back out - just record the failure.
-      if (!record.glPostingId || record.status === 'reversed') {
+      // Read through `listPostingsForSource` (TARGET §1), never a stamp field.
+      const live = await findLivePayoutPosting(db, organizationId, gatewayPayoutId)
+      if (!live) {
         await crud.update(recordId, { payout_status: 'failed' })
         return { reversed: false }
       }
@@ -662,7 +664,7 @@ export async function reverseFailedPayout(
       const lock = await resolvePeriodLock(organizationId)
       const reversal = await reverseEntry(db, {
         organizationId,
-        glPostingId: record.glPostingId,
+        glPostingId: live.id,
         actorUserId: actor,
         lock,
         memo: `Payout ${record.number ?? gatewayPayoutId} failed - reversing the settlement`,

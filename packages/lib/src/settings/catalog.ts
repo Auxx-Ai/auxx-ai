@@ -981,10 +981,64 @@ export const SETTINGS_CATALOG = {
 
   // `accounting.fulfillmentPosting`, `creditMemoPosting`, `fulfillmentGrouping`
   // and `creditMemoGrouping` are gone (step 1b, TARGET §1): the batch/effect
-  // lane they gated is deleted and both avenues post eagerly now.
-  // TODO(step-1b): add `accounting.autoPost.<avenue>` for `fulfillment`,
-  // `invoice`, `receipt`, `refund`, `creditMemo`, `expenseBill` (checkbox,
-  // default off) per MIGRATION.md step 1b.
+  // lane they gated is deleted and every avenue below posts one entry per
+  // event. `autoPost` now gates gate 1 alone (TARGET §4): off drafts the
+  // entry for review, on posts it immediately. See `postings/auto-post.ts`.
+  'accounting.autoPost.fulfillment': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'Post a fulfillment entry the moment it ships. Off, it drafts for review on the ledger.',
+  },
+  'accounting.autoPost.invoice': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'Post an invoice entry the moment it is sent. Off, it drafts for review on the ledger.',
+  },
+  'accounting.autoPost.receipt': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'Post a customer payment entry the moment it is recorded. Off, it drafts for review on ' +
+      'the ledger.',
+  },
+  'accounting.autoPost.refund': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'Post a refund entry the moment it is issued. Off, it drafts for review on the ledger.',
+  },
+  'accounting.autoPost.creditMemo': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'Post a credit memo entry the moment it is issued. Off, it drafts for review on the ledger.',
+  },
+  'accounting.autoPost.expenseBill': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'Post an expense bill entry the moment it is posted. Off, it drafts for review on the ledger.',
+  },
 
   // The frozen auxx.ai snapshot: the December 31 physical count valued at
   // CPA-approved costs. This is the valuation layer that intentionally uncosted

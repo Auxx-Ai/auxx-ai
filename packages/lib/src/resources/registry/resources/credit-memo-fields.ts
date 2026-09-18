@@ -725,42 +725,11 @@ export const CREDIT_MEMO_FIELDS: Record<string, ResourceField> = {
       'card',
   },
 
-  /**
-   * The posting this memo became (plans/accounting/tasks/25 §4.1).
-   *
-   * Written by the poster, never by hand. It exists because a BATCHED entry's
-   * lines carry `sourceType: 'credit_memo_batch'` and the period key, not the
-   * memo id, so `listPostingsForSource` on the memo returns nothing the moment
-   * memos summarise. The ledger card reads the posting the memo is STAMPED
-   * with, not the posting that names it.
-   *
-   * "Unposted" is the absence of a LIVE posting (§4.2): null, or a posting whose
-   * status is `reversed`, or a posting that no longer exists. Reading only the
-   * null case strands every memo of a reversed run.
-   */
-  glPosting: {
-    id: toFieldId('glPosting'),
-    key: 'glPosting',
-    label: 'GL Posting',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'credit_memo_gl_posting',
-    systemSortOrder: 'aK',
-    showInPanel: false,
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description:
-      'The posting this credit memo became. TEXT and not a RELATIONSHIP because GlPosting is ' +
-      'a Drizzle table with no EntityDefinition to point at - the gl_posting EntityRefKind was ' +
-      'removed on 2026-08-28 for that reason, and payout_gl_posting_id is the precedent',
-  },
+  // `glPosting` (`credit_memo_gl_posting`, systemSortOrder 'aK') is gone
+  // (step 1b, TARGET §1): a memo's postings are read through
+  // `listPostingsForSource`, off `GlPostingSource`, never off a stamp field.
+  // Migration 152 provisioned it and stays for the historical record;
+  // migration 168 removes it from every org that still has it.
 
   createdAt: {
     id: toFieldId('createdAt'),
@@ -821,9 +790,8 @@ export const CREDIT_MEMO_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'credit_memo_return',
-    // Interstitial below glPosting ('aK'): migration 152 pins glPosting as the
-    // LAST field ahead of the common block, and a business field past it
-    // breaks that assertion.
+    // Fractional index left over from sorting ahead of the now-removed
+    // `glPosting` ('aK'); still fine as a plain sort key on its own.
     systemSortOrder: 'aJa',
     nullable: true,
     capabilities: {

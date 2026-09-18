@@ -183,13 +183,6 @@ const BANK_ACCOUNTS_RECORD: PostingRecordLink = {
   href: '/app/accounting/settings/bank-accounts',
 }
 
-/** The two grouping rows share one sentence: the setting is what the dialog opens on, and the auto lane ignores it. */
-const GROUPING_ROW_COPY: PostingSettingCopy = {
-  title: 'Group into',
-  description:
-    'What the posting dialog opens on. It can be changed for a single run; the automatic lane always posts per day.',
-}
-
 /**
  * The declared posting policy, one record per posting type.
  *
@@ -354,12 +347,8 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
   fulfillment: {
     type: 'fulfillment',
     label: 'Fulfillment',
-    // money/fulfillment-posting/auto.ts `autoPostFulfillmentsAfterSync` when the
-    // mode is `auto`; otherwise the posting dialog opened from Orders.
-    trigger: {
-      kind: 'event',
-      on: 'A connector sync finishing, when Post fulfillments is Automatic; otherwise the posting dialog on Orders',
-    },
+    // money/orders/fulfill.ts, on every shipment.
+    trigger: { kind: 'event', on: 'A fulfillment ships' },
     template: [
       {
         side: 'debit',
@@ -384,15 +373,15 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
       { side: 'credit', role: ACCOUNT_ROLES.SALES_TAX_PAYABLE, what: 'Tax collected, summarised' },
     ],
-    settings: ['accounting.fulfillmentPosting', 'accounting.fulfillmentGrouping'],
+    settings: ['accounting.autoPost.fulfillment'],
     sentence:
-      "One entry per ship day recognises everything that shipped: revenue, shipping and tax, debited to the order's payment rail's clearing account or to receivables on terms.",
+      "One entry per shipment recognises revenue, shipping and tax the moment it ships, debited to the order's payment rail's clearing account or to receivables on terms.",
     disabledSentence:
       'Fulfillment posting is off, so revenue and COGS come only from the monthly inventory assertion.',
     parameters: [
       {
         name: 'Recognition date',
-        value: 'The latest ship date in the group',
+        value: 'The ship date',
         sentence:
           'Revenue is recognised on the day the goods left, never on the order date or the day the entry was posted; changing this is a different accounting method, so it is not a setting.',
       },
@@ -416,14 +405,12 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
     ],
     records: [PAYMENT_GATEWAYS_RECORD],
-    // The mode row says under itself that saving runs nothing (brief 28 §3.1, R3).
     settingCopy: {
-      'accounting.fulfillmentPosting': {
-        title: 'Post fulfillments',
+      'accounting.autoPost.fulfillment': {
+        title: 'Auto-post fulfillments',
         description:
-          'Automatic posts one entry per ship day after every connector sync. Manual waits for the posting dialog, where the preview is the review. Saving here runs nothing; a change takes effect at the next sync.',
+          'On, a shipment posts immediately. Off, it drafts on the ledger for review and approval.',
       },
-      'accounting.fulfillmentGrouping': GROUPING_ROW_COPY,
     },
     enabled: true,
     exportRoute: 'journal',
@@ -433,8 +420,9 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
   payment: {
     type: 'payment',
     label: 'Payment',
-    // money/payments/post-transaction.ts, on the Stripe or manual payment event.
-    trigger: { kind: 'event', on: 'A payment is recorded, from Stripe or by hand' },
+    // money/invoices/receipt-accounting.ts and money/customer-money/accounting.ts
+    // on a receipt; money/customer-money/refund-accounting.ts on a refund.
+    trigger: { kind: 'event', on: 'A customer receipt or refund is recorded' },
     template: [
       {
         side: 'debit',
@@ -461,6 +449,8 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       'accounting.paymentRoute.bank',
       'accounting.paymentRoute.other',
       'accounting.cashBankAccountId',
+      'accounting.autoPost.receipt',
+      'accounting.autoPost.refund',
     ],
     sentence:
       'Every payment posts as it arrives, landing where its method says: undeposited funds, card clearing, or straight into the cash bank account.',
@@ -505,6 +495,16 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         title: 'Cash bank account',
         description:
           'Where a payment routed to cash is banked. A cash-routed payment refuses to post until this is set.',
+      },
+      'accounting.autoPost.receipt': {
+        title: 'Auto-post receipts',
+        description:
+          'On, a customer receipt posts immediately. Off, it drafts on the ledger for review and approval.',
+      },
+      'accounting.autoPost.refund': {
+        title: 'Auto-post refunds',
+        description:
+          'On, a refund posts immediately. Off, it drafts on the ledger for review and approval.',
       },
     },
     enabled: true,
@@ -649,19 +649,26 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
   invoice_issued: {
     type: 'invoice_issued',
     label: 'Invoice issued',
-    // money/invoices/post-invoice.ts `postEntry` call, on Send.
+    // money/invoices/issuance-accounting.ts, on Send.
     trigger: { kind: 'event', on: 'Send on an invoice' },
     template: [
       { side: 'debit', role: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE, what: 'The invoice total' },
       { side: 'credit', role: ACCOUNT_ROLES.REVENUE_SERVICE, what: 'The subtotal' },
       { side: 'credit', role: ACCOUNT_ROLES.SALES_TAX_PAYABLE, what: 'Tax on the invoice' },
     ],
-    settings: [],
+    settings: ['accounting.autoPost.invoice'],
     sentence:
       'Sending an invoice raises the receivable every payment entry relieves, dated the day the invoice was issued.',
     disabledSentence:
       'Invoice posting is off, so a sent invoice raises no receivable and its revenue is never recognised.',
     parameters: [],
+    settingCopy: {
+      'accounting.autoPost.invoice': {
+        title: 'Auto-post invoices',
+        description:
+          'On, an invoice posts immediately at send. Off, it drafts on the ledger for review and approval.',
+      },
+    },
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],
@@ -694,12 +701,8 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
   credit_memo: {
     type: 'credit_memo',
     label: 'Credit memo',
-    // money/credit-memos/writes.ts posts a native memo on issue;
-    // money/credit-memo-posting/run.ts posts channel memos from the dialog.
-    trigger: {
-      kind: 'event',
-      on: 'Issue on a credit memo; channel memos wait for the posting dialog on Credit memos',
-    },
+    // money/credit-memos/accounting.ts, on issue.
+    trigger: { kind: 'event', on: 'Issue on a credit memo' },
     template: [
       {
         side: 'debit',
@@ -723,18 +726,12 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         what: "The refund leaving through the rail's clearing account, or its record's account by id",
       },
     ],
-    settings: ['accounting.creditMemoPosting', 'accounting.creditMemoGrouping'],
+    settings: ['accounting.autoPost.creditMemo'],
     sentence:
-      'A credit memo reverses revenue and tax against the receivable; when the channel already refunded the money, the same entry drains it through clearing.',
+      'A credit memo reverses revenue and tax against the receivable the moment it is issued; when the channel already refunded the money, the same entry drains it through clearing.',
     disabledSentence:
       'Credit memo posting is off, so a refund or allowance never reduces revenue or the receivable.',
     parameters: [
-      {
-        name: 'Channel memos',
-        value: 'Manual by default; automatic issues the drafts and posts them',
-        sentence:
-          'Memos a connector imported arrive as drafts. On manual they post when somebody runs the posting dialog; on automatic the sync issues the drafts and posts them, grouped by day.',
-      },
       {
         name: 'Returned goods',
         value: 'Recorded, not restocked',
@@ -743,15 +740,12 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
     ],
     records: [PAYMENT_GATEWAYS_RECORD],
-    // "Issues and posts", because that is what `auto` does to a channel draft
-    // (brief 28 §3.1, found in the build).
     settingCopy: {
-      'accounting.creditMemoPosting': {
-        title: 'Post channel credit memos',
+      'accounting.autoPost.creditMemo': {
+        title: 'Auto-post credit memos',
         description:
-          'Automatic issues the channel drafts and posts them after every connector sync, so it changes document state as well as the ledger. Manual waits for the posting dialog. Native memos post on issue either way. Saving here runs nothing; a change takes effect at the next sync.',
+          'On, a credit memo posts immediately at issue. Off, it drafts on the ledger for review and approval.',
       },
-      'accounting.creditMemoGrouping': GROUPING_ROW_COPY,
     },
     enabled: true,
     exportRoute: 'journal',
@@ -771,7 +765,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
       { side: 'credit', role: ACCOUNT_ROLES.ACCOUNTS_PAYABLE, what: 'What the vendor is owed' },
     ],
-    settings: [],
+    settings: ['accounting.autoPost.expenseBill'],
     sentence:
       'Posting a bill for rent, insurance or a subscription raises the payable and puts the expense on the profit and loss, dated the bill.',
     disabledSentence:
@@ -785,6 +779,13 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
           "The bill's totals are copied from the vendor's document, never recomputed, so the payable is what the vendor will collect.",
       },
     ],
+    settingCopy: {
+      'accounting.autoPost.expenseBill': {
+        title: 'Auto-post expense bills',
+        description:
+          'On, an expense bill posts immediately. Off, it drafts on the ledger for review and approval.',
+      },
+    },
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],

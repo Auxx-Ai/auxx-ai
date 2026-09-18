@@ -53,7 +53,7 @@ import { postDraft, postEntry, previewEntry } from '../post-entry'
 import { readPostingLineSourceIds } from '../read-posting'
 import { recurringJournalPeriodKey } from '../recurring-journals/client'
 import { reverseEntry } from '../reverse-entry'
-import type { EntryPreview, PostResult } from '../types'
+import type { EntryPreview, GlPostingSourceInput, PostResult } from '../types'
 import {
   JOURNAL_ENTRY_POSTING_TYPE,
   type JournalEntryKindValue,
@@ -87,6 +87,19 @@ export interface CreateJournalEntryInput {
    */
   recurrenceRuleId?: string
   occurrenceDate?: string
+  /**
+   * Override the draft's claim subject. Defaults to
+   * `{ sourceKind: 'journal_entry', sourceId: <this record>, linkRole: 'subject' }`.
+   *
+   * Only the recurring-journal materializer passes one: a template's
+   * occurrence, not the generated record, is what must not double-post.
+   * Two draft records raised for the same occurrence (a materializer race)
+   * are otherwise two independent claims - each promotes cleanly - and the
+   * only thing that stops both is `GlPosting_org_docNumber_key`, a unique
+   * constraint neither writer asked for and which surfaces as a raw SQL
+   * error instead of `already_posted`.
+   */
+  subject?: GlPostingSourceInput
 }
 
 export interface UpdateJournalEntryInput {
@@ -151,7 +164,13 @@ export async function createJournalEntry(
         entry: built.entry,
         lock,
         mode: 'draft',
-        sources: [{ sourceKind: 'journal_entry', sourceId: journalEntryId, linkRole: 'subject' }],
+        sources: [
+          input.subject ?? {
+            sourceKind: 'journal_entry',
+            sourceId: journalEntryId,
+            linkRole: 'subject',
+          },
+        ],
       })
       if (posted.status !== 'drafted' || !posted.glPostingId) {
         throw new UnprocessableEntityError(

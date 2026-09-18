@@ -191,6 +191,31 @@ describe('a race on the SAME draft converges without a stamp update', () => {
   })
 })
 
+describe('a race across two DIFFERENT generated records for one occurrence', () => {
+  // `materialize.ts` claims a draft's `GlPostingSource` subject on
+  // `{ sourceKind: 'recurring_journal', sourceId: templateId, occurrence:
+  // occurrenceDate }`, not on the generated record's own id - the fix this
+  // file exists to pin. Before it, `je_march_a` and `je_march_b` (two drafts
+  // a sweep race raised for the same March occurrence) each claimed under
+  // their OWN record id, so both promoted cleanly and only collided on
+  // `GlPosting_org_docNumber_key` - a raw constraint violation, not
+  // `already_posted`. With the shared subject, the loser's `postDraft` now
+  // loses the CLAIM first and comes back `already_posted` naming the
+  // WINNER'S posting - a different record entirely - and this is the check
+  // that has to wave it through as a convergence rather than a collision.
+  it('converges when the winner is a different record for the same slot', async () => {
+    h.postResult = { status: 'already_posted', glPostingId: 'post_march_b' }
+    h.winningSourceIds = ['je_march_b']
+    h.identities = new Map([['je_march_b', { recurrenceRuleId: RULE_ID, occurrenceDate: MARCH }]])
+
+    const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().status).toBe('already_posted')
+    expect(h.updates).toEqual([])
+  })
+})
+
 describe('the sourceId check catches a hash collision rather than trusting already_posted', () => {
   beforeEach(() => {
     h.postResult = {

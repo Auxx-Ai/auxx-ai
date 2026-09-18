@@ -8,6 +8,7 @@ import type { Result } from 'neverthrow'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import { withAccountingCommitLock } from '../../postings/accounting-commit-lock'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
+import { readAutoPostMode } from '../../postings/auto-post'
 import {
   type BuiltFulfillmentEntry,
   buildFulfillmentEntry,
@@ -323,15 +324,14 @@ async function postFulfillmentEntry(
       : []),
   ]
   const lock = await resolvePeriodLock(organizationId)
+  const mode = await readAutoPostMode(db, organizationId, 'fulfillment')
   return postEntry(db, {
     organizationId,
     entry,
     lock,
     scope,
     sources,
-    // TODO(step-1b): autoPost.fulfillment - read the per-avenue setting once
-    // settings wires it (MIGRATION.md step 1b); posts eagerly until then.
-    mode: 'post',
+    mode,
     storeId: typeof scope.store === 'string' ? scope.store : null,
     railId: null,
     actorUserId,

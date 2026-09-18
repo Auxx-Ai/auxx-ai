@@ -282,7 +282,7 @@ async function readPriorSnapshot(
       docNumber: schema.GlPosting.docNumber,
       periodKey: schema.GlPosting.periodKey,
       revision: schema.GlPosting.revision,
-      draft: schema.GlPosting.draft,
+      built: schema.GlPosting.built,
     })
     .from(schema.GlPosting)
     .where(
@@ -308,7 +308,7 @@ async function readPriorSnapshot(
     }
   }
 
-  const draft = parsePostingDraft(row.draft)
+  const draft = parsePostingDraft(row.built)
   if (!draft.assertions) {
     throw new UnprocessableEntityError(
       `The previous month-end inventory posting ${row.docNumber} (${row.periodKey} revision ` +
@@ -316,7 +316,12 @@ async function readPriorSnapshot(
         'to measure its delta against. The assertion chain is broken and must be repaired ' +
         'before another close; falling back to the opening baseline here would silently ' +
         'restate every month since the cutoff into one entry.',
-      { organizationId, periodKey, priorDocNumber: row.docNumber, priorPeriodKey: row.periodKey }
+      {
+        organizationId,
+        periodKey,
+        priorDocNumber: row.docNumber ?? undefined,
+        priorPeriodKey: row.periodKey,
+      }
     )
   }
 

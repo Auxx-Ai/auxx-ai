@@ -946,7 +946,8 @@ export interface PostingDetail {
   postingType: PostingType
   periodKey: string
   txnDate: string
-  docNumber: string
+  /** Null while `status` is `draft` — assigned when it posts. */
+  docNumber: string | null
   status: PostingStatus
   /** What the EXPORT did. Read this, never `status`, to learn about the provider. */
   exportStatus: PostingExportStatus
@@ -1404,7 +1405,7 @@ export interface FailedExport {
   glPostingId: string
   /** `exported` only ever arrives under `listFailedExports`' opt-in (60 §8.1). */
   exportStatus: 'pending' | 'failed' | 'exported'
-  docNumber: string
+  docNumber: string | null
   attempts: number
   failureReason: string | null
 }
@@ -1477,7 +1478,8 @@ export function syncQueueState(row: SyncQueueRow): SyncQueueState {
 /** One entry whose lines do not tie, or do not sum to its recorded total. */
 export interface BooksBalanceDiscrepancy {
   glPostingId: string
-  docNumber: string
+  /** Null only for a draft; balance is checked on posted rows, so this is rare. */
+  docNumber: string | null
   postingType: PostingType
   periodKey: string
   totalDebitMinor: number

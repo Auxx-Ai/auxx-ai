@@ -596,7 +596,7 @@ async function insertPosting(spec: PostingSpec): Promise<string> {
       txnDate: `${spec.periodKey}-28`,
       docNumber: spec.docNumber,
       totalMinor: 1_000,
-      draft,
+      built: draft,
       requestId: `req-${spec.docNumber}`,
       postedAt: new Date(),
       reversesId: spec.reversesId,
@@ -679,7 +679,7 @@ describe('the prior effective posting, selected from real rows', () => {
         txnDate: '2027-02-28',
         docNumber: 'JE-OTHER',
         totalMinor: 1_000,
-        draft: buildPostingDraft({
+        built: buildPostingDraft({
           docNumber: 'JE-OTHER',
           revision: 0,
           entry: {} as never,

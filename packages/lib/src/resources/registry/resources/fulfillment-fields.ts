@@ -384,40 +384,9 @@ export const FULFILLMENT_FIELDS: Record<string, ResourceField> = {
       'false here even though it has its own subtotal',
   },
 
-  /**
-   * 🛑 The posting this fulfillment became. TEXT and not a RELATIONSHIP,
-   * exactly the precedent `credit_memo_gl_posting` set
-   * (`credit-memo-fields.ts`): `GlPosting` is a Drizzle table with no
-   * `EntityDefinition` to point at - the `gl_posting` `EntityRefKind` was
-   * removed on 2026-08-28 for that reason, and `payout_gl_posting_id` /
-   * `credit_memo_gl_posting` are the precedent. `readUnpostedShipments`'s
-   * idempotency guard becomes a `fulfillment_gl_posting IS NULL` predicate over
-   * these records instead of the JSON array's `glPostingId IS NULL` filter.
-   */
-  glPosting: {
-    id: toFieldId('glPosting'),
-    key: 'glPosting',
-    label: 'GL Posting',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'fulfillment_gl_posting',
-    systemSortOrder: 'aD',
-    showInPanel: false,
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description:
-      'The posting this fulfillment became. TEXT and not a RELATIONSHIP because GlPosting is ' +
-      'a Drizzle table with no EntityDefinition to point at - the gl_posting EntityRefKind ' +
-      'was removed on 2026-08-28 for that reason, and credit_memo_gl_posting / ' +
-      'payout_gl_posting_id are the precedent',
-  },
+  // `glPosting` (`fulfillment_gl_posting`) is gone (step 1b, TARGET §1): a
+  // fulfillment's postings are read through `listPostingsForSource`, off
+  // `GlPostingSource`, never off a stamp field.
 
   docNumber: {
     id: toFieldId('docNumber'),

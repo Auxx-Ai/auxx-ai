@@ -2,12 +2,10 @@
 
 import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { fromDatabase } from '@auxx/services/shared/utils'
-import { toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { PgTransaction } from 'drizzle-orm/pg-core'
 import { err, ok } from 'neverthrow'
 import { withAccountingCommitLock } from '../postings/accounting-commit-lock'
-import { assertAccountingSourcesMutableInTx } from '../postings/source-write-guard'
 // Leaf-file import on purpose: the crud barrel pulls in UnifiedCrudHandler,
 // which imports this package's barrel — write-session-als itself only touches
 // node:async_hooks, so no runtime cycle this way.
@@ -37,17 +35,6 @@ export async function updateEntityInstance(params: UpdateEntityInstanceParams) {
 async function updateEntityInstanceInTx(params: UpdateEntityInstanceParams & { db: Transaction }) {
   const { id, organizationId, data, db } = params
   await withAccountingCommitLock(db, organizationId)
-  const source = await db.query.EntityInstance.findFirst({
-    where: and(
-      eq(schema.EntityInstance.id, id),
-      eq(schema.EntityInstance.organizationId, organizationId)
-    ),
-    columns: { entityDefinitionId: true },
-  })
-  if (source)
-    await assertAccountingSourcesMutableInTx(db, organizationId, [
-      toRecordId(source.entityDefinitionId, id),
-    ])
 
   const now = new Date()
   const updateData: Record<string, unknown> = {
@@ -137,18 +124,6 @@ async function archiveEntityInstancesInTx(
   const ids = [...new Set(params.ids)]
   if (ids.length === 0) return ok([] as string[])
   await withAccountingCommitLock(db, organizationId)
-  const sources = await db.query.EntityInstance.findMany({
-    where: and(
-      eq(schema.EntityInstance.organizationId, organizationId),
-      inArray(schema.EntityInstance.id, ids)
-    ),
-    columns: { id: true, entityDefinitionId: true },
-  })
-  await assertAccountingSourcesMutableInTx(
-    db,
-    organizationId,
-    sources.map((row) => toRecordId(row.entityDefinitionId, row.id))
-  )
 
   const now = new Date()
   const updateData: Record<string, unknown> = { updatedAt: now, archivedAt: now }

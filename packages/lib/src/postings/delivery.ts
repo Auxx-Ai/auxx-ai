@@ -19,7 +19,6 @@ import { prepareQuickbooksJournal } from '../money/quickbooks/quickbooks-account
 import { withAccountingCommitLock } from './accounting-commit-lock'
 import { accountingBasisHash } from './basis-hash'
 import { readPinnedAccountingConnection } from './book-connections'
-import { assertCoveragePartitionsInTx } from './delivery-coverage'
 import {
   preparedJournalSchema,
   quickbooksJournalWirePayload,
@@ -116,7 +115,15 @@ async function planJournalOperationInTx(
   })
 }
 
-/** Plan complete-effect coverage before any provider work; caller owns the transaction. */
+/**
+ * Plan delivery before any provider work; caller owns the transaction.
+ *
+ * TODO(step-3): `GlPosting.deliveryIntent`/`intendedBookConnectionId` and
+ * `AccountingEffect` are gone (§0b, step 1a). Every posting is now treated as
+ * manual intent, pinned to whichever book connection is active - there is no
+ * per-posting classification and no effect coverage to partition any more.
+ * This whole function is inert until the export batch replaces it.
+ */
 export async function planAccountingDeliveryInTx(
   tx: Transaction,
   input: { organizationId: string; glPostingId: string; manual?: boolean }
@@ -129,30 +136,17 @@ export async function planAccountingDeliveryInTx(
     .where(scoped(schema.GlPosting, organizationId, glPostingId))
     .limit(1)
   if (!posting) throw new Error('Posting not found')
-  if (!posting.deliveryIntent)
-    throw new Error('Legacy posting requires explicit delivery classification')
-  if (posting.deliveryIntent === 'not_required') return null
-  if (!posting.intendedBookConnectionId) throw new Error('Posting has no pinned destination')
   const [connection] = await tx
     .select()
     .from(schema.ExternalBookConnection)
-    .where(scoped(schema.ExternalBookConnection, organizationId, posting.intendedBookConnectionId))
-    .limit(1)
-  if (!connection) throw new Error('Pinned accounting connection is missing')
-  const effects = await tx
-    .select({ id: schema.AccountingEffect.id })
-    .from(schema.AccountingEffect)
     .where(
       and(
-        eq(schema.AccountingEffect.organizationId, organizationId),
-        eq(schema.AccountingEffect.glPostingId, glPostingId)
+        eq(schema.ExternalBookConnection.organizationId, organizationId),
+        eq(schema.ExternalBookConnection.state, 'active')
       )
     )
-  // A reversal (`reversesId` set) is the one row allowed through with zero
-  // coverage - it backs out an effect-backed original that already released
-  // its own effect, so there is nothing left to partition (brief 62 §4).
-  if (!effects.length && !posting.reversesId)
-    throw new Error('Posting has no accepted accounting effects')
+    .limit(1)
+  if (!connection) return null
   let [delivery] = await tx
     .select()
     .from(schema.AccountingDelivery)
@@ -174,21 +168,9 @@ export async function planAccountingDeliveryInTx(
         glPostingId,
         representation: 'journal',
         state: 'pending',
-        releasedAt: posting.deliveryIntent === 'automatic' || input.manual ? new Date() : null,
+        releasedAt: input.manual ? new Date() : null,
       })
       .returning()
-    // Empty on a reversal with nothing to partition; drizzle throws on an
-    // empty `values()` array.
-    if (effects.length)
-      await tx.insert(schema.AccountingDeliveryCoverage).values(
-        effects.map((effect) => ({
-          organizationId,
-          bookId: connection.bookId,
-          deliveryId: delivery!.id,
-          effectId: effect.id,
-          componentKey: 'whole_effect',
-        }))
-      )
     await tx.insert(schema.AccountingDeliveryOperation).values({
       organizationId,
       deliveryId: delivery!.id,
@@ -208,22 +190,6 @@ export async function planAccountingDeliveryInTx(
     if (delivery?.state === 'pending') await planJournalOperationInTx(tx, delivery)
   }
   if (!delivery) throw new Error('Delivery creation returned no row')
-  // 🛑 Brief 44 §7: coverage must PARTITION each effect's contribution before
-  // anything is sent. The commit lock above is already held, so this read sees a
-  // settled picture of every plan claiming these effects in this book - including
-  // plans this transaction did not write.
-  //
-  // 🔑 This runs on EVERY delivery attempt, not only the one that creates the
-  // plan: `deliverAccountingPosting` re-plans first, and the assertion sits
-  // after the create/release branches deliberately. So a plan that sat `blocked`
-  // for a week while its coverage was replaced is re-proved, inside the lock,
-  // immediately before the send - which is why no second check is needed at the
-  // send site.
-  await assertCoveragePartitionsInTx(tx, {
-    organizationId,
-    bookId: connection.bookId,
-    effectIds: effects.map((effect) => effect.id),
-  })
   return { posting, delivery }
 }
 
@@ -249,7 +215,7 @@ async function loadInput(
     )
     .orderBy(asc(schema.GlPostingLine.lineNumber))
   if (!rows.length) throw new Error('Posting has no frozen journal lines')
-  const draft = posting.draft as { memo?: unknown } | null
+  const draft = posting.built as { memo?: unknown } | null
   return {
     organizationId,
     glPostingId,
@@ -257,7 +223,8 @@ async function loadInput(
     periodKey: posting.periodKey,
     revision: posting.revision,
     txnDate: posting.txnDate,
-    docNumber: posting.docNumber,
+    // Non-null: a delivery is only ever planned for an entry that has posted.
+    docNumber: posting.docNumber ?? '',
     idempotencyKey: posting.requestId,
     ...(typeof draft?.memo === 'string' ? { memo: draft.memo } : {}),
     lines: rows.map((line) => ({
@@ -588,7 +555,11 @@ export async function deliverAccountingPosting(
   if (!planned)
     return { status: 'posted', exportStatus: 'not_required', glPostingId: input.glPostingId }
   const { posting, delivery } = planned
-  const base = { glPostingId: posting.id, docNumber: posting.docNumber, providerId: 'quickbooks' }
+  const base = {
+    glPostingId: posting.id,
+    docNumber: posting.docNumber ?? undefined,
+    providerId: 'quickbooks',
+  }
   if (!delivery.releasedAt) return { ...base, status: 'posted', exportStatus: 'pending' }
   const claimed = await claim(db, input.organizationId, delivery, input.manual)
   if (!claimed) return { ...base, status: 'posted', exportStatus: 'pending' }
@@ -793,14 +764,12 @@ export async function sweepAccountingDeliveries(
           : undefined,
         // A `reversed` original is never re-planned; its reversal is its own row.
         eq(schema.GlPosting.status, 'posted'),
-        inArray(schema.GlPosting.deliveryIntent, ['manual', 'automatic']),
         or(
           isNull(schema.AccountingDelivery.id),
           and(
-            or(
-              eq(schema.GlPosting.deliveryIntent, 'automatic'),
-              isNotNull(schema.AccountingDelivery.releasedAt)
-            ),
+            // TODO(step-3): `GlPosting.deliveryIntent` is gone (§0b) - every
+            // posting is manual now, so an explicit release is always required.
+            isNotNull(schema.AccountingDelivery.releasedAt),
             or(
               // A delivery re-opened at a new epoch has no operation under that
               // key yet; planning inserts it on the attempt this row selects.

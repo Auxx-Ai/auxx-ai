@@ -292,7 +292,8 @@ export async function readAging(
           sourceId: line.sourceId,
           debitMinor: 0,
           creditMinor: 0,
-          docNumber: line.docNumber,
+          // Non-null: `POSTED_STATUSES` above always carries a doc number.
+          docNumber: line.docNumber ?? '',
         }
         byDoc.set(key, accum)
       }

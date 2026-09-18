@@ -165,7 +165,8 @@ export async function readOurPostedEntries(
         glPostingId: header.id,
         // Non-null by the `isNotNull` predicate above.
         providerEntryId: header.providerEntryId ?? '',
-        docNumber: header.docNumber,
+        // Non-null: `status = 'posted'` above always carries a doc number.
+        docNumber: header.docNumber ?? '',
         txnDate: toDateKey(header.txnDate),
         lines: linesByPostingId.get(header.id) ?? [],
       }))
@@ -218,7 +219,8 @@ export async function readSyncedEntriesInRange(
       return rows.map((row) => ({
         glPostingId: row.id,
         providerEntryId: row.providerEntryId ?? '',
-        docNumber: row.docNumber,
+        // Non-null: `status = 'posted'` above always carries a doc number.
+        docNumber: row.docNumber ?? '',
         txnDate: toDateKey(row.txnDate),
       }))
     },

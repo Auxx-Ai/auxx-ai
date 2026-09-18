@@ -258,7 +258,6 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
       // 58 §5.4 rule 2: the fixture's `resolveRoles` answers an EMPTY map, so
       // there is no resolved `bank` glAccountId to check the destination against.
       payout_destination_mismatch: null,
-      payout_gl_posting_id: 'glp_1',
     })
     expect(h.readDestinations).not.toHaveBeenCalled()
     expect(h.stamp).toHaveBeenCalledWith(expect.anything(), {
@@ -285,7 +284,6 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
       payout_status: 'paid',
       payout_blocked_reason: null,
       payout_destination_mismatch: expect.stringContaining('PAY-0001'),
-      payout_gl_posting_id: 'glp_1',
     })
     // The entry still posted - a mismatch is a flag, never a block.
     expect(h.postPayoutEntry).toHaveBeenCalledTimes(1)

@@ -32,8 +32,6 @@ export interface PayoutRecord {
   /** Settled charges auxx has no payment for, net. Zero is the ordinary case. */
   unrecognisedNetMinor: number
   unrecognisedCount: number
-  /** The posting this payout became, or null while it has none. */
-  glPostingId: string | null
   /**
    * Set when this payout could not be posted for lack of a confirmed
    * bank-account identity (brief 13 §2.3). Names the payout, the destination

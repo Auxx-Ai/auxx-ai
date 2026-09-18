@@ -369,12 +369,13 @@ export async function readCoverage(
  * (plans/bank-connection/08-removing-a-bank-account.md §7.2).
  *
  * 🛑 **`hasEverPosted` is read STRAIGHT OFF THE FIELD and is never derived from
- * the rows.** That is §5.1's whole point: `undoReview` sets
- * `bank_transaction_gl_posting_id` back to `null`, so a predicate computed from
- * the transactions flips back to false - while the `GlPosting` it reversed and
- * the reversal itself both stay in the books forever with a row on this account
- * as their source document. An account that permanently changed the ledger would
- * become deletable again the moment somebody undid the last review.
+ * the rows.** That is §5.1's whole point: reversing a line's posting (TARGET
+ * §1: `reverseEntry` releases its `GlPostingSource` claim) makes a predicate
+ * computed from the transactions flip back to false - while the `GlPosting` it
+ * reversed and the reversal itself both stay in the books forever with a row on
+ * this account as their source document. An account that permanently changed
+ * the ledger would become deletable again the moment somebody undid the last
+ * review.
  *
  * Every other fact here is for the dialog and DECIDES NOTHING. The counts say
  * how much a delete would take with it; the rules are named so a person knows

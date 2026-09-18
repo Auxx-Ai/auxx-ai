@@ -67,8 +67,6 @@ export interface BankDepositRecord {
   bankTransactionId: string | null
   clearedAt: Date | null
   reconciledAt: Date | null
-  /** The `GlPosting` row this deposit produced, or null when it never posted. */
-  glPostingId: string | null
   createdAt: Date
 }
 

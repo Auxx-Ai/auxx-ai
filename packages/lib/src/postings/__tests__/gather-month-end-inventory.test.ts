@@ -233,7 +233,7 @@ function priorRow(options: {
     docNumber: options.docNumber ?? 'JE-2026-07-ME',
     periodKey: options.periodKey ?? '2026-07',
     revision: options.revision ?? 0,
-    draft,
+    built: draft,
   }
 }
 

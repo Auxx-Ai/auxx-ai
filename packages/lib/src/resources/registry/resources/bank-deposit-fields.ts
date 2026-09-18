@@ -390,28 +390,9 @@ export const BANK_DEPOSIT_FIELDS: Record<string, ResourceField> = {
       'clearedAt on purpose - the bank crediting a line is not the same as somebody agreeing it',
   },
 
-  glPostingId: {
-    id: toFieldId('glPostingId'),
-    key: 'glPostingId',
-    label: 'GL Posting',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'bank_deposit_gl_posting_id',
-    systemSortOrder: 'aB',
-    showInPanel: false,
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description:
-      'The GlPosting row this deposit produced. A denormalized backlink for the drawer - ' +
-      'the AUTHORITY is the posting own sourceType/sourceId pair',
-  },
+  // `glPostingId` (`bank_deposit_gl_posting_id`) is gone (step 1b, TARGET §1):
+  // a deposit's postings are read through `listPostingsForSource`, off
+  // `GlPostingSource`, never off a stamp field.
 
   // The last-rendered deposit slip, as a single FILE value (plans/accounting/
   // ui-plan.md §5.3, the `invoice_pdf_asset` shape). Written ONLY by

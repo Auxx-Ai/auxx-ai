@@ -291,7 +291,8 @@ export async function readGeneralLedger(
 interface RawLedgerLine {
   glAccountId: string
   glPostingId: string
-  docNumber: string
+  /** Non-null in practice: the query above filters to `POSTED_STATUSES`. */
+  docNumber: string | null
   txnDate: string
   memo: string | null
   direction: string
@@ -332,7 +333,8 @@ function buildAccount(
     return {
       glPostingId: line.glPostingId,
       lineId: line.lineId,
-      docNumber: line.docNumber,
+      // Non-null: the query above filters to `POSTED_STATUSES`.
+      docNumber: line.docNumber ?? '',
       txnDate: line.txnDate,
       memo: line.memo,
       direction,

@@ -61,7 +61,6 @@ export async function readUnsyncTarget(
         docNumber: schema.GlPosting.docNumber,
         status: schema.GlPosting.status,
         exportStatus: schema.GlPosting.exportStatus,
-        deliveryIntent: schema.GlPosting.deliveryIntent,
       })
       .from(schema.GlPosting)
       .where(
@@ -73,7 +72,7 @@ export async function readUnsyncTarget(
       .limit(1)
 
     if (!posting) return { eligible: false, docNumber: null, reason: 'Not found.' } as const
-    const doc = posting.docNumber
+    const doc = posting.docNumber ?? ''
 
     // R1. A `failed` row uses Retry; a held row is already un-synced.
     if (posting.exportStatus !== 'exported')
@@ -83,13 +82,11 @@ export async function readUnsyncTarget(
         reason: `${doc} was never sent, so there is nothing to remove.`,
       } as const
 
-    // R2. Dev residue only - E7.
-    if (posting.deliveryIntent === null)
-      return {
-        eligible: false,
-        docNumber: doc,
-        reason: `${doc} predates the delivery pipeline and has no recorded provider object.`,
-      } as const
+    // R2. TODO(step-3): used to refuse a row whose `GlPosting.deliveryIntent`
+    // was null - "predates the delivery pipeline, no recorded provider
+    // object". That column is gone (§0b): every row now falls through to R3,
+    // which asks the same question the honest way, by looking for a delivery
+    // and an object instead of a legacy-row marker.
 
     const [delivery] = await tx
       .select({
