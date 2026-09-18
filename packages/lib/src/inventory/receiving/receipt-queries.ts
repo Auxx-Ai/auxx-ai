@@ -15,11 +15,23 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, desc, eq, gte, inArray, isNull, lte, type SQL, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, isNull, lte, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
+import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
+import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
+import { VENDOR_PART_FIELDS } from '../../resources/registry/resources/vendor-part-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
+import {
+  inPageOrder,
+  readSystemRecords,
+  type SystemFieldContext,
+  type SystemRecord,
+  systemFieldMap,
+  systemFields,
+  systemValueJoin,
+} from '../../resources/system-records'
 import { resolveOfferTariff } from '../costing/vendor-cost'
 import { loadTariffSchedule } from '../tariffs/tariff-schedule'
 import type { ReceiptCostInputs } from './client'
@@ -33,7 +45,7 @@ import type { ListReceiptsFilters, ReceiptRow } from './types'
  * 108 has run for the org, so every one of them is treated as optional below —
  * an org mid-migration must read its old movements, not 500.
  */
-const RECEIPT_ATTRIBUTES = [
+const RECEIPT_PICK = pickSystemAttributes(STOCK_MOVEMENT_FIELDS, [
   'stock_movement_type',
   'stock_movement_part',
   'stock_movement_quantity',
@@ -45,29 +57,21 @@ const RECEIPT_ATTRIBUTES = [
   'stock_movement_gl_account',
   'stock_movement_occurred_at',
   'stock_movement_purchase_order_line',
-] as const
+] as const)
+
+type ReceiptAttribute = (typeof RECEIPT_PICK)[number]
 
 const DEFAULT_LIMIT = 50
 
-/** An aliased `FieldValue` table, as `alias()` returns it. */
-type FieldValueAlias = ReturnType<typeof alias<typeof schema.FieldValue, string>>
-
-/** The resolved ids this module's reads need, or `null` when the org has no ledger yet. */
-interface ReceiptFieldContext {
-  movementDefId: string
-  fields: Record<(typeof RECEIPT_ATTRIBUTES)[number], { id: string } | null>
-}
-
-async function loadFieldContext(organizationId: string): Promise<ReceiptFieldContext | null> {
-  const movementDefId = await getCachedEntityDefId(organizationId, 'stock_movement')
-  if (!movementDefId) return null
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...RECEIPT_ATTRIBUTES])
+/** The `stock_movement` def and fields, or `null` when the org has no ledger — or no `type` to tell a receipt from a scrap. */
+async function loadFieldContext(
+  db: Database,
+  organizationId: string
+): Promise<SystemFieldContext<ReceiptAttribute> | null> {
+  const ctx = await systemFields(db, organizationId, 'stock_movement', RECEIPT_PICK)
   // Without a `type` field there is no way to tell a receipt from a scrap, and a
   // read that guessed would report shipments as purchases.
-  if (!fields.stock_movement_type) return null
-  return { movementDefId, fields }
+  return ctx?.fields.stock_movement_type ? ctx : null
 }
 
 /**
@@ -91,10 +95,10 @@ export async function listReceipts(
 ): Promise<Result<ReceiptRow[], Error>> {
   return guard(
     async () => {
-      const ctx = await loadFieldContext(organizationId)
+      const ctx = await loadFieldContext(db, organizationId)
       if (!ctx) return []
 
-      const { movementDefId, fields } = ctx
+      const { defId, fields } = ctx
       const limit = filters.limit ?? DEFAULT_LIMIT
       const offset = filters.offset ?? 0
 
@@ -110,7 +114,7 @@ export async function listReceipts(
 
       const where: SQL[] = [
         eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, movementDefId),
+        eq(schema.EntityInstance.entityDefinitionId, defId),
         isNull(schema.EntityInstance.archivedAt),
         // A SINGLE_SELECT stores its chosen value in `optionId`; for a
         // system-seeded enum that id IS the value ('receive').
@@ -123,24 +127,13 @@ export async function listReceipts(
       let query = db
         .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
         .from(schema.EntityInstance)
-        .innerJoin(
-          typeValue,
-          and(
-            eq(typeValue.entityId, schema.EntityInstance.id),
-            eq(typeValue.organizationId, schema.EntityInstance.organizationId),
-            eq(typeValue.fieldId, fields.stock_movement_type!.id)
-          )
-        )
+        .innerJoin(typeValue, systemValueJoin(typeValue, fields.stock_movement_type!.id))
         .$dynamic()
 
       if (fields.stock_movement_occurred_at) {
         query = query.leftJoin(
           occurredValue,
-          and(
-            eq(occurredValue.entityId, schema.EntityInstance.id),
-            eq(occurredValue.organizationId, schema.EntityInstance.organizationId),
-            eq(occurredValue.fieldId, fields.stock_movement_occurred_at.id)
-          )
+          systemValueJoin(occurredValue, fields.stock_movement_occurred_at.id)
         )
       }
 
@@ -167,7 +160,12 @@ export async function listReceipts(
         .offset(offset)
 
       if (rows.length === 0) return []
-      return hydrateReceipts(db, organizationId, ctx, rows)
+      return hydrateReceipts(
+        db,
+        organizationId,
+        ctx,
+        rows.map((row) => row.id)
+      )
     },
     'Failed to list receipts',
     { organizationId, filters }
@@ -177,26 +175,20 @@ export async function listReceipts(
 /**
  * Join predicate for "this movement's <relation> points at <instanceId>".
  *
- * Takes the alias OBJECT rather than its name and composes with `eq`, so the
- * table reference is emitted by drizzle as an identifier. A hand-written
- * `sql` fragment interpolating a table would bind it as a parameter instead,
- * which is a mistake this codebase has already paid for once.
+ * The alias OBJECT rather than its name, so drizzle emits the table reference as
+ * an identifier — a hand-written `sql` fragment interpolating a table binds it as
+ * a parameter instead, which is a mistake this codebase has already paid for once.
  */
 function relationJoin(
-  table: FieldValueAlias,
+  table: ReturnType<typeof alias<typeof schema.FieldValue, string>>,
   fieldId: string,
   relatedEntityId: string
 ): SQL | undefined {
-  return and(
-    eq(table.entityId, schema.EntityInstance.id),
-    eq(table.organizationId, schema.EntityInstance.organizationId),
-    eq(table.fieldId, fieldId),
-    eq(table.relatedEntityId, relatedEntityId)
-  )
+  return and(systemValueJoin(table, fieldId), eq(table.relatedEntityId, relatedEntityId))
 }
 
 /**
- * Turn a page of movement ids into full rows with ONE additional query.
+ * Turn a page of movement ids into full rows.
  *
  * The alternative — a join per attribute on the paging query — multiplies the
  * row count by the number of multi-valued fields and makes `LIMIT` mean
@@ -205,69 +197,34 @@ function relationJoin(
 async function hydrateReceipts(
   db: Database,
   organizationId: string,
-  ctx: ReceiptFieldContext,
-  page: { id: string; createdAt: Date }[]
+  ctx: SystemFieldContext<ReceiptAttribute>,
+  ids: string[]
 ): Promise<ReceiptRow[]> {
-  const { movementDefId, fields } = ctx
-  const ids = page.map((row) => row.id)
-  const fieldIds = Object.values(fields)
-    .filter((field): field is { id: string } => field != null)
-    .map((field) => field.id)
+  const records = await readSystemRecords(db, organizationId, ctx, { ids })
+  return inPageOrder(records, ids).map((record) => toReceiptRow(ctx, record))
+}
 
-  const values = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      valueNumber: schema.FieldValue.valueNumber,
-      valueDate: schema.FieldValue.valueDate,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, ids),
-        inArray(schema.FieldValue.fieldId, fieldIds)
-      )
-    )
-
-  const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
-  for (const value of values) {
-    let bucket = byInstance.get(value.entityId)
-    if (!bucket) {
-      bucket = new Map()
-      byInstance.set(value.entityId, bucket)
-    }
-    bucket.set(value.fieldId, value)
+function toReceiptRow(
+  ctx: SystemFieldContext<ReceiptAttribute>,
+  record: SystemRecord<ReceiptAttribute>
+): ReceiptRow {
+  const occurredAt = record.date('stock_movement_occurred_at')
+  const createdAt = record.createdAt ?? new Date(0)
+  return {
+    movementId: record.id,
+    recordId: `${ctx.defId}:${record.id}`,
+    partInstanceId: record.related('stock_movement_part'),
+    quantity: record.number('stock_movement_quantity') ?? 0,
+    unitCost: record.number('stock_movement_unit_cost'),
+    extendedCost: record.number('stock_movement_extended_cost'),
+    vendorUnitPrice: record.number('stock_movement_vendor_unit_price'),
+    vendorPartId: record.related('stock_movement_vendor_part'),
+    glAccount: record.text('stock_movement_gl_account'),
+    purchaseOrderLineId: record.related('stock_movement_purchase_order_line'),
+    reference: record.text('stock_movement_reference'),
+    occurredAt: occurredAt ? new Date(occurredAt) : createdAt,
+    createdAt,
   }
-
-  const fieldId = (attr: (typeof RECEIPT_ATTRIBUTES)[number]): string | null =>
-    fields[attr]?.id ?? null
-
-  return page.map((row) => {
-    const bucket = byInstance.get(row.id)
-    const read = (attr: (typeof RECEIPT_ATTRIBUTES)[number]) => {
-      const id = fieldId(attr)
-      return id ? (bucket?.get(id) ?? null) : null
-    }
-    const occurredRaw = read('stock_movement_occurred_at')?.valueDate ?? null
-    return {
-      movementId: row.id,
-      recordId: `${movementDefId}:${row.id}`,
-      partInstanceId: read('stock_movement_part')?.relatedEntityId ?? null,
-      quantity: read('stock_movement_quantity')?.valueNumber ?? 0,
-      unitCost: read('stock_movement_unit_cost')?.valueNumber ?? null,
-      extendedCost: read('stock_movement_extended_cost')?.valueNumber ?? null,
-      vendorUnitPrice: read('stock_movement_vendor_unit_price')?.valueNumber ?? null,
-      vendorPartId: read('stock_movement_vendor_part')?.relatedEntityId ?? null,
-      glAccount: read('stock_movement_gl_account')?.valueText ?? null,
-      purchaseOrderLineId: read('stock_movement_purchase_order_line')?.relatedEntityId ?? null,
-      reference: read('stock_movement_reference')?.valueText ?? null,
-      occurredAt: occurredRaw ? new Date(occurredRaw) : row.createdAt,
-      createdAt: row.createdAt,
-    }
-  })
 }
 
 /**
@@ -338,56 +295,29 @@ export async function readVendorPartCostInputs(
 ): Promise<Result<ReceiptCostInputs | null, Error>> {
   return guard(
     async () => {
-      const vendorPartDefId = await getCachedEntityDefId(organizationId, 'vendor_part')
-      if (!vendorPartDefId) return null
+      const ctx = await systemFields(db, organizationId, 'vendor_part', VENDOR_PART_PICK)
+      if (!ctx) return null
 
-      const [instance] = await db
-        .select({ id: schema.EntityInstance.id })
-        .from(schema.EntityInstance)
-        .where(
-          and(
-            eq(schema.EntityInstance.id, vendorPartInstanceId),
-            eq(schema.EntityInstance.organizationId, organizationId),
-            eq(schema.EntityInstance.entityDefinitionId, vendorPartDefId),
-            isNull(schema.EntityInstance.archivedAt)
-          )
-        )
-        .limit(1)
-      if (!instance) return null
+      const [offer] = await readSystemRecords(db, organizationId, ctx, {
+        ids: [vendorPartInstanceId],
+      })
+      if (!offer) return null
 
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes([
-          'vendor_part_unit_price',
-          'vendor_part_shipping_cost',
-          'vendor_part_tariff_rate',
-          'vendor_part_tariff_code',
-          'vendor_part_other_cost',
-        ])
-
-      const numbers = await readNumbersByFieldId(db, organizationId, vendorPartInstanceId, [
-        fields.vendor_part_unit_price?.id,
-        fields.vendor_part_shipping_cost?.id,
-        fields.vendor_part_tariff_rate?.id,
-        fields.vendor_part_other_cost?.id,
-      ])
-
-      const override = pick(numbers, fields.vendor_part_tariff_rate?.id)
+      const override = offer.number('vendor_part_tariff_rate')
       const tariffRate =
         override ??
         (await resolveScheduledRate(
           db,
           organizationId,
-          vendorPartInstanceId,
-          fields.vendor_part_tariff_code?.id,
+          offer.related('vendor_part_tariff_code'),
           atDate
         ))
 
       return {
-        unitPrice: pick(numbers, fields.vendor_part_unit_price?.id),
-        shippingCost: pick(numbers, fields.vendor_part_shipping_cost?.id),
+        unitPrice: offer.number('vendor_part_unit_price'),
+        shippingCost: offer.number('vendor_part_shipping_cost'),
         tariffRate,
-        otherCost: pick(numbers, fields.vendor_part_other_cost?.id),
+        otherCost: offer.number('vendor_part_other_cost'),
       }
     },
     'Failed to read vendor part cost inputs',
@@ -395,37 +325,28 @@ export async function readVendorPartCostInputs(
   )
 }
 
+const VENDOR_PART_PICK = pickSystemAttributes(VENDOR_PART_FIELDS, [
+  'vendor_part_unit_price',
+  'vendor_part_shipping_cost',
+  'vendor_part_tariff_rate',
+  'vendor_part_tariff_code',
+  'vendor_part_other_cost',
+] as const)
+
 /**
  * The schedule half of the precedence rule for one offer: its `tariff_code`
  * pointer, that code's rows, and `resolveOfferTariff` at `atDate`. `null` when
  * the offer is unclassified, so the caller's `?? 0` reads the same as today.
  *
- * The pointer is read separately from the numbers because it lives in
- * `relatedEntityId`, not `valueNumber`. The schedule and the timezone are only
- * fetched once a pointer is actually found.
+ * The schedule and the timezone are only fetched once a pointer is found.
  */
 async function resolveScheduledRate(
   db: Database,
   organizationId: string,
-  vendorPartInstanceId: string,
-  tariffCodeFieldId: string | undefined,
+  tariffCodeId: string | null,
   atDate: Date
 ): Promise<number | null> {
-  if (!tariffCodeFieldId) return null
-  const [pointer] = await db
-    .select({ relatedEntityId: schema.FieldValue.relatedEntityId })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.entityId, vendorPartInstanceId),
-        eq(schema.FieldValue.fieldId, tariffCodeFieldId)
-      )
-    )
-    .limit(1)
-  const tariffCodeId = pointer?.relatedEntityId ?? null
   if (!tariffCodeId) return null
-
   const [schedule, timeZone] = await Promise.all([
     loadTariffSchedule(db, organizationId, [tariffCodeId]),
     readBookTimeZoneOrUtc(organizationId),
@@ -442,6 +363,10 @@ async function resolveScheduledRate(
  * applies it for the GL account; the sale-path explode gate applies the OPPOSITE
  * default to the same NULL (costing plan section 4.3), and a read that had
  * already picked one would make the other impossible to express.
+ *
+ * Deliberately not on `readSystemRecords`: one attribute of one part, and
+ * `receivePurchaseOrder` calls it once per line — the reader would add an
+ * `EntityInstance` round trip to every one of them.
  */
 export async function readPartKind(
   db: Database,
@@ -450,9 +375,7 @@ export async function readPartKind(
 ): Promise<Result<string | null, Error>> {
   return guard(
     async () => {
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes(['part_kind'])
+      const fields = await systemFieldMap(db, organizationId, PART_KIND_PICK)
       const kindField = fields.part_kind
       if (!kindField) return null
 
@@ -487,6 +410,10 @@ export async function readPartKind(
  * The `displayName` travels with it because every caller that has to refuse
  * needs to name the part — "this part has no standard cost" is unactionable
  * when a form is showing a name and the error is showing a cuid.
+ *
+ * Deliberately not on `readSystemRecords`: the `displayName` is an
+ * `EntityInstance` column the reader does not return, so the query below would
+ * survive anyway and the reader's own two would be added on top.
  */
 export async function readPartStandardCost(
   db: Database,
@@ -506,9 +433,7 @@ export async function readPartStandardCost(
         )
         .limit(1)
 
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes(['part_standard_cost'])
+      const fields = await systemFieldMap(db, organizationId, PART_STANDARD_COST_PICK)
       const standardField = fields.part_standard_cost
       if (!standardField) {
         return { standardCost: null, displayName: instance?.displayName ?? null }
@@ -536,28 +461,6 @@ export async function readPartStandardCost(
   )
 }
 
-/** Read several numeric field values for one instance in a single query. */
-async function readNumbersByFieldId(
-  db: Database,
-  organizationId: string,
-  entityId: string,
-  fieldIds: (string | undefined)[]
-): Promise<Map<string, number | null>> {
-  const wanted = fieldIds.filter((id): id is string => Boolean(id))
-  if (wanted.length === 0) return new Map()
-  const rows = await db
-    .select({ fieldId: schema.FieldValue.fieldId, valueNumber: schema.FieldValue.valueNumber })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.entityId, entityId),
-        inArray(schema.FieldValue.fieldId, wanted)
-      )
-    )
-  return new Map(rows.map((row) => [row.fieldId, row.valueNumber]))
-}
+const PART_KIND_PICK = pickSystemAttributes(PART_FIELDS, ['part_kind'] as const)
 
-function pick(numbers: Map<string, number | null>, fieldId: string | undefined): number | null {
-  return fieldId ? (numbers.get(fieldId) ?? null) : null
-}
+const PART_STANDARD_COST_PICK = pickSystemAttributes(PART_FIELDS, ['part_standard_cost'] as const)

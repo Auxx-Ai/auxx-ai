@@ -69,10 +69,10 @@ function boundStrings(node: unknown, out: string[] = []): string[] {
 }
 
 /** Chainable drizzle stub. The rows are chosen once the query is awaited. */
-function chain(projection: Record<string, unknown>, route: (q: Query) => unknown[]) {
-  const query: Query = { projection, params: [] }
+function chain(projection: Record<string, unknown> | undefined, route: (q: Query) => unknown[]) {
+  const query: Query = { projection: projection ?? {}, params: [] }
   const node: Record<string, unknown> = {}
-  for (const key of ['from', 'where', 'limit', 'groupBy']) node[key] = () => node
+  for (const key of ['from', 'where', 'limit', 'groupBy', 'orderBy']) node[key] = () => node
   for (const key of ['innerJoin', 'leftJoin']) {
     node[key] = (_alias: unknown, condition: unknown) => {
       boundStrings(condition, query.params)
@@ -149,6 +149,14 @@ vi.mock('@auxx/database', () => ({
     },
   },
   schema: {
+    EntityInstance: {
+      id: 'id',
+      organizationId: 'organizationId',
+      entityDefinitionId: 'entityDefinitionId',
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
+      archivedAt: 'archivedAt',
+    },
     FieldValue: {
       entityId: 'entityId',
       organizationId: 'organizationId',
@@ -171,7 +179,9 @@ vi.mock('../../../cache', () => ({
   getCachedEntityDefId: async (_org: string, entityType: string) => `def_${entityType}`,
   requireCachedEntityDefId: async (_org: string, entityType: string) => `def_${entityType}`,
 }))
-vi.mock('../../../field-values/field-value-helpers', () => ({
+vi.mock('../../../field-values/field-value-helpers', async (importOriginal) => ({
+  // `readSystemRecords` types its cells through the real `rowsToTypedValues`.
+  ...(await importOriginal<Record<string, unknown>>()),
   createFieldValueContext: () => ({ organizationId: ORG }),
 }))
 vi.mock('../../../field-values/stored-field-type', () => ({ toFieldType: (t: string) => t }))
@@ -234,11 +244,35 @@ vi.mock('../../../accounting/ledger/post/post-inventory-movement', () => ({
 import { recalculatePurchaseOrderLineReceived } from '../../../field-hooks/post/purchase-order-line-rollups'
 import { receivePurchaseOrder } from '../receive-purchase-order'
 
-/** The caller's connection — `receivePurchaseOrder` reads the agreed prices on it. */
+/**
+ * The purchase-order lines as `readSystemRecords` reads them: the instance rows,
+ * then their stored cells. Two queries for the whole set, whatever the line count.
+ */
+function routeCallerSelect(query: Query): unknown[] {
+  const keys = Object.keys(query.projection).sort().join(',')
+  // readInstances
+  if (keys === 'archivedAt,createdAt,id,updatedAt')
+    return h.lineIds.map((id) => ({ id, createdAt: null, updatedAt: null, archivedAt: null }))
+  // readValues — whole rows, so the projection is empty
+  if (keys === '')
+    return h.lineIds.flatMap((lineId) => [
+      { id: `v_${lineId}_price`, entityId: lineId, fieldId: 'fld-price', valueNumber: 1000 },
+      {
+        id: `v_${lineId}_po`,
+        entityId: lineId,
+        fieldId: 'fld-po-rel',
+        relatedEntityId: PO,
+        relatedEntityDefinitionId: 'def_purchase_order',
+      },
+    ])
+  throw new Error(`Unrouted caller query projecting: ${keys}`)
+}
+
+/** The caller's connection — `receivePurchaseOrder` reads its lines on it. */
 const db = {
-  select: (projection: Record<string, unknown>) => {
+  select: (projection?: Record<string, unknown>) => {
     h.selects++
-    return chain(projection, () => h.lineIds.map((entityId) => ({ entityId, valueNumber: 1000 })))
+    return chain(projection, routeCallerSelect)
   },
   transaction: async (fn: (tx: unknown) => unknown) => fn(db),
 } as never
@@ -288,7 +322,8 @@ beforeEach(() => {
 
 describe('the cost of a receipt', () => {
   it('a one-line receipt reads five times and writes once', async () => {
-    // 1 agreed price + 1 parent purchase order (the posting's `parent` link) +
+    // 2 for the purchase-order lines (instances, then cells — the price and the
+    // posting's `parent` link come off the same records) +
     // 1 batched roll-up SUM + 1 order-level derivation, then the movement's own
     // lifecycle rule re-SUMs its line once and finds nothing to do. The write is
     // the line's `quantity_received`; the order's derived statuses were already
@@ -303,7 +338,7 @@ describe('the cost of a receipt', () => {
 
     expect(ten.selects).toBeLessThan(one.selects * 10)
     // The exact budget, so a regression names itself rather than drifting up to
-    // the ceiling above: 1 price read + 1 parent purchase order read + 2 batched
+    // the ceiling above: 2 purchase-order-line reads + 2 batched
     // roll-up reads + 2 batched order-level reads + 10 lifecycle re-SUMs that
     // each find their line already settled.
     expect(ten.selects).toBe(16)
@@ -313,8 +348,7 @@ describe('the cost of a receipt', () => {
     // The measurement that matters. Nine of the ten order-level passes returned
     // an identical answer, and each cost a parent lookup, a full line read and a
     // status read before it could say so. `-2` is the two up-front reads that
-    // never scale with the line count: the agreed prices and the posting's own
-    // parent purchase order.
+    // never scale with the line count: the purchase-order lines and their cells.
     const ten = await receiveAndSettle(10)
     const perLine = (ten.selects - 2) / 10
     expect(perLine).toBeLessThan(2)

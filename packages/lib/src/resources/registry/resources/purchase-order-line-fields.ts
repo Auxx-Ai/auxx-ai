@@ -6,6 +6,7 @@ import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Purchase Order Line resource — one part, one
@@ -25,7 +26,7 @@ import type { ResourceField } from '../field-types'
  * `quantityReceived` and `quantityBilled` are the subledger read backwards and
  * are never typed — see their descriptions.
  */
-export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
+export const PURCHASE_ORDER_LINE_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -444,4 +445,4 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

@@ -73,7 +73,7 @@ import {
   inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
-import { getCachedEntityDefId, getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { requireCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import {
@@ -81,7 +81,11 @@ import {
   StockMovementCostBasis,
   StockMovementType,
 } from '../../resources/registry/enum-values'
+import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
+import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
+import { systemDefId, systemFieldMap, systemValueJoin } from '../../resources/system-records'
 import { ensureStandardCost } from '../costing/ensure-standard-cost'
 import { buildStockMovementValues } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
@@ -123,7 +127,7 @@ export async function bulkOpenStockBalance(
       // them refuses every entry identically, so they are errors rather than
       // rows in the summary.
       const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-      const movementDefId = await getCachedEntityDefId(organizationId, 'stock_movement')
+      const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
       if (!movementDefId) {
         throw new NotFoundError('This organization has no stock_movement entity definition')
       }
@@ -285,9 +289,7 @@ export async function bulkSetPartKind(
       if (unique.length === 0) return { count: 0 }
 
       const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes(['part_kind'])
+      const fields = await systemFieldMap(db, organizationId, PART_KIND_PICK)
       const kindField = fields.part_kind
       if (!kindField) {
         throw new UnprocessableEntityError('This organization has no part kind field')
@@ -416,6 +418,14 @@ function dropWhere(
   }
 }
 
+const PART_KIND_PICK = pickSystemAttributes(PART_FIELDS, ['part_kind'] as const)
+
+const PART_STANDARD_COST_PICK = pickSystemAttributes(PART_FIELDS, ['part_standard_cost'] as const)
+
+const MOVEMENT_PART_PICK = pickSystemAttributes(STOCK_MOVEMENT_FIELDS, [
+  'stock_movement_part',
+] as const)
+
 /** One part, as the run needs it: does it exist, what is it called, what kind is it. */
 interface PartRow {
   displayName: string | null
@@ -427,6 +437,9 @@ interface PartRow {
  *
  * Archived parts are excluded: giving an opening balance to a part somebody
  * removed writes a ledger row nothing will ever look at.
+ *
+ * Deliberately not on `readSystemRecords`: the `displayName` is an
+ * `EntityInstance` column the reader does not return.
  */
 async function readParts(
   db: Database,
@@ -437,9 +450,7 @@ async function readParts(
   const parts = new Map<string, PartRow>()
   if (partIds.length === 0) return parts
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['part_kind'])
+  const fields = await systemFieldMap(db, organizationId, PART_KIND_PICK)
   const kindValue = alias(schema.FieldValue, 'bos_kind')
 
   const rows = await db
@@ -449,14 +460,7 @@ async function readParts(
       kind: kindValue.optionId,
     })
     .from(schema.EntityInstance)
-    .leftJoin(
-      kindValue,
-      and(
-        eq(kindValue.entityId, schema.EntityInstance.id),
-        eq(kindValue.organizationId, schema.EntityInstance.organizationId),
-        eq(kindValue.fieldId, fields.part_kind?.id ?? '')
-      )
-    )
+    .leftJoin(kindValue, systemValueJoin(kindValue, fields.part_kind?.id ?? ''))
     .where(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),
@@ -498,9 +502,7 @@ async function readPartsWithMovements(
   const moved = new Set<string>()
   if (partIds.length === 0) return moved
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['stock_movement_part'])
+  const fields = await systemFieldMap(db, organizationId, MOVEMENT_PART_PICK)
   const partField = fields.stock_movement_part
   if (!partField) {
     throw new UnprocessableEntityError(
@@ -511,14 +513,7 @@ async function readPartsWithMovements(
   const rows = await db
     .selectDistinct({ partId: schema.FieldValue.relatedEntityId })
     .from(schema.EntityInstance)
-    .innerJoin(
-      schema.FieldValue,
-      and(
-        eq(schema.FieldValue.entityId, schema.EntityInstance.id),
-        eq(schema.FieldValue.organizationId, schema.EntityInstance.organizationId),
-        eq(schema.FieldValue.fieldId, partField.id)
-      )
-    )
+    .innerJoin(schema.FieldValue, systemValueJoin(schema.FieldValue, partField.id))
     .where(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),
@@ -579,7 +574,13 @@ async function setFirstStandardCosts(
   }
 }
 
-/** Step 3b: the stored `part_standard_cost` of every named part, in one read. */
+/**
+ * Step 3b: the stored `part_standard_cost` of every named part, in one read.
+ *
+ * Deliberately not on `readSystemRecords`: one attribute of parts this run has
+ * already read and validated, so the reader's own `EntityInstance` query would
+ * be a second trip for rows already in hand.
+ */
 async function readPartStandardCosts(
   db: Database,
   organizationId: string,
@@ -588,9 +589,7 @@ async function readPartStandardCosts(
   const standards = new Map<string, number | null>()
   if (partIds.length === 0) return standards
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['part_standard_cost'])
+  const fields = await systemFieldMap(db, organizationId, PART_STANDARD_COST_PICK)
   const standardField = fields.part_standard_cost
   if (!standardField) return standards
 

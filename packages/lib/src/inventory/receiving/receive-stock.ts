@@ -23,8 +23,9 @@ import {
   inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
-import { getCachedEntityDefId, requireCachedEntityDefId } from '../../cache'
+import { requireCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
+import { systemDefId } from '../../resources/system-records'
 import { ensureStandardCost } from '../costing/ensure-standard-cost'
 import { batchRecalculateQoH } from '../costing/qoh'
 import { writeStockMovements } from '../movements'
@@ -73,7 +74,7 @@ export async function receiveStock(
       assertReceivableQuantity(input.quantity)
 
       const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-      const movementDefId = await getCachedEntityDefId(organizationId, 'stock_movement')
+      const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
       if (!movementDefId) {
         throw new NotFoundError('This organization has no stock_movement entity definition')
       }
