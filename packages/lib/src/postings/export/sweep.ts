@@ -69,7 +69,7 @@ export async function sweepExportBatches(
     if (Date.now() >= deadline) break
     let autoSend = autoSendByOrg.get(batch.organizationId)
     if (!autoSend) {
-      autoSend = (await readExportSettings(db, batch.organizationId)).autoSend
+      autoSend = (await readExportSettings(batch.organizationId)).autoSend
       autoSendByOrg.set(batch.organizationId, autoSend)
     }
     // A `failed` batch was already released once, so the hold does not re-apply

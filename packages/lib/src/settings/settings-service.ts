@@ -417,7 +417,7 @@ async function updateOrganizationSettingInner(params: {
   // and it is not observable from the row once the write has landed.
   const previousValue =
     key === 'inventory.autoBuildFromOrders'
-      ? await readOrganizationSettingValue({ organizationId, key, db })
+      ? (await readOrganizationSettings(organizationId, [key] as const, db))[key]
       : undefined
 
   await db
@@ -440,25 +440,6 @@ async function updateOrganizationSettingInner(params: {
   if (key === 'inventory.autoBuildFromOrders') {
     await stampAutoBuildEnabledAt({ organizationId, previousValue, value: normalizedValue, db })
   }
-}
-
-/** The raw stored value for one key, or `undefined` when the org has no row. */
-async function readOrganizationSettingValue(params: {
-  organizationId: string
-  key: SettingKey
-  db: Database | Transaction
-}): Promise<SettingValue | undefined> {
-  const [row] = await params.db
-    .select({ value: schema.OrganizationSetting.value })
-    .from(schema.OrganizationSetting)
-    .where(
-      and(
-        eq(schema.OrganizationSetting.organizationId, params.organizationId),
-        eq(schema.OrganizationSetting.key, params.key)
-      )
-    )
-    .limit(1)
-  return row ? (row.value as SettingValue) : undefined
 }
 
 /**
@@ -572,7 +553,7 @@ export async function batchUpdateOrganizationSettings(params: {
       // transition AB8's stamp keys on is already gone.
       const previousValue =
         key === 'inventory.autoBuildFromOrders'
-          ? await readOrganizationSettingValue({ organizationId, key, db: tx })
+          ? (await readOrganizationSettings(organizationId, [key] as const, tx))[key]
           : undefined
 
       await tx

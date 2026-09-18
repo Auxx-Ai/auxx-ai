@@ -1477,7 +1477,7 @@ export const ledgerRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const settings = await readExportSettings(ctx.db, organizationId)
+      const settings = await readExportSettings(organizationId)
 
       const result = await readLedgerSummary(ctx.db, {
         organizationId,

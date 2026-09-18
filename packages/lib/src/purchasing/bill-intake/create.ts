@@ -157,7 +157,7 @@ export async function createBillFromIntake(
           })
         }
       } else {
-        currency = orderCurrency ?? (await getOrgCurrencyCode(organizationId, db))
+        currency = orderCurrency ?? (await getOrgCurrencyCode(organizationId))
       }
 
       if (transcription.lines.length === 0) {

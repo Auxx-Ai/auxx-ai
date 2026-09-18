@@ -12,12 +12,8 @@ import type { SettingValue } from './types'
 type DefaultValueOf<K extends SettingKey> = (typeof SETTINGS_CATALOG)[K]['defaultValue']
 
 /**
- * Widen a literal primitive back to its base type. Resolving `defaultValue`
- * through a generic key parameter (as every caller of {@link SettingValueFor}
- * does) instantiates it as the literal the catalog entry happens to declare
- * (`false`, not `boolean`) rather than the widened type a direct property
- * access gives — this undoes that so `=== true` isn't a type error on a
- * setting whose default happens to be `false`.
+ * Widen a literal primitive back to its base type — a generic key parameter
+ * instantiates `defaultValue` as the catalog's literal (`false`), not `boolean`.
  */
 type Widen<T> = T extends boolean
   ? boolean
@@ -28,13 +24,32 @@ type Widen<T> = T extends boolean
       : T
 
 /**
- * A key's value type, derived from its catalog default. A `null` default only
- * proves the row can be unset, not what it holds once it isn't — the catalog
- * carries no separate value-type map, so that case widens to {@link SettingValue}
- * rather than lying with `null`.
+ * The TS type a `null`-default entry's `fieldType` actually promises once set —
+ * one small map keyed on the catalog's own field, not a second per-key map.
+ * Anything not listed (TAGS, SINGLE_SELECT, …) has no null-default entry today,
+ * so it falls back to {@link SettingValue} rather than guessing.
+ */
+type ValueForFieldType<F> = F extends 'TEXT' | 'RICH_TEXT'
+  ? string
+  : F extends 'NUMBER' | 'CURRENCY'
+    ? number
+    : F extends 'CHECKBOX'
+      ? boolean
+      : F extends 'DATETIME'
+        ? string
+        : F extends 'JSON'
+          ? object
+          : SettingValue
+
+/**
+ * A key's value type, derived from its catalog entry. A `null` default only
+ * proves the row can be unset — {@link ValueForFieldType} supplies what it
+ * holds once it isn't, from the same entry's `fieldType`.
  */
 export type SettingValueFor<K extends SettingKey> =
-  Widen<DefaultValueOf<K>> extends null ? SettingValue : Widen<DefaultValueOf<K>>
+  Widen<DefaultValueOf<K>> extends null
+    ? ValueForFieldType<(typeof SETTINGS_CATALOG)[K]['fieldType']> | null
+    : Widen<DefaultValueOf<K>>
 
 /** The shape {@link readOrganizationSettings} returns for a given key list. */
 export type OrganizationSettingsResult<K extends readonly SettingKey[]> = {

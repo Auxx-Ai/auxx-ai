@@ -182,7 +182,7 @@ export async function acceptDepositApplicationAccounting(
     lock,
     memo: `Customer deposit applied - application ${moneyApplicationId}`,
     sources: prepared.sources,
-    mode: await readAutoPostMode(db, organizationId, 'receipt'),
+    mode: await readAutoPostMode(organizationId, 'receipt'),
   })
 }
 

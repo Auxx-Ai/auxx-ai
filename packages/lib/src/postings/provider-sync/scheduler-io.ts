@@ -15,13 +15,8 @@ import { PROVIDER_SYNC_SCHEDULE_SETTING_KEY, type ProviderSyncScheduleConfig } f
 const logger = createScopedLogger('postings:provider-sync:scheduler-io')
 
 /**
- * The org's cadence, read from the ROW.
- *
- * 🛑 Passes `database` to `readOrganizationSettings` rather than omitting it,
- * for `run-state-io.ts`'s reason: the cached path resolves from the
- * `orgSettings` org cache, which `updateOrganizationSetting` does not
- * invalidate - so the settings mutation that has just written a cadence and
- * then reconciles the scheduler would register the one it replaced.
+ * The org's cadence, read from the ROW — `run-state-io.ts`'s reason: a
+ * settings write and an immediate reconcile must never see a stale cache.
  */
 export async function readProviderSyncSchedule(
   organizationId: string

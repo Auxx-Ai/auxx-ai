@@ -12,14 +12,20 @@ import {
 import type { GettingStartedContext } from './types'
 
 /**
- * Read a checklist's current persisted state. Callers pass `ctx.db` out of
- * habit (never a transaction that wrote this key earlier), so this always
- * takes the cached path (decision 9).
+ * Read a checklist's current persisted state. `db` is passed through: every
+ * caller below merges this into a patch and overwrites the same key, and a
+ * cached read racing the cache's invalidation window can hand back a value
+ * that a concurrent write already replaced, silently dropping it.
  */
-async function readState(organizationId: string, checklistId: ChecklistId) {
+async function readState(
+  db: Database | Transaction | undefined,
+  organizationId: string,
+  checklistId: ChecklistId
+) {
   const value = await getOrganizationSetting({
     organizationId,
     key: CHECKLISTS[checklistId].settingKey,
+    db,
   })
   return (value as GettingStartedState | null) ?? DEFAULT_GETTING_STARTED_STATE
 }
@@ -48,7 +54,7 @@ export async function markGoalComplete(
   checklistId: ChecklistId,
   key: GoalKey
 ): Promise<void> {
-  const state = await readState(ctx.organizationId, checklistId)
+  const state = await readState(ctx.db, ctx.organizationId, checklistId)
   if (state.manualCompletions.includes(key)) return
   await writeState(ctx.db, ctx.organizationId, checklistId, {
     ...state,
@@ -65,7 +71,7 @@ export async function completeAllGoals(
   checklistId: ChecklistId,
   keys: readonly string[]
 ): Promise<void> {
-  const state = await readState(ctx.organizationId, checklistId)
+  const state = await readState(ctx.db, ctx.organizationId, checklistId)
   const union = new Set(state.manualCompletions)
   for (const key of keys) {
     if (isGoalKey(checklistId, key)) union.add(key)
@@ -82,7 +88,7 @@ export async function setDismissed(
   checklistId: ChecklistId,
   dismissed: boolean
 ): Promise<void> {
-  const state = await readState(ctx.organizationId, checklistId)
+  const state = await readState(ctx.db, ctx.organizationId, checklistId)
   await writeState(ctx.db, ctx.organizationId, checklistId, {
     ...state,
     dismissedAt: dismissed ? new Date().toISOString() : null,
@@ -98,7 +104,7 @@ export async function setWizardCompleted(
   ctx: GettingStartedContext,
   checklistId: ChecklistId
 ): Promise<void> {
-  const state = await readState(ctx.organizationId, checklistId)
+  const state = await readState(ctx.db, ctx.organizationId, checklistId)
   if (state.wizardCompletedAt) return
   await writeState(ctx.db, ctx.organizationId, checklistId, {
     ...state,

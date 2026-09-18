@@ -107,7 +107,7 @@ export async function acceptInvoiceWriteOffAccounting(
       lock,
       memo: reason,
       sources,
-      mode: await readAutoPostMode(db, organizationId, 'invoice'),
+      mode: await readAutoPostMode(organizationId, 'invoice'),
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

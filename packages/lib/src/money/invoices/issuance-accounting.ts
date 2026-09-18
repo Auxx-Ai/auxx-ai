@@ -88,7 +88,7 @@ export async function postInvoiceIssuanceEntry(
       lock,
       memo: `Invoice ${invoice.number || invoiceId} issued`,
       sources,
-      mode: await readAutoPostMode(db, organizationId, 'invoice'),
+      mode: await readAutoPostMode(organizationId, 'invoice'),
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

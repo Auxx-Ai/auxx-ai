@@ -3,13 +3,8 @@
 // The two settings-store calls `run-state.ts` makes, isolated so the fold logic
 // above them is testable without a database.
 //
-// 🛑 The read passes `database` to `readOrganizationSettings` rather than
-// omitting it. That resolves from the `orgSettings` org cache, which
-// `updateOrganizationSetting` does not invalidate (HANDOFF §10.5) - so a
-// read-modify-write across a continuation chain would fold every slice onto
-// the same stale blob and lose all but the last. The blob is written after
-// every slice, far too often to bust the cache on, so this reads the row
-// directly instead.
+// The read passes `database` explicitly rather than omitting it: `saveProviderSyncBlob`
+// skips cache invalidation (HANDOFF §10.5), so the cache is never trustworthy for this key.
 
 import { database } from '@auxx/database'
 import { readOrganizationSettings } from '../../settings/read'

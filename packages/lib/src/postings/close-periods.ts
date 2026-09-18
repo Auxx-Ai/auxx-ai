@@ -62,8 +62,10 @@ export async function listClosePeriods(
       OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
       PERIOD_LOCK_SETTING_KEY,
     ] as const)
-    const cutoff = readText(settings[OPENING_BASELINE_SETTING_KEYS.cutoffPeriod])
-    const bookTimeZone = readText(settings[OPENING_BASELINE_SETTING_KEYS.bookTimeZone])
+    // A settings form that clears a text input writes '' rather than deleting
+    // the row, so both spellings of "nothing is set" have to collapse to null.
+    const cutoff = settings[OPENING_BASELINE_SETTING_KEYS.cutoffPeriod]?.trim() || null
+    const bookTimeZone = settings[OPENING_BASELINE_SETTING_KEYS.bookTimeZone]?.trim() || null
 
     // Setup has not been done. Not an error: the module home renders the
     // checklist, and there is genuinely no month to show yet.
@@ -72,7 +74,7 @@ export async function listClosePeriods(
     const months = monthsAfter(cutoff, bookTimeZone)
     if (months.length === 0) return ok([])
 
-    const lockedThrough = readText(settings[PERIOD_LOCK_SETTING_KEY])
+    const lockedThrough = settings[PERIOD_LOCK_SETTING_KEY]?.trim() || null
 
     return ok(
       months.map((periodKey) => ({
@@ -120,19 +122,6 @@ function monthsAfter(cutoff: string, bookTimeZone: string): string[] {
   }
 
   return months
-}
-
-/**
- * A settings value as a non-empty trimmed string, or `null`.
- *
- * A settings form that clears a text input writes `''` rather than deleting the
- * row, so both spellings of "nothing is set" have to collapse to the same
- * answer. `period-lock.ts` makes the same call for the same reason.
- */
-function readText(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
 }
 
 /** The month after `monthKey`. */

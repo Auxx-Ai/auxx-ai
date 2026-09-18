@@ -76,11 +76,10 @@ interface PreparedReceipt {
 async function prepareReceipt(
   tx: Transaction,
   input: Command,
-  zone: unknown,
-  cutoff: unknown
+  zone: string | null,
+  cutoff: string | null
 ): Promise<PreparedReceipt> {
-  if (typeof zone !== 'string' || !zone)
-    throw new UnprocessableEntityError('Book time zone is not configured')
+  if (!zone) throw new UnprocessableEntityError('Book time zone is not configured')
   const source = await readCustomerReceiptAccountingSource(
     tx,
     input.organizationId,
@@ -185,7 +184,7 @@ async function prepareReceipt(
     lines,
   })
 
-  if (typeof cutoff === 'string' && entry.txnDate.slice(0, 7) <= cutoff)
+  if (cutoff && entry.txnDate.slice(0, 7) <= cutoff)
     throw new UnprocessableEntityError(`Receipt is before the accounting opening cutoff ${cutoff}`)
 
   return {
@@ -263,7 +262,7 @@ export async function postCustomerReceiptAccounting(
     scope: { store: prepared.storeId ?? undefined, rail: prepared.railId ?? undefined },
     storeId: prepared.storeId,
     railId: prepared.railId,
-    mode: await readAutoPostMode(db, input.organizationId, 'receipt'),
+    mode: await readAutoPostMode(input.organizationId, 'receipt'),
   })
   if (!didLedgerAccept(post))
     return { status: 'blocked', reason: post.error ?? `The ledger answered ${post.status}` }

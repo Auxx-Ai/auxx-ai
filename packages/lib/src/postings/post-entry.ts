@@ -902,7 +902,7 @@ export async function exportPostedEntry(
   try {
     const avenue = avenueOfPostingType(postingType)
     if (!avenue) return posted
-    const settings = await readExportSettings(db, organizationId)
+    const settings = await readExportSettings(organizationId)
     if (settings.mode !== 'transaction' || !settings.autoSend[avenue]) return posted
 
     const built = await buildExportBatches(db, {

@@ -5,7 +5,6 @@
 // plus the per-key typing `SettingValueFor` derives from the catalog default.
 
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
-import type { SettingValue } from '../types'
 
 const h = vi.hoisted(() => ({
   /** What the org cache hands back for `orgSettings`. */
@@ -49,8 +48,13 @@ describe('readOrganizationSettings — typing', () => {
     expectTypeOf<SettingValueFor<'documents.quote.validDays'>>().toEqualTypeOf<number>()
   })
 
-  it('widens a null-default key to the full SettingValue union rather than lying with null', () => {
-    expectTypeOf<SettingValueFor<'accounting.bookTimeZone'>>().toEqualTypeOf<SettingValue>()
+  it('types a string-default key as string', () => {
+    expectTypeOf<SettingValueFor<'organization.currency'>>().toEqualTypeOf<string>()
+  })
+
+  it('narrows a null-default TEXT key to string | null, from its fieldType', () => {
+    expectTypeOf<SettingValueFor<'accounting.cutoffPeriod'>>().toEqualTypeOf<string | null>()
+    expectTypeOf<SettingValueFor<'accounting.bookTimeZone'>>().toEqualTypeOf<string | null>()
   })
 })
 

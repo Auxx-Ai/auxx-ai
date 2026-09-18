@@ -53,7 +53,7 @@ describe('readExportSettings', () => {
   it('fails closed to transaction mode, no cutover, autoSend off, day grain', async () => {
     h.settings.clear()
 
-    const settings = await readExportSettings({} as never, 'org_1')
+    const settings = await readExportSettings('org_1')
 
     expect(settings.mode).toBe('transaction')
     expect(settings.cutover).toBeNull()
@@ -68,7 +68,7 @@ describe('readExportSettings', () => {
     h.settings.set('accounting.autoSend.fulfillment', true)
     h.settings.set('accounting.summaryGrain.invoice', 'month')
 
-    const settings = await readExportSettings({} as never, 'org_1')
+    const settings = await readExportSettings('org_1')
 
     expect(settings.mode).toBe('summary')
     expect(settings.cutover).toBe('2026-09-01')

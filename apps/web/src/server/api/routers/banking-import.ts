@@ -132,7 +132,7 @@ export const bankingImportRouter = createTRPCRouter({
   savedMapping: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ headers: z.array(z.string()).min(1).max(200) }))
     .query(async ({ ctx, input }) => {
-      return readSavedMapping(ctx.db, {
+      return readSavedMapping({
         organizationId: ctx.session.organizationId,
         headers: input.headers,
       })

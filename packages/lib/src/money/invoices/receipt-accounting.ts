@@ -195,8 +195,7 @@ async function prepareInvoiceReceipt(
   if (settings['organization.currency'] !== 'USD')
     throw new UnprocessableEntityError('Invoice receipt accounting requires USD')
   const zone = settings[OPENING_BASELINE_SETTING_KEYS.bookTimeZone]
-  if (typeof zone !== 'string' || !zone)
-    throw new UnprocessableEntityError('Book time zone is not configured')
+  if (!zone) throw new UnprocessableEntityError('Book time zone is not configured')
 
   const source = await readInvoiceReceiptSource(
     tx,
@@ -320,6 +319,6 @@ export async function acceptInvoiceReceiptAccounting(
     memo: `Invoice payment - movement ${input.moneyTransactionId}`,
     sources: prepared.sources,
     ...(input.railId ? { railId: input.railId, scope: { rail: input.railId } } : {}),
-    mode: await readAutoPostMode(db, input.organizationId, 'receipt'),
+    mode: await readAutoPostMode(input.organizationId, 'receipt'),
   })
 }

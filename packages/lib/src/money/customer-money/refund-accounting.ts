@@ -223,7 +223,7 @@ interface PreparedRefund {
 async function prepareCustomerRefund(
   db: Database,
   input: CustomerRefundAccountingInput,
-  zone: unknown
+  zone: string | null
 ): Promise<PreparedRefund> {
   const money = await db.query.MoneyTransaction.findFirst({
     where: and(
@@ -240,8 +240,7 @@ async function prepareCustomerRefund(
   )
     throw new UnprocessableEntityError('Refund occurrence date is incomplete')
 
-  if (typeof zone !== 'string' || !zone)
-    throw new UnprocessableEntityError('Book time zone is not configured')
+  if (!zone) throw new UnprocessableEntityError('Book time zone is not configured')
   const effectiveDate =
     money.datePrecision === 'date'
       ? money.occurredOn!
@@ -360,7 +359,7 @@ export async function postCustomerRefundAccounting(
       )
     prepared = await prepareCustomerRefund(db, input, settings['accounting.bookTimeZone'])
     const cutoff = settings['accounting.cutoffPeriod']
-    if (typeof cutoff === 'string' && prepared.entry.entry.txnDate.slice(0, 7) <= cutoff)
+    if (cutoff && prepared.entry.entry.txnDate.slice(0, 7) <= cutoff)
       throw new UnprocessableEntityError(`Refund is before the accounting opening cutoff ${cutoff}`)
   } catch (error) {
     if (!(error instanceof AuxxError)) throw error
@@ -382,7 +381,7 @@ export async function postCustomerRefundAccounting(
     sources: prepared.sources,
     railId: prepared.railId,
     ...(prepared.railId ? { scope: { rail: prepared.railId } } : {}),
-    mode: await readAutoPostMode(db, input.organizationId, 'refund'),
+    mode: await readAutoPostMode(input.organizationId, 'refund'),
   })
   if (!didLedgerAccept(post) || !post.glPostingId)
     return { status: 'blocked', reason: post.error ?? `The ledger answered ${post.status}` }

@@ -112,9 +112,11 @@ export async function readOpeningTrialBalance(
         hasStandingPosting(db, organizationId),
       ])
 
-      const cutoffPeriod = text(cutoffRaw)
-      const bookTimeZone = text(zoneRaw)
-      const setupState = text(stateRaw) ?? 'draft'
+      // A settings form that clears a text input writes '' rather than
+      // deleting the row, so both spellings of "nothing is set" collapse to null.
+      const cutoffPeriod = cutoffRaw?.trim() || null
+      const bookTimeZone = zoneRaw?.trim() || null
+      const setupState = stateRaw.trim() || 'draft'
 
       // A malformed cutoff must not take the screen down: it is exactly what
       // the person is on this page to fix, and `cutoverDateFor` throwing here
@@ -210,7 +212,7 @@ export async function readOpeningTrialBalance(
         setupState,
         finalized: setupState === 'finalized',
         frozen,
-        currency: text(currencyRaw) ?? 'USD',
+        currency: currencyRaw.trim() || 'USD',
         entry,
         rows,
         summary,
@@ -279,12 +281,6 @@ async function hasStandingPosting(db: Database, organizationId: string): Promise
     )
     .limit(1)
   return !!row
-}
-
-function text(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
 }
 
 /**

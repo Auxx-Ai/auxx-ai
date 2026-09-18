@@ -50,7 +50,7 @@ export async function resolveColumnCurrencyCodes(
   const codes = new Map<string, string>()
   if (input.targetFieldKeys.length === 0) return codes
 
-  const orgCurrencyCode = await getOrgCurrencyCode(input.organizationId, db)
+  const orgCurrencyCode = await getOrgCurrencyCode(input.organizationId)
   const resource = await findCachedResource(input.organizationId, input.entityDefinitionId)
 
   const wanted = new Set(input.targetFieldKeys)
@@ -164,7 +164,7 @@ export async function resolveColumnCurrencyFields(
   )
   if (moneyFields.length === 0) return result
 
-  const orgCurrencyCode = await getOrgCurrencyCode(input.organizationId, db)
+  const orgCurrencyCode = await getOrgCurrencyCode(input.organizationId)
   for (const field of moneyFields) {
     const decimals = field.options?.decimals
     result.set(getFieldOutputKey(field), {

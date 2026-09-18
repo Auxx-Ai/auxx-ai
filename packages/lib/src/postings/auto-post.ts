@@ -3,7 +3,6 @@
 // Gate 1 of TARGET.md §4: per-avenue, off drafts a writer's entry for review,
 // on posts it immediately. One settings key per avenue, `accounting.autoPost.<avenue>`.
 
-import type { Database, Transaction } from '@auxx/database'
 import type { SettingKey } from '../settings/catalog'
 import { getOrganizationSetting } from '../settings/settings-service'
 
@@ -28,14 +27,11 @@ export function autoPostSettingKey(avenue: AutoPostAvenue): SettingKey {
  * `'post'` when the avenue's switch is on, `'draft'` when it is off or unset.
  *
  * Off is the default (fail closed): a writer that reads a mode it cannot
- * resolve must draft, never post unattended.
- *
- * `db`/`organizationId` order kept for its callers, but none write
+ * resolve must draft, never post unattended. No caller writes
  * `accounting.autoPost.*` earlier in the same transaction, so this always
- * takes the cached path (decision 9) — `db` is otherwise unused here.
+ * takes the cached path (decision 9).
  */
 export async function readAutoPostMode(
-  _db: Database | Transaction,
   organizationId: string,
   avenue: AutoPostAvenue
 ): Promise<'draft' | 'post'> {

@@ -4,7 +4,6 @@
 // file because `client.ts` re-exports its pure names, and Turbopack follows even
 // a dynamic `import()` into the browser bundle.
 
-import type { Database, Transaction } from '@auxx/database'
 import type { SettingKey } from '../settings/catalog'
 import { readOrganizationSettings } from '../settings/read'
 import {
@@ -29,16 +28,10 @@ function summaryGrainSettingKey(avenue: SummaryGrainAvenue): SettingKey {
  * per-avenue `autoSend` / `summaryGrain` switches beside `autoPost`.
  *
  * Off/unset fails closed to the safe value - `autoSend` false (batches hold for
- * release), `summaryGrain` `'day'`.
- *
- * `db`/`organizationId` order kept for its callers, but none of them write one
- * of these keys earlier in the same transaction, so the read always takes the
- * cached path (decision 9) — `db` is otherwise unused here.
+ * release), `summaryGrain` `'day'`. No caller writes one of these keys earlier
+ * in the same transaction, so this always takes the cached path (decision 9).
  */
-export async function readExportSettings(
-  _db: Database | Transaction,
-  organizationId: string
-): Promise<ExportSettings> {
+export async function readExportSettings(organizationId: string): Promise<ExportSettings> {
   const settings = await readOrganizationSettings(organizationId, [
     'accounting.exportMode',
     'accounting.exportModeCutover',
