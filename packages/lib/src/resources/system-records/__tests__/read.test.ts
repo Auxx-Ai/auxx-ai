@@ -279,6 +279,40 @@ describe('readSystemRecords', () => {
   })
 })
 
+describe('readSystemRecords, cells: false', () => {
+  it('skips the values query entirely', async () => {
+    const { conn, calls } = db({
+      instances: [instance('a')],
+      values: [valueRow('a', 'f_name', 'a0', { valueText: 'Stripe' })],
+    })
+
+    const rows = await readSystemRecords(conn, ORG, ctx, { cells: false })
+
+    expect(calls).toHaveLength(1)
+    expect(rows.map((row) => row.id)).toEqual(['a'])
+  })
+
+  it('answers every accessor as unset rather than throwing', async () => {
+    const { conn } = db({
+      instances: [instance('a')],
+      values: [valueRow('a', 'f_name', 'a0', { valueText: 'Stripe' })],
+    })
+
+    const [row] = await readSystemRecords(conn, ORG, ctx, { cells: false })
+
+    expect(row?.cell('name')).toBeUndefined()
+    expect(row?.cells('name')).toEqual([])
+    expect(row?.rows('name')).toEqual([])
+    expect(row?.text('name')).toBeNull()
+    expect(row?.number('amount')).toBeNull()
+    expect(row?.boolean('billable')).toBeNull()
+    expect(row?.option('status')).toBeNull()
+    expect(row?.related('order')).toBeNull()
+    expect(row?.date('placed_at')).toBeNull()
+    expect(row?.actor('inspected_by')).toBeNull()
+  })
+})
+
 describe('readSystemRecords, by parent', () => {
   it('reads the children of a set of parents through the relationship field', async () => {
     const { conn, calls } = db({

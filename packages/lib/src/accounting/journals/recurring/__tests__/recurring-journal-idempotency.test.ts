@@ -71,22 +71,25 @@ vi.mock('../../../ledger/reads/read-posting', () => ({
   readPostingLineSourceIds: async () => okResult(h.winningSourceIds),
 }))
 
+vi.mock('../../entries/fields', () => ({
+  requireJournalEntryFieldContext: async () => ({
+    defId: 'def_je',
+    fields: {
+      journal_entry_number: { id: 'f_number' },
+      journal_entry_date: { id: 'f_date' },
+      journal_entry_memo: { id: 'f_memo' },
+      journal_entry_kind: { id: 'f_kind' },
+      journal_entry_gl_posting_id: { id: 'f_posting' },
+      journal_entry_recurrence_rule_id: { id: 'f_rule' },
+      journal_entry_occurrence_date: { id: 'f_slot' },
+    },
+  }),
+}))
+
 vi.mock('../../entries/reads', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../entries/reads')
   return {
     ...actual,
-    requireJournalEntryFieldContext: async () => ({
-      journalEntryDefId: 'def_je',
-      fields: {
-        journal_entry_number: { id: 'f_number' },
-        journal_entry_date: { id: 'f_date' },
-        journal_entry_memo: { id: 'f_memo' },
-        journal_entry_kind: { id: 'f_kind' },
-        journal_entry_gl_posting_id: { id: 'f_posting' },
-        journal_entry_recurrence_rule_id: { id: 'f_rule' },
-        journal_entry_occurrence_date: { id: 'f_slot' },
-      },
-    }),
     requireJournalEntry: async () => {
       if (!h.record) throw new Error('Journal entry not found')
       return h.record

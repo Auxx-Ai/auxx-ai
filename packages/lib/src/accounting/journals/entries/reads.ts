@@ -1,8 +1,9 @@
 // packages/lib/src/accounting/journals/entries/reads.ts
 
 /**
- * Every READ over the journal-entry pointer: the list, the detail, and the
- * field context both halves of the module open with.
+ * Every READ over the journal-entry pointer: the list and the detail. The
+ * def-and-field contexts both halves of the module open with live in
+ * `fields.ts`.
  *
  * Reads only. The writes live in `writes.ts`, because a file that both queries
  * and mutates is the first step back toward a service class
@@ -20,9 +21,13 @@ import { type Database, schema } from '@auxx/database'
 import { and, desc, eq, gte, inArray, isNull, lt, or, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../../cache'
 import { NotFoundError, UnprocessableEntityError } from '../../../errors'
-import { systemValueJoin } from '../../../resources/system-records'
+import {
+  inPageOrder,
+  readSystemRecords,
+  type SystemRecord,
+  systemValueJoin,
+} from '../../../resources/system-records'
 import { parsePeriodKey } from '../../ledger/periods/periods'
 import type {
   JournalEntryKindValue,
@@ -31,77 +36,15 @@ import type {
   JournalEntryStatusValue,
   ListJournalEntriesFilters,
 } from './client'
+import {
+  type JournalEntryAttribute,
+  type JournalEntryFieldContext,
+  loadJournalEntryFieldContext,
+  loadRecurrenceIdentityContext,
+} from './fields'
 import { guard } from './guard'
 
-/**
- * Every attribute a {@link JournalEntryRecord} is assembled from, that is
- * still a `journal_entry` field. `status` and `lines` come off the linked
- * `GlPosting` instead - see the file header.
- *
- * All optional below: entity migration 125 provisions them, and an org that has
- * not run it must read an empty list rather than 500.
- */
-const JOURNAL_ENTRY_ATTRIBUTES = [
-  'journal_entry_number',
-  'journal_entry_date',
-  'journal_entry_memo',
-  'journal_entry_kind',
-  'journal_entry_gl_posting_id',
-  'journal_entry_recurrence_rule_id',
-  'journal_entry_occurrence_date',
-] as const
-
-type JournalEntryAttribute = (typeof JOURNAL_ENTRY_ATTRIBUTES)[number]
-
-/** `systemAttribute` -> the materialised `CustomField`, or `null`. */
-type JournalEntryFields = Record<JournalEntryAttribute, { id: string } | null>
-
-/** The resolved ids every journal-entry read and write needs. */
-export interface JournalEntryFieldContext {
-  journalEntryDefId: string
-  fields: JournalEntryFields
-}
-
 const DEFAULT_LIMIT = 50
-
-/**
- * Resolve the `journal_entry` def and its fields, or `null` when the org has
- * not run migration 125.
- *
- * `null` rather than a throw so a list surface on an unmigrated org renders
- * empty. The WRITE paths use {@link requireJournalEntryFieldContext} instead,
- * because a write that silently did nothing would be worse than a refusal.
- *
- * `journal_entry_gl_posting_id` is the one that makes the context usable at
- * all now: without it there is no pointer to the posting that carries the
- * entry's status and lines.
- */
-export async function loadJournalEntryFieldContext(
-  organizationId: string
-): Promise<JournalEntryFieldContext | null> {
-  const journalEntryDefId = await getCachedEntityDefId(organizationId, 'journal_entry')
-  if (!journalEntryDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...JOURNAL_ENTRY_ATTRIBUTES])) as JournalEntryFields
-  if (!fields.journal_entry_gl_posting_id || !fields.journal_entry_date) return null
-  return { journalEntryDefId, fields }
-}
-
-/** {@link loadJournalEntryFieldContext}, as the refusal a write path needs. */
-export async function requireJournalEntryFieldContext(
-  organizationId: string
-): Promise<JournalEntryFieldContext> {
-  const ctx = await loadJournalEntryFieldContext(organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Journal entries are not available until the journal_entry entity and its fields are ' +
-        'provisioned. Run the entity migrations.',
-      { organizationId }
-    )
-  }
-  return ctx
-}
 
 /** One draft, or `null` when it does not exist, is archived, or is another org's. */
 export async function getJournalEntry(
@@ -111,24 +54,11 @@ export async function getJournalEntry(
 ): Promise<Result<JournalEntryRecord | null, Error>> {
   return guard(
     async () => {
-      const ctx = await loadJournalEntryFieldContext(organizationId)
+      const ctx = await loadJournalEntryFieldContext(db, organizationId)
       if (!ctx) return null
-
-      const [instance] = await db
-        .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-        .from(schema.EntityInstance)
-        .where(
-          and(
-            eq(schema.EntityInstance.id, journalEntryId),
-            eq(schema.EntityInstance.organizationId, organizationId),
-            eq(schema.EntityInstance.entityDefinitionId, ctx.journalEntryDefId),
-            isNull(schema.EntityInstance.archivedAt)
-          )
-        )
-        .limit(1)
-
-      if (!instance) return null
-      const [record] = await hydrate(db, organizationId, ctx, [instance])
+      const records = await readSystemRecords(db, organizationId, ctx, { ids: [journalEntryId] })
+      if (records.length === 0) return null
+      const [record] = await hydrate(db, organizationId, ctx, records)
       return record ?? null
     },
     'Failed to read journal entry',
@@ -142,7 +72,7 @@ export async function requireJournalEntry(
   organizationId: string,
   journalEntryId: string
 ): Promise<JournalEntryRecord> {
-  const ctx = await loadJournalEntryFieldContext(organizationId)
+  const ctx = await loadJournalEntryFieldContext(db, organizationId)
   if (!ctx) {
     throw new UnprocessableEntityError(
       'Journal entries are not available until the journal_entry entity is provisioned',
@@ -182,19 +112,16 @@ export async function listJournalEntries(
 ): Promise<Result<JournalEntryRecord[], Error>> {
   return guard(
     async () => {
-      const ctx = await loadJournalEntryFieldContext(organizationId)
+      const ctx = await loadJournalEntryFieldContext(db, organizationId)
       if (!ctx) return []
 
       const where: SQL[] = [
         eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.journalEntryDefId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
         isNull(schema.EntityInstance.archivedAt),
       ]
 
-      let query = db
-        .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-        .from(schema.EntityInstance)
-        .$dynamic()
+      let query = db.select({ id: schema.EntityInstance.id }).from(schema.EntityInstance).$dynamic()
 
       // 🛑 Every draft carries a posting now (TARGET §1), so this is a plain
       // INNER join through the pointer to `GlPosting.status` - there is no
@@ -274,7 +201,9 @@ export async function listJournalEntries(
         .offset(filters.offset ?? 0)
 
       if (rows.length === 0) return []
-      return hydrate(db, organizationId, ctx, rows)
+      const ids = rows.map((row) => row.id)
+      const records = await readSystemRecords(db, organizationId, ctx, { ids })
+      return hydrate(db, organizationId, ctx, inPageOrder(records, ids))
     },
     'Failed to list journal entries',
     { organizationId, filters }
@@ -317,45 +246,23 @@ export async function readRecurrenceIdentities(
   const identities = new Map<string, RecurrenceIdentity>()
   if (journalEntryIds.length === 0) return identities
 
-  const ctx = await loadJournalEntryFieldContext(organizationId)
-  const ruleField = ctx?.fields.journal_entry_recurrence_rule_id
-  const slotField = ctx?.fields.journal_entry_occurrence_date
-  if (!ruleField || !slotField) return identities
+  const ctx = await loadRecurrenceIdentityContext(db, organizationId)
+  if (!ctx) return identities
 
-  const rows = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, journalEntryIds),
-        inArray(schema.FieldValue.fieldId, [ruleField.id, slotField.id])
-      )
-    )
-
-  const partial = new Map<string, Partial<RecurrenceIdentity>>()
-  for (const row of rows) {
-    const value = row.valueText?.trim()
-    if (!value) continue
-    const bucket = partial.get(row.entityId) ?? {}
-    if (row.fieldId === ruleField.id) bucket.recurrenceRuleId = value
-    else bucket.occurrenceDate = value
-    partial.set(row.entityId, bucket)
-  }
+  // `includeArchived`: a discarded entry's identity still answers "was this key
+  // mine", which is the only question the poster asks here.
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    ids: journalEntryIds,
+    includeArchived: true,
+  })
 
   // Only a COMPLETE pair is an identity. Half of one names no slot, so it can
   // neither confirm nor deny ownership of the key.
-  for (const [entityId, bucket] of partial) {
-    if (bucket.recurrenceRuleId && bucket.occurrenceDate) {
-      identities.set(entityId, {
-        recurrenceRuleId: bucket.recurrenceRuleId,
-        occurrenceDate: bucket.occurrenceDate,
-      })
-    }
+  for (const record of records) {
+    const recurrenceRuleId = record.text('journal_entry_recurrence_rule_id')?.trim()
+    const occurrenceDate = record.text('journal_entry_occurrence_date')?.trim()
+    if (recurrenceRuleId && occurrenceDate)
+      identities.set(record.id, { recurrenceRuleId, occurrenceDate })
   }
   return identities
 }
@@ -375,9 +282,9 @@ function monthBoundsUtc(periodKey: string): { start: string; end: string } {
 }
 
 /**
- * Turn a page of ids into full rows with TWO additional queries: the
- * `journal_entry` field values, and - batched by `journal_entry_gl_posting_id`
- * - the linked postings that carry status and lines.
+ * Turn a page of read records into full rows with ONE additional query: the
+ * linked postings that carry status and lines, batched by
+ * `journal_entry_gl_posting_id`.
  *
  * The alternative - a join per attribute on the paging query - multiplies the
  * row count and makes `LIMIT` mean something other than "this many entries".
@@ -386,51 +293,16 @@ async function hydrate(
   db: Database,
   organizationId: string,
   ctx: JournalEntryFieldContext,
-  page: { id: string; createdAt: Date }[]
+  page: SystemRecord<JournalEntryAttribute>[]
 ): Promise<JournalEntryRecord[]> {
-  const ids = page.map((row) => row.id)
-  const fieldIds = Object.values(ctx.fields)
-    .filter((field): field is { id: string } => field != null)
-    .map((field) => field.id)
-
-  const values = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      valueDate: schema.FieldValue.valueDate,
-      optionId: schema.FieldValue.optionId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, ids),
-        inArray(schema.FieldValue.fieldId, fieldIds)
-      )
-    )
-
-  const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
-  for (const value of values) {
-    let bucket = byInstance.get(value.entityId)
-    if (!bucket) {
-      bucket = new Map()
-      byInstance.set(value.entityId, bucket)
-    }
-    bucket.set(value.fieldId, value)
-  }
-
-  const postingField = ctx.fields.journal_entry_gl_posting_id
   const glPostingIds = new Set<string>()
-  if (postingField) {
-    for (const bucket of byInstance.values()) {
-      const raw = bucket.get(postingField.id)?.valueText
-      if (raw) glPostingIds.add(raw)
-    }
+  for (const record of page) {
+    const raw = record.text('journal_entry_gl_posting_id')
+    if (raw) glPostingIds.add(raw)
   }
   const postingById = await readLinkedPostings(db, organizationId, [...glPostingIds])
 
-  return page.map((row) => toRecord(ctx, row, byInstance.get(row.id), postingById))
+  return page.map((record) => toRecord(record, postingById))
 }
 
 /** What `toRecord` needs off the linked `GlPosting` row: its status and its lines. */
@@ -468,41 +340,28 @@ async function readLinkedPostings(
   return byId
 }
 
-type ValueRow = {
-  valueText: string | null
-  valueDate: string | null
-  optionId: string | null
-}
-
 function toRecord(
-  ctx: JournalEntryFieldContext,
-  row: { id: string; createdAt: Date },
-  bucket: Map<string, ValueRow> | undefined,
+  record: SystemRecord<JournalEntryAttribute>,
   postingById: Map<string, LinkedPosting>
 ): JournalEntryRecord {
-  const read = (attribute: JournalEntryAttribute): ValueRow | undefined => {
-    const field = ctx.fields[attribute]
-    return field ? bucket?.get(field.id) : undefined
-  }
-
-  const glPostingId = read('journal_entry_gl_posting_id')?.valueText ?? null
+  const glPostingId = record.text('journal_entry_gl_posting_id')
   const posting = glPostingId ? postingById.get(glPostingId) : undefined
 
   return {
-    id: row.id,
-    number: read('journal_entry_number')?.valueText ?? null,
-    date: parseDateKeyOrNull(read('journal_entry_date')?.valueDate ?? null),
-    memo: read('journal_entry_memo')?.valueText ?? null,
+    id: record.id,
+    number: record.text('journal_entry_number'),
+    date: parseDateKeyOrNull(record.date('journal_entry_date')),
+    memo: record.text('journal_entry_memo'),
     // A record whose companion draft is missing (the second half of
     // `createJournalEntry` never ran) reads as `draft` - there is nothing else
     // it could be, since only a posting can move it further.
     status: posting?.status ?? 'draft',
-    kind: (read('journal_entry_kind')?.optionId ?? 'manual') as JournalEntryKindValue,
+    kind: (record.option('journal_entry_kind') ?? 'manual') as JournalEntryKindValue,
     lines: linesFromBuilt(posting?.built),
     glPostingId,
-    recurrenceRuleId: read('journal_entry_recurrence_rule_id')?.valueText ?? null,
-    occurrenceDate: read('journal_entry_occurrence_date')?.valueText ?? null,
-    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : null,
+    recurrenceRuleId: record.text('journal_entry_recurrence_rule_id'),
+    occurrenceDate: record.text('journal_entry_occurrence_date'),
+    createdAt: record.createdAt instanceof Date ? record.createdAt.toISOString() : null,
   }
 }
 

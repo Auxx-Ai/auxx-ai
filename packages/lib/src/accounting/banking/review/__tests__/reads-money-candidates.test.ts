@@ -70,10 +70,6 @@ const FIELDS: Record<string, { id: string; type: string }> = {
     id: 'f_reviewed_by',
     type: fieldTypeOf('bank_transaction_reviewed_by_user_id'),
   },
-  bank_transaction_gl_posting_id: {
-    id: 'f_posting',
-    type: fieldTypeOf('bank_transaction_gl_posting_id'),
-  },
   bank_transaction_rule_id: { id: 'f_rule', type: fieldTypeOf('bank_transaction_rule_id') },
 }
 

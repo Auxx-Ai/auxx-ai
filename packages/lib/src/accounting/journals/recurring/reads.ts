@@ -16,10 +16,12 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import type { RecurrencePattern } from '../../../recurrence'
+import { systemValueJoin } from '../../../resources/system-records'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import type { PeriodLock } from '../../ledger/periods/periods'
 import type { JournalEntryRecord } from '../entries/client'
-import { listJournalEntries, loadJournalEntryFieldContext } from '../entries/reads'
+import { loadRecurrenceIdentityContext } from '../entries/fields'
+import { listJournalEntries } from '../entries/reads'
 import {
   planRecurringOccurrences,
   RECURRING_JOURNAL_SUBJECT_TYPE,
@@ -178,10 +180,11 @@ export async function findGeneratedEntryIds(
   const found = new Map<string, string>()
   if (params.occurrenceDates.length === 0) return found
 
-  const ctx = await loadJournalEntryFieldContext(organizationId)
-  const ruleField = ctx?.fields.journal_entry_recurrence_rule_id
-  const slotField = ctx?.fields.journal_entry_occurrence_date
-  if (!ctx || !ruleField || !slotField) return found
+  const ctx = await loadRecurrenceIdentityContext(db, organizationId)
+  if (!ctx) return found
+  const ruleField = ctx.fields.journal_entry_recurrence_rule_id
+  const slotField = ctx.fields.journal_entry_occurrence_date
+  if (!ruleField || !slotField) return found
 
   // Two aliases, because both sides are rows of the same table and drizzle
   // would otherwise emit `FieldValue` twice under one name. Each alias matches
@@ -199,25 +202,21 @@ export async function findGeneratedEntryIds(
     .innerJoin(
       ruleValue,
       and(
-        eq(ruleValue.organizationId, schema.EntityInstance.organizationId),
-        eq(ruleValue.entityId, schema.EntityInstance.id),
-        eq(ruleValue.fieldId, ruleField.id),
+        systemValueJoin(ruleValue, ruleField.id),
         eq(ruleValue.valueText, params.recurrenceRuleId)
       )
     )
     .innerJoin(
       slotValue,
       and(
-        eq(slotValue.organizationId, schema.EntityInstance.organizationId),
-        eq(slotValue.entityId, schema.EntityInstance.id),
-        eq(slotValue.fieldId, slotField.id),
+        systemValueJoin(slotValue, slotField.id),
         inArray(slotValue.valueText, params.occurrenceDates)
       )
     )
     .where(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.journalEntryDefId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
         isNull(schema.EntityInstance.archivedAt)
       )
     )

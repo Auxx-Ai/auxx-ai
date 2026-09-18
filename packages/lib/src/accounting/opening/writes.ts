@@ -44,7 +44,7 @@ import { ConflictError, UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
 import type { JournalEntryLine, JournalEntryRecord } from '../journals/entries/client'
-import { requireJournalEntryFieldContext } from '../journals/entries/reads'
+import { requireJournalEntryFieldContext } from '../journals/entries/fields'
 import { createJournalEntry, updateJournalEntry } from '../journals/entries/writes'
 import { buildOpeningBalanceEntry } from '../ledger/builders/opening-balance'
 import { accountLabel } from '../ledger/chart/account-label'
@@ -194,7 +194,7 @@ export async function postOpeningTrialBalance(
 ): Promise<Result<PostResult, Error>> {
   return guard(
     async () => {
-      const ctx = await requireJournalEntryFieldContext(organizationId)
+      const ctx = await requireJournalEntryFieldContext(db, organizationId)
       const { entry, cutoffPeriod, bookTimeZone, rows } = await requireDraftContext(
         db,
         organizationId
@@ -247,7 +247,7 @@ export async function postOpeningTrialBalance(
         // status is read back off whichever `GlPosting` its
         // `journal_entry_gl_posting_id` points at, and this posting call is the
         // one place that pointer moves from the draft to the real thing.
-        await crud.update(toRecordId(ctx.journalEntryDefId, entry.id) as RecordId, {
+        await crud.update(toRecordId(ctx.defId, entry.id) as RecordId, {
           journal_entry_gl_posting_id: result.glPostingId,
         })
       }

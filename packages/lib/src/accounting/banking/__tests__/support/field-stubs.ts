@@ -14,14 +14,14 @@ import { BANK_TRANSACTION_FIELDS } from '../../../../resources/registry/resource
 
 const REGISTRY = [BANK_ACCOUNT_FIELDS, BANK_RULE_FIELDS, BANK_TRANSACTION_FIELDS]
 
-/** The registry's field type for one system attribute, or `TEXT` for an unknown one. */
+/** The registry's field type for one system attribute; an unknown one throws rather than reading as TEXT and passing silently. */
 export function fieldTypeOf(attribute: string): string {
   for (const map of REGISTRY) {
     for (const field of Object.values(map)) {
       if (field?.systemAttribute === attribute) return field.fieldType ?? 'TEXT'
     }
   }
-  return 'TEXT'
+  throw new Error(`[field-stubs] No banking registry field declares ${attribute}`)
 }
 
 /** `{ id, type }` for every attribute asked for; the id IS the attribute, so a predicate reads legibly. */

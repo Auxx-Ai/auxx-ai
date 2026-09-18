@@ -57,7 +57,10 @@ vi.mock('../../providers/provider', () => ({
 
 vi.mock('../../journals/entries/reads', () => ({
   listJournalEntries: async () => ({ isErr: () => false, value: h.entries }),
-  requireJournalEntryFieldContext: async () => ({ journalEntryDefId: 'def_je', fields: {} }),
+}))
+
+vi.mock('../../journals/entries/fields', () => ({
+  requireJournalEntryFieldContext: async () => ({ defId: 'def_je', fields: {} }),
 }))
 
 vi.mock('../../journals/entries/writes', () => ({
