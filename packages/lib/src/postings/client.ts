@@ -233,6 +233,17 @@ export {
   exportGateStatus,
   liftCloseBlockerItem,
 } from './export-gate/client'
+// TARGET §3: the export batch's settings. `readExportSettings` stays
+// server-only (`./index`) - these three reach nothing but `../types`.
+export {
+  avenueOfPostingType,
+  EXPORT_AVENUES,
+  type ExportAvenue,
+  type ExportSettings,
+  SUMMARY_GRAIN_AVENUES,
+  type SummaryGrain,
+  type SummaryGrainAvenue,
+} from './export-settings'
 export {
   JOURNAL_ENTRY_POSTING_TYPE,
   type JournalEntryKindValue,
@@ -487,6 +498,7 @@ export {
   suggestAccountIdentities,
   validateProviderMapping,
 } from './suggest-account-identities'
+export { summaryGrainKey } from './summary-grain'
 // The manual bucket's identity, for screens that render a source account and
 // have to tell the sentinel row apart from a connected one (`source-scope.ts`).
 export {

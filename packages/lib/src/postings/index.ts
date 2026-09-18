@@ -274,6 +274,17 @@ export {
   liftCloseBlockerItem,
   releaseExportsThroughGate,
 } from './export-gate'
+// TARGET §3: the export batch's settings, beside `autoPost`.
+export {
+  avenueOfPostingType,
+  EXPORT_AVENUES,
+  type ExportAvenue,
+  type ExportSettings,
+  readExportSettings,
+  SUMMARY_GRAIN_AVENUES,
+  type SummaryGrain,
+  type SummaryGrainAvenue,
+} from './export-settings'
 export { gatherMonthEndInventoryInputs } from './gather-month-end-inventory'
 export {
   type CreateJournalEntryInput,
@@ -482,6 +493,13 @@ export {
   readRailFeeStatus,
 } from './rail-fee-status'
 export { getPosting, readPostingLineSourceIds } from './read-posting'
+// TARGET §6: the summarised view over the detail ledger.
+export {
+  type LedgerSummaryLine,
+  type LedgerSummaryRow,
+  type ReadLedgerSummaryOptions,
+  readLedgerSummary,
+} from './reads/ledger-summary'
 export {
   ENABLED_POSTING_TYPES,
   EXPORT_ROUTE_BY_POSTING_TYPE,
@@ -665,6 +683,7 @@ export {
   suggestAccountIdentities,
   validateProviderMapping,
 } from './suggest-account-identities'
+export { summaryGrainKey } from './summary-grain'
 export {
   type AccountIdentityRow,
   type AccountIdentityState,

@@ -1040,6 +1040,189 @@ export const SETTINGS_CATALOG = {
       'Post an expense bill entry the moment it is posted. Off, it drafts for review on the ledger.',
   },
 
+  // TARGET §3: gate 2, the export. `exportMode` and `exportModeCutover` decide
+  // only the grain postings leave in; the books underneath are identical in
+  // every mode. Read by `postings/export-settings.ts`'s `readExportSettings`.
+  'accounting.exportMode': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'transaction',
+    options: {
+      options: [
+        { value: 'transaction', label: 'Transaction — one object per posting' },
+        { value: 'summary', label: 'Summary — one object per period, store and rail' },
+      ],
+    },
+    description:
+      'How postings leave for the accounting provider. Switching applies to entries dated on ' +
+      'or after the cutover below; history already sent is untouched.',
+  },
+  'accounting.exportModeCutover': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'TEXT',
+    defaultValue: null,
+    description:
+      'YYYY-MM-DD. A posting dated before this is never batched for export, whatever the mode ' +
+      'above says.',
+  },
+  // Gate 2 per avenue: off holds a posted entry's batch for release, on sends
+  // it on its own. `payout`, `bankDeposit` and `journal` join the six
+  // `autoPost` gates above - they have no draft step, only a send step.
+  'accounting.autoSend.fulfillment': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Send a fulfillment entry to the provider as soon as it posts.',
+  },
+  'accounting.autoSend.receipt': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Send a customer receipt entry to the provider as soon as it posts.',
+  },
+  'accounting.autoSend.refund': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Send a refund entry to the provider as soon as it posts.',
+  },
+  'accounting.autoSend.creditMemo': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Send a credit memo entry to the provider as soon as it posts.',
+  },
+  'accounting.autoSend.invoice': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Send an invoice entry to the provider as soon as it posts.',
+  },
+  'accounting.autoSend.expenseBill': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Send an expense bill entry to the provider as soon as it posts.',
+  },
+  'accounting.autoSend.payout': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Send a payout entry to the provider as soon as it posts.',
+  },
+  'accounting.autoSend.bankDeposit': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Send a bank deposit entry to the provider as soon as it posts.',
+  },
+  'accounting.autoSend.journal': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Send a journal entry to the provider as soon as it posts.',
+  },
+  // Summary-mode grain, per avenue that has one. `payout`, `bankDeposit` and
+  // `journal` are absent - TARGET §3 says they are inherently one object each.
+  'accounting.summaryGrain.fulfillment': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'day',
+    options: {
+      options: [
+        { value: 'day', label: 'One object per day' },
+        { value: 'month', label: 'One object per month' },
+      ],
+    },
+    description: 'How many fulfillment postings roll into one Summary-mode export object.',
+  },
+  'accounting.summaryGrain.receipt': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'day',
+    options: {
+      options: [
+        { value: 'day', label: 'One object per day' },
+        { value: 'month', label: 'One object per month' },
+      ],
+    },
+    description: 'How many customer receipt postings roll into one Summary-mode export object.',
+  },
+  'accounting.summaryGrain.refund': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'day',
+    options: {
+      options: [
+        { value: 'day', label: 'One object per day' },
+        { value: 'month', label: 'One object per month' },
+      ],
+    },
+    description: 'How many refund postings roll into one Summary-mode export object.',
+  },
+  'accounting.summaryGrain.creditMemo': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'day',
+    options: {
+      options: [
+        { value: 'day', label: 'One object per day' },
+        { value: 'month', label: 'One object per month' },
+      ],
+    },
+    description: 'How many credit memo postings roll into one Summary-mode export object.',
+  },
+  'accounting.summaryGrain.invoice': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'day',
+    options: {
+      options: [
+        { value: 'day', label: 'One object per day' },
+        { value: 'month', label: 'One object per month' },
+      ],
+    },
+    description: 'How many invoice postings roll into one Summary-mode export object.',
+  },
+  'accounting.summaryGrain.expenseBill': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'day',
+    options: {
+      options: [
+        { value: 'day', label: 'One object per day' },
+        { value: 'month', label: 'One object per month' },
+      ],
+    },
+    description: 'How many expense bill postings roll into one Summary-mode export object.',
+  },
+
   // The frozen auxx.ai snapshot: the December 31 physical count valued at
   // CPA-approved costs. This is the valuation layer that intentionally uncosted
   // historical movements cannot supply, and it is what `readOpeningBaseline`
