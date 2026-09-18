@@ -5,7 +5,7 @@ import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { VendorBillPaidSource, VendorBillStatus } from '../enum-values'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Vendor Bill resource — the third leg of the
@@ -25,7 +25,7 @@ import type { ResourceField } from '../field-types'
  * silently correct the vendor's own arithmetic, which is precisely the
  * discrepancy the match exists to surface.
  */
-export const VENDOR_BILL_FIELDS: Record<string, ResourceField> = {
+export const VENDOR_BILL_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -747,4 +747,4 @@ export const VENDOR_BILL_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

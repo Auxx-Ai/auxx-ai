@@ -5,28 +5,28 @@
  * order's lines, with the part's sku/title and the vendor part's own printed
  * code joined in.
  *
- * Reads only, no actor, no `UnifiedCrudHandler` - the same trade
- * `expense-bill/reads.ts` and `intake/resolve.ts` both make: values come
- * straight off `FieldValue`'s own columns rather than through a typed
- * envelope, because there is no write here and no permission to assert. The
- * router asserts view access on `purchase_order` and calls in.
- *
- * Two `FieldValue` reads (§3.5): the lines (after reading the order's own
- * `purchase_order_lines` relation to find which lines are its own - the same
- * has_many-field read `expense-bill/reads.ts` uses for a bill's lines), then
- * the parts and vendor parts those lines point at, by id.
+ * Reads only, no actor, no `UnifiedCrudHandler` - the router asserts view
+ * access on `purchase_order` and calls in. Cells come through
+ * `readSystemRecords` (plan §3b), so the lines are found by their own parent
+ * relation (`by:`) rather than through the order's has_many mirror.
  */
 
-import { type Database, schema } from '@auxx/database'
-import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import type { Database } from '@auxx/database'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
+import { readSystemRecords, type SystemRecord, systemFields } from '../../resources/system-records'
 import type { OrderLineFacts } from './client'
 import { guard } from './guard'
 
-/** Every `purchase_order_line` attribute this loader reads, besides its parent. */
+/**
+ * Every `purchase_order_line` attribute this loader reads.
+ *
+ * Hand-written rather than `pickSystemAttributes(PURCHASE_ORDER_LINE_FIELDS, …)`:
+ * that registry file is not a declared map yet and converts with the purchase
+ * order's own module, not here.
+ */
 const LINE_ATTRIBUTES = [
+  'purchase_order_line_purchase_order',
   'purchase_order_line_part',
   'purchase_order_line_vendor_part',
   'purchase_order_line_description',
@@ -37,81 +37,12 @@ const LINE_ATTRIBUTES = [
   'purchase_order_line_sort_order',
 ] as const
 
-type LineAttribute = (typeof LINE_ATTRIBUTES)[number]
+// Hand-written: the picker rejects `dbColumn`-marked fields, but on an entity def
+// the seeder still creates the `CustomField`, so these values are in `FieldValue`.
+const PART_ATTRIBUTES = ['part_sku', 'part_title'] as const
 
-type FieldMap<A extends string> = Record<A, { id: string } | null>
-
-/** One `FieldValue` row, in the columns this module reads. */
-interface ValueRow {
-  entityId: string
-  fieldId: string
-  valueText: string | null
-  valueNumber: number | null
-  relatedEntityId: string | null
-}
-
-/**
- * `FieldValue` rows for a set of instances and fields, bucketed
- * `instance -> field -> row`. One row per (instance, field) is all this
- * module ever expects - none of the fields read here are has_many.
- */
-async function selectCells(
-  db: Database,
-  organizationId: string,
-  entityIds: readonly string[],
-  fieldIds: readonly string[]
-): Promise<Map<string, Map<string, ValueRow>>> {
-  const buckets = new Map<string, Map<string, ValueRow>>()
-  if (entityIds.length === 0 || fieldIds.length === 0) return buckets
-
-  const rows = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      valueNumber: schema.FieldValue.valueNumber,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, [...entityIds]),
-        inArray(schema.FieldValue.fieldId, [...fieldIds])
-      )
-    )
-
-  for (const row of rows) {
-    let byField = buckets.get(row.entityId)
-    if (!byField) {
-      byField = new Map()
-      buckets.set(row.entityId, byField)
-    }
-    byField.set(row.fieldId, row)
-  }
-  return buckets
-}
-
-/** The ids of every non-archived instance among `ids`, in the order given. */
-async function liveInstanceIds(
-  db: Database,
-  organizationId: string,
-  ids: readonly string[]
-): Promise<string[]> {
-  if (ids.length === 0) return []
-  const rows = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        inArray(schema.EntityInstance.id, [...ids]),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-  const live = new Set(rows.map((row) => row.id))
-  return ids.filter((id) => live.has(id))
-}
+/** `vendor-part-fields.ts` is not a declared map yet, so this one stays hand-written too. */
+const VENDOR_PART_ATTRIBUTES = ['vendor_part_vendor_sku'] as const
 
 /**
  * The order's lines, as the matcher needs them (§3.5).
@@ -128,131 +59,108 @@ export async function loadOrderLineFacts(
     async () => {
       const purchaseOrderInstanceId = parseRecordId(purchaseOrderRecordId).entityInstanceId
 
-      const lineDefId = await getCachedEntityDefId(organizationId, 'purchase_order_line')
-      if (!lineDefId) return []
+      const ctx = await systemFields(db, organizationId, 'purchase_order_line', LINE_ATTRIBUTES)
+      if (!ctx?.fields.purchase_order_line_purchase_order) return []
 
-      const headerFields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes(['purchase_order_lines'] as const)
-      const linesField = headerFields.purchase_order_lines
-      if (!linesField) return []
+      const lines = await readSystemRecords(db, organizationId, ctx, {
+        by: {
+          attribute: 'purchase_order_line_purchase_order',
+          in: [purchaseOrderInstanceId],
+        },
+      })
+      if (lines.length === 0) return []
 
-      // The order's own has_many relation carries one row per line, each with
-      // `relatedEntityId` = a line instance id - the same shape
-      // `expense-bill/reads.ts` reads a bill's `vendor_bill_lines` through.
-      const relatedIds = await relatedLineIds(
-        db,
-        organizationId,
-        purchaseOrderInstanceId,
-        linesField.id
-      )
-      const lineInstanceIds = await liveInstanceIds(db, organizationId, relatedIds)
-      if (lineInstanceIds.length === 0) return []
+      const labels = await readLabels(db, organizationId, lines)
 
-      const lineFields = (await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes([...LINE_ATTRIBUTES] as const)) as FieldMap<LineAttribute>
-
-      const lineFieldIds = LINE_ATTRIBUTES.map((attribute) => lineFields[attribute]?.id).filter(
-        (id): id is string => Boolean(id)
-      )
-      const lineCells = await selectCells(db, organizationId, lineInstanceIds, lineFieldIds)
-
-      const cell = (lineId: string, attribute: LineAttribute): ValueRow | undefined => {
-        const fieldId = lineFields[attribute]?.id
-        return fieldId ? lineCells.get(lineId)?.get(fieldId) : undefined
-      }
-
-      const partInstanceIds = new Set<string>()
-      const vendorPartInstanceIds = new Set<string>()
-      for (const lineId of lineInstanceIds) {
-        const partId = cell(lineId, 'purchase_order_line_part')?.relatedEntityId
-        if (partId) partInstanceIds.add(partId)
-        const vendorPartId = cell(lineId, 'purchase_order_line_vendor_part')?.relatedEntityId
-        if (vendorPartId) vendorPartInstanceIds.add(vendorPartId)
-      }
-
-      const [partDefId, partAndVendorPartFields] = await Promise.all([
-        getCachedEntityDefId(organizationId, 'part'),
-        getOrgCache()
-          .from(organizationId, 'customFields')
-          .bySystemAttributes(['part_sku', 'part_title', 'vendor_part_vendor_sku'] as const),
-      ])
-
-      const labelFieldIds = [
-        partAndVendorPartFields.part_sku?.id,
-        partAndVendorPartFields.part_title?.id,
-        partAndVendorPartFields.vendor_part_vendor_sku?.id,
-      ].filter((id): id is string => Boolean(id))
-
-      const labelCells = await selectCells(
-        db,
-        organizationId,
-        [...partInstanceIds, ...vendorPartInstanceIds],
-        labelFieldIds
-      )
-
-      const partSkuOf = (partInstanceId: string): string | null => {
-        const fieldId = partAndVendorPartFields.part_sku?.id
-        return (fieldId ? labelCells.get(partInstanceId)?.get(fieldId)?.valueText : null) ?? null
-      }
-      const partTitleOf = (partInstanceId: string): string | null => {
-        const fieldId = partAndVendorPartFields.part_title?.id
-        return (fieldId ? labelCells.get(partInstanceId)?.get(fieldId)?.valueText : null) ?? null
-      }
-      const vendorSkuOf = (vendorPartInstanceId: string): string | null => {
-        const fieldId = partAndVendorPartFields.vendor_part_vendor_sku?.id
-        return (
-          (fieldId ? labelCells.get(vendorPartInstanceId)?.get(fieldId)?.valueText : null) ?? null
-        )
-      }
-
-      const lines = lineInstanceIds.map((lineId, index) => {
-        const partInstanceId = cell(lineId, 'purchase_order_line_part')?.relatedEntityId ?? null
-        const vendorPartInstanceId =
-          cell(lineId, 'purchase_order_line_vendor_part')?.relatedEntityId ?? null
-        const sortOrder = cell(lineId, 'purchase_order_line_sort_order')?.valueNumber ?? null
+      const ranked = lines.map((line, index) => {
+        const partCell = line.cell('purchase_order_line_part')
+        const partInstanceId = line.related('purchase_order_line_part')
+        const vendorPartInstanceId = line.related('purchase_order_line_vendor_part')
+        const sortOrder = line.number('purchase_order_line_sort_order')
 
         const fact: OrderLineFacts = {
-          orderLineRecordId: toRecordId(lineDefId, lineId),
-          partRecordId: partInstanceId ? toRecordId(partDefId ?? 'part', partInstanceId) : null,
-          partSku: partInstanceId ? partSkuOf(partInstanceId) : null,
-          partTitle: partInstanceId ? partTitleOf(partInstanceId) : null,
-          vendorSku: vendorPartInstanceId ? vendorSkuOf(vendorPartInstanceId) : null,
-          description: cell(lineId, 'purchase_order_line_description')?.valueText ?? null,
-          ordered: cell(lineId, 'purchase_order_line_quantity_ordered')?.valueNumber ?? 0,
-          received: cell(lineId, 'purchase_order_line_quantity_received')?.valueNumber ?? 0,
-          billed: cell(lineId, 'purchase_order_line_quantity_billed')?.valueNumber ?? 0,
-          expectedUnitPriceCents:
-            cell(lineId, 'purchase_order_line_expected_unit_price')?.valueNumber ?? null,
+          orderLineRecordId: line.recordId,
+          partRecordId:
+            partCell?.type === 'relationship' && partCell.recordId ? partCell.recordId : null,
+          partSku: partInstanceId ? (labels.partSku.get(partInstanceId) ?? null) : null,
+          partTitle: partInstanceId ? (labels.partTitle.get(partInstanceId) ?? null) : null,
+          vendorSku: vendorPartInstanceId
+            ? (labels.vendorSku.get(vendorPartInstanceId) ?? null)
+            : null,
+          description: line.text('purchase_order_line_description'),
+          ordered: line.number('purchase_order_line_quantity_ordered') ?? 0,
+          received: line.number('purchase_order_line_quantity_received') ?? 0,
+          billed: line.number('purchase_order_line_quantity_billed') ?? 0,
+          expectedUnitPriceCents: line.number('purchase_order_line_expected_unit_price'),
           sortOrder,
         }
         return { fact, sortKey: sortOrder ?? index }
       })
 
-      return lines.sort((a, b) => a.sortKey - b.sortKey).map(({ fact }) => fact)
+      return ranked.sort((a, b) => a.sortKey - b.sortKey).map(({ fact }) => fact)
     },
     'Failed to load purchase order line facts',
     { organizationId, purchaseOrderRecordId }
   )
 }
 
-/** The line instance ids named by the order's own `purchase_order_lines` relation. */
-async function relatedLineIds(
+interface LineLabels {
+  partSku: Map<string, string>
+  partTitle: Map<string, string>
+  vendorSku: Map<string, string>
+}
+
+/**
+ * The sku/title of every part and vendor part the lines point at.
+ *
+ * `includeArchived`: a line pointing at a part somebody archived still has to
+ * show the sku it was ordered under, or the matcher loses its best key.
+ */
+async function readLabels(
   db: Database,
   organizationId: string,
-  purchaseOrderInstanceId: string,
-  linesFieldId: string
-): Promise<string[]> {
-  const rows = await db
-    .select({ relatedEntityId: schema.FieldValue.relatedEntityId })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.entityId, purchaseOrderInstanceId),
-        eq(schema.FieldValue.fieldId, linesFieldId)
-      )
-    )
-  return rows.map((row) => row.relatedEntityId).filter((id): id is string => Boolean(id))
+  lines: SystemRecord<(typeof LINE_ATTRIBUTES)[number]>[]
+): Promise<LineLabels> {
+  const partIds = new Set<string>()
+  const vendorPartIds = new Set<string>()
+  for (const line of lines) {
+    const partId = line.related('purchase_order_line_part')
+    if (partId) partIds.add(partId)
+    const vendorPartId = line.related('purchase_order_line_vendor_part')
+    if (vendorPartId) vendorPartIds.add(vendorPartId)
+  }
+
+  const labels: LineLabels = { partSku: new Map(), partTitle: new Map(), vendorSku: new Map() }
+
+  if (partIds.size > 0) {
+    const ctx = await systemFields(db, organizationId, 'part', PART_ATTRIBUTES)
+    if (ctx) {
+      const parts = await readSystemRecords(db, organizationId, ctx, {
+        ids: [...partIds],
+        includeArchived: true,
+      })
+      for (const part of parts) {
+        const sku = part.text('part_sku')
+        if (sku) labels.partSku.set(part.id, sku)
+        const title = part.text('part_title')
+        if (title) labels.partTitle.set(part.id, title)
+      }
+    }
+  }
+
+  if (vendorPartIds.size > 0) {
+    const ctx = await systemFields(db, organizationId, 'vendor_part', VENDOR_PART_ATTRIBUTES)
+    if (ctx) {
+      const vendorParts = await readSystemRecords(db, organizationId, ctx, {
+        ids: [...vendorPartIds],
+        includeArchived: true,
+      })
+      for (const vendorPart of vendorParts) {
+        const sku = vendorPart.text('vendor_part_vendor_sku')
+        if (sku) labels.vendorSku.set(vendorPart.id, sku)
+      }
+    }
+  }
+
+  return labels
 }

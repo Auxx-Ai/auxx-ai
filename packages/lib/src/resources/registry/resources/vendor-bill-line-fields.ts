@@ -5,7 +5,7 @@ import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Vendor Bill Line resource — one row per line on a
@@ -21,7 +21,7 @@ import type { ResourceField } from '../field-types'
  * to compare. Recomputing a line from the PO would collapse two of them into
  * one and there would be nothing left to disagree.
  */
-export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
+export const VENDOR_BILL_LINE_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -379,4 +379,4 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})
