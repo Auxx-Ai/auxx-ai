@@ -33,28 +33,28 @@ const TRIGGER_FILES = [
   // D19: `post-invoice.ts` is now the never-throws door and `issuance-accounting.ts`
   // is where the invoice is read, the entry built and the effect accepted — so
   // the gate moved with the build. It is still checked before ANY read.
-  'money/invoices/issuance-accounting.ts',
-  'money/orders/fulfill.ts',
+  'sales/invoices/issuance-accounting.ts',
+  'sales/orders/fulfill.ts',
   // The legacy `money/payments/` lane (`post-transaction.ts`,
   // `post-deposit-application.ts`) is gone (accounting migration step 0). Every
   // receipt now posts off `MoneyTransaction`/`MoneyApplication` through one of
   // these two builders, and both are gated.
-  'money/invoices/receipt-accounting.ts',
-  'money/customer-money/accounting.ts',
-  'money/customer-money/refund-accounting.ts',
-  'money/customer-money/deposit-application-accounting.ts',
+  'accounting/money/invoice-payments/receipt-accounting.ts',
+  'accounting/money/customer-money/accounting.ts',
+  'accounting/money/customer-money/refund-accounting.ts',
+  'accounting/money/customer-money/deposit-application-accounting.ts',
   // D19: `write-off.ts` still checks the gate before its own reads, and
   // `write-off-accounting.ts` is where the entry is now built and accepted — so
   // the gate is asserted on both halves rather than moved off the builder.
-  'money/invoices/write-off.ts',
-  'money/invoices/write-off-accounting.ts',
-  'money/credit-memos/writes.ts',
-  'money/bank-deposits/writes.ts',
+  'sales/invoices/write-off.ts',
+  'sales/invoices/write-off-accounting.ts',
+  'sales/credit-memos/writes.ts',
+  'accounting/money/bank-deposits/writes.ts',
   'accounting/ledger/post/post-payout-entry.ts',
   // The per-org gate for the payout sync, which never even lets
   // `post/post-payout-entry.ts` see a payout for an org that has not enabled
   // accounting (task 17 section 3's payout-path decision).
-  'money/payouts/sync.ts',
+  'accounting/money/payouts/sync.ts',
 ] as const
 
 const SRC_ROOT = join(__dirname, '..', '..', '..', '..')

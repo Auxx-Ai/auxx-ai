@@ -5,6 +5,7 @@
 
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { ResourceField } from '../field-types'
+import { PART_FIELDS } from '../resources/part-fields'
 import { PAYMENT_GATEWAY_FIELDS } from '../resources/payment-gateway-fields'
 import { defineResourceFields, pickSystemAttributes, systemAttributes } from '../system-attributes'
 
@@ -12,6 +13,9 @@ describe('systemAttributes', () => {
   it('lists the FieldValue-backed attributes of a declared map', () => {
     const attributes = systemAttributes(PAYMENT_GATEWAY_FIELDS)
     expect([...attributes].sort()).toEqual([
+      // `CREATED_BY_FIELD` carries `dbColumn: 'createdById'` but is written to
+      // `FieldValue` by the `autoSetCreatedBy` hook, so the picker keeps it.
+      'created_by_id',
       'payment_gateway_fee_treatment',
       'payment_gateway_handles',
       'payment_gateway_last_fee_booked_at',
@@ -85,6 +89,30 @@ describe('pickSystemAttributes', () => {
   it('refuses a column-backed field, which has no cell to read', () => {
     // @ts-expect-error `created_at` is an EntityInstance column, not a stored value
     pickSystemAttributes(PAYMENT_GATEWAY_FIELDS, ['created_at'])
+  })
+
+  // The seeder's `shouldCreateField` only skips an explicitly-undefined `dbColumn`.
+  it('picks a field whose dbColumn is a string, which still stores a FieldValue row', () => {
+    // `part_sku` declares `dbColumn: 'sku'`, but `EntityInstance` has no such
+    // column and the seeder creates its `CustomField` all the same.
+    expectTypeOf(pickSystemAttributes(PART_FIELDS, ['part_sku'])).toEqualTypeOf<'part_sku'[]>()
+    expect(systemAttributes(PART_FIELDS)).toContain('part_sku')
+  })
+
+  it('refuses a field whose dbColumn is explicitly undefined, which has no CustomField', () => {
+    const fields = defineResourceFields({
+      body: {
+        ...PART_FIELDS.sku,
+        systemAttribute: 'body',
+        dbColumn: undefined,
+      } as ResourceField & {
+        systemAttribute: 'body'
+        dbColumn: undefined
+      },
+    })
+    // @ts-expect-error a virtual field has no stored value to read
+    pickSystemAttributes(fields, ['body'])
+    expect(systemAttributes(fields)).toEqual([])
   })
 })
 

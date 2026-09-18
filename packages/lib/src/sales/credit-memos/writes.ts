@@ -32,7 +32,7 @@ import {
   toGatewayRoutes,
 } from '../../accounting/rails/client'
 import { listPaymentGateways } from '../../accounting/rails/reads'
-import { getEntityDefIdResolver, getOrgCache } from '../../cache'
+import { getEntityDefIdResolver } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../resources/crud'

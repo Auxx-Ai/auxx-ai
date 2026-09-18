@@ -5,6 +5,7 @@ import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Credit Memo Application resource
@@ -26,7 +27,7 @@ import type { ResourceField } from '../field-types'
  * re-running the invoice payment sync and the memo settlement. Money is
  * integer minor units.
  */
-export const CREDIT_MEMO_APPLICATION_FIELDS: Record<string, ResourceField> = {
+export const CREDIT_MEMO_APPLICATION_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -291,4 +292,4 @@ export const CREDIT_MEMO_APPLICATION_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

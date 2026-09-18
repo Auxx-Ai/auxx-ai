@@ -6,6 +6,7 @@ import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * What happened to the goods on a credited line
@@ -57,7 +58,7 @@ export const CREDIT_MEMO_LINE_DISPOSITION_OPTIONS = [
  * Money is integer minor units, scaled through `decimalToMinorUnits` in the
  * projection.
  */
-export const CREDIT_MEMO_LINE_FIELDS: Record<string, ResourceField> = {
+export const CREDIT_MEMO_LINE_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -405,4 +406,4 @@ export const CREDIT_MEMO_LINE_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

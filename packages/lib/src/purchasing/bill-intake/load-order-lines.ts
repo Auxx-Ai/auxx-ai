@@ -14,18 +14,16 @@
 import type { Database } from '@auxx/database'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import type { Result } from 'neverthrow'
+import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
+import { PURCHASE_ORDER_LINE_FIELDS } from '../../resources/registry/resources/purchase-order-line-fields'
+import { VENDOR_PART_FIELDS } from '../../resources/registry/resources/vendor-part-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import { readSystemRecords, type SystemRecord, systemFields } from '../../resources/system-records'
 import type { OrderLineFacts } from './client'
 import { guard } from './guard'
 
-/**
- * Every `purchase_order_line` attribute this loader reads.
- *
- * Hand-written rather than `pickSystemAttributes(PURCHASE_ORDER_LINE_FIELDS, …)`:
- * that registry file is not a declared map yet and converts with the purchase
- * order's own module, not here.
- */
-const LINE_ATTRIBUTES = [
+/** Every `purchase_order_line` attribute this loader reads. */
+const LINE_ATTRIBUTES = pickSystemAttributes(PURCHASE_ORDER_LINE_FIELDS, [
   'purchase_order_line_purchase_order',
   'purchase_order_line_part',
   'purchase_order_line_vendor_part',
@@ -35,14 +33,13 @@ const LINE_ATTRIBUTES = [
   'purchase_order_line_quantity_billed',
   'purchase_order_line_expected_unit_price',
   'purchase_order_line_sort_order',
-] as const
+] as const)
 
-// Hand-written: the picker rejects `dbColumn`-marked fields, but on an entity def
-// the seeder still creates the `CustomField`, so these values are in `FieldValue`.
-const PART_ATTRIBUTES = ['part_sku', 'part_title'] as const
+const PART_ATTRIBUTES = pickSystemAttributes(PART_FIELDS, ['part_sku', 'part_title'] as const)
 
-/** `vendor-part-fields.ts` is not a declared map yet, so this one stays hand-written too. */
-const VENDOR_PART_ATTRIBUTES = ['vendor_part_vendor_sku'] as const
+const VENDOR_PART_ATTRIBUTES = pickSystemAttributes(VENDOR_PART_FIELDS, [
+  'vendor_part_vendor_sku',
+] as const)
 
 /**
  * The order's lines, as the matcher needs them (§3.5).
