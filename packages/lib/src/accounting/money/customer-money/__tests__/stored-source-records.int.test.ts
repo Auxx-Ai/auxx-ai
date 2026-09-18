@@ -1,4 +1,4 @@
-// packages/lib/src/accounting/money/reconciliation/__tests__/stored-source-records.int.test.ts
+// packages/lib/src/accounting/money/customer-money/__tests__/stored-source-records.int.test.ts
 import { type Database, schema } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
 import { toResourceFieldId } from '@auxx/types/field'

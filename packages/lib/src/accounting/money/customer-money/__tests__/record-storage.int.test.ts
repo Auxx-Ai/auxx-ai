@@ -4,7 +4,7 @@ import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-ut
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { reconcileTransferIds } from '../../payouts/reconcile-records'
+import { reconcileTransferIds } from '../../payouts/assess-payouts'
 import type { PayoutRecordEvidence } from '../record-contracts'
 import { type FinancialWriteProvenance, writeFinancialRecords } from '../record-storage'
 

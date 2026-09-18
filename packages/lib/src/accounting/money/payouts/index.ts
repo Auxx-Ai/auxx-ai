@@ -1,5 +1,6 @@
 // packages/lib/src/accounting/money/payouts/index.ts
 
+export { assessPayouts } from './assess-payouts'
 export {
   PAYOUT_STATUSES,
   type PayoutHeader,
@@ -30,7 +31,6 @@ export {
   requirePayoutFieldContext,
 } from './reads'
 export { readRecognisedChargeIds, readRecognisedOrderIds, recognise } from './recognise'
-export { reconcileFinancialRecords } from './reconcile-records'
 export type {
   PayoutSource,
   PayoutSourceCtx,

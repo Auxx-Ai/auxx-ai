@@ -1,6 +1,5 @@
-// packages/lib/src/accounting/money/payouts/reconcile-records.ts
+// packages/lib/src/accounting/money/payouts/assess-payouts.ts
 import { type Database, schema, type Transaction, withAccountingCommitLock } from '@auxx/database'
-import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { and, eq, gt, inArray, or, sql } from 'drizzle-orm'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import { exactEvidenceMinor, isOutgoingPayoutEntry } from '../customer-money/evidence-contracts'
@@ -25,13 +24,6 @@ export interface PayoutReconciliationResult {
   blockers: string[]
   nextActions: string[]
   unmatchedCount: number
-}
-
-/** A record event supplies identities; reconciliation always reads committed current facts. */
-export interface FinancialReconciliationRequest {
-  organizationId: string
-  recordIds: RecordId[]
-  cause: 'record-change' | 'bulk-complete' | 'recovery'
 }
 
 type Assessment = {
@@ -363,12 +355,19 @@ export async function reconcileTransferIds(
   return changed
 }
 
-/** Resolve affected financial owners in sets, then assess each canonical owner once. */
-export async function reconcileFinancialRecords(
+/**
+ * Resolve affected financial owners in sets, then assess each canonical owner once.
+ *
+ * Takes entity INSTANCE ids, not `RecordId`s: its caller is
+ * `payout-reconciler.ts`, and the dirty-parent buffer dedupes instance ids
+ * because RecordIds reach it in two keyspaces (`dirty-parents.ts`).
+ */
+export async function assessPayouts(
   db: Database,
-  request: FinancialReconciliationRequest
+  organizationId: string,
+  entityInstanceIds: string[]
 ): Promise<number> {
-  const ids = [...new Set(request.recordIds.map((id) => parseRecordId(id).entityInstanceId))]
+  const ids = [...new Set(entityInstanceIds)]
   const owners = new Set<string>()
   for (let offset = 0; offset < ids.length; offset += OWNER_BATCH_SIZE) {
     const chunk = ids.slice(offset, offset + OWNER_BATCH_SIZE)
@@ -393,7 +392,7 @@ export async function reconcileFinancialRecords(
       )
       .where(
         and(
-          eq(schema.ProcessorBalanceEntry.organizationId, request.organizationId),
+          eq(schema.ProcessorBalanceEntry.organizationId, organizationId),
           inArray(schema.ProcessorBalanceEntry.id, chunk)
         )
       )
@@ -420,13 +419,13 @@ export async function reconcileFinancialRecords(
       .from(schema.MoneyTransfer)
       .where(
         and(
-          eq(schema.MoneyTransfer.organizationId, request.organizationId),
+          eq(schema.MoneyTransfer.organizationId, organizationId),
           or(inArray(schema.MoneyTransfer.id, [...chunk, ...previous]), ...related)
         )
       )
     for (const row of transfers) owners.add(row.id)
   }
-  return reconcileTransferIds(db, request.organizationId, [...owners])
+  return reconcileTransferIds(db, organizationId, [...owners])
 }
 
 /** One bounded recovery page. The caller checkpoints nextCursor before fetching another page. */

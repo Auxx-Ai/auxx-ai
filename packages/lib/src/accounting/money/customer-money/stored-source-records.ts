@@ -1,4 +1,4 @@
-// packages/lib/src/accounting/money/reconciliation/stored-source-records.ts
+// packages/lib/src/accounting/money/customer-money/stored-source-records.ts
 
 import { schema, type Transaction } from '@auxx/database'
 import { readEnvelope } from '@auxx/types/field-value'
@@ -6,17 +6,14 @@ import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { ConflictError } from '../../../errors'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
-import type {
-  PayoutRecordEvidence,
-  ProcessorRecordEvidence,
-} from '../customer-money/record-contracts'
-import { stageOrderPaymentEvidenceInTx } from '../customer-money/record-evidence'
+import type { PayoutRecordEvidence, ProcessorRecordEvidence } from './record-contracts'
+import { stageOrderPaymentEvidenceInTx } from './record-evidence'
 import {
   type FinancialRecordWrite,
   type FinancialWriteProvenance,
   writeFinancialRecords,
-} from '../customer-money/record-storage'
-import { StaleFinancialSourceRevisionError } from '../customer-money/source-write-errors'
+} from './record-storage'
+import { StaleFinancialSourceRevisionError } from './source-write-errors'
 
 export const FINANCIAL_SOURCE_TYPES = new Set([
   'payout',
