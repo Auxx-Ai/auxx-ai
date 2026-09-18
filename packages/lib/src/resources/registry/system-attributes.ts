@@ -52,6 +52,10 @@ export type SystemAttributesOf<F> = Exclude<
   InstanceColumnAttribute
 >
 
+/** The FieldValue-backed system attributes of a map declared with {@link defineResourceFields}. */
+export type DeclaredSystemAttributes<D> =
+  D extends DeclaredResourceFields<infer F> ? SystemAttributesOf<F> : never
+
 /**
  * The system attributes of a registry field map, for `systemFields`.
  *

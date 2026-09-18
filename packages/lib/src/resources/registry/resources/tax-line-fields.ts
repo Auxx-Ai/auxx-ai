@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Tax Line resource - one jurisdiction's share of one
@@ -48,7 +48,7 @@ import type { ResourceField } from '../field-types'
  * `purchase_order_line` precedent. Money is integer minor units
  * ({@link TAX_LINE_FIELDS.price}).
  */
-export const TAX_LINE_FIELDS: Record<string, ResourceField> = {
+export const TAX_LINE_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -291,4 +291,4 @@ export const TAX_LINE_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

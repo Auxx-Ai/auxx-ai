@@ -36,9 +36,8 @@ export {
   reverseFulfillmentPosting,
 } from './fulfill'
 export {
-  loadOrderFieldContext,
-  type OrderFieldContext,
   type OrderForFulfillment,
+  type OrderLineForFulfillment,
   readOrderForFulfillment,
-  requireOrderFieldContext,
+  readOrderLines,
 } from './reads'

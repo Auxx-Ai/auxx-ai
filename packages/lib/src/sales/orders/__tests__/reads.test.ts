@@ -4,7 +4,7 @@
 // file: the rate a line is recognised at is the line NET
 // (`line_item_net_total / line_item_qty`, falling back to `line_item_line_total`,
 // 29 §1.7, §2.3), and that only holds if both totals are among the fields the
-// read actually asks the org cache for. Drop either from `LINE_ATTRIBUTES` and
+// read actually asks the org cache for. Drop either from the line pick and
 // nothing fails - every line silently falls back a rung and the discount is
 // recognised as revenue again. So the first test here is about the request, not
 // the arithmetic.
@@ -18,21 +18,42 @@ const h = vi.hoisted(() => ({
   selects: [] as unknown[][],
 }))
 
-vi.mock('../../../cache', () => ({
-  getCachedEntityDefId: async () => 'def_order',
-  getOrgCache: () => ({
-    from: () => ({
-      bySystemAttributes: async (attrs: string[]) => {
-        h.requested.push(...attrs)
-        // No `tax_line` def on this org, so `readOrderTaxLines` returns
-        // before it selects anything.
-        return Object.fromEntries(
-          attrs.map((attr) => [attr, attr.startsWith('tax_line_') ? null : { id: `f_${attr}` }])
-        )
-      },
+vi.mock('../../../cache', async () => {
+  // Dynamic, because a `vi.mock` factory is hoisted above every import: the
+  // field's TYPE is what `readSystemRecords` converts a stored row through, so
+  // a stub without one reads every cell as unset.
+  const { LINE_ITEM_FIELDS } = await import(
+    '../../../resources/registry/resources/line-item-fields'
+  )
+  const { ORDER_FIELDS } = await import('../../../resources/registry/resources/order-fields')
+  const typeOf = (attribute: string): string => {
+    for (const map of [ORDER_FIELDS, LINE_ITEM_FIELDS]) {
+      for (const field of Object.values(map)) {
+        if (field?.systemAttribute === attribute) return field.fieldType ?? 'TEXT'
+      }
+    }
+    throw new Error(`[reads.test] No order/line_item registry field declares ${attribute}`)
+  }
+  return {
+    getCachedEntityDefId: async (_org: string, entityType: string) =>
+      entityType === 'line_item' ? 'def_line_item' : 'def_order',
+    getOrgCache: () => ({
+      from: () => ({
+        bySystemAttributes: async (attrs: string[]) => {
+          h.requested.push(...attrs)
+          // No `tax_line` def on this org, so `readOrderTaxLines` returns
+          // before it selects anything.
+          return Object.fromEntries(
+            attrs.map((attr) => [
+              attr,
+              attr.startsWith('tax_line_') ? null : { id: `f_${attr}`, type: typeOf(attr) },
+            ])
+          )
+        },
+      }),
     }),
-  }),
-}))
+  }
+})
 
 vi.mock('../../fulfillments', () => ({
   requireFulfillmentFieldContext: async () => ({}),
@@ -57,10 +78,12 @@ function stubDb(): Database {
       Promise.resolve(h.selects[index++] ?? []).then(resolve, reject)
     return self
   }
-  return {
-    select: () => chain(),
-    query: { EntityInstance: { findFirst: async () => ({ id: 'ord_1' }) } },
-  } as unknown as Database
+  return { select: () => chain() } as unknown as Database
+}
+
+/** One live `EntityInstance` row, in the columns `readSystemRecords` selects. */
+function instance(id: string) {
+  return { id, createdAt: new Date(0), updatedAt: new Date(0), archivedAt: null }
 }
 
 /** One `FieldValue` row, in the columns the read selects. */
@@ -74,14 +97,21 @@ function value(
   }> = {}
 ) {
   return {
+    id: `fv_${entityId}_${attribute}`,
     entityId,
     fieldId: `f_${attribute}`,
     valueText: null,
     valueNumber: null,
+    valueBoolean: null,
+    valueDate: null,
     valueJson: null,
     optionId: null,
+    actorId: null,
     relatedEntityId: null,
+    relatedEntityDefinitionId: null,
     sortKey: 0,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
     ...columns,
   }
 }
@@ -90,7 +120,6 @@ function orderRows() {
   return [
     value('ord_1', 'order_number', { valueText: 'ORD-0012' }),
     value('ord_1', 'order_subtotal', { valueNumber: 180 }),
-    value('ord_1', 'order_line_items', { relatedEntityId: 'li_1' }),
   ]
 }
 
@@ -105,9 +134,16 @@ function lineRows(extra: ReturnType<typeof value>[]) {
 }
 
 async function readLine(extra: ReturnType<typeof value>[]) {
-  // Two selects: the order pivot, then the line pivot. The fulfillments come
-  // from the mocked reader and the tax-line read returns before selecting.
-  h.selects = [orderRows(), [{ id: 'li_1' }], lineRows(extra)]
+  // Five selects: the order's instance and cells, then the line ids hanging off
+  // `line_item_order`, then the lines' instances and cells. The fulfillments
+  // come from the mocked reader and the tax-line read returns before selecting.
+  h.selects = [
+    [instance('ord_1')],
+    orderRows(),
+    [{ entityId: 'li_1' }],
+    [instance('li_1')],
+    lineRows(extra),
+  ]
   const result = await readOrderForFulfillment(stubDb(), { organizationId: ORG, orderId: 'ord_1' })
   return result._unsafeUnwrap().lines[0]
 }
