@@ -45,6 +45,28 @@ export function providerEntryUrl(
   return `https://app.qbo.intuit.com/app/journal?txnId=${encodeURIComponent(entryId)}`
 }
 
+/**
+ * The same deep link, for an `ExportBatch` (step 3, part C).
+ *
+ * ⚠️ **No tenant guard, unlike {@link providerEntryUrl}.** `ExportBatchRow`
+ * carries no `bookId`/tenant id to compare against `connectedTenantId` - a gap
+ * left for the router to close (see this file's caller in `sync-queue-panel.tsx`
+ * for the note). Until then this offers the link whenever a provider is
+ * connected, which is wrong for a batch sent to a company since disconnected;
+ * accepted for the cutover, where there is exactly one connection ever.
+ *
+ * Every batch in this step sends as a Journal Entry regardless of avenue
+ * (TARGET §3: "Payload is the journal shape in this step (native objects are
+ * step 4)"), so the URL shape is the same one {@link providerEntryUrl} builds.
+ */
+export function providerBatchObjectUrl(
+  connected: boolean,
+  providerObjectId: string | null
+): string | null {
+  if (!connected || !providerObjectId) return null
+  return `https://app.qbo.intuit.com/app/journal?txnId=${encodeURIComponent(providerObjectId)}`
+}
+
 export interface OutcomeCopy {
   icon: ComponentType<{ className?: string }>
   title: string

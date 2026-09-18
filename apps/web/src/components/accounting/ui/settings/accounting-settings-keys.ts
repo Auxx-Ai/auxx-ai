@@ -22,6 +22,11 @@ export const ACCOUNTING_KEYS = {
   cutoffPeriod: 'accounting.cutoffPeriod',
   bookTimeZone: 'accounting.bookTimeZone',
   fiscalYearStartMonth: 'accounting.fiscalYearStartMonth',
+  // TARGET §3, gate 2: the export mode and its cutover. General renders these
+  // beside the period settings above - same "when does history stop mattering"
+  // shape as the accounting cutoff itself.
+  exportMode: 'accounting.exportMode',
+  exportModeCutover: 'accounting.exportModeCutover',
   setupFinalizedAt: 'accounting.setupFinalizedAt',
   setupFinalizedByUserId: 'accounting.setupFinalizedByUserId',
   openingRawMaterials: 'accounting.openingRawMaterials',
@@ -55,6 +60,11 @@ export const PERIOD_DRAFT_KEYS = [
   ACCOUNTING_KEYS.cutoffPeriod,
   ACCOUNTING_KEYS.bookTimeZone,
   ACCOUNTING_KEYS.fiscalYearStartMonth,
+] as const
+
+export const EXPORT_DRAFT_KEYS = [
+  ACCOUNTING_KEYS.exportMode,
+  ACCOUNTING_KEYS.exportModeCutover,
 ] as const
 
 export const ABSORPTION_DRAFT_KEYS = [

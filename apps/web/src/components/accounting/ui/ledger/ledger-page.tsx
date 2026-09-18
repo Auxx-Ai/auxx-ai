@@ -2,8 +2,10 @@
 
 'use client'
 
+import { EXPORT_BATCH_TABS, type ExportBatchTab } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
 import { MainPageContent } from '@auxx/ui/components/main-page'
+import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -44,17 +46,15 @@ import { api } from '~/trpc/react'
 import { CloseMonthPanel } from './close-month-panel'
 import { type CountAdjustmentRow, CountEvidenceSection } from './count-evidence-section'
 import { DraftsPanel } from './drafts-panel'
-import { EntryRollForward } from './entry-roll-forward'
 import { formatPeriodLabel, lockRefusalReason } from './format'
 import { type LateArrivalRow, LateArrivalsSection } from './late-arrivals-section'
 import { LedgerBanners } from './ledger-banners'
 import { LedgerSidebar, type LedgerView } from './ledger-sidebar'
 import { LedgerStats } from './ledger-stats'
+import { LedgerSummaryPanel } from './ledger-summary-panel'
 import { LedgerToolbar } from './ledger-toolbar'
-import { MonthEndEntrySection } from './month-end-entry-section'
 import { PostingDrawer } from './posting-drawer'
-import { RevisionStrip } from './revision-strip'
-import { SYNC_QUEUE_TABS, SyncQueuePanel } from './sync-queue/sync-queue-panel'
+import { SyncQueuePanel } from './sync-queue/sync-queue-panel'
 
 /** The setting that declares how far the books are closed. `DOCUMENTS` scope. */
 const LOCKED_THROUGH_KEY = 'ledger.lockedThroughMonth'
@@ -149,10 +149,20 @@ export function LedgerPage() {
    * the queue is what the column is showing, and its value is the tab - so a
    * pasted link reopens the pile somebody was actually looking at.
    */
-  const [queueTab, setQueueTab] = useQueryState('queue', parseAsStringLiteral(SYNC_QUEUE_TABS))
+  const [queueTab, setQueueTab] = useQueryState('queue', parseAsStringLiteral(EXPORT_BATCH_TABS))
   const isSyncQueueOpen = queueTab !== null
   /** `?drafts=1` - the Drafts tab (TARGET §4 gate 1, step 1c), scoped to the month on screen. */
   const [draftsOpen, setDraftsOpen] = useQueryState('drafts', parseAsBoolean.withDefault(false))
+  /**
+   * The Entries section's own view (TARGET §6) - Detail is one row per
+   * posting, Summary groups them by avenue, grain, store, rail and currency.
+   * Requires a month, so it rides with `activePeriodKey` rather than
+   * outliving it into a month with nothing to group.
+   */
+  const [entriesView, setEntriesView] = useQueryState(
+    'view',
+    parseAsStringLiteral(['detail', 'summary']).withDefault('detail')
+  )
 
   /**
    * The queue opens on Ready to sync, which is the pile it exists to clear.
@@ -240,21 +250,16 @@ export function LedgerPage() {
 
   const actions = useLedgerEntryActions({
     periodKey: activePeriodKey,
-    // Reverse acts on what is on screen: the posting open in the drawer if there
-    // is one, otherwise the month's effective entry.
-    glPostingId: postingId ?? activePeriod?.glPostingId ?? null,
-    enabled: !isChecklistState && !!activePeriodKey && !isPostedPeriod,
+    // Reverse acts on whichever posting is open in the drawer. There is no
+    // month-end entry to fall back to any more (MIGRATION step 5).
+    glPostingId: postingId ?? null,
   })
 
-  // Everything about THE month-end entry - which one, what it says, and whether
-  // it can be posted - forks on `isPostedPeriod` in every field, so it lives in
-  // one hook rather than scattered down this body.
+  // What the month still owes before it can be locked. A close posts nothing,
+  // so this is a checklist rather than an entry.
   const entry = useMonthEndEntry({
-    activePeriod,
     activePeriodKey,
-    isPostedPeriod,
-    isLocked,
-    actions,
+    enabled: !isChecklistState && !!activePeriodKey,
   })
 
   const exportBatchesQuery = api.ledger.exportBatches.list.useQuery({})
@@ -309,9 +314,8 @@ export function LedgerPage() {
   // discover is the puzzle 13-accounting-ui.md §5.2 is about.
   const lockBlockedReason = lockRefusalReason({
     periodLabel,
-    isPostedPeriod,
-    justPosted: actions.justPosted,
-    isNothingToClose: entry.blockers.some((blocker) => blocker.status === 'nothing_to_close'),
+    isChecking: entry.isLoading,
+    blockerCount: entry.items.length,
   })
 
   // ── Sections with no read (14-drive-the-close.md section 7) ────────────────
@@ -412,7 +416,11 @@ export function LedgerPage() {
       bookTimeZone={bookTimeZone}
       providerLabel={providerLabel}
       connectedTenantId={provider.connectedTenantId}
-      canUnsync={canControlLedger}
+      onOpenExportQueue={(tab) => {
+        void setPostingId(null)
+        void setDraftsOpen(null)
+        void setQueueTab(tab)
+      }}
       onReverse={actions.runReverse}
       isReversing={actions.isReversing}
     />
@@ -509,9 +517,8 @@ export function LedgerPage() {
                 loading={period.isLoading}
                 period={activePeriod}
                 periodLabel={periodLabel}
-                entryTotalMinor={entry.totalMinor}
                 entryPending={entry.isLoading}
-                blockerCount={entry.blockers.length}
+                blockerCount={entry.items.length}
                 entryCount={activePeriodKey ? monthEntries.rows.length : null}
                 draftCount={monthEntries.draftCount}
                 balanceReport={balanceQuery.data}
@@ -538,7 +545,17 @@ export function LedgerPage() {
                    the section header made two affordances for one act and only
                    one of them looked like navigation. */
 
-                <SyncQueuePanel tab={queueTab ?? 'ready'} />
+                <SyncQueuePanel
+                  tab={queueTab ?? 'ready'}
+                  onTabChange={(next: ExportBatchTab) => void setQueueTab(next)}
+                  periodKey={activePeriodKey}
+                  periodLabel={periodLabel}
+                  bookTimeZone={bookTimeZone}
+                  providerLabel={providerLabel}
+                  providerConnected={provider.connected}
+                  activePostingId={postingId}
+                  onSelectPosting={openPosting}
+                />
               ) : draftsOpen ? (
                 /* Scoped to the month on screen, like Closeout - unlike the
                    sync queue above. `activePeriodKey` is always resolved here:
@@ -565,7 +582,7 @@ export function LedgerPage() {
                     providerLabel={providerLabel}
                     onOpenSyncQueue={openSyncQueue}
                     blockers={activePeriodKey ? entry.blockers : []}
-                    isSoftRefusal={entry.isSoftRefusal}
+                    isSoftRefusal={false}
                     onFix={onFix}
                     onReviewLock={revealLock}
                     onNextPeriod={
@@ -574,36 +591,6 @@ export function LedgerPage() {
                         : undefined
                     }
                   />
-
-                  {!!activePeriodKey && (
-                    <RevisionStrip
-                      entries={entry.revisionEntries}
-                      activePostingId={postingId}
-                      onSelect={(id) => void setPostingId(id)}
-                      bookTimeZone={bookTimeZone}
-                    />
-                  )}
-
-                  {!!activePeriodKey && (
-                    <MonthEndEntrySection
-                      periodLabel={periodLabel}
-                      currencyCode={currencyCode}
-                      lines={entry.lines}
-                      docNumber={entry.docNumber}
-                      isLoading={entry.isLoading}
-                      blockerCount={entry.blockers.length}
-                      isPostedPeriod={isPostedPeriod}
-                      justPosted={actions.justPosted}
-                      canPost={entry.canPost}
-                      isPosting={actions.isPosting}
-                      onPost={actions.runPost}
-                      isPreviewing={actions.isPreviewing}
-                      onRebuild={actions.runPreview}
-                      postResult={actions.postResult}
-                      providerLabel={providerLabel}
-                      connectedTenantId={provider.connectedTenantId ?? null}
-                    />
-                  )}
 
                   {/* Closing the month: the last thing that happens to it, and
                       the thing the rail item is named after. Directly under the
@@ -624,10 +611,8 @@ export function LedgerPage() {
                           lockedThrough={lockedThrough}
                           canControlLedger={canControlLedger}
                           onToggleLock={() => void handleToggleLock()}
-                          canReverse={!!entry.postedPostingId}
-                          onReverse={() =>
-                            entry.postedPostingId && void setPostingId(entry.postedPostingId)
-                          }
+                          canReverse={false}
+                          onReverse={() => undefined}
                         />
                       </Section>
                     </div>
@@ -642,47 +627,61 @@ export function LedgerPage() {
                     icon={<FileText className='size-4' />}
                     description={
                       activePeriodKey
-                        ? 'Every other entry dated in this month - postings and drafts alike.'
+                        ? entriesView === 'summary'
+                          ? 'Posted entries grouped by avenue, grain, store, rail and currency (TARGET §6) - a batch state shows beside a row that has a live one.'
+                          : 'Every other entry dated in this month - postings and drafts alike.'
                         : 'Journal entries somebody has raised. There is no month-end entry to show until a month opens.'
                     }
                     collapsible={false}
                     actions={
-                      /* 🛑 NOT gated on a period. This is the only door to a
-                         manual entry in the module, and the drawer seeds its
-                         Date from `today(bookTimeZone)` when no month
-                         resolves. */
-                      can('ledger.post') && (
-                        <Button
-                          variant='ghost'
-                          size='sm'
-                          disabled={isChecklistState}
-                          onClick={() => openJournalEntry('new')}>
-                          <Plus />
-                          New journal entry
-                        </Button>
-                      )
+                      <div className='flex items-center gap-2'>
+                        {/* Summary needs a month to group; with none resolved
+                            (a finalized org whose cutoff is still ahead) there
+                            is nothing to toggle to. */}
+                        {!!activePeriodKey && (
+                          <RadioTab
+                            value={entriesView}
+                            onValueChange={(value) =>
+                              void setEntriesView(value as 'detail' | 'summary')
+                            }
+                            size='sm'>
+                            <RadioTabItem value='detail'>Detail</RadioTabItem>
+                            <RadioTabItem value='summary'>Summary</RadioTabItem>
+                          </RadioTab>
+                        )}
+                        {/* 🛑 NOT gated on a period. This is the only door to a
+                           manual entry in the module, and the drawer seeds its
+                           Date from `today(bookTimeZone)` when no month
+                           resolves. */}
+                        {can('ledger.post') && (
+                          <Button
+                            variant='ghost'
+                            size='sm'
+                            disabled={isChecklistState}
+                            onClick={() => openJournalEntry('new')}>
+                            <Plus />
+                            New journal entry
+                          </Button>
+                        )}
+                      </div>
                     }>
-                    <EntriesList
-                      periodKey={activePeriodKey || undefined}
-                      currencyCode={currencyCode}
-                      onSelectPosting={openPosting}
-                      onSelectJournalEntry={openJournalEntry}
-                    />
-                  </Section>
-
-                  {!!activePeriodKey && entry.assertions && (
-                    <Section
-                      title='Roll-forward'
-                      icon={<Layers className='size-4' />}
-                      description='Opening, activity and closing per balance, as this entry asserted them. The entry shows the delta; this shows what the delta is a delta of.'
-                      collapsible={false}>
-                      <EntryRollForward
-                        assertions={entry.assertions}
+                    {!!activePeriodKey && entriesView === 'summary' ? (
+                      <LedgerSummaryPanel
+                        periodKey={activePeriodKey}
                         currencyCode={currencyCode}
-                        accountByRole={entry.accountByRole}
+                        bookTimeZone={bookTimeZone}
+                        activePostingId={postingId}
+                        onSelectPosting={openPosting}
                       />
-                    </Section>
-                  )}
+                    ) : (
+                      <EntriesList
+                        periodKey={activePeriodKey || undefined}
+                        currencyCode={currencyCode}
+                        onSelectPosting={openPosting}
+                        onSelectJournalEntry={openJournalEntry}
+                      />
+                    )}
+                  </Section>
 
                   {/* Every section below this point is ABOUT a month, so each is
                   gated on one having resolved. */}

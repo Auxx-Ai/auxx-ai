@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { PostingDetail } from '@auxx/lib/postings/client'
+import type { ExportBatchTab, PostingDetail } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
@@ -13,8 +13,19 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { BookOpenCheck, CalendarClock, CircleHelp, Clock, Layers, Link2, Undo2 } from 'lucide-react'
-import { useState } from 'react'
+import {
+  BookOpenCheck,
+  CalendarClock,
+  CircleHelp,
+  Clock,
+  ExternalLink,
+  Layers,
+  Link2,
+  PanelRight,
+  Send,
+  Undo2,
+} from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -22,7 +33,9 @@ import { EntryJournal, journalLinesFromDetail } from './entry-journal'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatAuditTimestamp, formatPeriodLabel } from './format'
 import { LedgerSourceLink } from './ledger-source-link'
+import { providerBatchObjectUrl } from './post-result-callout'
 import { readStoredAssertions, readStoredReasons, readStoredSources } from './stored-draft'
+import { ExportBatchStateBadge } from './sync-queue/export-batch-badge'
 
 interface PostingDrawerProps {
   /** From `?posting=<id>`. `null` closes the drawer. */
@@ -37,13 +50,12 @@ interface PostingDrawerProps {
   bookTimeZone: string
   providerLabel: string
   /**
-   * Which company this workspace is connected to now. Compared against the
-   * posting's own tenant before a deep link is offered, and never rendered -
-   * see `post-result-callout.tsx`.
+   * Which company this workspace is connected to now - `null` when nothing is
+   * authorized. See `post-result-callout.tsx`'s {@link providerBatchObjectUrl}.
    */
   connectedTenantId: string | null
-  /** `ledger.control` (60 E5). Without it the provider link shows and Un-sync does not. */
-  canUnsync: boolean
+  /** Close this drawer and open the export queue on the batch's own tab. */
+  onOpenExportQueue: (tab: ExportBatchTab) => void
   /** Reverse this posting with a memo. Owned by the caller's actions hook. */
   onReverse: (memo: string) => void
   isReversing: boolean
@@ -80,7 +92,7 @@ export function PostingDrawer({
   bookTimeZone,
   providerLabel,
   connectedTenantId,
-  canUnsync,
+  onOpenExportQueue,
   onReverse,
   isReversing,
 }: PostingDrawerProps) {
@@ -104,6 +116,22 @@ export function PostingDrawer({
     { glPostingId: postingId ?? '' },
     { enabled: !!postingId, staleTime: 30_000 }
   )
+
+  // The Export section's read (step 3 part C): every batch, the same
+  // unbounded read the queue itself renders (`ledger.exportBatches.list`), so
+  // this rides that cache instead of adding a second shape of the same query.
+  // A `withdrawn` batch's `ExportBatchPosting` rows are excluded server-side
+  // (`isNull(withdrawnAt)`), so a member found here always belongs to a batch
+  // still on one of the queue's four tabs.
+  const exportBatchesQuery = api.ledger.exportBatches.list.useQuery({}, { enabled: !!postingId })
+  const exportBatch = useMemo(() => {
+    if (!postingId) return null
+    return (
+      (exportBatchesQuery.data ?? []).find((batch) =>
+        batch.members.some((member) => member.glPostingId === postingId)
+      ) ?? null
+    )
+  }, [exportBatchesQuery.data, postingId])
 
   /** Nothing to put in the strip is an absent strip, not an empty flex row. */
   const headerActions = detail?.status === 'posted'
@@ -256,6 +284,55 @@ export function PostingDrawer({
                   currencyCode={currencyCode}
                 />
               </Section>
+
+              {/* The export (TARGET §3, §4 gate 2, step 3 part C): the batch
+                  this posting sits in, if a live one has claimed it - `null`
+                  reads as "not built yet", not as a fault, so an unbuilt
+                  posted entry gets no section rather than an empty one.
+                  🛑 No Retry and no Un-sync HERE - both actions live on the
+                  queue itself, over potentially many postings at once; this
+                  is a status and a way there, never a second door to act. */}
+              {exportBatch && (
+                <Section
+                  title='Export'
+                  icon={<Send className='size-4' />}
+                  description={`Where this entry stands with ${providerLabel}.`}
+                  collapsible={false}>
+                  <div className='flex flex-col gap-2'>
+                    <div className='flex items-center gap-2'>
+                      <ExportBatchStateBadge state={exportBatch.state} size='sm' />
+                      {(() => {
+                        const url = providerBatchObjectUrl(
+                          !!connectedTenantId,
+                          exportBatch.providerObjectId
+                        )
+                        return url ? (
+                          <a
+                            href={url}
+                            target='_blank'
+                            rel='noreferrer'
+                            className='inline-flex items-center gap-1 text-primary-600 text-xs hover:underline'>
+                            {exportBatch.providerObjectId}
+                            <ExternalLink className='size-3' />
+                          </a>
+                        ) : null
+                      })()}
+                    </div>
+                    {exportBatch.state === 'failed' && exportBatch.lastError && (
+                      <p className='text-destructive text-xs'>{exportBatch.lastError}</p>
+                    )}
+                    <div>
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        onClick={() => onOpenExportQueue(exportBatch.state as ExportBatchTab)}>
+                        <PanelRight />
+                        Open the export queue
+                      </Button>
+                    </div>
+                  </div>
+                </Section>
+              )}
 
               {/* The links (TARGET §1): what this entry is OF (`subject`), and
                   what it names as `parent`, `counterparty` or `member` -

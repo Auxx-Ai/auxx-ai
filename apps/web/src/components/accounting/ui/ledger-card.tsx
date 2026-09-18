@@ -19,6 +19,7 @@
 // differently from the `subject` row a fulfillment's own card shows.
 
 import type {
+  ExportBatchState,
   PostingDetail,
   PostingLinkRole,
   PostingStatus,
@@ -30,13 +31,14 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { BookOpenCheck } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { EmptyRow } from '~/components/drawers/cards/related-record-row'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { EntryJournal, journalLinesFromDetail } from './ledger/entry-journal'
 import { formatAccountingDate, formatMinor, humanizePostingType } from './ledger/format'
+import { ExportBatchStateBadge } from './ledger/sync-queue/export-batch-badge'
 
 /** One row of `ledger.listPostingsForSource`'s expected result. */
 export interface SourcePosting {
@@ -103,6 +105,19 @@ export function LedgerCard({ entityInstanceId, sourceKind }: LedgerCardProps) {
   const postings = (postingsQuery.data ?? []) as SourcePosting[]
   const loading = postingsQuery.isPending
 
+  // The batch state badge (step 3 part C, TARGET §4 gate 2) - the same
+  // unbounded `exportBatches.list` read the queue and the drawer's Export
+  // section both use, so this card's badge cannot disagree with either. No
+  // per-posting Retry or Un-sync here, same rule the drawer keeps.
+  const exportBatchesQuery = api.ledger.exportBatches.list.useQuery({})
+  const batchStateByPostingId = useMemo(() => {
+    const map = new Map<string, ExportBatchState>()
+    for (const batch of exportBatchesQuery.data ?? []) {
+      for (const member of batch.members) map.set(member.glPostingId, batch.state)
+    }
+    return map
+  }, [exportBatchesQuery.data])
+
   if (!loading && postings.length === 0) {
     return <EmptyRow label='Nothing posted yet' />
   }
@@ -131,6 +146,11 @@ export function LedgerCard({ entityInstanceId, sourceKind }: LedgerCardProps) {
                 <Badge variant='outline' size='xs'>
                   {LINK_ROLE_LABEL[posting.linkRole]}
                 </Badge>
+                {batchStateByPostingId.get(posting.id) && (
+                  <ExportBatchStateBadge
+                    state={batchStateByPostingId.get(posting.id) as ExportBatchState}
+                  />
+                )}
               </span>
             }
             onToggleOpen={() => setOpenPostingId(posting.id)}

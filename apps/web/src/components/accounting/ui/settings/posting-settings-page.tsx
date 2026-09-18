@@ -45,9 +45,14 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useAccountingSetupDraft } from '../../hooks/use-accounting-setup-draft'
 import { readText } from './accounting-settings-keys'
+import { ExportAvenueRow } from './export-avenue-row'
 import { PostingGuideDialog } from './posting-guide-dialog'
 import {
+  autoPostKeyForAvenue,
+  autoSendKeyForAvenue,
+  EXPORT_ROW_DRAFT_KEYS,
   EXTERNAL_SETTING_HOMES,
+  exportAvenueForPolicy,
   NEVER_POLICIES,
   POSTING_PAGE_INPUT_KEYS,
   POSTING_PAGE_POLICIES,
@@ -55,6 +60,7 @@ import {
   postingSectionAnchor,
   settingRowTitle,
   splitPostingColumns,
+  summaryGrainKeyForAvenue,
   TRIGGER_KIND_ICON,
   triggerSentence,
 } from './posting-page-model'
@@ -94,7 +100,10 @@ export function AccountingPostingSettingsPage() {
 
   // One draft over every input key on the page. Nothing here validates, so one
   // slice and one save bar; the sections differ only in which keys they show.
-  const draft = useAccountingSetupDraft(POSTING_PAGE_INPUT_KEYS)
+  // `EXPORT_ROW_DRAFT_KEYS` rides along - `autoSend`/`summaryGrain` are keyed
+  // on the AVENUE (posting-page-model.ts), so they are not on any policy's own
+  // `settings` list the way `POSTING_PAGE_INPUT_KEYS` is built.
+  const draft = useAccountingSetupDraft([...POSTING_PAGE_INPUT_KEYS, ...EXPORT_ROW_DRAFT_KEYS])
 
   const latest = api.ledger.latestPostingsByType.useQuery(undefined, {
     enabled: hasAccess(FeatureKey.accounting),
@@ -163,8 +172,17 @@ export function AccountingPostingSettingsPage() {
 
   function renderPolicy(policy: PostingPolicy) {
     const Icon = TRIGGER_KIND_ICON[policy.trigger.kind]
-    const inputKeys = policy.settings.filter((key) => !(key in EXTERNAL_SETTING_HOMES))
+    // The avenue whose export row belongs on THIS section (posting-page-model.ts)
+    // - `null` for a policy sharing its avenue with another, already-chosen one.
+    const avenue = exportAvenueForPolicy(policy)
+    const avenueAutoPostKey = avenue ? autoPostKeyForAvenue(avenue) : null
+    // The avenue's own `autoPost` row moves INTO the export row below, so it is
+    // dropped from the generic loop rather than shown twice.
+    const inputKeys = policy.settings.filter(
+      (key) => !(key in EXTERNAL_SETTING_HOMES) && key !== avenueAutoPostKey
+    )
     const externalKeys = policy.settings.filter((key) => key in EXTERNAL_SETTING_HOMES)
+    const summaryGrainKey = avenue ? summaryGrainKeyForAvenue(avenue) : null
 
     return (
       <div key={policy.type} id={postingSectionAnchor(policy.type)}>
@@ -184,12 +202,36 @@ export function AccountingPostingSettingsPage() {
           }
           description={policy.sentence}
           action={<GuideButton label={policy.label} onClick={() => setGuidePage(policy.type)} />}>
-          {inputKeys.length > 0 && (
+          {(inputKeys.length > 0 || avenue) && (
             <FieldPanel
               className='mt-1 p-0'
               resizeId={`accounting-posting-${policy.type}`}
               defaultLabelWidth={220}>
               {inputKeys.map((key) => renderSettingRow(policy, key))}
+              {avenue && (
+                <ExportAvenueRow
+                  autoPost={
+                    avenueAutoPostKey
+                      ? {
+                          checked: !!draft.draft[avenueAutoPostKey],
+                          onChange: (checked) => draft.patch({ [avenueAutoPostKey]: checked }),
+                        }
+                      : undefined
+                  }
+                  autoSend={{
+                    checked: !!draft.draft[autoSendKeyForAvenue(avenue)],
+                    onChange: (checked) => draft.patch({ [autoSendKeyForAvenue(avenue)]: checked }),
+                  }}
+                  summaryGrain={
+                    summaryGrainKey
+                      ? {
+                          value: (draft.draft[summaryGrainKey] as 'day' | 'month') ?? 'day',
+                          onChange: (value) => draft.patch({ [summaryGrainKey]: value }),
+                        }
+                      : undefined
+                  }
+                />
+              )}
             </FieldPanel>
           )}
 
