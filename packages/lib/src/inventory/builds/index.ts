@@ -82,8 +82,8 @@ export {
 export { type BuildNowInput, type BuildNowOutcome, buildNow } from './build-now'
 export {
   type BuildComponentPlanInput,
-  type BuildFieldContext,
-  type BuildMovementFieldContext,
+  type BuildContext,
+  type BuildMovementContext,
   explodeBuildComponents,
   getBuild,
   listBuilds,

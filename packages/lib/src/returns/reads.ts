@@ -44,6 +44,7 @@ import { LINE_ITEM_FIELDS } from '../resources/registry/resources/line-item-fiel
 import { pickSystemAttributes } from '../resources/registry/system-attributes'
 import { type RecordId, toRecordId } from '../resources/resource-id'
 import {
+  inPageOrder,
   readSystemRecords,
   type SystemRecord,
   systemFieldMap,
@@ -875,15 +876,6 @@ function linkedCreditMemoExists(db: Database, organizationId: string, memoFieldI
         )
       )
   )
-}
-
-/** The page's own order, which the reader replaces with `createdAt` ascending. */
-function inPageOrder<A extends string>(
-  records: SystemRecord<A>[],
-  ids: string[]
-): SystemRecord<A>[] {
-  const byId = new Map(records.map((record) => [record.id, record]))
-  return ids.map((id) => byId.get(id)).filter((record): record is SystemRecord<A> => record != null)
 }
 
 /** `EntityInstance.createdAt` is NOT NULL in the schema; the reader types it defensively. */

@@ -62,13 +62,13 @@ import { type StockMovementInput, writeStockMovements } from '../movements'
 import { BUILD_STATUS_BYPASS, requireDefId } from './build-mutations'
 import {
   assertBuildStatus,
-  type BuildFieldContext,
-  type BuildMovementFieldContext,
+  type BuildContext,
+  type BuildMovementContext,
   hasBuildReversal,
   lockBuild,
   readBuildMovements,
-  requireBuildFieldContext,
-  requireBuildMovementFieldContext,
+  requireBuildContext,
+  requireBuildMovementContext,
 } from './build-queries'
 import { canReverseBuild } from './client'
 import { recalculateAfterCommit } from './complete-build'
@@ -107,8 +107,8 @@ export async function reverseBuild(
   return guard(
     async () => {
       const [ctx, movementCtx] = await Promise.all([
-        requireBuildFieldContext(organizationId),
-        requireBuildMovementFieldContext(organizationId),
+        requireBuildContext(organizationId),
+        requireBuildMovementContext(organizationId),
       ])
 
       if (!ctx.fields.build_reversal_of) {
@@ -150,8 +150,8 @@ export async function reverseBuild(
       // already exists and `publishBuildUpdate` carries the field changes: a
       // reversal CREATES a build, on the quiet lane, so without this frame no
       // open builds list ever learns the reversal happened.
-      publishQuietBuildWrites(organizationId, movementCtx.movementDefId, result.movementIds)
-      publishQuietBuildWrites(organizationId, ctx.buildDefId, [result.buildId])
+      publishQuietBuildWrites(organizationId, movementCtx.defId, result.movementIds)
+      publishQuietBuildWrites(organizationId, ctx.defId, [result.buildId])
 
       logger.info('Reversed build', {
         organizationId,
@@ -168,8 +168,8 @@ export async function reverseBuild(
 }
 
 interface WriteReversalArgs {
-  ctx: BuildFieldContext
-  movementCtx: BuildMovementFieldContext
+  ctx: BuildContext
+  movementCtx: BuildMovementContext
   input: ReverseBuildInput
   occurredAt: Date
 }
@@ -230,10 +230,10 @@ async function writeReversal(
   const orderDefId = original.orderId ? await requireDefId(organizationId, 'order') : null
 
   const reversalBuild = await crud.create(
-    ctx.buildDefId,
+    ctx.defId,
     reversalBuildValues(ctx, movementCtx, original, input, occurredAt, orderDefId)
   )
-  const reversalRecordId = toRecordId(ctx.buildDefId, reversalBuild.instance.id)
+  const reversalRecordId = toRecordId(ctx.defId, reversalBuild.instance.id)
 
   // One negated `stock_movement` per original, through the shared
   // `stock-movements.writeStockMovements`
@@ -279,7 +279,7 @@ async function writeReversal(
       db: txDb,
       organizationId,
       userId,
-      movementDefId: movementCtx.movementDefId,
+      movementDefId: movementCtx.defId,
       partDefId: movementCtx.partDefId,
       lane: { kind: 'quiet', session: reversalSession, bypassFieldGuards: BUILD_STATUS_BYPASS },
       // The SAME handler the reversal `build` row was created through -
@@ -316,8 +316,8 @@ async function writeReversal(
  * data.
  */
 function reversalBuildValues(
-  ctx: BuildFieldContext,
-  movementCtx: BuildMovementFieldContext,
+  ctx: BuildContext,
+  movementCtx: BuildMovementContext,
   original: BuildRecord,
   input: ReverseBuildInput,
   occurredAt: Date,
@@ -325,7 +325,7 @@ function reversalBuildValues(
 ): Record<string, unknown> {
   const values: Record<string, unknown> = {
     build_status: BuildStatus.COMPLETED,
-    build_reversal_of: toRecordId(ctx.buildDefId, original.buildId),
+    build_reversal_of: toRecordId(ctx.defId, original.buildId),
   }
   if (original.partId) {
     values.build_part = toRecordId(movementCtx.partDefId, original.partId)

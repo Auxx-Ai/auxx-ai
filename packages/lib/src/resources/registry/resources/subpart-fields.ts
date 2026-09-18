@@ -5,12 +5,13 @@ import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Subpart resource
  * Represents the parent-child assembly relationship between parts
  */
-export const SUBPART_FIELDS: Record<string, ResourceField> = {
+export const SUBPART_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -190,4 +191,4 @@ export const SUBPART_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

@@ -49,10 +49,11 @@
 
 import { type Database, schema } from '@auxx/database'
 import { toDate } from '@auxx/utils/calendar-day'
-import { and, eq, isNotNull, isNull, type SQL } from 'drizzle-orm'
-import { type AnyPgColumn, alias } from 'drizzle-orm/pg-core'
+import { and, eq, isNotNull, isNull } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { loadBuildFieldContext } from './build-queries'
+import { systemValueJoin } from '../../resources/system-records'
+import { loadBuildContext } from './build-queries'
 import { type BuildStatusValue, resolveBuildStatus } from './client'
 import { guard } from './guard'
 import type { BatchRunSummary } from './types'
@@ -93,9 +94,6 @@ export interface BatchRunBuild {
   periodEnd: Date | null
   createdAt: Date
 }
-
-/** An aliased `FieldValue` table, as `alias()` returns it. */
-type FieldValueAlias = ReturnType<typeof alias<typeof schema.FieldValue, string>>
 
 /**
  * The counts for ONE run.
@@ -183,7 +181,7 @@ async function queryBatchRunBuilds(
   organizationId: string,
   runNumber: number | null
 ): Promise<BatchRunBuild[]> {
-  const ctx = await loadBuildFieldContext(organizationId)
+  const ctx = await loadBuildContext(organizationId)
   const runField = ctx?.fields.build_batch_run
   if (!ctx || !runField) return []
 
@@ -215,48 +213,21 @@ async function queryBatchRunBuilds(
     .innerJoin(
       runValue,
       and(
-        ownValue(runValue, schema.EntityInstance.id, organizationId, runField.id),
+        systemValueJoin(runValue, runField.id),
         isNotNull(runValue.valueNumber),
         // A run number of `null` selects every run; a number selects one. Both
         // are the same query, so the two reads cannot drift apart.
         ...(runNumber == null ? [] : [eq(runValue.valueNumber, runNumber)])
       )
     )
-    .leftJoin(
-      statusValue,
-      ownValue(
-        statusValue,
-        schema.EntityInstance.id,
-        organizationId,
-        fieldId(ctx.fields.build_status)
-      )
-    )
-    .leftJoin(
-      partValue,
-      ownValue(partValue, schema.EntityInstance.id, organizationId, fieldId(ctx.fields.build_part))
-    )
-    .leftJoin(
-      reversalOfValue,
-      ownValue(reversalOfValue, schema.EntityInstance.id, organizationId, reversalFieldId)
-    )
+    .leftJoin(statusValue, systemValueJoin(statusValue, fieldId(ctx.fields.build_status)))
+    .leftJoin(partValue, systemValueJoin(partValue, fieldId(ctx.fields.build_part)))
+    .leftJoin(reversalOfValue, systemValueJoin(reversalOfValue, reversalFieldId))
     .leftJoin(
       periodStartValue,
-      ownValue(
-        periodStartValue,
-        schema.EntityInstance.id,
-        organizationId,
-        fieldId(ctx.fields.build_period_start)
-      )
+      systemValueJoin(periodStartValue, fieldId(ctx.fields.build_period_start))
     )
-    .leftJoin(
-      periodEndValue,
-      ownValue(
-        periodEndValue,
-        schema.EntityInstance.id,
-        organizationId,
-        fieldId(ctx.fields.build_period_end)
-      )
-    )
+    .leftJoin(periodEndValue, systemValueJoin(periodEndValue, fieldId(ctx.fields.build_period_end)))
     // 🛑 The reversal edge read BACKWARDS, which is what `willReverse` turns on.
     // A LEFT JOIN plus `IS NULL`, so a build nothing has reversed is kept
     // alongside one whose reversal is archived; an inner join would keep exactly
@@ -280,7 +251,7 @@ async function queryBatchRunBuilds(
     .where(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.buildDefId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
         isNull(schema.EntityInstance.archivedAt)
       )
     )
@@ -371,27 +342,6 @@ function later(current: Date | null, candidate: Date | null): Date | null {
   if (!candidate) return current
   if (!current) return candidate
   return candidate.getTime() > current.getTime() ? candidate : current
-}
-
-/**
- * Join predicate for "this instance's value of <field>".
- *
- * Takes the alias OBJECT and composes with `eq`, so drizzle emits the table as
- * an identifier. A hand-written `sql` fragment interpolating a table binds it as
- * a parameter instead, which is a mistake this codebase has already paid for
- * (`build-queries.ts`).
- */
-function ownValue(
-  value: FieldValueAlias,
-  ownerId: AnyPgColumn,
-  organizationId: string,
-  fieldId: string
-): SQL | undefined {
-  return and(
-    eq(value.entityId, ownerId),
-    eq(value.organizationId, organizationId),
-    eq(value.fieldId, fieldId)
-  )
 }
 
 /**

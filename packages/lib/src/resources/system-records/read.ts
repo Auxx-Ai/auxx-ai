@@ -80,6 +80,15 @@ export async function readSystemRecords<A extends string>(
   return instances.map((instance) => buildRecord(ctx, instance, values.get(instance.id)))
 }
 
+/** The records in the order a paginated instance query returned their ids — {@link readSystemRecords} orders by `createdAt`, which is not the page's order. */
+export function inPageOrder<A extends string>(
+  records: SystemRecord<A>[],
+  ids: readonly string[]
+): SystemRecord<A>[] {
+  const byId = new Map(records.map((record) => [record.id, record]))
+  return ids.map((id) => byId.get(id)).filter((record): record is SystemRecord<A> => record != null)
+}
+
 /** The ids of every instance whose `by.attribute` relationship points at one of `by.in`. */
 async function readChildIds<A extends string>(
   db: Database | Transaction,
@@ -222,13 +231,19 @@ function buildRecord<A extends string>(
       const value = cell(attribute)
       return value?.type === 'text' ? value.value || null : null
     },
+    // A stored row whose column is NULL reads `null`, not `rowToTypedValue`'s
+    // `0` / `false` default: the hand-written reads this replaces distinguished
+    // "unset" from "zero", and `readBuildMovements` refuses a reversal on a NULL
+    // unit cost rather than reversing at nothing.
     number: (attribute) => {
       const value = cell(attribute)
-      return value?.type === 'number' ? value.value : null
+      if (value?.type !== 'number') return null
+      return rows(attribute)[0]?.valueNumber ?? null
     },
     boolean: (attribute) => {
       const value = cell(attribute)
-      return value?.type === 'boolean' ? value.value : null
+      if (value?.type !== 'boolean') return null
+      return rows(attribute)[0]?.valueBoolean ?? null
     },
     option: (attribute) => {
       const value = cell(attribute)

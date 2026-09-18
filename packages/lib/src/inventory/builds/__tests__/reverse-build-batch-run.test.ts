@@ -22,9 +22,10 @@
 //
 // Harness copied from `build-event.test.ts`: the org cache, the CRUD handler,
 // the quantity-on-hand batch and realtime are doubles, and a db stand-in routes
-// the reads by table identity plus whether the query joined. `src/test/setup.ts`
-// mocks `@auxx/database` wholesale, so no assertion here can name a column and
-// the double ignores every `WHERE`.
+// the reads by table identity, by whether the query joined or projected, and by
+// the literals its `WHERE` bound. `src/test/setup.ts` mocks `@auxx/database`
+// wholesale, so no assertion here can name a COLUMN — but with the columns gone
+// drizzle binds literals rather than `Param`s, which is what the routing reads.
 
 import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -46,20 +47,46 @@ interface ValueRow {
   valueDate: string | null
   optionId: string | null
   relatedEntityId: string | null
+  /** `rowsToTypedValues` needs it to compose a `RecordId`; any non-null def id will do. */
+  relatedEntityDefinitionId: string | null
+}
+
+/** The stored shape of each attribute, which the reader types its cells by. */
+const FIELD_TYPES: Record<string, string> = {
+  build_part: 'RELATIONSHIP',
+  build_order: 'RELATIONSHIP',
+  build_reversal_of: 'RELATIONSHIP',
+  build_status: 'SINGLE_SELECT',
+  build_source: 'SINGLE_SELECT',
+  build_started_at: 'DATE',
+  build_completed_at: 'DATE',
+  build_posted_at: 'DATE',
+  build_period_start: 'DATE',
+  build_period_end: 'DATE',
+  build_quantity_planned: 'NUMBER',
+  build_quantity_produced: 'NUMBER',
+  build_quantity_scrapped: 'NUMBER',
+  build_material_cost: 'NUMBER',
+  build_labor_cost: 'NUMBER',
+  build_overhead_cost: 'NUMBER',
+  build_produced_value: 'NUMBER',
+  build_variance_amount: 'NUMBER',
+  build_batch_run: 'NUMBER',
+  stock_movement_build: 'RELATIONSHIP',
+  stock_movement_part: 'RELATIONSHIP',
+  stock_movement_type: 'SINGLE_SELECT',
+  stock_movement_cost_basis: 'SINGLE_SELECT',
+  stock_movement_quantity: 'NUMBER',
+  stock_movement_unit_cost: 'NUMBER',
+  stock_movement_extended_cost: 'NUMBER',
+  stock_movement_qty_per_unit: 'NUMBER',
+  part_kind: 'SINGLE_SELECT',
 }
 
 const h = vi.hoisted(() => ({
   instanceRows: [] as { id: string; createdAt: Date; displayName: string | null }[],
   movementInstances: [] as { id: string }[],
-  valueRows: [] as {
-    entityId: string
-    fieldId: string
-    valueText: string | null
-    valueNumber: number | null
-    valueDate: string | null
-    optionId: string | null
-    relatedEntityId: string | null
-  }[],
+  valueRows: [] as ValueRow[],
   reversalRows: [] as { id: string }[],
   materialised: new Set<string>(),
   defs: new Map<string, string>(),
@@ -78,7 +105,12 @@ vi.mock('../../../cache', () => ({
     from: () => ({
       bySystemAttributes: async (attrs: readonly string[]) =>
         Object.fromEntries(
-          attrs.map((attr) => [attr, h.materialised.has(attr) ? { id: `fld_${attr}` } : null])
+          attrs.map((attr) => [
+            attr,
+            h.materialised.has(attr)
+              ? { id: `fld_${attr}`, type: FIELD_TYPES[attr] ?? 'TEXT' }
+              : null,
+          ])
         ),
     }),
   }),
@@ -129,13 +161,44 @@ function rowsPromise(rows: unknown[]): RowsChain {
   })
 }
 
-function makeChain() {
+/**
+ * Every literal a `where` binds, at any depth — see the header for why a bare
+ * string is one.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: walking drizzle's SQL chunk tree
+function boundValues(node: any, out: string[] = []): string[] {
+  if (!node) return out
+  if (typeof node === 'string') {
+    out.push(node)
+    return out
+  }
+  if (Array.isArray(node)) {
+    for (const child of node) boundValues(child, out)
+    return out
+  }
+  if (node.queryChunks) return boundValues(node.queryChunks, out)
+  if (Array.isArray(node.value)) for (const v of node.value) boundValues(v, out)
+  return out
+}
+
+function makeChain(columns: unknown) {
   const state = { table: null as unknown, joined: false }
-  const rows = () => {
+  const rows = (condition: unknown) => {
+    const bound = boundValues(condition)
     if (state.table === schema.EntityInstance) {
-      return state.joined ? h.movementInstances : h.instanceRows
+      if (state.joined) return h.movementInstances
+      const movementDefId = h.defs.get('stock_movement')
+      if (movementDefId && bound.includes(movementDefId)) return h.movementInstances
+      return h.instanceRows
     }
-    return state.joined ? h.reversalRows : h.valueRows
+    if (state.joined) return h.reversalRows
+    if (columns && bound.includes('fld_stock_movement_build')) {
+      return h.movementInstances.map((row) => ({ entityId: row.id }))
+    }
+    if (columns && bound.includes('fld_build_reversal_of')) {
+      return h.reversalRows.map((row) => ({ entityId: row.id }))
+    }
+    return h.valueRows
   }
   const chain: Record<string, unknown> = {
     from: (table: unknown) => {
@@ -148,13 +211,13 @@ function makeChain() {
     },
     leftJoin: () => chain,
     $dynamic: () => chain,
-    where: () => rowsPromise(rows()),
+    where: (condition: unknown) => rowsPromise(rows(condition)),
   }
   return chain
 }
 
 const db = {
-  select: () => makeChain(),
+  select: (columns?: unknown) => makeChain(columns),
   transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
 } as never
 
@@ -213,6 +276,7 @@ function value(entityId: string, attr: string, over: Partial<ValueRow>): ValueRo
     valueDate: null,
     optionId: null,
     relatedEntityId: null,
+    relatedEntityDefinitionId: over.relatedEntityId ? 'def_related' : null,
     ...over,
   }
 }
