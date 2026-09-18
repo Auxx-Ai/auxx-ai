@@ -4,6 +4,9 @@
 // `db` is a chainable stub that answers one queued result array per
 // `db.select()` call, in order (the same harness `intake/__tests__/resolve
 // .test.ts` uses).
+//
+// Query order IS the contract of this double, and `readSystemRecords` issues
+// two per def (instances, then cells) plus one for the `by:` child ids.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -18,16 +21,14 @@ vi.mock('../../../cache', () => ({
   getCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => h.defs.get(entityType)),
   getOrgCache: () => ({
     from: () => ({
-      bySystemAttributes: async (attrs: readonly string[]) =>
-        Object.fromEntries(
-          attrs.map((a) => [a, h.materialised.has(a) ? { id: `fld_${a}` } : null])
-        ),
+      bySystemAttributes: async (attrs: readonly string[]) => fieldStubs(attrs, h.materialised),
     }),
   }),
 }))
 
 import type { Database } from '@auxx/database'
 import { loadOrderLineFacts } from '../load-order-lines'
+import { fieldStubs } from './support/field-stubs'
 
 /** Answers `rows` however the builder is chained, then resolves on await. */
 function chainReturning(rows: unknown[]): unknown {
@@ -53,9 +54,10 @@ beforeEach(() => {
   h.defs = new Map([
     ['purchase_order_line', 'def_pol'],
     ['part', 'def_part'],
+    ['vendor_part', 'def_vp'],
   ])
   h.materialised = new Set([
-    'purchase_order_lines',
+    'purchase_order_line_purchase_order',
     'purchase_order_line_part',
     'purchase_order_line_vendor_part',
     'purchase_order_line_description',
@@ -72,131 +74,80 @@ beforeEach(() => {
   h.selectCalls = 0
 })
 
+/** One `FieldValue` row, in the shape `rowsToTypedValues` reads. */
+function row(
+  entityId: string,
+  attribute: string,
+  value: Partial<{
+    valueText: string
+    valueNumber: number
+    relatedEntityId: string
+    relatedEntityDefinitionId: string
+  }>
+): Record<string, unknown> {
+  return {
+    id: `fv_${entityId}_${attribute}`,
+    entityId,
+    fieldId: `fld_${attribute}`,
+    sortKey: 'a0',
+    createdAt: null,
+    updatedAt: null,
+    valueText: null,
+    valueNumber: null,
+    valueBoolean: null,
+    valueDate: null,
+    valueJson: null,
+    optionId: null,
+    relatedEntityId: null,
+    relatedEntityDefinitionId: null,
+    actorId: null,
+    ...value,
+  }
+}
+
+const instance = (id: string) => ({ id, createdAt: null, updatedAt: null, archivedAt: null })
+
 describe('loadOrderLineFacts', () => {
   it('returns lines in sortOrder order, with sku/title/vendorSku joined', async () => {
     h.results = [
-      // 1. the order's own `purchase_order_lines` relation.
-      [{ relatedEntityId: 'line_b' }, { relatedEntityId: 'line_a' }],
-      // 2. liveness check.
-      [{ id: 'line_b' }, { id: 'line_a' }],
+      // 1. the lines whose own parent relation names this order.
+      [{ entityId: 'line_b' }, { entityId: 'line_a' }],
+      // 2. those lines' instance rows.
+      [instance('line_a'), instance('line_b')],
       // 3. line cells.
       [
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_purchase_order_line_part',
-          valueText: null,
-          valueNumber: null,
+        row('line_a', 'purchase_order_line_part', {
           relatedEntityId: 'part_1',
-        },
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_purchase_order_line_vendor_part',
-          valueText: null,
-          valueNumber: null,
+          relatedEntityDefinitionId: 'def_part',
+        }),
+        row('line_a', 'purchase_order_line_vendor_part', {
           relatedEntityId: 'vp_1',
-        },
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_purchase_order_line_description',
-          valueText: 'Hex bolt',
-          valueNumber: null,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_purchase_order_line_quantity_ordered',
-          valueText: null,
-          valueNumber: 100,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_purchase_order_line_quantity_received',
-          valueText: null,
-          valueNumber: 50,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_purchase_order_line_quantity_billed',
-          valueText: null,
-          valueNumber: 20,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_purchase_order_line_expected_unit_price',
-          valueText: null,
-          valueNumber: 250,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_purchase_order_line_sort_order',
-          valueText: null,
-          valueNumber: 1,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_b',
-          fieldId: 'fld_purchase_order_line_part',
-          valueText: null,
-          valueNumber: null,
+          relatedEntityDefinitionId: 'def_vp',
+        }),
+        row('line_a', 'purchase_order_line_description', { valueText: 'Hex bolt' }),
+        row('line_a', 'purchase_order_line_quantity_ordered', { valueNumber: 100 }),
+        row('line_a', 'purchase_order_line_quantity_received', { valueNumber: 50 }),
+        row('line_a', 'purchase_order_line_quantity_billed', { valueNumber: 20 }),
+        row('line_a', 'purchase_order_line_expected_unit_price', { valueNumber: 250 }),
+        row('line_a', 'purchase_order_line_sort_order', { valueNumber: 1 }),
+        row('line_b', 'purchase_order_line_part', {
           relatedEntityId: 'part_2',
-        },
-        {
-          entityId: 'line_b',
-          fieldId: 'fld_purchase_order_line_description',
-          valueText: 'Washer',
-          valueNumber: null,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_b',
-          fieldId: 'fld_purchase_order_line_quantity_ordered',
-          valueText: null,
-          valueNumber: 10,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_b',
-          fieldId: 'fld_purchase_order_line_sort_order',
-          valueText: null,
-          valueNumber: 0,
-          relatedEntityId: null,
-        },
+          relatedEntityDefinitionId: 'def_part',
+        }),
+        row('line_b', 'purchase_order_line_description', { valueText: 'Washer' }),
+        row('line_b', 'purchase_order_line_quantity_ordered', { valueNumber: 10 }),
+        row('line_b', 'purchase_order_line_sort_order', { valueNumber: 0 }),
       ],
-      // 4. part + vendor part labels.
+      // 4. part instances, then 5. their cells.
+      [instance('part_1'), instance('part_2')],
       [
-        {
-          entityId: 'part_1',
-          fieldId: 'fld_part_sku',
-          valueText: 'HB-M8X40',
-          valueNumber: null,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'part_1',
-          fieldId: 'fld_part_title',
-          valueText: 'Hex Bolt M8x40',
-          valueNumber: null,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'part_2',
-          fieldId: 'fld_part_sku',
-          valueText: 'WSH-8',
-          valueNumber: null,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'vp_1',
-          fieldId: 'fld_vendor_part_vendor_sku',
-          valueText: 'AF-4420',
-          valueNumber: null,
-          relatedEntityId: null,
-        },
+        row('part_1', 'part_sku', { valueText: 'HB-M8X40' }),
+        row('part_1', 'part_title', { valueText: 'Hex Bolt M8x40' }),
+        row('part_2', 'part_sku', { valueText: 'WSH-8' }),
       ],
+      // 6. vendor part instances, then 7. their cells.
+      [instance('vp_1')],
+      [row('vp_1', 'vendor_part_vendor_sku', { valueText: 'AF-4420' })],
     ]
 
     const result = await loadOrderLineFacts(db, 'org_1', ORDER)
@@ -238,8 +189,8 @@ describe('loadOrderLineFacts', () => {
     expect(h.selectCalls).toBe(0)
   })
 
-  it('is empty when the purchase_order_lines relation field is not materialised', async () => {
-    h.materialised.delete('purchase_order_lines')
+  it('is empty when the line -> order relation field is not materialised', async () => {
+    h.materialised.delete('purchase_order_line_purchase_order')
     h.results = []
 
     const result = await loadOrderLineFacts(db, 'org_1', ORDER)

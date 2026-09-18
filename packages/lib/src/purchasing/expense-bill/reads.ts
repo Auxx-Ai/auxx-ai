@@ -4,30 +4,23 @@
 // needs them. Reads only: the writer is `writes.ts`
 // (`docs/lib-module-guide.md` §5).
 //
-// Values come off `FieldValue`'s own columns rather than through
-// `UnifiedCrudHandler.getFieldValues` - the trade `money/credit-memos/reads.ts`
-// and `money/invoices/post-invoice.ts` both make. No actor is needed, so the
-// preview and the writer share one loader, and a relationship's
-// `relatedEntityId` is read as the id it is rather than unwrapped from a typed
-// envelope.
+// Cells come through `readSystemRecords` rather than off `FieldValue`'s own
+// columns, so a relationship is read as the record it points at and the
+// per-column guessing is gone (plan §3b).
 //
 // No permission checks anywhere in this file. The router asserts (§6).
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { toCalendarDay } from '@auxx/utils/calendar-day'
-import { and, eq, isNull } from 'drizzle-orm'
-import { getOrgCache } from '../../cache'
 import { NotFoundError } from '../../errors'
-import {
-  cellReader,
-  type FieldMap,
-  fieldIdsOf,
-  liveInstanceIds,
-  selectValues,
-} from '../../field-values/read-kit'
+import { VENDOR_BILL_FIELDS } from '../../resources/registry/resources/vendor-bill-fields'
+import { VENDOR_BILL_LINE_FIELDS } from '../../resources/registry/resources/vendor-bill-line-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
+import { getInstanceId } from '../../resources/resource-id'
+import { readSystemRecords, systemFields } from '../../resources/system-records'
 
 /** Every `vendor_bill` attribute the posting path reads. */
-const VENDOR_BILL_ATTRIBUTES = [
+const VENDOR_BILL_ATTRIBUTES = pickSystemAttributes(VENDOR_BILL_FIELDS, [
   'vendor_bill_number',
   'vendor_bill_internal_number',
   'vendor_bill_status',
@@ -36,18 +29,15 @@ const VENDOR_BILL_ATTRIBUTES = [
   'vendor_bill_total',
   'vendor_bill_vendor',
   'vendor_bill_lines',
-] as const
+] as const)
 
 /** Every `vendor_bill_line` attribute the posting path reads. */
-const VENDOR_BILL_LINE_ATTRIBUTES = [
+const VENDOR_BILL_LINE_ATTRIBUTES = pickSystemAttributes(VENDOR_BILL_LINE_FIELDS, [
   'vendor_bill_line_description',
   'vendor_bill_line_line_total',
   'vendor_bill_line_gl_account',
   'vendor_bill_line_sort_order',
-] as const
-
-type VendorBillAttribute = (typeof VENDOR_BILL_ATTRIBUTES)[number]
-type VendorBillLineAttribute = (typeof VENDOR_BILL_LINE_ATTRIBUTES)[number]
+] as const)
 
 /** One coded line of a bill, as the builder reads it. */
 export interface VendorBillLineRecord {
@@ -87,40 +77,28 @@ export async function loadVendorBill(
   organizationId: string,
   vendorBillId: string
 ): Promise<VendorBillRecord | null> {
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...VENDOR_BILL_ATTRIBUTES])) as FieldMap<VendorBillAttribute>
-  if (!fields.vendor_bill_status || !fields.vendor_bill_total) return null
+  const ctx = await systemFields(db, organizationId, 'vendor_bill', VENDOR_BILL_ATTRIBUTES)
+  if (!ctx?.fields.vendor_bill_status || !ctx.fields.vendor_bill_total) return null
 
-  const [instance] = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.id, vendorBillId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .limit(1)
-  if (!instance) return null
-
-  const buckets = await selectValues(db, organizationId, [vendorBillId], fieldIdsOf(fields))
-  const { cell, cells } = cellReader(fields, buckets.get(vendorBillId))
+  const [bill] = await readSystemRecords(db, organizationId, ctx, { ids: [vendorBillId] })
+  if (!bill) return null
 
   return {
     id: vendorBillId,
-    number: cell('vendor_bill_number')?.valueText ?? '',
-    internalNumber: cell('vendor_bill_internal_number')?.valueText ?? '',
+    number: bill.text('vendor_bill_number') ?? '',
+    internalNumber: bill.text('vendor_bill_internal_number') ?? '',
     // A bill created before the status field carried a default reads as its own
     // default rather than as a blank the postable-status wall would let through.
-    status: cell('vendor_bill_status')?.optionId ?? 'draft',
-    billedAt: toCalendarDay(cell('vendor_bill_billed_at')?.valueDate),
-    currency: cell('vendor_bill_currency')?.valueText ?? null,
-    totalMinor: cell('vendor_bill_total')?.valueNumber ?? 0,
-    vendorCompanyInstanceId: cell('vendor_bill_vendor')?.relatedEntityId ?? null,
-    lineIds: cells('vendor_bill_lines')
-      .map((row) => row.relatedEntityId)
+    status: bill.option('vendor_bill_status') ?? 'draft',
+    billedAt: toCalendarDay(bill.date('vendor_bill_billed_at')),
+    currency: bill.text('vendor_bill_currency'),
+    totalMinor: bill.number('vendor_bill_total') ?? 0,
+    vendorCompanyInstanceId: bill.related('vendor_bill_vendor'),
+    lineIds: bill
+      .cells('vendor_bill_lines')
+      .map((value) =>
+        value.type === 'relationship' && value.recordId ? getInstanceId(value.recordId) : null
+      )
       .filter((id): id is string => !!id),
   }
 }
@@ -143,23 +121,28 @@ export async function loadVendorBillLines(
   lineIds: readonly string[]
 ): Promise<VendorBillLineRecord[]> {
   if (lineIds.length === 0) return []
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...VENDOR_BILL_LINE_ATTRIBUTES])) as FieldMap<VendorBillLineAttribute>
+  const ctx = await systemFields(
+    db,
+    organizationId,
+    'vendor_bill_line',
+    VENDOR_BILL_LINE_ATTRIBUTES
+  )
+  if (!ctx) return []
 
-  const live = await liveInstanceIds(db, organizationId, lineIds)
-  const buckets = await selectValues(db, organizationId, live, fieldIdsOf(fields))
+  const records = await readSystemRecords(db, organizationId, ctx, { ids: lineIds })
+  const byId = new Map(records.map((record) => [record.id, record]))
 
-  return live
-    .map((lineId, index) => {
-      const { cell } = cellReader(fields, buckets.get(lineId))
-      return {
-        id: lineId,
-        description: cell('vendor_bill_line_description')?.valueText ?? null,
-        lineTotalMinor: cell('vendor_bill_line_line_total')?.valueNumber ?? 0,
-        glAccountId: cell('vendor_bill_line_gl_account')?.valueText ?? null,
-        sortOrder: cell('vendor_bill_line_sort_order')?.valueNumber ?? index,
-      }
-    })
+  // Walked in the order the bill named them, not the reader's `createdAt` order:
+  // the position is the fallback when a line carries no `sortOrder`.
+  return lineIds
+    .map((lineId) => byId.get(lineId))
+    .filter((line) => line !== undefined)
+    .map((line, index) => ({
+      id: line.id,
+      description: line.text('vendor_bill_line_description'),
+      lineTotalMinor: line.number('vendor_bill_line_line_total') ?? 0,
+      glAccountId: line.text('vendor_bill_line_gl_account'),
+      sortOrder: line.number('vendor_bill_line_sort_order') ?? index,
+    }))
     .sort((a, b) => a.sortOrder - b.sortOrder)
 }

@@ -1,7 +1,8 @@
 // packages/lib/src/purchasing/bill-intake/__tests__/load-bill-lines.test.ts
 //
 // `loadBillLineFacts`, with no real database - same chainable stub harness as
-// `load-order-lines.test.ts`.
+// `load-order-lines.test.ts`. Query order IS the contract of the double, and
+// `readSystemRecords` issues two per def: the instances, then their cells.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -16,16 +17,14 @@ vi.mock('../../../cache', () => ({
   getCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => h.defs.get(entityType)),
   getOrgCache: () => ({
     from: () => ({
-      bySystemAttributes: async (attrs: readonly string[]) =>
-        Object.fromEntries(
-          attrs.map((a) => [a, h.materialised.has(a) ? { id: `fld_${a}` } : null])
-        ),
+      bySystemAttributes: async (attrs: readonly string[]) => fieldStubs(attrs, h.materialised),
     }),
   }),
 }))
 
 import type { Database } from '@auxx/database'
 import { loadBillLineFacts } from '../load-bill-lines'
+import { fieldStubs } from './support/field-stubs'
 
 function chainReturning(rows: unknown[]): unknown {
   const proxy: unknown = new Proxy(
@@ -59,8 +58,42 @@ const FULLY_MATERIALISED = [
   'vendor_bill_line_sort_order',
 ]
 
+/** One `FieldValue` row, in the shape `rowsToTypedValues` reads. */
+function row(
+  entityId: string,
+  attribute: string,
+  value: Partial<{
+    valueText: string
+    valueNumber: number
+    relatedEntityId: string
+    relatedEntityDefinitionId: string
+  }>
+): Record<string, unknown> {
+  return {
+    id: `fv_${entityId}_${attribute}`,
+    entityId,
+    fieldId: `fld_${attribute}`,
+    sortKey: 'a0',
+    createdAt: null,
+    updatedAt: null,
+    valueText: null,
+    valueNumber: null,
+    valueBoolean: null,
+    valueDate: null,
+    valueJson: null,
+    optionId: null,
+    relatedEntityId: null,
+    relatedEntityDefinitionId: null,
+    actorId: null,
+    ...value,
+  }
+}
+
+const instance = (id: string) => ({ id, createdAt: null, updatedAt: null, archivedAt: null })
+
 beforeEach(() => {
   h.defs = new Map([
+    ['vendor_bill', 'def_vendor_bill'],
     ['company', 'def_company'],
     ['purchase_order', 'def_purchase_order'],
     ['vendor_bill_line', 'def_vbl'],
@@ -74,113 +107,44 @@ beforeEach(() => {
 describe('loadBillLineFacts', () => {
   it('reads the header and its lines, in sort order', async () => {
     h.results = [
-      // 1. existence check.
-      [{ id: 'bill_1' }],
+      // 1. the bill's instance row.
+      [instance('bill_1')],
       // 2. bill header cells (includes the vendor_bill_lines rows).
       [
-        {
-          entityId: 'bill_1',
-          fieldId: 'fld_vendor_bill_vendor',
-          valueText: null,
-          valueNumber: null,
+        row('bill_1', 'vendor_bill_vendor', {
           relatedEntityId: 'company_1',
-        },
-        {
-          entityId: 'bill_1',
-          fieldId: 'fld_vendor_bill_purchase_order',
-          valueText: null,
-          valueNumber: null,
+          relatedEntityDefinitionId: 'def_company',
+        }),
+        row('bill_1', 'vendor_bill_purchase_order', {
           relatedEntityId: 'po_1',
-        },
-        {
-          entityId: 'bill_1',
-          fieldId: 'fld_vendor_bill_currency',
-          valueText: 'EUR',
-          valueNumber: null,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'bill_1',
-          fieldId: 'fld_vendor_bill_lines',
-          valueText: null,
-          valueNumber: null,
+          relatedEntityDefinitionId: 'def_purchase_order',
+        }),
+        row('bill_1', 'vendor_bill_currency', { valueText: 'EUR' }),
+        row('bill_1', 'vendor_bill_lines', {
           relatedEntityId: 'line_b',
-        },
-        {
-          entityId: 'bill_1',
-          fieldId: 'fld_vendor_bill_lines',
-          valueText: null,
-          valueNumber: null,
+          relatedEntityDefinitionId: 'def_vbl',
+        }),
+        row('bill_1', 'vendor_bill_lines', {
           relatedEntityId: 'line_a',
-        },
+          relatedEntityDefinitionId: 'def_vbl',
+        }),
       ],
-      // 3. liveness check for the two lines.
-      [{ id: 'line_b' }, { id: 'line_a' }],
+      // 3. the two lines' instance rows.
+      [instance('line_a'), instance('line_b')],
       // 4. line cells.
       [
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_vendor_bill_line_vendor_code',
-          valueText: 'AF-4420',
-          valueNumber: null,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_vendor_bill_line_description',
-          valueText: 'Hex bolt',
-          valueNumber: null,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_vendor_bill_line_quantity_billed',
-          valueText: null,
-          valueNumber: 100,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_vendor_bill_line_unit_price',
-          valueText: null,
-          valueNumber: 250,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_vendor_bill_line_purchase_order_line',
-          valueText: null,
-          valueNumber: null,
+        row('line_a', 'vendor_bill_line_vendor_code', { valueText: 'AF-4420' }),
+        row('line_a', 'vendor_bill_line_description', { valueText: 'Hex bolt' }),
+        row('line_a', 'vendor_bill_line_quantity_billed', { valueNumber: 100 }),
+        row('line_a', 'vendor_bill_line_unit_price', { valueNumber: 250 }),
+        row('line_a', 'vendor_bill_line_purchase_order_line', {
           relatedEntityId: 'pol_1',
-        },
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_vendor_bill_line_sort_order',
-          valueText: null,
-          valueNumber: 1,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_b',
-          fieldId: 'fld_vendor_bill_line_description',
-          valueText: 'Freight',
-          valueNumber: null,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_b',
-          fieldId: 'fld_vendor_bill_line_quantity_billed',
-          valueText: null,
-          valueNumber: 1,
-          relatedEntityId: null,
-        },
-        {
-          entityId: 'line_b',
-          fieldId: 'fld_vendor_bill_line_sort_order',
-          valueText: null,
-          valueNumber: 0,
-          relatedEntityId: null,
-        },
+          relatedEntityDefinitionId: 'def_pol',
+        }),
+        row('line_a', 'vendor_bill_line_sort_order', { valueNumber: 1 }),
+        row('line_b', 'vendor_bill_line_description', { valueText: 'Freight' }),
+        row('line_b', 'vendor_bill_line_quantity_billed', { valueNumber: 1 }),
+        row('line_b', 'vendor_bill_line_sort_order', { valueNumber: 0 }),
       ],
     ]
 
@@ -209,26 +173,15 @@ describe('loadBillLineFacts', () => {
   it('reads vendorCode as null when the org has not migrated vendor_bill_line_vendor_code yet', async () => {
     h.materialised.delete('vendor_bill_line_vendor_code')
     h.results = [
-      [{ id: 'bill_1' }],
+      [instance('bill_1')],
       [
-        {
-          entityId: 'bill_1',
-          fieldId: 'fld_vendor_bill_lines',
-          valueText: null,
-          valueNumber: null,
+        row('bill_1', 'vendor_bill_lines', {
           relatedEntityId: 'line_a',
-        },
+          relatedEntityDefinitionId: 'def_vbl',
+        }),
       ],
-      [{ id: 'line_a' }],
-      [
-        {
-          entityId: 'line_a',
-          fieldId: 'fld_vendor_bill_line_description',
-          valueText: 'Hex bolt',
-          valueNumber: null,
-          relatedEntityId: null,
-        },
-      ],
+      [instance('line_a')],
+      [row('line_a', 'vendor_bill_line_description', { valueText: 'Hex bolt' })],
     ]
 
     const result = await loadBillLineFacts(db, 'org_1', BILL)
