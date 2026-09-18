@@ -124,20 +124,23 @@ vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 
+vi.mock('../fields', () => ({
+  requireJournalEntryFieldContext: async () => ({
+    defId: 'def_je',
+    fields: {
+      journal_entry_number: { id: 'f_number' },
+      journal_entry_date: { id: 'f_date' },
+      journal_entry_memo: { id: 'f_memo' },
+      journal_entry_kind: { id: 'f_kind' },
+      journal_entry_gl_posting_id: { id: 'f_posting' },
+    },
+  }),
+}))
+
 vi.mock('../reads', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../reads')
   return {
     ...actual,
-    requireJournalEntryFieldContext: async () => ({
-      journalEntryDefId: 'def_je',
-      fields: {
-        journal_entry_number: { id: 'f_number' },
-        journal_entry_date: { id: 'f_date' },
-        journal_entry_memo: { id: 'f_memo' },
-        journal_entry_kind: { id: 'f_kind' },
-        journal_entry_gl_posting_id: { id: 'f_posting' },
-      },
-    }),
     requireJournalEntry: async () => {
       // The real one throws `NotFoundError` for an id that does not exist, is
       // archived, or belongs to another org - all three are deliberately

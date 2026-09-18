@@ -184,7 +184,7 @@ export async function listForReviewTransactionIds(
         const acctIds = new Set(acctRows.map((row) => row.entityId))
         ids = ids.filter((id) => acctIds.has(id))
       }
-      const live = await readSystemRecords(db, organizationId, ctx, { ids })
+      const live = await readSystemRecords(db, organizationId, ctx, { ids, cells: false })
       const liveIds = new Set(live.map((record) => record.id))
       return ids.filter((id) => liveIds.has(id))
     },

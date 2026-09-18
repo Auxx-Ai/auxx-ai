@@ -60,12 +60,9 @@ import {
   type JournalEntryLine,
   type JournalEntryRecord,
 } from './client'
+import { requireJournalEntryFieldContext } from './fields'
 import { guard } from './guard'
-import {
-  readRecurrenceIdentities,
-  requireJournalEntry,
-  requireJournalEntryFieldContext,
-} from './reads'
+import { readRecurrenceIdentities, requireJournalEntry } from './reads'
 import { assertJournalEntryIsDraft } from './refusals'
 
 const logger = createScopedLogger('postings:journal-entries')
@@ -138,7 +135,7 @@ export async function createJournalEntry(
 ): Promise<Result<JournalEntryRecord, Error>> {
   return guard(
     async () => {
-      const ctx = await requireJournalEntryFieldContext(organizationId)
+      const ctx = await requireJournalEntryFieldContext(db, organizationId)
       const kind = input.kind ?? 'manual'
       assertRecurrenceIdentity(kind, input)
 
@@ -153,7 +150,7 @@ export async function createJournalEntry(
       }
 
       const crud = new UnifiedCrudHandler(organizationId, userId, db)
-      const created = await crud.create(ctx.journalEntryDefId, values)
+      const created = await crud.create(ctx.defId, values)
       const journalEntryId = created.instance.id
 
       const draft = await requireJournalEntry(db, organizationId, journalEntryId)
@@ -179,7 +176,7 @@ export async function createJournalEntry(
         )
       }
 
-      await crud.update(toRecordId(ctx.journalEntryDefId, journalEntryId) as RecordId, {
+      await crud.update(toRecordId(ctx.defId, journalEntryId) as RecordId, {
         journal_entry_gl_posting_id: posted.glPostingId,
       })
 
@@ -213,7 +210,7 @@ export async function updateJournalEntry(
 ): Promise<Result<JournalEntryRecord, Error>> {
   return guard(
     async () => {
-      const ctx = await requireJournalEntryFieldContext(organizationId)
+      const ctx = await requireJournalEntryFieldContext(db, organizationId)
       const entry = await requireJournalEntry(db, organizationId, input.journalEntryId)
       assertJournalEntryIsDraft(entry, 'edited')
 
@@ -225,10 +222,7 @@ export async function updateJournalEntry(
 
       if (Object.keys(values).length > 0) {
         const crud = new UnifiedCrudHandler(organizationId, userId, db)
-        await crud.update(
-          toRecordId(ctx.journalEntryDefId, input.journalEntryId) as RecordId,
-          values
-        )
+        await crud.update(toRecordId(ctx.defId, input.journalEntryId) as RecordId, values)
       }
 
       // Lines, date and memo all live on the draft posting's `built` envelope
@@ -502,7 +496,7 @@ export async function discardJournalEntry(
 ): Promise<Result<void, Error>> {
   return guard(
     async () => {
-      const ctx = await requireJournalEntryFieldContext(organizationId)
+      const ctx = await requireJournalEntryFieldContext(db, organizationId)
       const entry = await requireJournalEntry(db, organizationId, input.journalEntryId)
       assertJournalEntryIsDraft(entry, 'discarded')
 
@@ -515,7 +509,7 @@ export async function discardJournalEntry(
       }
 
       const crud = new UnifiedCrudHandler(organizationId, userId, db)
-      await crud.archive(toRecordId(ctx.journalEntryDefId, entry.id) as RecordId)
+      await crud.archive(toRecordId(ctx.defId, entry.id) as RecordId)
 
       logger.info('Discarded journal entry', {
         organizationId,

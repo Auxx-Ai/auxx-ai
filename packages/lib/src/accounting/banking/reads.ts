@@ -339,6 +339,7 @@ export async function readBankTransactionIdsForAccount(
       const records = await readSystemRecords(db, organizationId, ctx, {
         by: { attribute: 'bank_transaction_bank_account', in: [bankAccountId] },
         includeArchived: true,
+        cells: false,
       })
       return { bankTransactionDefId: ctx.defId, ids: records.map((record) => record.id) }
     },

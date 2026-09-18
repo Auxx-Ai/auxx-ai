@@ -178,7 +178,6 @@ function joinSpyDb() {
 }
 
 const FIELD_CONTEXT = {
-  journalEntryDefId: 'def_je',
   fields: {
     journal_entry_number: { id: 'f_number' },
     journal_entry_date: { id: 'f_date' },

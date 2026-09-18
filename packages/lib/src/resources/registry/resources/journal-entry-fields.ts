@@ -5,7 +5,7 @@ import { toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { JournalEntryKind } from '../enum-values'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Journal Entry resource - the **draft** of a
@@ -57,7 +57,7 @@ import type { ResourceField } from '../field-types'
  * ledger page and the JE drawer are the doors, and an auto-linked sidebar entry
  * would be a second, dumber way into the same records with no line grid.
  */
-export const JOURNAL_ENTRY_FIELDS: Record<string, ResourceField> = {
+export const JOURNAL_ENTRY_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -343,4 +343,4 @@ export const JOURNAL_ENTRY_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

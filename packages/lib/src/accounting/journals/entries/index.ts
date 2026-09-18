@@ -17,15 +17,19 @@ export {
   type PostingSummary,
 } from './client'
 export {
-  getJournalEntry,
+  JOURNAL_ENTRY_ATTRIBUTES,
+  type JournalEntryAttribute,
   type JournalEntryFieldContext,
+  loadJournalEntryFieldContext,
+  requireJournalEntryFieldContext,
+} from './fields'
+export {
+  getJournalEntry,
   linesFromBuilt,
   listJournalEntries,
-  loadJournalEntryFieldContext,
   type RecurrenceIdentity,
   readRecurrenceIdentities,
   requireJournalEntry,
-  requireJournalEntryFieldContext,
 } from './reads'
 export {
   assertJournalEntryIsDraft,

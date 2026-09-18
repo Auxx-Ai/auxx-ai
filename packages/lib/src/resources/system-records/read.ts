@@ -23,7 +23,12 @@ export interface SystemRecord<A extends string> {
   cell(attribute: A): TypedFieldValue | undefined
   /** Every stored value of `attribute`, in `sortKey` order. */
   cells(attribute: A): TypedFieldValue[]
-  /** The stored rows, for the few values the typed shape cannot express — an open TAGS field keeps a free-text tag in `optionId` with `valueText` as the fallback. */
+  /**
+   * The stored rows, for the few values the typed shape cannot express — an open TAGS field keeps a free-text tag in `optionId` with `valueText` as the fallback.
+   *
+   * Also the only way to read a JSON field whose payload is an ARRAY: `cell()`
+   * runs it through `readEnvelope`, which answers `{}` for one.
+   */
   rows(attribute: A): FieldValueRow[]
   text(attribute: A): string | null
   number(attribute: A): number | null
@@ -42,11 +47,14 @@ export interface ReadSystemRecordsOptions<A extends string> {
   orderBy?: 'createdAt' | 'updatedAt'
   /** Children of these parents: instances whose relationship field `attribute` points at one of `in`. */
   by?: { attribute: A; in: readonly string[] }
+  /** `false` skips the values query for a caller that only wants live ids; every accessor then reads as unset. */
+  cells?: boolean
 }
 
 /**
  * Instances of `ctx.defId` with their cells, in two chunked queries (three with
- * `by`). No permission checks — the router asserts and hands down its scope.
+ * `by`, one with `cells: false`). No permission checks — the router asserts and
+ * hands down its scope.
  *
  * There is no `limit`/`offset`: a paginated list pages the instance query
  * itself with `systemValueJoin` and then hands the page's ids back here.
@@ -59,7 +67,7 @@ export async function readSystemRecords<A extends string>(
   // would otherwise narrow every later `cell()` to that one attribute.
   options: ReadSystemRecordsOptions<NoInfer<A>> = {}
 ): Promise<SystemRecord<A>[]> {
-  const { includeArchived = false, orderBy = 'createdAt' } = options
+  const { includeArchived = false, orderBy = 'createdAt', cells = true } = options
   let ids = options.ids ? [...new Set(options.ids)] : undefined
 
   if (options.by) {
@@ -76,7 +84,9 @@ export async function readSystemRecords<A extends string>(
       (a[orderBy]?.getTime() ?? 0) - (b[orderBy]?.getTime() ?? 0) || a.id.localeCompare(b.id)
   )
 
-  const values = await readValues(db, organizationId, instances, fieldIdsOf(ctx))
+  const values = cells
+    ? await readValues(db, organizationId, instances, fieldIdsOf(ctx))
+    : new Map<string, Map<string, FieldValueRow[]>>()
   return instances.map((instance) => buildRecord(ctx, instance, values.get(instance.id)))
 }
 
