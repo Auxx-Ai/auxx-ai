@@ -237,6 +237,12 @@ resolver for every owner. Given an owner + org + user, it finds the definition,
 finds the credential, decrypts, lazily refreshes OAuth tokens, and returns
 `RuntimeConnectionData` (`{ id, type, value, fields, authApply, metadata, expiresAt }`).
 
+A caller that only needs a credential's app/installation identity — never the
+secret — wants `connections/credential-reads.ts`'s `readAppCredential` /
+`listAppCredentials` instead: a `db`-first, no-decrypt read that joins `App` and the
+live `AppInstallation`, with none of `resolveConnectionForRuntime`'s discovery or
+decryption cost.
+
 Resolution by owner input:
 
 - **`connectionId`** — bind a specific `Credential` directly (agents, workflows, HTTP node). Loads the definition from the credential's own FK / owner / `providerKey`. Skips discovery.
@@ -416,6 +422,7 @@ mechanism, branch on `connection.type` (oauth2 vs secret). See
 | Definition schema | `packages/database/src/db/schema/connection-definition.ts` |
 | Credential schema | `packages/database/src/db/schema/credential.ts` |
 | Runtime resolver | `packages/lib/src/connections/resolve-connection-for-runtime.ts` |
+| Metadata-only credential reads (no decrypt) | `packages/lib/src/connections/credential-reads.ts` |
 | Definition loader / refresh config | `packages/credentials/src/connections/resolve-connection-definition.ts` |
 | `authApply` helper | `packages/lib/src/connections/auth-apply.ts` |
 | Save (platform/unified) | `packages/lib/src/connections/save-connection.ts` |
