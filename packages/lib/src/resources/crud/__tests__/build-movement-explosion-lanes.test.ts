@@ -118,7 +118,7 @@ vi.mock('../../../field-hooks/post/purchase-order-line-rollups', async (importOr
   recalculatePurchaseOrderLineReceived: h.recalculatePurchaseOrderLineReceived,
   recalculatePurchaseOrderLineBilled: h.recalculatePurchaseOrderLineBilled,
 }))
-vi.mock('../../../bom/subpart-graph', async (importOriginal) => ({
+vi.mock('../../../inventory/bom/subpart-graph', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   loadSubpartGraph: h.loadSubpartGraph,
 }))

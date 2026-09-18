@@ -178,7 +178,7 @@ export async function promoteUnclassifiedParts(
     return []
   }
 
-  const { readPartKinds } = await import('../../builds/build-queries')
+  const { readPartKinds } = await import('../../inventory/builds/build-queries')
   const stored = await readPartKinds(db, organizationId, partIds)
 
   const toPromote = [...new Set(partIds)].filter(

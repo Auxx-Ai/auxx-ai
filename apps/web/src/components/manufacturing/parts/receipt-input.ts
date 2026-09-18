@@ -17,8 +17,8 @@
 // before committing. It is a preview of a server-computed number, not the number
 // being submitted.
 
-import type { ReceiptCostInputs, ReceiptCostParts } from '@auxx/lib/receiving/client'
-import { computeReceiptLandedBreakdown } from '@auxx/lib/receiving/client'
+import type { ReceiptCostInputs, ReceiptCostParts } from '@auxx/lib/inventory/receiving/client'
+import { computeReceiptLandedBreakdown } from '@auxx/lib/inventory/receiving/client'
 
 /** The `purchasing.receiveStock` input, as this form builds it. */
 export interface ReceiptInput {

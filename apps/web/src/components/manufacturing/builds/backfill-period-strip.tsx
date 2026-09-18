@@ -13,7 +13,7 @@
 // February" workflow — available without splitting the RUN, which §7.1a rules
 // out anyway because coverage has to be netted at range level.
 
-import type { BackfillPlan } from '@auxx/lib/builds/client'
+import type { BackfillPlan } from '@auxx/lib/inventory/builds/client'
 import { cn } from '@auxx/ui/lib/utils'
 import { useMemo } from 'react'
 

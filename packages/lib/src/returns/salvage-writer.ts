@@ -93,9 +93,9 @@ import {
   inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../accounting/ledger/post/post-inventory-movement'
-import { loadSubpartGraph } from '../bom/subpart-graph'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
+import { loadSubpartGraph } from '../inventory/bom/subpart-graph'
 import { readStandardCost } from '../inventory/costing'
 import { batchRecalculateQoH } from '../inventory/costing/qoh'
 import {

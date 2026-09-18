@@ -31,7 +31,7 @@ import type {
   PostResult,
 } from '../../accounting/ledger/types'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
-import { type FulfillmentLineToRelieve, relieveFulfillmentLines } from '../../relief'
+import { type FulfillmentLineToRelieve, relieveFulfillmentLines } from '../../inventory/relief'
 import { flushTxWriteScope } from '../../resources/crud/tx-write-flush'
 import { runInTxWrite } from '../../resources/crud/tx-write-scope'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'

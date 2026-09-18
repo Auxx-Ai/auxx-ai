@@ -11,7 +11,7 @@
 //  - an off-BOM row must stay distinguishable from a BOM row, because
 //    `qtyPerUnit: null` is what makes a floor substitution findable later.
 
-import type { BuildComponentLine } from '@auxx/lib/builds/client'
+import type { BuildComponentLine } from '@auxx/lib/inventory/builds/client'
 import { describe, expect, it } from 'vitest'
 import { buildComponentOverrides, mergeComponentRows, rememberComponents } from './completion-input'
 

@@ -1,6 +1,13 @@
 // packages/lib/src/inventory/costing/index.ts
 
 export {
+  absorbedRate,
+  absorbsConversionCost,
+  type PartKindValue,
+  resolveAbsorptionRates,
+  resolvePartKind,
+} from './client'
+export {
   type CostSourceValue,
   type OrgPricingData,
   type PartCostResult,
@@ -46,7 +53,19 @@ export {
   widenToAncestors,
   widenToUnvaluedDescendants,
 } from './standard-cost-roll'
-export type { FulfillmentLineRelievedAverage, PartLedgerAverage } from './types'
+export type {
+  AbsorptionRates,
+  FulfillmentLineRelievedAverage,
+  PartLedgerAverage,
+  PartStandardCost,
+  RollStandardCostInput,
+  SkippedPart,
+  SkipReason,
+  StandardCostComponents,
+  StandardCostRollLine,
+  StandardCostRollPlan,
+  StandardCostRollResult,
+} from './types'
 export type {
   LandedCostBreakdown,
   OfferTariff,

@@ -3,7 +3,7 @@
 // Maintainer's tool for the generated half of the tariff starter catalogue
 // (plans/money/tasks/32-tariff-starter-catalogue.md §1.4, §9). Fetches the
 // USITC's full HTSUS Column 1 general-rate export, walks its indent tree, and
-// writes `packages/lib/src/bom/tariff-hts-general.json` as a three-level tree:
+// writes `packages/lib/src/inventory/tariffs/tariff-hts-general.json` as a three-level tree:
 // a 4-digit heading, a 6-digit subheading, and the 10-digit lines under it.
 // There is no 8-digit level in the output - the rate is set at 8 digits in the
 // source, but the lines below a subheading are few, so the 8-digit row's own
@@ -17,7 +17,7 @@
 // so the tree never opens onto nothing.
 //
 // Never edited by hand. Rerun on a new HTS revision, commit the diff, and bump
-// `TARIFF_STARTERS_VERSION` in `bom/tariff-starters.ts`. The output file is one
+// `TARIFF_STARTERS_VERSION` in `inventory/tariffs/tariff-starters.ts`. The output file is one
 // line per node or line entry on purpose, so a re-run's diff is reviewable per
 // code.
 //
@@ -34,7 +34,7 @@ const SOURCE_URL =
   'https://hts.usitc.gov/reststop/exportList?from=0101&to=9999&format=JSON&styles=false'
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
-const OUTPUT_PATH = path.join(scriptDir, '../src/bom/tariff-hts-general.json')
+const OUTPUT_PATH = path.join(scriptDir, '../src/inventory/tariffs/tariff-hts-general.json')
 
 /** One row of the USITC export. Many fields are unused here and left untyped. */
 export interface RawHtsRow {
@@ -48,7 +48,7 @@ export interface RawHtsRow {
 /** `[code, description]` for a 4-digit heading or 6-digit subheading node. */
 export type FlattenedNode = readonly [code: string, description: string]
 
-/** `[code, ratePercent, shortDescription]`, matching `HtsGeneralLine` in `bom/tariff-hts-general.ts`. */
+/** `[code, ratePercent, shortDescription]`, matching `HtsGeneralLine` in `inventory/tariffs/tariff-hts-general.ts`. */
 export type FlattenedLine = readonly [code: string, rate: number, description: string]
 
 export interface FlattenStats {

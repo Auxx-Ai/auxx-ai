@@ -33,12 +33,12 @@
 //
 // `builds.previewCompletion` runs the SAME `explodeBuildComponents` the write
 // runs, over the same overrides, and re-runs on every edit. The five cost
-// figures come from `summarizeBuildCompletion` in `@auxx/lib/builds/client`,
+// figures come from `summarizeBuildCompletion` in `@auxx/lib/inventory/builds/client`,
 // which is literally the function `completeBuild` calls. There is no second
 // implementation of the variance to drift.
 
 import { FieldType } from '@auxx/database/enums'
-import { absorbedRunCost, summarizeBuildCompletion } from '@auxx/lib/builds/client'
+import { absorbedRunCost, summarizeBuildCompletion } from '@auxx/lib/inventory/builds/client'
 import { getInstanceId, type RecordId } from '@auxx/lib/resources/client'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'

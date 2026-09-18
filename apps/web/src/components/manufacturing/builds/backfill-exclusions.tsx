@@ -21,7 +21,7 @@
 // numbers that produced it, and `already-covered` needs the third — the two
 // share a shape and differ entirely in remedy.
 
-import type { BackfillExclusion, BackfillExclusionReason } from '@auxx/lib/builds/client'
+import type { BackfillExclusion, BackfillExclusionReason } from '@auxx/lib/inventory/builds/client'
 import {
   Table,
   TableBody,

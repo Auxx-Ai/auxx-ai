@@ -109,11 +109,11 @@ vi.mock('../../../phone-geo/lookup', () => ({ lookupPhoneGeo: h.lookupPhoneGeo }
 // literal copies for the same reason the totals ones are — they are plain data, and
 // `builds/drift-hooks.ts` owns them. `reconcileOrdersFromSync` is the observable seam; the
 // real one drags the org cache and the whole build write path.
-vi.mock('../../../builds/drift-hooks', () => ({
+vi.mock('../../../inventory/builds/drift-hooks', () => ({
   LINE_DEMAND_TRIGGER_ATTRS: new Set(['line_item_part', 'line_item_qty', 'line_item_order']),
   ORDER_DEMAND_TRIGGER_ATTRS: new Set(['order_cancelled_at']),
 }))
-vi.mock('../../../builds/drift-reconciler', () => ({
+vi.mock('../../../inventory/builds/drift-reconciler', () => ({
   reconcileOrdersFromSync: h.reconcileOrdersFromSync,
 }))
 vi.mock('../../../reconcilers/parent-reconciler', () => ({

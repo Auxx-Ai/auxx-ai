@@ -36,14 +36,14 @@
  */
 
 import { roundMinorUnits } from '@auxx/utils/currency'
+import { UnprocessableEntityError } from '../../errors'
 import {
   absorbedRate,
   absorbsConversionCost,
   type PartKindValue,
   resolveAbsorptionRates,
-} from '../../builds/client'
-import type { AbsorptionRates, SkippedPart, StandardCostComponents } from '../../builds/types'
-import { UnprocessableEntityError } from '../../errors'
+} from './client'
+import type { AbsorptionRates, SkippedPart, StandardCostComponents } from './types'
 
 /** One edge of the bill of materials. Matches `bom/cost-calculator.ts`'s shape. */
 export interface SubpartEdge {

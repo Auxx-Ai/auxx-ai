@@ -59,7 +59,7 @@ vi.mock('../../../../money/fulfillments', () => ({
   isLiveFulfillment: h.isLiveFulfillment,
 }))
 
-vi.mock('../../../../relief', () => ({
+vi.mock('../../../../inventory/relief', () => ({
   relieveFulfillmentLines: h.relieveFulfillmentLines,
 }))
 

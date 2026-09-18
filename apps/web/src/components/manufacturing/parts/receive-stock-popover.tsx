@@ -27,7 +27,10 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { formatLandedCostSummary, type ReceiptCostInputs } from '@auxx/lib/receiving/client'
+import {
+  formatLandedCostSummary,
+  type ReceiptCostInputs,
+} from '@auxx/lib/inventory/receiving/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'

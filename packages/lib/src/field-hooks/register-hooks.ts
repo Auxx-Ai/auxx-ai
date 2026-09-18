@@ -1,13 +1,6 @@
 // packages/lib/src/field-hooks/register-hooks.ts
 
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import { registerAutoBuildRules } from '../builds/auto-build-rule'
-import {
-  stampOrderAfterLineDelete,
-  stampOrderOnLineChange,
-  stampOrderOnOrderChange,
-} from '../builds/drift-hooks'
-import { registerOrderDriftReconcilers } from '../builds/drift-reconciler'
 import {
   ensureVisitOnWorkOrderCreate,
   syncVisitPinsOnAddressNormalized,
@@ -20,6 +13,13 @@ import {
   resolveInteractionsOnCompanyDomainChange,
   resolveInteractionsOnIdentifierChange,
 } from '../interactions/hooks'
+import { registerAutoBuildRules } from '../inventory/builds/auto-build-rule'
+import {
+  stampOrderAfterLineDelete,
+  stampOrderOnLineChange,
+  stampOrderOnOrderChange,
+} from '../inventory/builds/drift-hooks'
+import { registerOrderDriftReconcilers } from '../inventory/builds/drift-reconciler'
 import { generateDraftOnCompletion } from '../money/auto-invoice'
 import {
   BILLING_PROJECTION_ATTRS,

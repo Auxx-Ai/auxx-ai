@@ -2,6 +2,8 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { getCachedEntityDefId } from '@auxx/lib/cache'
+import { BadRequestError, NotFoundError } from '@auxx/lib/errors'
 import {
   buildNow,
   cancelBuild,
@@ -21,7 +23,7 @@ import {
   reverseBuild,
   startBuild,
   undoBatchRun,
-} from '@auxx/lib/builds'
+} from '@auxx/lib/inventory/builds'
 import type {
   BackfillExclusion,
   BackfillGrouping,
@@ -29,9 +31,7 @@ import type {
   BackfillPlan,
   BackfillPreflight,
   BackfillStatus,
-} from '@auxx/lib/builds/client'
-import { getCachedEntityDefId } from '@auxx/lib/cache'
-import { BadRequestError, NotFoundError } from '@auxx/lib/errors'
+} from '@auxx/lib/inventory/builds/client'
 import {
   loadEffectiveAbsorptionRates,
   previewStandardCostRoll,
@@ -132,7 +132,7 @@ const completionShape = {
  * (plans/products/build/01-build-plan.md).
  *
  * **Every procedure here is the permission gate for the lib call underneath.**
- * `@auxx/lib/builds` contains no access checks by design — its module headers
+ * `@auxx/lib/inventory/builds` contains no access checks by design — its module headers
  * say so explicitly — so if a gate is missing here it is missing everywhere.
  * The authority is per-definition, resolved from the org cache and asserted
  * against the request's `CapabilitySet`:

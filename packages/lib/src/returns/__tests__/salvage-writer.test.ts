@@ -80,7 +80,7 @@ vi.mock('../salvage-reads', () => ({
   }),
 }))
 
-vi.mock('../../bom/subpart-graph', () => ({
+vi.mock('../../inventory/bom/subpart-graph', () => ({
   loadSubpartGraph: async () => h.graph,
 }))
 

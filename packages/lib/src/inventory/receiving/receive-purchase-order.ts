@@ -1,0 +1,434 @@
+// packages/lib/src/inventory/receiving/receive-purchase-order.ts
+
+/**
+ * The multi-line receipt: receive several purchase-order lines at once, each
+ * valued at the price the purchase order already froze
+ * (plans/purchasing/05-receiving-cost-and-corrections.md sections 3.2 and 4.1).
+ *
+ * This exists as its own entry point rather than as an option on
+ * {@link import('./receive-stock').receiveStock} because the price authority is
+ * different: this door has a `purchase_order_line` per line and reads
+ * `purchase_order_line_expected_unit_price` from it, while the single-line door
+ * receives against a bare part and has to be handed a price. The single-line
+ * signature stays exactly as it is.
+ *
+ * 🛑 **Nothing is allocated here any more.** A purchase order's shipping, tax
+ * and discount are ORDER-level amounts; a receipt is a SHIPMENT-level event.
+ * Spreading the first across the second capitalises the same freight once per
+ * delivery — on PO-0001 that put $120.00 into inventory against a $40.00 freight
+ * charge across four receipts. The double-count disappears by construction once
+ * nothing allocates at receipt. `allocateLandedCost` is kept, unchanged and
+ * untouched, for the bill side (section 4.2), where the freight is actually
+ * known.
+ *
+ * 🛑 **One receipt posts ONE `inventory_movement` entry, not one per line**
+ * (TARGET §5 - "one entry per document with member links to its
+ * `stock_movement`s"). Every line's movement is written in the same
+ * transaction and the posting claims the FIRST movement as its subject, with
+ * every movement — that one included — linked as a member, exactly the shape
+ * `receiveStock`'s own single-movement posting already has, just with N
+ * members instead of 1. Its `parent` is the purchase order every line belongs
+ * to (TARGET §5's "document / order or PO"), resolved once for the whole set.
+ *
+ * No permission checks. The router asserts (build plan section 3.3).
+ */
+
+import { type Database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { and, eq, inArray } from 'drizzle-orm'
+import type { Result } from 'neverthrow'
+import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
+import {
+  exportInventoryMovement,
+  inventoryTxnDate,
+  postInventoryMovementInTx,
+} from '../../accounting/ledger/post/post-inventory-movement'
+import { getCachedEntityDefId, getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
+import {
+  PURCHASE_ORDER_LINE_ROLLUPS,
+  recalculatePurchaseOrderLineRollups,
+} from '../../field-hooks/post/purchase-order-line-rollups'
+import { batchRecalculateQoH } from '../costing/qoh'
+import { type StockMovementInput, writeStockMovements } from '../movements'
+import { resolveInventoryRoleForPartKind } from '../movements/client'
+import { assertCostFieldsMaterialized } from '../movements/cost-fields'
+import type { MovementRecord } from '../movements/types'
+import { guard } from './guard'
+import { readPartKind } from './receipt-queries'
+import { setFirstStandardCostFromReceipt } from './receive-stock'
+import type { ReceivePurchaseOrderInput, ReceivePurchaseOrderLineInput } from './types'
+
+const logger = createScopedLogger('receiving:receive-purchase-order')
+
+/** The one field this door reads to price a receipt. */
+const EXPECTED_UNIT_PRICE_ATTRIBUTE = 'purchase_order_line_expected_unit_price'
+
+/**
+ * Receive a purchase order, valuing every line at its agreed price.
+ *
+ * Each line becomes one `receive` movement with its `purchaseOrderLine` set —
+ * which is what lets `quantityReceived` roll up from the ledger instead of being
+ * typed, and what gives the three-way match something to compare the vendor's
+ * bill against.
+ *
+ * 🛑 **The price is read here, not received here.** Any price on the wire is
+ * ignored; the value frozen onto the movement is
+ * `purchase_order_line_expected_unit_price`, read server-side from the line
+ * being received against. The PO's agreed price previously reached the ledger by
+ * round-tripping through an editable text box, so a browser could value stock at
+ * any number it asserted — receipt 3 on PO-0001 is stored at $200.00 against an
+ * agreed $12.50, and the three-way match cannot see it because the match reads
+ * the bill against the PO line and never reads the movement's price at all.
+ *
+ * The `vendor_part` row is deliberately NOT a fallback. It holds standing terms
+ * that may be months newer than the order; the whole reason
+ * `expected_unit_price` exists is that the agreed price is frozen at order time.
+ * A line without one is a data problem to fix on the order, not a price to guess.
+ *
+ * Validation runs over the whole set BEFORE the first movement is written — the
+ * price read included. A partial write here is worse than a rejection: half a
+ * shipment received is a PO that reads `partially_received` for a reason nobody
+ * can reconstruct, and there is no undo for a ledger entry — only a compensating
+ * one.
+ *
+ * Every movement is written in ONE transaction and the receipt posts ONE
+ * `inventory_movement` entry against all of them (TARGET §5) — never `receiveStock`
+ * per line, which would open its own transaction and post its own entry per line.
+ */
+export async function receivePurchaseOrder(
+  db: Database,
+  organizationId: string,
+  userId: string,
+  input: ReceivePurchaseOrderInput
+): Promise<Result<MovementRecord[], Error>> {
+  return guard(
+    async () => {
+      const lines = input.lines ?? []
+      assertReceivableLines(lines)
+
+      const stored = await readExpectedUnitPrices(db, organizationId, lines)
+      const unitCosts = lines.map((line, index) =>
+        assertAgreedUnitPrice(stored.get(line.purchaseOrderLineId), line, index)
+      )
+
+      const occurredAt = input.occurredAt ?? new Date()
+
+      const partDefId = await requireCachedEntityDefId(organizationId, 'part')
+      const movementDefId = await getCachedEntityDefId(organizationId, 'stock_movement')
+      if (!movementDefId) {
+        throw new NotFoundError('This organization has no stock_movement entity definition')
+      }
+      await assertCostFieldsMaterialized(organizationId)
+
+      // One inventory role per line, from that line's OWN part kind — the same
+      // read `receiveStock` makes per line, just run once for the whole set
+      // ahead of the shared transaction rather than once per its own.
+      const glAccounts = await Promise.all(
+        lines.map(async (line) =>
+          resolveInventoryRoleForPartKind(
+            await unwrap(readPartKind(db, organizationId, line.partId))
+          )
+        )
+      )
+
+      // The posting's `parent` — the ONE purchase order every line belongs to
+      // (TARGET §5: "document / order or PO"). `null` when the relation isn't
+      // materialised; a receipt against more than one order is refused, since
+      // the posting has exactly one parent slot to put it in.
+      const purchaseOrderId = await resolvePurchaseOrderId(db, organizationId, lines)
+
+      // A part's FIRST receipt gives it a standard cost (`receiveStock`'s step
+      // 4). Sequential, in line order: `ensureStandardCost` only writes where
+      // one is missing, so two lines of the same part must run in the order the
+      // caller sent them, exactly as the per-line delegation this replaces did.
+      for (let i = 0; i < lines.length; i++) {
+        await setFirstStandardCostFromReceipt(db, organizationId, lines[i]!.partId, unitCosts[i]!)
+      }
+
+      // The movements and the ONE entry that raises them, together — a
+      // multi-line receipt is one document, not N (TARGET §5).
+      const { written, post } = await db.transaction(async (tx) => {
+        const txDb = tx as unknown as Database
+        const movementInputs: StockMovementInput[] = lines.map((line, i) => ({
+          partInstanceId: line.partId,
+          type: 'receive',
+          quantity: line.quantity,
+          unitCost: unitCosts[i]!,
+          // A receipt is the first writer of `actual`: this cost is what was
+          // paid, not what the standard cost roll-up expects it to have been.
+          costBasis: 'actual',
+          glAccount: glAccounts[i]!,
+          occurredAt,
+          // The same number in both roles, and that is the point: with nothing
+          // capitalised at receipt the landed cost IS the agreed price, and
+          // `vendorUnitPrice` carries it as provenance for the three-way match.
+          vendorUnitPrice: unitCosts[i]!,
+          reference: input.reference,
+          reason: input.reason,
+          links: { vendorPartId: line.vendorPartId, purchaseOrderLineId: line.purchaseOrderLineId },
+        }))
+
+        const result = await writeStockMovements(
+          { db: txDb, organizationId, userId, movementDefId, partDefId, lane: { kind: 'plain' } },
+          movementInputs
+        )
+        if (result.isErr()) throw result.error
+        const records = result.value.records
+
+        const post: InTxPostResult | null = await postInventoryMovementInTx(tx, {
+          organizationId,
+          kind: 'receive',
+          // The FIRST movement anchors the claim; every movement — itself
+          // included — is linked as a `member` below, the same shape
+          // `receiveStock`'s own single-movement posting already has.
+          subject: { sourceKind: 'stock_movement', sourceId: records[0]!.movementId },
+          ...(purchaseOrderId
+            ? { parent: { sourceKind: 'purchase_order', sourceId: purchaseOrderId } }
+            : {}),
+          txnDate: inventoryTxnDate(occurredAt),
+          movements: records
+            .filter((record) => record.glAccount && record.extendedCost !== 0)
+            .map((record) => ({
+              id: record.movementId,
+              extendedCostMinor: record.extendedCost,
+              glAccountRole: record.glAccount as string,
+            })),
+          actorUserId: userId,
+        })
+
+        return { written: records, post }
+      })
+
+      // Belt on the plain lane's own recalculation, which fired against a
+      // pre-commit snapshot from inside the transaction above.
+      await batchRecalculateQoH(organizationId, [...new Set(written.map((r) => r.partInstanceId))])
+      await exportInventoryMovement(db, post)
+
+      await settleLineRollups(
+        organizationId,
+        lines.map((line) => line.purchaseOrderLineId)
+      )
+
+      return written.map((record, i) => {
+        const line = lines[i]!
+        return {
+          movementId: record.movementId,
+          recordId: record.recordId,
+          partInstanceId: record.partInstanceId,
+          quantity: record.quantity,
+          unitCost: record.unitCost,
+          extendedCost: record.extendedCost,
+          vendorUnitPrice: unitCosts[i]!,
+          vendorPartId: line.vendorPartId ?? null,
+          glAccount: record.glAccount,
+          occurredAt,
+          purchaseOrderLineId: line.purchaseOrderLineId,
+        } satisfies MovementRecord
+      })
+    },
+    'Failed to receive purchase order',
+    { organizationId, lineCount: input.lines?.length ?? 0 }
+  )
+}
+
+/** Unwrap a neverthrow `Result` back into the imperative style `guard()` expects. */
+async function unwrap<T>(promise: Promise<Result<T, Error>>): Promise<T> {
+  const result = await promise
+  if (result.isErr()) throw result.error
+  return result.value
+}
+
+/**
+ * Roll the whole receipt up ONCE, now that every movement is committed.
+ *
+ * 🛑 The 10x. `stock_movement` create fires a lifecycle rule PER ROW, and that
+ * rule re-SUMs one line and then derives the whole purchase order from it. A
+ * ten-line receipt therefore ran the order-level pass ten times over the same
+ * order — the same parent lookup, the same line set, the same answer nine times
+ * out of ten. This call knows the entire line set before the first movement was
+ * written, so it does the work once: one grouped SUM, one write per line that
+ * actually moved, one order-level derivation.
+ *
+ * ⚠️ **It suppresses nothing, and that is the design.** The per-movement rules
+ * still fire behind it. They find each line's `quantity_received` already equal
+ * to the SUM they compute and return before writing, so the order-level pass
+ * behind them never runs. The saving comes from getting there FIRST, not from a
+ * flag — there is no context to thread, nothing to leak across the queue
+ * boundary those rules actually run on, and if this call never happens the old
+ * per-movement path produces exactly the same result, just more slowly.
+ *
+ * ⚠️ A failure here is logged and swallowed. The movements are the primary fact
+ * and are already committed; throwing would report a receipt that happened as a
+ * receipt that failed. The lifecycle rules are the fallback and still run.
+ */
+async function settleLineRollups(
+  organizationId: string,
+  purchaseOrderLineIds: string[]
+): Promise<void> {
+  try {
+    await recalculatePurchaseOrderLineRollups(
+      organizationId,
+      purchaseOrderLineIds,
+      PURCHASE_ORDER_LINE_ROLLUPS.received
+    )
+  } catch (error) {
+    logger.error('Failed to settle purchase order line roll-ups after a receipt', {
+      organizationId,
+      lineCount: purchaseOrderLineIds.length,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/**
+ * Every line must name a part and a purchase-order line, and carry a positive
+ * quantity.
+ *
+ * The `purchaseOrderLineId` requirement is what separates this from
+ * {@link import('./receive-stock').receiveStock}: it is both the link the
+ * roll-up and the three-way match need, and — since section 4.1 — the only way
+ * this door can find out what the line cost.
+ */
+function assertReceivableLines(lines: ReceivePurchaseOrderLineInput[]): void {
+  if (lines.length === 0) {
+    throw new BadRequestError('A purchase order receipt needs at least one line')
+  }
+  for (const [index, line] of lines.entries()) {
+    if (!line.partId) {
+      throw new BadRequestError(`Line ${index + 1} has no part`)
+    }
+    if (!line.purchaseOrderLineId) {
+      throw new BadRequestError(`Line ${index + 1} has no purchase order line`)
+    }
+    if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
+      throw new BadRequestError(`Line ${index + 1} must receive a quantity greater than zero`)
+    }
+  }
+}
+
+/**
+ * The agreed unit price of every line being received, in ONE query.
+ *
+ * One statement for the whole set rather than one per line: a fifty-line
+ * container receipt would otherwise open fifty round trips before writing
+ * anything, and the read has to complete for the entire set before the first
+ * movement anyway (see the write path's validation contract).
+ *
+ * Keyed by `purchase_order_line` instance id. A line with no stored value is
+ * simply absent from the map, and {@link assertAgreedUnitPrice} turns that into
+ * the refusal — this function reports what is there, it does not judge it.
+ *
+ * The `organizationId` predicate plus a `fieldId` that only exists on
+ * `purchase_order_line` is the scope: a caller cannot read another org's prices,
+ * and an id that is not a purchase order line matches nothing.
+ */
+async function readExpectedUnitPrices(
+  db: Database,
+  organizationId: string,
+  lines: ReceivePurchaseOrderLineInput[]
+): Promise<Map<string, number | null>> {
+  const fields = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([EXPECTED_UNIT_PRICE_ATTRIBUTE])
+  const priceField = fields[EXPECTED_UNIT_PRICE_ATTRIBUTE]
+  if (!priceField) {
+    // Same shape as the receipt cost fields: "purchasing is not set up" beats
+    // silently receiving a shipment nobody can value.
+    throw new UnprocessableEntityError(
+      'Receiving is not available until the purchase order line price field is provisioned'
+    )
+  }
+
+  const lineIds = [...new Set(lines.map((line) => line.purchaseOrderLineId))]
+  const rows = await db
+    .select({
+      entityId: schema.FieldValue.entityId,
+      valueNumber: schema.FieldValue.valueNumber,
+    })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        inArray(schema.FieldValue.entityId, lineIds),
+        eq(schema.FieldValue.fieldId, priceField.id)
+      )
+    )
+
+  return new Map(rows.map((row) => [row.entityId, row.valueNumber]))
+}
+
+/** The relationship every `purchase_order_line` carries back to its order. */
+const PURCHASE_ORDER_LINE_ORDER_ATTRIBUTE = 'purchase_order_line_purchase_order'
+
+/**
+ * The ONE purchase order every line in this receipt belongs to, in one query —
+ * the same relation `purchase-order-status-writer.ts`'s `readOrdersForLines`
+ * and `purchasing/match-hook.ts` read, just against this door's own `db`
+ * instead of the module-level singleton so it stays testable without one.
+ *
+ * `null` when the relation isn't materialised for this org — the posting then
+ * carries no `parent`, the same as it carried none before this existed. A
+ * receipt naming lines from more than one order is refused: `postInventoryMovementInTx`'s
+ * `parent` is a single link, and picking one of two orders to credit would be
+ * a silent, wrong answer rather than a missing one. In practice this never
+ * fires — `receive-po-lines.ts` only ever builds a receipt from one order's own
+ * lines — but the assertion is what makes that a guarantee instead of an
+ * assumption.
+ */
+async function resolvePurchaseOrderId(
+  db: Database,
+  organizationId: string,
+  lines: ReceivePurchaseOrderLineInput[]
+): Promise<string | null> {
+  const fields = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([PURCHASE_ORDER_LINE_ORDER_ATTRIBUTE])
+  const orderField = fields[PURCHASE_ORDER_LINE_ORDER_ATTRIBUTE]
+  if (!orderField) return null
+
+  const lineIds = [...new Set(lines.map((line) => line.purchaseOrderLineId))]
+  const rows = await db
+    .select({ relatedEntityId: schema.FieldValue.relatedEntityId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        inArray(schema.FieldValue.entityId, lineIds),
+        eq(schema.FieldValue.fieldId, orderField.id)
+      )
+    )
+
+  const orderIds = new Set(
+    rows.map((row) => row.relatedEntityId).filter((id): id is string => !!id)
+  )
+  if (orderIds.size === 0) return null
+  if (orderIds.size > 1) {
+    throw new BadRequestError(
+      'A purchase order receipt can only be written against one purchase order, but these lines belong to more than one.'
+    )
+  }
+  return [...orderIds][0]!
+}
+
+/**
+ * The stored price, or a refusal naming the line it is missing from.
+ *
+ * Zero is refused here rather than left to `receiveStock`'s zero-cost guard so
+ * the message names the purchase order line: "line 3 has no agreed price" is
+ * actionable on the order, while "refusing to write a receipt at zero cost" sends
+ * the reader to a form that no longer has a price box.
+ */
+function assertAgreedUnitPrice(
+  stored: number | null | undefined,
+  line: ReceivePurchaseOrderLineInput,
+  index: number
+): number {
+  if (stored == null || !Number.isFinite(stored) || stored <= 0) {
+    throw new UnprocessableEntityError(
+      `Line ${index + 1} (purchase order line ${line.purchaseOrderLineId}) has no agreed unit price. ` +
+        'Set the price on the purchase order line before receiving it.'
+    )
+  }
+  return stored
+}

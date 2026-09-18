@@ -73,8 +73,8 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import type { FulfillmentLineToRelieve } from '../../../inventory/relief'
 import type { SyncChangeManifest } from '../../../record-rules/sync-manifest-types'
-import type { FulfillmentLineToRelieve } from '../../../relief'
 
 const logger = createScopedLogger('finalize-integrity')
 
@@ -247,7 +247,7 @@ async function runFulfillmentReliefForSync(
   }
   if (lines.length === 0) return
 
-  const { relieveFulfillmentLines } = await import('../../../relief')
+  const { relieveFulfillmentLines } = await import('../../../inventory/relief')
   const { getOrgCache } = await import('../../../cache')
   const userId = await getOrgCache().get(organizationId, 'systemUser')
 

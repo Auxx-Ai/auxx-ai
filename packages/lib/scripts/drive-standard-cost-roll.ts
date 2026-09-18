@@ -11,7 +11,7 @@
 //   npx dotenv -- npx tsx packages/lib/scripts/drive-standard-cost-roll.ts <orgId>
 
 import { database as db } from '@auxx/database'
-import { skipReasonLabel } from '../src/builds/client'
+import { skipReasonLabel } from '../src/inventory/builds/client'
 import { previewStandardCostRoll } from '../src/inventory/costing/standard-cost-queries'
 
 const ORG = process.argv[2] ?? ''
