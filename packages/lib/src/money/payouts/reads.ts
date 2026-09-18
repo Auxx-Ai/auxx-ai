@@ -497,7 +497,7 @@ async function hydrate(
     bucket.set(value.fieldId, value)
   }
 
-  return page.map((row) => {
+  const records: PayoutRecord[] = page.map((row) => {
     const read = (attr: PayoutAttribute) => {
       const id = ctx.fields[attr]?.id
       return id ? (byInstance.get(row.id)?.get(id) ?? null) : null
@@ -527,11 +527,42 @@ async function hydrate(
       bankTransactionId: read('payout_bank_transaction_id')?.valueText ?? null,
       paymentGatewayId: read('payout_payment_gateway')?.relatedEntityId ?? null,
       bankAccountId: read('payout_bank_account')?.relatedEntityId ?? null,
+      glPostingId: null,
       destinationMismatch: read('payout_destination_mismatch')?.valueText ?? null,
       source: resolvePayoutSource(read('payout_source')?.optionId),
       createdAt: row.createdAt,
     }
   })
+  return withLivePostings(db, organizationId, records)
+}
+
+/** Stamp each record's live `posted` entry from the claim table, one query per page. */
+async function withLivePostings(
+  db: Database,
+  organizationId: string,
+  records: PayoutRecord[]
+): Promise<PayoutRecord[]> {
+  const gatewayIds = records.map((r) => r.gatewayId).filter((id): id is string => !!id)
+  if (gatewayIds.length === 0) return records
+  const rows = await db
+    .select({ sourceId: schema.GlPostingSource.sourceId, glPostingId: schema.GlPosting.id })
+    .from(schema.GlPostingSource)
+    .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId))
+    .where(
+      and(
+        eq(schema.GlPostingSource.organizationId, organizationId),
+        eq(schema.GlPostingSource.sourceKind, 'payout'),
+        eq(schema.GlPostingSource.linkRole, 'subject'),
+        inArray(schema.GlPostingSource.sourceId, gatewayIds),
+        eq(schema.GlPosting.status, 'posted')
+      )
+    )
+  const byGateway = new Map(rows.map((row) => [row.sourceId, row.glPostingId]))
+  return records.map((record) =>
+    record.gatewayId && byGateway.has(record.gatewayId)
+      ? { ...record, glPostingId: byGateway.get(record.gatewayId) ?? null }
+      : record
+  )
 }
 
 function toIsoDay(value: string | Date | null | undefined): string | null {

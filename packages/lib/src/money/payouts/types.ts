@@ -38,6 +38,8 @@ export interface PayoutRecord {
    * and the remedy. Null once posted, or if it never blocked.
    */
   blockedReason: string | null
+  /** The payout's live `posted` entry, read through `GlPostingSource`; null until it posts or after a reversal. */
+  glPostingId: string | null
   /**
    * The bank line that confirmed this payout (brief 18 §1, the duplicate
    * detector's prevention half). Set only by `matchTransaction`
