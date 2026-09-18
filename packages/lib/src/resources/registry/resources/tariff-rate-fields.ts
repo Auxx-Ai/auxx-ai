@@ -15,8 +15,8 @@ import type { ResourceField } from '../field-types'
  * people actually enter: if every row is left blank it degrades exactly to
  * "the latest row wins", and the day someone wants MFN and 301 apart they start
  * filling `authority` in and nothing else changes. The rule itself is
- * `resolveTariffRate` in `bom/vendor-cost.ts` - pure, and shared with the
- * drawer through `bom/client.ts`.
+ * `resolveTariffRate` in `inventory/costing/vendor-cost.ts` - pure, and shared
+ * with the drawer through `inventory/costing/client.ts`.
  *
  * 🛑 **Every row carries a date. There is no null-means-current row and there
  * is no `effectiveTo`** (§1.4). "Current" is derivable as

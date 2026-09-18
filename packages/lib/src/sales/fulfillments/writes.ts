@@ -9,7 +9,7 @@
  * refusal, rather than returning a `neverthrow` `Result`: every caller today
  * runs these deep inside its OWN transaction and its OWN `guard()`
  * (`money/orders/fulfill.ts`'s `fulfillOrder`), the same posture
- * `stock-movements/write-movements.ts` takes for the same reason - a second
+ * `inventory/movements/write-movements.ts` takes for the same reason - a second
  * Result wrapper here would just get unwrapped one line later.
  *
  * 🛑 **None of these open a transaction.** {@link createFulfillment} is meant

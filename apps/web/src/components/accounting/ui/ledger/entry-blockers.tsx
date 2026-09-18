@@ -57,7 +57,7 @@ export interface LedgerBlocker {
   error: string
   /**
    * The refusal as the separate pieces of work it is made of, for the refusals
-   * that HAVE pieces. Built in `packages/lib/src/postings/close-blockers.ts`,
+   * that HAVE pieces. Built in `packages/lib/src/accounting/ledger/periods/close-blockers.ts`,
    * which also assembles {@link error} out of these same items.
    *
    * 🛑 When this is present the card renders ONE ROW PER ITEM with its own

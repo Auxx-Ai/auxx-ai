@@ -44,7 +44,7 @@ function computeDiscountAmount(
 
 /**
  * Pure, isomorphic document-totals math shared by the server recompute hook
- * (`totals-hooks.ts`) and the client-side optimistic footer (`@auxx/lib/money/client`).
+ * (`totals-hooks.ts`) and the client-side optimistic footer (`@auxx/lib/sales/client`).
  * No `Date`, no I/O — safe to call from either environment.
  *
  * Rules (money MQ1 build spec §F.1), all amounts in integer cents:

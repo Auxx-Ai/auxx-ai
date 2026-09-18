@@ -15,7 +15,7 @@
 // pollers and an HTTP server at import time and installs process signal
 // handlers, so it cannot be imported by a test. The behavioural half - that the
 // registration makes a connected org resolve to its adapter instead of `none` -
-// is `packages/lib/src/money/__tests__/accounting-providers.test.ts`. This file
+// is `packages/lib/src/accounting/providers/__tests__/accounting-providers.test.ts`. This file
 // pins the one thing that test cannot see: that THIS process calls it, and
 // calls it before the workers start.
 

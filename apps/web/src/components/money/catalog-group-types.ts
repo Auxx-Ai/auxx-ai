@@ -3,7 +3,7 @@
 // Client-side types for `catalog_group` entries (product bundles,
 // plans/dispatch/money/09-product-groups.md). Nothing server-side reads the
 // entries array in v1 — the explode runs in the line builder — so these live
-// here instead of `@auxx/lib/money/client`; promote later if that changes.
+// here instead of `@auxx/lib/sales/client`; promote later if that changes.
 
 import { generateId } from '@auxx/utils'
 

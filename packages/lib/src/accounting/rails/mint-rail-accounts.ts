@@ -69,7 +69,7 @@ export interface MintRailAccountsInput {
    *
    * Suggested by `suggestRail` (`@auxx/lib/accounting/rails/rail-catalogue`)
    * and then edited by a person. Taken as a plain string rather than derived
-   * from a handle here so that `postings/` does not import `payment-gateways/`,
+   * from a handle here so that the ledger does not import the rail reads,
    * which imports `postings/chart-accounts` already.
    */
   clearingAccountName: string

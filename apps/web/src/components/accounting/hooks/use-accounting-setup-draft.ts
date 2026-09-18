@@ -17,7 +17,7 @@ import { useSettings } from '~/hooks/use-settings'
  *
  * Reads cost nothing: `useSettings` rides the org cache hydrated by the provider, so every key is
  * in hand on load at zero queries. That is also why there is no `setupReadiness` endpoint - see
- * `packages/lib/src/postings/setup-readiness.ts`.
+ * `packages/lib/src/accounting/ledger/setup/setup-readiness.ts`.
  */
 export function useAccountingSetupDraft(keys: readonly string[]) {
   const { getSetting, batchUpdateOrganizationSettings, isBatchUpdatingOrgSettings } = useSettings({

@@ -121,7 +121,7 @@ const CALLER_TYPE_ALLOWLIST: Record<string, string[]> = {
   'app-tool-options': ['tool'],
   // Platform-initiated app-tool orchestration: backend business logic driving an
   // installed app's tools directly (QuickBooks invoice/payment sync, future outbound
-  // integration syncs). See packages/lib/src/money/quickbooks/invoke-quickbooks-tool.ts.
+  // integration syncs). See packages/lib/src/accounting/providers/quickbooks/invoke-quickbooks-tool.ts.
   'integration-sync': ['tool'],
 }
 

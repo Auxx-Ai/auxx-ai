@@ -32,7 +32,7 @@
  * publishes at 8 digits and so does this file. `membershipsFor` already tried
  * the 8-digit prefix first; only the data was coarser than the lookup.
  *
- * 🛑 **Never export this module (or the JSON) through `bom/client.ts`.** Same
+ * 🛑 **Never export this module (or the JSON) through `inventory/tariffs/client.ts`.** Same
  * rule and same reason as `tariff-hts-general.ts`: the web bundle must not
  * carry the schedule. `expandTariffStarter` and `membershipsFor` stay pure and
  * client-safe by taking the table as an argument; the server loads it here.

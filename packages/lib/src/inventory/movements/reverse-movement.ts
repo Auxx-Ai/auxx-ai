@@ -383,7 +383,7 @@ interface WriteReversalArgs {
 
 /**
  * Step 4: write the one opposite movement, through the shared
- * `stock-movements/writeStockMovements` (plans/money/tasks/50-batch-inventory-relief.md
+ * `inventory/movements/writeStockMovements` (plans/money/tasks/50-batch-inventory-relief.md
  * §2) - the same writer `writeReceiveMovement` uses and for the same reason: a
  * direct `EntityInstance` + `FieldValue` insert writes rows the post-commit
  * triggers (QoH recalculation, the purchase-order roll-up, timeline, realtime)

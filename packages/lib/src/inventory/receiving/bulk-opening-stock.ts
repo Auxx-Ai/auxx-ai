@@ -650,10 +650,10 @@ interface WriteInitialMovementsArgs {
  *
  * 🛑 **Not `writeStockMovements`.** This is the one writer whose cardinality is
  * `bulkCreate` with per-INDEX failure tolerance - a bad part must not lose the
- * other 494 - which `stock-movements/write-movements.ts` does not attempt to
+ * other 494 - which `inventory/movements/write-movements.ts` does not attempt to
  * unify (plans/money/tasks/50-batch-inventory-relief.md §2.2 does not name
  * cardinality as a shared axis). It DOES share
- * `stock-movements/buildStockMovementValues` for the nine keys and the sign
+ * `inventory/movements/buildStockMovementValues` for the nine keys and the sign
  * convention, so the `adjustSubparts: false` default has one definition
  * regardless of which of the six writers reaches it.
  */

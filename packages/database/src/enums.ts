@@ -811,7 +811,7 @@ export const FileVisibilityValues = ['PUBLIC', 'PRIVATE', 'INTERNAL'] as const
 // ============================================================================
 // GENERAL LEDGER ENUMS  (decision G6 — plans/money/design/gl-posting-tables.md)
 // Kept in step with `db/schema/gl-posting.ts` and with `POSTING_TYPES` in
-// `packages/lib/src/postings/types.ts`. Client-safe: the close console renders
+// `packages/lib/src/accounting/ledger/types.ts`. Client-safe: the close console renders
 // these and must not import the Drizzle schema to do it.
 // ============================================================================
 

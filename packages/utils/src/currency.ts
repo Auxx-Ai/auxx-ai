@@ -17,7 +17,7 @@ export interface CurrencyDisplayOptions {
   /**
    * How a negative amount renders (default `'minus'`, `Intl`'s own behaviour -
    * a leading `-$1,234.56`). `'parentheses'` renders `($1,234.56)` instead,
-   * the accounting convention `packages/lib/src/postings/reports/pdf/` uses
+   * the accounting convention `packages/lib/src/accounting/reports/pdf/` uses
    * for a printed statement - screens keep the minus (`formatSignedMinor`
    * already matches it), so this is opt-in rather than a default change.
    */

@@ -383,7 +383,7 @@ export const purchasingRouter = createTRPCRouter({
    * order, and nothing about a receipt.
    *
    * `markPurchaseOrderSent` throws its `AuxxError` directly rather than returning a
-   * `Result` — it is a `@auxx/lib/money` lifecycle mutation and follows that
+   * `Result` — it is a `@auxx/lib/purchasing` lifecycle mutation and follows that
    * module's convention, not `@auxx/lib/inventory/receiving`'s. `auxxErrorMiddleware` maps it,
    * so there is nothing to unwrap here.
    */

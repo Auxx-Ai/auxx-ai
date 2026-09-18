@@ -29,7 +29,7 @@ vi.mock('../../../../cache', () => ({
 }))
 
 // `assertScopableGateway` (task 58 §3) reads a `payment_gateway` record
-// through `payment-gateways/reads.ts`, which is its own subsystem with its
+// through `accounting/rails/reads.ts`, which is its own subsystem with its
 // own field-provisioning story - mocked here rather than taught to the
 // hand-written `stubDb` below, which only speaks `FinancialSourceAccount`.
 // `listRoleSources` (assertScopableSource's read) now reaches the same

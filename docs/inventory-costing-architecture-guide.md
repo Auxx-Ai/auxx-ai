@@ -2,11 +2,12 @@
 
 # Inventory, Purchasing & Costing Architecture Guide
 
-**Last Updated:** 2026-08-28
+**Last Updated:** 2026-09-18
 
-> **Target model (2026-09-17):** the mechanism below is what is in the code today.
-> [`plans/accounting/TARGET.md`](../plans/accounting/TARGET.md) is what it is being moved to;
-> sections it overturns carry a ⛔ callout. Do not build new work on a section marked ⛔.
+> [`plans/accounting/TARGET.md`](../plans/accounting/TARGET.md) is the statement of intent this
+> subsystem was built to, and it has landed: the monthly inventory assertion is gone and every
+> inventory document posts its own entry (§9.3). Where the plan and the code disagree, **the code
+> is the truth**, and §12 lists the places they currently do.
 
 **Scope:** The money spine that points *inward and through* — buy, receive, bill, match, build,
 value, and post. `purchase_order` → `stock_movement` → `vendor_bill` → three-way match →
@@ -36,7 +37,7 @@ paid for.
 6. [The Movement Ledger](#6-the-movement-ledger)
 7. [Costing — where a number comes from and when it freezes](#7-costing--where-a-number-comes-from-and-when-it-freezes)
 8. [The Make Side — the build event](#8-the-make-side--the-build-event)
-9. [The GL Seam — what exists, what is designed](#9-the-gl-seam--what-exists-what-is-designed)
+9. [The GL Seam](#9-the-gl-seam)
 10. [Write Lanes & the Silent Ledger Write](#10-write-lanes--the-silent-ledger-write)
 11. [Gotchas & Invariants](#11-gotchas--invariants)
 12. [Where the Plans and the Code Disagree](#12-where-the-plans-and-the-code-disagree)
@@ -241,7 +242,7 @@ both sides lets an over-billed quantity net out against an under-billed price to
 the exact failure the match exists to catch.
 
 **The match re-runs when the goods arrive.** `matchBill` fires on a bill write and a bill-line
-write. Nothing in `receiving/` originally called it, so the verdict depended on the order the
+write. Nothing in `inventory/receiving/` originally called it, so the verdict depended on the order the
 paperwork happened to arrive in: enter the bill before the goods and `billed 1 but only 0
 received` stood **forever**. `rematchBillsForPurchaseOrderLines`
 (`purchasing/match-reconciler.ts`) closes it, driven from the receipt roll-up for lines whose
@@ -368,7 +369,8 @@ it is the one that had no guard for the first six weeks of this subsystem's life
 
 🛑 **`updatable: false` is ADVISORY and has no delete counterpart.** It is read by the grid cell
 and the connector catalog and by nothing on the write path
-(`postings/build-month-end-inventory.ts:35` says so in prose). There is no `deletable: false`
+(`inventory/movements/write-movements.ts` is the writer that has to compensate for it). There is
+no `deletable: false`
 anywhere in the schema. So "append-only" is a claim about EDITS only, and reading it as a claim
 about the row's existence is the specific mistake that let a part be hard-deleted out of a posted
 period.
@@ -455,7 +457,7 @@ action in a browser and then asking the database whether it had happened. Budget
 | `vendor_bill` | **true** | ✅ `guardVendorBillDelete` — refuses on `posted`/`partially_paid`/`paid`, on any `vendor_payment_allocation`, or on a settled `billedAt`; cascades its lines |
 | `stock_movement`, `subpart`, `vendor_part`, `purchase_order_line`, `vendor_bill_line`, `gl_account` | false | n/a — not reachable from a records table, only through a parent |
 
-All four share `postings/settled-periods.ts` (`settledPeriodsFor`) and, where they read the ledger,
+All four share `accounting/ledger/periods/settled-periods.ts` (`settledPeriodsFor`) and, where they read the ledger,
 `field-hooks/pre/guarded-movements.ts`. Both were extracted precisely so the reasoning below
 survives being reused — a copied predicate keeps the behaviour and loses the reason.
 
@@ -477,7 +479,7 @@ Nothing at the call site distinguishes the two cases.
 refuses when a month is locked (`resolvePeriodLock` + `isPeriodLocked`), **or** has an
 entry currently standing in the books, **or** falls at or before `accounting.cutoffPeriod` (those
 months "are covered by the frozen opening baseline and can never be closed here" —
-`postings/close-periods.ts`).
+`accounting/ledger/periods/close-periods.ts`).
 
 🛑 **The posted check reads `GlPosting` directly and must NOT use `listClosePeriods`.** The close
 strip answers *"can I close this month?"*, so `resolveState` reports the **effective** posting —
@@ -490,7 +492,7 @@ supersedes to `reversed`, so a reversed entry stops matching on its own.
 
 🛑 **A guard that reads movements must not be built on `listReceipts` /
 `getPartReceiptHistory`.** Both hard-filter `stock_movement_type = 'receive'`
-(`receiving/receipt-queries.ts`), so a part whose only history is a `scrap`, an `initial` opening
+(`inventory/receiving/receipt-queries.ts`), so a part whose only history is a `scrap`, an `initial` opening
 balance or a `build_consume` would pass a receipts-only check and delete clean out of a posted
 month.
 
@@ -518,7 +520,7 @@ finished-good standard remembers its composition.
 
 ### 7.2 `rollStandardCost` — five rules learned the hard way
 
-`packages/lib/src/builds/standard-cost.ts`.
+`packages/lib/src/inventory/costing/standard-cost.ts`.
 
 1. **Bottom-up, summing children's `standardCost` — not their `part_cost`.** `part_cost` is a
    pure material chain with no labour or overhead at any level, so rolling it drops every
@@ -540,7 +542,7 @@ finished-good standard remembers its composition.
    requires it, and `completeBuild`'s variance closes to zero when each subassembly is genuinely
    built) but it is only *meaningful* if the rate describes one assembly operation rather than one
    finished good. `part_labor_cost_per_unit` / `part_overhead_cost_per_unit` override the org
-   setting per part; `resolveAbsorptionRates` (`builds/client.ts`) is the single place that choice
+   setting per part; `resolveAbsorptionRates` (`inventory/costing/client.ts`) is the single place that choice
    is made, and it uses **`??`, never `||`** — a stored `0` means "this part absorbs nothing" and
    `0 || rate` would silently reinstate the org rate on exactly the parts somebody zeroed out.
 
@@ -648,8 +650,9 @@ behavioural gain.
 
 ## 8. The Make Side — the build event
 
-`packages/lib/src/builds/`. A `build` records: consume the components, produce the finished good,
-at a cost that sticks.
+`packages/lib/src/inventory/builds/`. A `build` records: consume the components, produce the
+finished good, at a cost that sticks. The standard cost it values both legs at is resolved from
+`packages/lib/src/inventory/costing/`, which owns all three costs (§7.1).
 
 ```
 completeBuild()  —— ONE transaction ——▶  −20  400Lbs Motor Assembly  @ child standard
@@ -689,52 +692,53 @@ build's movements from exploding their own BOM. Update the reasoning, not the co
 
 ---
 
-## 9. The GL Seam — what exists, what is designed
+## 9. The GL Seam
 
-> ⛔ **Target:** `stock_movement` becomes the subledger and the GL posts one `inventory_movement`
-> entry per document (fulfillment, receipt, adjustment, build) at frozen cost, with member links
-> to the movements; month-end becomes a check under the perpetual regime, not a posting
-> (`plans/accounting/TARGET.md` §1, §5).
+`stock_movement` is the subledger and the GL posts one `inventory_movement` entry per document at
+frozen cost, with member links to the movements it booked. Month-end is a check, not a posting.
 
 ### 9.1 What is built
 
-- **`GlPosting` + `GlPostingLine` Drizzle TABLES** (migrations `0351`/`0352`), with a
-  Postgres-enforced unique index on `(organizationId, postingType, periodKey, revision)` and an
-  `INSERT … ON CONFLICT DO NOTHING` claim. Amounts are `bigint` **integer minor units**;
+- **`GlPosting` + `GlPostingLine` + `GlPostingSource` Drizzle TABLES.** The claim is a **partial
+  unique index on `GlPostingSource`** — one live `subject` row per
+  `(organizationId, sourceKind, sourceId, occurrence)` — taken with `INSERT … ON CONFLICT DO
+  NOTHING`, never a unique on `GlPosting` itself. Amounts are `bigint` **integer minor units**;
   `GlPostingLine` has no `updatedAt` and no update path, so its immutability is structural rather
-  than advisory. **`postings/post-entry.ts` writes them** (#1978).
-- **`GlRoleAssignment` Drizzle TABLE** (migration `0353`): `(organizationId, role) -> gl_account`,
-  with a Postgres unique index on the pair. This is where a posting role is mapped, and
-  `postings/resolve-roles.ts` is the single door that reads it.
+  than advisory. **`accounting/ledger/post/post-entry.ts` writes them.**
+- **`GlRoleAssignment` Drizzle TABLE**: `role -> gl_account`, under three partial unique indexes
+  (the org default, the store scope, the rail scope). This is where a posting role is mapped, and
+  `accounting/ledger/roles/resolve-roles.ts` is the single door that reads it.
 - `gl_account` **entity**, seeded and invisible: a 29-account default chart in every org. The
   account itself carries **no role** — see the `G19` note below.
   🛑 **`gl_account` is the only one of the three that is still an entity, and that is deliberate.**
   `RecordIdentity` is keyed on an `EntityInstance` and has **no other addressing mode**, and P2
   hangs the provider's account id there. The posting defs became tables because their whole
-  double-post defence is a composite unique index, and across two *fields* of an instance that is
-  not merely unimplemented — it is **unexpressible**, since a unique index constrains within a row
-  and two fields are two `FieldValue` rows. Uniqueness on `gl_account` is single-field (`code`) and
-  therefore expressible. The `gl_posting` / `gl_posting_line` defs were deleted 2026-08-28.
+  double-post defence is a composite partial unique index, and across two *fields* of an instance
+  that is not merely unimplemented — it is **unexpressible**, since a unique index constrains
+  within a row and two fields are two `FieldValue` rows. Uniqueness on `gl_account` is
+  single-field (`code`) and therefore expressible. The `gl_posting` / `gl_posting_line` defs were
+  deleted by entity migration 114.
 - Builders emit a **ROLE** (`'grni'`), never an account number. Once the chart is org-editable, the
   number cannot carry the meaning: a customer renumbering GRNI from `2160` to `2155` would silently
   break every builder that hardcoded it, and the entry would still balance, so nothing downstream
   could detect it.
-- `packages/lib/src/postings/` — the whole seam. `build-entry.ts`, `periods.ts`, `period-lock.ts`,
-  `provider.ts`, `default-chart.ts`, `resolve-roles.ts`, `doc-number.ts`, `verify-balance.ts`
-  (pure); `post-entry.ts` + `reverse-entry.ts` (the poster and its reversal, #1978);
-  `draft.ts` (the `GlPosting.draft` envelope contract), `opening-baseline.ts`,
-  `build-month-end-inventory.ts` and `gather-month-end-inventory.ts` (the L1 month-end entry,
-  #1979 + this change). See §9.5.
+- `packages/lib/src/accounting/ledger/` — the whole seam, in seven subfolders:
+  `builders/` (pure, `entry.ts` + one file per posting type, `doc-number.ts`),
+  `post/` (`post-entry.ts`, `insert-posting.ts`, `reverse-entry.ts`, `verify-balance.ts`,
+  `post-inventory-movement.ts`), `roles/`, `chart/`, `periods/`, `reads/`, `setup/`.
+  `accounting/reports/` and `accounting/opening/` are siblings of it, not children.
+  The full description is `docs/accounting-architecture-guide.md`; this guide covers only
+  the inventory half.
 - Postings are stored as **double-entry lines keyed on an account CODE** (`'2160'`), never a
   provider account id. Provider ids live in `RecordIdentity`, hung off `gl_account` by the app
   that owns them. This is the whole cash value of "the provider is an exporter" (P2).
 
 #### The chart of accounts is seeded, and a posting names a ROLE (`G7` / `G8` / `G19`)
 
-`postings/default-chart.ts` is a **default the org edits**, not a standard: 29 accounts, seeded
-into every org by entity migration 108 (`seed/gl-account-chart.ts`, idempotent on `code`).
-Thirteen posting roles are mapped onto thirteen of those accounts; the rest are ordinary
-bookkeeping auxx never posts to, and a role-less account is the normal case.
+`accounting/ledger/chart/default-chart.ts` is a **default the org edits**, not a standard, seeded
+into every org by `seed/gl-account-chart.ts` (idempotent on `code`) and declared as opt-in packs
+rather than one flat list. The 26 posting roles are mapped onto a subset of it; the rest are
+ordinary bookkeeping auxx never posts to, and a role-less account is the normal case.
 
 🛑 **Because the chart is editable, no code may name a number.** A builder emits
 `ACCOUNT_ROLES.GRNI` and a resolver reads *this* org's chart to learn that GRNI is `2160` here and
@@ -751,7 +755,8 @@ serve **many** roles (permitted, ordinary — an org combining DTC and dealer re
 `G19` names; a MULTI_SELECT cannot express the constraint at all, because "each role appears on at
 most one account" is set-membership uniqueness *across rows* and `FieldValue` carries only the PK
 and `(entityId, fieldId, sortKey)` — `G6`'s argument verbatim.
-`uniqueIndex('GlRoleAssignment_org_role_key')` is the shape, in one line.
+Three partial unique indexes on `(organizationId, role, …)` are the shape — the org default, the
+store scope and the rail scope; see the accounting guide §4.4 for why it is three and not one.
 
 `GlRoleAssignment` carries `source` (`'seed' | 'human' | 'suggested'`), `confirmedAt` /
 `confirmedByUserId`, and `markedUnused` — `G19`'s wizard has to render "we chose this for you"
@@ -761,11 +766,11 @@ differently from "you chose this", and an ABSENT row ("nobody has looked yet") i
 from archiving an account behind an error that cannot explain itself, and the resolver revalidates
 existence, active status and type compatibility on **every** read anyway.
 
-`postings/resolve-roles.ts` is that resolver, and it is a **batch**: a month-end entry naming six
+`accounting/ledger/roles/resolve-roles.ts` is that resolver, and it is a **batch**: an entry naming six
 roles fails **once** naming six, not six times naming one. It fails closed on five distinct
 conditions with five distinct messages (no assignment / `markedUnused` / account missing or
 archived / inactive / `accountType` incompatible with the role). Type compatibility comes from
-`ROLE_ACCOUNT_TYPES` in `build-entry.ts` — **declared, never derived**, because a derivation from
+`ROLE_ACCOUNT_TYPES` in `accounting/ledger/builders/entry.ts` — **declared, never derived**, because a derivation from
 the chart it is checking is tautological.
 
 ⚠️ **`resolveRoles` is deliberately NOT cached.** The invalidation doors it would need do not
@@ -776,7 +781,7 @@ posts to the account somebody renamed, and it fails **open** because the entry s
 Cache it when the `G19` wizard gives assignment writes an event of their own, and wire
 `gl_account` create/update/archive at the same time or not at all.
 
-`ACCOUNT_ROLES` (13 roles, `postings/build-entry.ts`) is now the **only** copy of the role
+`ACCOUNT_ROLES` (26 roles, `accounting/ledger/builders/entry.ts`) is the **only** copy of the role
 vocabulary — the `GlAccountRole` registry enum existed solely to populate the retired select field
 and went with it. `ROLE_ACCOUNT_TYPES` and `ACCOUNT_ROLE_LABELS` sit beside it and are pinned to it
 by exact-key equality.
@@ -786,8 +791,9 @@ by exact-key equality.
 reshaping a materialised field in every org). It used to hold `'1310'` / `'1330'`. A movement is
 append-only and frozen at write time, so a number stamped on it is silently reinterpreted the day
 the org renumbers — and the posting it feeds still balances, so nothing downstream can detect it.
-`resolveInventoryRoleForPartKind` is the only thing that decides the value; `buildReceiptEntry`
-consumes it as `inventoryAccountRole`. Migration 108 remaps the legacy codes.
+`resolveInventoryRoleForPartKind` (`inventory/movements/client.ts`) is the only thing that decides
+the value, and `accounting/ledger/builders/inventory-movement.ts` sums the movements by it.
+Migration 108 remaps the legacy codes.
 
 **`vendor_bill_line.glAccount` is deliberately the opposite and stays a CODE.** It is a
 bookkeeper coding a line against their own chart — most of which carries no auxx role — and it is
@@ -795,38 +801,62 @@ bookkeeper coding a line against their own chart — most of which carries no au
 (`bill-lines-from-purchase-order.ts` still hardcodes `GRNI_ACCOUNT_CODE = '2160'` for its prefill;
 that one *is* a `G8` violation and should resolve the `grni` role instead.)
 
-### 9.2 What is designed and not built
+### 9.2 The builder/poster split
 
-⚠️ **Corrected 2026-08-28.** This section previously said the builder/poster seam was design-only.
-It is **built** — the seam lives in `packages/lib/src/postings/`, not in a `money/gl/` directory
-that never existed. *Builders are the accounting, the poster is the plumbing*: a builder returns a
-`BuiltEntry` of **posting ROLES** and **integer minor units, always positive, with direction as a
-separate field**; `postEntry` resolves roles to account codes, asserts `Σ Debit === Σ Credit`,
-claims the period and handles idempotency.
+*Builders are the accounting, the poster is the plumbing.* A builder
+(`accounting/ledger/builders/*.ts`) returns a `BuiltEntry` of **posting ROLES** and **integer
+minor units, always positive, with direction as a separate field**; it touches no database, no
+clock and no settings. `postEntry` (`accounting/ledger/post/post-entry.ts`) resolves roles to
+this org's accounts, asserts `Σ Debit === Σ Credit`, claims the period on the unique index and
+persists. Everything a provider ever sees happens after that commit.
 
-Still design-only: **the fulfillment entry, the payout entry, the month-end deferral, and the close
-console**. The accounting **setup wizard** that produces the opening baseline §9.5 consumes is also
-unbuilt — see `plans/money/tasks/12-accounting-setup.md`.
+### 9.3 One entry per inventory DOCUMENT — the perpetual regime
 
-### 9.3 L1 vs L3 — the load-bearing constraint
+The monthly balance assertion (`month_end_inventory`, an entry that asserted each inventory
+account to the subledger's value with COGS as the plug) is **gone**, and with it the L1/L3
+either-or this section used to describe. `POSTING_TYPES` no longer contains
+`month_end_inventory`; it contains **`inventory_movement`**.
 
-> ⛔ **Target:** the L1/L3 either-or goes. Perpetual, per-document postings are the regime;
-> month-end is a roll-forward check, not a posting (`plans/accounting/TARGET.md` §1, §5).
+🛑 **The reason the either-or existed is still true and is now unreachable rather than merely
+forbidden.** A balance assertion and per-event postings cannot both drive `1310` / `1320` /
+`1330`: the assertion silently reverses every perpetual posting and dumps the residual into COGS,
+where it reads exactly like consumption, and both entries balance. There is now one writer,
+because there is one mechanism.
 
-🛑 **A balance assertion and per-event postings cannot both drive `1310` / `1320` / `1330`.** The
-monthly assertion would silently reverse every perpetual posting and dump the residual into COGS,
-where it would look like consumption.
+`stock_movement` is the **subledger**; the GL carries **one `inventory_movement` entry per
+document** with `member` links to the movements it booked — the normal warehouse-to-GL split. A
+sale can carry a hundred movements and one entry.
 
-**L1 (what ships first):** one entry per month asserting each inventory account to the value the
-subledger computes, with labour and overhead absorbed out of their pools and COGS as the
-balancing figure. It needs **no A/P**, and it tolerates imprecise coding during the month because
-the balance is *asserted*, not accumulated — a miscoded purchase distorts one month and
-self-corrects the next.
+- `accounting/ledger/builders/inventory-movement.ts` is the builder. **PURE.** It takes the rows
+  a document just wrote — their signed frozen `stock_movement_extended_cost` and their frozen
+  `stock_movement_gl_account` role — sums them by role and adds the one counter-leg the document
+  kind implies. `InventoryDocumentKind` is `sale | receive | adjust | build | return | scrap |
+  opening`, and it travels **in the built envelope, not as a second posting type**, because every
+  kind claims, exports and reverses identically.
+  - 🛑 **Nothing here re-derives a cost.** Re-multiplying today's standard by the quantity would
+    restate a shipment months later — the exact failure every writer in `inventory/movements/`
+    exists to prevent.
+  - 🛑 **A zero-cost document builds `null`, not an entry of two zero legs.** `buildEntry` refuses
+    a zero-amount line, so the alternative to `null` is a throw on the most ordinary case there
+    is: a build whose consume and produce legs net exactly.
+  - A build's `absorbed` labour and overhead are an input, signed like the movements. Without
+    them the produce leg's excess over the components lands in purchase price variance.
+- `accounting/ledger/post/post-inventory-movement.ts` is **the one door every inventory document
+  posts through** — a shipment, a goods receipt, a PO receipt, an adjustment, a build, a salvage,
+  the opening run. Each writes its `stock_movement` rows inside its own transaction and posts one
+  entry against them **on that same transaction**.
 
-**L3 (perpetual)** is a switch thrown once GRNI has both sides. Turning on per-event postings and
-turning off the monthly assertion is **one** change, never two.
+  🛑 **The entry commits WITH the movements.** A document whose rows landed and whose entry did
+  not is what the close's `inventory_unposted` blocker exists to catch, and it should be
+  unreachable rather than merely detectable. The provider push is the one thing that stays
+  outside the transaction.
 
-> The A/P leg has a hard external ordering constraint: the provider's A/P account is not
+  The subject link is the document; `occurrence` distinguishes passes over one source — a
+  fulfillment already carries a `fulfillment` posting as its subject, so its inventory entry
+  claims `'inventory'` beside it rather than contending for the same row. The parent link is the
+  order or the purchase order where there is one.
+
+> The A/P leg still has a hard external ordering constraint: the provider's A/P account is not
 > addressable until one `Bill` object has existed in it.
 
 ### 9.4 How money is represented — settled, do not re-open
@@ -861,8 +891,8 @@ deliberately *not* modelled on it.
 
 **Not `numeric`, either** — though it is the textbook accounting type and the tempting answer.
 `numeric` is exact and would be correct in isolation, but the entire codebase already speaks minor
-units: `G2`, `money/totals.ts`, the `CURRENCY` `FieldType` convention, `matchVariance`, and the
-pure builders in `postings/build-entry.ts`, which are typed on `number`. Introducing decimal
+units: `G2`, `sales/totals/totals.ts`, the `CURRENCY` `FieldType` convention, `matchVariance`, and the
+pure builders in `accounting/ledger/builders/entry.ts`, which are typed on `number`. Introducing decimal
 strings only in the GL creates a conversion boundary between the subledger and the ledger it
 feeds — and a conversion boundary is precisely where money bugs live. Consistency is the
 correctness argument here, not convenience.
@@ -916,470 +946,85 @@ Caught and widened before either table held a row. Any *new* money column anywhe
 subsystem is `bigint` minor units for the same reason; the type is pinned by the structural tests
 in `packages/database/src/tests/gl-posting-schema.test.ts` so it cannot silently regress.
 
-### 9.5 The L1 month-end inventory reader — `gatherMonthEndInventoryInputs`
+### 9.5 What the close checks, and the movement rules it checks against
 
-> ⛔ **Target:** the monthly assertion with COGS as the plug goes. COGS posts per document, from
-> the `sale` movement, in its own `inventory_movement` entry (`plans/accounting/TARGET.md` §5).
+> The monthly assertion reader (`gatherMonthEndInventoryInputs` / `buildMonthEndInventoryEntry`)
+> is gone with the regime it served (§9.3). The rules below outlived it, because they are rules
+> about the movement ledger rather than about that one entry.
 
-`postings/gather-month-end-inventory.ts` is the read half of the one entry that turns the
-subledger into the general ledger. `build-month-end-inventory.ts` is the pure arithmetic beside
-it, and the split is the module guide's read/write split: an arithmetic failure is a bug and
-throws, a read failure is a runtime condition and returns a `Result`.
+Under the perpetual regime **the close POSTS nothing.** Every inventory document already wrote
+its own `inventory_movement` entry inside its own transaction, so a close is a **check**:
+`accounting/ledger/periods/read-close-blockers.ts` asks whether every movement in the month sits
+in an entry (`inventory_unposted`), whether the two sides tie, and how many channel credit memos
+are still unissued.
 
-**Two source lanes, and that is a property of the design.** The inventory BALANCES come from the
-movement ledger — Σ signed `stock_movement_extended_cost` grouped by each movement's own frozen
-`stock_movement_gl_account` role. The ABSORPTION totals cannot: a movement freezes a single total
-`unit_cost` and has no labour or overhead column, so the split is not in there to recover.
-`build_labor_cost` / `build_overhead_cost` on the **build** are where it is frozen (§7).
+🛑 **Reads only, and it never throws.** A month that cannot be checked is reported as a month
+with no findings, not as a month that cannot be closed — a broken read must not be able to hold
+an organization's books hostage.
 
-**The window starts at the cutoff, ends at the period end, and is CUMULATIVE.** Never "movements
-in this month". A build dated in January but entered after the January close must show up in the
-next open entry still carrying its own frozen labour and overhead; that only works because both
-lanes sum from the cutoff forward and the builder takes the delta against the prior snapshot.
+The rules a movement is checked against:
 
-🛑 **Both boundaries are INSTANTS derived from wall-clock midnights in `accounting.bookTimeZone`.**
-Membership is `stock_movement_occurred_at` and `build_completed_at` — never `createdAt`, which
-records when auxx.ai learned of a row. A receipt logged at 7pm on January 31 in `America/New_York`
-is already February 1 in UTC, so a UTC-derived boundary posts month-edge activity into the wrong
-month: invisible except at a close, and uncorrectable once the period is locked.
+🛑 **Period boundaries are INSTANTS derived from wall-clock midnights in
+`accounting.bookTimeZone`.** Membership is `stock_movement_occurred_at` and `build_completed_at`
+— never `createdAt`, which records when auxx.ai learned of a row. A receipt logged at 7pm on
+January 31 in `America/New_York` is already February 1 in UTC, so a UTC-derived boundary puts
+month-edge activity in the wrong month: invisible except at a close, uncorrectable once the
+period is locked. `accounting/ledger/setup/book-time-zone.ts` is the one reader of that setting.
 
-🛑 **The NULL-cost rule is DIFFERENT on each side of the cutoff.** Before it, uncosted movements
-are ignored — they predate the costing regime and the opening snapshot replaces that history.
-After it, a movement missing `occurred_at`, `unit_cost`, `extended_cost` or its inventory role
-**fails the close and names itself**. Every sanctioned writer already refuses to write one, so
-such a row came through some other door, and *filtering it produces a balanced entry that
-understates inventory with no signal* — the exact failure the assertion design exists to prevent.
-A movement with no `occurred_at` at all cannot be placed in any period, so the window predicate
-cannot see it; the reader catches it on `EntityInstance.createdAt >= windowStart` instead, which
-is the only use of `createdAt` in the file and is a "recent enough to be a defect?" test rather
-than a period classification.
+🛑 **A movement with no cost is not postable, and is not silently skipped.** A row missing
+`occurred_at`, `unit_cost`, `extended_cost` or its inventory role cannot be booked, and every
+sanctioned writer refuses to write one — so such a row came through some other door. *Filtering
+it produces a balanced entry that understates inventory with no signal*, which is the failure
+this rule exists to prevent. Movements that predate the costing regime carry NULL costs and stay
+NULL (§7.4); they sit below the cutoff, where the opening baseline replaces that history.
 
-⚠️ **`stock_movement_adjust_subparts = true` rows are excluded from both the sums and that scan.**
-They are the PARENT of a bill-of-materials explosion; the children carry the real quantities,
-which is why `recalculateQoHForPart` excludes the parent from the quantity ledger too
+⚠️ **`stock_movement_adjust_subparts = true` rows are excluded from every cost read**, here and
+in `inventory/costing/cost-reads.ts` and `inventory/costing/qoh.ts`. They are the PARENT of a
+bill-of-materials explosion; the children carry the real quantities, which is why
+`recalculateQoHForPart` excludes the parent from the quantity ledger too
 (`field-hooks/post/inventory-triggers.ts`). Including them would double-count. The CHILDREN are
-not excluded — `explodeBomMovement` writes them with no cost fields at all, so post-cutoff they
-correctly trip the rule above.
+not excluded — `explodeBomMovement` (`field-hooks/post/bom-movement-triggers.ts`) writes them
+with no cost fields at all, so they correctly trip the rule above.
 
-**An `adjust` movement appears in BOTH the balance and the adjustment total.** It moved inventory,
-so it is in the balance; `G12` requires count and shrinkage to be classified into their own role,
-so it is also its own signed total. The adjustment total is never subtracted out of the balance —
-the builder emits them as separate legs and the 5000 plug absorbs the difference.
-
-**Build reversals are NOT filtered.** `reverse-build.ts` writes a *negated* `build_labor_cost` on
-a second build row, so a cumulative sum nets a reversal out on its own. Filtering would leave the
-original's absorption in the total and remove the correction that cancels it.
-
-**The prior-row rule is exact:** the `posted` `month_end_inventory` row with the greatest
-`periodKey` strictly before this period, then the greatest `revision` in that period, and its
-draft's `assertions.after` is the prior snapshot. The original of a reversal pair is `reversed`
-and drops out. At cutover there is no such row and the frozen opening baseline stands in with
-all-zero activity totals — never a synthetic `GlPosting`, never zero balances. 🛑 A prior row whose
-draft carries **no** assertions is a corrupt chain and fails the close naming the document; falling
-back to the baseline there would silently restate every month since the cutoff into one entry that
-balances perfectly.
+**Build reversals are NOT filtered out.** `inventory/builds/reverse-build.ts` writes a *negated*
+`build_labor_cost` on a second build row, so any cumulative sum nets a reversal out on its own.
+Filtering would leave the original's absorption in the total and remove the correction that
+cancels it.
 
 ---
 
-### 9.6 The books beyond inventory (2026-09-04, plans/accounting/HANDOFF.md wave 0)
+### 9.6 The rest of the books lives in the accounting guide
 
-The ledger stopped being an inventory-only instrument on 2026-09-04. What changed, and what a
-reader must now know:
+§9.1–§9.5 are the inventory half of the seam. Everything else the ledger does — the chart, the
+roles and their store and rail scopes, the posting types and their claim keys, the draft gate,
+periods and the close, the statements, the export batch and the provider mirror — is
+**[`accounting-architecture-guide.md`](./accounting-architecture-guide.md)**, and that guide is
+the authority where the two disagree.
 
-- **Posting types.** `POSTING_TYPES` and the `GlPostingType` pgEnum (drizzle `0361`) carry five
-  more: `manual_journal`, `opening_balance`, `bank_transaction`, `bank_deposit`, `write_off`.
-  Prefixes in `doc-number.ts` are three letters by a pinned test, so they are `JNL`, `OPB`,
-  `BNK`, `DEP`, `WOF`. The record-keyed ones (`manual_journal`, `bank_deposit`, `write_off`,
-  `bank_transaction`) key `periodKey` on the record's own number, exactly as a build does;
-  `opening_balance` keys on the cutover date. A cuid never fits the 21-character cap.
-- **Roles.** `ACCOUNT_ROLES` has thirteen more (`accounts_receivable`, `undeposited_funds`,
-  `clearing_card`, `sales_tax_payable`, `deferred_revenue`, `customer_deposits`,
-  `equity_retained_earnings`, `equity_opening_balance`, `revenue_dtc`, `revenue_dealer`,
-  `revenue_shipping`, `payment_processing_fees`, `bad_debt_expense`), every one seeded onto a
-  default account and assigned in existing orgs by entity migration 125. `clearing_card` was
-  `clearing_shopify` on `1200 Shopify Clearing` until entity migration 132 renamed both: there
-  is no Shopify payment rail in auxx (`PaymentTransaction.provider` is `manual | stripe`), so
-  every Stripe card receipt was accumulating in an account named for a provider it never
-  touched. Posted lines keep the old strings in `accountRole`/`accountName`, which are
-  snapshots by the same rule that freezes a movement's cost. The chart gained
-  `1050 Undeposited Funds`, `3000 Owner's Equity`, `3100 Retained Earnings`, `3900 Opening
-  Balance Equity`, `4020 Shipping Revenue`, `6300 Bad Debt Expense`, and `1100` is plain
-  `Accounts Receivable` (one receivable account, whatever the channel).
-- **Single-writer roles.** `regime.ts` generalised `INVENTORY_ROLES` to `SINGLE_WRITER_ROLES`
-  (the three inventory accounts plus `cash`) and the map to
-  `SINGLE_WRITER_ROLES_BY_POSTING_TYPE`; `findWriterConflicts` is the guard and the old names
-  are aliases. `bank_deposit` is the one declared `cash` writer. A code-based entry (manual or
-  opening) carries no role and is invisible to this guard by construction, so the manual builder
-  refuses the three inventory accounts by name; it does not refuse cash, because an opening entry
-  must state the bank balance.
-- **Code-based lines.** `GlPostingLineInput` is a union of `{ accountRole }` (a builder) and
-  `{ accountCode }` (a person coding against the chart). The resolver validates a code against
-  the org's chart with the same refusals as a role. `PostResultStatus` gained
-  `inventory_role_refused` and `account_invalid`.
-- **The setup freeze is server-side.** `assertAccountingSetupUnfrozen(orgId, keys)` in
-  `settled-periods.ts` refuses any `accounting.opening*`, `accounting.bookTimeZone` or
-  `accounting.cutoffPeriod` write with a 409 once a `posted` or `pending` `GlPosting` exists.
-  The browser-side `useAccountingSettingsFreeze` is the courtesy; this is the guard.
-- **`GlPostingLine.dimensions`** is a nullable jsonb written by nothing (decision 6.5). It exists
-  so a later dimension is a builder change and not a table migration over history.
-- **`ENABLED_POSTING_TYPES` is not enforced by the poster.** It feeds `findWriterConflicts`,
-  the getting-started signals and the completeness banner. `postEntry` will persist any type in
-  the union; the constant records which types the organization's books are to be read as
-  complete for.
+Four facts from it that a reader of *this* guide keeps needing:
 
-### 9.7 The journal-entry draft (2026-09-04, HANDOFF slot 1A)
+- **The claim is on `GlPostingSource`, not on a stamp field.** A record finds its postings by
+  `sourceKind` + `sourceId`; a posting names its subject, its parent, its counterparty and its
+  members. The per-record `*_gl_posting` text stamps are gone, and with them the reason the order
+  card used to bypass `listPostingsForSource`.
+- **`GlPosting.status` is `draft | posted | reversed`, and it answers the LEDGER's question
+  only.** Whether a provider took a copy is `ExportBatch.state`, on a different table. A caller
+  asking "did the ledger take it" reads `status`; adding an export check to one of those call
+  sites is the defect that removed real entries from the books
+  (`ACCEPTED_POST_STATUSES`, `accounting/ledger/post/ledger-accepted.ts`).
+- **A/R and A/P aging groups by the document the line's source names**
+  (`accounting/reports/aging.ts`), and the receivable a shipment raises is sourced on the
+  **order**, not on an invoice — the DTC/dealer revenue path has no invoice record at all, and
+  `invoice` is the separate service-business billing flow. Only `invoice` and `vendor_bill`
+  carry a due date the report can bucket on; everything else is `current`.
+- **Inventory relief is built.** `inventory/relief/relieve.ts` writes one `sale` movement per
+  `fulfillment_line` for `quantity - quantity_relieved`, on the quiet lane, valued at the part's
+  **ledger-derived average** (`inventory/costing/cost-reads.ts`) rather than at
+  `part_standard_cost` — a standard-cost roll never posts its revaluation delta, so relieving at
+  the current standard leaves a residue on every unit shipped after a roll and it accumulates
+  invisibly. `sales/orders/fulfill.ts` calls it after the revenue posting succeeds, and
+  `inventory/relief/backfill.ts` is the record-driven door for fulfillments already on disk.
 
-A `GlPosting` cannot hold a draft: its `status` is `pending | posted | failed | reversed` and
-`pending` means *claimed and mid-push* - it holds the period's unique index. So the thing a
-bookkeeper types into is an `EntityInstance` on the **`journal_entry`** def (entity migration
-126, `isVisible: false`), with `number`, `date`, `memo`, `status` (`draft | posted | reversed`),
-`kind` (`manual | opening_balance | recurring_template`), `lines` (JSON), `attachment` (FILE) and
-`glPostingId`. `postings/journal-entries/` is its module; the router door is
-`ledger.journalEntry.*`, gated on `ledgerPost` for every write including `create`, because a
-draft is the thing somebody then presses Post on. The chart and account roles sit a rung higher:
-`chartAccountCreate` / `Update` / `Remove`, `setRoleAssignment` and `provisionChart` are gated on
-`ledgerControl`, the third rung `Area.ledger` gained for the accountant/bookkeeper split (see
-`plans/accounting/tasks/done/12-accountant-permissions.md`).
-
-Four things about it that are not obvious and cost a debugging session each:
-
-- **The NUMBER is the posting's `periodKey`.** `JNL-0007` is issued by a `RecordSequence` hook on
-  create and compacts to `AUXX-JNL-JNL0007`. That is why `journal_entry_number` is
-  `creatable: false` / `updatable: false`, and why an entry with no number cannot be posted at
-  all: a date key would make the second entry of the day collide with the first on
-  `(organizationId, postingType, periodKey, revision)` and come back `already_posted` having
-  written nothing.
-- 🛑 **A single-value JSON field must never be handed a top-level ARRAY.**
-  `validateAndConvertValue` reads an array as a MULTI-VALUE write, one `FieldValue` row per
-  element, and refuses with "single-value; received 2 values" - which
-  `UnifiedCrudHandler.setFieldValues` **logs and swallows**, so the update reports success over a
-  record that is silently empty. `journal_entry_lines` therefore stores `{ lines: [...] }`. The
-  field-value layer then wraps that in its own `{ v, meta }` envelope, so the column holds
-  `{ v: { lines: [...] } }` and a reader needs `readEnvelope` from `@auxx/types/field-value`
-  before it sees anything of its own. Found by driving the path, not by a test.
-- **`reverseEntry` reverses a code line to the same code, with no drift check.** It used to
-  refuse a role-less posting outright, which was right while `BuiltEntry` was role-keyed by
-  construction. A code line has no mapping for the chart to move underneath - the code IS the
-  authority - so re-resolving one would invent a role the person never chose.
-- **The inventory refusal lives in `prepareEntry`, not in the builder.** `buildManualEntry` is
-  pure and has no chart, so it cannot know which code carries `inventory_wip` in a given org -
-  which is the whole point of `G8`. `post-entry.ts` resolves `INVENTORY_ROLES` to this org's own
-  codes after resolution and refuses `manual_journal` / `opening_balance` by name, so `preview`
-  and `post` answer identically.
-
-### 9.8 Aging reads by `sourceType`, and `accounts_receivable`'s is `order`, not `invoice`
-(2026-09-04, HANDOFF slot 2H)
-
-`postings/reports/aging.ts` groups posted `accounts_receivable`/`accounts_payable` lines by the
-document their `sourceType`/`sourceId` name and nets each one - the GL-based aging task 05
-recommends, so the total ties to `readTrialBalance`'s own figure for the same account by
-construction. The one fact worth a line here: **the `invoice` entity is NOT what
-`buildFulfillmentEntry` (2G) debits.** It posts A/R against the `order` (`FULFILLMENT_SOURCE_TYPE
-= 'order'`, sourceId = the order's own id), because the DTC/dealer revenue path has no invoice
-record at all - `invoice` is the separate, service-business billing flow (`workOrder`, `terms`,
-`dueDate`), and orders settle immediately with no due date. Only three sourceTypes carry a due
-date an aging report can bucket on: `invoice` (`build-write-off-entry.ts`'s credit leg) and
-`vendor_bill` (the matched-bill entry). Everything else that can touch A/R -
-`payment_transaction` (a charge or refund, resolved via its own denormalized
-`contactInstanceId` column, never the `payment` entity mirror a refund never gets) and
-`journal_entry` (a manual or opening line) - carries no due date and is always `current`, grouped
-by contact when one resolves and into an "Unapplied and adjustments" catch-all otherwise. A
-reader adding a new A/R- or A/P-touching `sourceType` in the future needs a branch here too, or
-its lines still tie (the total is a GL sum, not a join) but land in the catch-all rather than
-under the right contact.
-
-### 9.9 The books, built (2026-09-04, plans/accounting/HANDOFF.md waves 1 and 2)
-
-What landed on top of §9.6, and the rules each piece keeps:
-
-- **Manual journal entries** (`postings/build-manual-entry.ts`, `postings/journal-entries/`,
-  the `journal_entry` entity, `ledger.journalEntry.*`). A person codes lines by account CODE;
-  `resolveAccountLines` validates codes against the chart with the same batched refusals as
-  roles. A manual line naming one of the three inventory accounts is refused
-  (`inventory_role_refused`) because the close asserts those balances. Lines are stored as a
-  `{ lines: [...] }` envelope on a JSON field: a bare top-level array is read by the field
-  layer as a multi-value write and silently dropped.
-- **The opening trial balance** (`postings/build-opening-balance-entry.ts`,
-  `postings/opening-trial-balance/`, `ledgerOpening.*`, wizard page "Opening trial balance").
-  A `journal_entry` of kind `opening_balance` holds the draft; Finalize posts it dated the last
-  day of `accounting.cutoffPeriod`, keyed on that date so a second post is unrepresentable. It
-  names the three inventory accounts by code and is NOT an inventory writer: the month-end
-  reader takes its prior assertion from the `accounting.opening*` settings, never from this
-  entry, and the wizard prefills and locks those three rows from the same settings so the two
-  cannot disagree. `CODE_ENTRY_TYPES` in `post-entry.ts` therefore refuses inventory codes for
-  `manual_journal` only.
-- **Bank deposits** (`money/bank-deposits/`, the `bank_deposit` entity, `money.bankDeposit.*`,
-  Banking > Deposits). Payments route by method through `accounting.paymentRoute.<method>`
-  (`undeposited_funds | cash | clearing`, `resolvePaymentRoute`). Grouping posts one
-  `Dr cash / Cr undeposited_funds` per bank run; a refused post rolls the grouping back; a
-  cleared or posted deposit refuses edits naming the bank line or the posting.
-- **Revenue** (`postings/build-fulfillment-entry.ts`, `money/orders/fulfill.ts`,
-  `money.fulfillOrder`). A sanctioned action, not a status hook: it carries what shipped, logs
-  it on `order_fulfillments`, and posts `Dr accounts_receivable / Cr revenue_dtc|revenue_dealer,
-  sales_tax_payable, revenue_shipping` keyed `ORD-nnnn-F<seq>`. `manual` and null channels are
-  REFUSED naming the order. The COGS leg exists behind `includeCogs: false` and nothing sets it;
-  it is the L3 switch. The A/R line's `sourceType` is `order`, not `invoice`; aging joins
-  accordingly.
-- **Payments** (`postings/build-payment-entry.ts`, `money/payments/post-transaction.ts`) post
-  from `PaymentTransaction` at the tail of `syncTransaction`, never from the `payment` entity
-  (refunds have no mirror). Type `payment`, prefix `PMT`, key `PMT-<hash of the id>`: a
-  counted sequence could converge two concurrent payments to one `already_posted` success.
-- **Payouts** (`postings/build-payout-entry.ts`) have a builder and no gatherer: auxx stores no
-  payout and no processor fee (`fees.ts` is the Connect application fee).
-- **Write-offs** (`postings/build-write-off-entry.ts`, `money/invoices/write-off.ts`) post
-  `Dr bad_debt_expense / Cr accounts_receivable` and flip the invoice to `written_off` only when
-  the whole receivable is gone. `writeOffPeriodKey` keys on the invoice number at attempt 0 and
-  appends a base-36 attempt character after that (`INV-0042`, then `INV-00421`), for the same
-  reason the bank line's key does: a PARTIAL write-off used to re-claim the first one's tuple
-  and come back `already_posted`, a SUCCESS, posting nothing while the caller reported it had.
-  `countWriteOffPostings` supplies the attempt from `GlPostingLine`, filtered to the `write_off`
-  posting type because `sourceType` is `invoice` for several entry kinds. What is still writable
-  off is `total − amountPaid − writtenOff`, **derived, never read off `invoice_balance`**:
-  `syncInvoicePaymentState` recomputes that mirror as `total − amountPaid` and knows nothing
-  about bad debt. `invoice_written_off` (entity migration 128, backfilled from the write-off
-  postings already in the ledger) is the durable record, and a write-off over the remainder is
-  refused naming the invoice.
-- **Statements** (`postings/reports/`, `ledgerReports.*`, Reports tab). Trial balance is the
-  balance sweep grouped by code; the balance sheet computes retained earnings (prior years
-  rolled forward, current period from the P&L) rather than reading a posted balance; aging is
-  GL-based, bucketed on due date, and asserts its total against the balance sheet's A/R or A/P
-  as of the same date, showing the difference rather than hiding it. Every report carries a
-  completeness banner naming unposted periods and disabled posting types.
-- **`ENABLED_POSTING_TYPES`** now lists `month_end_inventory`, `manual_journal`,
-  `opening_balance`, `bank_deposit`, `bank_transaction`, `fulfillment`, `payment`, `payout`,
-  `write_off`. `receipt` and `vendor_bill` are the two that wait for the L3 switch.
-  `payment` is declared as driving no single-writer role: the guard is per type, and a payment
-  writes cash only on the `cash` route, which never carries the same money as a bank deposit.
-- **Entity migration 125** (`125-accounting-books`) seeds all of it in one pass: the accounts
-  and roles, the `journal_entry`, `bank_deposit`, `bank_account`, `bank_transaction` and
-  `bank_rule` defs, the 1099 fields on `company`, the `order_fulfillments` log, and the
-  `accountant` permission profile. Entity migration 138 reshapes that seed to `ledger: Read,
-  files: Read` (dropping `records: Read`, since the seven ledger defs now derive their base from
-  `Area.ledger` instead), and adds a `bookkeeper` seed (`ledger: Edit, files: Read,
-  comments: Full`). Neither seed carries `records` access; an admin who wants either profile to
-  read invoices, vendor bills and the like grants those record types on the profile directly.
-
-### 9.10 The bank feed (2026-09-04, plans/accounting/HANDOFF.md wave 3)
-
-- **Entities.** `bank_account` (manual or connected; `glAccount` is a chart CODE as text, like
-  every other bookkeeper-coded field; `connectorId`, `coverageFrom`, `coverageGaps`) and
-  `bank_transaction` (raw columns the connector owns: `externalId`, `postedAt`, `description`,
-  `amountMinor` SIGNED because it mirrors the bank, `bankStatus`, `matchKey`, `source feed|import`;
-  review columns auxx owns: `reviewStatus`, `glAccount`, `matchedRecordId/Type`, `glPostingId`,
-  the `suggested*` fields, `ruleId`). Contributing mode only; the feed can never archive a row.
-- **The feed** is a built-in `DataConnector` type, `stripe-financial-connections`, on the platform
-  Stripe key through `hosted-provision` with the `embed` and `multiAccount` capabilities declared
-  on the definition and read generically. Stripe FC is embed-only (a session `client_secret`, no
-  hosted page). One connector per FC account; auxx creates the `bank_account` at connect time and
-  the connector adopts it by `connectorId`. The consumed `transaction_refresh` id rides on the
-  checkpoint watermark, prefixed by `last_attempted_at`, because the engine clears the cursor on
-  the terminal checkpoint and compares watermarks lexically. Webhooks route `fca_` to the
-  connector through the credential's `providerAccountId`. A nightly job refreshes coverage, runs
-  suggestions, and reaps FC accounts disconnected for 14 days (the billing reaper).
-- **Matched lines post nothing** (B5). Match links both ways and stamps the document
-  (`bankTransactionId` and `clearedAt` on a vendor payment or bank deposit; `bank_import` as the
-  confirmation source on a customer payment). **Coded lines post** `Dr <code> / Cr <bank
-  account's GL code>` as a `bank_transaction` entry keyed `BNK-<hash><attempt>`; the attempt
-  counter exists because an undo reverses the posting and a re-code must not re-claim the
-  reversed tuple as `already_posted`. A transfer posts one entry on the outgoing leg and matches
-  the other. The poster pins the raw columns so the feed cannot rewrite a posted row.
-- **Suggestions** come from history first (majority GL code over lines sharing a `matchKey` on
-  the account, the count in the reason), then rules (`bank_rule`, priority order, first match,
-  unsafe regex refused), with auto-apply off by default and every refusal falling back to a
-  suggestion. Run after an import, after the nightly sweep, and on demand.
-- **File import** reuses the shared data-import wizard with `bank_transaction` preselected. OFX,
-  QFX and QBO are parsed in the browser (SGML and XML, wall-clock dates, BigInt amounts) and skip
-  the mapping step when `FITID` is present; CSV mappings are remembered per header signature in
-  the `banking.importMappings` setting. A row the feed already holds is linked (marked `excluded`
-  pointing at the feed row), never duplicated. Reverse deletes only the rows of a batch that
-  carry no posting and are not matched, refusing the rest by name. `coverageFrom` only ever
-  moves earlier, except on reverse. `readCoverage` ignores archived rows.
-- **Three importer gotchas found by driving:** `targetFieldKey` is the field's SYSTEM ATTRIBUTE,
-  not its registry key (a wrong key imports rows with defaults and no error); the auto-mapper
-  sends any `externalId` to the `text:cuid` resolver, which rejects a real `FITID`; a
-  RELATIONSHIP value handed to `UnifiedCrudHandler` must be a `defId:instanceId` record id, and
-  a bare instance id fails with a logged warning only.
-
-### 9.11 The two holes wave 2 left in the receivable (2026-09-04, plans/accounting/tasks/done/08 and /07)
-
-Both were invisible in a trial balance, because every entry involved balanced on its own.
-
-**An invoice's receivable was never raised.** `buildFulfillmentEntry` is sourced on the
-**order** and recognises product revenue on SHIPMENT; nothing was sourced on the **invoice**,
-so a service invoice was collected against a receivable that did not exist and its revenue
-reached no account at all. `postings/build-invoice-entry.ts` closes it with the
-`invoice_issued` type (prefix `INI`; `INV` is `month_end_inventory`'s and cannot be reused):
-
-```
-  Dr accounts_receivable   total
-      Cr revenue_service     total - tax     (4030, new in entity migration 126)
-      Cr sales_tax_payable   tax
-```
-
-Three rules are load-bearing.
-**Revenue is DERIVED as `total - tax`, never recomputed from the discount** - only
-`discountType` and `discountValue` are stored and `computeDocumentTotals` derives the amount,
-so a second implementation here would drift; deriving it makes the entry tie to the stored
-total by construction, which is the same reasoning that makes a vendor bill's totals
-transcribed (§9.4).
-**The period key is the invoice number**, so one entry per invoice falls out of the claim
-index and the `-R9` reversal headroom is checked up front - an entry that posts and cannot be
-reversed is the worst version of this bug.
-**Recognition on issuance is not a contradiction of recognition on shipment.** `invoice` and
-`order` are disjoint document families - no order field on an invoice, no invoice field on an
-order, in either direction - so no code path produces both for one sale. A human hand-keying
-an invoice for a sale that also shipped can still double-count; that is a release note, not
-something a builder can prevent.
-
-The writer is `money/invoices/post-invoice.ts`, called from `markInvoiceSent` **after** its
-writes commit (the post reads `invoice_issued_at` back on another connection). It never
-throws. `voidInvoice` reverses **before** the status flips, so a refused reversal refuses the
-void, and `invoice-delete-guard.ts` refuses to delete an invoice carrying a live entry and
-names voiding as the remedy. **Existing sent invoices are deliberately NOT backfilled**: their
-dates sit in closed periods and the opening trial balance's A/R already includes them.
-
-**An unapplied prepayment was booked as a negative receivable.** `buildPaymentEntry` credited
-`accounts_receivable` unconditionally, so a deposit taken on quote acceptance drove `1100`
-negative and left `2350 Customer Deposits` at zero. The credit now splits on `allocatedMinor`,
-the sum of the transaction's `PaymentAllocation` rows at post time:
-
-```
-  receipt, nothing allocated   Dr route   Cr customer_deposits
-  receipt, part allocated      Dr route   Cr accounts_receivable  allocated
-                                          Cr customer_deposits    the rest
-  applied later                Dr customer_deposits  Cr accounts_receivable   (DPA)
-```
-
-**The receipt entry is never amended.** On the day the money arrived, none of it was owed; a
-later allocation is its own event on its own day and gets its own `deposit_application` entry
-(prefix `DPA`), keyed on a hash of the **allocation** id so one deposit split across two
-invoices cannot swallow itself as `already_posted`. That hash now lives in
-`postings/period-key.ts`, shared with the payment key rather than copied.
-
-Two consequences worth knowing:
-
-- **A refund needs no branch.** `refundCharge` copies the charge's allocations onto the refund
-  row, so the refund resolves the same split and debits whichever account the receipt credited,
-  including the case where a `DPA` had already moved the money to the receivable.
-- **How much is still held is READ FROM THE LEDGER**, never stored:
-  `amount - (what the receipt credited to A/R) - (what posted DPA entries reclassed)`. That is
-  what makes an ordinary invoice payment a no-op with no special case (its allocation was in
-  place when the receipt posted, so nothing is held), and it is why the read counts `reversed`
-  postings as well as `posted` - a reversed original and its reversal cancel, and counting only
-  `posted` would see the reversal's debit without the original's credit and report more held
-  than was received.
-
-⚠️ **A void can never strand a `DPA` entry, and that is a guard rather than a design.**
-`voidInvoice` refuses outright while any succeeded charge is allocated to the invoice
-(`hasSucceededCharges`), and an applied deposit IS such an allocation. Un-applying goes through
-`deleteManualPayment`, whose `reversePaymentPostings` reverses the reclass **before** the
-receipt - the opposite order they were made. If that guard is ever relaxed,
-`reverseInvoiceIssuance` is the function that has to grow a second read.
-
-### 9.12 The ledger and the export are two different questions (2026-09-08, #2065)
-
-`GlPosting.status` used to answer both, and when they disagreed the ledger lost.
-
-The poster commits the claim and its lines, then calls the provider - the network
-call is deliberately outside the transaction, because holding the claim's index
-tuple for an HTTP round trip is how a concurrent loser becomes a timeout instead
-of an `already_posted`. When the provider refused, the row was stamped `failed`,
-and **every statement counts `['posted','reversed']`**. So an unmapped account in
-the EXPORT target removed a real entry from the ORIGINAL, which is the exact
-inversion of decision `P1`.
-
-Nothing detected it, because a failed entry's two sides still tie. Both halves
-left together, so the books balanced with less money in them.
-
-```
-status        posted | reversed                            what the LEDGER did
-exportStatus  not_required | pending | exported | failed   what the EXPORT did
-```
-
-🛑 **`status` is stamped in the CLAIM transaction**, alongside the lines, and
-`postedAt` with it. Every ledger-side question is settled before the claim - the
-period lock, the roles, the balance - and a pre-claim refusal writes no row at
-all, so there is no moment at which a row legitimately exists un-posted. That is
-also why `pending` and `failed` were retired from the enum rather than kept: they
-are states nothing can produce.
-
-Four rules fall out of this and are worth not relitigating:
-
-- **A caller asking "did the ledger take it" reads `status`, never
-  `exportStatus`.** `postEntry` returns `posted` with `exportStatus: 'failed'` on
-  a refusal, which is why every `ACCEPTED_POST_STATUSES` set in `money/` and
-  `banking/` was already correct and none of them changed. Adding an
-  `exportStatus` check to one of those call sites reintroduces the defect.
-- **A reversal's original flips to `reversed` inside the claim transaction**, not
-  when the reversal's export succeeds. The reversal is posted the moment that
-  transaction commits, so an original left `posted` beside it is double-counted
-  by every report until a push that may never succeed says otherwise.
-- **`retryExport` replays from `GlPostingLine`, never by re-resolving roles.**
-  Those rows froze `accountCode` at post time; re-resolving would export an entry
-  under a different mapping than it was booked under, and the two registers would
-  disagree with nothing able to detect it. It reuses the row's own `requestId`,
-  which is the only key a provider's idempotency contract fires on.
-- **`bank_deposit`'s rollback now covers only PRE-CLAIM refusals**, which write no
-  row. It was the one path that undid a good document because a third party
-  declined a copy of it.
-
-⚠️ **`packages/database/src/enums.ts` says it is generated and for these enums it
-is not.** `scripts/generate-client-enums.ts` reads only
-`src/db/schema/_shared.ts`, and every `GlPosting` enum lives in
-`src/db/schema/gl-posting.ts`, so running the generator DELETES those entries
-rather than refreshing them. They are maintained by hand, and
-`src/tests/gl-posting-schema.test.ts` is the only thing that notices when
-somebody forgets. That test had been red since wave 0 for an unrelated list,
-because `packages/database` has no `typecheck` script and its suite is not
-reached by a `packages/lib` run.
-
-### 9.13 Bulk fulfillment posting (2026-09-09, plans/money/tasks/49)
-
-> ⛔ **Target:** the `fulfillment_batch` summary and its stamp field go — the parent link table
-> covers the record's ledger card. A fulfillment posts revenue only, no COGS; COGS moves to the
-> `inventory_movement` entry per document (`plans/accounting/TARGET.md` §1, §5).
-
-Revenue on connector orders is posted **one `fulfillment` entry per ship day**, never per
-order, from `money/fulfillment-posting/` (`reads.ts` is one SQL over the `order_fulfillments`
-JSON log joined to `GlPosting`; `plan.ts` is pure; `run.ts` never throws). Facts worth a line:
-
-- **Unposted means no LIVE stamp.** A log entry whose `glPostingId` is null or names a
-  `reversed` posting re-enters the next preview. Reversing a day's entry is therefore the
-  whole undo; nothing un-stamps.
-- **The period key is the day plus an attempt char** (`2026-07-06`, then `2026-07-061`).
-  The claim index is unique on `(org, type, periodKey, revision)` and a duplicate claim
-  returns `already_posted`, a success that posts nothing, so a late order backfilled into
-  an already-posted day needs its own key. Same trap `writeOffPeriodKey` fixed.
-- **The debit follows the gateway, not the channel**: `shopify_payments` to
-  `clearing_card`, `Affirm` to `clearing_affirm` (1210, excluded from the payout entry by
-  construction), unpaid or `manual` to A/R with one source line per order so aging can
-  name the debtor. Everything else summarises under `sourceType: 'fulfillment_batch'`,
-  which is why the order ledger card and the order delete guard read the **stamp**, not
-  `listPostingsForSource`.
-- `CHANNEL_REVENUE_ROLE` **fails open**: `manual` and an unset channel recognise as
-  consumer revenue. Only `dealer` moves revenue off 4000.
-- **The shipment log for a connector order is derived**, not clicked: finalize pass 6
-  (`events/handlers/passes/fulfillment-log-pass.ts`) reads the native
-  `line_item_fulfilled_at` / `_fulfilled_qty` / `_shipment_count` fields (entity migration
-  137, bound by the Shopify app) and rewrites the log only when it changed, keeping stamped
-  entries verbatim. `fulfillOrder` stays the writer for native orders.
-- `accounting.fulfillmentPosting = manual | auto`; `auto` enqueues the `fulfillment-posting`
-  queue from pass 7. The month close refuses with `revenue_incomplete` while a month holds
-  an unposted shipment or an unissued channel credit memo; the count reuses the dialog's
-  plan, so a `zero-value` shipment does not hold a month open.
-- The inventory relief of a shipment (a `sale` movement) is **still not built**; nothing
-  in the tree writes that kind. Brief 50.
-  ⤵️ **2026-09-11: the design changed and so did its prerequisite.** Relief is one `sale` movement
-  per **`fulfillment_line`** for `quantity - quantity_relieved` - the exact sell-side mirror of
-  `purchase_order_line -> receive movement -> quantity_received` - written automatically on the
-  quiet lane with one post-commit `batchRecalculateQoH`, and **frozen at the part's ledger-derived
-  average**, never at `part_standard_cost` (which drifts permanently, because a standard-cost roll
-  never posts its revaluation delta). 🛑 It is BLOCKED on brief 55: `order_fulfillments` is being
-  retyped from the JSON cell described below into a has_many of `fulfillment` / `fulfillment_line`,
-  because the Shopify connector currently discards the per-dispatch grain it already receives.
-  **Everything in §9 about `order_fulfillments` being a JSON log describes the tree as it stands
-  today and is scheduled to become wrong.** See `plans/money/tasks/55-shipment-lines.md` and
-  decisions `D21` / `D22` / `D23`.
 
 ## 10. Write Lanes & the Silent Ledger Write
 
@@ -1396,7 +1041,7 @@ dispatches the native rules from it.
 **For a deliberately silent ledger write, use `quietSession(reason)`** — not `seedSession` (the
 reason string would be a lie), not `absorbedSession` (it needs a real named aggregator), and not
 a bare `publishEvents: false` (`silent-write-conformance.test.ts` scans for it and fails).
-`builds/write-lane.ts` is the reference.
+`inventory/builds/write-lane.ts` is the reference.
 
 ⚠️ **A quiet lane silences the WHOLE rule.** `mfg-stock-movements-created` also fires
 `recalculatePartQoH`. Go quiet and the caller's own post-commit recalc becomes the **only** QoH
@@ -1555,7 +1200,7 @@ Recorded because both documents still exist and a reader will otherwise trust th
 
 | Claim | Reality |
 | --- | --- |
-| Gap E §4.2 recommends `GlPosting` as a **real Drizzle table**, for a Postgres-enforced unique index and a three-line `INSERT … ON CONFLICT` claim step. | ✅ **Resolved 2026-08-28 — Gap E was right.** `GlPosting` + `GlPostingLine` are tables (migrations `0351`/`0352`), the claim index is four columns (`revision` was added so a reversal can re-enter a period without polluting `periodKey`), and the superseded entity defs were **deleted** by entity migration 114. `gl_account` stays an `EntityInstance`, which is not an inconsistency: `RecordIdentity` is keyed on an instance and has no other addressing mode. |
+| Gap E §4.2 recommends `GlPosting` as a **real Drizzle table**, for a Postgres-enforced unique index and a three-line `INSERT … ON CONFLICT` claim step. | ✅ **Gap E was right, and the claim then moved.** `GlPosting` / `GlPostingLine` / `GlPostingSource` are tables and the superseded entity defs were **deleted** by entity migration 114 — but the claim is no longer a unique on `GlPosting`. It is `GlPostingSource_claim_key`: one live `subject` row per `(org, sourceKind, sourceId, occurrence)`. `gl_account` stays an `EntityInstance`, which is not an inconsistency: `RecordIdentity` is keyed on an instance and has no other addressing mode. |
 | Gap C §6.1's `rollStandardCost` formula (`standardMaterialCost = round(part_cost)`). | ❌ Superseded — see §7.2. The shipped roll sums children's `standardCost`, bottom-up, gated on `partKind`. |
 | Gap D §8 "purchase orders — later". | ❌ Stale. The buy side shipped ahead of it. |
 | `EntityTypeValues` / `EntityType` in `packages/database/src/enums.ts` | ⚠️ **Stale by thirteen types** — missing `order`, `purchase_order`, `vendor_bill`, `gl_account`, `build` and more. Its only consumer is a `z.enum` that system-seeded defs never reach, so nothing is broken. ⚠️ That file has a **destructive generator**; hand-edit it. |
@@ -1570,12 +1215,21 @@ Recorded because both documents still exist and a reader will otherwise trust th
 
 | Path | Owns |
 | --- | --- |
-| `packages/lib/src/purchasing/` | `match.ts` (the pure match), `match-hook.ts` (triggers), `match-reconciler.ts` (re-match on receipt), `allocate-landed-cost.ts`, `purchase-order-status*.ts`, `vendor-part-lookup.ts` |
-| `packages/lib/src/receiving/` | `receive-stock.ts`, `receive-purchase-order.ts`, `adjust-stock.ts`, `reverse-movement.ts`, `cost-fields.ts`, `guard.ts`, `receipt-queries.ts` |
-| `packages/lib/src/builds/` | `complete-build.ts`, `standard-cost.ts`, `build-mutations.ts`, `reverse-build.ts`, `reconcile-order-builds.ts`, `reconcile-policy.ts`, `drift-*.ts`, `auto-build-*.ts`, `write-lane.ts`, `guard.ts` |
-| `packages/lib/src/bom/` | `cost-calculator.ts` (`computeLandedCost`, the live roll-up), `qoh.ts` (`recalculatePartQoH`), `subpart-graph.ts` |
-| `packages/lib/src/postings/` | `build-entry.ts` (`ACCOUNT_ROLES` / `ROLE_ACCOUNT_TYPES` / `ACCOUNT_ROLE_LABELS` — the ONLY role vocabulary), `default-chart.ts`, `resolve-roles.ts` (role -> account, fails closed), `doc-number.ts` (the deterministic natural key), `periods.ts`, `provider.ts` — the posting seam, persisting nothing yet |
-| `packages/lib/src/money/gl/` | 🛑 **does not exist** — Gap E is design-only |
+| `packages/lib/src/purchasing/` | `match.ts` (the pure match), `match-hook.ts` (triggers), `match-reconciler.ts` (re-match on receipt), `aging-sweep.ts` (the one time-driven trigger), `allocate-landed-cost.ts`, `lifecycle.ts`, `post-vendor-bill.ts`, `purchase-order-status*.ts`, `vendor-part-lookup.ts`, `bill-intake/`, `intake/`, `expense-bill/` |
+| `packages/lib/src/inventory/movements/` | `write-movements.ts` (`writeStockMovements`, the ONE writer), `values.ts` (the nine keys every writer stamps), `cost-fields.ts`, `reverse-movement.ts`, `client.ts` (`computeExtendedCost`, `resolveInventoryRoleForPartKind`), `types.ts` (`MovementRecord`) |
+| `packages/lib/src/inventory/costing/` | `standard-cost.ts` (`rollStandardCost`, the ONLY writer of the five `part_standard_*` fields), `standard-cost-roll.ts` (pure), `standard-cost-queries.ts`, `ensure-standard-cost.ts` (first standard only, never an overwrite), `cost-calculator.ts` (`recalculateAffectedParts`, the live `part_cost` roll-up), `vendor-cost.ts` (`computeLandedCost`, the tariff resolution), `cost-reads.ts` (the ledger averages relief values at), `qoh.ts` (`batchRecalculateQoH`), `client.ts` (`resolveAbsorptionRates`, `resolvePartKind`) |
+| `packages/lib/src/inventory/receiving/` | `receive-stock.ts`, `receive-purchase-order.ts`, `adjust-stock.ts`, `open-stock-balance.ts`, `bulk-opening-stock.ts`, `opening-stock-subledger.ts`, `receipt-queries.ts`, `client.ts`, `guard.ts` |
+| `packages/lib/src/inventory/builds/` | `complete-build.ts` (the only movement writer in the module), `reverse-build.ts`, `build-mutations.ts`, `build-now.ts`, `build-queries.ts`, `reconcile-order-builds.ts`, `reconcile-policy.ts`, `drift-*.ts`, `auto-build-*.ts`, `backfill-*.ts`, `write-lane.ts`, `guard.ts` |
+| `packages/lib/src/inventory/relief/` | `relieve.ts` (`relieveFulfillmentLines`, the `sale` movement), `backfill.ts`, `write-lane.ts` |
+| `packages/lib/src/inventory/bom/` | `subpart-graph.ts` (`loadSubpartGraph`, `MAX_BOM_DEPTH`) |
+| `packages/lib/src/inventory/tariffs/` | `tariff-schedule.ts`, `tariff-starters.ts`, `tariff-hts-general.ts`, `tariff-301-memberships.ts`, `adopt-tariff-starters.ts`, `resync-tariff-starters.ts`, `apply-tariff-schedule.ts`, `client.ts` |
+| `packages/lib/src/accounting/ledger/` | `builders/entry.ts` (`ACCOUNT_ROLES` / `ROLE_ACCOUNT_TYPES` / `ACCOUNT_ROLE_LABELS` — the ONLY role vocabulary), `builders/inventory-movement.ts`, `builders/doc-number.ts`, `post/post-entry.ts`, `post/post-inventory-movement.ts` (the one door for an inventory document), `roles/resolve-roles.ts` (role → account, fails closed), `roles/regime.ts`, `chart/default-chart.ts`, `periods/`, `setup/book-time-zone.ts` |
+
+**Field hooks** — three inventory triggers live outside `inventory/` because they are hooks, not
+module exports: `recalculatePartQoH` and `recalculateQoHForPart`
+(`field-hooks/post/inventory-triggers.ts`), `explodeBomMovement`
+(`field-hooks/post/bom-movement-triggers.ts`), and the four delete guards plus
+`findRelatedInstanceIds` (`field-hooks/pre/`).
 
 **Registry & seed**
 

@@ -130,7 +130,7 @@ describe('the registry says the same thing the migration provisions', () => {
 
 describe('the lib vocabulary mirrors the registry enum', () => {
   // Two declarations of one vocabulary: the registry's (what is stored on the
-  // CustomField row) and `payment-gateways/client.ts`'s (what the writer
+  // CustomField row) and `accounting/rails/client.ts`'s (what the writer
   // validates and the router's zod enum accepts). A value in one and not the
   // other is a write the field rejects, or an option the picker offers and the
   // writer refuses.

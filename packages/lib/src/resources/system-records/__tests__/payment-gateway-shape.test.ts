@@ -2,7 +2,7 @@
 //
 // The worked example for B2: `payment_gateway` read end to end through the
 // primitive — registry attributes, `systemFields`, `readSystemRecords` — and
-// shaped into the row `payment-gateways/reads.ts` assembles by hand today.
+// shaped into the row `accounting/rails/reads.ts` assembles by hand today.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -106,7 +106,7 @@ describe('payment_gateway through the primitive', () => {
     expect(ATTRIBUTES).not.toContain('payment_gateway_payouts')
   })
 
-  it('assembles the same row payment-gateways/reads.ts assembles by hand', async () => {
+  it('assembles the same row accounting/rails/reads.ts assembles by hand', async () => {
     const ctx = await systemFields(db, ORG, 'payment_gateway', ATTRIBUTES)
     if (!ctx) throw new Error('expected a context')
 

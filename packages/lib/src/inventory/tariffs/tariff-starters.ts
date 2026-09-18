@@ -229,7 +229,7 @@ export type ActionKey = keyof typeof TARIFF_ACTIONS
  * The consequence for this file: `membershipsFor` and `expandTariffStarter`
  * take the table as an ARGUMENT and have no default. That is deliberate. A
  * default would have to name the generated module, which would drag ~10,000
- * subheadings into `bom/client.ts`'s bundle the moment anything client-side
+ * subheadings into `inventory/tariffs/client.ts`'s bundle the moment anything client-side
  * imported the expander. Injecting it keeps both functions pure and
  * client-safe, and puts the load on the server callers that already `await`
  * `loadHtsGeneral`.

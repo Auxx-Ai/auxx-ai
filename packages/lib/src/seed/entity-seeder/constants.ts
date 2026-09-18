@@ -339,7 +339,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
   {
     // Ships INERT with entity migration 109 (plans/products/build/README.md
     // B10): the def and all 24 of its fields exist in every org, and NOTHING
-    // writes them until `packages/lib/src/builds/` lands in phase 2. An entity
+    // writes them until `packages/lib/src/inventory/builds/` lands in phase 2. An entity
     // with zero rows can be reshaped for free; the first row ends that.
     //
     // ✅ Flipped to `isVisible: true` with phase 2 — the list, the detail page

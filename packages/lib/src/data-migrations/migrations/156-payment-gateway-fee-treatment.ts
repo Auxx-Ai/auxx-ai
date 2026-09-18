@@ -27,7 +27,7 @@ const FEE_TREATMENT_ATTRIBUTE = 'payment_gateway_fee_treatment'
 /**
  * The value every pre-existing record is stamped with.
  *
- * 🛑 A literal, not an import from `payment-gateways/client.ts`. This is the
+ * 🛑 A literal, not an import from `accounting/rails/client.ts`. This is the
  * value that was correct on 2026-09-14 for records written before the field
  * existed; if the vocabulary's default ever changes, the rows this migration
  * already wrote must not retroactively change with it.

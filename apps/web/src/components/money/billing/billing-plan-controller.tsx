@@ -20,7 +20,7 @@ import {
 import type { ReactNode } from 'react'
 import type { BillingBasis, BillingTiming } from './types'
 
-/** Basis descriptions/icons — labels themselves come from the shared `@auxx/lib/money/client`
+/** Basis descriptions/icons — labels themselves come from the shared `@auxx/lib/sales/client`
  * matrix so this UI copy can't drift from the billing tab's plan summary. */
 const BASIS_DESCRIPTIONS: Record<BillingBasis, string> = {
   fixed_contract: 'Invoice the agreed contract once or progressively.',

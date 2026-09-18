@@ -40,7 +40,7 @@ export interface SourceAccountSubject {
  * Human names for the provider keys in the `FinancialSourceAccount` namespace.
  *
  * The strings are borrowed from `PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS`
- * (`payment-gateways/client.ts`), but that map is keyed on *settlement sources*
+ * (`accounting/rails/client.ts`), but that map is keyed on *settlement sources*
  * (`stripe | shopify_payments | affirm | manual`) - a strictly narrower type than
  * `providerKey`, which also carries `shopify` and `auxx`. Reuse the strings; do
  * NOT reuse the type, or half this namespace becomes unrepresentable.

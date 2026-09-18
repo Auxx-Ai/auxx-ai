@@ -144,7 +144,7 @@ async function getRuleFor(subjectType: string, subjectId: string) {
  * Active `InvoiceLineAllocation` row whose `invoiceLineItemId` is `copyId` — the allocation-
  * table replacement for reading the removed `line_item_source_line_id` field off a gather copy
  * (entity migration 043 hard-deleted that field; provenance now lives in
- * `packages/lib/src/money/billing-allocations.ts`'s tables). Per plan §3.2, EVERY generated
+ * `packages/lib/src/sales/billing/allocations.ts`'s tables). Per plan §3.2, EVERY generated
  * invoice line gets exactly one allocation row now (including template copies, `kind:
  * 'visit_template'`/`'contract'`) — presence alone no longer distinguishes "template" from
  * "gathered/addition". Callers must branch on `.kind`, not on whether a row exists.

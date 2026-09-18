@@ -6,7 +6,7 @@
  *
  * **No `'use client'` directive here on purpose.** `receive-stock.ts` imports
  * this file on the server, and the directive would turn every export into a
- * client-reference proxy on that side — the same warning `bom/client.ts` and
+ * client-reference proxy on that side — the same warning `inventory/tariffs/client.ts` and
  * `sequences/client.ts` carry, and the reason `docs/lib-module-guide.md`
  * section 7 states it as a rule rather than a preference.
  *

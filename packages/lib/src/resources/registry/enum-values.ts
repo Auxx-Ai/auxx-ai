@@ -802,7 +802,7 @@ export const GlAccountSubtype = {
 // only to supply the options of a `gl_account.role` SINGLE_SELECT, and that
 // field was replaced by the `GlRoleAssignment` table, whose `role` column is
 // plain `text` precisely so the vocabulary has ONE home. That home is
-// `ACCOUNT_ROLES` in `packages/lib/src/postings/build-entry.ts`, alongside
+// `ACCOUNT_ROLES` in `packages/lib/src/accounting/ledger/builders/entry.ts`, alongside
 // `ROLE_ACCOUNT_TYPES` and `ACCOUNT_ROLE_LABELS`. Do not re-add a copy here.
 
 /**
@@ -914,7 +914,7 @@ export const JournalEntryKind = {
  * what Authorize.Net and every rail whose feed nobody reads correctly are.
  *
  * 🛑 Mirrored by `PAYMENT_GATEWAY_SETTLEMENT_SOURCES`
- * (`payment-gateways/client.ts`), which is what the settings picker, the router
+ * (`accounting/rails/client.ts`), which is what the settings picker, the router
  * schema and `PayoutSourceId` are all built from. The two lists must agree: this
  * one is the stored option list on the record, that one is the type. A value in
  * the type but not here renders a blank select on a fresh org.

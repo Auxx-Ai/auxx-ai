@@ -1,8 +1,4 @@
 // packages/lib/src/accounting/ledger/setup/book-time-zone.ts
-//
-// D2 moves this into accounting/ledger/setup/ (plans/accounting/LIB-LAYOUT.md §2.1);
-// for now it stays under postings/ so this pass stays a helper consolidation, not a
-// folder move.
 
 /**
  * The one zone this module is allowed to know about.

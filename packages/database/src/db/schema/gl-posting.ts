@@ -34,7 +34,7 @@ import { User } from './user'
 /**
  * What produced a posting.
  *
- * Mirrors `POSTING_TYPES` in `packages/lib/src/postings/types.ts`.
+ * Mirrors `POSTING_TYPES` in `packages/lib/src/accounting/ledger/types.ts`.
  */
 export const glPostingType = pgEnum('GlPostingType', [
   'fulfillment',

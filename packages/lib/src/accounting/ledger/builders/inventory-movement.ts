@@ -11,7 +11,7 @@
 // 🛑 **Nothing here re-derives a cost.** A movement's extended cost was frozen
 // when the row was written; re-multiplying today's standard cost by the quantity
 // would restate a shipment months later, which is the exact failure every writer
-// in `stock-movements/` exists to prevent.
+// in `inventory/movements/` exists to prevent.
 //
 // 🛑 **A zero-cost document builds NOTHING and says so** - `null`, not an entry
 // of two zero legs. `buildEntry` refuses a zero-amount line, so the alternative

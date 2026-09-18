@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/rails/client.ts
 
 /**
- * The client-safe half of `payment-gateways/`: the vocabularies, the read
+ * The client-safe half of `accounting/rails/`: the vocabularies, the read
  * model and the pure handle/route arithmetic (`docs/lib-module-guide.md` §7).
  *
  * `plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md` §5.3: a
@@ -221,7 +221,7 @@ export interface PaymentGatewayRow {
   settlementCurrency: string | null
   /**
    * Always null. `bank` now resolves to a `gl_account` directly (58 §3), not to a `bank_account`
-   * record, so there is no single id to answer with here - see `payment-gateways/feeds.ts`.
+   * record, so there is no single id to answer with here - see `accounting/rails/feeds.ts`.
    */
   bankAccountId: string | null
   /**

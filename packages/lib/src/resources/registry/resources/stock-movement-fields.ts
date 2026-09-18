@@ -549,7 +549,7 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
 
   // ─── Build provenance and the as-built BOM snapshot ────────────────
   // plans/products/build/01-build-plan.md §1.2. Entity migration 109, inert:
-  // `packages/lib/src/builds/` does not exist yet, so both read NULL on every
+  // `packages/lib/src/inventory/builds/` does not exist yet, so both read NULL on every
   // existing row and there is no backfill.
 
   build: {

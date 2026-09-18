@@ -17,7 +17,7 @@
 //    is decision G2. A signed amount plus a direction lets the two disagree.
 //
 // The live-database counterpart (the index actually rejecting a concurrent
-// duplicate) belongs to the claim path in `packages/lib/src/postings/`.
+// duplicate) belongs to the claim path in `packages/lib/src/accounting/ledger/post/`.
 
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import { describe, expect, expectTypeOf, it } from 'vitest'
@@ -177,7 +177,7 @@ describe('GlPostingLine', () => {
     const role = lineConfig.columns.find((c) => c.name === 'accountRole')
     expect(role?.getSQLType()).toBe('text')
     // Nullable and plain text: decision G8's role set is `ACCOUNT_ROLES` in
-    // packages/lib/src/postings/build-entry.ts, and a pgEnum here would be a
+    // packages/lib/src/accounting/ledger/builders/entry.ts, and a pgEnum here would be a
     // second copy of it. `GlRoleAssignment.role` makes the same call.
     expect(role?.notNull).toBe(false)
   })
@@ -229,7 +229,7 @@ describe('GlPostingLine', () => {
   // plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md §1.1. Frozen at
   // post time, never a provider id (P2), plain `text` rather than a `pgEnum` for
   // the reason `accountRole` gives - the vocabulary is `CounterpartyType` in
-  // packages/lib/src/postings/types.ts, not here.
+  // packages/lib/src/accounting/ledger/types.ts, not here.
   it('carries a nullable, unenumerated counterparty (task 13 §1.1)', () => {
     const type = lineConfig.columns.find((c) => c.name === 'counterpartyType')
     expect(type?.getSQLType()).toBe('text')
@@ -278,7 +278,7 @@ describe('the enum vocabularies', () => {
     expect(glPostingStatus.enumValues).toContain('draft')
   })
 
-  it('matches POSTING_TYPES in packages/lib/src/postings/types.ts', () => {
+  it('matches POSTING_TYPES in packages/lib/src/accounting/ledger/types.ts', () => {
     // Kept literal on purpose: @auxx/database must not import @auxx/lib, so this
     // is the tripwire for the two lists drifting apart.
     //
