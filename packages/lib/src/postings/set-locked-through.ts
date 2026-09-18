@@ -1,5 +1,6 @@
 // packages/lib/src/postings/set-locked-through.ts
 import { type Database, schema } from '@auxx/database'
+import { recordAudit } from '../audit-log'
 import { onCacheEvent } from '../cache'
 import { UnprocessableEntityError } from '../errors'
 import { SETTINGS_CATALOG } from '../settings/catalog'
@@ -41,20 +42,25 @@ export async function setLockedThrough(db: Database, input: SetLockedThroughInpu
         target: [schema.OrganizationSetting.organizationId, schema.OrganizationSetting.key],
         set: { value: input.periodKey, updatedAt: new Date() },
       })
-    await tx.insert(schema.AuditLog).values({
-      organizationId: input.organizationId,
-      category: 'settings',
-      action: 'setting.changed',
-      targetType: 'OrganizationSetting',
-      targetId: PERIOD_LOCK_SETTING_KEY,
-      actorType: 'user',
-      actorId: input.actorUserId,
-      ipAddress: input.ipAddress,
-      userAgent: input.userAgent,
-      sessionId: input.sessionId,
-      previousState: { value: previous?.value ?? null },
-      newState: { value: input.periodKey },
-    })
+    await recordAudit(
+      {
+        organizationId: input.organizationId,
+        category: 'settings',
+        action: 'setting.changed',
+        targetType: 'OrganizationSetting',
+        targetId: PERIOD_LOCK_SETTING_KEY,
+        actorType: 'user',
+        actorId: input.actorUserId,
+        previousState: { value: previous?.value ?? null },
+        newState: { value: input.periodKey },
+        context: {
+          ipAddress: input.ipAddress,
+          userAgent: input.userAgent,
+          sessionId: input.sessionId,
+        },
+      },
+      tx
+    )
   })
   await onCacheEvent('org.settings.changed', {
     orgId: input.organizationId,

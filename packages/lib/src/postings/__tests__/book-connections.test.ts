@@ -40,16 +40,17 @@ const active = {
   exportFromDate: '2026-09-01',
   openingPolicy: policy,
 }
-/** The joined credential row `readCredentialInTx` selects in one round trip. */
+/** The joined credential row `readAppCredential` selects in one round trip. */
 const credentialRow = {
   id: 'credential_a',
   appId: 'qb',
   kind: 'app',
   userId: null,
   metadata: { realmId: 'realm_a' },
-  boundInstallationId: 'install',
   appSlug: 'quickbooks',
-  installationId: 'install',
+  appInstallationId: 'install',
+  label: null,
+  name: 'Fixture authorization',
 }
 function fixture() {
   const query = {

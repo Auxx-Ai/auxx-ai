@@ -7,6 +7,8 @@ import {
 } from '@auxx/database'
 import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { z } from 'zod'
+import { recordAudit } from '../audit-log'
+import { listAppCredentials, readAppCredential } from '../connections/credential-reads'
 import { ConflictError, UnprocessableEntityError } from '../errors'
 import { withAccountingCommitLock } from './accounting-commit-lock'
 import { canonicalAccountingJson } from './basis-hash'
@@ -64,52 +66,23 @@ export function quickbooksCompanyId(metadata: unknown): string {
 /**
  * The org-scoped QuickBooks credential behind a connection.
  *
- * LEFT joins, not inner, so the two refusals stay distinguishable: an absent or
- * user-scoped credential is "not connected", a credential whose app is not
- * QuickBooks or whose installation is gone is "not installed". An inner join
- * collapses both into a missing row.
+ * `readAppCredential`'s LEFT joins keep the two refusals distinguishable: an absent
+ * or user-scoped credential is "not connected", a credential whose app is not
+ * QuickBooks or whose installation is gone is "not installed".
  */
 async function readCredentialInTx(tx: Transaction, organizationId: string, credentialId: string) {
-  const [row] = await tx
-    .select({
-      id: schema.Credential.id,
-      appId: schema.Credential.appId,
-      kind: schema.Credential.kind,
-      userId: schema.Credential.userId,
-      metadata: schema.Credential.metadata,
-      boundInstallationId: schema.Credential.appInstallationId,
-      appSlug: schema.App.slug,
-      installationId: schema.AppInstallation.id,
-    })
-    .from(schema.Credential)
-    .leftJoin(schema.App, eq(schema.App.id, schema.Credential.appId))
-    .leftJoin(
-      schema.AppInstallation,
-      and(
-        eq(schema.AppInstallation.id, schema.Credential.appInstallationId),
-        eq(schema.AppInstallation.organizationId, organizationId),
-        eq(schema.AppInstallation.appId, schema.Credential.appId),
-        isNull(schema.AppInstallation.uninstalledAt)
-      )
-    )
-    .where(
-      and(
-        eq(schema.Credential.organizationId, organizationId),
-        eq(schema.Credential.id, credentialId)
-      )
-    )
-    .limit(1)
-  if (!row || row.kind !== 'app' || row.userId !== null || !row.appId || !row.boundInstallationId) {
+  const credential = await readAppCredential(tx, organizationId, credentialId)
+  if (!credential || credential.kind !== 'app' || credential.userId !== null || !credential.appId) {
     throw new UnprocessableEntityError('Accounting requires an organization QuickBooks connection')
   }
-  if (row.appSlug !== 'quickbooks' || !row.installationId) {
+  if (credential.appSlug !== 'quickbooks' || !credential.appInstallationId) {
     throw new UnprocessableEntityError('The QuickBooks accounting connection is not installed')
   }
   return {
-    id: row.id,
-    appId: row.appId,
-    appInstallationId: row.installationId,
-    companyId: quickbooksCompanyId(row.metadata),
+    id: credential.id,
+    appId: credential.appId,
+    appInstallationId: credential.appInstallationId,
+    companyId: quickbooksCompanyId(credential.metadata),
   }
 }
 
@@ -367,22 +340,25 @@ export async function activateAccountingBookConnectionInTx(
         eq(schema.Credential.id, credential.id)
       )
     )
-  await tx.insert(schema.AuditLog).values({
-    organizationId: input.organizationId,
-    category: 'settings',
-    action: 'setting.changed',
-    targetType: 'ExternalBookConnection',
-    targetId: connection.id,
-    actorType: 'user',
-    actorId: input.actorUserId,
-    previousState: { connectionId: active?.id ?? null },
-    newState: {
-      connectionId: connection.id,
-      bookId: book.id,
-      companyId: credential.companyId,
-      openingPolicy: policy,
+  await recordAudit(
+    {
+      organizationId: input.organizationId,
+      category: 'settings',
+      action: 'setting.changed',
+      targetType: 'ExternalBookConnection',
+      targetId: connection.id,
+      actorType: 'user',
+      actorId: input.actorUserId,
+      previousState: { connectionId: active?.id ?? null },
+      newState: {
+        connectionId: connection.id,
+        bookId: book.id,
+        companyId: credential.companyId,
+        openingPolicy: policy,
+      },
     },
-  })
+    tx
+  )
   return connection
 }
 
@@ -401,13 +377,7 @@ export async function disconnectAccountingInstallationInTx(
   appInstallationId: string
 ): Promise<void> {
   await withAccountingCommitLock(tx, organizationId)
-  const credentials = await tx.query.Credential.findMany({
-    where: and(
-      eq(schema.Credential.organizationId, organizationId),
-      eq(schema.Credential.appInstallationId, appInstallationId)
-    ),
-    columns: { id: true },
-  })
+  const credentials = await listAppCredentials(tx, organizationId, { appInstallationId })
   if (credentials.length)
     await tx
       .update(schema.ExternalBookConnection)
@@ -448,31 +418,10 @@ export async function readAccountingBookConnectionStatus(db: Database, organizat
     .where(eq(schema.ExternalBookConnection.organizationId, organizationId))
     .orderBy(desc(schema.ExternalBookConnection.createdAt))
     .limit(50)
-  const credentials = await db
-    .select({
-      id: schema.Credential.id,
-      label: schema.Credential.label,
-      name: schema.Credential.name,
-      metadata: schema.Credential.metadata,
-    })
-    .from(schema.Credential)
-    .innerJoin(schema.App, eq(schema.App.id, schema.Credential.appId))
-    .innerJoin(
-      schema.AppInstallation,
-      and(
-        eq(schema.AppInstallation.id, schema.Credential.appInstallationId),
-        eq(schema.AppInstallation.organizationId, organizationId),
-        isNull(schema.AppInstallation.uninstalledAt)
-      )
-    )
-    .where(
-      and(
-        eq(schema.Credential.organizationId, organizationId),
-        eq(schema.Credential.kind, 'app'),
-        isNull(schema.Credential.userId),
-        eq(schema.App.slug, 'quickbooks')
-      )
-    )
+  const credentials = await listAppCredentials(db, organizationId, {
+    appSlug: 'quickbooks',
+    orgScopedOnly: true,
+  })
   return {
     activeConnectionId: connections.find((c) => c.state === 'active')?.id ?? null,
     connections,
@@ -549,22 +498,25 @@ export async function repairAccountingBookConnection(
         )
       )
       .returning()
-    await tx.insert(schema.AuditLog).values({
-      organizationId: input.organizationId,
-      category: 'settings',
-      action: 'setting.changed',
-      targetType: 'ExternalBookConnection',
-      targetId: target.id,
-      actorType: 'user',
-      actorId: input.actorUserId,
-      previousState: { credentialId: target.credentialId, state: target.state },
-      newState: {
-        credentialId: credential.id,
-        state,
-        reason: input.reason.trim(),
-        companyId: book.externalCompanyId,
+    await recordAudit(
+      {
+        organizationId: input.organizationId,
+        category: 'settings',
+        action: 'setting.changed',
+        targetType: 'ExternalBookConnection',
+        targetId: target.id,
+        actorType: 'user',
+        actorId: input.actorUserId,
+        previousState: { credentialId: target.credentialId, state: target.state },
+        newState: {
+          credentialId: credential.id,
+          state,
+          reason: input.reason.trim(),
+          companyId: book.externalCompanyId,
+        },
       },
-    })
+      tx
+    )
     return repaired!
   })
 }

@@ -1,6 +1,7 @@
 // packages/lib/src/money/customer-money/resolve-references.ts
 import { type Database, schema, withAccountingCommitLock } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
+import { recordAudit } from '../../audit-log'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
 import { accountingBasisHash } from '../../postings/basis-hash'
 import { confirmedCustomerMovement } from './contracts'
@@ -152,16 +153,19 @@ export async function resolveImportedMoneyReferences(
             inArray(schema.FinancialSourceAcceptance.sourceObjectId, objectIds)
           )
         )
-    await tx.insert(schema.AuditLog).values({
-      organizationId: input.organizationId,
-      category: 'settings',
-      action: 'setting.changed',
-      targetType: 'MoneyTransaction',
-      targetId: money.id,
-      actorType: 'user',
-      actorId: input.actorUserId,
-      previousState: {},
-      newState: { sourceObjectIds: objectIds, evidence: input.evidence },
-    })
+    await recordAudit(
+      {
+        organizationId: input.organizationId,
+        category: 'settings',
+        action: 'setting.changed',
+        targetType: 'MoneyTransaction',
+        targetId: money.id,
+        actorType: 'user',
+        actorId: input.actorUserId,
+        previousState: {},
+        newState: { sourceObjectIds: objectIds, evidence: input.evidence },
+      },
+      tx
+    )
   })
 }

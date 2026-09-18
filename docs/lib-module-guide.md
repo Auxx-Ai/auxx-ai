@@ -270,6 +270,16 @@ too, and the directive turns every export into a client-reference proxy there.
   invalidation.
 - Realtime publishes always carry a composed `value`; a value-less entry is
   silently dropped.
+- **A module that owns a table exports a `db`-first read and write for it, and the
+  first caller that cannot use the export widens the export rather than writing the
+  query.** `audit-log/record-audit.ts`'s `recordAudit(input, db?)` — the second
+  argument defaulting to the global `database` — is the write case: a caller inside a
+  transaction can now commit the audit row atomically instead of a hand-typed
+  `insert(schema.AuditLog)`. `connections/credential-reads.ts`'s `readAppCredential` /
+  `listAppCredentials` is the read case: `listAppCredentials`'s filter grew an
+  `appInstallationId` option for the one caller that had an installation, not an app
+  slug, rather than that caller joining `Credential` itself. `scripts/ci/raw-query-ratchet.js`
+  enforces both tables; see plans/accounting/LIB-LAYOUT.md §3c.
 
 ---
 

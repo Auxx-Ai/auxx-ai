@@ -1,0 +1,14 @@
+{
+  "auditLogInsert": {},
+  "credentialFrom": {
+    "packages/lib/src/agents/agent-service.ts": 1,
+    "packages/lib/src/apps/installations/app-field-provisioning.ts": 1,
+    "packages/lib/src/banking/feed/webhook.ts": 1,
+    "packages/lib/src/cache/providers/installed-apps-provider.ts": 1,
+    "packages/lib/src/cache/providers/mcp-servers-provider.ts": 1,
+    "packages/lib/src/channels/quo-channel.ts": 1,
+    "packages/lib/src/jobs/maintenance/oauth2-token-refresh-scanner-job.ts": 3,
+    "packages/lib/src/money/customer-money/source-observation-adapter.ts": 1,
+    "packages/lib/src/resources/crud/financial-record-binding.ts": 1
+  }
+}
