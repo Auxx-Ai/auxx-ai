@@ -23,7 +23,7 @@ export interface CompletenessBannerProps {
  *
  * 🛑 Every item under this title must be genuinely ABSENT from the figures
  * above it. The export backlog used to be listed here and is not, because it
- * never was absent - see `completeness.ts`'s header. The sync queue owns that
+ * never was absent - see `completeness.ts`'s header. The outbox owns that
  * question; this row owns "what is missing from the numbers".
  *
  * ## One row, COLLAPSED, and no card around it

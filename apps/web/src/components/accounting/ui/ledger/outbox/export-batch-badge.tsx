@@ -1,4 +1,4 @@
-// apps/web/src/components/accounting/ui/ledger/sync-queue/export-batch-badge.tsx
+// apps/web/src/components/accounting/ui/ledger/outbox/export-batch-badge.tsx
 
 'use client'
 

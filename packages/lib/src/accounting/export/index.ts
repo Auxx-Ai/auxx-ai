@@ -15,6 +15,9 @@ export {
   exportBatchStateHint,
   exportBatchStateLabel,
   exportObjectTypeLabel,
+  isExportBatchTab,
+  OUTBOX_TABS,
+  type OutboxTab,
 } from './client'
 export { type ShapedPosting, type ShapeForPostingInput, shapeForPosting } from './object-shape'
 export {

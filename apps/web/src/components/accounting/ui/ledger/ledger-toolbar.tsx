@@ -123,7 +123,7 @@ export function LedgerToolbar({
       {/* 🛑 The month lives HERE, in the stable prefix, and nowhere else. It was
           briefly a list in the rail; one value with two pickers on one screen is
           two things to keep in step, and the rail chooses which VIEW is on
-          screen (Closeout or the Sync queue), never which month. */}
+          screen (Closeout or the Outbox), never which month. */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild disabled={disabled || options.length === 0}>
           <Button variant='ghost' size='sm' className='min-w-[9.5rem] justify-between'>

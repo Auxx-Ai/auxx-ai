@@ -21,7 +21,7 @@ const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
  * duplicate findings (`BooksGroup`), processor fee treatment per rail
  * (`RailFeesGroup`) and what posted this month (`ThisMonthGroup`) - none of
  * which is an action. Four blocks of numbers nobody clicks is what makes a rail
- * stop being read; the rail is now two nav items (Closeout, Sync queue) and
+ * stop being read; the rail is now two nav items (Closeout, Outbox) and
  * this is where the numbers went. Kopilot is on the page, it can be asked, and
  * an answer that arrives because somebody wanted it beats one that is always
  * on screen and never looked at.

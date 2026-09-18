@@ -13,7 +13,7 @@ export { ACCOUNTING_LEDGER_PAGE } from './client'
  * balance sweep and its duplicate findings, processor fee treatment per rail,
  * and what posted this month. None of them was an action, and a rail whose
  * content reads the same every day teaches people to stop looking at it. The
- * rail is now two nav items (Closeout, Sync queue); the numbers moved here,
+ * rail is now two nav items (Closeout, Outbox); the numbers moved here,
  * where they are answered on demand instead of standing on screen.
  *
  * One tool, not four, deliberately: the four reads were four blocks of ONE

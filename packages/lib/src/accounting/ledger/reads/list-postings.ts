@@ -31,7 +31,7 @@ import { and, desc, eq, gte, inArray, lt, ne } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../../errors'
 import type { PostingSummary } from '../../journals/entries/client'
-import type { PostingLinkRole, PostingType } from '../types'
+import type { PostingLinkRole, PostingStatus, PostingType } from '../types'
 
 const logger = createScopedLogger('postings:list-postings')
 
@@ -66,12 +66,21 @@ const DEFAULT_LIMIT = 200
  * entry. Requiring a month there made every posting invisible on exactly the
  * screen a bookkeeper opens to find them, so "no month" lists the whole ledger
  * rather than nothing. `limit` still caps it.
+ *
+ * 🛑 `status` narrows in SQL, BEFORE `limit`. The Outbox's Drafts tab is
+ * unbounded by month, and filtering drafts out of an already-capped page of
+ * postings would hide every draft older than the newest 200 rows.
  */
 export async function listPostings(
   db: Database,
-  options: { organizationId: string; periodKey?: string | null; limit?: number }
+  options: {
+    organizationId: string
+    periodKey?: string | null
+    status?: PostingStatus
+    limit?: number
+  }
 ): Promise<Result<PostingSummary[], Error>> {
-  const { organizationId, periodKey, limit = DEFAULT_LIMIT } = options
+  const { organizationId, periodKey, status, limit = DEFAULT_LIMIT } = options
 
   try {
     // A malformed month is still an error. Only an ABSENT one widens the read:
@@ -92,6 +101,7 @@ export async function listPostings(
         and(
           eq(schema.GlPosting.organizationId, organizationId),
           ne(schema.GlPosting.postingType, CLOSE_POSTING_TYPE),
+          ...(status ? [eq(schema.GlPosting.status, status)] : []),
           // A Postgres `date` compares to a `YYYY-MM-DD` string directly
           // (drizzle's `date()` is string-mode), and the range is half-open so
           // the last day of the month is included and the first of the next is

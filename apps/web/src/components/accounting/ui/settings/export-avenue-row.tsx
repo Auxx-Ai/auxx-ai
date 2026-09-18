@@ -68,7 +68,7 @@ export function ExportAvenueRow({ autoPost, autoSend, summaryGrain }: ExportAven
         )}
         <LabeledSwitch
           label='Auto-send'
-          hint='On, a posted entry sends to the provider on its own. Off, its batch holds until released from the export queue.'
+          hint='On, a posted entry sends to the provider on its own. Off, its batch holds until released from the outbox.'
           control={autoSend}
         />
         {summaryGrain && (

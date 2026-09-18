@@ -34,8 +34,8 @@ import { EntryJournal, journalLinesFromDetail } from './entry-journal'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatAuditTimestamp, formatPeriodLabel } from './format'
 import { LedgerSourceLink } from './ledger-source-link'
+import { ExportBatchStateBadge } from './outbox/export-batch-badge'
 import { readStoredAssertions, readStoredReasons, readStoredSources } from './stored-draft'
-import { ExportBatchStateBadge } from './sync-queue/export-batch-badge'
 
 interface PostingDrawerProps {
   /** From `?posting=<id>`. `null` closes the drawer. */
@@ -49,8 +49,8 @@ interface PostingDrawerProps {
   currencyCode: string
   bookTimeZone: string
   providerLabel: string
-  /** Close this drawer and open the export queue on the batch's own tab. */
-  onOpenExportQueue: (tab: ExportBatchTab) => void
+  /** Close this drawer and open the outbox on the batch's own tab. */
+  onOpenOutbox: (tab: ExportBatchTab) => void
   /** Reverse this posting with a memo. Owned by the caller's actions hook. */
   onReverse: (memo: string) => void
   isReversing: boolean
@@ -86,7 +86,7 @@ export function PostingDrawer({
   currencyCode,
   bookTimeZone,
   providerLabel,
-  onOpenExportQueue,
+  onOpenOutbox,
   onReverse,
   isReversing,
 }: PostingDrawerProps) {
@@ -313,9 +313,9 @@ export function PostingDrawer({
                       <Button
                         variant='outline'
                         size='sm'
-                        onClick={() => onOpenExportQueue(exportBatch.state as ExportBatchTab)}>
+                        onClick={() => onOpenOutbox(exportBatch.state as ExportBatchTab)}>
                         <PanelRight />
-                        Open the export queue
+                        Open the outbox
                       </Button>
                     </div>
                   </div>

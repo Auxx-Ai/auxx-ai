@@ -77,7 +77,7 @@ export function PostingDrawerHost({ postingId, onClose, onSelectPosting }: Posti
         currencyCode={currencyCode}
         bookTimeZone={bookTimeZone}
         providerLabel={providerLabel}
-        onOpenExportQueue={(tab) => router.push(`/app/accounting?queue=${tab}`)}
+        onOpenOutbox={(tab) => router.push(`/app/accounting?queue=${tab}`)}
         onReverse={(memo) => {
           if (!postingId) return
           reverseMutate({ glPostingId: postingId, memo: memo.trim() || undefined })

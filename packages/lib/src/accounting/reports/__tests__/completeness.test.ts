@@ -42,7 +42,7 @@ describe('readCompleteness', () => {
   // 🛑 The export backlog is NOT a completeness item. Every entry in it is in
   // the books and in these figures - no statement read filters on
   // `exportStatus` - so naming it under "Not included in this report" was false
-  // about every row, and the rows are the sync queue's subject. See the file
+  // about every row, and the rows are the outbox's subject. See the file
   // header.
   it('says nothing about entries that have not reached the accounting provider', async () => {
     const result = await readCompleteness(stubDb(), { organizationId: ORG, asOf: '2026-08-31' })

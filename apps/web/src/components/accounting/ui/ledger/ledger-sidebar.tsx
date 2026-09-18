@@ -12,7 +12,7 @@ import {
   SidebarMenuItem,
 } from '@auxx/ui/components/sidebar'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
-import { BookOpenCheck, FileClock, RefreshCw } from 'lucide-react'
+import { BookOpenCheck, Send } from 'lucide-react'
 import { useLedgerSidebarStore } from '~/components/accounting/stores/ledger-sidebar-store'
 
 interface ExportQueueTally {
@@ -36,17 +36,22 @@ function tallyExportBatches(rows: ExportBatchRow[] | undefined): ExportQueueTall
 }
 
 /** Null when nothing is outstanding - a figure that reads the same every day is one nobody reads. */
-function exportQueueRailSentence(tally: ExportQueueTally, providerLabel: string): string | null {
-  if (tally.total === 0) return null
+function outboxRailSentence(
+  tally: ExportQueueTally,
+  draftCount: number,
+  providerLabel: string
+): string | null {
+  if (tally.total === 0 && draftCount === 0) return null
   const parts: string[] = []
+  if (draftCount > 0) parts.push(`${draftCount} waiting for approval`)
   if (tally.ready > 0) parts.push(`${tally.ready} ready to send`)
   if (tally.sending > 0) parts.push(`${tally.sending} sending`)
   if (tally.failed > 0) parts.push(`${tally.failed} refused`)
-  return `${parts.join(', ')} to ${providerLabel}.`
+  return `${parts.join(', ')}. Sends to ${providerLabel}.`
 }
 
-/** Which of the three things the ledger's content column is showing. */
-export type LedgerView = 'closeout' | 'sync-queue' | 'drafts'
+/** Which of the two things the ledger's content column is showing. */
+export type LedgerView = 'closeout' | 'outbox'
 
 /**
  * The surface `SidebarSecondary` sits on, applied to this rail so the ledger
@@ -81,19 +86,19 @@ interface LedgerSidebarProps {
   syncQueue: ExportBatchRow[] | undefined
   /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
   providerLabel: string
-  /** How many drafts the month on screen holds - `ledger.listDrafts`' own count, not `syncQueue`'s. */
+  /** Drafts awaiting approval, ALL periods - `ledger.listDrafts`' own count, not `syncQueue`'s. */
   draftCount: number
 }
 
 /**
- * The ledger's navigation column: a header and three destinations, in the
+ * The ledger's navigation column: a header and two destinations, in the
  * shape `SidebarSecondary` gives Banking, Reports and Accounting settings.
  *
  * ```
  * Ledger
  *   Closeout          <- the month: its entry, its refusals, its other entries
- *   Drafts         3  <- this month's drafts, every avenue (TARGET §4 gate 1)
- *   Sync queue    12  <- what is in the books and not in the provider's, all periods
+ *   Outbox        15  <- everything on its way out, all periods: drafts awaiting
+ *                        approval, then the export batches (`outbox-panel.tsx`)
  * ```
  *
  * 🛑 **It is NAVIGATION now, not a dashboard.** It used to hold five groups of
@@ -104,16 +109,16 @@ interface LedgerSidebarProps {
  * answer on the `accounting.ledger` page (`get_ledger_status`), and the lock
  * moved into the Closeout column beside the entry it closes over.
  *
- * 🛑 THREE items, one route. `SidebarSecondary` itself is not reused here even
+ * 🛑 TWO items, one route. `SidebarSecondary` itself is not reused here even
  * though this copies its metrics, because every row it renders is a `<Link>` to
  * `${baseUrl}/${slug}` - and the ledger is one URL whose state rides in the
- * query string (`?month=`, `?drafts=`, `?queue=`, `?posting=`). Routing these
- * rows as links would drop the month on every click. They are buttons over the
- * same nuqs setters the rest of the page uses, so the deep links keep working.
+ * query string (`?month=`, `?queue=`, `?posting=`). Routing these rows as links
+ * would drop the month on every click. They are buttons over the same nuqs
+ * setters the rest of the page uses, so the deep links keep working.
  *
  * 🛑 CHOOSING the month is still not in here - that is the toolbar's dropdown,
- * and it is the only one. Drafts is scoped to whatever month the toolbar
- * resolved, same as Closeout; only Sync queue spans every period.
+ * and it is the only one. Only Closeout is scoped to it; every Outbox tab
+ * spans every period.
  */
 export function LedgerSidebar({
   view,
@@ -126,7 +131,8 @@ export function LedgerSidebar({
   const setOpen = useLedgerSidebarStore((state) => state.setOpen)
 
   const tally = tallyExportBatches(syncQueue)
-  const queueSentence = exportQueueRailSentence(tally, providerLabel)
+  const outboxSentence = outboxRailSentence(tally, draftCount, providerLabel)
+  const outboxCount = tally.total + draftCount
 
   return (
     <ModuleSidebar open={open} onOpenChange={setOpen} className={SECONDARY_SURFACE}>
@@ -152,47 +158,28 @@ export function LedgerSidebar({
           </SidebarMenuItem>
 
           <SidebarMenuItem>
-            {/* The month's own drafts (TARGET §4 gate 1), unlike Sync queue's
-                every-period tally below - a draft holds no claim to widen a
-                read across periods for. */}
-            <SidebarMenuButton
-              variant='secondary'
-              size='compact'
-              isActive={view === 'drafts'}
-              onClick={() => onSelectView('drafts')}>
-              <FileClock />
-              <span className='truncate'>Drafts</span>
-              {draftCount > 0 && (
-                <span className='ml-auto text-muted-foreground text-xs tabular-nums'>
-                  {draftCount}
-                </span>
-              )}
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-
-          <SidebarMenuItem>
-            {/* ⚠️ The count is the queue's WHOLE backlog, every period - not the
-                month the toolbar resolved. Held entries are the hold working, so
-                the badge carries no colour; only the sentence on hover
+            {/* ⚠️ The count is the WHOLE backlog, every period - not the month
+                the toolbar resolved. Held batches are the hold working, so the
+                badge carries no colour; only the sentence on hover
                 distinguishes a refusal from an ordinary wait. */}
             <SimpleTooltip
               content={
-                queueSentence ??
-                `Nothing is waiting to be copied to ${providerLabel}. Every period, not only the month on screen.`
+                outboxSentence ??
+                `Nothing is waiting to be approved or copied to ${providerLabel}. Every period, not only the month on screen.`
               }>
               <SidebarMenuButton
                 variant='secondary'
                 size='compact'
-                isActive={view === 'sync-queue'}
-                onClick={() => onSelectView('sync-queue')}>
-                <RefreshCw />
+                isActive={view === 'outbox'}
+                onClick={() => onSelectView('outbox')}>
+                <Send />
                 {/* Both spans carry their own `truncate`: the cva's
                     `[&>span:last-child]:truncate` only reaches the LAST direct
                     child, which is the count once there is one. */}
-                <span className='truncate'>Sync queue</span>
-                {tally.total > 0 && (
+                <span className='truncate'>Outbox</span>
+                {outboxCount > 0 && (
                   <span className='ml-auto text-muted-foreground text-xs tabular-nums'>
-                    {tally.total}
+                    {outboxCount}
                   </span>
                 )}
               </SidebarMenuButton>
