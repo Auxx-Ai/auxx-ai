@@ -22,6 +22,7 @@ import {
   defineParentReconciler,
   resolveParentsByRelation,
 } from '../../../reconcilers/parent-reconciler'
+import { bridgeFinancialRecords } from './bridge'
 import { reconcileOrderPaymentEvidence } from './record-evidence'
 
 export const ORDER_PAYMENT_EVIDENCE = 'money.order-payment-evidence'
@@ -62,16 +63,24 @@ const reconciler = defineParentReconciler<string>({
   resolve: resolveOrders,
   // Batched, not per parent: the assessment already chunks its orders 100 at a
   // time and refreshes coverage per chunk, so a per-parent callback would undo it.
-  rebuildBatch: (organizationId, _userId, orderInstanceIds) =>
-    rebuildOrders(database, organizationId, orderInstanceIds),
+  rebuildBatch: (organizationId, userId, orderInstanceIds) =>
+    rebuildOrders(database, organizationId, orderInstanceIds, userId ?? ''),
 })
 
 async function rebuildOrders(
   db: Database,
   organizationId: string,
-  orderInstanceIds: string[]
+  orderInstanceIds: string[],
+  userId = ''
 ): Promise<void> {
   if (!orderInstanceIds.length) return
+  // The bridge stages acceptances from the records and reconciles them itself;
+  // the second pass catches orders whose evidence was already staged.
+  await bridgeFinancialRecords(db, {
+    organizationId,
+    actorUserId: userId,
+    records: orderInstanceIds.map((id) => ({ id, kind: 'order' as const })),
+  })
   await reconcileOrderPaymentEvidence(db, { organizationId, orderInstanceIds })
 }
 

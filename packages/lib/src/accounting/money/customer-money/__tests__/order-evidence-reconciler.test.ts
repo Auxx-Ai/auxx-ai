@@ -13,12 +13,15 @@ const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   rebuild: vi.fn(),
   relationRows: vi.fn(),
+  bridge: vi.fn(),
+  order: [] as string[],
 }))
 
 vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({ from: () => ({ bySystemAttributes: h.bySystemAttributes }) }),
 }))
 vi.mock('../record-evidence', () => ({ reconcileOrderPaymentEvidence: h.rebuild }))
+vi.mock('../bridge', () => ({ bridgeFinancialRecords: h.bridge }))
 vi.mock('@auxx/database', async () => {
   const schema = await import('../../../../../../database/src/db/schema/index')
   return {
@@ -61,7 +64,14 @@ beforeEach(() => {
   h.bySystemAttributes.mockImplementation(async (attrs: string[]) =>
     Object.fromEntries(attrs.filter((a) => FIELDS[a]).map((a) => [a, FIELDS[a]]))
   )
-  h.rebuild.mockResolvedValue({ examined: 0 })
+  h.order = []
+  h.rebuild.mockImplementation(async () => {
+    h.order.push('rebuild')
+    return { examined: 0 }
+  })
+  h.bridge.mockImplementation(async () => {
+    h.order.push('bridge')
+  })
   h.relationRows.mockResolvedValue([])
 })
 
@@ -145,5 +155,12 @@ describe('order payment evidence rebuilds once per write', () => {
     expect(h.rebuild).toHaveBeenCalledOnce()
     expect(h.rebuild.mock.calls[0]![0]).toBe(db)
     expect(rebuiltOrders()).toEqual(['o-2', 'order-1'])
+  })
+
+  it('bridges the resolved orders before it reconciles their acceptances', async () => {
+    await reconcileOrderEvidenceFromSync({} as never, ORG, ['order:order-1'])
+
+    expect(h.order).toEqual(['bridge', 'rebuild'])
+    expect(h.bridge.mock.calls[0]![1].records).toEqual([{ id: 'order-1', kind: 'order' }])
   })
 })

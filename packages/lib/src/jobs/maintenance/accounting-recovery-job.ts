@@ -4,6 +4,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import { sweepExportBatches } from '../../accounting/export'
 import { sweepCustomerReceiptAccounting } from '../../accounting/money/customer-money/accounting'
+import { sweepFinancialRecordBridge } from '../../accounting/money/customer-money/bridge-sweep'
 import { sweepDepositApplicationAccounting } from '../../accounting/money/customer-money/deposit-application-accounting'
 import { sweepImportedCustomerMoney } from '../../accounting/money/customer-money/ingest'
 import type { JobContext } from '../types/job-context'
@@ -36,6 +37,16 @@ export async function accountingRecoveryJob(ctx: JobContext): Promise<void> {
     // still rotates which orgs this page favours, least-recently-touched first.
     const previous = typeof organization.cursor === 'string' ? organization.cursor : undefined
     await saveCursor(organization.id, previous ?? null)
+    // Before the money sweeps that read them: a record with no evidence row has
+    // nothing for the acceptance lane to find (brief 69 §5).
+    try {
+      await sweepFinancialRecordBridge(database, { organizationId: organization.id, limit: 500 })
+    } catch (error) {
+      logger.warn('Financial record bridge needs retry', {
+        organizationId: organization.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
     try {
       await sweepImportedCustomerMoney(database, organization.id, 100)
     } catch (error) {
