@@ -4,18 +4,18 @@
 // `resolveApplicationFee` (payouts/application-fee.ts) and `computeDiscountAmount` (totals.ts),
 // unit-tested the same way. `resolveQuoteDeposit` is the I/O wrapper that reads the per-quote
 // override (falling back to the org default setting) and feeds it through the pure function —
-// used by the public quote payload (§B.5). Moved out of the legacy `payments/` lane (accounting
-// migration step 0): the AMOUNT a quote deposit resolves to is not Stripe-specific and still
-// renders on the public quote page even though quote-deposit Checkout has no money-model
-// equivalent yet.
+// used by the public quote payload (§B.5) and by `money/checkout` when it opens a deposit
+// Checkout Session.
 
-import type { Database } from '@auxx/database'
+import { type Database, database } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { getOrgCache } from '../cache'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { getOrganizationSetting } from '../settings/settings-service'
+import { listWorkOrderDepositReceipts } from './checkout/reads'
+import { applyMoneyToInvoice } from './invoices/apply-money'
 
 /** `quote_deposit_type` / `documents.quote.depositType` values. */
 export type QuoteDepositType = 'none' | 'percent' | 'fixed'
@@ -112,17 +112,43 @@ export async function resolveQuoteDeposit(
 }
 
 /**
- * Apply held quote-deposit charges to a freshly created invoice — a no-op since accounting
- * migration step 0 dropped `PaymentTransaction`, the only source a held deposit charge was
- * ever recorded against. Quote deposits have no money-model equivalent yet; kept as a named
- * door (rather than deleting the call sites in `billing-commands.ts`/`gather.ts`) so a future
- * money-model deposit lane has one place to wire back in.
+ * Apply every deposit still held against a work order to a freshly created
+ * invoice, oldest first, stopping at the invoice total.
+ *
+ * Each application goes through `applyMoneyToInvoice`, which writes the
+ * `MoneyApplication` and posts `Dr customer_deposits / Cr accounts_receivable` -
+ * the entry that stops the deposit being a liability.
  */
-export async function applyHeldDepositsToInvoice(_params: {
+export async function applyHeldDepositsToInvoice(params: {
   organizationId: string
   userId: string
   workOrderInstanceId: string
   invoiceInstanceId: string
   invoiceTotal: number
   db?: Database
-}): Promise<void> {}
+}): Promise<void> {
+  const db = params.db ?? database
+  const receipts = await listWorkOrderDepositReceipts(
+    db,
+    params.organizationId,
+    params.workOrderInstanceId
+  )
+  let remaining = params.invoiceTotal
+  const effectiveDate = new Date().toISOString().slice(0, 10)
+  for (const receipt of receipts) {
+    if (remaining <= 0) break
+    const held = receipt.amountMinor - receipt.appliedMinor
+    if (held <= 0) continue
+    const amountMinor = Math.min(held, remaining)
+    await applyMoneyToInvoice(db, {
+      organizationId: params.organizationId,
+      userId: params.userId,
+      moneyTransactionId: receipt.moneyTransactionId,
+      invoiceInstanceId: params.invoiceInstanceId,
+      amountMinor,
+      effectiveDate,
+      commandKey: `deposit-apply:${receipt.moneyTransactionId}:${params.invoiceInstanceId}`,
+    })
+    remaining -= amountMinor
+  }
+}

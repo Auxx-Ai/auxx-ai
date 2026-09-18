@@ -21,6 +21,7 @@ import {
   readContactCredit,
   readCreditMemoSettlement,
   recordCreditMemoRefund,
+  refundCreditMemoToCard,
   settleCreditMemo,
   unapplyCreditMemo,
   voidCreditMemo,
@@ -128,12 +129,8 @@ export const creditMemoRouter = createTRPCRouter({
   /**
    * Pay part of an issued memo's balance back: records a succeeded refund row
    * on the spot, then posts its accounting. `settleCreditMemo` is run here too
-   * so the refund lands `settled` in the same call.
-   *
-   * The Stripe rail (initiating a live refund of a named charge) went with the
-   * legacy `PaymentTransaction` lane it refunded (accounting migration step 0)
-   * — refunding a customer is manual until a native Stripe refund door is
-   * rebuilt on the money model.
+   * so the refund lands `settled` in the same call. `refundToCard` is the same
+   * act through Stripe instead of by hand.
    */
   refund: permissionProcedure(PermissionKey.ledgerPost)
     .input(
@@ -186,6 +183,35 @@ export const creditMemoRouter = createTRPCRouter({
         creditMemoInstanceId,
       })
       return { transactionId: moneyTransactionId, ...settlement }
+    }),
+
+  /**
+   * Give a card-paid memo's balance back through Stripe Connect. `commandKey` is both the
+   * money command's retry key and Stripe's own idempotency key, so a resubmitted dialog
+   * cannot issue a second refund.
+   */
+  refundToCard: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      z.object({
+        creditMemoRecordId: recordIdSchema,
+        commandKey: z.string().min(1).max(200),
+        /** Integer minor units, at most the memo's balance. */
+        amount: z.number().int().positive(),
+        /** The card receipt to refund. Absent picks the invoice's newest with room left. */
+        moneyTransactionId: z.string().min(1).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId: creditMemoInstanceId } = parseRecordId(input.creditMemoRecordId)
+      const { moneyTransactionId, stripeRefundId } = await refundCreditMemoToCard(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+        creditMemoInstanceId,
+        amountMinor: input.amount,
+        commandKey: input.commandKey,
+        ...(input.moneyTransactionId ? { moneyTransactionId: input.moneyTransactionId } : {}),
+      })
+      return { transactionId: moneyTransactionId, stripeRefundId }
     }),
 
   /** Total, applied, refunded, balance, and the application and refund rows behind them. */

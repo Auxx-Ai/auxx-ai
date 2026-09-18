@@ -19,6 +19,7 @@ import { getAssetContent } from '../files/assets/content'
 import { createS3StoragePort } from '../files/storage/ports'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { quietSession } from '../resources/crud/write-origin'
+import { isCheckoutAvailable, sumQuoteDeposits } from './checkout/reads'
 import { resolveQuoteDeposit } from './quote-deposit'
 import type { DiscountType } from './types'
 
@@ -130,20 +131,6 @@ export async function resolveQuoteByPublicToken(
 
   return { organizationId: row.organizationId, quoteInstanceId: row.entityId }
 }
-
-/**
- * Flip an abandoned deposit Checkout's `pending` ledger row to `canceled` (money MP2 §B.6) —
- * called by the quote page when the customer lands back via `cancel_url`
- * (`?checkout=cancel&tx=…`).
- *
- * Accounting migration step 0 dropped `PaymentTransaction`, the only source a
- * quote deposit Checkout was ever recorded against — quote deposits have no
- * money-model equivalent yet, so there is nothing left to cancel.
- */
-export async function cancelAbandonedDepositCheckout(
-  _token: string,
-  _transactionId: string
-): Promise<void> {}
 
 /** One rendered line on the public quote acceptance page. */
 export type PublicQuoteLine = QuotePdfLineItem
@@ -273,13 +260,15 @@ export async function getPublicQuotePayload(token: string): Promise<PublicQuoteP
   const todayIso = new Date().toISOString().slice(0, 10)
   const isExpired = !!payload.validUntil && payload.validUntil < todayIso
 
-  // Accounting migration step 0 dropped `PaymentTransaction` and the Checkout/webhook
-  // routes it backed — quote deposits have no money-model equivalent yet, so none of
-  // these three can ever be true until online deposit collection is rebuilt.
-  const { depositAmount } = await resolveQuoteDeposit(organizationId, quoteInstanceId, storedTotal)
+  const [{ depositAmount }, collected, paymentsEnabled] = await Promise.all([
+    resolveQuoteDeposit(organizationId, quoteInstanceId, storedTotal),
+    sumQuoteDeposits(database, organizationId, quoteInstanceId),
+    isCheckoutAvailable(organizationId),
+  ])
+  // Nothing is recorded until Stripe confirms, so "pending" is only knowable from
+  // the browser's own return - the page reads `?checkout=success`.
   const pendingDeposit = false
-  const succeededDeposit = false
-  const paymentsEnabled = false
+  const succeededDeposit = collected.heldMinor + collected.appliedMinor > 0
 
   return {
     number: payload.number,

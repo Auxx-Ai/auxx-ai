@@ -1,5 +1,8 @@
 // packages/lib/src/field-hooks/pre/quote-deposit-guard.ts
 
+import { parseRecordId } from '@auxx/types/resource'
+import { BadRequestError } from '../../errors'
+import { hasQuoteDeposit } from '../../money/checkout/reads'
 import { unwrapStatusValue } from '../../resources/hooks/lifecycle-status-guard'
 import type { FieldPreHookHandler } from '../types'
 
@@ -29,8 +32,11 @@ export const guardQuoteDraftReturnWithPaidDeposit: FieldPreHookHandler = async (
   // note above on why unwrapping only the array was a guard that could never fire.
   if (unwrapStatusValue(event.newValue) !== 'draft') return event.newValue
 
-  // Accounting migration step 0 dropped `PaymentTransaction`, the only source
-  // a quote deposit was ever recorded against — quote deposits have no
-  // money-model equivalent yet, so there is nothing left to check here.
+  const { entityInstanceId } = parseRecordId(event.recordId)
+  if (await hasQuoteDeposit(event.organizationId, entityInstanceId)) {
+    throw new BadRequestError(
+      'This quote cannot go back to draft because a deposit has been paid against it.'
+    )
+  }
   return event.newValue
 }

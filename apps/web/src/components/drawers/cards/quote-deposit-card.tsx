@@ -2,10 +2,7 @@
 'use client'
 
 // Quote drawer's deposit visibility card (deposit-accounting plan 16 §D.5). Sibling of
-// `quote-jobs-card.tsx`. Accounting migration step 0 dropped `PaymentTransaction`, the only
-// source a quote deposit charge was ever recorded against — quote deposits have no
-// money-model equivalent yet, so `listPaymentsForQuote` is always empty and this card always
-// renders its "no deposit" state until a money-model deposit lane exists.
+// `quote-jobs-card.tsx`.
 
 import { EmptySection } from '@auxx/ui/components/section'
 import { CreditCard } from 'lucide-react'
@@ -32,5 +29,25 @@ export function QuoteDepositCard({ recordId }: DrawerTabProps) {
       />
     )
 
-  return null
+  return (
+    <div className='space-y-2'>
+      {payments.map((payment) => (
+        <div
+          key={payment.id}
+          className='flex items-center justify-between rounded-md border px-3 py-2 text-sm'>
+          <span className='text-muted-foreground'>
+            {new Date(payment.date).toLocaleDateString()}
+          </span>
+          <span>
+            {formatCurrency(payment.amount)}
+            {payment.heldAmount > 0 ? ` · ${formatCurrency(payment.heldAmount)} held` : ''}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function formatCurrency(minor: number): string {
+  return (minor / 100).toLocaleString(undefined, { style: 'currency', currency: 'USD' })
 }

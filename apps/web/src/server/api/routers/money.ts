@@ -34,6 +34,7 @@ import {
   listBankDeposits,
   listInvoiceMoneyPayments,
   listPayouts,
+  listQuoteDepositReceipts,
   listUndepositedPayments,
   listWorkOrderMoneyPayments,
   markInvoiceSent,
@@ -69,7 +70,6 @@ import {
 import { listRailStrip } from '@auxx/lib/money/payouts'
 import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
-import { listPostingsForSource } from '@auxx/lib/postings'
 import {
   describeRecurrence,
   type RecurrencePattern,
@@ -127,15 +127,14 @@ const moneyAdminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next({ ctx: { capabilities } })
 })
 
-/** {@link listPayments}'s exact row shape — kept explicit so `listPaymentsForQuote`'s
- * empty return (quote deposits have no money-model source yet) doesn't infer `never[]`. */
+/** {@link listPayments}'s exact row shape, shared by the work-order and quote reads. */
 type PaymentListRow = InvoicePaymentRow & {
   createdByUserId: null
   stripeRefundId: null
   refundedTransactionId: null
   invoiceInstanceId: string | null
-  quoteInstanceId: null
-  workOrderInstanceId: null
+  quoteInstanceId: string | null
+  workOrderInstanceId: string | null
   heldAmount: number
 }
 
@@ -740,12 +739,32 @@ export const moneyRouter = createTRPCRouter({
    */
   listPaymentsForQuote: moneyViewProcedure
     .input(z.object({ quoteRecordId: recordIdSchema }))
-    .query(async (): Promise<PaymentListRow[]> => {
-      // Accounting migration step 0 dropped `PaymentTransaction`, the only
-      // source this read ever had — quote deposits have no money-model
-      // equivalent yet (no `MoneyTransaction` writer records one). Empty until
-      // that lane is built; the deposit card renders its "no payments" state.
-      return []
+    .query(async ({ ctx, input }): Promise<PaymentListRow[]> => {
+      const { entityInstanceId: quoteInstanceId } = parseRecordId(input.quoteRecordId)
+      const receipts = await listQuoteDepositReceipts(
+        ctx.db,
+        ctx.session.organizationId,
+        quoteInstanceId
+      )
+      return receipts.map((receipt) => ({
+        id: receipt.moneyTransactionId,
+        kind: 'charge' as const,
+        status: 'succeeded' as const,
+        provider: 'money' as const,
+        method: 'card',
+        amount: receipt.amountMinor,
+        allocatedAmount: receipt.appliedMinor,
+        heldAmount: receipt.amountMinor - receipt.appliedMinor,
+        reference: receipt.reference,
+        note: null,
+        date: receipt.occurredAt.slice(0, 10),
+        createdByUserId: null,
+        stripeRefundId: null,
+        refundedTransactionId: null,
+        invoiceInstanceId: null,
+        quoteInstanceId,
+        workOrderInstanceId: receipt.workOrderInstanceId,
+      }))
     }),
 
   // ─── Send flow (money MQ2 build spec §E.5) ──────────────────────────────
@@ -893,44 +912,6 @@ export const moneyRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         actorUserId: ctx.session.userId,
         ...input,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  /**
-   * The postings this order's fulfillments produced, for its ledger card.
-   *
-   * `GlPostingSource` carries the order as the `parent` link on every
-   * fulfillment posting (TARGET §1) - one query finds them all, no stamp field
-   * and no batch summary to fall back to.
-   */
-  orderFulfillmentPostings: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ orderId: z.string().min(1) }))
-    .query(async ({ ctx, input }) => {
-      const result = await listPostingsForSource(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        sourceKind: 'order',
-        sourceId: input.orderId,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  /**
-   * The posting this credit memo produced, for its ledger card.
-   *
-   * The credit memo is the `subject` link on its own `credit_memo` posting
-   * (TARGET §1) - `listPostingsForSource` is the one read, same as
-   * {@link orderFulfillmentPostings}.
-   */
-  creditMemoPostings: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ creditMemoId: z.string().min(1) }))
-    .query(async ({ ctx, input }) => {
-      const result = await listPostingsForSource(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        sourceKind: 'credit_memo',
-        sourceId: input.creditMemoId,
       })
       if (result.isErr()) throw result.error
       return result.value

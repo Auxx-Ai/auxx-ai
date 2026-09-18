@@ -7,6 +7,7 @@ import {
   computeWorkOrderBillingProjection,
   syncWorkOrderBillingProjection,
 } from './billing-projection'
+import { sumWorkOrderDeposits } from './checkout/reads'
 import type { BillingInstallmentInput, SaveBillingInstallmentsInput } from './types'
 
 function validateRow(row: BillingInstallmentInput): void {
@@ -50,15 +51,14 @@ function resolveRows(rows: BillingInstallmentInput[], contractValue: number, tar
   return resolved
 }
 
-// Accounting migration step 0 dropped `PaymentTransaction`, the only source a
-// held quote deposit was ever recorded against — quote deposits have no
-// money-model equivalent yet, so there is nothing left to hold.
+/** Integer minor units still held (unapplied) against this job's quote deposits. */
 async function heldDepositAmount(
-  _db: Database,
-  _organizationId: string,
-  _workOrderId: string
+  db: Database,
+  organizationId: string,
+  workOrderId: string
 ): Promise<number> {
-  return 0
+  const { heldMinor } = await sumWorkOrderDeposits(db, organizationId, workOrderId)
+  return heldMinor
 }
 
 /** Replace pending installments while preserving drafted and issued schedule history. */

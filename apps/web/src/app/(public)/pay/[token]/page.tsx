@@ -12,6 +12,7 @@ export const metadata: Metadata = {
 
 interface PayInvoicePageProps {
   params: Promise<{ token: string }>
+  searchParams: Promise<{ checkout?: string; checkout_error?: string }>
 }
 
 /**
@@ -19,15 +20,21 @@ interface PayInvoicePageProps {
  * session, no org context, resolved purely from the token by `getPublicInvoicePayload`. 404s
  * on an unknown/stale token rather than leaking whether one ever existed.
  *
- * Accounting migration step 0 dropped the Stripe Checkout flow this page used to drive
- * (`PaymentTransaction` and the checkout/webhook routes are gone) — the page is read-only
- * until online payment collection is rebuilt on the money model.
+ * The webhook is the settlement path: nothing is recorded until Stripe confirms, so
+ * `?checkout=success` only arms the page's processing poller, it never asserts payment.
  */
-export default async function PayInvoicePage({ params }: PayInvoicePageProps) {
-  const { token } = await params
+export default async function PayInvoicePage({ params, searchParams }: PayInvoicePageProps) {
+  const [{ token }, sp] = await Promise.all([params, searchParams])
 
   const payload = await getPublicInvoicePayload(token)
   if (!payload) notFound()
 
-  return <PublicInvoiceDocument token={token} payload={payload} />
+  return (
+    <PublicInvoiceDocument
+      token={token}
+      payload={payload}
+      checkoutState={sp.checkout}
+      checkoutError={sp.checkout_error}
+    />
+  )
 }

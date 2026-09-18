@@ -25,10 +25,6 @@ interface PublicQuotePageProps {
  * disabled acceptance page — `getPublicQuotePayload`'s doc comment is explicit that the two
  * cases must not be distinguishable to the visitor, so neither this page nor the mutation
  * route handlers ever leak which one it is.
- *
- * Accounting migration step 0 dropped the Stripe Checkout flow this page used to drive for
- * quote deposits (`PaymentTransaction` and the checkout/webhook routes are gone) — the
- * deposit card is informational until online deposit collection is rebuilt on the money model.
  */
 export default async function PublicQuotePage({ params, searchParams }: PublicQuotePageProps) {
   const [{ token }, sp] = await Promise.all([params, searchParams])

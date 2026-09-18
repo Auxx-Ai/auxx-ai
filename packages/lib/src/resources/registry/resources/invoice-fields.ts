@@ -774,6 +774,28 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     description: 'Secure token used to access the public payment page',
   },
 
+  checkoutSessionId: {
+    id: toFieldId('checkoutSessionId'),
+    key: 'checkoutSessionId',
+    label: 'Checkout Session',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'invoice_checkout_session_id',
+    systemSortOrder: 'aL1',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+      hidden: true,
+    },
+    description: 'The most recent Stripe Checkout Session opened against this invoice',
+  },
+
   billingKind: {
     id: toFieldId('billingKind'),
     key: 'billingKind',

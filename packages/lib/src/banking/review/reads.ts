@@ -19,7 +19,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, desc, eq, gte, inArray, isNull, lte, type SQL, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, lte, or, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
@@ -536,10 +536,19 @@ export async function listMatchCandidates(
           ? [
               readVendorPaymentCandidates(db, organizationId, dateKey, absMinor, search),
               readVendorBillCandidates(db, organizationId, dateKey, absMinor, search),
+              readMoneyCandidates(db, organizationId, dateKey, absMinor, 'customer_refund', search),
             ]
           : [
               readBankDepositCandidates(db, organizationId, dateKey, absMinor, search),
               readPayoutCandidates(db, organizationId, dateKey, absMinor, transactionId, search),
+              readMoneyCandidates(
+                db,
+                organizationId,
+                dateKey,
+                absMinor,
+                'customer_receipt',
+                search
+              ),
             ]
       )
 
@@ -1008,6 +1017,120 @@ function readPayoutCandidates(
   )
 }
 
+/**
+ * `MoneyTransaction` rows - where a customer receipt or refund actually lives.
+ *
+ * 🛑 The movement table, never an entity mirror: the money model mints no
+ * mirror at all, so a matcher reading entities could never match money going
+ * either way.
+ *
+ * ⚠️ A movement carries its date in ONE of two columns - `occurredOn` for a
+ * hand-recorded day, `occurredAt` for an observed instant - so the window is
+ * applied in TypeScript over both rather than in SQL over one.
+ */
+async function readMoneyCandidates(
+  db: Database,
+  organizationId: string,
+  dateKey: string,
+  absMinor: number,
+  purpose: 'customer_receipt' | 'customer_refund',
+  search?: string
+): Promise<MatchCandidate[]> {
+  const bounds = windowBounds(dateKey)
+  const inWindow = or(
+    and(
+      gte(schema.MoneyTransaction.occurredAt, new Date(bounds.from)),
+      lte(schema.MoneyTransaction.occurredAt, new Date(bounds.to))
+    ),
+    and(
+      gte(schema.MoneyTransaction.occurredOn, bounds.from.slice(0, 10)),
+      lte(schema.MoneyTransaction.occurredOn, bounds.to.slice(0, 10))
+    )
+  )
+  const rows = await db
+    .select({
+      id: schema.MoneyTransaction.id,
+      amountMinor: schema.MoneyTransaction.amountMinor,
+      method: schema.MoneyTransaction.method,
+      reference: schema.MoneyTransaction.reference,
+      occurredAt: schema.MoneyTransaction.occurredAt,
+      occurredOn: schema.MoneyTransaction.occurredOn,
+    })
+    .from(schema.MoneyTransaction)
+    .where(
+      and(
+        eq(schema.MoneyTransaction.organizationId, organizationId),
+        eq(schema.MoneyTransaction.purpose, purpose),
+        search
+          ? or(inWindow, sql`${schema.MoneyTransaction.reference} ILIKE ${`%${search}%`}`)
+          : inWindow
+      )
+    )
+    .limit(200)
+
+  const claimedBy = await readBankLinesClaimingMoney(
+    db,
+    organizationId,
+    rows.map((row) => row.id)
+  )
+  const out: MatchCandidate[] = []
+  for (const row of rows) {
+    const candidateDateKey = row.occurredOn ?? (row.occurredAt ? toDateKey(row.occurredAt) : null)
+    const amountMinor = Number(row.amountMinor)
+    const matchesWindow =
+      isWithinCandidateWindow(dateKey, candidateDateKey) &&
+      isWithinAmountTolerance(absMinor, amountMinor)
+    const matchesText =
+      !!search && (row.reference ?? '').toLowerCase().includes(search.toLowerCase())
+    if (!matchesWindow && !matchesText) continue
+
+    out.push({
+      recordType: 'money_transaction',
+      recordId: row.id,
+      label: `${purpose === 'customer_refund' ? 'Refund' : 'Payment'} ${
+        row.reference || row.id.slice(0, 8)
+      }`,
+      secondary: row.method,
+      dateKey: candidateDateKey,
+      amountMinor: Math.abs(amountMinor),
+      score: scoreCandidate({
+        bankAbsMinor: absMinor,
+        candidateAbsMinor: amountMinor,
+        bankDateKey: dateKey,
+        candidateDateKey,
+      }),
+      matchedToBankTransactionId: claimedBy.get(row.id) ?? null,
+    })
+  }
+  return out
+}
+
+/** Which bank line, if any, already claims each movement - the only half of the link. */
+async function readBankLinesClaimingMoney(
+  db: Database,
+  organizationId: string,
+  moneyTransactionIds: string[]
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  if (moneyTransactionIds.length === 0) return out
+  const rows = await db
+    .select({
+      entityId: schema.FieldValue.entityId,
+      valueText: schema.FieldValue.valueText,
+    })
+    .from(schema.FieldValue)
+    .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.CustomField.systemAttribute, 'bank_transaction_matched_record_id'),
+        inArray(schema.FieldValue.valueText, moneyTransactionIds)
+      )
+    )
+  for (const row of rows) if (row.valueText) out.set(row.valueText, row.entityId)
+  return out
+}
+
 // ── Hydration ───────────────────────────────────────────────────────────────
 
 /**
@@ -1176,6 +1299,7 @@ function toDate(value: string | null | undefined): Date | null {
 function narrowMatchRecordType(value: string | null | undefined): MatchedRecordType | null {
   switch (value) {
     case 'vendor_payment':
+    case 'money_transaction':
     case 'bank_deposit':
     case 'vendor_bill':
     case 'payout':

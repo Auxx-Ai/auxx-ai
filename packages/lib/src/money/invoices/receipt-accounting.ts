@@ -17,9 +17,9 @@
  * receivable, in full, and that is the entire entry.
  *
  * Subject the `MoneyTransaction`, parent the invoice, counterparty the invoice's
- * own contact (TARGET §5). `railId` is null: a hand-recorded invoice receipt
- * lands in a bank account or in undeposited funds, never in a gateway's
- * clearing account.
+ * own contact (TARGET §5). `railId` is null for a hand-recorded receipt - that
+ * money lands in a bank account or in undeposited funds - and names the gateway
+ * for one collected online, which debits the rail's clearing account instead.
  *
  * No permission checks here. The router asserts (docs/lib-module-guide.md §6).
  */
@@ -28,6 +28,7 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
+import { getPaymentGateway } from '../../payment-gateways/reads'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { readAutoPostMode } from '../../postings/auto-post'
 import { toLedgerMinor } from '../../postings/basis-hash'
@@ -58,6 +59,13 @@ export interface AcceptInvoiceReceiptInput {
   actorUserId?: string
   /** Kept for the sweep's call sites; the poster no longer branches on it. */
   automatic?: boolean
+  /**
+   * The `payment_gateway` the money arrived through, for a receipt collected
+   * online. The debit becomes that rail's clearing account - card settles NET
+   * days later, so a gateway receipt must never claim a bank balance the bank
+   * has not credited.
+   */
+  railId?: string
 }
 
 /**
@@ -157,6 +165,20 @@ async function readInvoiceReceiptSource(
   }
 }
 
+/** The clearing account a rail settles into, or a refusal naming the rail. */
+async function resolveRailClearingAccount(
+  tx: Transaction,
+  organizationId: string,
+  railId: string
+): Promise<string> {
+  const gateway = await getPaymentGateway(tx, organizationId, railId)
+  if (gateway.isErr()) throw new UnprocessableEntityError(gateway.error.message)
+  const clearing = gateway.value?.clearingGlAccountId?.trim()
+  if (!clearing)
+    throw new UnprocessableEntityError('That payment gateway names no clearing account')
+  return clearing
+}
+
 interface PreparedInvoiceReceipt {
   entry: BuiltEntry
   sources: GlPostingSourceInput[]
@@ -187,17 +209,19 @@ async function prepareInvoiceReceipt(
     input.moneyTransactionId,
     zone
   )
-  // A named bank account resolves through its `bank_account_gl_account`
-  // pointer; an unbanked receipt takes the `undeposited_funds` ROLE and waits
-  // for a `bank_deposit` to move it.
-  const debitGlAccountId = source.cashAccountInstanceId
-    ? await resolveBankAccountGlAccountInTx(
-        tx,
-        input.organizationId,
-        source.cashAccountInstanceId,
-        'Invoice receipt'
-      )
-    : undefined
+  // A gateway receipt debits that rail's clearing account; a named bank account
+  // resolves through its `bank_account_gl_account` pointer; an unbanked receipt
+  // takes the `undeposited_funds` ROLE and waits for a `bank_deposit`.
+  const debitGlAccountId = input.railId
+    ? await resolveRailClearingAccount(tx, input.organizationId, input.railId)
+    : source.cashAccountInstanceId
+      ? await resolveBankAccountGlAccountInTx(
+          tx,
+          input.organizationId,
+          source.cashAccountInstanceId,
+          'Invoice receipt'
+        )
+      : undefined
   const amountMinor = toLedgerMinor(source.money.amountMinor, 'USD', 2)
   const label = source.invoiceNumber
     ? `Payment received on ${source.invoiceNumber}`
@@ -300,6 +324,7 @@ export async function acceptInvoiceReceiptAccounting(
     lock,
     memo: `Invoice payment - movement ${input.moneyTransactionId}`,
     sources: prepared.sources,
+    ...(input.railId ? { railId: input.railId, scope: { rail: input.railId } } : {}),
     mode: await readAutoPostMode(db, input.organizationId, 'receipt'),
   })
 }

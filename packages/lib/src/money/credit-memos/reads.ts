@@ -548,10 +548,9 @@ export async function sumReservedCreditMemoRefunds(
  * Every refund carrying this memo, oldest first, whatever its status - both
  * rails in one list.
  *
- * 🛑 Accounting migration step 0 dropped the legacy refund `PaymentTransaction`
- * lane; the canonical `MoneyRefundSettlement` is the only rail now.
- * `readAdoptedLegacyRefundIds` still guards against re-counting a HISTORICAL
- * legacy refund an evidence record already adopted into a money movement.
+ * 🛑 `MoneyRefundSettlement` is the only rail. `readAdoptedLegacyRefundIds`
+ * still guards against re-counting a HISTORICAL legacy refund an evidence
+ * record already adopted into a money movement.
  */
 export async function listCreditMemoRefunds(
   db: Database | Transaction,

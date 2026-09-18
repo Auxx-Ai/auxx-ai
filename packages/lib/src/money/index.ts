@@ -91,6 +91,24 @@ export {
   syncCatalogCostOnPartChange,
   syncCatalogItemPricing,
 } from './catalog-pricing'
+// The legacy `PaymentTransaction` payment lane (`money/payments/`) is gone. Its
+// Stripe-account plumbing lives in `payouts/`, the deposit math in `./quote-deposit`, and
+// online collection in `./checkout`.
+export {
+  applyStripeCheckoutEvent,
+  type CheckoutSessionResult,
+  createInvoiceCheckoutSession,
+  createQuoteDepositCheckoutSession,
+  hasQuoteDeposit,
+  isCheckoutAvailable,
+  listQuoteDepositReceipts,
+  listWorkOrderDepositReceipts,
+  type QuoteDepositReceipt,
+  resolveStripeRail,
+  sumQuoteDeposits,
+  sumUnappliedCustomerMoney,
+  sumWorkOrderDeposits,
+} from './checkout'
 export { convertQuoteToWorkOrder } from './convert-quote'
 // ─── Credit memos (plans/accounting/tasks/done/10-credit-memos.md) ──────────────
 // Appended as one block, per HANDOFF section 9a's rule for shared barrels.
@@ -136,6 +154,7 @@ export {
   readCreditMemoForRefund,
   readCreditMemoSettlement,
   recordCreditMemoRefund,
+  refundCreditMemoToCard,
   type SettleCreditMemoInput,
   settleCreditMemo,
   type UnapplyCreditMemoInput,
@@ -261,16 +280,6 @@ export {
   splitPayout,
   syncPayouts,
 } from './payouts'
-// Accounting migration step 0 dropped the legacy `PaymentTransaction` payment lane
-// (`money/payments/`) entirely. `getPaymentAccount`/`syncAccountState`/
-// `disconnectPaymentAccount` and the Stripe Connect client moved to `payouts/` — the
-// payouts rail is their only remaining consumer. `resolveQuoteDeposit`/`computeDepositAmount`
-// moved to `./quote-deposit` (pure display math, not Stripe-specific). `resolvePartialPaymentBounds`
-// moved to `./customer-money/partial-payment`. `hasSucceededCharges`, `recordManualPayment`,
-// `syncInvoicePaymentState`, `syncTransaction`, `listWorkOrderPayments`, `deleteManualPayment`,
-// the deposit-allocation/allocation-reads helpers, `postPaymentTransaction`, `sendPaymentReceipt`
-// and the Stripe Checkout/webhook door (`createStripeCheckout`, `applyStripeEvent`,
-// `refundTransaction`, …) had no money-model equivalent and were deleted outright.
 export {
   disconnectPaymentAccount,
   getPaymentAccount,
@@ -280,7 +289,6 @@ export {
 } from './payouts/stripe-account'
 export {
   buildPayUrl,
-  cancelAbandonedCheckout,
   ensureInvoicePublicToken,
   getPublicInvoicePayload,
   type PublicInvoiceLine,
@@ -312,7 +320,6 @@ export {
 } from './quote-lifecycle'
 export {
   buildQuoteViewUrl,
-  cancelAbandonedDepositCheckout,
   ensureQuotePublicToken,
   getPublicQuotePayload,
   getQuotePdfByToken,

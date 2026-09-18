@@ -812,5 +812,27 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     description: 'Automatically updated when the quote is modified',
   },
 
+  depositSessionId: {
+    id: toFieldId('depositSessionId'),
+    key: 'depositSessionId',
+    label: 'Deposit Checkout Session',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'quote_deposit_session_id',
+    systemSortOrder: 'aL1',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+      hidden: true,
+    },
+    description: 'The most recent Stripe Checkout Session opened for this quote deposit',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

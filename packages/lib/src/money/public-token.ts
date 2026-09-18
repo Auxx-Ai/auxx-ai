@@ -17,6 +17,7 @@ import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { quietSession } from '../resources/crud/write-origin'
 import { getOrganizationSetting } from '../settings/settings-service'
+import { isCheckoutAvailable, sumInvoiceDepositApplications } from './checkout/reads'
 import { resolvePartialPaymentBounds } from './customer-money/partial-payment'
 import type { DiscountType } from './types'
 
@@ -104,18 +105,6 @@ export async function ensureInvoicePublicToken(
 export function buildPayUrl(token: string): string {
   return `${WEBAPP_URL}/pay/${token}`
 }
-
-/**
- * Flip an abandoned Checkout's `pending` ledger row to `canceled` (money MP1 §I) — called by
- * the pay page when the shopper lands back via `cancel_url` (`?checkout=cancel&tx=…`).
- *
- * Accounting migration step 0 dropped `PaymentTransaction`, the only source an invoice
- * Checkout session was ever recorded against — there is no pending row left to cancel.
- */
-export async function cancelAbandonedCheckout(
-  _token: string,
-  _transactionId: string
-): Promise<void> {}
 
 /**
  * The single "can this org accept a Stripe payment right now" predicate — connected,
@@ -230,12 +219,10 @@ export async function getPublicInvoicePayload(token: string): Promise<PublicInvo
     getOrganizationSetting({ organizationId, key: 'documents.invoice.allowPartialPayments' }),
     getOrganizationSetting({ organizationId, key: 'documents.invoice.partialPaymentMinPercent' }),
   ])
-  // Accounting migration step 0 dropped `PaymentTransaction` and the Checkout/webhook
-  // routes it backed — there is no online payment collection to gate, report a pending
-  // session for, or apply a deposit from until that lane is rebuilt on the money model.
-  const pendingCharge = null
-  const depositApplied = 0
-  const paymentsEnabled = false
+  const [paymentsEnabled, depositApplied] = await Promise.all([
+    isCheckoutAvailable(organizationId),
+    sumInvoiceDepositApplications(database, organizationId, invoiceInstanceId),
+  ])
   const minPaymentAmount = resolvePartialPaymentBounds(
     payload.balance,
     Number(partialPaymentMinPercent ?? 10)
@@ -265,7 +252,9 @@ export async function getPublicInvoicePayload(token: string): Promise<PublicInvo
     business: payload.settings.business,
     branding: payload.settings.branding,
     paymentsEnabled,
-    processingPayment: !!pendingCharge,
+    // Nothing is recorded until Stripe confirms, so an in-flight checkout is only
+    // knowable from the browser's own return - the page reads `?checkout=success`.
+    processingPayment: false,
     allowPartialPayments: !!allowPartialPayments,
     minPaymentAmount,
   }

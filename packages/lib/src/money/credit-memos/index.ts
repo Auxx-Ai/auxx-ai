@@ -9,7 +9,6 @@ export {
   readCreditMemoControlAccount,
   reverseCreditMemoEntry,
 } from './accounting'
-
 export {
   type ApplyCreditMemoInput,
   type ApplyCreditMemoResult,
@@ -17,6 +16,11 @@ export {
   type UnapplyCreditMemoInput,
   unapplyCreditMemo,
 } from './apply'
+export {
+  type RefundCreditMemoToCardInput,
+  type RefundCreditMemoToCardResult,
+  refundCreditMemoToCard,
+} from './card-refund'
 export {
   type ContactCredit,
   type ContactCreditMemo,

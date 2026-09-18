@@ -6,6 +6,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { batchReadSystemValues, computeWorkOrderBillingProjection } from './billing-projection'
+import { sumUnappliedCustomerMoney, sumWorkOrderDeposits } from './checkout/reads'
 import { listUninvoicedLines } from './gather'
 
 const INVOICE_ROW_ATTRS = [
@@ -113,14 +114,14 @@ export async function getWorkOrderBillingState(input: {
     }),
     listUninvoicedLines(input),
   ])
-  // Accounting migration step 0 dropped `PaymentTransaction`, the only source this
-  // cross-invoice payments list and its held/applied deposit figures were ever read
-  // from — quote deposits and a cross-invoice money-model read have no equivalent
-  // yet, so both are empty/zero rather than crashing. Per-invoice payments still
-  // render correctly through the invoice drawer's `listPayments`.
+  const deposits = await sumWorkOrderDeposits(
+    database,
+    input.organizationId,
+    input.workOrderInstanceId
+  )
   const payments: never[] = []
-  const depositHeld = 0
-  const depositApplied = 0
+  const depositHeld = deposits.heldMinor
+  const depositApplied = deposits.appliedMinor
 
   const allocationsByVisit = new Map<string, typeof activeVisits>()
   for (const allocation of activeVisits) {
@@ -255,10 +256,11 @@ export async function getContactBillingOverview(input: {
     }),
     invoiceRows({ ...input, invoiceIds: invoices.ids }),
   ])
-  // Accounting migration step 0 dropped `PaymentTransaction`, the only source this Σ of
-  // unallocated deposit remainders was ever read from — quote deposits have no
-  // money-model equivalent yet, so there is no credit to report.
-  const creditOnAccount = 0
+  const creditOnAccount = await sumUnappliedCustomerMoney(
+    database,
+    input.organizationId,
+    input.contactInstanceId
+  )
   const activeRows = rows.filter((row) => row.status !== 'void')
   const draftRows = activeRows.filter((row) => row.status === 'draft')
   const now = new Date().toISOString().split('T')[0]!

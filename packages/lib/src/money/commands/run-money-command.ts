@@ -25,6 +25,12 @@ export interface MoneyCommandInput {
   kind: string
   /** Anything hashable. Only its hash is stored. */
   payload: unknown
+  /**
+   * Extra facts merged into `actorSnapshot`. The only durable link a document
+   * with no `MoneyApplication` column has - a held quote deposit is found by
+   * `actorSnapshot->>'quoteInstanceId'`.
+   */
+  actorContext?: Record<string, string>
 }
 
 export interface MoneyCommandOptions {
@@ -99,7 +105,7 @@ export async function runMoneyCommand<T extends Record<string, string>>(
             commandKey: input.commandKey,
             kind: input.kind,
             payloadHash,
-            actorSnapshot: { userId: input.userId },
+            actorSnapshot: { userId: input.userId, ...input.actorContext },
           })
           .returning({ id: schema.MoneyCommand.id })
         if (!command) throw new Error('Money command insert returned no row')

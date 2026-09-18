@@ -994,6 +994,10 @@ async function stampDocument(
     return
   }
 
+  // 🛑 Nothing to stamp on a movement: `MoneyTransaction` has no bank-line
+  // column, so the bank line's own `matchedRecordId` is the whole link - which
+  // is what `readDocumentLink` reads back for it.
+  if (recordType === 'money_transaction') return
   const defId = await resolveDefIdForRecord(db, organizationId, recordId)
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
   if (recordType === 'vendor_payment') {
@@ -1032,6 +1036,10 @@ async function unstampDocument(
 ): Promise<void> {
   const { organizationId, actorUserId, recordType, recordId } = params
 
+  // 🛑 Nothing to stamp on a movement: `MoneyTransaction` has no bank-line
+  // column, so the bank line's own `matchedRecordId` is the whole link - which
+  // is what `readDocumentLink` reads back for it.
+  if (recordType === 'money_transaction') return
   const defId = await resolveDefIdForRecord(db, organizationId, recordId)
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
   if (recordType === 'vendor_payment') {

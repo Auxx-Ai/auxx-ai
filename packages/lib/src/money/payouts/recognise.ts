@@ -15,8 +15,8 @@
  * id recognises NOTHING and credits the whole deposit to `2450 Unidentified
  * Receipts`. An `order` ref is answered against the synced order instead.
  *
- * Accounting migration step 0 dropped `PaymentTransaction` — a Stripe charge/refund id
- * is now recognised through `FinancialSourceObject.externalId` → `MoneySourceLink`,
+ * A Stripe charge/refund id is recognised through
+ * `FinancialSourceObject.externalId` → `MoneySourceLink`,
  * the same evidence trail a bank-feed-observed transaction is adopted into a
  * `MoneyTransaction` through (`credit-memos/reads.ts`'s "adopted legacy" check).
  */
