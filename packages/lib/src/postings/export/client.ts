@@ -29,3 +29,20 @@ export function exportBatchStateHint(state: ExportBatchState, autoSend: boolean)
   if (state === 'withdrawn') return 'Removed from the provider; rebuilt on the next build'
   return null
 }
+
+/** Plan 67 §1's mapping table, in the words the sync queue shows for `ExportBatchRow.objectType`. */
+const OBJECT_TYPE_LABELS: Record<string, string> = {
+  journal: 'Journal entry',
+  sales_receipt: 'Sales receipt',
+  invoice: 'Invoice',
+  payment: 'Payment',
+  credit_memo: 'Credit memo',
+  refund_receipt: 'Refund receipt',
+  deposit: 'Deposit',
+  bill: 'Bill',
+}
+
+/** Unknown `objectType` renders as the raw string - never a refusal on the queue row. */
+export function exportObjectTypeLabel(objectType: string): string {
+  return OBJECT_TYPE_LABELS[objectType] ?? objectType
+}

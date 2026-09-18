@@ -289,8 +289,11 @@ interface WriteReceiveMovementArgs {
  * already priced; refusing to record it because a derived convenience could not
  * be written would lose the arrival. The part simply stays unrolled, which is
  * the state it was in a moment ago.
+ *
+ * Exported: `receive-purchase-order.ts` calls this once per line too, before
+ * its own shared transaction opens.
  */
-async function setFirstStandardCostFromReceipt(
+export async function setFirstStandardCostFromReceipt(
   db: Database,
   organizationId: string,
   partId: string,
@@ -386,10 +389,12 @@ async function unwrap<T>(promise: Promise<Result<T, Error>>): Promise<T> {
 /**
  * The receipt's own entry: `Dr <the movement's frozen inventory role> / Cr grni`.
  *
- * 🛑 **The MOVEMENT is the document.** There is no goods-receipt record in the
- * model, so a multi-line purchase-order receipt is N receipt documents rather
- * than one - which is also what makes `reverseMovement` exact, since a
- * correction there undoes one line and one entry.
+ * 🛑 **The MOVEMENT is the document, for THIS door only.** `receiveStock` is the
+ * single-line ad hoc receipt, so its one movement is the whole document - which
+ * is what makes `reverseMovement` exact, since a correction here undoes one line
+ * and one entry. A multi-line `receivePurchaseOrder` receipt posts once for the
+ * whole receipt instead, with every line's movement as a member (TARGET §5) -
+ * see that file's own posting call.
  *
  * GRNI is credited at the movement's whole extended cost, which for every
  * purchase-order receipt IS the agreed price (nothing is capitalised at receipt

@@ -1,9 +1,11 @@
 // packages/lib/src/postings/export/__tests__/build-batches.test.ts
 //
-// The build's two properties: it is IDEMPOTENT in both modes - a second run
-// over a range that already has its batches writes nothing - and it never
-// touches a posting dated before the cutover. A fake db in `post-entry.test.ts`'s
-// style: what is exercised is the builder's own selection, not Postgres.
+// The build's properties: it is IDEMPOTENT in both modes - a second run over a
+// range that already has its batches writes nothing - it never touches a
+// posting dated before the cutover, and in Transaction mode it now shapes each
+// posting into its native provider object (plan 67), falling back to `journal`
+// when a posting's lines do not fit. A fake db in `post-entry.test.ts`'s style:
+// what is exercised is the builder's own selection, not Postgres.
 
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -14,8 +16,7 @@ vi.mock('../../book-connections', () => ({
 }))
 
 const readExportSettings = vi.fn()
-vi.mock('../../export-settings', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../export-settings')>()),
+vi.mock('../../read-export-settings', () => ({
   readExportSettings: (...a: unknown[]) => readExportSettings(...a),
 }))
 
@@ -24,10 +25,16 @@ vi.mock('../../reads/ledger-summary', () => ({
   readLedgerSummary: (...a: unknown[]) => readLedgerSummary(...a),
 }))
 
+const h = vi.hoisted(() => ({ debug: vi.fn() }))
+vi.mock('@auxx/logger', () => ({
+  createScopedLogger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: h.debug }),
+}))
+
 import { ok } from 'neverthrow'
 import { buildExportBatches } from '../build-batches'
 
 const ORG = 'org_1'
+const CUSTOMER = { counterpartyType: 'customer', counterpartyId: 'cust_1' }
 const CONNECTION = { connectionId: 'conn_1', bookId: 'book_1', exportFromDate: '2026-01-01' }
 
 function posting(over: Partial<Record<string, unknown>> = {}) {
@@ -52,6 +59,7 @@ function line(over: Partial<Record<string, unknown>> = {}) {
     glAccountId: 'acct_a',
     accountCode: '1100',
     accountName: 'A/R',
+    accountRole: null,
     direction: 'debit',
     amountMinor: 5000,
     lineNumber: 0,
@@ -65,15 +73,17 @@ function line(over: Partial<Record<string, unknown>> = {}) {
 /**
  * `select()` answers in order, `insert()` records what it was handed.
  *
- * `inserted` carries only the batches an insert actually returned a row for,
- * which is what `onConflictDoNothing` decides in production.
+ * `inserted` carries only the batch rows an insert actually returned a row
+ * for, which is what `onConflictDoNothing` decides in production. `members`
+ * carries every `ExportBatchPosting` array an insert was handed, in call order.
  */
 function fakeDb(selects: unknown[][], options: { conflict?: boolean } = {}) {
   let call = 0
   const inserted: Array<Record<string, unknown>> = []
+  const members: Array<Array<Record<string, unknown>>> = []
   const selectChain: Record<string, unknown> = {}
   const passthrough = () => selectChain
-  for (const method of ['from', 'leftJoin', 'where', 'orderBy', 'limit'])
+  for (const method of ['from', 'leftJoin', 'innerJoin', 'where', 'orderBy', 'limit'])
     selectChain[method] = passthrough
   // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
   selectChain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
@@ -87,7 +97,8 @@ function fakeDb(selects: unknown[][], options: { conflict?: boolean } = {}) {
       let pending: Record<string, unknown> | undefined
       const chain: Record<string, unknown> = {}
       chain.values = (values: Record<string, unknown> | Record<string, unknown>[]) => {
-        if (!Array.isArray(values)) pending = values
+        if (Array.isArray(values)) members.push(values)
+        else pending = values
         return chain
       }
       chain.onConflictDoNothing = () => chain
@@ -108,7 +119,7 @@ function fakeDb(selects: unknown[][], options: { conflict?: boolean } = {}) {
     select: () => selectChain,
     transaction: (fn: (tx: unknown) => unknown) => fn(tx),
   } as unknown as Database
-  return { db, inserted }
+  return { db, inserted, members }
 }
 
 beforeEach(() => {
@@ -126,8 +137,12 @@ beforeEach(() => {
 const RANGE = { organizationId: ORG, from: '2026-09-01', to: '2026-09-30' }
 
 describe('Transaction mode', () => {
-  it('builds one batch per posted, un-batched posting', async () => {
-    const { db, inserted } = fakeDb([[posting()], [line(), line({ direction: 'credit' })]])
+  it('builds one batch per posted, un-batched posting, falling back to journal with no role data', async () => {
+    const { db, inserted } = fakeDb([
+      [posting()],
+      [], // parent links for the fulfillment - none
+      [line(), line({ direction: 'credit' })],
+    ])
 
     const result = await buildExportBatches(db, RANGE)
 
@@ -138,6 +153,7 @@ describe('Transaction mode', () => {
       // The posting id IS the grain: one posting, one batch.
       grainKey: 'glp_1',
       state: 'ready',
+      // No role data on the lines (a legacy/manual entry) - falls back to journal.
       objectType: 'journal',
       totalMinor: 5000,
     })
@@ -154,7 +170,7 @@ describe('Transaction mode', () => {
   })
 
   it('races converge on one batch: a conflicting insert builds nothing', async () => {
-    const { db, inserted } = fakeDb([[posting()], [line(), line({ direction: 'credit' })]], {
+    const { db, inserted } = fakeDb([[posting()], [], [line(), line({ direction: 'credit' })]], {
       conflict: true,
     })
 
@@ -211,6 +227,7 @@ describe('Transaction mode', () => {
           totalMinor: 5000,
         }),
       ],
+      [],
       [
         line({ glPostingId: 'glp_rev', direction: 'credit' }),
         line({ glPostingId: 'glp_rev', direction: 'debit' }),
@@ -221,6 +238,320 @@ describe('Transaction mode', () => {
 
     expect(result._unsafeUnwrap().built).toBe(1)
     expect(inserted[0]).toMatchObject({ grainKey: 'glp_rev' })
+  })
+
+  it('a fulfillment fully paid at shipment (auto) becomes one sales_receipt with two members, and its receipt gets no batch of its own', async () => {
+    const { db, inserted, members } = fakeDb([
+      [
+        posting({ storeId: 'store_1' }),
+        posting({ id: 'glp_pay', postingType: 'payment', docNumber: 'AUXX-PMT-1' }),
+      ],
+      [{ id: 'store_1', exportShape: 'auto' }],
+      [
+        { glPostingId: 'glp_1', sourceKind: 'order', sourceId: 'order_1' },
+        { glPostingId: 'glp_pay', sourceKind: 'order', sourceId: 'order_1' },
+      ],
+      [{ orderId: 'order_1', glPostingId: 'glp_pay', totalMinor: 5000, txnDate: '2026-09-14' }],
+      [], // claims - unused, glp_pay is absorbed
+      [
+        line({
+          glAccountId: 'acct_ar',
+          accountRole: 'accounts_receivable',
+          direction: 'debit',
+          ...CUSTOMER,
+        }),
+        line({ glAccountId: 'acct_rev', accountRole: 'revenue_product', direction: 'credit' }),
+        line({
+          glPostingId: 'glp_pay',
+          glAccountId: 'acct_clearing',
+          accountRole: 'clearing',
+          direction: 'debit',
+        }),
+        line({
+          glPostingId: 'glp_pay',
+          glAccountId: 'acct_ar',
+          accountRole: 'accounts_receivable',
+          direction: 'credit',
+          ...CUSTOMER,
+        }),
+      ],
+    ])
+
+    const result = await buildExportBatches(db, RANGE)
+
+    expect(result._unsafeUnwrap().built).toBe(1)
+    expect(inserted).toHaveLength(1)
+    expect(inserted[0]).toMatchObject({ objectType: 'sales_receipt', grainKey: 'glp_1' })
+    expect(members[0]?.map((m) => m.glPostingId).sort()).toEqual(['glp_1', 'glp_pay'])
+  })
+
+  it('the same fulfillment not fully paid becomes an invoice, and its receipt a separate payment with appliesTo', async () => {
+    const { db, inserted } = fakeDb([
+      [
+        posting({ storeId: 'store_1' }),
+        posting({
+          id: 'glp_pay',
+          postingType: 'payment',
+          docNumber: 'AUXX-PMT-1',
+          totalMinor: 2000,
+        }),
+      ],
+      [{ id: 'store_1', exportShape: 'auto' }],
+      [
+        { glPostingId: 'glp_1', sourceKind: 'order', sourceId: 'order_1' },
+        { glPostingId: 'glp_pay', sourceKind: 'order', sourceId: 'order_1' },
+      ],
+      [{ orderId: 'order_1', glPostingId: 'glp_pay', totalMinor: 2000, txnDate: '2026-09-14' }],
+      [{ sourceKind: 'order', sourceId: 'order_1', glPostingId: 'glp_1' }],
+      [
+        line({
+          glAccountId: 'acct_ar',
+          accountRole: 'accounts_receivable',
+          direction: 'debit',
+          ...CUSTOMER,
+        }),
+        line({ glAccountId: 'acct_rev', accountRole: 'revenue_product', direction: 'credit' }),
+        line({
+          glPostingId: 'glp_pay',
+          glAccountId: 'acct_clearing',
+          accountRole: 'clearing',
+          direction: 'debit',
+          amountMinor: 2000,
+        }),
+        line({
+          glPostingId: 'glp_pay',
+          glAccountId: 'acct_ar',
+          accountRole: 'accounts_receivable',
+          direction: 'credit',
+          amountMinor: 2000,
+          ...CUSTOMER,
+        }),
+      ],
+    ])
+
+    const result = await buildExportBatches(db, RANGE)
+
+    expect(result._unsafeUnwrap().built).toBe(2)
+    expect(inserted).toHaveLength(2)
+    const fulfillmentBatch = inserted.find((b) => b.grainKey === 'glp_1')
+    const paymentBatch = inserted.find((b) => b.grainKey === 'glp_pay')
+    expect(fulfillmentBatch?.objectType).toBe('invoice')
+    expect(paymentBatch?.objectType).toBe('payment')
+    expect((paymentBatch?.payload as { appliesTo: { glPostingId: string } }).appliesTo).toEqual({
+      glPostingId: 'glp_1',
+    })
+  })
+
+  it('`exportShape: invoice` sends Invoice even for a fully paid fulfillment', async () => {
+    const { db, inserted } = fakeDb([
+      [
+        posting({ storeId: 'store_1' }),
+        posting({ id: 'glp_pay', postingType: 'payment', docNumber: 'AUXX-PMT-1' }),
+      ],
+      [{ id: 'store_1', exportShape: 'invoice' }],
+      [
+        { glPostingId: 'glp_1', sourceKind: 'order', sourceId: 'order_1' },
+        { glPostingId: 'glp_pay', sourceKind: 'order', sourceId: 'order_1' },
+      ],
+      [{ orderId: 'order_1', glPostingId: 'glp_pay', totalMinor: 5000, txnDate: '2026-09-14' }],
+      [{ sourceKind: 'order', sourceId: 'order_1', glPostingId: 'glp_1' }],
+      [
+        line({
+          glAccountId: 'acct_ar',
+          accountRole: 'accounts_receivable',
+          direction: 'debit',
+          ...CUSTOMER,
+        }),
+        line({ glAccountId: 'acct_rev', accountRole: 'revenue_product', direction: 'credit' }),
+        line({
+          glPostingId: 'glp_pay',
+          glAccountId: 'acct_clearing',
+          accountRole: 'clearing',
+          direction: 'debit',
+        }),
+        line({
+          glPostingId: 'glp_pay',
+          glAccountId: 'acct_ar',
+          accountRole: 'accounts_receivable',
+          direction: 'credit',
+          ...CUSTOMER,
+        }),
+      ],
+    ])
+
+    const result = await buildExportBatches(db, RANGE)
+
+    expect(result._unsafeUnwrap().built).toBe(2)
+    expect(inserted.find((b) => b.grainKey === 'glp_1')?.objectType).toBe('invoice')
+  })
+
+  it('a credit memo becomes a credit_memo', async () => {
+    const { db, inserted } = fakeDb([
+      [
+        posting({
+          id: 'glp_crm',
+          postingType: 'credit_memo',
+          docNumber: 'AUXX-CRM-1',
+          totalMinor: 1000,
+        }),
+      ],
+      [
+        line({
+          glPostingId: 'glp_crm',
+          glAccountId: 'acct_returns',
+          accountRole: 'revenue_returns_allowances',
+          direction: 'debit',
+          amountMinor: 1000,
+        }),
+        line({
+          glPostingId: 'glp_crm',
+          glAccountId: 'acct_ar',
+          accountRole: 'accounts_receivable',
+          direction: 'credit',
+          amountMinor: 1000,
+          ...CUSTOMER,
+        }),
+      ],
+    ])
+
+    const result = await buildExportBatches(db, RANGE)
+
+    expect(result._unsafeUnwrap().built).toBe(1)
+    expect(inserted[0]).toMatchObject({ objectType: 'credit_memo', avenue: 'creditMemo' })
+  })
+
+  it('a payout becomes a deposit with the fee line negative', async () => {
+    const { db, inserted } = fakeDb([
+      [
+        posting({
+          id: 'glp_po1',
+          postingType: 'payout',
+          docNumber: 'AUXX-PAY-1',
+          totalMinor: 5000,
+        }),
+      ],
+      [
+        line({
+          glPostingId: 'glp_po1',
+          glAccountId: 'acct_bank',
+          accountRole: 'bank',
+          direction: 'debit',
+          amountMinor: 4700,
+        }),
+        line({
+          glPostingId: 'glp_po1',
+          glAccountId: 'acct_fees',
+          accountRole: 'payment_processing_fees',
+          direction: 'debit',
+          amountMinor: 300,
+        }),
+        line({
+          glPostingId: 'glp_po1',
+          glAccountId: 'acct_clearing',
+          accountRole: 'clearing',
+          direction: 'credit',
+          amountMinor: 5000,
+        }),
+      ],
+    ])
+
+    const result = await buildExportBatches(db, RANGE)
+
+    expect(result._unsafeUnwrap().built).toBe(1)
+    expect(inserted[0]?.objectType).toBe('deposit')
+    const payload = inserted[0]?.payload as { lines: Array<{ amountMinor: number }> }
+    expect(payload.lines).toEqual(
+      expect.arrayContaining([expect.objectContaining({ amountMinor: -300 })])
+    )
+  })
+
+  it('an expense bill becomes a bill', async () => {
+    const { db, inserted } = fakeDb([
+      [
+        posting({
+          id: 'glp_bil1',
+          postingType: 'expense_bill',
+          docNumber: 'AUXX-EXB-1',
+          totalMinor: 600,
+        }),
+      ],
+      [
+        line({
+          glPostingId: 'glp_bil1',
+          glAccountId: 'acct_expense',
+          direction: 'debit',
+          amountMinor: 600,
+        }),
+        line({
+          glPostingId: 'glp_bil1',
+          glAccountId: 'acct_ap',
+          accountRole: 'accounts_payable',
+          direction: 'credit',
+          amountMinor: 600,
+          counterpartyType: 'vendor',
+          counterpartyId: 'vendor_1',
+        }),
+      ],
+    ])
+
+    const result = await buildExportBatches(db, RANGE)
+
+    expect(result._unsafeUnwrap().built).toBe(1)
+    expect(inserted[0]).toMatchObject({ objectType: 'bill', avenue: 'expenseBill' })
+  })
+
+  it('a manual journal has no native shape and stays a plain journal, unchanged', async () => {
+    const { db, inserted } = fakeDb([
+      [
+        posting({
+          id: 'glp_jnl1',
+          postingType: 'manual_journal',
+          docNumber: 'AUXX-JNL-1',
+          totalMinor: 100,
+        }),
+      ],
+      [
+        line({ glPostingId: 'glp_jnl1', amountMinor: 100 }),
+        line({ glPostingId: 'glp_jnl1', direction: 'credit', amountMinor: 100 }),
+      ],
+    ])
+
+    const result = await buildExportBatches(db, RANGE)
+
+    expect(result._unsafeUnwrap().built).toBe(1)
+    expect(inserted[0]?.objectType).toBe('journal')
+    expect(h.debug).not.toHaveBeenCalled()
+  })
+
+  it('a posting whose lines do not fit its native shape falls back to journal, and logs why', async () => {
+    const { db, inserted } = fakeDb([
+      [posting({ totalMinor: 5200 })],
+      [],
+      [
+        line({
+          glAccountId: 'acct_ar',
+          accountRole: 'accounts_receivable',
+          direction: 'debit',
+          ...CUSTOMER,
+        }),
+        line({ glAccountId: 'acct_unexpected', direction: 'debit', amountMinor: 200 }),
+        line({
+          glAccountId: 'acct_rev',
+          accountRole: 'revenue_product',
+          direction: 'credit',
+          amountMinor: 5200,
+        }),
+      ],
+    ])
+
+    const result = await buildExportBatches(db, RANGE)
+
+    expect(result._unsafeUnwrap().built).toBe(1)
+    expect(inserted[0]?.objectType).toBe('journal')
+    expect(h.debug).toHaveBeenCalledWith(
+      'Export batch fell back to a journal entry',
+      expect.objectContaining({ glPostingId: 'glp_1' })
+    )
   })
 })
 
@@ -263,6 +594,7 @@ describe('Summary mode', () => {
       avenue: 'fulfillment',
       grainKey: '2026-09-14',
       storeId: 'store_1',
+      objectType: 'journal',
       totalMinor: 9000,
     })
   })

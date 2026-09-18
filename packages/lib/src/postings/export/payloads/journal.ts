@@ -1,11 +1,12 @@
-// packages/lib/src/postings/export/payload.ts
-// The provider-NEUTRAL journal an export batch freezes. Every object type is a
-// journal in step 3; native objects arrive in step 4 (MIGRATION step 4).
+// packages/lib/src/postings/export/payloads/journal.ts
+// The provider-NEUTRAL journal an export batch freezes. Every object type was a
+// journal in step 3; native objects (the rest of this directory) arrive in step
+// 4 (MIGRATION step 4). Moved unchanged from `../payload.ts`.
 
 import { z } from 'zod/v4'
-import { accountingBasisHash } from '../basis-hash'
+import { accountingBasisHash } from '../../basis-hash'
 
-/** The only object type step 3 builds. A plain string, not a DB enum. */
+/** The only object type step 3 built. A plain string, not a DB enum. */
 export const JOURNAL_OBJECT_TYPE = 'journal'
 
 const counterparty = z.object({

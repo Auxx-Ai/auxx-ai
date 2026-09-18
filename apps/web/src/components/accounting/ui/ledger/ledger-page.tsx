@@ -415,7 +415,6 @@ export function LedgerPage() {
       currencyCode={currencyCode}
       bookTimeZone={bookTimeZone}
       providerLabel={providerLabel}
-      connectedTenantId={provider.connectedTenantId}
       onOpenExportQueue={(tab) => {
         void setPostingId(null)
         void setDraftsOpen(null)
@@ -552,7 +551,6 @@ export function LedgerPage() {
                   periodLabel={periodLabel}
                   bookTimeZone={bookTimeZone}
                   providerLabel={providerLabel}
-                  providerConnected={provider.connected}
                   activePostingId={postingId}
                   onSelectPosting={openPosting}
                 />

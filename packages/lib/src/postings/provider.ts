@@ -53,8 +53,12 @@ export interface SendObjectInput {
 }
 
 export interface SendObjectResult {
-  /** `already_exists` means the provider held it and nothing was written. */
-  status: 'sent' | 'already_exists' | 'not_connected' | 'disabled'
+  /**
+   * `already_exists` means the provider held it and nothing was written.
+   * `waiting` (plan 67 §5.2) means a dependency - a Payment's invoice - has
+   * not sent yet; `send.ts` releases the lease without spending an attempt.
+   */
+  status: 'sent' | 'already_exists' | 'not_connected' | 'disabled' | 'waiting'
   /** The provider's own id. `''` when nothing was sent. */
   externalId: string
   /** The provider's concurrency token, which a later withdrawal needs. */
@@ -62,6 +66,8 @@ export interface SendObjectResult {
   providerId: string
   /** Which instance of the provider answered - a QuickBooks realm, a Xero tenant. */
   tenantId?: string
+  /** Present only on `status: 'waiting'` - the sentence `send.ts` records as `lastError`. */
+  waitingReason?: string
 }
 
 /** What to look for. Both halves are supplied because no provider offers both. */
@@ -242,6 +248,14 @@ export interface AccountingProvider {
     ctx: ProviderObjectContext,
     input: WithdrawObjectInput
   ): Promise<Result<WithdrawResult, Error>>
+
+  /**
+   * A deep link into the provider's own register for one sent object, or
+   * `null` when this provider has no URL shape to offer (plan 67 §5.6). The
+   * ONLY place a vendor URL may be built - never in a component, which is
+   * what keeps the queue and the posting drawer provider-neutral.
+   */
+  objectUrl?(ref: { objectType: string; externalId: string }): string | null
 
   /**
    * Create the counterpart of one of OUR accounts in the provider's own chart -

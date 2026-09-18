@@ -8,6 +8,8 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, NotFoundError } from '../../errors'
 import { type ProviderObjectContext, resolveAccountingProvider } from '../provider'
+import { INVOICE_OBJECT_TYPE } from './payloads/invoice'
+import { PAYMENT_OBJECT_TYPE } from './payloads/payment'
 
 const logger = createScopedLogger('postings:export-rollback')
 
@@ -22,6 +24,52 @@ export interface RollbackExportBatchResult {
   /** True on the one refusal `force: true` may override. */
   forcible?: boolean
   postingsFreed: number
+}
+
+/**
+ * A live `sent` Payment batch whose `appliesTo` names one of `invoiceBatchId`'s
+ * own member postings, or null. 🛑 Rollback order (plan 67 §5.4): a Payment
+ * must be withdrawn before the Invoice it applies to, so an Invoice batch
+ * refuses to withdraw while one is still there.
+ */
+async function findBlockingPayment(
+  db: Database,
+  organizationId: string,
+  invoiceBatchId: string
+): Promise<{ id: string; docNumber: string | null } | null> {
+  const members = await db
+    .select({ glPostingId: schema.ExportBatchPosting.glPostingId })
+    .from(schema.ExportBatchPosting)
+    .where(
+      and(
+        eq(schema.ExportBatchPosting.organizationId, organizationId),
+        eq(schema.ExportBatchPosting.batchId, invoiceBatchId),
+        isNull(schema.ExportBatchPosting.withdrawnAt)
+      )
+    )
+  const glPostingIds = members.map((member) => member.glPostingId)
+  if (glPostingIds.length === 0) return null
+
+  const payments = await db
+    .select({ id: schema.ExportBatch.id, payload: schema.ExportBatch.payload })
+    .from(schema.ExportBatch)
+    .where(
+      and(
+        eq(schema.ExportBatch.organizationId, organizationId),
+        eq(schema.ExportBatch.objectType, PAYMENT_OBJECT_TYPE),
+        eq(schema.ExportBatch.state, 'sent')
+      )
+    )
+  const blocking = payments.find((payment) => {
+    const glPostingId = (payment.payload as { appliesTo?: { glPostingId?: string } })?.appliesTo
+      ?.glPostingId
+    return glPostingId ? glPostingIds.includes(glPostingId) : false
+  })
+  if (!blocking) return null
+  return {
+    id: blocking.id,
+    docNumber: (blocking.payload as { docNumber?: string })?.docNumber ?? null,
+  }
 }
 
 /**
@@ -78,6 +126,17 @@ export async function rollbackExportBatch(
           'We hold no version for the provider’s copy, and it refuses a delete without one. Force the rollback to discard it anyway.',
         postingsFreed: 0,
       })
+
+    if (batch.objectType === INVOICE_OBJECT_TYPE) {
+      const blocking = await findBlockingPayment(db, organizationId, batchId)
+      if (blocking)
+        return ok({
+          batchId,
+          status: 'refused',
+          message: `A payment (${blocking.docNumber ?? blocking.id}) applies to this invoice and is still sent. Roll that back first.`,
+          postingsFreed: 0,
+        })
+    }
 
     const provider = await resolveAccountingProvider(organizationId)
     const ctx: ProviderObjectContext = { organizationId, connectionId: batch.connectionId }

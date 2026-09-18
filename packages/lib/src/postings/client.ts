@@ -221,6 +221,7 @@ export {
   type ExportBatchTab,
   exportBatchStateHint,
   exportBatchStateLabel,
+  exportObjectTypeLabel,
 } from './export/client'
 // TARGET §3: the export batch's settings. `readExportSettings` stays
 // server-only (`./index`) - these three reach nothing but `../types`.

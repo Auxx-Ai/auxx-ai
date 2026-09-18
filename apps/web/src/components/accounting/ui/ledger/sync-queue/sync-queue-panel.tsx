@@ -25,7 +25,7 @@
 // ledger's own drawer.
 
 import { PermissionKey } from '@auxx/lib/permissions/client'
-import type { ExportBatchMember, ExportBatchRow } from '@auxx/lib/postings'
+import type { ExportBatchMember } from '@auxx/lib/postings'
 import { EXPORT_BATCH_TABS, type ExportBatchTab } from '@auxx/lib/postings/client'
 import { ActionBar } from '@auxx/ui/components/action-bar'
 import { Badge } from '@auxx/ui/components/badge'
@@ -61,12 +61,14 @@ import {
 } from '~/components/list-selection'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import { exportAvenueLabel } from '../export-avenue-labels'
 import { EMPTY_CELL, formatAccountingDate, formatMinor } from '../format'
-import { providerBatchObjectUrl } from '../post-result-callout'
 import { useLedgerSources } from '../use-ledger-sources'
 import { ExportBatchStateBadge } from './export-batch-badge'
+
+/** `ExportBatchRow` plus the server-computed deep link (plan 67 §5.6) - never built in the browser. */
+type ExportBatchRow = RouterOutputs['ledger']['exportBatches']['list'][number]
 
 const TAB_ICON: Record<ExportBatchTab, typeof CheckCircle2> = {
   ready: CheckCircle2,
@@ -91,7 +93,6 @@ interface SyncQueuePanelProps {
   bookTimeZone: string
   /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
   providerLabel: string
-  providerConnected: boolean
   /** So an open row reads as "the one you are looking at" the same as the rail strip does. */
   activePostingId: string | null
   onSelectPosting: (glPostingId: string) => void
@@ -117,7 +118,6 @@ function SyncQueueBody({
   periodLabel,
   bookTimeZone,
   providerLabel,
-  providerConnected,
   activePostingId,
   onSelectPosting,
 }: SyncQueuePanelProps) {
@@ -333,7 +333,7 @@ function SyncQueueBody({
             getKey={(batch: ExportBatchRow) => batch.id}
             renderRow={(batch: ExportBatchRow) => {
               const isOpen = openBatchIds.has(batch.id)
-              const url = providerBatchObjectUrl(providerConnected, batch.providerObjectId)
+              const url = batch.providerObjectUrl
               const sending = send.isPending && send.variables?.batchId === batch.id
               const retrying = retry.isPending && retry.variables?.batchId === batch.id
               const releasing =

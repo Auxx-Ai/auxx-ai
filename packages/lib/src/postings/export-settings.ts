@@ -1,13 +1,9 @@
 // packages/lib/src/postings/export-settings.ts
 //
 // TARGET §3: which grain postings leave in, and whether a person releases them.
-// `EXPORT_AVENUES`, `SUMMARY_GRAIN_AVENUES` and `avenueOfPostingType` are PURE -
-// only `../types` - so `readExportSettings` reaches the settings service through
-// a dynamic import rather than a static one, keeping this file's own import
-// graph client-safe and letting `client.ts` re-export the pure names unchanged.
+// PURE - on the `client.ts` surface. The settings read lives in
+// `read-export-settings.ts`.
 
-import type { Database, Transaction } from '@auxx/database'
-import type { SettingKey } from '../settings/catalog'
 import type { PostingType } from './types'
 
 /** Every avenue the export batch groups postings by. Mirrors TARGET §3's provider-object table. */
@@ -88,69 +84,10 @@ export function avenueOfPostingType(postingType: PostingType): ExportAvenue | nu
   }
 }
 
-function autoSendSettingKey(avenue: ExportAvenue): SettingKey {
-  return `accounting.autoSend.${avenue}` as SettingKey
-}
-
-function summaryGrainSettingKey(avenue: SummaryGrainAvenue): SettingKey {
-  return `accounting.summaryGrain.${avenue}` as SettingKey
-}
-
 export interface ExportSettings {
   mode: 'transaction' | 'summary'
   /** `YYYY-MM-DD`, or `null` when unset - nothing dated before it is ever batched. */
   cutover: string | null
   autoSend: Record<ExportAvenue, boolean>
   summaryGrain: Record<SummaryGrainAvenue, SummaryGrain>
-}
-
-/**
- * Every export setting for one org, in one call: mode, cutover, and the
- * per-avenue `autoSend` / `summaryGrain` switches beside `autoPost`.
- *
- * Off/unset fails closed to the safe value - `autoSend` false (batches hold for
- * release), `summaryGrain` `'day'`.
- */
-export async function readExportSettings(
-  db: Database | Transaction,
-  organizationId: string
-): Promise<ExportSettings> {
-  const { getOrganizationSetting } = await import('../settings/settings-service')
-
-  const [mode, cutover] = await Promise.all([
-    getOrganizationSetting({ organizationId, key: 'accounting.exportMode', db }),
-    getOrganizationSetting({ organizationId, key: 'accounting.exportModeCutover', db }),
-  ])
-
-  const autoSendEntries = await Promise.all(
-    EXPORT_AVENUES.map(async (avenue) => {
-      const value = await getOrganizationSetting({
-        organizationId,
-        key: autoSendSettingKey(avenue),
-        db,
-      })
-      return [avenue, value === true] as const
-    })
-  )
-
-  const summaryGrainEntries = await Promise.all(
-    SUMMARY_GRAIN_AVENUES.map(async (avenue) => {
-      const value = await getOrganizationSetting({
-        organizationId,
-        key: summaryGrainSettingKey(avenue),
-        db,
-      })
-      return [avenue, value === 'month' ? ('month' as const) : ('day' as const)] as const
-    })
-  )
-
-  return {
-    mode: mode === 'summary' ? 'summary' : 'transaction',
-    cutover: typeof cutover === 'string' && cutover ? cutover : null,
-    autoSend: Object.fromEntries(autoSendEntries) as Record<ExportAvenue, boolean>,
-    summaryGrain: Object.fromEntries(summaryGrainEntries) as Record<
-      SummaryGrainAvenue,
-      SummaryGrain
-    >,
-  }
 }

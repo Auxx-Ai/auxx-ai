@@ -48,6 +48,7 @@ import {
   postJournalEntry,
   previewJournalEntry,
   readAccountingBookConnectionStatus,
+  readActiveBookConnection,
   readCloseBlockers,
   readExportSettings,
   readLatestPostingsByType,
@@ -1027,7 +1028,27 @@ export const ledgerRouter = createTRPCRouter({
           ...(input?.state ? { state: input.state } : {}),
         })
         if (result.isErr()) throw result.error
-        return result.value
+
+        // The deep-link guard, server-side (plan 67 §5.6): a batch links out
+        // only when it is `sent`, carries a provider id, and was sent to the
+        // book we are connected to right now - a batch sent to a company
+        // since disconnected must not link, same as before this moved here.
+        const [connection, provider] = await Promise.all([
+          readActiveBookConnection(ctx.db, ctx.session.organizationId),
+          resolveAccountingProvider(ctx.session.organizationId),
+        ])
+        const activeBookId = connection?.bookId ?? null
+
+        return result.value.map((batch) => ({
+          ...batch,
+          providerObjectUrl:
+            batch.state === 'sent' && batch.providerObjectId && batch.bookId === activeBookId
+              ? (provider.objectUrl?.({
+                  objectType: batch.objectType,
+                  externalId: batch.providerObjectId,
+                }) ?? null)
+              : null,
+        }))
       }),
 
     /**

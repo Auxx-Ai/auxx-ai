@@ -16,7 +16,6 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntityTriggerEvent } from '../../field-hooks/types'
-import type { MovementRecord, ReceivePurchaseOrderLineInput } from '../types'
 
 const ORG = 'org_1'
 const USER = 'user_1'
@@ -26,6 +25,8 @@ const FIELDS: Record<string, { id: string; type: string }> = {
   purchase_order_line_expected_unit_price: { id: 'fld-price', type: 'NUMBER' },
   stock_movement_quantity: { id: 'fld-mv-qty', type: 'NUMBER' },
   stock_movement_purchase_order_line: { id: 'fld-mv-poline', type: 'RELATIONSHIP' },
+  stock_movement_unit_cost: { id: 'fld-mv-cost', type: 'NUMBER' },
+  stock_movement_cost_basis: { id: 'fld-mv-basis', type: 'SINGLE_SELECT' },
   purchase_order_line_purchase_order: { id: 'fld-po-rel', type: 'RELATIONSHIP' },
   purchase_order_line_quantity_ordered: { id: 'fld-ordered', type: 'NUMBER' },
   purchase_order_line_quantity_received: { id: 'fld-received', type: 'NUMBER' },
@@ -167,6 +168,7 @@ vi.mock('../../cache', () => ({
         Object.fromEntries(attrs.map((attr) => [attr, FIELDS[attr] ?? null])),
     }),
   }),
+  getCachedEntityDefId: async (_org: string, entityType: string) => `def_${entityType}`,
   requireCachedEntityDefId: async (_org: string, entityType: string) => `def_${entityType}`,
 }))
 vi.mock('../../field-values/field-value-helpers', () => ({
@@ -193,30 +195,41 @@ vi.mock('../../realtime', () => ({
   publishFieldValueUpdates: async () => undefined,
 }))
 
-vi.mock('../receive-stock', async () => {
+// The write itself is not this file's concern (`receive-stock.test.ts` and
+// `receive-purchase-order.test.ts` own it) — only `UnifiedCrudHandler.create`
+// is stubbed, so `writeStockMovements` runs for real and the roll-up sees the
+// SAME `h.movementQuantity` a real write would have produced.
+vi.mock('../../resources/crud/unified-handler', () => ({
+  UnifiedCrudHandler: class {
+    create = vi.fn(async (_defId: string, values: Record<string, unknown>) => {
+      const lineRecordId = values.stock_movement_purchase_order_line as string | undefined
+      const lineId = lineRecordId?.split(':')[1] ?? ''
+      const quantity = values.stock_movement_quantity as number
+      h.movementQuantity.set(lineId, (h.movementQuantity.get(lineId) ?? 0) + quantity)
+      return { instance: { id: `mv_${lineId}` } }
+    })
+  },
+}))
+
+// A part's first standard cost — not this file's concern either; the real
+// implementation reads standard-cost fields this file's FIELDS map does not
+// materialise, which would fail the write it is meant to be a no-op belt on.
+vi.mock('../../builds/ensure-standard-cost', async () => {
   const { ok } = await import('neverthrow')
   return {
-    receiveStock: vi.fn(
-      async (_db, _org, _user, input: ReceivePurchaseOrderLineInput & { quantity: number }) => {
-        const lineId = (input as { purchaseOrderLineId: string }).purchaseOrderLineId
-        h.movementQuantity.set(lineId, (h.movementQuantity.get(lineId) ?? 0) + input.quantity)
-        return ok({
-          movementId: `mv_${lineId}`,
-          recordId: `def_mv:mv_${lineId}`,
-          partInstanceId: input.partId,
-          quantity: input.quantity,
-          unitCost: 1000,
-          extendedCost: 1000 * input.quantity,
-          vendorUnitPrice: 1000,
-          vendorPartId: null,
-          glAccount: '1310',
-          occurredAt: new Date(),
-          purchaseOrderLineId: lineId,
-        } satisfies MovementRecord)
-      }
+    ensureStandardCost: vi.fn(async (_db: unknown, _org: string, partIds: string[]) =>
+      ok({ writtenPartIds: partIds })
     ),
   }
 })
+
+// The posting seam has its own tests. Mocked here so the receipt's own
+// `inventory_movement` entry adds no SELECTs of its own to the budget below.
+vi.mock('../../postings/post-inventory-movement', () => ({
+  postInventoryMovementInTx: async () => null,
+  exportInventoryMovement: async () => null,
+  inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
+}))
 
 import { recalculatePurchaseOrderLineReceived } from '../../field-hooks/post/purchase-order-line-rollups'
 import { receivePurchaseOrder } from '../receive-purchase-order'
@@ -227,6 +240,7 @@ const db = {
     h.selects++
     return chain(projection, () => h.lineIds.map((entityId) => ({ entityId, valueNumber: 1000 })))
   },
+  transaction: async (fn: (tx: unknown) => unknown) => fn(db),
 } as never
 
 /**
@@ -273,14 +287,14 @@ beforeEach(() => {
 })
 
 describe('the cost of a receipt', () => {
-  it('a one-line receipt reads four times and writes once', async () => {
-    // 1 agreed price + 1 batched roll-up SUM + 1 order-level derivation, then
-    // the movement's own lifecycle rule re-SUMs its line once and finds nothing
-    // to do. The write is the line's `quantity_received`; the order's derived
-    // statuses were already `not_received`/`not_billed`, so only the receipt
-    // axis moves.
+  it('a one-line receipt reads five times and writes once', async () => {
+    // 1 agreed price + 1 parent purchase order (the posting's `parent` link) +
+    // 1 batched roll-up SUM + 1 order-level derivation, then the movement's own
+    // lifecycle rule re-SUMs its line once and finds nothing to do. The write is
+    // the line's `quantity_received`; the order's derived statuses were already
+    // `not_received`/`not_billed`, so only the receipt axis moves.
     const { selects } = await receiveAndSettle(1)
-    expect(selects).toBe(4)
+    expect(selects).toBe(5)
   })
 
   it('🛑 a ten-line receipt is NOT ten times a one-line receipt', async () => {
@@ -289,18 +303,20 @@ describe('the cost of a receipt', () => {
 
     expect(ten.selects).toBeLessThan(one.selects * 10)
     // The exact budget, so a regression names itself rather than drifting up to
-    // the ceiling above: 1 price read + 2 batched roll-up reads + 2 batched
-    // order-level reads + 10 lifecycle re-SUMs that each find their line
-    // already settled.
-    expect(ten.selects).toBe(15)
+    // the ceiling above: 1 price read + 1 parent purchase order read + 2 batched
+    // roll-up reads + 2 batched order-level reads + 10 lifecycle re-SUMs that
+    // each find their line already settled.
+    expect(ten.selects).toBe(16)
   })
 
   it('derives the ORDER once, however many lines arrived', async () => {
     // The measurement that matters. Nine of the ten order-level passes returned
     // an identical answer, and each cost a parent lookup, a full line read and a
-    // status read before it could say so.
+    // status read before it could say so. `-2` is the two up-front reads that
+    // never scale with the line count: the agreed prices and the posting's own
+    // parent purchase order.
     const ten = await receiveAndSettle(10)
-    const perLine = (ten.selects - 1) / 10
+    const perLine = (ten.selects - 2) / 10
     expect(perLine).toBeLessThan(2)
   })
 

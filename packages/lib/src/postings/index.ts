@@ -239,9 +239,11 @@ export {
   type BuildExportBatchesResult,
   buildExportBatches,
   countOutstandingExportBatches,
+  EXPORT_OBJECT_TYPES,
   type ExportBatchMember,
   type ExportBatchRow,
   type ExportJournalPayload,
+  type ExportObjectType,
   enqueueExportBatch,
   exportJournalSchema,
   hashExportPayload,
@@ -250,6 +252,7 @@ export {
   listExportBatches,
   MAX_AUTO_ATTEMPTS,
   parseExportJournal,
+  parseExportPayload,
   type ReleaseExportBatchesResult,
   type RollbackExportBatchResult,
   releaseExportBatches,
@@ -257,8 +260,11 @@ export {
   rollbackExportBatch,
   type SendExportBatchResult,
   type SendExportBatchStatus,
+  type ShapedPosting,
+  type ShapeForPostingInput,
   type SweepExportBatchesInput,
   sendExportBatch,
+  shapeForPosting,
   sweepExportBatches,
 } from './export'
 // TARGET §3: the export batch's settings, beside `autoPost`.
@@ -267,7 +273,6 @@ export {
   EXPORT_AVENUES,
   type ExportAvenue,
   type ExportSettings,
-  readExportSettings,
   SUMMARY_GRAIN_AVENUES,
   type SummaryGrain,
   type SummaryGrainAvenue,
@@ -488,6 +493,7 @@ export {
   readRailFeeStatus,
 } from './rail-fee-status'
 export { type CloseBlockersResult, readCloseBlockers } from './read-close-blockers'
+export { readExportSettings } from './read-export-settings'
 export { getPosting, readPostingLineSourceIds } from './read-posting'
 // TARGET §6: the summarised view over the detail ledger.
 export {

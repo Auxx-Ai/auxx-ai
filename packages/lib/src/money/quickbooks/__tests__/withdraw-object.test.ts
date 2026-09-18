@@ -130,7 +130,25 @@ describe('QuickbooksAccountingProvider.withdrawObject', () => {
     expect(callTool).not.toHaveBeenCalled()
   })
 
-  it('refuses an object type auxx never delivers', async () => {
+  it('refuses an object type this adapter has no handler for', async () => {
+    const callTool = connect(() => ({}))
+
+    const result = await provider.withdrawObject(CTX, {
+      ...JOURNAL,
+      objectType: 'nonsense',
+      remoteVersion: '3',
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain("cannot remove a QuickBooks 'nonsense'")
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
+  // Plan 67 §5.1: every native object dispatches to its own file now. An
+  // invoice with the deployment still only carrying the journal's delete
+  // tool refuses BY NAME rather than with the old blanket "only journal
+  // entries" sentence.
+  it('refuses a native object type the installed deployment cannot delete yet', async () => {
     const callTool = connect(() => ({}))
 
     const result = await provider.withdrawObject(CTX, {
@@ -140,7 +158,8 @@ describe('QuickbooksAccountingProvider.withdrawObject', () => {
     })
 
     expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr().message).toContain('only journal entries')
+    expect(result._unsafeUnwrapErr().message).toContain('delete_quickbooks_invoice')
+    expect(result._unsafeUnwrapErr().message).toContain('update the app deployment')
     expect(callTool).not.toHaveBeenCalled()
   })
 

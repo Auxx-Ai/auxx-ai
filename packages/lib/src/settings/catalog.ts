@@ -827,6 +827,10 @@ export const SETTINGS_CATALOG = {
   // (accounting brief 14's DECIDED block), not as cleanup. This is now the only
   // QuickBooks export switch, and auxx composes journal entries and this is what
   // pushes them.
+  // Plan 67 §5.5: this switch now gates every native object type (Sales
+  // Receipt, Invoice, Payment, Credit Memo, Refund Receipt, Deposit, Bill),
+  // not only journal entries - renaming it to an export-wide switch is a
+  // follow-up, not done here.
   'quickbooks.postJournalEntries': {
     scope: 'DOCUMENTS',
     access: 'org',

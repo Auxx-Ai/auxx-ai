@@ -13,12 +13,8 @@ vi.mock('../../settings/settings-service', () => ({
   getOrganizationSetting: async ({ key }: { key: string }) => h.settings.get(key),
 }))
 
-import {
-  avenueOfPostingType,
-  EXPORT_AVENUES,
-  readExportSettings,
-  SUMMARY_GRAIN_AVENUES,
-} from '../export-settings'
+import { avenueOfPostingType, EXPORT_AVENUES, SUMMARY_GRAIN_AVENUES } from '../export-settings'
+import { readExportSettings } from '../read-export-settings'
 import { POSTING_TYPES } from '../types'
 
 describe('avenueOfPostingType', () => {
