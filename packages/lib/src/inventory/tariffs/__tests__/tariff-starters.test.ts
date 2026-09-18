@@ -15,6 +15,7 @@ import {
   type ActionKey,
   expandTariffStarter,
   membershipsFor,
+  ORIGIN_AGNOSTIC,
   starterNote,
   TARIFF_ACTIONS,
   TARIFF_STARTERS_VERSION,
@@ -111,12 +112,30 @@ describe('TARIFF_ACTIONS / generated memberships cross-reference', () => {
     }
   })
 
-  it('every action country is a valid ISO country option', () => {
+  it('every action country is a valid ISO country option, or the wildcard', () => {
     for (const [key, action] of Object.entries(TARIFF_ACTIONS)) {
+      if (action.country === ORIGIN_AGNOSTIC) continue
       expect(
         ISO_COUNTRIES.has(action.country),
         `${key} has unknown country ${action.country}`
       ).toBe(true)
+    }
+  })
+
+  it('an origin-agnostic action does not share an authority with any country', () => {
+    // 🛑 The per-country fold above cannot catch this: `*::section 232` and
+    // `CN::section 232` are different keys, but `resolveTariffRate` folds on the
+    // authority ALONE and would sum them into one group.
+    const wildcardAuthorities = new Map<string, string>()
+    for (const [key, action] of Object.entries(TARIFF_ACTIONS)) {
+      if (action.country === ORIGIN_AGNOSTIC) {
+        wildcardAuthorities.set(action.authority.trim().toLowerCase(), key)
+      }
+    }
+    for (const [key, action] of Object.entries(TARIFF_ACTIONS)) {
+      if (action.country === ORIGIN_AGNOSTIC) continue
+      const clash = wildcardAuthorities.get(action.authority.trim().toLowerCase())
+      expect(clash, `${key} shares an authority with origin-agnostic ${clash}`).toBe(undefined)
     }
   })
 
@@ -180,13 +199,19 @@ describe('expandTariffStarter', () => {
     const mfnRow = expansion.rows.find((row) => row.authority === null)
     expect(mfnRow?.note).toContain('Section 301 membership not recorded')
 
-    // MFN plus the two 'all' actions for CN (ieepa-fentanyl-cn, ieepa-reciprocal-cn).
+    // MFN plus every step of the two CN 'all' actions. Derived from the table
+    // rather than hardcoded: adding a step to an action is an ordinary edit and
+    // should not fail a test about membership.
     const authorities = expansion.rows.map((row) => row.authority)
     expect(authorities).toContain(null)
     expect(authorities).toContain('IEEPA fentanyl')
     expect(authorities).toContain('IEEPA reciprocal')
     expect(authorities).not.toContain('Section 301 List 3')
-    expect(expansion.rows).toHaveLength(1 + 3 + 3)
+
+    const cnAllSteps = Object.values(TARIFF_ACTIONS)
+      .filter((action) => action.country === 'CN' && action.covers === 'all')
+      .reduce((sum, action) => sum + action.steps.length, 0)
+    expect(expansion.rows).toHaveLength(1 + cnAllSteps)
   })
 })
 

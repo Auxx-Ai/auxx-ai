@@ -23,6 +23,7 @@ import {
   expandTariffStarter,
   listHtsChildren,
   loadHtsGeneral,
+  loadTariffActions,
   loadTariffMemberships,
   planTariffResync,
   TARIFF_STARTERS_VERSION,
@@ -1068,15 +1069,18 @@ export const purchasingRouter = createTRPCRouter({
     .query(async ({ input }) => {
       // Both loads memoise for the process; the second is free after the first
       // request that touches the catalogue.
-      const [catalogue, memberships] = await Promise.all([
+      const [catalogue, memberships, actions] = await Promise.all([
         loadHtsGeneral(),
         loadTariffMemberships(),
+        loadTariffActions(),
       ])
       const { nodes, leaves } = listHtsChildren(catalogue, input.parent, input.q)
       return {
         version: TARIFF_STARTERS_VERSION,
         nodes,
-        leaves: leaves.map((line) => expandTariffStarter(line, input.country, memberships)),
+        leaves: leaves.map((line) =>
+          expandTariffStarter(line, input.country, memberships, { actions })
+        ),
       }
     }),
 

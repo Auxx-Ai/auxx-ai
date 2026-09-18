@@ -24,4 +24,9 @@ export type {
   StarterRow,
   StarterStep,
 } from './tariff-starters'
-export { expandTariffStarter, membershipsFor, starterNote } from './tariff-starters'
+export {
+  expandTariffStarter,
+  membershipsFor,
+  ORIGIN_AGNOSTIC,
+  starterNote,
+} from './tariff-starters'

@@ -70,10 +70,15 @@
  * action's rate with nothing warning about it - `membershipRecorded` only knows
  * about the Section 301 lists.
  *
- * 🛑 **Section 232 is excluded by design, not by omission.** A Section 232 steel or
- * aluminium derivative's duty applies to the metal content value, not the full
- * customs value, and `rate` here is a single percentage of the whole line -
- * task 29 §10 already excludes this and this catalogue does not attempt it.
+ * ✅ **Section 232 IS modelled, as of 2026-09-18** - see `'232-metal'` below and
+ * `tariff-232-derivatives.ts`. It was excluded for two years on the premise that
+ * the duty "applies to the metal content value, not the full customs value", so
+ * a single percentage could not express it. **U.S. note 16(c) says the
+ * opposite**: headings 9903.82.02-9903.82.26 "apply to the full customs value".
+ * The premise was a reasonable inference and it was wrong; 29 §10's entry for it
+ * is superseded. What note 16(c) really gates on is enumeration, plus - outside
+ * chapters 72/73/74/76 - a 15%-by-weight test, and no code in scope is outside
+ * those chapters today.
  */
 
 import type { TariffMemberships } from './tariff-301-memberships'
@@ -120,9 +125,72 @@ export interface StarterAction {
    */
   covers: 'all' | 'listed'
   steps: readonly StarterStep[]
+  /**
+   * How a step's number becomes a duty.
+   *
+   * `'flat'` (the default): the number IS the additional duty.
+   * `'topUpTo'`: the duty is `max(0, number - mfnRate)` - the schedule writes
+   * this as two mutually exclusive headings split on the code's column 1 rate,
+   * and both branches are that one expression. See `tariff-note52-actions.ts`.
+   */
+  rateBasis?: 'flat' | 'topUpTo'
+  /**
+   * Action keys whose coverage of a code suppresses this action for that code.
+   *
+   * Note 52(f) is the case: its duties do not apply to a code already dutiable
+   * under Section 232. Declarative so the carve-out lives in the data rather
+   * than as a branch in the expander.
+   */
+  excludedBy?: readonly string[]
+  /** The heading to stamp when `'topUpTo'` computes 0 - the schedule's other half. */
+  chapter99CodeWhenZero?: string
   /** A Federal Register cite or similar. Appended to the row note when present. */
   note?: string
 }
+
+/**
+ * `country` value for an action that applies on the ARTICLE, not the origin.
+ *
+ * Section 232 is the case: note 16(c) enumerates codes and says nothing about
+ * where they come from, so one action per country is not an option.
+ */
+export const ORIGIN_AGNOSTIC = '*'
+
+/** Whether `action` reaches goods originating in `country`. */
+function appliesToCountry(action: StarterAction, country: string): boolean {
+  return action.country === ORIGIN_AGNOSTIC || action.country === country
+}
+
+/**
+ * The date the two IEEPA actions stop contributing duty.
+ *
+ * ⚠️ **This is the one number in this file recorded AGAINST the HTSUS.** Revision
+ * 19 (2026) still prints `9903.01.24` and `9903.01.25` at "+ 10%" with note 2(u)
+ * and note 2(v) intact and NO termination marker - and the compiler demonstrably
+ * maintains markers in this range (`9903.01.64`-`.76` terminated 2025-08-07,
+ * `9903.01.84`-`.89` terminated 2026-02-07). So the schedule says live.
+ *
+ * It is recorded as `0` anyway because this file's own standing rule is to record
+ * **what CBP is actually collecting**, not what the schedule prints, and the
+ * evidence for that is now a CBP Form 7501 rather than a secondary source:
+ * `7326.90.8688` / CN, entered value $14,172.00, carrying Section 301 List 3
+ * (25%), Section 232 (50%), an exemption claim under note 52 - and NO IEEPA line
+ * at all. With both actions at `0` this catalogue resolves that code to **77.90%**,
+ * matching the entry's total duty of $11,039.99 exactly.
+ *
+ * 🛑 Two limits on that evidence, so nobody reads it as settled:
+ *  - It is ONE entry, and the filer's declaration - the "Ascertained Duty" box is
+ *    blank, so it is unliquidated and still correctable.
+ *  - The date below is the reported IEEPA collection cutoff, NOT read off the
+ *    entry (whose date we do not have). It post-dates every prior step of both
+ *    actions, which is what makes the `0` resolve rather than be superseded; if
+ *    the true date is later, the only consequence is that this catalogue
+ *    under-estimates historical entries between the two dates.
+ *
+ * ⚠️ 29 §5 bounds the damage either way: duty lives in lane B, so being wrong here
+ * mis-estimates `part_cost` and the PO chip and never values a movement.
+ */
+export const IEEPA_STOPPED_COLLECTION = '2026-02-24'
 
 /**
  * The hand-kept government actions.
@@ -184,6 +252,7 @@ export const TARIFF_ACTIONS = {
       ['2025-02-04', 10], // VERIFY
       ['2025-03-04', 20], // VERIFY
       ['2025-11-10', 10], // checked 2026-09-01: 9903.01.24 is "+ 10%"
+      ['2026-02-24', 0], // no longer collected - see IEEPA_STOPPED_COLLECTION
     ],
   },
   'ieepa-reciprocal-cn': {
@@ -197,9 +266,16 @@ export const TARIFF_ACTIONS = {
       ['2025-04-05', 10], // VERIFY
       ['2025-04-09', 125], // VERIFY
       ['2025-05-14', 10], // checked 2026-09-01: 9903.01.25 is "+ 10%"
+      ['2026-02-24', 0], // no longer collected - see IEEPA_STOPPED_COLLECTION
     ],
   },
   'ieepa-reciprocal-vn': {
+    // 🛑 NOT zeroed at IEEPA_STOPPED_COLLECTION, and that is INCONSISTENT with the
+    // two China actions above on purpose: the Form 7501 that justified their `0`
+    // is a China entry and says nothing about Vietnam. If IEEPA collection
+    // stopped as a statute it stopped here too, and this row is then 20 points
+    // too high. TODO(owner): decide from a VN entry or a CSMS message, not from
+    // symmetry with the China rows.
     authority: 'IEEPA reciprocal',
     country: 'VN',
     // ⚠️ Was `9903.01.25`, which is WRONG for Vietnam's current rate: that
@@ -214,6 +290,23 @@ export const TARIFF_ACTIONS = {
       ['2025-04-05', 10], // VERIFY - under 9903.01.25 at the time
       ['2025-08-07', 20], // checked 2026-09-01: 9903.02.69 is "+ 20%"
     ],
+  },
+  '232-metal': {
+    authority: 'Section 232 metal and derivative articles',
+    // Applies on the article, not the origin - U.S. note 16(c) enumerates codes
+    // and names no country.
+    country: ORIGIN_AGNOSTIC,
+    chapter99Code: '9903.82.02',
+    covers: 'listed',
+    // HTSUS: "The duty provided in the applicable subheading + 50%" - checked
+    // 2026-09-18 against Revision 19, and independently attested by a CBP Form
+    // 7501 assessing $7,086.00 on an entered value of $14,172.00. The DATE it
+    // reached 50% is attested by neither.
+    steps: [
+      ['2018-03-23', 25], // VERIFY
+      ['2025-06-04', 50], // VERIFY the date only
+    ],
+    note: 'U.S. note 16(c) - full customs value.',
   },
 } as const satisfies Record<string, StarterAction>
 
@@ -271,29 +364,38 @@ export function starterNote(version: string = TARIFF_STARTERS_VERSION): string {
 }
 
 /**
- * The `TARIFF_MEMBERSHIPS` keys that could apply to a 10-digit (or shorter) HTS
- * `code`: the code is normalized to digits only, then looked up first at the
- * 8-digit `NNNN.NN.NN` prefix, then at the 6-digit `NNNN.NN` prefix. The first
- * hit wins; an unmatched code returns an empty list.
+ * Every membership key that applies to `code`, across all four key lengths the
+ * generated tables use: 10-digit (`7326.90.8688`), 8-digit (`7326.90.86`),
+ * 6-digit (`7302.10`) and 4-digit (`7601`). The code is normalized to digits
+ * only and each prefix is looked up in turn.
+ *
+ * 🛑 **Accumulates; does NOT return on the first hit.** It used to, which was
+ * correct while 301 was the only table and every key was 8 digits. It is not
+ * correct now: `7326.90.86.88` is a Section 232 code at 10 digits AND Section
+ * 301 List 3 at 8, so first-hit-wins would drop the 301 duty entirely and
+ * understate the code by 25 points - the exact silent-understatement failure
+ * 29 §3 exists to prevent.
+ *
+ * Keys are deduplicated and returned most-specific-first.
  */
 export function membershipsFor(code: string, memberships: TariffMemberships): readonly ActionKey[] {
   const digits = code.replace(/\D/g, '')
 
+  const prefixes: string[] = []
+  if (digits.length >= 10) {
+    prefixes.push(`${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6, 10)}`)
+  }
   if (digits.length >= 8) {
-    const eightDigit = `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6, 8)}`
-    const hit = memberships[eightDigit]
-    if (hit) return hit as readonly ActionKey[]
+    prefixes.push(`${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6, 8)}`)
   }
+  if (digits.length >= 6) prefixes.push(`${digits.slice(0, 4)}.${digits.slice(4, 6)}`)
+  if (digits.length >= 4) prefixes.push(digits.slice(0, 4))
 
-  // The 6-digit fallback is kept for a hand-supplied table (a test, or a list
-  // published at heading level). The generated table is 8-digit throughout.
-  if (digits.length >= 6) {
-    const sixDigit = `${digits.slice(0, 4)}.${digits.slice(4, 6)}`
-    const hit = memberships[sixDigit]
-    if (hit) return hit as readonly ActionKey[]
+  const hits = new Set<string>()
+  for (const prefix of prefixes) {
+    for (const key of memberships[prefix] ?? []) hits.add(key)
   }
-
-  return []
+  return [...hits] as readonly ActionKey[]
 }
 
 /**
@@ -327,6 +429,10 @@ export function expandTariffStarter(
 
   const [code, mfnRate, description] = line
 
+  // 🛑 The tri-state is an ORIGIN question - "this origin has a list and this
+  // code is not on it" - so it counts only actions naming this country, never
+  // the origin-agnostic ones. Counting `'*'` here would make `null` unreachable
+  // and render the Section 301 warning on every code of every origin.
   const originHasListedAction = Object.values(actions).some(
     (action) => action.country === country && action.covers === 'listed'
   )
@@ -348,16 +454,25 @@ export function expandTariffStarter(
   ]
 
   for (const [key, action] of Object.entries(actions)) {
-    if (action.country !== country) continue
+    if (!appliesToCountry(action, country)) continue
     if (action.covers !== 'all' && !codeMemberships.includes(key as ActionKey)) continue
+    // A carve-out: another action already covers this code and displaces this one.
+    if (action.excludedBy?.some((other: string) => codeMemberships.includes(other as ActionKey)))
+      continue
 
     const note = starterNote(version) + (action.note ? ` ${action.note}` : '')
     for (const [from, rate] of action.steps) {
+      // `topUpTo` brings the TOTAL to `rate`, so the additional duty is whatever
+      // the MFN rate leaves short - and nothing when it already clears it.
+      const additional = action.rateBasis === 'topUpTo' ? Math.max(0, rate - mfnRate) : rate
       rows.push({
         authority: action.authority,
-        rate,
+        rate: additional,
         effectiveFrom: from,
-        chapter99Code: action.chapter99Code,
+        chapter99Code:
+          additional === 0 && action.chapter99CodeWhenZero
+            ? action.chapter99CodeWhenZero
+            : action.chapter99Code,
         note,
       })
     }

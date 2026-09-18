@@ -18,6 +18,8 @@ export {
   type ResyncDivergence,
   type ResyncPlan,
 } from './resync-tariff-starters'
+export type { Tariff232Derivatives } from './tariff-232-derivatives'
+export { loadTariff232Derivatives } from './tariff-232-derivatives'
 export {
   loadTariff301Memberships,
   loadTariffMemberships,
@@ -34,6 +36,7 @@ export {
   normalizeHtsCode,
   searchHtsGeneral,
 } from './tariff-hts-general'
+export { loadNote52Actions, loadTariffActions } from './tariff-note52-actions'
 export { loadTariffSchedule } from './tariff-schedule'
 export type {
   ActionKey,
@@ -46,6 +49,7 @@ export {
   expandTariffStarter,
   MFN_EFFECTIVE_FROM,
   membershipsFor,
+  ORIGIN_AGNOSTIC,
   starterNote,
   TARIFF_ACTIONS,
   TARIFF_STARTERS_VERSION,
