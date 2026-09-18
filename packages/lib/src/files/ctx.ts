@@ -4,7 +4,7 @@
  * The ambient contract every `files/` function is written against.
  *
  * This file exists because `files/core/base-service.ts` bound its database at
- * construction (`constructor(orgId?, userId?, db = defaultDatabase())`), which
+ * construction (`constructor(orgId?, userId?, db = lazyDatabase())`), which
  * made it impossible to hand a function a transaction, a different pool, or a
  * stub. Everything below is the seam that replaced it — and as of PR Y that
  * class, and the four facades over it, are deleted.
@@ -74,6 +74,8 @@
  */
 
 import type { Database, Transaction } from '@auxx/database'
+// Namespace import, deliberately — see `lazyDatabase`'s doc comment in `@auxx/database`.
+import * as auxxDatabase from '@auxx/database'
 import type { CachePort, QueuePort, StoragePort } from './storage/ports'
 
 /**
@@ -155,10 +157,19 @@ export interface FilesDeps {
  *
  * The rejected alternative was `opts.storage?: StoragePort` defaulting to
  * `createS3StoragePort(...)`. That is the same defaulting this phase exists to
- * delete: `BaseService`'s `db = defaultDatabase()` was *also* "trivially
+ * delete: `BaseService`'s `db = lazyDatabase()` was *also* "trivially
  * overridable", and all ~124 call sites still bound to the app pool. A test that
  * forgets to pass a port must fail loudly, not silently reach real config.
  */
 export type FilesDepsSlice<K extends keyof FilesDeps> = Pick<FilesDeps, K>
 
 export type { CachePort, QueuePort, StoragePort } from './storage/ports'
+
+/**
+ * The ambient pool, for the rare `files/` facade with no caller-supplied `db`.
+ * Re-exported from here (rather than reached for directly) so `files/storage/**`
+ * stays free of any module-scope import of `@auxx/database`, named or namespace.
+ */
+export function lazyDatabase(): Database {
+  return auxxDatabase.lazyDatabase()
+}

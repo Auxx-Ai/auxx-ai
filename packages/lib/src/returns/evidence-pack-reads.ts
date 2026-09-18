@@ -29,8 +29,10 @@ import { type Database, schema } from '@auxx/database'
 import type { CustomFieldEntity } from '@auxx/database/types'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
+import { fetchAttachmentsForEntities } from '../files/attachments'
 import { readFulfillmentsForOrder } from '../money/fulfillments/reads'
 import { type RecordId, toRecordId } from '../resources/resource-id'
+import { threadsForRecord } from '../threads'
 import type { ReturnWithLines } from './reads'
 
 /**
@@ -682,34 +684,8 @@ async function readCorrespondence(
 ): Promise<{ messages: EvidencePackMessageSource[]; searched: boolean; truncated: boolean }> {
   if (!ticketId) return { messages: [], searched: false, truncated: false }
 
-  const [primary, secondary] = await Promise.all([
-    db
-      .select({ id: schema.Thread.id, subject: schema.Thread.subject })
-      .from(schema.Thread)
-      .where(
-        and(
-          eq(schema.Thread.organizationId, organizationId),
-          eq(schema.Thread.primaryEntityInstanceId, ticketId)
-        )
-      ),
-    db
-      .select({ id: schema.Thread.id, subject: schema.Thread.subject })
-      .from(schema.Thread)
-      .innerJoin(schema.ThreadEntityLink, eq(schema.ThreadEntityLink.threadId, schema.Thread.id))
-      .where(
-        and(
-          eq(schema.Thread.organizationId, organizationId),
-          eq(schema.ThreadEntityLink.organizationId, organizationId),
-          eq(schema.ThreadEntityLink.entityInstanceId, ticketId),
-          isNull(schema.ThreadEntityLink.unlinkedAt)
-        )
-      ),
-  ])
-
-  const subjectByThread = new Map<string, string>()
-  for (const thread of [...primary, ...secondary]) {
-    if (!subjectByThread.has(thread.id)) subjectByThread.set(thread.id, thread.subject)
-  }
+  const threads = await threadsForRecord(db, organizationId, ticketId)
+  const subjectByThread = new Map(threads.map((thread) => [thread.id, thread.subject]))
   const threadIds = [...subjectByThread.keys()]
   if (threadIds.length === 0) return { messages: [], searched: true, truncated: false }
 
@@ -788,39 +764,20 @@ async function readMessageAttachments(
   organizationId: string,
   messageIds: string[]
 ): Promise<Map<string, EvidencePackAttachmentSource[]>> {
+  const result = await fetchAttachmentsForEntities({ db, organizationId }, 'MESSAGE', messageIds)
+  if (result.isErr()) throw result.error
+
   const byMessage = new Map<string, EvidencePackAttachmentSource[]>()
-  if (messageIds.length === 0) return byMessage
-
-  const rows = await db
-    .select({
-      id: schema.Attachment.id,
-      messageId: schema.Attachment.entityId,
-      title: schema.Attachment.title,
-      sort: schema.Attachment.sort,
-      assetMimeType: schema.MediaAsset.mimeType,
-      assetSize: schema.MediaAsset.size,
-      assetName: schema.MediaAsset.name,
-    })
-    .from(schema.Attachment)
-    .leftJoin(schema.MediaAsset, eq(schema.MediaAsset.id, schema.Attachment.assetId))
-    .where(
-      and(
-        eq(schema.Attachment.organizationId, organizationId),
-        eq(schema.Attachment.entityType, 'MESSAGE'),
-        inArray(schema.Attachment.entityId, messageIds)
-      )
+  for (const [messageId, attachments] of result.value) {
+    byMessage.set(
+      messageId,
+      attachments.map((attachment) => ({
+        attachmentId: attachment.id,
+        title: attachment.title ?? attachment.name,
+        mimeType: attachment.mimeType ?? null,
+        sizeBytes: attachment.size ?? null,
+      }))
     )
-    .orderBy(asc(schema.Attachment.sort))
-
-  for (const row of rows) {
-    const bucket = byMessage.get(row.messageId) ?? []
-    bucket.push({
-      attachmentId: row.id,
-      title: row.title ?? row.assetName ?? null,
-      mimeType: row.assetMimeType ?? null,
-      sizeBytes: row.assetSize ?? null,
-    })
-    byMessage.set(row.messageId, bucket)
   }
   return byMessage
 }

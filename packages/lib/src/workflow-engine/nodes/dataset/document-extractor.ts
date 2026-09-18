@@ -1,9 +1,10 @@
 // packages/lib/src/workflow-engine/nodes/dataset/document-extractor.ts
 
+// Namespace import, deliberately — see `lazyDatabase`'s doc comment in `@auxx/database`.
+import * as auxxDatabase from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
 import { ExtractorFactory } from '../../../datasets/extractors/extractor-factory'
-import { defaultDatabase } from '../../../files/default-database'
 import { getFolderFile, getFolderFileContent } from '../../../files/folder-files'
 import { createS3StoragePort } from '../../../files/storage/ports'
 import { ErrorStrategy, normalizeErrorStrategy } from '../../catalog/error-handling'
@@ -356,7 +357,7 @@ export class DocumentExtractorProcessor extends BaseNodeProcessor {
     // The pool, exactly as the deleted `createFileService(organizationId, userId)`
     // resolved it. This node has no caller-supplied client and never writes, so
     // there is no transaction to stay inside of.
-    const ctx = { db: defaultDatabase(), organizationId }
+    const ctx = { db: auxxDatabase.lazyDatabase(), organizationId }
 
     const fileResult = await getFolderFile(ctx, fileId)
     if (fileResult.isErr()) throw fileResult.error

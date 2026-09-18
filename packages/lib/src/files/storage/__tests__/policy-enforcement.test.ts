@@ -49,11 +49,10 @@ vi.mock('../locations', () => ({
 // `StorageManager.createStorageLocation` opens a transaction when the caller
 // supplies none, and the package-wide `@auxx/database` mock's `transaction` is a
 // bare `vi.fn()` that never invokes its callback. Hand the facade a database
-// whose `transaction` actually runs the body. `files/default-database.ts` holds
-// nothing else, so a full replacement is safe here -- it moved out of
-// `core/base-service.ts` when that class was deleted in PR Y.
-vi.mock('../../default-database', () => ({
-  defaultDatabase: () => ({
+// whose `transaction` actually runs the body. `files/ctx.ts`'s only runtime
+// export is `lazyDatabase`, so a full replacement is safe here.
+vi.mock('../../ctx', () => ({
+  lazyDatabase: () => ({
     transaction: <T>(cb: (tx: unknown) => T | Promise<T>) => cb({}),
   }),
 }))

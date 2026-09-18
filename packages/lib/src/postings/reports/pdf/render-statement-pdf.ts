@@ -20,7 +20,6 @@ import { createElement } from 'react'
 import { resolveDocumentSettings } from '../../../documents/resolve-settings'
 import { createAssetWithVersion } from '../../../files/assets/asset-mutations'
 import { getAssetContent } from '../../../files/assets/content'
-import { defaultDatabase } from '../../../files/default-database'
 import { createS3StoragePort } from '../../../files/storage/ports'
 import { createStorageManager } from '../../../files/storage/storage-manager'
 import type { ProviderSyncMarker } from '../../provider-sync/client'
@@ -265,7 +264,7 @@ export async function renderStatementPdf<K extends StatementKind>(
   const logoAssetId = settings.branding.logo?.assetId
   if (logoAssetId) {
     const logo = await getAssetContent(
-      { db: defaultDatabase(), organizationId },
+      { db, organizationId },
       { storage: createS3StoragePort(organizationId) },
       logoAssetId
     )

@@ -139,6 +139,17 @@ if (!globalForDb.__dbInstance) globalForDb.__dbInstance = database
 
 export type Transaction = Parameters<Parameters<typeof database.transaction>[0]>[0]
 
+/**
+ * `database`, read on first CALL rather than at import. A caller that does
+ * `import { database }` breaks any test whose `vi.mock('@auxx/database', …)`
+ * omits that key, at collection, before a single test runs — this function
+ * is meant to be reached through a namespace import (`import * as auxxDb from
+ * '@auxx/database'`, then `auxxDb.lazyDatabase()`), which has no such check.
+ */
+export function lazyDatabase(): Database {
+  return database
+}
+
 /** Gracefully close all connection pools. Call during process shutdown. */
 export async function closePools(): Promise<void> {
   await Promise.allSettled(pools.map((pool) => pool.end()))

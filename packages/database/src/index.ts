@@ -10,7 +10,7 @@ export {
   toAuditRow,
 } from './db/audit/to-audit-row'
 export type { Database, Transaction } from './db/client'
-export { closePools, database } from './db/client'
+export { closePools, database, lazyDatabase } from './db/client'
 export * as schema from './db/schema'
 // Also export tables directly for named imports (preferable to schema namespace)
 export * from './db/schema'

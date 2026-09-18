@@ -55,24 +55,29 @@ const createChainableMock = () => {
   return mock
 }
 
-vi.mock('@auxx/database', () => ({
-  database: {
-    select: vi.fn(() => createChainableMock()),
-    insert: vi.fn(() => createChainableMock()),
-    update: vi.fn(() => createChainableMock()),
-    delete: vi.fn(() => createChainableMock()),
-    transaction: vi.fn(),
-    query: {
-      user: {
-        findFirst: vi.fn(),
-        findMany: vi.fn(),
-      },
-      organization: {
-        findFirst: vi.fn(),
-        findMany: vi.fn(),
-      },
+const mockDatabase = {
+  select: vi.fn(() => createChainableMock()),
+  insert: vi.fn(() => createChainableMock()),
+  update: vi.fn(() => createChainableMock()),
+  delete: vi.fn(() => createChainableMock()),
+  transaction: vi.fn(),
+  query: {
+    user: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+    },
+    organization: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
     },
   },
+}
+
+vi.mock('@auxx/database', () => ({
+  database: mockDatabase,
+  // Same object as `database` — callers reach this through a namespace import
+  // (`auxxDatabase.lazyDatabase()`), never a named one; see its doc comment.
+  lazyDatabase: () => mockDatabase,
   // MEMOIZED per key, deliberately. An un-memoized `get: () => ({})` hands out a
   // FRESH object on every access, so `schema.Foo !== schema.Foo` and any test
   // that identifies a table by reference silently misbehaves: `toContain` never

@@ -509,6 +509,7 @@ async function renderDocumentPrint(
   for (const recordId of recordIds) {
     ctx.throwIfCancelled()
     const { payload } = await documentType.buildPayload({
+      db,
       organizationId,
       userId: job.createdById,
       recordId,

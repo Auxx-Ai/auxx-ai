@@ -174,6 +174,10 @@ merge stick), `ThreadEntityLink` (secondary record links; the primary lives on `
 `Participant` is org-scoped and unique on `(organizationId, identifier, identifierType)`, carries
 `isInternal` (own-domain), `isSpammer`, and `entityInstanceId` for the contact link.
 
+"Threads of a record" — primary `Thread.primaryEntityInstanceId` match or a live
+`ThreadEntityLink` — has one reader: `@auxx/lib/threads`'s `threadsForRecord(db, orgId,
+recordId)`. Call it instead of re-deriving the join.
+
 ### `ThreadEvent` — the inline lifecycle timeline
 
 Append-only system-line events rendered between message bubbles on **every** channel ("Markus

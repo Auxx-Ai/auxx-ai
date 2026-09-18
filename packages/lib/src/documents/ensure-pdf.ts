@@ -104,7 +104,7 @@ async function buildPdfPayload(params: {
   recordId: RecordId
 }): Promise<{ payload: DocumentPdfPayload; hash: string }> {
   const { documentType, organizationId, userId, recordId } = params
-  return getRegisteredOrThrow(documentType).buildPayload({ organizationId, userId, recordId })
+  return getRegisteredOrThrow(documentType).buildPayload({ db, organizationId, userId, recordId })
 }
 
 /**
