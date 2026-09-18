@@ -198,6 +198,23 @@ describe('a quote deposit paid online', () => {
     expect(h.postedDeposits).toEqual(['MoneyTransaction-1'])
     expect(h.syncs).toEqual([])
   })
+
+  // MIGRATION follow-up 7: the quote link is a column on the row itself, not a
+  // fact stamped onto the command's actorSnapshot.
+  it('stamps the quote directly on the MoneyTransaction row', async () => {
+    await applyStripeCheckoutEvent(sessionEvent(quoteMetadata))
+
+    const money = h.inserts.find((row) => row.table === 'MoneyTransaction')!
+    expect(money.values).toMatchObject({ quoteInstanceId: 'quote-1' })
+    expect(money.values).not.toHaveProperty('workOrderInstanceId')
+  })
+
+  it('carries the work order too, when the quote already converted', async () => {
+    await applyStripeCheckoutEvent(sessionEvent({ ...quoteMetadata, workOrderInstanceId: 'wo-1' }))
+
+    const money = h.inserts.find((row) => row.table === 'MoneyTransaction')!
+    expect(money.values).toMatchObject({ quoteInstanceId: 'quote-1', workOrderInstanceId: 'wo-1' })
+  })
 })
 
 describe('what is ignored', () => {

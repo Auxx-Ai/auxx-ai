@@ -6,7 +6,7 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { toRecordId } from '@auxx/types/resource'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import type { FileValue } from '../field-values/converters'
@@ -14,7 +14,6 @@ import { FieldValueService } from '../field-values/field-value-service'
 import { extractRelationshipRecordIds } from '../field-values/relationship-field'
 import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
 import { UnifiedCrudHandler } from '../resources/crud'
-import { QUOTE_DEPOSIT_COMMAND_KIND } from './checkout/reads'
 import type { ConvertQuoteToWorkOrderInput } from './types'
 
 const logger = createScopedLogger('money:convert-quote')
@@ -91,9 +90,8 @@ export async function findActiveJobForQuote(
  * deposit paid before any work order existed — at auto-convert, at manual convert, or
  * (money plan 20 §C) at accept time when an early-converted job already exists.
  *
- * 🔑 The stamp goes on the collecting `MoneyCommand`'s `actorSnapshot`, which is the
- * only place a held deposit's document links live - `MoneyApplication` has no quote
- * or work-order column.
+ * MIGRATION follow-up 7: writes `MoneyTransaction.workOrderInstanceId` directly,
+ * never `MoneyCommand.actorSnapshot`.
  */
 export async function stampQuoteDepositsOnWorkOrder(params: {
   organizationId: string
@@ -101,17 +99,12 @@ export async function stampQuoteDepositsOnWorkOrder(params: {
   workOrderInstanceId: string
 }): Promise<void> {
   await database
-    .update(schema.MoneyCommand)
-    .set({
-      actorSnapshot: sql`${schema.MoneyCommand.actorSnapshot} || ${JSON.stringify({
-        workOrderInstanceId: params.workOrderInstanceId,
-      })}::jsonb`,
-    })
+    .update(schema.MoneyTransaction)
+    .set({ workOrderInstanceId: params.workOrderInstanceId })
     .where(
       and(
-        eq(schema.MoneyCommand.organizationId, params.organizationId),
-        eq(schema.MoneyCommand.kind, QUOTE_DEPOSIT_COMMAND_KIND),
-        sql`${schema.MoneyCommand.actorSnapshot}->>'quoteInstanceId' = ${params.quoteInstanceId}`
+        eq(schema.MoneyTransaction.organizationId, params.organizationId),
+        eq(schema.MoneyTransaction.quoteInstanceId, params.quoteInstanceId)
       )
     )
 }

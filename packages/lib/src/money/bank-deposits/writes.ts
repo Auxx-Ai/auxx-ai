@@ -54,7 +54,6 @@ import { resolvePeriodLock } from '../../postings/period-lock'
 import { LEDGER_CURRENCY, postEntry } from '../../postings/post-entry'
 import type { PostResult } from '../../postings/types'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
-import { toRecordId } from '../../resources/resource-id'
 import { BANK_DEPOSIT_SOURCE_TYPE, isBankDepositFrozen, resolvePaymentRoute } from './client'
 import { guard } from './guard'
 import {
@@ -66,7 +65,6 @@ import {
   requireBankDepositFieldContext,
   requireBankDepositWriteContext,
   requireDepositBankAccountContext,
-  requirePaymentFieldContext,
 } from './reads'
 import type {
   BankDepositDetail,
@@ -86,14 +84,13 @@ function assertIsoDate(value: string, label: string): void {
 }
 
 /**
- * Take `SELECT ... FOR UPDATE` over the payment instances a deposit is about to
- * claim, inside the caller's transaction.
+ * Take `SELECT ... FOR UPDATE` over the `MoneyTransaction` rows a deposit is
+ * about to claim, inside the caller's transaction.
  *
- * 🛑 The lock is on `EntityInstance`, not on the `payment_bank_deposit`
- * `FieldValue` row, and that is the point: the row a racing writer has not
- * created yet cannot be locked, so locking the payment itself is the only thing
- * both transactions are guaranteed to contend on. Ordering by id keeps two
- * overlapping selections from deadlocking against each other.
+ * 🛑 The lock is on `MoneyTransaction` itself (MIGRATION follow-up 9: it carries
+ * `bankDepositInstanceId` directly now, no `payment_bank_deposit` `FieldValue`
+ * row to race on). Ordering by id keeps two overlapping selections from
+ * deadlocking against each other.
  *
  * Returns nothing. The caller re-reads the link under the lock and refuses on
  * what it finds there; this only makes that read trustworthy.
@@ -101,21 +98,19 @@ function assertIsoDate(value: string, label: string): void {
 async function lockPayments(
   db: Database,
   organizationId: string,
-  paymentDefId: string,
   paymentIds: string[]
 ): Promise<void> {
   if (paymentIds.length === 0) return
   await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
+    .select({ id: schema.MoneyTransaction.id })
+    .from(schema.MoneyTransaction)
     .where(
       and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, paymentDefId),
-        inArray(schema.EntityInstance.id, paymentIds)
+        eq(schema.MoneyTransaction.organizationId, organizationId),
+        inArray(schema.MoneyTransaction.id, paymentIds)
       )
     )
-    .orderBy(asc(schema.EntityInstance.id))
+    .orderBy(asc(schema.MoneyTransaction.id))
     .for('update')
 }
 
@@ -146,15 +141,15 @@ async function lockPayments(
  * issues, so the record has to exist first.
  *
  * 🛑 **The read is inside the transaction, under a row lock, and that is not
- * tidiness.** `payment_bank_deposit` is a `FieldValue` row and no unique index
- * can express "at most one deposit per payment" over it. Reading the link
+ * tidiness.** `MoneyTransaction.bankDepositInstanceId` carries no unique index
+ * that can express "at most one deposit per receipt" over it. Reading the link
  * outside the transaction leaves the whole check-then-write a read-modify-write
  * race: two operators banking overlapping selections at the same moment both see
  * `bankDepositId: null`, both pass the refusal, and both post a cash line for the
  * same cheque. Cash is then overstated by that cheque and both entries balance.
- * {@link lockPayments} takes `SELECT ... FOR UPDATE` over the payment instances
- * first, so the second transaction blocks until the first commits and then reads
- * the link the first one wrote.
+ * {@link lockPayments} takes `SELECT ... FOR UPDATE` over the `MoneyTransaction`
+ * rows first, so the second transaction blocks until the first commits and then
+ * reads the link the first one wrote.
  *
  * 🛑 **A refused post is rolled back.** If the ledger will not take the entry -
  * a locked period, a bank account mapped to an id that is not in this chart -
@@ -183,7 +178,6 @@ export async function createBankDeposit(
       }
 
       const depositCtx = await requireBankDepositWriteContext(organizationId)
-      const paymentCtx = await requirePaymentFieldContext(organizationId)
       const settings = await getOrgCache().get(organizationId, 'orgSettings')
 
       // ── The read, the checks and the writes, in ONE locked transaction ──
@@ -192,9 +186,9 @@ export async function createBankDeposit(
 
         // Serialises overlapping selections. Everything below re-reads the
         // link under this lock, so the loser sees the winner's deposit.
-        await lockPayments(txDb, organizationId, paymentCtx.paymentDefId, uniqueIds)
+        await lockPayments(txDb, organizationId, uniqueIds)
 
-        const payments = await readPaymentsByIds(txDb, organizationId, paymentCtx, uniqueIds)
+        const payments = await readPaymentsByIds(txDb, organizationId, uniqueIds)
         const found = new Set(payments.map((payment) => payment.paymentId))
         const missing = uniqueIds.filter((id) => !found.has(id))
         if (missing.length > 0) {
@@ -262,10 +256,20 @@ export async function createBankDeposit(
           bank_deposit_status: 'pending',
           bank_deposit_total: total,
         })
-        const depositRecordId = toRecordId(depositCtx.depositDefId, created.instance.id)
-        for (const payment of payments) {
-          await crud.update(payment.recordId, { payment_bank_deposit: depositRecordId })
-        }
+        // MIGRATION follow-up 9: the link is a column on the receipt itself,
+        // not a `payment_bank_deposit` FieldValue row.
+        await txDb
+          .update(schema.MoneyTransaction)
+          .set({ bankDepositInstanceId: created.instance.id })
+          .where(
+            and(
+              eq(schema.MoneyTransaction.organizationId, organizationId),
+              inArray(
+                schema.MoneyTransaction.id,
+                payments.map((payment) => payment.paymentId)
+              )
+            )
+          )
         return {
           depositId: created.instance.id,
           totalMinor: total,
@@ -340,8 +344,10 @@ export async function createBankDeposit(
           mode: 'post',
           sources: [
             { sourceKind: BANK_DEPOSIT_SOURCE_TYPE, sourceId: depositId, linkRole: 'subject' },
+            // MIGRATION follow-up 9: `payment.paymentId` is a `MoneyTransaction.id`
+            // now, so the member link names it directly - no entity-side mirror.
             ...deposit.payments.map((payment) => ({
-              sourceKind: 'payment',
+              sourceKind: 'money_transaction',
               sourceId: payment.paymentId,
               linkRole: 'member' as const,
             })),
@@ -518,10 +524,21 @@ async function rollbackDeposit(
   deposit: BankDepositDetail
 ): Promise<void> {
   try {
-    const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-    for (const payment of deposit.payments) {
-      await crud.update(payment.recordId, { payment_bank_deposit: null })
+    if (deposit.payments.length > 0) {
+      await db
+        .update(schema.MoneyTransaction)
+        .set({ bankDepositInstanceId: null })
+        .where(
+          and(
+            eq(schema.MoneyTransaction.organizationId, organizationId),
+            inArray(
+              schema.MoneyTransaction.id,
+              deposit.payments.map((payment) => payment.paymentId)
+            )
+          )
+        )
     }
+    const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
     await crud.archive(deposit.recordId)
   } catch (error) {
     logger.error('Failed to roll back a refused bank deposit', {
@@ -714,13 +731,10 @@ export type { PostResult }
  * handoff); today only {@link rollbackDeposit} unlinks, and it unlinks the
  * payments it already holds in memory rather than re-reading them.
  *
- * 🛑 It goes through `UnifiedCrudHandler.update(..., { payment_bank_deposit:
- * null })`, one payment at a time, exactly as the rollback path does. The
- * earlier version issued a raw `DELETE FROM "FieldValue"`, which is the same
- * shape as the write and a completely different event: no field hooks, no
- * `record:updated`, no org-cache invalidation - the payment would read as
- * un-banked in the database and as banked in every cache and every subscriber
- * that had already seen it, with nothing to reconcile the two.
+ * 🛑 It clears `MoneyTransaction.bankDepositInstanceId` in one `UPDATE`
+ * (MIGRATION follow-up 9), exactly as the rollback path does - never a raw
+ * `DELETE` against a mirror row, which was the same shape as the write and a
+ * completely different event.
  *
  * 🛑 It refuses a deposit that has POSTED. Unlinking the payments of a posted
  * deposit leaves `Dr <bank> Cr undeposited_funds` in the books with nothing
@@ -731,7 +745,7 @@ export async function unlinkPaymentsFromDeposit(
   db: Database,
   params: { organizationId: string; actorUserId: string; depositId: string }
 ): Promise<Result<number, Error>> {
-  const { organizationId, actorUserId, depositId } = params
+  const { organizationId, depositId } = params
 
   return guard(
     async () => {
@@ -755,9 +769,19 @@ export async function unlinkPaymentsFromDeposit(
         )
       }
 
-      const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-      for (const payment of deposit.payments) {
-        await crud.update(payment.recordId, { payment_bank_deposit: null })
+      if (deposit.payments.length > 0) {
+        await db
+          .update(schema.MoneyTransaction)
+          .set({ bankDepositInstanceId: null })
+          .where(
+            and(
+              eq(schema.MoneyTransaction.organizationId, organizationId),
+              inArray(
+                schema.MoneyTransaction.id,
+                deposit.payments.map((payment) => payment.paymentId)
+              )
+            )
+          )
       }
 
       logger.info('Released the payments of a bank deposit', {

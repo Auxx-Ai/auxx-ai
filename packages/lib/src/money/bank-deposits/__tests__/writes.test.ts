@@ -29,6 +29,9 @@ const h = vi.hoisted(() => ({
   },
   created: [] as Array<{ defId: string; values: Record<string, unknown> }>,
   updated: [] as Array<{ recordId: string; values: Record<string, unknown> }>,
+  /** `MoneyTransaction.bankDepositInstanceId` writes - `createBankDeposit`'s
+   * link, and `rollbackDeposit`/`unlinkPaymentsFromDeposit`'s clear. */
+  moneyTransactionUpdates: [] as Array<Record<string, unknown>>,
   archived: [] as string[],
   postedEntries: [] as Array<Record<string, unknown>>,
   postedSources: [] as Array<Record<string, unknown>[]>,
@@ -54,10 +57,6 @@ vi.mock('../reads', () => ({
   requireBankDepositWriteContext: async () => ({
     depositDefId: 'def_bank_deposit',
     fields: { bank_deposit_bank_account_record: { id: 'fld_account' } },
-  }),
-  requirePaymentFieldContext: async () => ({
-    paymentDefId: 'def_payment',
-    fields: { payment_bank_deposit: { id: 'fld_link' } },
   }),
   loadBankDepositFieldContext: async () => ({ depositDefId: 'def_bank_deposit', fields: {} }),
   readPaymentsByIds: async (db: unknown) => {
@@ -130,6 +129,25 @@ const ORG = 'org_1'
 const USER = 'user_1'
 
 /**
+ * `.update(MoneyTransaction).set(values).where(...)` stands in for the raw
+ * `bankDepositInstanceId` write - MIGRATION follow-up 9's replacement for the
+ * `payment_bank_deposit` FieldValue link. `.where()`'s real drizzle condition
+ * (built from the real, unmocked `@auxx/database` schema) is never decoded here,
+ * same as `lockPayments`' `.where()` below - only `.set()`'s payload matters.
+ */
+function updateChain(target: Array<Record<string, unknown>>): Record<string, unknown> {
+  const chain: Record<string, unknown> = {}
+  chain.set = (values: Record<string, unknown>) => {
+    target.push(values)
+    return chain
+  }
+  chain.where = () => chain
+  // biome-ignore lint/suspicious/noThenProperty: chainable drizzle query-builder stub
+  chain.then = (resolve: (v: unknown) => unknown) => resolve(undefined)
+  return chain
+}
+
+/**
  * The transaction handle `createBankDeposit` is given. Its `select` chain stands
  * in for `lockPayments`' `SELECT ... FOR UPDATE`, and it records that the lock
  * was taken so the ordering assertions below have something to read.
@@ -144,6 +162,7 @@ const tx = {
     }
     return chain
   },
+  update: () => updateChain(h.moneyTransactionUpdates),
 }
 const db = {
   transaction: async (fn: (handle: unknown) => unknown) => {
@@ -152,12 +171,12 @@ const db = {
     h.calls.push('commit')
     return result
   },
+  update: () => updateChain(h.moneyTransactionUpdates),
 } as unknown as Database
 
 function payment(overrides: Record<string, unknown> = {}) {
   return {
     paymentId: 'pay_1',
-    recordId: 'def_payment:pay_1',
     amountMinor: 100_00,
     date: '2026-09-01',
     method: 'check',
@@ -221,6 +240,7 @@ beforeEach(() => {
   h.postResult = { status: 'posted', glPostingId: 'glp_1' }
   h.created = []
   h.updated = []
+  h.moneyTransactionUpdates = []
   h.archived = []
   h.postedEntries = []
   h.postedSources = []
@@ -320,7 +340,7 @@ describe('createBankDeposit posts one cash line', () => {
   it('posts Dr <the chosen bank account, by id> Cr undeposited_funds for the summed total', async () => {
     h.payments = [
       payment({ paymentId: 'pay_1', amountMinor: 100_00 }),
-      payment({ paymentId: 'pay_2', recordId: 'def_payment:pay_2', amountMinor: 250_00 }),
+      payment({ paymentId: 'pay_2', amountMinor: 250_00 }),
     ]
     h.deposit = deposit({ totalMinor: 350_00, payments: h.payments })
 
@@ -373,7 +393,7 @@ describe('createBankDeposit posts one cash line', () => {
   it('stamps the total on the record and links every payment to it', async () => {
     h.payments = [
       payment({ paymentId: 'pay_1', amountMinor: 100_00 }),
-      payment({ paymentId: 'pay_2', recordId: 'def_payment:pay_2', amountMinor: 250_00 }),
+      payment({ paymentId: 'pay_2', amountMinor: 250_00 }),
     ]
     h.deposit = deposit({ totalMinor: 350_00, payments: h.payments })
     await createBankDeposit(db, { ...input, paymentIds: ['pay_1', 'pay_2'] })
@@ -384,15 +404,16 @@ describe('createBankDeposit posts one cash line', () => {
       bank_deposit_status: 'pending',
       bank_deposit_total: 350_00,
     })
-    const links = h.updated.filter((u) => 'payment_bank_deposit' in u.values)
-    expect(links.map((u) => u.recordId)).toEqual(['def_payment:pay_1', 'def_payment:pay_2'])
+    // MIGRATION follow-up 9: one bulk write to `MoneyTransaction.bankDepositInstanceId`,
+    // never a `payment_bank_deposit` FieldValue link.
+    expect(h.moneyTransactionUpdates).toEqual([{ bankDepositInstanceId: 'dep_1' }])
     // No stamp write any more (TARGET §1) - the ledger card reads
     // `listPostingsForSource`, and the subject/member links are on the posting.
     expect(h.updated.some((u) => 'bank_deposit_gl_posting_id' in u.values)).toBe(false)
     expect(h.postedSources[0]).toEqual([
       { sourceKind: 'bank_deposit', sourceId: 'dep_1', linkRole: 'subject' },
-      { sourceKind: 'payment', sourceId: 'pay_1', linkRole: 'member' },
-      { sourceKind: 'payment', sourceId: 'pay_2', linkRole: 'member' },
+      { sourceKind: 'money_transaction', sourceId: 'pay_1', linkRole: 'member' },
+      { sourceKind: 'money_transaction', sourceId: 'pay_2', linkRole: 'member' },
     ])
   })
 
@@ -433,12 +454,12 @@ describe('createBankDeposit posts one cash line', () => {
     // payments consumed by a deposit that moved no money would make them
     // ungroupable forever.
     expect(h.archived).toEqual(['def_bank_deposit:dep_1'])
-    expect(h.updated.some((u) => u.values.payment_bank_deposit === null)).toBe(true)
+    expect(h.moneyTransactionUpdates).toContainEqual({ bankDepositInstanceId: null })
   })
 })
 
 describe('createBankDeposit reads its payments under the lock, inside the transaction', () => {
-  // 🛑 `payment_bank_deposit` is a `FieldValue` row and no unique index can
+  // 🛑 `MoneyTransaction.bankDepositInstanceId` carries no unique index that can
   // express "at most one deposit per payment" over it. So the already-banked
   // refusal IS the constraint, and a refusal read outside the transaction is a
   // read-modify-write race: two operators banking overlapping selections both
@@ -473,13 +494,14 @@ describe('createBankDeposit reads its payments under the lock, inside the transa
 })
 
 describe('unlinkPaymentsFromDeposit', () => {
+  // MIGRATION follow-up 9: one bulk write to `MoneyTransaction.bankDepositInstanceId`.
   // The raw `DELETE FROM "FieldValue"` this replaced skipped hooks, events and
   // the org cache: the payment read as un-banked in the database and as banked
   // in every cache and subscriber that had already seen it.
-  it('releases each payment through the crud handler, not a raw delete', async () => {
+  it('releases every payment in one write, not a raw delete', async () => {
     h.deposit = deposit({
       glPostingId: null,
-      payments: [payment(), payment({ paymentId: 'pay_2', recordId: 'def_payment:pay_2' })],
+      payments: [payment(), payment({ paymentId: 'pay_2' })],
     })
 
     const result = await unlinkPaymentsFromDeposit(db, {
@@ -489,10 +511,7 @@ describe('unlinkPaymentsFromDeposit', () => {
     })
 
     expect(result._unsafeUnwrap()).toBe(2)
-    expect(h.updated).toEqual([
-      { recordId: 'def_payment:pay_1', values: { payment_bank_deposit: null } },
-      { recordId: 'def_payment:pay_2', values: { payment_bank_deposit: null } },
-    ])
+    expect(h.moneyTransactionUpdates).toEqual([{ bankDepositInstanceId: null }])
   })
 
   // Releasing the payments of a POSTED deposit leaves `Dr <bank> Cr
@@ -506,7 +525,7 @@ describe('unlinkPaymentsFromDeposit', () => {
       depositId: 'dep_1',
     })
     expect(result._unsafeUnwrapErr().message).toContain('glp_1')
-    expect(h.updated).toHaveLength(0)
+    expect(h.moneyTransactionUpdates).toHaveLength(0)
   })
 
   it('refuses once the deposit is matched to a bank line', async () => {
@@ -517,7 +536,7 @@ describe('unlinkPaymentsFromDeposit', () => {
       depositId: 'dep_1',
     })
     expect(result._unsafeUnwrapErr().message).toContain('bt_9')
-    expect(h.updated).toHaveLength(0)
+    expect(h.moneyTransactionUpdates).toHaveLength(0)
   })
 })
 

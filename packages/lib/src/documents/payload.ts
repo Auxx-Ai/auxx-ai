@@ -1416,9 +1416,9 @@ const DEPOSIT_METHOD_LABELS: Record<string, string> = {
 /**
  * Build the deposit slip payload for one `bank_deposit` record.
  *
- * Reads the deposit and its payments through `money/bank-deposits/`, which is
- * the one place that knows a payment's link is the OWNING side - reading the
- * `bank_deposit_payments` inverse here would be a second, staler answer.
+ * Reads the deposit and its payments through `money/bank-deposits/`, which
+ * reads `MoneyTransaction.bankDepositInstanceId` directly (MIGRATION follow-up 9)
+ * rather than a relationship that could go stale.
  *
  * The bank account's CODE and NAME are resolved from the org's chart by the
  * `gl_account` id frozen on the deposit (task 15 §4) - the id is what

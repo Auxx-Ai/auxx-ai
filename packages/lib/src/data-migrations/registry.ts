@@ -25,6 +25,7 @@ import { migration165AccountSubtypeClearing } from './migrations/165-account-sub
 import { migration166OneMappingTable } from './migrations/166-one-mapping-table'
 import { migration167DocumentAttachments } from './migrations/167-document-attachments'
 import { migration168RemoveGlPostingStampFields } from './migrations/168-remove-gl-posting-stamp-fields'
+import { migration169RemovePaymentEntity } from './migrations/169-remove-payment-entity'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -81,6 +82,10 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // one raw CustomField delete per (entityType, systemAttribute) pair, gated on
   // the def existing and the row still being there.
   migration168RemoveGlPostingStampFields,
+  // Finishes retiring the hidden `payment` entity (MIGRATION.md follow-up 9):
+  // drops invoice.payments and bank_deposit.payments, archives the payment def
+  // and any leftover instance - the removal shape again, widened to a def.
+  migration169RemovePaymentEntity,
   // Re-seeds the default entity dashboards. The one entry here that is NOT just an
   // example: `apps/worker/scripts/reseed-default-dashboard.ts` re-runs its ensure
   // after a `DEFAULT_DASHBOARD_CONFIGS` template change, so it is a live routine.

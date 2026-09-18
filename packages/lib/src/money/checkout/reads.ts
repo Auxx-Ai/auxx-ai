@@ -6,8 +6,8 @@
  * The money-model rebuild of the reads the legacy Stripe rail did off
  * `PaymentTransaction` (accounting migration step 0). A paid invoice checkout is
  * a `MoneyTransaction` applied to the invoice; a paid quote deposit is a
- * `MoneyTransaction` with no application at all, and the only durable link it
- * has to the quote is the `MoneyCommand.actorSnapshot` the checkout stamped.
+ * `MoneyTransaction` with no application at all, and the durable link it has to
+ * the quote is `MoneyTransaction.quoteInstanceId` itself (MIGRATION follow-up 7).
  *
  * No permission checks here - the token IS the capability on the public pages,
  * and the router asserts everywhere else (docs/lib-module-guide.md §6).
@@ -17,7 +17,7 @@ import { type Database, database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { listPaymentGateways } from '../../payment-gateways/reads'
 import { UnifiedCrudHandler } from '../../resources/crud'
@@ -188,10 +188,8 @@ export interface QuoteDepositReceipt {
 /**
  * Every deposit receipt held against a quote, oldest first.
  *
- * 🛑 Through `MoneyCommand.actorSnapshot`, because `MoneyApplication` has no
- * quote column: a deposit is money with no document to relieve yet, and the
- * command that collected it is the only row that ever knew which quote it was
- * for.
+ * MIGRATION follow-up 7: filtered on `MoneyTransaction.quoteInstanceId` itself,
+ * a column only the deposit checkout ever writes - no join to `MoneyCommand` needed.
  */
 export async function listQuoteDepositReceipts(
   db: Database,
@@ -205,22 +203,14 @@ export async function listQuoteDepositReceipts(
       occurredAt: schema.MoneyTransaction.occurredAt,
       occurredOn: schema.MoneyTransaction.occurredOn,
       reference: schema.MoneyTransaction.reference,
-      snapshot: schema.MoneyCommand.actorSnapshot,
+      workOrderInstanceId: schema.MoneyTransaction.workOrderInstanceId,
     })
     .from(schema.MoneyTransaction)
-    .innerJoin(
-      schema.MoneyCommand,
-      and(
-        eq(schema.MoneyCommand.organizationId, schema.MoneyTransaction.organizationId),
-        eq(schema.MoneyCommand.id, schema.MoneyTransaction.recordedByCommandId)
-      )
-    )
     .where(
       and(
         eq(schema.MoneyTransaction.organizationId, organizationId),
         eq(schema.MoneyTransaction.purpose, 'customer_receipt'),
-        eq(schema.MoneyCommand.kind, QUOTE_DEPOSIT_COMMAND_KIND),
-        sql`${schema.MoneyCommand.actorSnapshot}->>'quoteInstanceId' = ${quoteInstanceId}`
+        eq(schema.MoneyTransaction.quoteInstanceId, quoteInstanceId)
       )
     )
   if (rows.length === 0) return []
@@ -247,8 +237,7 @@ export async function listQuoteDepositReceipts(
       appliedMinor: Number(appliedById.get(row.id) ?? 0n),
       occurredAt: row.occurredAt?.toISOString() ?? `${row.occurredOn}T00:00:00.000Z`,
       reference: row.reference,
-      workOrderInstanceId:
-        (row.snapshot as { workOrderInstanceId?: string } | null)?.workOrderInstanceId ?? null,
+      workOrderInstanceId: row.workOrderInstanceId,
       quoteInstanceId,
     }))
     .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
@@ -282,7 +271,8 @@ export async function hasQuoteDeposit(
 
 /**
  * Every deposit receipt held against a WORK ORDER, oldest first - the quotes
- * that converted into it, read through the same command snapshot.
+ * that converted into it, read off `MoneyTransaction.workOrderInstanceId`
+ * (MIGRATION follow-up 7).
  */
 export async function listWorkOrderDepositReceipts(
   db: Database,
@@ -296,22 +286,14 @@ export async function listWorkOrderDepositReceipts(
       occurredAt: schema.MoneyTransaction.occurredAt,
       occurredOn: schema.MoneyTransaction.occurredOn,
       reference: schema.MoneyTransaction.reference,
-      quoteInstanceId: sql<string>`${schema.MoneyCommand.actorSnapshot}->>'quoteInstanceId'`,
+      quoteInstanceId: schema.MoneyTransaction.quoteInstanceId,
     })
     .from(schema.MoneyTransaction)
-    .innerJoin(
-      schema.MoneyCommand,
-      and(
-        eq(schema.MoneyCommand.organizationId, schema.MoneyTransaction.organizationId),
-        eq(schema.MoneyCommand.id, schema.MoneyTransaction.recordedByCommandId)
-      )
-    )
     .where(
       and(
         eq(schema.MoneyTransaction.organizationId, organizationId),
         eq(schema.MoneyTransaction.purpose, 'customer_receipt'),
-        eq(schema.MoneyCommand.kind, QUOTE_DEPOSIT_COMMAND_KIND),
-        sql`${schema.MoneyCommand.actorSnapshot}->>'workOrderInstanceId' = ${workOrderInstanceId}`
+        eq(schema.MoneyTransaction.workOrderInstanceId, workOrderInstanceId)
       )
     )
   if (rows.length === 0) return []

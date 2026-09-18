@@ -20,7 +20,7 @@
 
 import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import type Stripe from 'stripe'
 import { getOrgCache } from '../../cache'
 import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
@@ -154,14 +154,6 @@ async function recordCheckoutReceipt(db: Database, payment: ConfirmedPayment): P
       commandKey: `stripe-checkout:${payment.paymentIntentId}`,
       kind: payment.invoiceInstanceId ? INVOICE_CHECKOUT_COMMAND_KIND : QUOTE_DEPOSIT_COMMAND_KIND,
       payload: { paymentIntentId: payment.paymentIntentId },
-      actorContext: {
-        kind: 'stripe_checkout',
-        ...(payment.invoiceInstanceId ? { invoiceInstanceId: payment.invoiceInstanceId } : {}),
-        ...(payment.quoteInstanceId ? { quoteInstanceId: payment.quoteInstanceId } : {}),
-        ...(payment.workOrderInstanceId
-          ? { workOrderInstanceId: payment.workOrderInstanceId }
-          : {}),
-      },
     },
     async (tx, commandId) => {
       const [money] = await tx
@@ -179,6 +171,12 @@ async function recordCheckoutReceipt(db: Database, payment: ConfirmedPayment): P
           method: 'card',
           recordedByCommandId: commandId,
           reference: payment.paymentIntentId,
+          // MIGRATION follow-up 7 - the durable link a held deposit needs to its
+          // quote/work order, on the row itself rather than the command's snapshot.
+          ...(payment.quoteInstanceId ? { quoteInstanceId: payment.quoteInstanceId } : {}),
+          ...(payment.workOrderInstanceId
+            ? { workOrderInstanceId: payment.workOrderInstanceId }
+            : {}),
         })
         .returning({ id: schema.MoneyTransaction.id })
       if (!money) throw new Error('Money transaction insert returned no row')

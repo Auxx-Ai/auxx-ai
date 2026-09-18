@@ -26,9 +26,10 @@ export interface MoneyCommandInput {
   /** Anything hashable. Only its hash is stored. */
   payload: unknown
   /**
-   * Extra facts merged into `actorSnapshot`. The only durable link a document
-   * with no `MoneyApplication` column has - a held quote deposit is found by
-   * `actorSnapshot->>'quoteInstanceId'`.
+   * Extra facts merged into `actorSnapshot`, for callers with nothing more
+   * durable to name them by - e.g. `refundCreditMemoToCard`'s `stripeRefundId`.
+   * A fact another row can hold as a real column (a quote deposit's
+   * `MoneyTransaction.quoteInstanceId`) belongs there instead (MIGRATION follow-up 7).
    */
   actorContext?: Record<string, string>
 }

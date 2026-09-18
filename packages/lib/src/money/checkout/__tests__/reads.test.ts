@@ -52,7 +52,7 @@ beforeEach(() => {
       occurredAt: new Date('2026-09-01T00:00:00Z'),
       occurredOn: null,
       reference: 'pi_1',
-      snapshot: { workOrderInstanceId: 'wo_1' },
+      workOrderInstanceId: 'wo_1',
     },
   ]
   h.applications = []
