@@ -34,16 +34,17 @@
 
 import { type Database, schema } from '@auxx/database'
 import { toDate } from '@auxx/utils/calendar-day'
-import { and, eq, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm'
-import type { AnyPgColumn } from 'drizzle-orm/pg-core'
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
+import { SUBPART_FIELDS } from '../../resources/registry/resources/subpart-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
+import { systemDefId, systemFieldMap, systemValueJoin } from '../../resources/system-records'
 import { resolvePartKind } from '../costing/client'
 import { readPartQuantitiesOnHand } from './auto-build-queries'
 import type { BackfillCoverage, BackfillDemandLine, BackfillPlanInput } from './backfill-types'
-import { readPartKinds, requireBuildFieldContext } from './build-queries'
+import { readPartKinds, requireBuildContext } from './build-queries'
 import { guard } from './guard'
 
 /**
@@ -83,14 +84,11 @@ const ORDER_ATTRIBUTES = ['order_placed_at', 'order_cancelled_at'] as const
 const LINE_ATTRIBUTES = ['line_item_order', 'line_item_part', 'line_item_qty'] as const
 
 /** The subpart fields the bill-of-materials existence check needs. */
-const SUBPART_ATTRIBUTES = [
+const SUBPART_PICK = pickSystemAttributes(SUBPART_FIELDS, [
   'subpart_parent_part',
   'subpart_child_part',
   'subpart_quantity',
-] as const
-
-/** An aliased `FieldValue` table, as `alias()` returns it. */
-type FieldValueAlias = ReturnType<typeof alias<typeof schema.FieldValue, string>>
+] as const)
 
 /**
  * Read everything the backfill plan is decided from, for one date range.
@@ -176,14 +174,12 @@ async function readDemandLines(
   range: BackfillRange
 ): Promise<BackfillDemandLine[]> {
   const [orderDefId, lineDefId] = await Promise.all([
-    getCachedEntityDefId(organizationId, 'order'),
-    getCachedEntityDefId(organizationId, 'line_item'),
+    systemDefId(db, organizationId, 'order'),
+    systemDefId(db, organizationId, 'line_item'),
   ])
   if (!orderDefId || !lineDefId) return []
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...ORDER_ATTRIBUTES, ...LINE_ATTRIBUTES])
+  const fields = await systemFieldMap(db, organizationId, [...ORDER_ATTRIBUTES, ...LINE_ATTRIBUTES])
 
   const lineOrderField = fields.line_item_order
   const linePartField = fields.line_item_part
@@ -208,10 +204,7 @@ async function readDemandLines(
       placedAt,
     })
     .from(schema.EntityInstance)
-    .innerJoin(
-      lineOrderValue,
-      ownValue(lineOrderValue, schema.EntityInstance.id, organizationId, lineOrderField.id)
-    )
+    .innerJoin(lineOrderValue, systemValueJoin(lineOrderValue, lineOrderField.id))
     .innerJoin(
       orderInstance,
       and(
@@ -224,34 +217,21 @@ async function readDemandLines(
     .innerJoin(
       linePartValue,
       and(
-        ownValue(linePartValue, schema.EntityInstance.id, organizationId, linePartField.id),
+        systemValueJoin(linePartValue, linePartField.id),
         isNotNull(linePartValue.relatedEntityId)
       )
     )
-    .leftJoin(
-      lineQtyValue,
-      ownValue(
-        lineQtyValue,
-        schema.EntityInstance.id,
-        organizationId,
-        fieldId(fields.line_item_qty)
-      )
-    )
+    .leftJoin(lineQtyValue, systemValueJoin(lineQtyValue, fieldId(fields.line_item_qty)))
     .leftJoin(
       orderPlacedValue,
-      ownValue(orderPlacedValue, orderInstance.id, organizationId, fieldId(fields.order_placed_at))
+      systemValueJoin(orderPlacedValue, fieldId(fields.order_placed_at), orderInstance)
     )
     // A LEFT JOIN plus `IS NULL`, so an order with no cancellation ROW at all is
     // kept alongside one whose row is present and empty. An inner join would
     // drop the first group, which is almost every order there is.
     .leftJoin(
       orderCancelledValue,
-      ownValue(
-        orderCancelledValue,
-        orderInstance.id,
-        organizationId,
-        fieldId(fields.order_cancelled_at)
-      )
+      systemValueJoin(orderCancelledValue, fieldId(fields.order_cancelled_at), orderInstance)
     )
     .where(
       and(
@@ -322,7 +302,7 @@ async function readCoverage(
   // `build_part`. Deliberately louder than the demand read: this org HAS demand,
   // and reading its coverage as empty would plan builds on top of production
   // that already exists.
-  const ctx = await requireBuildFieldContext(organizationId)
+  const ctx = await requireBuildContext(organizationId)
   const partField = ctx.fields.build_part
   const statusField = ctx.fields.build_status
   const quantityField = ctx.fields.build_quantity_planned
@@ -352,61 +332,31 @@ async function readCoverage(
     .from(schema.EntityInstance)
     .innerJoin(
       partValue,
-      and(
-        ownValue(partValue, schema.EntityInstance.id, organizationId, partField.id),
-        inArray(partValue.relatedEntityId, partIds)
-      )
+      and(systemValueJoin(partValue, partField.id), inArray(partValue.relatedEntityId, partIds))
     )
     .innerJoin(
       statusValue,
       and(
-        ownValue(statusValue, schema.EntityInstance.id, organizationId, statusField.id),
+        systemValueJoin(statusValue, statusField.id),
         inArray(statusValue.optionId, [...COVERAGE_STATUSES])
       )
     )
-    .leftJoin(
-      quantityValue,
-      ownValue(quantityValue, schema.EntityInstance.id, organizationId, quantityField.id)
-    )
-    .leftJoin(
-      orderValue,
-      ownValue(orderValue, schema.EntityInstance.id, organizationId, orderField.id)
-    )
+    .leftJoin(quantityValue, systemValueJoin(quantityValue, quantityField.id))
+    .leftJoin(orderValue, systemValueJoin(orderValue, orderField.id))
     // Belt and braces: a reversal and the build it reverses are both `completed`,
     // so the status filter already excludes them. Asserted anyway, because the
     // day a reversal can be raised against an open build this read would start
     // counting production that nets out to nothing.
-    .leftJoin(
-      reversalValue,
-      ownValue(
-        reversalValue,
-        schema.EntityInstance.id,
-        organizationId,
-        fieldId(ctx.fields.build_reversal_of)
-      )
-    )
+    .leftJoin(reversalValue, systemValueJoin(reversalValue, fieldId(ctx.fields.build_reversal_of)))
     .leftJoin(
       periodStartValue,
-      ownValue(
-        periodStartValue,
-        schema.EntityInstance.id,
-        organizationId,
-        fieldId(ctx.fields.build_period_start)
-      )
+      systemValueJoin(periodStartValue, fieldId(ctx.fields.build_period_start))
     )
-    .leftJoin(
-      periodEndValue,
-      ownValue(
-        periodEndValue,
-        schema.EntityInstance.id,
-        organizationId,
-        fieldId(ctx.fields.build_period_end)
-      )
-    )
+    .leftJoin(periodEndValue, systemValueJoin(periodEndValue, fieldId(ctx.fields.build_period_end)))
     .where(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.buildDefId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
         isNull(schema.EntityInstance.archivedAt),
         isNull(reversalValue.relatedEntityId)
       )
@@ -462,12 +412,10 @@ async function readHasBom(
   const hasBom = new Map<string, boolean>()
   if (partIds.length === 0) return hasBom
 
-  const subpartDefId = await getCachedEntityDefId(organizationId, 'subpart')
+  const subpartDefId = await systemDefId(db, organizationId, 'subpart')
   if (!subpartDefId) return hasBom
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...SUBPART_ATTRIBUTES])
+  const fields = await systemFieldMap(db, organizationId, SUBPART_PICK)
   const parentField = fields.subpart_parent_part
   const childField = fields.subpart_child_part
   const qtyField = fields.subpart_quantity
@@ -483,23 +431,17 @@ async function readHasBom(
     .innerJoin(
       parentValue,
       and(
-        ownValue(parentValue, schema.EntityInstance.id, organizationId, parentField.id),
+        systemValueJoin(parentValue, parentField.id),
         inArray(parentValue.relatedEntityId, partIds)
       )
     )
     .innerJoin(
       childValue,
-      and(
-        ownValue(childValue, schema.EntityInstance.id, organizationId, childField.id),
-        isNotNull(childValue.relatedEntityId)
-      )
+      and(systemValueJoin(childValue, childField.id), isNotNull(childValue.relatedEntityId))
     )
     .innerJoin(
       qtyValue,
-      and(
-        ownValue(qtyValue, schema.EntityInstance.id, organizationId, qtyField.id),
-        sql`${qtyValue.valueNumber} > 0`
-      )
+      and(systemValueJoin(qtyValue, qtyField.id), sql`${qtyValue.valueNumber} > 0`)
     )
     .where(
       and(
@@ -513,27 +455,6 @@ async function readHasBom(
     if (row.parentPartId) hasBom.set(row.parentPartId, true)
   }
   return hasBom
-}
-
-/**
- * Join predicate for "this instance's value of <field>".
- *
- * Takes the alias OBJECT and composes with `eq`, so drizzle emits the table as
- * an identifier. A hand-written `sql` fragment interpolating a table binds it as
- * a parameter instead, which is a mistake this codebase has already paid for
- * (`build-queries.ts`).
- */
-function ownValue(
-  value: FieldValueAlias,
-  ownerId: AnyPgColumn,
-  organizationId: string,
-  fieldId: string
-): SQL | undefined {
-  return and(
-    eq(value.entityId, ownerId),
-    eq(value.organizationId, organizationId),
-    eq(value.fieldId, fieldId)
-  )
 }
 
 /**

@@ -76,13 +76,13 @@ import { resolveInventoryRoleForPartKind } from '../movements/client'
 import { BUILD_STATUS_BYPASS } from './build-mutations'
 import {
   assertBuildStatus,
-  type BuildFieldContext,
-  type BuildMovementFieldContext,
+  type BuildContext,
+  type BuildMovementContext,
   lockBuild,
   planBuildComponents,
   readPartKinds,
-  requireBuildFieldContext,
-  requireBuildMovementFieldContext,
+  requireBuildContext,
+  requireBuildMovementContext,
 } from './build-queries'
 import { canCompleteBuild, summarizeBuildCompletion } from './client'
 import { guard } from './guard'
@@ -131,8 +131,8 @@ export async function completeBuild(
       assertQuantities(quantityProduced, quantityScrapped)
 
       const [ctx, movementCtx, orgRates] = await Promise.all([
-        requireBuildFieldContext(organizationId),
-        requireBuildMovementFieldContext(organizationId),
+        requireBuildContext(organizationId),
+        requireBuildMovementContext(organizationId),
         // Read OUTSIDE the transaction: the two absorption rates are org
         // settings, they are not part of the invariant the row lock protects,
         // and reading them inside would hold the lock across a settings round
@@ -167,7 +167,7 @@ export async function completeBuild(
       // The ledger's own frame. `publishBuildUpdate` covers the build ROW; the
       // movement rows are silent without this and `build-ledger-card` goes on
       // rendering "Nothing posted yet" until the drawer remounts.
-      publishQuietBuildWrites(organizationId, movementCtx.movementDefId, written.result.movementIds)
+      publishQuietBuildWrites(organizationId, movementCtx.defId, written.result.movementIds)
 
       logger.info('Completed build', {
         organizationId,
@@ -188,8 +188,8 @@ export async function completeBuild(
 }
 
 interface WriteCompletionArgs {
-  ctx: BuildFieldContext
-  movementCtx: BuildMovementFieldContext
+  ctx: BuildContext
+  movementCtx: BuildMovementContext
   /**
    * The two `manufacturing.*` settings. The produced part's overrides are
    * resolved onto these below, once the lock has named the part.
@@ -307,7 +307,7 @@ async function writeCompletion(
     db: txDb,
     organizationId,
     userId,
-    movementDefId: movementCtx.movementDefId,
+    movementDefId: movementCtx.defId,
     partDefId: movementCtx.partDefId,
     lane: movementLane,
     // The SAME handler `crud.update` below writes `build_status` through -
@@ -316,7 +316,7 @@ async function writeCompletion(
     handler: crud,
   }
 
-  const buildRecordId = toRecordId(ctx.buildDefId, build.buildId)
+  const buildRecordId = toRecordId(ctx.defId, build.buildId)
 
   // Step 4: one `build_consume` per component, at the NEGATED quantity, through
   // the shared `stock-movements.writeStockMovements`
@@ -524,7 +524,7 @@ function assertQuantities(quantityProduced: number, quantityScrapped: number): v
  */
 function publishBuildUpdate(
   organizationId: string,
-  ctx: BuildFieldContext,
+  ctx: BuildContext,
   result: CompleteBuildResult,
   completedAt: Date
 ): void {

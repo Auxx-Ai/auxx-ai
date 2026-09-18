@@ -8,11 +8,12 @@ import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { CostSource, PartKind, StockStatus } from '../enum-values'
 import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Part resource
  */
-export const PART_FIELDS: Record<string, ResourceField> = {
+export const PART_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -1118,4 +1119,4 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

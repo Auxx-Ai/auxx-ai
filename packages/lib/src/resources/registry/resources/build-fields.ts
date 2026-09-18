@@ -6,6 +6,7 @@ import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { BuildSource, BuildStatus } from '../enum-values'
 import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Build resource — the event that turns components
@@ -54,7 +55,7 @@ import type { ResourceField } from '../field-types'
  * the create dialog: `number`, `part`, `quantityPlanned`, `notes`, which is the
  * whole of what raising a build should ask for.
  */
-export const BUILD_FIELDS: Record<string, ResourceField> = {
+export const BUILD_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -837,4 +838,4 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

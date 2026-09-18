@@ -31,10 +31,10 @@ import { loadDirectSubparts } from '../bom/subpart-graph'
 import { resolvePartKind } from '../costing/client'
 import {
   assertBuildStatus,
-  type BuildFieldContext,
+  type BuildContext,
   getBuild,
   readPartKinds,
-  requireBuildFieldContext,
+  requireBuildContext,
 } from './build-queries'
 import { canAmendBuild, canCancelBuild, canStartBuild } from './client'
 import { guard } from './guard'
@@ -98,7 +98,7 @@ export async function createBuild(
 ): Promise<Result<BuildRecord, Error>> {
   return guard(
     async () => {
-      const ctx = await requireBuildFieldContext(organizationId)
+      const ctx = await requireBuildContext(organizationId)
 
       if (!Number.isFinite(input.quantityPlanned) || input.quantityPlanned <= 0) {
         throw new BadRequestError('A build must plan to produce at least one unit')
@@ -215,7 +215,7 @@ export async function createBuild(
       const crud = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
         bypassFieldGuards: BUILD_STATUS_BYPASS,
       })
-      const created = await crud.create(ctx.buildDefId, values)
+      const created = await crud.create(ctx.defId, values)
 
       logger.info('Raised build', {
         organizationId,
@@ -248,7 +248,7 @@ export async function startBuild(
 ): Promise<Result<BuildRecord, Error>> {
   return guard(
     async () => {
-      const ctx = await requireBuildFieldContext(organizationId)
+      const ctx = await requireBuildContext(organizationId)
       const build = await requireBuild(db, organizationId, input.buildId)
       assertBuildStatus(build, canStartBuild, 'Only a planned build can be started')
 
@@ -281,7 +281,7 @@ export async function cancelBuild(
 ): Promise<Result<BuildRecord, Error>> {
   return guard(
     async () => {
-      const ctx = await requireBuildFieldContext(organizationId)
+      const ctx = await requireBuildContext(organizationId)
       const build = await requireBuild(db, organizationId, input.buildId)
       assertBuildStatus(
         build,
@@ -337,7 +337,7 @@ export async function amendPlannedBuildQuantity(
 ): Promise<Result<BuildRecord, Error>> {
   return guard(
     async () => {
-      const ctx = await requireBuildFieldContext(organizationId)
+      const ctx = await requireBuildContext(organizationId)
 
       // The same refusal, in the same words, as `createBuild`: a build that
       // plans to produce nothing is not an amendment, it is a cancellation, and
@@ -394,7 +394,7 @@ async function updateBuild(
   db: Database,
   organizationId: string,
   userId: string,
-  ctx: BuildFieldContext,
+  ctx: BuildContext,
   buildId: string,
   values: Record<string, unknown>
 ): Promise<void> {
@@ -406,7 +406,7 @@ async function updateBuild(
     // than to today's value set.
     bypassFieldGuards: BUILD_STATUS_BYPASS,
   })
-  await crud.update(toRecordId(ctx.buildDefId, buildId) as RecordId, values)
+  await crud.update(toRecordId(ctx.defId, buildId) as RecordId, values)
 }
 
 /**

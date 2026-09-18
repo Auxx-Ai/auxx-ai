@@ -16,7 +16,7 @@ vi.mock('@auxx/database', async () => ({
 
 import { schema } from '@auxx/database'
 import type { SystemFieldContext } from '../fields'
-import { readSystemRecords } from '../read'
+import { inPageOrder, readSystemRecords } from '../read'
 
 type Attribute =
   | 'name'
@@ -165,6 +165,35 @@ describe('readSystemRecords', () => {
     expect(row?.actor('name')).toBeNull()
   })
 
+  it('reads a stored NUMBER whose column is NULL as null, never as zero', async () => {
+    // `rowToTypedValue` defaults a NULL `valueNumber` to `0`. The hand-written
+    // reads this replaces returned `null`, and the distinction is load-bearing:
+    // `readBuildMovements` refuses a reversal on a build whose movement carries
+    // no frozen unit cost, rather than reversing it at nothing.
+    const { conn } = db({
+      instances: [instance('a')],
+      values: [valueRow('a', 'f_amount', 'a0', { valueNumber: null })],
+    })
+
+    const [row] = await readSystemRecords(conn, ORG, ctx)
+
+    expect(row?.number('amount')).toBeNull()
+    // The CELL still carries the converter's own default; only the accessor differs.
+    expect(row?.cell('amount')).toMatchObject({ type: 'number', value: 0 })
+  })
+
+  it('reads a stored CHECKBOX whose column is NULL as null, never as false', async () => {
+    const { conn } = db({
+      instances: [instance('a')],
+      values: [valueRow('a', 'f_billable', 'a0', { valueBoolean: null })],
+    })
+
+    const [row] = await readSystemRecords(conn, ORG, ctx)
+
+    // A caller defaulting with `?? true` must not have a NULL row answer for it.
+    expect(row?.boolean('billable')).toBeNull()
+  })
+
   it('keeps sortKey order on a multi-value cell', async () => {
     const { conn } = db({
       instances: [instance('a')],
@@ -311,5 +340,25 @@ describe('readSystemRecords, by parent', () => {
     await readSystemRecords(conn, ORG, ctx, { by: { attribute: 'order', in: parents } })
 
     expect(calls).toHaveLength(3)
+  })
+})
+
+describe('inPageOrder', () => {
+  it('restores the page order the reader replaced with createdAt', async () => {
+    const { conn } = db({
+      instances: [instance('b'), instance('a'), instance('c')],
+      values: [],
+    })
+    const page = ['c', 'a', 'b']
+    const records = await readSystemRecords(conn, ORG, ctx, { ids: page })
+
+    expect(inPageOrder(records, page).map((record) => record.id)).toEqual(page)
+  })
+
+  it('drops an id the reader did not return', async () => {
+    const { conn } = db({ instances: [instance('a')], values: [] })
+    const records = await readSystemRecords(conn, ORG, ctx, { ids: ['a', 'gone'] })
+
+    expect(inPageOrder(records, ['gone', 'a']).map((record) => record.id)).toEqual(['a'])
   })
 })

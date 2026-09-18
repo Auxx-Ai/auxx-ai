@@ -35,6 +35,46 @@ interface ValueRow {
   valueDate: string | null
   optionId: string | null
   relatedEntityId: string | null
+  /** `rowsToTypedValues` needs it to compose a `RecordId`; any non-null def id will do. */
+  relatedEntityDefinitionId: string | null
+}
+
+/**
+ * The stored shape of each attribute, which the reader types its cells by.
+ *
+ * A field whose type the double got wrong reads back as text, so this is what
+ * makes `record.number(...)` and `record.related(...)` mean anything here.
+ */
+const FIELD_TYPES: Record<string, string> = {
+  build_part: 'RELATIONSHIP',
+  build_order: 'RELATIONSHIP',
+  build_reversal_of: 'RELATIONSHIP',
+  build_status: 'SINGLE_SELECT',
+  build_source: 'SINGLE_SELECT',
+  build_started_at: 'DATE',
+  build_completed_at: 'DATE',
+  build_posted_at: 'DATE',
+  build_period_start: 'DATE',
+  build_period_end: 'DATE',
+  build_quantity_planned: 'NUMBER',
+  build_quantity_produced: 'NUMBER',
+  build_quantity_scrapped: 'NUMBER',
+  build_material_cost: 'NUMBER',
+  build_labor_cost: 'NUMBER',
+  build_overhead_cost: 'NUMBER',
+  build_produced_value: 'NUMBER',
+  build_variance_amount: 'NUMBER',
+  build_batch_run: 'NUMBER',
+  stock_movement_build: 'RELATIONSHIP',
+  stock_movement_part: 'RELATIONSHIP',
+  stock_movement_type: 'SINGLE_SELECT',
+  stock_movement_cost_basis: 'SINGLE_SELECT',
+  stock_movement_quantity: 'NUMBER',
+  stock_movement_unit_cost: 'NUMBER',
+  stock_movement_extended_cost: 'NUMBER',
+  stock_movement_qty_per_unit: 'NUMBER',
+  part_kind: 'SINGLE_SELECT',
+  part_quantity_on_hand: 'NUMBER',
 }
 
 /** One created record, as the CRUD double reports it back. */
@@ -56,6 +96,8 @@ const h = vi.hoisted(() => ({
   reversalRows: [] as { id: string }[],
   /** systemAttributes the org has materialised. */
   materialised: new Set<string>(),
+  /** systemAttribute -> stored field type, so the reader types its cells. */
+  fieldTypes: {} as Record<string, string>,
   /** entityType -> def id; a missing key models a def the org does not have. */
   defs: new Map<string, string>(),
   /** partId -> frozen standard cost, minor units. Absent = never rolled. */
@@ -98,7 +140,12 @@ vi.mock('../../../cache', () => ({
     from: () => ({
       bySystemAttributes: async (attrs: readonly string[]) =>
         Object.fromEntries(
-          attrs.map((attr) => [attr, h.materialised.has(attr) ? { id: `fld_${attr}` } : null])
+          attrs.map((attr) => [
+            attr,
+            h.materialised.has(attr)
+              ? { id: `fld_${attr}`, type: h.fieldTypes[attr] ?? 'TEXT' }
+              : null,
+          ])
         ),
     }),
   }),
@@ -212,13 +259,54 @@ function rowsPromise(rows: unknown[]): RowsChain {
   })
 }
 
-function makeChain() {
+/**
+ * Every literal a `where` binds, at any depth.
+ *
+ * The COLUMNS a condition names are `undefined` under the wholesale
+ * `@auxx/database` mock, but its PARAMETERS are real — which is enough to tell
+ * "instances of the build def" from "instances of the stock_movement def", and
+ * the reader's child-by-parent lookup from any other value read. Routing on
+ * that rather than on call order keeps the double order-independent.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: walking drizzle's SQL chunk tree
+function boundValues(node: any, out: string[] = []): string[] {
+  if (!node) return out
+  // With the columns mocked away drizzle binds a literal rather than a `Param`,
+  // so a bare string IS a bound value.
+  if (typeof node === 'string') {
+    out.push(node)
+    return out
+  }
+  if (Array.isArray(node)) {
+    for (const child of node) boundValues(child, out)
+    return out
+  }
+  if (node.queryChunks) return boundValues(node.queryChunks, out)
+  if (typeof node.value === 'string') out.push(node.value)
+  if (Array.isArray(node.value)) for (const v of node.value) if (typeof v === 'string') out.push(v)
+  return out
+}
+
+function makeChain(columns: unknown) {
   const state = { table: null as unknown, joined: false }
-  const rows = () => {
+  const rows = (condition: unknown) => {
+    const bound = boundValues(condition)
     if (state.table === schema.EntityInstance) {
-      return state.joined ? h.movementInstances : h.instanceRows
+      if (state.joined) return h.movementInstances
+      const movementDefId = h.defs.get('stock_movement')
+      if (movementDefId && bound.includes(movementDefId)) return h.movementInstances
+      return h.instanceRows
     }
-    return state.joined ? h.reversalRows : h.valueRows
+    if (state.joined) return h.reversalRows
+    // The reader's child-by-parent lookup: a `{ entityId }` projection filtered
+    // on one relationship field.
+    if (columns && bound.includes('fld_stock_movement_build')) {
+      return h.movementInstances.map((row) => ({ entityId: row.id }))
+    }
+    if (columns && bound.includes('fld_build_reversal_of')) {
+      return h.reversalRows.map((row) => ({ entityId: row.id }))
+    }
+    return h.valueRows
   }
   const chain: Record<string, unknown> = {
     from: (table: unknown) => {
@@ -231,13 +319,13 @@ function makeChain() {
     },
     leftJoin: () => chain,
     $dynamic: () => chain,
-    where: () => rowsPromise(rows()),
+    where: (condition: unknown) => rowsPromise(rows(condition)),
   }
   return chain
 }
 
 const db = {
-  select: () => makeChain(),
+  select: (columns?: unknown) => makeChain(columns),
   transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
     h.trace.push('begin')
     const result = await fn(db)
@@ -292,6 +380,7 @@ function value(entityId: string, attr: string, over: Partial<ValueRow>): ValueRo
     valueDate: null,
     optionId: null,
     relatedEntityId: null,
+    relatedEntityDefinitionId: over.relatedEntityId ? 'def_related' : null,
     ...over,
   }
 }
@@ -359,6 +448,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.absorptionOverrides = new Map()
   h.materialised = new Set([...BUILD_ATTRS, ...MOVEMENT_ATTRS, 'part_kind'])
+  h.fieldTypes = FIELD_TYPES
   h.defs = new Map([
     ['build', 'def_build'],
     ['part', 'def_part'],

@@ -74,9 +74,11 @@ import { fromZonedTime } from 'date-fns-tz'
 import type { Result } from 'neverthrow'
 import { periodKeyForDate } from '../../accounting/ledger/periods/periods'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
-import { getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import { recordNumbering } from '../../records/record-numbering'
+import { BUILD_FIELDS } from '../../resources/registry/resources/build-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
+import { systemFieldMap } from '../../resources/system-records'
 import type {
   BackfillBucket,
   BackfillPlan,
@@ -88,6 +90,13 @@ import { completeBuild } from './complete-build'
 import { guard } from './guard'
 
 const logger = createScopedLogger('builds:backfill')
+
+/** The three fields a run stamps on every build it raises; see {@link prepareRun} for which are required. */
+const RUN_PICK = pickSystemAttributes(BUILD_FIELDS, [
+  'build_period_start',
+  'build_period_end',
+  'build_batch_run',
+] as const)
 
 /** One progress line per this many buckets, so a long run is observable. */
 const PROGRESS_EVERY = 25
@@ -283,9 +292,7 @@ export function resolveBackfillCompletedAt(bucket: BackfillBucket, timeZone: str
  */
 async function prepareRun(organizationId: string): Promise<RunContext> {
   const [fields, timeZone] = await Promise.all([
-    getOrgCache()
-      .from(organizationId, 'customFields')
-      .bySystemAttributes(['build_period_start', 'build_period_end', 'build_batch_run'] as const),
+    systemFieldMap(undefined, organizationId, RUN_PICK),
     readBookTimeZoneOrUtc(organizationId),
   ])
 

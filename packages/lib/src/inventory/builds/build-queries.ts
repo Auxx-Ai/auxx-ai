@@ -21,10 +21,22 @@ import { type Database, schema } from '@auxx/database'
 import { and, desc, eq, inArray, isNotNull, isNull, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../../errors'
+import { batchGetRelatedDisplayNames } from '../../field-values/field-value-helpers'
+import { BUILD_FIELDS } from '../../resources/registry/resources/build-fields'
+import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import { toRecordId } from '../../resources/resource-id'
-import { systemValueJoin } from '../../resources/system-records'
+import {
+  inPageOrder,
+  readSystemRecords,
+  type SystemFieldContext,
+  type SystemRecord,
+  systemDefId,
+  systemFieldMap,
+  systemFields,
+  systemValueJoin,
+} from '../../resources/system-records'
 import { loadDirectSubparts } from '../bom/subpart-graph'
 import { readStandardCost } from '../costing/standard-cost-queries'
 import type { PartStandardCost } from '../costing/types'
@@ -51,7 +63,7 @@ import type {
  * All optional below: entity migration 109 provisions them, and an org that has
  * not run it must read an empty list rather than 500.
  */
-const BUILD_ATTRIBUTES = [
+const BUILD_PICK = pickSystemAttributes(BUILD_FIELDS, [
   'build_number',
   'build_part',
   'build_status',
@@ -81,11 +93,17 @@ const BUILD_ATTRIBUTES = [
   // above, so `createBuild` is the only writer, and absent on an org short of
   // entity migration 141.
   'build_batch_run',
-] as const
+] as const)
 
-type BuildAttribute = (typeof BUILD_ATTRIBUTES)[number]
+type BuildAttribute = (typeof BUILD_PICK)[number]
 
-/** The movement attributes a build writes and a reversal reads back. */
+/**
+ * The movement attributes a build writes and a reversal reads back.
+ *
+ * Hand-listed rather than picked off `STOCK_MOVEMENT_FIELDS`: that registry file
+ * belongs to a lane still in flight, and this list is checked by the refusal in
+ * {@link requireBuildMovementContext} either way.
+ */
 const BUILD_MOVEMENT_ATTRIBUTES = [
   'stock_movement_build',
   'stock_movement_part',
@@ -102,21 +120,12 @@ type BuildMovementAttribute = (typeof BUILD_MOVEMENT_ATTRIBUTES)[number]
 
 const DEFAULT_LIMIT = 50
 
-/** `systemAttribute` -> the materialised `CustomField`, or `null`. */
-type BuildFields = Record<BuildAttribute, { id: string } | null>
-type BuildMovementFields = Record<BuildMovementAttribute, { id: string } | null>
+/** The `build` def and the fields every build read is scoped by. */
+export type BuildContext = SystemFieldContext<BuildAttribute>
 
-/** The resolved ids the build reads need. */
-export interface BuildFieldContext {
-  buildDefId: string
-  fields: BuildFields
-}
-
-/** The resolved ids the movement reads and writes need. */
-export interface BuildMovementFieldContext {
-  movementDefId: string
+/** {@link BuildContext}'s movement counterpart, plus the `part` def a movement's `RecordId`s are written with. */
+export interface BuildMovementContext extends SystemFieldContext<BuildMovementAttribute> {
   partDefId: string
-  fields: BuildMovementFields
 }
 
 /**
@@ -124,26 +133,20 @@ export interface BuildMovementFieldContext {
  * entity yet.
  *
  * `null` rather than a throw so a list surface on an unmigrated org renders
- * empty. The WRITE paths use {@link requireBuildFieldContext} instead, because
+ * empty. The WRITE paths use {@link requireBuildContext} instead, because
  * a write that silently did nothing would be worse than a refusal.
  */
-export async function loadBuildFieldContext(
-  organizationId: string
-): Promise<BuildFieldContext | null> {
-  const buildDefId = await getCachedEntityDefId(organizationId, 'build')
-  if (!buildDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...BUILD_ATTRIBUTES])) as BuildFields
+export async function loadBuildContext(organizationId: string): Promise<BuildContext | null> {
+  const ctx = await systemFields(undefined, organizationId, 'build', BUILD_PICK)
   // Without `status` there is no lifecycle at all, and every write gate below
   // reduces to "yes". An org in that state must not be written to.
-  if (!fields.build_status || !fields.build_part) return null
-  return { buildDefId, fields }
+  if (!ctx || !ctx.fields.build_status || !ctx.fields.build_part) return null
+  return ctx
 }
 
-/** {@link loadBuildFieldContext}, as the refusal a write path needs. */
-export async function requireBuildFieldContext(organizationId: string): Promise<BuildFieldContext> {
-  const ctx = await loadBuildFieldContext(organizationId)
+/** {@link loadBuildContext}, as the refusal a write path needs. */
+export async function requireBuildContext(organizationId: string): Promise<BuildContext> {
+  const ctx = await loadBuildContext(organizationId)
   if (!ctx) {
     throw new UnprocessableEntityError(
       'Builds are not available until the build entity and its fields are provisioned'
@@ -160,19 +163,19 @@ export async function requireBuildFieldContext(organizationId: string): Promise<
  * build whose movements cannot name the build that wrote them is a ledger with
  * no provenance, and `reverseBuild` has nothing to read back.
  */
-export async function requireBuildMovementFieldContext(
+export async function requireBuildMovementContext(
   organizationId: string
-): Promise<BuildMovementFieldContext> {
-  const movementDefId = await getCachedEntityDefId(organizationId, 'stock_movement')
-  const partDefId = await getCachedEntityDefId(organizationId, 'part')
-  if (!movementDefId || !partDefId) {
+): Promise<BuildMovementContext> {
+  const [ctx, partDefId] = await Promise.all([
+    systemFields(undefined, organizationId, 'stock_movement', BUILD_MOVEMENT_ATTRIBUTES),
+    systemDefId(undefined, organizationId, 'part'),
+  ])
+  if (!ctx || !partDefId) {
     throw new UnprocessableEntityError(
       'This organization has no stock movement or part entity definition yet'
     )
   }
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...BUILD_MOVEMENT_ATTRIBUTES])) as BuildMovementFields
+  const { fields } = ctx
 
   if (
     !fields.stock_movement_build ||
@@ -186,7 +189,7 @@ export async function requireBuildMovementFieldContext(
       'Writing a build is not available until the stock movement build fields are provisioned'
     )
   }
-  return { movementDefId, partDefId, fields }
+  return { ...ctx, partDefId }
 }
 
 // ─── Detail and list ────────────────────────────────────────────────────
@@ -199,25 +202,12 @@ export async function getBuild(
 ): Promise<Result<BuildRecord | null, Error>> {
   return guard(
     async () => {
-      const ctx = await loadBuildFieldContext(organizationId)
+      const ctx = await loadBuildContext(organizationId)
       if (!ctx) return null
 
-      const [instance] = await db
-        .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-        .from(schema.EntityInstance)
-        .where(
-          and(
-            eq(schema.EntityInstance.id, buildId),
-            eq(schema.EntityInstance.organizationId, organizationId),
-            eq(schema.EntityInstance.entityDefinitionId, ctx.buildDefId),
-            isNull(schema.EntityInstance.archivedAt)
-          )
-        )
-        .limit(1)
-
-      if (!instance) return null
-      const [record] = await hydrateBuilds(db, organizationId, ctx, [instance])
-      return record ?? null
+      const records = await readSystemRecords(db, organizationId, ctx, { ids: [buildId] })
+      const record = records[0]
+      return record ? toBuildRecord(record) : null
     },
     'Failed to read build',
     { organizationId, buildId }
@@ -240,7 +230,7 @@ export async function listBuilds(
 ): Promise<Result<BuildRecord[], Error>> {
   return guard(
     async () => {
-      const ctx = await loadBuildFieldContext(organizationId)
+      const ctx = await loadBuildContext(organizationId)
       if (!ctx) return []
       return queryBuilds(db, organizationId, ctx, filters, [])
     },
@@ -266,7 +256,7 @@ export async function listUnpostedBuilds(
 ): Promise<Result<BuildRecord[], Error>> {
   return guard(
     async () => {
-      const ctx = await loadBuildFieldContext(organizationId)
+      const ctx = await loadBuildContext(organizationId)
       if (!ctx) return []
 
       // A LEFT JOIN plus `IS NULL` on the joined column, so a build with no
@@ -291,10 +281,15 @@ interface AbsentValueJoin {
   name: string
 }
 
+/**
+ * The page itself, in SQL: the filters are value joins and the window is
+ * `LIMIT`/`OFFSET`, neither of which {@link readSystemRecords} expresses. The
+ * page's ids then go back through the reader for their cells.
+ */
 async function queryBuilds(
   db: Database,
   organizationId: string,
-  ctx: BuildFieldContext,
+  ctx: BuildContext,
   filters: ListBuildsFilters,
   absent: AbsentValueJoin[]
 ): Promise<BuildRecord[]> {
@@ -303,14 +298,11 @@ async function queryBuilds(
 
   const where: SQL[] = [
     eq(schema.EntityInstance.organizationId, organizationId),
-    eq(schema.EntityInstance.entityDefinitionId, ctx.buildDefId),
+    eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
     isNull(schema.EntityInstance.archivedAt),
   ]
 
-  let query = db
-    .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-    .from(schema.EntityInstance)
-    .$dynamic()
+  let query = db.select({ id: schema.EntityInstance.id }).from(schema.EntityInstance).$dynamic()
 
   if (filters.status && ctx.fields.build_status) {
     const statusValue = alias(schema.FieldValue, 'build_status_v')
@@ -369,107 +361,42 @@ async function queryBuilds(
     .offset(offset)
 
   if (rows.length === 0) return []
-  return hydrateBuilds(db, organizationId, ctx, rows)
+  const ids = rows.map((row) => row.id)
+  const records = await readSystemRecords(db, organizationId, ctx, { ids })
+  return inPageOrder(records, ids).map(toBuildRecord)
 }
 
-/**
- * Turn a page of build ids into full rows with ONE additional query.
- *
- * The alternative — a join per attribute on the paging query — multiplies the
- * row count and makes `LIMIT` mean something other than "this many builds".
- */
-async function hydrateBuilds(
-  db: Database,
-  organizationId: string,
-  ctx: BuildFieldContext,
-  page: { id: string; createdAt: Date }[]
-): Promise<BuildRecord[]> {
-  const ids = page.map((row) => row.id)
-  const fieldIds = Object.values(ctx.fields)
-    .filter((field): field is { id: string } => field != null)
-    .map((field) => field.id)
-
-  const values = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      valueNumber: schema.FieldValue.valueNumber,
-      valueDate: schema.FieldValue.valueDate,
-      optionId: schema.FieldValue.optionId,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, ids),
-        inArray(schema.FieldValue.fieldId, fieldIds)
-      )
-    )
-
-  const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
-  for (const value of values) {
-    let bucket = byInstance.get(value.entityId)
-    if (!bucket) {
-      bucket = new Map()
-      byInstance.set(value.entityId, bucket)
-    }
-    bucket.set(value.fieldId, value)
-  }
-
-  return page.map((row) => toBuildRecord(ctx, row, byInstance.get(row.id)))
-}
-
-function toBuildRecord(
-  ctx: BuildFieldContext,
-  row: { id: string; createdAt: Date },
-  bucket:
-    | Map<
-        string,
-        {
-          valueText: string | null
-          valueNumber: number | null
-          valueDate: string | null
-          optionId: string | null
-          relatedEntityId: string | null
-        }
-      >
-    | undefined
-): BuildRecord {
-  const read = (attr: BuildAttribute) => {
-    const id = ctx.fields[attr]?.id
-    return id ? (bucket?.get(id) ?? null) : null
-  }
-  const date = (attr: BuildAttribute) => {
-    const raw = read(attr)?.valueDate
+function toBuildRecord(record: SystemRecord<BuildAttribute>): BuildRecord {
+  const date = (attribute: BuildAttribute) => {
+    const raw = record.date(attribute)
     return raw ? new Date(raw) : null
   }
 
   return {
-    buildId: row.id,
-    recordId: toRecordId(ctx.buildDefId, row.id),
-    number: read('build_number')?.valueText ?? null,
-    partId: read('build_part')?.relatedEntityId ?? null,
-    status: resolveBuildStatus(read('build_status')?.optionId),
-    quantityPlanned: read('build_quantity_planned')?.valueNumber ?? null,
-    quantityProduced: read('build_quantity_produced')?.valueNumber ?? null,
-    quantityScrapped: read('build_quantity_scrapped')?.valueNumber ?? null,
+    buildId: record.id,
+    recordId: record.recordId,
+    number: record.text('build_number'),
+    partId: record.related('build_part'),
+    status: resolveBuildStatus(record.option('build_status')),
+    quantityPlanned: record.number('build_quantity_planned'),
+    quantityProduced: record.number('build_quantity_produced'),
+    quantityScrapped: record.number('build_quantity_scrapped'),
     startedAt: date('build_started_at'),
     completedAt: date('build_completed_at'),
-    materialCost: read('build_material_cost')?.valueNumber ?? null,
-    laborCost: read('build_labor_cost')?.valueNumber ?? null,
-    overheadCost: read('build_overhead_cost')?.valueNumber ?? null,
-    producedValue: read('build_produced_value')?.valueNumber ?? null,
-    varianceAmount: read('build_variance_amount')?.valueNumber ?? null,
+    materialCost: record.number('build_material_cost'),
+    laborCost: record.number('build_labor_cost'),
+    overheadCost: record.number('build_overhead_cost'),
+    producedValue: record.number('build_produced_value'),
+    varianceAmount: record.number('build_variance_amount'),
     postedAt: date('build_posted_at'),
-    notes: read('build_notes')?.valueText ?? null,
-    orderId: read('build_order')?.relatedEntityId ?? null,
-    source: read('build_source')?.optionId ?? null,
-    reversalOfBuildId: read('build_reversal_of')?.relatedEntityId ?? null,
-    orderRevision: read('build_order_revision')?.valueText ?? null,
-    batchRun: read('build_batch_run')?.valueNumber ?? null,
-    createdAt: row.createdAt,
+    notes: record.text('build_notes'),
+    orderId: record.related('build_order'),
+    source: record.option('build_source'),
+    reversalOfBuildId: record.related('build_reversal_of'),
+    orderRevision: record.text('build_order_revision'),
+    batchRun: record.number('build_batch_run'),
+    // `EntityInstance.createdAt` is NOT NULL in the schema; the reader types it defensively.
+    createdAt: record.createdAt ?? new Date(0),
   }
 }
 
@@ -492,17 +419,19 @@ function toBuildRecord(
 export async function lockBuild(
   tx: Transaction,
   organizationId: string,
-  ctx: BuildFieldContext,
+  ctx: BuildContext,
   buildId: string
 ): Promise<BuildRecord> {
+  // The one query the reader cannot express: `FOR UPDATE` is the lock, and the
+  // reader's own instance query would take none.
   const [instance] = await tx
-    .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
+    .select({ id: schema.EntityInstance.id })
     .from(schema.EntityInstance)
     .where(
       and(
         eq(schema.EntityInstance.id, buildId),
         eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.buildDefId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
         isNull(schema.EntityInstance.archivedAt)
       )
     )
@@ -510,9 +439,9 @@ export async function lockBuild(
 
   if (!instance) throw new NotFoundError(`Build ${buildId} not found`)
 
-  const [record] = await hydrateBuilds(tx as unknown as Database, organizationId, ctx, [instance])
+  const [record] = await readSystemRecords(tx, organizationId, ctx, { ids: [instance.id] })
   if (!record) throw new NotFoundError(`Build ${buildId} not found`)
-  return record
+  return toBuildRecord(record)
 }
 
 /**
@@ -541,33 +470,14 @@ export function assertBuildStatus(
 export async function hasBuildReversal(
   db: Database,
   organizationId: string,
-  ctx: BuildFieldContext,
+  ctx: BuildContext,
   buildId: string
 ): Promise<boolean> {
-  const reversalField = ctx.fields.build_reversal_of
-  if (!reversalField) return false
-
-  const [existing] = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.FieldValue)
-    .innerJoin(
-      schema.EntityInstance,
-      and(
-        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
-        eq(schema.EntityInstance.organizationId, schema.FieldValue.organizationId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, reversalField.id),
-        eq(schema.FieldValue.relatedEntityId, buildId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .limit(1)
-
-  return Boolean(existing)
+  if (!ctx.fields.build_reversal_of) return false
+  const reversals = await readSystemRecords(db, organizationId, ctx, {
+    by: { attribute: 'build_reversal_of', in: [buildId] },
+  })
+  return reversals.length > 0
 }
 
 /**
@@ -581,100 +491,38 @@ export async function hasBuildReversal(
 export async function readBuildMovements(
   db: Database,
   organizationId: string,
-  movementCtx: BuildMovementFieldContext,
+  movementCtx: BuildMovementContext,
   buildId: string
 ): Promise<BuildMovementRow[]> {
-  const { fields } = movementCtx
-  const buildValue = alias(schema.FieldValue, 'mv_build')
-
-  const instances = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .innerJoin(
-      buildValue,
-      and(
-        eq(buildValue.entityId, schema.EntityInstance.id),
-        eq(buildValue.organizationId, schema.EntityInstance.organizationId),
-        eq(buildValue.fieldId, fields.stock_movement_build!.id),
-        eq(buildValue.relatedEntityId, buildId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, movementCtx.movementDefId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .orderBy(schema.EntityInstance.createdAt)
-
-  if (instances.length === 0) return []
-
-  const fieldIds = Object.values(fields)
-    .filter((field): field is { id: string } => field != null)
-    .map((field) => field.id)
-
-  const values = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      valueNumber: schema.FieldValue.valueNumber,
-      optionId: schema.FieldValue.optionId,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(
-          schema.FieldValue.entityId,
-          instances.map((row) => row.id)
-        ),
-        inArray(schema.FieldValue.fieldId, fieldIds)
-      )
-    )
-
-  const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
-  for (const value of values) {
-    let bucket = byInstance.get(value.entityId)
-    if (!bucket) {
-      bucket = new Map()
-      byInstance.set(value.entityId, bucket)
-    }
-    bucket.set(value.fieldId, value)
-  }
+  const records = await readSystemRecords(db, organizationId, movementCtx, {
+    by: { attribute: 'stock_movement_build', in: [buildId] },
+  })
 
   const rows: BuildMovementRow[] = []
-  for (const instance of instances) {
-    const bucket = byInstance.get(instance.id)
-    const read = (attr: BuildMovementAttribute) => {
-      const id = fields[attr]?.id
-      return id ? (bucket?.get(id) ?? null) : null
-    }
-    const partId = read('stock_movement_part')?.relatedEntityId ?? null
-    const type = read('stock_movement_type')?.optionId ?? null
-    const quantity = read('stock_movement_quantity')?.valueNumber ?? null
-    const unitCost = read('stock_movement_unit_cost')?.valueNumber ?? null
+  for (const record of records) {
+    const partId = record.related('stock_movement_part')
+    const type = record.option('stock_movement_type')
+    const quantity = record.number('stock_movement_quantity')
+    const unitCost = record.number('stock_movement_unit_cost')
 
     if (!partId || !type || quantity == null || quantity === 0 || unitCost == null) {
       // Every row a build writes carries all four. One that does not was not
       // written by `completeBuild`, and negating it would invent a cost.
       throw new UnprocessableEntityError(
-        `Stock movement ${instance.id} on this build has no part, type, quantity or frozen cost and cannot be reversed`
+        `Stock movement ${record.id} on this build has no part, type, quantity or frozen cost and cannot be reversed`
       )
     }
 
     rows.push({
-      movementId: instance.id,
+      movementId: record.id,
       partId,
       type,
       quantity,
       unitCost,
-      extendedCost: read('stock_movement_extended_cost')?.valueNumber ?? null,
-      glAccount: read('stock_movement_gl_account')?.valueText ?? null,
-      qtyPerUnit: read('stock_movement_qty_per_unit')?.valueNumber ?? null,
-      costBasis: read('stock_movement_cost_basis')?.optionId ?? null,
+      extendedCost: record.number('stock_movement_extended_cost'),
+      glAccount: record.text('stock_movement_gl_account'),
+      qtyPerUnit: record.number('stock_movement_qty_per_unit'),
+      costBasis: record.option('stock_movement_cost_basis'),
     })
   }
 
@@ -829,7 +677,13 @@ async function readStandardCostMap(
   return result.value
 }
 
-/** `part_kind` for several parts in one query. A part with no row reads absent. */
+/**
+ * `part_kind` for several parts in ONE query. A part with no row reads absent.
+ *
+ * Deliberately not on `readSystemRecords`: the part ids come off BOM edges and
+ * movement rows, and this must answer for an ARCHIVED part too — the reader
+ * scopes to live instances of the def and would cost a second query to do it.
+ */
 export async function readPartKinds(
   db: Database,
   organizationId: string,
@@ -838,9 +692,11 @@ export async function readPartKinds(
   const kinds = new Map<string, string>()
   if (partIds.length === 0) return kinds
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['part_kind'] as const)
+  const fields = await systemFieldMap(
+    db,
+    organizationId,
+    pickSystemAttributes(PART_FIELDS, ['part_kind'] as const)
+  )
   const kindField = fields.part_kind
   if (!kindField) return kinds
 
@@ -871,18 +727,16 @@ export async function readPartNames(
   const names = new Map<string, string>()
   if (partIds.length === 0) return names
 
-  const rows = await db
-    .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        inArray(schema.EntityInstance.id, [...new Set(partIds)])
-      )
-    )
+  const partDefId = await systemDefId(db, organizationId, 'part')
+  if (!partDefId) return names
 
-  for (const row of rows) {
-    if (row.displayName) names.set(row.id, row.displayName)
+  const displayNames = await batchGetRelatedDisplayNames(
+    db,
+    organizationId,
+    [...new Set(partIds)].map((partId) => toRecordId(partDefId, partId))
+  )
+  for (const [partId, displayName] of displayNames) {
+    if (displayName) names.set(partId, displayName)
   }
   return names
 }

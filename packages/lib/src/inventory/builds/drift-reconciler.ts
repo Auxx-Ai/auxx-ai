@@ -30,12 +30,12 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { FieldValueService } from '../../field-values/field-value-service'
 import {
   defineParentReconciler,
   resolveParentsByRelation,
 } from '../../reconcilers/parent-reconciler'
+import { systemDefId, systemFieldMap } from '../../resources/system-records'
 import type { ReconcileOrderInput } from './reconcile-order-builds'
 
 const logger = createScopedLogger('builds:drift-reconciler')
@@ -142,10 +142,8 @@ async function reconcileOrders(organizationId: string, orderIds: string[]): Prom
 
   const [orders, fields, orderDefId] = await Promise.all([
     loadAutoBuildOrders(database, organizationId, ids),
-    getOrgCache()
-      .from(organizationId, 'customFields')
-      .bySystemAttributes(['order_build_revision'] as const),
-    getCachedEntityDefId(organizationId, 'order'),
+    systemFieldMap(database, organizationId, ['order_build_revision'] as const),
+    systemDefId(database, organizationId, 'order'),
   ])
 
   const revisionField = fields.order_build_revision

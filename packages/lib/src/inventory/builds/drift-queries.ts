@@ -11,10 +11,13 @@
  */
 
 import type { Database } from '@auxx/database'
-import { getOrgCache } from '../../cache'
 import { readFieldScalars } from '../../field-values/read-field-scalars'
+import { systemFieldMap } from '../../resources/system-records'
 import { hasDrifted } from './order-fingerprint'
 import type { BuildRecord } from './types'
+
+/** The one order attribute the drift verdict compares against. */
+const ORDER_BUILD_REVISION = ['order_build_revision'] as const
 
 /** One build's drift verdict. */
 export interface BuildDrift {
@@ -60,9 +63,7 @@ export async function readBuildDrift(
   const comparable = builds.filter((build) => build.orderId && build.orderRevision)
   if (comparable.length === 0) return out
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['order_build_revision'] as const)
+  const fields = await systemFieldMap(db, organizationId, ORDER_BUILD_REVISION)
   const revisionField = fields.order_build_revision
   if (!revisionField) return out
 

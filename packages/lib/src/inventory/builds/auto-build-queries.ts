@@ -20,8 +20,10 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
+import { and, eq, inArray } from 'drizzle-orm'
+import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
+import { readSystemRecords, systemFieldMap, systemFields } from '../../resources/system-records'
 import type { AutoBuildLine } from './auto-build-policy'
 
 /** The order fields the trigger reads. Both optional — migration 109 provisions them. */
@@ -57,7 +59,7 @@ export interface AutoBuildOrder {
  * a lifecycle rule can be dispatched for a record a later write has since
  * removed.
  *
- * Four queries regardless of batch size. An org missing the `order` def, the
+ * Five queries regardless of batch size. An org missing the `order` def, the
  * `line_item` def or any of the three line fields yields an empty list: there
  * is nothing to build from, and refusing loudly would turn every order create
  * in an unmigrated org into a logged failure.
@@ -69,139 +71,47 @@ export async function loadAutoBuildOrders(
 ): Promise<AutoBuildOrder[]> {
   if (orderIds.length === 0) return []
 
-  const [orderDefId, lineDefId] = await Promise.all([
-    getCachedEntityDefId(organizationId, 'order'),
-    getCachedEntityDefId(organizationId, 'line_item'),
+  const [orderCtx, lineCtx] = await Promise.all([
+    systemFields(db, organizationId, 'order', ORDER_ATTRIBUTES),
+    systemFields(db, organizationId, 'line_item', LINE_ATTRIBUTES),
   ])
-  if (!orderDefId || !lineDefId) return []
+  if (!orderCtx || !lineCtx) return []
+  // All three, or a line reaches no part and carries no quantity: the whole
+  // batch reads as nothing to build from rather than as half a demand set.
+  const { line_item_order, line_item_part, line_item_qty } = lineCtx.fields
+  if (!line_item_order || !line_item_part || !line_item_qty) return []
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...ORDER_ATTRIBUTES, ...LINE_ATTRIBUTES])
+  const orders = await readSystemRecords(db, organizationId, orderCtx, { ids: orderIds })
+  if (orders.length === 0) return []
 
-  const lineOrderField = fields.line_item_order
-  const linePartField = fields.line_item_part
-  const lineQtyField = fields.line_item_qty
-  if (!lineOrderField || !linePartField || !lineQtyField) return []
-
-  const orderRows = await db
-    .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, orderDefId),
-        inArray(schema.EntityInstance.id, orderIds),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-  if (orderRows.length === 0) return []
-
-  const liveOrderIds = orderRows.map((row) => row.id)
-
-  const orderDateFieldIds = [fields.order_placed_at?.id, fields.order_cancelled_at?.id].filter(
-    (id): id is string => Boolean(id)
-  )
-  const orderValues = orderDateFieldIds.length
-    ? await db
-        .select({
-          entityId: schema.FieldValue.entityId,
-          fieldId: schema.FieldValue.fieldId,
-          valueDate: schema.FieldValue.valueDate,
-        })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            inArray(schema.FieldValue.entityId, liveOrderIds),
-            inArray(schema.FieldValue.fieldId, orderDateFieldIds)
-          )
-        )
-    : []
-
-  // The line -> order edge, with the line's own instance joined so an archived
-  // line is dropped at the source rather than contributing a phantom quantity.
-  const lineLinks = await db
-    .select({
-      lineId: schema.FieldValue.entityId,
-      orderId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .innerJoin(
-      schema.EntityInstance,
-      and(
-        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, lineDefId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, lineOrderField.id),
-        inArray(schema.FieldValue.relatedEntityId, liveOrderIds)
-      )
-    )
-
-  const lineIds = [...new Set(lineLinks.map((row) => row.lineId))]
-  const lineValues = lineIds.length
-    ? await db
-        .select({
-          entityId: schema.FieldValue.entityId,
-          fieldId: schema.FieldValue.fieldId,
-          valueNumber: schema.FieldValue.valueNumber,
-          relatedEntityId: schema.FieldValue.relatedEntityId,
-        })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            inArray(schema.FieldValue.entityId, lineIds),
-            inArray(schema.FieldValue.fieldId, [linePartField.id, lineQtyField.id])
-          )
-        )
-    : []
-
-  const partByLine = new Map<string, string>()
-  const qtyByLine = new Map<string, number>()
-  for (const row of lineValues) {
-    if (row.fieldId === linePartField.id && row.relatedEntityId) {
-      partByLine.set(row.entityId, row.relatedEntityId)
-    } else if (row.fieldId === lineQtyField.id && row.valueNumber != null) {
-      qtyByLine.set(row.entityId, Number(row.valueNumber))
-    }
-  }
+  const lines = await readSystemRecords(db, organizationId, lineCtx, {
+    by: { attribute: 'line_item_order', in: orders.map((order) => order.id) },
+  })
 
   const linesByOrder = new Map<string, AutoBuildLine[]>()
-  for (const link of lineLinks) {
-    if (!link.orderId) continue
+  for (const line of lines) {
+    const orderId = line.related('line_item_order')
     // Step 2: a line with no `line_item_part` reaches no part and is dropped.
-    const partId = partByLine.get(link.lineId)
-    if (!partId) continue
-    const bucket = linesByOrder.get(link.orderId)
-    const line: AutoBuildLine = { partId, quantity: qtyByLine.get(link.lineId) ?? 0 }
-    if (bucket) bucket.push(line)
-    else linesByOrder.set(link.orderId, [line])
+    const partId = line.related('line_item_part')
+    if (!orderId || !partId) continue
+    const bucket = linesByOrder.get(orderId)
+    const entry: AutoBuildLine = { partId, quantity: line.number('line_item_qty') ?? 0 }
+    if (bucket) bucket.push(entry)
+    else linesByOrder.set(orderId, [entry])
   }
 
-  const placedByOrder = new Map<string, Date>()
-  const cancelledByOrder = new Map<string, Date>()
-  for (const row of orderValues) {
-    const parsed = row.valueDate ? new Date(row.valueDate) : null
-    if (!parsed || Number.isNaN(parsed.getTime())) continue
-    if (row.fieldId === fields.order_placed_at?.id) placedByOrder.set(row.entityId, parsed)
-    else if (row.fieldId === fields.order_cancelled_at?.id) {
-      cancelledByOrder.set(row.entityId, parsed)
-    }
-  }
-
-  return orderRows.map((row) => ({
-    orderId: row.id,
-    placedAt: placedByOrder.get(row.id) ?? row.createdAt,
-    cancelledAt: cancelledByOrder.get(row.id) ?? null,
-    lines: linesByOrder.get(row.id) ?? [],
+  return orders.map((order) => ({
+    orderId: order.id,
+    placedAt: parseDate(order.date('order_placed_at')) ?? order.createdAt ?? new Date(0),
+    cancelledAt: parseDate(order.date('order_cancelled_at')),
+    lines: linesByOrder.get(order.id) ?? [],
   }))
+}
+
+function parseDate(raw: string | null): Date | null {
+  if (!raw) return null
+  const parsed = new Date(raw)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
 /**
@@ -210,6 +120,10 @@ export async function loadAutoBuildOrders(
  * A part with no stored value reads **0**, not "unknown": a part nobody has ever
  * counted has nothing on the shelf, and under `out_of_stock_only` that is the
  * answer that raises the build.
+ *
+ * Deliberately not on `readSystemRecords`: the ids come off BOM edges and demand
+ * lines, and an ARCHIVED part still has stock on the shelf — the reader scopes to
+ * live instances of the def and would cost a second query to do it.
  */
 export async function readPartQuantitiesOnHand(
   db: Database,
@@ -222,9 +136,11 @@ export async function readPartQuantitiesOnHand(
   const unique = [...new Set(partIds)]
   for (const partId of unique) quantities.set(partId, 0)
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['part_quantity_on_hand'] as const)
+  const fields = await systemFieldMap(
+    db,
+    organizationId,
+    pickSystemAttributes(PART_FIELDS, ['part_quantity_on_hand'] as const)
+  )
   const qohField = fields.part_quantity_on_hand
   if (!qohField) return quantities
 
