@@ -35,6 +35,7 @@ import {
 import { AutosizeInput } from '@auxx/ui/components/autosize-input'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import {
   Select,
@@ -45,7 +46,7 @@ import {
 } from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
-import { ArrowUpRight, CreditCard, Plus, TriangleAlert, X } from 'lucide-react'
+import { ArrowUpRight, CreditCard, Landmark, PlugZap, Plus, TriangleAlert, X } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -98,12 +99,6 @@ const RAIL_ROLES = [
     subtypePin: 'bank' as GlAccountSubtypeValue,
   },
 ] as const
-
-/**
- * Cancels the scroll container's `p-3` so a `Section` sits FLUSH with the
- * panel. See `bank-account-editor.tsx`'s `SECTION_BLEED` for the full reason.
- */
-const SECTION_BLEED = '-mx-3'
 
 interface PaymentGatewayEditorProps {
   gateway: PaymentGatewayRow | null
@@ -163,120 +158,125 @@ function PaymentGatewayForm({
   const isClosed = gateway.status === 'closed'
 
   return (
-    <div className='flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-3'>
-      <div className='flex min-w-0 flex-col gap-1'>
-        <span className='flex items-center gap-2 truncate font-medium text-sm'>
-          <CreditCard className='size-4 text-muted-foreground' />
-          {gateway.name || 'Untitled gateway'}
-        </span>
-        <span className='text-muted-foreground text-xs'>
-          {isClosed
-            ? 'Closed. Its history still routes to this clearing account, but a merchant would add a new gateway for a new rail.'
-            : 'The rail that took the money for an order. Its clearing, fee and bank accounts map below.'}
-        </span>
-      </div>
+    // `min-h-0` + `ScrollArea`: the pane is capped at the viewport height by
+    // `MasterDetailSplit`, so taller content has to scroll itself. No padding
+    // here - every `Section` brings its own and sits flush with the panel.
+    <div className='flex h-full min-h-0 flex-col'>
+      <ScrollArea className='min-h-0 flex-1' allowScrollChaining>
+        <Section
+          icon={<CreditCard className='size-4 text-muted-foreground' />}
+          title={gateway.name || 'Untitled gateway'}
+          titleClassName='normal-case'>
+          <FieldPanel
+            className='shrink-0 grow-0 p-0'
+            resizeId='accounting-payment-gateway'
+            defaultLabelWidth={150}>
+            <FieldPanelRow title='Name' type={BaseType.STRING} showIcon isRequired>
+              <FieldInputAdapter
+                fieldType={FieldType.TEXT}
+                value={name}
+                placeholder='Authorize.Net'
+                onChange={(value) => {
+                  const next = (value as string) ?? ''
+                  nameRef.current = next
+                  setName(next)
+                  commitName(next)
+                }}
+              />
+            </FieldPanelRow>
 
-      <FieldPanel
-        className='shrink-0 grow-0 p-0'
-        resizeId='accounting-payment-gateway'
-        defaultLabelWidth={150}>
-        <FieldPanelRow title='Name' type={BaseType.STRING} showIcon isRequired>
-          <FieldInputAdapter
-            fieldType={FieldType.TEXT}
-            value={name}
-            placeholder='Authorize.Net'
-            onChange={(value) => {
-              const next = (value as string) ?? ''
-              nameRef.current = next
-              setName(next)
-              commitName(next)
-            }}
-          />
-        </FieldPanelRow>
+            <FieldPanelRow
+              title='Gateway handles'
+              type={BaseType.STRING}
+              showIcon
+              isRequired
+              description='Every stored value this rail is seen under. Two spellings of the same rail (authorize_net / authorize.net) both belong here.'>
+              <FieldInputAdapter
+                fieldType={FieldType.TAGS}
+                fieldOptions={{ options: handleOptions }}
+                useValueAsLabel
+                value={gateway.handles}
+                triggerProps={{ className: 'w-full ps-0 pe-1', showClear: false }}
+                placeholder='Add a handle'
+                onChange={(value) => {
+                  const handles = Array.isArray(value) ? (value as string[]) : []
+                  if (handles.length > 0) onPatch({ handles })
+                }}
+              />
+            </FieldPanelRow>
 
-        <FieldPanelRow
-          title='Gateway handles'
-          type={BaseType.STRING}
-          showIcon
-          isRequired
-          description='Every stored value this rail is seen under. Two spellings of the same rail (authorize_net / authorize.net) both belong here.'>
-          <FieldInputAdapter
-            fieldType={FieldType.TAGS}
-            fieldOptions={{ options: handleOptions }}
-            useValueAsLabel
-            value={gateway.handles}
-            triggerProps={{ className: 'w-full ps-0 pe-1', showClear: false }}
-            placeholder='Add a handle'
-            onChange={(value) => {
-              const handles = Array.isArray(value) ? (value as string[]) : []
-              if (handles.length > 0) onPatch({ handles })
-            }}
-          />
-        </FieldPanelRow>
+            <FieldPanelRow
+              title='Fee treatment'
+              type={BaseType.ENUM}
+              showIcon
+              description='Netted means the processor withholds its cut from the deposit, so the fee is booked inside every payout entry. Billed means the deposit is gross and the fees arrive later on a statement - that rail’s payout carries no fee leg at all.'>
+              <FieldInputAdapter
+                fieldType={FieldType.SINGLE_SELECT}
+                fieldOptions={{ options: FEE_TREATMENT_OPTIONS }}
+                value={gateway.feeTreatment}
+                triggerProps={{ className: 'w-full ps-0 pe-1' }}
+                placeholder='Select fee treatment'
+                onChange={(value) => {
+                  const next = Array.isArray(value) ? value[0] : value
+                  if (next === 'netted' || next === 'billed') onPatch({ feeTreatment: next })
+                }}
+              />
+            </FieldPanelRow>
 
-        <FieldPanelRow
-          title='Fee treatment'
-          type={BaseType.ENUM}
-          showIcon
-          description='Netted means the processor withholds its cut from the deposit, so the fee is booked inside every payout entry. Billed means the deposit is gross and the fees arrive later on a statement - that rail’s payout carries no fee leg at all.'>
-          <FieldInputAdapter
-            fieldType={FieldType.SINGLE_SELECT}
-            fieldOptions={{ options: FEE_TREATMENT_OPTIONS }}
-            value={gateway.feeTreatment}
-            triggerProps={{ className: 'w-full ps-0 pe-1' }}
-            placeholder='Select fee treatment'
-            onChange={(value) => {
-              const next = Array.isArray(value) ? value[0] : value
-              if (next === 'netted' || next === 'billed') onPatch({ feeTreatment: next })
-            }}
-          />
-        </FieldPanelRow>
+            <FieldPanelRow title='Status' type={BaseType.ENUM} showIcon>
+              <div className='flex min-h-8 items-center'>
+                <Badge variant={isClosed ? 'secondary' : 'outline'} size='sm'>
+                  {isClosed ? 'Closed' : 'Active'}
+                </Badge>
+              </div>
+            </FieldPanelRow>
 
-        <FieldPanelRow title='Status' type={BaseType.ENUM} showIcon>
-          <div className='flex min-h-8 items-center'>
-            <Badge variant={isClosed ? 'secondary' : 'outline'} size='sm'>
-              {isClosed ? 'Closed' : 'Active'}
-            </Badge>
-          </div>
-        </FieldPanelRow>
-
-        <FieldPanelRow
-          title='Last settlement'
-          type={BaseType.DATE}
-          showIcon
-          description='Informational only - nothing in posting reads this.'>
-          <FieldInputAdapter
-            fieldType={FieldType.DATE}
-            value={gateway.lastSettlementAt ? `${gateway.lastSettlementAt}T00:00:00.000Z` : null}
-            onChange={(value) => {
-              const iso = value as string | null
-              onPatch({ lastSettlementAt: iso ? iso.slice(0, 10) : null })
-            }}
-          />
-        </FieldPanelRow>
-      </FieldPanel>
-
-      <AccountsSection gatewayId={gateway.id} canControl={canControl} />
-      <FeedsSection gatewayId={gateway.id} canControl={canControl} />
-
-      <div className='min-h-4 text-muted-foreground text-xs'>{pending ? 'Saving…' : null}</div>
-
-      {!isClosed && (
-        <Section title='Danger zone' initialOpen={false} className={SECTION_BLEED}>
-          <div className='flex flex-col gap-2 p-1'>
-            <p className='text-muted-foreground text-xs'>
-              Closing keeps every shipment that ever routed here posting to this same clearing
-              account, so its balance still winds down correctly. It just stops offering this
-              gateway as the answer for a new order.
-            </p>
-            <div>
-              <Button variant='destructive' size='sm' loading={closing} onClick={onClose}>
-                Close gateway
-              </Button>
-            </div>
-          </div>
+            <FieldPanelRow
+              title='Last settlement'
+              type={BaseType.DATE}
+              showIcon
+              description='Informational only - nothing in posting reads this.'>
+              <FieldInputAdapter
+                fieldType={FieldType.DATE}
+                value={
+                  gateway.lastSettlementAt ? `${gateway.lastSettlementAt}T00:00:00.000Z` : null
+                }
+                onChange={(value) => {
+                  const iso = value as string | null
+                  onPatch({ lastSettlementAt: iso ? iso.slice(0, 10) : null })
+                }}
+              />
+            </FieldPanelRow>
+          </FieldPanel>
         </Section>
-      )}
+
+        <AccountsSection gatewayId={gateway.id} canControl={canControl} />
+        <FeedsSection gatewayId={gateway.id} canControl={canControl} />
+
+        {!isClosed && (
+          <Section
+            title='Danger zone'
+            icon={<TriangleAlert className='size-4 text-muted-foreground' />}
+            initialOpen={false}>
+            <div className='flex flex-col gap-2 p-1'>
+              <p className='text-muted-foreground text-xs'>
+                Closing keeps every shipment that ever routed here posting to this same clearing
+                account, so its balance still winds down correctly. It just stops offering this
+                gateway as the answer for a new order.
+              </p>
+              <div>
+                <Button variant='destructive' size='sm' loading={closing} onClick={onClose}>
+                  Close gateway
+                </Button>
+              </div>
+            </div>
+          </Section>
+        )}
+
+        <div className='min-h-4 p-3 text-muted-foreground text-xs'>
+          {pending ? 'Saving…' : null}
+        </div>
+      </ScrollArea>
     </div>
   )
 }
@@ -325,7 +325,7 @@ function AccountsSection({ gatewayId, canControl }: { gatewayId: string; canCont
 
   if (roleMap.isPending) {
     return (
-      <Section title='Accounts' className={SECTION_BLEED}>
+      <Section title='Accounts' icon={<Landmark className='size-4 text-muted-foreground' />}>
         <EmptySection loading />
       </Section>
     )
@@ -334,7 +334,7 @@ function AccountsSection({ gatewayId, canControl }: { gatewayId: string; canCont
   return (
     <Section
       title='Accounts'
-      className={SECTION_BLEED}
+      icon={<Landmark className='size-4 text-muted-foreground' />}
       actions={
         <Link
           href={`/app/accounting/settings/accounts?s=mapping&scope=${encodeURIComponent(gatewayId)}`}
@@ -372,7 +372,7 @@ function AccountsSection({ gatewayId, canControl }: { gatewayId: string; canCont
           return (
             <MappingScopeRow
               key={role}
-              depth={1}
+              depth={0}
               title={label}
               value={value}
               onChange={(next) => commit(role, null, next)}
@@ -628,7 +628,7 @@ function FeedsSection({ gatewayId, canControl }: { gatewayId: string; canControl
 
   return (
     <>
-      <Section title='Feeds' className={SECTION_BLEED}>
+      <Section title='Feeds' icon={<PlugZap className='size-4 text-muted-foreground' />}>
         <div className='flex flex-col gap-2 p-1'>
           {readiness.isPending ? (
             <EmptySection loading />

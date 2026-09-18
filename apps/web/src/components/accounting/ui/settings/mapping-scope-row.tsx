@@ -101,6 +101,26 @@ export function MappingScopeRow({
               Suggested
             </Badge>
           )}
+          {!disabled && (
+            <div className='flex shrink-0 items-center gap-1'>
+              {onAddCurrency && (
+                <TreeRowButton tooltipText='Add a currency' onClick={onAddCurrency}>
+                  <Plus />
+                </TreeRowButton>
+              )}
+              {suggested && onConfirmSuggested && (
+                <TreeRowButton tooltipText='Confirm suggested account' onClick={onConfirmSuggested}>
+                  <Check />
+                </TreeRowButton>
+              )}
+              {canRevert && (
+                <TreeRowButton tooltipText='Use default' onClick={() => onChange('inherit')}>
+                  <RotateCcw />
+                </TreeRowButton>
+              )}
+              {extraActions}
+            </div>
+          )}
           <MappingAccountSelect
             value={value}
             onChange={onChange}
@@ -109,32 +129,6 @@ export function MappingScopeRow({
             subtypePin={subtypePin}
             disabled={disabled || noFeedLinked}
           />
-          {/* Fixed width, always rendered: a row with three actions and a row
-              with none must put their pickers on the same column. */}
-          <div className='flex w-[4.5rem] shrink-0 items-center justify-end gap-1'>
-            {!disabled && (
-              <>
-                {onAddCurrency && (
-                  <TreeRowButton tooltipText='Add a currency' onClick={onAddCurrency}>
-                    <Plus />
-                  </TreeRowButton>
-                )}
-                {suggested && onConfirmSuggested && (
-                  <TreeRowButton
-                    tooltipText='Confirm suggested account'
-                    onClick={onConfirmSuggested}>
-                    <Check />
-                  </TreeRowButton>
-                )}
-                {canRevert && (
-                  <TreeRowButton tooltipText='Use default' onClick={() => onChange('inherit')}>
-                    <RotateCcw />
-                  </TreeRowButton>
-                )}
-                {extraActions}
-              </>
-            )}
-          </div>
         </div>
       }>
       {children}
