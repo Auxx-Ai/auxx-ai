@@ -25,7 +25,7 @@ import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { isValidTimeZone, resolveSetupReadiness } from '@auxx/lib/postings/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { Badge } from '@auxx/ui/components/badge'
-import { CalendarRange, ExternalLink, Lock, Scale } from 'lucide-react'
+import { CalendarRange, ExternalLink, Lock, Scale, Send } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -49,6 +49,7 @@ import {
   ABSORPTION_DRAFT_KEYS,
   ACCOUNTING_KEYS,
   buildReadinessRecord,
+  EXPORT_DRAFT_KEYS,
   everyMinorUnitValid,
   minorUnitError,
   PERIOD_DRAFT_KEYS,
@@ -59,6 +60,7 @@ import { FrozenLock } from './frozen-lock'
 import { SetupStatusSection } from './setup-status-section'
 
 const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/
 
 const BREADCRUMBS = [
   { title: 'Accounting', href: '/app/accounting' },
@@ -108,15 +110,28 @@ export function AccountingGeneralSettingsPage() {
       : undefined
   const periodValid = !cutoffError && !zoneError
 
-  // ── Section 2: absorption rates ──────────────────────────────────────────
+  // ── Section 2: the export (TARGET §3, gate 2) ────────────────────────────
+  const exportSettings = useAccountingSetupDraft(EXPORT_DRAFT_KEYS)
+  const { draft: exportDraft, patch: patchExport } = exportSettings
+
+  const exportCutover = readText(exportDraft[ACCOUNTING_KEYS.exportModeCutover])
+  const exportCutoverError =
+    exportCutover && !DATE_KEY.test(exportCutover) ? 'Must be a date, YYYY-MM-DD.' : undefined
+  const exportValid = !exportCutoverError
+
+  // ── Section 3: absorption rates ──────────────────────────────────────────
   const absorption = useAccountingSetupDraft(ABSORPTION_DRAFT_KEYS)
   const { draft: absorptionDraft, patch: patchAbsorption } = absorption
 
   const absorptionValid = everyMinorUnitValid(absorptionDraft, ABSORPTION_DRAFT_KEYS)
 
-  const dirty = period.dirty || absorption.dirty
-  const isSaving = period.isSaving || absorption.isSaving || isBatchUpdatingOrgSettings
-  const saveDisabled = (period.dirty && !periodValid) || (absorption.dirty && !absorptionValid)
+  const dirty = period.dirty || exportSettings.dirty || absorption.dirty
+  const isSaving =
+    period.isSaving || exportSettings.isSaving || absorption.isSaving || isBatchUpdatingOrgSettings
+  const saveDisabled =
+    (period.dirty && !periodValid) ||
+    (exportSettings.dirty && !exportValid) ||
+    (absorption.dirty && !absorptionValid)
 
   function handleFinalize() {
     // The wizard's `done` page writes the same three keys. Both doors, one action.
@@ -248,6 +263,46 @@ export function AccountingGeneralSettingsPage() {
             </SettingsSection>
 
             <SettingsSection
+              icon={Send}
+              title='Export'
+              description='How postings leave for the accounting provider, and when history stops moving. The books underneath are identical in every mode.'>
+              <FieldPanel
+                className='mt-1 p-0'
+                resizeId='accounting-general-export'
+                defaultLabelWidth={220}>
+                <SettingsFieldRow
+                  settingKey={ACCOUNTING_KEYS.exportMode}
+                  {...exportSettings.controlled(ACCOUNTING_KEYS.exportMode)}
+                />
+                <SettingsFieldRow
+                  settingKey={ACCOUNTING_KEYS.exportModeCutover}
+                  title='Export cutover'>
+                  <DateTextField
+                    value={exportCutover}
+                    error={exportCutoverError}
+                    onChange={(value) =>
+                      patchExport({ [ACCOUNTING_KEYS.exportModeCutover]: value as SettingValue })
+                    }
+                  />
+                </SettingsFieldRow>
+              </FieldPanel>
+
+              <p className='text-muted-foreground text-xs'>
+                A posting dated before the cutover is never batched for export, whatever the mode
+                above says - switching mode only changes entries dated on or after it. Leave the
+                cutover unset to hold every posting to today's mode. The per-avenue hold, send and
+                grain switches are under{' '}
+                <Link
+                  href='/app/accounting/settings/posting'
+                  className='inline-flex items-center gap-1 text-primary-600 hover:underline'>
+                  Posting
+                  <ExternalLink className='size-3' />
+                </Link>
+                .
+              </p>
+            </SettingsSection>
+
+            <SettingsSection
               icon={Scale}
               title='Standard cost'
               description='Absorption per assembled unit, in whole cents, and how a part first gets a standard. An unset rate absorbs nothing; a zero rate is a real choice.'>
@@ -351,10 +406,12 @@ export function AccountingGeneralSettingsPage() {
             // Every slice that counts toward `dirty` must be saved here, or
             // its Save appears, does nothing, and leaves the bar up.
             if (period.dirty) period.save()
+            if (exportSettings.dirty) exportSettings.save()
             if (absorption.dirty) absorption.save()
           }}
           onDiscard={() => {
             if (period.dirty) period.discard()
+            if (exportSettings.dirty) exportSettings.discard()
             if (absorption.dirty) absorption.discard()
           }}
           saveDisabled={saveDisabled}
@@ -403,6 +460,38 @@ function MonthTextField({
         disabled={disabled}
         onChange={(next) => onChange(((next as string) || null) ?? null)}
         placeholder='2026-12'
+      />
+      {error && <p className='px-2 pb-1 text-destructive text-xs'>{error}</p>}
+    </div>
+  )
+}
+
+/**
+ * The export mode cutover (TARGET §3). `TEXT` in the catalog for the same
+ * reason `MonthTextField` gives; unlike the cutoff month above it is never
+ * frozen by setup - an org may move it any time it changes how it exports.
+ */
+function DateTextField({
+  value,
+  error,
+  onChange,
+  disabled,
+  className,
+}: {
+  value: string | null
+  error?: string
+  onChange: (value: string | null) => void
+  disabled?: boolean
+  className?: string
+}) {
+  return (
+    <div className={className}>
+      <FieldInputAdapter
+        fieldType={FieldType.TEXT}
+        value={value ?? ''}
+        disabled={disabled}
+        onChange={(next) => onChange(((next as string) || null) ?? null)}
+        placeholder='Not set - every posting batches under the current mode'
       />
       {error && <p className='px-2 pb-1 text-destructive text-xs'>{error}</p>}
     </div>

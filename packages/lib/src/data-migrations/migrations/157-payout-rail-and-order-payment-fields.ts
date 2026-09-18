@@ -60,8 +60,13 @@ const NEW_PAYOUT_FIELD_KEYS = ['paymentGateway', 'bankAccount', 'source'] as con
 /**
  * The registry keys this migration provisions on `order`, resolved out of
  * {@link ORDER_FIELDS} for the same reason and checked the same way.
+ *
+ * `paymentGlPosting` (`order_payment_gl_posting`) was here too, until step 1b
+ * (TARGET §1) retired the stamp field: an order's payment postings are read
+ * through `listPostingsForSource` now. This migration is local-only (§0b), so
+ * it is edited in place rather than left with a removal migration of its own.
  */
-const NEW_ORDER_FIELD_KEYS = ['paymentGlPosting', 'paidAt', 'paidGateway'] as const
+const NEW_ORDER_FIELD_KEYS = ['paidAt', 'paidGateway'] as const
 
 /**
  * The registry key this migration provisions on `line_item`, resolved out of
@@ -138,15 +143,9 @@ type EnsuredField =
  *
  * ## What it adds to `order`
  *
- * - **`order_payment_gl_posting`**, TEXT, the `GlPosting` id the order payment
- *   run stamps after `postEntry` returns, one per order, never inside the
- *   posting transaction. Also the `paymentPosted` boolean the fulfillment fork
- *   reads (29 §2.2): a set stamp means the shipment debits `customer_deposits`
- *   with no tax and no clearing leg; an empty one means the legacy fork for a
- *   pre-cutover order or the `payment-unposted` exclusion for a post-cutover
- *   one. TEXT and not a RELATIONSHIP for the reason `fulfillment_gl_posting` and
- *   `credit_memo_gl_posting` are: `GlPosting` is a Drizzle table with no
- *   `EntityDefinition` to point at.
+ * `order_payment_gl_posting` was here too - it no longer is; see
+ * {@link NEW_ORDER_FIELD_KEYS}.
+ *
  * - **`order_paid_at`**, DATETIME, the `processed_at` of the order's successful
  *   `sale` or `capture` transaction. The payment entry's date for a terms order
  *   that pays after it was placed.
@@ -181,9 +180,8 @@ type EnsuredField =
  * `EntityDefinition` and `CustomField` rows are seeded per org from the
  * resource registry, and `ensureCustomFields` is INSERT-only, so a registry
  * edit reaches FRESH orgs and nothing else. Without it, every existing org's
- * `UnifiedCrudHandler` resolves no target for `order_payment_gl_posting` and
- * drops the run's stamp with a log line, the connector's binding onto
- * `order_paid_at` resolves no field id and writes nothing, and the totals
+ * connector binding onto `order_paid_at` resolves no field id and writes
+ * nothing, and the totals
  * engine's net write onto `line_item_net_total` is skipped for want of a field
  * id (so the ledger falls back to the gross total forever). Worse for the two
  * payout relationships: both halves have to land in ONE field map for
@@ -260,8 +258,7 @@ export const migration157PayoutRailAndOrderPaymentFields: PerOrgMigration = {
     '(synced | imported), and stamps synced on every existing payout record - the Stripe sync ' +
     'was the only writer there has ever been; the rail is the routing key and half of the ' +
     'idempotency pair (plans/accounting/tasks/27-a-settlement-from-anywhere.md §6.1, §6.4). ' +
-    'Also adds order.paymentGlPosting (the GlPosting the order payment entry became, TEXT, also ' +
-    'the paymentPosted flag the fulfillment fork reads), order.paidAt and order.paidGateway (the ' +
+    'Also adds order.paidAt and order.paidGateway (the ' +
     'successful sale or capture transaction, connector-written). No backfill for the order ' +
     'fields: the paid date of an existing order is not knowable from anything the platform ' +
     'holds (plans/accounting/tasks/29-clearing-at-the-payment-date.md §3.1, §4.3). Also adds ' +

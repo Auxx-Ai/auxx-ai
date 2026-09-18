@@ -16,38 +16,30 @@
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// The completeness half's three subledger counts. Mocked because they read
-// `FieldValue` through the org cache and this file's stub answers every query
-// with the same rows; what is under test here is that the sweep CARRIES them,
-// not how they are computed. They are only reached when a month is asked for.
+// The completeness half's one remaining subledger count - draft channel
+// credit memos. Mocked because it reads `FieldValue` through the org cache
+// and this file's stub answers every query with the same rows; what is under
+// test here is that the sweep CARRIES it, not how it is computed. Only
+// reached when a month is asked for.
+//
+// `unpostedShipments` and `unpostedCreditMemos` carry no count of their own
+// any more - both avenues post eagerly now (step 1b, TARGET §1), so there is
+// no batch/effect backlog left to read, and `verify-balance.ts` returns them
+// as `null` unconditionally.
 const h = vi.hoisted(() => ({
-  countUnpostedShipments:
-    vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<unknown>>(),
   countUnissuedChannelCreditMemos:
     vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<number>>(),
-  countUnpostedCreditMemos:
-    vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<unknown>>(),
 }))
 
-vi.mock('../../money/fulfillment-posting/reads', () => ({
-  countUnpostedShipments: h.countUnpostedShipments,
-}))
 vi.mock('../../money/credit-memos/reads', () => ({
   countUnissuedChannelCreditMemos: h.countUnissuedChannelCreditMemos,
 }))
-vi.mock('../../money/credit-memo-posting', () => ({
-  countUnpostedCreditMemos: h.countUnpostedCreditMemos,
-}))
 
-import { err, ok } from 'neverthrow'
-import { BadRequestError } from '../../errors'
-import { listFailedExports, verifyBooksBalance } from '../verify-balance'
+import { verifyBooksBalance } from '../verify-balance'
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.countUnpostedShipments.mockResolvedValue(ok(0))
   h.countUnissuedChannelCreditMemos.mockResolvedValue(0)
-  h.countUnpostedCreditMemos.mockResolvedValue(ok(0))
 })
 
 const ORG = 'org_1'
@@ -305,279 +297,6 @@ describe('verifyBooksBalance', () => {
   })
 })
 
-/**
- * One joined row as the owed-export read selects it.
- *
- * The last three fields come from the LEFT-joined `AccountingDelivery` and are
- * null by default, which is the shape of a posting the delivery worker has not
- * planned yet - the ordinary state of anything just accepted.
- */
-function unpostedRow(overrides: {
-  glPostingId: string
-  periodKey: string
-  exportStatus?: 'pending' | 'failed' | 'exported'
-  postingType?: string
-  docNumber?: string
-  attempts?: number
-  failureReason?: string | null
-  txnDate?: string
-  totalMinor?: number
-  currency?: string
-  deliveryIntent?: 'not_required' | 'manual' | 'automatic' | null
-  releasedAt?: Date | null
-  deliveryState?: 'pending' | 'blocked' | 'delivered' | null
-}) {
-  return {
-    glPostingId: overrides.glPostingId,
-    periodKey: overrides.periodKey,
-    postingType: overrides.postingType ?? 'month_end_inventory',
-    exportStatus: overrides.exportStatus ?? 'pending',
-    docNumber: overrides.docNumber ?? `GL-ME-${overrides.periodKey}`,
-    attempts: overrides.attempts ?? 0,
-    failureReason: overrides.failureReason ?? null,
-    txnDate: overrides.txnDate ?? '2026-08-31',
-    totalMinor: overrides.totalMinor ?? 500,
-    currency: overrides.currency ?? 'USD',
-    deliveryIntent: overrides.deliveryIntent ?? 'manual',
-    releasedAt: overrides.releasedAt ?? null,
-    deliveryState: overrides.deliveryState ?? null,
-  }
-}
-
-describe('listFailedExports', () => {
-  it('returns nothing when every export has landed', async () => {
-    const result = await listFailedExports(stubDb([]), ORG)
-    expect(result._unsafeUnwrap()).toEqual([])
-  })
-
-  it('keeps pending and failed distinct, with the reason and the attempt count', async () => {
-    // They call for different actions. A banner that collapsed them into
-    // "unposted" would send someone to the logs for a string already in the row
-    // - and would also be lying, since both are IN the books.
-    const result = await listFailedExports(
-      stubDb([
-        unpostedRow({ glPostingId: 'gl_p', periodKey: '2026-07', exportStatus: 'pending' }),
-        unpostedRow({
-          glPostingId: 'gl_f',
-          periodKey: '2026-08',
-          exportStatus: 'failed',
-          attempts: 3,
-          failureReason: 'QuickBooks rate limit',
-        }),
-      ]),
-      ORG
-    )
-
-    expect(result._unsafeUnwrap()).toEqual([
-      {
-        glPostingId: 'gl_p',
-        periodKey: '2026-07',
-        postingType: 'month_end_inventory',
-        exportStatus: 'pending',
-        docNumber: 'GL-ME-2026-07',
-        attempts: 0,
-        failureReason: null,
-        txnDate: '2026-08-31',
-        totalMinor: 500,
-        currency: 'USD',
-        deliveryIntent: 'manual',
-        releasedAt: null,
-        deliveryState: null,
-      },
-      {
-        glPostingId: 'gl_f',
-        periodKey: '2026-08',
-        postingType: 'month_end_inventory',
-        exportStatus: 'failed',
-        docNumber: 'GL-ME-2026-08',
-        attempts: 3,
-        failureReason: 'QuickBooks rate limit',
-        txnDate: '2026-08-31',
-        totalMinor: 500,
-        currency: 'USD',
-        deliveryIntent: 'manual',
-        releasedAt: null,
-        deliveryState: null,
-      },
-    ])
-  })
-
-  // 🛑 The delivery join is on `(organizationId, glPostingId)` and the unique
-  // key underneath it is `(organizationId, bookId, glPostingId)`, so a second
-  // pinned book fans one journal into two rows. A queue that listed the same
-  // entry twice would bulk-sync it twice, and the checkbox on the second copy
-  // would be acting on a row that is not there.
-  it('collapses a posting that two books have a delivery for, preferring the released one', async () => {
-    const result = await listFailedExports(
-      stubDb([
-        unpostedRow({ glPostingId: 'gl_x', periodKey: '2026-08', releasedAt: null }),
-        unpostedRow({
-          glPostingId: 'gl_x',
-          periodKey: '2026-08',
-          releasedAt: new Date('2026-09-01T00:00:00.000Z'),
-          deliveryState: 'pending',
-        }),
-      ]),
-      ORG
-    )
-
-    const rows = result._unsafeUnwrap()
-    expect(rows).toHaveLength(1)
-    expect(rows[0]?.releasedAt).toBe('2026-09-01T00:00:00.000Z')
-    expect(rows[0]?.deliveryState).toBe('pending')
-  })
-
-  describe('the `through` bound', () => {
-    const rows = [
-      unpostedRow({ glPostingId: 'gl_jun', periodKey: '2026-06' }),
-      unpostedRow({ glPostingId: 'gl_jul_day', periodKey: '2026-07-18' }),
-      unpostedRow({ glPostingId: 'gl_aug', periodKey: '2026-08' }),
-      unpostedRow({ glPostingId: 'gl_sep_day', periodKey: '2026-09-01' }),
-    ]
-
-    it('is inclusive of the named month', async () => {
-      const result = await listFailedExports(stubDb(rows), ORG, { through: '2026-07' })
-      expect(result._unsafeUnwrap().map((r: { glPostingId: string }) => r.glPostingId)).toEqual([
-        'gl_jun',
-        'gl_jul_day',
-      ])
-    })
-
-    it('bounds a day key by the month that contains it', async () => {
-      // The comparison is `periodMonth` then `compareMonths`, never a raw string
-      // compare - `'2026-07-18' <= '2026-07'` is false as a string and true as a
-      // period, and the string answer would silently drop July's daily entries
-      // from a July close.
-      const result = await listFailedExports(stubDb(rows), ORG, { through: '2026-08' })
-      expect(result._unsafeUnwrap().map((r: { glPostingId: string }) => r.glPostingId)).toEqual([
-        'gl_jun',
-        'gl_jul_day',
-        'gl_aug',
-      ])
-    })
-
-    it('accepts a day key as the bound and reads it as its month', async () => {
-      const result = await listFailedExports(stubDb(rows), ORG, { through: '2026-07-02' })
-      expect(result._unsafeUnwrap().map((r: { glPostingId: string }) => r.glPostingId)).toEqual([
-        'gl_jun',
-        'gl_jul_day',
-      ])
-    })
-
-    it('returns everything when no bound is given', async () => {
-      const result = await listFailedExports(stubDb(rows), ORG)
-      expect(result._unsafeUnwrap()).toHaveLength(4)
-    })
-
-    it('keeps an unparseable period key regardless of the bound', async () => {
-      // `GlPosting.periodKey` may hold a payout or build id, which cannot be
-      // placed in a month at all. Under-reporting owed exports is the dangerous
-      // direction: a bookkeeper who is not shown an entry closes without it.
-      const result = await listFailedExports(
-        stubDb([
-          unpostedRow({ glPostingId: 'gl_payout', periodKey: 'payout_abc123' }),
-          unpostedRow({ glPostingId: 'gl_dec', periodKey: '2026-12' }),
-        ]),
-        ORG,
-        { through: '2026-07' }
-      )
-      expect(result._unsafeUnwrap().map((r: { glPostingId: string }) => r.glPostingId)).toEqual([
-        'gl_payout',
-      ])
-    })
-
-    it('refuses a malformed bound rather than silently matching nothing', async () => {
-      const result = await listFailedExports(stubDb(rows), ORG, { through: 'last july' })
-      expect(result.isErr()).toBe(true)
-      expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
-    })
-  })
-
-  // 60 §8.1 / acceptance 11. The Synced tab is the only caller that wants an
-  // entry already in the provider's books, and it is the only one that resolves
-  // a single month. Everything else - the close console's banner, the rail
-  // tally, `export-gate` - must read exactly as it read before the option
-  // existed.
-  describe('the exported widening', () => {
-    it('asks for the outstanding two statuses unless told otherwise', async () => {
-      const { db, wheres } = recordingDb([])
-      await listFailedExports(db, ORG)
-      expect(statusesIn(wheres)).toEqual(['pending', 'failed'])
-    })
-
-    it('adds `exported` only under the option', async () => {
-      const { db, wheres } = recordingDb([])
-      await listFailedExports(db, ORG, { includeExported: true })
-      expect(statusesIn(wheres)).toEqual(['pending', 'failed', 'exported'])
-    })
-
-    it('bounds `month` to exactly that month, not cumulatively', async () => {
-      const rows = [
-        unpostedRow({ glPostingId: 'gl_jul', periodKey: '2026-07', exportStatus: 'exported' }),
-        unpostedRow({ glPostingId: 'gl_aug_day', periodKey: '2026-08-18' }),
-        unpostedRow({ glPostingId: 'gl_sep', periodKey: '2026-09' }),
-      ]
-      const result = await listFailedExports(stubDb(rows), ORG, {
-        month: '2026-08',
-        includeExported: true,
-      })
-      expect(result._unsafeUnwrap().map((r: { glPostingId: string }) => r.glPostingId)).toEqual([
-        'gl_aug_day',
-      ])
-    })
-
-    it('refuses a malformed month rather than silently matching nothing', async () => {
-      const result = await listFailedExports(stubDb([]), ORG, { month: 'last july' })
-      expect(result.isErr()).toBe(true)
-      expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
-    })
-  })
-
-  it('returns err rather than throwing when the read fails', async () => {
-    const result = await listFailedExports(throwingDb(new Error('connection reset')), ORG)
-    expect(result.isErr()).toBe(true)
-  })
-})
-
-/** {@link stubDb} that also keeps every `where` argument, for the status list. */
-function recordingDb(rows: unknown[]) {
-  const wheres: unknown[] = []
-  const chain: Record<string, unknown> = {}
-  const passthrough = () => chain
-  for (const method of ['from', 'leftJoin', 'innerJoin', 'groupBy', 'orderBy', 'limit']) {
-    chain[method] = passthrough
-  }
-  chain.where = (condition: unknown) => {
-    wheres.push(condition)
-    return chain
-  }
-  // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
-  chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-    Promise.resolve(rows).then(resolve, reject)
-
-  return { db: { select: () => chain } as unknown as Database, wheres }
-}
-
-/** The export statuses the `inArray` in a recorded `where` carries, in order. */
-function statusesIn(wheres: unknown[]): string[] {
-  const found: string[] = []
-  const walk = (node: unknown) => {
-    if (typeof node === 'string') {
-      // `inArray` puts the values into the SQL's chunks as a bare array.
-      if (['pending', 'failed', 'exported'].includes(node)) found.push(node)
-      return
-    }
-    if (Array.isArray(node)) {
-      for (const item of node) walk(item)
-      return
-    }
-    if (!node || typeof node !== 'object') return
-    for (const child of Object.values(node as Record<string, unknown>)) walk(child)
-  }
-  walk(wheres)
-  return found
-}
-
 // ── The completeness half (49 §2.4) ───────────────────────────────────────
 //
 // 🛑 Balance is not completeness, and the whole reason these counts ride on
@@ -592,40 +311,31 @@ describe('verifyBooksBalance completeness', () => {
     expect(report.unpostedShipments).toBeNull()
     expect(report.unissuedChannelCreditMemos).toBeNull()
     expect(report.unpostedCreditMemos).toBeNull()
-    expect(h.countUnpostedShipments).not.toHaveBeenCalled()
     expect(h.countUnissuedChannelCreditMemos).not.toHaveBeenCalled()
-    expect(h.countUnpostedCreditMemos).not.toHaveBeenCalled()
   })
 
-  it('carries all three counts for the month it was asked about', async () => {
-    h.countUnpostedShipments.mockResolvedValue(ok(7))
+  it('carries the draft count for the month it was asked about; the other two stay null', async () => {
+    // `unpostedShipments` and `unpostedCreditMemos` carry no count of their
+    // own any more (step 1b, TARGET §1) - both avenues post eagerly, so
+    // there is no batch/effect backlog left to read.
     h.countUnissuedChannelCreditMemos.mockResolvedValue(2)
-    h.countUnpostedCreditMemos.mockResolvedValue(ok(5))
 
     const report = (await verifyBooksBalance(stubDb([]), ORG, { month: '2026-08' }))._unsafeUnwrap()
 
     expect(report.month).toBe('2026-08')
-    expect(report.unpostedShipments).toBe(7)
+    expect(report.unpostedShipments).toBeNull()
     expect(report.unissuedChannelCreditMemos).toBe(2)
-    // 25 §9.1: the issued memo whose entry was never written. A different
-    // question from the draft count above it, and neither covers the other.
-    expect(report.unpostedCreditMemos).toBe(5)
-    expect(h.countUnpostedShipments).toHaveBeenCalledWith(expect.anything(), {
-      organizationId: ORG,
-      month: '2026-08',
-    })
-    expect(h.countUnpostedCreditMemos).toHaveBeenCalledWith(expect.anything(), {
+    expect(report.unpostedCreditMemos).toBeNull()
+    expect(h.countUnissuedChannelCreditMemos).toHaveBeenCalledWith(expect.anything(), {
       organizationId: ORG,
       month: '2026-08',
     })
   })
 
-  it('keeps the balance answer when a count fails, and reports the count as null', async () => {
+  it('keeps the balance answer when the draft count fails, and reports it as null', async () => {
     // ⚠️ Losing the report that proves the books tie, in order to report the one
     // that says they might be short, is the wrong trade in both directions.
-    h.countUnpostedShipments.mockResolvedValue(err(new Error('the read is broken')))
-    h.countUnpostedCreditMemos.mockResolvedValue(err(new Error('so is the netting read')))
-    h.countUnissuedChannelCreditMemos.mockRejectedValue(new Error('so is the other one'))
+    h.countUnissuedChannelCreditMemos.mockRejectedValue(new Error('the read is broken'))
 
     const result = await verifyBooksBalance(
       stubDb([

@@ -145,18 +145,6 @@ async function main() {
   if (deposits.isErr()) throw deposits.error
   const deposit = deposits.value.find((row) => !row.bankTransactionId) ?? deposits.value[0]
 
-  const [vendorPaymentTxn] = await database
-    .select({ id: schema.PaymentTransaction.id, amount: schema.PaymentTransaction.amount })
-    .from(schema.PaymentTransaction)
-    .where(
-      and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        eq(schema.PaymentTransaction.kind, 'charge'),
-        eq(schema.PaymentTransaction.status, 'succeeded')
-      )
-    )
-    .limit(1)
-
   const seeds = [
     {
       externalId: 'drv-fee-001',
@@ -177,7 +165,7 @@ async function main() {
       account: toRecordId(bankAccountDefId, primary.id),
       postedAt: day(-1),
       description: 'ACH CREDIT CUSTOMER PAYMENT',
-      amountMinor: vendorPaymentTxn?.amount ?? 10_000,
+      amountMinor: 10_000,
     },
     {
       externalId: 'drv-xfer-out',

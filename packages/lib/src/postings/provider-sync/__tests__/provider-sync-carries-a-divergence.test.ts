@@ -21,8 +21,9 @@ import { accountMap, balancedEntryLines, ledger, ourEntry } from './support/fixt
 
 const fetchBatch = vi.hoisted(() => vi.fn())
 const readOurPostedEntries = vi.hoisted(() => vi.fn())
-const readSyncedEntriesInRange = vi.hoisted(() => vi.fn())
 const resolvePeriodLock = vi.hoisted(() => vi.fn())
+
+const translate = vi.hoisted(() => vi.fn())
 
 vi.mock('../marker-writes', () => ({
   recordProviderSyncedThrough: vi.fn(async () => ({ isErr: () => false, value: undefined })),
@@ -57,13 +58,33 @@ vi.mock('../../provider', () => ({
 vi.mock('../reads', () => ({
   readOurProviderEntryIds: vi.fn(async () => ({ isErr: () => false, value: new Set(['6']) })),
   readOurPostedEntries,
-  readSyncedEntriesInRange,
+  readActiveBookId: vi.fn(async () => ({ isErr: () => false, value: 'book_1' })),
+  readOurDocNumbers: vi.fn(async () => ({ isErr: () => false, value: new Set<string>() })),
 }))
 
 vi.mock('../writes', () => ({
-  postProviderSyncEntry: vi.fn(async () => ({ isErr: () => false, value: { status: 'posted' } })),
-  reverseSyncedEntry: vi.fn(),
+  upsertMirrorChunk: vi.fn(async () => ({
+    isErr: () => false,
+    value: { mirrored: 0, ours: 0, withdrawn: 0, withdrawnIds: [] },
+  })),
 }))
+
+vi.mock('../translate', () => ({ translateMirrorRange: translate }))
+
+/** A translation pass that found nothing to do. Overridden per test. */
+function cleanTranslation() {
+  return {
+    isErr: () => false,
+    value: {
+      written: 0,
+      alreadyPosted: 0,
+      reversed: 0,
+      zeroValue: 0,
+      deferredToClosedMonths: [],
+      refusals: [],
+    },
+  }
+}
 
 const ORG = 'org_1'
 const db = {} as never
@@ -109,11 +130,11 @@ async function sliceOnce() {
 beforeEach(() => {
   fetchBatch.mockReset()
   readOurPostedEntries.mockReset()
-  readSyncedEntriesInRange.mockReset()
+  translate.mockReset()
+  translate.mockResolvedValue(cleanTranslation())
   resolvePeriodLock.mockReset()
   resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   readOurPostedEntries.mockResolvedValue({ isErr: () => false, value: [ourEntry(ourCopy())] })
-  readSyncedEntriesInRange.mockResolvedValue({ isErr: () => false, value: [] })
 })
 
 describe('an edited entry of ours', () => {
@@ -179,6 +200,28 @@ describe('a deferral to a closed month', () => {
   it('carries the month and the action, not just the count', async () => {
     resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: '2026-02' })
     readOurPostedEntries.mockResolvedValue({ isErr: () => false, value: [] })
+    // The deferral is `translate.ts`'s decision; this file is about what
+    // reaches the run's blob once it has been made.
+    translate.mockResolvedValue({
+      isErr: () => false,
+      value: {
+        written: 0,
+        alreadyPosted: 0,
+        reversed: 0,
+        zeroValue: 0,
+        deferredToClosedMonths: [
+          {
+            month: '2026-02',
+            txnType: 'Credit Card Expense',
+            txnId: '77',
+            txnDate: '2026-02-15',
+            totalMinor: 4500,
+            action: 'write',
+          },
+        ],
+        refusals: [],
+      },
+    })
     fetchBatch.mockResolvedValueOnce({
       isErr: () => false,
       value: {

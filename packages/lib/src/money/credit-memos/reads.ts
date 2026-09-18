@@ -46,7 +46,6 @@ const CREDIT_MEMO_ATTRIBUTES = [
   'credit_memo_amount_refunded',
   'credit_memo_balance',
   'credit_memo_lines',
-  'credit_memo_gl_posting',
 ] as const
 
 /** Every `credit_memo_line` attribute the module reads. */
@@ -278,14 +277,6 @@ export interface CreditMemoRecord {
   amountRefundedMinor: number
   balanceMinor: number
   lineIds: string[]
-  /**
-   * The `GlPosting` id this memo was posted into, or `null` (accounting/25 §4.1).
-   *
-   * 🛑 `null` is "no stamp", NOT "unposted". A memo is unposted when this is null
-   * OR names a posting that is `reversed` or gone (§4.2), which needs the posting
-   * row - this field alone cannot answer it.
-   */
-  glPostingId: string | null
   /** Whether the org has the `credit_memo_amount_applied` mirror to write at all. */
   hasSettlementFields: boolean
 }
@@ -343,7 +334,6 @@ export async function loadCreditMemo(
     lineIds: cells('credit_memo_lines')
       .map((row) => row.relatedEntityId)
       .filter((id): id is string => !!id),
-    glPostingId: cell('credit_memo_gl_posting')?.valueText ?? null,
     hasSettlementFields: fields.credit_memo_amount_applied !== null,
   }
 }
@@ -558,39 +548,21 @@ export async function sumReservedCreditMemoRefunds(
  * Every refund carrying this memo, oldest first, whatever its status - both
  * rails in one list.
  *
- * 🛑 A canonical `MoneyRefundSettlement` and a legacy refund
- * `PaymentTransaction` can describe the SAME money, so an adopted legacy row is
- * dropped here rather than at each caller. Adoption is an explicit evidence
- * record; never deduplicate two movements merely because their amounts match.
- * `origin` is what keeps `sumReservedCreditMemoRefunds` from counting the two
- * rails twice.
+ * 🛑 `MoneyRefundSettlement` is the only rail. `readAdoptedLegacyRefundIds`
+ * still guards against re-counting a HISTORICAL legacy refund an evidence
+ * record already adopted into a money movement.
  */
 export async function listCreditMemoRefunds(
   db: Database | Transaction,
   organizationId: string,
   creditMemoId: string
 ): Promise<CreditMemoRefundRow[]> {
-  const [legacy, settlements] = await Promise.all([
-    db.query.PaymentTransaction.findMany({
-      where: and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        eq(schema.PaymentTransaction.creditMemoInstanceId, creditMemoId),
-        eq(schema.PaymentTransaction.kind, 'refund')
-      ),
-      orderBy: asc(schema.PaymentTransaction.createdAt),
-    }),
-    db.query.MoneyRefundSettlement.findMany({
-      where: and(
-        eq(schema.MoneyRefundSettlement.organizationId, organizationId),
-        eq(schema.MoneyRefundSettlement.customerCreditMemoInstanceId, creditMemoId)
-      ),
-    }),
-  ])
-  const adoptedLegacyIds = await readAdoptedLegacyRefundIds(
-    db,
-    organizationId,
-    settlements.map((row) => row.refundTransactionId)
-  )
+  const settlements = await db.query.MoneyRefundSettlement.findMany({
+    where: and(
+      eq(schema.MoneyRefundSettlement.organizationId, organizationId),
+      eq(schema.MoneyRefundSettlement.customerCreditMemoInstanceId, creditMemoId)
+    ),
+  })
   const money = settlements.length
     ? await db.query.MoneyTransaction.findMany({
         where: and(
@@ -620,56 +592,7 @@ export async function listCreditMemoRefunds(
       createdAt: movement.createdAt.toISOString(),
     })
   }
-  for (const row of legacy) {
-    if (adoptedLegacyIds.has(row.id)) continue
-    rows.push({
-      transactionId: row.id,
-      origin: 'payment_transaction',
-      provider: row.provider,
-      status: row.status,
-      amountMinor: row.amount,
-      method: row.method ?? null,
-      reference: row.reference ?? null,
-      createdAt: row.createdAt.toISOString(),
-    })
-  }
   return rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-}
-
-/** Legacy refund ids an adoption record says canonical money already represents. */
-async function readAdoptedLegacyRefundIds(
-  db: Database | Transaction,
-  organizationId: string,
-  refundTransactionIds: string[]
-): Promise<Set<string>> {
-  const adopted = new Set<string>()
-  if (!refundTransactionIds.length) return adopted
-  const evidence = await db
-    .select({ payload: schema.FinancialSourceObservation.payload })
-    .from(schema.MoneySourceLink)
-    .innerJoin(
-      schema.FinancialSourceObservation,
-      and(
-        eq(schema.FinancialSourceObservation.organizationId, schema.MoneySourceLink.organizationId),
-        eq(schema.FinancialSourceObservation.sourceObjectId, schema.MoneySourceLink.sourceObjectId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.MoneySourceLink.organizationId, organizationId),
-        inArray(schema.MoneySourceLink.moneyTransactionId, refundTransactionIds)
-      )
-    )
-  for (const { payload } of evidence) {
-    if (
-      payload &&
-      typeof payload === 'object' &&
-      'legacyTransactionId' in payload &&
-      typeof payload.legacyTransactionId === 'string'
-    )
-      adopted.add(payload.legacyTransactionId)
-  }
-  return adopted
 }
 
 /** Integer minor units: the `succeeded` refunds carrying this memo, summed. */

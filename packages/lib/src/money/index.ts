@@ -54,13 +54,6 @@ export {
   type RunInvoiceBatchResult,
   runInvoiceBatch,
 } from './batch-invoicing'
-// ─── The shared batch-posting frame (accounting/25 §5) ─────────────────────
-export {
-  BATCH_POSTING_EXCLUSION_REASONS,
-  BATCH_POSTING_GROUPINGS,
-  type BatchPostingExclusionReason,
-  type BatchPostingGrouping,
-} from './batch-posting'
 export { allocateProportionally, resolveFixedInvoiceAmount } from './billing-allocation-math'
 export {
   allocateInvoiceLine,
@@ -98,30 +91,25 @@ export {
   syncCatalogCostOnPartChange,
   syncCatalogItemPricing,
 } from './catalog-pricing'
-export { convertQuoteToWorkOrder } from './convert-quote'
-// ─── Bulk credit memo posting (plans/accounting/tasks/25) ──────────────────
-// ⚠️ Two names are aliased on the way out because the fulfillment poster owns
-// the unqualified ones in this barrel: `groupKeyFor` is exported for shipments,
-// and a second `CLOSE_BLOCKING_EXCLUSION_REASONS` would read as one set over
-// both sources when it is per source.
+// The legacy `PaymentTransaction` payment lane (`money/payments/`) is gone. Its
+// Stripe-account plumbing lives in `payouts/`, the deposit math in `./quote-deposit`, and
+// online collection in `./checkout`.
 export {
-  CLOSE_BLOCKING_EXCLUSION_REASONS as CREDIT_MEMO_CLOSE_BLOCKING_EXCLUSION_REASONS,
-  type CreditMemoPlanContext,
-  type CreditMemoPostingPreview,
-  type CreditMemoPostingPreviewInput,
-  type CreditMemoPostingSettings,
-  countCloseBlockingCreditMemos,
-  countUnpostedCreditMemos,
-  groupKeyFor as creditMemoGroupKeyFor,
-  listCreditMemoPostings,
-  planCreditMemoPosting,
-  previewCreditMemoPosting,
-  readCreditMemoPostingSettings,
-  readCreditMemoSettlementAccounts,
-  readUnpostedCreditMemos,
-  runCreditMemoPosting,
-  type UnpostedCreditMemoRange,
-} from './credit-memo-posting'
+  applyStripeCheckoutEvent,
+  type CheckoutSessionResult,
+  createInvoiceCheckoutSession,
+  createQuoteDepositCheckoutSession,
+  hasQuoteDeposit,
+  isCheckoutAvailable,
+  listQuoteDepositReceipts,
+  listWorkOrderDepositReceipts,
+  type QuoteDepositReceipt,
+  resolveStripeRail,
+  sumQuoteDeposits,
+  sumUnappliedCustomerMoney,
+  sumWorkOrderDeposits,
+} from './checkout'
+export { convertQuoteToWorkOrder } from './convert-quote'
 // ─── Credit memos (plans/accounting/tasks/done/10-credit-memos.md) ──────────────
 // Appended as one block, per HANDOFF section 9a's rule for shared barrels.
 export {
@@ -166,27 +154,13 @@ export {
   readCreditMemoForRefund,
   readCreditMemoSettlement,
   recordCreditMemoRefund,
+  refundCreditMemoToCard,
   type SettleCreditMemoInput,
   settleCreditMemo,
   type UnapplyCreditMemoInput,
   unapplyCreditMemo,
   voidCreditMemo,
 } from './credit-memos'
-// ─── Bulk fulfillment posting (plans/money/tasks/49-bulk-fulfillment-posting.md) ──
-// Appended as one block, per HANDOFF §9a's rule for shared barrels.
-export {
-  countUnpostedShipments,
-  type FulfillmentPostingPreview,
-  type FulfillmentPostingSettings,
-  groupKeyFor,
-  listOrderFulfillmentPostings,
-  planFulfillmentPosting,
-  previewFulfillmentPosting,
-  readFulfillmentPostingSettings,
-  readUnpostedShipments,
-  runFulfillmentPosting,
-  type UnpostedShipmentRange,
-} from './fulfillment-posting'
 // ─── Fulfillment records (entity migration 153, plans/money/tasks/55) ──────
 // `fulfillment` / `fulfillment_line` records: the shared contract behind the
 // native fulfillment door below, the bulk poster, the credit-memo readers and
@@ -203,14 +177,12 @@ export {
   type Fulfillment,
   type FulfillmentFieldContext,
   type FulfillmentLine,
-  type FulfillmentPostingStamp,
   type FulfillmentStatusValue,
   isLiveFulfillment,
   loadFulfillmentFieldContext,
   readFulfillmentsForOrder,
   readFulfillmentsForOrders,
   requireFulfillmentFieldContext,
-  stampFulfillmentPosting,
 } from './fulfillments'
 export { createInvoiceFromWorkOrder, deleteInvoiceLine, listUninvoicedLines } from './gather'
 export { deleteInvoice, markInvoiceSent, voidInvoice } from './invoice-lifecycle'
@@ -227,6 +199,8 @@ export {
 export {
   type InvoicePaymentRow,
   listInvoiceMoneyPayments,
+  listWorkOrderMoneyPayments,
+  type WorkOrderPaymentRow,
 } from './invoices/payment-reads'
 // ── Task 54: money received against an issued invoice ──────────────────────
 // The `customer_receipt` family's second policy. `customer-money/accounting.ts`
@@ -282,70 +256,10 @@ export {
   previewFulfillment,
   readOrderForFulfillment,
   requireOrderFieldContext,
+  reverseFulfillmentPosting,
   shippedByLine,
   shippingStillOwed,
 } from './orders'
-export {
-  disconnectPaymentAccount,
-  getPaymentAccount,
-  syncAccountState,
-  type UpsertPaymentAccountInput,
-  upsertPaymentAccount,
-} from './payments/account-state'
-export {
-  collectRefundedChargeIds,
-  computeDepositFigures,
-  type DepositChargeRow,
-  getAllocationTotalsByTransaction,
-  getContactCreditOnAccount,
-  getInvoiceDepositApplied,
-  getRefundedChargeIds,
-  listContactDepositCharges,
-} from './payments/allocation-reads'
-export {
-  computeDepositAmount,
-  type QuoteDepositType,
-  type ResolvedQuoteDeposit,
-  resolveQuoteDeposit,
-} from './payments/deposit'
-export {
-  type PaymentAccountFeeInput,
-  resolveApplicationFee,
-} from './payments/fees'
-export {
-  deleteManualPayment,
-  hasSucceededCharges,
-  listWorkOrderPayments,
-  recordManualPayment,
-  syncInvoicePaymentState,
-  syncTransaction,
-} from './payments/ledger'
-export {
-  type PartialPaymentBounds,
-  resolvePartialPaymentBounds,
-} from './payments/partial'
-// The payment post door. `syncTransaction` calls it; nothing else should.
-export {
-  listPaymentPostings,
-  PAYMENT_POSTING_TYPE,
-  postPaymentTransaction,
-} from './payments/post-transaction'
-export { sendPaymentReceipt } from './payments/receipt-email'
-export {
-  applyStripeEvent,
-  type CreateStripeCheckoutInput,
-  type CreateStripeCheckoutResult,
-  type CreateStripeDepositCheckoutInput,
-  createStripeCheckout,
-  createStripeDepositCheckout,
-  type ReconcileStripeCheckoutReturnInput,
-  type ReconcileStripeDepositCheckoutReturnInput,
-  type RefundTransactionInput,
-  type RefundTransactionResult,
-  reconcileStripeCheckoutReturn,
-  reconcileStripeDepositCheckoutReturn,
-  refundTransaction,
-} from './payments/stripe-rail'
 export {
   findPayoutByGatewayId,
   type GatheredPayout,
@@ -367,8 +281,14 @@ export {
   syncPayouts,
 } from './payouts'
 export {
+  disconnectPaymentAccount,
+  getPaymentAccount,
+  syncAccountState,
+  type UpsertPaymentAccountInput,
+  upsertPaymentAccount,
+} from './payouts/stripe-account'
+export {
   buildPayUrl,
-  cancelAbandonedCheckout,
   ensureInvoicePublicToken,
   getPublicInvoicePayload,
   type PublicInvoiceLine,
@@ -387,6 +307,12 @@ export {
   requestQuoteUpdateByToken,
 } from './quote-acceptance'
 export {
+  computeDepositAmount,
+  type QuoteDepositType,
+  type ResolvedQuoteDeposit,
+  resolveQuoteDeposit,
+} from './quote-deposit'
+export {
   approveQuote,
   createQuoteFromRequest,
   declineQuote,
@@ -394,7 +320,6 @@ export {
 } from './quote-lifecycle'
 export {
   buildQuoteViewUrl,
-  cancelAbandonedDepositCheckout,
   ensureQuotePublicToken,
   getPublicQuotePayload,
   getQuotePdfByToken,

@@ -13,11 +13,16 @@ import type { PostResult } from '../../postings/types'
 import type { RecordId } from '../../resources/resource-id'
 import type { BankDepositStatus } from './client'
 
-/** One received payment that has not been banked yet - a row in the left list. */
+/**
+ * One received payment that has not been banked yet - a row in the left list.
+ *
+ * MIGRATION follow-up 9: every field is read straight off the `MoneyTransaction`
+ * row (or, for `invoiceInstanceId`/`invoiceName`, its `MoneyApplication`) - there
+ * is no `payment` entity mirror behind it anymore.
+ */
 export interface UndepositedPaymentRow {
-  /** `EntityInstance.id` of the `payment` record. */
+  /** `MoneyTransaction.id` of the receipt. */
   paymentId: string
-  recordId: RecordId
   /** Integer minor units. Always > 0 for a row that can be banked. */
   amountMinor: number
   /** `YYYY-MM-DD`, the date the payment was received. Null when unset. */
@@ -30,8 +35,8 @@ export interface UndepositedPaymentRow {
   invoiceInstanceId: string | null
   /** The invoice's display name, so the list does not have to resolve it. */
   invoiceName: string | null
-  /** ISO 4217, off the `PaymentTransaction` row. Null when the row is missing. */
-  currency: string | null
+  /** ISO 4217, off the `MoneyTransaction` row. */
+  currency: string
 }
 
 /** One recorded bank deposit. */
@@ -67,8 +72,6 @@ export interface BankDepositRecord {
   bankTransactionId: string | null
   clearedAt: Date | null
   reconciledAt: Date | null
-  /** The `GlPosting` row this deposit produced, or null when it never posted. */
-  glPostingId: string | null
   createdAt: Date
 }
 
@@ -98,7 +101,7 @@ export interface ListBankDepositsFilters {
 
 /** Input for {@link createBankDeposit}. */
 export interface CreateBankDepositInput {
-  /** `EntityInstance.id` of every payment being banked. At least one. */
+  /** `MoneyTransaction.id` of every receipt being banked. At least one. */
   paymentIds: string[]
   /** `YYYY-MM-DD`. The date the deposit hits the bank, and the posting's date. */
   depositDate: string

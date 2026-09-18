@@ -49,11 +49,7 @@ export function TransferPanel({ line, onDone }: TransferPanelProps) {
 
   const transfer = api.bankingReview.transfer.useMutation({
     onSuccess: async (result) => {
-      if (
-        result.post &&
-        result.post.status !== 'posted' &&
-        result.post.status !== 'not_connected'
-      ) {
+      if (result.post && result.post.status !== 'posted') {
         setBlockers([
           {
             status: result.post.status as PostResultStatus,

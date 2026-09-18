@@ -2,8 +2,9 @@
 //
 // brief 27 §4 rule 1 / §13 test 2: recognition is keyed on `ref.kind`.
 //
-//  - `stripe_charge` resolves against `PaymentTransaction`, by charge id AND
-//    by refund id, status unfiltered;
+//  - `stripe_charge` resolves against `FinancialSourceObject`/`MoneySourceLink`
+//    (the evidence trail a `MoneyTransaction` was adopted from a Stripe id
+//    through), charge and refund ids sharing one keyspace;
 //  - `order` resolves against the synced order: `DataConnectorItem.externalId`
 //    on the org's `order` def, bound and not archived;
 //  - `none` is never looked up and never recognised, and a payout holding only
@@ -13,8 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   getCachedEntityDefId: vi.fn(async (_org: string, _slug: string) => 'def_order' as string | null),
-  chargeRows: [] as { chargeId: string | null; refundId: string | null }[],
-  refundRows: [] as { refundId: string | null }[],
+  sourceObjectRows: [] as { externalId: string }[],
   orderRows: [] as { externalId: string }[],
   selects: [] as string[],
 }))
@@ -32,21 +32,17 @@ import type { PayoutItem } from '../source'
 const ORG = 'org_1'
 
 /**
- * A `Database` answering by TABLE: `PaymentTransaction` gets the charge rows on
- * its first select and the refund rows on its second (the order
- * `readRecognisedChargeIds` issues them in); `DataConnectorItem` gets the
+ * A `Database` answering by TABLE: `FinancialSourceObject` (joined to
+ * `MoneySourceLink`) gets the recognised-id rows; `DataConnectorItem` gets the
  * order rows. `.where()` is unevaluated - the seeds are scoped to the query.
  */
 function stubDb(): Database {
-  let paymentTransactionCalls = 0
   return {
     select: () => ({
       from: (table: unknown) => {
-        if (table === schema.PaymentTransaction) {
-          paymentTransactionCalls += 1
-          h.selects.push('PaymentTransaction')
-          const rows = paymentTransactionCalls === 1 ? h.chargeRows : h.refundRows
-          return { where: () => Promise.resolve(rows) }
+        if (table === schema.FinancialSourceObject) {
+          h.selects.push('FinancialSourceObject')
+          return { innerJoin: () => ({ where: () => Promise.resolve(h.sourceObjectRows) }) }
         }
         if (table === schema.DataConnectorItem) {
           h.selects.push('DataConnectorItem')
@@ -65,15 +61,14 @@ function item(ref: PayoutItem['ref'], externalId = 'bt_1'): PayoutItem {
 beforeEach(() => {
   vi.clearAllMocks()
   h.getCachedEntityDefId.mockResolvedValue('def_order')
-  h.chargeRows = []
-  h.refundRows = []
+  h.sourceObjectRows = []
   h.orderRows = []
   h.selects = []
 })
 
 describe('recognise: stripe_charge', () => {
-  it('recognises a charge auxx holds a PaymentTransaction for', async () => {
-    h.chargeRows = [{ chargeId: 'ch_a', refundId: null }]
+  it('recognises a charge auxx holds a MoneyTransaction for', async () => {
+    h.sourceObjectRows = [{ externalId: 'ch_a' }]
 
     const recognised = await recognise(stubDb(), ORG, [
       item({ kind: 'stripe_charge', id: 'ch_a' }),
@@ -83,8 +78,8 @@ describe('recognise: stripe_charge', () => {
     expect(recognised).toEqual(new Set(['ch_a']))
   })
 
-  it('recognises a refund through the refund column, so it stays on its charge’s side', async () => {
-    h.refundRows = [{ refundId: 're_x' }]
+  it('recognises a refund through the same keyspace, so it stays on its charge’s side', async () => {
+    h.sourceObjectRows = [{ externalId: 're_x' }]
 
     const recognised = await recognise(stubDb(), ORG, [item({ kind: 'stripe_charge', id: 're_x' })])
 
@@ -92,11 +87,11 @@ describe('recognise: stripe_charge', () => {
   })
 
   it('never touches the connector binding table for charge refs', async () => {
-    h.chargeRows = [{ chargeId: 'ch_a', refundId: null }]
+    h.sourceObjectRows = [{ externalId: 'ch_a' }]
 
     await recognise(stubDb(), ORG, [item({ kind: 'stripe_charge', id: 'ch_a' })])
 
-    expect(h.selects).toEqual(['PaymentTransaction', 'PaymentTransaction'])
+    expect(h.selects).toEqual(['FinancialSourceObject'])
   })
 })
 
@@ -124,15 +119,15 @@ describe('recognise: order', () => {
     expect(h.selects).toEqual([])
   })
 
-  it('does not consult PaymentTransaction for an order ref', async () => {
+  it('does not consult the source-object evidence trail for an order ref', async () => {
     // 🛑 R3: an adapter that recognised Shopify items on a charge id would land
     // every Shopify payout in `2450`. The order path must not depend on the
-    // payment table at all.
+    // payment evidence trail at all.
     h.orderRows = [{ externalId: '1001' }]
 
     await recognise(stubDb(), ORG, [item({ kind: 'order', id: '1001' })])
 
-    expect(h.selects).not.toContain('PaymentTransaction')
+    expect(h.selects).not.toContain('FinancialSourceObject')
   })
 })
 
@@ -167,7 +162,7 @@ describe('recognise: none', () => {
 
 describe('recognise: mixed kinds', () => {
   it('answers each kind from its own lookup and unions the ids', async () => {
-    h.chargeRows = [{ chargeId: 'ch_a', refundId: null }]
+    h.sourceObjectRows = [{ externalId: 'ch_a' }]
     h.orderRows = [{ externalId: '1001' }]
 
     const recognised = await recognise(stubDb(), ORG, [

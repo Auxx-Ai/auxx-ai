@@ -1,1 +1,0 @@
-ALTER TABLE "MoneyTransaction" ADD COLUMN "method" text;

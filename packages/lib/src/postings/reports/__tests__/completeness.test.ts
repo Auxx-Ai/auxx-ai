@@ -21,7 +21,7 @@ describe('readCompleteness', () => {
     expect(completeness.disabledPostingTypes.length).toBeGreaterThan(0)
     expect(completeness.disabledPostingTypes.every((item) => !!item.remedy?.href)).toBe(true)
     const ids = completeness.disabledPostingTypes.map((item) => item.id)
-    expect(ids.some((id) => id.includes('receipt'))).toBe(true)
+    expect(ids.some((id) => id.includes('month_end_reversal'))).toBe(true)
     expect(ids.some((id) => id.includes('fulfillment'))).toBe(false)
   })
 

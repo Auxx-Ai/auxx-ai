@@ -12,42 +12,8 @@
 
 import { describe, expect, it } from 'vitest'
 import { UnprocessableEntityError } from '../../errors'
-import {
-  buildDocNumber,
-  DOC_NUMBER_MAX_LENGTH,
-  DOC_NUMBER_PREFIX,
-  documentGenerationKey,
-  fulfillmentGroupPeriodKey,
-  isGroupPeriodKey,
-} from '../doc-number'
+import { buildDocNumber, DOC_NUMBER_MAX_LENGTH, DOC_NUMBER_PREFIX } from '../doc-number'
 import { POSTING_TYPES } from '../types'
-
-describe('fulfillment membership document numbers', () => {
-  it('leaves room under the provider cap for a reversal suffix', () => {
-    const periodKey = fulfillmentGroupPeriodKey('abcdef0123456789'.repeat(4))
-    expect(periodKey).toMatch(/^g[0-9a-z]{8}$/)
-    expect(isGroupPeriodKey(periodKey)).toBe(true)
-    expect(buildDocNumber({ postingType: 'fulfillment', periodKey })).toHaveLength(18)
-    expect(buildDocNumber({ postingType: 'fulfillment', periodKey, revision: 1 })).toBe(
-      `AUXX-FUL-${periodKey}-R1`
-    )
-    expect(isGroupPeriodKey('2026-08-18')).toBe(false)
-    expect(isGroupPeriodKey('fg_abcdef012')).toBe(false)
-  })
-
-  it('requires a full canonical hash before shortening the group identity', () => {
-    for (const hash of ['', 'abcdef012', 'a'.repeat(63), 'A'.repeat(64), 'g'.repeat(64)]) {
-      expect(() => fulfillmentGroupPeriodKey(hash)).toThrow(UnprocessableEntityError)
-    }
-  })
-
-  it('exposes prefix collisions for the accepting transaction to compare in full', () => {
-    const first = 'abcdef0123' + '0'.repeat(54)
-    const second = 'abcdef0123' + '1'.repeat(54)
-    expect(first).not.toBe(second)
-    expect(fulfillmentGroupPeriodKey(first)).toBe(fulfillmentGroupPeriodKey(second))
-  })
-})
 
 describe('the prefix table covers the vocabulary', () => {
   // Exact-key equality, both directions. A subset assertion passes forever; only
@@ -73,7 +39,7 @@ describe('buildDocNumber', () => {
   })
 
   it('compacts a period key by stripping its hyphens', () => {
-    expect(buildDocNumber({ postingType: 'month_end_inventory', periodKey: '2026-08' })).toBe(
+    expect(buildDocNumber({ postingType: 'inventory_movement', periodKey: '2026-08' })).toBe(
       'AUXX-INV-202608'
     )
   })
@@ -100,9 +66,9 @@ describe('the reversal suffix', () => {
   // 🛑 Required, not cosmetic. `GlPosting_org_docNumber_key` is unique per org,
   // so a reversal sharing its original's number simply cannot be written.
   it('distinguishes a reversal from the entry it reverses', () => {
-    const original = buildDocNumber({ postingType: 'month_end_inventory', periodKey: '2026-08' })
+    const original = buildDocNumber({ postingType: 'inventory_movement', periodKey: '2026-08' })
     const reversal = buildDocNumber({
-      postingType: 'month_end_inventory',
+      postingType: 'inventory_movement',
       periodKey: '2026-08',
       revision: 1,
     })
@@ -112,7 +78,7 @@ describe('the reversal suffix', () => {
 
   it('distinguishes successive revisions from each other', () => {
     const keys = [0, 1, 2, 3].map((revision) =>
-      buildDocNumber({ postingType: 'receipt', periodKey: '2026-08-18', revision })
+      buildDocNumber({ postingType: 'inventory_movement', periodKey: '2026-08-18', revision })
     )
     expect(new Set(keys).size).toBe(4)
   })
@@ -120,50 +86,53 @@ describe('the reversal suffix', () => {
   // Revision 0 is the original, and every document number already minted is
   // suffix-less. Adding one would re-key the whole ledger.
   it('adds NOTHING at revision 0', () => {
-    expect(buildDocNumber({ postingType: 'receipt', periodKey: '2026-08-18', revision: 0 })).toBe(
-      buildDocNumber({ postingType: 'receipt', periodKey: '2026-08-18' })
-    )
+    expect(
+      buildDocNumber({ postingType: 'inventory_movement', periodKey: '2026-08-18', revision: 0 })
+    ).toBe(buildDocNumber({ postingType: 'inventory_movement', periodKey: '2026-08-18' }))
   })
 
   it('still fits the cap with a suffix on a day key', () => {
     expect(
-      buildDocNumber({ postingType: 'receipt', periodKey: '2026-08-18', revision: 9 }).length
+      buildDocNumber({ postingType: 'inventory_movement', periodKey: '2026-08-18', revision: 9 })
+        .length
     ).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
   })
 
   it.each([-1, 1.5, Number.NaN])('refuses a revision of %s', (revision) => {
-    expect(() => buildDocNumber({ postingType: 'build', periodKey: 'BLD-0007', revision })).toThrow(
-      UnprocessableEntityError
-    )
+    expect(() =>
+      buildDocNumber({ postingType: 'manual_journal', periodKey: 'JNL-0007', revision })
+    ).toThrow(UnprocessableEntityError)
   })
 })
 
 describe('the two types that key on an id rather than a date', () => {
   // `build.number`, never the cuid: two builds can complete on one day, so a
   // date key silently swallows the second.
-  it('keys a build on its build number', () => {
-    expect(buildDocNumber({ postingType: 'build', periodKey: 'BLD-0007' })).toBe('AUXX-BLD-BLD0007')
-  })
-
-  it('gives two builds on one day two different numbers', () => {
-    expect(buildDocNumber({ postingType: 'build', periodKey: 'BLD-0007' })).not.toBe(
-      buildDocNumber({ postingType: 'build', periodKey: 'BLD-0008' })
+  it('keys a journal entry on its own number', () => {
+    expect(buildDocNumber({ postingType: 'manual_journal', periodKey: 'JNL-0007' })).toBe(
+      'AUXX-JNL-JNL0007'
     )
   })
 
-  // 🛑 The rule enforced structurally rather than by prose: `AUXX-BLD-<cuid>` is
+  it('gives two builds on one day two different numbers', () => {
+    expect(buildDocNumber({ postingType: 'manual_journal', periodKey: 'JNL-0007' })).not.toBe(
+      buildDocNumber({ postingType: 'manual_journal', periodKey: 'JNL-0008' })
+    )
+  })
+
+  // 🛑 The rule enforced structurally rather than by prose: `AUXX-JNL-<cuid>` is
   // 33 characters, and the old implementation ended in `.slice(0, 21)`, which
   // truncated it into a string two different builds could share.
   it('REFUSES a cuid rather than truncating it into a collision', () => {
     expect(() =>
-      buildDocNumber({ postingType: 'build', periodKey: 'clx8k2p9q0000abcd1234efgh' })
+      buildDocNumber({ postingType: 'manual_journal', periodKey: 'clx8k2p9q0000abcd1234efgh' })
     ).toThrow(UnprocessableEntityError)
   })
 
   it('names the cap and the rule in the refusal', () => {
     let message = ''
     try {
-      buildDocNumber({ postingType: 'build', periodKey: 'clx8k2p9q0000abcd1234efgh' })
+      buildDocNumber({ postingType: 'manual_journal', periodKey: 'clx8k2p9q0000abcd1234efgh' })
     } catch (error) {
       message = (error as Error).message
     }
@@ -232,37 +201,12 @@ describe('the synced key, whose length somebody else chooses', () => {
   })
 })
 
-describe('documentGenerationKey', () => {
-  it('leaves generation 1 bare — every document number already minted', () => {
-    expect(documentGenerationKey('INV-0042', 1)).toBe('INV-0042')
-  })
-
-  it('suffixes generation 2 and beyond with the freed reversal generation', () => {
-    expect(documentGenerationKey('INV-0042', 2)).toBe('INV-0042.2')
-    expect(documentGenerationKey('INV-0042', 3)).toBe('INV-0042.3')
-  })
-
-  it.each([0, 1.5, -1, Number.NaN])('refuses a generation of %s', (generation) => {
-    expect(() => documentGenerationKey('INV-0042', generation)).toThrow(UnprocessableEntityError)
-  })
-
-  it('still fits the document-number cap at generation 2', () => {
-    const docNumber = buildDocNumber({
-      postingType: 'invoice_issued',
-      periodKey: documentGenerationKey('INV-0042', 2),
-      revision: 1,
-    })
-    expect(docNumber).toBe('AUXX-INI-INV0042.2-R1')
-    expect(docNumber.length).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
-  })
-})
-
 describe('refusals', () => {
   it('refuses a blank period key rather than minting AUXX-RCP-', () => {
-    expect(() => buildDocNumber({ postingType: 'receipt', periodKey: '' })).toThrow(
+    expect(() => buildDocNumber({ postingType: 'inventory_movement', periodKey: '' })).toThrow(
       UnprocessableEntityError
     )
-    expect(() => buildDocNumber({ postingType: 'receipt', periodKey: '--' })).toThrow(
+    expect(() => buildDocNumber({ postingType: 'inventory_movement', periodKey: '--' })).toThrow(
       UnprocessableEntityError
     )
   })

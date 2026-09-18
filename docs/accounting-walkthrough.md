@@ -12,6 +12,10 @@ chart, the opening trial balance and the period lock.
 **Regime:** L1 (month-end inventory assertion, not per-event costing).
 **As of:** 2026-09-08.
 
+> **Target model (2026-09-17):** the mechanism below is what is in the code today.
+> [`plans/accounting/TARGET.md`](../plans/accounting/TARGET.md) is what it is being moved to;
+> sections it overturns carry a ⛔ callout. Do not build new work on a section marked ⛔.
+
 ---
 
 ## 1. Where the ledger sits
@@ -231,6 +235,9 @@ positive integers only.
 
 ### 4.5 Month-end — close the month
 
+> ⛔ **Target:** month-end stops posting. Inventory reaches the GL per document, and this section
+> becomes a roll-forward check with a blocker, not a Post button (`plans/accounting/TARGET.md` §5).
+
 *Bookkeeper. Ledger tab.*
 
 The ledger page shows one of three states: setup not finalized (the checklist), a
@@ -276,6 +283,9 @@ never retried.
 ---
 
 ## 5. What is not live yet
+
+> ⛔ **Target:** the "Built, dark" either-or below goes — perpetual per-document postings become
+> the regime, not a switch waiting on the month-end assertion (`plans/accounting/TARGET.md` §5).
 
 The union of posting types does not tell you what is live, and neither does the
 existence of a builder. `ENABLED_POSTING_TYPES` in `postings/regime.ts` is the

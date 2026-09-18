@@ -17,6 +17,11 @@ import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import { toDateKey } from '../client'
 
+// Mirrors `banking/review/client.ts`'s own constant. Inlined rather than
+// imported across the import/review sibling boundary - this is the one place
+// this module needs it, to find a line's live posting through `GlPostingSource`.
+const BANK_TRANSACTION_SOURCE_TYPE = 'bank_transaction'
+
 /** Every attribute the importer stamps, links on, or refuses on. */
 export const BANK_TRANSACTION_IMPORT_ATTRIBUTES = [
   'bank_transaction_external_id',
@@ -28,7 +33,6 @@ export const BANK_TRANSACTION_IMPORT_ATTRIBUTES = [
   'bank_transaction_import_batch_id',
   'bank_transaction_source',
   'bank_transaction_review_status',
-  'bank_transaction_gl_posting_id',
   'bank_transaction_exclude_reason',
   'bank_transaction_matched_record_id',
   'bank_transaction_matched_record_type',
@@ -220,6 +224,26 @@ export async function hydrateTransactions(
     return fieldId ? (byInstance.get(instanceId)?.get(fieldId) ?? null) : null
   }
 
+  // The live posting each line currently claims, read through
+  // `GlPostingSource` (TARGET §1) rather than the retired
+  // `bank_transaction_gl_posting_id` stamp.
+  const instanceIdsResolved = instances.map((row) => row.id)
+  const livePostings = await db
+    .select({
+      sourceId: schema.GlPostingSource.sourceId,
+      glPostingId: schema.GlPostingSource.glPostingId,
+    })
+    .from(schema.GlPostingSource)
+    .where(
+      and(
+        eq(schema.GlPostingSource.organizationId, organizationId),
+        eq(schema.GlPostingSource.sourceKind, BANK_TRANSACTION_SOURCE_TYPE),
+        eq(schema.GlPostingSource.linkRole, 'subject'),
+        inArray(schema.GlPostingSource.sourceId, instanceIdsResolved)
+      )
+    )
+  const glPostingIdBySourceId = new Map(livePostings.map((row) => [row.sourceId, row.glPostingId]))
+
   return instances.map((instance) => {
     const postedAt = read(instance.id, 'bank_transaction_posted_at')?.valueDate
     const amount = read(instance.id, 'bank_transaction_amount')?.valueNumber
@@ -238,7 +262,7 @@ export async function hydrateTransactions(
       source: read(instance.id, 'bank_transaction_source')?.optionId ?? null,
       reviewStatus: read(instance.id, 'bank_transaction_review_status')?.optionId ?? null,
       excludeReason: read(instance.id, 'bank_transaction_exclude_reason')?.valueText ?? null,
-      glPostingId: read(instance.id, 'bank_transaction_gl_posting_id')?.valueText ?? null,
+      glPostingId: glPostingIdBySourceId.get(instance.id) ?? null,
     } satisfies BankTransactionRow
   })
 }

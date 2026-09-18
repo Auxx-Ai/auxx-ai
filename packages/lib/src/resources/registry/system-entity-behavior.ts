@@ -259,10 +259,6 @@ export const SYSTEM_ENTITY_BEHAVIOR: Record<string, Partial<SystemEntityBehavior
     inPromptCatalog: false,
     sidebar: 'never',
   }, // Accounting > Settings
-  payment: {
-    inPromptCatalog: false,
-    sidebar: 'never',
-  }, // invoice drawer; already AI-visible
   vendor_payment: {
     inPromptCatalog: false,
     sidebar: 'never',

@@ -14,8 +14,8 @@
 import { closePools, database, schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedEntityDefId, getOrgCache } from '../src/cache'
+import { recordInvoicePayment } from '../src/money/invoices/record-payment'
 import { fulfillOrder, previewFulfillment, readOrderForFulfillment } from '../src/money/orders'
-import { recordManualPayment } from '../src/money/payments/ledger'
 import { readTrialBalance, verifyBooksBalance } from '../src/postings'
 import { UnifiedCrudHandler } from '../src/resources/crud/unified-handler'
 import { toRecordId } from '../src/resources/resource-id'
@@ -158,16 +158,17 @@ async function main() {
   const invoice = await pickOpenInvoice(organizationId)
   if (invoice) {
     try {
-      const paid = await recordManualPayment({
+      const paid = await recordInvoicePayment(database, {
         organizationId,
         userId: actorUserId,
         invoiceInstanceId: invoice.id,
-        amount: invoice.balance,
+        amountMinor: invoice.balance,
         date: TODAY,
         method: 'check',
         reference: 'CHQ-DRIVE-2G',
+        commandKey: `drive-fulfillment:${invoice.id}`,
       })
-      console.log(`RESULT payment tx=${paid.transactionId} amount=${invoice.balance}`)
+      console.log(`RESULT payment tx=${paid.moneyTransactionId} amount=${invoice.balance}`)
     } catch (error) {
       console.log(`RESULT payment refused=${(error as Error).message.slice(0, 160)}`)
     }
@@ -367,7 +368,7 @@ async function pickOpenInvoice(
   const withBalance = rows.filter((row) => (row.balance ?? 0) > 0)
   if (withBalance.length === 0 || !cf.invoice_status) return null
 
-  // A void invoice still carries a balance and `recordManualPayment` refuses it,
+  // A void invoice still carries a balance and `recordInvoicePayment` refuses it,
   // so the status is part of the pick rather than a surprise at the call.
   const statuses = new Map(
     (

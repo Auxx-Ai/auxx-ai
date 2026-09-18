@@ -51,6 +51,10 @@ import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import { BadRequestError, ConflictError, UnprocessableEntityError } from '../errors'
+import {
+  linkMovementsToPosting,
+  reverseInventoryMovementPosting,
+} from '../postings/post-inventory-movement'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { BuildStatus, StockMovementCostBasis } from '../resources/registry/enum-values'
 import { toRecordId } from '../resources/resource-id'
@@ -121,6 +125,24 @@ export async function reverseBuild(
       )
 
       await recalculateAfterCommit(organizationId, result.recalculatedPartIds)
+
+      // B6's undo reaches the ledger as a REVERSAL of the original build's own
+      // entry, never a second opposite entry: the reversal carries the frozen
+      // lines and frees the claim, and the negating movements are linked onto it
+      // so the close does not read them as work still outstanding.
+      const reversed = await reverseInventoryMovementPosting(db, {
+        organizationId,
+        subject: { sourceKind: 'build', sourceId: result.reversalOfBuildId },
+        actorUserId: userId,
+        memo: input.reason,
+      })
+      if (reversed?.glPostingId) {
+        await linkMovementsToPosting(db, {
+          organizationId,
+          glPostingId: reversed.glPostingId,
+          movementIds: result.movementIds,
+        })
+      }
       // Two frames, two defs - a reversal writes on BOTH.
       //
       // The movements, so the reversing build's own ledger renders. And the

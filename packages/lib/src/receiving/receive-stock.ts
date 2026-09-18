@@ -13,12 +13,19 @@
  * `stock_movement` def before calling (build plan section 3.3).
  */
 
-import type { Database } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
+import { batchRecalculateQoH } from '../bom/qoh'
 import { ensureStandardCost } from '../builds/ensure-standard-cost'
 import { getCachedEntityDefId, requireCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../errors'
+import type { InTxPostResult } from '../postings/post-entry'
+import {
+  exportInventoryMovement,
+  inventoryTxnDate,
+  postInventoryMovementInTx,
+} from '../postings/post-inventory-movement'
 import { writeStockMovements } from '../stock-movements'
 import {
   computeReceiptLandedCost,
@@ -79,15 +86,28 @@ export async function receiveStock(
 
       await setFirstStandardCostFromReceipt(db, organizationId, input.partId, priced.unitCost)
 
-      const written = await writeReceiveMovement(db, organizationId, userId, {
-        movementDefId,
-        partDefId,
-        input,
-        unitCost: priced.unitCost,
-        vendorUnitPrice: priced.vendorUnitPrice,
-        glAccount: resolveInventoryRoleForPartKind(partKind),
-        occurredAt: input.occurredAt ?? new Date(),
+      // The movement and its entry commit together (MIGRATION step 5): a
+      // receipt whose row landed and whose entry did not is exactly the state
+      // the close's `inventory_unposted` blocker exists to catch, and it should
+      // be unreachable rather than merely detectable.
+      const { written, post } = await db.transaction(async (tx) => {
+        const txDb = tx as unknown as Database
+        const record = await writeReceiveMovement(txDb, organizationId, userId, {
+          movementDefId,
+          partDefId,
+          input,
+          unitCost: priced.unitCost,
+          vendorUnitPrice: priced.vendorUnitPrice,
+          glAccount: resolveInventoryRoleForPartKind(partKind),
+          occurredAt: input.occurredAt ?? new Date(),
+        })
+        return { written: record, post: await postReceipt(tx, organizationId, userId, record) }
       })
+
+      // Belt on the plain lane's own recalculation, which fired against a
+      // pre-commit snapshot from inside the transaction above.
+      await batchRecalculateQoH(organizationId, [written.partInstanceId])
+      await exportInventoryMovement(db, post)
       return written
     },
     'Failed to receive stock',
@@ -361,4 +381,44 @@ async function unwrap<T>(promise: Promise<Result<T, Error>>): Promise<T> {
   const result = await promise
   if (result.isErr()) throw result.error
   return result.value
+}
+
+/**
+ * The receipt's own entry: `Dr <the movement's frozen inventory role> / Cr grni`.
+ *
+ * 🛑 **The MOVEMENT is the document.** There is no goods-receipt record in the
+ * model, so a multi-line purchase-order receipt is N receipt documents rather
+ * than one - which is also what makes `reverseMovement` exact, since a
+ * correction there undoes one line and one entry.
+ *
+ * GRNI is credited at the movement's whole extended cost, which for every
+ * purchase-order receipt IS the agreed price (nothing is capitalised at receipt
+ * since 05 §3.2), so the vendor bill relieves exactly what this credited.
+ */
+async function postReceipt(
+  tx: Transaction,
+  organizationId: string,
+  userId: string,
+  record: MovementRecord
+): Promise<InTxPostResult | null> {
+  if (record.extendedCost == null || record.glAccount == null) return null
+  return postInventoryMovementInTx(tx, {
+    organizationId,
+    kind: 'receive',
+    subject: { sourceKind: 'stock_movement', sourceId: record.movementId },
+    // The PO LINE, not the order: it is what the receipt was against and what
+    // the three-way match reads, and the order is one hop from it.
+    ...(record.purchaseOrderLineId
+      ? { parent: { sourceKind: 'purchase_order_line', sourceId: record.purchaseOrderLineId } }
+      : {}),
+    txnDate: inventoryTxnDate(record.occurredAt),
+    movements: [
+      {
+        id: record.movementId,
+        extendedCostMinor: record.extendedCost,
+        glAccountRole: record.glAccount,
+      },
+    ],
+    actorUserId: userId,
+  })
 }

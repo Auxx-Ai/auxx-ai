@@ -64,11 +64,13 @@ export {
   providerSyncFloor,
 } from './range'
 export {
+  type MirrorEntry,
   type ReadOurPostedEntriesInput,
+  readActiveBookId,
+  readMirrorForTranslation,
+  readOurDocNumbers,
   readOurPostedEntries,
   readOurProviderEntryIds,
-  readSyncedEntriesInRange,
-  type SyncedEntryRef,
 } from './reads'
 export {
   applySyncStateToBlob,
@@ -101,8 +103,13 @@ export {
   type ProviderLedgerSyncSource,
 } from './sync-source'
 export {
-  type PostProviderSyncEntryInput,
-  type ProviderSyncEntryOutcome,
-  postProviderSyncEntry,
-  reverseSyncedEntry,
+  type TranslateMirrorInput,
+  type TranslateMirrorOutcome,
+  translateMirrorRange,
+} from './translate'
+export {
+  type MirrorChunkOutcome,
+  type OurLedgerIdentity,
+  type UpsertMirrorChunkInput,
+  upsertMirrorChunk,
 } from './writes'

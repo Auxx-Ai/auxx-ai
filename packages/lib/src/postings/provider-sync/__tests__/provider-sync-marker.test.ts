@@ -20,7 +20,7 @@ import { balancedEntryLines, ledger } from './support/fixtures'
 
 const recordProviderSyncedThrough = vi.hoisted(() => vi.fn())
 const fetchBatch = vi.hoisted(() => vi.fn())
-const postProviderSyncEntry = vi.hoisted(() => vi.fn())
+const translate = vi.hoisted(() => vi.fn())
 
 vi.mock('../marker-writes', () => ({ recordProviderSyncedThrough }))
 
@@ -63,13 +63,33 @@ vi.mock('../../provider', () => ({
 vi.mock('../reads', () => ({
   readOurProviderEntryIds: vi.fn(async () => ({ isErr: () => false, value: new Set<string>() })),
   readOurPostedEntries: vi.fn(async () => ({ isErr: () => false, value: [] })),
-  readSyncedEntriesInRange: vi.fn(async () => ({ isErr: () => false, value: [] })),
+  readActiveBookId: vi.fn(async () => ({ isErr: () => false, value: 'book_1' })),
+  readOurDocNumbers: vi.fn(async () => ({ isErr: () => false, value: new Set<string>() })),
 }))
 
 vi.mock('../writes', () => ({
-  postProviderSyncEntry,
-  reverseSyncedEntry: vi.fn(),
+  upsertMirrorChunk: vi.fn(async () => ({
+    isErr: () => false,
+    value: { mirrored: 0, ours: 0, withdrawn: 0, withdrawnIds: [] },
+  })),
 }))
+
+vi.mock('../translate', () => ({ translateMirrorRange: translate }))
+
+/** A translation pass that found nothing to do. Overridden per test. */
+function cleanTranslation() {
+  return {
+    isErr: () => false,
+    value: {
+      written: 0,
+      alreadyPosted: 0,
+      reversed: 0,
+      zeroValue: 0,
+      deferredToClosedMonths: [],
+      refusals: [],
+    },
+  }
+}
 
 const ORG = 'org_1'
 const db = {} as never
@@ -105,10 +125,10 @@ function monthOfTheirWork(from: string, to: string, txnId: string, nextMonthStar
 
 beforeEach(() => {
   fetchBatch.mockReset()
-  postProviderSyncEntry.mockReset()
+  translate.mockReset()
+  translate.mockResolvedValue(cleanTranslation())
   recordProviderSyncedThrough.mockReset()
   recordProviderSyncedThrough.mockResolvedValue({ isErr: () => false, value: undefined })
-  postProviderSyncEntry.mockResolvedValue({ isErr: () => false, value: { status: 'posted' } })
 })
 
 describe('the marker advances', () => {
@@ -139,9 +159,11 @@ describe('the marker advances', () => {
 
     await syncProviderLedger(db, ORG, { from: '2026-01-01', to: '2026-01-31' })
 
-    expect(postProviderSyncEntry).toHaveBeenCalled()
-    for (const call of postProviderSyncEntry.mock.calls) {
-      expect(call[2].providerTenantId).toBe('9341453857213446')
+    expect(translate).toHaveBeenCalled()
+    // The BOOK scopes every mirror row: a provider transaction id is a
+    // per-company sequence, so a row carrying one and no book is unguarded.
+    for (const call of translate.mock.calls) {
+      expect(call[2].bookId).toBe('book_1')
     }
   })
 
@@ -164,10 +186,20 @@ describe('the marker does NOT advance', () => {
       .mockResolvedValueOnce(monthOfTheirWork('2026-02-01', '2026-02-28', '102', '2026-03-01'))
       .mockResolvedValueOnce(monthOfTheirWork('2026-03-01', '2026-03-31', '103'))
     // February's entry is declined; January's and March's are written.
-    postProviderSyncEntry
-      .mockResolvedValueOnce({ isErr: () => false, value: { status: 'posted' } })
-      .mockResolvedValueOnce({ isErr: () => true, error: new Error('Account 41 is not mapped') })
-      .mockResolvedValueOnce({ isErr: () => false, value: { status: 'posted' } })
+    translate
+      .mockResolvedValueOnce(cleanTranslation())
+      .mockResolvedValueOnce({
+        isErr: () => false,
+        value: {
+          written: 0,
+          alreadyPosted: 0,
+          reversed: 0,
+          zeroValue: 0,
+          deferredToClosedMonths: [],
+          refusals: ['Account 41 is not mapped'],
+        },
+      })
+      .mockResolvedValueOnce(cleanTranslation())
 
     const result = await syncProviderLedger(db, ORG, { from: '2026-01-01', to: '2026-03-31' })
 

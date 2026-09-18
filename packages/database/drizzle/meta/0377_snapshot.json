@@ -1,5 +1,5 @@
 {
-  "id": "ff738ac7-edb0-480b-a9da-97e05add31b9",
+  "id": "1e312e07-9089-4142-9f02-1035a22a5059",
   "prevId": "1e7ef366-85df-4487-a424-0304b7bc2ef2",
   "version": "7",
   "dialect": "postgresql",
@@ -16225,6 +16225,473 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.ExportBatch": {
+      "name": "ExportBatch",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bookId": {
+          "name": "bookId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connectionId": {
+          "name": "connectionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "avenue": {
+          "name": "avenue",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grainKey": {
+          "name": "grainKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storeId": {
+          "name": "storeId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "railId": {
+          "name": "railId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "objectType": {
+          "name": "objectType",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payloadHash": {
+          "name": "payloadHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ready'"
+        },
+        "providerObjectId": {
+          "name": "providerObjectId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "providerSyncToken": {
+          "name": "providerSyncToken",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "nextAttemptAt": {
+          "name": "nextAttemptAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "leaseToken": {
+          "name": "leaseToken",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "leaseExpiresAt": {
+          "name": "leaseExpiresAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lastError": {
+          "name": "lastError",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "totalMinor": {
+          "name": "totalMinor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "sentAt": {
+          "name": "sentAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "withdrawnAt": {
+          "name": "withdrawnAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ExportBatch_grain_key": {
+          "name": "ExportBatch_grain_key",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bookId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "avenue",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "grainKey",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "coalesce(\"storeId\", '')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "coalesce(\"railId\", '')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "currency",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"ExportBatch\".\"state\" <> 'withdrawn'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ExportBatch_org_state_idx": {
+          "name": "ExportBatch_org_state_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ExportBatch_sweep_idx": {
+          "name": "ExportBatch_sweep_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "nextAttemptAt",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ExportBatch_organizationId_Organization_id_fk": {
+          "name": "ExportBatch_organizationId_Organization_id_fk",
+          "tableFrom": "ExportBatch",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ExportBatch_book_scope_fk": {
+          "name": "ExportBatch_book_scope_fk",
+          "tableFrom": "ExportBatch",
+          "tableTo": "ExternalAccountingBook",
+          "columnsFrom": [
+            "organizationId",
+            "bookId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ExportBatch_connection_scope_fk": {
+          "name": "ExportBatch_connection_scope_fk",
+          "tableFrom": "ExportBatch",
+          "tableTo": "ExternalBookConnection",
+          "columnsFrom": [
+            "organizationId",
+            "connectionId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ExportBatch_org_id_key": {
+          "name": "ExportBatch_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ExportBatch_state_check": {
+          "name": "ExportBatch_state_check",
+          "value": "\"ExportBatch\".\"state\" IN ('ready','sending','sent','failed','withdrawn') AND \"ExportBatch\".\"mode\" IN ('transaction','summary') AND \"ExportBatch\".\"attempts\" >= 0"
+        },
+        "ExportBatch_payloadHash_check": {
+          "name": "ExportBatch_payloadHash_check",
+          "value": "\"ExportBatch\".\"payloadHash\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ExportBatchPosting": {
+      "name": "ExportBatchPosting",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batchId": {
+          "name": "batchId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "glPostingId": {
+          "name": "glPostingId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "withdrawnAt": {
+          "name": "withdrawnAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ExportBatchPosting_live_posting_key": {
+          "name": "ExportBatchPosting_live_posting_key",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "glPostingId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"ExportBatchPosting\".\"withdrawnAt\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ExportBatchPosting_batch_idx": {
+          "name": "ExportBatchPosting_batch_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "batchId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ExportBatchPosting_organizationId_Organization_id_fk": {
+          "name": "ExportBatchPosting_organizationId_Organization_id_fk",
+          "tableFrom": "ExportBatchPosting",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ExportBatchPosting_glPostingId_GlPosting_id_fk": {
+          "name": "ExportBatchPosting_glPostingId_GlPosting_id_fk",
+          "tableFrom": "ExportBatchPosting",
+          "tableTo": "GlPosting",
+          "columnsFrom": [
+            "glPostingId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ExportBatchPosting_batch_scope_fk": {
+          "name": "ExportBatchPosting_batch_scope_fk",
+          "tableFrom": "ExportBatchPosting",
+          "tableTo": "ExportBatch",
+          "columnsFrom": [
+            "organizationId",
+            "batchId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.ExportJob": {
       "name": "ExportJob",
       "schema": "",
@@ -16487,6 +16954,255 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ExternalAccountingBook": {
+      "name": "ExternalAccountingBook",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "providerKey": {
+          "name": "providerKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "externalCompanyId": {
+          "name": "externalCompanyId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ExternalAccountingBook_organizationId_Organization_id_fk": {
+          "name": "ExternalAccountingBook_organizationId_Organization_id_fk",
+          "tableFrom": "ExternalAccountingBook",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ExternalAccountingBook_org_id_key": {
+          "name": "ExternalAccountingBook_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        },
+        "ExternalAccountingBook_company_key": {
+          "name": "ExternalAccountingBook_company_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "providerKey",
+            "externalCompanyId"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ExternalAccountingBook_identity_check": {
+          "name": "ExternalAccountingBook_identity_check",
+          "value": "length(\"ExternalAccountingBook\".\"providerKey\") > 0 AND length(\"ExternalAccountingBook\".\"externalCompanyId\") > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ExternalBookConnection": {
+      "name": "ExternalBookConnection",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "bookId": {
+          "name": "bookId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "epoch": {
+          "name": "epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "credentialId": {
+          "name": "credentialId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "credentialOrganizationId": {
+          "name": "credentialOrganizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "credentialBindingSnapshot": {
+          "name": "credentialBindingSnapshot",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exportFromDate": {
+          "name": "exportFromDate",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "openingPolicy": {
+          "name": "openingPolicy",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "ExternalBookConnection_active_key": {
+          "name": "ExternalBookConnection_active_key",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"ExternalBookConnection\".\"state\" = 'active'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ExternalBookConnection_organizationId_Organization_id_fk": {
+          "name": "ExternalBookConnection_organizationId_Organization_id_fk",
+          "tableFrom": "ExternalBookConnection",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ExternalBookConnection_book_scope_fk": {
+          "name": "ExternalBookConnection_book_scope_fk",
+          "tableFrom": "ExternalBookConnection",
+          "tableTo": "ExternalAccountingBook",
+          "columnsFrom": [
+            "organizationId",
+            "bookId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ExternalBookConnection_credential_scope_fk": {
+          "name": "ExternalBookConnection_credential_scope_fk",
+          "tableFrom": "ExternalBookConnection",
+          "tableTo": "Credential",
+          "columnsFrom": [
+            "credentialOrganizationId",
+            "credentialId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ExternalBookConnection_org_id_key": {
+          "name": "ExternalBookConnection_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        },
+        "ExternalBookConnection_epoch_key": {
+          "name": "ExternalBookConnection_epoch_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "bookId",
+            "epoch"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ExternalBookConnection_credential_check": {
+          "name": "ExternalBookConnection_credential_check",
+          "value": "(\"ExternalBookConnection\".\"credentialId\" IS NULL AND \"ExternalBookConnection\".\"credentialOrganizationId\" IS NULL) OR (\"ExternalBookConnection\".\"credentialId\" IS NOT NULL AND \"ExternalBookConnection\".\"credentialOrganizationId\" IS NOT NULL AND \"ExternalBookConnection\".\"credentialOrganizationId\" = \"ExternalBookConnection\".\"organizationId\")"
+        },
+        "ExternalBookConnection_state_check": {
+          "name": "ExternalBookConnection_state_check",
+          "value": "\"ExternalBookConnection\".\"state\" IN ('active', 'disconnected', 'retired') AND \"ExternalBookConnection\".\"epoch\" > 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.ExternalKnowledgeSource": {
@@ -18111,6 +18827,726 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.FinancialSourceAcceptance": {
+      "name": "FinancialSourceAcceptance",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "sourceObjectId": {
+          "name": "sourceObjectId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "observationId": {
+          "name": "observationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "orderExternalId": {
+          "name": "orderExternalId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "orderInstanceId": {
+          "name": "orderInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moneyTransactionId": {
+          "name": "moneyTransactionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "unresolvedReferences": {
+          "name": "unresolvedReferences",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "nextAttemptAt": {
+          "name": "nextAttemptAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "FinancialSourceAcceptance_recovery_idx": {
+          "name": "FinancialSourceAcceptance_recovery_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "nextAttemptAt",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "FinancialSourceAcceptance_organizationId_Organization_id_fk": {
+          "name": "FinancialSourceAcceptance_organizationId_Organization_id_fk",
+          "tableFrom": "FinancialSourceAcceptance",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "FinancialSourceAcceptance_sourceObjectId_fk": {
+          "name": "FinancialSourceAcceptance_sourceObjectId_fk",
+          "tableFrom": "FinancialSourceAcceptance",
+          "tableTo": "FinancialSourceObject",
+          "columnsFrom": [
+            "organizationId",
+            "sourceObjectId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "FinancialSourceAcceptance_observationId_fk": {
+          "name": "FinancialSourceAcceptance_observationId_fk",
+          "tableFrom": "FinancialSourceAcceptance",
+          "tableTo": "FinancialSourceObservation",
+          "columnsFrom": [
+            "organizationId",
+            "observationId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "FinancialSourceAcceptance_orderInstanceId_fk": {
+          "name": "FinancialSourceAcceptance_orderInstanceId_fk",
+          "tableFrom": "FinancialSourceAcceptance",
+          "tableTo": "EntityInstance",
+          "columnsFrom": [
+            "organizationId",
+            "orderInstanceId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "FinancialSourceAcceptance_moneyTransactionId_fk": {
+          "name": "FinancialSourceAcceptance_moneyTransactionId_fk",
+          "tableFrom": "FinancialSourceAcceptance",
+          "tableTo": "MoneyTransaction",
+          "columnsFrom": [
+            "organizationId",
+            "moneyTransactionId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "FinancialSourceAcceptance_org_id_key": {
+          "name": "FinancialSourceAcceptance_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        },
+        "FinancialSourceAcceptance_object_key": {
+          "name": "FinancialSourceAcceptance_object_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "sourceObjectId"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "FinancialSourceAcceptance_state_check": {
+          "name": "FinancialSourceAcceptance_state_check",
+          "value": "\"FinancialSourceAcceptance\".\"state\" IN ('pending','accepted','rejected','blocked') AND \"FinancialSourceAcceptance\".\"attempts\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.FinancialSourceAccount": {
+      "name": "FinancialSourceAccount",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "providerKey": {
+          "name": "providerKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "externalAccountId": {
+          "name": "externalAccountId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "environment": {
+          "name": "environment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "archivedAt": {
+          "name": "archivedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paymentGatewayId": {
+          "name": "paymentGatewayId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "FinancialSourceAccount_organizationId_Organization_id_fk": {
+          "name": "FinancialSourceAccount_organizationId_Organization_id_fk",
+          "tableFrom": "FinancialSourceAccount",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "FinancialSourceAccount_paymentGatewayId_fk": {
+          "name": "FinancialSourceAccount_paymentGatewayId_fk",
+          "tableFrom": "FinancialSourceAccount",
+          "tableTo": "EntityInstance",
+          "columnsFrom": [
+            "organizationId",
+            "paymentGatewayId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "FinancialSourceAccount_org_id_key": {
+          "name": "FinancialSourceAccount_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        },
+        "FinancialSourceAccount_identity_key": {
+          "name": "FinancialSourceAccount_identity_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "providerKey",
+            "externalAccountId",
+            "environment"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "FinancialSourceAccount_identity_check": {
+          "name": "FinancialSourceAccount_identity_check",
+          "value": "length(\"FinancialSourceAccount\".\"providerKey\") > 0 AND length(\"FinancialSourceAccount\".\"externalAccountId\") > 0 AND \"FinancialSourceAccount\".\"environment\" IN ('live', 'test')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.FinancialSourceCoverage": {
+      "name": "FinancialSourceCoverage",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "sourceAccountId": {
+          "name": "sourceAccountId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "streamKey": {
+          "name": "streamKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "windowKey": {
+          "name": "windowKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requestedBoundary": {
+          "name": "requestedBoundary",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fetchedBoundary": {
+          "name": "fetchedBoundary",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fetchedCount": {
+          "name": "fetchedCount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "acceptedCount": {
+          "name": "acceptedCount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rejectedCount": {
+          "name": "rejectedCount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pendingCount": {
+          "name": "pendingCount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "complete": {
+          "name": "complete",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "FinancialSourceCoverage_organizationId_Organization_id_fk": {
+          "name": "FinancialSourceCoverage_organizationId_Organization_id_fk",
+          "tableFrom": "FinancialSourceCoverage",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "FinancialSourceCoverage_sourceAccountId_fk": {
+          "name": "FinancialSourceCoverage_sourceAccountId_fk",
+          "tableFrom": "FinancialSourceCoverage",
+          "tableTo": "FinancialSourceAccount",
+          "columnsFrom": [
+            "organizationId",
+            "sourceAccountId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "FinancialSourceCoverage_org_id_key": {
+          "name": "FinancialSourceCoverage_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        },
+        "FinancialSourceCoverage_window_key": {
+          "name": "FinancialSourceCoverage_window_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "sourceAccountId",
+            "streamKey",
+            "windowKey"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "FinancialSourceCoverage_counts_check": {
+          "name": "FinancialSourceCoverage_counts_check",
+          "value": "\"FinancialSourceCoverage\".\"fetchedCount\" >= 0 AND \"FinancialSourceCoverage\".\"acceptedCount\" >= 0 AND \"FinancialSourceCoverage\".\"rejectedCount\" >= 0 AND \"FinancialSourceCoverage\".\"pendingCount\" >= 0 AND \"FinancialSourceCoverage\".\"acceptedCount\" + \"FinancialSourceCoverage\".\"rejectedCount\" + \"FinancialSourceCoverage\".\"pendingCount\" = \"FinancialSourceCoverage\".\"fetchedCount\" AND (NOT \"FinancialSourceCoverage\".\"complete\" OR (\"FinancialSourceCoverage\".\"pendingCount\" = 0 AND \"FinancialSourceCoverage\".\"rejectedCount\" = 0))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.FinancialSourceObject": {
+      "name": "FinancialSourceObject",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "sourceAccountId": {
+          "name": "sourceAccountId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "objectType": {
+          "name": "objectType",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "externalId": {
+          "name": "externalId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "componentKey": {
+          "name": "componentKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "FinancialSourceObject_organizationId_Organization_id_fk": {
+          "name": "FinancialSourceObject_organizationId_Organization_id_fk",
+          "tableFrom": "FinancialSourceObject",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "FinancialSourceObject_sourceAccountId_fk": {
+          "name": "FinancialSourceObject_sourceAccountId_fk",
+          "tableFrom": "FinancialSourceObject",
+          "tableTo": "FinancialSourceAccount",
+          "columnsFrom": [
+            "organizationId",
+            "sourceAccountId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "FinancialSourceObject_org_id_key": {
+          "name": "FinancialSourceObject_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        },
+        "FinancialSourceObject_identity_key": {
+          "name": "FinancialSourceObject_identity_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "sourceAccountId",
+            "objectType",
+            "externalId",
+            "componentKey"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.FinancialSourceObservation": {
+      "name": "FinancialSourceObservation",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "sourceObjectId": {
+          "name": "sourceObjectId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contentHash": {
+          "name": "contentHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerVersion": {
+          "name": "providerVersion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "observedAt": {
+          "name": "observedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reportingInstallationSnapshot": {
+          "name": "reportingInstallationSnapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "FinancialSourceObservation_organizationId_Organization_id_fk": {
+          "name": "FinancialSourceObservation_organizationId_Organization_id_fk",
+          "tableFrom": "FinancialSourceObservation",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "FinancialSourceObservation_sourceObjectId_fk": {
+          "name": "FinancialSourceObservation_sourceObjectId_fk",
+          "tableFrom": "FinancialSourceObservation",
+          "tableTo": "FinancialSourceObject",
+          "columnsFrom": [
+            "organizationId",
+            "sourceObjectId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "FinancialSourceObservation_org_id_key": {
+          "name": "FinancialSourceObservation_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        },
+        "FinancialSourceObservation_hash_key": {
+          "name": "FinancialSourceObservation_hash_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "sourceObjectId",
+            "contentHash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.FolderFile": {
       "name": "FolderFile",
       "schema": "",
@@ -19157,6 +20593,173 @@
       },
       "isRLSEnabled": false
     },
+    "public.GlPostingSource": {
+      "name": "GlPostingSource",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "glPostingId": {
+          "name": "glPostingId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceKind": {
+          "name": "sourceKind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceId": {
+          "name": "sourceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "linkRole": {
+          "name": "linkRole",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurrence": {
+          "name": "occurrence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'original'"
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp (3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "GlPostingSource_claim_key": {
+          "name": "GlPostingSource_claim_key",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sourceKind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sourceId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurrence",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"GlPostingSource\".\"linkRole\" = 'subject'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "GlPostingSource_source_idx": {
+          "name": "GlPostingSource_source_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sourceKind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sourceId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "GlPostingSource_posting_idx": {
+          "name": "GlPostingSource_posting_idx",
+          "columns": [
+            {
+              "expression": "glPostingId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "GlPostingSource_organizationId_Organization_id_fk": {
+          "name": "GlPostingSource_organizationId_Organization_id_fk",
+          "tableFrom": "GlPostingSource",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "GlPostingSource_glPostingId_GlPosting_id_fk": {
+          "name": "GlPostingSource_glPostingId_GlPosting_id_fk",
+          "tableFrom": "GlPostingSource",
+          "tableTo": "GlPosting",
+          "columnsFrom": [
+            "glPostingId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.GlPosting": {
       "name": "GlPosting",
       "schema": "",
@@ -19211,7 +20814,19 @@
           "name": "docNumber",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "storeId": {
+          "name": "storeId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "railId": {
+          "name": "railId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "currency": {
           "name": "currency",
@@ -19226,43 +20841,11 @@
           "primaryKey": false,
           "notNull": true
         },
-        "draft": {
-          "name": "draft",
+        "built": {
+          "name": "built",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
-        },
-        "requestId": {
-          "name": "requestId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "exportStatus": {
-          "name": "exportStatus",
-          "type": "GlPostingExportStatus",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'not_required'"
-        },
-        "providerId": {
-          "name": "providerId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "providerEntryId": {
-          "name": "providerEntryId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "providerTenantId": {
-          "name": "providerTenantId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "postedAt": {
           "name": "postedAt",
@@ -19275,19 +20858,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "failureReason": {
-          "name": "failureReason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "reversesId": {
           "name": "reversesId",
@@ -19311,39 +20881,6 @@
         }
       },
       "indexes": {
-        "GlPosting_org_type_period_revision_key": {
-          "name": "GlPosting_org_type_period_revision_key",
-          "columns": [
-            {
-              "expression": "organizationId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "postingType",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "periodKey",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "revision",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "GlPosting_org_docNumber_key": {
           "name": "GlPosting_org_docNumber_key",
           "columns": [
@@ -19365,34 +20902,6 @@
           "method": "btree",
           "with": {}
         },
-        "GlPosting_org_provider_entry_key": {
-          "name": "GlPosting_org_provider_entry_key",
-          "columns": [
-            {
-              "expression": "organizationId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "providerId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "providerEntryId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"GlPosting\".\"providerEntryId\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "GlPosting_org_status_idx": {
           "name": "GlPosting_org_status_idx",
           "columns": [
@@ -19404,27 +20913,6 @@
             },
             {
               "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "GlPosting_org_exportStatus_idx": {
-          "name": "GlPosting_org_exportStatus_idx",
-          "columns": [
-            {
-              "expression": "organizationId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "exportStatus",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -19486,6 +20974,19 @@
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
+        "GlPosting_storeId_FinancialSourceAccount_id_fk": {
+          "name": "GlPosting_storeId_FinancialSourceAccount_id_fk",
+          "tableFrom": "GlPosting",
+          "tableTo": "FinancialSourceAccount",
+          "columnsFrom": [
+            "storeId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "GlPosting_postedByUserId_User_id_fk": {
           "name": "GlPosting_postedByUserId_User_id_fk",
           "tableFrom": "GlPosting",
@@ -19514,16 +21015,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "GlPosting_org_id_key": {
-          "name": "GlPosting_org_id_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "organizationId",
-            "id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
         "GlPosting_totalMinor_check": {
@@ -19533,10 +21025,6 @@
         "GlPosting_revision_check": {
           "name": "GlPosting_revision_check",
           "value": "\"GlPosting\".\"revision\" >= 0"
-        },
-        "GlPosting_attempts_check": {
-          "name": "GlPosting_attempts_check",
-          "value": "\"GlPosting\".\"attempts\" >= 0"
         },
         "GlPosting_reversal_check": {
           "name": "GlPosting_reversal_check",
@@ -19576,6 +21064,24 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "sourceAccountId": {
+          "name": "sourceAccountId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paymentGatewayId": {
+          "name": "paymentGatewayId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "source": {
           "name": "source",
@@ -19618,8 +21124,8 @@
         }
       },
       "indexes": {
-        "GlRoleAssignment_org_role_key": {
-          "name": "GlRoleAssignment_org_role_key",
+        "GlRoleAssignment_org_role_default_key": {
+          "name": "GlRoleAssignment_org_role_default_key",
           "columns": [
             {
               "expression": "organizationId",
@@ -19635,6 +21141,69 @@
             }
           ],
           "isUnique": true,
+          "where": "\"GlRoleAssignment\".\"sourceAccountId\" IS NULL AND \"GlRoleAssignment\".\"paymentGatewayId\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "GlRoleAssignment_org_role_source_key": {
+          "name": "GlRoleAssignment_org_role_source_key",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "role",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sourceAccountId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"GlRoleAssignment\".\"sourceAccountId\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "GlRoleAssignment_org_role_rail_key": {
+          "name": "GlRoleAssignment_org_role_rail_key",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "role",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "paymentGatewayId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "coalesce(\"currency\", '')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"GlRoleAssignment\".\"paymentGatewayId\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -19687,12 +21256,55 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "GlRoleAssignment_sourceAccountId_fk": {
+          "name": "GlRoleAssignment_sourceAccountId_fk",
+          "tableFrom": "GlRoleAssignment",
+          "tableTo": "FinancialSourceAccount",
+          "columnsFrom": [
+            "organizationId",
+            "sourceAccountId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "GlRoleAssignment_paymentGatewayId_fk": {
+          "name": "GlRoleAssignment_paymentGatewayId_fk",
+          "tableFrom": "GlRoleAssignment",
+          "tableTo": "EntityInstance",
+          "columnsFrom": [
+            "organizationId",
+            "paymentGatewayId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "GlRoleAssignment_scope_exclusive_check": {
+          "name": "GlRoleAssignment_scope_exclusive_check",
+          "value": "num_nonnulls(\"GlRoleAssignment\".\"sourceAccountId\", \"GlRoleAssignment\".\"paymentGatewayId\") <= 1"
+        },
+        "GlRoleAssignment_currency_rail_check": {
+          "name": "GlRoleAssignment_currency_rail_check",
+          "value": "\"GlRoleAssignment\".\"currency\" IS NULL OR \"GlRoleAssignment\".\"paymentGatewayId\" IS NOT NULL"
+        },
+        "GlRoleAssignment_currency_format_check": {
+          "name": "GlRoleAssignment_currency_format_check",
+          "value": "\"GlRoleAssignment\".\"currency\" IS NULL OR \"GlRoleAssignment\".\"currency\" ~ '^[A-Z]{3}$'"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.ImportJobMappableProperty": {
@@ -22024,6 +23636,1507 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.MoneyApplication": {
+      "name": "MoneyApplication",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "moneyTransactionId": {
+          "name": "moneyTransactionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operation": {
+          "name": "operation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amountMinor": {
+          "name": "amountMinor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "orderInstanceId": {
+          "name": "orderInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invoiceInstanceId": {
+          "name": "invoiceInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vendorBillInstanceId": {
+          "name": "vendorBillInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quoteInstanceId": {
+          "name": "quoteInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "appliedAt": {
+          "name": "appliedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "effectiveDate": {
+          "name": "effectiveDate",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reversesApplicationId": {
+          "name": "reversesApplicationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "commandId": {
+          "name": "commandId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "commandItemKey": {
+          "name": "commandItemKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "MoneyApplication_quote_idx": {
+          "name": "MoneyApplication_quote_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "quoteInstanceId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "MoneyApplication_organizationId_Organization_id_fk": {
+          "name": "MoneyApplication_organizationId_Organization_id_fk",
+          "tableFrom": "MoneyApplication",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "MoneyApplication_moneyTransactionId_fk": {
+          "name": "MoneyApplication_moneyTransactionId_fk",
+          "tableFrom": "MoneyApplication",
+          "tableTo": "MoneyTransaction",
+          "columnsFrom": [
+            "organizationId",
+            "moneyTransactionId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyApplication_orderInstanceId_fk": {
+          "name": "MoneyApplication_orderInstanceId_fk",
+          "tableFrom": "MoneyApplication",
+          "tableTo": "EntityInstance",
+          "columnsFrom": [
+            "organizationId",
+            "orderInstanceId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyApplication_invoiceInstanceId_fk": {
+          "name": "MoneyApplication_invoiceInstanceId_fk",
+          "tableFrom": "MoneyApplication",
+          "tableTo": "EntityInstance",
+          "columnsFrom": [
+            "organizationId",
+            "invoiceInstanceId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyApplication_vendorBillInstanceId_fk": {
+          "name": "MoneyApplication_vendorBillInstanceId_fk",
+          "tableFrom": "MoneyApplication",
+          "tableTo": "EntityInstance",
+          "columnsFrom": [
+            "organizationId",
+            "vendorBillInstanceId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyApplication_commandId_fk": {
+          "name": "MoneyApplication_commandId_fk",
+          "tableFrom": "MoneyApplication",
+          "tableTo": "MoneyCommand",
+          "columnsFrom": [
+            "organizationId",
+            "commandId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyApplication_reversesApplicationId_fk": {
+          "name": "MoneyApplication_reversesApplicationId_fk",
+          "tableFrom": "MoneyApplication",
+          "tableTo": "MoneyApplication",
+          "columnsFrom": [
+            "organizationId",
+            "reversesApplicationId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "MoneyApplication_org_id_key": {
+          "name": "MoneyApplication_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        },
+        "MoneyApplication_command_key": {
+          "name": "MoneyApplication_command_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "commandId",
+            "commandItemKey"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "MoneyApplication_shape_check": {
+          "name": "MoneyApplication_shape_check",
+          "value": "\"MoneyApplication\".\"amountMinor\" > 0 AND num_nonnulls(\"MoneyApplication\".\"orderInstanceId\", \"MoneyApplication\".\"invoiceInstanceId\", \"MoneyApplication\".\"vendorBillInstanceId\") = 1 AND ((\"MoneyApplication\".\"operation\" = 'apply' AND \"MoneyApplication\".\"reversesApplicationId\" IS NULL) OR (\"MoneyApplication\".\"operation\" = 'unapply' AND \"MoneyApplication\".\"reversesApplicationId\" IS NOT NULL))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.MoneyCommand": {
+      "name": "MoneyCommand",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "commandKey": {
+          "name": "commandKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payloadHash": {
+          "name": "payloadHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actorSnapshot": {
+          "name": "actorSnapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resultIds": {
+          "name": "resultIds",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "MoneyCommand_organizationId_Organization_id_fk": {
+          "name": "MoneyCommand_organizationId_Organization_id_fk",
+          "tableFrom": "MoneyCommand",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "MoneyCommand_org_id_key": {
+          "name": "MoneyCommand_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        },
+        "MoneyCommand_key": {
+          "name": "MoneyCommand_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "commandKey"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.MoneyRefundSettlement": {
+      "name": "MoneyRefundSettlement",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "refundTransactionId": {
+          "name": "refundTransactionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "originalTransactionId": {
+          "name": "originalTransactionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "amountMinor": {
+          "name": "amountMinor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "disposition": {
+          "name": "disposition",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "customerCreditMemoInstanceId": {
+          "name": "customerCreditMemoInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vendorCreditInstanceId": {
+          "name": "vendorCreditInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "unappliedMoneyTransactionId": {
+          "name": "unappliedMoneyTransactionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "commandId": {
+          "name": "commandId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "commandItemKey": {
+          "name": "commandItemKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "MoneyRefundSettlement_organizationId_Organization_id_fk": {
+          "name": "MoneyRefundSettlement_organizationId_Organization_id_fk",
+          "tableFrom": "MoneyRefundSettlement",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "MoneyRefundSettlement_refundTransactionId_fk": {
+          "name": "MoneyRefundSettlement_refundTransactionId_fk",
+          "tableFrom": "MoneyRefundSettlement",
+          "tableTo": "MoneyTransaction",
+          "columnsFrom": [
+            "organizationId",
+            "refundTransactionId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyRefundSettlement_originalTransactionId_fk": {
+          "name": "MoneyRefundSettlement_originalTransactionId_fk",
+          "tableFrom": "MoneyRefundSettlement",
+          "tableTo": "MoneyTransaction",
+          "columnsFrom": [
+            "organizationId",
+            "originalTransactionId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyRefundSettlement_customerCreditMemoInstanceId_fk": {
+          "name": "MoneyRefundSettlement_customerCreditMemoInstanceId_fk",
+          "tableFrom": "MoneyRefundSettlement",
+          "tableTo": "EntityInstance",
+          "columnsFrom": [
+            "organizationId",
+            "customerCreditMemoInstanceId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyRefundSettlement_vendorCreditInstanceId_fk": {
+          "name": "MoneyRefundSettlement_vendorCreditInstanceId_fk",
+          "tableFrom": "MoneyRefundSettlement",
+          "tableTo": "EntityInstance",
+          "columnsFrom": [
+            "organizationId",
+            "vendorCreditInstanceId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyRefundSettlement_unappliedMoneyTransactionId_fk": {
+          "name": "MoneyRefundSettlement_unappliedMoneyTransactionId_fk",
+          "tableFrom": "MoneyRefundSettlement",
+          "tableTo": "MoneyTransaction",
+          "columnsFrom": [
+            "organizationId",
+            "unappliedMoneyTransactionId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyRefundSettlement_commandId_fk": {
+          "name": "MoneyRefundSettlement_commandId_fk",
+          "tableFrom": "MoneyRefundSettlement",
+          "tableTo": "MoneyCommand",
+          "columnsFrom": [
+            "organizationId",
+            "commandId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "MoneyRefundSettlement_org_id_key": {
+          "name": "MoneyRefundSettlement_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        },
+        "MoneyRefundSettlement_command_key": {
+          "name": "MoneyRefundSettlement_command_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "commandId",
+            "commandItemKey"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "MoneyRefundSettlement_shape_check": {
+          "name": "MoneyRefundSettlement_shape_check",
+          "value": "\"MoneyRefundSettlement\".\"amountMinor\" > 0 AND ((\"MoneyRefundSettlement\".\"disposition\" = 'customer_credit' AND \"MoneyRefundSettlement\".\"customerCreditMemoInstanceId\" IS NOT NULL AND \"MoneyRefundSettlement\".\"vendorCreditInstanceId\" IS NULL AND \"MoneyRefundSettlement\".\"unappliedMoneyTransactionId\" IS NULL) OR (\"MoneyRefundSettlement\".\"disposition\" = 'vendor_credit' AND \"MoneyRefundSettlement\".\"customerCreditMemoInstanceId\" IS NULL AND \"MoneyRefundSettlement\".\"vendorCreditInstanceId\" IS NOT NULL AND \"MoneyRefundSettlement\".\"unappliedMoneyTransactionId\" IS NULL) OR (\"MoneyRefundSettlement\".\"disposition\" = 'unapplied_money' AND \"MoneyRefundSettlement\".\"customerCreditMemoInstanceId\" IS NULL AND \"MoneyRefundSettlement\".\"vendorCreditInstanceId\" IS NULL AND \"MoneyRefundSettlement\".\"unappliedMoneyTransactionId\" IS NOT NULL))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.MoneySourceLink": {
+      "name": "MoneySourceLink",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "sourceObjectId": {
+          "name": "sourceObjectId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "moneyTransactionId": {
+          "name": "moneyTransactionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verifiedByCommandId": {
+          "name": "verifiedByCommandId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "linkedAt": {
+          "name": "linkedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "MoneySourceLink_organizationId_Organization_id_fk": {
+          "name": "MoneySourceLink_organizationId_Organization_id_fk",
+          "tableFrom": "MoneySourceLink",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "MoneySourceLink_sourceObjectId_fk": {
+          "name": "MoneySourceLink_sourceObjectId_fk",
+          "tableFrom": "MoneySourceLink",
+          "tableTo": "FinancialSourceObject",
+          "columnsFrom": [
+            "organizationId",
+            "sourceObjectId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneySourceLink_moneyTransactionId_fk": {
+          "name": "MoneySourceLink_moneyTransactionId_fk",
+          "tableFrom": "MoneySourceLink",
+          "tableTo": "MoneyTransaction",
+          "columnsFrom": [
+            "organizationId",
+            "moneyTransactionId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneySourceLink_verifiedByCommandId_fk": {
+          "name": "MoneySourceLink_verifiedByCommandId_fk",
+          "tableFrom": "MoneySourceLink",
+          "tableTo": "MoneyCommand",
+          "columnsFrom": [
+            "organizationId",
+            "verifiedByCommandId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "MoneySourceLink_org_id_key": {
+          "name": "MoneySourceLink_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        },
+        "MoneySourceLink_object_key": {
+          "name": "MoneySourceLink_object_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "sourceObjectId"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.MoneyTransaction": {
+      "name": "MoneyTransaction",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amountMinor": {
+          "name": "amountMinor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currencyExponent": {
+          "name": "currencyExponent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "datePrecision": {
+          "name": "datePrecision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurredAt": {
+          "name": "occurredAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "occurredOn": {
+          "name": "occurredOn",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "partyInstanceId": {
+          "name": "partyInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cashAccountInstanceId": {
+          "name": "cashAccountInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "method": {
+          "name": "method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recordedByCommandId": {
+          "name": "recordedByCommandId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reference": {
+          "name": "reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quoteInstanceId": {
+          "name": "quoteInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "workOrderInstanceId": {
+          "name": "workOrderInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bankDepositInstanceId": {
+          "name": "bankDepositInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "MoneyTransaction_quote_idx": {
+          "name": "MoneyTransaction_quote_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "quoteInstanceId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "MoneyTransaction_work_order_idx": {
+          "name": "MoneyTransaction_work_order_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "workOrderInstanceId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "MoneyTransaction_bank_deposit_idx": {
+          "name": "MoneyTransaction_bank_deposit_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bankDepositInstanceId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "MoneyTransaction_organizationId_Organization_id_fk": {
+          "name": "MoneyTransaction_organizationId_Organization_id_fk",
+          "tableFrom": "MoneyTransaction",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "MoneyTransaction_partyInstanceId_fk": {
+          "name": "MoneyTransaction_partyInstanceId_fk",
+          "tableFrom": "MoneyTransaction",
+          "tableTo": "EntityInstance",
+          "columnsFrom": [
+            "organizationId",
+            "partyInstanceId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyTransaction_cashAccountInstanceId_fk": {
+          "name": "MoneyTransaction_cashAccountInstanceId_fk",
+          "tableFrom": "MoneyTransaction",
+          "tableTo": "EntityInstance",
+          "columnsFrom": [
+            "organizationId",
+            "cashAccountInstanceId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyTransaction_recordedByCommandId_fk": {
+          "name": "MoneyTransaction_recordedByCommandId_fk",
+          "tableFrom": "MoneyTransaction",
+          "tableTo": "MoneyCommand",
+          "columnsFrom": [
+            "organizationId",
+            "recordedByCommandId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "MoneyTransaction_org_id_key": {
+          "name": "MoneyTransaction_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "MoneyTransaction_money_check": {
+          "name": "MoneyTransaction_money_check",
+          "value": "\"MoneyTransaction\".\"amountMinor\" > 0 AND \"MoneyTransaction\".\"currency\" ~ '^[A-Z]{3}$' AND \"MoneyTransaction\".\"currencyExponent\" BETWEEN 0 AND 4 AND \"MoneyTransaction\".\"purpose\" IN ('customer_receipt','customer_refund','vendor_payment','vendor_refund')"
+        },
+        "MoneyTransaction_date_check": {
+          "name": "MoneyTransaction_date_check",
+          "value": "(\"MoneyTransaction\".\"datePrecision\" = 'instant' AND \"MoneyTransaction\".\"occurredAt\" IS NOT NULL AND \"MoneyTransaction\".\"occurredOn\" IS NULL) OR (\"MoneyTransaction\".\"datePrecision\" = 'date' AND \"MoneyTransaction\".\"occurredAt\" IS NULL AND \"MoneyTransaction\".\"occurredOn\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.MoneyTransfer": {
+      "name": "MoneyTransfer",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "sourceAccountId": {
+          "name": "sourceAccountId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceObjectId": {
+          "name": "sourceObjectId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currentObservationId": {
+          "name": "currentObservationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "externalId": {
+          "name": "externalId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reconciliationBasisHash": {
+          "name": "reconciliationBasisHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reconciliationState": {
+          "name": "reconciliationState",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "reconciliationResult": {
+          "name": "reconciliationResult",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reconciledAt": {
+          "name": "reconciledAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sourceAmountMinor": {
+          "name": "sourceAmountMinor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceCurrency": {
+          "name": "sourceCurrency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceCurrencyExponent": {
+          "name": "sourceCurrencyExponent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destinationAmountMinor": {
+          "name": "destinationAmountMinor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destinationCurrency": {
+          "name": "destinationCurrency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destinationCurrencyExponent": {
+          "name": "destinationCurrencyExponent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destinationBankAccountInstanceId": {
+          "name": "destinationBankAccountInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "destinationExternalId": {
+          "name": "destinationExternalId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "datePrecision": {
+          "name": "datePrecision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurredAt": {
+          "name": "occurredAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "occurredOn": {
+          "name": "occurredOn",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "MoneyTransfer_organizationId_Organization_id_fk": {
+          "name": "MoneyTransfer_organizationId_Organization_id_fk",
+          "tableFrom": "MoneyTransfer",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "MoneyTransfer_record_id_fk": {
+          "name": "MoneyTransfer_record_id_fk",
+          "tableFrom": "MoneyTransfer",
+          "tableTo": "EntityInstance",
+          "columnsFrom": [
+            "organizationId",
+            "id"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyTransfer_sourceAccountId_fk": {
+          "name": "MoneyTransfer_sourceAccountId_fk",
+          "tableFrom": "MoneyTransfer",
+          "tableTo": "FinancialSourceAccount",
+          "columnsFrom": [
+            "organizationId",
+            "sourceAccountId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyTransfer_sourceObjectId_fk": {
+          "name": "MoneyTransfer_sourceObjectId_fk",
+          "tableFrom": "MoneyTransfer",
+          "tableTo": "FinancialSourceObject",
+          "columnsFrom": [
+            "organizationId",
+            "sourceObjectId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyTransfer_currentObservationId_fk": {
+          "name": "MoneyTransfer_currentObservationId_fk",
+          "tableFrom": "MoneyTransfer",
+          "tableTo": "FinancialSourceObservation",
+          "columnsFrom": [
+            "organizationId",
+            "currentObservationId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "MoneyTransfer_destinationBankAccountInstanceId_fk": {
+          "name": "MoneyTransfer_destinationBankAccountInstanceId_fk",
+          "tableFrom": "MoneyTransfer",
+          "tableTo": "EntityInstance",
+          "columnsFrom": [
+            "organizationId",
+            "destinationBankAccountInstanceId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "MoneyTransfer_org_id_key": {
+          "name": "MoneyTransfer_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        },
+        "MoneyTransfer_source_key": {
+          "name": "MoneyTransfer_source_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "sourceObjectId"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "MoneyTransfer_currency_check": {
+          "name": "MoneyTransfer_currency_check",
+          "value": "\"MoneyTransfer\".\"sourceCurrency\" ~ '^[A-Z]{3}$' AND \"MoneyTransfer\".\"destinationCurrency\" ~ '^[A-Z]{3}$' AND \"MoneyTransfer\".\"sourceCurrencyExponent\" BETWEEN 0 AND 4 AND \"MoneyTransfer\".\"destinationCurrencyExponent\" BETWEEN 0 AND 4"
+        },
+        "MoneyTransfer_date_check": {
+          "name": "MoneyTransfer_date_check",
+          "value": "(\"MoneyTransfer\".\"datePrecision\" = 'instant' AND \"MoneyTransfer\".\"occurredAt\" IS NOT NULL AND \"MoneyTransfer\".\"occurredOn\" IS NULL) OR (\"MoneyTransfer\".\"datePrecision\" = 'date' AND \"MoneyTransfer\".\"occurredAt\" IS NULL AND \"MoneyTransfer\".\"occurredOn\" IS NOT NULL) OR (\"MoneyTransfer\".\"datePrecision\" = 'unknown' AND \"MoneyTransfer\".\"occurredAt\" IS NULL AND \"MoneyTransfer\".\"occurredOn\" IS NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ProcessorBalanceEntry": {
+      "name": "ProcessorBalanceEntry",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "sourceAccountId": {
+          "name": "sourceAccountId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceObjectId": {
+          "name": "sourceObjectId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currentObservationId": {
+          "name": "currentObservationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "externalId": {
+          "name": "externalId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grossMinor": {
+          "name": "grossMinor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feeMinor": {
+          "name": "feeMinor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "netMinor": {
+          "name": "netMinor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currencyExponent": {
+          "name": "currencyExponent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transactionDate": {
+          "name": "transactionDate",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payoutExternalId": {
+          "name": "payoutExternalId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sourceTransactionId": {
+          "name": "sourceTransactionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sourceReference": {
+          "name": "sourceReference",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sourceOrderId": {
+          "name": "sourceOrderId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sourceId": {
+          "name": "sourceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sourceType": {
+          "name": "sourceType",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "isOutgoingTransfer": {
+          "name": "isOutgoingTransfer",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "ProcessorBalanceEntry_payout_idx": {
+          "name": "ProcessorBalanceEntry_payout_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sourceAccountId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "payoutExternalId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ProcessorBalanceEntry_organizationId_Organization_id_fk": {
+          "name": "ProcessorBalanceEntry_organizationId_Organization_id_fk",
+          "tableFrom": "ProcessorBalanceEntry",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ProcessorBalanceEntry_record_id_fk": {
+          "name": "ProcessorBalanceEntry_record_id_fk",
+          "tableFrom": "ProcessorBalanceEntry",
+          "tableTo": "EntityInstance",
+          "columnsFrom": [
+            "organizationId",
+            "id"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ProcessorBalanceEntry_sourceAccountId_fk": {
+          "name": "ProcessorBalanceEntry_sourceAccountId_fk",
+          "tableFrom": "ProcessorBalanceEntry",
+          "tableTo": "FinancialSourceAccount",
+          "columnsFrom": [
+            "organizationId",
+            "sourceAccountId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ProcessorBalanceEntry_sourceObjectId_fk": {
+          "name": "ProcessorBalanceEntry_sourceObjectId_fk",
+          "tableFrom": "ProcessorBalanceEntry",
+          "tableTo": "FinancialSourceObject",
+          "columnsFrom": [
+            "organizationId",
+            "sourceObjectId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ProcessorBalanceEntry_currentObservationId_fk": {
+          "name": "ProcessorBalanceEntry_currentObservationId_fk",
+          "tableFrom": "ProcessorBalanceEntry",
+          "tableTo": "FinancialSourceObservation",
+          "columnsFrom": [
+            "organizationId",
+            "currentObservationId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ProcessorBalanceEntry_org_id_key": {
+          "name": "ProcessorBalanceEntry_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        },
+        "ProcessorBalanceEntry_source_key": {
+          "name": "ProcessorBalanceEntry_source_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "sourceObjectId"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ProcessorBalanceEntry_currency_check": {
+          "name": "ProcessorBalanceEntry_currency_check",
+          "value": "\"ProcessorBalanceEntry\".\"currency\" ~ '^[A-Z]{3}$' AND \"ProcessorBalanceEntry\".\"currencyExponent\" BETWEEN 0 AND 4"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.WorkOrderBillingInstallment": {
@@ -30087,638 +33200,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.PaymentAllocation": {
-      "name": "PaymentAllocation",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "organizationId": {
-          "name": "organizationId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "paymentTransactionId": {
-          "name": "paymentTransactionId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "invoiceInstanceId": {
-          "name": "invoiceInstanceId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "amount": {
-          "name": "amount",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "appliedAt": {
-          "name": "appliedAt",
-          "type": "timestamp (3)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "createdByUserId": {
-          "name": "createdByUserId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "paymentInstanceId": {
-          "name": "paymentInstanceId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "createdAt": {
-          "name": "createdAt",
-          "type": "timestamp (3)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updatedAt": {
-          "name": "updatedAt",
-          "type": "timestamp (3)",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "PaymentAllocation_paymentTransactionId_invoiceInstanceId_key": {
-          "name": "PaymentAllocation_paymentTransactionId_invoiceInstanceId_key",
-          "columns": [
-            {
-              "expression": "paymentTransactionId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "invoiceInstanceId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "PaymentAllocation_organizationId_invoiceInstanceId_idx": {
-          "name": "PaymentAllocation_organizationId_invoiceInstanceId_idx",
-          "columns": [
-            {
-              "expression": "organizationId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "invoiceInstanceId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "PaymentAllocation_paymentTransactionId_idx": {
-          "name": "PaymentAllocation_paymentTransactionId_idx",
-          "columns": [
-            {
-              "expression": "paymentTransactionId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "PaymentAllocation_organizationId_Organization_id_fk": {
-          "name": "PaymentAllocation_organizationId_Organization_id_fk",
-          "tableFrom": "PaymentAllocation",
-          "tableTo": "Organization",
-          "columnsFrom": [
-            "organizationId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        },
-        "PaymentAllocation_paymentTransactionId_PaymentTransaction_id_fk": {
-          "name": "PaymentAllocation_paymentTransactionId_PaymentTransaction_id_fk",
-          "tableFrom": "PaymentAllocation",
-          "tableTo": "PaymentTransaction",
-          "columnsFrom": [
-            "paymentTransactionId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        },
-        "PaymentAllocation_invoiceInstanceId_EntityInstance_id_fk": {
-          "name": "PaymentAllocation_invoiceInstanceId_EntityInstance_id_fk",
-          "tableFrom": "PaymentAllocation",
-          "tableTo": "EntityInstance",
-          "columnsFrom": [
-            "invoiceInstanceId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "cascade"
-        },
-        "PaymentAllocation_createdByUserId_User_id_fk": {
-          "name": "PaymentAllocation_createdByUserId_User_id_fk",
-          "tableFrom": "PaymentAllocation",
-          "tableTo": "User",
-          "columnsFrom": [
-            "createdByUserId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "cascade"
-        },
-        "PaymentAllocation_paymentInstanceId_EntityInstance_id_fk": {
-          "name": "PaymentAllocation_paymentInstanceId_EntityInstance_id_fk",
-          "tableFrom": "PaymentAllocation",
-          "tableTo": "EntityInstance",
-          "columnsFrom": [
-            "paymentInstanceId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.PaymentTransaction": {
-      "name": "PaymentTransaction",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "organizationId": {
-          "name": "organizationId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "paymentAccountId": {
-          "name": "paymentAccountId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "amount": {
-          "name": "amount",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "currency": {
-          "name": "currency",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "applicationFeeAmount": {
-          "name": "applicationFeeAmount",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "invoiceInstanceId": {
-          "name": "invoiceInstanceId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "creditMemoInstanceId": {
-          "name": "creditMemoInstanceId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "quoteInstanceId": {
-          "name": "quoteInstanceId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "workOrderInstanceId": {
-          "name": "workOrderInstanceId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "contactInstanceId": {
-          "name": "contactInstanceId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "method": {
-          "name": "method",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reference": {
-          "name": "reference",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "stripePaymentIntentId": {
-          "name": "stripePaymentIntentId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "stripeChargeId": {
-          "name": "stripeChargeId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "stripeCheckoutSessionId": {
-          "name": "stripeCheckoutSessionId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "stripeRefundId": {
-          "name": "stripeRefundId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "refundedTransactionId": {
-          "name": "refundedTransactionId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "failureCode": {
-          "name": "failureCode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "failureMessage": {
-          "name": "failureMessage",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "createdByUserId": {
-          "name": "createdByUserId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "bankTransactionId": {
-          "name": "bankTransactionId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "bankClearedAt": {
-          "name": "bankClearedAt",
-          "type": "timestamp (3)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "metadata": {
-          "name": "metadata",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "createdAt": {
-          "name": "createdAt",
-          "type": "timestamp (3)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updatedAt": {
-          "name": "updatedAt",
-          "type": "timestamp (3)",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "PaymentTransaction_organizationId_invoiceInstanceId_idx": {
-          "name": "PaymentTransaction_organizationId_invoiceInstanceId_idx",
-          "columns": [
-            {
-              "expression": "organizationId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "invoiceInstanceId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "PaymentTransaction_organizationId_creditMemoInstanceId_idx": {
-          "name": "PaymentTransaction_organizationId_creditMemoInstanceId_idx",
-          "columns": [
-            {
-              "expression": "organizationId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "creditMemoInstanceId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "PaymentTransaction_organizationId_workOrderInstanceId_idx": {
-          "name": "PaymentTransaction_organizationId_workOrderInstanceId_idx",
-          "columns": [
-            {
-              "expression": "organizationId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "workOrderInstanceId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "PaymentTransaction_organizationId_contactInstanceId_idx": {
-          "name": "PaymentTransaction_organizationId_contactInstanceId_idx",
-          "columns": [
-            {
-              "expression": "organizationId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "contactInstanceId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "PaymentTransaction_organizationId_bankTransactionId_idx": {
-          "name": "PaymentTransaction_organizationId_bankTransactionId_idx",
-          "columns": [
-            {
-              "expression": "organizationId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "bankTransactionId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "PaymentTransaction_stripePaymentIntentId_key": {
-          "name": "PaymentTransaction_stripePaymentIntentId_key",
-          "columns": [
-            {
-              "expression": "stripePaymentIntentId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "PaymentTransaction_organizationId_Organization_id_fk": {
-          "name": "PaymentTransaction_organizationId_Organization_id_fk",
-          "tableFrom": "PaymentTransaction",
-          "tableTo": "Organization",
-          "columnsFrom": [
-            "organizationId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        },
-        "PaymentTransaction_paymentAccountId_PaymentAccount_id_fk": {
-          "name": "PaymentTransaction_paymentAccountId_PaymentAccount_id_fk",
-          "tableFrom": "PaymentTransaction",
-          "tableTo": "PaymentAccount",
-          "columnsFrom": [
-            "paymentAccountId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "PaymentTransaction_invoiceInstanceId_EntityInstance_id_fk": {
-          "name": "PaymentTransaction_invoiceInstanceId_EntityInstance_id_fk",
-          "tableFrom": "PaymentTransaction",
-          "tableTo": "EntityInstance",
-          "columnsFrom": [
-            "invoiceInstanceId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "cascade"
-        },
-        "PaymentTransaction_creditMemoInstanceId_EntityInstance_id_fk": {
-          "name": "PaymentTransaction_creditMemoInstanceId_EntityInstance_id_fk",
-          "tableFrom": "PaymentTransaction",
-          "tableTo": "EntityInstance",
-          "columnsFrom": [
-            "creditMemoInstanceId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "cascade"
-        },
-        "PaymentTransaction_quoteInstanceId_EntityInstance_id_fk": {
-          "name": "PaymentTransaction_quoteInstanceId_EntityInstance_id_fk",
-          "tableFrom": "PaymentTransaction",
-          "tableTo": "EntityInstance",
-          "columnsFrom": [
-            "quoteInstanceId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "cascade"
-        },
-        "PaymentTransaction_workOrderInstanceId_EntityInstance_id_fk": {
-          "name": "PaymentTransaction_workOrderInstanceId_EntityInstance_id_fk",
-          "tableFrom": "PaymentTransaction",
-          "tableTo": "EntityInstance",
-          "columnsFrom": [
-            "workOrderInstanceId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "cascade"
-        },
-        "PaymentTransaction_contactInstanceId_EntityInstance_id_fk": {
-          "name": "PaymentTransaction_contactInstanceId_EntityInstance_id_fk",
-          "tableFrom": "PaymentTransaction",
-          "tableTo": "EntityInstance",
-          "columnsFrom": [
-            "contactInstanceId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "cascade"
-        },
-        "PaymentTransaction_refundedTransactionId_PaymentTransaction_id_fk": {
-          "name": "PaymentTransaction_refundedTransactionId_PaymentTransaction_id_fk",
-          "tableFrom": "PaymentTransaction",
-          "tableTo": "PaymentTransaction",
-          "columnsFrom": [
-            "refundedTransactionId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "PaymentTransaction_createdByUserId_User_id_fk": {
-          "name": "PaymentTransaction_createdByUserId_User_id_fk",
-          "tableFrom": "PaymentTransaction",
-          "tableTo": "User",
-          "columnsFrom": [
-            "createdByUserId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.PermissionGrant": {
       "name": "PermissionGrant",
       "schema": "",
@@ -32384,6 +34865,339 @@
           ],
           "onDelete": "set null",
           "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ProviderLedgerEntry": {
+      "name": "ProviderLedgerEntry",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bookId": {
+          "name": "bookId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerTxnType": {
+          "name": "providerTxnType",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerTxnId": {
+          "name": "providerTxnId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "txnDate": {
+          "name": "txnDate",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "docNumber": {
+          "name": "docNumber",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "syncToken": {
+          "name": "syncToken",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author": {
+          "name": "author",
+          "type": "ProviderLedgerAuthor",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raw": {
+          "name": "raw",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetchedAt": {
+          "name": "fetchedAt",
+          "type": "timestamp (3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "withdrawnAt": {
+          "name": "withdrawnAt",
+          "type": "timestamp (3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp (3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp (3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ProviderLedgerEntry_txn_key": {
+          "name": "ProviderLedgerEntry_txn_key",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bookId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "providerTxnType",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "providerTxnId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ProviderLedgerEntry_range_idx": {
+          "name": "ProviderLedgerEntry_range_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bookId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "txnDate",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ProviderLedgerEntry_author_idx": {
+          "name": "ProviderLedgerEntry_author_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bookId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "author",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ProviderLedgerEntry_organizationId_Organization_id_fk": {
+          "name": "ProviderLedgerEntry_organizationId_Organization_id_fk",
+          "tableFrom": "ProviderLedgerEntry",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ProviderLedgerEntry_bookId_ExternalAccountingBook_id_fk": {
+          "name": "ProviderLedgerEntry_bookId_ExternalAccountingBook_id_fk",
+          "tableFrom": "ProviderLedgerEntry",
+          "tableTo": "ExternalAccountingBook",
+          "columnsFrom": [
+            "bookId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ProviderLedgerLine": {
+      "name": "ProviderLedgerLine",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "entryId": {
+          "name": "entryId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerAccountId": {
+          "name": "providerAccountId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerAccountName": {
+          "name": "providerAccountName",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "direction": {
+          "name": "direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amountMinor": {
+          "name": "amountMinor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerCustomerId": {
+          "name": "providerCustomerId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "providerVendorId": {
+          "name": "providerVendorId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "memo": {
+          "name": "memo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sortOrder": {
+          "name": "sortOrder",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "raw": {
+          "name": "raw",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp (3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ProviderLedgerLine_entry_idx": {
+          "name": "ProviderLedgerLine_entry_idx",
+          "columns": [
+            {
+              "expression": "entryId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ProviderLedgerLine_entryId_ProviderLedgerEntry_id_fk": {
+          "name": "ProviderLedgerLine_entryId_ProviderLedgerEntry_id_fk",
+          "tableFrom": "ProviderLedgerLine",
+          "tableTo": "ProviderLedgerEntry",
+          "columnsFrom": [
+            "entryId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -45240,20 +48054,11 @@
         "credit"
       ]
     },
-    "public.GlPostingExportStatus": {
-      "name": "GlPostingExportStatus",
-      "schema": "public",
-      "values": [
-        "not_required",
-        "pending",
-        "exported",
-        "failed"
-      ]
-    },
     "public.GlPostingStatus": {
       "name": "GlPostingStatus",
       "schema": "public",
       "values": [
+        "draft",
         "posted",
         "reversed"
       ]
@@ -45264,11 +48069,9 @@
       "values": [
         "fulfillment",
         "payout",
-        "build",
         "month_end_deferral",
         "month_end_reversal",
-        "month_end_inventory",
-        "receipt",
+        "inventory_movement",
         "vendor_bill",
         "manual_journal",
         "opening_balance",
@@ -45276,6 +48079,7 @@
         "bank_deposit",
         "write_off",
         "payment",
+        "refund",
         "invoice_issued",
         "deposit_application",
         "credit_memo",
@@ -45335,6 +48139,14 @@
         "manual",
         "date",
         "work_order_completion"
+      ]
+    },
+    "public.ProviderLedgerAuthor": {
+      "name": "ProviderLedgerAuthor",
+      "schema": "public",
+      "values": [
+        "auxx",
+        "provider"
       ]
     }
   },

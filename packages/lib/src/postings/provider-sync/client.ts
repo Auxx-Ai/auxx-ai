@@ -145,6 +145,28 @@ export function isOurs(
   return entry.txnType === OUR_PROVIDER_TXN_TYPE && ourProviderEntryIds.has(entry.txnId)
 }
 
+/** Who wrote an entry in the provider's ledger. Stored on the mirror (TARGET §2). */
+export type ProviderLedgerAuthorship = 'auxx' | 'provider'
+
+/**
+ * What the mirror stamps on an entry: `'auxx'` for one we pushed, `'provider'`
+ * for the accountant's.
+ *
+ * {@link isOurs} read one way rather than two. The transaction id is the primary
+ * key and the document number is the second witness - an entry whose id we no
+ * longer hold (the row was re-keyed, the claim re-taken) is still ours if it
+ * carries a document number we minted, and calling it theirs would translate our
+ * own entry back into our own books.
+ */
+export function authorOf(
+  entry: Pick<ProviderLedgerEntry, 'txnType' | 'txnId' | 'docNumber'>,
+  ours: { providerEntryIds: ReadonlySet<string>; docNumbers: ReadonlySet<string> }
+): ProviderLedgerAuthorship {
+  if (entry.txnType !== OUR_PROVIDER_TXN_TYPE) return 'provider'
+  if (ours.providerEntryIds.has(entry.txnId)) return 'auxx'
+  return entry.docNumber && ours.docNumbers.has(entry.docNumber) ? 'auxx' : 'provider'
+}
+
 /**
  * How one of OUR entries compares to the provider's copy of it.
  *
@@ -262,6 +284,14 @@ export const PROVIDER_SYNC_POSTING_TYPE = 'provider_sync'
  * provider's API - the same contract every other builder's lines hold.
  */
 export const PROVIDER_SYNC_SOURCE_TYPE = 'provider_ledger'
+
+/**
+ * The `GlPostingSource.sourceKind` a translated entry claims - the MIRROR row's
+ * id, not the provider's transaction id. The mirror is the thing our books point
+ * at, so a re-read that changes what the provider holds moves one row rather
+ * than orphaning a claim (TARGET §2).
+ */
+export const PROVIDER_LEDGER_SOURCE_KIND = 'provider_ledger_entry'
 
 // ─── §7.3: the "synced through" marker ──────────────────────────────────────
 //

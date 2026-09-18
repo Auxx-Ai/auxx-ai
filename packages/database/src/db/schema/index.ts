@@ -3,19 +3,6 @@
 
 export * from './_shared'
 export * from './account'
-export {
-  AccountingDelivery,
-  AccountingDeliveryCoverage,
-  type AccountingDeliveryCoverageEntity,
-  type AccountingDeliveryEntity,
-  AccountingDeliveryOperation,
-  type AccountingDeliveryOperationEntity,
-  type DeliveryObjectType,
-  ExternalAccountingObject,
-} from './accounting-delivery'
-export { AccountingEffect, type AccountingEffectEntity } from './accounting-effect'
-export { AccountingWork, type AccountingWorkEntity } from './accounting-work'
-export { AccountingWorkBasis, type AccountingWorkBasisEntity } from './accounting-work-basis'
 export * from './agent'
 export * from './agent-procedure'
 export * from './agent-trigger'
@@ -90,6 +77,7 @@ export * from './eval-case'
 export * from './eval-run'
 export * from './eval-suite-run'
 export * from './event'
+export * from './export-batch'
 export * from './export-job'
 export {
   ExternalAccountingBook,
@@ -116,6 +104,7 @@ export * from './free-tool-lead'
 // The general ledger (decision G6) — plans/money/design/gl-posting-tables.md
 export * from './gl-posting'
 export * from './gl-posting-line'
+export * from './gl-posting-source'
 // role -> the org's own gl_account (decision G19)
 export * from './gl-role-assignment'
 export * from './import-job'
@@ -175,7 +164,6 @@ export * from './participant'
 export * from './passkey'
 export * from './password-reset-token'
 export * from './payment-account'
-export * from './payment-transaction'
 export * from './permission-grant'
 export * from './permission-profile'
 export * from './plan'
@@ -188,6 +176,7 @@ export { ProcessorBalanceEntry } from './processor-balance-entry'
 export * from './prompt-history'
 export * from './prompt-template'
 export * from './provider-configuration'
+export * from './provider-ledger'
 export * from './provider-preference'
 export * from './qc-item-template'
 export * from './record-identity'

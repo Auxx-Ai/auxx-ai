@@ -11,12 +11,10 @@ import { Button } from '@auxx/ui/components/button'
 import { GridTreeRow, INDENT_REM } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import {
-  Ban,
   BookOpenCheck,
   CircleSlash,
   CircleX,
   CloudOff,
-  KeyRound,
   Landmark,
   Lock,
   Map as MapIcon,
@@ -164,33 +162,6 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
     title: 'The entry could not be built',
     guidance:
       'Something failed that is not one of the named refusals. The reason is above, verbatim, so it can be acted on without reading the logs.',
-  },
-  disabled: {
-    tone: 'neutral',
-    icon: Ban,
-    title: 'Export to the accounting system is switched off',
-    guidance:
-      'The entry is still built, balanced and persisted here. Only the push to the provider is off, and it is a setting somebody can flip.',
-  },
-  not_connected: {
-    tone: 'neutral',
-    icon: KeyRound,
-    title: 'No accounting system is connected',
-    guidance:
-      'This is not a blocker. The entry is built, balanced and persisted identically with no provider at all.',
-  },
-  // 🛑 The third member of the "nothing was pushed, and that is correct" family,
-  // and the one that was missing. `REMEDIES` is `Partial`, so an unlisted status
-  // silently takes `FALLBACK` - which is `failure`-toned and titled "The entry
-  // could not be built". A `'none'`-routed entry (`opening_balance`,
-  // `provider_sync`) rendered THAT over an entry that had posted perfectly.
-  // Neutral, like its two siblings above, and for the same reason.
-  not_exported: {
-    tone: 'neutral',
-    icon: Ban,
-    title: 'This entry is never exported',
-    guidance:
-      'Not a blocker and not a setting. This kind of entry is never pushed to the accounting system, whatever the organization has connected - an opening balance, or an entry that came FROM the provider and must not be handed back at it. It is built, balanced and persisted here.',
   },
   // ── HANDOFF slot 1B: the two statuses added by 1A's `inventory_role_refused`
   // / `account_invalid` (types.ts, already present per 0B/9a) ────────────────
@@ -350,6 +321,19 @@ export const ITEM_REMEDIES: Record<CloseBlockerItemKey, ItemRemedy> = {
       item.ref
         ? `/app/accounting/settings/accounts?role=${encodeURIComponent(item.ref)}`
         : '/app/accounting/settings/accounts',
+  },
+  // The two checks a close is, now that it posts nothing (MIGRATION step 5).
+  // Both send the reader to the movements: one is a document whose entry never
+  // landed, the other is the ledger disagreeing with the rows themselves.
+  inventory_unposted: {
+    icon: PackagePlus,
+    actionLabel: 'Open movements',
+    href: () => '/app/records/stock_movement',
+  },
+  inventory_balance: {
+    icon: Scale,
+    actionLabel: 'Open the trial balance',
+    href: () => '/app/accounting/reports/trial-balance',
   },
 }
 

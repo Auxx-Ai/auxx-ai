@@ -205,10 +205,11 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   // procedure with its own preconditions, so there is no status dropdown.
   'build:run': () =>
     import('../manufacturing/builds/build-run-card').then((m) => ({ default: m.BuildRunCard })),
-  // The consume/produce rows the completion wrote. `build_movements` is
-  // `showInPanel: false`, so this card is its only surface.
+  // The postings this build produced (accounting migration step 1c). No
+  // writer exists for `sourceKind: 'build'` until MIGRATION step 5, so this
+  // renders `Nothing posted yet` today - see `ledger-card-registrations.tsx`.
   'build:ledger': () =>
-    import('../manufacturing/builds/build-ledger-card').then((m) => ({
+    import('../accounting/ui/ledger-card-registrations').then((m) => ({
       default: m.BuildLedgerCard,
     })),
   // The batch run this build belongs to, and the ONE verb whose scope is the
@@ -256,7 +257,7 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
       default: m.CreditMemoSettlementCard,
     })),
   'credit_memo:ledger': () =>
-    import('../money/ui/credit-memo/credit-memo-ledger-card').then((m) => ({
+    import('../accounting/ui/ledger-card-registrations').then((m) => ({
       default: m.CreditMemoLedgerCard,
     })),
 
@@ -297,6 +298,18 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   'bank_deposit:ledger': () =>
     import('../accounting/ui/ledger-card-registrations').then((m) => ({
       default: m.BankDepositLedgerCard,
+    })),
+  'fulfillment:ledger': () =>
+    import('../accounting/ui/ledger-card-registrations').then((m) => ({
+      default: m.FulfillmentLedgerCard,
+    })),
+  'payout:ledger': () =>
+    import('../accounting/ui/ledger-card-registrations').then((m) => ({
+      default: m.PayoutLedgerCard,
+    })),
+  'vendor_bill:ledger': () =>
+    import('../accounting/ui/ledger-card-registrations').then((m) => ({
+      default: m.VendorBillLedgerCard,
     })),
 
   // ─────────────────────────────────────────────────────────────────

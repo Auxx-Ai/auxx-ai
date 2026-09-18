@@ -1,2 +1,0 @@
-ALTER TABLE "AccountingWork" DROP CONSTRAINT "AccountingWork_kind_check";--> statement-breakpoint
-ALTER TABLE "AccountingWork" ADD CONSTRAINT "AccountingWork_kind_check" CHECK (("AccountingWork"."effectKind" IN ('fulfillment_accounting', 'customer_credit_issued') AND "AccountingWork"."entityInstanceId" IS NOT NULL AND "AccountingWork"."moneyTransactionId" IS NULL) OR ("AccountingWork"."effectKind" IN ('customer_receipt', 'customer_refund') AND "AccountingWork"."moneyTransactionId" IS NOT NULL AND "AccountingWork"."entityInstanceId" IS NULL));

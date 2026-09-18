@@ -29,16 +29,11 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import {
-  INVOICE_ISSUED_POSTING_TYPE,
-  INVOICE_SOURCE_TYPE,
-} from '../../postings/build-invoice-entry'
+import { INVOICE_SOURCE_TYPE } from '../../postings/build-invoice-entry'
 import { didLedgerAccept, isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { listPostingsForSource } from '../../postings/list-postings'
-import { resolvePeriodLock } from '../../postings/period-lock'
-import { reverseEntry } from '../../postings/reverse-entry'
 import { NON_FAILURE_REFUSALS, type PostResult } from '../../postings/types'
-import { acceptInvoiceIssuanceAccounting } from './issuance-accounting'
+import { postInvoiceIssuanceEntry, reverseInvoiceIssuanceEntry } from './issuance-accounting'
 
 const logger = createScopedLogger('money-invoice-ledger')
 
@@ -82,7 +77,7 @@ export async function postInvoiceIssuance(
 ): Promise<PostResult> {
   const { organizationId, invoiceId, actorUserId } = input
 
-  const post = await acceptInvoiceIssuanceAccounting(db, {
+  const post = await postInvoiceIssuanceEntry(db, {
     organizationId,
     invoiceId,
     actorUserId,
@@ -126,7 +121,7 @@ export async function listInvoicePostings(
 ): Promise<Array<{ glPostingId: string; docNumber: string; status: string; postingType: string }>> {
   const result = await listPostingsForSource(db, {
     organizationId: params.organizationId,
-    sourceType: INVOICE_SOURCE_TYPE,
+    sourceKind: INVOICE_SOURCE_TYPE,
     sourceId: params.invoiceId,
   })
   if (result.isErr()) return []
@@ -170,20 +165,9 @@ export interface ReverseInvoiceIssuanceInput {
  * reverse), and a {@link PostResult} carrying the refusal otherwise. The caller
  * turns that into a refusal of the VOID - see the file header.
  *
- * ## What it does NOT have to handle, and why
- *
  * A deposit APPLIED to this invoice would leave a `deposit_application` entry
- * crediting a receivable that is about to disappear. That entry is sourced on
- * the payment transaction, not on the invoice, so it is invisible here - and it
- * does not need to be visible, because `voidInvoice` refuses outright while any
- * succeeded charge is allocated to the invoice (`hasSucceededCharges`). An
- * applied deposit IS such an allocation. So a void can never strand an
- * application entry: the deposit has to be un-applied first, and un-applying it
- * goes through `deleteManualPayment`, which reverses the reclass and the receipt
- * together in `reversePaymentPostings`.
- *
- * If that guard is ever relaxed, this is the function that has to grow the
- * second read.
+ * crediting a receivable that is about to disappear; `voidInvoice` refuses
+ * outright while any money is still applied, so that entry cannot be stranded.
  */
 export async function reverseInvoiceIssuance(
   db: Database,
@@ -191,40 +175,25 @@ export async function reverseInvoiceIssuance(
 ): Promise<PostResult | null> {
   const { organizationId, invoiceId, actorUserId, memo } = input
 
-  const postings = await listInvoicePostings(db, { organizationId, invoiceId })
-  const live = postings.filter(
-    (posting) =>
-      posting.postingType === INVOICE_ISSUED_POSTING_TYPE &&
-      posting.status !== 'reversed' &&
-      posting.status !== 'failed'
-  )
-  if (live.length === 0) return null
-
-  const lock = await resolvePeriodLock(organizationId)
-  for (const posting of live) {
-    const result = await reverseEntry(db, {
-      organizationId,
-      glPostingId: posting.glPostingId,
-      actorUserId,
-      lock,
-      memo: memo ?? `Reversal of ${posting.docNumber} - invoice voided`,
-    })
-    if (!didLedgerAccept(result)) {
-      logger.warn('An invoice issuance entry could not be reversed', {
-        organizationId,
-        invoiceId,
-        docNumber: posting.docNumber,
-        status: result.status,
-        error: result.error,
-      })
-      return result
-    }
-  }
-
-  logger.info('Reversed the issuance entries of an invoice being voided', {
+  const result = await reverseInvoiceIssuanceEntry(db, {
     organizationId,
     invoiceId,
-    reversed: live.length,
+    actorUserId,
+    memo: memo ?? undefined,
+  })
+  if (!result) return null
+  if (!didLedgerAccept(result)) {
+    logger.warn('An invoice issuance entry could not be reversed', {
+      organizationId,
+      invoiceId,
+      status: result.status,
+      error: result.error,
+    })
+    return result
+  }
+  logger.info('Reversed the issuance entry of an invoice being voided', {
+    organizationId,
+    invoiceId,
   })
   return null
 }

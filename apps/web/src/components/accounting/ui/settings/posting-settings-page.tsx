@@ -9,9 +9,11 @@
 // the policy's `settings` rendered through `SettingsFieldRow`, so a setting
 // reaches this page by being listed on the policy and nowhere else.
 //
-// Saving here never runs a posting (§3.1, R3). The two mode rows say so
-// under themselves. "Run now" opens the existing bulk dialog and does nothing
-// itself (R6): one frame, two doors.
+// The bulk "Run now" dialogs are gone (accounting migration step 1b): each
+// avenue now writes as it happens, gated by its own `accounting.autoPost.<avenue>`
+// row - one more setting the policy declares and this page renders the same
+// way it renders every other one. The Drafts tab (step 1c) is where a held
+// draft gets reviewed and posted.
 //
 // Draft keys are scoped explicitly, for the reason `general-settings-page`
 // gives: every `accounting.*` key is `GENERAL` scope, so the draft is narrowed
@@ -28,7 +30,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@auxx/ui/components/collapsible'
-import { ChevronDown, CircleHelp, ExternalLink, Lock, Play } from 'lucide-react'
+import { ChevronDown, CircleHelp, ExternalLink, Lock } from 'lucide-react'
 import Link from 'next/link'
 import { type ReactNode, useMemo, useState } from 'react'
 import { BankAccountPicker } from '~/components/accounting/ui/bank-account-picker'
@@ -37,18 +39,20 @@ import { FieldPanel } from '~/components/global/forms/field-panel'
 import { FormSaveBar } from '~/components/global/forms/form-save-bar'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { Tooltip } from '~/components/global/tooltip'
-import { formatDayKey } from '~/components/money/ui/batch-posting'
-import { PostCreditMemosDialog } from '~/components/money/ui/credit-memo-posting'
-import { PostFulfillmentsDialog } from '~/components/money/ui/fulfillment-posting'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
-import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useAccountingSetupDraft } from '../../hooks/use-accounting-setup-draft'
 import { readText } from './accounting-settings-keys'
+import { ExportAvenueRow } from './export-avenue-row'
 import { PostingGuideDialog } from './posting-guide-dialog'
 import {
+  autoPostKeyForAvenue,
+  autoSendKeyForAvenue,
+  EXPORT_ROW_DRAFT_KEYS,
   EXTERNAL_SETTING_HOMES,
+  exportAvenueForPolicy,
   NEVER_POLICIES,
   POSTING_PAGE_INPUT_KEYS,
   POSTING_PAGE_POLICIES,
@@ -56,6 +60,7 @@ import {
   postingSectionAnchor,
   settingRowTitle,
   splitPostingColumns,
+  summaryGrainKeyForAvenue,
   TRIGGER_KIND_ICON,
   triggerSentence,
 } from './posting-page-model'
@@ -71,30 +76,45 @@ const PAGE_DESCRIPTION = 'What posts to the ledger, when, and the settings that 
 
 const CASH_BANK_ACCOUNT_KEY = 'accounting.cashBankAccountId'
 
-/** The two sources with a bulk dialog, and so a "Run now" (§3.1). */
-type RunNowSource = Extract<PostingType, 'fulfillment' | 'credit_memo'>
+/**
+ * Render a `YYYY-MM-DD` posting date.
+ *
+ * 🛑 Formatted in UTC, never through `formatAccountingDate`: `latest.txnDate`
+ * was already cut in the org's book time zone server-side, so re-projecting
+ * it into that zone shifts a July 1 posting to June 30 on any org west of UTC.
+ */
+function formatDayKey(dayKey: string): string {
+  const date = new Date(`${dayKey}T00:00:00.000Z`)
+  if (Number.isNaN(date.getTime())) return dayKey
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date)
+}
 
 export function AccountingPostingSettingsPage() {
   useRequireCapability(PermissionKey.ledgerView)
   const { hasAccess } = useFeatureFlags()
-  const { can } = useAccess()
-  const utils = api.useUtils()
 
   // One draft over every input key on the page. Nothing here validates, so one
   // slice and one save bar; the sections differ only in which keys they show.
-  const draft = useAccountingSetupDraft(POSTING_PAGE_INPUT_KEYS)
+  // `EXPORT_ROW_DRAFT_KEYS` rides along - `autoSend`/`summaryGrain` are keyed
+  // on the AVENUE (posting-page-model.ts), so they are not on any policy's own
+  // `settings` list the way `POSTING_PAGE_INPUT_KEYS` is built.
+  const draft = useAccountingSetupDraft([...POSTING_PAGE_INPUT_KEYS, ...EXPORT_ROW_DRAFT_KEYS])
 
   const latest = api.ledger.latestPostingsByType.useQuery(undefined, {
     enabled: hasAccess(FeatureKey.accounting),
   })
   const latestByType = useMemo(() => {
-    const map = new Map<PostingType, { docNumber: string; txnDate: string }>()
+    const map = new Map<PostingType, { docNumber: string | null; txnDate: string }>()
     for (const row of latest.data ?? []) map.set(row.postingType, row)
     return map
   }, [latest.data])
 
   const [guidePage, setGuidePage] = useState<PostingGuidePage | null>(null)
-  const [runNow, setRunNow] = useState<RunNowSource | null>(null)
 
   const anyRouteIsCash = Object.values(PAYMENT_ROUTE_SETTING_KEYS).some(
     (key) => draft.draft[key] === 'cash'
@@ -152,9 +172,17 @@ export function AccountingPostingSettingsPage() {
 
   function renderPolicy(policy: PostingPolicy) {
     const Icon = TRIGGER_KIND_ICON[policy.trigger.kind]
-    const inputKeys = policy.settings.filter((key) => !(key in EXTERNAL_SETTING_HOMES))
+    // The avenue whose export row belongs on THIS section (posting-page-model.ts)
+    // - `null` for a policy sharing its avenue with another, already-chosen one.
+    const avenue = exportAvenueForPolicy(policy)
+    const avenueAutoPostKey = avenue ? autoPostKeyForAvenue(avenue) : null
+    // The avenue's own `autoPost` row moves INTO the export row below, so it is
+    // dropped from the generic loop rather than shown twice.
+    const inputKeys = policy.settings.filter(
+      (key) => !(key in EXTERNAL_SETTING_HOMES) && key !== avenueAutoPostKey
+    )
     const externalKeys = policy.settings.filter((key) => key in EXTERNAL_SETTING_HOMES)
-    const runNowSource = isRunNowSource(policy.type) && can('ledger.post') ? policy.type : null
+    const summaryGrainKey = avenue ? summaryGrainKeyForAvenue(avenue) : null
 
     return (
       <div key={policy.type} id={postingSectionAnchor(policy.type)}>
@@ -173,22 +201,37 @@ export function AccountingPostingSettingsPage() {
             </span>
           }
           description={policy.sentence}
-          action={
-            <div className='flex items-center gap-1'>
-              {runNowSource && (
-                <Button variant='outline' size='sm' onClick={() => setRunNow(runNowSource)}>
-                  <Play /> Run now
-                </Button>
-              )}
-              <GuideButton label={policy.label} onClick={() => setGuidePage(policy.type)} />
-            </div>
-          }>
-          {inputKeys.length > 0 && (
+          action={<GuideButton label={policy.label} onClick={() => setGuidePage(policy.type)} />}>
+          {(inputKeys.length > 0 || avenue) && (
             <FieldPanel
               className='mt-1 p-0'
               resizeId={`accounting-posting-${policy.type}`}
               defaultLabelWidth={220}>
               {inputKeys.map((key) => renderSettingRow(policy, key))}
+              {avenue && (
+                <ExportAvenueRow
+                  autoPost={
+                    avenueAutoPostKey
+                      ? {
+                          checked: !!draft.draft[avenueAutoPostKey],
+                          onChange: (checked) => draft.patch({ [avenueAutoPostKey]: checked }),
+                        }
+                      : undefined
+                  }
+                  autoSend={{
+                    checked: !!draft.draft[autoSendKeyForAvenue(avenue)],
+                    onChange: (checked) => draft.patch({ [autoSendKeyForAvenue(avenue)]: checked }),
+                  }}
+                  summaryGrain={
+                    summaryGrainKey
+                      ? {
+                          value: (draft.draft[summaryGrainKey] as 'day' | 'month') ?? 'day',
+                          onChange: (value) => draft.patch({ [summaryGrainKey]: value }),
+                        }
+                      : undefined
+                  }
+                />
+              )}
             </FieldPanel>
           )}
 
@@ -249,28 +292,8 @@ export function AccountingPostingSettingsPage() {
           initialPage={guidePage}
         />
       )}
-      {/* Mounted only while open, like the buttons on Orders and Credit memos,
-          so the preview query does not run on every visit to this page. */}
-      {runNow === 'fulfillment' && (
-        <PostFulfillmentsDialog
-          open
-          onOpenChange={(open) => !open && setRunNow(null)}
-          onCompleted={() => void utils.ledger.latestPostingsByType.invalidate()}
-        />
-      )}
-      {runNow === 'credit_memo' && (
-        <PostCreditMemosDialog
-          open
-          onOpenChange={(open) => !open && setRunNow(null)}
-          onCompleted={() => void utils.ledger.latestPostingsByType.invalidate()}
-        />
-      )}
     </SettingsPage>
   )
-}
-
-function isRunNowSource(type: PostingType): type is RunNowSource {
-  return type === 'fulfillment' || type === 'credit_memo'
 }
 
 /**
@@ -285,7 +308,7 @@ function PolicyFacts({
   externalKeys,
 }: {
   policy: PostingPolicy
-  latest: { docNumber: string; txnDate: string } | null
+  latest: { docNumber: string | null; txnDate: string } | null
   latestLoading: boolean
   externalKeys: readonly string[]
 }) {
@@ -305,7 +328,8 @@ function PolicyFacts({
           <span className='font-medium text-foreground/80'>Last posted</span>{' '}
           {latest ? (
             <>
-              {formatDayKey(latest.txnDate)} <span className='font-mono'>({latest.docNumber})</span>
+              {formatDayKey(latest.txnDate)}{' '}
+              <span className='font-mono'>({latest.docNumber || 'draft'})</span>
             </>
           ) : latestLoading ? (
             'loading'

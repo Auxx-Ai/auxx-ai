@@ -14,7 +14,7 @@ import { FieldValueService } from '../field-values/field-value-service'
 import { readFieldScalars } from '../field-values/read-field-scalars'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { unwrapRelationId } from '../resources/events/captured-values'
-import { syncInvoicePaymentState } from './payments/ledger'
+import { syncInvoicePaymentState } from './invoices/payment-state'
 import {
   computeAllocatedDocumentTotals,
   computeDocumentTotals,

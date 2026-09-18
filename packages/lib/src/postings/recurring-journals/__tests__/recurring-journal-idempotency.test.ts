@@ -4,28 +4,18 @@
  * 🛑 **This is the test that stands between a working scheduler and a doubled
  * ledger** (task 21 §9).
  *
- * The record layer cannot help. A generated entry is an `EntityInstance` and
- * `FieldValue` has exactly one unique index, `(entityId, fieldId, sortKey)` -
- * not `(ruleId, occurrenceDate)` - so the materializer's dedupe is
- * check-then-write and it races. Everything below is about the layer that does
- * not race: the claim's unique index on
- * `(organizationId, postingType, periodKey, revision)`, reached through a
- * period key that is a deterministic fold of the rule and the slot.
- *
- * Three things are pinned, and each of them is silent when wrong:
- *
- * 1. Two runs of one occurrence mint ONE key, so the second loses the claim
- *    and converges to `already_posted` instead of booking the month twice.
- * 2. `already_posted` is BELIEVED only after checking that the posting holding
- *    the key fills the same SLOT. 36^6 is 2.2e9; a fold that swallowed a real
- *    entry would record a clean outcome and lose a month.
- * 3. The check is by SLOT and not by record id, so the ordinary duplicate-draft
- *    race - two records, one occurrence - is NOT reported as a collision. A
- *    naive `owners.includes(entry.id)` would fire on it every time.
+ * `postJournalEntry` no longer rebuilds the entry at post time - `postDraft`
+ * posts the lines already resolved onto the draft's own `GlPosting`, which
+ * `createJournalEntry` wrote with the deterministic `RJE-<fold>` period key
+ * (`recurringJournalPeriodKey`). What is pinned here is what happens ON TOP of
+ * that: `already_posted` is BELIEVED only after checking that the posting
+ * holding the claim fills the same SLOT (`findRecurringKeyCollision`), and the
+ * check is by SLOT and not by record id, so the ordinary duplicate-draft race
+ * - two records, one occurrence - is NOT reported as a collision.
  *
  * The collaborators are stubbed at the module boundary rather than through a
  * fake database, for the reason `journal-entries/__tests__/writes.test.ts`
- * gives: `postEntry` has its own exhaustive suite and re-driving it through a
+ * gives: `postDraft` has its own exhaustive suite and re-driving it through a
  * second fake here would test the fake.
  */
 
@@ -34,7 +24,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   record: null as Record<string, unknown> | null,
   postResult: { status: 'posted', glPostingId: 'post_1' } as Record<string, unknown>,
-  /** Every `postEntry` call, in order - the keyspace is read off these. */
+  /** Every `postDraft` call, in order. */
   posted: [] as Array<Record<string, unknown>>,
   updates: [] as Array<{ recordId: string; values: Record<string, unknown> }>,
   creates: [] as Array<{ defId: string; values: Record<string, unknown> }>,
@@ -58,7 +48,8 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
 }))
 
 vi.mock('../../post-entry', () => ({
-  postEntry: async (_db: unknown, options: Record<string, unknown>) => {
+  postEntry: async () => ({ status: 'drafted', glPostingId: 'draft_generated' }),
+  postDraft: async (_db: unknown, options: Record<string, unknown>) => {
     h.posted.push(options)
     return h.postResult
   },
@@ -66,6 +57,11 @@ vi.mock('../../post-entry', () => ({
 }))
 
 vi.mock('../../reverse-entry', () => ({ reverseEntry: async () => h.postResult }))
+
+vi.mock('../../draft-lines', () => ({
+  updateDraftLines: async () => ({ isErr: () => false }),
+  discardDraftPosting: async () => ({ isErr: () => false }),
+}))
 
 vi.mock('../../period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
@@ -85,9 +81,7 @@ vi.mock('../../journal-entries/reads', async () => {
         journal_entry_number: { id: 'f_number' },
         journal_entry_date: { id: 'f_date' },
         journal_entry_memo: { id: 'f_memo' },
-        journal_entry_status: { id: 'f_status' },
         journal_entry_kind: { id: 'f_kind' },
-        journal_entry_lines: { id: 'f_lines' },
         journal_entry_gl_posting_id: { id: 'f_posting' },
         journal_entry_recurrence_rule_id: { id: 'f_rule' },
         journal_entry_occurrence_date: { id: 'f_slot' },
@@ -127,7 +121,10 @@ function generatedDraft(overrides: Partial<JournalEntryRecord> = {}): Record<str
       { glAccountId: 'acct_6600', direction: 'debit', amountMinor: 25_000 },
       { glAccountId: 'acct_1590', direction: 'credit', amountMinor: 25_000 },
     ],
-    glPostingId: null,
+    // A generated draft always carries its companion posting from the moment
+    // `createJournalEntry` raised it (TARGET §1) - there is no longer a
+    // `glPostingId: null` state for a record this far along.
+    glPostingId: 'post_march_a',
     recurrenceRuleId: RULE_ID,
     occurrenceDate: MARCH,
     createdAt: '2026-03-31T00:00:00.000Z',
@@ -174,53 +171,48 @@ describe('the keyspace', () => {
   })
 })
 
-describe('two runs of one occurrence converge to ONE posting', () => {
-  it('mints the same period key from two different draft records', async () => {
-    await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
-
-    // The duplicate draft the racing sweep raised: a different record id, the
-    // same rule and the same slot.
-    h.record = generatedDraft({ id: 'je_march_b', number: 'JNL-0043' })
-    h.postResult = { status: 'already_posted', glPostingId: 'post_1', docNumber: 'AUXX-RJE-RJEXXX' }
-    h.winningSourceIds = ['je_march_a']
-    h.identities = new Map([['je_march_a', { recurrenceRuleId: RULE_ID, occurrenceDate: MARCH }]])
-
-    await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_b' })
-
-    expect(h.posted).toHaveLength(2)
-    const keys = h.posted.map((call) => (call.entry as { periodKey: string }).periodKey)
-    expect(keys[0]).toBe(keys[1])
-    expect(keys[0]).toBe(
-      recurringJournalPeriodKey({ recurrenceRuleId: RULE_ID, occurrenceDate: MARCH })
-    )
-  })
-
-  it('keys on the rule and slot, NOT on the record number', async () => {
-    await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
-    const key = (h.posted[0]?.entry as { periodKey: string }).periodKey
-    expect(key).not.toBe('JNL-0042')
-    expect(key).toMatch(/^RJE-[0-9A-Z]{6}$/)
-    expect((h.posted[0]?.entry as { postingType: string }).postingType).toBe('recurring_journal')
-  })
-
+describe('a race on the SAME draft converges without a stamp update', () => {
   it('does NOT report a collision when the winner fills the same slot', async () => {
-    // The duplicate-draft race. `postPaymentTransaction` compares the winning
-    // posting's line `sourceId` to its own row id; doing that here would call
-    // every one of these a collision, because the two drafts are two records.
-    h.record = generatedDraft({ id: 'je_march_b' })
-    h.postResult = { status: 'already_posted', glPostingId: 'post_1', docNumber: 'AUXX-RJE-RJEXXX' }
+    // The narrow race `postDraft`'s claim can actually produce now: two
+    // concurrent `postJournalEntry` calls on the SAME record/glPostingId. The
+    // loser's `already_posted` names its own posting, whose journal-entry
+    // line names this same record - trivially the same slot.
+    h.postResult = { status: 'already_posted', glPostingId: 'post_march_a' }
     h.winningSourceIds = ['je_march_a']
     h.identities = new Map([['je_march_a', { recurrenceRuleId: RULE_ID, occurrenceDate: MARCH }]])
 
-    const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_b' })
+    const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
 
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().status).toBe('already_posted')
-    // Converged, so the record is stamped against the posting that IS its entry.
-    expect(h.updates.at(-1)?.values).toMatchObject({
-      journal_entry_status: 'posted',
-      journal_entry_gl_posting_id: 'post_1',
-    })
+    // Converged: nothing on the record needs stamping any more, since its
+    // status is read back off the posting rather than written here.
+    expect(h.updates).toEqual([])
+  })
+})
+
+describe('a race across two DIFFERENT generated records for one occurrence', () => {
+  // `materialize.ts` claims a draft's `GlPostingSource` subject on
+  // `{ sourceKind: 'recurring_journal', sourceId: templateId, occurrence:
+  // occurrenceDate }`, not on the generated record's own id - the fix this
+  // file exists to pin. Before it, `je_march_a` and `je_march_b` (two drafts
+  // a sweep race raised for the same March occurrence) each claimed under
+  // their OWN record id, so both promoted cleanly and only collided on
+  // `GlPosting_org_docNumber_key` - a raw constraint violation, not
+  // `already_posted`. With the shared subject, the loser's `postDraft` now
+  // loses the CLAIM first and comes back `already_posted` naming the
+  // WINNER'S posting - a different record entirely - and this is the check
+  // that has to wave it through as a convergence rather than a collision.
+  it('converges when the winner is a different record for the same slot', async () => {
+    h.postResult = { status: 'already_posted', glPostingId: 'post_march_b' }
+    h.winningSourceIds = ['je_march_b']
+    h.identities = new Map([['je_march_b', { recurrenceRuleId: RULE_ID, occurrenceDate: MARCH }]])
+
+    const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().status).toBe('already_posted')
+    expect(h.updates).toEqual([])
   })
 })
 
@@ -267,8 +259,9 @@ describe('the sourceId check catches a hash collision rather than trusting alrea
 
     await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
 
-    // 🛑 The whole point of running the check BEFORE the stamp: a stamped
-    // record would claim to be posted against somebody else's entry.
+    // 🛑 The whole point of running the check BEFORE trusting the result: the
+    // record's status is read off the posting, so nothing here needs undoing -
+    // but the collision itself must still be reported rather than swallowed.
     expect(h.updates).toEqual([])
   })
 

@@ -177,8 +177,6 @@ const CLEARED_SEQUENCE_SCOPES: readonly string[] = [...CLEARED_TYPES, 'build_bat
  * cascade nobody printed is a row count that appears to vanish.
  */
 const SIDE_TABLES = [
-  { name: 'PaymentAllocation', table: schema.PaymentAllocation },
-  { name: 'PaymentTransaction', table: schema.PaymentTransaction },
   { name: 'InvoiceLineAllocation', table: schema.InvoiceLineAllocation },
   { name: 'InvoiceScheduleAllocation', table: schema.InvoiceScheduleAllocation },
   { name: 'InvoiceVisitAllocation', table: schema.InvoiceVisitAllocation },
@@ -443,8 +441,6 @@ async function main() {
       status: schema.GlPosting.status,
       docNumber: schema.GlPosting.docNumber,
       totalMinor: schema.GlPosting.totalMinor,
-      providerId: schema.GlPosting.providerId,
-      providerEntryId: schema.GlPosting.providerEntryId,
     })
     .from(schema.GlPosting)
     .where(eq(schema.GlPosting.organizationId, org.id))
@@ -465,19 +461,39 @@ async function main() {
     console.log(`  ${type.padEnd(22)} ${String(n).padStart(4)}`)
   }
 
-  const exportedRows = postings.filter((p) => p.providerEntryId !== null)
+  const sentBatches = await db
+    .select({
+      glPostingId: schema.ExportBatchPosting.glPostingId,
+      providerObjectId: schema.ExportBatch.providerObjectId,
+    })
+    .from(schema.ExportBatchPosting)
+    .innerJoin(
+      schema.ExportBatch,
+      and(
+        eq(schema.ExportBatch.organizationId, schema.ExportBatchPosting.organizationId),
+        eq(schema.ExportBatch.id, schema.ExportBatchPosting.batchId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.ExportBatchPosting.organizationId, org.id),
+        eq(schema.ExportBatch.state, 'sent')
+      )
+    )
+  const sentObjects = new Map(
+    sentBatches.map((row) => [row.glPostingId, row.providerObjectId ?? ''])
+  )
+  const exportedRows = postings.filter((p) => sentObjects.has(p.id))
   if (exportedRows.length > 0 && !FORCE) {
     console.error(
-      `\n🛑 REFUSING. ${exportedRows.length} posting(s) carry a providerEntryId and are already in\n` +
+      `\n🛑 REFUSING. ${exportedRows.length} posting(s) sit in a SENT export batch and are already in\n` +
         '   the accounting system. Deleting our row orphans a real journal entry over there and\n' +
         '   leaves the next close computing its delta against a snapshot the provider no longer\n' +
         '   agrees with.\n\n' +
-        '   Reverse them in the app, or pass --force once you have deleted them by hand.\n'
+        '   Roll the batch back in the app, or pass --force once you have deleted them by hand.\n'
     )
     for (const p of exportedRows.slice(0, 10)) {
-      console.error(
-        `   ${p.docNumber} ${money(p.totalMinor)} -> ${p.providerId}:${p.providerEntryId}`
-      )
+      console.error(`   ${p.docNumber} ${money(p.totalMinor)} -> ${sentObjects.get(p.id)}`)
     }
     process.exit(1)
   }
@@ -687,6 +703,12 @@ async function main() {
   // ── 8. Do it ──────────────────────────────────────────────────────────────
 
   heading('8. Writing')
+
+  // Batches first: `ExportBatchPosting`'s FK to the posting is ON DELETE NO ACTION.
+  await db
+    .delete(schema.ExportBatchPosting)
+    .where(eq(schema.ExportBatchPosting.organizationId, org.id))
+  await db.delete(schema.ExportBatch).where(eq(schema.ExportBatch.organizationId, org.id))
 
   for (const p of postings) {
     await db

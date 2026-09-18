@@ -101,7 +101,7 @@ async function main() {
 
   const forSource = await listPostingsForSource(database, {
     organizationId: orgId,
-    sourceType: 'journal_entry',
+    sourceKind: 'journal_entry',
     sourceId: created.value.id,
   })
   show('listPostingsForSource', forSource.isErr() ? forSource.error.message : forSource.value)
@@ -115,7 +115,7 @@ async function main() {
 
   const after = await listPostingsForSource(database, {
     organizationId: orgId,
-    sourceType: 'journal_entry',
+    sourceKind: 'journal_entry',
     sourceId: created.value.id,
   })
   show('postings after reversal', after.isErr() ? after.error.message : after.value)

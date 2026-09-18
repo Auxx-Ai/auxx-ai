@@ -25,6 +25,7 @@ import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { NotFoundError, UnprocessableEntityError } from '../../errors'
 import { loadChartAccountsById } from '../../postings/chart-accounts'
+import { listPostingsForSource } from '../../postings/list-postings'
 import { toRecordId } from '../../resources/resource-id'
 import { type BankAccountRow, toDateKey } from '../client'
 import { guard } from '../guard'
@@ -65,7 +66,6 @@ const TRANSACTION_ATTRIBUTES = [
   'bank_transaction_exclude_reason',
   'bank_transaction_reviewed_at',
   'bank_transaction_reviewed_by_user_id',
-  'bank_transaction_gl_posting_id',
   'bank_transaction_rule_id',
 ] as const
 
@@ -536,12 +536,19 @@ export async function listMatchCandidates(
           ? [
               readVendorPaymentCandidates(db, organizationId, dateKey, absMinor, search),
               readVendorBillCandidates(db, organizationId, dateKey, absMinor, search),
-              readTransactionCandidates(db, organizationId, dateKey, absMinor, 'refund', search),
+              readMoneyCandidates(db, organizationId, dateKey, absMinor, 'customer_refund', search),
             ]
           : [
               readBankDepositCandidates(db, organizationId, dateKey, absMinor, search),
               readPayoutCandidates(db, organizationId, dateKey, absMinor, transactionId, search),
-              readTransactionCandidates(db, organizationId, dateKey, absMinor, 'charge', search),
+              readMoneyCandidates(
+                db,
+                organizationId,
+                dateKey,
+                absMinor,
+                'customer_receipt',
+                search
+              ),
             ]
       )
 
@@ -609,32 +616,26 @@ export async function readHistory(
         })
       }
 
-      if (line.glPostingId) {
-        const [posting] = await db
-          .select({
-            id: schema.GlPosting.id,
-            docNumber: schema.GlPosting.docNumber,
-            status: schema.GlPosting.status,
-            postedAt: schema.GlPosting.postedAt,
-          })
-          .from(schema.GlPosting)
-          .where(
-            and(
-              eq(schema.GlPosting.id, line.glPostingId),
-              eq(schema.GlPosting.organizationId, organizationId)
-            )
-          )
-          .limit(1)
-        if (posting) {
-          entries.push({
-            kind: 'posted',
-            label: posting.status === 'reversed' ? 'Posting reversed' : 'Posted to the ledger',
-            detail: posting.docNumber,
-            at: posting.postedAt,
-            glPostingId: posting.id,
-            docNumber: posting.docNumber,
-          })
-        }
+      // The most recent posting, whatever its status - read through
+      // `listPostingsForSource` (TARGET §1), not `line.glPostingId`: that field
+      // is now the LIVE claim only, and a reversed line's claim is released
+      // entirely, so it would silently drop the "Posting reversed" entry the
+      // moment the reversal that produced it committed.
+      const postings = await listPostingsForSource(db, {
+        organizationId,
+        sourceKind: BANK_TRANSACTION_SOURCE_TYPE,
+        sourceId: transactionId,
+      })
+      const posting = postings.isOk() ? postings.value[0] : undefined
+      if (posting) {
+        entries.push({
+          kind: 'posted',
+          label: posting.status === 'reversed' ? 'Posting reversed' : 'Posted to the ledger',
+          detail: posting.docNumber,
+          at: posting.postedAt ? new Date(posting.postedAt) : null,
+          glPostingId: posting.id,
+          docNumber: posting.docNumber,
+        })
       }
 
       if (line.ruleId) {
@@ -720,8 +721,7 @@ async function describeGlAccount(
  *
  * ⚠️ ISO strings, not `Date`s: `FieldValue.valueDate` is a `timestamp` in
  * `mode: 'string'`, so drizzle compares it as text and handing it a `Date` is a
- * type error rather than a silent coercion. `PaymentTransaction.createdAt` IS a
- * `Date`, which is why {@link windowDates} exists beside this.
+ * type error rather than a silent coercion.
  */
 function windowBounds(dateKey: string, days = CANDIDATE_DAY_WINDOW) {
   const centre = Date.parse(`${dateKey}T00:00:00.000Z`)
@@ -729,12 +729,6 @@ function windowBounds(dateKey: string, days = CANDIDATE_DAY_WINDOW) {
     from: new Date(centre - days * 86_400_000).toISOString(),
     to: new Date(centre + days * 86_400_000 + 86_399_000).toISOString(),
   }
-}
-
-/** {@link windowBounds} as real `Date`s, for the columns that are not strings. */
-function windowDates(dateKey: string, days = CANDIDATE_DAY_WINDOW) {
-  const bounds = windowBounds(dateKey, days)
-  return { from: new Date(bounds.from), to: new Date(bounds.to) }
 }
 
 /** Entity-backed candidates: one generic reader, four attribute sets. */
@@ -1024,90 +1018,116 @@ function readPayoutCandidates(
 }
 
 /**
- * `PaymentTransaction` rows, which is where a customer payment actually lives.
+ * `MoneyTransaction` rows - where a customer receipt or refund actually lives.
  *
- * 🛑 **The transaction table, never the `payment` entity mirror.** `ledger.ts`
- * mints a mirror per allocation and only for a succeeded charge, so refunds get
- * no mirror at all - a matcher reading the entity would silently be unable to
- * match any money going back out, forever.
+ * 🛑 The movement table, never an entity mirror: the money model mints no
+ * mirror at all, so a matcher reading entities could never match money going
+ * either way.
+ *
+ * ⚠️ A movement carries its date in ONE of two columns - `occurredOn` for a
+ * hand-recorded day, `occurredAt` for an observed instant - so the window is
+ * applied in TypeScript over both rather than in SQL over one.
  */
-async function readTransactionCandidates(
+async function readMoneyCandidates(
   db: Database,
   organizationId: string,
   dateKey: string,
   absMinor: number,
-  kind: 'charge' | 'refund',
+  purpose: 'customer_receipt' | 'customer_refund',
   search?: string
 ): Promise<MatchCandidate[]> {
-  const bounds = windowDates(dateKey)
+  const bounds = windowBounds(dateKey)
+  const inWindow = or(
+    and(
+      gte(schema.MoneyTransaction.occurredAt, new Date(bounds.from)),
+      lte(schema.MoneyTransaction.occurredAt, new Date(bounds.to))
+    ),
+    and(
+      gte(schema.MoneyTransaction.occurredOn, bounds.from.slice(0, 10)),
+      lte(schema.MoneyTransaction.occurredOn, bounds.to.slice(0, 10))
+    )
+  )
   const rows = await db
     .select({
-      id: schema.PaymentTransaction.id,
-      amount: schema.PaymentTransaction.amount,
-      method: schema.PaymentTransaction.method,
-      reference: schema.PaymentTransaction.reference,
-      createdAt: schema.PaymentTransaction.createdAt,
-      // The bank-line pointer is a COLUMN since drizzle 0363; only the
-      // user-picked accounting date is still read out of the blob.
-      bankTransactionId: schema.PaymentTransaction.bankTransactionId,
-      metadata: schema.PaymentTransaction.metadata,
+      id: schema.MoneyTransaction.id,
+      amountMinor: schema.MoneyTransaction.amountMinor,
+      method: schema.MoneyTransaction.method,
+      reference: schema.MoneyTransaction.reference,
+      occurredAt: schema.MoneyTransaction.occurredAt,
+      occurredOn: schema.MoneyTransaction.occurredOn,
     })
-    .from(schema.PaymentTransaction)
+    .from(schema.MoneyTransaction)
     .where(
       and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        eq(schema.PaymentTransaction.kind, kind),
-        inArray(schema.PaymentTransaction.status, ['succeeded', 'disputed']),
+        eq(schema.MoneyTransaction.organizationId, organizationId),
+        eq(schema.MoneyTransaction.purpose, purpose),
         search
-          ? or(
-              and(
-                gte(schema.PaymentTransaction.createdAt, bounds.from),
-                lte(schema.PaymentTransaction.createdAt, bounds.to)
-              ),
-              sql`${schema.PaymentTransaction.reference} ILIKE ${`%${search}%`}`
-            )
-          : and(
-              gte(schema.PaymentTransaction.createdAt, bounds.from),
-              lte(schema.PaymentTransaction.createdAt, bounds.to)
-            )
+          ? or(inWindow, sql`${schema.MoneyTransaction.reference} ILIKE ${`%${search}%`}`)
+          : inWindow
       )
     )
     .limit(200)
 
+  const claimedBy = await readBankLinesClaimingMoney(
+    db,
+    organizationId,
+    rows.map((row) => row.id)
+  )
   const out: MatchCandidate[] = []
   for (const row of rows) {
-    const metadata = (row.metadata ?? {}) as { date?: string }
-    // The user-picked (possibly backdated) date rides in `metadata.date`; the
-    // row's `createdAt` is when it was KEYED, which is not the accounting date.
-    // Same rule `postPaymentTransaction` applies when it dates the entry.
-    const candidateDateKey =
-      metadata.date && /^\d{4}-\d{2}-\d{2}$/.test(metadata.date)
-        ? metadata.date
-        : toDateKey(row.createdAt)
-
+    const candidateDateKey = row.occurredOn ?? (row.occurredAt ? toDateKey(row.occurredAt) : null)
+    const amountMinor = Number(row.amountMinor)
     const matchesWindow =
       isWithinCandidateWindow(dateKey, candidateDateKey) &&
-      isWithinAmountTolerance(absMinor, row.amount)
+      isWithinAmountTolerance(absMinor, amountMinor)
     const matchesText =
       !!search && (row.reference ?? '').toLowerCase().includes(search.toLowerCase())
     if (!matchesWindow && !matchesText) continue
 
     out.push({
-      recordType: 'payment_transaction',
+      recordType: 'money_transaction',
       recordId: row.id,
-      label: `${kind === 'refund' ? 'Refund' : 'Payment'} ${row.reference || row.id.slice(0, 8)}`,
+      label: `${purpose === 'customer_refund' ? 'Refund' : 'Payment'} ${
+        row.reference || row.id.slice(0, 8)
+      }`,
       secondary: row.method,
       dateKey: candidateDateKey,
-      amountMinor: Math.abs(row.amount),
+      amountMinor: Math.abs(amountMinor),
       score: scoreCandidate({
         bankAbsMinor: absMinor,
-        candidateAbsMinor: row.amount,
+        candidateAbsMinor: amountMinor,
         bankDateKey: dateKey,
         candidateDateKey,
       }),
-      matchedToBankTransactionId: row.bankTransactionId ?? null,
+      matchedToBankTransactionId: claimedBy.get(row.id) ?? null,
     })
   }
+  return out
+}
+
+/** Which bank line, if any, already claims each movement - the only half of the link. */
+async function readBankLinesClaimingMoney(
+  db: Database,
+  organizationId: string,
+  moneyTransactionIds: string[]
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  if (moneyTransactionIds.length === 0) return out
+  const rows = await db
+    .select({
+      entityId: schema.FieldValue.entityId,
+      valueText: schema.FieldValue.valueText,
+    })
+    .from(schema.FieldValue)
+    .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.CustomField.systemAttribute, 'bank_transaction_matched_record_id'),
+        inArray(schema.FieldValue.valueText, moneyTransactionIds)
+      )
+    )
+  for (const row of rows) if (row.valueText) out.set(row.valueText, row.entityId)
   return out
 }
 
@@ -1152,6 +1172,28 @@ async function hydrateTransactions(
           )
         )
     : []
+
+  // The live posting each line currently claims, read through `GlPostingSource`
+  // (TARGET §1) rather than the retired `bank_transaction_gl_posting_id` stamp:
+  // a reversal releases the claim entirely (the row simply stops appearing
+  // here), where the stamp used to need `undoReview` to clear it by hand.
+  const livePostings = ids.length
+    ? await db
+        .select({
+          sourceId: schema.GlPostingSource.sourceId,
+          glPostingId: schema.GlPostingSource.glPostingId,
+        })
+        .from(schema.GlPostingSource)
+        .where(
+          and(
+            eq(schema.GlPostingSource.organizationId, organizationId),
+            eq(schema.GlPostingSource.sourceKind, BANK_TRANSACTION_SOURCE_TYPE),
+            eq(schema.GlPostingSource.linkRole, 'subject'),
+            inArray(schema.GlPostingSource.sourceId, ids)
+          )
+        )
+    : []
+  const glPostingIdBySourceId = new Map(livePostings.map((row) => [row.sourceId, row.glPostingId]))
 
   const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
   for (const value of values) {
@@ -1209,7 +1251,7 @@ async function hydrateTransactions(
       excludeReason: read(row.id, 'bank_transaction_exclude_reason')?.valueText ?? null,
       reviewedAt: toDate(read(row.id, 'bank_transaction_reviewed_at')?.valueDate),
       reviewedByUserId: read(row.id, 'bank_transaction_reviewed_by_user_id')?.valueText ?? null,
-      glPostingId: read(row.id, 'bank_transaction_gl_posting_id')?.valueText ?? null,
+      glPostingId: glPostingIdBySourceId.get(row.id) ?? null,
       ruleId: read(row.id, 'bank_transaction_rule_id')?.valueText ?? null,
       suggestedGlAccountId:
         readSuggestion(row.id, 'bank_transaction_suggested_gl_account')?.valueText ?? null,
@@ -1257,7 +1299,7 @@ function toDate(value: string | null | undefined): Date | null {
 function narrowMatchRecordType(value: string | null | undefined): MatchedRecordType | null {
   switch (value) {
     case 'vendor_payment':
-    case 'payment_transaction':
+    case 'money_transaction':
     case 'bank_deposit':
     case 'vendor_bill':
     case 'payout':

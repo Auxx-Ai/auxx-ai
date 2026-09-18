@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { UnprocessableEntityError } from '../../errors'
-import { ACCOUNT_ROLES, buildEntry, buildReceiptEntry, buildVendorBillEntry } from '../build-entry'
+import { ACCOUNT_ROLES, buildEntry, buildVendorBillEntry } from '../build-entry'
 import type { GlPostingLineInput } from '../types'
 
 function line(
@@ -20,7 +20,11 @@ function line(
   return { accountRole, direction, amount, sourceType: 'test', sourceId: 'src_1', sortOrder: 0 }
 }
 
-const BASE = { postingType: 'receipt' as const, periodKey: '2026-08-18', txnDate: '2026-08-18' }
+const BASE = {
+  postingType: 'inventory_movement' as const,
+  periodKey: '2026-08-18',
+  txnDate: '2026-08-18',
+}
 
 describe('buildEntry - the balance assertion', () => {
   it('accepts an entry whose debits equal its credits', () => {
@@ -189,134 +193,6 @@ describe('buildEntry - line validation', () => {
   })
 })
 
-describe('buildReceiptEntry', () => {
-  const RECEIPT = {
-    stockMovementId: 'sm_1',
-    periodKey: '2026-08-18',
-    txnDate: '2026-08-18',
-    vendorUnitPriceMinor: 12_500,
-    quantity: 4,
-    freightMinor: 3_000,
-    dutyMinor: 1_200,
-    inventoryAccountRole: ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
-  }
-
-  // The debit account comes from the MOVEMENT's frozen `glAccount`, which
-  // `receiveStock` resolved from the part's `partKind`. Receiving a finished
-  // good relieves finished goods, not raw materials, and the posting has to
-  // agree with the ledger row it accounts for - two accounts for one receipt is
-  // two answers to one question. Pinned because an earlier version of this
-  // builder hardcoded Raw Materials and would have silently disagreed on every
-  // finished-good receipt.
-  it('debits the role the CALLER names, not a hardcoded raw materials', () => {
-    const entry = buildReceiptEntry({
-      ...RECEIPT,
-      inventoryAccountRole: ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
-    })
-    const fg = entry.lines.find((l) => l.accountRole === ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS)
-    expect(fg?.direction).toBe('debit')
-    expect(fg?.amount).toBe(54_200)
-    expect(entry.lines.some((l) => l.accountRole === ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS)).toBe(
-      false
-    )
-    // and it still balances against the same three credits
-    expect(entry.totalDebit).toBe(entry.totalCredit)
-  })
-
-  it('debits the inventory role at LANDED cost', () => {
-    const entry = buildReceiptEntry(RECEIPT)
-    const raw = entry.lines.find((l) => l.accountRole === ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS)
-    expect(raw?.direction).toBe('debit')
-    // 12_500 * 4 + 3_000 + 1_200
-    expect(raw?.amount).toBe(54_200)
-  })
-
-  it('credits GRNI at the VENDOR unit price, never at landed cost', () => {
-    const entry = buildReceiptEntry(RECEIPT)
-    const grni = entry.lines.find((l) => l.accountRole === ACCOUNT_ROLES.GRNI)
-    expect(grni?.direction).toBe('credit')
-    expect(grni?.amount).toBe(50_000)
-    // The whole rule in one assertion: GRNI must NOT carry freight or duty,
-    // because the vendor's invoice never will and the account could never clear.
-    expect(grni?.amount).not.toBe(54_200)
-  })
-
-  it('credits freight and duty to their own accruals', () => {
-    const entry = buildReceiptEntry(RECEIPT)
-    const freight = entry.lines.find((l) => l.accountRole === ACCOUNT_ROLES.FREIGHT_ACCRUAL)
-    const duty = entry.lines.find((l) => l.accountRole === ACCOUNT_ROLES.DUTIES_ACCRUAL)
-    expect(freight).toMatchObject({ direction: 'credit', amount: 3_000 })
-    expect(duty).toMatchObject({ direction: 'credit', amount: 1_200 })
-  })
-
-  it('balances', () => {
-    const entry = buildReceiptEntry(RECEIPT)
-    expect(entry.totalDebit).toBe(entry.totalCredit)
-    expect(entry.totalDebit).toBe(54_200)
-  })
-
-  it('omits the 2170 duties leg entirely when the tariff portion is zero', () => {
-    const entry = buildReceiptEntry({ ...RECEIPT, dutyMinor: 0 })
-    expect(entry.lines.map((l) => l.accountRole)).not.toContain(ACCOUNT_ROLES.DUTIES_ACCRUAL)
-    expect(entry.lines).toHaveLength(3)
-    expect(entry.totalDebit).toBe(53_000)
-    expect(entry.totalCredit).toBe(53_000)
-  })
-
-  it('omits the freight accrual leg when there is no freight', () => {
-    const entry = buildReceiptEntry({ ...RECEIPT, freightMinor: 0 })
-    expect(entry.lines.map((l) => l.accountRole)).not.toContain(ACCOUNT_ROLES.FREIGHT_ACCRUAL)
-  })
-
-  it('reduces to two legs when there is neither freight nor duty', () => {
-    const entry = buildReceiptEntry({ ...RECEIPT, freightMinor: 0, dutyMinor: 0 })
-    expect(entry.lines).toHaveLength(2)
-    expect(entry.lines.map((l) => l.accountRole)).toEqual([
-      ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
-      ACCOUNT_ROLES.GRNI,
-    ])
-  })
-
-  it('stamps the stock movement as the source on every line', () => {
-    const entry = buildReceiptEntry(RECEIPT)
-    for (const l of entry.lines) {
-      expect(l.sourceType).toBe('stock_movement')
-      expect(l.sourceId).toBe('sm_1')
-    }
-  })
-
-  it('numbers the lines in presentation order after zero legs are dropped', () => {
-    const entry = buildReceiptEntry({ ...RECEIPT, freightMinor: 0 })
-    expect(entry.lines.map((l) => l.sortOrder)).toEqual([0, 1, 2])
-  })
-
-  it('is typed as a receipt posting', () => {
-    expect(buildReceiptEntry(RECEIPT).postingType).toBe('receipt')
-  })
-
-  it('rejects a zero or negative quantity', () => {
-    expect(() => buildReceiptEntry({ ...RECEIPT, quantity: 0 })).toThrow(/must be positive/)
-    expect(() => buildReceiptEntry({ ...RECEIPT, quantity: -1 })).toThrow(/must be positive/)
-  })
-
-  it('rejects a fractional quantity', () => {
-    expect(() => buildReceiptEntry({ ...RECEIPT, quantity: 1.5 })).toThrow(/must be an integer/)
-  })
-
-  it('rejects a negative freight or duty portion', () => {
-    expect(() => buildReceiptEntry({ ...RECEIPT, freightMinor: -1 })).toThrow(
-      /must be non-negative/
-    )
-    expect(() => buildReceiptEntry({ ...RECEIPT, dutyMinor: -1 })).toThrow(/must be non-negative/)
-  })
-
-  it('rejects a fractional unit price', () => {
-    expect(() => buildReceiptEntry({ ...RECEIPT, vendorUnitPriceMinor: 12_500.5 })).toThrow(
-      /integer number of minor units/
-    )
-  })
-})
-
 describe('buildVendorBillEntry', () => {
   const BILL = {
     vendorBillId: 'vb_1',
@@ -428,39 +304,5 @@ describe('buildVendorBillEntry', () => {
     expect(() => buildVendorBillEntry({ ...BILL, billTotalMinor: 50_000.5 })).toThrow(
       /integer number of minor units/
     )
-  })
-})
-
-describe('the receipt / bill round trip', () => {
-  it('clears GRNI to exactly zero when the vendor bills what was agreed', () => {
-    const receipt = buildReceiptEntry({
-      stockMovementId: 'sm_2',
-      periodKey: '2026-08-18',
-      txnDate: '2026-08-18',
-      vendorUnitPriceMinor: 12_500,
-      quantity: 4,
-      freightMinor: 3_000,
-      dutyMinor: 1_200,
-      inventoryAccountRole: ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
-    })
-    const credited = receipt.lines
-      .filter((l) => l.accountRole === ACCOUNT_ROLES.GRNI && l.direction === 'credit')
-      .reduce((sum, l) => sum + l.amount, 0)
-
-    const bill = buildVendorBillEntry({
-      vendorBillId: 'vb_2',
-      periodKey: '2026-09-02',
-      txnDate: '2026-09-02',
-      matchedMinor: credited,
-      billTotalMinor: credited,
-    })
-    const debited = bill.lines
-      .filter((l) => l.accountRole === ACCOUNT_ROLES.GRNI && l.direction === 'debit')
-      .reduce((sum, l) => sum + l.amount, 0)
-
-    // This is decision P7 stated as a test: the two sides of GRNI meet only
-    // because the receipt credited the vendor price rather than landed cost.
-    expect(debited).toBe(credited)
-    expect(credited - debited).toBe(0)
   })
 })

@@ -364,20 +364,6 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     },
   },
 
-  // A customer payment's ledger entry (`Dr undeposited_funds | cash | clearing`
-  // / `Cr accounts_receivable`), filed under `sourceType 'payment'`. The
-  // payment def is otherwise hidden, so this card is the only place a person
-  // sees where the money landed. HANDOFF slot 2J.
-  payment: {
-    entityType: 'payment',
-    additionalTabs: [],
-    tabCards: {
-      overview: [
-        { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
-      ],
-    },
-  },
-
   // A bank deposit's one cash entry (`Dr cash / Cr undeposited_funds`). The
   // grouped payments are on the deposits page; the drawer shows the posting.
   // HANDOFF slot 2J.
@@ -389,6 +375,32 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         // The generated PDF (read-only) beside the uploads. Both fields are
         // `showInPanel: false`, so this card is their only surface.
         { value: 'documents', label: 'Documents', icon: 'paperclip' },
+        { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
+      ],
+    },
+  },
+
+  // A fulfillment's own posting (revenue, tax, shipping, discounts at ship
+  // time; TARGET §5). Otherwise reached only through the order's Ledger tab -
+  // this is the fulfillment record's own surface (accounting migration
+  // step 1b, part E).
+  fulfillment: {
+    entityType: 'fulfillment',
+    additionalTabs: [],
+    tabCards: {
+      overview: [
+        { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
+      ],
+    },
+  },
+
+  // A payout's `Dr bank Dr fees Cr clearing` entry, rail-scoped (TARGET §5).
+  // Accounting migration step 1b, part E.
+  payout: {
+    entityType: 'payout',
+    additionalTabs: [],
+    tabCards: {
+      overview: [
         { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
       ],
     },
@@ -455,6 +467,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         { value: 'documents', label: 'Documents', icon: 'paperclip' },
         { value: 'vendor', label: 'Vendor', icon: 'store' },
         { value: 'payment', label: 'Payment', icon: 'credit-card' },
+        // Accounting migration step 1b, part E. Empty until the vendor-bill
+        // posting builder is wired to a writer (TARGET §5, MIGRATION step 5).
+        { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
       ],
     },
   },

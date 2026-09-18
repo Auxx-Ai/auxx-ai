@@ -14,8 +14,8 @@ import type { FileValue } from '../field-values/converters'
 import { formatToDisplayValue } from '../field-values/formatter'
 import type { TypedFieldValueResult } from '../field-values/types'
 import { readBankDepositDetail } from '../money/bank-deposits/reads'
-import { getPaymentAccount } from '../money/payments/account-state'
-import { getInvoiceDepositApplied } from '../money/payments/allocation-reads'
+import { listInvoiceMoneyPayments } from '../money/invoices/payment-reads'
+import { getPaymentAccount } from '../money/payouts/stripe-account'
 import { buildPayUrl, ensureInvoicePublicToken, isPaymentsConnected } from '../money/public-token'
 import { computeDocumentTotals, roundCents } from '../money/totals'
 import type { DiscountType } from '../money/types'
@@ -112,15 +112,14 @@ export interface QuotePdfPayload {
   photos?: PdfPhotoRef[]
 }
 
-/** One payment-history row on the invoice PDF (money MI1 build spec §H.1) — a succeeded
- * ledger charge (positive) or refund (negative), read straight off `PaymentTransaction`. */
+/** One payment-history row on the invoice PDF (money MI1 build spec §H.1) — a money-model
+ * receipt applied to this invoice, read via `listInvoiceMoneyPayments`. */
 export interface InvoicePdfPaymentRow {
-  /** ISO date — the user-picked payment date from the ledger row's `metadata.date`,
-   * falling back to the row's `createdAt` (no dedicated business-date column in v1). */
+  /** ISO date the receipt was recorded against. */
   date: string
   method: string | null
   reference: string | null
-  /** Integer cents — refund rows are negative. */
+  /** Integer cents. */
   amount: number
 }
 
@@ -782,28 +781,21 @@ export async function buildInvoicePdfPayload(params: {
   const amountPaid = amountPaidTyped ? (extractValue(amountPaidTyped) as number) : 0
   const balance = balanceTyped ? (extractValue(balanceTyped) as number) : totals.total
 
-  // ─── Payment history — succeeded ledger rows only (charges positive, refunds negative) ──
-  const [paymentRows, depositApplied] = await Promise.all([
-    database.query.PaymentTransaction.findMany({
-      where: (t, { and: andOp, eq: eqOp }) =>
-        andOp(
-          eqOp(t.organizationId, organizationId),
-          eqOp(t.invoiceInstanceId, invoiceInstanceId),
-          eqOp(t.status, 'succeeded')
-        ),
-      orderBy: (t, { asc }) => asc(t.createdAt),
-    }),
-    // Deposit-accounting plan 16 §E — same figure the public pay page shows, see the field doc.
-    getInvoiceDepositApplied(organizationId, invoiceInstanceId),
-  ])
-  const payments: InvoicePdfPaymentRow[] = paymentRows.map((row) => ({
-    // The user-picked (possibly backdated) payment date rides in `metadata.date`
-    // (recordManualPayment, ledger.ts) — the row's createdAt is only the fallback.
-    date: (row.metadata as { date?: string } | null)?.date ?? row.createdAt.toISOString(),
+  // ─── Payment history (money-model receipts; the legacy `PaymentTransaction` lane went
+  // with accounting migration step 0) ──────────────────────────────────────────────────
+  const moneyPayments = await listInvoiceMoneyPayments(database, {
+    organizationId,
+    invoiceInstanceId,
+  })
+  const payments: InvoicePdfPaymentRow[] = moneyPayments.map((row) => ({
+    date: row.date,
     method: row.method,
     reference: row.reference,
-    amount: row.kind === 'refund' ? -row.amount : row.amount,
+    amount: row.amount,
   }))
+  // Quote deposits have no money-model equivalent yet (accounting migration step 0) —
+  // the labeled "Deposit applied" breakout line the field doc describes is always 0.
+  const depositApplied = 0
 
   const settings = await resolveDocumentSettings(organizationId)
 
@@ -1424,9 +1416,9 @@ const DEPOSIT_METHOD_LABELS: Record<string, string> = {
 /**
  * Build the deposit slip payload for one `bank_deposit` record.
  *
- * Reads the deposit and its payments through `money/bank-deposits/`, which is
- * the one place that knows a payment's link is the OWNING side - reading the
- * `bank_deposit_payments` inverse here would be a second, staler answer.
+ * Reads the deposit and its payments through `money/bank-deposits/`, which
+ * reads `MoneyTransaction.bankDepositInstanceId` directly (MIGRATION follow-up 9)
+ * rather than a relationship that could go stale.
  *
  * The bank account's CODE and NAME are resolved from the org's chart by the
  * `gl_account` id frozen on the deposit (task 15 §4) - the id is what

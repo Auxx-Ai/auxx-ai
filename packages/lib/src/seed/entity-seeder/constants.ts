@@ -225,15 +225,6 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     isVisible: false, // Internal entity, rendered only by the line-builder UIs
   },
   {
-    entityType: 'payment',
-    apiSlug: 'payments',
-    singular: 'Payment',
-    plural: 'Payments',
-    icon: 'banknote',
-    color: 'emerald',
-    isVisible: false, // Ledger mirror records, rendered only by the invoice drawer
-  },
-  {
     entityType: 'product',
     apiSlug: 'products',
     singular: 'Product',

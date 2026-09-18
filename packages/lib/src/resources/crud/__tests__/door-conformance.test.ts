@@ -212,6 +212,15 @@ async function runScenario(
 // SCENARIOS — one real handler per write-origin kind (plus the alias lanes)
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * `archive()` calls `assertFinancialRecordCanDelete` directly against `this.db`
+ * before anything else runs, so the handler's db can no longer be a bare
+ * `{} as never` — it needs `query.EntityDefinition.findFirst` to resolve. `undefined`
+ * falls back to the RecordId's own def component ('def_1'), which is not a financial
+ * type, so the guard returns immediately without touching anything else on `db`.
+ */
+const FAKE_DB = { query: { EntityDefinition: { findFirst: async () => undefined } } } as never
+
 // A REAL collector: the tier-1 lifecycle seams (plan 07 §4) call
 // `recordCreated`/`recordArchived` on it during the sync scenario, so an
 // empty `{} as ManifestCollector` stub would crash the handler under test.
@@ -231,7 +240,7 @@ const observations = {} as Record<ScenarioId, ScenarioObservations>
 
 beforeAll(async () => {
   const build = (session?: WriteSession) =>
-    new UnifiedCrudHandler('org_1', 'user_1', {} as never, 'sock_1', session ? { session } : {})
+    new UnifiedCrudHandler('org_1', 'user_1', FAKE_DB, 'sock_1', session ? { session } : {})
 
   observations.interactive = await runScenario(() => build(interactiveSession('user_1', 'sock_1')))
   observations.api = await runScenario(() =>

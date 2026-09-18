@@ -35,6 +35,5 @@ export type {
   CreatedFulfillment,
   CreateFulfillmentInput,
   CreateFulfillmentLineInput,
-  FulfillmentPostingStamp,
 } from './types'
-export { createFulfillment, deleteFulfillment, stampFulfillmentPosting } from './writes'
+export { createFulfillment, deleteFulfillment } from './writes'

@@ -6,7 +6,7 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
-import { and, eq, gt } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import type { PdfPhotoRef, QuotePdfContact, QuotePdfLineItem } from '../documents/payload'
 import type {
@@ -19,9 +19,8 @@ import { getAssetContent } from '../files/assets/content'
 import { createS3StoragePort } from '../files/storage/ports'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { quietSession } from '../resources/crud/write-origin'
-import { getPaymentAccount } from './payments/account-state'
-import { resolveQuoteDeposit } from './payments/deposit'
-import { isPaymentsConnected } from './public-token'
+import { isCheckoutAvailable, sumQuoteDeposits } from './checkout/reads'
+import { resolveQuoteDeposit } from './quote-deposit'
 import type { DiscountType } from './types'
 
 /**
@@ -133,38 +132,6 @@ export async function resolveQuoteByPublicToken(
   return { organizationId: row.organizationId, quoteInstanceId: row.entityId }
 }
 
-/**
- * Flip an abandoned deposit Checkout's `pending` ledger row to `canceled` (money MP2 §B.6) —
- * called by the quote page when the customer lands back via `cancel_url`
- * (`?checkout=cancel&tx=…`). Direct mirror of the invoice flow's `cancelAbandonedCheckout`
- * (`public-token.ts`): guarded by the token AND the row's quote/provider/kind/status, so the
- * public `tx` param can only ever cancel this quote's own pending deposit charge — never
- * anything else, never twice. Safe even if the customer later pays the (still-open) Stripe
- * session anyway: the webhook's `markChargeSucceeded` flips `canceled → succeeded` and the
- * deposit settles normally.
- */
-export async function cancelAbandonedDepositCheckout(
-  token: string,
-  transactionId: string
-): Promise<void> {
-  const resolved = await resolveQuoteByPublicToken(token)
-  if (!resolved) return
-
-  await database
-    .update(schema.PaymentTransaction)
-    .set({ status: 'canceled' })
-    .where(
-      and(
-        eq(schema.PaymentTransaction.id, transactionId),
-        eq(schema.PaymentTransaction.organizationId, resolved.organizationId),
-        eq(schema.PaymentTransaction.quoteInstanceId, resolved.quoteInstanceId),
-        eq(schema.PaymentTransaction.provider, 'stripe'),
-        eq(schema.PaymentTransaction.kind, 'charge'),
-        eq(schema.PaymentTransaction.status, 'pending')
-      )
-    )
-}
-
 /** One rendered line on the public quote acceptance page. */
 export type PublicQuoteLine = QuotePdfLineItem
 
@@ -225,10 +192,6 @@ export interface PublicQuotePayload {
    * `/pay/[token]` uses. Gates the deposit Pay button. */
   paymentsEnabled: boolean
 }
-
-/** How long a `pending` deposit Checkout row keeps the quote page in its "processing" state —
- * mirrors `public-token.ts`'s `PROCESSING_WINDOW_MS` for the invoice pay page. */
-const DEPOSIT_PROCESSING_WINDOW_MS = 30 * 60 * 1000
 
 /**
  * The public quote-page payload builder (v5 build spec 01). Resolves the token, reuses
@@ -297,36 +260,15 @@ export async function getPublicQuotePayload(token: string): Promise<PublicQuoteP
   const todayIso = new Date().toISOString().slice(0, 10)
   const isExpired = !!payload.validUntil && payload.validUntil < todayIso
 
-  const [{ depositAmount }, account, pendingDeposit, succeededDeposit] = await Promise.all([
+  const [{ depositAmount }, collected, paymentsEnabled] = await Promise.all([
     resolveQuoteDeposit(organizationId, quoteInstanceId, storedTotal),
-    getPaymentAccount(organizationId),
-    database.query.PaymentTransaction.findFirst({
-      // Time-bounded the same way the invoice payload's `pendingCharge` lookup is
-      // (`public-token.ts`) — a `pending` row is minted at Checkout CREATION, so its bare
-      // existence only means a session was opened, not that money moved. Silently-abandoned
-      // tabs age out of this window instead of wedging the page in "processing" forever; the
-      // webhook remains the truth — a stale session paid after the window still settles.
-      where: and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        eq(schema.PaymentTransaction.quoteInstanceId, quoteInstanceId),
-        eq(schema.PaymentTransaction.provider, 'stripe'),
-        eq(schema.PaymentTransaction.kind, 'charge'),
-        eq(schema.PaymentTransaction.status, 'pending'),
-        gt(schema.PaymentTransaction.updatedAt, new Date(Date.now() - DEPOSIT_PROCESSING_WINDOW_MS))
-      ),
-      columns: { id: true },
-    }),
-    database.query.PaymentTransaction.findFirst({
-      where: and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        eq(schema.PaymentTransaction.quoteInstanceId, quoteInstanceId),
-        eq(schema.PaymentTransaction.provider, 'stripe'),
-        eq(schema.PaymentTransaction.kind, 'charge'),
-        eq(schema.PaymentTransaction.status, 'succeeded')
-      ),
-      columns: { id: true },
-    }),
+    sumQuoteDeposits(database, organizationId, quoteInstanceId),
+    isCheckoutAvailable(organizationId),
   ])
+  // Nothing is recorded until Stripe confirms, so "pending" is only knowable from
+  // the browser's own return - the page reads `?checkout=success`.
+  const pendingDeposit = false
+  const succeededDeposit = collected.heldMinor + collected.appliedMinor > 0
 
   return {
     number: payload.number,
@@ -358,7 +300,7 @@ export async function getPublicQuotePayload(token: string): Promise<PublicQuoteP
     depositAmount,
     depositPaid: !!succeededDeposit,
     depositPending: !!pendingDeposit,
-    paymentsEnabled: isPaymentsConnected(account),
+    paymentsEnabled,
   }
 }
 

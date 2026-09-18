@@ -53,10 +53,6 @@
  */
 
 import { UnprocessableEntityError } from '../errors'
-// Type-only, so this file stays pure and gains no runtime edge into `money/`.
-// The shared amounts shape lives there because the PLANNER is its other
-// producer - see {@link computeCreditMemoAmounts}.
-import type { CreditMemoAmounts } from '../money/credit-memo-posting/types'
 import { ACCOUNT_ROLES, buildEntry } from './build-entry'
 import { toAmountMinor } from './build-fulfillment-entry'
 import { assertCompactablePeriodKey } from './period-key'
@@ -121,6 +117,27 @@ export interface BuiltCreditMemoEntitlementEntry {
   entry: BuiltEntry
   periodKey: string
   totalMinor: number
+}
+
+/** The amounts one memo contributes, all integer minor units. */
+export interface CreditMemoAmounts {
+  /** Zero when `reverseRevenue` is false: the memo contributes a money leg only. */
+  subtotalMinor: number
+  /** Zero when `reverseRevenue` is false. */
+  taxTotalMinor: number
+  /** Zero when `reverseRevenue` is false. */
+  totalMinor: number
+  /** The refund that actually moved. Always contributed, `reverseRevenue` or not. */
+  settlementMinor: number
+  /**
+   * 🛑 The resolved settlement account, kept PER MEMO and never collapsed.
+   *
+   * An Affirm memo and a card memo in one group must stay two credit lines,
+   * or `1210` is overstated forever in an entry that balances and that
+   * nothing downstream can detect. Absent means the `clearing` role.
+   */
+  settlementGlAccountId?: string
+  reverseRevenue: boolean
 }
 
 /** What one memo's arithmetic needs, and nothing else. See {@link computeCreditMemoAmounts}. */

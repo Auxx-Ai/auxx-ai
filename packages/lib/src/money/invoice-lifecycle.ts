@@ -12,8 +12,8 @@ import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { listInvoiceAllocations, releaseInvoiceAllocations } from './billing-allocations'
 import { syncInvoiceBillingProjection, syncWorkOrderBillingProjection } from './billing-projection'
+import { listInvoiceMoneyPayments } from './invoices/payment-reads'
 import { postInvoiceIssuance, reverseInvoiceIssuance } from './invoices/post-invoice'
-import { hasSucceededCharges } from './payments/ledger'
 import type { InvoiceLifecycleInput } from './types'
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
@@ -193,7 +193,10 @@ export async function voidInvoice(input: InvoiceLifecycleInput): Promise<void> {
     allocations.visitAllocations.at(0)?.workOrderId ??
     allocations.scheduleAllocations.at(0)?.workOrderId
 
-  if (await hasSucceededCharges(organizationId, invoiceInstanceId)) {
+  // Accounting migration step 0: `listInvoiceMoneyPayments` nets `unapply` against
+  // `apply`, so a fully-unapplied receipt no longer blocks the void.
+  const payments = await listInvoiceMoneyPayments(database, { organizationId, invoiceInstanceId })
+  if (payments.length > 0) {
     throw new BadRequestError('Remove recorded payments before voiding this invoice')
   }
 

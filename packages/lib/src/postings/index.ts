@@ -15,14 +15,6 @@ export {
   glAccountTypeMeta,
 } from '../resources/registry/gl-account-type-meta'
 export {
-  type AcceptedPostingResult,
-  acceptEntryInTx,
-  type EffectAcceptanceDependencies,
-  type PostingReplanResult,
-  type PreparedEffectMember,
-  type PreparedEffectPosting,
-} from './accept-entry'
-export {
   type AccountIdentityMap,
   confirmSuggestedIdentities,
   listAccountIdentities,
@@ -38,22 +30,6 @@ export {
 } from './account-subtype'
 export { withAccountingCommitLock } from './accounting-commit-lock'
 export {
-  type AcceptedMoneyApplicationEffectBasisV1,
-  acceptedMoneyApplicationEffectBasisSchema,
-  MONEY_APPLICATION_EFFECT_KIND,
-  MONEY_APPLICATION_POSTING_TYPE,
-  MONEY_APPLICATION_RESOURCE_KIND,
-  type MoneyApplicationBasisV1,
-  type MoneyApplicationWorkBasisInput,
-  moneyApplicationBasisSchema,
-  moneyApplicationWorkBasisSchema,
-} from './application-effect-types'
-export {
-  type CaptureMoneyApplicationWorkInput,
-  captureMoneyApplicationWorkInTx,
-  moneyApplicationAccountingEffectKey,
-} from './application-effect-work'
-export {
   type AccountingBasisDimension,
   reservedAccountingBasis,
 } from './basis-dimension'
@@ -64,22 +40,11 @@ export {
   activateAccountingBookConnectionInTx,
   type PinnedAccountingConnection,
   readAccountingBookConnectionStatus,
+  readActiveBookConnection,
   readPinnedAccountingConnection,
   readPinnedAccountingConnectionInTx,
   repairAccountingBookConnection,
-  resolveFulfillmentDeliveryIntentInTx,
 } from './book-connections'
-// ── plans/accounting/tasks/25 4: one credit memo entry per period ───────────
-export {
-  type BuildCreditMemoBatchEntryInput,
-  type BuiltCreditMemoBatchEntry,
-  buildCreditMemoBatchEntry,
-  CREDIT_MEMO_CONTACT_SOURCE_TYPE,
-  type CreditMemoBatchSource,
-  creditMemoBatchPeriodKey,
-  MAX_COMPACT_CREDIT_MEMO_BATCH_KEY,
-  MAX_CREDIT_MEMO_BATCH_ATTEMPT,
-} from './build-credit-memo-batch-entry'
 // ── plans/accounting/tasks/10: credit memos, one document for "you owe us less" ──
 export {
   type BuildCreditMemoEntitlementEntryInput,
@@ -111,9 +76,7 @@ export {
   type AccountRole,
   type BuildEntryInput,
   buildEntry,
-  buildReceiptEntry,
   buildVendorBillEntry,
-  type ReceiptEntryInput,
   ROLE_ACCOUNT_TYPES,
   roleAcceptsManualSource,
   roleScopeAxis,
@@ -130,24 +93,6 @@ export {
   EXPENSE_BILL_SOURCE_TYPE,
   type ExpenseBillLineInput,
 } from './build-expense-bill-entry'
-// ── plans/money/tasks/49: one fulfillment posting per day, not per shipment ──
-// PURE. Reaches `errors`, `build-entry`, `build-fulfillment-entry`, `doc-number`
-// and `money/fulfillment-posting/types` (types and constants only, no db), all
-// of which are safe in a browser.
-export {
-  type BuildFulfillmentBatchEntryInput,
-  type BuiltFulfillmentBatchEntry,
-  buildFulfillmentBatchEntry,
-  computeShipmentAmounts,
-  FULFILLMENT_DEBIT_ACCOUNT_ROLE,
-  type FulfillmentBatchSource,
-  type FulfillmentDebitExclusionReason,
-  type FulfillmentDebitResolution,
-  fulfillmentBatchPeriodKey,
-  MAX_COMPACT_FULFILLMENT_BATCH_KEY,
-  MAX_FULFILLMENT_BATCH_ATTEMPT,
-  resolveFulfillmentDebit,
-} from './build-fulfillment-batch-entry'
 // ── HANDOFF slot 2G: the revenue side (tasks/01 phases A to C) ──────────────
 export {
   type BuildFulfillmentEntryInput,
@@ -166,6 +111,13 @@ export {
   toAmountMinor,
   toChannelKey,
 } from './build-fulfillment-entry'
+export {
+  type BuiltInventoryMovementEntry,
+  buildInventoryMovementEntry,
+  type InventoryDocumentKind,
+  type InventoryMovementEntryInput,
+  type InventoryMovementLine,
+} from './build-inventory-movement-entry'
 // ── plans/accounting/tasks/08: the receivable nothing debits ────────────────
 export {
   type BuildInvoiceEntryInput,
@@ -184,11 +136,6 @@ export {
   type ManualPostingType,
   toMinorUnits,
 } from './build-manual-entry'
-export {
-  type BuiltMonthEndInventoryDraft,
-  buildMonthEndInventoryEntry,
-  type MonthEndInventoryInputs,
-} from './build-month-end-inventory'
 // ── HANDOFF slot 1C: the opening trial balance ─────────────────────────────
 export {
   type BuildOpeningBalanceEntryInput,
@@ -238,12 +185,6 @@ export {
   type UpdateChartAccountOptions,
   updateChartAccount,
 } from './chart-write'
-export {
-  type PostMonthEndOptions,
-  type PreviewMonthEndOptions,
-  postMonthEnd,
-  previewMonthEnd,
-} from './close-month'
 export { listClosePeriods } from './close-periods'
 export {
   type CreateAndLinkOptions,
@@ -266,44 +207,11 @@ export {
   packState,
 } from './default-chart'
 export {
-  deliverAccountingPosting,
-  planAccountingDeliveryInTx,
-  sweepAccountingDeliveries,
-} from './delivery'
-export {
-  assertCoveragePartitionsInTx,
-  type CoverageComponent,
-  contributionLineKeys,
-  findCoveragePartitionProblems,
-  saveComponentCoverageInTx,
-} from './delivery-coverage'
-export {
   buildDocNumber,
   DOC_NUMBER_MAX_LENGTH,
   DOC_NUMBER_PREFIX,
   type DocNumberInput,
 } from './doc-number'
-export {
-  type AcceptedDocumentEffectBasisV1,
-  acceptedDocumentEffectBasisSchema,
-  DOCUMENT_EFFECT_FAMILIES,
-  DOCUMENT_EFFECT_FAMILY_SPEC,
-  type DocumentAccountingBasisV1,
-  type DocumentEffectFamily,
-  type DocumentEffectPostingType,
-  type DocumentWorkBasisInput,
-  documentAccountingBasisSchema,
-  documentEffectFamilySchema,
-  documentRoleScope,
-  documentWorkBasisSchema,
-  isDocumentEffectFamily,
-} from './document-effect-types'
-export {
-  assertDocumentJournalIsOwnedInTx,
-  type CaptureDocumentWorkInput,
-  captureDocumentWorkInTx,
-  documentAccountingEffectKey,
-} from './document-effect-work'
 export {
   buildPostingDraft,
   type MonthEndInventorySnapshot,
@@ -311,9 +219,13 @@ export {
   type PostingAssertions,
   type PostingDraftV1,
   parsePostingDraft,
-  requiresAssertions,
   reverseAssertions,
 } from './draft'
+export {
+  discardDraftPosting,
+  type UpdateDraftLinesInput,
+  updateDraftLines,
+} from './draft-lines'
 // ── plans/accounting/tasks/18: two feeds, one author, unit 1 ───────────────
 export {
   type DuplicateMovementEntry,
@@ -321,65 +233,45 @@ export {
   type FindDuplicateBankMovementsOptions,
   findDuplicateBankMovements,
 } from './duplicate-movements'
+// TARGET §3: the export batch - build, send, roll back, release, sweep.
 export {
-  accountingBasisHash,
-  canonicalAccountingJson,
-  correctionAccountingEffectKey,
-  customerReceiptAccountingEffectKey,
-  customerReceiptCorrectionAccountingEffectKey,
-  fromLedgerMinor,
-  fulfillmentAccountingEffectKey,
-  toLedgerMinor,
-} from './effect-basis'
+  type BuildExportBatchesInput,
+  type BuildExportBatchesResult,
+  buildExportBatches,
+  countOutstandingExportBatches,
+  type ExportBatchMember,
+  type ExportBatchRow,
+  type ExportJournalPayload,
+  enqueueExportBatch,
+  exportJournalSchema,
+  hashExportPayload,
+  JOURNAL_OBJECT_TYPE,
+  type ListExportBatchesInput,
+  listExportBatches,
+  MAX_AUTO_ATTEMPTS,
+  parseExportJournal,
+  type ReleaseExportBatchesResult,
+  type RollbackExportBatchResult,
+  releaseExportBatches,
+  retryExportBatch,
+  rollbackExportBatch,
+  type SendExportBatchResult,
+  type SendExportBatchStatus,
+  type SweepExportBatchesInput,
+  sendExportBatch,
+  sweepExportBatches,
+} from './export'
+// TARGET §3: the export batch's settings, beside `autoPost`.
 export {
-  type AcceptedAccountingEffectBasisV1,
-  type AcceptedCustomerReceiptEffectBasisV1,
-  type AcceptedFulfillmentEffectBasisV1,
-  type AccountingWorkBasisInput,
-  type AccountingWorkBasisInputV1,
-  acceptedCustomerReceiptEffectBasisSchema,
-  acceptedFulfillmentEffectBasisSchema,
-  accountingWorkBasisSchema,
-  accountingWorkBasisSchemaV1,
-  type CustomerReceiptAccountingBasisV1,
-  type CustomerReceiptWorkBasisInput,
-  customerReceiptAccountingBasisSchema,
-  customerReceiptWorkBasisSchema,
-  type FulfillmentAccountingBasisV1,
-  fulfillmentAccountingBasisSchema,
-} from './effect-types'
-export {
-  appendCustomerReceiptWorkBasisInTx,
-  appendFulfillmentWorkBasisInTx,
-  type CaptureCustomerReceiptWorkInput,
-  type CaptureFulfillmentWorkInput,
-  captureCustomerReceiptWorkInTx,
-  captureFulfillmentWorkInTx,
-} from './effect-work'
-export {
-  CLAIMED_SOURCE_STREAMS,
-  claimedSourceStreams,
-  describeBankCoverageGap,
-  describeUnbalancedEntry,
-  describeUnreviewedBankLines,
-  type EvaluateExportGateInput,
-  EXPORT_GATE_CHECKS,
-  type ExportGateCheck,
-  type ExportGateFinding,
-  type ExportGateFindingKey,
-  type ExportGateReport,
-  type ExportGateSeverity,
-  type ExportGateStatus,
-  type ExportGateVerdict,
-  evaluateExportGate,
-  exportGateLead,
-  exportGateMessage,
-  exportGateStatus,
-  liftCloseBlockerItem,
-  releaseExportsThroughGate,
-} from './export-gate'
-export { gatherMonthEndInventoryInputs } from './gather-month-end-inventory'
-export type { PostingDeliveryIntent } from './insert-posting'
+  avenueOfPostingType,
+  EXPORT_AVENUES,
+  type ExportAvenue,
+  type ExportSettings,
+  readExportSettings,
+  SUMMARY_GRAIN_AVENUES,
+  type SummaryGrain,
+  type SummaryGrainAvenue,
+} from './export-settings'
 export {
   type CreateJournalEntryInput,
   createJournalEntry,
@@ -403,7 +295,7 @@ export {
 // ── plans/accounting/tasks/28 §3.2: the newest posting of each type ─────────
 export { type LatestPostingByType, readLatestPostingsByType } from './latest-by-type'
 export { didLedgerAccept, isExpectedPostOutcome } from './ledger-accepted'
-export { listPostings, listPostingsForSource } from './list-postings'
+export { listPostings, listPostingsForSource, type SourcePosting } from './list-postings'
 // ── plans/accounting/tasks/26 §7: a clearing account per rail ───────────────
 export {
   type MintedRailAccounts,
@@ -480,11 +372,22 @@ export {
 export {
   type EntryPreview,
   LEDGER_CURRENCY,
+  type PostDraftOptions,
   type PostEntryOptions,
   type PreviewEntryOptions,
+  postDraft,
   postEntry,
   previewEntry,
 } from './post-entry'
+export {
+  exportInventoryMovement,
+  type InventoryDocumentSubject,
+  inventoryTxnDate,
+  linkMovementsToPosting,
+  postInventoryMovementInTx,
+  reverseInventoryMovementPosting,
+  reversePostingForMovement,
+} from './post-inventory-movement'
 export { type PostPayoutEntryOptions, postPayoutEntry } from './post-payout-entry'
 export {
   type AccountingProvider,
@@ -521,14 +424,16 @@ export {
   groupProviderLedgerEntries,
   invertAccountMap,
   isOurs,
+  type MirrorChunkOutcome,
+  type MirrorEntry,
   OUR_PROVIDER_TXN_TYPE,
   type OurEntryCheck,
   type OurEntryVerdict,
+  type OurLedgerIdentity,
   type OurPostedEntry,
   type OurPostedLine,
   type PlanProviderSyncInput,
   type PlanSyncChunksInput,
-  type PostProviderSyncEntryInput,
   PROVIDER_SYNC_POSTING_TYPE,
   PROVIDER_SYNC_RUN_STALE_MS,
   PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
@@ -541,7 +446,6 @@ export {
   type ProviderLedgerLine,
   type ProviderSyncChunkOutcome,
   type ProviderSyncCoverage,
-  type ProviderSyncEntryOutcome,
   type ProviderSyncMarker,
   type ProviderSyncOutcome,
   type ProviderSyncPlan,
@@ -554,24 +458,27 @@ export {
   type ProviderSyncTrigger,
   planProviderSync,
   planSyncChunks,
-  postProviderSyncEntry,
   providerDisplayName,
   providerSyncFloor,
   type ReadOurPostedEntriesInput,
+  readActiveBookId,
+  readMirrorForTranslation,
+  readOurDocNumbers,
   readOurPostedEntries,
   readOurProviderEntryIds,
   readProviderSyncMarker,
   readProviderSyncRunState,
-  readSyncedEntriesInRange,
   reconcileProviderSyncSchedulers,
   recordProviderSyncedThrough,
   removeProviderSyncScheduler,
   resolveProviderSyncLines,
-  reverseSyncedEntry,
-  type SyncedEntryRef,
   type SyncProviderLedgerInput,
   syncProviderLedger,
   syncProviderSyncScheduler,
+  type TranslateMirrorInput,
+  type TranslateMirrorOutcome,
+  translateMirrorRange,
+  upsertMirrorChunk,
 } from './provider-sync'
 // ── plans/accounting/tasks/26 §6: billed fees, shown and never accrued ───────
 export {
@@ -580,10 +487,15 @@ export {
   type ReadRailFeeStatusOptions,
   readRailFeeStatus,
 } from './rail-fee-status'
+export { type CloseBlockersResult, readCloseBlockers } from './read-close-blockers'
 export { getPosting, readPostingLineSourceIds } from './read-posting'
-// ── plans/accounting/tasks/53 §7.3 (D16): the register, level A ─────────────
-// The db half. `register.ts` is pure and client-safe and rides on `./client`.
-export { readPostingRegister } from './read-register'
+// TARGET §6: the summarised view over the detail ledger.
+export {
+  type LedgerSummaryLine,
+  type LedgerSummaryRow,
+  type ReadLedgerSummaryOptions,
+  readLedgerSummary,
+} from './reads/ledger-summary'
 export {
   ENABLED_POSTING_TYPES,
   EXPORT_ROUTE_BY_POSTING_TYPE,
@@ -596,12 +508,6 @@ export {
   SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
   type WriterConflict,
 } from './regime'
-export {
-  type ReleasedAccountingClaims,
-  releaseAccountingClaims,
-  releaseReversedPostingClaimsInTx,
-  reopenUnclaimedAcceptedWork,
-} from './release-claims'
 // ── Statements (HANDOFF slot 1E, wave 1) ────────────────────────────────────
 export {
   balanceSheetColumns,
@@ -726,12 +632,6 @@ export {
   resolveRoles,
 } from './resolve-roles'
 export {
-  releaseExportsForSync,
-  retryExport,
-  type SyncReleaseOutcome,
-  type SyncReleaseResult,
-} from './retry-export'
-export {
   type ReverseEntriesOptions,
   type ReverseEntryOptions,
   reverseEntries,
@@ -766,7 +666,6 @@ export {
   type RoleSourceRow,
   readManualSourceAccountId,
 } from './source-scope'
-export { listOrderAccountingWork } from './source-work'
 export {
   type AccountSuggestion,
   isMappableTo,
@@ -774,6 +673,7 @@ export {
   suggestAccountIdentities,
   validateProviderMapping,
 } from './suggest-account-identities'
+export { summaryGrainKey } from './summary-grain'
 export {
   type AccountIdentityRow,
   type AccountIdentityState,
@@ -788,9 +688,6 @@ export {
   NON_FAILURE_REFUSALS,
   POSTING_STATUSES,
   POSTING_TYPES,
-  type PostEntryInput,
-  type PostEntryResult,
-  type PostEntryStatus,
   type PostFailureClass,
   type PostingDetail,
   type PostingDetailLine,
@@ -808,16 +705,10 @@ export {
   type RoleAssignmentRow,
   type RoleAssignmentState,
   type RoleRailAssignmentRow,
-  type UnsyncOutcome,
-  type UnsyncResult,
   type WithdrawResult,
 } from './types'
-export { unsyncExports } from './unsync'
 export {
   type BooksBalanceDiscrepancy,
   type BooksBalanceReport,
-  type FailedExport,
-  listFailedExports,
-  type SyncQueueRow,
   verifyBooksBalance,
 } from './verify-balance'

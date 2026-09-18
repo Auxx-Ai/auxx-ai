@@ -815,19 +815,13 @@ export const FileVisibilityValues = ['PUBLIC', 'PRIVATE', 'INTERNAL'] as const
 // these and must not import the Drizzle schema to do it.
 // ============================================================================
 
-/**
- * What produced a posting. The first six are the L1 monthly/periodic entries;
- * `receipt` and `vendor_bill` are the L3 per-event entries, carried from day one
- * because widening a Postgres enum later is a migration.
- */
+/** What produced a posting. Mirrors the `GlPostingType` pgEnum exactly. */
 export const GlPostingTypeValues = [
   'fulfillment',
   'payout',
-  'build',
   'month_end_deferral',
   'month_end_reversal',
-  'month_end_inventory',
-  'receipt',
+  'inventory_movement',
   'vendor_bill',
   'manual_journal',
   'opening_balance',
@@ -835,6 +829,7 @@ export const GlPostingTypeValues = [
   'bank_deposit',
   'write_off',
   'payment',
+  'refund',
   'invoice_issued',
   'deposit_application',
   'credit_memo',
@@ -850,24 +845,10 @@ export type GlPostingType = (typeof GlPostingTypeValues)[number]
  * ordinary `posted` entry (decision G4).
  *
  * 🛑 `pending` and `failed` were retired by the export split (#2065). They were
- * never ledger states; they described a push. See
- * {@link GlPostingExportStatusValues}.
+ * never ledger states; they described a push, which now lives on `ExportBatch`.
  */
-export const GlPostingStatusValues = ['posted', 'reversed'] as const
+export const GlPostingStatusValues = ['draft', 'posted', 'reversed'] as const
 export type GlPostingStatus = (typeof GlPostingStatusValues)[number]
-
-/**
- * What the EXPORT of one entry to the accounting provider did. Nothing on this
- * enum may change what the books say — decision P1 makes the accounting system
- * an exporter and auxx.ai the system of record.
- */
-export const GlPostingExportStatusValues = [
-  'not_required',
-  'pending',
-  'exported',
-  'failed',
-] as const
-export type GlPostingExportStatus = (typeof GlPostingExportStatusValues)[number]
 
 /** Which side of the entry a line sits on. The ONLY carrier of sign (decision G2). */
 export const GlPostingDirectionValues = ['debit', 'credit'] as const

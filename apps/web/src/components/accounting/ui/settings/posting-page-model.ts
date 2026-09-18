@@ -19,11 +19,15 @@
 // the sentence beside it.
 
 import {
+  avenueOfPostingType,
+  type ExportAvenue,
   POSTING_POLICIES,
   POSTING_POLICY,
   type PostingPolicy,
   type PostingTrigger,
   type PostingType,
+  SUMMARY_GRAIN_AVENUES,
+  type SummaryGrainAvenue,
 } from '@auxx/lib/postings/client'
 import {
   ArrowDownToLine,
@@ -131,6 +135,75 @@ export function settingRowTitle(key: string, policy?: PostingPolicy): string {
 export const POSTING_PAGE_INPUT_KEYS: readonly string[] = POSTING_PAGE_POLICIES.flatMap((policy) =>
   policy.settings.filter((key) => !(key in EXTERNAL_SETTING_HOMES))
 )
+
+// ── The export row (TARGET §3, §4 gate 2) ───────────────────────────────────
+//
+// `autoSend` and `summaryGrain` are per AVENUE (`EXPORT_AVENUES`), not per
+// `PostingType` the way `POSTING_POLICY.settings` is declared - several types
+// share one avenue (`invoice_issued` and `write_off` both export as `invoice`;
+// `manual_journal`, `recurring_journal` and every month-end type export as
+// `journal`). Showing the same switch on every one of those sections would be
+// six copies of one control, so this picks ONE policy per avenue to carry it -
+// the type whose section reads as that avenue's home.
+
+/** Which policy's section carries the avenue's export row. */
+const PRIMARY_POSTING_TYPE_BY_AVENUE: Record<ExportAvenue, PostingType> = {
+  fulfillment: 'fulfillment',
+  receipt: 'payment',
+  refund: 'refund',
+  creditMemo: 'credit_memo',
+  invoice: 'invoice_issued',
+  expenseBill: 'expense_bill',
+  payout: 'payout',
+  bankDeposit: 'bank_deposit',
+  journal: 'manual_journal',
+}
+
+/** The avenue whose export row this policy's section carries, or `null` for every other policy sharing that avenue. */
+export function exportAvenueForPolicy(policy: PostingPolicy): ExportAvenue | null {
+  const avenue = avenueOfPostingType(policy.type)
+  if (!avenue) return null
+  return PRIMARY_POSTING_TYPE_BY_AVENUE[avenue] === policy.type ? avenue : null
+}
+
+/** The six avenues with a draft step - `accounting.autoPost.<avenue>` exists for these alone. */
+const AUTO_POST_AVENUES: readonly ExportAvenue[] = [
+  'fulfillment',
+  'invoice',
+  'receipt',
+  'refund',
+  'creditMemo',
+  'expenseBill',
+]
+
+export function autoPostKeyForAvenue(avenue: ExportAvenue): string | null {
+  return AUTO_POST_AVENUES.includes(avenue) ? `accounting.autoPost.${avenue}` : null
+}
+
+export function autoSendKeyForAvenue(avenue: ExportAvenue): string {
+  return `accounting.autoSend.${avenue}`
+}
+
+export function summaryGrainKeyForAvenue(avenue: ExportAvenue): string | null {
+  return (SUMMARY_GRAIN_AVENUES as readonly string[]).includes(avenue)
+    ? `accounting.summaryGrain.${avenue as SummaryGrainAvenue}`
+    : null
+}
+
+/**
+ * Every export-row key the page's draft needs beyond `POSTING_PAGE_INPUT_KEYS`
+ * - `autoSend` always, `summaryGrain` where the avenue has one. `autoPost` is
+ * already in that list (it is one of `policy.settings`); this only adds what
+ * is NOT declared on any policy.
+ */
+export const EXPORT_ROW_DRAFT_KEYS: readonly string[] = Object.keys(
+  PRIMARY_POSTING_TYPE_BY_AVENUE
+).flatMap((avenue) => {
+  const keys = [autoSendKeyForAvenue(avenue as ExportAvenue)]
+  const grainKey = summaryGrainKeyForAvenue(avenue as ExportAvenue)
+  if (grainKey) keys.push(grainKey)
+  return keys
+})
 
 // Two independent stacks, not a grid of rows: a grid row is as tall as its
 // tallest cell, so the six-setting `payment` section would open a hole beside

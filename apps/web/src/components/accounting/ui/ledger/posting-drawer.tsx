@@ -2,8 +2,7 @@
 
 'use client'
 
-import type { PostingDetail, PostingType, PostResult } from '@auxx/lib/postings/client'
-import { EXPORT_ROUTE_BY_POSTING_TYPE } from '@auxx/lib/postings/client'
+import type { ExportBatchTab, PostingDetail } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
@@ -14,28 +13,29 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { toastError } from '@auxx/ui/components/toast'
 import {
   BookOpenCheck,
   CalendarClock,
   CircleHelp,
   Clock,
-  CloudOff,
   ExternalLink,
   Layers,
-  Receipt,
+  Link2,
+  PanelRight,
+  Send,
   Undo2,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { EntryJournal, journalLinesFromDetail } from './entry-journal'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatAuditTimestamp, formatPeriodLabel } from './format'
-import { OUTCOMES, type OutcomeCopy, providerEntryUrl } from './post-result-callout'
-import { PostingRegister } from './posting-register'
-import { readStoredAssertions, readStoredReasons } from './stored-draft'
+import { LedgerSourceLink } from './ledger-source-link'
+import { providerBatchObjectUrl } from './post-result-callout'
+import { readStoredAssertions, readStoredReasons, readStoredSources } from './stored-draft'
+import { ExportBatchStateBadge } from './sync-queue/export-batch-badge'
 
 interface PostingDrawerProps {
   /** From `?posting=<id>`. `null` closes the drawer. */
@@ -50,13 +50,12 @@ interface PostingDrawerProps {
   bookTimeZone: string
   providerLabel: string
   /**
-   * Which company this workspace is connected to now. Compared against the
-   * posting's own tenant before a deep link is offered, and never rendered -
-   * see `post-result-callout.tsx`.
+   * Which company this workspace is connected to now - `null` when nothing is
+   * authorized. See `post-result-callout.tsx`'s {@link providerBatchObjectUrl}.
    */
   connectedTenantId: string | null
-  /** `ledger.control` (60 E5). Without it the provider link shows and Un-sync does not. */
-  canUnsync: boolean
+  /** Close this drawer and open the export queue on the batch's own tab. */
+  onOpenExportQueue: (tab: ExportBatchTab) => void
   /** Reverse this posting with a memo. Owned by the caller's actions hook. */
   onReverse: (memo: string) => void
   isReversing: boolean
@@ -93,19 +92,13 @@ export function PostingDrawer({
   bookTimeZone,
   providerLabel,
   connectedTenantId,
-  canUnsync,
+  onOpenExportQueue,
   onReverse,
   isReversing,
 }: PostingDrawerProps) {
   const [memo, setMemo] = useState('')
   const [confirm, ConfirmDialog] = useConfirm()
-  const utils = api.useUtils()
-  /**
-   * The Register section is open, so its read is worth making. Collapsed on
-   * open because it is the one read here that can be large - a daily
-   * fulfillment group is one summary over every shipment that day.
-   */
-  const [registerOpen, setRegisterOpen] = useState(false)
+  const _utils = api.useUtils()
 
   const postingQuery = api.ledger.get.useQuery(
     { id: postingId ?? '' },
@@ -113,69 +106,46 @@ export function PostingDrawer({
   )
   const detail = postingQuery.data
 
-  /**
-   * The provider outcome, carried by the header status badge rather than by a
-   * body callout: it is one sentence about an entry whose identity is already
-   * in that strip, and an Alert for it pushed the journal below the fold.
-   */
-  const result = detail ? providerResultFromDetail(detail) : null
-  const outcome = result ? OUTCOMES[result.status] : null
-  const entryUrl = result?.providerEntryId
-    ? providerEntryUrl(
-        result.providerId,
-        result.providerEntryId,
-        result.providerTenantId ?? null,
-        connectedTenantId
-      )
-    : null
+  // The Links section's primary read (accounting migration step 1c): the
+  // actual `GlPostingSource` rows. A draft written before `postEntry` gained
+  // `sources` support (or one built by an older revision) may have none, so
+  // the stored envelope below is the fallback for that case only - never the
+  // primary source for a posted entry, whose `GlPostingSource` rows are the
+  // claim itself and cannot drift from what is rendered here.
+  const postingSourcesQuery = api.ledger.postingSources.useQuery(
+    { glPostingId: postingId ?? '' },
+    { enabled: !!postingId, staleTime: 30_000 }
+  )
+
+  // The Export section's read (step 3 part C): every batch, the same
+  // unbounded read the queue itself renders (`ledger.exportBatches.list`), so
+  // this rides that cache instead of adding a second shape of the same query.
+  // A `withdrawn` batch's `ExportBatchPosting` rows are excluded server-side
+  // (`isNull(withdrawnAt)`), so a member found here always belongs to a batch
+  // still on one of the queue's four tabs.
+  const exportBatchesQuery = api.ledger.exportBatches.list.useQuery({}, { enabled: !!postingId })
+  const exportBatch = useMemo(() => {
+    if (!postingId) return null
+    return (
+      (exportBatchesQuery.data ?? []).find((batch) =>
+        batch.members.some((member) => member.glPostingId === postingId)
+      ) ?? null
+    )
+  }, [exportBatchesQuery.data, postingId])
 
   /** Nothing to put in the strip is an absent strip, not an empty flex row. */
-  const headerActions =
-    !!entryUrl || (canUnsync && detail?.exportStatus === 'exported') || detail?.status === 'posted'
+  const headerActions = detail?.status === 'posted'
 
   const assertions = detail ? readStoredAssertions(detail.draft) : null
   const reasons = detail ? readStoredReasons(detail.draft) : []
+  const linkedSources = postingSourcesQuery.data ?? []
+  const sources =
+    linkedSources.length > 0
+      ? linkedSources
+      : detail?.status === 'draft'
+        ? readStoredSources(detail.draft)
+        : []
   const isReversal = !!detail?.reversesId
-
-  /**
-   * 🛑 An EXPORT operation, not a ledger one (60 E1): their copy is deleted and
-   * this entry stays posted, with its lines frozen and its effects claimed. The
-   * button that backs an entry out of OUR books is Reverse, further down.
-   */
-  const unsyncExports = api.ledger.unsyncExports.useMutation({
-    onSuccess: (result) => {
-      const refused = result.outcomes.find((outcome) => outcome.status !== 'withdrawn')
-      if (refused) {
-        toastError({
-          title: `Not removed from ${providerLabel}`,
-          description: refused.message ?? 'It was not removed.',
-        })
-        return
-      }
-      void utils.ledger.get.invalidate()
-      void utils.ledger.failedExports.invalidate()
-      void utils.ledger.listPostings.invalidate()
-    },
-    onError: (mutationError) => {
-      toastError({ title: 'Could not un-sync', description: mutationError.message })
-    },
-  })
-
-  /** The confirm copy is 60 §8.2 verbatim, in its one-entry form. */
-  async function handleUnsync() {
-    if (!postingId) return
-    const confirmed = await confirm({
-      title: `Un-sync 1 entry from ${providerLabel}?`,
-      description:
-        `The journal entries we created there will be deleted. Your books are not changed — ` +
-        `the entries stay posted here and return to Ready to sync, and they will not be sent ` +
-        `again until you sync them.`,
-      confirmText: 'Un-sync',
-      cancelText: 'Cancel',
-      destructive: true,
-    })
-    if (confirmed) unsyncExports.mutate({ glPostingIds: [postingId] })
-  }
 
   function handleReverse() {
     onReverse(memo)
@@ -207,30 +177,21 @@ export function PostingDrawer({
       onWidthChange={onWidthChange}
       minWidth={380}
       maxWidth={720}
-      title={detail ? `Posting ${detail.docNumber}` : 'Posting'}>
+      title={detail ? `Posting ${detail.docNumber || '(draft)'}` : 'Posting'}>
       <div className='flex min-h-0 flex-1 flex-col rounded-t-xl'>
         <DrawerHeader
           icon={<BookOpenCheck className='size-5 text-muted-foreground' />}
           title={
             <div className='flex flex-wrap items-center gap-2'>
               <span className='font-mono font-medium'>{detail?.docNumber ?? 'Posting'}</span>
-              {detail && outcome && (
+              {detail && (
                 <>
                   <Badge variant='outline' size='sm'>
                     Revision {detail.revision}
                   </Badge>
-                  <Tooltip
-                    contentComponent={
-                      <div className='flex max-w-64 flex-col gap-1'>
-                        <span className='font-medium'>{outcome.title}</span>
-                        <span>{outcome.detail}</span>
-                        {result?.error && <span>{result.error}</span>}
-                      </div>
-                    }>
-                    <Badge variant={statusVariant(detail.status, outcome.tone)} size='sm'>
-                      {statusBadgeLabel(detail.status, outcome.tone)}
-                    </Badge>
-                  </Tooltip>
+                  <Badge variant={statusVariant(detail.status)} size='sm'>
+                    {STATUS_LABEL[detail.status]}
+                  </Badge>
                 </>
               )}
             </div>
@@ -241,38 +202,6 @@ export function PostingDrawer({
               // header is a narrow strip and a worded button crowds the doc
               // number out of it at 380px.
               <div className='flex items-center gap-1'>
-                {entryUrl && (
-                  <Tooltip content={`View in ${providerLabel}`}>
-                    <Button variant='ghost' size='icon-xs' asChild>
-                      {/* ⚠️ `aria-label` as well as the tooltip - Radix associates a
-                          tooltip with `aria-describedby` only while it is open, so
-                          an icon-only link has no accessible NAME without it. */}
-                      <a
-                        aria-label={`View in ${providerLabel}`}
-                        href={entryUrl}
-                        target='_blank'
-                        rel='noreferrer'>
-                        <ExternalLink />
-                      </a>
-                    </Button>
-                  </Tooltip>
-                )}
-                {/* 🛑 NOT nested under `entryUrl`. The deep link is withheld when
-                    the entry went to a company this workspace is no longer
-                    connected to; their copy still exists and is still ours to
-                    withdraw. */}
-                {canUnsync && detail?.exportStatus === 'exported' && (
-                  <Tooltip content={`Un-sync from ${providerLabel}`}>
-                    <Button
-                      variant='ghost'
-                      size='icon-xs'
-                      aria-label={`Un-sync from ${providerLabel}`}
-                      disabled={unsyncExports.isPending}
-                      onClick={() => void handleUnsync()}>
-                      <CloudOff />
-                    </Button>
-                  </Tooltip>
-                )}
                 {detail?.status === 'posted' && (
                   <Tooltip content='Reverse this posting'>
                     <Button
@@ -356,24 +285,86 @@ export function PostingDrawer({
                 />
               </Section>
 
-              {/* The REGISTER (53 §7.3, D16). Collapsed by default, and the
-                  read is gated on it being open - see `PostingRegister`. This
-                  is the drill-down §7.3.4 describes, and it is here rather than
-                  on a page of its own because the drawer is what BOTH the
-                  ledger list and the sync queue already open on a row. */}
-              <Section
-                title='Register'
-                icon={<Receipt className='size-4' />}
-                description='The transactions this entry was composed from, each with the balanced contribution frozen when it was accepted. Read-only: a register row is a projection of a hashed basis, and a mistake is corrected by a correction, never by an edit.'
-                initialOpen={false}
-                onOpenChange={setRegisterOpen}>
-                <PostingRegister
-                  glPostingId={postingId}
-                  enabled={registerOpen}
-                  currencyCode={currencyCode}
-                  bookTimeZone={bookTimeZone}
-                />
-              </Section>
+              {/* The export (TARGET §3, §4 gate 2, step 3 part C): the batch
+                  this posting sits in, if a live one has claimed it - `null`
+                  reads as "not built yet", not as a fault, so an unbuilt
+                  posted entry gets no section rather than an empty one.
+                  🛑 No Retry and no Un-sync HERE - both actions live on the
+                  queue itself, over potentially many postings at once; this
+                  is a status and a way there, never a second door to act. */}
+              {exportBatch && (
+                <Section
+                  title='Export'
+                  icon={<Send className='size-4' />}
+                  description={`Where this entry stands with ${providerLabel}.`}
+                  collapsible={false}>
+                  <div className='flex flex-col gap-2'>
+                    <div className='flex items-center gap-2'>
+                      <ExportBatchStateBadge state={exportBatch.state} size='sm' />
+                      {(() => {
+                        const url = providerBatchObjectUrl(
+                          !!connectedTenantId,
+                          exportBatch.providerObjectId
+                        )
+                        return url ? (
+                          <a
+                            href={url}
+                            target='_blank'
+                            rel='noreferrer'
+                            className='inline-flex items-center gap-1 text-primary-600 text-xs hover:underline'>
+                            {exportBatch.providerObjectId}
+                            <ExternalLink className='size-3' />
+                          </a>
+                        ) : null
+                      })()}
+                    </div>
+                    {exportBatch.state === 'failed' && exportBatch.lastError && (
+                      <p className='text-destructive text-xs'>{exportBatch.lastError}</p>
+                    )}
+                    <div>
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        onClick={() => onOpenExportQueue(exportBatch.state as ExportBatchTab)}>
+                        <PanelRight />
+                        Open the export queue
+                      </Button>
+                    </div>
+                  </div>
+                </Section>
+              )}
+
+              {/* The links (TARGET §1): what this entry is OF (`subject`), and
+                  what it names as `parent`, `counterparty` or `member` -
+                  `ledger.postingSources`' `GlPostingSource` rows, falling back
+                  to the stored envelope only for a draft with none written yet
+                  (see the query above). Replaces the register (accounting
+                  migration step 1b, part E): a summary is a grouping of
+                  postings now, never its own kind of row, so there is no
+                  second ledger to drill into. */}
+              {sources.length > 0 && (
+                <Section
+                  title='Links'
+                  icon={<Link2 className='size-4' />}
+                  description='Every record this entry is linked to, and how.'
+                  collapsible={false}>
+                  <ul className='flex flex-col gap-1.5 text-sm'>
+                    {sources.map((source, index) => (
+                      <li
+                        key={`${source.sourceKind}-${source.sourceId}-${index}`}
+                        className='flex items-center justify-between gap-2'>
+                        <LedgerSourceLink
+                          sourceKind={source.sourceKind}
+                          sourceId={source.sourceId}
+                        />
+                        <Badge variant='outline' size='xs'>
+                          {source.linkRole}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
 
               {reasons.length > 0 && (
                 <Section
@@ -459,91 +450,12 @@ export function PostingDrawer({
 }
 
 /** Red the moment the export refused - the badge is the only place that says so. */
-function statusVariant(status: PostingDetail['status'], tone: OutcomeCopy['tone']) {
-  if (tone === 'failure') return 'red'
+function statusVariant(status: PostingDetail['status']) {
   return status === 'posted' ? 'green' : 'outline'
 }
 
-/**
- * 🛑 TWO axes, one badge, so the label has to carry both. `status` is the
- * LEDGER's (`Posted`, `Reversed`) and `tone` is the EXPORT's, and reading only
- * the first put the word "Posted" on a red badge whose tooltip said the export
- * was refused. The entry really is posted - that half was never wrong - so the
- * export word is appended rather than swapped in.
- *
- * `Refused` is the sync queue's word for this state (`SYNC_QUEUE_TAB_LABELS`),
- * not a second vocabulary. A `neutral` tone is a success with an explanation -
- * nothing connected, export switched off - and adds nothing here.
- */
-function statusBadgeLabel(status: PostingDetail['status'], tone: OutcomeCopy['tone']): string {
-  const label = STATUS_LABEL[status]
-  return tone === 'failure' ? `${label} · Refused` : label
-}
-
 const STATUS_LABEL: Record<PostingDetail['status'], string> = {
+  draft: 'Draft',
   posted: 'Posted',
   reversed: 'Reversed',
-}
-
-/**
- * What happened at the provider, reconstructed from the STORED row.
- *
- * ⚠️ A stored `GlPosting` records the outcome, not which of the success paths
- * produced it: `posted`, `already_posted` and `healed` all leave the same row
- * behind, so this reports `posted` for all three. It never invents a failure -
- * `failureReason` is rendered verbatim when the row actually failed - and it
- * keeps `not_connected`, `disabled` and `not_exported` apart, which is the
- * distinction decision `P1` cares about: a missing integration, a setting
- * somebody can flip, and a posting type that is never exported at all have
- * three different remedies, and merging them makes the remedy unguessable.
- *
- * 🛑 `not_exported` is checked FIRST of all, because a `'none'`-routed
- * row is indistinguishable from a disconnected org by `providerId` alone: both
- * store `'none'`. Only the posting type separates them, which is why this reads
- * the route table rather than guessing from the row (brief 22 §5).
- *
- * 🛑 Reads `exportStatus`, NOT `status`. It used to branch on
- * `status === 'failed'`, which is now unreachable - `status` says what the
- * LEDGER did and a provider can no longer move it. Left as it was, this panel
- * would report every refused export as a clean `posted`
- * (plans/accounting/export-state-split.md).
- */
-function providerResultFromDetail(detail: {
-  exportStatus: string
-  docNumber: string
-  postingType: string
-  providerId: string | null
-  providerEntryId: string | null
-  providerTenantId: string | null
-  failureReason: string | null
-}): PostResult {
-  const providerId = detail.providerId ?? undefined
-  const base = { docNumber: detail.docNumber, providerId }
-
-  if (detail.exportStatus === 'failed') {
-    return { ...base, status: 'error', error: detail.failureReason ?? undefined }
-  }
-  // Before the `providerEntryId` check: on a `'none'`-routed type that id is
-  // THEIRS, stamped on the way in, not proof we exported anything.
-  if (EXPORT_ROUTE_BY_POSTING_TYPE[detail.postingType as PostingType] === 'none') {
-    return { ...base, status: 'not_exported' }
-  }
-  if (detail.providerEntryId) {
-    // The tenant travels WITH the id, always. An id handed on without the
-    // company it belongs to is what the callout cannot tell apart from an id
-    // belonging to the company that happens to be open.
-    return {
-      ...base,
-      status: 'posted',
-      providerEntryId: detail.providerEntryId,
-      providerTenantId: detail.providerTenantId ?? undefined,
-    }
-  }
-  if (detail.exportStatus === 'not_required' && (!providerId || providerId === 'none')) {
-    return { ...base, status: 'not_connected' }
-  }
-  if (!providerId || providerId === 'none') {
-    return { ...base, status: 'not_connected' }
-  }
-  return { ...base, status: 'disabled' }
 }

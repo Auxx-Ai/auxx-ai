@@ -49,6 +49,13 @@ import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { Result } from 'neverthrow'
 import { batchRecalculateQoH } from '../bom/qoh'
 import { BadRequestError, UnprocessableEntityError } from '../errors'
+import type { InventoryMovementLine } from '../postings/build-inventory-movement-entry'
+import type { InTxPostResult } from '../postings/post-entry'
+import {
+  exportInventoryMovement,
+  inventoryTxnDate,
+  postInventoryMovementInTx,
+} from '../postings/post-inventory-movement'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
@@ -154,6 +161,7 @@ export async function completeBuild(
       // transaction this would re-SUM a ledger that does not yet contain the
       // rows above; per movement it would be 51 full re-SUMs.
       await recalculateAfterCommit(organizationId, written.result.recalculatedPartIds)
+      await exportInventoryMovement(db, written.post)
       publishBuildUpdate(organizationId, ctx, written.result, completedAt)
       // The ledger's own frame. `publishBuildUpdate` covers the build ROW; the
       // movement rows are silent without this and `build-ledger-card` goes on
@@ -196,6 +204,8 @@ interface WriteCompletionArgs {
 interface WrittenCompletion {
   build: BuildRecord
   result: CompleteBuildResult
+  /** The build's own inventory entry, awaiting its export. */
+  post: InTxPostResult | null
 }
 
 /**
@@ -395,8 +405,33 @@ async function writeCompletion(
   }
   await crud.update(buildRecordId as RecordId, buildValues)
 
+  // The build's own entry, inside the completion's transaction: consumes and
+  // produces move between the three inventory accounts, the absorbed labour and
+  // overhead come out of their pools, and the residual is the run's variance.
+  const movementLines: InventoryMovementLine[] = [
+    ...consumeWritten.value.records,
+    ...produceWritten.value.records,
+  ]
+    .filter((record) => record.glAccount && record.extendedCost !== 0)
+    .map((record) => ({
+      id: record.movementId,
+      extendedCostMinor: record.extendedCost,
+      glAccountRole: record.glAccount as string,
+    }))
+  const post = await postInventoryMovementInTx(tx, {
+    organizationId,
+    kind: 'build',
+    subject: { sourceKind: 'build', sourceId: build.buildId },
+    ...(build.orderId ? { parent: { sourceKind: 'order', sourceId: build.orderId } } : {}),
+    txnDate: inventoryTxnDate(completedAt),
+    movements: movementLines,
+    absorbed: { laborMinor: laborCost, overheadMinor: overheadCost },
+    actorUserId: userId,
+  })
+
   return {
     build,
+    post,
     result: {
       buildId: build.buildId,
       recordId: buildRecordId,

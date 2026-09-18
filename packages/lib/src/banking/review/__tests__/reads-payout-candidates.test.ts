@@ -40,7 +40,6 @@ const BT_FIELDS: Record<string, { id: string }> = {
   bank_transaction_exclude_reason: { id: 'f_exclude' },
   bank_transaction_reviewed_at: { id: 'f_reviewed_at' },
   bank_transaction_reviewed_by_user_id: { id: 'f_reviewed_by' },
-  bank_transaction_gl_posting_id: { id: 'f_posting' },
   bank_transaction_rule_id: { id: 'f_rule' },
 }
 

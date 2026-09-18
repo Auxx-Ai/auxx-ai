@@ -120,7 +120,8 @@ export interface FindDuplicateBankMovementsOptions {
 /** One candidate row, as the join returns it. */
 interface CandidateLine {
   glPostingId: string
-  docNumber: string
+  /** Non-null in practice: the query filters to `status = 'posted'`. */
+  docNumber: string | null
   txnDate: string
   glAccountId: string
   amountMinor: number
@@ -217,7 +218,8 @@ export async function findDuplicateBankMovements(
           direction: first.direction,
           entries: cluster.map((row) => ({
             glPostingId: row.glPostingId,
-            docNumber: row.docNumber,
+            // Non-null: the query filters to `status = 'posted'`.
+            docNumber: row.docNumber ?? '',
             sourceType: row.sourceType,
             txnDate: row.txnDate,
           })),

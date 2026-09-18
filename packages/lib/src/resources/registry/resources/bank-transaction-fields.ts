@@ -60,7 +60,7 @@ export const BANK_TRANSACTION_REVIEW_STATUS_OPTIONS = [
  *
  * **Auxx-owned (review):** `reviewStatus`, `glAccount`, `matchedRecordId`,
  * `matchedRecordType`, `excludeReason`, `reviewedAt`, `reviewedByUserId`,
- * `glPostingId`, `ruleId`. The feed may never touch any of them.
+ * `ruleId`. The feed may never touch any of them.
  *
  * 🛑 **This def is a CONTRIBUTING-mode target, never an owned one** (02 §5.1).
  * The def is a system entity seeded by an entity migration and owned by auxx;
@@ -69,12 +69,13 @@ export const BANK_TRANSACTION_REVIEW_STATUS_OPTIONS = [
  * because it fell out of the upstream window would be deleting a posted journal
  * entry's source document.
  *
- * ⚠️ Once {@link BANK_TRANSACTION_FIELDS.glPostingId} is set the connector may
- * not mutate the RAW fields either (02 §5.2): a pending charge of $1,240.00 that
- * posts at $1,255.00 must raise an amendment for a human to resolve by
- * reversing, not silently rewrite a posting's source. That is a rule in the
- * connector plus a `setConnectorFieldPin`, not a capability here - the fields
- * stay `updatable: true` because the review path itself has to go through them.
+ * ⚠️ Once a line posts, the connector may not mutate the RAW fields either
+ * (02 §5.2): a pending charge of $1,240.00 that posts at $1,255.00 must raise
+ * an amendment for a human to resolve by reversing, not silently rewrite a
+ * posting's source. `pinPostedBankTransaction` (`banking/feed/pins.ts`) sets
+ * that freeze explicitly at post time through `setConnectorFieldPin`, never
+ * off the presence of a stamp field - the fields stay `updatable: true`
+ * because the review path itself has to go through them.
  *
  * ## Why `amountMinor` is the one signed money column in the ledger
  *
@@ -533,29 +534,10 @@ export const BANK_TRANSACTION_FIELDS: Record<string, ResourceField> = {
     description: 'Who decided. TEXT, the created_by precedent - a User is not an org entity',
   },
 
-  glPostingId: {
-    id: toFieldId('glPostingId'),
-    key: 'glPostingId',
-    label: 'GL Posting',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'bank_transaction_gl_posting_id',
-    systemSortOrder: 'b8',
-    showInPanel: false,
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description:
-      'The GlPosting this line produced. A denormalized backlink for the drawer - the ' +
-      'AUTHORITY is the posting own sourceType/sourceId pair. Also the FREEZE marker: once ' +
-      'set, the connector may not rewrite this row raw fields (02 §5.2)',
-  },
+  // `glPostingId` (`bank_transaction_gl_posting_id`) is gone (step 1b, TARGET
+  // §1): a line's postings and its FREEZE state are both read through
+  // `GlPostingSource` (`listPostingsForSource` / a live-subject-claim lookup),
+  // never off a stamp field.
 
   ruleId: {
     id: toFieldId('ruleId'),

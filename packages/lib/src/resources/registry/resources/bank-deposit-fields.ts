@@ -49,10 +49,10 @@ export const BANK_DEPOSIT_STATUS_OPTIONS = [
  * because the refusal is a business rule in `money/bank-deposits/`, not a
  * capability: the clearing write itself has to go through them.
  *
- * **A payment can be in exactly one deposit.** That is enforced by
- * `createBankDeposit` reading {@link BANK_DEPOSIT_FIELDS.payments}' inverse
- * (`payment_bank_deposit`) before it writes, not by a database constraint -
- * `FieldValue` cannot express one.
+ * **A receipt can be in exactly one deposit.** That is enforced by
+ * `createBankDeposit` reading `MoneyTransaction.bankDepositInstanceId` before it
+ * writes (MIGRATION follow-up 9), not by a database constraint - the column has
+ * no unique index of its own, only the read-then-write check.
  *
  * ⚠️ **`bankTransactionId`, `clearedAt` and `reconciledAt` copy
  * the vendor payment side's three columns by name and by meaning**, so the feed's
@@ -298,32 +298,6 @@ export const BANK_DEPOSIT_FIELDS: Record<string, ResourceField> = {
       'payments cannot match the bank line it exists to match',
   },
 
-  payments: {
-    id: toFieldId('payments'),
-    key: 'payments',
-    label: 'Payments',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'bank_deposit_payments',
-    systemSortOrder: 'a7',
-    showInPanel: false,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'payment:bankDeposit' as ResourceFieldId,
-      relationshipType: 'has_many',
-      onDelete: 'unlink',
-      isInverse: true,
-    },
-    description: 'The payments banked together in this deposit',
-  },
-
   bankTransactionId: {
     id: toFieldId('bankTransactionId'),
     key: 'bankTransactionId',
@@ -390,28 +364,9 @@ export const BANK_DEPOSIT_FIELDS: Record<string, ResourceField> = {
       'clearedAt on purpose - the bank crediting a line is not the same as somebody agreeing it',
   },
 
-  glPostingId: {
-    id: toFieldId('glPostingId'),
-    key: 'glPostingId',
-    label: 'GL Posting',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'bank_deposit_gl_posting_id',
-    systemSortOrder: 'aB',
-    showInPanel: false,
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description:
-      'The GlPosting row this deposit produced. A denormalized backlink for the drawer - ' +
-      'the AUTHORITY is the posting own sourceType/sourceId pair',
-  },
+  // `glPostingId` (`bank_deposit_gl_posting_id`) is gone (step 1b, TARGET §1):
+  // a deposit's postings are read through `listPostingsForSource`, off
+  // `GlPostingSource`, never off a stamp field.
 
   // The last-rendered deposit slip, as a single FILE value (plans/accounting/
   // ui-plan.md §5.3, the `invoice_pdf_asset` shape). Written ONLY by

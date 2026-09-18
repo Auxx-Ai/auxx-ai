@@ -349,7 +349,7 @@ describe('the regime', () => {
     // The real assertion: enabling it beside the L1 monthly assertion produces
     // no conflict at all. An expense bill names its debits by `gl_account` id,
     // and its only role is `accounts_payable`.
-    expect(findWriterConflicts(['month_end_inventory', 'expense_bill'])).toEqual([])
+    expect(findWriterConflicts(['inventory_movement', 'expense_bill'])).toEqual([])
     expect(findWriterConflicts([...ENABLED_POSTING_TYPES, 'expense_bill'])).toEqual([])
   })
 })

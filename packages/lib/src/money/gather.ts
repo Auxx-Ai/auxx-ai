@@ -21,7 +21,7 @@ import {
   syncInvoiceBillingProjection,
   syncWorkOrderBillingProjection,
 } from './billing-projection'
-import { applyHeldDepositsToInvoice } from './payments/ledger'
+import { applyHeldDepositsToInvoice } from './quote-deposit'
 import { recomputeTotals } from './totals-hooks'
 import type {
   CreateInvoiceFromWorkOrderInput,

@@ -7,12 +7,9 @@ import {
 } from '@auxx/database'
 import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { z } from 'zod'
-import { getCachedInstalledApps } from '../cache'
 import { ConflictError, UnprocessableEntityError } from '../errors'
-import { getOrganizationSetting } from '../settings/settings-service'
 import { withAccountingCommitLock } from './accounting-commit-lock'
-import { canonicalAccountingJson } from './effect-basis'
-import type { PostingDeliveryIntent } from './insert-posting'
+import { canonicalAccountingJson } from './basis-hash'
 
 const accountingDateSchema = z
   .string()
@@ -208,6 +205,33 @@ export async function readActiveBookCompanyId(
   return row?.companyId ?? null
 }
 
+/**
+ * The active book connection an export batch pins to, or `null` for none.
+ *
+ * `exportFromDate` rides along because a batch dated before it must never be
+ * built: that day is the cutover the opening balance was derived from.
+ */
+export async function readActiveBookConnection(
+  db: Database,
+  organizationId: string
+): Promise<{ connectionId: string; bookId: string; exportFromDate: string } | null> {
+  const [row] = await db
+    .select({
+      connectionId: schema.ExternalBookConnection.id,
+      bookId: schema.ExternalBookConnection.bookId,
+      exportFromDate: schema.ExternalBookConnection.exportFromDate,
+    })
+    .from(schema.ExternalBookConnection)
+    .where(
+      and(
+        eq(schema.ExternalBookConnection.organizationId, organizationId),
+        eq(schema.ExternalBookConnection.state, 'active')
+      )
+    )
+    .limit(1)
+  return row ?? null
+}
+
 /** Read a pinned connection from authoritative rows, without changing its destination. */
 export async function readPinnedAccountingConnectionInTx(
   tx: Transaction,
@@ -368,67 +392,6 @@ export async function activateAccountingBookConnection(
   input: ActivateAccountingBookConnectionInput
 ) {
   return db.transaction((tx) => activateAccountingBookConnectionInTx(tx, input))
-}
-
-/** Pin eligible fulfillment delivery; unbridged provider settings block instead of disappearing. */
-export async function resolveFulfillmentDeliveryIntentInTx(
-  tx: Transaction,
-  organizationId: string,
-  txnDate: string
-): Promise<PostingDeliveryIntent> {
-  accountingDateSchema.parse(txnDate)
-  await withAccountingCommitLock(tx, organizationId)
-  const active = await tx.query.ExternalBookConnection.findFirst({
-    where: and(
-      eq(schema.ExternalBookConnection.organizationId, organizationId),
-      eq(schema.ExternalBookConnection.state, 'active')
-    ),
-  })
-  if (active) {
-    const policy = accountingOpeningPolicySchema.safeParse(active.openingPolicy)
-    if (!policy.success || policy.data.exportFromDate !== active.exportFromDate) {
-      throw new UnprocessableEntityError(
-        'The accounting destination needs an explicit opening policy'
-      )
-    }
-    await validatePinnedConnectionInTx(tx, organizationId, active)
-    if (txnDate < active.exportFromDate) return { kind: 'not_required' }
-    // 🛑 Through `tx`, NOT the `orgSettings` cache. `updateOrganizationSetting`
-    // takes the accounting commit lock for this key (`settings-service.ts`) and
-    // the cache is invalidated only after that commit, so a cached read can hold
-    // a journal whose export was switched on moments earlier.
-    const postJournals = await getOrganizationSetting({
-      organizationId,
-      key: 'quickbooks.postJournalEntries',
-      db: tx,
-    })
-    if (typeof postJournals !== 'boolean') {
-      throw new UnprocessableEntityError('QuickBooks journal export configuration is invalid')
-    }
-    return { kind: postJournals ? 'automatic' : 'manual', connectionId: active.id }
-  }
-  // No destination yet. The install probe is the org cache, not `tx`: nothing on
-  // the install path takes the accounting commit lock, and this is the same
-  // source `resolveAppToolContext` resolves an installation from before any
-  // export, so an install it cannot see could not have exported anyway.
-  const installed = (await getCachedInstalledApps(organizationId)).some(
-    (app) => app.app.slug === 'quickbooks'
-  )
-  // Only asked when nothing is installed: a historical book still means this org
-  // has bridged accounting before.
-  const books = installed
-    ? []
-    : await tx.query.ExternalAccountingBook.findMany({
-        where: eq(schema.ExternalAccountingBook.organizationId, organizationId),
-        columns: { id: true },
-        limit: 1,
-      })
-  if (installed || books.length) {
-    throw new UnprocessableEntityError(
-      'Establish the QuickBooks accounting destination and explicit export start date before posting fulfillment accounting'
-    )
-  }
-  return { kind: 'not_required' }
 }
 
 /** Disconnect accounting identities in the same transaction as an app uninstall. */

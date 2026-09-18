@@ -396,6 +396,7 @@ export const SYSTEM_ATTRIBUTES = [
   'quote_line_items', // inverse of line_item_quote
   'quote_work_orders', // inverse of work_order_quote
   'quote_public_token',
+  'quote_deposit_session_id',
   'quote_accepted_by_name',
   'quote_accepted_at',
   'quote_decline_reason',
@@ -524,6 +525,7 @@ export const SYSTEM_ATTRIBUTES = [
   'invoice_progress_percent',
   'invoice_installment_name',
   'invoice_public_token',
+  'invoice_checkout_session_id',
   'invoice_photos', // scouting/invoice photos gallery, parity with quote_photos (plan 37b §1)
   'invoice_line_items', // inverse of line_item_invoice
   'invoice_payments', // inverse of payment_invoice

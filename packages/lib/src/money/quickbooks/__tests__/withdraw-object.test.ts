@@ -8,6 +8,18 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// The batch pins its destination; `withdrawObject` resolves that connection.
+vi.mock('../../../postings/book-connections', () => ({
+  readPinnedAccountingConnection: async () => ({
+    connectionId: 'conn1',
+    bookId: 'book1',
+    credentialId: 'cred1',
+    companyId: 'realm1',
+    providerKey: 'quickbooks',
+    appInstallationId: 'install1',
+  }),
+}))
+
 const resolveQuickbooksContext = vi.fn()
 vi.mock('../invoke-quickbooks-tool', () => ({
   resolveQuickbooksContext: (...a: unknown[]) => resolveQuickbooksContext(...a),
@@ -46,7 +58,8 @@ function connect(
 
 const provider = new QuickbooksAccountingProvider()
 
-const JOURNAL = { orgId: ORG_ID, objectType: 'journal' as const, externalId: '184' }
+const CTX = { organizationId: ORG_ID, connectionId: 'conn1' }
+const JOURNAL = { objectType: 'journal' as const, externalId: '184' }
 
 beforeEach(() => vi.clearAllMocks())
 
@@ -58,7 +71,7 @@ describe('QuickbooksAccountingProvider.withdrawObject', () => {
       alreadyGone: false,
     }))
 
-    const result = await provider.withdrawObject({ ...JOURNAL, remoteVersion: '3' })
+    const result = await provider.withdrawObject(CTX, { ...JOURNAL, remoteVersion: '3' })
 
     expect(callTool).toHaveBeenCalledWith('delete_quickbooks_journal_entry', {
       journalEntryId: '184',
@@ -75,7 +88,7 @@ describe('QuickbooksAccountingProvider.withdrawObject', () => {
   it('converges on already_gone rather than failing when QuickBooks no longer holds it', async () => {
     connect(() => ({ journalEntryId: '184', status: 'NotFound', alreadyGone: true }))
 
-    const result = await provider.withdrawObject({ ...JOURNAL, remoteVersion: '3' })
+    const result = await provider.withdrawObject(CTX, { ...JOURNAL, remoteVersion: '3' })
 
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().status).toBe('already_gone')
@@ -88,7 +101,7 @@ describe('QuickbooksAccountingProvider.withdrawObject', () => {
       )
     })
 
-    const result = await provider.withdrawObject({ ...JOURNAL, remoteVersion: '3' })
+    const result = await provider.withdrawObject(CTX, { ...JOURNAL, remoteVersion: '3' })
 
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toBe(
@@ -99,7 +112,7 @@ describe('QuickbooksAccountingProvider.withdrawObject', () => {
   it('refuses by name when the installed deployment has no delete tool yet', async () => {
     const callTool = connect(() => ({}), { tools: [] })
 
-    const result = await provider.withdrawObject({ ...JOURNAL, remoteVersion: '3' })
+    const result = await provider.withdrawObject(CTX, { ...JOURNAL, remoteVersion: '3' })
 
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toContain('delete_quickbooks_journal_entry')
@@ -110,7 +123,7 @@ describe('QuickbooksAccountingProvider.withdrawObject', () => {
   it('refuses without a recorded remote version, because QuickBooks needs one', async () => {
     const callTool = connect(() => ({}))
 
-    const result = await provider.withdrawObject({ ...JOURNAL, remoteVersion: null })
+    const result = await provider.withdrawObject(CTX, { ...JOURNAL, remoteVersion: null })
 
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toContain('no recorded version')
@@ -120,7 +133,7 @@ describe('QuickbooksAccountingProvider.withdrawObject', () => {
   it('refuses an object type auxx never delivers', async () => {
     const callTool = connect(() => ({}))
 
-    const result = await provider.withdrawObject({
+    const result = await provider.withdrawObject(CTX, {
       ...JOURNAL,
       objectType: 'invoice',
       remoteVersion: '3',
@@ -134,7 +147,7 @@ describe('QuickbooksAccountingProvider.withdrawObject', () => {
   it('refuses when QuickBooks is not connected', async () => {
     resolveQuickbooksContext.mockResolvedValue({ connected: false })
 
-    const result = await provider.withdrawObject({ ...JOURNAL, remoteVersion: '3' })
+    const result = await provider.withdrawObject(CTX, { ...JOURNAL, remoteVersion: '3' })
 
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toContain('QuickBooks is not connected')
@@ -146,8 +159,7 @@ describe('NONE_ACCOUNTING_PROVIDER.withdrawObject', () => {
   // the object is gone, and saying so would let a caller reset a row whose copy
   // still sits in somebody's books.
   it('refuses, the way every other write on the null provider does', async () => {
-    const result = await NONE_ACCOUNTING_PROVIDER.withdrawObject({
-      orgId: ORG_ID,
+    const result = await NONE_ACCOUNTING_PROVIDER.withdrawObject(CTX, {
       objectType: 'journal',
       externalId: '184',
       remoteVersion: '3',

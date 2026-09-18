@@ -48,8 +48,8 @@ function localDateStartUtc(dateIso: string, timezone: string): Date {
 
 /**
  * Resolve the acting `userId` for engine-triggered writes when no interactive user is
- * available (the daily sweep) — the org's cached system user (the `stripe-rail.ts`/
- * `public-token.ts` precedent).
+ * available (the daily sweep) — the org's cached system user (the `public-token.ts`
+ * precedent).
  */
 export async function systemActorUserId(organizationId: string): Promise<string> {
   return getOrgCache().get(organizationId, 'systemUser')

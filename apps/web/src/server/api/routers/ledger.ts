@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/ledger.ts
 
+import { schema } from '@auxx/database'
 import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
 import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
 import { getPaymentAccount } from '@auxx/lib/money'
@@ -13,7 +14,7 @@ import {
   accountingOpeningPolicySchema,
   activateAccountingBookConnection,
   assertAccountingSetupUnfrozen,
-  buildEntry,
+  buildExportBatches,
   CHART_PACK_KEYS,
   confirmSuggestedIdentities,
   createAndLinkProviderAccount,
@@ -21,9 +22,10 @@ import {
   createJournalEntry,
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
+  discardDraftPosting,
   discardJournalEntry,
+  EXPORT_AVENUES,
   enqueueProviderSync,
-  evaluateExportGate,
   GL_ACCOUNT_SUBTYPES,
   GL_ACCOUNT_TYPES,
   getJournalEntry,
@@ -33,44 +35,43 @@ import {
   listChartAccounts,
   listChartAccountUsage,
   listClosePeriods,
-  listFailedExports,
+  listExportBatches,
   listJournalEntries,
   listPostings,
   listPostingsForSource,
   listRoleMap,
   listRoleSources,
   mintRailAccounts,
-  POSTING_TYPES,
   PROVIDER_SYNC_RUN_STALE_MS,
   PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
-  postEntry,
+  postDraft,
   postJournalEntry,
-  postMonthEnd,
-  previewEntry,
   previewJournalEntry,
-  previewMonthEnd,
   readAccountingBookConnectionStatus,
+  readCloseBlockers,
+  readExportSettings,
   readLatestPostingsByType,
-  readPostingRegister,
+  readLedgerSummary,
   readProviderSyncRunState,
   readTrialBalance,
-  releaseExportsThroughGate,
+  releaseExportBatches,
   removeChartAccount,
   repairAccountingBookConnection,
   resolveAccountingProvider,
   resolvePeriodLock,
   restoreChartAccount,
-  retryExport,
+  retryExportBatch,
   reverseEntries,
   reverseEntry,
   reverseJournalEntry,
+  rollbackExportBatch,
   type SaveMappingRow,
   saveRoleAssignments,
+  sendExportBatch,
   setAccountIdentity,
   setLockedThrough,
   setRoleAssignment,
   syncProviderSyncScheduler,
-  unsyncExports,
   updateChartAccount,
   updateJournalEntry,
   verifyBooksBalance,
@@ -78,7 +79,11 @@ import {
 // The comparison itself is PURE (brief 20 §8.2), so it lives on the client-safe
 // leaf beside the other planners and is imported from there rather than being
 // re-exported through the server barrel for one call site.
-import { type ProviderSyncScheduleConfig, planProviderAgreement } from '@auxx/lib/postings/client'
+import {
+  EXPORT_BATCH_STATES,
+  type ProviderSyncScheduleConfig,
+  planProviderAgreement,
+} from '@auxx/lib/postings/client'
 import {
   clearRecurringJournalSchedule,
   listRecurringJournalTemplates,
@@ -87,123 +92,10 @@ import {
 import { recurrencePatternSchema } from '@auxx/lib/recurrence'
 import { seedChartAccounts, seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
 import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { requestAuditContext } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trpc'
-
-/**
- * One draft line, structurally.
- *
- * Deliberately thin on the money rules. `amount` is a plain number here rather
- * than `z.number().int().positive()` because `buildEntry` already refuses a
- * non-integer, a negative and a zero, and it names the offending role while
- * doing it. Restating those three rules in Zod would give the same input two
- * authorities and two error vocabularies, and the worse one would win: a Zod
- * issue reads `lines.3.amount: Number must be greater than 0`, where
- * `buildEntry` says which role the leg belongs to. A bookkeeper reads the
- * second one at 11pm on the 3rd.
- */
-const postingLineBase = {
-  direction: z.enum(['debit', 'credit']),
-  /** Integer minor units, positive. `direction` carries the sign. */
-  amount: z.number(),
-  memo: z.string().optional(),
-  /** The kind of row that produced this line - `'stock_movement'`, `'journal_entry'`. */
-  sourceType: z.string().min(1),
-  sourceId: z.string().min(1),
-  sortOrder: z.number().int().nonnegative(),
-}
-
-/**
- * A BUILDER's line: an auxx ROLE, never an account number.
- *
- * `.strict()`, and that is load-bearing - see {@link postingLine}.
- */
-const roleLine = z
-  .object({
-    /** One of `ACCOUNT_ROLES`. See `postings/types.ts` for why a builder emits a role. */
-    accountRole: z.string().min(1),
-    ...postingLineBase,
-  })
-  .strict()
-
-/** A HUMAN's line: a code out of this org's own chart. `.strict()`, see {@link postingLine}. */
-const codeLine = z
-  .object({
-    /** `'6300'`. Validated against the chart with the same refusals a role gets. */
-    accountCode: z.string().min(1),
-    ...postingLineBase,
-  })
-  .strict()
-
-/**
- * A union rather than two optional keys.
- *
- * `{ accountRole?: string; accountCode?: string }` would accept a line naming
- * both, and every reader downstream would need a precedence rule - which is a
- * rule about which of two named accounts money silently goes into.
- * `GlPostingLineInput` is a discriminated union for the same reason, and this is
- * that shape at the wire.
- *
- * 🛑 **Both branches are `.strict()` because a zod object STRIPS unknown keys.**
- * Non-strict, a line naming BOTH `accountRole` and `accountCode` parses cleanly
- * against `roleLine` - the union takes the first branch that fits - and the
- * `accountCode` is silently deleted before anything downstream sees it. That is
- * precisely the "money goes into one of two named accounts, quietly" case this
- * union exists to make unrepresentable, and it made `build-entry.ts`'s
- * both-at-once refusal unreachable from the wire. Strict, the line matches
- * neither branch and the request is refused.
- *
- * The cost is that a caller may send no extra keys at all. That is the intended
- * contract: `postingLineBase` is the whole of what a line is, and an unknown key
- * on a general-ledger line is a client that thinks it is writing something the
- * server does not read.
- *
- * Exported for `ledger-posting-line-schema.test.ts` only - nothing else imports
- * it, and it is not part of any client surface.
- */
-export const postingLine = z.union([roleLine, codeLine])
-
-/**
- * A draft entry, as a caller hands it in.
- *
- * ⚠️ **The totals are NOT part of this shape**, and that is the point. A
- * `BuiltEntry` carries `totalDebit`/`totalCredit` and is balanced by
- * construction, so accepting one over the wire would mean trusting a client's
- * arithmetic about a general ledger. What crosses the wire is the DRAFT; the
- * server runs `buildEntry` over it and that is where the totals come from and
- * where an unbalanced entry is refused.
- */
-const draftEntry = z.object({
-  /**
-   * Every declared type, `manual_journal` and `opening_balance` included since
-   * HANDOFF slot 0B. What is ENABLED is a separate question and `regime.ts`
-   * answers it; this enum is the vocabulary, not the permission.
-   */
-  postingType: z.enum(POSTING_TYPES),
-  /**
-   * `'2026-08'` for a month, `'2026-08-18'` for a day. `parsePeriodKey` owns the
-   * keyspace.
-   *
-   * ⚠️ Not always a period: `manual_journal`, `bank_deposit` and `write_off`
-   * key on the source record's own NUMBER (`'JNL-0007'`), because many can post
-   * in one day and a date key would make the second collide with the first on
-   * the claim's unique index. `doc-number.ts` is the authority.
-   */
-  periodKey: z.string().min(1),
-  /**
-   * `YYYY-MM-DD`. Validated here because nothing downstream does: `buildEntry`
-   * passes it through untouched and a provider handed a malformed date falls
-   * back to its own server date, which silently books the entry on the wrong day.
-   */
-  txnDate: z.iso.date({ error: 'txnDate must be YYYY-MM-DD' }),
-  /**
-   * Bounded rather than merely non-empty. The cap is far above any entry this
-   * poster produces - a month-end inventory entry is one line per account role -
-   * and exists only so a malformed client cannot send an unbounded array.
-   */
-  lines: z.array(postingLine).min(1).max(200),
-})
 
 /**
  * The general ledger's posting surface (plans/money/tasks/10-the-poster.md §6).
@@ -218,14 +110,11 @@ const draftEntry = z.object({
  *
  * | procedure         | gate         |
  * | ----------------- | ------------ |
- * | `preview`         | `ledger.view` |
- * | `register`        | `ledger.view` |
  * | `failedExports` | `ledger.view` |
  * | `retryExport` | `ledger.post` |
  * | `syncExports` | `ledger.post` |
  * | `unsyncExports` | `ledger.control` |
  * | `verifyBalance`   | `ledger.view` |
- * | `post`            | `ledger.post` |
  * | `reverse`         | `ledger.post` |
  * | `reverseMany`     | `ledger.post` |
  * | `setLockedThrough` | `ledger.control` |
@@ -261,8 +150,8 @@ const draftEntry = z.object({
  *
  * Validated here only for SHAPE. Whether the month is closable - after the
  * cutoff, not already locked, with something in it to close - is decided by
- * `previewMonthEnd` / `postMonthEnd`, which answer with a status and a message
- * naming the exact row to fix. Restating any of that in Zod would give the same
+ * `readCloseBlockers`, which answers with one item per piece of outstanding
+ * work, naming the exact row to fix. Restating any of that in Zod would give the same
  * input two authorities and the worse error would win.
  */
 const monthKey = z.object({
@@ -288,18 +177,12 @@ const optionalMonthKey = z.object({
 /**
  * One line of a journal-entry DRAFT, as the drawer stores it.
  *
- * Distinct from {@link postingLine} on purpose. That one is a posting line and
- * carries the audit pair (`sourceType` / `sourceId`) and a `sortOrder`; this one
- * is what a person typed, and its source pair is the record itself while its
- * order is the array's. Making the drawer supply four fields it cannot know
- * before the entry is saved would be the worse shape.
- *
  * 🛑 `amountMinor` is INTEGER MINOR UNITS. Dollars never cross this wire:
  * `toMinorUnits` from `@auxx/lib/postings/client` is the single conversion and
  * it runs in the browser, at the `CurrencyInput` boundary. Zod checks that it is
- * a number and no more, for `postingLine`'s reason - `buildManualEntry` refuses
- * a zero, a negative and a fraction of a cent, and it names the ROW while doing
- * it, which a Zod issue cannot.
+ * a number and no more - `buildManualEntry` refuses a zero, a negative and a
+ * fraction of a cent, and it names the ROW while doing it, which a Zod issue
+ * cannot.
  */
 const journalEntryLine = z.object({
   /**
@@ -359,60 +242,6 @@ export const ledgerRouter = createTRPCRouter({
         openingPolicy: input.openingPolicy,
       })
     ),
-
-  /**
-   * What an entry WOULD look like, resolved against the org's own chart.
-   *
-   * **Persists nothing.** It runs the same reads and the same refusals as
-   * {@link postEntry} - including the ones that would block it, which arrive on
-   * `blockedBy` - and writes not one row. Claiming the period is `post`'s job
-   * and only `post`'s.
-   *
-   * A `.mutation()` even though it writes nothing, for two reasons that both
-   * point the same way. The draft is a request BODY: queries are GETs on this
-   * app's link and a 200-line entry does not fit in a URL. And a preview keyed
-   * on the entire draft is not cacheable in any useful sense - the input already
-   * IS the answer's content - so mutation semantics (fire on click, no refetch)
-   * are what the Preview button actually wants.
-   */
-  preview: permissionProcedure(PermissionKey.ledgerView)
-    .input(draftEntry)
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-
-      const entry = buildEntry(input)
-      const lock = await resolvePeriodLock(organizationId)
-
-      return previewEntry(ctx.db, { organizationId, entry, lock })
-    }),
-
-  /**
-   * Claim the period, persist the entry, and push it to whichever provider the
-   * organization has connected - in one call.
-   *
-   * An org with NO provider connected is a first-class case, not a degraded one
-   * (decision P1): the entry is built, balanced and persisted exactly the same
-   * way and the result is `not_connected`. Likewise `already_posted` is a
-   * SUCCESS - a converged re-run, not a failure - and callers must not surface
-   * it as an error.
-   */
-  post: permissionProcedure(PermissionKey.ledgerPost)
-    .input(draftEntry.extend({ memo: z.string().max(4000).optional() }))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      const { memo, ...draft } = input
-
-      const entry = buildEntry(draft)
-      const lock = await resolvePeriodLock(organizationId)
-
-      return postEntry(ctx.db, {
-        organizationId,
-        entry,
-        actorUserId: userId,
-        memo,
-        lock,
-      })
-    }),
 
   /**
    * Back out a posted entry with a second, opposite one.
@@ -500,7 +329,7 @@ export const ledgerRouter = createTRPCRouter({
    * renders the setup checklist in that case.
    */
   periods: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
-    const result = await listClosePeriods(ctx.db, ctx.session.organizationId)
+    const result = await listClosePeriods(ctx.session.organizationId)
     if (result.isErr()) throw result.error
     return result.value
   }),
@@ -550,55 +379,19 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * What the month-end inventory entry for one PERIOD would look like.
+   * What stands between one month and its close.
    *
-   * The difference from {@link preview} is the input: that one takes a
-   * client-supplied line array and is effectively a manual-journal-entry
-   * surface, while this one takes a month and builds the entry from the
-   * subledger. The close console uses this one; nothing should be asking an
-   * operator to hand-write the lines of a month-end close.
-   *
-   * **Persists nothing.** Every refusal arrives on `blockedBy` rather than as a
-   * throw - including `nothing_to_close` (no activity this month) and
-   * `setup_incomplete` (no reconciled opening baseline yet), which are ordinary
-   * outcomes and not failures. The message is the gathered one verbatim: it
-   * names the exact uncosted movement, unpriced row or blank setting to fix, and
-   * losing that text is the single most expensive thing this procedure could do.
-   *
-   * 🛑 A QUERY, not a mutation, and the distinction is load-bearing on the
-   * client. It reads only, so React Query owns its lifecycle: the console binds
-   * it to the month on screen instead of firing it from a mount effect, which
-   * is what used to pin the Entries section to a permanent "Building..." the
-   * moment the component was mounted twice in a row (`MutationObserver` detaches
-   * from a pending mutation on unsubscribe and never re-attaches, so the
-   * observer's `isPending` never came back down).
+   * 🛑 A close POSTS NOTHING since MIGRATION step 5: every inventory document
+   * posted its own entry when it was written, so all a close can do is check -
+   * is every movement in an entry, and does the ledger tie to the movements.
+   * The items are the answer and the console renders one actionable row each.
    */
-  previewMonthEnd: permissionProcedure(PermissionKey.ledgerView)
+  closeBlockers: permissionProcedure(PermissionKey.ledgerView)
     .input(monthKey)
     .query(async ({ ctx, input }) => {
-      return previewMonthEnd(ctx.db, {
+      return readCloseBlockers(ctx.db, {
         organizationId: ctx.session.organizationId,
         periodKey: input.periodKey,
-      })
-    }),
-
-  /**
-   * Close one month: gather, build, claim the period, persist, export.
-   *
-   * Returns a `PostResult` and never throws for a business refusal, exactly as
-   * {@link post} does. `nothing_to_close` and `setup_incomplete` are NOT errors
-   * and must not be surfaced as such - see `postings/types.ts`.
-   */
-  postMonthEnd: permissionProcedure(PermissionKey.ledgerPost)
-    .input(monthKey.extend({ memo: z.string().max(4000).optional() }))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      return postMonthEnd(ctx.db, {
-        organizationId,
-        periodKey: input.periodKey,
-        actorUserId: userId,
-        memo: input.memo,
       })
     }),
 
@@ -622,37 +415,32 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * The REGISTER behind one summary posting - its member effects, read-only
-   * (plans/accounting/tasks/53-two-modes-one-ledger.md §7.3, decision D16).
+   * Every `GlPostingSource` row this posting carries - the posting drawer's
+   * Links list (accounting migration step 1c).
    *
-   * 🔑 A READ over data that already exists. `AccountingEffect.acceptedBasis`
-   * has stored a balanced, account-resolved contribution per transaction since
-   * 42D; nothing has ever rendered it. This is that render's one call, and it
-   * builds nothing: level B - writing those contributions as `GlPosting` rows
-   * too - is explicitly refused, because a derived register in the trial balance
-   * double-counts every summary it rolls into and still balances (§7.3.2).
-   *
-   * ⚠️ An empty `entries` is a legitimate answer, NOT a 404 and not a gap.
-   * Seven posting families have no upstream transaction at all - a manual
-   * journal, an opening balance, a `provider_sync` row authored in the provider
-   * - and for those the posting IS the register row, 1:1 (§7.3.3). Only a
-   * posting id that does not exist, or belongs to another org, is a refusal.
-   *
-   * `ledger.view`, like every other read here. Nothing about it is a write, and
-   * a register row must never be editable: it is a projection of a frozen,
-   * sha256-hashed basis, and the correction path is `operation: 'correction'`
-   * on `AccountingWork`, which already exists.
+   * A plain scoped select rather than a `postings/` lib read: nothing upstream
+   * of this needs the OTHER direction (`listPostingsForSource` walks
+   * `sourceKind`/`sourceId` → posting), and adding a one-off reverse read there
+   * for a single drawer would be a lib export with one caller.
    */
-  register: permissionProcedure(PermissionKey.ledgerView)
+  postingSources: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ glPostingId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const result = await readPostingRegister(
-        ctx.db,
-        ctx.session.organizationId,
-        input.glPostingId
-      )
-      if (result.isErr()) throw result.error
-      return result.value
+      return ctx.db
+        .select({
+          id: schema.GlPostingSource.id,
+          sourceKind: schema.GlPostingSource.sourceKind,
+          sourceId: schema.GlPostingSource.sourceId,
+          linkRole: schema.GlPostingSource.linkRole,
+          occurrence: schema.GlPostingSource.occurrence,
+        })
+        .from(schema.GlPostingSource)
+        .where(
+          and(
+            eq(schema.GlPostingSource.organizationId, ctx.session.organizationId),
+            eq(schema.GlPostingSource.glPostingId, input.glPostingId)
+          )
+        )
     }),
 
   /**
@@ -1216,177 +1004,128 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * Every entry that IS in the books and is not in the accounting system - the
-   * close console's export queue.
+   * The export queue: one row per {@link ExportBatch}, expandable to the
+   * postings it rolls up (TARGET §3, §6).
    *
-   * 🛑 Renamed from `unpostedPeriods` by the export split. The old name and the
-   * old banner both said an entry was missing from the books, which was true
-   * only because a refused push used to take it out of them. Nothing here is
-   * unposted; what is outstanding is the copy.
-   *
-   * `pending` and `failed` come back distinct rather than collapsed, because
-   * they call for different actions: `pending` is owed and has not been refused
-   * (in flight, or claimed by a run that died before the push), while `failed`
-   * was attempted and refused and carries the reason.
+   * A read, and `ledgerView`: asking changes nothing.
    */
-  failedExports: permissionProcedure(PermissionKey.ledgerView)
-    .input(
-      z
-        .object({
-          through: z.string().min(1).optional(),
-          /** Exactly one accounting month - what the Synced tab asks for. */
-          month: z.string().min(1).optional(),
-          /**
-           * Add the entries already in the provider's books (60 §8.1). Unbounded
-           * without `month`, which is why the Synced tab is the one surface here
-           * that resolves a month.
-           */
-          includeExported: z.boolean().optional(),
+  exportBatches: createTRPCRouter({
+    list: permissionProcedure(PermissionKey.ledgerView)
+      .input(
+        z
+          .object({
+            /** One accounting month, `'2026-09'`. Bounds the read by DETAIL date. */
+            month: z.string().min(1).optional(),
+            state: z.enum(EXPORT_BATCH_STATES).optional(),
+          })
+          .optional()
+      )
+      .query(async ({ ctx, input }) => {
+        const result = await listExportBatches(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          ...(input?.month ? { month: input.month } : {}),
+          ...(input?.state ? { state: input.state } : {}),
         })
-        .optional()
-    )
-    .query(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
 
-      const result = await listFailedExports(ctx.db, organizationId, {
-        through: input?.through,
-        month: input?.month,
-        includeExported: input?.includeExported,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  /**
-   * Is the ledger ready to be sent? Checked against the SOURCE and the BANK,
-   * before anything leaves (53 D12, §2.1, §8 risk 1).
-   *
-   * 🛑 Not a comparison of two general ledgers. D12 settled that: divergence we
-   * cause is PREVENTED at the gate, and the only two-GL surface that needs
-   * comparing is the one the firm itself authors, which is a different unit.
-   *
-   * A read, and `ledgerView` rather than `ledgerPost`, because asking changes
-   * nothing: the gate writes no flag and is evaluated fresh at the moment of
-   * asking. `syncExports` runs the same evaluation for itself, so this endpoint
-   * exists to render the answer BEFORE somebody presses Sync, not to authorise
-   * it.
-   *
-   * ⚠️ `report.unavailable` names the checks that never ran. A caller that
-   * renders "ready" without reading it will report a green gate for questions
-   * nobody asked.
-   */
-  exportGate: permissionProcedure(PermissionKey.ledgerView)
-    .input(
-      z
-        .object({
-          /** Restrict to these postings. Omit for the whole sync queue. */
-          glPostingIds: z.array(z.string().min(1)).max(500).optional(),
-          /** Bound by accounting month, inclusive. `'2026-08'`. */
-          through: z.string().min(1).optional(),
+    /**
+     * Build every batch a month still owes.
+     *
+     * 🛑 `ledgerPost`: building freezes a payload out of posted entries and is
+     * the act that decides what leaves. It sends nothing - `autoSend` and the
+     * sweep, or an explicit release, do that.
+     */
+    build: permissionProcedure(PermissionKey.ledgerPost)
+      .input(monthKey)
+      .mutation(async ({ ctx, input }) => {
+        const result = await buildExportBatches(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          from: `${input.periodKey}-01`,
+          to: `${input.periodKey}-31`,
         })
-        .optional()
-    )
-    .query(async ({ ctx, input }) => {
-      const result = await evaluateExportGate(ctx.db, ctx.session.organizationId, {
-        glPostingIds: input?.glPostingIds,
-        through: input?.through,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
 
-  /**
-   * Push one already-posted entry to the accounting system again.
-   *
-   * 🛑 This never re-posts and never touches `GlPosting.status`. It replays the
-   * entry's own lines under its own `requestId`, so the provider's idempotency
-   * contract fires on exactly the case it exists for. The usual reason it now
-   * succeeds is that somebody mapped the account the first attempt named.
-   */
-  retryExport: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ glPostingId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
+    /**
+     * Send one batch and WAIT on the provider.
+     *
+     * The one-row door: a single row pressed on its own wants the refusal back
+     * in the same breath. Use `release` for a bulk bar.
+     */
+    send: permissionProcedure(PermissionKey.ledgerPost)
+      .input(z.object({ batchId: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await sendExportBatch(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          batchId: input.batchId,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
 
-      const result = await retryExport(ctx.db, {
-        organizationId,
-        glPostingId: input.glPostingId,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
+    /** Send a failed batch again, now, and reset the sweep's attempt budget. */
+    retry: permissionProcedure(PermissionKey.ledgerPost)
+      .input(z.object({ batchId: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await retryExportBatch(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          batchId: input.batchId,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
 
-  /**
-   * Release held entries to the accounting system - the sync queue's bulk
-   * action (plans/accounting/tasks/53-two-modes-one-ledger.md §7.2).
-   *
-   * 🛑 This RELEASES and returns; it does not wait on the provider. With the
-   * hold on, a posting rests `pending` with its delivery unreleased, and this
-   * stamps `releasedAt` and hands the journal to the delivery worker. An export
-   * is three to five sequential round trips to a rate-limited third party and a
-   * bulk bar acts on forty rows at once, so doing it inline is a request nobody
-   * holds open. `retryExport` above stays the one-row door, precisely because a
-   * single row pressed on its own wants the refusal back in the same breath.
-   *
-   * ⚠️ 500 is a ceiling on ONE call, not on the queue: the read behind it is
-   * unbounded on purpose. It exists so a select-all over an eighteen-month
-   * backlog cannot open five thousand transactions inside one request.
-   */
-  syncExports: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ glPostingIds: z.array(z.string().min(1)).min(1).max(500) }))
-    .mutation(async ({ ctx, input }) => {
-      // 🛑 Through the PRE-EXPORT GATE (53 D12), not straight at the release. A
-      // posting the books are not ready to stand behind comes back `skipped`
-      // with the reason on its own row, and never reaches the delivery worker.
-      // The gate fails OPEN, so an organization whose subledgers are unreachable
-      // is not grounded - see `postings/export-gate/reads.ts`.
-      const result = await releaseExportsThroughGate(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        glPostingIds: input.glPostingIds,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
+    /**
+     * Hand held batches to the export worker, once.
+     *
+     * 🛑 It RELEASES and returns; it does not wait on the provider. A send is
+     * three to five sequential round trips to a rate-limited third party and a
+     * bulk bar acts on forty rows at once.
+     *
+     * ⚠️ 500 is a ceiling on ONE call, not on the queue.
+     */
+    release: permissionProcedure(PermissionKey.ledgerPost)
+      .input(z.object({ batchIds: z.array(z.string().min(1)).min(1).max(500) }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await releaseExportBatches(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          batchIds: input.batchIds,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
 
-  /**
-   * Remove the provider's copy of already-delivered entries and hold them for
-   * re-sync (plans/accounting/tasks/60-un-syncing-from-the-provider.md §7).
-   *
-   * 🛑 `ledgerControl`, not `ledgerPost` (E5). Deleting rows out of the firm's
-   * books is the authority that closes and reopens a period and runs the inbound
-   * sync, not the one that posts a journal.
-   *
-   * 🛑 An EXPORT operation, never a ledger one. Nothing here reverses, reopens a
-   * period or releases a claim - the entries stay `posted` and come back to
-   * *Ready to sync*. Backing an entry out of OUR books is `reverse`.
-   *
-   * ⚠️ Unlike `syncExports` this WAITS on the provider, and its cap is **100**,
-   * not 500 (E8): a release stamps a column and returns, while this makes two to
-   * three provider round trips per row inside the request. "We have asked to
-   * delete 40 things, check back later" is not an answer anybody can act on, and
-   * R5 and R6 are exactly what the operator pressed the button to find out. If
-   * 100 rows proves too slow the answer is a worker job with the queue polling
-   * it, not a larger cap.
-   *
-   * `force` overrides R5 alone - the row whose copy was edited in the provider
-   * after we sent it - and it discards that edit.
-   */
-  unsyncExports: permissionProcedure(PermissionKey.ledgerControl)
-    .input(
-      z.object({
-        glPostingIds: z.array(z.string().min(1)).min(1).max(100),
-        force: z.boolean().optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const result = await unsyncExports(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        glPostingIds: input.glPostingIds,
-        force: input.force,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
+    /**
+     * Remove the provider's copy of a sent batch and free its postings for the
+     * next build (TARGET §3, "Late changes follow Synder").
+     *
+     * 🛑 `ledgerControl`, not `ledgerPost`. Deleting rows out of the firm's
+     * books is the authority that closes and reopens a period, not the one that
+     * posts a journal.
+     *
+     * 🛑 An EXPORT operation, never a ledger one. Nothing here reverses, reopens
+     * a period or releases a claim - the postings stay `posted` and come back to
+     * *Ready*. Backing an entry out of OUR books is `reverse`.
+     *
+     * ⚠️ Unlike `release` this WAITS on the provider, and it is one batch per
+     * call: the refusals are exactly what the operator pressed the button to
+     * find out.
+     */
+    rollback: permissionProcedure(PermissionKey.ledgerControl)
+      .input(z.object({ batchId: z.string().min(1), force: z.boolean().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await rollbackExportBatch(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          batchId: input.batchId,
+          ...(input.force === undefined ? {} : { force: input.force }),
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+  }),
 
   /**
    * Prove that debits equal credits across every posted entry.
@@ -1676,23 +1415,118 @@ export const ledgerRouter = createTRPCRouter({
    * Every posting one record produced - the `ledger` card on an order, an
    * invoice, a payment or a journal entry.
    *
-   * Reached through `GlPostingLine.sourceType` / `sourceId`, which every builder
-   * stamps on every line. `sourceType` is a free string rather than an enum on
-   * purpose: it names the KIND of row that produced the line and new kinds
-   * arrive with new builders, so an enum here would have to be edited in
-   * lockstep with a vocabulary this router does not own. There is nothing to
-   * leak - both halves are scoped to the caller's organization in SQL.
+   * Reached through `GlPostingSource` (TARGET §1), never a stamp field and
+   * never `GlPostingLine.sourceType`: one query, every link role. `sourceKind`
+   * is a free string rather than an enum on purpose - it names the KIND of
+   * record a posting is linked to and new kinds arrive with new builders, so an
+   * enum here would have to be edited in lockstep with a vocabulary this router
+   * does not own. There is nothing to leak - both halves are scoped to the
+   * caller's organization in SQL.
    */
   listPostingsForSource: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ sourceType: z.string().min(1), sourceId: z.string().min(1) }))
+    .input(z.object({ sourceKind: z.string().min(1), sourceId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const result = await listPostingsForSource(ctx.db, {
         organizationId: ctx.session.organizationId,
-        sourceType: input.sourceType,
+        sourceKind: input.sourceKind,
         sourceId: input.sourceId,
       })
       if (result.isErr()) throw result.error
       return result.value
+    }),
+
+  /**
+   * The summarised view over the detail ledger (TARGET §6) - posted postings
+   * grouped by avenue, grain bucket, store, rail and currency, lines summed by
+   * account, drilling down through `postingIds`. The same read serves
+   * Transaction and Summary mode (TARGET §3): the grain per avenue comes from
+   * `accounting.summaryGrain.*`.
+   *
+   * 🛑 Nothing is excluded for a live export batch here - `ExportBatchPosting`
+   * doesn't exist yet (step 3, part B). Once it does, this passes the ids it
+   * finds as `excludePostingIds` so a batched posting is not offered twice.
+   */
+  summary: permissionProcedure(PermissionKey.ledgerView)
+    .input(
+      z.object({
+        from: z.iso.date({ error: 'from must be YYYY-MM-DD' }),
+        to: z.iso.date({ error: 'to must be YYYY-MM-DD' }),
+        avenue: z.enum(EXPORT_AVENUES).optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const settings = await readExportSettings(ctx.db, organizationId)
+
+      const result = await readLedgerSummary(ctx.db, {
+        organizationId,
+        from: input.from,
+        to: input.to,
+        avenue: input.avenue,
+        grainByAvenue: settings.summaryGrain,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Every DRAFT posting in one accounting month - the Drafts tab (TARGET §4
+   * gate 1, step 1c). A draft holds no claim and no doc number; `autoPost` off
+   * on its avenue is what leaves one here instead of `posted`.
+   *
+   * Filtered in this router rather than in `listPostings` itself: the lib read
+   * answers "what is in this month", and status is one more thing a caller
+   * narrows on, the same way the close console excludes `month_end_inventory`
+   * by name rather than the read growing a parameter per screen.
+   *
+   * `ledgerPost`, not `ledgerView`: the Drafts tab is where a draft gets
+   * approved or discarded, and reviewing what is queued to post is part of
+   * that authority, not a separate read anyone with `ledgerView` should get.
+   */
+  listDrafts: permissionProcedure(PermissionKey.ledgerPost)
+    .input(monthKey)
+    .query(async ({ ctx, input }) => {
+      const result = await listPostings(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        periodKey: input.periodKey,
+      })
+      if (result.isErr()) throw result.error
+      return result.value.filter((posting) => posting.status === 'draft')
+    }),
+
+  /**
+   * Promote a draft: re-resolve its roles, re-check the period lock, claim,
+   * number, flip to `posted` (TARGET §4 gate 1). Never throws - a closed period
+   * or an account the chart no longer holds comes back as a `PostResult` status
+   * the Drafts tab renders, exactly as {@link post} does.
+   */
+  postDraft: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ glPostingId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const lock = await resolvePeriodLock(organizationId)
+
+      return postDraft(ctx.db, {
+        organizationId,
+        glPostingId: input.glPostingId,
+        actorUserId: userId,
+        lock,
+      })
+    }),
+
+  /**
+   * Throw a draft posting away: its lines, then the header. A draft holds no
+   * claim, so nothing is released - there is simply nothing left to post.
+   */
+  discardDraft: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ glPostingId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await discardDraftPosting(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        glPostingId: input.glPostingId,
+      })
+      if (result.isErr()) throw result.error
+      return { glPostingId: input.glPostingId, discarded: true }
     }),
 
   /**

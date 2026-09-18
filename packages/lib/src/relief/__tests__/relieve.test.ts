@@ -159,6 +159,7 @@ describe('relieveFulfillmentLines', () => {
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap()).toEqual({
       movementIds: [],
+      posts: [],
       affectedPartIds: [],
       skippedNoPart: 0,
       skippedZeroDelta: 0,
@@ -177,6 +178,8 @@ describe('relieveFulfillmentLines', () => {
       lines: [
         {
           fulfillmentLineId: 'fl_1',
+          fulfillmentId: 'ful_1',
+          orderId: 'ord_1',
           lineItemId: 'li_1',
           quantity: 3,
           quantityRelieved: null,
@@ -197,6 +200,8 @@ describe('relieveFulfillmentLines', () => {
       lines: [
         {
           fulfillmentLineId: 'fl_1',
+          fulfillmentId: 'ful_1',
+          orderId: 'ord_1',
           lineItemId: 'li_1',
           quantity: 3,
           quantityRelieved: 3,
@@ -227,6 +232,8 @@ describe('relieveFulfillmentLines', () => {
       lines: [
         {
           fulfillmentLineId: 'fl_1',
+          fulfillmentId: 'ful_1',
+          orderId: 'ord_1',
           lineItemId: 'li_1',
           quantity: 3,
           quantityRelieved: null,
@@ -263,6 +270,8 @@ describe('relieveFulfillmentLines', () => {
     })
     h.relievedAverages.set('fl_1', {
       fulfillmentLineId: 'fl_1',
+      fulfillmentId: 'ful_1',
+      orderId: 'ord_1',
       relievedQuantity: 12,
       relievedValueMinor: 50_400,
       unitCostMinor: 4_200,
@@ -275,6 +284,8 @@ describe('relieveFulfillmentLines', () => {
       lines: [
         {
           fulfillmentLineId: 'fl_1',
+          fulfillmentId: 'ful_1',
+          orderId: 'ord_1',
           lineItemId: 'li_1',
           quantity: 10,
           quantityRelieved: 12,
@@ -314,6 +325,8 @@ describe('relieveFulfillmentLines', () => {
       lines: [
         {
           fulfillmentLineId: 'fl_1',
+          fulfillmentId: 'ful_1',
+          orderId: 'ord_1',
           lineItemId: 'li_1',
           quantity: 2,
           quantityRelieved: null,
@@ -342,6 +355,8 @@ describe('relieveFulfillmentLines', () => {
       lines: [
         {
           fulfillmentLineId: 'fl_1',
+          fulfillmentId: 'ful_1',
+          orderId: 'ord_1',
           lineItemId: 'li_1',
           quantity: 2,
           quantityRelieved: null,
@@ -374,6 +389,8 @@ describe('relieveFulfillmentLines', () => {
       lines: [
         {
           fulfillmentLineId: 'fl_1',
+          fulfillmentId: 'ful_1',
+          orderId: 'ord_1',
           lineItemId: 'li_1',
           quantity: 5,
           quantityRelieved: null,
@@ -406,6 +423,8 @@ describe('relieveFulfillmentLines', () => {
       lines: [
         {
           fulfillmentLineId: 'fl_1',
+          fulfillmentId: 'ful_1',
+          orderId: 'ord_1',
           lineItemId: 'li_1',
           quantity: 3,
           quantityRelieved: null,
@@ -420,3 +439,14 @@ describe('relieveFulfillmentLines', () => {
     expect(h.announceQuietReliefWrites).toHaveBeenCalledWith(ORG, 'def_stock_movement', ['mv_0'])
   })
 })
+
+// The posting seam has its own test (`postings/__tests__/post-inventory-movement.test.ts`);
+// this file is about the movements. `vi.mock` is hoisted, so placement is free.
+vi.mock('../../postings/post-inventory-movement', () => ({
+  postInventoryMovementInTx: async () => null,
+  exportInventoryMovement: async () => null,
+  inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
+  reverseInventoryMovementPosting: async () => null,
+  reversePostingForMovement: async () => null,
+  linkMovementsToPosting: async () => undefined,
+}))

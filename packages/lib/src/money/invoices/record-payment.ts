@@ -48,6 +48,7 @@ import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import { type PaymentRouteMethod, resolvePaymentRoute } from '../bank-deposits/route'
 import { runMoneyCommand } from '../commands/run-money-command'
 import { loadInvoiceForIssuance } from './issuance-reads'
+import { syncInvoicePaymentState } from './payment-state'
 
 export interface RecordInvoicePaymentInput {
   organizationId: string
@@ -227,6 +228,15 @@ export async function recordInvoicePayment(
         })
         .returning({ id: schema.MoneyApplication.id })
       if (!application) throw new Error('Money application insert returned no row')
+
+      // Project the ledger truth onto the invoice's mirrored `amountPaid`/`balance`/
+      // `status` fields, same call `totals-hooks.ts` makes on every total change.
+      await syncInvoicePaymentState({
+        organizationId: input.organizationId,
+        userId: input.userId,
+        invoiceInstanceId: input.invoiceInstanceId,
+        db: tx as unknown as Database,
+      })
 
       return { moneyTransactionId: money.id, moneyApplicationId: application.id }
     }

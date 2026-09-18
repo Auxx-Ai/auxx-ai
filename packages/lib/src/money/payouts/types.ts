@@ -32,14 +32,14 @@ export interface PayoutRecord {
   /** Settled charges auxx has no payment for, net. Zero is the ordinary case. */
   unrecognisedNetMinor: number
   unrecognisedCount: number
-  /** The posting this payout became, or null while it has none. */
-  glPostingId: string | null
   /**
    * Set when this payout could not be posted for lack of a confirmed
    * bank-account identity (brief 13 §2.3). Names the payout, the destination
    * and the remedy. Null once posted, or if it never blocked.
    */
   blockedReason: string | null
+  /** The payout's live `posted` entry, read through `GlPostingSource`; null until it posts or after a reversal. */
+  glPostingId: string | null
   /**
    * The bank line that confirmed this payout (brief 18 §1, the duplicate
    * detector's prevention half). Set only by `matchTransaction`

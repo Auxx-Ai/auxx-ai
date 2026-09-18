@@ -35,10 +35,10 @@ import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import type Stripe from 'stripe'
 import { BadRequestError } from '../../../errors'
 import type { PaymentGatewayRow } from '../../../payment-gateways/client'
-import { getPaymentAccount } from '../../payments/account-state'
-import { getStripeConnectClient } from '../../payments/connect-client'
 import { listLinkedFeedAccounts } from '../reads'
 import type { PayoutHeader, PayoutItem, PayoutSource, PayoutSourceCtx } from '../source'
+import { getPaymentAccount } from '../stripe-account'
+import { getStripeConnectClient } from '../stripe-connect-client'
 
 const logger = createScopedLogger('payouts:stripe-connect')
 

@@ -379,7 +379,6 @@ export function JournalEntryDrawer({
                 size='sm'
                 loading={draft.isSaving}
                 loadingText='Saving...'
-                disabled={!journalEntryId}
                 onClick={draft.saveDraft}>
                 Save draft
               </Button>

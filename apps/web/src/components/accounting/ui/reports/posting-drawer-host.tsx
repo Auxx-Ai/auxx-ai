@@ -3,6 +3,7 @@
 'use client'
 
 import { toastError } from '@auxx/ui/components/toast'
+import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import { useCallback, useMemo } from 'react'
 import {
@@ -14,7 +15,6 @@ import { PostingDrawer } from '~/components/accounting/ui/ledger/posting-drawer'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useAccess } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 
@@ -47,8 +47,7 @@ export function PostingDrawerHost({ postingId, onClose, onSelectPosting }: Posti
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
   const utils = api.useUtils()
-  const { can } = useAccess()
-  const canUnsync = can('ledger.control')
+  const router = useRouter()
 
   const reverse = api.ledger.reverse.useMutation({
     onSuccess: () => {
@@ -80,7 +79,7 @@ export function PostingDrawerHost({ postingId, onClose, onSelectPosting }: Posti
         bookTimeZone={bookTimeZone}
         providerLabel={providerLabel}
         connectedTenantId={connectedTenantId}
-        canUnsync={canUnsync}
+        onOpenExportQueue={(tab) => router.push(`/app/accounting?queue=${tab}`)}
         onReverse={(memo) => {
           if (!postingId) return
           reverseMutate({ glPostingId: postingId, memo: memo.trim() || undefined })
@@ -99,7 +98,7 @@ export function PostingDrawerHost({ postingId, onClose, onSelectPosting }: Posti
       bookTimeZone,
       providerLabel,
       connectedTenantId,
-      canUnsync,
+      router,
       reverseMutate,
       isReversing,
     ]

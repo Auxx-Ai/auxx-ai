@@ -1,30 +1,41 @@
 // packages/lib/src/money/orders/fulfill.ts
 
-/** Native shipment creation commits operational quantities and durable accounting work together. */
+/** Native shipment creation commits operational quantities, then posts revenue right after. */
 
-import { type Database, schema } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, sql } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import { withAccountingCommitLock } from '../../postings/accounting-commit-lock'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
+import { readAutoPostMode } from '../../postings/auto-post'
 import {
   type BuiltFulfillmentEntry,
   buildFulfillmentEntry,
   computeShipmentTotals,
 } from '../../postings/build-fulfillment-entry'
+import { listPostingsForSource } from '../../postings/list-postings'
 import { resolvePeriodLock } from '../../postings/period-lock'
-import { LEDGER_CURRENCY, previewEntry } from '../../postings/post-entry'
-import type { EntryPreview, PostResult } from '../../postings/types'
+import {
+  exportPostedEntry,
+  type InTxPostResult,
+  LEDGER_CURRENCY,
+  postEntryInTx,
+  previewEntry,
+} from '../../postings/post-entry'
+import { reverseEntry } from '../../postings/reverse-entry'
+import type {
+  BuiltEntry,
+  EntryPreview,
+  GlPostingSourceInput,
+  PostResult,
+} from '../../postings/types'
 import { type FulfillmentLineToRelieve, relieveFulfillmentLines } from '../../relief'
 import { flushTxWriteScope } from '../../resources/crud/tx-write-flush'
 import { runInTxWrite } from '../../resources/crud/tx-write-scope'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
 import { readOrderSourceScope } from '../customer-money/reads'
-import { acceptFulfillmentWorkGroup } from '../fulfillment-posting/run'
-import { captureFulfillmentAccountingWorkInTx } from '../fulfillment-posting/work'
 import { createFulfillment, defaultFulfillmentName, type Fulfillment } from '../fulfillments'
 import { fulfillmentStatusFor, type OrderLineRemaining, shippedSubtotalMinor } from './client'
 import { guard } from './guard'
@@ -88,9 +99,7 @@ function calendarDayToInstant(day: string): string {
  * taxed ones would still count as "every line carries tax", so the entry would
  * switch to the per-line basis and under-credit `sales_tax_payable` silently.
  *
- * A partial shipment scales pro rata on units and rounds, matching
- * `computeShipmentAmounts` in `postings/build-fulfillment-batch-entry.ts` so
- * the single-order and bulk paths cannot disagree about one line's tax.
+ * A partial shipment scales pro rata on units and rounds.
  */
 function shippedLineTaxMinor(line: OrderLineRemaining, quantity: number): number | undefined {
   if (line.lineTaxMinor == null) return undefined
@@ -222,8 +231,8 @@ export async function previewFulfillment(
       const lock = await resolvePeriodLock(organizationId)
       // Task 47 §5. The ENTRY-level door rather than the line-level one: a
       // preview is of one order, so every revenue line on it shares one store.
-      // The same predicate the effect path takes, so what the dialog shows is
-      // the account the acceptance will actually credit.
+      // The same predicate the write takes, so what the dialog shows is the
+      // account the write will actually credit.
       const scope = await readOrderSourceScope(db, organizationId, orderId)
       const preview = await previewEntry(db, { organizationId, entry: built.entry, lock, scope })
       return { ...preview, order }
@@ -276,6 +285,102 @@ function buildForOrder(
 }
 
 /**
+ * Post one shipment's revenue: subject the fulfillment, parent the order,
+ * counterparty the customer's contact (when the order has one).
+ *
+ * `storeId` is the `FinancialSourceAccount` the order's revenue resolved
+ * through, or `null` for the manual bucket or an ambiguous one - the same
+ * `readOrderSourceScope` predicate `previewFulfillment` reads. `railId` is
+ * always `null`: a native shipment debits `accounts_receivable`, never a
+ * gateway's clearing account (decision D11, `money/fulfillment-posting/work.ts`'s
+ * former header), so there is no rail to scope this posting to. That leg
+ * belongs to the receipt, which posts through `receipt-accounting.ts` when the
+ * money actually settles.
+ *
+ * Posts inside the fulfillment's own transaction, so the shipment and its entry
+ * commit together (MIGRATION follow-up 2). A REFUSAL is not a throw - nothing is
+ * written at that point - so a closed month still retains the shipment.
+ */
+async function postFulfillmentEntryInTx(
+  tx: Transaction,
+  input: {
+    organizationId: string
+    orderId: string
+    fulfillmentInstanceId: string
+    contactInstanceId: string | null
+    entry: BuiltEntry
+    actorUserId: string
+    memo?: string
+  }
+): Promise<InTxPostResult> {
+  const {
+    organizationId,
+    orderId,
+    fulfillmentInstanceId,
+    contactInstanceId,
+    entry,
+    actorUserId,
+    memo,
+  } = input
+  const scope = await readOrderSourceScope(tx, organizationId, orderId)
+  const sources: GlPostingSourceInput[] = [
+    { sourceKind: 'fulfillment', sourceId: fulfillmentInstanceId, linkRole: 'subject' },
+    { sourceKind: 'order', sourceId: orderId, linkRole: 'parent' },
+    ...(contactInstanceId
+      ? [{ sourceKind: 'contact', sourceId: contactInstanceId, linkRole: 'counterparty' as const }]
+      : []),
+  ]
+  const lock = await resolvePeriodLock(organizationId, tx)
+  const mode = await readAutoPostMode(tx, organizationId, 'fulfillment')
+  return postEntryInTx(tx, {
+    organizationId,
+    entry,
+    lock,
+    scope,
+    sources,
+    mode,
+    storeId: typeof scope.store === 'string' ? scope.store : null,
+    railId: null,
+    actorUserId,
+    memo,
+  })
+}
+
+/**
+ * Reverse a fulfillment's live posting, freeing its claim so the source can
+ * post again (TARGET §5: "reverse on cancel or restock").
+ *
+ * The primitive a cancel or restock action calls before it changes the
+ * fulfillment record's own status - this function touches only the ledger.
+ * A no-op, returning `null`, when the fulfillment never posted or its posting
+ * was already reversed: cancelling an unposted or already-reversed shipment
+ * has nothing left to back out.
+ */
+export async function reverseFulfillmentPosting(
+  db: Database,
+  input: {
+    organizationId: string
+    fulfillmentInstanceId: string
+    actorUserId?: string
+    memo?: string
+  }
+): Promise<PostResult | null> {
+  const { organizationId, fulfillmentInstanceId, actorUserId, memo } = input
+  const found = await listPostingsForSource(db, {
+    organizationId,
+    sourceKind: 'fulfillment',
+    sourceId: fulfillmentInstanceId,
+  })
+  if (found.isErr()) throw found.error
+  const live = found.value.find(
+    (posting) => posting.linkRole === 'subject' && posting.status !== 'reversed'
+  )
+  if (!live) return null
+  const lock = await resolvePeriodLock(organizationId)
+  return reverseEntry(db, { organizationId, glPostingId: live.id, actorUserId, lock, memo })
+}
+
+/**
  * Record a shipment against an order and post the revenue it recognises.
  *
  * @throws nothing - every business refusal comes back as an `Err`, and every
@@ -300,12 +405,13 @@ export async function fulfillOrder(
           const order = read.value
           const shipped = resolveShippedLines(order, shippedLines)
           const sequence = order.nextSequence
+          const priorShipmentsSubtotalMinor = shippedSubtotalMinor(order.fulfillments)
           const amounts = computeShipmentTotals({
             label: `order ${order.number ?? orderId}`,
             lines: shipped,
             orderSubtotalMinor: order.subtotalMinor,
             orderTaxTotalMinor: order.taxTotalMinor,
-            priorShipmentsSubtotalMinor: shippedSubtotalMinor(order.fulfillments),
+            priorShipmentsSubtotalMinor,
             orderShippingTotalMinor: order.shippingTotalMinor,
             includeShipping: order.shippingOwed,
             context: { orderId },
@@ -330,22 +436,27 @@ export async function fulfillOrder(
               quantity: line.quantity,
             })),
           })
-          await tx
-            .update(schema.EntityInstance)
-            .set({
-              metadata: sql`COALESCE(${schema.EntityInstance.metadata}, '{}'::jsonb) || '{"accountingFulfillmentLane":"native"}'::jsonb`,
-            })
-            .where(
-              and(
-                eq(schema.EntityInstance.organizationId, organizationId),
-                eq(schema.EntityInstance.id, created.fulfillmentInstanceId)
-              )
-            )
-          await captureFulfillmentAccountingWorkInTx(tx, {
-            organizationId,
-            fulfillmentInstanceId: created.fulfillmentInstanceId,
-            ...(accountingEnabled ? {} : { eligibility: 'excluded' as const }),
-          })
+          // Frozen inside the same lock and transaction the quantities committed
+          // in, so the entry posted right after can never disagree with them.
+          const entry = accountingEnabled
+            ? buildFulfillmentEntry({
+                orderId: order.orderId,
+                orderNumber: order.number ?? '',
+                sequence,
+                channel: order.channel,
+                currency: order.currency,
+                ledgerCurrency: LEDGER_CURRENCY,
+                txnDate: shippedAt,
+                shippedLines: shipped,
+                orderSubtotalMinor: order.subtotalMinor,
+                orderTaxTotalMinor: order.taxTotalMinor,
+                orderShippingTotalMinor: order.shippingTotalMinor,
+                priorShipmentsSubtotalMinor,
+                includeShipping: order.shippingOwed,
+                contactInstanceId: order.contactInstanceId,
+                taxLines: order.taxLines,
+              }).entry
+            : null
           const remainingAfter = order.lines.map((line) => ({
             ...line,
             remainingQuantity: Math.max(
@@ -357,6 +468,18 @@ export async function fulfillOrder(
           const fulfillmentStatus = fulfillmentStatusFor(remainingAfter)
           const crud = new UnifiedCrudHandler(organizationId, actorUserId, tx)
           await crud.update(order.recordId, { order_fulfillment_status: fulfillmentStatus })
+          // The entry commits with the shipment it recognises (follow-up 2).
+          const post: InTxPostResult = entry
+            ? await postFulfillmentEntryInTx(tx, {
+                organizationId,
+                orderId,
+                fulfillmentInstanceId: created.fulfillmentInstanceId,
+                contactInstanceId: order.contactInstanceId,
+                entry,
+                actorUserId,
+                memo,
+              })
+            : { status: 'not_enabled' }
           const fulfillment: Fulfillment = {
             id: created.fulfillmentInstanceId,
             recordId: created.recordId,
@@ -383,45 +506,31 @@ export async function fulfillOrder(
               quantityRelieved: null,
             })),
           }
-          return { fulfillment, fulfillmentStatus, created, shipped, shippedAtInstant }
+          return {
+            fulfillment,
+            fulfillmentStatus,
+            created,
+            shipped,
+            shippedAtInstant,
+            post,
+          }
         })
       )
       if (committed.owned) await flushTxWriteScope(committed.scope)
       const { fulfillment, fulfillmentStatus, created, shipped, shippedAtInstant } =
         committed.result
-      let post: PostResult = { status: 'not_enabled' }
-      if (accountingEnabled) {
-        try {
-          const accepted = await acceptFulfillmentWorkGroup(db, {
-            organizationId,
-            actorUserId,
-            fulfillmentIds: [created.fulfillmentInstanceId],
-            groupKey: shippedAt,
-            memo,
-          })
-          post =
-            accepted.status === 'accepted'
-              ? {
-                  status: 'posted',
-                  glPostingId: accepted.glPostingId,
-                  docNumber: accepted.docNumber,
-                }
-              : { status: 'error', error: 'The shipment is recorded; accounting is pending review' }
-        } catch (error) {
-          post = { status: 'error', error: error instanceof Error ? error.message : String(error) }
-          logger.warn('Shipment recorded with accounting work pending', {
-            organizationId,
-            orderId,
-            fulfillmentInstanceId: created.fulfillmentInstanceId,
-            error: post.error,
-          })
-        }
-      }
+
+      // The provider push is deliberately outside the transaction: a network
+      // call inside one holds the claim's index tuple for an HTTP round trip.
+      const { pendingExport, ...written } = committed.result.post
+      const post: PostResult = pendingExport ? await exportPostedEntry(db, pendingExport) : written
       fulfillment.glPosting = post.glPostingId ?? null
       fulfillment.docNumber = post.docNumber ?? null
       // Inventory follows the shipment even when bookkeeping refuses; its independent retry owns failures.
       const reliefLines: FulfillmentLineToRelieve[] = created.lineInstanceIds.map((id, index) => ({
         fulfillmentLineId: id,
+        fulfillmentId: created.fulfillmentInstanceId,
+        orderId,
         lineItemId: shipped[index]!.lineId,
         quantity: shipped[index]!.quantity,
         quantityRelieved: null,

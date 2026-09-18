@@ -89,7 +89,7 @@ import type { BuiltEntry, CounterpartyType, GlPostingLineInput, PostingType } fr
  * | `clearing_affirm` | a role must not name a vendor - see the two rules below. Affirm is a `payment_gateway` record now, and `1210` left the `card_rail` pack with it. |
  *
  * Four roles are declared with no reachable emitter, and they stay: `grni`,
- * `freight_accrual` and `duties_accrual` are emitted by {@link buildReceiptEntry},
+ * `freight_accrual` and `duties_accrual` are emitted by the bills that clear them,
  * `ppv` by {@link buildVendorBillEntry}. Both builders are written and tested;
  * neither has a caller yet, because receiving does not post under L1 (see
  * `regime.ts`). Deleting the roles would mean deleting the builders.
@@ -128,22 +128,17 @@ export const ACCOUNT_ROLES = {
    * Work in process inventory (default `1320`).
    *
    * ⚠️ **Never emitted by a receipt.** Nothing in the `partKind` table maps to
-   * it and receiving does not produce work in progress - `buildReceiptEntry`
-   * can only ever debit raw materials or finished goods. The role exists
-   * because the L1 month-end inventory entry moves all three inventory
-   * accounts to the balance the subledger computes (04-books §2.1), and that
-   * entry is the January 1 deliverable.
+   * it and receiving does not produce work in progress. It exists because a
+   * build's own `inventory_movement` entry moves stock through it.
    */
   INVENTORY_WIP: 'inventory_wip',
   /**
    * Finished goods inventory (default `1330`). The other inventory account a
    * receipt can debit, when the part received is a finished good.
    *
-   * ⚠️ Which of the two applies is NOT decided here. It is the movement's own
-   * frozen `stock_movement_gl_account`, resolved from `partKind` by
-   * `receiveStock` at write time and passed in as
-   * `ReceiptEntryInput.inventoryAccountRole`. One receipt must not carry two
-   * accounts.
+   * ⚠️ Which of the two applies is NOT decided by a builder. It is the
+   * movement's own frozen `stock_movement_gl_account`, resolved from `partKind`
+   * at write time and summed by role in `build-inventory-movement-entry.ts`.
    */
   INVENTORY_FINISHED_GOODS: 'inventory_finished_goods',
   /** Accounts payable (default `2000`). Credited for the vendor bill total. */
@@ -167,8 +162,8 @@ export const ACCOUNT_ROLES = {
   FREIGHT_ACCRUAL: 'freight_accrual',
   /**
    * Goods received not invoiced (default `2160`). Credited on receipt at the
-   * VENDOR unit price, debited again when the vendor's bill arrives. See
-   * `buildReceiptEntry` for why the "vendor unit price" half is load-bearing.
+   * VENDOR unit price, debited again at the same figure when the vendor's bill
+   * arrives, which is what makes the accrual close to zero per line.
    */
   GRNI: 'grni',
   /**
@@ -184,8 +179,7 @@ export const ACCOUNT_ROLES = {
    * Only ever appears when there is a non-zero tariff portion. Build plan phase
    * 0.1 asks whether `tariffRate` is ever non-zero at all; if the answer is no,
    * the org simply leaves this role unmapped and no line will ever reference it
-   * - which is exactly what `buildReceiptEntry` produces when the duty portion
-   * is zero.
+   * - a zero portion simply produces no line.
    */
   DUTIES_ACCRUAL: 'duties_accrual',
   /**
@@ -302,6 +296,11 @@ export const ACCOUNT_ROLES = {
    */
   EQUITY_RETAINED_EARNINGS: 'equity_retained_earnings',
   /**
+   * Opening balance equity (default `3900`). The balancing leg of the opening
+   * STOCK run, which raises inventory against nothing else (MIGRATION step 5).
+   */
+  EQUITY_OPENING_BALANCE: 'equity_opening_balance',
+  /**
    * Product revenue (default `4000`), every channel. The channel is a
    * `dimensions.channel` value on the line (brief 13 §5), never a second
    * role or a second account: `revenue_dtc` and `revenue_dealer` were retired
@@ -396,6 +395,7 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   sales_tax_payable: 'liability',
   customer_deposits: 'liability',
   equity_retained_earnings: 'equity',
+  equity_opening_balance: 'equity',
   revenue_product: 'revenue',
   revenue_shipping: 'revenue',
   revenue_service: 'revenue',
@@ -454,6 +454,7 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   sales_tax_payable: 'Sales Tax Payable',
   customer_deposits: 'Customer Deposits',
   equity_retained_earnings: 'Retained Earnings',
+  equity_opening_balance: 'Opening Balance Equity',
   revenue_product: 'Product Revenue',
   revenue_shipping: 'Shipping Revenue',
   revenue_service: 'Service Revenue',
@@ -713,125 +714,6 @@ function materialize(
     }))
 }
 
-export interface ReceiptEntryInput {
-  /** The `stock_movement` (type `receive`) row this entry accounts for. */
-  stockMovementId: string
-  periodKey: string
-  /** `YYYY-MM-DD`. */
-  txnDate: string
-  /**
-   * The VENDOR's unit price in minor units - what the vendor will invoice, and
-   * nothing else. Not the landed cost.
-   */
-  vendorUnitPriceMinor: number
-  /** Units received. Integer - partial units are not a thing we receive. */
-  quantity: number
-  /** This receipt's allocated share of freight, in minor units. */
-  freightMinor: number
-  /** This receipt's allocated share of duty/tariff, in minor units. */
-  dutyMinor: number
-  /**
-   * The inventory account this receipt debits, as a ROLE.
-   *
-   * Required, with no default, and deliberately so. It must be the movement's
-   * OWN frozen `stock_movement_gl_account`, which `receiveStock` resolved from
-   * the part's `partKind` at write time - raw materials for a component or a
-   * subassembly, finished goods for a finished good. Re-deriving it here, or
-   * defaulting it to raw materials, gives the same receipt two accounts that
-   * can disagree: the ledger row would relieve finished goods and the posting
-   * would debit raw materials, and nothing would ever reconcile them. The
-   * movement is the source of truth; this parameter exists to carry it, not to
-   * decide it.
-   *
-   * `ACCOUNT_ROLES.INVENTORY_WIP` is never a legal value here - see its own
-   * doc. Only two of the three inventory roles are reachable from `partKind`.
-   */
-  inventoryAccountRole: string
-  memo?: string
-}
-
-/**
- * The receipt entry (decision P7, build plan 7.5):
- *
- * ```
- * Dr <inventory role>       quantity x LANDED cost   (raw materials or finished goods - see input)
- *   Cr grni                  quantity x VENDOR unit price
- *   Cr freight_accrual       the freight portion      (omitted when zero)
- *   Cr duties_accrual        the tariff portion       (omitted when zero)
- * ```
- *
- * **GRNI is credited at `vendorUnitPrice`, never at landed cost. This is the
- * single most important rule in this module.** The reason is not accounting
- * theory, it is the shape of the paperwork: the vendor's invoice contains only
- * the unit price. Freight is invoiced separately, weekly, by the carrier; duty
- * comes from the customs broker on its own schedule. So the only number the
- * vendor's bill can ever relieve from GRNI is `vendorUnitPrice x quantity`.
- *
- * Credit GRNI at landed cost and debit it at vendor-only when the bill arrives,
- * and the account is short by the freight and duty on every single receipt,
- * forever. That residue never clears and it is not a small explainable balance
- * by month three - it is the sum of all freight and duty ever received, sitting
- * in a liability account that is supposed to be a transient accrual, and there
- * is no query that can decompose it back out. Freight and duty clear against
- * their OWN accruals when their own bills arrive, which is the whole point of
- * giving them separate roles.
- *
- * The entry balances by construction - landed cost is defined as the sum of the
- * three credits - but `buildEntry` still asserts it, because "by construction"
- * is a property of today's arithmetic and not of tomorrow's edit.
- *
- * @throws {UnprocessableEntityError} on non-integer minor units, a negative
- * quantity or portion, or (via `buildEntry`) an entry that does not balance.
- */
-export function buildReceiptEntry(input: ReceiptEntryInput): BuiltEntry {
-  const { vendorUnitPriceMinor, quantity, freightMinor, dutyMinor } = input
-
-  assertMinorUnits(vendorUnitPriceMinor, 'Vendor unit price')
-  assertMinorUnits(freightMinor, 'Freight portion')
-  assertMinorUnits(dutyMinor, 'Duty portion')
-  if (!Number.isInteger(quantity)) {
-    throw new UnprocessableEntityError(`Received quantity must be an integer, got ${quantity}`, {
-      quantity: String(quantity),
-    })
-  }
-  if (quantity <= 0) {
-    throw new UnprocessableEntityError(`Received quantity must be positive, got ${quantity}`, {
-      quantity: String(quantity),
-    })
-  }
-  if (vendorUnitPriceMinor < 0 || freightMinor < 0 || dutyMinor < 0) {
-    throw new UnprocessableEntityError(
-      'Receipt amounts must be non-negative - a credit memo is a separate posting, not a negative receipt'
-    )
-  }
-
-  const goodsMinor = vendorUnitPriceMinor * quantity
-  const landedMinor = goodsMinor + freightMinor + dutyMinor
-
-  const drafts: DraftLine[] = [
-    {
-      // The movement's own frozen role, never re-derived here - see the field doc.
-      accountRole: input.inventoryAccountRole,
-      direction: 'debit',
-      amount: landedMinor,
-      memo: input.memo ?? `Received ${quantity} at landed cost`,
-    },
-    { accountRole: ACCOUNT_ROLES.GRNI, direction: 'credit', amount: goodsMinor },
-    { accountRole: ACCOUNT_ROLES.FREIGHT_ACCRUAL, direction: 'credit', amount: freightMinor },
-    { accountRole: ACCOUNT_ROLES.DUTIES_ACCRUAL, direction: 'credit', amount: dutyMinor },
-  ]
-
-  return buildEntry({
-    postingType: 'receipt',
-    periodKey: input.periodKey,
-    txnDate: input.txnDate,
-    lines: materialize(drafts, {
-      sourceType: 'stock_movement',
-      sourceId: input.stockMovementId,
-    }),
-  })
-}
-
 export interface VendorBillEntryInput {
   /** The `vendor_bill` row this entry accounts for. */
   vendorBillId: string
@@ -873,8 +755,8 @@ export interface VendorBillEntryInput {
  * Note what is NOT here: freight and duty. They were accrued to their own roles
  * on receipt and are relieved by the carrier's and the broker's own bills, on
  * their own schedules. A vendor bill that also carried freight would be two
- * postings, not one line - see `buildReceiptEntry` for why the accruals are
- * kept apart.
+ * postings, not one line: the accruals are kept apart so each clears against
+ * the bill that actually states it.
  *
  * @throws {UnprocessableEntityError} on non-integer minor units, or (via
  * `buildEntry`) an entry that does not balance.

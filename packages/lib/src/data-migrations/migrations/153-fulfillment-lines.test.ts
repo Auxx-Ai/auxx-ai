@@ -182,21 +182,12 @@ describe('the relationship edges this migration must link', () => {
   })
 })
 
-describe('fulfillment_gl_posting is TEXT, exactly the credit_memo_gl_posting precedent', () => {
-  it('is TEXT and NOT a relationship', () => {
-    expect(FULFILLMENT_FIELDS.glPosting?.fieldType).toBe('TEXT')
-    expect(FULFILLMENT_FIELDS.glPosting?.type).toBe('string')
-    expect(FULFILLMENT_FIELDS.glPosting?.relationship).toBeUndefined()
-    expect(FULFILLMENT_FIELDS.glPosting?.relationshipConfig).toBeUndefined()
-  })
-
-  it('says in its own description why it is not a relationship', () => {
-    expect(FULFILLMENT_FIELDS.glPosting?.description ?? '').toMatch(/RELATIONSHIP/)
-    expect(FULFILLMENT_FIELDS.glPosting?.description ?? '').toMatch(/EntityDefinition/)
-  })
-
-  it('is nullable, because the poster stamps it after the fact', () => {
-    expect(FULFILLMENT_FIELDS.glPosting?.nullable).toBe(true)
+describe('fulfillment_gl_posting is retired (step 1b)', () => {
+  // Was TEXT, exactly the credit_memo_gl_posting precedent - both are gone
+  // now (TARGET §1): a fulfillment's postings are read through
+  // `listPostingsForSource`, off `GlPostingSource`, never off a stamp field.
+  it('glPosting no longer resolves on FULFILLMENT_FIELDS', () => {
+    expect(FULFILLMENT_FIELDS.glPosting).toBeUndefined()
   })
 })
 

@@ -1,7 +1,5 @@
 // packages/lib/src/money/customer-money/index.ts
-
 export { postCustomerReceiptAccounting, sweepCustomerReceiptAccounting } from './accounting'
-export { type AdoptNativeStripeMoneyInput, adoptNativeStripeMoney } from './adopt-native-stripe'
 export type { OrderMoneyTransaction } from './client'
 export {
   type AcceptDepositApplicationInput,
@@ -23,7 +21,6 @@ export {
   type CustomerRefundAccountingInput,
   type CustomerRefundAccountingResult,
   postCustomerRefundAccounting,
-  postCustomerRefundAccountingInTx,
 } from './refund-accounting'
 export {
   type ResolveImportedMoneyReferencesInput,

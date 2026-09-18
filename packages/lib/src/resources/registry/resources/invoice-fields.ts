@@ -665,32 +665,6 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     description: 'Line items on this invoice',
   },
 
-  payments: {
-    id: toFieldId('payments'),
-    key: 'payments',
-    label: 'Payments',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'invoice_payments',
-    systemSortOrder: 'aK',
-    showInPanel: false,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'payment:invoice' as ResourceFieldId,
-      relationshipType: 'has_many',
-      onDelete: 'restrict',
-      isInverse: true,
-    },
-    description: 'Payments applied to this invoice',
-  },
-
   // Reverse relationship: creditMemos (from credit_memo.invoice). The memos
   // raised AGAINST this invoice, as opposed to `creditApplications`, which are
   // the shares of any memo applied TO it. `restrict` like `payments`: a posted
@@ -772,6 +746,28 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       hidden: true,
     },
     description: 'Secure token used to access the public payment page',
+  },
+
+  checkoutSessionId: {
+    id: toFieldId('checkoutSessionId'),
+    key: 'checkoutSessionId',
+    label: 'Checkout Session',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'invoice_checkout_session_id',
+    systemSortOrder: 'aL1',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+      hidden: true,
+    },
+    description: 'The most recent Stripe Checkout Session opened against this invoice',
   },
 
   billingKind: {

@@ -25,23 +25,21 @@
  * ## 🛑 Only money that was APPLIED can be moved this way
  *
  * A payment recorded straight against an invoice by `record-payment.ts` posts
- * `invoice_receipt_v1` — `Dr cash / Cr accounts_receivable` in ONE entry, with
- * no separate application effect to reverse. There is nothing here to move: its
- * receipt names invoice A in its own frozen basis.
+ * `Dr cash / Cr accounts_receivable` in ONE entry, with no separate application
+ * posting to reverse. There is nothing here to move: the receipt's own entry
+ * names invoice A.
  *
  * ⚠️ Moving one of those is `voidInvoicePayment` followed by a fresh
  * `recordInvoicePayment` against B. That is not a workaround — the two entries
- * net to the same `Dr A/R[A] Cr A/R[B]`, and it keeps the rule that a frozen
- * basis is never quietly re-pointed at a different document. This function
- * refuses them with that instruction rather than doing something subtler.
+ * net to the same `Dr A/R[A] Cr A/R[B]`, and it keeps the rule that a posted
+ * entry is never quietly re-pointed at a different document.
  *
  * @see plans/accounting/tasks/54-one-money-model.md
  */
 
-import { type Database, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import type { Database } from '@auxx/database'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
-import { customerReceiptAccountingEffectKey } from '../../postings/effect-basis'
+import { findLiveSubjectPosting } from '../../postings/list-postings'
 import { applyMoneyToInvoice } from './apply-money'
 import { unapplyMoneyFromInvoice } from './unapply-money'
 
@@ -81,30 +79,16 @@ export async function moveInvoicePayment(
   if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0)
     throw new BadRequestError('A moved amount must be a positive whole number of cents')
 
-  // ⚠️ Refuse a receipt whose own frozen basis names the invoice. See the file
-  // header: there is no application effect to reverse, and re-pointing a frozen
-  // basis is not something this or any other command may do.
-  const [receiptWork] = await db
-    .select({ id: schema.AccountingWork.id })
-    .from(schema.AccountingWork)
-    .innerJoin(
-      schema.AccountingEffect,
-      and(
-        eq(schema.AccountingEffect.organizationId, schema.AccountingWork.organizationId),
-        eq(schema.AccountingEffect.workId, schema.AccountingWork.id)
-      )
-    )
-    .where(
-      and(
-        eq(schema.AccountingWork.organizationId, input.organizationId),
-        eq(
-          schema.AccountingWork.effectKey,
-          customerReceiptAccountingEffectKey(input.moneyTransactionId)
-        )
-      )
-    )
-    .limit(1)
-  if (receiptWork)
+  // ⚠️ Refuse a receipt posted straight against its invoice. Its own entry
+  // names that receivable, and re-pointing a posted entry is not available -
+  // see the file header for the void-and-re-record remedy.
+  const receiptPosting = await findLiveSubjectPosting(db, {
+    organizationId: input.organizationId,
+    sourceKind: 'money_transaction',
+    sourceId: input.moneyTransactionId,
+  })
+  if (receiptPosting.isErr()) throw receiptPosting.error
+  if (receiptPosting.value)
     throw new UnprocessableEntityError(
       'This payment was recorded against its invoice directly. Void it and record it again on the other invoice.'
     )

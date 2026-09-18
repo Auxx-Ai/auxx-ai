@@ -2,8 +2,10 @@
 //
 // Migration 157 widens five defs at once: three payout-side defs with two
 // relationship pairs and a select stamped onto every payout that predates it,
-// the order def with three fields and nothing stamped, and the line item def
-// with one field (the line NET) and nothing stamped. It supersedes two same-day
+// the order def with two fields and nothing stamped (`paymentGlPosting` was a
+// third, retired in step 1b - TARGET §1 - since an order's payment postings
+// are read through `listPostingsForSource` now), and the line item def with
+// one field (the line NET) and nothing stamped. It supersedes two same-day
 // drafts, and the first of them already ran on dev. What actually goes wrong
 // here:
 //
@@ -20,11 +22,6 @@
 //    is asserted rather than assumed from the fact that the field exists;
 //  - the stamped value is not one of the options. `FieldValue.optionId` holds
 //    the option's `value` key, so a stamp outside the list is an orphan;
-//  - the order stamp drifts from its precedent. `fulfillment_gl_posting` is
-//    TEXT because `GlPosting` is a Drizzle table with no EntityDefinition to
-//    point at; a RELATIONSHIP here would have nothing to resolve against and the
-//    on-delete coverage test would demand a declaration no engine can execute.
-//    The plan's own §4.3 wording ("RELATIONSHIP-shaped") is what this guards;
 //  - a paid field the connector cannot bind. `isWritableTarget` refuses a field
 //    that is neither creatable nor updatable, and there is no allow-list entry
 //    for these two the way there is for the totals, so both must stay writable;
@@ -48,7 +45,6 @@ import type { FieldOptions } from '../../custom-fields'
 import { PayoutSource } from '../../resources/registry/enum-values'
 import type { ResourceField } from '../../resources/registry/field-types'
 import { BANK_ACCOUNT_FIELDS } from '../../resources/registry/resources/bank-account-fields'
-import { FULFILLMENT_FIELDS } from '../../resources/registry/resources/fulfillment-fields'
 import { LINE_ITEM_FIELDS } from '../../resources/registry/resources/line-item-fields'
 import { ORDER_FIELDS } from '../../resources/registry/resources/order-fields'
 import { PAYMENT_GATEWAY_FIELDS } from '../../resources/registry/resources/payment-gateway-fields'
@@ -110,13 +106,12 @@ describe('migration 157 registration', () => {
     expect(migration157PayoutRailAndOrderPaymentFields.id).toBe(MIGRATION_ID)
   })
 
-  it('describes all seven fields, the payout stamp AND the absence of a backfill', () => {
+  it('describes all six fields, the payout stamp AND the absence of a backfill', () => {
     const { description } = migration157PayoutRailAndOrderPaymentFields
     expect(description).toMatch(/paymentGateway/)
     expect(description).toMatch(/bankAccount/)
     expect(description).toMatch(/source/)
     expect(description).toMatch(/stamps synced/)
-    expect(description).toMatch(/paymentGlPosting/)
     expect(description).toMatch(/paidAt/)
     expect(description).toMatch(/paidGateway/)
     expect(description).toMatch(/No backfill/)
@@ -226,39 +221,14 @@ describe('the registry says the same thing the payout half provisions', () => {
   })
 })
 
+describe('the field it retired is gone from the registry (step 1b)', () => {
+  it('paymentGlPosting no longer resolves on ORDER_FIELDS', () => {
+    expect(ORDER_FIELDS.paymentGlPosting).toBeUndefined()
+  })
+})
+
 describe('the registry says the same thing the order half provisions', () => {
-  // Same drift, other def. The symptom here is "the payment run stamped
-  // nothing" or "the paid date never lands".
-
-  it('declares paymentGlPosting as a TEXT stamp on the attribute the run writes', () => {
-    const field = ORDER_FIELDS.paymentGlPosting
-    expect(field?.systemAttribute).toBe('order_payment_gl_posting')
-    expect(field?.fieldType).toBe('TEXT')
-    expect(field?.nullable).toBe(true)
-  })
-
-  it('keeps the stamp a TEXT id, not a RELATIONSHIP, as fulfillment_gl_posting is', () => {
-    // GlPosting is a Drizzle table with no EntityDefinition; a relationship
-    // would have nothing to point at, and the delete engine could not act on it.
-    const stamp = ORDER_FIELDS.paymentGlPosting
-    const precedent = FULFILLMENT_FIELDS.glPosting
-    expect(precedent?.systemAttribute).toBe('fulfillment_gl_posting')
-    expect(precedent?.fieldType).toBe('TEXT')
-    expect(stamp?.fieldType).toBe(precedent?.fieldType)
-    expect(stamp?.type).toBe(precedent?.type)
-    expect(stamp?.relationship).toBeUndefined()
-    expect(stamp?.relationshipConfig).toBeUndefined()
-  })
-
-  it('hides the stamp from the panel and the dialogs, with the precedent capabilities', () => {
-    // Written by the run through the CRUD handler, so creatable and updatable
-    // stay true exactly as on the fulfillment; a person never sees it.
-    const stamp = ORDER_FIELDS.paymentGlPosting
-    expect(stamp?.showInPanel).toBe(false)
-    expect(stamp?.showInDialogs).toBe(false)
-    expect(stamp?.capabilities).toEqual(FULFILLMENT_FIELDS.glPosting?.capabilities)
-    expect(stamp?.capabilities?.configurable).toBe(false)
-  })
+  // Same drift, other def. The symptom here is "the paid date never lands".
 
   it('declares paidAt as a nullable DATETIME on the attribute the connector writes', () => {
     const field = ORDER_FIELDS.paidAt
@@ -292,13 +262,13 @@ describe('the registry says the same thing the order half provisions', () => {
     expect(ORDER_FIELDS.cancelledAt?.showInDialogs).toBe(false)
   })
 
-  it('carries no defaults: every field is empty until the connector or the run fills it', () => {
-    for (const key of ['paymentGlPosting', 'paidAt', 'paidGateway'] as const) {
+  it('carries no defaults: every field is empty until the connector fills it', () => {
+    for (const key of ['paidAt', 'paidGateway'] as const) {
       expect(ORDER_FIELDS[key]?.defaultValue).toBeUndefined()
     }
   })
 
-  it('sorts the paid date beside placed and cancelled, and the stamp after every visible field', () => {
+  it('sorts the paid date beside placed and cancelled', () => {
     const placed = ORDER_FIELDS.placedAt?.systemSortOrder ?? ''
     const cancelled = ORDER_FIELDS.cancelledAt?.systemSortOrder ?? ''
     const paid = ORDER_FIELDS.paidAt?.systemSortOrder ?? ''
@@ -399,7 +369,6 @@ const PAYOUT_HALF: readonly [DefType, ResourceField | undefined][] = [
   ['bank_account', BANK_ACCOUNT_FIELDS.payouts],
 ]
 const ORDER_HALF: readonly [DefType, ResourceField | undefined][] = [
-  ['order', ORDER_FIELDS.paymentGlPosting],
   ['order', ORDER_FIELDS.paidAt],
   ['order', ORDER_FIELDS.paidGateway],
 ]
@@ -498,7 +467,7 @@ describe('up() on a fake database', () => {
 
     expect(result).toEqual({
       entityDefsCreated: 0,
-      fieldsCreated: 4,
+      fieldsCreated: 3,
       relationshipsLinked: 0,
       alreadyUpToDate: false,
     })
@@ -528,7 +497,7 @@ describe('up() on a fake database', () => {
     expect(invalidateAndRecompute).not.toHaveBeenCalled()
   })
 
-  it('on a fresh org creates all nine fields and stamps synced in ONE insert, optionId only', async () => {
+  it('on a fresh org creates all eight fields and stamps synced in ONE insert, optionId only', async () => {
     vi.mocked(loadExistingState).mockResolvedValue(existingState({ defs: ALL_DEFS, applied: [] }))
     const { db, insert, values } = fakeDb({
       payoutIds: ['p1', 'p2', 'p3'],
@@ -537,7 +506,7 @@ describe('up() on a fake database', () => {
 
     const result = await migration157PayoutRailAndOrderPaymentFields.up(db, ORG)
 
-    expect(result.fieldsCreated).toBe(9)
+    expect(result.fieldsCreated).toBe(8)
     expect(result.alreadyUpToDate).toBe(false)
     expect(createdKeys).toEqual([...payoutKeys, ...orderKeys, ...lineItemKeys])
 
@@ -584,7 +553,7 @@ describe('up() on a fake database', () => {
 
     const result = await migration157PayoutRailAndOrderPaymentFields.up(db, ORG)
 
-    expect(result.fieldsCreated).toBe(4)
+    expect(result.fieldsCreated).toBe(3)
     expect(createdKeys).toEqual([...orderKeys, ...lineItemKeys])
     expect(vi.mocked(ensureCustomFields)).toHaveBeenCalledTimes(2)
     expect(vi.mocked(linkNewRelationships)).not.toHaveBeenCalled()

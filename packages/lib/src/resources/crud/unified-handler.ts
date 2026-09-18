@@ -8,7 +8,6 @@ import { ModelTypes } from '@auxx/types/custom-field'
 import { isEntityDefinitionType } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq } from 'drizzle-orm'
-import { PgTransaction } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { findCachedResource, getCachedCustomFields, getCachedResources } from '../../cache'
 import { type ConditionGroup, resolveConditionContext } from '../../conditions'
@@ -29,8 +28,6 @@ import {
   resolveRecordVisibilityScope,
 } from '../../permissions/capabilities/record-visibility-scope'
 import { buildDefIdToSlug } from '../../permissions/capabilities/resolve-capability-inputs'
-import { withAccountingCommitLock } from '../../postings/accounting-commit-lock'
-import { accountingSourceType } from '../../postings/source-write-guard'
 import { runWithDirtyParents } from '../../reconcilers/dirty-parents'
 import { resolveResourceAccessGrantees } from '../../resource-access/grantee-resolution'
 import { getCommonHooks, getSystemHooks } from '../hooks'
@@ -192,7 +189,6 @@ export interface UnifiedCrudHandlerOptions {
 
 export class UnifiedCrudHandler {
   fieldValueService: FieldValueService
-  private accountingTransaction = false
   private db: Database | Transaction
   private bypassFieldGuards: ReadonlySet<SystemAttribute>
   /** Request-scoped read enforcement; undefined for internal/system callers. */
@@ -256,7 +252,6 @@ export class UnifiedCrudHandler {
       capabilities: this.capabilities,
       session,
     })
-    handler.accountingTransaction = this.accountingTransaction
     return handler
   }
 
@@ -294,31 +289,6 @@ export class UnifiedCrudHandler {
     return runWithDirtyParents(this.organizationId, this.userId, () =>
       runWithWriteSession(this.session, () => runWithWriteDb(this.db, fn))
     )
-  }
-
-  private async accountingWrite<T>(fn: (handler: UnifiedCrudHandler) => Promise<T>): Promise<T> {
-    const execute = async (tx: Transaction) => {
-      await withAccountingCommitLock(tx, this.organizationId)
-      const ambientMode = getAmbientWriteSession()?.mode
-      const handler = new UnifiedCrudHandler(this.organizationId, this.userId, tx, this.socketId, {
-        bypassFieldGuards: this.bypassFieldGuards,
-        capabilities: this.capabilities,
-        session:
-          ambientMode?.kind === 'buffered' && sessionLane(this.session) !== 'silent'
-            ? { ...this.session, mode: ambientMode }
-            : this.session,
-      })
-      handler.accountingTransaction = true
-      return fn(handler)
-    }
-    if (this.db instanceof PgTransaction) return execute(this.db)
-    const completed = await this.db.transaction((tx) =>
-      runInTxWrite({ organizationId: this.organizationId, actorUserId: this.userId }, () =>
-        execute(tx)
-      )
-    )
-    if (completed.owned) await flushTxWriteScope(completed.scope)
-    return completed.result
   }
 
   /**
@@ -506,12 +476,6 @@ export class UnifiedCrudHandler {
     values: Record<string, unknown>,
     options: CrudOptions = {}
   ): Promise<CreateEntityResult> {
-    if (
-      !this.accountingTransaction &&
-      (await accountingSourceType(this.db, this.organizationId, entityDefinitionId))
-    ) {
-      return this.accountingWrite((handler) => handler.create(entityDefinitionId, values, options))
-    }
     return this.inWriteSession(async () => {
       // Write enforcement (§2): absent capabilities ⇒ internal caller ⇒ unrestricted.
       this.capabilities?.assertEditEntity(entityDefinitionId)
@@ -586,16 +550,6 @@ export class UnifiedCrudHandler {
     modes?: Record<string, 'set' | 'add' | 'remove'>,
     options: CrudOptions = {}
   ): Promise<EntityInstanceEntity> {
-    if (
-      !this.accountingTransaction &&
-      (await accountingSourceType(
-        this.db,
-        this.organizationId,
-        parseRecordId(recordId).entityDefinitionId
-      ))
-    ) {
-      return this.accountingWrite((handler) => handler.update(recordId, values, modes, options))
-    }
     return this.inWriteSession(async () => {
       const { entityDefinitionId } = parseRecordId(recordId)
       await this.assertEditRows([recordId])

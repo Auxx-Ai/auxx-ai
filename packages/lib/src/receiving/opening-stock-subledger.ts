@@ -55,7 +55,7 @@
  * `stock_movement_gl_account` is frozen at write time and `updatable: false`.
  * Re-deriving it from the part's CURRENT `part_kind` gives one movement two
  * accounts that can disagree - the exact failure
- * `buildReceiptEntry.inventoryAccountRole` exists to prevent - and a part
+ * the frozen role exists to prevent - and a part
  * reclassified after its opening balance was written would silently restate the
  * count.
  *

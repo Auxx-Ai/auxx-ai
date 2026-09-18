@@ -1,281 +1,166 @@
 // packages/lib/src/postings/provider-sync/writes.ts
 //
-// Turning one entry the ACCOUNTANT authored into one of our rows (§6), and
-// backing one out again when it stops appearing (§7.1).
+// The mirror's writer: one chunk of the provider's general ledger, verbatim,
+// into `ProviderLedgerEntry` and `ProviderLedgerLine` (TARGET §2).
+//
+// 🛑 **Nothing here reaches `GlPosting`.** The mirror is a raw copy of what the
+// provider holds, including the objects we sent it; turning the accountant's
+// half of it into our own rows is `translate.ts`'s job, one pass later. Keeping
+// the two apart is what lets a re-read converge - an entry that stops appearing
+// is WITHDRAWN on the mirror and reversed in the ledger, rather than deleted
+// from either.
 //
 // 🛑 **Nothing here repairs one of OUR entries.** §5.3's comparison produces a
 // report and nothing else: there is deliberately no writer that restates our
-// posting from theirs or re-pushes ours over theirs. Both make one entry answer
-// to two authors, which is what §3.1's single-writer rule exists to prevent,
-// and §12.13 records that this is the one default in the brief that is not
-// reversible.
+// posting from theirs or re-pushes ours over theirs.
 //
 // No permission checks here. The router asserts (docs/lib-module-guide.md §6).
 
 import { type Database, schema } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
-import { err, ok, type Result } from 'neverthrow'
-import { UnprocessableEntityError } from '../../errors'
-import { buildEntry } from '../build-entry'
-import { didLedgerAccept } from '../ledger-accepted'
-import type { PeriodLock } from '../periods'
-import { postEntry } from '../post-entry'
-import { reverseEntry } from '../reverse-entry'
-import type { PostResult } from '../types'
-import { PROVIDER_SYNC_POSTING_TYPE, type ProviderLedgerEntry } from './client'
+import { and, eq, gte, isNull, lte, notInArray } from 'drizzle-orm'
+import { ok, type Result } from 'neverthrow'
+import {
+  authorOf,
+  type ProviderLedgerAuthorship,
+  type ProviderLedgerEntry,
+  type ProviderSyncRange,
+} from './client'
 import { guard } from './guard'
-import { resolveProviderSyncLines } from './plan'
 
-const logger = createScopedLogger('postings:provider-sync')
-
-export interface PostProviderSyncEntryInput {
-  /** One balanced entry of THEIRS, as `planProviderSync` partitioned it. */
-  entry: ProviderLedgerEntry
-  /**
-   * `providerAccountId -> glAccountId`, already checked for double claims by
-   * `invertAccountMap`. 🛑 A provider account that is not in this map is a
-   * REFUSAL naming it - never a guess, and never a fallback account. A guess
-   * that lands on a real account produces an entry that balances and is wrong,
-   * and nothing downstream can detect it.
-   */
-  glAccountIdByProviderId: ReadonlyMap<string, string>
-  /**
-   * The provider the ledger was read from, RESOLVED - `'quickbooks'`, not a
-   * constant this file spells. Written to `GlPosting.providerId` as provenance.
-   */
-  providerId: string
-  /**
-   * The provider COMPANY this ledger was read from, stamped to
-   * `GlPosting.providerTenantId`. `null` when nothing is connected.
-   *
-   * 🛑 Without it an inbound row carries a `providerEntryId` and no company, and
-   * a provider entry id is a per-company sequence - `147` exists in every
-   * company and means something different in each. The uniqueness index over
-   * `(organizationId, providerId, providerTenantId, providerEntryId)` cannot
-   * constrain a NULL, so an unstamped row is outside the guarantee entirely
-   * (decision `G20`).
-   */
-  providerTenantId: string | null
-  lock: PeriodLock
-  actorUserId?: string
+/** What the org's own books already claim, so an entry can be attributed. */
+export interface OurLedgerIdentity {
+  providerEntryIds: ReadonlySet<string>
+  docNumbers: ReadonlySet<string>
 }
 
-/** What one write did. Both outcomes mean the entry is in the books. */
-export interface ProviderSyncEntryOutcome {
-  /**
-   * `'already_posted'` is a SUCCESS, and it is the ordinary answer on a
-   * re-read: `periodKey` is their transaction id, so the claim index over
-   * `(organizationId, postingType, periodKey, revision)` already holds this
-   * transaction and converging on it is exactly what §7.1 asks for. It is why
-   * this needs no new uniqueness constraint and no new table (§0.3).
-   */
-  status: 'written' | 'already_posted'
-  glPostingId: string
-  docNumber: string
+export interface UpsertMirrorChunkInput extends ProviderSyncRange {
+  /** The `ExternalAccountingBook` this chunk was read from. */
+  bookId: string
+  /** Every entry the chunk carried, ours and theirs, as `plan.ts` grouped them. */
+  entries: readonly ProviderLedgerEntry[]
+  ours: OurLedgerIdentity
+}
+
+export interface MirrorChunkOutcome {
+  /** Mirror entries inserted or refreshed by this chunk. */
+  mirrored: number
+  /** Entries stamped `author: 'auxx'` - ones we pushed, kept but never translated. */
+  ours: number
+  /** Entries in the range that stopped appearing and were stamped `withdrawnAt`. */
+  withdrawn: number
+  /** The mirror ids withdrawn, so the translation can reverse their postings. */
+  withdrawnIds: string[]
 }
 
 /**
- * Write one of their entries as a `provider_sync` posting.
+ * Write one chunk of their ledger into the mirror and converge the range.
  *
- * The six fields §6's table pins, and why each one:
+ * Idempotent by the unique key `(organizationId, bookId, providerTxnType,
+ * providerTxnId)`: a re-read of the same month refreshes the same rows, replaces
+ * their lines, and clears `withdrawnAt` on anything that has come back.
  *
- * | field | value |
- * |---|---|
- * | `postingType` | `provider_sync`, whose export route is `'none'` - the real loop guard |
- * | `periodKey` | their transaction id, which is where idempotency comes from |
- * | `exportStatus` | `not_required`, set by the poster because the route is `'none'` |
- * | `providerId` | the resolved provider, stamped below |
- * | `providerEntryId` | their transaction id, stamped below. Also the re-read key |
- * | `txnDate` | the row's own date. May land in a closed month - §7.2 |
- *
- * ⚠️ **`exportStatus` is `not_required`, NOT `exported`.** That column means
- * "we pushed this", and we did not. It falls out of the route table rather than
- * being written here: `EXPORT_ROUTE_BY_POSTING_TYPE.provider_sync = 'none'`
- * sends the poster to `NONE_ACCOUNTING_PROVIDER`, which answers
- * `not_connected`, which the poster stamps as `not_required`. Nothing in this
- * file may set it, and nothing needs to.
- *
- * @returns `err` when the entry was NOT written - an unmapped provider account,
- *   a malformed line, a closed period, or any other refusal from the poster.
- *   The message names the entry and what stopped it, for the caller to collect.
+ * ⚠️ Lines are REPLACED rather than merged. A provider line has no stable id in
+ * a general-ledger report, so there is nothing to match on, and a merge would
+ * accumulate the old shape of an edited entry beside the new one.
  */
-export async function postProviderSyncEntry(
+export async function upsertMirrorChunk(
   db: Database,
   organizationId: string,
-  input: PostProviderSyncEntryInput
-): Promise<Result<ProviderSyncEntryOutcome, Error>> {
-  const { entry, glAccountIdByProviderId, providerId, providerTenantId, lock, actorUserId } = input
-
-  // 🛑 The unmapped-account refusal, before anything is claimed. A guess that
-  // lands on a real account produces an entry that balances and is wrong, and
-  // nothing downstream can detect it.
-  const lines = resolveProviderSyncLines(entry, glAccountIdByProviderId)
-  if (lines.isErr()) return err(lines.error)
-
-  const built = await guard(
-    async () => {
-      return buildEntry({
-        postingType: PROVIDER_SYNC_POSTING_TYPE,
-        // 🛑 Their transaction id, not a date. §0.3: `payout` already keys on an
-        // entity id, and `lockKeyFor` in the poster evaluates the period lock
-        // against `txnDate` when the key is not a date - which is the right
-        // month for this entry either way.
-        periodKey: entry.txnId,
-        txnDate: entry.txnDate,
-        lines: lines.value,
-      })
-    },
-    'Failed to build a synced entry',
-    { organizationId, txnId: entry.txnId, txnType: entry.txnType }
-  )
-  if (built.isErr()) return err(built.error)
-
-  const memo =
-    `Synced from ${providerId}: ${entry.txnType}` +
-    `${entry.docNumber ? ` ${entry.docNumber}` : ''} (transaction ${entry.txnId})`
-
-  const result = await postEntry(db, {
-    organizationId,
-    entry: built.value,
-    actorUserId,
-    memo,
-    lock,
-  })
-
-  if (!isPosted(result)) {
-    return err(
-      new UnprocessableEntityError(
-        `${entry.txnType} ${entry.txnId} dated ${entry.txnDate} was not written: ` +
-          `${result.error ?? result.status}.`,
-        { txnId: entry.txnId, txnType: entry.txnType, postStatus: result.status }
-      )
-    )
-  }
-
-  // `isPosted` already proved `glPostingId` is set; `docNumber` is minted
-  // before the claim, so a posted result always carries one.
-  const glPostingId = result.glPostingId
-  const docNumber = result.docNumber ?? ''
-
-  const stamped = await stampProvenance(db, {
-    organizationId,
-    glPostingId,
-    providerId,
-    providerEntryId: entry.txnId,
-    providerTenantId,
-  })
-  if (stamped.isErr()) return err(stamped.error)
-
-  logger.info('Wrote an entry the accounting provider authored', {
-    organizationId,
-    glPostingId,
-    docNumber,
-    txnType: entry.txnType,
-    txnId: entry.txnId,
-    txnDate: entry.txnDate,
-    status: result.status,
-  })
-
-  return ok({
-    status: result.status === 'already_posted' ? 'already_posted' : 'written',
-    glPostingId,
-    docNumber,
-  })
-}
-
-/**
- * Back out an entry we synced that has since stopped appearing in their ledger.
- *
- * 🛑 **A reversal, never a delete** (`G4`, §7.1). The pair stays in the books
- * and stays auditable, and a re-read that finds the transaction again writes a
- * fresh entry rather than resurrecting one - which is the property that makes
- * "re-read and diff" converge after a bad run instead of compounding.
- */
-export async function reverseSyncedEntry(
-  db: Database,
-  organizationId: string,
-  input: { glPostingId: string; docNumber: string; lock: PeriodLock; actorUserId?: string }
-): Promise<Result<{ glPostingId: string }, Error>> {
-  const result = await reverseEntry(db, {
-    organizationId,
-    glPostingId: input.glPostingId,
-    actorUserId: input.actorUserId,
-    lock: input.lock,
-    memo: `Reversal of ${input.docNumber} - the transaction no longer appears in the provider's ledger`,
-  })
-
-  if (!isPosted(result)) {
-    return err(
-      new UnprocessableEntityError(
-        `${input.docNumber} no longer appears in the provider's ledger but could not be ` +
-          `reversed: ${result.error ?? result.status}.`,
-        { glPostingId: input.glPostingId, postStatus: result.status }
-      )
-    )
-  }
-  return ok({ glPostingId: result.glPostingId })
-}
-
-/**
- * Stamp the PROVENANCE - which system the entry came from and its id there.
- *
- * Separate from the poster because the poster's own stamp describes an EXPORT
- * it attempted, and it attempted none: the route is `'none'`, so it recorded
- * `providerId: 'none'` and no entry id. Those two columns are the only record
- * that this row is an import at all and that it can be matched to the
- * transaction it came from on the next re-read, so they are written here.
- *
- * ⚠️ `exportStatus` is deliberately absent from this statement. It says "we
- * pushed this", it correctly reads `not_required`, and a write here could only
- * make it lie.
- */
-async function stampProvenance(
-  db: Database,
-  input: {
-    organizationId: string
-    glPostingId: string
-    providerId: string
-    providerEntryId: string
-    providerTenantId: string | null
-  }
-): Promise<Result<void, Error>> {
+  input: UpsertMirrorChunkInput
+): Promise<Result<MirrorChunkOutcome, Error>> {
   return guard(
     async () => {
-      await db
-        .update(schema.GlPosting)
-        .set({
-          providerId: input.providerId,
-          providerEntryId: input.providerEntryId,
-          providerTenantId: input.providerTenantId,
+      const outcome: MirrorChunkOutcome = {
+        mirrored: 0,
+        ours: 0,
+        withdrawn: 0,
+        withdrawnIds: [],
+      }
+      const seen: string[] = []
+
+      for (const entry of input.entries) {
+        const author: ProviderLedgerAuthorship = authorOf(entry, input.ours)
+        const id = await db.transaction(async (tx) => {
+          const [row] = await tx
+            .insert(schema.ProviderLedgerEntry)
+            .values({
+              organizationId,
+              bookId: input.bookId,
+              providerTxnType: entry.txnType,
+              providerTxnId: entry.txnId,
+              txnDate: entry.txnDate,
+              docNumber: entry.docNumber,
+              author,
+              raw: entry as unknown as Record<string, unknown>,
+            })
+            .onConflictDoUpdate({
+              target: [
+                schema.ProviderLedgerEntry.organizationId,
+                schema.ProviderLedgerEntry.bookId,
+                schema.ProviderLedgerEntry.providerTxnType,
+                schema.ProviderLedgerEntry.providerTxnId,
+              ],
+              set: {
+                txnDate: entry.txnDate,
+                docNumber: entry.docNumber,
+                author,
+                raw: entry as unknown as Record<string, unknown>,
+                fetchedAt: new Date(),
+                updatedAt: new Date(),
+                // It is back. A re-read is the only evidence either way.
+                withdrawnAt: null,
+              },
+            })
+            .returning({ id: schema.ProviderLedgerEntry.id })
+          const entryId = row!.id
+
+          await tx
+            .delete(schema.ProviderLedgerLine)
+            .where(eq(schema.ProviderLedgerLine.entryId, entryId))
+          const lines = entry.lines.map((line, index) => ({
+            entryId,
+            providerAccountId: line.providerAccountId,
+            providerAccountName: line.providerAccountName,
+            direction: (line.debitMinor > 0 ? 'debit' : 'credit') as 'debit' | 'credit',
+            amountMinor: line.debitMinor > 0 ? line.debitMinor : line.creditMinor,
+            memo: line.memo,
+            sortOrder: index,
+            raw: line as unknown as Record<string, unknown>,
+          }))
+          if (lines.length > 0) await tx.insert(schema.ProviderLedgerLine).values(lines)
+          return entryId
         })
+
+        seen.push(id)
+        outcome.mirrored += 1
+        if (author === 'auxx') outcome.ours += 1
+      }
+
+      // ── Converge by re-reading (§7.1) ────────────────────────────────────
+      // Anything the mirror holds inside the range the provider ECHOED that
+      // this read did not return has been deleted on their side.
+      const vanished = await db
+        .update(schema.ProviderLedgerEntry)
+        .set({ withdrawnAt: new Date(), updatedAt: new Date() })
         .where(
           and(
-            eq(schema.GlPosting.id, input.glPostingId),
-            eq(schema.GlPosting.organizationId, input.organizationId)
+            eq(schema.ProviderLedgerEntry.organizationId, organizationId),
+            eq(schema.ProviderLedgerEntry.bookId, input.bookId),
+            gte(schema.ProviderLedgerEntry.txnDate, input.from),
+            lte(schema.ProviderLedgerEntry.txnDate, input.to),
+            isNull(schema.ProviderLedgerEntry.withdrawnAt),
+            // `notInArray` over an empty list is a contradiction on some drivers,
+            // so an empty chunk withdraws the whole range by dropping the clause.
+            seen.length > 0 ? notInArray(schema.ProviderLedgerEntry.id, seen) : undefined
           )
         )
-    },
-    'Failed to stamp provenance on a synced entry',
-    input
-  )
-}
+        .returning({ id: schema.ProviderLedgerEntry.id })
 
-/**
- * Did the LEDGER take the entry?
- *
- * Reads `status`, never `exportStatus` - a caller deciding whether the books
- * hold the entry and reading the export's outcome instead is the exact defect
- * `plans/accounting/export-state-split.md` closed.
- */
-function isPosted(result: PostResult): result is PostResult & { glPostingId: string } {
-  // 🛑 `not_exported` is the status EVERY entry on this path gets, and the
-  // reason this predicate is shared rather than spelled out here. `provider_sync`
-  // is one of the two `'none'` routes in `EXPORT_ROUTE_BY_POSTING_TYPE` - this
-  // module's own loop guard - so a synced entry never pushes and always lands on
-  // it. When `not_exported` was added, the hand-written list this replaced did
-  // not gain it, and the whole inbound sync would have recorded NOTHING while
-  // reporting success. `didLedgerAccept` cannot miss a status: it fails to
-  // compile until every member of the union is classified.
-  return didLedgerAccept(result) && Boolean(result.glPostingId)
+      outcome.withdrawn = vanished.length
+      outcome.withdrawnIds = vanished.map((row) => row.id)
+      return outcome
+    },
+    'Failed to write the provider ledger mirror',
+    { organizationId, bookId: input.bookId, from: input.from, to: input.to }
+  )
 }

@@ -19,16 +19,15 @@ export {
 export {
   getJournalEntry,
   type JournalEntryFieldContext,
+  linesFromBuilt,
   listJournalEntries,
   loadJournalEntryFieldContext,
-  parseLines,
   type RecurrenceIdentity,
   readRecurrenceIdentities,
   requireJournalEntry,
   requireJournalEntryFieldContext,
 } from './reads'
 export {
-  assertJournalEntryHasNoPosting,
   assertJournalEntryIsDraft,
   type JournalEntryRefusalSubject,
 } from './refusals'

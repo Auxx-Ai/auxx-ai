@@ -1,6 +1,11 @@
 // apps/web/src/components/accounting/ui/ledger/stored-draft.ts
 
-import type { MonthEndInventorySnapshot, PostingAssertions } from '@auxx/lib/postings/client'
+import type {
+  GlPostingSourceInput,
+  MonthEndInventorySnapshot,
+  PostingAssertions,
+  PostingLinkRole,
+} from '@auxx/lib/postings/client'
 
 /**
  * Read the assertions off a `PostingDetail.draft`, which crosses the wire as
@@ -62,6 +67,37 @@ export function readStoredReasons(draft: unknown): StoredReason[] {
     reasons.push({ line, sentence })
   }
   return reasons
+}
+
+const LINK_ROLES: readonly PostingLinkRole[] = ['subject', 'parent', 'counterparty', 'member']
+
+/**
+ * Read the `GlPostingSource` links off a stored envelope - what
+ * `insertSourceLinksInTx` wrote to the table itself, frozen alongside it
+ * (TARGET §1). The posting drawer's replacement for the register: what this
+ * entry is OF, and what it names as parent, counterparty or member.
+ *
+ * Same contract as {@link readStoredAssertions}: lenient, never a throw. An
+ * envelope with no `sources` (a hand-written entry from before this field
+ * existed) reads as an empty list rather than a blank drawer.
+ */
+export function readStoredSources(draft: unknown): GlPostingSourceInput[] {
+  if (!isRecord(draft) || !Array.isArray(draft.sources)) return []
+  const sources: GlPostingSourceInput[] = []
+  for (const item of draft.sources) {
+    if (!isRecord(item)) continue
+    const { sourceKind, sourceId, linkRole, occurrence } = item
+    if (typeof sourceKind !== 'string' || sourceKind.length === 0) continue
+    if (typeof sourceId !== 'string' || sourceId.length === 0) continue
+    if (!LINK_ROLES.includes(linkRole as PostingLinkRole)) continue
+    sources.push({
+      sourceKind,
+      sourceId,
+      linkRole: linkRole as PostingLinkRole,
+      occurrence: typeof occurrence === 'string' ? occurrence : undefined,
+    })
+  }
+  return sources
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

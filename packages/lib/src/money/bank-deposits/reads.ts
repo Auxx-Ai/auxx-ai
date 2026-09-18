@@ -33,6 +33,18 @@ import type {
   UndepositedPaymentRow,
 } from './types'
 
+/** `MoneyTransaction` columns every {@link UndepositedPaymentRow} is hydrated from. */
+const RECEIPT_COLUMNS = {
+  id: schema.MoneyTransaction.id,
+  amountMinor: schema.MoneyTransaction.amountMinor,
+  occurredAt: schema.MoneyTransaction.occurredAt,
+  occurredOn: schema.MoneyTransaction.occurredOn,
+  method: schema.MoneyTransaction.method,
+  reference: schema.MoneyTransaction.reference,
+  currency: schema.MoneyTransaction.currency,
+  bankDepositInstanceId: schema.MoneyTransaction.bankDepositInstanceId,
+} as const
+
 /** Every `bank_deposit` attribute a {@link BankDepositRecord} is assembled from. */
 const DEPOSIT_ATTRIBUTES = [
   'bank_deposit_number',
@@ -45,7 +57,6 @@ const DEPOSIT_ATTRIBUTES = [
   'bank_deposit_bank_transaction_id',
   'bank_deposit_cleared_at',
   'bank_deposit_reconciled_at',
-  'bank_deposit_gl_posting_id',
 ] as const
 
 /**
@@ -65,22 +76,9 @@ const BANK_ACCOUNT_ATTRIBUTES = [
   'bank_account_has_posted',
 ] as const
 
-/** Every `payment` attribute an {@link UndepositedPaymentRow} is assembled from. */
-const PAYMENT_ATTRIBUTES = [
-  'payment_amount',
-  'payment_date',
-  'payment_method',
-  'payment_reference',
-  'payment_invoice',
-  'payment_transaction_id',
-  'payment_bank_deposit',
-] as const
-
 type DepositAttribute = (typeof DEPOSIT_ATTRIBUTES)[number]
-type PaymentAttribute = (typeof PAYMENT_ATTRIBUTES)[number]
 
 type DepositFields = Record<DepositAttribute, { id: string } | null>
-type PaymentFields = Record<PaymentAttribute, { id: string } | null>
 
 type BankAccountAttribute = (typeof BANK_ACCOUNT_ATTRIBUTES)[number]
 
@@ -92,12 +90,6 @@ const DEFAULT_LIMIT = 100
 export interface BankDepositFieldContext {
   depositDefId: string
   fields: DepositFields
-}
-
-/** The resolved def and field ids every payment read needs. */
-export interface PaymentFieldContext {
-  paymentDefId: string
-  fields: PaymentFields
 }
 
 /** The resolved `bank_account` def and the fields a deposit reads off it. */
@@ -177,19 +169,6 @@ export async function requireBankDepositWriteContext(
     )
   }
   return ctx
-}
-
-/** Resolve the `payment` def and the fields a deposit reads and stamps. */
-export async function loadPaymentFieldContext(
-  organizationId: string
-): Promise<PaymentFieldContext | null> {
-  const paymentDefId = await getCachedEntityDefId(organizationId, 'payment')
-  if (!paymentDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...PAYMENT_ATTRIBUTES])) as PaymentFields
-  if (!fields.payment_amount || !fields.payment_method) return null
-  return { paymentDefId, fields }
 }
 
 /**
@@ -286,28 +265,6 @@ export async function readDepositBankAccount(
   }
 }
 
-/** {@link loadPaymentFieldContext}, as the refusal a write path needs. */
-export async function requirePaymentFieldContext(
-  organizationId: string
-): Promise<PaymentFieldContext> {
-  const ctx = await loadPaymentFieldContext(organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Grouping payments is not available until the payment entity and its fields are provisioned'
-    )
-  }
-  // The link field is what makes "one deposit per payment" answerable at all. An
-  // org short of migration 125 has no way to record which deposit a cheque went
-  // into, and grouping there would produce a deposit that cannot be un-grouped.
-  if (!ctx.fields.payment_bank_deposit) {
-    throw new UnprocessableEntityError(
-      'Grouping payments is not available until the payment bank deposit link is provisioned ' +
-        '(entity migration 125)'
-    )
-  }
-  return ctx
-}
-
 /**
  * A stored date value, as `YYYY-MM-DD`.
  *
@@ -348,27 +305,24 @@ function valueJoin(table: FieldValueAlias, fieldId: string): SQL | undefined {
 }
 
 /**
- * Payments that are waiting to be banked: routed to `undeposited_funds` by the
+ * Receipts that are waiting to be banked: routed to `undeposited_funds` by the
  * org's route table, and in no deposit.
  *
- * 🛑 **Both halves of that sentence are filters in SQL, not in memory.** The
- * route half narrows on `payment_method` against
- * {@link methodsRoutedToUndepositedFunds}, so an ACH or a card receipt never
- * appears here - routing one into a deposit would assert a bank line the bank
- * never showed. The "in no deposit" half is a LEFT JOIN on
- * `payment_bank_deposit` plus `IS NULL`, so a payment with no value ROW at all
- * is included alongside one whose row is present and empty; an inner join would
- * drop the first group, which today is every payment there is.
+ * MIGRATION follow-up 9: reads `MoneyTransaction` directly - `cashAccountInstanceId
+ * IS NULL` is what "sitting in undeposited funds" means on the row itself
+ * (`record-payment.ts` only sets it for the `cash` route), and
+ * `bankDepositInstanceId IS NULL` is "in no deposit". Both are SQL filters, no
+ * FieldValue join needed now that neither fact lives on a `payment` entity mirror.
  *
  * ⚠️ An org whose route table sends NOTHING to undeposited funds gets an empty
- * list rather than every payment. That is the correct answer, not a bug: with
+ * list rather than every receipt. That is the correct answer, not a bug: with
  * every rail posting direct there is nothing to group.
  *
- * ⚠️ A payment with NO method is listed when the `other` route points at
- * undeposited funds, because that is exactly where the payment entry put its
- * money. See the comment on `includeMethodless` below - this read and
- * `createBankDeposit` must resolve the same payment the same way, or undeposited
- * funds carries a balance no deposit can ever reach.
+ * ⚠️ A receipt with NO method is listed when the `other` route points at
+ * undeposited funds, because that is exactly where it was recorded. See
+ * `includeMethodless` below - this read and `createBankDeposit` must resolve a
+ * receipt's route identically, or undeposited funds carries a balance no
+ * deposit can ever reach.
  */
 export async function listUndepositedPayments(
   db: Database,
@@ -377,9 +331,6 @@ export async function listUndepositedPayments(
   const { organizationId, method, from, to, limit, offset } = params
   return guard(
     async () => {
-      const ctx = await loadPaymentFieldContext(organizationId)
-      if (!ctx) return []
-
       const settings = await getOrgCache().get(organizationId, 'orgSettings')
       const routed = methodsRoutedToUndepositedFunds(settings)
       // An explicit method filter still has to obey the route table: asking for
@@ -387,83 +338,45 @@ export async function listUndepositedPayments(
       // "here is a card receipt you can bank".
       const methods = method ? routed.filter((m) => m === method) : routed
 
-      // 🛑 A payment with NO method at all is a real row and it has a real
-      // route. `resolvePaymentRoute(null, settings)` falls through to the
-      // `other` row, and `postPaymentTransaction` posts it there - so when
-      // `other` routes to undeposited funds, that payment's money IS sitting in
-      // 1050 and it must be bankable. Dropping it here while
-      // `createBankDeposit` happily accepts the same id (it resolves the route
-      // the same way) is the disagreement this guard closes: the two doors now
-      // answer identically, and undeposited funds can always be cleared to zero.
-      //
       // Only when no explicit method filter was asked for: "show me the cheques"
-      // must not answer with a payment that has no method.
+      // must not answer with a receipt that has no method.
       const includeMethodless = !method && routed.includes('other')
       if (methods.length === 0 && !includeMethodless) return []
 
+      const methodPredicate = includeMethodless
+        ? or(
+            isNull(schema.MoneyTransaction.method),
+            inArray(schema.MoneyTransaction.method, methods)
+          )!
+        : inArray(schema.MoneyTransaction.method, methods)
+
       const where: SQL[] = [
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.paymentDefId),
-        isNull(schema.EntityInstance.archivedAt),
+        eq(schema.MoneyTransaction.organizationId, organizationId),
+        eq(schema.MoneyTransaction.purpose, 'customer_receipt'),
+        isNull(schema.MoneyTransaction.cashAccountInstanceId),
+        isNull(schema.MoneyTransaction.bankDepositInstanceId),
+        methodPredicate,
       ]
+      // Hand-recorded receipts (the only kind that ever route to undeposited
+      // funds) always carry `occurredOn` - `record-payment.ts` stamps
+      // `datePrecision: 'date'`. A quote-deposit checkout's `instant` receipt has
+      // no `occurredOn` and is excluded once a date filter narrows the query.
+      if (from) where.push(gte(schema.MoneyTransaction.occurredOn, from))
+      if (to) where.push(lte(schema.MoneyTransaction.occurredOn, to))
 
-      let query = db
-        .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-        .from(schema.EntityInstance)
-        .$dynamic()
-
-      const methodField = ctx.fields.payment_method
-      if (methodField) {
-        const methodValue = alias(schema.FieldValue, 'payment_method_v')
-        if (includeMethodless) {
-          // A LEFT join, so a payment with no method value ROW at all survives
-          // it, and the predicate then keeps the routed methods plus the empty
-          // ones. An inner join cannot express that: it drops the row before the
-          // predicate ever sees it.
-          query = query.leftJoin(methodValue, valueJoin(methodValue, methodField.id))
-          const predicates: SQL[] = [isNull(methodValue.optionId)]
-          if (methods.length > 0) predicates.unshift(inArray(methodValue.optionId, methods))
-          where.push(predicates.length === 1 ? predicates[0]! : or(...predicates)!)
-        } else {
-          query = query.innerJoin(
-            methodValue,
-            and(valueJoin(methodValue, methodField.id), inArray(methodValue.optionId, methods))
-          )
-        }
-      }
-
-      const dateField = ctx.fields.payment_date
-      if (dateField && (from || to)) {
-        const dateValue = alias(schema.FieldValue, 'payment_date_v')
-        query = query.innerJoin(
-          dateValue,
-          and(
-            valueJoin(dateValue, dateField.id),
-            ...(from ? [gte(dateValue.valueDate, from)] : []),
-            ...(to ? [lte(dateValue.valueDate, to)] : [])
-          )
-        )
-      }
-
-      // The "in no deposit" half. `payment_bank_deposit` is required by
-      // `requirePaymentFieldContext` on the write path; here it is guarded, so a
-      // read on an org short of 127 lists everything rather than throwing - and
-      // the write path refuses before anything can be grouped.
-      const linkField = ctx.fields.payment_bank_deposit
-      if (linkField) {
-        const linkValue = alias(schema.FieldValue, 'payment_deposit_v')
-        query = query.leftJoin(linkValue, valueJoin(linkValue, linkField.id))
-        where.push(isNull(linkValue.relatedEntityId))
-      }
-
-      const rows = await query
+      const rows = await db
+        .select(RECEIPT_COLUMNS)
+        .from(schema.MoneyTransaction)
         .where(and(...where))
-        .orderBy(desc(schema.EntityInstance.createdAt))
+        .orderBy(desc(schema.MoneyTransaction.createdAt))
         .limit(limit ?? DEFAULT_LIMIT)
         .offset(offset ?? 0)
 
-      if (rows.length === 0) return []
-      return hydratePayments(db, organizationId, ctx, rows)
+      // Every one of these rows is already `bankDepositInstanceId IS NULL`
+      // (the WHERE clause above); drop the write-path-only field rather than
+      // leak it onto the public `UndepositedPaymentRow` shape.
+      const hydrated = await hydrateReceipts(db, organizationId, rows)
+      return hydrated.map(({ bankDepositId: _bankDepositId, ...row }) => row)
     },
     'Failed to list undeposited payments',
     { organizationId, method }
@@ -471,62 +384,59 @@ export async function listUndepositedPayments(
 }
 
 /**
- * Turn a page of payment ids into full rows with a bounded number of queries:
- * one for the field values, one for the invoice display names, one for the
- * currencies. Never one per row.
+ * Turn a page of `MoneyTransaction` receipt rows into full
+ * {@link UndepositedPaymentRow}s with a bounded number of queries: one for the
+ * applications, one for the invoice display names. Never one per row.
+ *
+ * MIGRATION follow-up 9: every fact but the invoice name now lives on the
+ * `MoneyTransaction` row itself - no `payment` entity mirror to join against.
  */
-async function hydratePayments(
+async function hydrateReceipts(
   db: Database,
   organizationId: string,
-  ctx: PaymentFieldContext,
-  page: { id: string }[]
-): Promise<UndepositedPaymentRow[]> {
+  page: Array<{
+    id: string
+    amountMinor: bigint
+    occurredAt: Date | null
+    occurredOn: string | null
+    method: string | null
+    reference: string | null
+    currency: string
+    bankDepositInstanceId: string | null
+  }>
+): Promise<Array<UndepositedPaymentRow & { bankDepositId: string | null }>> {
+  if (page.length === 0) return []
   const ids = page.map((row) => row.id)
-  const fieldIds = Object.values(ctx.fields)
-    .filter((field): field is { id: string } => field != null)
-    .map((field) => field.id)
 
-  const values = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      valueNumber: schema.FieldValue.valueNumber,
-      valueDate: schema.FieldValue.valueDate,
-      optionId: schema.FieldValue.optionId,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, ids),
-        inArray(schema.FieldValue.fieldId, fieldIds)
-      )
-    )
-
-  const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
-  for (const value of values) {
-    let bucket = byInstance.get(value.entityId)
-    if (!bucket) {
-      bucket = new Map()
-      byInstance.set(value.entityId, bucket)
-    }
-    bucket.set(value.fieldId, value)
-  }
-
-  const read = (instanceId: string, attr: PaymentAttribute) => {
-    const id = ctx.fields[attr]?.id
-    return id ? (byInstance.get(instanceId)?.get(id) ?? null) : null
-  }
-
-  const invoiceIds = [
-    ...new Set(
-      page
-        .map((row) => read(row.id, 'payment_invoice')?.relatedEntityId)
-        .filter((id): id is string => id != null)
+  // A receipt is applied to at most one invoice in practice
+  // (`record-payment.ts` applies immediately, one invoice, on write) - net the
+  // apply/unapply pair per invoice per transaction and keep whichever invoice
+  // still nets positive, the same rule `listInvoiceMoneyPayments` reads by.
+  const applications = await db.query.MoneyApplication.findMany({
+    where: and(
+      eq(schema.MoneyApplication.organizationId, organizationId),
+      inArray(schema.MoneyApplication.moneyTransactionId, ids)
     ),
-  ]
+  })
+  const netByTransaction = new Map<string, Map<string, bigint>>()
+  for (const row of applications) {
+    if (!row.invoiceInstanceId) continue
+    const byInvoice = netByTransaction.get(row.moneyTransactionId) ?? new Map<string, bigint>()
+    const delta = row.operation === 'apply' ? row.amountMinor : -row.amountMinor
+    byInvoice.set(row.invoiceInstanceId, (byInvoice.get(row.invoiceInstanceId) ?? 0n) + delta)
+    netByTransaction.set(row.moneyTransactionId, byInvoice)
+  }
+  const invoiceIdByTransaction = new Map<string, string>()
+  for (const [transactionId, byInvoice] of netByTransaction) {
+    for (const [invoiceInstanceId, net] of byInvoice) {
+      if (net > 0n) {
+        invoiceIdByTransaction.set(transactionId, invoiceInstanceId)
+        break
+      }
+    }
+  }
+
+  const invoiceIds = [...new Set(invoiceIdByTransaction.values())]
   const invoiceNames = new Map<string, string | null>()
   if (invoiceIds.length > 0) {
     const invoices = await db
@@ -541,47 +451,18 @@ async function hydratePayments(
     for (const invoice of invoices) invoiceNames.set(invoice.id, invoice.displayName)
   }
 
-  // Currency lives on the ledger row, not on the entity mirror: the `payment`
-  // def carries amount/date/method and no currency at all. Reading it here is
-  // what lets `createBankDeposit` refuse a mixed-currency deposit by name rather
-  // than posting one at an implied 1.0 rate.
-  const transactionIds = [
-    ...new Set(
-      page
-        .map((row) => read(row.id, 'payment_transaction_id')?.valueText)
-        .filter((id): id is string => !!id)
-    ),
-  ]
-  const currencies = new Map<string, string>()
-  if (transactionIds.length > 0) {
-    const transactions = await db
-      .select({ id: schema.PaymentTransaction.id, currency: schema.PaymentTransaction.currency })
-      .from(schema.PaymentTransaction)
-      .where(
-        and(
-          eq(schema.PaymentTransaction.organizationId, organizationId),
-          inArray(schema.PaymentTransaction.id, transactionIds)
-        )
-      )
-    for (const transaction of transactions) currencies.set(transaction.id, transaction.currency)
-  }
-
   return page.map((row) => {
-    const invoiceInstanceId = read(row.id, 'payment_invoice')?.relatedEntityId ?? null
-    const transactionId = read(row.id, 'payment_transaction_id')?.valueText ?? null
+    const invoiceInstanceId = invoiceIdByTransaction.get(row.id) ?? null
     return {
       paymentId: row.id,
-      recordId: toRecordId(ctx.paymentDefId, row.id),
-      // `valueNumber` is a DOUBLE. Every payment amount is already integer cents
-      // by the MQ1 convention, so this rounds rather than truncates: a stored
-      // 4119.999999 must read 4120, not 4119.
-      amountMinor: Math.round(read(row.id, 'payment_amount')?.valueNumber ?? 0),
-      date: toIsoDay(read(row.id, 'payment_date')?.valueDate),
-      method: read(row.id, 'payment_method')?.optionId ?? null,
-      reference: read(row.id, 'payment_reference')?.valueText ?? null,
+      amountMinor: Number(row.amountMinor),
+      date: row.occurredOn ?? row.occurredAt?.toISOString().slice(0, 10) ?? null,
+      method: row.method,
+      reference: row.reference,
       invoiceInstanceId,
       invoiceName: invoiceInstanceId ? (invoiceNames.get(invoiceInstanceId) ?? null) : null,
-      currency: transactionId ? (currencies.get(transactionId) ?? null) : null,
+      currency: row.currency,
+      bankDepositId: row.bankDepositInstanceId,
     }
   })
 }
@@ -679,86 +560,51 @@ export async function readBankDepositDetail(
 }
 
 /**
- * The payments linked to one deposit, oldest first.
+ * The receipts linked to one deposit, oldest first.
  *
- * Read from the OWNING side (`payment_bank_deposit`) rather than from the
- * deposit's `bank_deposit_payments` inverse: the owning side is the one write
- * `createBankDeposit` makes, so it is the one that cannot be stale.
+ * MIGRATION follow-up 9: `MoneyTransaction.bankDepositInstanceId` is now the
+ * owning side `createBankDeposit` writes, so it is the one that cannot be stale.
  */
 export async function readDepositPayments(
   db: Database,
   organizationId: string,
   depositId: string
 ): Promise<UndepositedPaymentRow[]> {
-  const ctx = await loadPaymentFieldContext(organizationId)
-  if (!ctx?.fields.payment_bank_deposit) return []
-
-  const linkValue = alias(schema.FieldValue, 'deposit_payment_v')
   const rows = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .innerJoin(
-      linkValue,
-      and(
-        valueJoin(linkValue, ctx.fields.payment_bank_deposit.id),
-        eq(linkValue.relatedEntityId, depositId)
-      )
-    )
+    .select(RECEIPT_COLUMNS)
+    .from(schema.MoneyTransaction)
     .where(
       and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.paymentDefId),
-        isNull(schema.EntityInstance.archivedAt)
+        eq(schema.MoneyTransaction.organizationId, organizationId),
+        eq(schema.MoneyTransaction.purpose, 'customer_receipt'),
+        eq(schema.MoneyTransaction.bankDepositInstanceId, depositId)
       )
     )
-    .orderBy(asc(schema.EntityInstance.createdAt))
+    .orderBy(asc(schema.MoneyTransaction.createdAt))
 
-  if (rows.length === 0) return []
-  return hydratePayments(db, organizationId, ctx, rows)
+  const hydrated = await hydrateReceipts(db, organizationId, rows)
+  return hydrated.map(({ bankDepositId: _bankDepositId, ...row }) => row)
 }
 
-/** Read a page of payments by id, whatever their deposit state - the write path's loader. */
+/** Read a page of receipts by id, whatever their deposit state - the write path's loader. */
 export async function readPaymentsByIds(
   db: Database,
   organizationId: string,
-  ctx: PaymentFieldContext,
   paymentIds: string[]
 ): Promise<Array<UndepositedPaymentRow & { bankDepositId: string | null }>> {
   if (paymentIds.length === 0) return []
   const rows = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
+    .select(RECEIPT_COLUMNS)
+    .from(schema.MoneyTransaction)
     .where(
       and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.paymentDefId),
-        inArray(schema.EntityInstance.id, paymentIds),
-        isNull(schema.EntityInstance.archivedAt)
+        eq(schema.MoneyTransaction.organizationId, organizationId),
+        eq(schema.MoneyTransaction.purpose, 'customer_receipt'),
+        inArray(schema.MoneyTransaction.id, paymentIds)
       )
     )
 
-  const hydrated = await hydratePayments(db, organizationId, ctx, rows)
-  const linkFieldId = ctx.fields.payment_bank_deposit?.id
-  if (!linkFieldId) return hydrated.map((row) => ({ ...row, bankDepositId: null }))
-
-  const links = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, linkFieldId),
-        inArray(
-          schema.FieldValue.entityId,
-          rows.map((row) => row.id)
-        )
-      )
-    )
-  const byPayment = new Map(links.map((link) => [link.entityId, link.relatedEntityId]))
-  return hydrated.map((row) => ({ ...row, bankDepositId: byPayment.get(row.paymentId) ?? null }))
+  return hydrateReceipts(db, organizationId, rows)
 }
 
 /** Turn a page of deposit ids into full rows with ONE additional query. */
@@ -824,7 +670,6 @@ async function hydrateDeposits(
       bankTransactionId: read('bank_deposit_bank_transaction_id')?.valueText ?? null,
       clearedAt: date('bank_deposit_cleared_at'),
       reconciledAt: date('bank_deposit_reconciled_at'),
-      glPostingId: read('bank_deposit_gl_posting_id')?.valueText ?? null,
       createdAt: row.createdAt,
     }
   })

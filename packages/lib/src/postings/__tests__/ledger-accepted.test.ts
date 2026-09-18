@@ -14,16 +14,11 @@ import type { PostResultStatus } from '../types'
  * status to `types.ts` and not to this file leaves the new value unasserted;
  * `covers every PostResultStatus` below is what catches that.
  */
-const ACCEPTED: readonly PostResultStatus[] = [
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-  'not_exported',
-]
+const ACCEPTED: readonly PostResultStatus[] = ['posted', 'already_posted']
 
 const REFUSED: readonly PostResultStatus[] = [
+  // A draft holds no claim and no document number; nothing is in the books yet.
+  'drafted',
   'period_closed',
   'account_unmapped',
   'unbalanced',
@@ -43,16 +38,6 @@ describe('didLedgerAccept', () => {
 
   it.each(REFUSED)('refuses %s - nothing was written', (status) => {
     expect(didLedgerAccept({ status })).toBe(false)
-  })
-
-  /**
-   * The defect this whole module exists for. `opening_balance` and
-   * `provider_sync` route to `'none'`, so every entry on those paths lands on
-   * `not_exported` - and the hand-written arrays it replaced did not carry it,
-   * which made `provider-sync`'s sync record nothing while reporting success.
-   */
-  it('accepts not_exported, which is what the old hand-written arrays missed', () => {
-    expect(didLedgerAccept({ status: 'not_exported' })).toBe(true)
   })
 
   /**
@@ -87,7 +72,7 @@ describe('didLedgerAccept', () => {
     expect(new Set(all).size).toBe(all.length)
     // Mirrors the union in `types.ts`. If this number moves, a status was added
     // and both this file and `didLedgerAccept`'s switch need the new member.
-    expect(all).toHaveLength(16)
+    expect(all).toHaveLength(13)
   })
 })
 
@@ -96,15 +81,17 @@ describe('isExpectedPostOutcome', () => {
     expect(isExpectedPostOutcome({ status })).toBe(true)
   })
 
-  it.each(REFUSED.filter((s) => s !== 'not_enabled'))('is false for %s', (status) => {
+  it.each(
+    REFUSED.filter((s) => s !== 'not_enabled' && s !== 'drafted')
+  )('is false for %s', (status) => {
     expect(isExpectedPostOutcome({ status })).toBe(false)
   })
 
-  it('differs from didLedgerAccept on exactly one status', () => {
+  it('differs from didLedgerAccept on exactly two statuses', () => {
     const all = [...ACCEPTED, ...REFUSED]
     const differ = all.filter(
       (s) => didLedgerAccept({ status: s }) !== isExpectedPostOutcome({ status: s })
     )
-    expect(differ).toEqual(['not_enabled'])
+    expect(differ).toEqual(['drafted', 'not_enabled'])
   })
 })

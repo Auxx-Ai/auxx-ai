@@ -35,8 +35,6 @@ const FIELD_IDS: Record<string, string> = {
   fulfillment_subtotal: 'fld_subtotal',
   fulfillment_total: 'fld_total',
   fulfillment_shipping_recognised: 'fld_shipping_recognised',
-  fulfillment_gl_posting: 'fld_gl_posting',
-  fulfillment_doc_number: 'fld_doc_number',
   fulfillment_recorded_at: 'fld_recorded_at',
   fulfillment_line_fulfillment: 'fld_line_fulfillment',
   fulfillment_line_line_item: 'fld_line_line_item',
@@ -136,6 +134,8 @@ describe('readFulfillmentsForOrders', () => {
         { entityId: 'fl_2', fieldId: 'fld_line_quantity', valueNumber: 3 },
         { entityId: 'fl_2', fieldId: 'fld_line_quantity_relieved', valueNumber: 1 },
       ],
+      // Hop 5: the fulfillment's live subject posting, if any (none here).
+      [],
     ])
 
     const result = await readFulfillmentsForOrders(db, {
@@ -194,6 +194,7 @@ describe('readFulfillmentsForOrders', () => {
       ],
       [], // no lines on either fulfillment
       [],
+      [],
     ])
 
     const result = await readFulfillmentsForOrders(db, {
@@ -210,6 +211,7 @@ describe('readFulfillmentsForOrders', () => {
       [{ lineId: 'fl_1', fulfillmentId: 'ful_1' }],
       // fl_1 carries a quantity but no line_item edge - unusable, not a crash.
       [{ entityId: 'fl_1', fieldId: 'fld_line_quantity', valueNumber: 2 }],
+      [],
     ])
 
     const result = await readFulfillmentsForOrders(db, {
@@ -218,6 +220,29 @@ describe('readFulfillmentsForOrders', () => {
     })
     expect(result.get('ord_1')?.[0]?.lines).toEqual([])
   })
+
+  it('reads glPosting and docNumber off the live subject claim, never a stamp field', async () => {
+    const db = stubDb([
+      [{ fulfillmentId: 'ful_1', orderId: 'ord_1' }],
+      [{ entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 }],
+      // A line, so hop 4's `selectValues` actually queries rather than
+      // short-circuiting on an empty id list - which would silently shift
+      // hop 5's row set one slot earlier.
+      [{ lineId: 'fl_1', fulfillmentId: 'ful_1' }],
+      [{ entityId: 'fl_1', fieldId: 'fld_line_line_item', relatedEntityId: 'li_1' }],
+      // Hop 5: `GlPostingSource` joined to `GlPosting` for this fulfillment's subject row.
+      [{ fulfillmentId: 'ful_1', glPostingId: 'gp_1', docNumber: 'AUXX-FUL-ORD1F1' }],
+    ])
+
+    const result = await readFulfillmentsForOrders(db, {
+      organizationId: 'org_1',
+      orderIds: ['ord_1'],
+    })
+    expect(result.get('ord_1')?.[0]).toMatchObject({
+      glPosting: 'gp_1',
+      docNumber: 'AUXX-FUL-ORD1F1',
+    })
+  })
 })
 
 describe('readFulfillmentsForOrder', () => {
@@ -225,6 +250,7 @@ describe('readFulfillmentsForOrder', () => {
     const db = stubDb([
       [{ fulfillmentId: 'ful_1', orderId: 'ord_1' }],
       [{ entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 }],
+      [],
       [],
       [],
     ])

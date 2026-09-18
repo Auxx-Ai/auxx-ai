@@ -5,7 +5,6 @@ import { createScopedLogger } from '@auxx/logger'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import { and, desc, eq, isNull, ne } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
-import { CREDIT_MEMO_GL_POSTING_ATTRIBUTE } from '../../money/credit-memo-posting/types'
 import { CREDIT_MEMO_SOURCE_TYPE } from '../../postings/build-credit-memo-entry'
 import type { ResourceField } from '../../resources/registry/field-types'
 import { CREDIT_MEMO_FIELDS } from '../../resources/registry/resources/credit-memo-fields'
@@ -15,6 +14,14 @@ import type { PerOrgMigration, PerOrgMigrationResult } from '../per-org'
 const logger = createScopedLogger('entity-migrations:152')
 
 const CREDIT_MEMO_ENTITY_TYPE = 'credit_memo'
+
+/**
+ * Inlined rather than imported from `money/credit-memo-posting/types` -
+ * that module is deleted (step 1b, TARGET §1: the stamp field goes with it).
+ * A data migration's job is to describe what it already applied, so the
+ * literal it provisioned stays here as a historical constant.
+ */
+const CREDIT_MEMO_GL_POSTING_ATTRIBUTE = 'credit_memo_gl_posting'
 
 /**
  * The registry KEY this migration provisions.
@@ -120,11 +127,14 @@ export const migration152CreditMemoGlPosting = {
       return { ...state, alreadyUpToDate: true, memosBackfilled: 0 }
     }
 
+    // TODO(step-1b): the registry key is gone (TARGET §1) - `glPosting` is
+    // retired and migration 168 removes it from every org that still has it.
+    // A missing key here is that retirement, not a registry bug: this
+    // migration ran in production and stays for the historical record, but
+    // it has nothing left to create.
     const field = CREDIT_MEMO_FIELDS[NEW_FIELD_KEY]
     if (!field) {
-      throw new Error(
-        `credit-memo-fields registry is missing the key "${NEW_FIELD_KEY}" (migration 152)`
-      )
+      return { ...state, alreadyUpToDate: true, memosBackfilled: 0 }
     }
     const fields: Record<string, ResourceField> = { [NEW_FIELD_KEY]: field }
 

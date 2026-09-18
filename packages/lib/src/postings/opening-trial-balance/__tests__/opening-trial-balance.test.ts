@@ -465,12 +465,28 @@ describe('postOpeningTrialBalance', () => {
     expect(options.entry.txnDate).toBe('2026-12-31')
   })
 
-  it('stamps the record posted with its posting id', async () => {
+  it('posts under its own subject, keyed on the cutover date - never the draft record', async () => {
+    h.entries = [draft(balanced)]
+    await postOpeningTrialBalance(db, ORG, USER)
+    const [[, options]] = postEntry.mock.calls as unknown as [
+      [unknown, { mode: string; sources: Array<Record<string, unknown>> }],
+    ]
+    expect(options.mode).toBe('post')
+    expect(options.sources).toEqual([
+      {
+        sourceKind: 'opening_balance',
+        sourceId: ORG,
+        occurrence: '2026-12-31',
+        linkRole: 'subject',
+      },
+    ])
+  })
+
+  it('stamps the record with its posting id - there is no status field to write any more', async () => {
     h.entries = [draft(balanced)]
     const result = await postOpeningTrialBalance(db, ORG, USER)
     expect(result._unsafeUnwrap()).toEqual({ status: 'posted', glPostingId: 'glp_1' })
     expect(h.crudUpdate).toHaveBeenCalledWith('def_je:je_1', {
-      journal_entry_status: 'posted',
       journal_entry_gl_posting_id: 'glp_1',
     })
   })

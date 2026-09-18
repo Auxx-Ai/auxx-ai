@@ -246,7 +246,8 @@ async function readPosting(
   const posting = result.value
   return {
     id: posting.id,
-    docNumber: posting.docNumber,
+    // Non-null: the opening entry always posts, never drafts.
+    docNumber: posting.docNumber ?? '',
     txnDate: posting.txnDate,
     status: posting.status,
     totalMinor: posting.totalMinor,

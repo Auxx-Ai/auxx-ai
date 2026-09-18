@@ -59,8 +59,17 @@ import { batchRecalculateQoH } from '../bom/qoh'
 import { readStandardCost } from '../builds'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { recalculateFulfillmentLineQuantityRelievedBatch } from '../field-hooks/post/fulfillment-line-rollups'
+import type { InventoryMovementLine } from '../postings/build-inventory-movement-entry'
+import type { InTxPostResult } from '../postings/post-entry'
+import {
+  exportInventoryMovement,
+  inventoryTxnDate,
+  postInventoryMovementInTx,
+} from '../postings/post-inventory-movement'
+import type { PostResult } from '../postings/types'
 import { resolveInventoryRoleForPartKind, roundMinorUnits } from '../receiving/client'
 import { StockMovementCostBasis, StockMovementType } from '../resources/registry/enum-values'
+import type { WrittenStockMovement } from '../stock-movements'
 import {
   type StockMovementInput,
   type StockMovementsCtx,
@@ -76,6 +85,10 @@ const logger = createScopedLogger('relief')
 export interface FulfillmentLineToRelieve {
   /** The `fulfillment_line` EntityInstance id. */
   fulfillmentLineId: string
+  /** The `fulfillment` this line belongs to. The DOCUMENT its entry is of. */
+  fulfillmentId: string
+  /** The `order` the fulfillment shipped against, the entry's parent link. */
+  orderId: string
   /** The `line_item` EntityInstance id this line shipped against. */
   lineItemId: string
   /** `fulfillment_line_quantity` - units shipped in this dispatch. */
@@ -118,11 +131,15 @@ export interface RelieveFulfillmentLinesResult {
   fallbackStandardCostPartIds: string[]
   /** §4.2 - parts this run would leave (or already left) at negative QoH. Warn, never refuse. */
   negativeQoHPartIds: string[]
+  /** One outcome per fulfillment this run posted an inventory entry for. */
+  posts: PostResult[]
 }
 
 /** One line resolved to a part and a non-zero signed delta, ready to price. */
 interface ResolvedReliefLine {
   fulfillmentLineId: string
+  fulfillmentId: string
+  orderId: string
   partInstanceId: string
   /** SIGNED, matching `StockMovementInput.quantity`'s convention. */
   delta: number
@@ -239,6 +256,7 @@ export async function relieveFulfillmentLines(
           skippedNoCost: 0,
           fallbackStandardCostPartIds: [],
           negativeQoHPartIds: [],
+          posts: [],
         }
       }
 
@@ -273,6 +291,8 @@ export async function relieveFulfillmentLines(
         }
         resolved.push({
           fulfillmentLineId: line.fulfillmentLineId,
+          fulfillmentId: line.fulfillmentId,
+          orderId: line.orderId,
           partInstanceId,
           delta,
           occurredAt: line.occurredAt,
@@ -288,6 +308,7 @@ export async function relieveFulfillmentLines(
           skippedNoCost: 0,
           fallbackStandardCostPartIds: [],
           negativeQoHPartIds: [],
+          posts: [],
         }
       }
 
@@ -334,6 +355,9 @@ export async function relieveFulfillmentLines(
       const partKinds = await readPartKindsLocal(db, organizationId, partIds)
 
       const inputs: StockMovementInput[] = []
+      // The line behind each input, in the same order, so the written records
+      // can be regrouped by their dispatch without re-deriving which were skipped.
+      const inputLines: ResolvedReliefLine[] = []
       const relievedLineIds: string[] = []
       let skippedNoCost = 0
       const fallbackStandardCostPartIds = new Set<string>()
@@ -390,6 +414,7 @@ export async function relieveFulfillmentLines(
           // adjustSubparts omitted - defaults to false (§1.5, always).
           links: { fulfillmentLineId: line.fulfillmentLineId },
         })
+        inputLines.push(line)
         relievedLineIds.push(line.fulfillmentLineId)
 
         deltaWrittenByPart.set(
@@ -422,6 +447,7 @@ export async function relieveFulfillmentLines(
           skippedNoCost,
           fallbackStandardCostPartIds: [...fallbackStandardCostPartIds],
           negativeQoHPartIds: [...negativeQoHPartIds],
+          posts: [],
         }
       }
 
@@ -437,6 +463,7 @@ export async function relieveFulfillmentLines(
       const session = reliefWriteSession()
       let movementIds: string[] = []
       let affectedPartIds: string[] = []
+      let pending: Array<InTxPostResult | null> = []
       await db.transaction(async (tx) => {
         const txDb = tx as unknown as Database
         const ctx: StockMovementsCtx = {
@@ -451,7 +478,38 @@ export async function relieveFulfillmentLines(
         if (written.isErr()) throw written.error
         movementIds = written.value.records.map((record) => record.movementId)
         affectedPartIds = written.value.affectedPartIds
+
+        // ONE entry per fulfillment - the fulfillment is the document, and a
+        // run that relieves three dispatches posts three entries, not one
+        // journal nobody can trace back to a shipment. Inside the movements'
+        // own transaction, so a dispatch can never be relieved without its COGS.
+        pending = await Promise.all(
+          groupByFulfillment(inputLines, written.value.records).map((document) =>
+            postInventoryMovementInTx(tx, {
+              organizationId,
+              kind: 'sale',
+              // 🛑 `occurrence: 'inventory'`. The fulfillment already holds an
+              // `original` subject row for its revenue entry (`fulfill.ts`), and
+              // the claim is per `(kind, id, occurrence)`.
+              subject: {
+                sourceKind: 'fulfillment',
+                sourceId: document.fulfillmentId,
+                occurrence: 'inventory',
+              },
+              parent: { sourceKind: 'order', sourceId: document.orderId },
+              txnDate: inventoryTxnDate(document.occurredAt),
+              movements: document.movements,
+              actorUserId: userId,
+            })
+          )
+        )
       })
+
+      const posts: PostResult[] = []
+      for (const post of pending) {
+        const exported = await exportInventoryMovement(db, post)
+        if (exported) posts.push(exported)
+      }
 
       // ── Post-commit, both obligations (write-lane.ts's header) ──────────
       await batchRecalculateQoH(organizationId, affectedPartIds)
@@ -476,6 +534,7 @@ export async function relieveFulfillmentLines(
         skippedNoCost,
         fallbackStandardCostPartIds: [...fallbackStandardCostPartIds],
         negativeQoHPartIds: [...negativeQoHPartIds],
+        posts,
       }
     },
     'Failed to relieve inventory for fulfillment lines',
@@ -509,4 +568,44 @@ async function guardedReadStandardCost(
     byPart.set(partId, standard.standardCost)
   }
   return byPart
+}
+
+/** One fulfillment's movements, as the entry builder reads them. */
+interface ReliefDocument {
+  fulfillmentId: string
+  orderId: string
+  occurredAt: Date
+  movements: InventoryMovementLine[]
+}
+
+/**
+ * The written rows, regrouped by the dispatch that caused them.
+ *
+ * `records` comes back in `inputs`' order, and `inputLines` is kept in that same
+ * order, so the two zip by index. A row with no frozen account is dropped: the
+ * builder would refuse the whole document over it.
+ */
+function groupByFulfillment(
+  inputLines: readonly ResolvedReliefLine[],
+  records: readonly WrittenStockMovement[]
+): ReliefDocument[] {
+  const documents = new Map<string, ReliefDocument>()
+  for (const [index, line] of inputLines.entries()) {
+    const record = records[index]
+    if (!record) continue
+    if (!record.glAccount || record.extendedCost === 0) continue
+    const document = documents.get(line.fulfillmentId) ?? {
+      fulfillmentId: line.fulfillmentId,
+      orderId: line.orderId,
+      occurredAt: line.occurredAt,
+      movements: [],
+    }
+    document.movements.push({
+      id: record.movementId,
+      extendedCostMinor: record.extendedCost,
+      glAccountRole: record.glAccount,
+    })
+    documents.set(line.fulfillmentId, document)
+  }
+  return [...documents.values()].filter((document) => document.movements.length > 0)
 }

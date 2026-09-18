@@ -24,10 +24,6 @@ import {
   recordStaleFinancialObservation,
   StaleFinancialSourceRevisionError,
 } from '../../money/payouts/source-write-errors'
-import {
-  AcceptedAccountingSourceError,
-  recordRejectedAccountingObservation,
-} from '../../postings/source-write-guard'
 import { toRecordId } from '../../resources/resource-id'
 import { buildWriteKeyToFieldId } from '../field-id-resolver'
 import {
@@ -1257,14 +1253,6 @@ export const entitySink: EntitySink = {
           ctx.counters.skipped += 1
           ignoredRevision = true
           break
-        }
-        if (error instanceof AcceptedAccountingSourceError) {
-          await recordRejectedAccountingObservation(ctx.db, ctx.orgId, error, {
-            connectorId: ctx.connector.id,
-            externalId: record.externalId,
-            fields: record.fields,
-            pendingRelations: record.pendingRelations,
-          })
         }
         if (error instanceof UniqueValueConflictError && conflictDrops < maxConflictDrops) {
           const droppedKey = dropConflictingKey(writeSet, error)

@@ -141,6 +141,8 @@ describe('backfillFulfillmentRelief', () => {
     expect(h.relieveCalls[0]?.lines).toEqual([
       {
         fulfillmentLineId: 'f1-a',
+        fulfillmentId: 'f1',
+        orderId: 'o1',
         lineItemId: 'li-a',
         quantity: 3,
         quantityRelieved: null,
@@ -148,6 +150,8 @@ describe('backfillFulfillmentRelief', () => {
       },
       {
         fulfillmentLineId: 'f1-b',
+        fulfillmentId: 'f1',
+        orderId: 'o1',
         lineItemId: 'li-b',
         quantity: 1,
         quantityRelieved: 1,
@@ -155,6 +159,8 @@ describe('backfillFulfillmentRelief', () => {
       },
       {
         fulfillmentLineId: 'f2-l1',
+        fulfillmentId: 'f2',
+        orderId: 'o2',
         lineItemId: 'li-f2',
         quantity: 2,
         quantityRelieved: null,
@@ -331,3 +337,14 @@ describe('backfillFulfillmentRelief', () => {
     ])
   })
 })
+
+// The posting seam has its own test (`postings/__tests__/post-inventory-movement.test.ts`);
+// this file is about the movements. `vi.mock` is hoisted, so placement is free.
+vi.mock('../../postings/post-inventory-movement', () => ({
+  postInventoryMovementInTx: async () => null,
+  exportInventoryMovement: async () => null,
+  inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
+  reverseInventoryMovementPosting: async () => null,
+  reversePostingForMovement: async () => null,
+  linkMovementsToPosting: async () => undefined,
+}))

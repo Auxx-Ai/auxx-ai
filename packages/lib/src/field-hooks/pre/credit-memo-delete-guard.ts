@@ -28,11 +28,9 @@ import type { EntityPreDeleteEvent, EntityPreDeleteHandler } from '../types'
  *      status, so a voided memo dated in a closed month keeps its history.
  *      A draft that has never been dated has nothing in any period and passes
  *      this rule; it is the status rule that guards the rest.
- *   3. **REFUSE while any refund transaction references the memo.** The
- *      `PaymentTransaction.creditMemoInstanceId` FK is `restrict` and would
- *      refuse the row delete anyway; this reads the ledger table directly, the
- *      way the invoice guard does for an in-flight charge, so the refusal names
- *      the reason instead of a constraint.
+ *   3. **REFUSE while any refund settlement references the memo.** A money-model
+ *      refund (`MoneyRefundSettlement.customerCreditMemoInstanceId`) is an immutable,
+ *      already-settled fact — there is no "remove it" path, only voiding the memo.
  *
  * **What is NOT here, and why.** The lines and the applications are
  * `onDelete: 'cascade'` on `credit_memo_lines` and `credit_memo_applications`,
@@ -60,19 +58,19 @@ export const guardCreditMemoDelete: EntityPreDeleteHandler = async (event) => {
   }
 
   const [refund] = await database
-    .select({ id: schema.PaymentTransaction.id, status: schema.PaymentTransaction.status })
-    .from(schema.PaymentTransaction)
+    .select({ id: schema.MoneyRefundSettlement.id })
+    .from(schema.MoneyRefundSettlement)
     .where(
       and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        eq(schema.PaymentTransaction.creditMemoInstanceId, creditMemoInstanceId)
+        eq(schema.MoneyRefundSettlement.organizationId, organizationId),
+        eq(schema.MoneyRefundSettlement.customerCreditMemoInstanceId, creditMemoInstanceId)
       )
     )
     .limit(1)
   if (refund) {
     throw new BadRequestError(
-      `This credit memo has a ${refund.status} refund recorded against it. The refund is a ` +
-        'ledger row and cannot be orphaned; remove it first, or void the memo instead.',
+      'This credit memo has a refund recorded against it. The refund is an immutable ledger ' +
+        'row and cannot be orphaned; void the memo instead.',
       { organizationId, recordId, transactionId: refund.id }
     )
   }

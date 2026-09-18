@@ -1,7 +1,6 @@
 // apps/web/src/app/(protected)/app/credit-memos/page.tsx
 'use client'
 
-import { PostCreditMemosButton } from '~/components/money/ui/credit-memo-posting'
 import { RecordsView } from '~/components/records'
 
 /**
@@ -9,17 +8,11 @@ import { RecordsView } from '~/components/records'
  * (plans/accounting/tasks/done/10-credit-memos.md §6.1). Drawer-only, like invoices:
  * there is no `[creditMemoId]/` detail route, so opening a row opens the drawer.
  *
- * The `pageActions` button is the bulk credit memo posting's entry point
- * (plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md §9 item 14),
- * mirroring the orders page's `PostFulfillmentsButton`: one header action beside
- * Create, no extra row above the table. It renders nothing without `ledger.post`.
+ * The bulk credit memo posting header action is gone (accounting migration
+ * step 1b): every issued memo posts as it happens now, so there is nothing
+ * left to batch here. The Drafts tab (step 1c) is where a held draft gets
+ * reviewed.
  */
 export default function CreditMemosPage() {
-  return (
-    <RecordsView
-      slug='credit-memos'
-      basePath='/app/credit-memos'
-      pageActions={<PostCreditMemosButton />}
-    />
-  )
+  return <RecordsView slug='credit-memos' basePath='/app/credit-memos' />
 }

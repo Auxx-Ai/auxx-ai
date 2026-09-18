@@ -32,19 +32,11 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../errors'
-import { countUnpostedCreditMemos } from '../money/credit-memo-posting'
 import { countUnissuedChannelCreditMemos } from '../money/credit-memos/reads'
-import { countUnpostedShipments } from '../money/fulfillment-posting/reads'
-import { compareMonths, periodMonth } from './periods'
-import type {
-  BooksBalanceDiscrepancy,
-  BooksBalanceReport,
-  PostingType,
-  SyncQueueRow,
-} from './types'
+import type { BooksBalanceDiscrepancy, BooksBalanceReport, PostingType } from './types'
 
 const logger = createScopedLogger('postings:verify-balance')
 
@@ -56,8 +48,7 @@ const logger = createScopedLogger('postings:verify-balance')
  * between them leaves exactly that shape, and so does any concurrent reader
  * peeking mid-transaction. Reporting those as unbalanced would make the sweep
  * cry wolf on its most common non-event, and a check nobody believes is worse
- * than no check. They are not lost - `listFailedExports` is where they show up,
- * which is the report that can actually be acted on.
+ * than no check.
  *
  * `failed` is excluded because it is not in the books: nothing was posted, the
  * financial statements do not include it, and its lines (if any) are the debris
@@ -230,16 +221,17 @@ async function countIncompleteRevenue(
   }
 
   try {
-    const shipments = await countUnpostedShipments(db, { organizationId, month })
-    // Asked BEFORE the draft count, which is the one read here that can throw:
-    // a failure over there must not silently take this answer with it.
-    const unposted = await countUnpostedCreditMemos(db, { organizationId, month })
+    // `unpostedShipments` and `unpostedCreditMemos` are `null` - unavailable,
+    // not zero - now that both avenues post eagerly (step 1b, TARGET §1): the
+    // batch/effect backlog this used to count no longer exists. TODO(step-1b):
+    // recompute from live drafts once the per-avenue `accounting.autoPost`
+    // setting lands.
     const memos = await countUnissuedChannelCreditMemos(db, { organizationId, month })
     return {
       month,
-      unpostedShipments: shipments.isErr() ? null : shipments.value,
+      unpostedShipments: null,
       unissuedChannelCreditMemos: memos,
-      unpostedCreditMemos: unposted.isErr() ? null : unposted.value,
+      unpostedCreditMemos: null,
     }
   } catch (error) {
     logger.error('Failed to count what the month still owes the ledger', {
@@ -253,187 +245,6 @@ async function countIncompleteRevenue(
       unissuedChannelCreditMemos: null,
       unpostedCreditMemos: null,
     }
-  }
-}
-
-// `FailedExport` and `SyncQueueRow` live in `types.ts` - see the note there.
-export type { FailedExport, SyncQueueRow } from './types'
-
-/**
- * Every entry that has been claimed but is not in the books.
- *
- * This is what the close console's "you have 3 unposted periods" banner reads.
- * Both non-terminal statuses are returned and they are kept distinct rather than
- * collapsed into "unposted", because they call for different actions:
- *
- *   * `pending` - claimed and in flight, or claimed by a run that died mid-push.
- *     Retryable; layer 2 of the idempotency ladder heals the dangerous half of
- *     it (posted at the provider, not recorded here).
- *   * `failed` - the push was attempted and refused. `failureReason` and
- *     `attempts` are the whole point of the row; a banner that hid them would
- *     send someone to the logs for a string that is already in the database.
- *
- * `through` bounds the result by accounting MONTH, inclusive: `{ through:
- * '2026-08' }` returns everything up to and including August. The comparison
- * goes through `periodMonth` so a day key (`'2026-08-18'`) is bounded by the
- * month that contains it rather than by a string compare against a differently
- * shaped key.
- *
- * An unparseable `periodKey` is INCLUDED regardless of `through`. `GlPosting`
- * documents that the column may hold a payout or build id rather than a date,
- * and such a row cannot be placed in a month at all. Dropping it would
- * under-report unposted work, and under-reporting is the dangerous direction
- * here: a bookkeeper who is not shown an unposted entry closes the month without
- * it, whereas one shown an extra row asks about it.
- *
- * Ordered by `periodKey` then `postingType` so the banner and the console list
- * agree with each other and with themselves between refreshes.
- *
- * ⚠️ Returns {@link SyncQueueRow}, which is `FailedExport` widened with the
- * money and the release axis (53 §7.2.4/§7.2.5). Every existing caller keeps
- * reading it as a `FailedExport` and ignores the rest. The `AccountingDelivery`
- * join is a LEFT join on purpose: the delivery row is written by the delivery
- * worker, not by the acceptance, so a freshly accepted posting is legitimately
- * in this list with no delivery yet.
- *
- * 🛑 Unbounded, deliberately. `through` is the only narrowing this read offers
- * and the queue's whole point is a backlog that spans months, so it is called
- * with no bound. See 53 §7.2.4.
- */
-export async function listFailedExports(
-  db: Database,
-  organizationId: string,
-  options?: {
-    /** Cumulative: everything up to and including this accounting month. */
-    through?: string
-    /** Exactly this accounting month - the Synced tab's bound (60 §8.1). */
-    month?: string
-    /**
-     * Widen to `exported` as well.
-     *
-     * 🛑 Off by default, and every existing caller leaves it off. The close
-     * console's banner, the rail tally and `verify-balance`'s own report all ask
-     * this question about work that is OUTSTANDING; an org that never un-syncs
-     * anything must read identically to the way it read before the option
-     * existed (60 acceptance 11).
-     */
-    includeExported?: boolean
-  }
-): Promise<Result<SyncQueueRow[], Error>> {
-  try {
-    // Normalized through `periodMonth`, which also VALIDATES: a malformed bound
-    // throws `BadRequestError` here rather than silently matching nothing, and a
-    // caller that passes a day key gets the month containing it.
-    const throughMonth = options?.through ? periodMonth(options.through) : null
-    const exactMonth = options?.month ? periodMonth(options.month) : null
-    const statuses: ('pending' | 'failed' | 'exported')[] = options?.includeExported
-      ? ['pending', 'failed', 'exported']
-      : ['pending', 'failed']
-
-    const rows = await db
-      .select({
-        glPostingId: schema.GlPosting.id,
-        periodKey: schema.GlPosting.periodKey,
-        postingType: schema.GlPosting.postingType,
-        exportStatus: schema.GlPosting.exportStatus,
-        docNumber: schema.GlPosting.docNumber,
-        attempts: schema.GlPosting.attempts,
-        failureReason: schema.GlPosting.failureReason,
-        txnDate: schema.GlPosting.txnDate,
-        totalMinor: schema.GlPosting.totalMinor,
-        currency: schema.GlPosting.currency,
-        deliveryIntent: schema.GlPosting.deliveryIntent,
-        releasedAt: schema.AccountingDelivery.releasedAt,
-        deliveryState: schema.AccountingDelivery.state,
-      })
-      .from(schema.GlPosting)
-      .leftJoin(
-        schema.AccountingDelivery,
-        and(
-          eq(schema.AccountingDelivery.organizationId, schema.GlPosting.organizationId),
-          eq(schema.AccountingDelivery.glPostingId, schema.GlPosting.id)
-        )
-      )
-      .where(
-        and(
-          eq(schema.GlPosting.organizationId, organizationId),
-          // The EXPORT's state, never the ledger's. A row whose export failed
-          // is in the books and must stay in them.
-          inArray(schema.GlPosting.exportStatus, statuses)
-        )
-      )
-      .orderBy(asc(schema.GlPosting.periodKey), asc(schema.GlPosting.postingType))
-
-    // 🛑 Deduped by posting, because the join CAN fan out. The delivery's unique
-    // key is `(organizationId, bookId, glPostingId)`, so an org that ever pins a
-    // second book gets two delivery rows for one journal - and one journal
-    // listed twice in a queue with a checkbox on each is a queue that bulk-syncs
-    // the same entry twice. A RELEASED delivery wins the tie: the question this
-    // row answers is "has anybody asked for this to be sent", and one book
-    // having asked is a yes.
-    const owed: SyncQueueRow[] = []
-    const byPosting = new Map<string, number>()
-    for (const row of rows) {
-      if (throughMonth && !withinThrough(row.periodKey, throughMonth)) continue
-      // A key that is not a period at all is kept here too, for `withinThrough`'s
-      // reason: an entry that cannot be placed in a month must not vanish.
-      if (exactMonth && !inMonth(row.periodKey, exactMonth)) continue
-      const releasedAt = row.releasedAt ? new Date(row.releasedAt).toISOString() : null
-      const seen = byPosting.get(row.glPostingId)
-      if (seen !== undefined) {
-        if (releasedAt && !owed[seen]!.releasedAt) {
-          owed[seen]!.releasedAt = releasedAt
-          owed[seen]!.deliveryState = row.deliveryState
-        }
-        continue
-      }
-      byPosting.set(row.glPostingId, owed.length)
-      owed.push({
-        periodKey: row.periodKey,
-        postingType: row.postingType as PostingType,
-        glPostingId: row.glPostingId,
-        exportStatus: row.exportStatus as 'pending' | 'failed' | 'exported',
-        docNumber: row.docNumber,
-        attempts: row.attempts,
-        failureReason: row.failureReason,
-        txnDate: row.txnDate,
-        totalMinor: toMinor(row.totalMinor),
-        currency: row.currency,
-        deliveryIntent: row.deliveryIntent,
-        releasedAt,
-        deliveryState: row.deliveryState,
-      })
-    }
-
-    return ok(owed)
-  } catch (error) {
-    if (error instanceof AuxxError) return err(error)
-    logger.error('Failed to list owed exports', { error, organizationId })
-    return err(new AuxxError('Internal error'))
-  }
-}
-
-/**
- * Is `periodKey` at or before `throughMonth`?
- *
- * Returns `true` for a key that is not a period at all, for the reason spelled
- * out on `listFailedExports`: an entry that cannot be placed in a month must
- * not vanish from a report about unfinished work.
- */
-function withinThrough(periodKey: string, throughMonth: string): boolean {
-  try {
-    return compareMonths(periodMonth(periodKey), throughMonth) <= 0
-  } catch {
-    return true
-  }
-}
-
-/** Is `periodKey` in exactly this month? Same treatment of an unplaceable key. */
-function inMonth(periodKey: string, month: string): boolean {
-  try {
-    return periodMonth(periodKey) === month
-  } catch {
-    return true
   }
 }
 

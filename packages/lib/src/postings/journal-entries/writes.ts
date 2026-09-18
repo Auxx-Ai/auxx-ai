@@ -1,19 +1,35 @@
 // packages/lib/src/postings/journal-entries/writes.ts
 
 /**
- * Every WRITE over the journal-entry draft: create it, edit it while it is a
- * draft, post it, reverse it, throw it away.
+ * Every WRITE over the journal-entry pointer: raise it (and its companion
+ * draft), edit the draft while it stays one, post it, reverse it, throw it
+ * away.
  *
  * Writes only. The reads live in `reads.ts` (`docs/lib-module-guide.md` §5).
  *
  * ## The one rule the whole file is arranged around
  *
  * 🛑 **A posted entry is corrected by REVERSAL, never by edit** (ground rule 6).
- * `GlPostingLine` has no update path at all, so an "edit" of a posted entry
- * could only ever mean editing this record's JSON while the ledger keeps the
- * numbers it actually posted - two documents claiming to be the same entry, and
- * the one a bookkeeper reads would be the wrong one. So {@link updateJournalEntry}
+ * `GlPostingLine` has no update path at all, so {@link updateJournalEntry}
  * refuses anything but a `draft`.
+ *
+ * ## The record is a pointer (TARGET §1)
+ *
+ * There is no `journal_entry_status` or `journal_entry_lines` field.
+ * `createJournalEntry` writes the `EntityInstance` AND a draft `GlPosting` in
+ * the same call, through `postEntry({ mode: 'draft' })`, and stamps
+ * `journal_entry_gl_posting_id` - every successfully created entry carries one
+ * from the start. Status and lines are read back off that posting
+ * (`reads.ts`); editing lines goes through `../draft-lines.ts`'s
+ * `updateDraftLines`; posting goes through `postDraft`.
+ *
+ * 🛑 **This means an entry needs a balanced, two-line-minimum draft to exist at
+ * all** - `buildManualEntry` refuses fewer than two lines or an imbalance, and
+ * a `GlPosting` cannot represent zero lines either way (`prepareEntry`'s
+ * balance check refuses an empty entry regardless of `mode`). The old "save an
+ * empty draft, type into it later" flow is gone with the field it depended on;
+ * `createJournalEntry` now refuses the same way `postJournalEntry` always did,
+ * just earlier.
  *
  * No permission checks. The router asserts `ledgerPost`
  * (`docs/lib-module-guide.md` §6).
@@ -26,22 +42,22 @@ import { ConflictError, UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
 import {
+  type BuiltManualEntry,
   buildManualEntry,
   MANUAL_ENTRY_SOURCE_TYPE,
   type ManualPostingType,
 } from '../build-manual-entry'
-import { didLedgerAccept } from '../ledger-accepted'
+import { discardDraftPosting, updateDraftLines } from '../draft-lines'
 import { resolvePeriodLock } from '../period-lock'
-import { postEntry, previewEntry } from '../post-entry'
+import { postDraft, postEntry, previewEntry } from '../post-entry'
 import { readPostingLineSourceIds } from '../read-posting'
 import { recurringJournalPeriodKey } from '../recurring-journals/client'
 import { reverseEntry } from '../reverse-entry'
-import type { EntryPreview, PostResult } from '../types'
+import type { EntryPreview, GlPostingSourceInput, PostResult } from '../types'
 import {
   JOURNAL_ENTRY_POSTING_TYPE,
   type JournalEntryKindValue,
   type JournalEntryLine,
-  type JournalEntryLinesEnvelope,
   type JournalEntryRecord,
 } from './client'
 import { guard } from './guard'
@@ -50,7 +66,7 @@ import {
   requireJournalEntry,
   requireJournalEntryFieldContext,
 } from './reads'
-import { assertJournalEntryHasNoPosting, assertJournalEntryIsDraft } from './refusals'
+import { assertJournalEntryIsDraft } from './refusals'
 
 const logger = createScopedLogger('postings:journal-entries')
 
@@ -60,7 +76,7 @@ export interface CreateJournalEntryInput {
   /** `YYYY-MM-DD`. The accounting date. */
   date: string
   memo?: string
-  /** May be empty: a person opens the drawer before they have typed anything. */
+  /** Balanced, two lines minimum - see the file header. */
   lines?: JournalEntryLine[]
   /**
    * Only the recurring-journal materializer passes these, and it passes BOTH.
@@ -71,6 +87,19 @@ export interface CreateJournalEntryInput {
    */
   recurrenceRuleId?: string
   occurrenceDate?: string
+  /**
+   * Override the draft's claim subject. Defaults to
+   * `{ sourceKind: 'journal_entry', sourceId: <this record>, linkRole: 'subject' }`.
+   *
+   * Only the recurring-journal materializer passes one: a template's
+   * occurrence, not the generated record, is what must not double-post.
+   * Two draft records raised for the same occurrence (a materializer race)
+   * are otherwise two independent claims - each promotes cleanly - and the
+   * only thing that stops both is `GlPosting_org_docNumber_key`, a unique
+   * constraint neither writer asked for and which surfaces as a raw SQL
+   * error instead of `already_posted`.
+   */
+  subject?: GlPostingSourceInput
 }
 
 export interface UpdateJournalEntryInput {
@@ -90,17 +119,16 @@ export interface PreviewJournalEntryInput {
 }
 
 /**
- * Raise a draft. Always lands `draft`, with a number.
+ * Raise the record AND its companion draft `GlPosting` in one call. Always
+ * lands `draft`.
  *
  * The number is issued by `JOURNAL_ENTRY_HOOKS` on create and is not optional:
- * it becomes the posting's `periodKey`, so an entry without one cannot be
- * posted at all. Issuing it here rather than at post time is what makes the
- * draft addressable - the drawer needs an id and a name the moment it opens.
- *
- * Lines may be empty. A person opens the drawer, picks a date, and starts
- * typing; refusing an empty draft would mean the drawer could not save until it
- * balanced, which is exactly when a half-finished entry most wants saving.
- * `buildManualEntry` is the gate, at post time, and it names the row.
+ * for `manual` and `opening_balance` it becomes the draft posting's
+ * `periodKey`. A `recurring` entry keys on the rule and the slot instead
+ * (`recurringJournalPeriodKey`), and a `recurring_template` never posts at all
+ * - it still gets a draft, under the generic `manual_journal` shape, purely as
+ * somewhere to hold the stencil's lines for `materializeRecurringJournals` to
+ * copy.
  */
 export async function createJournalEntry(
   db: Database,
@@ -115,10 +143,8 @@ export async function createJournalEntry(
       assertRecurrenceIdentity(kind, input)
 
       const values: Record<string, unknown> = {
-        journal_entry_status: 'draft',
         journal_entry_kind: kind,
         journal_entry_date: toStoredDate(input.date),
-        journal_entry_lines: linesEnvelope(input.lines ?? []),
       }
       if (input.memo) values.journal_entry_memo = input.memo
       if (input.recurrenceRuleId && input.occurrenceDate) {
@@ -128,15 +154,44 @@ export async function createJournalEntry(
 
       const crud = new UnifiedCrudHandler(organizationId, userId, db)
       const created = await crud.create(ctx.journalEntryDefId, values)
+      const journalEntryId = created.instance.id
+
+      const draft = await requireJournalEntry(db, organizationId, journalEntryId)
+      const built = buildDraftStorageEntry(draft, input.lines ?? [])
+      const lock = await resolvePeriodLock(organizationId)
+      const posted = await postEntry(db, {
+        organizationId,
+        entry: built.entry,
+        lock,
+        mode: 'draft',
+        sources: [
+          input.subject ?? {
+            sourceKind: 'journal_entry',
+            sourceId: journalEntryId,
+            linkRole: 'subject',
+          },
+        ],
+      })
+      if (posted.status !== 'drafted' || !posted.glPostingId) {
+        throw new UnprocessableEntityError(
+          `Could not raise the posting behind this journal entry: ${posted.error ?? posted.status}`,
+          { journalEntryId }
+        )
+      }
+
+      await crud.update(toRecordId(ctx.journalEntryDefId, journalEntryId) as RecordId, {
+        journal_entry_gl_posting_id: posted.glPostingId,
+      })
 
       logger.info('Raised journal entry', {
         organizationId,
-        journalEntryId: created.instance.id,
+        journalEntryId,
+        glPostingId: posted.glPostingId,
         kind,
         lineCount: (input.lines ?? []).length,
       })
 
-      return requireJournalEntry(db, organizationId, created.instance.id)
+      return requireJournalEntry(db, organizationId, journalEntryId)
     },
     'Failed to create journal entry',
     { organizationId }
@@ -167,12 +222,41 @@ export async function updateJournalEntry(
       // An empty string CLEARS the memo; `undefined` leaves it alone. Collapsing
       // the two would make a memo unremovable.
       if (input.memo !== undefined) values.journal_entry_memo = input.memo || null
-      if (input.lines !== undefined) values.journal_entry_lines = linesEnvelope(input.lines)
 
-      if (Object.keys(values).length === 0) return entry
+      if (Object.keys(values).length > 0) {
+        const crud = new UnifiedCrudHandler(organizationId, userId, db)
+        await crud.update(
+          toRecordId(ctx.journalEntryDefId, input.journalEntryId) as RecordId,
+          values
+        )
+      }
 
-      const crud = new UnifiedCrudHandler(organizationId, userId, db)
-      await crud.update(toRecordId(ctx.journalEntryDefId, input.journalEntryId) as RecordId, values)
+      // Lines, date and memo all live on the draft posting's `built` envelope
+      // now (TARGET §1), so any of the three re-drives it, not only lines.
+      if (input.date !== undefined || input.memo !== undefined || input.lines !== undefined) {
+        if (!entry.glPostingId) {
+          throw new UnprocessableEntityError(
+            'This journal entry has no posting behind it to edit. Re-create the entry.',
+            { journalEntryId: entry.id }
+          )
+        }
+        const merged: JournalEntryRecord = {
+          ...entry,
+          date: input.date ?? entry.date,
+          memo: input.memo !== undefined ? input.memo || null : entry.memo,
+          lines: input.lines ?? entry.lines,
+        }
+        const built = buildDraftStorageEntry(merged, merged.lines)
+        const lock = await resolvePeriodLock(organizationId)
+        const updated = await updateDraftLines(db, {
+          organizationId,
+          glPostingId: entry.glPostingId,
+          entry: built.entry,
+          lock,
+          memo: merged.memo ?? undefined,
+        })
+        if (updated.isErr()) throw updated.error
+      }
 
       return requireJournalEntry(db, organizationId, input.journalEntryId)
     },
@@ -185,17 +269,12 @@ export async function updateJournalEntry(
  * What posting this draft WOULD write. Persists nothing.
  *
  * Takes optional overrides so the drawer can preview what is on screen without
- * saving it first - the totals strip and the `EntryBlockers` card both want an
- * answer for the entry as it is being typed, and forcing a save to get one
- * would write a draft on every keystroke. The overrides are used for the
- * preview and thrown away.
+ * saving it first. The overrides are used for the preview and thrown away.
  *
  * 🛑 The refusals arrive on `blockedBy` rather than as a throw, exactly as
- * `previewMonthEnd`'s do - a closed period, an account that is not in the
- * chart, an inventory account named by code. All three are things the screen
- * RENDERS. What DOES throw is the arithmetic: an unbalanced entry or a
- * zero-amount row never becomes a `BuiltEntry` at all, so there is nothing to
- * preview and the message names the row.
+ * `previewMonthEnd`'s do. What DOES throw is the arithmetic: an unbalanced
+ * entry or a zero-amount row never becomes a `BuiltEntry` at all, so there is
+ * nothing to preview and the message names the row.
  */
 export async function previewJournalEntry(
   db: Database,
@@ -216,27 +295,20 @@ export async function previewJournalEntry(
 }
 
 /**
- * Post a draft: build it, claim the period, persist it, stamp the record.
+ * Post the draft that already exists behind this record.
  *
  * ## Why this returns a `PostResult` and not a `Result`
  *
- * `postEntry` never throws. A closed period, an account that is not in the
- * chart, an inventory account named by code and a provider that refused the
- * push all come back as a typed status, and every one of them is something the
- * screen renders rather than a 500 to swallow. Collapsing them into an error
- * would throw away `docNumber`, `failureClass` and `retryable` - the whole of
- * what the operator needs to decide what to do next.
+ * `postDraft` never throws. A closed period, an account that is not in the
+ * chart and a provider that refused the push all come back as a typed status,
+ * and every one of them is something the screen renders rather than a 500 to
+ * swallow.
  *
- * The arithmetic still throws: `buildManualEntry` refuses an unbalanced or
- * zero-amount entry before anything is claimed, and there is no status for
- * "this is not an entry".
- *
- * 🛑 **The record is stamped only on a status that actually wrote a posting.**
- * `not_connected` and `disabled` DO write one - `postEntry` marks those rows
- * `posted`, because an org with no accounting system has nothing in flight -
- * and `already_posted` found one that was already there. A refusal leaves the
- * record `draft` with nothing stamped, which is exactly what "fix it and press
- * Post again" needs.
+ * `buildDraftEntry` is called first purely to reuse its by-NAME refusals - a
+ * `recurring_template` (a stencil, never posted) or an `opening_balance` entry
+ * (posted from its own route, keyed on the cutover date rather than this
+ * record's number) - and its result is otherwise unused: `postDraft` posts the
+ * lines already resolved onto the stored draft, never a rebuild.
  */
 export async function postJournalEntry(
   db: Database,
@@ -246,34 +318,28 @@ export async function postJournalEntry(
 ): Promise<Result<PostResult, Error>> {
   return guard(
     async () => {
-      const ctx = await requireJournalEntryFieldContext(organizationId)
       const entry = await requireJournalEntry(db, organizationId, input.journalEntryId)
       assertJournalEntryIsDraft(entry, 'posted')
+      buildDraftEntry(entry)
+      if (!entry.glPostingId) {
+        throw new UnprocessableEntityError(
+          'This journal entry has no posting behind it. Re-create the entry.',
+          { journalEntryId: entry.id }
+        )
+      }
 
-      const { entry: built, warnings } = buildDraftEntry(entry)
       const lock = await resolvePeriodLock(organizationId)
-
-      const result = await postEntry(db, {
+      const result = await postDraft(db, {
         organizationId,
-        entry: built,
+        glPostingId: entry.glPostingId,
         actorUserId: userId,
-        memo: input.memo ?? entry.memo ?? undefined,
         lock,
       })
 
-      // 🛑 Before the record is stamped, not after: a collision means nothing
-      // was written for THIS entry, so stamping it `posted` against somebody
-      // else's posting is the exact misstatement the check exists to stop.
+      // 🛑 A collision means nothing was written for THIS entry, so treating it
+      // as ours would misreport a posting that belongs to a different occurrence.
       const collision = await findRecurringKeyCollision(db, organizationId, entry, result)
       if (collision) return collision
-
-      if (result.glPostingId) {
-        const crud = new UnifiedCrudHandler(organizationId, userId, db)
-        await crud.update(toRecordId(ctx.journalEntryDefId, entry.id) as RecordId, {
-          journal_entry_status: 'posted',
-          journal_entry_gl_posting_id: result.glPostingId,
-        })
-      }
 
       logger.info('Posted journal entry', {
         organizationId,
@@ -281,7 +347,6 @@ export async function postJournalEntry(
         number: entry.number,
         status: result.status,
         glPostingId: result.glPostingId,
-        warnings: warnings.length,
       })
 
       return result
@@ -367,14 +432,9 @@ async function findRecurringKeyCollision(
 /**
  * Back a posted entry out with a second, opposite one.
  *
- * `reverseEntry` does the accounting; this only finds the posting and flips the
- * record. The reversal is its own `GlPosting` row carrying `reversesId`, and
- * the original flips to `reversed` inside the same transaction - nothing here
- * edits or deletes anything.
- *
- * 🛑 The record is flipped only when the reversal actually landed. A refusal
- * (a locked period, a chart that moved under a role line) leaves the record
- * `posted`, because it still is.
+ * `reverseEntry` does the accounting and flips the posting to `reversed`
+ * itself; there is nothing left on the record to stamp - its status is read
+ * back off the posting (`reads.ts`).
  */
 export async function reverseJournalEntry(
   db: Database,
@@ -384,7 +444,6 @@ export async function reverseJournalEntry(
 ): Promise<Result<PostResult, Error>> {
   return guard(
     async () => {
-      const ctx = await requireJournalEntryFieldContext(organizationId)
       const entry = await requireJournalEntry(db, organizationId, input.journalEntryId)
 
       if (entry.status !== 'posted' || !entry.glPostingId) {
@@ -404,25 +463,6 @@ export async function reverseJournalEntry(
         memo: input.memo,
       })
 
-      // Only a reversal that reached the ledger changes what this record says.
-      // `already_posted` counts: it means the reversal was already there, which
-      // is a converged re-run and not a failure.
-      //
-      // ⚠️ A reversal inherits the original's posting type (`reverse-entry.ts`),
-      // so reversing the opening entry - a `journal_entry` record of kind
-      // `opening_balance` - produces a `'none'`-routed reversal that lands on
-      // `not_exported`. The hand-written list this replaced had to be taught
-      // that by hand, and was, one release late; `didLedgerAccept` is exhaustive
-      // over the union, so the next `'none'` route cannot slip past it.
-      const landed = didLedgerAccept(result)
-
-      if (landed) {
-        const crud = new UnifiedCrudHandler(organizationId, userId, db)
-        await crud.update(toRecordId(ctx.journalEntryDefId, entry.id) as RecordId, {
-          journal_entry_status: 'reversed',
-        })
-      }
-
       logger.info('Reversed journal entry', {
         organizationId,
         journalEntryId: entry.id,
@@ -438,42 +478,21 @@ export async function reverseJournalEntry(
 }
 
 /**
- * Throw a draft away: ARCHIVE the record, never delete the row.
+ * Throw a draft away: delete its `GlPosting` (lines, then header), then
+ * ARCHIVE the record - never delete the row.
  *
- * ## Why archive
+ * ## Why archive the record but delete the posting
  *
- * A journal entry is an accounting artefact before it posts. `RecordSequence`
- * issues `journal_entry_number` on CREATE, so an abandoned `JNL-0006` leaves a
- * hole in a gapless sequence forever - and that hole is correct. A bookkeeper
- * who reads `JNL-0005` then `JNL-0007` must be able to find out what happened to
- * the one in between, and a hard delete makes that question unanswerable.
- * `archivedAt` keeps the answer and takes the row out of every read:
- * `listJournalEntries` and `getJournalEntry` both filter `archivedAt IS NULL`,
- * so nothing else needs to learn a new state.
+ * `RecordSequence` issues `journal_entry_number` on CREATE, so an abandoned
+ * `JNL-0006` leaves a hole in a gapless sequence forever - and that hole is
+ * correct, the same reasoning `discardDraftPosting`'s callers everywhere else
+ * apply. The posting, by contrast, never left `draft`: it holds no claim, no
+ * doc number and nothing any report has read, so there is nothing to preserve
+ * by keeping the row.
  *
- * 🛑 **There is no `discarded` status and there must not be one.** The entity
- * layer already answers "is this record gone"; a fourth value on
- * `journal_entry_status` would have to be handled by every switch that renders
- * one, for no information the archive flag does not already carry.
- *
- * ## Why TWO guards
- *
- * `assertJournalEntryIsDraft` is the status wall and
- * {@link assertJournalEntryHasNoPosting} is the posting-id wall, and the second
- * is not redundant - see its own docblock for the row it catches.
- *
- * ## What this deliberately does not do
- *
- * There is no un-archive here. `UnifiedCrudHandler.restore()` exists, but a
- * restore path needs a screen to restore FROM and there is no archived-entries
- * view, so somebody who needs one back is one script away. That is the right
- * cost for a rare case, and the confirm copy says so rather than implying the
- * action is reversible.
- *
- * A second discard of the same entry is a `NotFoundError`, not a silent success:
- * `requireJournalEntry` reads through the same `archivedAt IS NULL` filter every
- * other reader does, so the row is already gone as far as this module is
- * concerned. Pinned by test.
+ * A second discard of the same entry is a `NotFoundError`, not a silent
+ * success: `requireJournalEntry` reads through the same `archivedAt IS NULL`
+ * filter every other reader does.
  */
 export async function discardJournalEntry(
   db: Database,
@@ -486,14 +505,18 @@ export async function discardJournalEntry(
       const ctx = await requireJournalEntryFieldContext(organizationId)
       const entry = await requireJournalEntry(db, organizationId, input.journalEntryId)
       assertJournalEntryIsDraft(entry, 'discarded')
-      assertJournalEntryHasNoPosting(entry, 'discarded')
+
+      if (entry.glPostingId) {
+        const discarded = await discardDraftPosting(db, {
+          organizationId,
+          glPostingId: entry.glPostingId,
+        })
+        if (discarded.isErr()) throw discarded.error
+      }
 
       const crud = new UnifiedCrudHandler(organizationId, userId, db)
       await crud.archive(toRecordId(ctx.journalEntryDefId, entry.id) as RecordId)
 
-      // The sequence gap this leaves is permanent and deliberate, so the log is
-      // what makes it explainable six months later: this is the only record that
-      // `JNL-0006` was raised and then abandoned rather than lost.
       logger.info('Discarded journal entry', {
         organizationId,
         journalEntryId: entry.id,
@@ -506,20 +529,11 @@ export async function discardJournalEntry(
 }
 
 /**
- * Turn a stored draft into a `BuiltEntry`, or throw naming the row.
- *
- * The three things this has to get right, and each is a refusal rather than a
- * default:
- *
- * 1. **A number.** It IS the posting's `periodKey`. A record whose hook did not
- *    fire has none, and posting it would mint `AUXX-JNL-` with nothing after it.
- * 2. **A date.** `txnDate` is what the period lock reads and what a provider
- *    would otherwise replace with its own server date.
- * 3. **A postable kind.** `recurring_template` is a stencil, not an entry, and
- *    `opening_balance` posts through its own route - both are refused BY NAME
- *    rather than by a missing map entry, so the refusal carries a sentence.
+ * Turn a stored draft into a `BuiltEntry` for PREVIEW/POST, or throw naming the
+ * row. Refuses `recurring_template` and `opening_balance` BY NAME - neither
+ * posts through this door.
  */
-function buildDraftEntry(entry: JournalEntryRecord) {
+function buildDraftEntry(entry: JournalEntryRecord): BuiltManualEntry {
   if (entry.kind === 'recurring_template') {
     throw new UnprocessableEntityError(
       'A recurring template is a stencil for future entries, not an entry. Copy it into a new ' +
@@ -529,12 +543,9 @@ function buildDraftEntry(entry: JournalEntryRecord) {
   }
   // 🛑 An opening entry keys on the CUTOVER DATE, and this path would key it on
   // the record's number. `doc-number.ts` declares the cutover-date rule because
-  // an org has exactly one opening trial balance, and the claim's unique index
-  // on `(organizationId, postingType, periodKey, revision)` is what makes a
-  // SECOND one unrepresentable. Posting through here would key `AUXX-OPB-JNL0009`
-  // instead, so a second opening trial balance would claim cleanly and the
-  // ledger would carry two - which is the one thing the cutover-date key exists
-  // to prevent. `opening-trial-balance/writes.ts` is the only route.
+  // an org has exactly one opening trial balance. `opening-trial-balance/writes.ts`
+  // is the only route, posting `{ sourceKind: 'opening_balance', sourceId:
+  // organizationId }` directly rather than through this record's own draft.
   if (entry.kind === 'opening_balance') {
     throw new UnprocessableEntityError(
       'An opening trial balance posts from the accounting setup, never from the journal-entry ' +
@@ -544,6 +555,24 @@ function buildDraftEntry(entry: JournalEntryRecord) {
       { journalEntryId: entry.id, kind: entry.kind }
     )
   }
+  return buildDraftStorageEntry(entry, entry.lines)
+}
+
+/**
+ * Build the entry behind a draft's `GlPosting`, for storage (create/edit) AND,
+ * via {@link buildDraftEntry}, for `manual`/`recurring` post.
+ *
+ * `recurring_template` is deliberately NOT refused here - unlike
+ * {@link buildDraftEntry} above, this is also the storage path a template's own
+ * draft is kept in sync through, and a template is never handed to `postDraft`.
+ */
+function buildDraftStorageEntry(
+  entry: Pick<
+    JournalEntryRecord,
+    'id' | 'date' | 'memo' | 'kind' | 'number' | 'recurrenceRuleId' | 'occurrenceDate'
+  >,
+  lines: JournalEntryLine[]
+): BuiltManualEntry {
   if (!entry.date) {
     throw new UnprocessableEntityError(
       'This journal entry has no date. An entry has to name the day it posts on.',
@@ -551,15 +580,14 @@ function buildDraftEntry(entry: JournalEntryRecord) {
     )
   }
 
-  const postingType: ManualPostingType = JOURNAL_ENTRY_POSTING_TYPE[entry.kind]
+  const postingType: ManualPostingType =
+    entry.kind === 'recurring_template' ? 'manual_journal' : JOURNAL_ENTRY_POSTING_TYPE[entry.kind]
 
   // 🛑 A generated entry keys on the RULE and the SLOT, never on its own
-  // number, and that substitution IS the idempotency (task 21 §1.4). Two
-  // drafts of March's depreciation carry two `JNL-` numbers and one
-  // `RJE-<fold>` key, so the second one to reach `postEntry` loses the claim
-  // and converges to `already_posted` instead of booking March twice. Keying
-  // it on `entry.number` here would look identical in every test that posts
-  // one entry and would double the books the first time the sweep raced.
+  // number, and that substitution IS the idempotency (task 21 §1.4). A
+  // template and a hand-authored entry key on the record's own number instead -
+  // the template's draft is never posted, and a manual entry's number is what
+  // `doc-number.ts` declares for it.
   const number =
     entry.kind === 'recurring'
       ? recurringJournalPeriodKey(requireRecurrenceIdentity(entry))
@@ -567,8 +595,8 @@ function buildDraftEntry(entry: JournalEntryRecord) {
 
   if (!number) {
     throw new UnprocessableEntityError(
-      'This journal entry has no number, so it cannot be posted - the number is what the ' +
-        "posting's document number is keyed on. Re-create the entry.",
+      'This journal entry has no number, so its draft posting cannot be built - the number is ' +
+        "what the posting's document number is keyed on. Re-create the entry.",
       { journalEntryId: entry.id }
     )
   }
@@ -578,7 +606,7 @@ function buildDraftEntry(entry: JournalEntryRecord) {
     number,
     txnDate: entry.date,
     memo: entry.memo ?? undefined,
-    lines: entry.lines,
+    lines,
     sourceId: entry.id,
   })
 }
@@ -592,7 +620,9 @@ function buildDraftEntry(entry: JournalEntryRecord) {
  * one `create`, so reaching this means the row was hand-edited or written by
  * something that is not the materializer.
  */
-function requireRecurrenceIdentity(entry: JournalEntryRecord): {
+function requireRecurrenceIdentity(
+  entry: Pick<JournalEntryRecord, 'id' | 'recurrenceRuleId' | 'occurrenceDate'>
+): {
   recurrenceRuleId: string
   occurrenceDate: string
 } {
@@ -649,48 +679,8 @@ function pickOverrides(input: PreviewJournalEntryInput): Partial<JournalEntryRec
   const overrides: Partial<JournalEntryRecord> = {}
   if (input.date !== undefined) overrides.date = input.date
   if (input.memo !== undefined) overrides.memo = input.memo
-  if (input.lines !== undefined) overrides.lines = normaliseLines(input.lines)
+  if (input.lines !== undefined) overrides.lines = input.lines
   return overrides
-}
-
-/**
- * Strip a draft line down to the four fields that are stored, and no others.
- *
- * A client sending extra keys - a React row id, a display label, a dollar
- * amount somebody forgot to convert - must not have them persisted into the
- * JSON, because the next reader would find a shape nothing declares and a
- * `amount` field beside `amountMinor` is exactly the ambiguity ground rule 2
- * exists to remove.
- *
- * 🛑 It does NOT validate. `buildManualEntry` owns every refusal and names the
- * row while doing it; a second authority here would give the same input two
- * error vocabularies and the worse one would win at save time, before the
- * person had finished typing.
- */
-function normaliseLines(lines: JournalEntryLine[]): JournalEntryLine[] {
-  return lines.map((line) => ({
-    glAccountId: line.glAccountId,
-    direction: line.direction,
-    amountMinor: line.amountMinor,
-    ...(line.memo ? { memo: line.memo } : {}),
-    ...(line.counterpartyType && line.counterpartyId
-      ? { counterpartyType: line.counterpartyType, counterpartyId: line.counterpartyId }
-      : {}),
-  }))
-}
-
-/**
- * Wrap the lines in the envelope the JSON column actually stores.
- *
- * 🛑 **The wrapper is not decoration.** A `FieldValue` write treats a top-level
- * ARRAY as a multi-value write - one row per element - and
- * `journal_entry_lines` is single-value, so a bare array is rejected with
- * "single-value; received 2 values"... which `UnifiedCrudHandler.setFieldValues`
- * LOGS and swallows, leaving the update reporting success over an entry that
- * has no lines. This was found by driving the path, not by a test.
- */
-function linesEnvelope(lines: JournalEntryLine[]): JournalEntryLinesEnvelope {
-  return { lines: normaliseLines(lines) }
 }
 
 /**

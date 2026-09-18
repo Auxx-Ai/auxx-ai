@@ -1,35 +1,42 @@
 // packages/lib/src/postings/journal-entries/__tests__/writes.test.ts
 //
-// The draft is the only record in the accounting module a person types line by
-// line, and every rule here is about what a draft may become:
+// The pointer is the only record in the accounting module a person types line
+// by line, and every rule here is about what its companion draft may become:
 //
 //  1. **A posted entry is corrected by REVERSAL, never by edit.** `GlPostingLine`
-//     has no update path, so editing this record's JSON after posting would
-//     leave two documents claiming to be the same entry - and the one a
-//     bookkeeper reads would be the wrong one.
-//  2. **The record is stamped only when a posting was actually written.** A
-//     refusal leaves the draft alone, which is exactly what "fix it and press
-//     Post again" needs.
-//  3. **The accounting date is a DATE.** Stored as midnight UTC, because
+//     has no update path, so editing the draft's lines after posting would
+//     leave two documents claiming to be the same entry.
+//  2. **The accounting date is a DATE.** Stored as midnight UTC, because
 //     anything else pushes a month-end entry into the previous month for any
 //     reader west of UTC.
+//  3. **The record needs a balanced draft to exist at all** (TARGET §1): there
+//     is no `journal_entry_lines` field to hold a half-typed entry, so
+//     `createJournalEntry` refuses fewer than two lines or an imbalance the
+//     same way `buildManualEntry` always has - just earlier.
 //
 // The collaborators are stubbed at the module boundary rather than through a
-// fake database: `postEntry` and `reverseEntry` have their own exhaustive
-// suites, and re-driving them through a second fake here would test the fake.
+// fake database: `postEntry`, `postDraft` and `reverseEntry` have their own
+// exhaustive suites, and re-driving them through a second fake here would test
+// the fake.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   /** The one record every read returns, or null for "not found". */
   record: null as Record<string, unknown> | null,
-  /** What `postEntry` / `reverseEntry` answer with. */
+  /** What `postEntry` (the companion-draft write) answers with. */
+  draftResult: { status: 'drafted', glPostingId: 'post_1' } as Record<string, unknown>,
+  /** What `postDraft` / `reverseEntry` answer with. */
   postResult: { status: 'posted', glPostingId: 'post_1' } as Record<string, unknown>,
-  /** Every `UnifiedCrudHandler` call, in order. */
+  /** Every `postEntry` call, in order. */
+  posted: [] as Array<Record<string, unknown>>,
+  /** Every `postDraft` call, in order. */
+  draftsPosted: [] as Array<Record<string, unknown>>,
+  reversed: [] as Array<Record<string, unknown>>,
+  draftLinesUpdated: [] as Array<Record<string, unknown>>,
+  draftsDiscarded: [] as Array<Record<string, unknown>>,
   creates: [] as Array<{ defId: string; values: Record<string, unknown> }>,
   updates: [] as Array<{ recordId: string; values: Record<string, unknown> }>,
-  posted: [] as Array<Record<string, unknown>>,
-  reversed: [] as Array<Record<string, unknown>>,
   archives: [] as string[],
 }))
 
@@ -37,18 +44,40 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
     async create(defId: string, values: Record<string, unknown>) {
       h.creates.push({ defId, values })
+      // Mirrors the round trip `createJournalEntry` makes: it re-reads the
+      // record it just created before building the companion draft, so the
+      // fixture has to reflect what was actually written rather than a fixed
+      // fixture.
+      h.record = {
+        id: 'je_1',
+        number: 'JNL-0007',
+        date:
+          typeof values.journal_entry_date === 'string'
+            ? values.journal_entry_date.slice(0, 10)
+            : null,
+        memo: (values.journal_entry_memo as string | undefined) ?? null,
+        status: 'draft',
+        kind: (values.journal_entry_kind as string | undefined) ?? 'manual',
+        lines: [],
+        glPostingId: null,
+        recurrenceRuleId: (values.journal_entry_recurrence_rule_id as string | undefined) ?? null,
+        occurrenceDate: (values.journal_entry_occurrence_date as string | undefined) ?? null,
+        createdAt: '2026-08-31T00:00:00.000Z',
+      }
       return { instance: { id: 'je_1' } }
     }
     async update(recordId: string, values: Record<string, unknown>) {
       h.updates.push({ recordId, values })
+      if (h.record && typeof values.journal_entry_gl_posting_id === 'string') {
+        h.record.glPostingId = values.journal_entry_gl_posting_id
+      }
     }
     async archive(recordId: string) {
       h.archives.push(recordId)
       // Mirrors what `archivedAt` actually does to every read in this module:
       // `getJournalEntry` and `listJournalEntries` both filter
       // `archivedAt IS NULL`, so an archived row is gone as far as `reads.ts` is
-      // concerned. Dropping it here is what lets the second-discard test below
-      // be about the real behaviour rather than about the double.
+      // concerned.
       h.record = null
     }
   },
@@ -57,6 +86,10 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
 vi.mock('../../post-entry', () => ({
   postEntry: async (_db: unknown, options: Record<string, unknown>) => {
     h.posted.push(options)
+    return h.draftResult
+  },
+  postDraft: async (_db: unknown, options: Record<string, unknown>) => {
+    h.draftsPosted.push(options)
     return h.postResult
   },
   previewEntry: async (_db: unknown, options: Record<string, unknown>) => ({
@@ -76,6 +109,17 @@ vi.mock('../../reverse-entry', () => ({
   },
 }))
 
+vi.mock('../../draft-lines', () => ({
+  updateDraftLines: async (_db: unknown, options: Record<string, unknown>) => {
+    h.draftLinesUpdated.push(options)
+    return { isErr: () => false }
+  },
+  discardDraftPosting: async (_db: unknown, options: Record<string, unknown>) => {
+    h.draftsDiscarded.push(options)
+    return { isErr: () => false }
+  },
+}))
+
 vi.mock('../../period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
@@ -90,9 +134,7 @@ vi.mock('../reads', async () => {
         journal_entry_number: { id: 'f_number' },
         journal_entry_date: { id: 'f_date' },
         journal_entry_memo: { id: 'f_memo' },
-        journal_entry_status: { id: 'f_status' },
         journal_entry_kind: { id: 'f_kind' },
-        journal_entry_lines: { id: 'f_lines' },
         journal_entry_gl_posting_id: { id: 'f_posting' },
       },
     }),
@@ -108,7 +150,6 @@ vi.mock('../reads', async () => {
 })
 
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../../../errors'
-import type { JournalEntryLine } from '../client'
 import {
   createJournalEntry,
   discardJournalEntry,
@@ -122,6 +163,11 @@ const ORG = 'org_1'
 const USER = 'user_1'
 const DB = {} as never
 
+const BALANCED_LINES = [
+  { glAccountId: 'acct_6200', direction: 'debit' as const, amountMinor: 50_000 },
+  { glAccountId: 'acct_2100', direction: 'credit' as const, amountMinor: 50_000 },
+]
+
 const DRAFT = {
   id: 'je_1',
   number: 'JNL-0007',
@@ -129,134 +175,123 @@ const DRAFT = {
   memo: 'Accrue August rent',
   status: 'draft',
   kind: 'manual',
-  lines: [
-    { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 },
-    { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 50_000 },
-  ],
-  glPostingId: null,
+  lines: BALANCED_LINES,
+  // Every successfully created entry carries its companion draft posting from
+  // the start (TARGET §1) - there is no `glPostingId: null` state for a record
+  // this far along.
+  glPostingId: 'post_1',
   createdAt: '2026-08-31T00:00:00.000Z',
 }
 
 beforeEach(() => {
   h.record = { ...DRAFT }
+  h.draftResult = { status: 'drafted', glPostingId: 'post_1' }
   h.postResult = { status: 'posted', glPostingId: 'post_1' }
+  h.posted = []
+  h.draftsPosted = []
+  h.reversed = []
+  h.draftLinesUpdated = []
+  h.draftsDiscarded = []
   h.creates = []
   h.updates = []
-  h.posted = []
-  h.reversed = []
   h.archives = []
 })
 
 describe('createJournalEntry', () => {
-  it('lands draft, manual, with the date stored as midnight UTC', async () => {
-    const result = await createJournalEntry(DB, ORG, USER, { date: '2026-08-31' })
+  it('lands draft, manual, with the date stored as midnight UTC, and stamps the companion posting', async () => {
+    const result = await createJournalEntry(DB, ORG, USER, {
+      date: '2026-08-31',
+      lines: BALANCED_LINES,
+    })
 
     expect(result.isOk()).toBe(true)
-    const values = h.creates[0]?.values
-    expect(values?.journal_entry_status).toBe('draft')
-    expect(values?.journal_entry_kind).toBe('manual')
     // 🛑 Midnight UTC and nothing else. A local midnight renders a month-end
     // entry as the previous month for any reader west of UTC.
-    expect(values?.journal_entry_date).toBe('2026-08-31T00:00:00.000Z')
+    expect(h.creates[0]?.values.journal_entry_date).toBe('2026-08-31T00:00:00.000Z')
+    expect(h.posted[0]?.mode).toBe('draft')
+    expect(h.posted[0]?.sources).toEqual([
+      { sourceKind: 'journal_entry', sourceId: 'je_1', linkRole: 'subject' },
+    ])
+    expect(h.updates[0]?.values).toEqual({ journal_entry_gl_posting_id: 'post_1' })
   })
 
-  it('accepts an empty draft, so the drawer can save before it balances', async () => {
-    const result = await createJournalEntry(DB, ORG, USER, { date: '2026-08-31' })
-    expect(result.isOk()).toBe(true)
-    // 🛑 The envelope, not a bare array: a `FieldValue` write reads a top-level
-    // array as a MULTI-VALUE write and this field is single-value.
-    expect(h.creates[0]?.values.journal_entry_lines).toEqual({ lines: [] })
+  it('refuses fewer than two lines - there is nowhere else for a half-typed entry to live', async () => {
+    const result = await createJournalEntry(DB, ORG, USER, {
+      date: '2026-08-31',
+      lines: [{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 }],
+    })
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(UnprocessableEntityError)
+    expect(h.updates).toHaveLength(0)
   })
 
-  it('carries the requested kind through', async () => {
-    await createJournalEntry(DB, ORG, USER, { date: '2025-12-31', kind: 'opening_balance' })
+  it('refuses an unbalanced draft', async () => {
+    const result = await createJournalEntry(DB, ORG, USER, {
+      date: '2026-08-31',
+      lines: [
+        { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 },
+        { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 40_000 },
+      ],
+    })
+    expect(result.isErr()).toBe(true)
+  })
+
+  it('carries the requested kind through to the posting type', async () => {
+    await createJournalEntry(DB, ORG, USER, {
+      date: '2025-12-31',
+      kind: 'opening_balance',
+      lines: BALANCED_LINES,
+    })
     expect(h.creates[0]?.values.journal_entry_kind).toBe('opening_balance')
+    expect((h.posted[0]?.entry as { postingType: string }).postingType).toBe('opening_balance')
   })
 
-  // A React row id or a stray `amount` in dollars beside `amountMinor` is
-  // exactly the ambiguity ground rule 2 exists to remove.
-  it('strips keys the line shape does not declare', async () => {
+  // A React row id or a stray `amount` in dollars beside `amountMinor` never
+  // reaches the built entry - `buildManualEntry` only reads the fields it
+  // declares.
+  it('ignores keys the line shape does not declare, and carries a counterparty through', async () => {
     await createJournalEntry(DB, ORG, USER, {
       date: '2026-08-31',
       lines: [
-        // A React row id and a stray dollar `amount` beside `amountMinor`:
-        // what a sloppy client actually sends.
         {
-          glAccountId: 'acct_6200',
+          glAccountId: 'acct_1100',
           direction: 'debit',
           amountMinor: 50_000,
           rowId: 'react-key-3',
-          amount: 500,
-        } as unknown as JournalEntryLine,
-      ],
-    })
-    expect(h.creates[0]?.values.journal_entry_lines).toEqual({
-      lines: [{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 }],
-    })
-  })
-
-  // Brief 13 §1.4: a receivable or payable line may carry a counterparty. Both
-  // fields ride through together, and dropping one when the other is present
-  // is `parseLines`'s job on the way back out, not this normaliser's.
-  it('carries a well-formed counterparty through to the stored line', async () => {
-    await createJournalEntry(DB, ORG, USER, {
-      date: '2026-08-31',
-      lines: [
-        {
-          glAccountId: 'acct_1100',
-          direction: 'debit',
-          amountMinor: 5_000,
           counterpartyType: 'customer',
           counterpartyId: 'contact_1',
-        },
+        } as never,
+        { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 50_000 },
       ],
     })
-    expect(h.creates[0]?.values.journal_entry_lines).toEqual({
-      lines: [
-        {
-          glAccountId: 'acct_1100',
-          direction: 'debit',
-          amountMinor: 5_000,
-          counterpartyType: 'customer',
-          counterpartyId: 'contact_1',
-        },
-      ],
-    })
-  })
-
-  it('omits both counterparty fields when only one is supplied', async () => {
-    await createJournalEntry(DB, ORG, USER, {
-      date: '2026-08-31',
-      lines: [
-        {
-          glAccountId: 'acct_1100',
-          direction: 'debit',
-          amountMinor: 5_000,
-          counterpartyType: 'customer',
-        } as unknown as JournalEntryLine,
-      ],
-    })
-    expect(h.creates[0]?.values.journal_entry_lines).toEqual({
-      lines: [{ glAccountId: 'acct_1100', direction: 'debit', amountMinor: 5_000 }],
-    })
+    const lines = (h.posted[0]?.entry as { lines: Record<string, unknown>[] }).lines
+    expect(lines[0]).not.toHaveProperty('rowId')
+    expect(lines[0]?.counterpartyType).toBe('customer')
+    expect(lines[0]?.counterpartyId).toBe('contact_1')
   })
 
   it('refuses a date that is not YYYY-MM-DD', async () => {
-    const result = await createJournalEntry(DB, ORG, USER, { date: '31/08/2026' })
+    const result = await createJournalEntry(DB, ORG, USER, {
+      date: '31/08/2026',
+      lines: BALANCED_LINES,
+    })
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(UnprocessableEntityError)
   })
 })
 
 describe('updateJournalEntry', () => {
-  it('replaces the lines wholesale', async () => {
+  it('rebuilds the draft posting when lines change', async () => {
     await updateJournalEntry(DB, ORG, USER, {
       journalEntryId: 'je_1',
-      lines: [{ glAccountId: 'acct_6300', direction: 'debit', amountMinor: 1 }],
+      lines: [
+        { glAccountId: 'acct_6300', direction: 'debit', amountMinor: 1 },
+        { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 1 },
+      ],
     })
-    expect(h.updates[0]?.values.journal_entry_lines).toEqual({
-      lines: [{ glAccountId: 'acct_6300', direction: 'debit', amountMinor: 1 }],
-    })
+    expect(h.draftLinesUpdated[0]?.glPostingId).toBe('post_1')
+    const lines = (h.draftLinesUpdated[0]?.entry as { lines: Record<string, unknown>[] }).lines
+    expect(lines.map((line) => line.glAccountId)).toEqual(['acct_6300', 'acct_2100'])
   })
 
   it('clears the memo on an empty string and leaves it alone when omitted', async () => {
@@ -264,19 +299,22 @@ describe('updateJournalEntry', () => {
     expect(h.updates[0]?.values.journal_entry_memo).toBeNull()
 
     h.updates = []
+    h.draftLinesUpdated = []
     await updateJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1', date: '2026-09-01' })
     expect(h.updates[0]?.values).not.toHaveProperty('journal_entry_memo')
+    expect(h.draftLinesUpdated).toHaveLength(1)
   })
 
   it('writes nothing at all when nothing was sent', async () => {
     const result = await updateJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
     expect(result.isOk()).toBe(true)
     expect(h.updates).toHaveLength(0)
+    expect(h.draftLinesUpdated).toHaveLength(0)
   })
 
   // 🛑 The rule the whole module is arranged around.
   it('refuses to edit a posted entry, naming reversal as the remedy', async () => {
-    h.record = { ...DRAFT, status: 'posted', glPostingId: 'post_1' }
+    h.record = { ...DRAFT, status: 'posted' }
     const result = await updateJournalEntry(DB, ORG, USER, {
       journalEntryId: 'je_1',
       memo: 'second thoughts',
@@ -287,6 +325,7 @@ describe('updateJournalEntry', () => {
     expect(error).toBeInstanceOf(ConflictError)
     expect(error.message).toMatch(/reversing it/i)
     expect(h.updates).toHaveLength(0)
+    expect(h.draftLinesUpdated).toHaveLength(0)
   })
 
   it('refuses to edit a reversed entry', async () => {
@@ -301,7 +340,7 @@ describe('previewJournalEntry', () => {
     const result = await previewJournalEntry(DB, ORG, { journalEntryId: 'je_1' })
     expect(result.isOk()).toBe(true)
     expect(h.updates).toHaveLength(0)
-    expect(h.posted).toHaveLength(0)
+    expect(h.draftsPosted).toHaveLength(0)
   })
 
   it('applies overrides for the preview and does NOT persist them', async () => {
@@ -317,7 +356,7 @@ describe('previewJournalEntry', () => {
   })
 
   // The arithmetic throws rather than blocking, because there is no entry to
-  // preview at all - and the message names the row.
+  // preview at all - and the message names the difference.
   it('refuses an unbalanced draft, naming the difference', async () => {
     h.record = {
       ...DRAFT,
@@ -333,72 +372,45 @@ describe('previewJournalEntry', () => {
 })
 
 describe('postJournalEntry', () => {
-  it('posts the draft as a manual_journal keyed on its number', async () => {
+  it('posts the existing draft posting, without rebuilding it', async () => {
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
 
     expect(result.isOk()).toBe(true)
-    const entry = h.posted[0]?.entry as { postingType: string; periodKey: string }
-    expect(entry.postingType).toBe('manual_journal')
-    expect(entry.periodKey).toBe('JNL-0007')
+    expect(h.draftsPosted[0]?.glPostingId).toBe('post_1')
   })
 
   it('REFUSES an opening_balance draft, naming the route that keys it correctly', async () => {
-    // 🛑 An opening entry keys on the CUTOVER DATE (`doc-number.ts`), and this
-    // path keys on the record's number. Posting one here would mint
-    // `AUXX-OPB-JNL0007` instead of `AUXX-OPB-20251231`, so a SECOND opening
-    // trial balance would claim cleanly on
-    // `(organizationId, postingType, periodKey, revision)` - the exact double
-    // that the cutover-date key exists to make unrepresentable.
-    h.record = { ...DRAFT, kind: 'opening_balance', number: 'JNL-0007' }
+    h.record = { ...DRAFT, kind: 'opening_balance' }
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
 
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toMatch(/cutover date/)
     expect(result._unsafeUnwrapErr().message).toMatch(/ledgerOpening\.post/)
-    expect(h.posted).toHaveLength(0)
-    expect(h.updates).toHaveLength(0)
+    expect(h.draftsPosted).toHaveLength(0)
   })
 
   it('refuses an opening_balance draft on PREVIEW too, so the drawer says so before Post', async () => {
-    h.record = { ...DRAFT, kind: 'opening_balance', number: 'JNL-0007' }
+    h.record = { ...DRAFT, kind: 'opening_balance' }
     const result = await previewJournalEntry(DB, ORG, { journalEntryId: 'je_1' })
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toMatch(/opening trial balance/i)
   })
 
-  it('stamps the posting id and the status once a posting was written', async () => {
-    await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
-    expect(h.updates[0]?.values).toEqual({
-      journal_entry_status: 'posted',
-      journal_entry_gl_posting_id: 'post_1',
-    })
-  })
-
-  // 🛑 A refusal leaves the record alone. That is what "fix it and press Post
-  // again" needs - a `failed` status would have to be cleared by hand first.
+  // 🛑 A refusal leaves the record alone. `postDraft` never flips the row out
+  // of `draft`, so "fix it and press Post again" needs nothing cleared first.
   it('leaves the record untouched on a refusal', async () => {
     h.postResult = { status: 'period_closed', error: 'August is locked' }
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
 
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().status).toBe('period_closed')
-    expect(h.updates).toHaveLength(0)
-  })
-
-  // `not_connected` DOES write a posting - `postEntry` marks the row `posted`,
-  // because an org with no accounting system has nothing in flight - so the
-  // record must follow it.
-  it('stamps the record on not_connected, which did write a posting', async () => {
-    h.postResult = { status: 'not_connected', glPostingId: 'post_9' }
-    await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
-    expect(h.updates[0]?.values.journal_entry_gl_posting_id).toBe('post_9')
   })
 
   it('refuses to post an entry that is already posted', async () => {
-    h.record = { ...DRAFT, status: 'posted', glPostingId: 'post_1' }
+    h.record = { ...DRAFT, status: 'posted' }
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
     expect(result.isErr()).toBe(true)
-    expect(h.posted).toHaveLength(0)
+    expect(h.draftsPosted).toHaveLength(0)
   })
 
   it('refuses to post a recurring template, saying what to do instead', async () => {
@@ -406,11 +418,9 @@ describe('postJournalEntry', () => {
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toMatch(/stencil/i)
-    expect(h.posted).toHaveLength(0)
+    expect(h.draftsPosted).toHaveLength(0)
   })
 
-  // The number IS the posting's periodKey, so an entry without one would mint
-  // `AUXX-JNL-` with nothing after it.
   it('refuses to post an entry with no number', async () => {
     h.record = { ...DRAFT, number: null }
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
@@ -428,28 +438,16 @@ describe('postJournalEntry', () => {
 
 describe('reverseJournalEntry', () => {
   beforeEach(() => {
-    h.record = { ...DRAFT, status: 'posted', glPostingId: 'post_1' }
+    h.record = { ...DRAFT, status: 'posted' }
   })
 
-  it('reverses the posting the record names and flips it to reversed', async () => {
+  it('reverses the posting the record names', async () => {
     const result = await reverseJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
 
     expect(result.isOk()).toBe(true)
     expect(h.reversed[0]?.glPostingId).toBe('post_1')
-    expect(h.updates[0]?.values).toEqual({ journal_entry_status: 'reversed' })
-  })
-
-  it('leaves the record posted when the reversal was refused', async () => {
-    h.postResult = { status: 'period_closed', error: 'August is locked' }
-    await reverseJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
+    // Nothing left to stamp: status is read back off the posting.
     expect(h.updates).toHaveLength(0)
-  })
-
-  // A converged re-run, not a failure: the reversal was already there.
-  it('flips the record on already_posted', async () => {
-    h.postResult = { status: 'already_posted', glPostingId: 'post_2' }
-    await reverseJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
-    expect(h.updates[0]?.values.journal_entry_status).toBe('reversed')
   })
 
   it('refuses to reverse a draft - a draft is simply edited', async () => {
@@ -461,7 +459,7 @@ describe('reverseJournalEntry', () => {
   })
 
   it('refuses to reverse twice', async () => {
-    h.record = { ...DRAFT, status: 'reversed', glPostingId: 'post_1' }
+    h.record = { ...DRAFT, status: 'reversed' }
     const result = await reverseJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
     expect(result.isErr()).toBe(true)
     expect(h.reversed).toHaveLength(0)
@@ -471,39 +469,31 @@ describe('reverseJournalEntry', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // discardJournalEntry (plans/accounting/tasks/done/09-discard-a-draft-entry.md §4)
 //
-// 🛑 ARCHIVE, never delete. `journal_entry_number` is issued by `RecordSequence`
-// on CREATE, so an abandoned `JNL-0006` leaves a permanent hole in a gapless
-// sequence - and a bookkeeper who reads `JNL-0005` then `JNL-0007` has to be
-// able to find out what happened in between. A hard delete makes that
-// unanswerable; `archivedAt` keeps the row and takes it out of every read.
+// 🛑 The RECORD is archived, never deleted - `journal_entry_number` is issued
+// by `RecordSequence` on CREATE, so an abandoned `JNL-0006` leaves a permanent
+// hole in a gapless sequence. The draft POSTING is deleted outright: it holds
+// no claim and nothing has read it.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('discardJournalEntry', () => {
-  it('archives the draft rather than deleting it', async () => {
+  it('deletes the draft posting and archives the record', async () => {
     const result = await discardJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
 
     expect(result.isOk()).toBe(true)
+    expect(h.draftsDiscarded[0]?.glPostingId).toBe('post_1')
     expect(h.archives).toEqual(['def_je:je_1'])
-    // Nothing was edited on the way out: no `discarded` status, no cleared
-    // fields. The entity layer answers "is this record gone", and a fourth
-    // status would have to be handled by every switch that renders one.
-    expect(h.updates).toHaveLength(0)
   })
 
-  // `listJournalEntries` and `getJournalEntry` both filter `archivedAt IS NULL`
-  // (`reads.ts`), which the double above mirrors - so the discarded entry has
-  // left every read path, and asking again says so.
   it('leaves the entry unreadable afterwards, so a second discard is NotFound', async () => {
     expect((await discardJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })).isOk()).toBe(true)
 
     const second = await discardJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
     expect(second.isErr()).toBe(true)
     expect(second._unsafeUnwrapErr()).toBeInstanceOf(NotFoundError)
-    // Once, not twice.
     expect(h.archives).toHaveLength(1)
   })
 
   it('refuses a posted entry, naming it and pointing at reversal', async () => {
-    h.record = { ...DRAFT, status: 'posted', glPostingId: 'post_1' }
+    h.record = { ...DRAFT, status: 'posted' }
     const result = await discardJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
 
     expect(result.isErr()).toBe(true)
@@ -513,31 +503,16 @@ describe('discardJournalEntry', () => {
     expect(error.message).toMatch(/cannot be discarded/)
     expect(error.message).toMatch(/reversing it/i)
     expect(h.archives).toHaveLength(0)
+    expect(h.draftsDiscarded).toHaveLength(0)
   })
 
   it('refuses a reversed entry the same way', async () => {
-    h.record = { ...DRAFT, status: 'reversed', glPostingId: 'post_1' }
+    h.record = { ...DRAFT, status: 'reversed' }
     const result = await discardJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
 
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(ConflictError)
     expect(result._unsafeUnwrapErr().message).toMatch(/reversed and cannot be discarded/)
-    expect(h.archives).toHaveLength(0)
-  })
-
-  // 🛑 The dangerous row, and the reason the status check alone is not enough.
-  // `postJournalEntry` claims the posting FIRST and stamps the record SECOND, so
-  // a run that dies in between leaves exactly this: status `draft`, posting id
-  // set. Archiving it would orphan a `GlPosting` whose `sourceId` no read path
-  // resolves, which A/R aging then carries under "Unapplied and adjustments"
-  // forever.
-  it('refuses a draft that already carries a posting id', async () => {
-    h.record = { ...DRAFT, status: 'draft', glPostingId: 'post_1' }
-    const result = await discardJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
-
-    expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr()).toBeInstanceOf(ConflictError)
-    expect(result._unsafeUnwrapErr().message).toMatch(/already has a posting/)
     expect(h.archives).toHaveLength(0)
   })
 

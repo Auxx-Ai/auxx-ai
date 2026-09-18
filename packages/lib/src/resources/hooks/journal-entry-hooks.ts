@@ -42,11 +42,8 @@ const autoGenerateJournalEntryNumber: SystemHook = async ({
  * `journal_entry` system hooks: the RecordSequence number on create, and
  * nothing else.
  *
- * 🛑 **`journal_entry_status` is deliberately NOT guarded here**, for the reason
- * `build-hooks.ts` gives at length: `UnifiedCrudHandler.runPreHooks` consults no
- * equivalent of `bypassFieldGuards`, and `postJournalEntry` / `reverseJournalEntry`
- * both write the status through `UnifiedCrudHandler.update`. A guard on this
- * chain would refuse the two actions it was built to protect. The rule that
+ * There is no `journal_entry_status` field to guard (TARGET §1): the record is
+ * a pointer, and status is read off the linked `GlPosting`. The rule that
  * matters - a draft is editable, a posted entry is not - lives in
  * `updateJournalEntry`, which is the only door a person's edit reaches.
  */

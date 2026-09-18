@@ -2,45 +2,43 @@
 
 'use client'
 
-// `<entityType>:ledger` - the postings whose lines name this record
-// (`sourceType`/`sourceId`), per `plans/accounting/ui-plan.md` §2.3 / §4.4.
+// `<entityType>:ledger` - every posting linked to this record on
+// `GlPostingSource` (TARGET §1), per `plans/accounting/ui-plan.md` §2.3 / §4.4.
+// The ONE ledger card (accounting migration step 1c) - `order`, `credit_memo`
+// and `build` collapsed into this component rather than keeping their own
+// composite/bespoke cards; see `ledger-card-registrations.tsx` for the
+// `sourceKind` each entity pins.
 //
-// Copies `manufacturing/builds/build-ledger-card.tsx`'s shape (a `TreeRowList`
-// read through a scoped query, click opens the detail), but the source data is
-// different: a build's ledger card reads ordinary `stock_movement` records
-// through the generic record list, while a `GlPosting` is a Drizzle table with
-// no entity mirror (decision `G6`), so this card reads it through a dedicated
-// tRPC procedure instead.
+// A `GlPosting` is a Drizzle table with no entity mirror (decision `G6`), so
+// this card reads it through a dedicated tRPC procedure rather than the
+// generic record list.
 //
-// Reads `ledger.listPostingsForSource` (slot 1A) for the postings whose lines
-// name this record as their source.
-//
-// Gained a `Retry export` action 2026-09-10 (plans/accounting/tasks/14-one-
-// quickbooks-two-write-paths.md §4.4): with the invoice document mirror
-// retired on MK's decision, this card is the ONLY QuickBooks export surface an
-// invoice has, so a failed export needs a retry here rather than a second
-// affordance elsewhere.
+// Reads `ledger.listPostingsForSource` for every posting linked to this record
+// by `sourceKind`/`sourceId`, whatever the link role - `linkRole` is rendered
+// as its own badge so a `parent` row (an order listing its fulfillments) reads
+// differently from the `subject` row a fulfillment's own card shows.
 
 import type {
+  ExportBatchState,
   PostingDetail,
-  PostingExportStatus,
+  PostingLinkRole,
   PostingStatus,
   PostingType,
 } from '@auxx/lib/postings/client'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { toastError } from '@auxx/ui/components/toast'
-import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { BookOpenCheck, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { BookOpenCheck } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { EmptyRow } from '~/components/drawers/cards/related-record-row'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { EntryJournal, journalLinesFromDetail } from './ledger/entry-journal'
-import { formatAccountingDate, formatMinor } from './ledger/format'
+import { formatAccountingDate, formatMinor, humanizePostingType } from './ledger/format'
+import { ExportBatchStateBadge } from './ledger/sync-queue/export-batch-badge'
 
 /** One row of `ledger.listPostingsForSource`'s expected result. */
 export interface SourcePosting {
@@ -50,93 +48,75 @@ export interface SourcePosting {
   txnDate: string
   totalMinor: number
   status: PostingStatus
-  exportStatus: PostingExportStatus
-  failureReason: string | null
+  /** How this posting relates to the record - `subject`, `parent`, `counterparty`, `member`. */
+  linkRole: PostingLinkRole
 }
 
 export interface LedgerCardProps extends DrawerTabProps {
   /**
-   * The `sourceType` this record's postings are filed under (`'order'`,
-   * `'invoice'`, `'payment'`, `'bank_deposit'`...). Fixed by the wrapper a
-   * future registration pins, per `ledgerBlock()`'s pattern for related-record
-   * cards, never inferred from the record itself.
+   * The `sourceKind` this record's postings are linked under on
+   * `GlPostingSource` (`'order'`, `'invoice'`, `'money_transaction'`,
+   * `'bank_deposit'`...). Fixed by the wrapper a registration pins, per
+   * `ledgerBlock()`'s pattern for related-record cards, never inferred from
+   * the record itself.
    */
-  sourceType: string
+  sourceKind: string
 }
 
 const STATUS_VARIANT: Record<PostingStatus, Variant> = {
+  draft: 'outline',
   posted: 'green',
   reversed: 'amber',
 }
 
 const STATUS_LABEL: Record<PostingStatus, string> = {
+  draft: 'Draft',
   posted: 'Posted',
   reversed: 'Reversed',
 }
 
-/**
- * The EXPORT badge, rendered BESIDE the status and never instead of it.
- *
- * 🛑 Both badges are needed and neither substitutes for the other. Before the
- * export split a refused push flipped `status` to `failed`, so one badge could
- * carry both facts - at the cost of taking the entry out of the books, which is
- * the defect that split them (plans/accounting/export-state-split.md). With
- * `status` now always `Posted` here, a card that showed only `status` would
- * render an entry QuickBooks refused as straightforwardly fine.
- *
- * `exported` and `not_required` deliberately render NOTHING. A badge on the
- * ordinary case is noise, and `not_required` (nothing connected) is a supported
- * configuration under decision P1, not a state to nag about.
- */
-const EXPORT_BADGE: Partial<Record<PostingExportStatus, { label: string; variant: Variant }>> = {
-  failed: { label: 'Export refused', variant: 'amber' },
-  pending: { label: 'Export pending', variant: 'outline' },
-}
-
-/** `'manual_journal'` reads `'Manual journal'`. No hardcoded map: the posting-type union grows across waves 1 and 2. */
-function humanizePostingType(type: string): string {
-  const words = type.split('_')
-  return words
-    .map((word, index) => (index === 0 ? word[0]!.toUpperCase() + word.slice(1) : word))
-    .join(' ')
+/** How this posting relates to the record - shown as a small badge beside the status. */
+const LINK_ROLE_LABEL: Record<PostingLinkRole, string> = {
+  subject: 'Subject',
+  parent: 'Parent',
+  counterparty: 'Counterparty',
+  member: 'Member',
 }
 
 /**
- * `LedgerCard`: a record sidebar card listing the postings whose
- * `sourceType`/`sourceId` name this record. Row click opens a `Dialog` with
- * the posting's lines (`EntryJournal`, the same journal table
- * `posting-drawer.tsx` renders), since these entries are not on the ledger
- * page's own `?posting=` deep link from here.
+ * `LedgerCard`: a record sidebar card listing every posting linked to this
+ * record on `GlPostingSource`. Row click opens a `Dialog` with the posting's
+ * lines (`EntryJournal`, the same journal table `posting-drawer.tsx`
+ * renders), since these entries are not on the ledger page's own `?posting=`
+ * deep link from here.
  */
-export function LedgerCard({ entityInstanceId, sourceType }: LedgerCardProps) {
+export function LedgerCard({ entityInstanceId, sourceKind }: LedgerCardProps) {
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
   const bookTimeZone = (getSetting('accounting.bookTimeZone') as string | null) ?? 'UTC'
 
   const [openPostingId, setOpenPostingId] = useState<string | null>(null)
 
-  const utils = api.useUtils()
+  const _utils = api.useUtils()
   const postingsQuery = api.ledger.listPostingsForSource.useQuery(
-    { sourceType, sourceId: entityInstanceId },
+    { sourceKind, sourceId: entityInstanceId },
     { enabled: !!entityInstanceId }
   )
   const postings = (postingsQuery.data ?? []) as SourcePosting[]
   const loading = postingsQuery.isPending
 
-  const retryExport = api.ledger.retryExport.useMutation({
-    onSuccess: (result) => {
-      if (result.exportStatus === 'failed') {
-        toastError({
-          title: 'The accounting system refused it again',
-          description: result.error ?? 'No reason was recorded.',
-        })
-      }
-      void utils.ledger.listPostingsForSource.invalidate({ sourceType, sourceId: entityInstanceId })
-    },
-    onError: (error) => {
-      toastError({ title: 'Could not retry the export', description: error.message })
-    },
-  })
+  // The batch state badge (step 3 part C, TARGET §4 gate 2) - the same
+  // unbounded `exportBatches.list` read the queue and the drawer's Export
+  // section both use, so this card's badge cannot disagree with either. No
+  // per-posting Retry or Un-sync here, same rule the drawer keeps.
+  const exportBatchesQuery = api.ledger.exportBatches.list.useQuery({})
+  const batchStateByPostingId = useMemo(() => {
+    const map = new Map<string, ExportBatchState>()
+    for (const batch of exportBatchesQuery.data ?? []) {
+      for (const member of batch.members) map.set(member.glPostingId, batch.state)
+    }
+    return map
+  }, [exportBatchesQuery.data])
 
   if (!loading && postings.length === 0) {
     return <EmptyRow label='Nothing posted yet' />
@@ -163,36 +143,19 @@ export function LedgerCard({ entityInstanceId, sourceType }: LedgerCardProps) {
                 <Badge variant={STATUS_VARIANT[posting.status]} size='xs'>
                   {STATUS_LABEL[posting.status]}
                 </Badge>
-                {EXPORT_BADGE[posting.exportStatus] ? (
-                  <Badge
-                    variant={EXPORT_BADGE[posting.exportStatus]?.variant}
-                    size='xs'
-                    title={posting.failureReason ?? undefined}>
-                    {EXPORT_BADGE[posting.exportStatus]?.label}
-                  </Badge>
-                ) : null}
+                <Badge variant='outline' size='xs'>
+                  {LINK_ROLE_LABEL[posting.linkRole]}
+                </Badge>
+                {batchStateByPostingId.get(posting.id) && (
+                  <ExportBatchStateBadge
+                    state={batchStateByPostingId.get(posting.id) as ExportBatchState}
+                  />
+                )}
               </span>
             }
             onToggleOpen={() => setOpenPostingId(posting.id)}
             actions={
               <span className='flex shrink-0 items-center gap-1 pr-1'>
-                {posting.exportStatus === 'failed' ? (
-                  <TreeRowButton
-                    persistent
-                    tooltipText='Retry export'
-                    disabled={
-                      retryExport.isPending && retryExport.variables?.glPostingId === posting.id
-                    }
-                    onClick={() => retryExport.mutate({ glPostingId: posting.id })}>
-                    <RefreshCw
-                      className={
-                        retryExport.isPending && retryExport.variables?.glPostingId === posting.id
-                          ? 'animate-spin'
-                          : ''
-                      }
-                    />
-                  </TreeRowButton>
-                ) : null}
                 <span className='font-mono text-sm tabular-nums'>
                   {formatMinor(posting.totalMinor, currencyCode)}
                 </span>
@@ -214,10 +177,10 @@ export function LedgerCard({ entityInstanceId, sourceType }: LedgerCardProps) {
 /**
  * The posting's lines, opened from a row.
  *
- * Exported because the order's card reads a different list (its shipment
- * STAMPS, see `money/ui/order/order-fulfillment-ledger-card.tsx`) and would
- * otherwise be a second copy of this dialog: the journal a row opens must not
- * depend on which card the row came from.
+ * Exported because `order-payments-card.tsx` reads a different list (payments
+ * and refunds, not fulfillment postings) and would otherwise be a second copy
+ * of this dialog: the journal a row opens must not depend on which card the
+ * row came from.
  */
 export function PostingLinesDialog({
   postingId,

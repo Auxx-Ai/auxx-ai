@@ -1,73 +1,49 @@
 // packages/lib/src/money/invoices/receipt-accounting.ts
 
 /**
- * A confirmed customer receipt against an ISSUED INVOICE, as a durable
- * accounting effect — the second policy under the `customer_receipt` family
- * (plans/accounting/tasks/54-one-money-model.md §7).
+ * A confirmed customer receipt against an ISSUED INVOICE.
  *
  * ```
- *   Dr <the bank account the money landed in>   the receipt amount
- *       Cr accounts_receivable                    the same
+ *   Dr <the bank account the money landed in, or undeposited_funds>
+ *       Cr accounts_receivable
  * ```
  *
  * ## 🔑 Why this is not `customer-money/accounting.ts`
  *
- * That module is the same family's ORDER policy, and it is order-shaped all the
- * way down: it requires a `FinancialSourceAcceptance` from a live source
- * account, a recognition timeline to allocate the receipt against, and a tax
- * component split. All three exist because a Shopify receipt can arrive before
- * anything has been recognized — the money may be a deposit, a receivable, or
- * partly tax, and only the timeline knows which.
+ * That module is the same avenue's ORDER policy: a Shopify receipt can arrive
+ * before anything has been recognised, so it needs a recognition timeline and a
+ * tax split to know whether the money is a deposit, a receivable or tax. An
+ * issued invoice has already answered that question - the money relieves the
+ * receivable, in full, and that is the entire entry.
  *
- * An issued invoice has already answered that question.
- * `buildInvoiceEntry` booked `Dr accounts_receivable / Cr revenue / Cr
- * sales_tax_payable` at issue (`postings/build-invoice-entry.ts:216-238`), so
- * money received against it recognizes nothing and splits nothing. It relieves
- * the receivable, in full, and that is the entire entry.
+ * Subject the `MoneyTransaction`, parent the invoice, counterparty the invoice's
+ * own contact (TARGET §5). `railId` is null for a hand-recorded receipt - that
+ * money lands in a bank account or in undeposited funds - and names the gateway
+ * for one collected online, which debits the rail's clearing account instead.
  *
- * ## 🛑 The receipt is never amended
- *
- * Ground rule 6, inherited from the lane this replaces
- * (`payments/post-deposit-application.ts:15`). If the money is later moved to a
- * different invoice that is a `MoneyApplication` `unapply` + `apply` pair and
- * its own journal, never a rewrite of this one.
- *
- * ## ⚠️ Reads and the revalidator live in one file, deliberately
- *
- * `docs/lib-module-guide.md` §5 splits reads from writes. The exception here is
- * the one `deposit-application-accounting.ts` already makes: `prepareReceipt`
- * is called twice — once to build, once INSIDE `acceptEntryInTx` under the
- * commit lock — and both runs must produce a byte-identical accepted basis or
- * acceptance refuses. Splitting the two callers across files hides the single
- * most important thing about the function.
- *
- * @see plans/accounting/tasks/54-one-money-model.md
- * @see docs/lib-module-guide.md
+ * No permission checks here. The router asserts (docs/lib-module-guide.md §6).
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
-import { acceptEntryInTx } from '../../postings/accept-entry'
+import { getPaymentGateway } from '../../payment-gateways/reads'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
-import { resolveFulfillmentDeliveryIntentInTx } from '../../postings/book-connections'
+import { readAutoPostMode } from '../../postings/auto-post'
+import { toLedgerMinor } from '../../postings/basis-hash'
 import { ACCOUNT_ROLES, buildEntry } from '../../postings/build-entry'
-import { deliverAccountingPosting, planAccountingDeliveryInTx } from '../../postings/delivery'
-import { accountingBasisHash, toLedgerMinor } from '../../postings/effect-basis'
-import {
-  type AcceptedCustomerReceiptEffectBasisV1,
-  acceptedCustomerReceiptEffectBasisSchema,
-  type CustomerReceiptWorkBasisInput,
-  customerReceiptWorkBasisSchema,
-  type InvoiceReceiptAccountingBasisV1,
-} from '../../postings/effect-types'
-import { captureCustomerReceiptWorkInTx } from '../../postings/effect-work'
+import { resolvePeriodLock } from '../../postings/period-lock'
 import { periodKeyForDate } from '../../postings/periods'
+import { postEntry } from '../../postings/post-entry'
 import { resolveBankAccountGlAccountInTx } from '../../postings/resolve-cash-account'
-import { resolveAccountLines } from '../../postings/resolve-roles'
 import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
-import type { BuiltEntry, GlPostingLineInput, PostResult } from '../../postings/types'
+import type {
+  BuiltEntry,
+  GlPostingLineInput,
+  GlPostingSourceInput,
+  PostResult,
+} from '../../postings/types'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import { loadInvoiceForIssuance } from './issuance-reads'
 
@@ -81,24 +57,24 @@ export interface AcceptInvoiceReceiptInput {
   /** The `MoneyTransaction` to post. Must be a `customer_receipt`. */
   moneyTransactionId: string
   actorUserId?: string
-  /** A sweep posts `automatic` work; an operator-driven command posts `manual`. */
+  /** Kept for the sweep's call sites; the poster no longer branches on it. */
   automatic?: boolean
-}
-
-interface PreparedInvoiceReceipt {
-  entry: BuiltEntry
-  workBasis: CustomerReceiptWorkBasisInput
-  acceptedBasis: AcceptedCustomerReceiptEffectBasisV1
+  /**
+   * The `payment_gateway` the money arrived through, for a receipt collected
+   * online. The debit becomes that rail's clearing account - card settles NET
+   * days later, so a gateway receipt must never claim a bank balance the bank
+   * has not credited.
+   */
+  railId?: string
 }
 
 /**
- * The movement, the single invoice its applications name, and what that invoice
- * still owed — or a refusal saying which is missing.
+ * The movement, the single invoice its applications name, and that invoice's
+ * contact - or a refusal saying which is missing.
  *
  * 🛑 The invoice is resolved through `EntityDefinition.entityType`, never
- * trusted from the FK, for the reason `deposit-application-accounting.ts` gives:
- * the FK proves an `EntityInstance` in this org and nothing more, and crediting
- * a receivable no invoice ever raised is not recoverable by a later correction.
+ * trusted from the FK: the FK proves an `EntityInstance` in this org and nothing
+ * more, and crediting a receivable no invoice ever raised is not recoverable.
  */
 async function readInvoiceReceiptSource(
   tx: Transaction,
@@ -122,10 +98,7 @@ async function readInvoiceReceiptSource(
     throw new UnprocessableEntityError(
       'Invoice receipt requires a confirmed USD amount and an occurrence date'
     )
-  // 🔑 No bank account is NOT an error. `cashAccountInstanceId` null means the
-  // money has not been banked yet and belongs in undeposited funds — which is
-  // where `bank-deposits/route.ts` sends cash and cheque on purpose. See
-  // `debitSelectedBy` on the basis.
+
   const applications = await tx.query.MoneyApplication.findMany({
     where: and(
       eq(schema.MoneyApplication.organizationId, organizationId),
@@ -134,9 +107,8 @@ async function readInvoiceReceiptSource(
     orderBy: asc(schema.MoneyApplication.id),
   })
   const invoiceInstanceId = applications[0]?.invoiceInstanceId
-  // The same completeness rule the order policy applies, against the other
-  // document: one invoice, all applies, summing to the whole movement. A
-  // partially applied receipt is held money and belongs to `deposit_application`.
+  // One invoice, all applies, summing to the whole movement. A partially applied
+  // receipt is held money and belongs to `deposit_application`.
   if (
     !invoiceInstanceId ||
     applications.some(
@@ -177,25 +149,10 @@ async function readInvoiceReceiptSource(
   if (!fields?.totalMinor)
     throw new UnprocessableEntityError('Invoice receipt requires an invoice with a total')
 
-  // What the invoice owed BEFORE this movement. Everything already applied to
-  // it by any OTHER movement, netted — the ledger is the record of what is
-  // settled, exactly as the lane this replaces read it.
-  const others = await tx.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.invoiceInstanceId, invoiceInstanceId)
-    ),
-  })
-  const settledMinor = others
-    .filter((a) => a.moneyTransactionId !== moneyTransactionId)
-    .reduce((sum, a) => sum + (a.operation === 'apply' ? a.amountMinor : -a.amountMinor), 0n)
-
   return {
     money,
     invoiceInstanceId,
     invoiceNumber: fields.number || null,
-    invoiceTotalMinor: BigInt(fields.totalMinor),
-    invoiceOutstandingMinor: BigInt(fields.totalMinor) - settledMinor,
     // The invoice's own contact, not the movement's party: `accounts_receivable`
     // is a per-customer balance and has to agree with the issuance entry.
     contactInstanceId: fields.contactInstanceId ?? money.partyInstanceId ?? null,
@@ -205,17 +162,28 @@ async function readInvoiceReceiptSource(
     effectiveDate: money.occurredAt
       ? periodKeyForDate(money.occurredAt, 'day', bookTimeZone)
       : money.occurredOn!,
-    applications,
   }
 }
 
-/**
- * Read the movement, resolve its accounts and freeze both bases.
- *
- * 🛑 Called TWICE — see the file header. An invoice re-contacted, a bank
- * account repointed or an application re-dated between the two runs is a change
- * the ledger must refuse, not absorb.
- */
+/** The clearing account a rail settles into, or a refusal naming the rail. */
+async function resolveRailClearingAccount(
+  tx: Transaction,
+  organizationId: string,
+  railId: string
+): Promise<string> {
+  const gateway = await getPaymentGateway(tx, organizationId, railId)
+  if (gateway.isErr()) throw new UnprocessableEntityError(gateway.error.message)
+  const clearing = gateway.value?.clearingGlAccountId?.trim()
+  if (!clearing)
+    throw new UnprocessableEntityError('That payment gateway names no clearing account')
+  return clearing
+}
+
+interface PreparedInvoiceReceipt {
+  entry: BuiltEntry
+  sources: GlPostingSourceInput[]
+}
+
 async function prepareInvoiceReceipt(
   tx: Transaction,
   input: AcceptInvoiceReceiptInput
@@ -241,19 +209,19 @@ async function prepareInvoiceReceipt(
     input.moneyTransactionId,
     zone
   )
-  // Two ways in, one frozen answer. A named bank account resolves through its
-  // `bank_account_gl_account` pointer; an unbanked receipt takes the
-  // `undeposited_funds` ROLE and waits for a `bank_deposit` to move it.
-  const bankAccountInstanceId = source.cashAccountInstanceId
-  const debitSelectedBy = bankAccountInstanceId ? 'bank_account' : 'undeposited_funds'
-  const debitGlAccountId = bankAccountInstanceId
-    ? await resolveBankAccountGlAccountInTx(
-        tx,
-        input.organizationId,
-        bankAccountInstanceId,
-        'Invoice receipt'
-      )
-    : undefined
+  // A gateway receipt debits that rail's clearing account; a named bank account
+  // resolves through its `bank_account_gl_account` pointer; an unbanked receipt
+  // takes the `undeposited_funds` ROLE and waits for a `bank_deposit`.
+  const debitGlAccountId = input.railId
+    ? await resolveRailClearingAccount(tx, input.organizationId, input.railId)
+    : source.cashAccountInstanceId
+      ? await resolveBankAccountGlAccountInTx(
+          tx,
+          input.organizationId,
+          source.cashAccountInstanceId,
+          'Invoice receipt'
+        )
+      : undefined
   const amountMinor = toLedgerMinor(source.money.amountMinor, 'USD', 2)
   const label = source.invoiceNumber
     ? `Payment received on ${source.invoiceNumber}`
@@ -266,8 +234,7 @@ async function prepareInvoiceReceipt(
       : {}),
   }
   // ⚠️ `GlPostingLineInput` is a union with `never` on the unused half, so the
-  // two debits are separate literals — a single object with one side
-  // `undefined` does not satisfy either member.
+  // two debits are separate literals.
   const debitLine: GlPostingLineInput = debitGlAccountId
     ? {
         ...base,
@@ -302,119 +269,28 @@ async function prepareInvoiceReceipt(
     txnDate: source.effectiveDate,
     lines,
   })
-  const resolved = await resolveAccountLines(tx, input.organizationId, lines)
-  if (resolved.isErr()) throw resolved.error
-  // Both destinations are assets — a bank account and `undeposited_funds`
-  // alike (`build-entry.ts:380`). Debiting anything else means the chart has
-  // been repointed at the wrong kind of account.
-  if (resolved.value[0]?.accountType !== 'asset')
-    throw new UnprocessableEntityError('Invoice receipt must debit an asset account')
-  const cashGlAccountId = resolved.value[0].glAccountId
 
-  // The resolved accounts are IN the hash, as on every other effect path: a role
-  // repointed in the chart is a new basis version to select, never a silent
-  // restatement of an obligation somebody already approved.
-  const sourceHash = accountingBasisHash({
-    movement: {
-      id: source.money.id,
-      amount: String(amountMinor),
-      occurredAt: source.money.occurredAt?.toISOString() ?? null,
-      occurredOn: source.money.occurredOn ?? null,
-      date: source.effectiveDate,
-    },
-    invoice: {
-      id: source.invoiceInstanceId,
-      number: source.invoiceNumber,
-      contact: source.contactInstanceId,
-      total: String(source.invoiceTotalMinor),
-      outstanding: String(source.invoiceOutstandingMinor),
-    },
-    applications: source.applications.map((a) => ({ id: a.id, amount: String(a.amountMinor) })),
-    accounts: resolved.value.map((account) => account.glAccountId),
-  })
-
-  const calculation: InvoiceReceiptAccountingBasisV1 = {
-    version: 1,
-    kind: 'invoice_receipt',
-    moneyTransactionId: source.money.id,
-    invoiceInstanceId: source.invoiceInstanceId,
-    sourceHash,
-    occurredAt: source.money.occurredAt?.toISOString() ?? null,
-    occurredOn: source.money.occurredOn ?? null,
-    effectiveDate: source.effectiveDate,
-    currency: 'USD',
-    currencyExponent: 2,
-    amountMinor: String(amountMinor),
-    receiptAmountMinor: String(amountMinor),
-    invoiceTotalMinor: String(source.invoiceTotalMinor),
-    invoiceOutstandingMinor: String(source.invoiceOutstandingMinor),
-    receivableMinor: String(amountMinor),
-    cashGlAccountId,
-    debitSelectedBy,
-    bankAccountInstanceId: bankAccountInstanceId ?? null,
-    applications: source.applications.map((a) => ({
-      applicationId: a.id,
-      invoiceInstanceId: source.invoiceInstanceId,
-      amountMinor: String(a.amountMinor),
-      effectiveDate: source.effectiveDate,
-    })),
-  }
-
-  const workBasis = customerReceiptWorkBasisSchema.parse({
-    version: 1,
-    status: 'ready',
-    moneyTransactionId: source.money.id,
-    sourceHash,
-    effectiveDate: source.effectiveDate,
-    calculation,
-  })
-
-  const acceptedBasis = acceptedCustomerReceiptEffectBasisSchema.parse({
-    version: 1,
-    sourceBasisVersion: 1,
-    sourceHash,
-    policyKey: 'invoice_receipt_v1',
-    policyVersion: 1,
-    effectiveDate: source.effectiveDate,
-    bookTimeZone: zone,
-    currency: 'USD',
-    currencyExponent: 2,
-    documentRefs: [
-      { resourceKind: 'invoice', entityInstanceId: source.invoiceInstanceId },
-      { resourceKind: 'money_transaction', entityInstanceId: source.money.id },
-    ],
-    calculation,
-    accountResolution: lines.map((line, index) => ({
-      lineKey: `line:${index}`,
-      glAccountId: resolved.value[index]!.glAccountId,
-      accountRole: line.accountRole ?? null,
-      selectedBy: line.accountRole ? 'org_role' : 'document',
-      configurationHash: accountingBasisHash(resolved.value[index]!),
-    })),
-    contribution: lines.map((line, index) => ({
-      lineKey: `line:${index}`,
-      glAccountId: resolved.value[index]!.glAccountId,
-      direction: line.direction,
-      amountMinor: String(line.amount),
-      counterpartyType: line.counterpartyType ?? null,
-      counterpartyId: line.counterpartyId ?? null,
-      dimensions: line.dimensions ?? {},
-    })),
-  })
-
-  return { entry, workBasis, acceptedBasis }
+  const sources: GlPostingSourceInput[] = [
+    { sourceKind: RECEIPT_SOURCE_TYPE, sourceId: source.money.id, linkRole: 'subject' },
+    { sourceKind: 'invoice', sourceId: source.invoiceInstanceId, linkRole: 'parent' },
+    ...(source.contactInstanceId
+      ? [
+          {
+            sourceKind: 'contact',
+            sourceId: source.contactInstanceId,
+            linkRole: 'counterparty' as const,
+          },
+        ]
+      : []),
+  ]
+  return { entry, sources }
 }
 
 /**
- * Capture the obligation and accept the receipt journal as one transaction.
+ * Post one invoice receipt.
  *
- * **Never throws.** Every refusal comes back as a {@link PostResult}, for the
- * reason the whole money lane holds to: a payment must not fail because its
- * bookkeeping did.
- *
- * Idempotent — the work's `effectKey` is unique per movement, so a second call
- * whose basis is unchanged returns the accepted effect's own journal rather
- * than claiming a second one.
+ * **Never throws.** Every refusal comes back as a {@link PostResult}: a payment
+ * must not fail because its bookkeeping did.
  */
 export async function acceptInvoiceReceiptAccounting(
   db: Database,
@@ -422,60 +298,12 @@ export async function acceptInvoiceReceiptAccounting(
 ): Promise<PostResult> {
   if (!(await isAccountingEnabled(db, input.organizationId))) return { status: 'not_enabled' }
 
-  let result: PostResult
+  let prepared: PreparedInvoiceReceipt
   try {
-    result = await db.transaction(async (tx) => {
-      const prepared = await prepareInvoiceReceipt(tx, input)
-      const selected = await captureCustomerReceiptWorkInTx(tx, {
-        organizationId: input.organizationId,
-        moneyTransactionId: input.moneyTransactionId,
-        eligibility: input.automatic ? 'automatic' : 'manual',
-        basis: prepared.workBasis,
-      })
-      const accepted = await acceptEntryInTx(
-        tx,
-        {
-          organizationId: input.organizationId,
-          actorUserId: input.actorUserId,
-          memo: `Invoice payment - movement ${input.moneyTransactionId}`,
-          entry: prepared.entry,
-          members: [
-            {
-              workId: selected.work.id,
-              expectedBasisVersion: selected.work.basisVersion,
-              acceptedBasis: {
-                ...prepared.acceptedBasis,
-                sourceBasisVersion: selected.work.basisVersion,
-              },
-            },
-          ],
-          deliveryIntent: await resolveFulfillmentDeliveryIntentInTx(
-            tx,
-            input.organizationId,
-            prepared.entry.txnDate
-          ),
-        },
-        {
-          revalidateMemberInTx: async (lockedTx, work) => ({
-            ...(await prepareInvoiceReceipt(lockedTx, input)).acceptedBasis,
-            sourceBasisVersion: work.basisVersion,
-          }),
-        }
-      )
-      if (accepted.status !== 'accepted' || !accepted.glPostingId)
-        throw new UnprocessableEntityError('Invoice receipt accounting membership changed')
-      await planAccountingDeliveryInTx(tx, {
-        organizationId: input.organizationId,
-        glPostingId: accepted.glPostingId,
-      })
-      return {
-        status: accepted.existing ? 'already_posted' : 'posted',
-        glPostingId: accepted.glPostingId,
-      } satisfies PostResult
-    })
+    prepared = await db.transaction((tx) => prepareInvoiceReceipt(tx, input))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    logger.warn('An invoice receipt was not accepted into the ledger', {
+    logger.warn('An invoice receipt was not posted to the ledger', {
       organizationId: input.organizationId,
       moneyTransactionId: input.moneyTransactionId,
       error: message,
@@ -488,22 +316,15 @@ export async function acceptInvoiceReceiptAccounting(
     }
   }
 
-  // Delivery is attempted OUTSIDE the transaction, as every other effect path
-  // does it: a provider that is slow or down must not hold the commit lock, and
-  // `sweepAccountingDeliveries` is the backstop for anything that never woke up.
-  if (result.glPostingId) {
-    try {
-      await deliverAccountingPosting(db, {
-        organizationId: input.organizationId,
-        glPostingId: result.glPostingId,
-      })
-    } catch (error) {
-      logger.warn('An accepted invoice receipt awaits delivery recovery', {
-        organizationId: input.organizationId,
-        glPostingId: result.glPostingId,
-        error: String(error),
-      })
-    }
-  }
-  return result
+  const lock = await resolvePeriodLock(input.organizationId)
+  return postEntry(db, {
+    organizationId: input.organizationId,
+    entry: prepared.entry,
+    actorUserId: input.actorUserId,
+    lock,
+    memo: `Invoice payment - movement ${input.moneyTransactionId}`,
+    sources: prepared.sources,
+    ...(input.railId ? { railId: input.railId, scope: { rail: input.railId } } : {}),
+    mode: await readAutoPostMode(db, input.organizationId, 'receipt'),
+  })
 }

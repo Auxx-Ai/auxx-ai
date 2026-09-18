@@ -52,7 +52,6 @@ import {
   hasEntityFieldChangeHooks,
   hasFieldTypeChangeHooks,
 } from '../field-hooks/registry'
-import { withAccountingFieldMutation } from '../postings/source-write-guard'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
@@ -118,11 +117,7 @@ export async function createValuesForEntity(
   ctx: FieldValueContext,
   params: SetValuesForEntityInput
 ): Promise<WriteValuesForEntityResult> {
-  return withAccountingFieldMutation(
-    ctx,
-    [{ recordId: params.recordId, fields: params.values, operation: 'set' }],
-    (scoped) => createValuesForEntityUnguarded(scoped, params)
-  )
+  return createValuesForEntityUnguarded(ctx, params)
 }
 
 async function createValuesForEntityUnguarded(

@@ -1,47 +1,37 @@
 // packages/lib/src/data-connectors/sinks/row-level-writes.test.ts
+//
+// The write-guard transaction wrapper (`postings/source-write-guard.ts`) is gone
+// (accounting migration step 1a/1b) — `executeRowLevelWrites` no longer rebinds
+// the handler onto a separate accounting transaction before writing. It just
+// runs the append through the handler and stamps ownership through `ctx.db`,
+// both against whatever connection the caller already threaded through. This
+// pins THAT pipeline: the append happens before the stamp, and the stamp reads
+// `ctx.connector.id` and the freshly-appended value/field off `ctx.db` directly.
 
 import { describe, expect, it, vi } from 'vitest'
 import type { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
+import { executeRowLevelWrites } from './row-level-writes'
 import type { SyncCtx } from './types'
 
-const h = vi.hoisted(() => ({ tx: { update: vi.fn() } }))
-vi.mock('../../postings/source-write-guard', () => ({
-  withAccountingFieldMutation: async (
-    _ctx: unknown,
-    _input: unknown,
-    fn: (ctx: unknown) => unknown
-  ) => fn({ db: h.tx }),
-  AcceptedAccountingSourceError: class extends Error {},
-  recordRejectedAccountingObservation: vi.fn(),
-}))
-vi.mock('../../field-values/field-value-helpers', () => ({
-  createFieldValueContext: (_org: string, _user: unknown, db: unknown) => ({ db }),
-}))
-
-import { executeRowLevelWrites } from './row-level-writes'
-
-describe('transactional connector append', () => {
-  it('binds both the append handler and its ownership stamp to the accounting transaction', async () => {
+describe('row-level append', () => {
+  it('appends through the handler, then stamps ownership through ctx.db', async () => {
     const events: string[] = []
-    const pool = { update: vi.fn() }
-    const txHandler = {
+    const where = vi.fn(async () => {
+      events.push('stamp')
+    })
+    const set = vi.fn(() => ({ where }))
+    const db = { update: vi.fn(() => ({ set })) }
+    const handler = {
       update: vi.fn(async () => {
         events.push('append')
       }),
     }
-    const handler = { update: vi.fn(), withDatabase: vi.fn(() => txHandler) }
-    h.tx.update.mockReturnValue({
-      set: () => ({
-        where: async () => {
-          events.push('stamp')
-        },
-      }),
-    })
+
     await executeRowLevelWrites(
-      { db: pool, orgId: 'org', connector: { id: 'connector' } } as unknown as SyncCtx,
+      { db, orgId: 'org', connector: { id: 'connector' } } as unknown as SyncCtx,
       'def_order',
       handler as unknown as UnifiedCrudHandler,
-      'order',
+      'inst_1',
       [
         {
           kind: 'append',
@@ -57,10 +47,16 @@ describe('transactional connector append', () => {
         },
       ]
     )
-    expect(handler.withDatabase).toHaveBeenCalledWith(h.tx)
-    expect(txHandler.update).toHaveBeenCalledOnce()
-    expect(handler.update).not.toHaveBeenCalled()
-    expect(pool.update).not.toHaveBeenCalled()
+
+    expect(handler.update).toHaveBeenCalledWith(
+      'def_order:inst_1',
+      { order_payment_gateways: ['shopify_payments'] },
+      { order_payment_gateways: 'add' }
+    )
+    expect(db.update).toHaveBeenCalledOnce()
+    expect(set).toHaveBeenCalledWith({ managedByConnectorId: 'connector' })
+    // Ordering matters: the stamp targets the row the append just wrote, so it
+    // must run after, never before or concurrently with it.
     expect(events).toEqual(['append', 'stamp'])
   })
 })

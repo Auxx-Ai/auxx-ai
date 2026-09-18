@@ -21,9 +21,9 @@
 // matched bill entry, `build-entry.ts`), `order` (a fulfillment entry -
 // `build-fulfillment-entry.ts` posts A/R by ORDER, not by invoice; orders
 // carry no due date and settle under the order's own contact/company),
-// `payment_transaction` (a payment or refund, `build-payment-entry.ts` -
-// resolved against the ledger row's own `contactInstanceId`, never the
-// `payment` entity mirror, which refund rows never get) and `journal_entry`
+// `payment_transaction` (a payment or refund, `build-payment-entry.ts` - the
+// sourceType name predates the money model and is unchanged; `sourceId` is a
+// `MoneyTransaction.id`, resolved against its own `partyInstanceId`) and `journal_entry`
 // (a manual or opening entry, which carries no contact). Every one of these
 // is handled; nothing is dropped. A `sourceType` this file does not know
 // about falls into the same "Unapplied and adjustments" catch-all a
@@ -292,7 +292,8 @@ export async function readAging(
           sourceId: line.sourceId,
           debitMinor: 0,
           creditMinor: 0,
-          docNumber: line.docNumber,
+          // Non-null: `POSTED_STATUSES` above always carries a doc number.
+          docNumber: line.docNumber ?? '',
         }
         byDoc.set(key, accum)
       }
@@ -345,16 +346,16 @@ export async function readAging(
         paymentTransactionIds.length > 0
           ? db
               .select({
-                id: schema.PaymentTransaction.id,
-                contactInstanceId: schema.PaymentTransaction.contactInstanceId,
-                reference: schema.PaymentTransaction.reference,
-                kind: schema.PaymentTransaction.kind,
+                id: schema.MoneyTransaction.id,
+                contactInstanceId: schema.MoneyTransaction.partyInstanceId,
+                reference: schema.MoneyTransaction.reference,
+                purpose: schema.MoneyTransaction.purpose,
               })
-              .from(schema.PaymentTransaction)
+              .from(schema.MoneyTransaction)
               .where(
                 and(
-                  eq(schema.PaymentTransaction.organizationId, organizationId),
-                  inArray(schema.PaymentTransaction.id, paymentTransactionIds)
+                  eq(schema.MoneyTransaction.organizationId, organizationId),
+                  inArray(schema.MoneyTransaction.id, paymentTransactionIds)
                 )
               )
           : Promise.resolve([]),
@@ -443,7 +444,8 @@ export async function readAging(
           accum: doc.accum,
           openMinor: doc.openMinor,
           groupId: payment?.contactInstanceId ?? AGING_UNAPPLIED_GROUP_ID,
-          label: payment?.reference || (payment?.kind === 'refund' ? 'Refund' : 'Payment'),
+          label:
+            payment?.reference || (payment?.purpose === 'customer_refund' ? 'Refund' : 'Payment'),
           issuedAt: null,
           dueDate: null,
         }

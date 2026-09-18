@@ -37,6 +37,7 @@ import { getEntityDefIdResolver } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
+import { readAutoPostMode } from '../../postings/auto-post'
 import {
   type BuiltExpenseBillEntry,
   buildExpenseBillEntry,
@@ -278,15 +279,38 @@ export async function postExpenseBill(
   // An org that has never turned the accounting module on is a first-class
   // case, not a degraded one (task 17 §3): the bill still posts as a document,
   // and nothing is claimed, written or logged in the ledger.
+  // `resolveExpenseBill` already refused a bill with no vendor - see there.
+  const vendorCompanyInstanceId = bill.vendorCompanyInstanceId
+  if (!vendorCompanyInstanceId) {
+    throw new BadRequestError(
+      'This vendor bill has no vendor, so its payable has nobody to be owed to.',
+      { vendorBillInstanceId }
+    )
+  }
+
   let post: PostResult
   if (await isAccountingEnabled(db, organizationId)) {
     const lock = await resolvePeriodLock(organizationId)
+    const mode = await readAutoPostMode(db, organizationId, 'expenseBill')
     post = await postEntry(db, {
       organizationId,
       entry: built.entry,
       actorUserId: userId,
       lock,
       memo: `Bill ${bill.number || bill.internalNumber} posted`,
+      mode,
+      sources: [
+        {
+          sourceKind: EXPENSE_BILL_SOURCE_TYPE,
+          sourceId: vendorBillInstanceId,
+          linkRole: 'subject',
+        },
+        {
+          sourceKind: 'company',
+          sourceId: vendorCompanyInstanceId,
+          linkRole: 'counterparty',
+        },
+      ],
     })
   } else {
     post = { status: 'not_enabled' }
@@ -335,7 +359,7 @@ export async function listVendorBillPostings(
 ): Promise<Array<{ glPostingId: string; docNumber: string; status: string; postingType: string }>> {
   const result = await listPostingsForSource(db, {
     organizationId: params.organizationId,
-    sourceType: EXPENSE_BILL_SOURCE_TYPE,
+    sourceKind: EXPENSE_BILL_SOURCE_TYPE,
     sourceId: params.vendorBillInstanceId,
   })
   if (result.isErr()) return []

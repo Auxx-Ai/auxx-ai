@@ -15,6 +15,19 @@ vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: (...a: unknown[]) => getOrganizationSetting(...a),
 }))
 
+// The batch pins its destination, so `sendObject` resolves the connection it
+// was built against before it touches a tool.
+vi.mock('../../../postings/book-connections', () => ({
+  readPinnedAccountingConnection: async () => ({
+    connectionId: 'conn1',
+    bookId: 'book1',
+    credentialId: 'cred1',
+    companyId: 'realm1',
+    providerKey: 'quickbooks',
+    appInstallationId: 'install1',
+  }),
+}))
+
 const resolveQuickbooksContext = vi.fn()
 vi.mock('../invoke-quickbooks-tool', () => ({
   resolveQuickbooksContext: (...a: unknown[]) => resolveQuickbooksContext(...a),
@@ -55,7 +68,7 @@ vi.mock('../upsert-customer', () => ({
   readQuickbooksCustomerFields: (...a: unknown[]) => readQuickbooksCustomerFields(...a),
 }))
 
-import type { PostEntryInput, ResolvedPostingLine } from '../../../postings/types'
+import type { ExportJournalLine, ExportJournalPayload } from '../../../postings/export/payload'
 import { ProviderPostError } from '../../../postings/types'
 import {
   createQuickbooksAccountingProvider,
@@ -66,7 +79,9 @@ import {
 const ORG_ID = 'org1'
 const GL_POSTING_ID = 'glpost1'
 const DOC_NUMBER = 'AUXX-FUL-20260818'
-/** What the core wrote to `GlPosting.requestId` at claim time. No run salt. */
+/** The forensic stamp the batch builder composed. */
+const STAMP = `auxx:gl:fulfillment:2026-08-18:${GL_POSTING_ID}`
+/** Derived from the batch identity by `sendExportBatch`. No run salt. */
 const IDEMPOTENCY_KEY = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
 
 /** The QuickBooks company's chart, in `list_quickbooks_accounts`' own shape. */
@@ -157,38 +172,43 @@ const ACCOUNT_MAP = new Map([
   ['acct_2000', '60'],
 ])
 
-function baseInput(over: Partial<PostEntryInput> = {}): PostEntryInput {
+function baseJournal(over: Partial<ExportJournalPayload> = {}): ExportJournalPayload {
   return {
-    organizationId: ORG_ID,
-    glPostingId: GL_POSTING_ID,
-    revision: 0,
-    postingType: 'fulfillment',
-    periodKey: '2026-08-18',
+    v: 1,
     txnDate: '2026-08-18',
     docNumber: DOC_NUMBER,
-    idempotencyKey: IDEMPOTENCY_KEY,
+    privateNote: STAMP,
+    currency: 'USD',
+    totalMinor: 124999,
     lines: [
       {
         glAccountId: 'acct_1310',
         accountCode: '1310',
         direction: 'debit',
-        amount: 124999,
-        sourceType: 'stock_movement',
-        sourceId: 'mv1',
+        amountMinor: 124999,
         sortOrder: 0,
       },
       {
         glAccountId: 'acct_2160',
         accountCode: '2160',
         direction: 'credit',
-        amount: 124999,
-        sourceType: 'stock_movement',
-        sourceId: 'mv1',
+        amountMinor: 124999,
         sortOrder: 1,
       },
     ],
     ...over,
   }
+}
+
+const CTX = { organizationId: ORG_ID, connectionId: 'conn1' }
+
+/** One send, in the shape the export batch hands the adapter. */
+function send(payload: ExportJournalPayload) {
+  return provider.sendObject(CTX, {
+    objectType: 'journal',
+    payload: payload as unknown as Record<string, unknown>,
+    idempotencyKey: IDEMPOTENCY_KEY,
+  })
 }
 
 /**
@@ -249,7 +269,7 @@ describe('the exported surface', () => {
   it('the factory builds an AccountingProvider without registering it', () => {
     const built = createQuickbooksAccountingProvider()
     expect(built.id).toBe(QUICKBOOKS_PROVIDER_ID)
-    expect(typeof built.postEntry).toBe('function')
+    expect(typeof built.sendObject).toBe('function')
     expect(typeof built.resolveAccount).toBe('function')
   })
 })
@@ -260,12 +280,13 @@ describe('gates - nothing pushed, and neither is an error', () => {
     // `not_connected` is a missing integration. Merging them makes the fix
     // unguessable from the record.
     getOrganizationSetting.mockResolvedValue(false)
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap()).toEqual({
       status: 'disabled',
       externalId: '',
+      remoteVersion: null,
       providerId: 'quickbooks',
     })
     expect(resolveQuickbooksContext).not.toHaveBeenCalled()
@@ -273,7 +294,7 @@ describe('gates - nothing pushed, and neither is an error', () => {
 
   it('stays internal when QuickBooks is not connected', async () => {
     resolveQuickbooksContext.mockResolvedValue({ connected: false })
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect(result._unsafeUnwrap()).toMatchObject({ status: 'not_connected', externalId: '' })
   })
@@ -287,11 +308,12 @@ describe('layer 2 - heal rather than re-post', () => {
       find_quickbooks_journal_entry: () => ({ journalEntries: [{ journalEntryId: '184' }] }),
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect(result._unsafeUnwrap()).toEqual({
-      status: 'healed',
+      status: 'already_exists',
       externalId: '184',
+      remoteVersion: null,
       providerId: 'quickbooks',
     })
     expect(callTool).not.toHaveBeenCalledWith('create_quickbooks_journal_entry', expect.anything())
@@ -303,7 +325,7 @@ describe('layer 2 - heal rather than re-post', () => {
       { realmId: '9341453857213446' }
     )
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect(result._unsafeUnwrap()).toMatchObject({ tenantId: '9341453857213446' })
     expect(callTool).not.toHaveBeenCalledWith('create_quickbooks_journal_entry', expect.anything())
@@ -311,7 +333,7 @@ describe('layer 2 - heal rather than re-post', () => {
 
   it('queries by the docNumber the core minted, not one of its own', async () => {
     const callTool = connect()
-    await provider.postEntry(baseInput({ docNumber: 'AUXX-REV-202607-R1' }))
+    await send(baseJournal({ docNumber: 'AUXX-REV-202607-R1' }))
 
     expect(callTool).toHaveBeenCalledWith('find_quickbooks_journal_entry', {
       docNumber: 'AUXX-REV-202607-R1',
@@ -331,11 +353,12 @@ describe('the happy path', () => {
       { realmId: '9341453857213446' }
     )
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect(result._unsafeUnwrap()).toEqual({
-      status: 'posted',
+      status: 'sent',
       externalId: '201',
+      remoteVersion: null,
       providerId: 'quickbooks',
       tenantId: '9341453857213446',
     })
@@ -346,7 +369,7 @@ describe('the happy path', () => {
       create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }),
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect(result._unsafeUnwrap()).not.toHaveProperty('tenantId')
   })
@@ -356,11 +379,12 @@ describe('the happy path', () => {
       create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }),
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect(result._unsafeUnwrap()).toEqual({
-      status: 'posted',
+      status: 'sent',
       externalId: '201',
+      remoteVersion: null,
       providerId: 'quickbooks',
     })
     expect(callTool).toHaveBeenCalledWith(
@@ -376,29 +400,27 @@ describe('the happy path', () => {
       create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }),
     })
 
-    await provider.postEntry(baseInput())
+    await send(baseJournal())
 
     expect(createCallOf(callTool)).toMatchObject({ requestId: IDEMPOTENCY_KEY })
   })
 
-  it('layer 4 - stamps the forensic PrivateNote', async () => {
+  it('layer 4 - passes the forensic PrivateNote through verbatim', async () => {
     const callTool = connect({
       create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }),
     })
 
-    await provider.postEntry(baseInput())
+    await send(baseJournal())
 
-    expect(createCallOf(callTool)?.privateNote).toBe(
-      `auxx:gl:fulfillment:2026-08-18:${GL_POSTING_ID}`
-    )
+    expect(createCallOf(callTool)?.privateNote).toBe(STAMP)
   })
 
-  it('appends an entry memo after the stamp, never in front of it', async () => {
+  it('carries a memo the builder appended after the stamp', async () => {
     const callTool = connect({
       create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }),
     })
 
-    await provider.postEntry(baseInput({ memo: 'August fulfillment summary' }))
+    await send(baseJournal({ privateNote: `${STAMP} August fulfillment summary` }))
 
     expect(createCallOf(callTool)?.privateNote).toBe(
       `auxx:gl:fulfillment:2026-08-18:${GL_POSTING_ID} August fulfillment summary`
@@ -410,7 +432,7 @@ describe('the happy path', () => {
       create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }),
     })
 
-    await provider.postEntry(baseInput())
+    await send(baseJournal())
 
     expect(createCallOf(callTool)?.lines).toEqual([
       {
@@ -433,7 +455,7 @@ describe('the happy path', () => {
       create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }),
     })
 
-    await provider.postEntry(baseInput())
+    await send(baseJournal())
 
     const chartCalls = callTool.mock.calls.filter(([id]) => id === 'list_quickbooks_accounts')
     expect(chartCalls).toHaveLength(1)
@@ -460,9 +482,9 @@ describe('the happy path', () => {
       ])
     )
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
-    expect(result._unsafeUnwrap()).toMatchObject({ status: 'posted', externalId: '201' })
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'sent', externalId: '201' })
     expect(createCallOf(callTool)?.lines).toContainEqual({
       amountMinor: 124999,
       postingType: 'Debit',
@@ -481,19 +503,18 @@ describe('the happy path', () => {
 
 /** A balanced two-line entry: one A/R or A/P leg, one plain offsetting leg. */
 function counterpartyInput(
-  over: Partial<PostEntryInput>,
-  receivableLine: ResolvedPostingLine
-): PostEntryInput {
-  return baseInput({
+  over: Partial<ExportJournalPayload>,
+  receivableLine: ExportJournalLine
+): ExportJournalPayload {
+  return baseJournal({
+    totalMinor: receivableLine.amountMinor,
     lines: [
       receivableLine,
       {
         glAccountId: 'acct_2160',
         accountCode: '2160',
         direction: receivableLine.direction === 'debit' ? 'credit' : 'debit',
-        amount: receivableLine.amount,
-        sourceType: receivableLine.sourceType,
-        sourceId: receivableLine.sourceId,
+        amountMinor: receivableLine.amountMinor,
         sortOrder: 1,
       },
     ],
@@ -514,18 +535,15 @@ describe('the counterparty (brief 13 §1)', () => {
         glAccountId: 'acct_1100',
         accountCode: '1100',
         direction: 'debit',
-        amount: 50_000,
-        sourceType: 'invoice',
-        sourceId: 'inv_1',
+        amountMinor: 50_000,
         sortOrder: 0,
-        counterpartyType: 'customer',
-        counterpartyId: 'contact_1',
+        counterparty: { type: 'customer', id: 'contact_1' },
       }
     )
 
-    const result = await provider.postEntry(input)
+    const result = await send(input)
 
-    expect(result._unsafeUnwrap()).toMatchObject({ status: 'posted', externalId: '301' })
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'sent', externalId: '301' })
     expect(readQuickbooksIdField).toHaveBeenCalledWith(
       expect.objectContaining({ appFieldKey: 'qboCustomerId', recordId: 'contact:contact_1' })
     )
@@ -554,18 +572,15 @@ describe('the counterparty (brief 13 §1)', () => {
         glAccountId: 'acct_1100',
         accountCode: '1100',
         direction: 'debit',
-        amount: 50_000,
-        sourceType: 'invoice',
-        sourceId: 'inv_1',
+        amountMinor: 50_000,
         sortOrder: 0,
-        counterpartyType: 'customer',
-        counterpartyId: 'contact_1',
+        counterparty: { type: 'customer', id: 'contact_1' },
       }
     )
 
-    const result = await provider.postEntry(input)
+    const result = await send(input)
 
-    expect(result._unsafeUnwrap()).toMatchObject({ status: 'posted', externalId: '410' })
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'sent', externalId: '410' })
     expect(upsertQuickbooksCustomer).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ contactInstanceId: 'contact_1' })
@@ -592,16 +607,13 @@ describe('the counterparty (brief 13 §1)', () => {
         glAccountId: 'acct_1100',
         accountCode: '1100',
         direction: 'debit',
-        amount: 50_000,
-        sourceType: 'invoice',
-        sourceId: 'inv_1',
+        amountMinor: 50_000,
         sortOrder: 0,
-        counterpartyType: 'customer',
-        counterpartyId: 'contact_1',
+        counterparty: { type: 'customer', id: 'contact_1' },
       }
     )
 
-    const result = await provider.postEntry(input)
+    const result = await send(input)
     const error = result._unsafeUnwrapErr() as ProviderPostError
 
     expect(error.failureClass).toBe('configuration')
@@ -622,43 +634,36 @@ describe('the counterparty (brief 13 §1)', () => {
       }
     )
 
-    const input = baseInput({
+    const input = baseJournal({
+      totalMinor: 50_000,
       lines: [
         {
           glAccountId: 'acct_1100',
           accountCode: '1100',
           direction: 'debit',
-          amount: 30_000,
-          sourceType: 'invoice',
-          sourceId: 'inv_1',
+          amountMinor: 30_000,
           sortOrder: 0,
-          counterpartyType: 'customer',
-          counterpartyId: 'contact_1',
+          counterparty: { type: 'customer', id: 'contact_1' },
         },
         {
           glAccountId: 'acct_1100',
           accountCode: '1100',
           direction: 'debit',
-          amount: 20_000,
-          sourceType: 'invoice',
-          sourceId: 'inv_2',
+          amountMinor: 20_000,
           sortOrder: 1,
-          counterpartyType: 'customer',
-          counterpartyId: 'contact_2',
+          counterparty: { type: 'customer', id: 'contact_2' },
         },
         {
           glAccountId: 'acct_2160',
           accountCode: '2160',
           direction: 'credit',
-          amount: 50_000,
-          sourceType: 'invoice',
-          sourceId: 'inv_1',
+          amountMinor: 50_000,
           sortOrder: 2,
         },
       ],
     })
 
-    const result = await provider.postEntry(input)
+    const result = await send(input)
     const error = result._unsafeUnwrapErr() as ProviderPostError
 
     expect(error.message).toContain('cannot resolve contact_1')
@@ -675,14 +680,12 @@ describe('the counterparty (brief 13 §1)', () => {
         glAccountId: 'acct_1100',
         accountCode: '1100',
         direction: 'debit',
-        amount: 50_000,
-        sourceType: 'invoice',
-        sourceId: 'inv_1',
+        amountMinor: 50_000,
         sortOrder: 0,
       }
     )
 
-    const result = await provider.postEntry(input)
+    const result = await send(input)
     const error = result._unsafeUnwrapErr() as ProviderPostError
 
     expect(error.failureClass).toBe('configuration')
@@ -698,9 +701,9 @@ describe('the counterparty (brief 13 §1)', () => {
 
     // The ordinary happy-path fixture: neither `acct_1310` nor `acct_2160`
     // carries a receivable or payable subtype.
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
-    expect(result._unsafeUnwrap()).toMatchObject({ status: 'posted', externalId: '302' })
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'sent', externalId: '302' })
     expect(readQuickbooksIdField).not.toHaveBeenCalled()
     expect(
       createCallOf(callTool)?.lines.every((l: { entity?: unknown }) => l.entity === undefined)
@@ -720,16 +723,13 @@ describe('the counterparty (brief 13 §1)', () => {
         glAccountId: 'acct_2000',
         accountCode: '2000',
         direction: 'credit',
-        amount: 50_000,
-        sourceType: 'vendor_bill',
-        sourceId: 'vb_1',
+        amountMinor: 50_000,
         sortOrder: 0,
-        counterpartyType: 'vendor',
-        counterpartyId: 'company_1',
+        counterparty: { type: 'vendor', id: 'company_1' },
       }
     )
 
-    const result = await provider.postEntry(input)
+    const result = await send(input)
     const error = result._unsafeUnwrapErr() as ProviderPostError
 
     expect(error.failureClass).toBe('configuration')
@@ -761,11 +761,12 @@ describe('the duplicate-document-number net', () => {
       },
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect(result._unsafeUnwrap()).toEqual({
-      status: 'already_posted',
+      status: 'already_exists',
       externalId: '312',
+      remoteVersion: null,
       providerId: 'quickbooks',
     })
     const creates = callTool.mock.calls.filter(([id]) => id === 'create_quickbooks_journal_entry')
@@ -777,7 +778,7 @@ describe('the duplicate-document-number net', () => {
       create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }),
     })
 
-    await provider.postEntry(baseInput())
+    await send(baseJournal())
 
     expect(JSON.stringify(callTool.mock.calls)).not.toContain('allowduplicatedocnum')
   })
@@ -791,7 +792,7 @@ describe('the duplicate-document-number net', () => {
       },
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
     const error = result._unsafeUnwrapErr() as ProviderPostError
 
     expect(error.failureClass).toBe('data')
@@ -809,9 +810,9 @@ describe('the duplicate-document-number net', () => {
       },
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
-    expect(result._unsafeUnwrap()).toMatchObject({ status: 'already_posted', externalId: '404' })
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'already_exists', externalId: '404' })
   })
 })
 
@@ -823,7 +824,7 @@ describe('failure classification', () => {
       },
     })
 
-    await expect(provider.postEntry(baseInput())).resolves.toBeDefined()
+    await expect(send(baseJournal())).resolves.toBeDefined()
   })
 
   it('fault 2300 (imbalance) is data and is not retryable', async () => {
@@ -835,7 +836,7 @@ describe('failure classification', () => {
       },
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
     const error = result._unsafeUnwrapErr() as ProviderPostError
 
     expect(error).toBeInstanceOf(ProviderPostError)
@@ -855,7 +856,7 @@ describe('failure classification', () => {
       },
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
     const error = result._unsafeUnwrapErr() as ProviderPostError
 
     expect(error.failureClass).toBe('transport')
@@ -871,7 +872,7 @@ describe('failure classification', () => {
       },
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect((result._unsafeUnwrapErr() as ProviderPostError).failureClass).toBe('transport')
   })
@@ -883,7 +884,7 @@ describe('failure classification', () => {
       },
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect((result._unsafeUnwrapErr() as ProviderPostError).failureClass).toBe('transport')
   })
@@ -898,7 +899,7 @@ describe('failure classification', () => {
       },
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
     const error = result._unsafeUnwrapErr() as ProviderPostError
 
     expect(error.failureClass).toBe('configuration')
@@ -912,7 +913,7 @@ describe('failure classification', () => {
       },
     })
 
-    await provider.postEntry(baseInput())
+    await send(baseJournal())
 
     const finds = callTool.mock.calls.filter(([id]) => id === 'find_quickbooks_journal_entry')
     expect(finds).toHaveLength(1)
@@ -932,7 +933,7 @@ describe('failure classification', () => {
       },
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
     const error = result._unsafeUnwrapErr() as ProviderPostError
 
     expect(error.failureClass).toBe('data')
@@ -949,7 +950,7 @@ describe('failure classification', () => {
       },
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect((result._unsafeUnwrapErr() as ProviderPostError).failureClass).toBe('transport')
   })
@@ -964,7 +965,7 @@ describe('failure classification', () => {
       },
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect((result._unsafeUnwrapErr() as ProviderPostError).failureClass).toBe('transport')
   })
@@ -976,7 +977,7 @@ describe('failure classification', () => {
       },
     })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect((result._unsafeUnwrapErr() as ProviderPostError).failureClass).toBe('data')
   })
@@ -984,7 +985,7 @@ describe('failure classification', () => {
   it('errors rather than claiming success when no id comes back', async () => {
     connect({ create_quickbooks_journal_entry: () => ({ journalEntry: {} }) })
 
-    const result = await provider.postEntry(baseInput())
+    const result = await send(baseJournal())
 
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toContain('no journal entry id')
@@ -1057,25 +1058,22 @@ describe('resolveAccount - the only place a code becomes a provider id', () => {
   it('an unresolvable line code fails the post as configuration, before anything is sent', async () => {
     const callTool = connect()
 
-    const result = await provider.postEntry(
-      baseInput({
+    const result = await send(
+      baseJournal({
+        totalMinor: 100,
         lines: [
           {
             glAccountId: 'acct_1310',
             accountCode: '1310',
             direction: 'debit',
-            amount: 100,
-            sourceType: 'vendor_bill',
-            sourceId: 'b1',
+            amountMinor: 100,
             sortOrder: 0,
           },
           {
             glAccountId: 'acct_5090',
             accountCode: '5090',
             direction: 'credit',
-            amount: 100,
-            sourceType: 'vendor_bill',
-            sourceId: 'b1',
+            amountMinor: 100,
             sortOrder: 1,
           },
         ],

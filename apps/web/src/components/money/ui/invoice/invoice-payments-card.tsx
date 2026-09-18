@@ -62,34 +62,15 @@ export function InvoicePaymentsCard({ recordId }: DrawerTabProps) {
     onError: (error) => toastError({ title: 'Error deleting payment', description: error.message }),
   })
 
-  const refundTransaction = api.money.refundTransaction.useMutation({
-    onSuccess: () => {
-      void utils.money.listPayments.invalidate({ invoiceRecordId: recordId })
-    },
-    onError: (error) =>
-      toastError({ title: 'Error refunding payment', description: error.message }),
-  })
-
   const handleDelete = async (transactionId: string) => {
     const confirmed = await confirm({
-      title: 'Delete this payment?',
+      title: 'Void this payment?',
       description: 'Invoice balance will be recalculated.',
-      confirmText: 'Delete',
+      confirmText: 'Void',
       cancelText: 'Cancel',
       destructive: true,
     })
     if (confirmed) deletePayment.mutate({ transactionId })
-  }
-
-  const handleRefund = async (transactionId: string) => {
-    const confirmed = await confirm({
-      title: 'Refund this payment in full?',
-      description: 'The platform fee is refunded too.',
-      confirmText: 'Refund',
-      cancelText: 'Cancel',
-      destructive: true,
-    })
-    if (confirmed) refundTransaction.mutate({ transactionId })
   }
 
   const canRecordPayment = status !== 'void' && balance > 0
@@ -119,9 +100,7 @@ export function InvoicePaymentsCard({ recordId }: DrawerTabProps) {
         currencyCode={currencyCode}
         isAdmin={isAdmin}
         onDelete={handleDelete}
-        onRefund={handleRefund}
         deletePending={deletePayment.isPending}
-        refundPending={refundTransaction.isPending}
       />
 
       {amountCredited > 0 && (

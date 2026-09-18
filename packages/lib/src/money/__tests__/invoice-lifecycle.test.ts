@@ -18,7 +18,7 @@ const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   getFieldValues: vi.fn(),
   setValuesForEntity: vi.fn(),
-  hasSucceededCharges: vi.fn(),
+  listInvoiceMoneyPayments: vi.fn(),
   listInvoiceAllocations: vi.fn(),
   postInvoiceIssuance: vi.fn(),
   reverseInvoiceIssuance: vi.fn(),
@@ -77,7 +77,9 @@ vi.mock('../billing-projection', () => ({
   syncInvoiceBillingProjection: vi.fn(),
   syncWorkOrderBillingProjection: vi.fn(),
 }))
-vi.mock('../payments/ledger', () => ({ hasSucceededCharges: h.hasSucceededCharges }))
+vi.mock('../invoices/payment-reads', () => ({
+  listInvoiceMoneyPayments: h.listInvoiceMoneyPayments,
+}))
 vi.mock('../invoices/post-invoice', () => ({
   postInvoiceIssuance: h.postInvoiceIssuance,
   reverseInvoiceIssuance: h.reverseInvoiceIssuance,
@@ -143,7 +145,7 @@ beforeEach(() => {
     h.calls.push('reverse-issuance')
     return null
   })
-  h.hasSucceededCharges.mockResolvedValue(false)
+  h.listInvoiceMoneyPayments.mockResolvedValue([])
   h.listInvoiceAllocations.mockResolvedValue({
     lineAllocations: [],
     visitAllocations: [],
@@ -223,9 +225,22 @@ describe('voidInvoice', () => {
     expect(writtenValues()).toEqual([{ fieldId: 'invoice_status', value: 'void' }])
   })
 
-  it('refuses while a succeeded payment exists', async () => {
+  it('refuses while a recorded payment exists', async () => {
     wireInvoice('sent')
-    h.hasSucceededCharges.mockResolvedValue(true)
+    h.listInvoiceMoneyPayments.mockResolvedValue([
+      {
+        id: 'mt-1',
+        amount: 100,
+        kind: 'charge',
+        status: 'succeeded',
+        date: '2026-01-01',
+        method: null,
+        reference: null,
+        note: null,
+        provider: 'money',
+        allocatedAmount: 100,
+      },
+    ])
     await expect(
       voidInvoice({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
     ).rejects.toThrow(BadRequestError)

@@ -7,6 +7,7 @@ import {
   computeWorkOrderBillingProjection,
   syncWorkOrderBillingProjection,
 } from './billing-projection'
+import { sumWorkOrderDeposits } from './checkout/reads'
 import type { BillingInstallmentInput, SaveBillingInstallmentsInput } from './types'
 
 function validateRow(row: BillingInstallmentInput): void {
@@ -50,20 +51,14 @@ function resolveRows(rows: BillingInstallmentInput[], contractValue: number, tar
   return resolved
 }
 
-async function heldDepositAmount(db: Database, organizationId: string, workOrderId: string) {
-  const rows = await db.query.PaymentTransaction.findMany({
-    where: and(
-      eq(schema.PaymentTransaction.organizationId, organizationId),
-      eq(schema.PaymentTransaction.workOrderInstanceId, workOrderId),
-      eq(schema.PaymentTransaction.status, 'succeeded')
-    ),
-    columns: { amount: true, invoiceInstanceId: true, kind: true },
-  })
-  return rows.reduce(
-    (sum, row) =>
-      row.invoiceInstanceId === null && row.kind === 'charge' ? sum + row.amount : sum,
-    0
-  )
+/** Integer minor units still held (unapplied) against this job's quote deposits. */
+async function heldDepositAmount(
+  db: Database,
+  organizationId: string,
+  workOrderId: string
+): Promise<number> {
+  const { heldMinor } = await sumWorkOrderDeposits(db, organizationId, workOrderId)
+  return heldMinor
 }
 
 /** Replace pending installments while preserving drafted and issued schedule history. */

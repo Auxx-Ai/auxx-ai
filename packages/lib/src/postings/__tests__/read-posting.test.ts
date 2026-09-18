@@ -42,13 +42,9 @@ interface PostingRow {
   reversesId: string | null
   currency: string
   totalMinor: number
-  draft: unknown
-  providerId: string | null
-  providerEntryId: string | null
+  built: unknown
   postedAt: Date | null
   postedByUserId: string | null
-  failureReason: string | null
-  attempts: number
   createdAt: Date
 }
 
@@ -171,13 +167,9 @@ const POSTING: PostingRow = {
   reversesId: null,
   currency: 'USD',
   totalMinor: 250_000,
-  draft: DRAFT,
-  providerId: 'quickbooks',
-  providerEntryId: 'qbo_991',
+  built: DRAFT,
   postedAt: new Date('2026-09-01T04:12:00.000Z'),
   postedByUserId: 'usr_1',
-  failureReason: null,
-  attempts: 1,
   createdAt: new Date('2026-09-01T04:11:59.000Z'),
 }
 
@@ -218,11 +210,7 @@ describe('getPosting - the header', () => {
       revision: 0,
       reversesId: null,
       currency: 'USD',
-      providerId: 'quickbooks',
-      providerEntryId: 'qbo_991',
       postedByUserId: 'usr_1',
-      failureReason: null,
-      attempts: 1,
       lines: [],
     })
   })
@@ -241,25 +229,13 @@ describe('getPosting - the header', () => {
 
   it('returns nulls as nulls rather than as undefined', async () => {
     const stub = stubDb({
-      postings: [
-        {
-          ...POSTING,
-          providerId: null,
-          providerEntryId: null,
-          postedAt: null,
-          postedByUserId: null,
-          failureReason: 'QuickBooks said 6140',
-        },
-      ],
+      postings: [{ ...POSTING, postedAt: null, postedByUserId: null }],
       lines: [],
     })
     const detail = (await getPosting(stub.db, ORG, 'gp_1'))._unsafeUnwrap()
 
-    expect(detail.providerId).toBeNull()
-    expect(detail.providerEntryId).toBeNull()
     expect(detail.postedAt).toBeNull()
     expect(detail.postedByUserId).toBeNull()
-    expect(detail.failureReason).toBe('QuickBooks said 6140')
   })
 
   // 🛑 The header's own recorded total, never SUM(lines). If the two disagree
@@ -424,7 +400,7 @@ describe('getPosting - the stored draft', () => {
   // that could refuse a legacy row.
   it('does not parse or validate the envelope', async () => {
     const junk = { v: 99, nothing: 'the schema recognises' }
-    const stub = stubDb({ postings: [{ ...POSTING, draft: junk }], lines: [] })
+    const stub = stubDb({ postings: [{ ...POSTING, built: junk }], lines: [] })
     const result = await getPosting(stub.db, ORG, 'gp_1')
 
     expect(result.isOk()).toBe(true)

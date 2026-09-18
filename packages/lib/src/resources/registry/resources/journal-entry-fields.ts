@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import { JournalEntryKind, JournalEntryStatus } from '../enum-values'
+import { JournalEntryKind } from '../enum-values'
 import type { ResourceField } from '../field-types'
 
 /**
@@ -43,11 +43,15 @@ import type { ResourceField } from '../field-types'
  * `sourceType: 'journal_entry'` and `sourceId` = this record's id, which is
  * what `ledger.listPostingsForSource` reads.
  *
- * 🛑 **`lines` is the draft's lines, never the posted entry's.** Once
- * `glPostingId` is set, the ledger is the authority and this JSON is a record of
- * what was typed. It stays editable only while `status = 'draft'`;
- * `updateJournalEntry` refuses otherwise, because an entry is corrected by
- * REVERSAL and never by edit (ground rule 6).
+ * 🛑 **This record is a POINTER, not a store.** TARGET §1: `glPostingId` is set
+ * the moment the draft is raised - `createJournalEntry` writes the companion
+ * draft `GlPosting` in the same call - and both the lines and the status live
+ * there from then on. There is no `journal_entry_lines` or `journal_entry_status`
+ * field; `postings/journal-entries/reads.ts` reads both off the linked
+ * `GlPosting` row. `updateJournalEntry` edits the draft's lines through
+ * `postings/draft-lines.ts`'s `updateDraftLines`, which refuses anything but a
+ * `draft` posting, because an entry is corrected by REVERSAL and never by edit
+ * (ground rule 6).
  *
  * Hidden system entity (`isVisible: false`), like `gl_account` beside it: the
  * ledger page and the JE drawer are the doors, and an auto-linked sidebar entry
@@ -152,32 +156,6 @@ export const JOURNAL_ENTRY_FIELDS: Record<string, ResourceField> = {
     description: 'Why this entry was made - carried onto every line that has no memo of its own',
   },
 
-  status: {
-    id: toFieldId('status'),
-    key: 'status',
-    label: 'Status',
-    type: BaseType.ENUM,
-    fieldType: FieldType.SINGLE_SELECT,
-    isSystem: true,
-    systemAttribute: 'journal_entry_status',
-    systemSortOrder: 'a4',
-    nullable: false,
-    defaultValue: JournalEntryStatus.DRAFT,
-    options: { options: JournalEntryStatus.values },
-    // Written by `postJournalEntry` / `reverseJournalEntry`, never by a person:
-    // the status is a REPORT of what the ledger did, and a hand-set `posted` on
-    // a record with no `glPostingId` is a claim nothing backs.
-    showInDialogs: false,
-    capabilities: {
-      filterable: true,
-      sortable: true,
-      creatable: false,
-      updatable: true,
-      configurable: false,
-    },
-    description: 'Draft until posted; reversed once a second, opposite entry backs it out',
-  },
-
   kind: {
     id: toFieldId('kind'),
     key: 'kind',
@@ -201,40 +179,6 @@ export const JOURNAL_ENTRY_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     description: 'What this entry is - an adjustment, the opening trial balance, or a template',
-  },
-
-  lines: {
-    id: toFieldId('lines'),
-    key: 'lines',
-    label: 'Lines',
-    type: BaseType.JSON,
-    fieldType: FieldType.JSON,
-    isSystem: true,
-    systemAttribute: 'journal_entry_lines',
-    systemSortOrder: 'a6',
-    nullable: true,
-    // JSON on the record rather than a `journal_entry_line` child entity, and
-    // the `inbox_settings` precedent is the shape. Two reasons, both about what
-    // a draft IS:
-    //
-    // 1. A draft's lines have no independent identity - nothing links to them,
-    //    nothing reports on them, and they are replaced wholesale on every save.
-    //    A child entity would add N EntityInstances and 4N FieldValues per
-    //    saved keystroke for rows nobody addresses.
-    // 2. The POSTED lines are already normalised, in `GlPostingLine`, which is
-    //    the table every report reads. A second normalised copy would be two
-    //    sources of truth for what the entry says.
-    showInPanel: false,
-    showInDialogs: false,
-    capabilities: {
-      filterable: false,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description:
-      'The draft lines - account code, direction, amount in minor units, memo. Replaced wholesale on save',
   },
 
   attachment: {

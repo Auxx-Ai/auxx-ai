@@ -240,7 +240,7 @@ describe('the core', () => {
   // every one of these is reachable by an ENABLED posting type on any org that
   // sends an invoice, takes a payment, ships an order, issues a credit memo or
   // writes something off. Exact set.
-  it('carries exactly the ten roles every org can reach', () => {
+  it('carries exactly the eleven roles every org can reach', () => {
     expect([...rolesOf('core')].sort()).toEqual(
       [
         ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
@@ -248,6 +248,9 @@ describe('the core', () => {
         ACCOUNT_ROLES.ACCOUNTS_PAYABLE,
         ACCOUNT_ROLES.SALES_TAX_PAYABLE,
         ACCOUNT_ROLES.EQUITY_RETAINED_EARNINGS,
+        // MIGRATION step 5: the opening STOCK run raises inventory against 3900
+        // by ROLE, so the account carries one again.
+        ACCOUNT_ROLES.EQUITY_OPENING_BALANCE,
         ACCOUNT_ROLES.REVENUE_PRODUCT,
         ACCOUNT_ROLES.REVENUE_SHIPPING,
         ACCOUNT_ROLES.REVENUE_SERVICE,
@@ -425,9 +428,9 @@ describe('the other packs', () => {
     // but arithmetic. The five that were arguable when the packs were declared
     // are still pinned by code; the "no new roles" half is the test below.
     // `6105 Merchant Fees - Affirm` was in this list until 2026-09-10, when it
-    // left the chart with `1210` and the `clearing_affirm` role. `2300` and
-    // `3900` took its place: both kept their ACCOUNT and lost their role.
-    for (const code of ['1000', '3000', '5010', '5030', '2300', '3900']) {
+    // left the chart with `1210` and the `clearing_affirm` role. `2300` took its
+    // place; `3900` was here too until step 5 gave it the opening-balance role.
+    for (const code of ['1000', '3000', '5010', '5030', '2300']) {
       expect(byCode.get(code)?.role, code).toBeUndefined()
     }
     const packsWithRoleless = new Set(

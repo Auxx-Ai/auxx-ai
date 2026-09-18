@@ -1,14 +1,15 @@
 // packages/lib/src/events/handlers/passes/__tests__/fulfillment-relief-trigger.test.ts
 
 /**
- * The relief half of pass 6 (`plans/money/tasks/50-batch-inventory-relief.md`
- * §1.4's sync door). `fulfillment-posting-trigger.test.ts` next door already
- * pins `fulfillmentsArrivedThisSync`'s membership contract; this file is
- * about what `fulfillmentPostingTriggerPass` does with a `fulfillment` OR
- * `fulfillment_line` arrival once relief is wired onto the same signal -
- * every lazily-imported collaborator (`reconcilers/parent-reconciler`,
- * `money/fulfillments`, `relief`, `cache`, and the unrelated posting trigger)
- * is mocked, since each has its own tests.
+ * Pass 6 (`plans/money/tasks/50-batch-inventory-relief.md` §1.4's sync door).
+ * `fulfillment-posting-trigger.test.ts` next door already pins
+ * `fulfillmentsArrivedThisSync`'s membership contract; this file is about
+ * what `fulfillmentPostingTriggerPass` does with a `fulfillment` OR
+ * `fulfillment_line` arrival - relief only, now that the posting half is gone
+ * (step 1b, TARGET §1: a native shipment posts inside `fulfill.ts`'s own
+ * write) - every lazily-imported collaborator (`reconcilers/parent-reconciler`,
+ * `money/fulfillments`, `relief`, `cache`) is mocked, since each has its own
+ * tests.
  */
 
 import type { RecordId } from '@auxx/types/resource'
@@ -16,7 +17,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SyncChangeManifest } from '../../../../record-rules/sync-manifest-types'
 
 const h = vi.hoisted(() => ({
-  autoPostFulfillmentsAfterSync: vi.fn(async () => {}),
   resolveParentsByRelation: vi.fn(async (_orgId: string, attribute: string, childIds: string[]) => {
     const relations: Record<string, Record<string, string>> = {
       fulfillment_line_fulfillment: { line_1: 'ful_1' },
@@ -41,10 +41,6 @@ const h = vi.hoisted(() => ({
       })
     }
   ),
-}))
-
-vi.mock('../../../../money/fulfillment-posting/auto', () => ({
-  autoPostFulfillmentsAfterSync: h.autoPostFulfillmentsAfterSync,
 }))
 
 vi.mock('../../../../reconcilers/parent-reconciler', () => ({
@@ -129,7 +125,6 @@ describe('fulfillmentPostingTriggerPass - inventory relief', () => {
     const m = manifest({ createdRecordIds: [`${ORDER_DEF}:ord_1` as RecordId] })
     await fulfillmentPostingTriggerPass({} as never, ORG, m, resolveDef)
     expect(h.relieveFulfillmentLines).not.toHaveBeenCalled()
-    expect(h.autoPostFulfillmentsAfterSync).not.toHaveBeenCalled()
   })
 
   it('relieves every live line of the order when a fulfillment arrives', async () => {
@@ -142,7 +137,6 @@ describe('fulfillmentPostingTriggerPass - inventory relief', () => {
 
     await fulfillmentPostingTriggerPass({} as never, ORG, m, resolveDef)
 
-    expect(h.autoPostFulfillmentsAfterSync).toHaveBeenCalledTimes(1)
     expect(h.relieveFulfillmentLines).toHaveBeenCalledTimes(1)
     const [, input] = h.relieveFulfillmentLines.mock.calls[0]!
     expect(input).toEqual({
@@ -151,6 +145,8 @@ describe('fulfillmentPostingTriggerPass - inventory relief', () => {
       lines: [
         {
           fulfillmentLineId: 'line_1',
+          fulfillmentId: 'ful_1',
+          orderId: 'ord_1',
           lineItemId: 'li_1',
           quantity: 3,
           quantityRelieved: null,
@@ -173,8 +169,6 @@ describe('fulfillmentPostingTriggerPass - inventory relief', () => {
     await fulfillmentPostingTriggerPass({} as never, ORG, m, resolveDef)
 
     expect(h.relieveFulfillmentLines).toHaveBeenCalledTimes(1)
-    // Not gated on a fulfillment record arriving - only a line did.
-    expect(h.autoPostFulfillmentsAfterSync).not.toHaveBeenCalled()
   })
 
   it('excludes a cancelled fulfillment - never relieves a dispatch that did not ship', async () => {
@@ -193,8 +187,8 @@ describe('fulfillmentPostingTriggerPass - inventory relief', () => {
     expect(h.relieveFulfillmentLines).not.toHaveBeenCalled()
   })
 
-  it('a relief failure does not stop the posting trigger, and vice versa', async () => {
-    h.autoPostFulfillmentsAfterSync.mockRejectedValue(new Error('posting boom'))
+  it('a relief failure is logged and swallowed rather than thrown', async () => {
+    h.relieveFulfillmentLines.mockRejectedValue(new Error('relief boom'))
     h.fulfillments.set('ord_1', [
       liveFulfillment('ful_1', [
         { id: 'line_1', lineItemId: 'li_1', quantity: 3, quantityRelieved: null },

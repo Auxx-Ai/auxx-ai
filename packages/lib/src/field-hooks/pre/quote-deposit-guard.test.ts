@@ -8,6 +8,9 @@
 // not be true, so it returned early on every write and a paid quote could be edited back to
 // draft, orphaning the deposit charge it was built to protect.
 //
+// The deposit itself is now a `MoneyTransaction` held against the quote, read through
+// `hasQuoteDeposit`; the shapes this file pins are the guard's, not the ledger's.
+//
 // The trap is that a unit test feeding a bare string passes against BOTH the broken and the
 // fixed version. So the rejection case here feeds the coerced envelope, and the bare-string
 // case exists only to prove the fix did not trade one shape for the other.
@@ -16,16 +19,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({ findFirst: vi.fn() }))
 
-vi.mock('@auxx/database', () => ({
-  database: { query: { PaymentTransaction: { findFirst: h.findFirst } } },
-  schema: {
-    PaymentTransaction: {
-      organizationId: 'organizationId',
-      quoteInstanceId: 'quoteInstanceId',
-      kind: 'kind',
-      status: 'status',
-    },
-  },
+vi.mock('../../money/checkout/reads', () => ({
+  hasQuoteDeposit: (...args: unknown[]) => h.findFirst(...args).then(Boolean),
 }))
 
 const { BadRequestError } = await import('../../errors')

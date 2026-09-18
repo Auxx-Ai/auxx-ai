@@ -3,7 +3,7 @@
 import { type Database, schema, type Transaction, withAccountingCommitLock } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { BadRequestError, ConflictError } from '../../errors'
-import { accountingBasisHash } from '../../postings/effect-basis'
+import { accountingBasisHash } from '../../postings/basis-hash'
 import { flushTxWriteScope } from '../../resources/crud/tx-write-flush'
 import { runInTxWrite } from '../../resources/crud/tx-write-scope'
 import { runWithWriteDb } from '../../resources/crud/write-session-als'
@@ -25,6 +25,13 @@ export interface MoneyCommandInput {
   kind: string
   /** Anything hashable. Only its hash is stored. */
   payload: unknown
+  /**
+   * Extra facts merged into `actorSnapshot`, for callers with nothing more
+   * durable to name them by - e.g. `refundCreditMemoToCard`'s `stripeRefundId`.
+   * A fact another row can hold as a real column (a quote deposit's
+   * `MoneyTransaction.quoteInstanceId`) belongs there instead (MIGRATION follow-up 7).
+   */
+  actorContext?: Record<string, string>
 }
 
 export interface MoneyCommandOptions {
@@ -43,8 +50,7 @@ export interface MoneyCommandOptions {
  * everything that hangs off them. It was extracted verbatim from
  * `credit-memos/command.ts`'s `runCreditCommand`, which had been the de-facto
  * runner for non-credit work for some time — the legacy payments lane called it
- * for refunds (`payments/stripe-rail.ts`, `payments/ledger.ts`) — while its name
- * and its error strings claimed otherwise.
+ * for refunds too — while its name and its error strings claimed otherwise.
  *
  * ## 🔑 Why the command row exists at all
  *
@@ -100,7 +106,7 @@ export async function runMoneyCommand<T extends Record<string, string>>(
             commandKey: input.commandKey,
             kind: input.kind,
             payloadHash,
-            actorSnapshot: { userId: input.userId },
+            actorSnapshot: { userId: input.userId, ...input.actorContext },
           })
           .returning({ id: schema.MoneyCommand.id })
         if (!command) throw new Error('Money command insert returned no row')

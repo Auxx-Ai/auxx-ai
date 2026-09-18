@@ -87,20 +87,14 @@ export interface IntegrityPassesInput {
  *    keeps a build for 3 forever.
  * 5. Contact/company interaction resolution: every created or identifier-touched
  *    contact and company gets the correspondence history it already has.
- * 6. Fulfillment posting trigger (`passes/fulfillment-log-pass.ts`, money plan 55 §6):
- *    entity migration 153 made `fulfillment` / `fulfillment_line` real entities that the
- *    Shopify connector writes directly, so there is no shipment log left to DERIVE here
- *    (money plan 49's `deriveFulfillmentLog` is deleted). This pass only asks whether the
- *    sync's manifest shows a `fulfillment` record arriving and, if so, hands off to
- *    `autoPostFulfillmentsAfterSync`, which posts only if the org asked for it
- *    (`accounting.fulfillmentPosting = auto`). Gated on arrival so an idle re-sync
- *    enqueues nothing. This used to be two passes (derive, then post gated on what
- *    changed); with nothing left to derive, the gate and the enqueue collapse into one.
- * 7. Credit memo posting trigger (`passes/credit-memo-posting-pass.ts`, accounting brief 28
- *    §3.1): the same question for the other bulk source. The connector writes channel
- *    credit memos as `credit_memo` records, so the pass asks whether one arrived in this
- *    sync's manifest and, if so, hands off to `autoPostCreditMemosAfterSync`, which posts
- *    only if the org asked for it (`accounting.creditMemoPosting = auto`).
+ * 6. Fulfillment inventory relief trigger (`passes/fulfillment-log-pass.ts`, money plan
+ *    50 §1.4): entity migration 153 made `fulfillment` / `fulfillment_line` real entities
+ *    that the Shopify connector writes directly, so there is no shipment log left to
+ *    DERIVE here. This pass relieves every live line of an order whose fulfillment (or
+ *    fulfillment line) arrived in this sync's manifest. Its posting half is gone (step
+ *    1b, TARGET §1): a native shipment now posts inside `money/orders/fulfill.ts`'s own
+ *    write, and there is no batch/effect lane left for a connector-written fulfillment to
+ *    be swept into.
  *
  * NEVER throws: each pass — and each record inside a pass — is individually guarded and
  * logged, so one bad record or one failing pass cannot starve the others (mirrors
@@ -135,11 +129,6 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
     // is needed here.
     const { fulfillmentPostingTriggerPass } = await import('./passes/fulfillment-log-pass')
     await fulfillmentPostingTriggerPass(db, organizationId, manifest, resolveDef)
-
-    // Pass 7: the same trigger for channel credit memos. Same module rule, same
-    // own try/catch inside.
-    const { creditMemoPostingTriggerPass } = await import('./passes/credit-memo-posting-pass')
-    await creditMemoPostingTriggerPass(db, organizationId, manifest, resolveDef)
 
     const { reconcileFinancialRecordsAfterBulk } = await import(
       '../../money/reconciliation/record-events'

@@ -1,13 +1,14 @@
 // packages/lib/src/money/credit-memos/index.ts
-export {
-  type CreditSourceAllocation,
-  type IssueCreditMemoAccountingInput,
-  issueCreditMemoAccounting,
-} from './accounting'
 //
 // Server entrypoint for the credit memo module (plans/accounting/tasks/10).
 // Explicit named exports only. Anything the UI needs comes from `./client`.
 
+export {
+  type PostCreditMemoEntryInput,
+  postCreditMemoEntry,
+  readCreditMemoControlAccount,
+  reverseCreditMemoEntry,
+} from './accounting'
 export {
   type ApplyCreditMemoInput,
   type ApplyCreditMemoResult,
@@ -15,6 +16,11 @@ export {
   type UnapplyCreditMemoInput,
   unapplyCreditMemo,
 } from './apply'
+export {
+  type RefundCreditMemoToCardInput,
+  type RefundCreditMemoToCardResult,
+  refundCreditMemoToCard,
+} from './card-refund'
 export {
   type ContactCredit,
   type ContactCreditMemo,

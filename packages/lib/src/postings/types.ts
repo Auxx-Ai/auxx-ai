@@ -28,11 +28,17 @@ import type { DefaultChartAccount, GlAccountTypeValue } from './default-chart'
 export const POSTING_TYPES = [
   'fulfillment',
   'payout',
-  'build',
   'month_end_deferral',
   'month_end_reversal',
-  'month_end_inventory',
-  'receipt',
+  // MIGRATION step 5. ONE entry per inventory DOCUMENT - a fulfillment, a goods
+  // receipt, an adjustment, a build, a return, an opening run - at the frozen
+  // `stock_movement_extended_cost` of the movements it links as members. The
+  // document kind travels in the built envelope, not in a second posting type,
+  // because every kind claims, exports and reverses identically (TARGET §5).
+  'inventory_movement',
+  // The three-way matched purchasing bill: `Dr GRNI ± PPV / Cr A/P`. The other
+  // half of the GRNI `inventory_movement` credits on a receipt - without it that
+  // accrual never clears. Distinct from `expense_bill`, which codes to expense.
   'vendor_bill',
   // Added by plans/accounting/HANDOFF.md wave 0 (slot 0B), 2026-09-04.
   // A bookkeeper's adjusting entry, coded by account CODE rather than role.
@@ -52,13 +58,16 @@ export const POSTING_TYPES = [
   // `Dr undeposited_funds | cash | clearing` (per `accounting.paymentRoute.*`)
   // / `Cr accounts_receivable`. Added for slot 2G phase B, 2026-09-04.
   'payment',
+  // TARGET §5: a customer refund - `Dr returns / Cr clearing or bank`. Its own
+  // type rather than a sides-swapped `payment` so the export can send a Refund
+  // Receipt and a ledger card can name what it is.
+  'refund',
   // An invoice ISSUED: `Dr accounts_receivable / Cr revenue_service /
   // Cr sales_tax_payable`, dated the invoice's own `issuedAt`. The receivable
   // every payment entry relieves and nothing used to raise
   // (plans/accounting/tasks/done/08-invoice-revenue.md).
   //
-  // 🛑 Prefix `INI`, never `INV` - `month_end_inventory` holds `INV` and
-  // documents already carry it.
+  // 🛑 Prefix `INI`, never `INV` - `inventory_movement` holds `INV`.
   'invoice_issued',
   // A held customer deposit reclassed onto an invoice:
   // `Dr customer_deposits / Cr accounts_receivable`. Neither a payment (no
@@ -77,7 +86,7 @@ export const POSTING_TYPES = [
   //
   // `periodKey` is the provider's own transaction id - the claim index gives
   // per-transaction idempotency for free, exactly as `payout` keys on a payout
-  // id - and `exportStatus` stays `not_required` because we never pushed it.
+  // id. Its avenue is null, so nothing ever pushes it back at them.
   // `EXPORT_ROUTE_BY_POSTING_TYPE.provider_sync` is `'none'`, and that
   // declaration is the loop guard: pushing their own entries back at them would
   // double every one of them, and both copies would balance.
@@ -395,86 +404,6 @@ export interface ResolvedPostingLine extends GlPostingLineBase {
 }
 
 /**
- * One entry handed to a provider for export.
- *
- * `idempotencyKey` is required and must be deterministic - derived from the
- * posting identity, never random. A random key guarantees nothing, because the
- * retry carries a different one.
- * `packages/lib/src/money/quickbooks/quickbooks-accounting-provider.ts` documents
- * why this matters: a double-posted journal entry silently misstates
- * the financial statements and nobody notices until a close does not tie out.
- *
- * ⚠️ `lines` are POST-resolution ({@link ResolvedPostingLine}). An adapter is
- * handed codes and resolves each one to its own account id; it never sees, and
- * must never learn about, an auxx role.
- */
-export interface PostEntryInput {
-  organizationId: string
-  /** The `GlPosting` row id this entry is recorded on - ours. Not an EntityInstance. */
-  glPostingId: string
-  /** `GlPosting.revision`. 0 for an original, N+1 for a reversal of revision N. */
-  revision: number
-  postingType: PostingType
-  periodKey: string
-  txnDate: string
-  /** Deterministic natural key, also written to the provider's document number. */
-  docNumber: string
-  lines: ResolvedPostingLine[]
-  /** Deterministic. The provider MUST be idempotent on this. */
-  idempotencyKey: string
-  memo?: string
-}
-
-/**
- * What happened to an entry at the provider.
- *
- * - `posted` - pushed for the first time.
- * - `already_posted` - the provider already held it; nothing was sent.
- * - `healed` - the provider held it but our id map did not, and we wrote the id
- *   back rather than posting again. This is the most valuable outcome in the
- *   set: it is the previous-run-crashed-after-posting case, and posting again
- *   would duplicate the entry.
- * - `not_connected` - there is no accounting system. The entry is built and
- *   persisted and simply never pushed. A first-class outcome, NOT an error.
- * - `disabled` - there IS an integration and export is switched off at it. Also
- *   not an error, but NOT the same as `not_connected`, and the difference is the
- *   whole reason it is its own value: one is a setting somebody can flip, the
- *   other is a missing integration, and the close console has to tell a reader
- *   which of the two it is looking at. Leaving them merged would make the remedy
- *   unguessable from the record.
- * - `not_exported` - this POSTING TYPE is never pushed, whatever the org has
- *   connected. `EXPORT_ROUTE_BY_POSTING_TYPE` routes `opening_balance` and
- *   `provider_sync` to `'none'`, both because an entry that came FROM the
- *   provider must never be handed back at it.
- *
- *   🛑 It exists for the same reason `disabled` does, and it was found the same
- *   way `disabled` would have been. Before it, a `'none'`-routed entry borrowed
- *   `not_connected` and the close console told an org with QuickBooks connected
- *   that **no accounting system is connected** - observed on DemoOrg1's first
- *   wizard drive, two pages after the wizard itself displayed the company name.
- *   The remedy for `not_connected` is "connect one"; the remedy for this is
- *   nothing at all, because it is working. A reader cannot guess which they are
- *   looking at if the two share a value (brief 22 §5).
- */
-export type PostEntryStatus =
-  | 'posted'
-  | 'already_posted'
-  | 'healed'
-  | 'not_connected'
-  | 'disabled'
-  | 'not_exported'
-
-/**
- * What the export of one entry to the accounting provider did.
- *
- * Mirrors the `GlPostingExportStatus` pgEnum. Kept in step with it by
- * `__tests__/types.test.ts`, the same way `POSTING_TYPES` is.
- *
- * 🛑 This is the ONLY place a provider's answer is recorded. `GlPosting.status`
- * is what the LEDGER did and a provider may never move it - see
- * `plans/accounting/export-state-split.md`.
- */
-/**
  * What the LEDGER did with an entry.
  *
  * Mirrors the `GlPostingStatus` pgEnum, and pinned to it by
@@ -487,38 +416,35 @@ export type PostEntryStatus =
  * literals rather than this type - which is why this exists rather than each
  * interface spelling the union out. See plans/accounting/export-state-split.md.
  */
-export const POSTING_STATUSES = ['posted', 'reversed'] as const
+export const POSTING_STATUSES = ['draft', 'posted', 'reversed'] as const
 
 export type PostingStatus = (typeof POSTING_STATUSES)[number]
 
-export const POSTING_EXPORT_STATUSES = ['not_required', 'pending', 'exported', 'failed'] as const
-
-export type PostingExportStatus = (typeof POSTING_EXPORT_STATUSES)[number]
-
 /**
- * Result of handing one entry to a provider.
+ * How a source relates to the posting on `GlPostingSource`.
  *
- * Deliberately wider than build plan 7.4's `{ externalId: string }`: `none` and
- * `already_posted` have to be distinguishable from a fresh post by the caller
- * that stamps `GlPosting.status`, and a bare id cannot carry that. `externalId`
- * is empty exactly when nothing was pushed - `not_connected` or `disabled`.
+ * `subject` is what the entry is OF, and its row IS the claim - one live
+ * subject per `(sourceKind, sourceId, occurrence)`. `parent` lets an order list
+ * its fulfillment, receipt and refund postings in one query; `member` names what
+ * a posting summed. See plans/accounting/TARGET.md §1.
  */
-export interface PostEntryResult {
-  status: PostEntryStatus
-  /** The provider's own id for the entry. `''` when `status` is `not_connected`. */
-  externalId: string
-  /** Which provider answered - `'quickbooks'`, or `'none'`. */
-  providerId: string
+export const POSTING_LINK_ROLES = ['subject', 'parent', 'counterparty', 'member'] as const
+
+export type PostingLinkRole = (typeof POSTING_LINK_ROLES)[number]
+
+/** One `GlPostingSource` row as a writer supplies it. `occurrence` defaults to `'original'`. */
+export interface GlPostingSourceInput {
+  sourceKind: string
+  sourceId: string
+  linkRole: PostingLinkRole
   /**
-   * WHICH instance of that provider answered - a QuickBooks realm, a Xero
-   * tenant. Stamped onto `GlPosting.providerTenantId`; the core never parses it.
-   *
-   * 🛑 OPTIONAL, and it has to be: `NoneAccountingProvider` has no tenant and
-   * must not be forced to invent one. An `externalId` without one of these is a
-   * pointer with no address space - entry `147` exists in every QuickBooks
-   * company - so an adapter that HAS a tenant must always return it (task 24 §2).
+   * Which pass over the same source this is. `'original'` for the first entry,
+   * `'reversal'` for a reversal's own subject row, or a write-off / application
+   * id for the repeatable actions - it is the fourth column of the claim, so a
+   * second write-off against one invoice is representable and a second issuance
+   * is not.
    */
-  tenantId?: string
+  occurrence?: string
 }
 
 /**
@@ -539,38 +465,7 @@ export interface WithdrawResult {
   raw?: Record<string, unknown>
 }
 
-/**
- * What one posting did when the sync queue asked for it to be un-synced.
- *
- * Deliberately the shape `SyncReleaseOutcome` already uses, so the queue renders
- * a withdrawal's refusal the way it renders a gate refusal - the reason on the
- * row, no status column lied to (plan 60 §3).
- *
- * `uncertain` is its own answer rather than an error: the delete may have
- * landed, so nothing on the posting changed and the row keeps its *Synced*
- * badge until a repeat settles it (§2.4).
- */
-export interface UnsyncOutcome {
-  glPostingId: string
-  docNumber: string | null
-  status: 'withdrawn' | 'refused' | 'uncertain' | 'error'
-  /** The refusal, or what went wrong. `undefined` on `withdrawn`. */
-  message?: string
-  /** True on R5 alone - the one refusal `force: true` may override. */
-  forcible?: boolean
-}
-
-/** The tally the queue renders, plus the per-posting detail behind it. */
-export interface UnsyncResult {
-  withdrawn: number
-  /** R1-R6: we or the provider declined, and nothing was removed. */
-  refused: number
-  /** Unknown outcomes and faults - the rows a person still has to look at. */
-  failed: number
-  outcomes: UnsyncOutcome[]
-}
-
-/** One entry's answer from a bulk reversal, in `UnsyncOutcome`'s shape. */
+/** One entry's answer from a bulk reversal. */
 export interface ReverseOutcome {
   glPostingId: string
   docNumber: string | null
@@ -634,19 +529,17 @@ export class ProviderPostError extends Error {
 }
 
 /**
- * Every way `postEntry` can end. Wider than {@link PostEntryStatus}, which is
- * only what a PROVIDER can answer.
- *
- * The five provider statuses pass through unchanged. The rest are outcomes the
- * core reaches without ever calling a provider, and every one of them is a
- * return value rather than a throw - see {@link PostResult}.
+ * Every way `postEntry` can end. Every one is a return value rather than a
+ * throw - see {@link PostResult}.
  *
  * `already_posted` is a SUCCESS and must never be logged as an error. Logging a
  * routine converged re-run as a failure trains everyone to ignore the channel,
  * and the channel is the only warning a real double-post would arrive on.
  */
 export type PostResultStatus =
-  | PostEntryStatus
+  | 'posted'
+  | 'already_posted'
+  | 'drafted'
   | 'period_closed'
   | 'account_unmapped'
   | 'unbalanced'
@@ -675,6 +568,10 @@ export type PostResultStatus =
   // rendering "the entry could not be built" over a set of books that is simply
   // short.
   | 'revenue_incomplete'
+  // `postEntry` with `mode: 'draft'`: a `GlPosting` row exists with its lines
+  // and no doc number, holding no claim. A SUCCESS - `postDraft` promotes it -
+  // but not one the books read, so `didLedgerAccept` is false for it.
+  | 'drafted'
   | 'error'
 
 /**
@@ -719,36 +616,10 @@ export const NON_FAILURE_REFUSALS = ['nothing_to_close', 'setup_incomplete'] as 
  */
 export interface PostResult {
   status: PostResultStatus
-  /**
-   * What the EXPORT did, when one was attempted. Absent on a pre-claim refusal,
-   * where nothing was ever written to export.
-   *
-   * 🛑 A caller deciding whether the LEDGER took the entry reads `status` (or
-   * simply `glPostingId`), never this. An export that failed leaves
-   * `status: 'posted'` and `exportStatus: 'failed'`, and a caller that rolls
-   * back on the latter reintroduces the exact defect
-   * `plans/accounting/export-state-split.md` closed.
-   */
-  exportStatus?: PostingExportStatus
   /** The `GlPosting` row, once claimed. Absent on a pre-claim refusal. */
   glPostingId?: string
   /** Always set once the entry is built - it is minted before the claim. */
   docNumber?: string
-  /** `'quickbooks'`, `'none'`, or absent when no provider was reached. */
-  providerId?: string
-  /** The provider's own id for the entry, once pushed. */
-  providerEntryId?: string
-  /**
-   * WHICH instance of the provider `providerEntryId` belongs to. Absent when
-   * nothing was pushed.
-   *
-   * 🛑 Carried out to the UI rather than kept on the row alone, because the
-   * one thing a reader does with `providerEntryId` is follow it, and a deep
-   * link resolved against the wrong company reports a live entry as deleted
-   * (task 24 §4). The callout compares this against the connected tenant and
-   * renders no link at all when they differ.
-   */
-  providerTenantId?: string
   /** Human-readable. On `account_unmapped` it names EVERY offending role. */
   error?: string
   /**
@@ -915,10 +786,9 @@ export interface PostingDetail {
   postingType: PostingType
   periodKey: string
   txnDate: string
-  docNumber: string
+  /** Null while `status` is `draft` — assigned when it posts. */
+  docNumber: string | null
   status: PostingStatus
-  /** What the EXPORT did. Read this, never `status`, to learn about the provider. */
-  exportStatus: PostingExportStatus
   revision: number
   /** The posting this one reverses, when it is a reversal. */
   reversesId: string | null
@@ -927,18 +797,8 @@ export interface PostingDetail {
   lines: PostingDetailLine[]
   /** The stored `PostingDraftV1` envelope, verbatim. Parsed by the caller. */
   draft: unknown
-  providerId: string | null
-  providerEntryId: string | null
-  /**
-   * Which instance of the provider the entry went to. NULL means no export ever
-   * reached one - see `GlPosting.providerTenantId`, which this reads back
-   * verbatim and never reconstructs.
-   */
-  providerTenantId: string | null
   postedAt: string | null
   postedByUserId: string | null
-  failureReason: string | null
-  attempts: number
   createdAt: string
 }
 
@@ -1346,107 +1206,21 @@ export interface ChartImportResult {
 export interface ClosePeriod {
   /** `'2026-08'`. */
   periodKey: string
-  state: 'open' | 'posted' | 'locked'
-  /** The effective posting for the month, when there is one. */
-  glPostingId: string | null
-  docNumber: string | null
-  totalMinor: number | null
-  postedAt: string | null
-  /** `0` for an original; a reversal chain climbs from there. */
-  revision: number
-}
-
-/**
- * One entry that IS in the books and is not in the accounting system.
- *
- * 🛑 Renamed from `UnpostedPeriod` by the export split, because the old name
- * described a state that no longer exists: a claimed row is posted, so nothing
- * is ever "claimed but not posted". What can still be outstanding is the COPY.
- *
- * `pending` is owed and has not been refused - in flight, or claimed by a run
- * that died before the push. `failed` was attempted and refused, and carries
- * the reason. They call for different actions, so they are not collapsed.
- */
-export interface FailedExport {
-  periodKey: string
-  postingType: PostingType
-  glPostingId: string
-  /** `exported` only ever arrives under `listFailedExports`' opt-in (60 §8.1). */
-  exportStatus: 'pending' | 'failed' | 'exported'
-  docNumber: string
-  attempts: number
-  failureReason: string | null
-}
-
-/**
- * One row of the SYNC QUEUE: a {@link FailedExport} plus the two things a queue
- * needs that a banner never did - the money, and the RELEASE axis.
- *
- * 🛑 `exportStatus` is one axis and on its own it is not enough
- * (plans/accounting/tasks/53-two-modes-one-ledger.md §7.2.5). Once the hold is
- * on (`quickbooks.postJournalEntries` off) `pending` stops meaning "in flight"
- * and becomes the resting state of every posting the organization makes, and
- * the two readings need telling apart:
- *
- *   * `deliveryIntent: 'manual'` with no `releasedAt` - HELD. Nobody has asked
- *     for this to be sent, so nothing is wrong and nothing is owed. This is the
- *     state the Sync button acts on.
- *   * `releasedAt` set (or `deliveryIntent: 'automatic'`) and still `pending` -
- *     RELEASED and not yet in the provider's books. In flight, or claimed by a
- *     run that died before the push.
- *
- * ⚠️ `deliveryIntent: null` is a LEGACY row that predates the delivery pipeline.
- * It has no `AccountingDelivery` at all, so its `releasedAt` is null for a
- * reason that has nothing to do with a hold; it reads as released, never held.
- *
- * `deliveryState` is `AccountingDelivery.state`, null until the delivery worker
- * has planned the row. It says nothing `exportStatus` does not except in one
- * case: `blocked` on a row this side still calls `pending` means the operation
- * was parked between the two writes.
- */
-export interface SyncQueueRow extends FailedExport {
-  /** The accounting date, `YYYY-MM-DD`. */
-  txnDate: string
-  /** Integer minor units. Equals both the debit and the credit total. */
-  totalMinor: number
-  /** ISO 4217, off the posting itself - never assumed. */
-  currency: string
-  deliveryIntent: 'not_required' | 'manual' | 'automatic' | null
-  /** `AccountingDelivery.releasedAt` as an ISO string, or `null`. */
-  releasedAt: string | null
-  deliveryState: 'pending' | 'blocked' | 'delivered' | null
-}
-
-/** The two-axis reading of a {@link SyncQueueRow}, and the queue's tab set. */
-export const SYNC_QUEUE_STATES = ['held', 'sending', 'failed', 'synced'] as const
-export type SyncQueueState = (typeof SYNC_QUEUE_STATES)[number]
-
-/**
- * Which of the four states one queue row is in.
- *
- * Pure, and the single place the two axes are collapsed into one word - the tab
- * filter, the row badge and the bulk bar's copy all read it, so they cannot
- * disagree about what a row is.
- *
- * ⚠️ `synced` reaches this function only from the Synced tab's own read: every
- * other caller asks `listFailedExports` for the outstanding two statuses and
- * never sees an exported row at all (60 §8.1).
- */
-export function syncQueueState(row: SyncQueueRow): SyncQueueState {
-  if (row.exportStatus === 'exported') return 'synced'
-  if (row.exportStatus === 'failed') return 'failed'
-  // HELD is a positive claim and needs both halves: the posting was accepted
-  // under the hold, and nothing has released it since. Anything else pending is
-  // on its way, including every legacy row - which has no delivery to release
-  // and so must never be offered a Sync button that would do nothing.
-  if (row.deliveryIntent === 'manual' && !row.releasedAt) return 'held'
-  return 'sending'
+  /**
+   * `open` until somebody locks it.
+   *
+   * ⚠️ There is no `posted` any more: MIGRATION step 5 deleted the month-end
+   * assertion, so closing a month posts nothing and there is no entry for a
+   * state to be about. What a close now does is CHECK - see `readCloseBlockers`.
+   */
+  state: 'open' | 'locked'
 }
 
 /** One entry whose lines do not tie, or do not sum to its recorded total. */
 export interface BooksBalanceDiscrepancy {
   glPostingId: string
-  docNumber: string
+  /** Null only for a draft; balance is checked on posted rows, so this is rare. */
+  docNumber: string | null
   postingType: PostingType
   periodKey: string
   totalDebitMinor: number

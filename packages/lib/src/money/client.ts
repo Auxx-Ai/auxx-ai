@@ -80,41 +80,6 @@ export {
   resolveBankDepositStatus,
   resolvePaymentRoute,
 } from './bank-deposits/client'
-// ─── The shared batch-posting frame (accounting/25 §5) ─────────────────────
-// The vocabulary both bulk posters render. `FULFILLMENT_POSTING_GROUPINGS` and
-// the credit memo module's grouping are both aliases of these, so the dialog
-// can be written against one name.
-export {
-  BATCH_POSTING_EXCLUSION_REASONS,
-  BATCH_POSTING_GROUPING_SETTING_OPTIONS,
-  BATCH_POSTING_GROUPINGS,
-  type BatchPostingExclusionReason,
-  type BatchPostingGrouping,
-} from './batch-posting/client'
-// ─── Bulk credit memo posting (plans/accounting/tasks/25) ──────────────────
-// The client-safe half only: the closed exclusion-reason set the dialog renders
-// a total `Record` over, and the plan/summary wire shapes.
-export {
-  CREDIT_MEMO_BATCH_SOURCE_TYPE,
-  CREDIT_MEMO_GL_POSTING_ATTRIBUTE,
-  CREDIT_MEMO_GROUPING_SETTING_KEY,
-  CREDIT_MEMO_POSTING_EXCLUSION_REASONS,
-  CREDIT_MEMO_POSTING_MODES,
-  CREDIT_MEMO_POSTING_SETTING_KEY,
-  type CreditMemoAmounts,
-  type CreditMemoPostingExclusion,
-  type CreditMemoPostingExclusionReason,
-  type CreditMemoPostingGroup,
-  type CreditMemoPostingGrouping,
-  type CreditMemoPostingMode,
-  type CreditMemoPostingPlan,
-  type CreditMemoPostingPlanInput,
-  type CreditMemoPostingRef,
-  type CreditMemoPostingRequest,
-  type CreditMemoPostingRunSummary,
-  type PlannedCreditMemo,
-  type UnpostedCreditMemo,
-} from './credit-memo-posting/client'
 // ─── Credit memos (plans/accounting/tasks/done/10-credit-memos.md) ──────────────
 // The client-safe half only: the vocabularies, the wire shapes and the pure
 // planner the apply dialog prefills with. Nothing here imports a database.
@@ -147,33 +112,6 @@ export {
   type PlannedCreditApplication,
   planCreditApplication,
 } from './credit-memos/client'
-// ─── Bulk fulfillment posting (plans/money/tasks/49-bulk-fulfillment-posting.md) ──
-// The client-safe half only: the groupings, the closed exclusion-reason set the
-// dialog renders a total `Record` over, and the plan/summary wire shapes.
-// Appended as one block, per HANDOFF §9a's rule for shared barrels.
-export {
-  FULFILLMENT_BATCH_SOURCE_TYPE,
-  FULFILLMENT_GROUPING_SETTING_KEY,
-  FULFILLMENT_POSTING_EXCLUSION_REASONS,
-  FULFILLMENT_POSTING_GROUPINGS,
-  FULFILLMENT_POSTING_MODES,
-  FULFILLMENT_POSTING_SETTING_KEY,
-  type FulfillmentDebitRole,
-  type FulfillmentPostingExclusion,
-  type FulfillmentPostingExclusionReason,
-  type FulfillmentPostingGroup,
-  type FulfillmentPostingGrouping,
-  type FulfillmentPostingMode,
-  type FulfillmentPostingPlan,
-  type FulfillmentPostingPlanInput,
-  type FulfillmentPostingRequest,
-  type FulfillmentPostingRunSummary,
-  type OrderFulfillmentPostingRef,
-  type PlannedShipment,
-  type ShipmentAmounts,
-  type UnpostedShipment,
-  type UnpostedShipmentLine,
-} from './fulfillment-posting/client'
 // ─── Fulfillment records (entity migration 153, plans/money/tasks/55) ──────
 // The client-safe half only: the record shapes and the pure functions over
 // them - what the order drawer's ledger card and the fulfill dialog read.

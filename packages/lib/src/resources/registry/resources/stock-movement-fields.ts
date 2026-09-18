@@ -352,8 +352,8 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
    *
    * `resolveInventoryRoleForPartKind` (receiving/client.ts) is the only thing
    * that decides this value; `receiveStock`, `adjustStock` and `completeBuild`
-   * stamp it, the two reversal paths copy it verbatim, and `buildReceiptEntry`
-   * consumes it as `inventoryAccountRole`.
+   * stamp it, the two reversal paths copy it verbatim, and
+   * `buildInventoryMovementEntry` sums the entry's lines by it.
    *
    * `inventory_wip` is never written here: nothing in the `partKind` table maps
    * to it, and neither receiving nor a completed build produces work in process.

@@ -37,42 +37,59 @@ const ORDER_DISCOUNT_TYPE_OPTIONS = [
  * and written only by the totals engine.
  */
 export const ORDER_FIELDS: Record<string, ResourceField> = {
+  // `z1`-`z8`: hidden/internal fields, grouped with `paymentEvidence` (`z9`)
+  // below rather than sharing the default `financialSourceField` sort order
+  // ('a1') that `order_number` also uses — eight fields at one code collapsed
+  // every mixed sort to insertion order (data-migrations 149/157's own
+  // uniqueness checks).
   paymentSourceProvider: financialSourceField(
     'paymentSourceProvider',
     'Payment source provider',
-    'order_payment_source_provider'
+    'order_payment_source_provider',
+    'text',
+    'z1'
   ),
   paymentSourceAccount: financialSourceField(
     'paymentSourceAccount',
     'Payment source account',
-    'order_payment_source_account'
+    'order_payment_source_account',
+    'text',
+    'z2'
   ),
   paymentSourceEnvironment: financialSourceField(
     'paymentSourceEnvironment',
     'Payment environment',
-    'order_payment_source_environment'
+    'order_payment_source_environment',
+    'text',
+    'z3'
   ),
   paymentSourceOrderId: financialSourceField(
     'paymentSourceOrderId',
     'Source order ID',
-    'order_payment_source_order_id'
+    'order_payment_source_order_id',
+    'text',
+    'z4'
   ),
   paymentSourceUpdatedAt: financialSourceField(
     'paymentSourceUpdatedAt',
     'Payment source updated at',
-    'order_payment_source_updated_at'
+    'order_payment_source_updated_at',
+    'text',
+    'z5'
   ),
   paymentSourceComplete: financialSourceField(
     'paymentSourceComplete',
     'Payment source complete',
     'order_payment_source_complete',
-    'boolean'
+    'boolean',
+    'z6'
   ),
   paymentSourceCount: financialSourceField(
     'paymentSourceCount',
     'Source transaction count',
     'order_payment_source_count',
-    'number'
+    'number',
+    'z7'
   ),
   paymentTransactions: financialSourceRelationship(
     'paymentTransactions',
@@ -80,7 +97,8 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     'order_payment_transactions',
     'customer_transaction',
     'order',
-    true
+    true,
+    'z8'
   ),
   paymentEvidence: {
     id: toFieldId('paymentEvidence'),
@@ -1025,45 +1043,10 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
       'and tracking numbers',
   },
 
-  /**
-   * The `GlPosting` this order's PAYMENT entry became
-   * (plans/accounting/tasks/29-clearing-at-the-payment-date.md §4.3). Written by
-   * the order payment run after `postEntry` returns, one stamp per order, never
-   * inside the posting transaction.
-   *
-   * TEXT and not a RELATIONSHIP, exactly as `fulfillment_gl_posting` is:
-   * `GlPosting` is a Drizzle table with no `EntityDefinition` to point at (the
-   * `gl_posting` EntityRefKind was removed on 2026-08-28 for that reason).
-   *
-   * This stamp is also the `paymentPosted` boolean the fulfillment fork reads
-   * (29 §2.2): a set stamp means the shipment debits `customer_deposits`, an
-   * empty one means the legacy fork or the `payment-unposted` exclusion. One
-   * fact, one column, two readers.
-   */
-  paymentGlPosting: {
-    id: toFieldId('paymentGlPosting'),
-    key: 'paymentGlPosting',
-    label: 'Payment GL Posting',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'order_payment_gl_posting',
-    systemSortOrder: 'aQ',
-    showInPanel: false,
-    showInDialogs: false,
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description:
-      "The posting this order's payment entry became. TEXT and not a RELATIONSHIP because " +
-      'GlPosting is a Drizzle table with no EntityDefinition to point at; fulfillment_gl_posting ' +
-      'is the precedent. Also what the fulfillment fork reads as paymentPosted',
-  },
+  // `paymentGlPosting` (`order_payment_gl_posting`, systemSortOrder 'aQ') is
+  // gone (step 1b, TARGET §1): an order's payment postings are read through
+  // `listPostingsForSource`, off `GlPostingSource`, never off a stamp field.
+  // Migration 157 provisioned it and is local-only, so it no longer does.
 
   createdAt: {
     id: toFieldId('createdAt'),

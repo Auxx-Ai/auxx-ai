@@ -6,7 +6,7 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
-import { and, eq, gt } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import type { PdfPhotoRef, QuotePdfContact, QuotePdfLineItem } from '../documents/payload'
 import type {
@@ -17,9 +17,8 @@ import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { quietSession } from '../resources/crud/write-origin'
 import { getOrganizationSetting } from '../settings/settings-service'
-import { getPaymentAccount } from './payments/account-state'
-import { getInvoiceDepositApplied } from './payments/allocation-reads'
-import { resolvePartialPaymentBounds } from './payments/partial'
+import { isCheckoutAvailable, sumInvoiceDepositApplications } from './checkout/reads'
+import { resolvePartialPaymentBounds } from './customer-money/partial-payment'
 import type { DiscountType } from './types'
 
 /**
@@ -105,36 +104,6 @@ export async function ensureInvoicePublicToken(
 /** Build the absolute `/pay/{token}` URL from a minted token. */
 export function buildPayUrl(token: string): string {
   return `${WEBAPP_URL}/pay/${token}`
-}
-
-/** How long a `pending` Checkout row keeps the public page in its "processing" state. */
-const PROCESSING_WINDOW_MS = 30 * 60 * 1000
-
-/**
- * Flip an abandoned Checkout's `pending` ledger row to `canceled` (money MP1 §I) — called by
- * the pay page when the shopper lands back via `cancel_url` (`?checkout=cancel&tx=…`). Guarded
- * by the token AND the row's invoice/provider/kind/status, so the public `tx` param can only
- * ever cancel the invoice's own pending Stripe charge — never anything else, never twice.
- * Safe even if the shopper later pays the (still-open) Stripe session anyway: the webhook's
- * `markChargeSucceeded` flips `canceled → succeeded` and the payment settles normally.
- */
-export async function cancelAbandonedCheckout(token: string, transactionId: string): Promise<void> {
-  const resolved = await resolveInvoiceByPublicToken(token)
-  if (!resolved) return
-
-  await database
-    .update(schema.PaymentTransaction)
-    .set({ status: 'canceled' })
-    .where(
-      and(
-        eq(schema.PaymentTransaction.id, transactionId),
-        eq(schema.PaymentTransaction.organizationId, resolved.organizationId),
-        eq(schema.PaymentTransaction.invoiceInstanceId, resolved.invoiceInstanceId),
-        eq(schema.PaymentTransaction.provider, 'stripe'),
-        eq(schema.PaymentTransaction.kind, 'charge'),
-        eq(schema.PaymentTransaction.status, 'pending')
-      )
-    )
 }
 
 /**
@@ -245,39 +214,15 @@ export async function getPublicInvoicePayload(token: string): Promise<PublicInvo
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
 
-  const [
-    { payload },
-    account,
-    pendingCharge,
-    allowPartialPayments,
-    partialPaymentMinPercent,
-    depositApplied,
-  ] = await Promise.all([
+  const [{ payload }, allowPartialPayments, partialPaymentMinPercent] = await Promise.all([
     buildInvoicePdfPayload({ organizationId, userId: systemUserId, invoiceRecordId }),
-    getPaymentAccount(organizationId),
-    database.query.PaymentTransaction.findFirst({
-      // Time-bounded: a `pending` row is minted at Checkout CREATION, so its bare existence
-      // only means a session was opened, not that money moved. Rows the shopper explicitly
-      // canceled out of get flipped by `cancelAbandonedCheckout`; silently-abandoned tabs
-      // age out of this window instead of wedging the page in "processing" forever. The
-      // webhook remains the truth — a stale session paid after the window still settles.
-      where: and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        eq(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceId),
-        eq(schema.PaymentTransaction.provider, 'stripe'),
-        eq(schema.PaymentTransaction.kind, 'charge'),
-        eq(schema.PaymentTransaction.status, 'pending'),
-        gt(schema.PaymentTransaction.updatedAt, new Date(Date.now() - PROCESSING_WINDOW_MS))
-      ),
-      columns: { id: true },
-    }),
     getOrganizationSetting({ organizationId, key: 'documents.invoice.allowPartialPayments' }),
     getOrganizationSetting({ organizationId, key: 'documents.invoice.partialPaymentMinPercent' }),
-    // Deposit-accounting plan 16 §E — labeled breakout, see the field doc on the payload type.
-    getInvoiceDepositApplied(organizationId, invoiceInstanceId),
   ])
-
-  const paymentsEnabled = isPaymentsConnected(account)
+  const [paymentsEnabled, depositApplied] = await Promise.all([
+    isCheckoutAvailable(organizationId),
+    sumInvoiceDepositApplications(database, organizationId, invoiceInstanceId),
+  ])
   const minPaymentAmount = resolvePartialPaymentBounds(
     payload.balance,
     Number(partialPaymentMinPercent ?? 10)
@@ -307,7 +252,9 @@ export async function getPublicInvoicePayload(token: string): Promise<PublicInvo
     business: payload.settings.business,
     branding: payload.settings.branding,
     paymentsEnabled,
-    processingPayment: !!pendingCharge,
+    // Nothing is recorded until Stripe confirms, so an in-flight checkout is only
+    // knowable from the browser's own return - the page reads `?checkout=success`.
+    processingPayment: false,
     allowPartialPayments: !!allowPartialPayments,
     minPaymentAmount,
   }

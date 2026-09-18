@@ -35,12 +35,13 @@ const TRIGGER_FILES = [
   // the gate moved with the build. It is still checked before ANY read.
   'money/invoices/issuance-accounting.ts',
   'money/orders/fulfill.ts',
-  'money/fulfillment-posting/run.ts',
-  'money/payments/post-transaction.ts',
-  // Two deposit-application lanes, and BOTH are gated. The dispatch-era one
-  // posts off `PaymentAllocation`; the effects one posts off `MoneyApplication`
-  // (D19). Neither may build an entry for an org that has accounting off.
-  'money/payments/post-deposit-application.ts',
+  // The legacy `money/payments/` lane (`post-transaction.ts`,
+  // `post-deposit-application.ts`) is gone (accounting migration step 0). Every
+  // receipt now posts off `MoneyTransaction`/`MoneyApplication` through one of
+  // these two builders, and both are gated.
+  'money/invoices/receipt-accounting.ts',
+  'money/customer-money/accounting.ts',
+  'money/customer-money/refund-accounting.ts',
   'money/customer-money/deposit-application-accounting.ts',
   // D19: `write-off.ts` still checks the gate before its own reads, and
   // `write-off-accounting.ts` is where the entry is now built and accepted — so

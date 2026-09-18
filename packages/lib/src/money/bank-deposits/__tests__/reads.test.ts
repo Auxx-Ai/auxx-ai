@@ -1,37 +1,33 @@
 // packages/lib/src/money/bank-deposits/__tests__/reads.test.ts
 //
-// Two properties, and both of them fail SILENTLY in production:
+// Three properties, and all three fail SILENTLY in production:
 //
-//  1. **A date read back out of `FieldValue` is a TIMESTAMP, not a day.**
-//     `valueDate` is `timestamp(3) with time zone` in `mode: 'string'`, so
-//     `'2026-09-03'` written comes back `'2026-09-03 00:00:00+00'`. Every
-//     consumer of `depositDate` and payment `date` is typed and compared as
-//     `YYYY-MM-DD`: `updateBankDeposit` compares the caller's date against the
-//     stored one to decide whether the date actually changed, so the comparison
-//     ALWAYS differed and an edit that only touched the reference came back as a
-//     ConflictError about a date nobody had entered.
+//  1. **A stored deposit date reads back as a day, not an instant.** `valueDate`
+//     is `timestamp(3) with time zone` in `mode: 'string'`, so `'2026-09-03'`
+//     written comes back `'2026-09-03 00:00:00+00'`. `updateBankDeposit`
+//     compares the caller's date against the stored one to decide whether the
+//     date actually changed, so an unsliced comparison ALWAYS differs.
 //
-//  2. **The undeposited list and `createBankDeposit` must resolve the same
-//     payment the same way.** The list narrowed on `payment_method` with an
-//     INNER join, so a payment with no method never appeared - while
-//     `resolvePaymentRoute(null, settings)` falls through to the `other` row and
-//     `postPaymentTransaction` had already put that payment's money in 1050. The
-//     money sat in undeposited funds with no door that could bank it.
+//  2. **A receipt's own date/method/reference/currency now come straight off
+//     `MoneyTransaction`** (MIGRATION follow-up 9) - no `payment` entity mirror,
+//     no `FieldValue` join. `listUndepositedPayments`, `readDepositPayments` and
+//     `readPaymentsByIds` all read the same columns through `hydrateReceipts`.
 //
-// The database is a scripted stub: each awaited query takes the next queued
-// result, and the join methods are COUNTED so the INNER-vs-LEFT decision is
-// assertable without a real planner. Counted rather than named, because the
-// query already carries a second LEFT join - the "in no deposit" half - and the
-// stub cannot see which field a join predicate names.
+//  3. **The undeposited list and `createBankDeposit` must resolve the same
+//     receipt the same way.** A receipt with no method is still listed when
+//     `other` routes to undeposited funds - `resolvePaymentRoute(null,
+//     settings)` falls through to the `other` row and the money really is
+//     sitting in 1050.
 
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
-  /** One array per awaited query, consumed in order. */
+  /** One array per awaited `.select()` chain, consumed in order. */
   results: [] as unknown[][],
-  /** Every chained builder method, in order - `innerJoin` / `leftJoin` included. */
+  /** `MoneyApplication` rows `hydrateReceipts` nets against. */
+  applications: [] as Record<string, unknown>[],
   calls: [] as string[],
 }))
 
@@ -46,12 +42,8 @@ vi.mock('../../../cache', () => ({
   }),
 }))
 
-const { listUndepositedPayments, readBankDepositDetail } = await import('../reads')
-
-/** How many times a builder method was called across every query. */
-function count(method: string): number {
-  return h.calls.filter((call) => call === method).length
-}
+const { listUndepositedPayments, readBankDepositDetail, readDepositPayments, readPaymentsByIds } =
+  await import('../reads')
 
 const ORG = 'org_1'
 
@@ -59,16 +51,7 @@ function stubDb(): Database {
   let index = 0
   const chain = (): Record<string, unknown> => {
     const self: Record<string, unknown> = {}
-    for (const method of [
-      'from',
-      '$dynamic',
-      'innerJoin',
-      'leftJoin',
-      'where',
-      'orderBy',
-      'limit',
-      'offset',
-    ]) {
+    for (const method of ['from', 'where', 'orderBy', 'limit', 'offset']) {
       self[method] = () => {
         h.calls.push(method)
         return self
@@ -79,11 +62,14 @@ function stubDb(): Database {
       Promise.resolve(h.results[index++] ?? []).then(resolve, reject)
     return self
   }
-  return { select: () => chain() } as unknown as Database
+  return {
+    select: () => chain(),
+    query: { MoneyApplication: { findMany: async () => h.applications } },
+  } as unknown as Database
 }
 
-/** One `FieldValue` row as the reads select it. */
-function value(entityId: string, attribute: string, columns: Record<string, unknown>) {
+/** One `FieldValue` row, as the deposit's own (unaffected) FieldValue reads shape it. */
+function depositValue(entityId: string, attribute: string, columns: Record<string, unknown>) {
   return {
     entityId,
     fieldId: `fld_${attribute}`,
@@ -96,24 +82,40 @@ function value(entityId: string, attribute: string, columns: Record<string, unkn
   }
 }
 
+/** One `MoneyTransaction` receipt row, as `RECEIPT_COLUMNS` selects it. */
+function receipt(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    amountMinor: 100_00n,
+    occurredAt: null,
+    occurredOn: '2026-09-01',
+    method: 'check',
+    reference: null,
+    currency: 'USD',
+    bankDepositInstanceId: null,
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   h.settings = {}
   h.results = []
+  h.applications = []
   h.calls = []
 })
 
-describe('a stored date reads back as a day, not an instant', () => {
+describe('a stored deposit date reads back as a day, not an instant', () => {
   it('slices the deposit date to YYYY-MM-DD', async () => {
     h.results = [
       // the deposit instance
       [{ id: 'dep_1', createdAt: new Date('2026-09-03T00:00:00Z') }],
       // its field values - what postgres actually hands back for a DATE field
       [
-        value('dep_1', 'bank_deposit_date', { valueDate: '2026-09-03 00:00:00+00' }),
-        value('dep_1', 'bank_deposit_number', { valueText: 'DEP-0001' }),
-        value('dep_1', 'bank_deposit_total', { valueNumber: 350_00 }),
+        depositValue('dep_1', 'bank_deposit_date', { valueDate: '2026-09-03 00:00:00+00' }),
+        depositValue('dep_1', 'bank_deposit_number', { valueText: 'DEP-0001' }),
+        depositValue('dep_1', 'bank_deposit_total', { valueNumber: 350_00 }),
       ],
-      // readDepositPayments: no payments
+      // readDepositPayments: no receipts grouped in yet
       [],
     ]
 
@@ -121,6 +123,7 @@ describe('a stored date reads back as a day, not an instant', () => {
     // 🛑 Not `'2026-09-03 00:00:00+00'`. `updateBankDeposit` compares this
     // against a caller's `'2026-09-03'` to decide whether the date moved.
     expect(deposit?.depositDate).toBe('2026-09-03')
+    expect(deposit?.payments).toEqual([])
   })
 
   it('leaves an unset deposit date null rather than inventing today', async () => {
@@ -128,60 +131,111 @@ describe('a stored date reads back as a day, not an instant', () => {
     const deposit = await readBankDepositDetail(stubDb(), ORG, 'dep_1')
     expect(deposit?.depositDate).toBeNull()
   })
+})
 
-  it('slices the payment date the same way, so groupByDay keys on one day', async () => {
+describe('a receipt is hydrated off MoneyTransaction directly', () => {
+  it('reads amount, date, method, reference and currency off the row', async () => {
+    h.results = [[receipt('mt_1', { amountMinor: 250_00n, reference: 'Check #402' })]]
+
+    const rows = await listUndepositedPayments(stubDb(), { organizationId: ORG })
+    expect(rows._unsafeUnwrap()).toEqual([
+      {
+        paymentId: 'mt_1',
+        amountMinor: 250_00,
+        date: '2026-09-01',
+        method: 'check',
+        reference: 'Check #402',
+        invoiceInstanceId: null,
+        invoiceName: null,
+        currency: 'USD',
+      },
+    ])
+  })
+
+  it('falls back to the instant when there is no occurredOn', async () => {
     h.results = [
-      [{ id: 'pay_1', createdAt: new Date('2026-09-01T00:00:00Z') }],
       [
-        value('pay_1', 'payment_date', { valueDate: '2026-09-01 00:00:00+00' }),
-        value('pay_1', 'payment_amount', { valueNumber: 100_00 }),
-        value('pay_1', 'payment_method', { optionId: 'check' }),
+        receipt('mt_1', {
+          occurredOn: null,
+          occurredAt: new Date('2026-09-05T00:00:00Z'),
+        }),
       ],
+    ]
+    const rows = await listUndepositedPayments(stubDb(), { organizationId: ORG })
+    expect(rows._unsafeUnwrap()[0]?.date).toBe('2026-09-05')
+  })
+
+  it('names the invoice a receipt is currently applied to', async () => {
+    h.results = [
+      [receipt('mt_1')],
+      // the invoice display-name lookup
+      [{ id: 'inv_1', displayName: 'INV-0042' }],
+    ]
+    h.applications = [
+      {
+        moneyTransactionId: 'mt_1',
+        invoiceInstanceId: 'inv_1',
+        operation: 'apply',
+        amountMinor: 100_00n,
+      },
     ]
 
     const rows = await listUndepositedPayments(stubDb(), { organizationId: ORG })
-    expect(rows._unsafeUnwrap()[0]?.date).toBe('2026-09-01')
+    expect(rows._unsafeUnwrap()[0]).toMatchObject({
+      invoiceInstanceId: 'inv_1',
+      invoiceName: 'INV-0042',
+    })
+  })
+
+  it('leaves the invoice unset once an application was fully unapplied', async () => {
+    h.results = [[receipt('mt_1')]]
+    h.applications = [
+      {
+        moneyTransactionId: 'mt_1',
+        invoiceInstanceId: 'inv_1',
+        operation: 'apply',
+        amountMinor: 100_00n,
+      },
+      {
+        moneyTransactionId: 'mt_1',
+        invoiceInstanceId: 'inv_1',
+        operation: 'unapply',
+        amountMinor: 100_00n,
+      },
+    ]
+
+    const rows = await listUndepositedPayments(stubDb(), { organizationId: ORG })
+    expect(rows._unsafeUnwrap()[0]).toMatchObject({ invoiceInstanceId: null, invoiceName: null })
   })
 })
 
-describe('a payment with no method is listed when `other` routes to undeposited funds', () => {
-  it('LEFT joins the method so a payment with no method value survives', async () => {
-    h.results = [[], []]
-    await listUndepositedPayments(stubDb(), { organizationId: ORG })
-    // `other` defaults to `undeposited_funds`, so a method-less payment's money
-    // IS in 1050 and it has to be bankable. Two LEFT joins: the method and the
-    // deposit link. No INNER join at all - that was the one that dropped it.
-    expect(count('leftJoin')).toBe(2)
-    expect(count('innerJoin')).toBe(0)
+describe('readDepositPayments / readPaymentsByIds carry the deposit link', () => {
+  it('readDepositPayments hydrates the rows already grouped into a deposit', async () => {
+    h.results = [[receipt('mt_1', { bankDepositInstanceId: 'dep_1' })]]
+    const rows = await readDepositPayments(stubDb(), ORG, 'dep_1')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.paymentId).toBe('mt_1')
   })
 
-  it('returns the method-less row with method null rather than dropping it', async () => {
-    h.results = [
-      [{ id: 'pay_1', createdAt: new Date('2026-09-01T00:00:00Z') }],
-      [value('pay_1', 'payment_amount', { valueNumber: 100_00 })],
-    ]
+  it('readPaymentsByIds reports bankDepositId so the write path can refuse a re-bank', async () => {
+    h.results = [[receipt('mt_1', { bankDepositInstanceId: 'dep_1' }), receipt('mt_2')]]
+    const rows = await readPaymentsByIds(stubDb(), ORG, ['mt_1', 'mt_2'])
+    expect(rows.find((r) => r.paymentId === 'mt_1')?.bankDepositId).toBe('dep_1')
+    expect(rows.find((r) => r.paymentId === 'mt_2')?.bankDepositId).toBeNull()
+  })
+
+  it('is empty for no ids without querying', async () => {
+    expect(await readPaymentsByIds(stubDb(), ORG, [])).toEqual([])
+    expect(h.calls).toEqual([])
+  })
+})
+
+describe('a receipt with no method is listed when `other` routes to undeposited funds', () => {
+  it('lists a method-less receipt rather than dropping it', async () => {
+    h.results = [[receipt('mt_1', { method: null })]]
     const rows = await listUndepositedPayments(stubDb(), { organizationId: ORG })
     expect(rows._unsafeUnwrap()).toHaveLength(1)
-    expect(rows._unsafeUnwrap()[0]).toMatchObject({ paymentId: 'pay_1', method: null })
-  })
-
-  it('INNER joins again once `other` routes somewhere else', async () => {
-    // With `other` pointed at cash, a method-less payment's money is NOT in
-    // undeposited funds, so listing it would offer a deposit the bank never
-    // showed as one line.
-    h.settings = { 'accounting.paymentRoute.other': 'cash' }
-    h.results = [[], []]
-    await listUndepositedPayments(stubDb(), { organizationId: ORG })
-    expect(count('innerJoin')).toBe(1)
-    // Only the deposit-link join stays LEFT.
-    expect(count('leftJoin')).toBe(1)
-  })
-
-  it('INNER joins for an explicit method filter, so "show me the cheques" stays literal', async () => {
-    h.results = [[], []]
-    await listUndepositedPayments(stubDb(), { organizationId: ORG, method: 'check' })
-    expect(count('innerJoin')).toBe(1)
-    expect(count('leftJoin')).toBe(1)
+    expect(rows._unsafeUnwrap()[0]).toMatchObject({ paymentId: 'mt_1', method: null })
   })
 
   it('still answers nothing when the route table sends nothing to undeposited funds', async () => {

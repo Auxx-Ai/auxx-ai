@@ -50,8 +50,6 @@ import { AuxxError, BadRequestError } from '../errors'
 // 🛑 The LEAVES, never the `money/*` barrels, the same call `rail-fee-status.ts`
 // makes: `postings/index.ts` re-exports this file, and a barrel that reaches
 // back into `postings/` would close a cycle.
-import { countUnpostedCreditMemos } from '../money/credit-memo-posting/reads'
-import { countUnpostedShipments } from '../money/fulfillment-posting/reads'
 import { parsePeriodKey } from './periods'
 import type { PostingType } from './types'
 
@@ -89,14 +87,13 @@ export interface ReadMonthActivityOptions {
 }
 
 /**
- * Per posting type, what POSTED in one month and when it last did, plus what
- * the month still owes the two bulk dialogs.
+ * Per posting type, what POSTED in one month and when it last did.
  *
- * ⚠️ A count that could not be read comes back `null` rather than failing the
- * whole read. The grouped aggregate is the answer this exists for; the two
- * counts are a courtesy from another module, and `verify-balance.ts` already
- * makes the same call - a failed courtesy must not take the posted counts off
- * the screen with it.
+ * `unpostedShipments` and `unpostedCreditMemos` are always `null` -
+ * unavailable, not zero - now that both avenues post eagerly (step 1b,
+ * TARGET §1): the batch/effect backlog they used to count no longer exists.
+ * TODO(step-1b): recompute from live drafts once the per-avenue
+ * `accounting.autoPost` setting lands.
  */
 export async function readMonthActivity(
   db: Database,
@@ -107,44 +104,25 @@ export async function readMonthActivity(
   try {
     const bounds = monthBounds(month)
 
-    const [rows, shipments, creditMemos] = await Promise.all([
-      db
-        .select({
-          postingType: schema.GlPosting.postingType,
-          count: sql<number>`count(*)::int`,
-          // `::text` for the same reason `rail-fee-status.ts` gives: the string
-          // mapping of a `date()` column applies to a selected COLUMN, not to a
-          // raw `max()` around one, which the driver hands back as a `Date`.
-          lastTxnDate: sql<string>`(max(${schema.GlPosting.txnDate}))::text`,
-        })
-        .from(schema.GlPosting)
-        .where(
-          and(
-            eq(schema.GlPosting.organizationId, organizationId),
-            eq(schema.GlPosting.status, 'posted'),
-            gte(schema.GlPosting.txnDate, bounds.first),
-            lt(schema.GlPosting.txnDate, bounds.next)
-          )
+    const rows = await db
+      .select({
+        postingType: schema.GlPosting.postingType,
+        count: sql<number>`count(*)::int`,
+        // `::text` for the same reason `rail-fee-status.ts` gives: the string
+        // mapping of a `date()` column applies to a selected COLUMN, not to a
+        // raw `max()` around one, which the driver hands back as a `Date`.
+        lastTxnDate: sql<string>`(max(${schema.GlPosting.txnDate}))::text`,
+      })
+      .from(schema.GlPosting)
+      .where(
+        and(
+          eq(schema.GlPosting.organizationId, organizationId),
+          eq(schema.GlPosting.status, 'posted'),
+          gte(schema.GlPosting.txnDate, bounds.first),
+          lt(schema.GlPosting.txnDate, bounds.next)
         )
-        .groupBy(schema.GlPosting.postingType),
-      countUnpostedShipments(db, { organizationId, month }),
-      countUnpostedCreditMemos(db, { organizationId, month }),
-    ])
-
-    if (shipments.isErr()) {
-      logger.warn('Unposted shipments could not be counted', {
-        error: shipments.error,
-        organizationId,
-        month,
-      })
-    }
-    if (creditMemos.isErr()) {
-      logger.warn('Unposted credit memos could not be counted', {
-        error: creditMemos.error,
-        organizationId,
-        month,
-      })
-    }
+      )
+      .groupBy(schema.GlPosting.postingType)
 
     return ok({
       month,
@@ -155,8 +133,12 @@ export async function readMonthActivity(
           count: row.count,
           lastTxnDate: row.lastTxnDate,
         })),
-      unpostedShipments: shipments.isErr() ? null : shipments.value,
-      unpostedCreditMemos: creditMemos.isErr() ? null : creditMemos.value,
+      // `null` - unavailable, not zero - now that both avenues post eagerly
+      // (step 1b, TARGET §1): the batch/effect backlog this used to count no
+      // longer exists. TODO(step-1b): recompute from live drafts once the
+      // per-avenue `accounting.autoPost` setting lands.
+      unpostedShipments: null,
+      unpostedCreditMemos: null,
     })
   } catch (error) {
     if (error instanceof AuxxError) return err(error)

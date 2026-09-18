@@ -30,7 +30,7 @@ import { and, desc, eq, gte, inArray, lt, ne } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../errors'
 import type { PostingSummary } from './journal-entries/client'
-import type { PostingType } from './types'
+import type { PostingLinkRole, PostingType } from './types'
 
 const logger = createScopedLogger('postings:list-postings')
 
@@ -43,7 +43,7 @@ const logger = createScopedLogger('postings:list-postings')
  * blockers. Listing it as a row beside three adjusting entries would give the
  * screen two places to post the same thing.
  */
-const CLOSE_POSTING_TYPE: PostingType = 'month_end_inventory'
+const CLOSE_POSTING_TYPE: PostingType = 'month_end_reversal'
 
 const DEFAULT_LIMIT = 200
 
@@ -114,62 +114,84 @@ export async function listPostings(
   }
 }
 
+/** A posting plus the `GlPostingSource` role it was found through. */
+export interface SourcePosting extends PostingSummary {
+  linkRole: PostingLinkRole
+  occurrence: string
+}
+
 /**
- * Every posting one record produced, newest first - the `ledger` card on an
- * order, an invoice, a payment or a journal entry.
+ * Every posting one record produced, newest first - the ledger card on an
+ * order, an invoice, a fulfillment, a payout or a journal entry.
  *
- * Reached through `GlPostingLine.sourceType` / `sourceId`, which every builder
- * stamps on every line (build plan 7.3): the pair is what makes a posting
- * explainable later without joining through a provider's API. Two queries
- * rather than a join with `DISTINCT`, so the header columns come back once per
- * posting instead of once per line.
+ * Reached through `GlPostingSource`, never a stamp field on the record and never
+ * `GlPostingLine.sourceType` (TARGET §1): one query, one component, every link
+ * role. A row's `linkRole` says HOW it matched - `subject` is what the entry is
+ * of, `parent` is an order listing its children's postings, `member` is what a
+ * summed entry rolled up - so a card can group instead of pretending the four
+ * are the same thing.
  *
- * Includes the close entry, unlike {@link listPostings}: a stock movement
- * asking "what did I post to" genuinely wants the month-end assertion in the
- * answer, and there is no inline card above this one for it to duplicate.
+ * Two queries rather than a join with `DISTINCT`, so the header columns come
+ * back once per posting instead of once per link.
  */
 export async function listPostingsForSource(
   db: Database,
   options: {
     organizationId: string
-    sourceType: string
+    sourceKind: string
     sourceId: string
     limit?: number
   }
-): Promise<Result<PostingSummary[], Error>> {
-  const { organizationId, sourceType, sourceId, limit = DEFAULT_LIMIT } = options
+): Promise<Result<SourcePosting[], Error>> {
+  const { organizationId, sourceKind, sourceId, limit = DEFAULT_LIMIT } = options
 
   try {
-    const lines = await db
-      .selectDistinct({ glPostingId: schema.GlPostingLine.glPostingId })
-      .from(schema.GlPostingLine)
+    const links = await db
+      .select({
+        glPostingId: schema.GlPostingSource.glPostingId,
+        linkRole: schema.GlPostingSource.linkRole,
+        occurrence: schema.GlPostingSource.occurrence,
+      })
+      .from(schema.GlPostingSource)
       .where(
         and(
-          eq(schema.GlPostingLine.organizationId, organizationId),
-          eq(schema.GlPostingLine.sourceType, sourceType),
-          eq(schema.GlPostingLine.sourceId, sourceId)
+          eq(schema.GlPostingSource.organizationId, organizationId),
+          eq(schema.GlPostingSource.sourceKind, sourceKind),
+          eq(schema.GlPostingSource.sourceId, sourceId)
         )
       )
       .limit(limit)
 
-    const ids = lines.map((row) => row.glPostingId)
-    if (ids.length === 0) return ok([])
+    if (links.length === 0) return ok([])
+    const roleByPosting = new Map(links.map((link) => [link.glPostingId, link]))
 
     const rows = await db
       .select(POSTING_COLUMNS)
       .from(schema.GlPosting)
       .where(
-        and(eq(schema.GlPosting.organizationId, organizationId), inArray(schema.GlPosting.id, ids))
+        and(
+          eq(schema.GlPosting.organizationId, organizationId),
+          inArray(schema.GlPosting.id, [...roleByPosting.keys()])
+        )
       )
       .orderBy(desc(schema.GlPosting.createdAt))
 
-    return ok(rows.map(toSummary))
+    return ok(
+      rows.map((row) => {
+        const link = roleByPosting.get(row.id)
+        return {
+          ...toSummary(row),
+          linkRole: (link?.linkRole ?? 'subject') as PostingLinkRole,
+          occurrence: link?.occurrence ?? 'original',
+        }
+      })
+    )
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to list postings for source', {
       error,
       organizationId,
-      sourceType,
+      sourceKind,
       sourceId,
     })
     return err(new AuxxError('Internal error'))
@@ -184,12 +206,10 @@ const POSTING_COLUMNS = {
   txnDate: schema.GlPosting.txnDate,
   docNumber: schema.GlPosting.docNumber,
   status: schema.GlPosting.status,
-  exportStatus: schema.GlPosting.exportStatus,
-  failureReason: schema.GlPosting.failureReason,
   revision: schema.GlPosting.revision,
   reversesId: schema.GlPosting.reversesId,
   totalMinor: schema.GlPosting.totalMinor,
-  draft: schema.GlPosting.draft,
+  built: schema.GlPosting.built,
   postedAt: schema.GlPosting.postedAt,
 }
 
@@ -198,14 +218,12 @@ type PostingRow = {
   postingType: string
   periodKey: string
   txnDate: Date | string
-  docNumber: string
+  docNumber: string | null
   status: string
-  exportStatus: string
-  failureReason: string | null
   revision: number
   reversesId: string | null
   totalMinor: string | number
-  draft: unknown
+  built: unknown
   postedAt: Date | string | null
 }
 
@@ -215,15 +233,13 @@ function toSummary(row: PostingRow): PostingSummary {
     postingType: row.postingType as PostingType,
     periodKey: row.periodKey,
     txnDate: toDateKey(row.txnDate),
-    docNumber: row.docNumber,
+    docNumber: row.docNumber ?? '',
     status: row.status as PostingSummary['status'],
-    exportStatus: row.exportStatus as PostingSummary['exportStatus'],
-    failureReason: row.failureReason ?? null,
     revision: row.revision,
     reversesId: row.reversesId ?? null,
     // The header's own recorded total, NOT a sum of the lines. See the header.
     totalMinor: typeof row.totalMinor === 'number' ? row.totalMinor : Number(row.totalMinor),
-    memo: readDraftMemo(row.draft),
+    memo: readBuiltMemo(row.built),
     postedAt: toIso(row.postedAt),
   }
 }
@@ -235,9 +251,9 @@ function toSummary(row: PostingRow): PostingSummary {
  * recognise, which is right where the assertions matter and wrong here: a legacy
  * or hand-written draft must not make a LIST unopenable over a display string.
  */
-function readDraftMemo(draft: unknown): string | null {
-  if (typeof draft !== 'object' || draft === null) return null
-  const memo = (draft as Record<string, unknown>).memo
+function readBuiltMemo(built: unknown): string | null {
+  if (typeof built !== 'object' || built === null) return null
+  const memo = (built as Record<string, unknown>).memo
   return typeof memo === 'string' && memo ? memo : null
 }
 
@@ -271,4 +287,32 @@ function toIso(value: Date | string | null): string | null {
 function toDateKey(value: Date | string): string {
   if (typeof value === 'string') return value
   return value.toISOString().slice(0, 10)
+}
+
+/**
+ * The one posting that currently holds a source's subject claim, or `null`.
+ *
+ * The read every "reverse this record's entry" path makes first: a reversal
+ * deletes the original's subject row, so anything still `subject` and not
+ * `reversed` is what is standing in the books right now.
+ */
+export async function findLiveSubjectPosting(
+  db: Database,
+  options: {
+    organizationId: string
+    sourceKind: string
+    sourceId: string
+    /** Narrow to one pass over the source - a write-off attempt, say. */
+    occurrence?: string
+  }
+): Promise<Result<SourcePosting | null, Error>> {
+  const found = await listPostingsForSource(db, options)
+  if (found.isErr()) return err(found.error)
+  const live = found.value.find(
+    (posting) =>
+      posting.linkRole === 'subject' &&
+      posting.status !== 'reversed' &&
+      (options.occurrence === undefined || posting.occurrence === options.occurrence)
+  )
+  return ok(live ?? null)
 }

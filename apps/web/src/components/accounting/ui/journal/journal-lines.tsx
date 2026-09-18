@@ -55,8 +55,10 @@ import { RecordBadge } from '~/components/resources/ui/record-badge'
  * record at a time through `record.create`/`record.update`, with a whole
  * real-time/optimistic-cache machinery on top (see `line-values.ts`,
  * `line-rows.tsx` at ~2,650 lines). A journal entry's lines are not records at
- * all: `journal_entry_lines` is ONE JSON field on the `journal_entry` instance,
- * replaced wholesale on every save (`writes.ts`'s `updateJournalEntry`). Bending
+ * all: they live on the draft `GlPosting`'s stored envelope behind the
+ * record's `journal_entry_gl_posting_id` pointer, replaced wholesale on every
+ * save through `updateDraftLines` (`journal-entries/writes.ts`'s
+ * `updateJournalEntry`). Bending
  * `LineBuilder` onto a single JSON array would mean either giving every draft
  * line a fake record identity it does not have, or forking large parts of the
  * builder's internals - either one is well past a day of work for a shape

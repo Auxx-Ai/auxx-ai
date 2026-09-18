@@ -32,44 +32,38 @@ describe('the enabled regime', () => {
     expect(findInventoryWriterConflicts()).toEqual([])
   })
 
-  it('is L1 only - `receipt` and `vendor_bill` exist but are not enabled', () => {
-    // They are in `POSTING_TYPES`, in the pgEnum, and their builders are written
-    // and tested. Being buildable is not being enabled, which is the whole
-    // reason this constant exists separately from the union.
-    expect(ENABLED_POSTING_TYPES).toContain('month_end_inventory')
-    expect(ENABLED_POSTING_TYPES).not.toContain('receipt')
-    expect(ENABLED_POSTING_TYPES).not.toContain('vendor_bill')
+  it('is perpetual - `inventory_movement` and `vendor_bill` are both enabled', () => {
+    // Enabling one without the other is not a smaller change, it is a broken
+    // one: the receipt credits `grni` and only a matched bill relieves it.
+    expect(ENABLED_POSTING_TYPES).toContain('inventory_movement')
+    expect(ENABLED_POSTING_TYPES).toContain('vendor_bill')
   })
 })
 
 describe('the conflict detector actually bites', () => {
-  it('catches the L1+L3 state that turning L3 on WITHOUT turning L1 off would create', () => {
-    // The realistic mistake: someone adds the L3 types and leaves the monthly
-    // assertion in place. `vendor_bill` touches no inventory account, so the
-    // conflict is `receipt` against `month_end_inventory` - on exactly the two
-    // accounts a receipt can debit.
-    const conflicts = findInventoryWriterConflicts([
-      'month_end_inventory',
-      'receipt',
-      'vendor_bill',
-    ])
+  it('catches a SECOND declared writer of the inventory roles', () => {
+    // The realistic mistake after step 5: somebody gives a second posting type
+    // an inventory role on its policy. There is one writer by construction, and
+    // this is what says so.
+    const conflicts = findInventoryWriterConflicts(['inventory_movement', 'month_end_reversal'])
+    expect(conflicts).toEqual([])
 
-    expect(conflicts.map((c) => c.role).sort()).toEqual(
-      [ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS, ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS].sort()
+    const pretend = ['inventory_movement', 'inventory_movement'] as const
+    expect(
+      findInventoryWriterConflicts(pretend)
+        .map((c) => c.role)
+        .sort()
+    ).toEqual(
+      [
+        ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
+        ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
+        ACCOUNT_ROLES.INVENTORY_WIP,
+      ].sort()
     )
-    for (const conflict of conflicts) {
-      expect(conflict.postingTypes.sort()).toEqual(['month_end_inventory', 'receipt'])
-    }
   })
 
-  it('passes for a clean L3 switch - the monthly assertion turned OFF', () => {
-    // Turning L3 on is ONE change: swap the contents, do not extend them.
-    expect(findInventoryWriterConflicts(['receipt', 'vendor_bill'])).toEqual([])
-  })
-
-  it('does not flag WIP, which no builder drives per-event', () => {
-    const conflicts = findInventoryWriterConflicts(['month_end_inventory', 'receipt'])
-    expect(conflicts.map((c) => c.role)).not.toContain(ACCOUNT_ROLES.INVENTORY_WIP)
+  it('passes for the live regime, which has exactly one inventory writer', () => {
+    expect(findInventoryWriterConflicts(['inventory_movement', 'vendor_bill'])).toEqual([])
   })
 })
 
@@ -158,13 +152,18 @@ describe('cash is gone as a role, and the guard is narrowed back to inventory', 
 
 /** The document families brief 14 §2.3 named, kept as the guard even though every family routes uniformly. */
 const POSTING_FAMILIES: Record<string, readonly PostingType[]> = {
-  documents: ['invoice_issued', 'credit_memo', 'payment', 'deposit_application', 'write_off'],
+  documents: [
+    'invoice_issued',
+    'credit_memo',
+    'payment',
+    'refund',
+    'deposit_application',
+    'write_off',
+  ],
   inventory: [
-    'month_end_inventory',
-    'receipt',
+    'inventory_movement',
     'vendor_bill',
     'fulfillment',
-    'build',
     'month_end_deferral',
     'month_end_reversal',
   ],

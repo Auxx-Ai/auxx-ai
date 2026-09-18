@@ -6,14 +6,9 @@
 // WHY THIS IS A TABLE AND NOT AN `EntityInstance`
 // `FieldValue` carries exactly two unique indexes — the PK and
 // `(entityId, fieldId, sortKey)` — so a composite uniqueness constraint across
-// two FIELDS of an instance is not merely unimplemented, it is unexpressible: a
-// unique index constrains within a row and two fields are two rows. The entire
-// double-post defence is
-// `INSERT … ON CONFLICT (organizationId, postingType, periodKey, revision) DO
-// NOTHING RETURNING *`, and nothing on the entity route can express it.
-// Provider-side idempotency (a QBO `requestid`, a deterministic `DocNumber`)
-// protects the EXPORTER; under decision P1 auxx.ai is the system of record, and
-// a ledger holding two of an entry is wrong whether or not QuickBooks noticed.
+// two FIELDS of an instance is not merely unimplemented, it is unexpressible.
+// The double-post defence is a partial unique index on `GlPostingSource`
+// (see that file), and nothing on the entity route can express it.
 
 import { createId } from '@paralleldrive/cuid2'
 import {
@@ -21,7 +16,6 @@ import {
   bigint,
   check,
   date,
-  foreignKey,
   index,
   integer,
   jsonb,
@@ -33,27 +27,23 @@ import {
   unique,
   uniqueIndex,
 } from './_shared'
-import { ExternalBookConnection } from './external-book-connection'
+import { FinancialSourceAccount } from './financial-source-account'
 import { Organization } from './organization'
 import { User } from './user'
 
 /**
  * What produced a posting.
  *
- * Mirrors `POSTING_TYPES` in `packages/lib/src/postings/types.ts`. The first six
- * are the L1 monthly/periodic entries; `receipt` and `vendor_bill` are the L3
- * per-event entries and are carried here from day one because widening a
- * Postgres enum later is a migration and carrying a value nothing writes is
- * free.
+ * Mirrors `POSTING_TYPES` in `packages/lib/src/postings/types.ts`.
  */
 export const glPostingType = pgEnum('GlPostingType', [
   'fulfillment',
   'payout',
-  'build',
   'month_end_deferral',
   'month_end_reversal',
-  'month_end_inventory',
-  'receipt',
+  // MIGRATION step 5, drizzle 0381. One entry per inventory DOCUMENT at frozen
+  // movement cost; `stock_movement` is the subledger it links its members to.
+  'inventory_movement',
   'vendor_bill',
   // Added 2026-09-04 (plans/accounting/HANDOFF.md slot 0B). Kept in step with
   // `POSTING_TYPES` by `lib/postings/__tests__/types.test.ts`.
@@ -64,6 +54,10 @@ export const glPostingType = pgEnum('GlPostingType', [
   'write_off',
   // Slot 2G phase B, drizzle 0362.
   'payment',
+  // TARGET §5: a customer refund, its own type rather than a sides-swapped
+  // `payment`, so the export can send a Refund Receipt and the ledger card can
+  // name it. Added by MIGRATION step 2, drizzle 0378.
+  'refund',
   // plans/accounting/tasks/done/08-invoice-revenue.md and 07-customer-deposits.md,
   // drizzle 0362. An invoice's issuance entry, and the reclass of a held
   // customer deposit out of the liability and onto a receivable.
@@ -77,71 +71,33 @@ export const glPostingType = pgEnum('GlPostingType', [
   // ledger and written as one of our rows.
   //
   // 🛑 It is the one posting type auxx does not author, and
-  // `EXPORT_ROUTE_BY_POSTING_TYPE.provider_sync = 'none'` is what stops us
-  // pushing their own entries back at them. `periodKey` is the provider's
-  // transaction id, so the claim index gives per-transaction idempotency for
-  // free; `exportStatus` stays `not_required` because we never pushed it.
+  // its avenue is null, which is what stops us pushing their own entries back
+  // at them. `periodKey` is the provider's transaction id, so the claim index
+  // gives per-transaction idempotency for free.
   'provider_sync',
   'recurring_journal',
   'expense_bill',
 ])
 
 /**
- * Lifecycle of one journal entry, in OUR books.
+ * Lifecycle of one journal entry, in OUR books: `draft -> posted -> reversed`.
  *
- * 🛑 Two values. The pair that used to sit here — `pending` and `failed` — were
- * never ledger states; they were EXPORT states wearing this column's name, and
- * a provider refusal that flipped this column to `failed` took the entry out of
- * every report while the money it described was perfectly real. See
- * {@link glPostingExportStatus} and plans/accounting/export-state-split.md.
+ * A draft has lines and no doc number and holds no claim; posting assigns both.
+ * `reversed` is terminal and belongs to the ORIGINAL of a reversal pair - the
+ * reversal itself is an ordinary `posted` entry (decision G4).
  *
- * Every ledger-side question is settled BEFORE the claim: `postEntry` takes the
- * period lock (step 1), resolves roles (2) and re-asserts balance (3) before it
- * claims (5), then writes the lines in the SAME transaction as the claim (6).
- * So a row that exists with lines under it has already passed everything we get
- * to decide, which is why `posted` is stamped there rather than after a third
- * party acknowledges it. A pre-claim refusal writes no row at all — that is why
- * there is no status describing one.
- *
- * `reversed` is terminal, and it belongs to the ORIGINAL of a reversal pair —
- * the reversal itself is an ordinary `posted` entry (decision G4: a reversal is
- * a second, opposite entry; a period that has been posted never changes shape).
+ * 🛑 `pending` and `failed` were never ledger states; they were EXPORT states
+ * wearing this column's name. What the export did lives on `ExportBatch`.
  */
-export const glPostingStatus = pgEnum('GlPostingStatus', ['posted', 'reversed'])
-
-/**
- * What the EXPORT of this entry to the accounting provider did.
- *
- * 🛑 Nothing on this column may change what the books say. Decision P1 makes the
- * accounting system an EXPORTER and auxx.ai the system of record; that only
- * holds if a provider's answer lands somewhere the statements do not read.
- *
- * - `not_required` — nothing is connected, or pushing is disabled. A supported
- *   configuration, and deliberately NOT collapsed into `exported`: an org that
- *   never had an accounting system has not exported anything, and merging the
- *   two makes "is everything exported?" unanswerable on the one setup P1 calls
- *   fully supported.
- * - `pending` — claimed, and the push has not answered yet.
- * - `exported` — the provider took it. `providerEntryId` is set.
- * - `failed` — the provider refused. `failureReason` and `attempts` say why and
- *   how often. Retried by `retryExport`, never by re-posting.
- */
-export const glPostingExportStatus = pgEnum('GlPostingExportStatus', [
-  'not_required',
-  'pending',
-  'exported',
-  'failed',
-])
+export const glPostingStatus = pgEnum('GlPostingStatus', ['draft', 'posted', 'reversed'])
 
 /** Which side of the entry a line sits on. The ONLY carrier of sign (decision G2). */
 export const glPostingDirection = pgEnum('GlPostingDirection', ['debit', 'credit'])
 
-/** One journal entry. The claim on `(org, type, period, revision)` is what this table is for. */
+/** One journal entry. The claim lives on `GlPostingSource`'s subject row, not here. */
 export const GlPosting = pgTable(
   'GlPosting',
   {
-    deliveryIntent: text().$type<'not_required' | 'manual' | 'automatic'>(),
-    intendedBookConnectionId: text(),
     id: text()
       .$defaultFn(() => createId())
       .primaryKey()
@@ -149,29 +105,6 @@ export const GlPosting = pgTable(
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-
-    /**
-     * Which BOOK this entry belongs to — accrual or cash (decision D13,
-     * plans/accounting/tasks/44-money-and-accounting-effect-contracts.md).
-     *
-     * 🛑 RESERVED, not built. Nothing writes it and nothing reads it yet. It
-     * exists now because the other half of D13 rides on
-     * `AccountingEffect.acceptedBasis`, which is immutable and sha256-hashed —
-     * adding a dimension to a frozen, hashed record later means rehashing it.
-     * Reserving the dimension costs one nullable column and one optional field;
-     * retrofitting it does not.
-     *
-     * This column is the half for the 1:1 posting families that have no
-     * `AccountingEffect` at all (a manual journal, an opening balance);
-     * otherwise those entries would have no book.
-     *
-     * ⚠️ The claim index `(organizationId, postingType, periodKey, revision)` is
-     * deliberately NOT widened to include this column. Widening the primary
-     * double-post defence is what actually lets two books hold the same period,
-     * and that belongs with the cash book and its substitution rule — neither of
-     * which is built. NULL means "the one book we keep today".
-     */
-    basis: text().$type<'accrual' | 'cash'>(),
 
     postingType: glPostingType().notNull(),
     /** `'2026-08-18'` or `'2026-08'`, or a payout/build id. Parsed by `postings/periods.ts`. */
@@ -186,17 +119,18 @@ export const GlPosting = pgTable(
      */
     revision: integer().default(0).notNull(),
 
-    /**
-     * Defaults to `posted`, not to a draft state: a row exists only once the
-     * claim and its lines have committed, and by then every ledger-side check
-     * has passed. There is no moment at which a GlPosting row is legitimately
-     * un-posted.
-     */
     status: glPostingStatus().default('posted').notNull(),
     /** The accounting date. Always explicit — providers default to their own server date. */
     txnDate: date().notNull(),
-    /** Deterministic. Also the provider's document number. <= 21 chars (QBO `DocNumber`). */
-    docNumber: text().notNull(),
+    /** Deterministic, <= 21 chars (QBO `DocNumber`). NULL while the entry is a draft. */
+    docNumber: text(),
+
+    /** Which `FinancialSourceAccount` the entry resolved through, so a summary can group by it. */
+    storeId: text().references((): AnyPgColumn => FinancialSourceAccount.id, {
+      onDelete: 'set null',
+    }),
+    /** The `payment_gateway` instance the entry resolved through. An entity record id, so no FK. */
+    railId: text(),
 
     /** ISO 4217. USD only for the cutover; asserted in the poster, never assumed. */
     currency: text().default('USD').notNull(),
@@ -223,70 +157,10 @@ export const GlPosting = pgTable(
      * from the subledger later gives a different answer once the subledger
      * moves — which is exactly the property a ledger must not have.
      */
-    draft: jsonb().notNull(),
-
-    /**
-     * Deterministic, derived from posting identity ALONE — no run salt. Two runs
-     * of the same period must produce the same key or the provider's idempotency
-     * guarantee never fires on the one case it exists for. Written at claim time
-     * and reused verbatim by every retry.
-     */
-    requestId: text().notNull(),
-
-    /**
-     * What the export did. Never what the ledger did — see
-     * {@link glPostingExportStatus}.
-     *
-     * Defaults to `not_required` so a row written by anything that does not know
-     * about providers (a test factory, a fixture) reads as "nothing to export"
-     * rather than as an export that is owed and will never happen.
-     */
-    exportStatus: glPostingExportStatus().default('not_required').notNull(),
-
-    /** `'quickbooks'`, or `'none'` when nothing is connected. Never assumed. */
-    providerId: text(),
-    /** The provider's own id for the entry. NULL until a successful push. */
-    providerEntryId: text(),
-    /**
-     * WHICH instance of the provider the entry went to - a QuickBooks realm, a
-     * Xero tenant, a NetSuite account. Supplied by the adapter; the core never
-     * parses it.
-     *
-     * 🛑 `providerId` says WHAT system answered and `providerEntryId` is that
-     * system's id for the entry, but a provider id is a per-COMPANY sequence:
-     * entry `147` exists in every QuickBooks company and means something
-     * different in each. Without this column a company switch silently
-     * reinterprets every exported row and nothing downstream can tell.
-     *
-     * NULL means NO EXPORT REACHED A PROVIDER - a `none`-provider posting, or
-     * one that was never pushed. A normal, permanent state under decision P1,
-     * not a migration artefact.
-     *
-     * 🛑 **Written at export time or not at all.** An exported row's tenant can
-     * never be reconstructed afterwards: stamping one from the org's CURRENTLY
-     * connected realm is right only for an org that never switched - which is
-     * exactly the org this column does nothing for - and wrong for the one it
-     * exists to catch. That is why both write sites (`postings/post-entry.ts`
-     * and `postings/retry-export.ts`) stamp it, and why they have to move
-     * together: a retry path that stops stamping produces the unreconstructable
-     * row silently. See plans/accounting/tasks/done/24-the-company-on-the-entry.md §2.
-     */
-    providerTenantId: text(),
+    built: jsonb().notNull(),
 
     postedAt: timestamp({ precision: 3 }),
     postedByUserId: text().references((): AnyPgColumn => User.id, { onDelete: 'set null' }),
-    /**
-     * Why the EXPORT was refused. Never why a posting was refused — there is no
-     * such row.
-     *
-     * Cleared by a later success, unlike `attempts`: the count stays true
-     * afterwards, the reason does not. Every screen reads this as current, so a
-     * row that exported on its third attempt while still carrying attempt two's
-     * refusal describes itself as broken (task 24 §6.2).
-     */
-    failureReason: text(),
-    /** How many times the EXPORT has been attempted. Not cleared by a later success. */
-    attempts: integer().default(0).notNull(),
 
     /** For a reversal: the posting it reverses. Self-referential, never cascading. */
     reversesId: text().references((): AnyPgColumn => GlPosting.id, { onDelete: 'restrict' }),
@@ -298,25 +172,6 @@ export const GlPosting = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    unique('GlPosting_org_id_key').on(table.organizationId, table.id),
-    foreignKey({
-      name: 'GlPosting_intended_connection_scope_fk',
-      columns: [table.organizationId, table.intendedBookConnectionId],
-      foreignColumns: [ExternalBookConnection.organizationId, ExternalBookConnection.id],
-    }).onDelete('no action'),
-    check(
-      'GlPosting_delivery_intent_check',
-      sql`((${table.deliveryIntent} IS NULL AND ${table.intendedBookConnectionId} IS NULL) OR (${table.deliveryIntent} = 'not_required' AND ${table.intendedBookConnectionId} IS NULL) OR (${table.deliveryIntent} IN ('manual', 'automatic') AND ${table.intendedBookConnectionId} IS NOT NULL)) IS TRUE`
-    ),
-    // ── THE CLAIM. Everything else in this file is bookkeeping around this line. ──
-    uniqueIndex('GlPosting_org_type_period_revision_key').using(
-      'btree',
-      table.organizationId.asc().nullsLast(),
-      table.postingType.asc().nullsLast(),
-      table.periodKey.asc().nullsLast(),
-      table.revision.asc().nullsLast()
-    ),
-
     // A deterministic docNumber colliding is already a bug — catch it here, not at the provider.
     uniqueIndex('GlPosting_org_docNumber_key').using(
       'btree',
@@ -324,47 +179,11 @@ export const GlPosting = pgTable(
       table.docNumber.asc().nullsLast()
     ),
 
-    // One provider entry maps to one posting, PER COMPANY. Partial: NULL until
-    // the row reaches (or comes from) a provider.
-    //
-    // 🛑 `providerTenantId` is in the key because a provider entry id is a
-    // per-company sequence - QuickBooks issues small integers, so `147` exists
-    // in every company and means something different in each (decision `G20`,
-    // task 24). Scoped to the org alone, two company files collide, and the
-    // failure is silent in the worst way: the entry reaches the provider,
-    // `markPosted` violates the index, `stampOutcome` catches and logs, the row
-    // stays `pending`, and `postEntry` still returns `posted`.
-    //
-    // ⚠️ It is the COMPANY, not the connection. One book has many
-    // `ExternalBookConnection` rows over time - a reconnect mints a new `epoch` -
-    // so keying on a connection id would be too narrow and the same entry seen
-    // across two epochs would be two rows.
-    //
-    // 🛑 Both write paths must stamp it or a row falls outside the guarantee
-    // entirely, because NULLs are DISTINCT in a unique index: export stamps it
-    // from the pinned connection's company, and the inbound sync stamps it from
-    // the active book (`provider-sync/writes.ts`).
-    uniqueIndex('GlPosting_org_provider_entry_key')
-      .using(
-        'btree',
-        table.organizationId.asc().nullsLast(),
-        table.providerId.asc().nullsLast(),
-        table.providerTenantId.asc().nullsLast(),
-        table.providerEntryId.asc().nullsLast()
-      )
-      .where(sql`${table.providerEntryId} IS NOT NULL`),
-
     // The close console's two reads: the work queue, and a period's entries.
     index('GlPosting_org_status_idx').using(
       'btree',
       table.organizationId.asc().nullsLast(),
       table.status.asc().nullsLast()
-    ),
-    // The export queue: "what is in the books but not in QuickBooks".
-    index('GlPosting_org_exportStatus_idx').using(
-      'btree',
-      table.organizationId.asc().nullsLast(),
-      table.exportStatus.asc().nullsLast()
     ),
     index('GlPosting_org_txnDate_idx').using(
       'btree',
@@ -374,14 +193,8 @@ export const GlPosting = pgTable(
     // Walking a reversal chain back to its original.
     index('GlPosting_reversesId_idx').using('btree', table.reversesId.asc().nullsLast()),
 
-    // Reserved dimension (D13). NULL is the only value anything writes today.
-    check(
-      'GlPosting_basis_check',
-      sql`${table.basis} IS NULL OR ${table.basis} IN ('accrual','cash')`
-    ),
     check('GlPosting_totalMinor_check', sql`${table.totalMinor} >= 0`),
     check('GlPosting_revision_check', sql`${table.revision} >= 0`),
-    check('GlPosting_attempts_check', sql`${table.attempts} >= 0`),
     // A reversal must name what it reverses; an original must not name anything.
     check(
       'GlPosting_reversal_check',

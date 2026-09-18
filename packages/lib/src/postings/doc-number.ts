@@ -43,40 +43,17 @@ import type { PostingType } from './types'
 export const DOC_NUMBER_MAX_LENGTH = 21
 
 /**
- * Compact an effect-group membership identity into the document-number budget:
- * `g` + 8 base36 chars (the hash's first 40 bits), so `AUXX-FUL-g1a2b3c4d` is 18
- * and a `-R<n>` reversal suffix still fits the cap. The accepting transaction
- * compares the full SHA-256 on any conflict; the prefix alone proves nothing.
+ * Was this period key minted by the retired batch lanes' group hash?
+ *
+ * Kept for `periods.ts`, which refuses to parse one as a calendar key. Nothing
+ * mints these any more; a pre-migration row can still carry one.
  */
-export function fulfillmentGroupPeriodKey(membershipHash: string): string {
-  if (!/^[a-f0-9]{64}$/.test(membershipHash)) {
-    throw new UnprocessableEntityError('Fulfillment membership requires a full SHA-256 hash')
-  }
-  return `g${Number.parseInt(membershipHash.slice(0, 10), 16).toString(36).padStart(8, '0')}`
-}
-
-/** Was this period key minted by {@link fulfillmentGroupPeriodKey}? */
 export function isGroupPeriodKey(periodKey: string): boolean {
   return /^g[0-9a-z]{8}$/.test(periodKey)
 }
 
 /**
- * A document family's claim key at generation n: bare for the first,
- * `<key>.<n>` once a reversal has freed it (`.` is free — `writeOffPeriodKey`
- * appends its attempt with no separator at all).
- */
-export function documentGenerationKey(documentKey: string, generation: number): string {
-  if (!Number.isInteger(generation) || generation < 1)
-    throw new UnprocessableEntityError(
-      `Document generation must be a whole number of at least 1, got ${String(generation)}`,
-      { documentKey, generation: String(generation) }
-    )
-  return generation === 1 ? documentKey : `${documentKey}.${generation}`
-}
-
-/**
- * Three letters per posting type. Every member of `POSTING_TYPES`, including
- * the two the L3 per-event regime writes and does not yet enable.
+ * Three letters per posting type.
  *
  * Pinned to `POSTING_TYPES` by an exact-key-equality test: a new posting
  * type with no prefix would otherwise mint `AUXX-undefined-…`, which is a
@@ -85,11 +62,11 @@ export function documentGenerationKey(documentKey: string, generation: number): 
 export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   fulfillment: 'FUL',
   payout: 'PAY',
-  build: 'BLD',
   month_end_deferral: 'DEF',
   month_end_reversal: 'REV',
-  month_end_inventory: 'INV',
-  receipt: 'RCP',
+  // An inventory document keys on its own subject id, never on a month.
+  inventory_movement: 'INV',
+  refund: 'RFD',
   vendor_bill: 'BIL',
   // Wave 0 (HANDOFF slot 0B). All five key on a DOCUMENT NUMBER, never a date
   // and never a cuid - see `DocNumberInput.periodKey`.
@@ -103,8 +80,7 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   // minting one key would converge the loser to `already_posted`, a SUCCESS,
   // silently merging two payments into one entry.
   payment: 'PMT',
-  // 🛑 `INV` is `month_end_inventory`'s and cannot be reused - documents
-  // already carry it. An issuance entry keys on the INVOICE NUMBER, compacted,
+  // 🛑 `INV` is `inventory_movement`'s and cannot be reused. An issuance entry keys on the INVOICE NUMBER, compacted,
   // exactly as `manual_journal`, `bank_deposit` and `write_off` key on their
   // own record's number, so one entry per invoice falls out of the claim index.
   invoice_issued: 'INI',

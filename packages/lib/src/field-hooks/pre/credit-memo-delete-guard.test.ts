@@ -162,16 +162,19 @@ describe('guardCreditMemoDelete: period', () => {
 })
 
 describe('guardCreditMemoDelete: refunds', () => {
-  it('refuses while a refund transaction references the memo', async () => {
+  it('refuses while a refund settlement references the memo', async () => {
     h.refundRows.mockResolvedValue([{ id: 'txn_1', status: 'succeeded' }])
 
-    await expect(guardCreditMemoDelete(event())).rejects.toThrow(/succeeded refund/i)
+    await expect(guardCreditMemoDelete(event())).rejects.toThrow(/refund recorded against it/i)
   })
 
   it('refuses on a pending refund too - the row is still a ledger row', async () => {
+    // `MoneyRefundSettlement` is an immutable, already-settled fact — the guard
+    // does not read its status at all, unlike the retired `PaymentTransaction`
+    // guard: any row for this memo refuses, pending or not.
     h.refundRows.mockResolvedValue([{ id: 'txn_1', status: 'pending' }])
 
-    await expect(guardCreditMemoDelete(event())).rejects.toThrow(/pending refund/i)
+    await expect(guardCreditMemoDelete(event())).rejects.toThrow(/refund recorded against it/i)
   })
 
   it('passes a memo with no refund rows', async () => {

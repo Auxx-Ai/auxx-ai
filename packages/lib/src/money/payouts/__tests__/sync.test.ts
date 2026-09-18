@@ -41,7 +41,7 @@ vi.mock('../reads', () => ({
   findPayoutByGatewayId: vi.fn(),
   listLinkedFeedAccounts: h.listLinkedFeedAccounts,
 }))
-vi.mock('../../payments/account-state', () => ({
+vi.mock('../stripe-account', () => ({
   getPaymentAccount: h.getPaymentAccount,
 }))
 vi.mock('../../../payment-gateways/reads', () => ({

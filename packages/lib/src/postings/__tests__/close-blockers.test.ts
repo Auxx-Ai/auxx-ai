@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   closeBlockerMessage,
   describeIncompleteRevenue,
+  describeInventoryBlockers,
   describeUnmappedRoles,
   incompleteRevenueLead,
   monthLabel,
@@ -155,5 +156,64 @@ describe('monthLabel', () => {
     // `GlPosting` documents period keys that are not dates at all.
     expect(monthLabel('payout-2026-07-14-abc')).toBe('payout-2026-07-14-abc')
     expect(monthLabel('2026-13')).toBe('2026-13')
+  })
+})
+
+describe('describeInventoryBlockers', () => {
+  const MONTH = '2026-07'
+
+  it('produces NOTHING for a month that ties with every movement posted', () => {
+    expect(
+      describeInventoryBlockers({
+        periodKey: MONTH,
+        unpostedMovements: 0,
+        subledgerMinor: 812_500,
+        ledgerMinor: 812_500,
+      })
+    ).toEqual([])
+  })
+
+  it('names the unposted movements, and puts completeness first', () => {
+    const items = describeInventoryBlockers({
+      periodKey: MONTH,
+      unpostedMovements: 3,
+      subledgerMinor: 100_000,
+      ledgerMinor: 97_000,
+    })
+
+    expect(items.map((item) => item.key)).toEqual(['inventory_unposted', 'inventory_balance'])
+    expect(items[0]?.count).toBe(3)
+    expect(items[0]?.label).toContain('3 stock movements')
+    expect(items[0]?.remedy).toContain('July 2026')
+  })
+
+  it('reports a balance difference in either direction', () => {
+    const short = describeInventoryBlockers({
+      periodKey: MONTH,
+      unpostedMovements: 0,
+      subledgerMinor: 90_000,
+      ledgerMinor: 100_000,
+    })
+    expect(short).toHaveLength(1)
+    expect(short[0]?.key).toBe('inventory_balance')
+    expect(short[0]?.label).toContain('-10000')
+
+    const over = describeInventoryBlockers({
+      periodKey: MONTH,
+      unpostedMovements: 0,
+      subledgerMinor: 100_000,
+      ledgerMinor: 90_000,
+    })
+    expect(over[0]?.label).toContain('10000')
+  })
+
+  it('carries the month on every item so a remedy knows what to act on', () => {
+    const items = describeInventoryBlockers({
+      periodKey: MONTH,
+      unpostedMovements: 1,
+      subledgerMinor: 1,
+      ledgerMinor: 0,
+    })
+    expect(items.every((item) => item.ref === MONTH)).toBe(true)
   })
 })

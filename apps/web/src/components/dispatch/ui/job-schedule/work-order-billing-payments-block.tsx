@@ -50,7 +50,7 @@ export interface WorkOrderBillingPaymentsBlockProps {
   workOrderRecordId: RecordId
   candidates: PaymentCandidate[]
   currencyCode: string
-  /** Called after a payment is recorded/deleted/refunded, in addition to this block's own
+  /** Called after a payment is recorded/voided, in addition to this block's own
    * ledger invalidation — lets the composed `getWorkOrderBillingState` read (balance due,
    * next-action state) stay in sync without waiting for the realtime revision round-trip. */
   onSettled?: () => void
@@ -96,38 +96,17 @@ export function WorkOrderBillingPaymentsBlock({
     onError: (error) => toastError({ title: 'Error deleting payment', description: error.message }),
   })
 
-  const refundTransaction = api.money.refundTransaction.useMutation({
-    onError: (error) =>
-      toastError({ title: 'Error refunding payment', description: error.message }),
-  })
-
   const handleDelete = async (transactionId: string) => {
     const payment = payments?.find((p) => p.id === transactionId)
     const confirmed = await confirm({
-      title: 'Delete this payment?',
+      title: 'Void this payment?',
       description: 'Invoice balance will be recalculated.',
-      confirmText: 'Delete',
+      confirmText: 'Void',
       cancelText: 'Cancel',
       destructive: true,
     })
     if (!confirmed) return
     deletePayment.mutate(
-      { transactionId },
-      { onSuccess: () => payment && invalidateBoth(payment.invoiceRecordId) }
-    )
-  }
-
-  const handleRefund = async (transactionId: string) => {
-    const payment = payments?.find((p) => p.id === transactionId)
-    const confirmed = await confirm({
-      title: 'Refund this payment in full?',
-      description: 'The platform fee is refunded too.',
-      confirmText: 'Refund',
-      cancelText: 'Cancel',
-      destructive: true,
-    })
-    if (!confirmed) return
-    refundTransaction.mutate(
       { transactionId },
       { onSuccess: () => payment && invalidateBoth(payment.invoiceRecordId) }
     )
@@ -141,9 +120,7 @@ export function WorkOrderBillingPaymentsBlock({
         currencyCode={currencyCode}
         isAdmin={isAdmin}
         onDelete={handleDelete}
-        onRefund={handleRefund}
         deletePending={deletePayment.isPending}
-        refundPending={refundTransaction.isPending}
         visibleLimit={PAYMENT_PREVIEW_LIMIT}
         renderRowSuffix={(payment) => {
           const invoiceRecordId = invoiceByTransactionId.get(payment.id)

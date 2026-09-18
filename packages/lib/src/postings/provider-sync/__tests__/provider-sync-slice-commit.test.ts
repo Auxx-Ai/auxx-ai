@@ -22,7 +22,7 @@ import { balancedEntryLines, ledger } from './support/fixtures'
 
 const recordProviderSyncedThrough = vi.hoisted(() => vi.fn())
 const fetchBatch = vi.hoisted(() => vi.fn())
-const postProviderSyncEntry = vi.hoisted(() => vi.fn())
+const translate = vi.hoisted(() => vi.fn())
 
 vi.mock('../marker-writes', () => ({ recordProviderSyncedThrough }))
 
@@ -63,13 +63,33 @@ vi.mock('../../provider', () => ({
 vi.mock('../reads', () => ({
   readOurProviderEntryIds: vi.fn(async () => ({ isErr: () => false, value: new Set<string>() })),
   readOurPostedEntries: vi.fn(async () => ({ isErr: () => false, value: [] })),
-  readSyncedEntriesInRange: vi.fn(async () => ({ isErr: () => false, value: [] })),
+  readActiveBookId: vi.fn(async () => ({ isErr: () => false, value: 'book_1' })),
+  readOurDocNumbers: vi.fn(async () => ({ isErr: () => false, value: new Set<string>() })),
 }))
 
 vi.mock('../writes', () => ({
-  postProviderSyncEntry,
-  reverseSyncedEntry: vi.fn(),
+  upsertMirrorChunk: vi.fn(async () => ({
+    isErr: () => false,
+    value: { mirrored: 0, ours: 0, withdrawn: 0, withdrawnIds: [] },
+  })),
 }))
+
+vi.mock('../translate', () => ({ translateMirrorRange: translate }))
+
+/** A translation pass that found nothing to do. Overridden per test. */
+function cleanTranslation() {
+  return {
+    isErr: () => false,
+    value: {
+      written: 0,
+      alreadyPosted: 0,
+      reversed: 0,
+      zeroValue: 0,
+      deferredToClosedMonths: [],
+      refusals: [],
+    },
+  }
+}
 
 const ORG = 'org_1'
 const db = {} as never
@@ -122,10 +142,10 @@ function monthThatWillNeverBalance(from: string, to: string, nextMonthStart?: st
 
 beforeEach(() => {
   fetchBatch.mockReset()
-  postProviderSyncEntry.mockReset()
+  translate.mockReset()
+  translate.mockResolvedValue(cleanTranslation())
   recordProviderSyncedThrough.mockReset()
   recordProviderSyncedThrough.mockResolvedValue({ isErr: () => false, value: undefined })
-  postProviderSyncEntry.mockResolvedValue({ isErr: () => false, value: { status: 'posted' } })
 })
 
 describe("a clean slice commits 'all'", () => {
@@ -183,7 +203,7 @@ describe("a transient provider fault commits 'partial-retriable'", () => {
     expect(recordProviderSyncedThrough).not.toHaveBeenCalled()
     expect(source.progress().syncedThrough).toBeNull()
     // Nothing was planned and nothing was written - the month was never read.
-    expect(postProviderSyncEntry).not.toHaveBeenCalled()
+    expect(translate).not.toHaveBeenCalled()
     expect(source.progress().chunks).toHaveLength(0)
     expect(source.lastRetriableFault()?.message).toContain('429')
   })
@@ -226,9 +246,10 @@ describe("a month that will never balance commits 'partial-permanent'", () => {
 
     const second = await source.fetchSlice({ ...CTX, cursor: first.nextCursor })
 
-    // February is clean, and it is still walked and still written.
+    // February is clean, and it is still walked and still translated - one
+    // pass per chunk, including the one that refused.
     expect(second.commit).toBe('all')
-    expect(postProviderSyncEntry).toHaveBeenCalledTimes(1)
+    expect(translate).toHaveBeenCalledTimes(2)
     // 🛑 But the marker stays put. It means "this range has been read
     // completely", and January was not.
     expect(recordProviderSyncedThrough).not.toHaveBeenCalled()
@@ -236,9 +257,16 @@ describe("a month that will never balance commits 'partial-permanent'", () => {
   })
 
   it('a refused write is permanent too, and names the refusal in the sample', async () => {
-    postProviderSyncEntry.mockResolvedValueOnce({
-      isErr: () => true,
-      error: new Error('Account 41 is not mapped'),
+    translate.mockResolvedValueOnce({
+      isErr: () => false,
+      value: {
+        written: 0,
+        alreadyPosted: 0,
+        reversed: 0,
+        zeroValue: 0,
+        deferredToClosedMonths: [],
+        refusals: ['Account 41 is not mapped'],
+      },
     })
     fetchBatch.mockResolvedValueOnce(monthOfTheirWork('2026-01-01', '2026-01-31', '101'))
     const source = await createProviderLedgerSyncSource(db, ORG, {

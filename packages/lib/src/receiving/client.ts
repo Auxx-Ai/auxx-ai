@@ -211,7 +211,7 @@ function formatMinorUnitsUsd(minorUnits: number): string {
  * A role is stable by construction. The resolution chain is
  * `role -> the org's gl_account -> its code -> the provider's id`, and only the
  * value in the FIRST position is safe to freeze onto a ledger row.
- * `buildReceiptEntry` consumes exactly this value as its `inventoryAccountRole`.
+ * `buildInventoryMovementEntry` sums a document's lines by exactly this value.
  *
  * `subassembly` maps to raw materials, NOT to work in process. The build plan's
  * field table names the code space as "`1310` / `1320` / `1330`" but the

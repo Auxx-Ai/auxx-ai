@@ -29,19 +29,10 @@ import type { PostResultStatus } from './types'
  */
 export function didLedgerAccept(result: { status: PostResultStatus }): boolean {
   switch (result.status) {
-    // An entry exists, balanced and persisted, and these five say so directly.
+    // An entry exists, balanced and persisted.
     case 'posted':
     // The claim was already held - a converged re-run, a SUCCESS, never a fault.
     case 'already_posted':
-    case 'healed':
-    // No provider, or the provider's switch is off. The entry is built and
-    // persisted identically and simply never pushed (decision P1).
-    case 'not_connected':
-    case 'disabled':
-    // The posting TYPE routes to `'none'` whatever the org has connected -
-    // `opening_balance` and `provider_sync` today. It pushed nothing BY DESIGN,
-    // so an export is not merely absent, it is never coming.
-    case 'not_exported':
       return true
 
     // Every one of these wrote NOTHING. A caller that treats them as accepted
@@ -61,6 +52,9 @@ export function didLedgerAccept(result: { status: PostResultStatus }): boolean {
     // but it is not the ledger accepting anything - callers that must not warn
     // about it want {@link isExpectedPostOutcome}, which says so by name.
     case 'not_enabled':
+    // A row exists, with lines and no doc number, and it holds no claim. The
+    // statements do not read it, so the books do not yet hold this entry.
+    case 'drafted':
       return false
 
     // 🛑 FAILS CLOSED, and the `void` is why this is not `return exhaustive`.
@@ -96,5 +90,5 @@ export function didLedgerAccept(result: { status: PostResultStatus }): boolean {
  * `ACCEPTED_POST_STATUSES` that were also asked whether the books hold an entry.
  */
 export function isExpectedPostOutcome(result: { status: PostResultStatus }): boolean {
-  return didLedgerAccept(result) || result.status === 'not_enabled'
+  return didLedgerAccept(result) || result.status === 'not_enabled' || result.status === 'drafted'
 }

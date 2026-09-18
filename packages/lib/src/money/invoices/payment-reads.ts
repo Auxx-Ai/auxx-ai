@@ -20,7 +20,11 @@
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, asc, eq } from 'drizzle-orm'
+import { getOrgCache } from '../../cache'
+import { extractRelationshipRecordIds } from '../../field-values/relationship-field'
+import { UnifiedCrudHandler } from '../../resources/crud'
 
 /** One recorded payment, shaped for the invoice drawer's existing row contract. */
 export interface InvoicePaymentRow {
@@ -108,4 +112,47 @@ export async function listInvoiceMoneyPayments(
   return [...byTransaction.values()]
     .filter((row) => row.allocatedAmount > 0)
     .map((row) => ({ ...row, amount: row.allocatedAmount }))
+}
+
+/** One {@link InvoicePaymentRow}, plus the invoice it landed on. */
+export interface WorkOrderPaymentRow extends InvoicePaymentRow {
+  invoiceInstanceId: string
+}
+
+/**
+ * Every money-model receipt across ALL invoices linked to a work order, oldest first — the
+ * cross-invoice read backing the job page's billing section. Resolves the WO's invoices via
+ * the `work_order_invoices` inverse relationship, the same mechanism the legacy
+ * `listWorkOrderPayments` (`payments/ledger.ts`, removed in the accounting migration's step 0)
+ * used, then fans `listInvoiceMoneyPayments` out over them — a held deposit with no invoice
+ * yet has no money-model equivalent (quote deposits are not on this lane), so unlike the
+ * legacy read there is no `workOrderInstanceId`-only branch.
+ */
+export async function listWorkOrderMoneyPayments(
+  db: Database | Transaction,
+  params: { organizationId: string; userId: string; workOrderInstanceId: string }
+): Promise<WorkOrderPaymentRow[]> {
+  const { organizationId, userId, workOrderInstanceId } = params
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const workOrderRecordId = toRecordId('work_order', workOrderInstanceId)
+
+  const woCf = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['work_order_invoices'] as const)
+  if (!woCf.work_order_invoices) return []
+
+  const values = await handler.getFieldValues(workOrderRecordId, [woCf.work_order_invoices.id])
+  const invoiceInstanceIds = extractRelationshipRecordIds(
+    values.get(woCf.work_order_invoices.id)
+  ).map((recordId) => parseRecordId(recordId).entityInstanceId)
+  if (invoiceInstanceIds.length === 0) return []
+
+  const rowsByInvoice = await Promise.all(
+    invoiceInstanceIds.map((invoiceInstanceId) =>
+      listInvoiceMoneyPayments(db, { organizationId, invoiceInstanceId }).then((rows) =>
+        rows.map((row) => ({ ...row, invoiceInstanceId }))
+      )
+    )
+  )
+  return rowsByInvoice.flat().sort((a, b) => a.date.localeCompare(b.date))
 }

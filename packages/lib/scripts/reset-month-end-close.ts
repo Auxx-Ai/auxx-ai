@@ -96,15 +96,83 @@
 // out of Redis long after the row says `draft`.
 
 import { database as db, schema } from '@auxx/database'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { onCacheEvent } from '../src/cache/invalidate'
 import {
   clearQuickbooksAccountMapping,
   readQuickbooksAccountMap,
 } from '../src/money/quickbooks/account-map'
 import { listChartAccounts } from '../src/postings'
-import { releaseAccountingClaims } from '../src/postings/release-claims'
 import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'
+
+// `GlPostingSource` cascades on `GlPosting` delete, so the claim itself needs no
+// release. `ExportBatchPosting` is `ON DELETE NO ACTION` against the posting, so
+// a batched posting still has to be cleared first (TARGET §3).
+async function releaseExportBatchRows(
+  organizationId: string,
+  glPostingIds: readonly string[]
+): Promise<number> {
+  if (!glPostingIds.length) return 0
+  const members = await db
+    .select({ batchId: schema.ExportBatchPosting.batchId })
+    .from(schema.ExportBatchPosting)
+    .where(
+      and(
+        eq(schema.ExportBatchPosting.organizationId, organizationId),
+        inArray(schema.ExportBatchPosting.glPostingId, [...glPostingIds])
+      )
+    )
+  const batchIds = [...new Set(members.map((row) => row.batchId))]
+  if (!batchIds.length) return 0
+  await db
+    .delete(schema.ExportBatchPosting)
+    .where(
+      and(
+        eq(schema.ExportBatchPosting.organizationId, organizationId),
+        inArray(schema.ExportBatchPosting.batchId, batchIds)
+      )
+    )
+  await db
+    .delete(schema.ExportBatch)
+    .where(
+      and(
+        eq(schema.ExportBatch.organizationId, organizationId),
+        inArray(schema.ExportBatch.id, batchIds)
+      )
+    )
+  return batchIds.length
+}
+
+/** Which of these postings a SENT batch already put in the provider's books. */
+async function readSentProviderObjects(
+  organizationId: string,
+  glPostingIds: readonly string[]
+): Promise<Map<string, string>> {
+  if (!glPostingIds.length) return new Map()
+  const rows = await db
+    .select({
+      glPostingId: schema.ExportBatchPosting.glPostingId,
+      providerObjectId: schema.ExportBatch.providerObjectId,
+    })
+    .from(schema.ExportBatchPosting)
+    .innerJoin(
+      schema.ExportBatch,
+      and(
+        eq(schema.ExportBatch.organizationId, schema.ExportBatchPosting.organizationId),
+        eq(schema.ExportBatch.id, schema.ExportBatchPosting.batchId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.ExportBatchPosting.organizationId, organizationId),
+        inArray(schema.ExportBatchPosting.glPostingId, [...glPostingIds]),
+        eq(schema.ExportBatch.state, 'sent')
+      )
+    )
+  const sent = new Map<string, string>()
+  for (const row of rows) if (row.providerObjectId) sent.set(row.glPostingId, row.providerObjectId)
+  return sent
+}
 
 const ORG = process.argv[2] ?? ''
 const PERIOD = process.argv[3] ?? ''
@@ -214,32 +282,35 @@ async function main() {
       status: schema.GlPosting.status,
       docNumber: schema.GlPosting.docNumber,
       totalMinor: schema.GlPosting.totalMinor,
-      providerId: schema.GlPosting.providerId,
-      providerEntryId: schema.GlPosting.providerEntryId,
     })
     .from(schema.GlPosting)
     .where(and(eq(schema.GlPosting.organizationId, ORG), eq(schema.GlPosting.periodKey, PERIOD)))
     // Descending, which is also the delete order `reversesId`'s RESTRICT forces.
     .orderBy(desc(schema.GlPosting.revision))
 
+  const sentObjects = await readSentProviderObjects(
+    ORG,
+    postings.map((p) => p.id)
+  )
+
   if (postings.length === 0) {
     console.log('postings: none - this period is already clean\n')
   } else {
     console.log(`postings: ${postings.length} row(s), newest revision first`)
     for (const p of postings) {
-      const exported = p.providerEntryId ? ` EXPORTED as ${p.providerId}:${p.providerEntryId}` : ''
+      const sent = sentObjects.get(p.id)
       console.log(
-        `  rev ${String(p.revision).padEnd(3)} ${p.status.padEnd(9)} ${(p.docNumber ?? '').padEnd(24)} ${money(p.totalMinor).padStart(16)}${exported}`
+        `  rev ${String(p.revision).padEnd(3)} ${p.status.padEnd(9)} ${(p.docNumber ?? '').padEnd(24)} ${money(p.totalMinor).padStart(16)}${sent ? ` SENT as ${sent}` : ''}`
       )
     }
     console.log('')
   }
 
-  const exportedRows = postings.filter((p) => p.providerEntryId !== null)
+  const exportedRows = postings.filter((p) => sentObjects.has(p.id))
   if (exportedRows.length > 0 && !FORCE) {
     console.error(
       `🛑 REFUSING. ${exportedRows.length} of these postings reached the accounting provider and\n` +
-        '   carry a providerEntryId. Deleting our row would orphan a real journal entry over\n' +
+        '   sit in a SENT export batch. Deleting our row would orphan a real journal entry over\n' +
         '   there and leave the next close computing its delta against a snapshot the provider\n' +
         '   no longer agrees with.\n\n' +
         '   Reverse the entry in the app instead, or pass --force if you have already deleted\n' +
@@ -324,19 +395,13 @@ async function main() {
     return
   }
 
-  // Effects, deliveries and coverage first: those FKs are ON DELETE NO ACTION,
-  // and releasing them is also what puts the work behind them back to `pending`
-  // instead of stranding it on `accepted` with no journal.
-  const released = await releaseAccountingClaims(
-    db,
+  // Batches first: `ExportBatchPosting`'s FK to the posting is ON DELETE NO
+  // ACTION. `GlPostingSource` cascades, so the claim needs nothing here.
+  const releasedBatches = await releaseExportBatchRows(
     ORG,
     postings.map((p) => p.id)
   )
-  if (released.effects)
-    console.log(
-      `released ${released.effects} effect(s) and ${released.deliveries} delivery(ies); ` +
-        `${released.reopened} work row(s) back to pending`
-    )
+  if (releasedBatches) console.log(`released ${releasedBatches} export batch(es)`)
 
   // Descending revision: `reversesId` is ON DELETE RESTRICT, so a reversal must
   // go before the row it names. Lines cascade.

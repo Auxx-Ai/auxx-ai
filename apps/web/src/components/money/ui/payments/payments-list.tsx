@@ -1,80 +1,30 @@
 // apps/web/src/components/money/ui/payments/payments-list.tsx
 'use client'
 
-// Shared presentational payments list — the row markup (date / method / reference / amount),
-// the `stripeStatusChip` helper, and the `refundStatusByCharge` derivation, extracted verbatim
-// from the invoice drawer's payments card (money MP1 build spec §K) so the work-order billing
-// section (money plan 10 §B) can reuse it. Admin-gated delete (manual rows) / refund (Stripe
-// rows) behavior is unchanged; callers own their own queries/mutations.
+// Shared presentational payments list — the row markup (date / method / reference / amount)
+// extracted verbatim from the invoice drawer's payments card so the work-order billing
+// section can reuse it. Every row is a money-model receipt (accounting migration step 0
+// dropped the legacy `PaymentTransaction` lane, and with it the Stripe charge/refund and
+// manual-delete rows this list used to also render) — the one action is admin-gated Void, a
+// reversing correction, never a delete.
 
-import { Badge, type Variant as BadgeVariant } from '@auxx/ui/components/badge'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { format } from 'date-fns'
-import { CreditCard, RotateCcw, Trash2 } from 'lucide-react'
+import { CreditCard, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
-import type { RouterOutputs } from '~/trpc/react'
 import { paymentMethodLabel } from '../invoice/payment-method-options'
 
-type PaymentRow = RouterOutputs['money']['listPayments'][number]
-
-/** Non-actionable Stripe rows render a status chip instead of an action — a refund-in-progress,
- * an already-refunded charge, or a disputed one. A refunded CHARGE row deliberately keeps
- * `status: 'succeeded'` (the refund row does the subtracting in the ledger math), so
- * refunded-ness is derived from the linked refund row's status, not the charge's own. */
-function stripeStatusChip(
-  payment: { kind: string; status: string },
-  linkedRefundStatus?: string
-): {
-  label: string
-  variant: BadgeVariant
-} {
-  if (payment.kind === 'refund') {
-    if (payment.status === 'succeeded') return { label: 'Refunded', variant: 'gray' }
-    if (payment.status === 'pending') return { label: 'Refund pending', variant: 'amber' }
-    return { label: 'Refund failed', variant: 'red' }
-  }
-  if (linkedRefundStatus) {
-    return linkedRefundStatus === 'succeeded'
-      ? { label: 'Refunded', variant: 'gray' }
-      : { label: 'Refund pending', variant: 'amber' }
-  }
-  if (payment.status === 'refunded') return { label: 'Refunded', variant: 'gray' }
-  if (payment.status === 'disputed') return { label: 'Disputed', variant: 'red' }
-  if (payment.status === 'pending') return { label: 'Processing', variant: 'amber' }
-  return { label: payment.status, variant: 'gray' }
-}
-
-/** A deposit row is any charge/refund with `quoteInstanceId` set (money 16 §D.3) — the deposit
- * pre-payment leaves no other marker on the client-shaped row. Held/applied state is derived
- * from the server-computed `allocatedAmount`/`heldAmount` rather than re-summing anything here.
- * A charge whose linked refund SUCCEEDED must not keep reading "held"/"applied" (the charge row
- * itself stays `succeeded` forever — refunded-ness lives on the refund row), so the caller
- * passes the linked refund's status; a merely-pending refund keeps the held/applied badge (the
- * status chip already says "Refund pending"). */
-function depositBadge(
-  payment: PaymentRow,
-  currencyCode: string,
-  linkedRefundStatus?: string
-): { label: string; variant: BadgeVariant; title?: string } | null {
-  if (payment.quoteInstanceId == null) return null
-  if (payment.kind === 'refund') return { label: 'Deposit · refunded', variant: 'gray' }
-  if (payment.kind !== 'charge') return null
-  if (linkedRefundStatus === 'succeeded') return { label: 'Deposit · refunded', variant: 'gray' }
-  if (payment.status !== 'succeeded') return { label: 'Deposit', variant: 'outline' }
-
-  const { amount, allocatedAmount, heldAmount } = payment
-  if (heldAmount === amount) return { label: 'Deposit · held', variant: 'blue' }
-  if (heldAmount === 0 && allocatedAmount > 0) {
-    return { label: 'Deposit · applied', variant: 'green' }
-  }
-  return {
-    label: 'Deposit · partially applied',
-    variant: 'amber',
-    title: `${formatCurrency(heldAmount, currencyCode)} still held`,
-  }
+/** The row shape every consumer's query answers with — `listPayments` and
+ * `listPaymentsForWorkOrder` both extend this with fields this list never reads. */
+interface PaymentRow {
+  id: string
+  date: string
+  method: string | null
+  reference: string | null
+  amount: number
 }
 
 export interface PaymentsListProps {
@@ -83,10 +33,8 @@ export interface PaymentsListProps {
   currencyCode: string
   isAdmin: boolean
   onDelete: (transactionId: string) => void
-  onRefund: (transactionId: string) => void
   deletePending: boolean
-  refundPending: boolean
-  /** Optional slot rendered at the end of each row, after the action button/chip — e.g. the
+  /** Optional slot rendered at the end of each row, after the action button — e.g. the
    * work-order billing section's invoice chip/link. */
   renderRowSuffix?: (payment: PaymentRow) => ReactNode
   /** Cap the always-visible rows behind `TreeRowList`'s inline "Show N more" collapse.
@@ -95,34 +43,18 @@ export interface PaymentsListProps {
 }
 
 /** Presentational payments ledger list — rows, loading + empty states, and the admin-gated
- * delete (manual) / refund (Stripe) actions. Shared by the invoice drawer's payments card and
- * the work-order billing section's payments block. */
+ * Void action. Shared by the invoice drawer's payments card and the work-order billing
+ * section's payments block. */
 export function PaymentsList({
   payments,
   isLoading,
   currencyCode,
   isAdmin,
   onDelete,
-  onRefund,
   deletePending,
-  refundPending,
   renderRowSuffix,
   visibleLimit,
 }: PaymentsListProps) {
-  // Charge id → its open/succeeded refund's status. A charge with a linked refund is no longer
-  // refundable (the server would reject it) — it renders a chip instead of the Refund action.
-  const refundStatusByCharge = new Map<string, string>()
-  for (const p of payments ?? []) {
-    if (
-      p.kind === 'refund' &&
-      p.refundedTransactionId &&
-      p.status !== 'failed' &&
-      p.status !== 'canceled'
-    ) {
-      refundStatusByCharge.set(p.refundedTransactionId, p.status)
-    }
-  }
-
   if (isLoading) return <EmptySection loading title='Loading payments' />
 
   if (!payments?.length) {
@@ -140,81 +72,38 @@ export function PaymentsList({
       items={payments}
       getKey={(payment) => payment.id}
       visibleLimit={visibleLimit}
-      renderRow={(payment) => {
-        // Both hand-recorded lanes can be undone: a legacy `manual` row is
-        // deleted, a `money` one is VOIDED by a reversing entry (task 54). The
-        // router routes on the id; the button is the same either way.
-        const action =
-          payment.provider === 'manual' || payment.provider === 'money'
-            ? isAdmin && (
+      renderRow={(payment) => (
+        <TreeRow
+          rowClassName='hover:bg-primary-100'
+          icon={<CreditCard className='size-4' />}
+          title={
+            <span className='truncate text-sm'>
+              {paymentMethodLabel(payment.method ?? 'other')}
+            </span>
+          }
+          secondary={
+            <span className='tabular-nums'>{format(new Date(payment.date), 'MMM d, yyyy')}</span>
+          }
+          actions={
+            <div className='flex items-center gap-3 text-xs text-muted-foreground'>
+              {payment.reference && <span className='max-w-32 truncate'>{payment.reference}</span>}
+              <span className='shrink-0 text-foreground text-sm tabular-nums'>
+                {formatCurrency(payment.amount, currencyCode)}
+              </span>
+              {renderRowSuffix?.(payment)}
+              {isAdmin && (
                 <TreeRowButton
                   variant='destructive'
-                  tooltipText={payment.provider === 'money' ? 'Void payment' : 'Delete payment'}
+                  tooltipText='Void payment'
                   disabled={deletePending}
                   onClick={() => onDelete(payment.id)}>
                   <Trash2 />
                 </TreeRowButton>
-              )
-            : payment.kind === 'charge' &&
-                payment.status === 'succeeded' &&
-                !refundStatusByCharge.has(payment.id)
-              ? isAdmin && (
-                  <TreeRowButton
-                    tooltipText='Refund payment'
-                    disabled={refundPending}
-                    onClick={() => onRefund(payment.id)}>
-                    <RotateCcw />
-                  </TreeRowButton>
-                )
-              : (() => {
-                  const chip = stripeStatusChip(payment, refundStatusByCharge.get(payment.id))
-                  return (
-                    <Badge variant={chip.variant} size='sm' className='shrink-0'>
-                      {chip.label}
-                    </Badge>
-                  )
-                })()
-
-        const deposit = depositBadge(payment, currencyCode, refundStatusByCharge.get(payment.id))
-
-        return (
-          <TreeRow
-            rowClassName='hover:bg-primary-100'
-            icon={<CreditCard className='size-4' />}
-            title={
-              <span className='flex min-w-0 items-center gap-1.5'>
-                <span className='truncate text-sm'>
-                  {paymentMethodLabel(payment.method ?? 'other')}
-                </span>
-                {deposit && (
-                  <Badge
-                    variant={deposit.variant}
-                    size='sm'
-                    title={deposit.title}
-                    className='shrink-0'>
-                    {deposit.label}
-                  </Badge>
-                )}
-              </span>
-            }
-            secondary={
-              <span className='tabular-nums'>{format(new Date(payment.date), 'MMM d, yyyy')}</span>
-            }
-            actions={
-              <div className='flex items-center gap-3 text-xs text-muted-foreground'>
-                {payment.reference && (
-                  <span className='max-w-32 truncate'>{payment.reference}</span>
-                )}
-                <span className='shrink-0 text-foreground text-sm tabular-nums'>
-                  {formatCurrency(payment.amount, currencyCode)}
-                </span>
-                {renderRowSuffix?.(payment)}
-                {action}
-              </div>
-            }
-          />
-        )
-      }}
+              )}
+            </div>
+          }
+        />
+      )}
     />
   )
 }

@@ -5,8 +5,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { sweepCustomerReceiptAccounting } from '../../money/customer-money/accounting'
 import { sweepDepositApplicationAccounting } from '../../money/customer-money/deposit-application-accounting'
 import { sweepImportedCustomerMoney } from '../../money/customer-money/ingest'
-import { sweepFulfillmentAccountingWork } from '../../money/fulfillment-posting/run'
-import { sweepAccountingDeliveries } from '../../postings/delivery'
+import { sweepExportBatches } from '../../postings/export'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('accounting-recovery-job')
@@ -31,23 +30,12 @@ export async function accountingRecoveryJob(ctx: JobContext): Promise<void> {
   for (const organization of organizations) {
     if (Date.now() >= deadline) break
     processed++
+    // The rotation cursor no longer tracks a fulfillment sweep - a native
+    // shipment posts inside `fulfill.ts`'s own write now (step 1b, TARGET §1),
+    // so there is no batch/effect backlog left to page through. Bumping it
+    // still rotates which orgs this page favours, least-recently-touched first.
     const previous = typeof organization.cursor === 'string' ? organization.cursor : undefined
-    let nextCursor = previous ?? null
-    await saveCursor(organization.id, nextCursor)
-    try {
-      const result = await sweepFulfillmentAccountingWork(database, {
-        organizationId: organization.id,
-        afterId: previous,
-        limit: 100,
-      })
-      nextCursor = result.nextCursor
-      await saveCursor(organization.id, nextCursor)
-    } catch (error) {
-      logger.warn('Fulfillment recovery needs retry', {
-        organizationId: organization.id,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
+    await saveCursor(organization.id, previous ?? null)
     try {
       await sweepImportedCustomerMoney(database, organization.id, 100)
     } catch (error) {
@@ -87,14 +75,16 @@ export async function accountingRecoveryJob(ctx: JobContext): Promise<void> {
         })
       }
     }
+    // Gate 2's scheduled half: batches whose avenue auto-sends, and failed ones
+    // past their backoff. A held batch is never touched here.
     try {
-      await sweepAccountingDeliveries(database, {
+      await sweepExportBatches(database, {
         organizationId: organization.id,
         limit: 5,
         timeBudgetMs: Math.max(1, deadline - Date.now()),
       })
     } catch (error) {
-      logger.warn('Accounting delivery recovery needs retry', {
+      logger.warn('Export batch recovery needs retry', {
         organizationId: organization.id,
         error: error instanceof Error ? error.message : String(error),
       })

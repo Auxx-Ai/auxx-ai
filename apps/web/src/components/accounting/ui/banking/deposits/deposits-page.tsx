@@ -207,7 +207,7 @@ export function DepositsPage() {
       // 🛑 `postEntry` never throws, so a refusal arrives HERE, on the success
       // path, as a status. Treating only `onError` as failure would report a
       // locked period as a recorded deposit.
-      if (result.post.status !== 'posted' && result.post.status !== 'not_connected') {
+      if (result.post.status !== 'posted') {
         setBlockers([
           {
             status: result.post.status as PostResultStatus,

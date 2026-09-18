@@ -1,13 +1,12 @@
 // apps/web/src/server/api/routers/money.ts
 
-import type { PaymentTransactionEntity } from '@auxx/database'
-import { database, schema } from '@auxx/database'
 import { listBankAccounts } from '@auxx/lib/banking'
 import { getOrgCache } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { isRecordConnectorManaged } from '@auxx/lib/data-connectors'
 import { renderPreviewQuotePdf } from '@auxx/lib/documents'
 import { NotFoundError } from '@auxx/lib/errors'
+import type { InvoicePaymentRow } from '@auxx/lib/money'
 import {
   acceptInvoiceReceiptAccounting,
   addVisitExtrasToContract,
@@ -24,40 +23,32 @@ import {
   declineQuote,
   deleteInvoice,
   deleteInvoiceLine,
-  deleteManualPayment,
   disconnectPaymentAccount,
   ensureQuoteDocumentPdf,
   fulfillOrder,
-  getAllocationTotalsByTransaction,
   getBankDeposit,
   getContactBillingOverview,
   getInvoiceSchedule,
   getPaymentAccount,
   getWorkOrderBillingState,
   listBankDeposits,
-  listCreditMemoPostings,
   listInvoiceMoneyPayments,
-  listOrderFulfillmentPostings,
   listPayouts,
+  listQuoteDepositReceipts,
   listUndepositedPayments,
-  listWorkOrderPayments,
+  listWorkOrderMoneyPayments,
   markInvoiceSent,
   markQuoteSent,
   PAYOUT_STATUSES,
   prepareDocumentEmail,
-  previewCreditMemoPosting,
   previewFulfillment,
-  previewFulfillmentPosting,
   previewInvoiceBatch,
   previewWriteOffInvoice,
   readOrderForFulfillment,
   readWriteOffState,
   recomputeTotals,
   recordInvoicePayment,
-  refundTransaction,
   reorderLines,
-  runCreditMemoPosting,
-  runFulfillmentPosting,
   runInvoiceBatch,
   saveBillingInstallments,
   setInvoiceSchedule,
@@ -68,19 +59,17 @@ import {
   voidInvoicePayment,
   writeOffInvoice,
 } from '@auxx/lib/money'
-import type { CreditMemoPostingGrouping, FulfillmentPostingGrouping } from '@auxx/lib/money/client'
 import { resolvePaymentRoute } from '@auxx/lib/money/client'
 import {
-  adoptNativeStripeMoney,
   listOrderMoneyTransactions,
   postCustomerReceiptAccounting,
+  postCustomerRefundAccounting,
   readOrderMoneyCoverage,
   resolveImportedMoneyReferences,
 } from '@auxx/lib/money/customer-money'
 import { listRailStrip } from '@auxx/lib/money/payouts'
 import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
-import { listOrderAccountingWork } from '@auxx/lib/postings'
 import {
   describeRecurrence,
   type RecurrencePattern,
@@ -88,7 +77,6 @@ import {
 } from '@auxx/lib/recurrence'
 import { getOrganizationSetting } from '@auxx/lib/settings'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
-import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 
@@ -139,127 +127,15 @@ const moneyAdminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next({ ctx: { capabilities } })
 })
 
-/**
- * Shape a `PaymentTransaction` ledger row for the payments list UI (money MI1 build spec
- * §E.2 row shape) — shared by `listPayments` (per-invoice, invoice-drawer),
- * `listPaymentsForWorkOrder` (cross-invoice, job page), and `listPaymentsForQuote` (quote
- * drawer deposit card) so the row shape can't drift between call sites.
- * `invoiceInstanceId`/`quoteInstanceId`/`workOrderInstanceId` (money MP2 §B.9) let the client
- * tell a "held" deposit (`invoiceInstanceId === null`) apart from an "applied" one.
- *
- * `allocatedAmount` (deposit-accounting plan 16 §D.3) is server-computed by the caller (batched
- * via `getAllocationTotalsByTransaction` — never a per-row query) and passed in rather than
- * read here, so every call site is forced to prove it isn't N+1-ing. `heldAmount` is derived:
- * `max(0, amount - allocatedAmount)` for a succeeded charge (the only rows a deposit can still
- * be "held" on), `0` for anything else (refunds, pending/failed/canceled/disputed charges) —
- * `isDeposit` (`quoteInstanceId != null`) is left for the client to derive, same as today.
- */
-function mapPaymentRow(row: PaymentTransactionEntity, allocatedAmount: number) {
-  const heldAmount =
-    row.kind === 'charge' && row.status === 'succeeded'
-      ? Math.max(0, row.amount - allocatedAmount)
-      : 0
-  return {
-    id: row.id,
-    amount: row.amount,
-    kind: row.kind,
-    status: row.status,
-    date: (row.metadata as { date?: string } | null)?.date ?? row.createdAt.toISOString(),
-    method: row.method,
-    reference: row.reference,
-    note: row.note,
-    provider: row.provider,
-    createdByUserId: row.createdByUserId,
-    stripeRefundId: row.stripeRefundId,
-    refundedTransactionId: row.refundedTransactionId,
-    invoiceInstanceId: row.invoiceInstanceId,
-    quoteInstanceId: row.quoteInstanceId,
-    workOrderInstanceId: row.workOrderInstanceId,
-    allocatedAmount,
-    heldAmount,
-  }
-}
-
-/** Batch-map a list of ledger rows through {@link mapPaymentRow}, fetching every row's
- * allocation total in one query (`getAllocationTotalsByTransaction`) instead of per row. */
-async function mapPaymentRows(organizationId: string, rows: PaymentTransactionEntity[]) {
-  const allocationTotals = await getAllocationTotalsByTransaction(
-    organizationId,
-    rows.map((row) => row.id)
-  )
-  return rows.map((row) => mapPaymentRow(row, allocationTotals.get(row.id) ?? 0))
-}
-
-/**
- * How much the bulk fulfillment posting batches (plans/money/tasks/49 §2.3).
- *
- * `as const satisfies` rather than a bare `z.enum`, the way `builds.ts` writes
- * the backfill's grouping: the vocabulary lives in
- * `money/fulfillment-posting/types.ts`, and a member renamed there has to break
- * this file rather than silently narrow what the browser may ask for.
- */
-const FULFILLMENT_POSTING_GROUPING_VALUES = [
-  'day',
-  'month',
-] as const satisfies readonly FulfillmentPostingGrouping[]
-
-/**
- * The window and the grouping, shared by the preview and the run so the two can
- * never disagree about what a range means.
- *
- * Half-open on `shippedAt` (`from <= shippedAt < to`), both plain `YYYY-MM-DD`
- * rather than instants: the bucket boundary is cut in the org's book time zone
- * server-side, and a `Date` from the browser would carry its own zone into a
- * decision that is not the browser's to make.
- */
-const fulfillmentPostingShape = {
-  from: z.iso.date(),
-  to: z.iso.date(),
-  grouping: z.enum(FULFILLMENT_POSTING_GROUPING_VALUES),
-}
-
-/**
- * How much the bulk credit memo posting batches
- * (plans/accounting/tasks/done/25-batch-posting-and-credit-memos.md §5.1).
- *
- * 🛑 A hand-written tuple with `as const satisfies`, like
- * {@link FULFILLMENT_POSTING_GROUPING_VALUES} above, and it does NOT self-correct:
- * `satisfies readonly CreditMemoPostingGrouping[]` proves every member is a legal
- * grouping, never that every legal grouping is a member. Dropping one here
- * silently narrows what the browser may ask for, and nothing fails. The
- * vocabulary is `money/batch-posting/types.ts`; a member renamed there breaks
- * this file, which is the half worth having.
- */
-const CREDIT_MEMO_POSTING_GROUPING_VALUES = [
-  'day',
-  'month',
-] as const satisfies readonly CreditMemoPostingGrouping[]
-
-/**
- * The window and the grouping, shared by the credit memo preview and run so the
- * two can never disagree about what a range means.
- *
- * Half-open on `issuedAt` (`from <= issuedAt < to`), both plain `YYYY-MM-DD` for
- * the reason {@link fulfillmentPostingShape} gives: the bucket boundary is cut in
- * the org's book time zone server-side, and a `Date` from the browser would carry
- * its own zone into a decision that is not the browser's to make.
- */
-const creditMemoPostingShape = {
-  from: z.iso.date(),
-  to: z.iso.date(),
-  grouping: z.enum(CREDIT_MEMO_POSTING_GROUPING_VALUES),
-  /**
-   * Issue the `draft` memos in the range as part of the run instead of excluding
-   * them as `not-issued`.
-   *
-   * 🛑 On the PREVIEW as well as the run, and required on both rather than
-   * defaulted: channel memos are ingested as `draft`, so this flag decides
-   * whether a plan covers the whole backlog or nothing at all, and a preview
-   * taken without it would name a footer the run does not honour. A default
-   * would let a caller that never heard of the flag get the other answer
-   * silently.
-   */
-  issueDrafts: z.boolean(),
+/** {@link listPayments}'s exact row shape, shared by the work-order and quote reads. */
+type PaymentListRow = InvoicePaymentRow & {
+  createdByUserId: null
+  stripeRefundId: null
+  refundedTransactionId: null
+  invoiceInstanceId: string | null
+  quoteInstanceId: string | null
+  workOrderInstanceId: string | null
+  heldAmount: number
 }
 
 export const moneyRouter = createTRPCRouter({
@@ -730,12 +606,10 @@ export const moneyRouter = createTRPCRouter({
     }),
 
   /**
-   * Undo a recorded payment.
-   *
-   * 🔑 Two lanes, and the id says which. A legacy `PaymentTransaction` is
-   * deleted outright, as it always was. A money-model receipt is VOIDED — an
+   * Undo a recorded payment. One lane now: a money-model receipt is VOIDED — an
    * immutable, hashed effect cannot be deleted, so the mistake is corrected by
-   * a second, reversing entry (task 54 unit 3).
+   * a second, reversing entry (task 54 unit 3; step 0 of the accounting
+   * migration drops the legacy `PaymentTransaction` delete branch alongside it).
    */
   deletePayment: moneyAdminProcedure
     .input(
@@ -743,24 +617,11 @@ export const moneyRouter = createTRPCRouter({
         transactionId: z.string(),
         /** Carried onto the correction's journal memo. */
         reason: z.string().max(500).optional(),
-        /** Idempotency key for the money lane; ignored by the legacy one. */
+        /** Idempotency key. */
         commandKey: z.string().min(1).max(200).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const legacy = await ctx.db.query.PaymentTransaction.findFirst({
-        where: and(
-          eq(schema.PaymentTransaction.organizationId, ctx.session.organizationId),
-          eq(schema.PaymentTransaction.id, input.transactionId)
-        ),
-        columns: { id: true },
-      })
-      if (legacy)
-        return deleteManualPayment({
-          organizationId: ctx.session.organizationId,
-          userId: ctx.session.user.id,
-          transactionId: input.transactionId,
-        })
       await voidInvoicePayment(ctx.db, {
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
@@ -770,20 +631,22 @@ export const moneyRouter = createTRPCRouter({
       })
     }),
 
+  /**
+   * Post accounting for an already-recorded customer refund `MoneyTransaction`
+   * (accounting migration step 0 — the legacy Stripe-charge `refundTransaction`
+   * is gone). `postCustomerRefundAccounting` only accepts a refund settled
+   * against a credit memo today; a direct, no-credit-memo refund has no
+   * accounting door yet, so this stays unreachable from `listPayments`'s
+   * money-only rows (`payments-list.tsx` never offers Refund for `provider:
+   * 'money'`) until that gap is closed.
+   */
   refundTransaction: moneyAdminProcedure
-    .input(
-      z.object({
-        transactionId: z.string(),
-        /** Integer minor units; absent = everything still refundable on the charge. */
-        amount: z.number().int().positive().optional(),
-      })
-    )
+    .input(z.object({ transactionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      return refundTransaction({
+      return postCustomerRefundAccounting(ctx.db, {
         organizationId: ctx.session.organizationId,
-        userId: ctx.session.user.id,
-        transactionId: input.transactionId,
-        amount: input.amount,
+        moneyTransactionId: input.transactionId,
+        actorUserId: ctx.session.user.id,
       })
     }),
 
@@ -819,36 +682,22 @@ export const moneyRouter = createTRPCRouter({
     .input(z.object({ invoiceRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.invoiceRecordId)
-      const rows = await database.query.PaymentTransaction.findMany({
-        where: and(
-          eq(schema.PaymentTransaction.organizationId, ctx.session.organizationId),
-          eq(schema.PaymentTransaction.invoiceInstanceId, entityInstanceId)
-        ),
-        orderBy: asc(schema.PaymentTransaction.createdAt),
+      // Accounting migration step 0: the money model is the only lane —
+      // `PaymentTransaction` is gone.
+      const money = await listInvoiceMoneyPayments(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        invoiceInstanceId: entityInstanceId,
       })
-      // Task 54: both lanes, until unit 7 drops `PaymentTransaction`. New
-      // payments land in the money model; anything legacy still renders beside
-      // them, and the two id spaces never collide.
-      const [legacy, money] = await Promise.all([
-        mapPaymentRows(ctx.session.organizationId, rows),
-        listInvoiceMoneyPayments(ctx.db, {
-          organizationId: ctx.session.organizationId,
-          invoiceInstanceId: entityInstanceId,
-        }),
-      ])
-      return [
-        ...legacy,
-        ...money.map((row) => ({
-          ...row,
-          createdByUserId: null,
-          stripeRefundId: null,
-          refundedTransactionId: null,
-          invoiceInstanceId: entityInstanceId,
-          quoteInstanceId: null,
-          workOrderInstanceId: null,
-          heldAmount: 0,
-        })),
-      ]
+      return money.map((row) => ({
+        ...row,
+        createdByUserId: null,
+        stripeRefundId: null,
+        refundedTransactionId: null,
+        invoiceInstanceId: entityInstanceId,
+        quoteInstanceId: null,
+        workOrderInstanceId: null,
+        heldAmount: 0,
+      }))
     }),
 
   /**
@@ -862,20 +711,23 @@ export const moneyRouter = createTRPCRouter({
     .input(z.object({ workOrderRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId: workOrderInstanceId } = parseRecordId(input.workOrderRecordId)
-      const rows = await listWorkOrderPayments({
+      // Accounting migration step 0: the money model is the only lane —
+      // `PaymentTransaction` is gone, and with it the held-deposit-with-no-invoice
+      // branch the legacy read had (quote deposits have no money-model source).
+      const rows = await listWorkOrderMoneyPayments(ctx.db, {
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         workOrderInstanceId,
       })
-
-      const mapped = await mapPaymentRows(ctx.session.organizationId, rows)
-      const invoiceRecordIdByRow = new Map(rows.map((row) => [row.id, row.invoiceInstanceId]))
-      return mapped.map((row) => ({
+      return rows.map((row) => ({
         ...row,
-        // Held deposits (money MP2 §B.6/§B.9) have no invoice until settle — null, not a crash.
-        invoiceRecordId: invoiceRecordIdByRow.get(row.id)
-          ? toRecordId('invoice', invoiceRecordIdByRow.get(row.id)!)
-          : null,
+        createdByUserId: null,
+        stripeRefundId: null,
+        refundedTransactionId: null,
+        quoteInstanceId: null,
+        workOrderInstanceId,
+        heldAmount: 0,
+        invoiceRecordId: toRecordId('invoice', row.invoiceInstanceId),
       }))
     }),
 
@@ -887,17 +739,32 @@ export const moneyRouter = createTRPCRouter({
    */
   listPaymentsForQuote: moneyViewProcedure
     .input(z.object({ quoteRecordId: recordIdSchema }))
-    .query(async ({ ctx, input }) => {
+    .query(async ({ ctx, input }): Promise<PaymentListRow[]> => {
       const { entityInstanceId: quoteInstanceId } = parseRecordId(input.quoteRecordId)
-      const rows = await database.query.PaymentTransaction.findMany({
-        where: and(
-          eq(schema.PaymentTransaction.organizationId, ctx.session.organizationId),
-          eq(schema.PaymentTransaction.quoteInstanceId, quoteInstanceId)
-        ),
-        orderBy: asc(schema.PaymentTransaction.createdAt),
-      })
-
-      return mapPaymentRows(ctx.session.organizationId, rows)
+      const receipts = await listQuoteDepositReceipts(
+        ctx.db,
+        ctx.session.organizationId,
+        quoteInstanceId
+      )
+      return receipts.map((receipt) => ({
+        id: receipt.moneyTransactionId,
+        kind: 'charge' as const,
+        status: 'succeeded' as const,
+        provider: 'money' as const,
+        method: 'card',
+        amount: receipt.amountMinor,
+        allocatedAmount: receipt.appliedMinor,
+        heldAmount: receipt.amountMinor - receipt.appliedMinor,
+        reference: receipt.reference,
+        note: null,
+        date: receipt.occurredAt.slice(0, 10),
+        createdByUserId: null,
+        stripeRefundId: null,
+        refundedTransactionId: null,
+        invoiceInstanceId: null,
+        quoteInstanceId,
+        workOrderInstanceId: receipt.workOrderInstanceId,
+      }))
     }),
 
   // ─── Send flow (money MQ2 build spec §E.5) ──────────────────────────────
@@ -951,29 +818,6 @@ export const moneyRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         actorUserId: ctx.session.userId,
       })
-    ),
-
-  adoptNativeStripeMoney: permissionProcedure(PermissionKey.ledgerControl)
-    .input(
-      z.object({
-        legacyTransactionId: z.string().min(1),
-        shopifySourceObjectId: z.string().min(1),
-        commandKey: z.string().min(1).max(200),
-        evidence: z.string().trim().min(1).max(4000),
-      })
-    )
-    .mutation(({ ctx, input }) =>
-      adoptNativeStripeMoney(ctx.db, {
-        ...input,
-        organizationId: ctx.session.organizationId,
-        actorUserId: ctx.session.userId,
-      })
-    ),
-
-  orderAccountingWork: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ orderId: z.string().min(1) }))
-    .query(({ ctx, input }) =>
-      listOrderAccountingWork(ctx.db, ctx.session.organizationId, input.orderId)
     ),
 
   orderMoneyCoverage: permissionProcedure(PermissionKey.ledgerView)
@@ -1068,152 +912,6 @@ export const moneyRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         actorUserId: ctx.session.userId,
         ...input,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  // ─── Bulk fulfillment posting (plans/money/tasks/49 §2.3) ──────────────────
-
-  /**
-   * What a bulk fulfillment posting WOULD write. Persists nothing.
-   *
-   * 🛑 The plan is recomputed here from the range and the grouping; the browser
-   * never supplies one. The same call backs {@link runFulfillmentPosting}, so
-   * what the dialog shows and what the run posts come from one code path
-   * (`plans/money/tasks/49-bulk-fulfillment-posting.md` §2.3).
-   *
-   * A refusal (`accounting.bookTimeZone` unset, or a draft chart) comes back on
-   * the payload as `refusal` rather than as a thrown error: the dialog renders
-   * it as a card beside the range it applies to, which a toast cannot do.
-   */
-  previewFulfillmentPosting: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object(fulfillmentPostingShape))
-    .query(async ({ ctx, input }) => {
-      const result = await previewFulfillmentPosting(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        actorUserId: ctx.session.userId,
-        range: { from: input.from, to: input.to },
-        grouping: input.grouping,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  /**
-   * Post one entry per group and stamp every shipment behind it.
-   *
-   * 🛑 `ledgerPost`, for the same reason {@link fulfillOrder} takes it: this
-   * writes `GlPosting` rows. The run NEVER throws: a group the poster declined
-   * (`already_posted`, a locked period) and a group that failed are both arms of
-   * the summary, so the result page can tell somebody which of their 62 days
-   * landed instead of reporting the whole run as an error.
-   */
-  runFulfillmentPosting: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ ...fulfillmentPostingShape, memo: z.string().max(4000).optional() }))
-    .mutation(async ({ ctx, input }) => {
-      return runFulfillmentPosting(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        actorUserId: ctx.session.userId,
-        range: { from: input.from, to: input.to },
-        grouping: input.grouping,
-        memo: input.memo,
-      })
-    }),
-
-  /**
-   * The postings this order's shipment log names, for its ledger card (§2.5).
-   *
-   * Reads the per-shipment STAMP rather than the posting's source lines: a bulk
-   * entry summarises many orders, so `listPostingsForSource` finds nothing for
-   * an order whose revenue went out in one (the A/R leg is the exception, and
-   * relying on it would show terms orders a card that card orders do not get).
-   */
-  orderFulfillmentPostings: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ orderId: z.string().min(1) }))
-    .query(async ({ ctx, input }) => {
-      const result = await listOrderFulfillmentPostings(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        orderId: input.orderId,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  // ─── Bulk credit memo posting (plans/accounting/tasks/25 §9 PR 3) ──────────
-
-  /**
-   * What a bulk credit memo posting WOULD write. Persists nothing.
-   *
-   * 🛑 The plan is recomputed here from the range and the grouping; the browser
-   * never supplies one. The same call backs {@link runCreditMemoPosting}, so what
-   * the dialog shows and what the run posts come from one code path - the rule
-   * {@link previewFulfillmentPosting} is written to, on a ledger where the only
-   * correction is a reversal.
-   *
-   * A refusal (`accounting.bookTimeZone` unset, a draft chart) comes back on the
-   * payload as `refusal` rather than as a thrown error: the dialog renders it as
-   * a card beside the range it applies to, which a toast cannot do.
-   *
-   * ⚠️ No `actorUserId`: a preview writes nothing, so `CreditMemoPostingPreviewInput`
-   * does not carry one.
-   */
-  previewCreditMemoPosting: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object(creditMemoPostingShape))
-    .query(async ({ ctx, input }) => {
-      const result = await previewCreditMemoPosting(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        range: { from: input.from, to: input.to },
-        grouping: input.grouping,
-        issueDrafts: input.issueDrafts,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
-
-  /**
-   * Post one entry per group and stamp every memo behind it.
-   *
-   * 🛑 `ledgerPost`, for the same reason {@link runFulfillmentPosting} takes it:
-   * this writes `GlPosting` rows. The run NEVER throws - a group the poster
-   * declined (`already_posted`, a locked period) and a group that failed are both
-   * arms of the summary, so the result page can say which of the months landed
-   * instead of reporting the whole run as an error.
-   *
-   * ⚠️ With `issueDrafts` this also writes to the MEMOS - every draft it covers
-   * is issued before the entry is posted - which is why `summary.issued` is its
-   * own arm: a memo can be issued and still fail to post, and a draft that
-   * refuses to issue is a document somebody has to open.
-   */
-  runCreditMemoPosting: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ ...creditMemoPostingShape, memo: z.string().max(4000).optional() }))
-    .mutation(async ({ ctx, input }) => {
-      return runCreditMemoPosting(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        actorUserId: ctx.session.userId,
-        range: { from: input.from, to: input.to },
-        grouping: input.grouping,
-        issueDrafts: input.issueDrafts,
-        memo: input.memo,
-      })
-    }),
-
-  /**
-   * The posting this credit memo is STAMPED with, for its ledger card (§3.3).
-   *
-   * Reads `credit_memo_gl_posting` rather than the posting's source lines: a
-   * batch entry's summarised legs carry `credit_memo_batch` with the PERIOD KEY
-   * as their source and its receivable legs carry `contact`, so no line in the
-   * entry names the memo and `listPostingsForSource` renders an empty card over a
-   * memo that is perfectly well posted. Same read, same reason, as
-   * {@link orderFulfillmentPostings}.
-   */
-  creditMemoPostings: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ creditMemoId: z.string().min(1) }))
-    .query(async ({ ctx, input }) => {
-      const result = await listCreditMemoPostings(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        creditMemoId: input.creditMemoId,
       })
       if (result.isErr()) throw result.error
       return result.value

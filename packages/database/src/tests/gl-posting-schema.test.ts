@@ -7,9 +7,8 @@
 // silently regressed, would reintroduce the exact defect the tables exist to
 // fix:
 //
-//  - the four-column claim index IS the double-post defence. Dropping a column
-//    from it (Gap E originally specified three) makes a reversal impossible or
-//    a duplicate possible, with no error anywhere.
+//  - the claim moved to `GlPostingSource`'s partial unique subject index; this
+//    file pins that `GlPosting` no longer carries one of its own.
 //  - `GlPostingLine` having no `updatedAt` is what makes its immutability
 //    STRUCTURAL. On the entity route `updatable: false` was advisory — read by
 //    the grid and by nothing on the write path — and that is precisely what let
@@ -27,17 +26,11 @@ import {
   GlPosting,
   type GlPostingEntity,
   glPostingDirection,
-  glPostingExportStatus,
   glPostingStatus,
   glPostingType,
 } from '../db/schema/gl-posting'
 import type { GlPostingLineEntity } from '../db/schema/gl-posting-line'
-import {
-  GlPostingDirectionValues,
-  GlPostingExportStatusValues,
-  GlPostingStatusValues,
-  GlPostingTypeValues,
-} from '../enums'
+import { GlPostingDirectionValues, GlPostingStatusValues, GlPostingTypeValues } from '../enums'
 
 const postingConfig = getTableConfig(GlPosting)
 const lineConfig = getTableConfig(GlPostingLine)
@@ -51,22 +44,11 @@ describe('GlPosting', () => {
     expect(GlPosting).toBe(GlPostingFromBarrel)
   })
 
-  it('carries the four-column claim index, unique', () => {
+  it('has no claim index of its own — the claim lives on GlPostingSource', () => {
     const claim = postingConfig.indexes.find(
       (i) => i.config.name === 'GlPosting_org_type_period_revision_key'
     )
-    expect(claim, 'the claim index must exist — it IS the double-post defence').toBeDefined()
-    expect(claim?.config.unique).toBe(true)
-    expect(claim?.config.columns.map((c) => (c as { name: string }).name)).toEqual([
-      'organizationId',
-      'postingType',
-      'periodKey',
-      'revision',
-    ])
-    // Unconditional: a partial claim index would let an excluded row (a
-    // reversed or failed posting) leave the period readable as unclaimed,
-    // which is the archived-exclusion leak the entity route already had.
-    expect(claim?.config.where).toBeUndefined()
+    expect(claim).toBeUndefined()
   })
 
   it('makes a duplicate document number an error rather than a provider surprise', () => {
@@ -76,16 +58,6 @@ describe('GlPosting', () => {
       'organizationId',
       'docNumber',
     ])
-  })
-
-  it('maps one provider entry to one posting, only once it has been pushed', () => {
-    const provider = postingConfig.indexes.find(
-      (i) => i.config.name === 'GlPosting_org_provider_entry_key'
-    )
-    expect(provider?.config.unique).toBe(true)
-    // Partial ON PURPOSE here: `providerEntryId` is NULL until a successful
-    // push, and an org with no accounting provider never populates it.
-    expect(provider?.config.where).toBeDefined()
   })
 
   it('holds the amount as bigint minor units, never a float and never int4', () => {
@@ -101,20 +73,30 @@ describe('GlPosting', () => {
     expectTypeOf<GlPostingEntity['totalMinor']>().toEqualTypeOf<number>()
   })
 
-  it('keeps the audit record and the deterministic idempotency key as required columns', () => {
+  it('keeps the audit record as a required column', () => {
     const names = columnNames(postingConfig)
-    expect(names).toContain('draft')
-    expect(names).toContain('requestId')
-    expect(postingConfig.columns.find((c) => c.name === 'draft')?.notNull).toBe(true)
-    expect(postingConfig.columns.find((c) => c.name === 'requestId')?.notNull).toBe(true)
+    expect(names).toContain('built')
+    expect(postingConfig.columns.find((c) => c.name === 'built')?.notNull).toBe(true)
+  })
+
+  it('carries no export columns — the export lives on `ExportBatch` (TARGET §3)', () => {
+    const names = columnNames(postingConfig)
+    for (const gone of [
+      'exportStatus',
+      'providerId',
+      'providerEntryId',
+      'providerTenantId',
+      'requestId',
+      'attempts',
+      'failureReason',
+    ])
+      expect(names).not.toContain(gone)
   })
 
   it('leaves the counters as int4 — only money widened', () => {
     // A guard against a future "widen the amounts" sweep taking the counters
-    // with it. `revision` is a reversal ordinal, `attempts` a retry count;
-    // neither is money and neither is going anywhere near 2^31.
+    // with it. `revision` is a reversal ordinal; it is not money.
     expect(postingConfig.columns.find((c) => c.name === 'revision')?.getSQLType()).toBe('integer')
-    expect(postingConfig.columns.find((c) => c.name === 'attempts')?.getSQLType()).toBe('integer')
     expect(lineConfig.columns.find((c) => c.name === 'lineNumber')?.getSQLType()).toBe('integer')
   })
 
@@ -270,7 +252,6 @@ describe('the enum vocabularies', () => {
   it('keeps the Drizzle enums and the client-safe value lists in step', () => {
     expect(glPostingType.enumValues).toEqual([...GlPostingTypeValues])
     expect(glPostingStatus.enumValues).toEqual([...GlPostingStatusValues])
-    expect(glPostingExportStatus.enumValues).toEqual([...GlPostingExportStatusValues])
     expect(glPostingDirection.enumValues).toEqual([...GlPostingDirectionValues])
   })
 
@@ -280,20 +261,21 @@ describe('the enum vocabularies', () => {
   // the generator DELETES these entries rather than refreshing them. They are
   // maintained by hand, and this assertion is the only thing that notices when
   // somebody forgets. Do not "fix" a failure here by running the generator.
-  it('holds the ledger and the export status apart', () => {
-    // The export split (#2065). A provider's answer may never land on `status`:
-    // that is what took a real entry out of the books when QuickBooks refused a
-    // copy of it.
+  it('holds the ledger and the export apart', () => {
+    // A provider's answer may never land on `status`; what the export did lives
+    // on `ExportBatch` (TARGET §3).
     expect(glPostingStatus.enumValues).not.toContain('failed')
     expect(glPostingStatus.enumValues).not.toContain('pending')
-    expect(glPostingExportStatus.enumValues).toContain('failed')
-    expect(glPostingExportStatus.enumValues).toContain('not_required')
   })
 
   it('carries `reversed` — the terminal state of the ORIGINAL of a reversal pair', () => {
     // The reversal itself is an ordinary `posted` entry (decision G4). Without
     // `reversed` there is no way to see that an entry has been backed out.
     expect(glPostingStatus.enumValues).toContain('reversed')
+  })
+
+  it('carries `draft` — an entry with lines, no doc number and no claim', () => {
+    expect(glPostingStatus.enumValues).toContain('draft')
   })
 
   it('matches POSTING_TYPES in packages/lib/src/postings/types.ts', () => {
@@ -308,11 +290,9 @@ describe('the enum vocabularies', () => {
     expect(glPostingType.enumValues).toEqual([
       'fulfillment',
       'payout',
-      'build',
       'month_end_deferral',
       'month_end_reversal',
-      'month_end_inventory',
-      'receipt',
+      'inventory_movement',
       'vendor_bill',
       'manual_journal',
       'opening_balance',
@@ -320,6 +300,7 @@ describe('the enum vocabularies', () => {
       'bank_deposit',
       'write_off',
       'payment',
+      'refund',
       'invoice_issued',
       'deposit_application',
       'credit_memo',

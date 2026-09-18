@@ -13,7 +13,7 @@ import { InputSearch } from '@auxx/ui/components/input-search'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { FileCheck2, Landmark, Link2, type LucideIcon } from 'lucide-react'
+import { CreditCard, FileCheck2, Landmark, Link2, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
@@ -26,7 +26,7 @@ import { formatMinor } from '../../ledger/format'
  */
 const RECORD_TYPE_ICONS: Record<MatchRecordType, LucideIcon> = {
   vendor_payment: FileCheck2,
-  payment_transaction: FileCheck2,
+  money_transaction: CreditCard,
   bank_deposit: FileCheck2,
   vendor_bill: FileCheck2,
   payout: Landmark,
@@ -146,7 +146,6 @@ export function MatchPanel({ line, currencyCode, onDone }: MatchPanelProps) {
                         id: line.id,
                         recordType: row.recordType as
                           | 'vendor_payment'
-                          | 'payment_transaction'
                           | 'bank_deposit'
                           | 'vendor_bill'
                           | 'payout',

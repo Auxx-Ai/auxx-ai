@@ -4,8 +4,7 @@
 
 import type { PostResult, PostResultStatus } from '@auxx/lib/postings/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { Button } from '@auxx/ui/components/button'
-import { CheckCircle2, CircleSlash, ExternalLink, PlugZap, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, CircleSlash, PlugZap, TriangleAlert } from 'lucide-react'
 import type { ComponentType } from 'react'
 
 /**
@@ -44,6 +43,28 @@ export function providerEntryUrl(
   if (providerId !== 'quickbooks') return null
   if (!entryTenantId || entryTenantId !== connectedTenantId) return null
   return `https://app.qbo.intuit.com/app/journal?txnId=${encodeURIComponent(entryId)}`
+}
+
+/**
+ * The same deep link, for an `ExportBatch` (step 3, part C).
+ *
+ * ⚠️ **No tenant guard, unlike {@link providerEntryUrl}.** `ExportBatchRow`
+ * carries no `bookId`/tenant id to compare against `connectedTenantId` - a gap
+ * left for the router to close (see this file's caller in `sync-queue-panel.tsx`
+ * for the note). Until then this offers the link whenever a provider is
+ * connected, which is wrong for a batch sent to a company since disconnected;
+ * accepted for the cutover, where there is exactly one connection ever.
+ *
+ * Every batch in this step sends as a Journal Entry regardless of avenue
+ * (TARGET §3: "Payload is the journal shape in this step (native objects are
+ * step 4)"), so the URL shape is the same one {@link providerEntryUrl} builds.
+ */
+export function providerBatchObjectUrl(
+  connected: boolean,
+  providerObjectId: string | null
+): string | null {
+  if (!connected || !providerObjectId) return null
+  return `https://app.qbo.intuit.com/app/journal?txnId=${encodeURIComponent(providerObjectId)}`
 }
 
 export interface OutcomeCopy {
@@ -90,43 +111,19 @@ export const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
     detail: 'The accounting system already held it, so nothing was sent. A converged re-run.',
     tone: 'success',
   },
-  healed: {
-    icon: CheckCircle2,
-    title: 'Reconciled with the accounting system',
-    detail:
-      'The provider held the entry. Its id was written back rather than posting a second time.',
-    tone: 'success',
-  },
-  not_connected: {
-    icon: PlugZap,
-    title: 'Posted. No accounting system is connected',
-    detail:
-      'Built, balanced and recorded here exactly as it would be with a provider. There is nowhere to push it.',
-    tone: 'success',
-  },
-  // 🛑 NOT `not_connected`, and the difference is the whole point of the value.
-  // This entry's posting type is never exported - an opening balance or an
-  // entry read back off the provider's own ledger - so the org's connection is
-  // irrelevant and may well be healthy. Saying "no accounting system is
-  // connected" here sent a reader to debug a working QuickBooks link on
-  // DemoOrg1's first wizard drive. Brief 22 §5.
-  not_exported: {
-    icon: CheckCircle2,
-    title: 'Posted. This entry is not exported',
-    detail:
-      'Opening balances and entries synced back are kept here only. Pushing either would be a second copy.',
-    tone: 'success',
-  },
   not_enabled: {
     icon: PlugZap,
     title: 'Nothing posted. Accounting is not enabled for this organization',
     detail: 'No entry was built or recorded. Enable the accounting module and run its setup.',
     tone: 'neutral',
   },
-  disabled: {
-    icon: CircleSlash,
-    title: 'Posted. Export is switched off',
-    detail: 'Export is turned off at the integration. The entry is recorded here.',
+  // A SUCCESS, not a refusal: the entry holds no claim and no doc number by
+  // design, because its avenue's `autoPost` setting is off. `postDraft`
+  // promotes it - see the Drafts tab (step 1c).
+  drafted: {
+    icon: CheckCircle2,
+    title: 'Saved as a draft',
+    detail: 'Recorded here, held for review before it posts. Nothing in the books yet.',
     tone: 'neutral',
   },
   period_closed: {
@@ -237,14 +234,6 @@ export function PostResultCallout({
 }: PostResultCalloutProps) {
   const copy = OUTCOMES[result.status]
   const Icon = copy.icon
-  const entryUrl = result.providerEntryId
-    ? providerEntryUrl(
-        result.providerId,
-        result.providerEntryId,
-        result.providerTenantId ?? null,
-        connectedTenantId
-      )
-    : null
 
   return (
     <Alert variant={TONE_VARIANT[copy.tone]}>
@@ -261,14 +250,6 @@ export function PostResultCallout({
         <AlertDescription className='text-xs'>
           This was a transport failure, so it is worth trying again.
         </AlertDescription>
-      )}
-      {entryUrl && (
-        <Button asChild variant='outline' size='sm' className='mt-2 justify-self-start'>
-          <a href={entryUrl} target='_blank' rel='noreferrer'>
-            <ExternalLink />
-            Open in {providerLabel}
-          </a>
-        </Button>
       )}
     </Alert>
   )

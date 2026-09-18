@@ -26,10 +26,17 @@ const h = vi.hoisted(() => ({
   pin: vi.fn(),
   unpin: vi.fn(),
   postingCount: 0,
-  // What any raw `db.select(...)` resolves to. The only two raw reads these
-  // treatments make are "is this document already matched" (a `valueText` this
-  // row does not carry, so: no) and "is the posting still live".
+  // What any raw `db.select(...)` resolves to. The only raw read these
+  // treatments still make directly is "is this document already matched" (a
+  // `valueText` this row does not carry, so: no) - "is the posting still live"
+  // now goes through `listPostingsForSource` below.
   selectRows: [] as Record<string, unknown>[],
+  /** `sourceId -> its postings, newest first`, as `listPostingsForSource` reads them. */
+  postingsBySource: new Map<
+    string,
+    Array<{ id: string; status: string; docNumber: string | null }>
+  >(),
+  listPostingsForSource: vi.fn(),
   rows: new Map<string, BankTransactionRow>(),
   listRows: [] as BankTransactionRow[],
   /**
@@ -45,6 +52,9 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../../../postings/post-entry', () => ({ postEntry: h.postEntry }))
 vi.mock('../../../postings/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
+vi.mock('../../../postings/list-postings', () => ({
+  listPostingsForSource: h.listPostingsForSource,
+}))
 vi.mock('../../../postings/period-lock', () => ({
   resolvePeriodLock: async () => ({ mode: 'ledger', lockedThroughMonth: null }),
 }))
@@ -161,6 +171,15 @@ function row(over: Partial<BankTransactionRow> = {}): BankTransactionRow {
     ...over,
   }
   h.rows.set(base.id, base)
+  // `assertNotPosted` and `undoReview` no longer read `glPostingId` off the
+  // row - they read `listPostingsForSource` (TARGET §1). A fixture that sets
+  // `glPostingId` is asking for a LIVE posting to exist behind this line,
+  // unless the test overrides `h.postingsBySource` itself afterwards.
+  if (base.glPostingId) {
+    h.postingsBySource.set(base.id, [
+      { id: base.glPostingId, status: 'posted', docNumber: 'AUXX-BNK-EXISTING' },
+    ])
+  }
   return base
 }
 
@@ -175,7 +194,16 @@ beforeEach(() => {
   h.rows.clear()
   h.dbUpdates = []
   h.postingCount = 0
+  // Kept non-empty for queries unrelated to postings (e.g. `resolveDefIdForRecord`),
+  // which only need SOME row back to avoid a spurious "not found" throw.
   h.selectRows = [{ status: 'posted', docNumber: 'AUXX-BNK-EXISTING' }]
+  h.postingsBySource.clear()
+  h.listPostingsForSource.mockImplementation(
+    async (_db: unknown, params: { sourceId: string }) => ({
+      isErr: () => false,
+      value: h.postingsBySource.get(params.sourceId) ?? [],
+    })
+  )
   h.listRows = []
   h.postEntry.mockResolvedValue({
     status: 'posted',
@@ -327,8 +355,9 @@ describe('codeTransaction', () => {
     expect(updateFor('def_bt:txn_1')).toMatchObject({
       bank_transaction_review_status: 'coded',
       bank_transaction_gl_account: '6100',
-      bank_transaction_gl_posting_id: 'post_1',
     })
+    // No stamp any more (TARGET §1) - the ledger card reads `listPostingsForSource`.
+    expect(updateFor('def_bt:txn_1')).not.toHaveProperty('bank_transaction_gl_posting_id')
   })
 
   it('posts on the bank line dates, not on today', async () => {
@@ -476,9 +505,9 @@ describe('transferTransaction', () => {
       bank_transaction_review_status: 'matched',
       bank_transaction_matched_record_id: 'txn_in',
       bank_transaction_matched_record_type: 'bank_transaction',
-      bank_transaction_gl_posting_id: 'post_1',
     })
-    // The second leg carries NO posting id: one event, one entry.
+    // Neither leg carries a stamped posting id any more (TARGET §1).
+    expect(updateFor('def_bt:txn_1')).not.toHaveProperty('bank_transaction_gl_posting_id')
     expect(updateFor('def_bt:txn_in')).toMatchObject({
       bank_transaction_review_status: 'matched',
       bank_transaction_matched_record_id: 'txn_1',
@@ -667,8 +696,10 @@ describe('undoReview', () => {
     expect(updateFor('def_bt:txn_1')).toMatchObject({
       bank_transaction_review_status: 'for_review',
       bank_transaction_gl_account: null,
-      bank_transaction_gl_posting_id: null,
     })
+    // Nothing to stamp any more - there is no `bank_transaction_gl_posting_id`
+    // write left in this treatment (TARGET §1).
+    expect(updateFor('def_bt:txn_1')).not.toHaveProperty('bank_transaction_gl_posting_id')
   })
 
   it('unlinks without reversing when the posting is ALREADY reversed', async () => {
@@ -676,7 +707,9 @@ describe('undoReview', () => {
     // to reverse it a second time is right; stranding the line as `coded` with
     // no way back into the queue is not.
     row({ reviewStatus: 'coded', glPostingId: 'post_1' })
-    h.selectRows = [{ status: 'reversed', docNumber: 'AUXX-BNK-OLD' }]
+    h.postingsBySource.set('txn_1', [
+      { id: 'post_1', status: 'reversed', docNumber: 'AUXX-BNK-OLD' },
+    ])
     const result = await undoReview(db, {
       organizationId: ORG,
       actorUserId: ACTOR,
@@ -808,104 +841,6 @@ describe('undoReview', () => {
   })
 })
 
-// ── The customer-payment link is a COLUMN, not a metadata key (drizzle 0363) ──
-//
-// 🛑 The review queue used to record "which bank line confirmed this payment" as
-// three keys inside `PaymentTransaction.metadata`, because the table had no
-// typed home for it (`plans/accounting/HANDOFF.md` §5b, departure 2). A JSON key
-// cannot be indexed, cannot be constrained, and is invisible to anything that
-// does not already know to open the blob - so the pointer that the whole
-// matcher turns on was the one link in the book nothing could query.
-//
-// These tests pin the two halves that a regression would quietly undo: that the
-// stamp writes COLUMNS and nothing else, and that the read asks the column.
-describe('matching a customer payment', () => {
-  it('stamps the two columns and writes no metadata at all', async () => {
-    row({ amountMinor: 55_500 })
-    const result = await matchTransaction(db, {
-      organizationId: ORG,
-      actorUserId: ACTOR,
-      transactionId: 'txn_1',
-      recordType: 'payment_transaction',
-      recordId: 'pt_1',
-    })
-
-    expect(result.isOk()).toBe(true)
-    expect(h.dbUpdates).toHaveLength(1)
-    const written = h.dbUpdates[0] ?? {}
-    expect(written.bankTransactionId).toBe('txn_1')
-    expect(written.bankClearedAt).toBeInstanceOf(Date)
-    // The blob is not touched. `metadata.date` is the user-picked accounting
-    // date every payment reader depends on, and a spread-and-rewrite of the
-    // whole object is how it would get lost.
-    expect(written).not.toHaveProperty('metadata')
-  })
-
-  it('writes no confirmationSource, because the pointer already says it', async () => {
-    row({ amountMinor: 55_500 })
-    await matchTransaction(db, {
-      organizationId: ORG,
-      actorUserId: ACTOR,
-      transactionId: 'txn_1',
-      recordType: 'payment_transaction',
-      recordId: 'pt_1',
-    })
-    // `bankTransactionId IS NOT NULL` is the same statement, and a second field
-    // saying so is a second field that can disagree with the first.
-    expect(h.dbUpdates[0]).not.toHaveProperty('confirmationSource')
-  })
-
-  it('🛑 still posts NOTHING - the payment entry already debited the route', async () => {
-    row({ amountMinor: 55_500 })
-    await matchTransaction(db, {
-      organizationId: ORG,
-      actorUserId: ACTOR,
-      transactionId: 'txn_1',
-      recordType: 'payment_transaction',
-      recordId: 'pt_1',
-    })
-    expect(h.postEntry).not.toHaveBeenCalled()
-  })
-
-  it('refuses a payment already matched to another bank line, naming it', async () => {
-    // The refusal is only reachable because `readDocumentLink` reads the COLUMN.
-    // Answering out of `metadata` here would make this test pass against a row
-    // that carries the pointer in the blob and fail against one that carries it
-    // in the column, which is exactly the direction the data moved.
-    row({ amountMinor: 55_500 })
-    h.selectRows = [{ bankTransactionId: 'txn_other' }]
-    const result = await matchTransaction(db, {
-      organizationId: ORG,
-      actorUserId: ACTOR,
-      transactionId: 'txn_1',
-      recordType: 'payment_transaction',
-      recordId: 'pt_1',
-    })
-    expect(result.isErr()).toBe(true)
-    if (result.isErr()) expect(result.error.message).toMatch(/txn_other/)
-    expect(h.dbUpdates).toHaveLength(0)
-  })
-
-  it('clears BOTH columns on undo, never one of them', async () => {
-    // A cleared date left standing on a payment with no bank line reads as
-    // "this cleared" with nothing able to say against what.
-    row({
-      reviewStatus: 'matched',
-      matchedRecordId: 'pt_1',
-      matchedRecordType: 'payment_transaction',
-    })
-    const result = await undoReview(db, {
-      organizationId: ORG,
-      actorUserId: ACTOR,
-      transactionId: 'txn_1',
-    })
-
-    expect(result.isOk()).toBe(true)
-    expect(h.dbUpdates).toHaveLength(1)
-    expect(h.dbUpdates[0]).toEqual({ bankTransactionId: null, bankClearedAt: null })
-  })
-})
-
 // ── Matching a payout posts nothing (brief 18 §1, prevention half) ──────────
 //
 // 🛑 Before this, `listMatchCandidates` offered a Stripe payout's own bank line
@@ -1032,10 +967,9 @@ describe('🛑 bank_account_has_posted - the write-once removal gate', () => {
       transactionId: 'txn_1',
     })
     expect(result.isOk()).toBe(true)
-    // The line went back to `for_review` and lost its posting id...
+    // The line went back to `for_review`...
     expect(updateFor('def_bt:txn_1')).toMatchObject({
       bank_transaction_review_status: 'for_review',
-      bank_transaction_gl_posting_id: null,
     })
     // ...and the account was not touched at all. Not cleared, not rewritten.
     expect(updateFor('def_ba:acct_1')).toBeUndefined()

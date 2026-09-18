@@ -34,7 +34,7 @@ export interface LatestPostingByType {
   postingType: PostingType
   /** `YYYY-MM-DD`, the accounting date. */
   txnDate: string
-  docNumber: string
+  docNumber: string | null
   status: PostingStatus
 }
 
@@ -78,7 +78,7 @@ export async function readLatestPostingsByType(
 type LatestRow = {
   postingType: string
   txnDate: Date | string
-  docNumber: string
+  docNumber: string | null
   status: string
 }
 

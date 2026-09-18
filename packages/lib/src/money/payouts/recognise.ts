@@ -14,6 +14,11 @@
  * writes `PaymentTransaction` (27 §1.3): a Shopify payout matched on a charge
  * id recognises NOTHING and credits the whole deposit to `2450 Unidentified
  * Receipts`. An `order` ref is answered against the synced order instead.
+ *
+ * A Stripe charge/refund id is recognised through
+ * `FinancialSourceObject.externalId` → `MoneySourceLink`,
+ * the same evidence trail a bank-feed-observed transaction is adopted into a
+ * `MoneyTransaction` through (`credit-memos/reads.ts`'s "adopted legacy" check).
  */
 
 import { type Database, schema } from '@auxx/database'
@@ -53,18 +58,15 @@ export async function recognise(
 }
 
 /**
- * Which of these Stripe ids auxx holds a `PaymentTransaction` for.
+ * Which of these Stripe ids auxx holds a `MoneyTransaction` for, via the
+ * `FinancialSourceObject` evidence trail (`externalId` is the raw Stripe id;
+ * `MoneySourceLink` is what proves a `MoneyTransaction` was adopted from it).
  *
  * ⚠️ **Refund rows are included deliberately.** A refund inside a payout is a
  * negative item that belongs on the same side as its charge; leaving it
  * unrecognised would credit `unidentified_receipts` with a negative and relieve
- * clearing of more than was ever debited to it. `stripeRefundId` is the column
- * that matches `re_…`.
- *
- * ⚠️ **Status is not filtered.** A `PaymentTransaction` that reached a payout
- * settled, whatever auxx's mirror of its status says; filtering on `succeeded`
- * would push a row whose webhook is late or lost to the unrecognised side and
- * misstate two accounts at once.
+ * clearing of more than was ever debited to it. Charge and refund ids share one
+ * `externalId` keyspace here, same as the legacy two-column check did.
  */
 export async function readRecognisedChargeIds(
   db: Database,
@@ -74,33 +76,23 @@ export async function readRecognisedChargeIds(
   if (gatewayIds.length === 0) return new Set()
 
   const rows = await db
-    .select({
-      chargeId: schema.PaymentTransaction.stripeChargeId,
-      refundId: schema.PaymentTransaction.stripeRefundId,
-    })
-    .from(schema.PaymentTransaction)
+    .select({ externalId: schema.FinancialSourceObject.externalId })
+    .from(schema.FinancialSourceObject)
+    .innerJoin(
+      schema.MoneySourceLink,
+      and(
+        eq(schema.MoneySourceLink.organizationId, schema.FinancialSourceObject.organizationId),
+        eq(schema.MoneySourceLink.sourceObjectId, schema.FinancialSourceObject.id)
+      )
+    )
     .where(
       and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        isNotNull(schema.PaymentTransaction.provider),
-        inArray(schema.PaymentTransaction.stripeChargeId, gatewayIds)
+        eq(schema.FinancialSourceObject.organizationId, organizationId),
+        inArray(schema.FinancialSourceObject.externalId, gatewayIds)
       )
     )
 
-  const refunds = await db
-    .select({ refundId: schema.PaymentTransaction.stripeRefundId })
-    .from(schema.PaymentTransaction)
-    .where(
-      and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        inArray(schema.PaymentTransaction.stripeRefundId, gatewayIds)
-      )
-    )
-
-  const found = new Set<string>()
-  for (const row of rows) if (row.chargeId) found.add(row.chargeId)
-  for (const row of refunds) if (row.refundId) found.add(row.refundId)
-  return found
+  return new Set(rows.map((row) => row.externalId))
 }
 
 /**

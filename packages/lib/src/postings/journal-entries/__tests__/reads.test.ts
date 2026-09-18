@@ -1,15 +1,15 @@
 // packages/lib/src/postings/journal-entries/__tests__/reads.test.ts
 //
-// `parseLines` is the seam between a jsonb column and arithmetic that decides
-// what a journal entry says, so its contract is worth stating on its own.
+// `linesFromBuilt` is the seam between a posting's jsonb `built` envelope and
+// arithmetic that decides what a journal entry says, so its contract is worth
+// stating on its own.
 //
-// 🛑 It is TOLERANT on read and `writes.ts` is STRICT on write, deliberately.
-// A malformed row here means the JSON was written by something else or by an
-// older shape, and the honest response is to render what IS readable rather
-// than to throw and make the entry unopenable. `buildManualEntry` refuses the
-// entry a second time before it can post, so a dropped line cannot become a
-// silently unbalanced posting - it becomes a visible imbalance the person can
-// see and fix.
+// 🛑 It is TOLERANT on read - a malformed row means the JSON was written by
+// something else or by an older shape, and the honest response is to render
+// what IS readable rather than to throw and make the entry unopenable.
+// `buildManualEntry` refuses the entry a second time before it can post, so a
+// dropped line cannot become a silently unbalanced posting - it becomes a
+// visible imbalance the person can see and fix.
 
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,103 +17,91 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../../../cache', () => ({ getCachedEntityDefId: vi.fn(), getOrgCache: vi.fn() }))
 
 import { getCachedEntityDefId, getOrgCache } from '../../../cache'
-import { listJournalEntries, parseLines } from '../reads'
+import { linesFromBuilt, listJournalEntries } from '../reads'
 
-describe('parseLines', () => {
-  it('reads a well-formed line array back verbatim', () => {
+/** A `GlPosting.built` envelope carrying only what `linesFromBuilt` reads. */
+function built(resolvedLines: unknown): unknown {
+  return { v: 1, resolvedLines }
+}
+
+describe('linesFromBuilt', () => {
+  it('reads well-formed resolved lines back as journal-entry lines', () => {
     expect(
-      parseLines([
-        { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000, memo: 'Rent' },
-        { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 50_000 },
-      ])
+      linesFromBuilt(
+        built([
+          { glAccountId: 'acct_6200', direction: 'debit', amount: 50_000, memo: 'Rent' },
+          { glAccountId: 'acct_2100', direction: 'credit', amount: 50_000 },
+        ])
+      )
     ).toEqual([
       { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000, memo: 'Rent' },
       { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 50_000 },
     ])
   })
 
-  // A field that has never been written has no `FieldValue` row at all, and an
-  // org short of migration 125 has no field either. Both must read as "no
-  // lines", never as `undefined` in a money column.
-  it('reads an absent or non-array value as no lines', () => {
-    expect(parseLines(undefined)).toEqual([])
-    expect(parseLines(null)).toEqual([])
-    expect(parseLines({})).toEqual([])
-    expect(parseLines('[]')).toEqual([])
+  it('reads an absent, non-object, or shapeless value as no lines', () => {
+    expect(linesFromBuilt(undefined)).toEqual([])
+    expect(linesFromBuilt(null)).toEqual([])
+    expect(linesFromBuilt({})).toEqual([])
+    expect(linesFromBuilt(built('nope'))).toEqual([])
   })
 
   it('drops a row with no account id', () => {
-    expect(parseLines([{ direction: 'debit', amountMinor: 1 }])).toEqual([])
-  })
-
-  // 🛑 Task 15: the id is the identity now, and there is no backfill. A row
-  // written under the OLD shape (`accountCode`, no `glAccountId`) is dropped
-  // rather than accepted, never re-keyed onto the code - accepting a legacy
-  // shape here would let a pre-migration row silently reappear with no
-  // account at all.
-  it('drops a row that only carries the legacy accountCode, no glAccountId', () => {
-    expect(parseLines([{ accountCode: '6200', direction: 'debit', amountMinor: 50_000 }])).toEqual(
-      []
-    )
-  })
-
-  it('drops a row whose glAccountId is blank', () => {
-    expect(parseLines([{ glAccountId: '   ', direction: 'debit', amountMinor: 1 }])).toEqual([])
+    expect(linesFromBuilt(built([{ direction: 'debit', amount: 1 }]))).toEqual([])
   })
 
   it('drops a row whose direction is not one of the two sides', () => {
-    expect(parseLines([{ glAccountId: 'acct_6200', direction: 'left', amountMinor: 1 }])).toEqual(
-      []
-    )
+    expect(
+      linesFromBuilt(built([{ glAccountId: 'acct_6200', direction: 'left', amount: 1 }]))
+    ).toEqual([])
   })
 
   it('drops a row with a non-numeric amount', () => {
     expect(
-      parseLines([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: '50' }])
+      linesFromBuilt(built([{ glAccountId: 'acct_6200', direction: 'debit', amount: '50' }]))
     ).toEqual([])
   })
 
   it('keeps the readable rows and drops only the broken ones', () => {
-    const lines = parseLines([
-      { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 },
-      { glAccountId: 'acct_2100', direction: 'sideways', amountMinor: 50_000 },
-      null,
-      { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 50_000 },
-    ])
+    const lines = linesFromBuilt(
+      built([
+        { glAccountId: 'acct_6200', direction: 'debit', amount: 50_000 },
+        { glAccountId: 'acct_2100', direction: 'sideways', amount: 50_000 },
+        null,
+        { glAccountId: 'acct_2100', direction: 'credit', amount: 50_000 },
+      ])
+    )
     expect(lines.map((line) => line.glAccountId)).toEqual(['acct_6200', 'acct_2100'])
   })
 
-  // 🛑 A zero amount survives the READ and is refused by `buildManualEntry` at
-  // post time, naming the row. Dropping it here would make the entry silently
-  // shorter than the person typed, and the imbalance would name the wrong side.
   it('keeps a zero amount so the builder can refuse it by row number', () => {
-    expect(parseLines([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 0 }])).toEqual([
-      { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 0 },
-    ])
+    expect(
+      linesFromBuilt(built([{ glAccountId: 'acct_6200', direction: 'debit', amount: 0 }]))
+    ).toEqual([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 0 }])
   })
 
   it('omits an empty memo rather than storing a blank string', () => {
-    const [line] = parseLines([
-      { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 1, memo: '' },
-    ])
+    const [line] = linesFromBuilt(
+      built([{ glAccountId: 'acct_6200', direction: 'debit', amount: 1, memo: '' }])
+    )
     expect(line).not.toHaveProperty('memo')
   })
 
   // Brief 13 §1.4: a manual line coded to a receivable or payable account may
-  // carry an optional counterparty. Well-formed means BOTH fields present and
-  // valid - a type that is one of the two literals, an id that is a non-empty
-  // string.
+  // carry an optional counterparty. Well-formed means BOTH fields present.
   it('reads a well-formed counterparty back verbatim', () => {
     expect(
-      parseLines([
-        {
-          glAccountId: 'acct_1100',
-          direction: 'debit',
-          amountMinor: 5_000,
-          counterpartyType: 'customer',
-          counterpartyId: 'contact_1',
-        },
-      ])
+      linesFromBuilt(
+        built([
+          {
+            glAccountId: 'acct_1100',
+            direction: 'debit',
+            amount: 5_000,
+            counterpartyType: 'customer',
+            counterpartyId: 'contact_1',
+          },
+        ])
+      )
     ).toEqual([
       {
         glAccountId: 'acct_1100',
@@ -121,137 +109,48 @@ describe('parseLines', () => {
         amountMinor: 5_000,
         counterpartyType: 'customer',
         counterpartyId: 'contact_1',
-      },
-    ])
-  })
-
-  it('reads a vendor counterparty back verbatim', () => {
-    expect(
-      parseLines([
-        {
-          glAccountId: 'acct_2000',
-          direction: 'credit',
-          amountMinor: 5_000,
-          counterpartyType: 'vendor',
-          counterpartyId: 'company_1',
-        },
-      ])
-    ).toEqual([
-      {
-        glAccountId: 'acct_2000',
-        direction: 'credit',
-        amountMinor: 5_000,
-        counterpartyType: 'vendor',
-        counterpartyId: 'company_1',
       },
     ])
   })
 
   it('drops both counterparty fields when the type is not customer or vendor', () => {
-    const [line] = parseLines([
-      {
-        glAccountId: 'acct_1100',
-        direction: 'debit',
-        amountMinor: 5_000,
-        counterpartyType: 'employee',
-        counterpartyId: 'contact_1',
-      },
-    ])
-    expect(line).not.toHaveProperty('counterpartyType')
-    expect(line).not.toHaveProperty('counterpartyId')
-  })
-
-  it('drops both counterparty fields when the id is blank', () => {
-    const [line] = parseLines([
-      {
-        glAccountId: 'acct_1100',
-        direction: 'debit',
-        amountMinor: 5_000,
-        counterpartyType: 'customer',
-        counterpartyId: '   ',
-      },
-    ])
+    const [line] = linesFromBuilt(
+      built([
+        {
+          glAccountId: 'acct_1100',
+          direction: 'debit',
+          amount: 5_000,
+          counterpartyType: 'employee',
+          counterpartyId: 'contact_1',
+        },
+      ])
+    )
     expect(line).not.toHaveProperty('counterpartyType')
     expect(line).not.toHaveProperty('counterpartyId')
   })
 
   it('drops a lone counterpartyType with no id', () => {
-    const [line] = parseLines([
-      {
-        glAccountId: 'acct_1100',
-        direction: 'debit',
-        amountMinor: 5_000,
-        counterpartyType: 'customer',
-      },
-    ])
+    const [line] = linesFromBuilt(
+      built([
+        {
+          glAccountId: 'acct_1100',
+          direction: 'debit',
+          amount: 5_000,
+          counterpartyType: 'customer',
+        },
+      ])
+    )
     expect(line).not.toHaveProperty('counterpartyType')
-    expect(line).not.toHaveProperty('counterpartyId')
-  })
-
-  it('drops a lone counterpartyId with no type', () => {
-    const [line] = parseLines([
-      {
-        glAccountId: 'acct_1100',
-        direction: 'debit',
-        amountMinor: 5_000,
-        counterpartyId: 'contact_1',
-      },
-    ])
-    expect(line).not.toHaveProperty('counterpartyType')
-    expect(line).not.toHaveProperty('counterpartyId')
-  })
-
-  it('reads a line with no counterparty as having neither field', () => {
-    const [line] = parseLines([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 1 }])
-    expect(line).not.toHaveProperty('counterpartyType')
-    expect(line).not.toHaveProperty('counterpartyId')
-  })
-})
-
-// 🛑 The column holds `{ v, lines }`, not the bare array - a `FieldValue` write
-// reads a top-level array as a MULTI-VALUE write, one row per element, and
-// `journal_entry_lines` is single-value. Handing it `[a, b]` fails with
-// "single-value; received 2 values", which `UnifiedCrudHandler.setFieldValues`
-// logs and swallows, leaving the update reporting success over an entry with no
-// lines. Found by driving the path against a real org.
-describe('parseLines - the stored envelope', () => {
-  it('unwraps the { lines } object the column holds', () => {
-    expect(
-      parseLines({ lines: [{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 }] })
-    ).toEqual([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 }])
-  })
-
-  // The field-value layer wraps every stored JSON in its own `{ v, meta }`
-  // envelope, so what comes off the column is `{ v: { lines: [...] } }`.
-  it('unwraps the field-value layer envelope as well as ours', () => {
-    expect(
-      parseLines({
-        v: { lines: [{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 }] },
-        meta: {},
-      })
-    ).toEqual([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 }])
-  })
-
-  it('still reads a bare array, for a hand-written or older row', () => {
-    expect(
-      parseLines([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 1 }])
-    ).toHaveLength(1)
-  })
-
-  it('reads an envelope whose lines key is not an array as no lines', () => {
-    expect(parseLines({ lines: 'nope' })).toEqual([])
-    expect(parseLines({ v: { lines: 'nope' } })).toEqual([])
   })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The `status` filter, and the one status that is absent-by-default
+// The `status` filter
 //
-// 🛑 `toRecord` reads a MISSING `journal_entry_status` row as `'draft'`: the
-// field carries `defaultValue: 'draft'`, and a row written before the field
-// existed has no `FieldValue` at all. So an INNER join on `optionId = 'draft'`
-// answered a strictly smaller set than the reader calls drafts - the list hid
-// entries the drawer would happily open. The filter has to agree with the read.
+// 🛑 Every journal entry carries its companion posting from the moment
+// `createJournalEntry` raises it (TARGET §1), so the filter is a plain INNER
+// join through `journal_entry_gl_posting_id` to `GlPosting.status` - there is
+// no more default-value fallback to branch on, unlike `kind` below it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Records which join the query builder was asked for, then returns no rows. */
@@ -284,9 +183,7 @@ const FIELD_CONTEXT = {
     journal_entry_number: { id: 'f_number' },
     journal_entry_date: { id: 'f_date' },
     journal_entry_memo: { id: 'f_memo' },
-    journal_entry_status: { id: 'f_status' },
     journal_entry_kind: { id: 'f_kind' },
-    journal_entry_lines: { id: 'f_lines' },
     journal_entry_gl_posting_id: { id: 'f_posting' },
   },
 }
@@ -299,17 +196,11 @@ describe('listJournalEntries status filter', () => {
     } as unknown as ReturnType<typeof getOrgCache>)
   })
 
-  it('LEFT joins for draft, so an entry with no status row is still a draft', async () => {
-    const { db, joins } = joinSpyDb()
-    await listJournalEntries(db, 'org_1', { status: 'draft' })
-    expect(joins).toEqual(['left'])
-  })
-
-  it('INNER joins for every other status, which cannot be absent-by-default', async () => {
-    for (const status of ['posted', 'reversed'] as const) {
+  it('INNER joins through the posting pointer for every status', async () => {
+    for (const status of ['draft', 'posted', 'reversed'] as const) {
       const { db, joins } = joinSpyDb()
       await listJournalEntries(db, 'org_1', { status })
-      expect(joins).toEqual(['inner'])
+      expect(joins).toEqual(['inner', 'inner'])
     }
   })
 

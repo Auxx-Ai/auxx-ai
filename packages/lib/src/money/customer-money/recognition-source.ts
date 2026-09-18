@@ -1,12 +1,10 @@
 // packages/lib/src/money/customer-money/recognition-source.ts
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../errors'
-import { scaleLineTax } from '../../postings/build-fulfillment-batch-entry'
-import { computeShipmentTotals } from '../../postings/build-fulfillment-entry'
 import { periodKeyForDate } from '../../postings/periods'
-import { loadFulfillmentFieldContext } from '../fulfillments/reads'
+import { readFulfillmentsForOrder } from '../fulfillments/reads'
 import { readOrderMoneyCoverage } from './reads'
 import {
   allocateOrderRecognition,
@@ -42,53 +40,6 @@ export interface OrderRecognitionSource {
   coverage: { complete: boolean; fetched: number; accepted: number; pending: number }
 }
 
-interface BasisCalculation {
-  orderInstanceId?: string
-  fulfillmentInstanceId?: string
-  shippedOn?: string
-  orderSubtotalMinor?: string
-  orderTaxMinor?: string
-  orderShippingMinor?: string
-  priorShipmentSubtotalMinor?: string
-  includeShipping?: boolean
-  amountMinor?: string
-  depositDebitMinor?: string
-  receivableDebitMinor?: string
-  newlyRecognizedTaxMinor?: string
-  historyHash?: string
-  taxComponents?: Array<{ componentKey?: string; amountMinor?: string }>
-  lines?: Array<{
-    orderLineId?: string
-    quantity?: string
-    orderedQuantity?: string
-    priorShippedQuantity?: string
-    netUnitMinor?: string
-    netLineMinor?: string | null
-    lineTaxMinor?: string | null
-  }>
-}
-
-function integer(value: unknown, label: string): bigint {
-  if (typeof value !== 'string' || !/^(0|[1-9]\d*)$/.test(value))
-    throw new Error(`${label} is missing exact minor-unit evidence`)
-  return BigInt(value)
-}
-
-function decimal(value: unknown, label: string): number {
-  if (typeof value !== 'string' || !/^(0|[1-9]\d*)(\.\d+)?$/.test(value))
-    throw new Error(`${label} is missing an exact quantity or rate`)
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) throw new Error(`${label} exceeds the numeric boundary`)
-  return parsed
-}
-
-function safeMinorNumber(value: unknown, label: string): number {
-  const parsed = integer(value, label)
-  if (parsed > BigInt(Number.MAX_SAFE_INTEGER))
-    throw new Error(`${label} exceeds the supported ledger numeric boundary`)
-  return Number(parsed)
-}
-
 /** Normalize a stored PostgreSQL or ISO timestamp without inventing a time for a date. */
 export function sourceOccurrence(raw: unknown, label: string): string {
   if (
@@ -109,67 +60,6 @@ function eventPrecedes(left: OrderRecognitionEvent, right: OrderRecognitionEvent
   return left.id.localeCompare(right.id) < 0
 }
 
-function asBasis(value: unknown): { calculation?: BasisCalculation; policyKey?: string } {
-  if (value === null || typeof value !== 'object') return {}
-  const row = value as Record<string, unknown>
-  const nested =
-    row.basis !== null && typeof row.basis === 'object'
-      ? (row.basis as Record<string, unknown>)
-      : undefined
-  return {
-    calculation: (row.calculation ?? nested?.calculation) as BasisCalculation | undefined,
-    policyKey:
-      typeof row.policyKey === 'string'
-        ? row.policyKey
-        : typeof nested?.policyKey === 'string'
-          ? nested.policyKey
-          : undefined,
-  }
-}
-
-/** Recompute shipment economic amounts from frozen line-level source evidence. */
-export function shipmentEconomicAmounts(calculation: BasisCalculation) {
-  if (!calculation.lines?.length) throw new Error('Shipment source has no line net evidence')
-  if (calculation.lines.some((line) => line.netLineMinor == null))
-    throw new Error('Shipment source is missing line_item_net_total evidence')
-  const totals = computeShipmentTotals({
-    label: `fulfillment ${calculation.fulfillmentInstanceId ?? 'unknown'}`,
-    lines: calculation.lines.map((line, index) => ({
-      lineId: line.orderLineId ?? `line-${index}`,
-      quantity: decimal(line.quantity, 'Shipment quantity'),
-      orderedQuantity: decimal(line.orderedQuantity, 'Ordered quantity'),
-      priorShippedQuantity: decimal(line.priorShippedQuantity, 'Prior shipped quantity'),
-      unitPriceMinor: decimal(line.netUnitMinor, 'Net unit amount'),
-      lineTotalMinor: safeMinorNumber(line.netLineMinor, 'Line net amount'),
-      taxMinor:
-        line.lineTaxMinor == null
-          ? null
-          : scaleLineTax(
-              {
-                lineId: line.orderLineId ?? `line-${index}`,
-                lineTaxMinor: safeMinorNumber(line.lineTaxMinor, 'Line tax amount'),
-                quantity: decimal(line.quantity, 'Shipment quantity'),
-                orderedQuantity: decimal(line.orderedQuantity, 'Ordered quantity'),
-                priorShippedQuantity: decimal(line.priorShippedQuantity, 'Prior shipped quantity'),
-              },
-              `fulfillment ${calculation.fulfillmentInstanceId ?? 'unknown'}`
-            ),
-    })),
-    orderSubtotalMinor: safeMinorNumber(calculation.orderSubtotalMinor, 'Order subtotal'),
-    orderTaxTotalMinor: safeMinorNumber(calculation.orderTaxMinor, 'Order tax'),
-    orderShippingTotalMinor: safeMinorNumber(calculation.orderShippingMinor, 'Order shipping'),
-    priorShipmentsSubtotalMinor: safeMinorNumber(
-      calculation.priorShipmentSubtotalMinor,
-      'Prior shipment subtotal'
-    ),
-    includeShipping: calculation.includeShipping === true,
-  })
-  return {
-    netMinor: BigInt(totals.subtotalMinor + totals.shippingMinor),
-    taxMinor: BigInt(totals.taxMinor),
-  }
-}
-
 /** Read actual receipts and recorded shipments, including a current target event. */
 export async function readOrderRecognitionSource(
   db: Db,
@@ -185,30 +75,32 @@ export async function readOrderRecognitionSource(
   }
 ): Promise<OrderRecognitionSource> {
   const blockers: string[] = []
+  // A credit memo posted against this order changes what its revenue timeline
+  // means, and this reader cannot express that. Found through the memo posting's
+  // `parent` link, never a stamp (TARGET §1).
   const [credit] = await db
-    .select({ id: schema.AccountingEffect.id })
-    .from(schema.AccountingEffect)
+    .select({ id: schema.GlPostingSource.id })
+    .from(schema.GlPostingSource)
     .innerJoin(
-      schema.AccountingWork,
+      schema.GlPosting,
       and(
-        eq(schema.AccountingWork.organizationId, input.organizationId),
-        eq(schema.AccountingWork.id, schema.AccountingEffect.workId)
+        eq(schema.GlPosting.organizationId, schema.GlPostingSource.organizationId),
+        eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId),
+        eq(schema.GlPosting.postingType, 'credit_memo')
       )
     )
     .where(
       and(
-        eq(schema.AccountingEffect.organizationId, input.organizationId),
-        eq(schema.AccountingWork.effectKind, 'customer_credit_issued'),
-        eq(
-          sql<string>`${schema.AccountingEffect.acceptedBasis}->'calculation'->>'orderInstanceId'`,
-          input.orderId
-        )
+        eq(schema.GlPostingSource.organizationId, input.organizationId),
+        eq(schema.GlPostingSource.sourceKind, 'order'),
+        eq(schema.GlPostingSource.sourceId, input.orderId),
+        eq(schema.GlPostingSource.linkRole, 'parent')
       )
     )
     .limit(1)
   if (credit)
     blockers.push(
-      'Order recognition must include its accepted credit components before further posting'
+      'Order recognition must include its posted credit components before further posting'
     )
   let recognitionFacts: Awaited<ReturnType<typeof readOrderRecognitionFactsInTx>> | null = null
   try {
@@ -334,212 +226,73 @@ export async function readOrderRecognitionSource(
     })
   }
 
-  const fulfillmentContext = await loadFulfillmentFieldContext(input.organizationId, db)
-  const fulfillmentOrderRows = fulfillmentContext
-    ? await db
-        .select({ id: schema.FieldValue.entityId })
-        .from(schema.FieldValue)
-        .innerJoin(
-          schema.EntityInstance,
-          and(
-            eq(schema.EntityInstance.organizationId, input.organizationId),
-            eq(schema.EntityInstance.id, schema.FieldValue.entityId),
-            eq(schema.EntityInstance.entityDefinitionId, fulfillmentContext.fulfillmentDefId),
-            isNull(schema.EntityInstance.archivedAt)
-          )
-        )
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, input.organizationId),
-            eq(schema.FieldValue.fieldId, fulfillmentContext.fulfillment.fulfillment_order!.id),
-            eq(schema.FieldValue.relatedEntityId, input.orderId)
-          )
-        )
-    : []
-  const fulfillmentIds = fulfillmentOrderRows.map((row) => row.id)
-  if (fulfillmentIds.length && fulfillmentContext?.fulfillment.fulfillment_status) {
-    const canceled = await db.query.FieldValue.findFirst({
-      where: and(
-        eq(schema.FieldValue.organizationId, input.organizationId),
-        inArray(schema.FieldValue.entityId, fulfillmentIds),
-        eq(schema.FieldValue.fieldId, fulfillmentContext.fulfillment.fulfillment_status.id),
-        eq(schema.FieldValue.optionId, 'cancelled')
-      ),
-    })
-    if (canceled)
-      blockers.push('Canceled shipment evidence requires explicit cancellation accounting')
-  }
+  // ── The shipment half, off the fulfillment RECORDS ──────────────────────
+  // Net and tax are recovered from the stamped shipment totals rather than
+  // from a frozen accounting basis: `fulfillment_total` is subtotal + tax +
+  // shipping, and `fulfillment_shipping_recognised` says whether the order's
+  // shipping was taken on this shipment.
+  const orderShippingMinor = recognitionFacts?.shipping ?? 0n
+  const fulfillments = await readFulfillmentsForOrder(db, {
+    organizationId: input.organizationId,
+    orderId: input.orderId,
+  })
+  if (fulfillments.some((row) => row.status === 'cancelled'))
+    blockers.push('Canceled shipment evidence requires explicit cancellation accounting')
 
-  const fulfillmentRows =
-    fulfillmentContext && fulfillmentIds.length
-      ? await db
-          .select({ id: schema.FieldValue.entityId, occurredAt: schema.FieldValue.valueDate })
-          .from(schema.FieldValue)
-          .where(
-            and(
-              eq(schema.FieldValue.organizationId, input.organizationId),
-              inArray(schema.FieldValue.entityId, fulfillmentIds),
-              eq(
-                schema.FieldValue.fieldId,
-                fulfillmentContext.fulfillment.fulfillment_shipped_at?.id ?? ''
-              )
-            )
-          )
-      : []
-  if (!fulfillmentContext) blockers.push('Fulfillment source fields are unresolved')
-  const datedFulfillmentIds = new Set(fulfillmentRows.map((row) => row.id))
-  for (const fulfillmentId of fulfillmentIds)
-    if (!datedFulfillmentIds.has(fulfillmentId))
-      blockers.push(`fulfillment ${fulfillmentId} has no source shipment occurrence instant`)
-  const works = fulfillmentIds.length
-    ? await db.query.AccountingWork.findMany({
-        where: and(
-          eq(schema.AccountingWork.organizationId, input.organizationId),
-          inArray(schema.AccountingWork.entityInstanceId, fulfillmentIds),
-          eq(schema.AccountingWork.effectKind, 'fulfillment_accounting'),
-          eq(schema.AccountingWork.operation, 'original')
-        ),
-      })
-    : []
-  const workByFulfillment = new Map(works.map((work) => [work.entityInstanceId, work]))
-  const basisRows = works.length
-    ? await db.query.AccountingWorkBasis.findMany({
-        where: and(
-          eq(schema.AccountingWorkBasis.organizationId, input.organizationId),
-          inArray(
-            schema.AccountingWorkBasis.workId,
-            works.map((work) => work.id)
-          )
-        ),
-      })
-    : []
-  const basisByWork = new Map(
-    basisRows.map((basis) => [`${basis.workId}:${basis.version}`, basis.basis])
-  )
-  const effects = works.length
-    ? await db.query.AccountingEffect.findMany({
-        where: and(
-          eq(schema.AccountingEffect.organizationId, input.organizationId),
-          inArray(
-            schema.AccountingEffect.workId,
-            works.map((work) => work.id)
-          )
-        ),
-      })
-    : []
-  const effectByWork = new Map(effects.map((effect) => [effect.workId, effect]))
-  const targetOccurrence =
-    input.target?.kind === 'fulfillment'
-      ? fulfillmentRows.find((row) => row.id === input.target?.id)?.occurredAt
-      : undefined
-  const normalizedTargetEvent =
-    input.targetEvent &&
-    input.target?.kind === 'fulfillment' &&
-    input.targetEvent.kind === 'fulfillment' &&
-    input.targetEvent.id === input.target.id &&
-    targetOccurrence
-      ? {
-          ...input.targetEvent,
-          occurredAt: sourceOccurrence(targetOccurrence, 'Target shipment'),
-          effectiveDate: periodKeyForDate(
-            new Date(sourceOccurrence(targetOccurrence, 'Target shipment')),
-            'day',
-            input.bookTimeZone
-          ),
-        }
-      : undefined
-  const targetTimelineEvent =
-    normalizedTargetEvent ??
-    (input.target
-      ? events.find((event) => event.kind === input.target!.kind && event.id === input.target!.id)
-      : undefined)
-  const appendShipment = (
-    id: string,
-    calculation: BasisCalculation,
-    effectiveDate: string,
-    occurredAtRaw: unknown
-  ) => {
-    if (!calculation.fulfillmentInstanceId || calculation.orderInstanceId !== input.orderId)
-      throw new Error(`fulfillment ${id} has an invalid accepted source basis`)
-    const amounts = shipmentEconomicAmounts(calculation)
-    const occurredAt = sourceOccurrence(occurredAtRaw, `fulfillment ${id}`)
-    const bookDate = periodKeyForDate(new Date(occurredAt), 'day', input.bookTimeZone)
-    if (calculation.shippedOn !== bookDate || effectiveDate !== bookDate)
-      throw new Error(`fulfillment ${id} accounting date differs from its source occurrence`)
-    events.push({
-      id,
-      kind: 'fulfillment',
-      effectiveDate: bookDate,
-      occurredAt,
-      netMinor: amounts.netMinor.toString(),
-      taxMinor: amounts.taxMinor.toString(),
-    })
-    return Date.parse(occurredAt)
-  }
-  for (const row of fulfillmentRows) {
-    const work = workByFulfillment.get(row.id)
-    const effect = work ? effectByWork.get(work.id) : undefined
-    if (!work || !effect) {
-      if (input.target?.kind === 'fulfillment' && input.target.id === row.id) {
-        if (
-          input.target?.kind === 'fulfillment' &&
-          input.target.id === row.id &&
-          normalizedTargetEvent
-        ) {
-          events.push(normalizedTargetEvent)
-        } else if (!work) {
-          blockers.push(`target fulfillment ${row.id} has no accounting work`)
-        } else {
-          const pendingBasis = asBasis(basisByWork.get(`${work.id}:${work.basisVersion}`))
-          if (!pendingBasis.calculation)
-            blockers.push(`target fulfillment ${row.id} has incomplete accounting source evidence`)
-          else {
-            try {
-              appendShipment(
-                row.id,
-                pendingBasis.calculation,
-                row.occurredAt?.slice(0, 10) ?? '',
-                row.occurredAt
-              )
-            } catch (error) {
-              blockers.push(error instanceof Error ? error.message : String(error))
-            }
-          }
-        }
-      } else if (
-        targetTimelineEvent &&
-        eventPrecedes(
-          {
-            id: row.id,
-            kind: 'fulfillment',
-            effectiveDate: row.occurredAt?.slice(0, 10) ?? '',
-            occurredAt: sourceOccurrence(row.occurredAt, `fulfillment ${row.id}`),
-            netMinor: '0',
-            taxMinor: '0',
-          },
-          targetTimelineEvent
-        )
-      ) {
-        blockers.push(`earlier shipment accounting pending for fulfillment ${row.id}`)
-      }
+  const shipmentEvents: { event: OrderRecognitionEvent; posted: boolean }[] = []
+  for (const fulfillment of fulfillments) {
+    if (fulfillment.status === 'cancelled') continue
+    if (!fulfillment.shippedAt) {
+      blockers.push(`fulfillment ${fulfillment.id} has no source shipment occurrence instant`)
       continue
     }
-    const basis = asBasis(effect.acceptedBasis)
-    if (basis.policyKey !== 'shopify_payment_date_v1') {
-      blockers.push(`fulfillment ${row.id} uses a legacy fulfillment accounting policy`)
-      continue
-    }
-    const calculation = basis.calculation
-    if (!calculation) {
-      blockers.push(`fulfillment ${row.id} has an invalid accepted source basis`)
-      continue
-    }
+    let occurredAt: string
     try {
-      appendShipment(row.id, calculation, effect.effectiveDate, row.occurredAt)
+      occurredAt = sourceOccurrence(fulfillment.shippedAt, `fulfillment ${fulfillment.id}`)
     } catch (error) {
       blockers.push(error instanceof Error ? error.message : String(error))
+      continue
     }
+    const shippingMinor = fulfillment.shippingRecognised ? orderShippingMinor : 0n
+    const netMinor = BigInt(fulfillment.subtotalMinor) + shippingMinor
+    const taxMinor =
+      BigInt(fulfillment.totalMinor) - BigInt(fulfillment.subtotalMinor) - shippingMinor
+    if (netMinor < 0n || taxMinor < 0n) {
+      blockers.push(`fulfillment ${fulfillment.id} has inconsistent shipment totals`)
+      continue
+    }
+    shipmentEvents.push({
+      event: {
+        id: fulfillment.id,
+        kind: 'fulfillment',
+        effectiveDate: periodKeyForDate(new Date(occurredAt), 'day', input.bookTimeZone),
+        occurredAt,
+        netMinor: netMinor.toString(),
+        taxMinor: taxMinor.toString(),
+      },
+      posted: fulfillment.glPosting !== null,
+    })
   }
+  for (const shipment of shipmentEvents) events.push(shipment.event)
+
+  const targetTimelineEvent = input.target
+    ? ((input.targetEvent &&
+      input.target.kind === 'fulfillment' &&
+      input.targetEvent.kind === 'fulfillment' &&
+      input.targetEvent.id === input.target.id
+        ? shipmentEvents.find((row) => row.event.id === input.target!.id)?.event
+        : undefined) ??
+      events.find((event) => event.kind === input.target!.kind && event.id === input.target!.id))
+    : undefined
+
+  // An earlier shipment that has not posted leaves this one recognising
+  // revenue out of order, so the timeline refuses until it lands.
+  if (targetTimelineEvent)
+    for (const shipment of shipmentEvents) {
+      if (shipment.event.id === input.target?.id || shipment.posted) continue
+      if (eventPrecedes(shipment.event, targetTimelineEvent))
+        blockers.push(`earlier shipment accounting pending for fulfillment ${shipment.event.id}`)
+    }
 
   let allocations: OrderRecognitionAllocation[] = []
   if (blockers.length === 0) {
@@ -553,110 +306,25 @@ export async function readOrderRecognitionSource(
       blockers.push(error instanceof Error ? error.message : String(error))
     }
   }
-  if (allocations.length && moneyIds.length) {
-    const receiptWorks = await db.query.AccountingWork.findMany({
-      where: and(
-        eq(schema.AccountingWork.organizationId, input.organizationId),
-        inArray(schema.AccountingWork.moneyTransactionId, moneyIds),
-        eq(schema.AccountingWork.effectKind, 'customer_receipt'),
-        eq(schema.AccountingWork.operation, 'original')
-      ),
-    })
-    const receiptEffects = receiptWorks.length
-      ? await db.query.AccountingEffect.findMany({
-          where: and(
-            eq(schema.AccountingEffect.organizationId, input.organizationId),
-            inArray(
-              schema.AccountingEffect.workId,
-              receiptWorks.map((work) => work.id)
-            )
-          ),
-        })
-      : []
-    const receiptEffectByMoney = new Map(
-      receiptWorks.map((work) => [
-        work.moneyTransactionId,
-        receiptEffects.find((effect) => effect.workId === work.id),
-      ])
-    )
-    const targetEvent = input.target
-      ? events.find((event) => event.kind === input.target?.kind && event.id === input.target.id)
-      : undefined
+  // An earlier receipt that has not posted would make this one recognise out
+  // of order, exactly as an unposted earlier shipment does.
+  if (allocations.length && moneyIds.length && targetTimelineEvent) {
+    const postedReceipts = await db
+      .select({ sourceId: schema.GlPostingSource.sourceId })
+      .from(schema.GlPostingSource)
+      .where(
+        and(
+          eq(schema.GlPostingSource.organizationId, input.organizationId),
+          eq(schema.GlPostingSource.sourceKind, 'money_transaction'),
+          inArray(schema.GlPostingSource.sourceId, moneyIds),
+          eq(schema.GlPostingSource.linkRole, 'subject')
+        )
+      )
+    const posted = new Set(postedReceipts.map((row) => row.sourceId))
     for (const event of events) {
       if (event.kind !== 'receipt' || event.id === input.target?.id) continue
-      if (targetEvent && eventPrecedes(event, targetEvent) && !receiptEffectByMoney.get(event.id))
+      if (eventPrecedes(event, targetTimelineEvent) && !posted.has(event.id))
         blockers.push(`earlier receipt accounting pending for receipt ${event.id}`)
-    }
-    for (const allocation of allocations) {
-      if (allocation.kind !== 'receipt') continue
-      const effect = receiptEffectByMoney.get(allocation.id)
-      if (!effect) continue
-      const calculation = asBasis(effect.acceptedBasis).calculation as
-        | (BasisCalculation & {
-            moneyTransactionId?: string
-            historyHash?: string
-            amountMinor?: string
-            receiptAmountMinor?: string
-            allocation?: {
-              amountMinor?: string
-              depositMinor?: string
-              receivableMinor?: string
-              taxMinor?: string
-            }
-          })
-        | undefined
-      if (
-        !calculation ||
-        calculation.moneyTransactionId !== allocation.id ||
-        calculation.historyHash !== allocation.historyHash ||
-        calculation.amountMinor !== allocation.amountMinor ||
-        calculation.receiptAmountMinor !== allocation.amountMinor ||
-        calculation.allocation?.amountMinor !== allocation.amountMinor ||
-        calculation.allocation?.depositMinor !== allocation.depositMinor ||
-        calculation.allocation?.receivableMinor !== allocation.receivableMinor ||
-        calculation.allocation?.taxMinor !== allocation.taxMinor
-      )
-        blockers.push(
-          `accepted receipt ${allocation.id} no longer matches the recognition timeline`
-        )
-    }
-  }
-  if (allocations.length && blockers.length === 0) {
-    for (const allocation of allocations) {
-      if (allocation.kind !== 'fulfillment') continue
-      const work = workByFulfillment.get(allocation.id)
-      const effect = work ? effectByWork.get(work.id) : undefined
-      if (!effect) continue
-      const calculation = asBasis(effect.acceptedBasis).calculation as
-        | (BasisCalculation & {
-            recognitionAllocation?: {
-              amountMinor?: string
-              depositDebitMinor?: string
-              receivableDebitMinor?: string
-              newlyRecognizedTaxMinor?: string
-              historyHash?: string
-            }
-          })
-        | undefined
-      const stored = calculation?.recognitionAllocation
-      const frozen = {
-        amountMinor: stored?.amountMinor,
-        depositMinor: stored?.depositDebitMinor,
-        receivableMinor: stored?.receivableDebitMinor,
-        taxMinor: stored?.newlyRecognizedTaxMinor,
-        historyHash: stored?.historyHash,
-      }
-      if (
-        !frozen ||
-        frozen.amountMinor !== allocation.amountMinor ||
-        frozen.depositMinor !== allocation.depositMinor ||
-        frozen.receivableMinor !== allocation.receivableMinor ||
-        frozen.taxMinor !== allocation.taxMinor ||
-        frozen.historyHash !== allocation.historyHash
-      )
-        blockers.push(
-          `accepted fulfillment ${allocation.id} no longer matches the recognition timeline`
-        )
     }
   }
   const target = input.target
@@ -680,34 +348,6 @@ export async function readOrderRecognitionSource(
           factsComponents.get(component.componentKey)?.withholdingEvidenceId ?? null,
       })) ?? null)
     : null
-  if (allocations.length && recognitionFacts && !blockers.length) {
-    const componentByEvent = allocateRecognitionTaxComponents(
-      allocations,
-      recognitionFacts.taxComponents
-    )
-    for (const allocation of allocations) {
-      if (allocation.kind !== 'fulfillment') continue
-      const work = workByFulfillment.get(allocation.id)
-      const effect = work ? effectByWork.get(work.id) : undefined
-      if (!effect) continue
-      const calculation = asBasis(effect.acceptedBasis).calculation
-      const expected = componentByEvent.get(allocation.id) ?? []
-      const stored = calculation?.taxComponents ?? []
-      const matches =
-        stored.length === expected.length &&
-        expected.every((component, index) => {
-          const row = stored[index]
-          return (
-            row?.componentKey === component.componentKey &&
-            row.amountMinor === component.amountMinor
-          )
-        })
-      if (!matches)
-        blockers.push(
-          `accepted fulfillment ${allocation.id} no longer matches tax component allocation`
-        )
-    }
-  }
   if (input.target && !target && blockers.length === 0)
     blockers.push(
       `target ${input.target.kind} ${input.target.id} is absent from the recognition timeline`

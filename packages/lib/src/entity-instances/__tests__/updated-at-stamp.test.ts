@@ -14,6 +14,10 @@ const h = vi.hoisted(() => ({
   setPayloads: [] as Array<Record<string, unknown>>,
 }))
 
+vi.mock('../../postings/accounting-commit-lock', () => ({
+  withAccountingCommitLock: async () => {},
+}))
+
 vi.mock('../../cache/singletons', () => ({
   getOrgCache: () => ({
     from: () => ({
@@ -56,6 +60,9 @@ vi.mock('@auxx/database', async () => {
         }
       },
     }),
+    // `updateEntityInstance` wraps every write in its own transaction when no
+    // ambient one is threaded; the fake just runs the callback against itself.
+    transaction: (fn: (tx: unknown) => unknown) => fn(database),
   }
 
   return { database, schema, Database: class {}, Transaction: class {} }
