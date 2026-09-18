@@ -192,69 +192,64 @@ const BANK_ACCOUNTS_RECORD: PostingRecordLink = {
 export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
   // ── Enabled, in the order the ledger switched them on ───────────────────
 
-  month_end_inventory: {
-    type: 'month_end_inventory',
-    label: 'Month-end inventory',
-    // postings/close-month.ts `postMonthEnd`, reached from the close console.
-    trigger: { kind: 'console', where: 'The close console on the ledger, one month at a time' },
+  inventory_movement: {
+    type: 'inventory_movement',
+    label: 'Inventory movement',
+    // Every inventory document writer, inside its own write's transaction.
+    trigger: {
+      kind: 'event',
+      on: 'Every inventory document write: a shipment, a goods receipt, an adjustment, a build, a return, the opening run',
+    },
     template: [
       {
         side: 'debit',
+        role: ACCOUNT_ROLES.COGS_PRODUCT_COST,
+        what: 'What left inventory on a sale, at the movements’ frozen cost',
+      },
+      {
+        side: 'debit',
         role: ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
-        what: 'Moved to the balance the movement ledger computes; the side follows the delta',
+        what: 'Raw materials received, built or returned; the side follows the movement’s sign',
       },
       {
         side: 'debit',
         role: ACCOUNT_ROLES.INVENTORY_WIP,
-        what: 'Moved to the computed balance; the side follows the delta',
+        what: 'Work in process; the side follows the movement’s sign',
       },
       {
         side: 'debit',
         role: ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
-        what: 'Moved to the computed balance; the side follows the delta',
+        what: 'Finished goods; the side follows the movement’s sign',
       },
-      {
-        side: 'credit',
-        role: ACCOUNT_ROLES.PAYROLL_CLEARING,
-        what: 'Labour absorbed into builds this month',
-      },
-      {
-        side: 'credit',
-        role: ACCOUNT_ROLES.APPLIED_OVERHEAD,
-        what: 'Overhead absorbed into builds this month',
-      },
+      { side: 'credit', role: ACCOUNT_ROLES.GRNI, what: 'Goods received, not yet invoiced' },
       {
         side: 'credit',
         role: ACCOUNT_ROLES.INVENTORY_COUNT_VARIANCE,
-        what: 'Count adjustments and shrinkage; the side follows the sign',
+        what: 'An adjustment or a scrap; the side follows the sign',
       },
       {
-        side: 'debit',
-        role: ACCOUNT_ROLES.COGS_PRODUCT_COST,
-        what: 'The balancing line: what left inventory as cost of goods sold',
+        side: 'credit',
+        role: ACCOUNT_ROLES.EQUITY_OPENING_BALANCE,
+        what: 'The opening run’s balancing leg',
       },
     ],
-    settings: [
-      'accounting.openingRawMaterials',
-      'accounting.openingWip',
-      'accounting.openingFinishedGoods',
-    ],
+    settings: [],
     sentence:
-      'Once a month the close asserts the three inventory accounts to what the movement ledger says they hold, and the difference is cost of goods sold.',
+      'Every inventory document posts one entry of its own, at the cost frozen on the movements it links, the moment the document is written.',
     disabledSentence:
-      'Month-end inventory posting is off, so the inventory accounts and cost of goods sold are never brought to the ledger.',
+      'Inventory posting is off, so nothing moves the inventory accounts or cost of goods sold.',
     parameters: [
       {
         name: 'Method',
-        value: 'Monthly assertion',
+        value: 'Perpetual, per document',
         sentence:
-          'Inventory is asserted once a month rather than posted per receipt or build; the two cannot both be on, so receipts, builds and vendor bills post nothing.',
+          'One entry per document, with a member link to every `stock_movement` it booked; the month-end close checks that set rather than asserting a balance over it.',
       },
       {
-        name: 'Opening baseline',
-        value: 'The three opening inventory settings',
+        name: 'Cost',
+        value: 'The movement’s frozen extended cost',
         sentence:
-          'The first close computes its delta from the opening balances entered in setup, not from the opening entry.',
+          'Never re-derived from today’s standard cost: the entry is worth exactly what the rows it links were worth when they were written.',
       },
     ],
     records: [{ label: 'The ledger', href: '/app/accounting' }],
@@ -948,51 +943,11 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     singleWriterRoles: [],
   },
 
-  // ── Never posting, and declared so ──────────────────────────────────────
-
-  receipt: {
-    type: 'receipt',
-    label: 'Receipt',
-    trigger: { kind: 'never' },
-    template: [
-      {
-        side: 'debit',
-        role: ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
-        what: 'Raw materials received, at landed cost',
-      },
-      {
-        side: 'debit',
-        role: ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
-        what: 'Finished goods received, at landed cost',
-      },
-      { side: 'credit', role: ACCOUNT_ROLES.GRNI, what: 'Goods received, not yet invoiced' },
-      { side: 'credit', role: ACCOUNT_ROLES.FREIGHT_ACCRUAL, what: 'Freight accrued' },
-      { side: 'credit', role: ACCOUNT_ROLES.DUTIES_ACCRUAL, what: 'Duties accrued' },
-    ],
-    settings: [],
-    sentence: 'Receipts post nothing; inventory is asserted monthly.',
-    disabledSentence:
-      'Per-event receipt posting is off, so inventory moves only through the monthly assertion.',
-    parameters: [
-      {
-        name: 'Method',
-        value: 'Ready, not enabled',
-        sentence:
-          'The per-receipt entry is written and tested and waits for the switch that turns the monthly assertion off; both on at once would reverse each other.',
-      },
-    ],
-    enabled: false,
-    exportRoute: 'journal',
-    singleWriterRoles: [
-      ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
-      ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
-    ],
-  },
-
   vendor_bill: {
     type: 'vendor_bill',
     label: 'Vendor bill',
-    trigger: { kind: 'never' },
+    // purchasing/post-vendor-bill.ts, from the three-way match's `matched` verdict.
+    trigger: { kind: 'event', on: 'The three-way match writing a vendor bill status of matched' },
     template: [
       { side: 'debit', role: ACCOUNT_ROLES.GRNI, what: 'The receipt this bill invoices' },
       {
@@ -1003,42 +958,24 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       { side: 'credit', role: ACCOUNT_ROLES.ACCOUNTS_PAYABLE, what: 'What the vendor is owed' },
     ],
     settings: [],
-    sentence: 'Purchasing bills post nothing per bill; inventory is asserted monthly.',
+    sentence:
+      'A matched purchasing bill relieves the goods-received accrual its receipt raised and books the difference as purchase price variance.',
     disabledSentence:
-      'Per-event vendor bill posting is off, so goods received not invoiced is not relieved per bill.',
+      'Per-event vendor bill posting is off, so goods received not invoiced is never relieved and the accrual grows without bound.',
     parameters: [
       {
-        name: 'Method',
-        value: 'Ready, not enabled',
+        name: 'Matched portion',
+        value: 'Received quantity at the agreed price',
         sentence:
-          'Waits for the same switch as receipts. An expense bill is a different entry and does post.',
+          'Exactly what the receipt credited to the accrual, which is why the accrual closes to zero per line rather than drifting.',
       },
     ],
-    enabled: false,
+    enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],
   },
 
-  build: {
-    type: 'build',
-    label: 'Build',
-    trigger: { kind: 'never' },
-    template: [],
-    settings: [],
-    sentence: 'Builds post nothing; inventory is asserted monthly.',
-    disabledSentence: 'Build posting is off.',
-    parameters: [
-      {
-        name: 'Where a build shows up',
-        value: 'The month-end entry',
-        sentence:
-          'Labour and overhead absorbed by builds reach the ledger through the month-end inventory entry, carrying the rates frozen on each movement.',
-      },
-    ],
-    enabled: false,
-    exportRoute: 'journal',
-    singleWriterRoles: [],
-  },
+  // ── Never posting, and declared so ──────────────────────────────────────
 
   month_end_deferral: {
     type: 'month_end_deferral',

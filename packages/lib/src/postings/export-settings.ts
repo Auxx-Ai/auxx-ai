@@ -71,11 +71,9 @@ export function avenueOfPostingType(postingType: PostingType): ExportAvenue | nu
     // No native object (TARGET §3's table): a journal entry.
     case 'manual_journal':
     case 'recurring_journal':
-    case 'month_end_inventory':
+    case 'inventory_movement':
     case 'month_end_deferral':
     case 'month_end_reversal':
-    case 'build':
-    case 'receipt':
       return 'journal'
     // Rides along with the payment it applies against - TARGET §5: "part of the Payment".
     case 'deposit_application':

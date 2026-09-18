@@ -26,6 +26,10 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
 import { BadRequestError, ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
+import {
+  linkMovementsToPosting,
+  reversePostingForMovement,
+} from '../postings/post-inventory-movement'
 import { StockMovementType } from '../resources/registry/enum-values'
 import { writeStockMovements } from '../stock-movements'
 import { guard } from './guard'
@@ -199,13 +203,33 @@ export async function reverseMovement(
         )
       }
 
-      return writeReversal(db, organizationId, userId, {
+      const record = await writeReversal(db, organizationId, userId, {
         movementDefId,
         originalMovementId: input.movementId,
         original,
         reason: input.reason,
         occurredAt: new Date(),
       })
+
+      // The correction is a REVERSAL of the entry the original was booked in,
+      // never a fresh opposite entry: a period that has been posted never
+      // changes shape, and `reverseEntry` frees the original's claim so the
+      // document can post again. The negating movement is linked onto the
+      // reversal so the close does not read it as work still outstanding.
+      const reversed = await reversePostingForMovement(db, {
+        organizationId,
+        movementId: input.movementId,
+        actorUserId: userId,
+        memo: input.reason,
+      })
+      if (reversed?.glPostingId) {
+        await linkMovementsToPosting(db, {
+          organizationId,
+          glPostingId: reversed.glPostingId,
+          movementIds: [record.movementId],
+        })
+      }
+      return record
     },
     'Failed to reverse stock movement',
     { organizationId, movementId: input.movementId }

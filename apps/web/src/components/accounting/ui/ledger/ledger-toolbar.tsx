@@ -3,7 +3,6 @@
 'use client'
 
 import type { ClosePeriod } from '@auxx/lib/postings/client'
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -35,14 +34,12 @@ type PeriodState = ClosePeriod['state']
 
 const STATE_LABEL: Record<PeriodState, string> = {
   open: 'Open',
-  posted: 'Posted',
   locked: 'Locked',
 }
 
-/** The pill's dot. Locked reads as "shut", not as a stronger Posted. */
+/** The pill's dot. Locked reads as "shut". */
 const STATE_DOT: Record<PeriodState, string> = {
   open: 'bg-amber-500',
-  posted: 'bg-green-500',
   locked: 'bg-primary-400',
 }
 
@@ -169,17 +166,6 @@ export function LedgerToolbar({
         <div className='flex items-center gap-2 px-1 text-xs text-muted-foreground'>
           <span className={cn('size-1.5 rounded-full', STATE_DOT[state])} aria-hidden />
           <span className='text-foreground'>{STATE_LABEL[state]}</span>
-          {period?.docNumber && (
-            <>
-              <span aria-hidden>·</span>
-              <span className='font-mono'>{period.docNumber}</span>
-            </>
-          )}
-          {period && period.revision > 0 && (
-            <Badge variant='outline' size='sm'>
-              Revision {period.revision}
-            </Badge>
-          )}
         </div>
       )}
 

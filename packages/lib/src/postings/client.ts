@@ -55,9 +55,7 @@ export {
   type AccountRole,
   type BuildEntryInput,
   buildEntry,
-  buildReceiptEntry,
   buildVendorBillEntry,
-  type ReceiptEntryInput,
   ROLE_ACCOUNT_TYPES,
   roleAcceptsManualSource,
   roleScopeAxis,
@@ -97,6 +95,17 @@ export {
   toAmountMinor,
   toChannelKey,
 } from './build-fulfillment-entry'
+// ── HANDOFF slot 1C: the opening trial balance ─────────────────────────────
+// Pure/type-only. `build-opening-balance-entry.ts` reaches nothing but
+// `errors`, `periods` and `setup-readiness`, all of which are already on this
+// surface; `opening-trial-balance/client.ts` is types plus two total functions.
+export {
+  type BuiltInventoryMovementEntry,
+  buildInventoryMovementEntry,
+  type InventoryDocumentKind,
+  type InventoryMovementEntryInput,
+  type InventoryMovementLine,
+} from './build-inventory-movement-entry'
 // ── plans/accounting/tasks/08: the receivable nothing debits ────────────────
 // PURE. `money/invoices/post-invoice.ts` is the write half and stays
 // server-only - it imports `@auxx/database`.
@@ -122,15 +131,6 @@ export {
   type ManualPostingType,
   toMinorUnits,
 } from './build-manual-entry'
-export {
-  type BuiltMonthEndInventoryDraft,
-  buildMonthEndInventoryEntry,
-  type MonthEndInventoryInputs,
-} from './build-month-end-inventory'
-// ── HANDOFF slot 1C: the opening trial balance ─────────────────────────────
-// Pure/type-only. `build-opening-balance-entry.ts` reaches nothing but
-// `errors`, `periods` and `setup-readiness`, all of which are already on this
-// surface; `opening-trial-balance/client.ts` is types plus two total functions.
 export {
   type BuildOpeningBalanceEntryInput,
   type BuiltOpeningBalanceEntry,
@@ -204,7 +204,6 @@ export {
   POSTING_DRAFT_VERSION,
   type PostingAssertions,
   type PostingDraftV1,
-  requiresAssertions,
   reverseAssertions,
 } from './draft'
 // ── plans/accounting/tasks/18: two feeds, one author, unit 1 ───────────────

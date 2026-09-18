@@ -28,11 +28,17 @@ import type { DefaultChartAccount, GlAccountTypeValue } from './default-chart'
 export const POSTING_TYPES = [
   'fulfillment',
   'payout',
-  'build',
   'month_end_deferral',
   'month_end_reversal',
-  'month_end_inventory',
-  'receipt',
+  // MIGRATION step 5. ONE entry per inventory DOCUMENT - a fulfillment, a goods
+  // receipt, an adjustment, a build, a return, an opening run - at the frozen
+  // `stock_movement_extended_cost` of the movements it links as members. The
+  // document kind travels in the built envelope, not in a second posting type,
+  // because every kind claims, exports and reverses identically (TARGET §5).
+  'inventory_movement',
+  // The three-way matched purchasing bill: `Dr GRNI ± PPV / Cr A/P`. The other
+  // half of the GRNI `inventory_movement` credits on a receipt - without it that
+  // accrual never clears. Distinct from `expense_bill`, which codes to expense.
   'vendor_bill',
   // Added by plans/accounting/HANDOFF.md wave 0 (slot 0B), 2026-09-04.
   // A bookkeeper's adjusting entry, coded by account CODE rather than role.
@@ -61,8 +67,7 @@ export const POSTING_TYPES = [
   // every payment entry relieves and nothing used to raise
   // (plans/accounting/tasks/done/08-invoice-revenue.md).
   //
-  // 🛑 Prefix `INI`, never `INV` - `month_end_inventory` holds `INV` and
-  // documents already carry it.
+  // 🛑 Prefix `INI`, never `INV` - `inventory_movement` holds `INV`.
   'invoice_issued',
   // A held customer deposit reclassed onto an invoice:
   // `Dr customer_deposits / Cr accounts_receivable`. Neither a payment (no
@@ -1201,14 +1206,14 @@ export interface ChartImportResult {
 export interface ClosePeriod {
   /** `'2026-08'`. */
   periodKey: string
-  state: 'open' | 'posted' | 'locked'
-  /** The effective posting for the month, when there is one. */
-  glPostingId: string | null
-  docNumber: string | null
-  totalMinor: number | null
-  postedAt: string | null
-  /** `0` for an original; a reversal chain climbs from there. */
-  revision: number
+  /**
+   * `open` until somebody locks it.
+   *
+   * ⚠️ There is no `posted` any more: MIGRATION step 5 deleted the month-end
+   * assertion, so closing a month posts nothing and there is no entry for a
+   * state to be about. What a close now does is CHECK - see `readCloseBlockers`.
+   */
+  state: 'open' | 'locked'
 }
 
 /** One entry whose lines do not tie, or do not sum to its recorded total. */

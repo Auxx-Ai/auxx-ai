@@ -76,9 +76,7 @@ export {
   type AccountRole,
   type BuildEntryInput,
   buildEntry,
-  buildReceiptEntry,
   buildVendorBillEntry,
-  type ReceiptEntryInput,
   ROLE_ACCOUNT_TYPES,
   roleAcceptsManualSource,
   roleScopeAxis,
@@ -113,6 +111,13 @@ export {
   toAmountMinor,
   toChannelKey,
 } from './build-fulfillment-entry'
+export {
+  type BuiltInventoryMovementEntry,
+  buildInventoryMovementEntry,
+  type InventoryDocumentKind,
+  type InventoryMovementEntryInput,
+  type InventoryMovementLine,
+} from './build-inventory-movement-entry'
 // ── plans/accounting/tasks/08: the receivable nothing debits ────────────────
 export {
   type BuildInvoiceEntryInput,
@@ -131,11 +136,6 @@ export {
   type ManualPostingType,
   toMinorUnits,
 } from './build-manual-entry'
-export {
-  type BuiltMonthEndInventoryDraft,
-  buildMonthEndInventoryEntry,
-  type MonthEndInventoryInputs,
-} from './build-month-end-inventory'
 // ── HANDOFF slot 1C: the opening trial balance ─────────────────────────────
 export {
   type BuildOpeningBalanceEntryInput,
@@ -185,12 +185,6 @@ export {
   type UpdateChartAccountOptions,
   updateChartAccount,
 } from './chart-write'
-export {
-  type PostMonthEndOptions,
-  type PreviewMonthEndOptions,
-  postMonthEnd,
-  previewMonthEnd,
-} from './close-month'
 export { listClosePeriods } from './close-periods'
 export {
   type CreateAndLinkOptions,
@@ -225,7 +219,6 @@ export {
   type PostingAssertions,
   type PostingDraftV1,
   parsePostingDraft,
-  requiresAssertions,
   reverseAssertions,
 } from './draft'
 export {
@@ -279,7 +272,6 @@ export {
   type SummaryGrain,
   type SummaryGrainAvenue,
 } from './export-settings'
-export { gatherMonthEndInventoryInputs } from './gather-month-end-inventory'
 export {
   type CreateJournalEntryInput,
   createJournalEntry,
@@ -387,6 +379,15 @@ export {
   postEntry,
   previewEntry,
 } from './post-entry'
+export {
+  exportInventoryMovement,
+  type InventoryDocumentSubject,
+  inventoryTxnDate,
+  linkMovementsToPosting,
+  postInventoryMovementInTx,
+  reverseInventoryMovementPosting,
+  reversePostingForMovement,
+} from './post-inventory-movement'
 export { type PostPayoutEntryOptions, postPayoutEntry } from './post-payout-entry'
 export {
   type AccountingProvider,
@@ -486,6 +487,7 @@ export {
   type ReadRailFeeStatusOptions,
   readRailFeeStatus,
 } from './rail-fee-status'
+export { type CloseBlockersResult, readCloseBlockers } from './read-close-blockers'
 export { getPosting, readPostingLineSourceIds } from './read-posting'
 // TARGET §6: the summarised view over the detail ledger.
 export {

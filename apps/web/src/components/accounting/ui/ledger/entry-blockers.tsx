@@ -322,6 +322,19 @@ export const ITEM_REMEDIES: Record<CloseBlockerItemKey, ItemRemedy> = {
         ? `/app/accounting/settings/accounts?role=${encodeURIComponent(item.ref)}`
         : '/app/accounting/settings/accounts',
   },
+  // The two checks a close is, now that it posts nothing (MIGRATION step 5).
+  // Both send the reader to the movements: one is a document whose entry never
+  // landed, the other is the ledger disagreeing with the rows themselves.
+  inventory_unposted: {
+    icon: PackagePlus,
+    actionLabel: 'Open movements',
+    href: () => '/app/records/stock_movement',
+  },
+  inventory_balance: {
+    icon: Scale,
+    actionLabel: 'Open the trial balance',
+    href: () => '/app/accounting/reports/trial-balance',
+  },
 }
 
 interface EntryBlockersProps {

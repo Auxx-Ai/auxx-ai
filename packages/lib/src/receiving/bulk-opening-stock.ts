@@ -71,6 +71,11 @@ import type { Result } from 'neverthrow'
 import { ensureStandardCost } from '../builds/ensure-standard-cost'
 import { getCachedEntityDefId, getOrgCache, requireCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../errors'
+import {
+  exportInventoryMovement,
+  inventoryTxnDate,
+  postInventoryMovementInTx,
+} from '../postings/post-inventory-movement'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import {
   PartKind,
@@ -172,15 +177,43 @@ export async function bulkOpenStockBalance(
         }
       })
 
-      // Step 4: the movements. Step 5 happens on its own.
-      const opened = await writeInitialMovements(db, organizationId, userId, {
-        movementDefId,
-        partDefId,
-        occurredAt,
-        entries: [...accepted.values()],
-        kindByPartId: new Map([...parts].map(([id, part]) => [id, part.kind])),
-        failed,
+      // Step 4: the movements and the one entry that raises them, together.
+      // The opening run is a single document dated once, so it claims once -
+      // `occurredAt` is the occurrence, and a second run on a second date opens
+      // its own entry rather than colliding with this one.
+      const { opened, post } = await db.transaction(async (tx) => {
+        const txDb = tx as unknown as Database
+        const rows = await writeInitialMovements(txDb, organizationId, userId, {
+          movementDefId,
+          partDefId,
+          occurredAt,
+          entries: [...accepted.values()],
+          kindByPartId: new Map([...parts].map(([id, part]) => [id, part.kind])),
+          failed,
+        })
+        return {
+          opened: rows,
+          post: await postInventoryMovementInTx(tx, {
+            organizationId,
+            kind: 'opening',
+            subject: {
+              sourceKind: 'opening_stock',
+              sourceId: organizationId,
+              occurrence: inventoryTxnDate(occurredAt),
+            },
+            txnDate: inventoryTxnDate(occurredAt),
+            movements: rows
+              .filter((row) => row.extendedCost !== 0)
+              .map((row) => ({
+                id: row.movementId,
+                extendedCostMinor: row.extendedCost,
+                glAccountRole: row.glAccount,
+              })),
+            actorUserId: userId,
+          }),
+        }
       })
+      await exportInventoryMovement(db, post)
 
       logger.info('Opened stock balances in bulk', {
         organizationId,

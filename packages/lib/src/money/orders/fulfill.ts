@@ -529,6 +529,8 @@ export async function fulfillOrder(
       // Inventory follows the shipment even when bookkeeping refuses; its independent retry owns failures.
       const reliefLines: FulfillmentLineToRelieve[] = created.lineInstanceIds.map((id, index) => ({
         fulfillmentLineId: id,
+        fulfillmentId: created.fulfillmentInstanceId,
+        orderId,
         lineItemId: shipped[index]!.lineId,
         quantity: shipped[index]!.quantity,
         quantityRelieved: null,

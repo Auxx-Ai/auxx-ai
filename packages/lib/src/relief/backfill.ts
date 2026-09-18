@@ -212,7 +212,7 @@ export async function backfillFulfillmentRelief(
         })
 
         const lines: FulfillmentLineToRelieve[] = []
-        for (const fulfillments of byOrder.values()) {
+        for (const [orderId, fulfillments] of byOrder.entries()) {
           for (const fulfillment of fulfillments) {
             summary.fulfillmentsScanned++
             // The CALLER filters cancelled dispatches, never
@@ -229,6 +229,8 @@ export async function backfillFulfillmentRelief(
             for (const line of fulfillment.lines) {
               lines.push({
                 fulfillmentLineId: line.id,
+                fulfillmentId: fulfillment.id,
+                orderId,
                 lineItemId: line.lineItemId,
                 quantity: line.quantity,
                 quantityRelieved: line.quantityRelieved,

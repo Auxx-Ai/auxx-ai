@@ -228,13 +228,15 @@ async function runFulfillmentReliefForSync(
   const byOrder = await readFulfillmentsForOrders(db, { organizationId, orderIds })
 
   const lines: FulfillmentLineToRelieve[] = []
-  for (const fulfillments of byOrder.values()) {
+  for (const [orderId, fulfillments] of byOrder.entries()) {
     for (const fulfillment of fulfillments) {
       if (!isLiveFulfillment(fulfillment)) continue
       const occurredAt = new Date(fulfillment.shippedAt)
       for (const line of fulfillment.lines) {
         lines.push({
           fulfillmentLineId: line.id,
+          fulfillmentId: fulfillment.id,
+          orderId,
           lineItemId: line.lineItemId,
           quantity: line.quantity,
           quantityRelieved: line.quantityRelieved,

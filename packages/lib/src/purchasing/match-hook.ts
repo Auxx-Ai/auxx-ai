@@ -133,6 +133,10 @@ const MATCH_ATTRS = [
   // line, so reaching it costs one relationship hop from the PO line.
   'purchase_order_line_purchase_order',
   'purchase_order_expected_at',
+  // The posting leg: the bill's own date, its vendor and the order it matched.
+  'vendor_bill_billed_at',
+  'vendor_bill_vendor',
+  'vendor_bill_purchase_order',
 ] as const
 
 /**
@@ -433,6 +437,56 @@ export async function rematchBill(params: {
 
   await fieldValueService.setValuesForEntity({ recordId: billRecordId, values: verdict })
 
+  // 🛑 `matched` is the ONE verdict that posts, and it posts the moment the
+  // verdict is written. The receipt credited `grni` per movement (MIGRATION
+  // step 5); this is what relieves it, and an accrual with a writer and no
+  // reader grows without bound while every statement still balances.
+  if (verdict[0]!.value === 'matched' && currentStatus !== 'matched') {
+    const { postVendorBillEntry } = await import('./post-vendor-bill')
+    const relations = await readFieldRelations(
+      db,
+      organizationId,
+      [vendorBillInstanceId],
+      [cf.vendor_bill_vendor?.id, cf.vendor_bill_purchase_order?.id].filter(
+        (id): id is string => !!id
+      )
+    )
+    const billOwn = cf.vendor_bill_billed_at
+      ? await readFieldScalars(
+          db,
+          organizationId,
+          [vendorBillInstanceId],
+          [cf.vendor_bill_billed_at.id]
+        )
+      : new Map<string, Map<string, unknown>>()
+    const billedAt = cf.vendor_bill_billed_at
+      ? billOwn.get(vendorBillInstanceId)?.get(cf.vendor_bill_billed_at.id)
+      : null
+    const posted = await postVendorBillEntry(db as Database, {
+      organizationId,
+      actorUserId: userId,
+      vendorBillInstanceId,
+      purchaseOrderId: cf.vendor_bill_purchase_order
+        ? (relations.get(vendorBillInstanceId)?.get(cf.vendor_bill_purchase_order.id) ?? null)
+        : null,
+      vendorCompanyInstanceId: cf.vendor_bill_vendor
+        ? (relations.get(vendorBillInstanceId)?.get(cf.vendor_bill_vendor.id) ?? null)
+        : null,
+      // The bill's OWN date. Falling back to today would post a January invoice
+      // keyed in February into February.
+      txnDate: isoDay(billedAt) ?? new Date().toISOString().slice(0, 10),
+      lines: matchLines,
+    })
+    if (posted && posted.status !== 'posted' && posted.status !== 'already_posted') {
+      logger.warn('A matched vendor bill did not reach the ledger', {
+        organizationId,
+        vendorBillInstanceId,
+        status: posted.status,
+        error: posted.error,
+      })
+    }
+  }
+
   logger.info('Vendor bill matched', {
     vendorBillInstanceId,
     outcome: result.outcome,
@@ -477,4 +531,11 @@ export const rematchAfterBillLineDelete: EntityPostDeleteHandler = async (event)
     : raw
 
   await markOrRematchBill(event.organizationId, event.userId, vendorBillInstanceId)
+}
+
+/** A stored date value as `YYYY-MM-DD`, or `null` when there is none to read. */
+function isoDay(value: unknown): string | null {
+  if (value instanceof Date) return value.toISOString().slice(0, 10)
+  if (typeof value === 'string' && value.length >= 10) return value.slice(0, 10)
+  return null
 }

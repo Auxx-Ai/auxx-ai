@@ -37,12 +37,11 @@ describe('the posting-type vocabulary is one vocabulary', () => {
     expect(new Set(POSTING_TYPES).size).toBe(POSTING_TYPES.length)
   })
 
-  // The two L3 per-event types the purchasing work added. Carried in the pgEnum
-  // from day one because widening a Postgres enum later is a migration and
-  // carrying a value nothing writes is free — pinned so that "nothing writes it
-  // yet" never becomes a reason to drop them.
-  it('carries the L3 per-event types alongside the L1 periodic ones', () => {
-    expect(POSTING_TYPES).toContain('receipt')
+  // The perpetual pair (MIGRATION step 5). `inventory_movement` credits the
+  // goods-received accrual and `vendor_bill` relieves it; one without the other
+  // is not a smaller change, it is a liability that never clears.
+  it('carries the perpetual inventory pair', () => {
+    expect(POSTING_TYPES).toContain('inventory_movement')
     expect(POSTING_TYPES).toContain('vendor_bill')
   })
 

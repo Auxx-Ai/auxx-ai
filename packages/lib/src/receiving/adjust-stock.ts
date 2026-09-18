@@ -28,8 +28,14 @@
 
 import type { Database } from '@auxx/database'
 import type { Result } from 'neverthrow'
+import { batchRecalculateQoH } from '../bom/qoh'
 import { getCachedEntityDefId, requireCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../errors'
+import {
+  exportInventoryMovement,
+  inventoryTxnDate,
+  postInventoryMovementInTx,
+} from '../postings/post-inventory-movement'
 import { StockMovementCostBasis, StockMovementType } from '../resources/registry/enum-values'
 import { writeStockMovements } from '../stock-movements'
 import { resolveInventoryRoleForPartKind, roundMinorUnits } from './client'
@@ -108,13 +114,49 @@ export async function adjustStock(
 
       const cost = await resolveAdjustmentCost(db, organizationId, input.partId)
 
-      return writeAdjustMovement(db, organizationId, userId, {
-        movementDefId,
-        partDefId,
-        input,
-        cost,
-        occurredAt: input.occurredAt ?? new Date(),
+      // The movement and its entry commit together: an adjustment whose row
+      // landed and whose entry did not is a count variance nobody can see.
+      const { written, post } = await db.transaction(async (tx) => {
+        const txDb = tx as unknown as Database
+        const record = await writeAdjustMovement(txDb, organizationId, userId, {
+          movementDefId,
+          partDefId,
+          input,
+          cost,
+          occurredAt: input.occurredAt ?? new Date(),
+        })
+        return {
+          written: record,
+          // The adjustment movement IS the document. Its counter-leg is
+          // `inventory_count_variance`, kept apart from purchase price variance
+          // for the reason `G12` gives: the shelf disagreeing with the ledger
+          // and the vendor billing differently are different questions.
+          post:
+            record.extendedCost != null && record.glAccount != null
+              ? await postInventoryMovementInTx(tx, {
+                  organizationId,
+                  kind: 'adjust',
+                  subject: { sourceKind: 'stock_movement', sourceId: record.movementId },
+                  txnDate: inventoryTxnDate(record.occurredAt),
+                  movements: [
+                    {
+                      id: record.movementId,
+                      extendedCostMinor: record.extendedCost,
+                      glAccountRole: record.glAccount,
+                    },
+                  ],
+                  actorUserId: userId,
+                  memo: input.reason,
+                })
+              : null,
+        }
       })
+
+      // Belt on the plain lane's own recalculation, which fired against a
+      // pre-commit snapshot from inside the transaction above.
+      await batchRecalculateQoH(organizationId, [written.partInstanceId])
+      await exportInventoryMovement(db, post)
+      return written
     },
     'Failed to adjust stock',
     { organizationId, partId: input.partId, quantity: input.quantity }

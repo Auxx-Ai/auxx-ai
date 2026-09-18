@@ -136,36 +136,24 @@ export function formatAuditTimestamp(iso: string, timeZone: string): string {
 }
 
 /**
- * Why Lock is refused for a month, or `null` when it is offered.
+ * Why Lock is refused, or `null` when it is offered.
  *
- * 🛑 A month stays `open` until a MONTH-END entry is posted into it, and
- * `listClosePeriods` counts ONLY `month_end_inventory` rows
- * (`postings/close-periods.ts`). Every other posting in the month - the
- * fulfillment days, credit memos, manual entries - leaves it open however much
- * money they moved. So a month showing $1.3m of posted fulfillment can still
- * refuse to lock, and with no reason on screen that reads as a broken button
- * rather than an unmet precondition.
- *
- * ⚠️ The two refusals need DIFFERENT sentences, and giving the second one the
- * first one's remedy is worse than saying nothing. A `nothing_to_close` month
- * has no month-end entry to post and never will - the Post control above it
- * reads "There is nothing to post" and is itself disabled - so "post it, then
- * lock" points at a dead button. That was the first draft of this copy, and
- * only opening the screen caught it.
+ * 🛑 The close POSTS nothing (MIGRATION step 5), so the refusal is no longer
+ * "there is no entry yet" - it is the outstanding work `readCloseBlockers`
+ * found. A month with nothing outstanding may be locked.
  */
 export function lockRefusalReason(params: {
   periodLabel: string
-  /** `ClosePeriod.state !== 'open'`. */
-  isPostedPeriod: boolean
-  /** A post that landed in this session, before the period query has caught up. */
-  justPosted: boolean
-  /** The preview refused with `nothing_to_close`. */
-  isNothingToClose: boolean
+  /** True while the checklist is still being read: neither offer nor refuse yet. */
+  isChecking: boolean
+  /** How many pieces of work `readCloseBlockers` found. */
+  blockerCount: number
 }): string | null {
-  const { periodLabel, isPostedPeriod, justPosted, isNothingToClose } = params
-  if (isPostedPeriod || justPosted) return null
-  if (isNothingToClose) {
-    return `Nothing moved in ${periodLabel}, so there is no month-end entry to post and locking is gated on one. Move to the next month.`
-  }
-  return `${periodLabel} has no month-end entry yet. Post it under Entries above, then lock the month. The other entries this month do not close it.`
+  const { periodLabel, isChecking, blockerCount } = params
+  if (isChecking) return `Checking ${periodLabel} against the movement ledger.`
+  if (blockerCount === 0) return null
+  return (
+    `${periodLabel} has ${blockerCount === 1 ? 'one thing' : `${blockerCount} things`} still ` +
+    'outstanding. Clear the list above, then lock the month.'
+  )
 }

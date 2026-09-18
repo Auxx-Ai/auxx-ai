@@ -39,7 +39,7 @@ describe('buildDocNumber', () => {
   })
 
   it('compacts a period key by stripping its hyphens', () => {
-    expect(buildDocNumber({ postingType: 'month_end_inventory', periodKey: '2026-08' })).toBe(
+    expect(buildDocNumber({ postingType: 'inventory_movement', periodKey: '2026-08' })).toBe(
       'AUXX-INV-202608'
     )
   })
@@ -66,9 +66,9 @@ describe('the reversal suffix', () => {
   // 🛑 Required, not cosmetic. `GlPosting_org_docNumber_key` is unique per org,
   // so a reversal sharing its original's number simply cannot be written.
   it('distinguishes a reversal from the entry it reverses', () => {
-    const original = buildDocNumber({ postingType: 'month_end_inventory', periodKey: '2026-08' })
+    const original = buildDocNumber({ postingType: 'inventory_movement', periodKey: '2026-08' })
     const reversal = buildDocNumber({
-      postingType: 'month_end_inventory',
+      postingType: 'inventory_movement',
       periodKey: '2026-08',
       revision: 1,
     })
@@ -78,7 +78,7 @@ describe('the reversal suffix', () => {
 
   it('distinguishes successive revisions from each other', () => {
     const keys = [0, 1, 2, 3].map((revision) =>
-      buildDocNumber({ postingType: 'receipt', periodKey: '2026-08-18', revision })
+      buildDocNumber({ postingType: 'inventory_movement', periodKey: '2026-08-18', revision })
     )
     expect(new Set(keys).size).toBe(4)
   })
@@ -86,50 +86,53 @@ describe('the reversal suffix', () => {
   // Revision 0 is the original, and every document number already minted is
   // suffix-less. Adding one would re-key the whole ledger.
   it('adds NOTHING at revision 0', () => {
-    expect(buildDocNumber({ postingType: 'receipt', periodKey: '2026-08-18', revision: 0 })).toBe(
-      buildDocNumber({ postingType: 'receipt', periodKey: '2026-08-18' })
-    )
+    expect(
+      buildDocNumber({ postingType: 'inventory_movement', periodKey: '2026-08-18', revision: 0 })
+    ).toBe(buildDocNumber({ postingType: 'inventory_movement', periodKey: '2026-08-18' }))
   })
 
   it('still fits the cap with a suffix on a day key', () => {
     expect(
-      buildDocNumber({ postingType: 'receipt', periodKey: '2026-08-18', revision: 9 }).length
+      buildDocNumber({ postingType: 'inventory_movement', periodKey: '2026-08-18', revision: 9 })
+        .length
     ).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
   })
 
   it.each([-1, 1.5, Number.NaN])('refuses a revision of %s', (revision) => {
-    expect(() => buildDocNumber({ postingType: 'build', periodKey: 'BLD-0007', revision })).toThrow(
-      UnprocessableEntityError
-    )
+    expect(() =>
+      buildDocNumber({ postingType: 'manual_journal', periodKey: 'JNL-0007', revision })
+    ).toThrow(UnprocessableEntityError)
   })
 })
 
 describe('the two types that key on an id rather than a date', () => {
   // `build.number`, never the cuid: two builds can complete on one day, so a
   // date key silently swallows the second.
-  it('keys a build on its build number', () => {
-    expect(buildDocNumber({ postingType: 'build', periodKey: 'BLD-0007' })).toBe('AUXX-BLD-BLD0007')
-  })
-
-  it('gives two builds on one day two different numbers', () => {
-    expect(buildDocNumber({ postingType: 'build', periodKey: 'BLD-0007' })).not.toBe(
-      buildDocNumber({ postingType: 'build', periodKey: 'BLD-0008' })
+  it('keys a journal entry on its own number', () => {
+    expect(buildDocNumber({ postingType: 'manual_journal', periodKey: 'JNL-0007' })).toBe(
+      'AUXX-JNL-JNL0007'
     )
   })
 
-  // 🛑 The rule enforced structurally rather than by prose: `AUXX-BLD-<cuid>` is
+  it('gives two builds on one day two different numbers', () => {
+    expect(buildDocNumber({ postingType: 'manual_journal', periodKey: 'JNL-0007' })).not.toBe(
+      buildDocNumber({ postingType: 'manual_journal', periodKey: 'JNL-0008' })
+    )
+  })
+
+  // 🛑 The rule enforced structurally rather than by prose: `AUXX-JNL-<cuid>` is
   // 33 characters, and the old implementation ended in `.slice(0, 21)`, which
   // truncated it into a string two different builds could share.
   it('REFUSES a cuid rather than truncating it into a collision', () => {
     expect(() =>
-      buildDocNumber({ postingType: 'build', periodKey: 'clx8k2p9q0000abcd1234efgh' })
+      buildDocNumber({ postingType: 'manual_journal', periodKey: 'clx8k2p9q0000abcd1234efgh' })
     ).toThrow(UnprocessableEntityError)
   })
 
   it('names the cap and the rule in the refusal', () => {
     let message = ''
     try {
-      buildDocNumber({ postingType: 'build', periodKey: 'clx8k2p9q0000abcd1234efgh' })
+      buildDocNumber({ postingType: 'manual_journal', periodKey: 'clx8k2p9q0000abcd1234efgh' })
     } catch (error) {
       message = (error as Error).message
     }
@@ -200,10 +203,10 @@ describe('the synced key, whose length somebody else chooses', () => {
 
 describe('refusals', () => {
   it('refuses a blank period key rather than minting AUXX-RCP-', () => {
-    expect(() => buildDocNumber({ postingType: 'receipt', periodKey: '' })).toThrow(
+    expect(() => buildDocNumber({ postingType: 'inventory_movement', periodKey: '' })).toThrow(
       UnprocessableEntityError
     )
-    expect(() => buildDocNumber({ postingType: 'receipt', periodKey: '--' })).toThrow(
+    expect(() => buildDocNumber({ postingType: 'inventory_movement', periodKey: '--' })).toThrow(
       UnprocessableEntityError
     )
   })

@@ -92,6 +92,12 @@ import { loadSubpartGraph } from '../bom/subpart-graph'
 import { readStandardCost } from '../builds'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
+import type { InTxPostResult } from '../postings/post-entry'
+import {
+  exportInventoryMovement,
+  inventoryTxnDate,
+  postInventoryMovementInTx,
+} from '../postings/post-inventory-movement'
 import { getRealtimeService, publishRecordsChanged } from '../realtime'
 import { reverseMovement } from '../receiving'
 import { resolveInventoryRoleForPartKind } from '../receiving/client'
@@ -352,6 +358,7 @@ export async function writeSalvageMovements(
       const session = salvageWriteSession()
       let movements: SalvageMovementWritten[] = []
       let affectedPartIds: string[] = []
+      let post: InTxPostResult | null = null
 
       // This function owns the transaction boundary - `writeStockMovements`
       // never opens one of its own - so the movements and the freeze writes
@@ -404,6 +411,30 @@ export async function writeSalvageMovements(
             },
           }))
         )
+        // The return line's own entry, inside the same transaction: restocked
+        // units go back into inventory and un-book what the sale charged to
+        // cost of goods sold. Subject the RETURN, with the line as the
+        // occurrence, because a return is salvaged one line at a time.
+        post = await postInventoryMovementInTx(tx, {
+          organizationId,
+          kind: 'return',
+          subject: {
+            sourceKind: 'return',
+            sourceId: line.returnId ?? line.returnLineId,
+            occurrence: line.returnLineId,
+          },
+          txnDate: inventoryTxnDate(occurredAt),
+          movements: written.value.records
+            .filter((record) => record.glAccount && record.extendedCost !== 0)
+            .map((record) => ({
+              id: record.movementId,
+              extendedCostMinor: record.extendedCost,
+              glAccountRole: record.glAccount as string,
+            })),
+          actorUserId: userId,
+          memo: reason,
+        })
+
         // `bulkUpdate` tolerates per-row failures; this caller must not. A row
         // that did not take its link points at no movement, and the next run
         // would restock the same material again.
@@ -420,6 +451,7 @@ export async function writeSalvageMovements(
       // that moves quantity on hand for these movements, and `bom/qoh.ts` reads
       // the global `database` rather than the transaction, so it must run here.
       await batchRecalculateQoH(organizationId, affectedPartIds)
+      await exportInventoryMovement(db, post)
       announceQuietSalvageWrites(
         organizationId,
         movementDefId,

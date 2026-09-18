@@ -203,6 +203,6 @@ describe('the period key', () => {
 
   it('does not reuse the month-end inventory prefix', () => {
     expect(DOC_NUMBER_PREFIX.invoice_issued).toBe('INI')
-    expect(DOC_NUMBER_PREFIX.invoice_issued).not.toBe(DOC_NUMBER_PREFIX.month_end_inventory)
+    expect(DOC_NUMBER_PREFIX.invoice_issued).not.toBe(DOC_NUMBER_PREFIX.inventory_movement)
   })
 })

@@ -300,13 +300,13 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
     // or 3100 with a manual journal once the opening balances are agreed -
     // exactly what QuickBooks does with the account of the same name.
     //
-    // 🛑 Role-less since 2026-09-10. `buildOpeningBalanceEntry` takes the
-    // account ids a person typed into the trial-balance grid, so it never
-    // emitted `equity_opening_balance` and nothing ever read it. The account
-    // does the work; the role was decoration.
+    // The role came back in MIGRATION step 5: the opening STOCK run raises
+    // inventory against nothing else, so it needs this account by role rather
+    // than by an id somebody typed into the trial-balance grid.
     code: '3900',
     name: 'Opening Balance Equity',
     accountType: GlAccountType.EQUITY,
+    role: 'equity_opening_balance',
   },
 
   // ── Revenue ─────────────────────────────────────────────────────────────

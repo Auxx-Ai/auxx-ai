@@ -652,3 +652,7 @@ describe('coalescing (plan 08 phase 2)', () => {
     expect(matches()).toBe(0)
   })
 })
+
+// The bill's ledger entry has its own writer and its own builder test; this file
+// is about the VERDICT. `vi.mock` is hoisted, so placement is free.
+vi.mock('../post-vendor-bill', () => ({ postVendorBillEntry: async () => null }))

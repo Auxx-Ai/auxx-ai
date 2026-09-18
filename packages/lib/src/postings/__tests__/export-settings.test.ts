@@ -42,7 +42,7 @@ describe('avenueOfPostingType', () => {
     expect(avenueOfPostingType('bank_deposit')).toBe('bankDeposit')
     expect(avenueOfPostingType('manual_journal')).toBe('journal')
     expect(avenueOfPostingType('recurring_journal')).toBe('journal')
-    expect(avenueOfPostingType('month_end_inventory')).toBe('journal')
+    expect(avenueOfPostingType('inventory_movement')).toBe('journal')
   })
 
   it('never exports an opening entry, a provider-authored entry, or a coded bank line', () => {

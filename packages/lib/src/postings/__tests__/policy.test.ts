@@ -35,7 +35,7 @@ import { POSTING_TYPES, type PostingType } from '../types'
  * declare them in.
  */
 const ENABLED_TYPES_PINNED: readonly PostingType[] = [
-  'month_end_inventory',
+  'inventory_movement',
   'manual_journal',
   'opening_balance',
   'bank_deposit',
@@ -52,6 +52,9 @@ const ENABLED_TYPES_PINNED: readonly PostingType[] = [
   'credit_memo',
   'expense_bill',
   'recurring_journal',
+  // MIGRATION step 5 wired the three-way match's `matched` verdict to the
+  // ledger. It is declared last because it was switched on last.
+  'vendor_bill',
 ]
 
 /**
@@ -63,11 +66,6 @@ const ENABLED_TYPES_PINNED: readonly PostingType[] = [
  * sentence is pinned separately below.
  */
 const DISABLED_SENTENCES_BEFORE_UNIT_1: Partial<Record<PostingType, string>> = {
-  receipt:
-    'Per-event receipt posting is off, so inventory moves only through the monthly assertion.',
-  vendor_bill:
-    'Per-event vendor bill posting is off, so goods received not invoiced is not relieved per bill.',
-  build: 'Build posting is off.',
   month_end_deferral: 'Month-end deferral posting is off.',
   month_end_reversal: 'Month-end reversal posting is off.',
 }
@@ -95,8 +93,8 @@ describe('the derived regime reads exactly as the literal did', () => {
 
   // Decision 5. The daily job wrote drafts of this type while the banner called
   // it off; enabling it must not put a second writer on any inventory account.
-  it('`recurring_journal` is enabled, last, and drives no single-writer role', () => {
-    expect(ENABLED_POSTING_TYPES.at(-1)).toBe('recurring_journal')
+  it('`recurring_journal` is enabled and drives no single-writer role', () => {
+    expect(ENABLED_POSTING_TYPES).toContain('recurring_journal')
     expect(POSTING_POLICY.recurring_journal.singleWriterRoles).toEqual([])
     expect(findWriterConflicts()).toEqual([])
   })
@@ -108,19 +106,16 @@ describe('the derived regime reads exactly as the literal did', () => {
     }
   })
 
-  it('only the L1 assertion and the L3 receipt declare single-writer roles', () => {
-    expect([...SINGLE_WRITER_ROLES_BY_POSTING_TYPE.month_end_inventory].sort()).toEqual(
+  it('`inventory_movement` is the ONE declared writer of the inventory roles', () => {
+    expect([...SINGLE_WRITER_ROLES_BY_POSTING_TYPE.inventory_movement].sort()).toEqual(
       [
         ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
         ACCOUNT_ROLES.INVENTORY_WIP,
         ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
       ].sort()
     )
-    expect([...SINGLE_WRITER_ROLES_BY_POSTING_TYPE.receipt].sort()).toEqual(
-      [ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS, ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS].sort()
-    )
     for (const type of POSTING_TYPES) {
-      if (type === 'month_end_inventory' || type === 'receipt') continue
+      if (type === 'inventory_movement') continue
       expect(SINGLE_WRITER_ROLES_BY_POSTING_TYPE[type], type).toEqual([])
     }
   })

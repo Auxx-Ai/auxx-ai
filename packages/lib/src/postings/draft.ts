@@ -27,7 +27,6 @@ import type {
   MonthEndInventorySnapshot,
   PostingAssertions,
   PostingReason,
-  PostingType,
   ResolvedPostingLine,
 } from './types'
 
@@ -92,21 +91,6 @@ export interface PostingDraftV1 {
    * source `postDraft` must claim when the draft is approved.
    */
   sources?: GlPostingSourceInput[]
-}
-
-/**
- * Posting types that MUST carry {@link PostingAssertions}.
- *
- * `month_end_inventory` asserts a balance rather than accumulating one, so the
- * next month's entry is computable only from what this one recorded. A
- * month-end posting written without assertions is not merely missing metadata -
- * it silently ends the chain, and the next close reads a delta from nothing.
- */
-const ASSERTION_REQUIRED_TYPES = new Set<PostingType>(['month_end_inventory'])
-
-/** Whether this posting type refuses to be claimed without assertions. */
-export function requiresAssertions(postingType: PostingType): boolean {
-  return ASSERTION_REQUIRED_TYPES.has(postingType)
 }
 
 /**

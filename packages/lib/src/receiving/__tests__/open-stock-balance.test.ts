@@ -96,6 +96,8 @@ const db = {
     chain.limit = async () => h.existingMovements
     return chain
   },
+  // The write and its posting share one transaction.
+  transaction: async (fn: (tx: unknown) => unknown) => fn(db),
 } as never
 
 /** Every systemAttribute a fully migrated org has for this write path. */
@@ -408,3 +410,14 @@ describe('adjustStock still has no unit-cost input', () => {
     expect(writtenValues().stock_movement_unit_cost).toBe(4400)
   })
 })
+
+// The posting seam has its own test (`postings/__tests__/post-inventory-movement.test.ts`);
+// this file is about the movements. `vi.mock` is hoisted, so placement is free.
+vi.mock('../../postings/post-inventory-movement', () => ({
+  postInventoryMovementInTx: async () => null,
+  exportInventoryMovement: async () => null,
+  inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
+  reverseInventoryMovementPosting: async () => null,
+  reversePostingForMovement: async () => null,
+  linkMovementsToPosting: async () => undefined,
+}))

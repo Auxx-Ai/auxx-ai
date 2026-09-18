@@ -12,29 +12,16 @@
 //   * `accounting.cutoffPeriod` - the last month the OLD system owned, so the
 //     strip starts the month after it. Months at or before the cutoff are
 //     covered by the frozen opening baseline and can never be closed here.
-//   * the `GlPosting` rows - a month is `posted` when it has an effective
-//     month-end entry.
 //   * `ledger.lockedThroughMonth` - a month at or below it is `locked`.
 //
 // Storing that would mean maintaining a second copy of a fact the ledger already
 // holds, and the two would eventually disagree. The ledger wins that argument
 // every time, so there is nothing for a table to hold.
 //
-// ## `locked` and `posted` are different, and must not be collapsed
-//
-// A month can be locked without ever having been posted - an organization may
-// lock a range it does not intend to close - and a posted month is not locked
-// until somebody says so. They call for different actions from a reader, which
-// is why `ClosePeriod.state` carries three values and not a boolean.
-//
-// 🛑 **`revision` is not a count of postings.** A reversal chain writes a NEW
-// row per revision and flips the previous one to `reversed`, so the EFFECTIVE
-// posting for a month is the highest-revision row that is not itself reversed.
-// Taking the newest row by `createdAt`, or counting rows, would both report a
-// reversed month as posted.
+// ⚠️ There is no `posted` state. MIGRATION step 5 deleted the month-end
+// assertion, so a close posts nothing and there is no entry for a state to be
+// about; what a close owes is the blocker list in `read-close-blockers.ts`.
 
-import { type Database, schema } from '@auxx/database'
-import { and, eq, inArray, ne } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../errors'
 import { getOrganizationSetting } from '../settings/settings-service'
@@ -53,16 +40,12 @@ import type { ClosePeriod } from './types'
  */
 const MAX_PERIODS = 240
 
-/** The posting type that closes a month. */
-const MONTH_END = 'month_end_inventory'
-
 /**
  * Every month from the accounting cutoff to now, with its state.
  *
  * Oldest first, so the console's "earliest open month" is simply the first
  * `open` entry and no caller has to know the sort order.
  *
- * @param db The database handle. Reads only.
  * @param organizationId The organization whose books these are.
  * @returns The strip, or an {@link UnprocessableEntityError} naming the setting
  * to fix. An organization that has not finished setup has no cutoff yet and gets
@@ -71,7 +54,6 @@ const MONTH_END = 'month_end_inventory'
  * failure.
  */
 export async function listClosePeriods(
-  db: Database,
   organizationId: string
 ): Promise<Result<ClosePeriod[], Error>> {
   try {
@@ -99,35 +81,15 @@ export async function listClosePeriods(
       await getOrganizationSetting({ organizationId, key: PERIOD_LOCK_SETTING_KEY })
     )
 
-    const effective = await loadEffectivePostings(db, organizationId, months)
-
     return ok(
-      months.map((periodKey) => {
-        const posting = effective.get(periodKey)
-        return {
-          periodKey,
-          state: resolveState(periodKey, posting, lockedThrough),
-          glPostingId: posting?.id ?? null,
-          docNumber: posting?.docNumber ?? null,
-          totalMinor: posting?.totalMinor ?? null,
-          postedAt: posting?.postedAt ? posting.postedAt.toISOString() : null,
-          revision: posting?.revision ?? 0,
-        }
-      })
+      months.map((periodKey) => ({
+        periodKey,
+        state: resolveState(periodKey, lockedThrough),
+      }))
     )
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)))
   }
-}
-
-/** The effective posting for one month, or nothing. */
-interface EffectivePosting {
-  id: string
-  docNumber: string | null
-  totalMinor: number
-  postedAt: Date | null
-  revision: number
-  status: string
 }
 
 /**
@@ -188,69 +150,14 @@ function nextMonth(monthKey: string): string {
   return `${String(nextYear).padStart(4, '0')}-${String(next).padStart(2, '0')}`
 }
 
-/**
- * The effective month-end posting per period.
- *
- * Excludes `reversed` rows in SQL, then keeps the highest `revision` per period.
- * Both halves are needed: excluding reversed rows alone would still leave two
- * live rows if a reversal were itself superseded, and taking the max revision
- * alone would treat a reversed original as current.
- */
-async function loadEffectivePostings(
-  db: Database,
-  organizationId: string,
-  months: string[]
-): Promise<Map<string, EffectivePosting>> {
-  const rows = await db
-    .select({
-      id: schema.GlPosting.id,
-      periodKey: schema.GlPosting.periodKey,
-      docNumber: schema.GlPosting.docNumber,
-      totalMinor: schema.GlPosting.totalMinor,
-      postedAt: schema.GlPosting.postedAt,
-      revision: schema.GlPosting.revision,
-      status: schema.GlPosting.status,
-    })
-    .from(schema.GlPosting)
-    .where(
-      and(
-        eq(schema.GlPosting.organizationId, organizationId),
-        eq(schema.GlPosting.postingType, MONTH_END),
-        inArray(schema.GlPosting.periodKey, months),
-        ne(schema.GlPosting.status, 'reversed')
-      )
-    )
-
-  const byPeriod = new Map<string, EffectivePosting>()
-  for (const row of rows) {
-    const held = byPeriod.get(row.periodKey)
-    if (!held || row.revision > held.revision) byPeriod.set(row.periodKey, row)
-  }
-  return byPeriod
-}
-
-/**
- * One month's state.
- *
- * Lock is checked FIRST. A month that is both posted and locked reads as
- * `locked`, because that is the fact that changes what a reader may do: a posted
- * month can still be reversed, and a locked one cannot be written to at all
- * until somebody unlocks it.
- */
+/** One month's state: the lock, and nothing else, since the close posts nothing. */
 function resolveState(
   periodKey: string,
-  posting: EffectivePosting | undefined,
   lockedThrough: string | null | undefined
 ): ClosePeriod['state'] {
   if (lockedThrough && isMonthKey(lockedThrough) && compareMonths(periodKey, lockedThrough) <= 0) {
     return 'locked'
   }
-  // Only a row that actually reached the books counts as posted. A `pending` or
-  // `failed` claim is an OPEN month with an unfinished attempt in it, which is
-  // what `listFailedExports` reports separately and what the console's banner
-  // reads. Calling it posted here would hide the one thing the operator has to
-  // act on.
-  if (posting?.status === 'posted') return 'posted'
   return 'open'
 }
 

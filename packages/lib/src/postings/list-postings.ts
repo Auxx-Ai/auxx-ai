@@ -43,7 +43,7 @@ const logger = createScopedLogger('postings:list-postings')
  * blockers. Listing it as a row beside three adjusting entries would give the
  * screen two places to post the same thing.
  */
-const CLOSE_POSTING_TYPE: PostingType = 'month_end_inventory'
+const CLOSE_POSTING_TYPE: PostingType = 'month_end_reversal'
 
 const DEFAULT_LIMIT = 200
 

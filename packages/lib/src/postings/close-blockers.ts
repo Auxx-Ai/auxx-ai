@@ -31,6 +31,8 @@ export type CloseBlockerItemKey =
   | 'draft_channel_memos'
   | 'unposted_credit_memos'
   | 'unmapped_role'
+  | 'inventory_unposted'
+  | 'inventory_balance'
 
 /**
  * One outstanding piece of work behind a refusal.
@@ -194,4 +196,63 @@ export function monthLabel(periodKey: string): string {
     year: 'numeric',
     timeZone: 'UTC',
   }).format(new Date(Date.UTC(year, month - 1, 1)))
+}
+
+/** What the inventory check read for one month. Both figures are minor units. */
+export interface InventoryCloseCounts {
+  /** The MONTH key being closed, `'2026-01'`. */
+  periodKey: string
+  /** Movements dated in the month with no member link to a posted inventory entry. */
+  unpostedMovements: number
+  /** Σ frozen `stock_movement_extended_cost` through the last day of the month. */
+  subledgerMinor: number
+  /** The three inventory accounts' balance through the same day. */
+  ledgerMinor: number
+}
+
+/**
+ * The two inventory checks a month must pass, as items.
+ *
+ * Under the perpetual regime the close POSTS nothing for inventory - every
+ * document already posted its own entry - so all a close can do is check that
+ * the two sides agree. Completeness first, because an unposted movement is
+ * always also a balance difference and sending somebody to reconcile a balance
+ * when the real remedy is a document that never posted wastes the trip.
+ *
+ * A zero count and an exact tie produce NO item: this returns the work, not a
+ * report card.
+ */
+export function describeInventoryBlockers(counts: InventoryCloseCounts): CloseBlockerItem[] {
+  const { periodKey, unpostedMovements, subledgerMinor, ledgerMinor } = counts
+  const month = monthLabel(periodKey)
+  const items: CloseBlockerItem[] = []
+
+  if (unpostedMovements > 0) {
+    items.push({
+      key: 'inventory_unposted',
+      label: `${unpostedMovements} stock ${unpostedMovements === 1 ? 'movement is' : 'movements are'} not in an entry`,
+      remedy: `Post the inventory documents dated in ${month} from the record they were written on.`,
+      count: unpostedMovements,
+      ref: periodKey,
+    })
+  }
+
+  const difference = subledgerMinor - ledgerMinor
+  if (difference !== 0) {
+    items.push({
+      key: 'inventory_balance',
+      label: `Inventory is out by ${difference} against the movement ledger`,
+      remedy:
+        `The three inventory accounts hold ${ledgerMinor} through the end of ${month} and the ` +
+        `movements sum to ${subledgerMinor}. Reconcile them before closing.`,
+      ref: periodKey,
+    })
+  }
+
+  return items
+}
+
+/** The lead sentence the inventory checks open with, before their items. */
+export function inventoryCheckLead(periodKey: string): string {
+  return `${monthLabel(periodKey)} cannot be closed until inventory ties to the movement ledger.`
 }

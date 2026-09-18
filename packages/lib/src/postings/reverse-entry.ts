@@ -32,7 +32,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq } from 'drizzle-orm'
 import { withAccountingCommitLock } from './accounting-commit-lock'
 import { buildEntry } from './build-entry'
-import { parsePostingDraft, readDraftReasons, requiresAssertions, reverseAssertions } from './draft'
+import { readDraftReasons, reverseAssertions } from './draft'
 import { didLedgerAccept } from './ledger-accepted'
 import type { PeriodLock } from './periods'
 import { exportPostedEntry, type InTxPostResult, postEntryInTx } from './post-entry'
@@ -283,9 +283,11 @@ export async function reverseEntryInTx(
     // on it. Where assertions ARE required, a draft that will not parse is
     // fatal: writing the reversal without them would silently break the chain
     // the next close reads its opening figures from.
-    const originalAssertions = requiresAssertions(original.postingType as PostingType)
-      ? parsePostingDraft(original.built).assertions
-      : undefined
+    // Only an entry that CARRIES assertions swaps them. Nothing writes them any
+    // more, so this is the historical path, and `parsePostingDraft` is strict
+    // enough that parsing an envelope the reversal does not depend on would let
+    // an old row block its own correction.
+    const originalAssertions = undefined
 
     logger.info('Reversing posting', {
       organizationId,

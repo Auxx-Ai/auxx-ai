@@ -46,10 +46,9 @@ import {
   PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
   postDraft,
   postJournalEntry,
-  postMonthEnd,
   previewJournalEntry,
-  previewMonthEnd,
   readAccountingBookConnectionStatus,
+  readCloseBlockers,
   readExportSettings,
   readLatestPostingsByType,
   readLedgerSummary,
@@ -151,8 +150,8 @@ import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trp
  *
  * Validated here only for SHAPE. Whether the month is closable - after the
  * cutoff, not already locked, with something in it to close - is decided by
- * `previewMonthEnd` / `postMonthEnd`, which answer with a status and a message
- * naming the exact row to fix. Restating any of that in Zod would give the same
+ * `readCloseBlockers`, which answers with one item per piece of outstanding
+ * work, naming the exact row to fix. Restating any of that in Zod would give the same
  * input two authorities and the worse error would win.
  */
 const monthKey = z.object({
@@ -330,7 +329,7 @@ export const ledgerRouter = createTRPCRouter({
    * renders the setup checklist in that case.
    */
   periods: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
-    const result = await listClosePeriods(ctx.db, ctx.session.organizationId)
+    const result = await listClosePeriods(ctx.session.organizationId)
     if (result.isErr()) throw result.error
     return result.value
   }),
@@ -380,55 +379,19 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * What the month-end inventory entry for one PERIOD would look like.
+   * What stands between one month and its close.
    *
-   * The difference from {@link preview} is the input: that one takes a
-   * client-supplied line array and is effectively a manual-journal-entry
-   * surface, while this one takes a month and builds the entry from the
-   * subledger. The close console uses this one; nothing should be asking an
-   * operator to hand-write the lines of a month-end close.
-   *
-   * **Persists nothing.** Every refusal arrives on `blockedBy` rather than as a
-   * throw - including `nothing_to_close` (no activity this month) and
-   * `setup_incomplete` (no reconciled opening baseline yet), which are ordinary
-   * outcomes and not failures. The message is the gathered one verbatim: it
-   * names the exact uncosted movement, unpriced row or blank setting to fix, and
-   * losing that text is the single most expensive thing this procedure could do.
-   *
-   * 🛑 A QUERY, not a mutation, and the distinction is load-bearing on the
-   * client. It reads only, so React Query owns its lifecycle: the console binds
-   * it to the month on screen instead of firing it from a mount effect, which
-   * is what used to pin the Entries section to a permanent "Building..." the
-   * moment the component was mounted twice in a row (`MutationObserver` detaches
-   * from a pending mutation on unsubscribe and never re-attaches, so the
-   * observer's `isPending` never came back down).
+   * 🛑 A close POSTS NOTHING since MIGRATION step 5: every inventory document
+   * posted its own entry when it was written, so all a close can do is check -
+   * is every movement in an entry, and does the ledger tie to the movements.
+   * The items are the answer and the console renders one actionable row each.
    */
-  previewMonthEnd: permissionProcedure(PermissionKey.ledgerView)
+  closeBlockers: permissionProcedure(PermissionKey.ledgerView)
     .input(monthKey)
     .query(async ({ ctx, input }) => {
-      return previewMonthEnd(ctx.db, {
+      return readCloseBlockers(ctx.db, {
         organizationId: ctx.session.organizationId,
         periodKey: input.periodKey,
-      })
-    }),
-
-  /**
-   * Close one month: gather, build, claim the period, persist, export.
-   *
-   * Returns a `PostResult` and never throws for a business refusal, exactly as
-   * {@link post} does. `nothing_to_close` and `setup_incomplete` are NOT errors
-   * and must not be surfaced as such - see `postings/types.ts`.
-   */
-  postMonthEnd: permissionProcedure(PermissionKey.ledgerPost)
-    .input(monthKey.extend({ memo: z.string().max(4000).optional() }))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      return postMonthEnd(ctx.db, {
-        organizationId,
-        periodKey: input.periodKey,
-        actorUserId: userId,
-        memo: input.memo,
       })
     }),
 

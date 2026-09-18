@@ -98,6 +98,8 @@ const OCCURRED_AT = new Date('2026-01-01T00:00:00.000Z')
 const db = {
   select: () => chain(false),
   selectDistinct: () => chain(true),
+  // The run and its opening entry share one transaction.
+  transaction: async (fn: (tx: unknown) => unknown) => fn(db),
 } as never
 
 function chain(distinct: boolean) {
@@ -581,3 +583,14 @@ describe('bulkSetPartKind', () => {
     expect(h.bulkSetFieldValueSpy).not.toHaveBeenCalled()
   })
 })
+
+// The posting seam has its own test (`postings/__tests__/post-inventory-movement.test.ts`);
+// this file is about the movements. `vi.mock` is hoisted, so placement is free.
+vi.mock('../../postings/post-inventory-movement', () => ({
+  postInventoryMovementInTx: async () => null,
+  exportInventoryMovement: async () => null,
+  inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
+  reverseInventoryMovementPosting: async () => null,
+  reversePostingForMovement: async () => null,
+  linkMovementsToPosting: async () => undefined,
+}))

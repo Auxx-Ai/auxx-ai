@@ -53,8 +53,7 @@ export function isGroupPeriodKey(periodKey: string): boolean {
 }
 
 /**
- * Three letters per posting type. Every member of `POSTING_TYPES`, including
- * the two the L3 per-event regime writes and does not yet enable.
+ * Three letters per posting type.
  *
  * Pinned to `POSTING_TYPES` by an exact-key-equality test: a new posting
  * type with no prefix would otherwise mint `AUXX-undefined-…`, which is a
@@ -63,11 +62,10 @@ export function isGroupPeriodKey(periodKey: string): boolean {
 export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   fulfillment: 'FUL',
   payout: 'PAY',
-  build: 'BLD',
   month_end_deferral: 'DEF',
   month_end_reversal: 'REV',
-  month_end_inventory: 'INV',
-  receipt: 'RCP',
+  // An inventory document keys on its own subject id, never on a month.
+  inventory_movement: 'INV',
   refund: 'RFD',
   vendor_bill: 'BIL',
   // Wave 0 (HANDOFF slot 0B). All five key on a DOCUMENT NUMBER, never a date
@@ -82,8 +80,7 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   // minting one key would converge the loser to `already_posted`, a SUCCESS,
   // silently merging two payments into one entry.
   payment: 'PMT',
-  // 🛑 `INV` is `month_end_inventory`'s and cannot be reused - documents
-  // already carry it. An issuance entry keys on the INVOICE NUMBER, compacted,
+  // 🛑 `INV` is `inventory_movement`'s and cannot be reused. An issuance entry keys on the INVOICE NUMBER, compacted,
   // exactly as `manual_journal`, `bank_deposit` and `write_off` key on their
   // own record's number, so one entry per invoice falls out of the claim index.
   invoice_issued: 'INI',

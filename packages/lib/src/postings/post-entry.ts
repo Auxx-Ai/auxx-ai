@@ -43,7 +43,7 @@ import { accountLabel } from './account-label'
 import { withAccountingCommitLock } from './accounting-commit-lock'
 import { type CloseBlockerItem, describeUnmappedRoles } from './close-blockers'
 import { buildDocNumber } from './doc-number'
-import { type PostingAssertions, parsePostingDraft, requiresAssertions } from './draft'
+import { type PostingAssertions, parsePostingDraft } from './draft'
 import { buildExportBatches } from './export/build-batches'
 import { sendExportBatch } from './export/send'
 import { avenueOfPostingType, readExportSettings } from './export-settings'
@@ -127,13 +127,9 @@ export interface PostEntryOptions {
   /**
    * Balance assertions recorded on the draft envelope.
    *
-   * 🛑 **Required for every posting type {@link requiresAssertions} names**, and
-   * refused as a `data` failure when absent. `month_end_inventory` ASSERTS a
-   * balance rather than accumulating one, so the next month's entry is
-   * computable only from what this one recorded - a month-end posting written
-   * without them silently ends the chain, and the next close reads its delta
-   * from nothing. That entry balances perfectly, which is why the check is here
-   * and not left to a reviewer.
+   * ⚠️ No posting type writes these since MIGRATION step 5 deleted the monthly
+   * assertion. The envelope still carries them so entries written before that
+   * still render their roll-forward.
    *
    * Typed, not a loose `Record`: the poster stays generic because
    * {@link PostingAssertions} is discriminated on `kind`, not because the field
@@ -747,21 +743,6 @@ export async function postEntryInTx(
 ): Promise<InTxPostResult> {
   const { organizationId, entry, actorUserId, memo, reversesId, assertions } = options
   const revision = options.revision ?? 0
-
-  // Fail CLOSED before the claim, not after. A `month_end_inventory` row
-  // written with no assertions holds the period - so no later run can repair
-  // it - while leaving the next close nothing to compute its delta from.
-  if (requiresAssertions(entry.postingType) && !assertions) {
-    return {
-      status: 'error',
-      failureClass: 'data',
-      retryable: false,
-      error:
-        `A ${entry.postingType} posting must carry balance assertions. ` +
-        'It asserts a balance rather than accumulating one, so the next period reads ' +
-        'its opening figures from this entry and there would be nothing to read.',
-    }
-  }
 
   // `GlPosting_reversal_check` is `(revision = 0 AND reversesId IS NULL) OR
   // (revision > 0 AND reversesId IS NOT NULL)`. Caught here so the caller

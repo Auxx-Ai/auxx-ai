@@ -72,7 +72,8 @@ import { adjustStock } from '../adjust-stock'
 
 const ORG = 'org_1'
 const USER = 'user_1'
-const db = {} as never
+// The write and its posting share one transaction, so the stub has to run it.
+const db = { transaction: async (fn: (tx: unknown) => unknown) => fn(db) } as never
 
 /** Every systemAttribute a fully migrated org has for this write path. */
 const ALL_MOVEMENT_ATTRS = [
@@ -386,3 +387,14 @@ describe('adjustStock — the movement it writes', () => {
     expect(h.createSpy).toHaveBeenCalledTimes(1)
   })
 })
+
+// The posting seam has its own test (`postings/__tests__/post-inventory-movement.test.ts`);
+// this file is about the movements. `vi.mock` is hoisted, so placement is free.
+vi.mock('../../postings/post-inventory-movement', () => ({
+  postInventoryMovementInTx: async () => null,
+  exportInventoryMovement: async () => null,
+  inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
+  reverseInventoryMovementPosting: async () => null,
+  reversePostingForMovement: async () => null,
+  linkMovementsToPosting: async () => undefined,
+}))
