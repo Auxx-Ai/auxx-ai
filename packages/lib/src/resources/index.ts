@@ -22,6 +22,8 @@ export type {
   LookupByFieldResult,
   LookupCandidate,
   LookupMatch,
+  ReadOptions,
+  RecordNode,
   TransformedData,
   UpdateRecordOptions,
 } from './crud'
@@ -154,3 +156,6 @@ export {
   fetchResourceById,
   getRecordIdField,
 } from './resource-fetcher'
+// Schema read for apps and the public API (plans/apps/outbound/01-records-api.md §4)
+export type { ResourceFieldNode, ResourceNode } from './schema-read'
+export { getResourceFor, listResourcesFor, projectResource } from './schema-read'

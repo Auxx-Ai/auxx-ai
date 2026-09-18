@@ -79,6 +79,40 @@ export interface EntityRef {
   displayName: string | null
 }
 
+/**
+ * Selection for {@link getRecord} / {@link getRecords}
+ * (plans/apps/outbound/01-records-api.md §1/§3). Shape duplicated from
+ * `@auxx/lib/resources`'s `ReadOptions` — the SDK has no dependency on
+ * `@auxx/lib` (see `packages/sdk/package.json`), so this can't be a shared
+ * import. One `ReadOptions` applies to every id in a call; a `fields`/
+ * `include` key a record's definition doesn't have is simply absent on that
+ * node, never an error.
+ */
+export interface ReadOptions {
+  /** Field keys to project. Default: every field on the def. */
+  fields?: string[]
+  /** Relationship keys to expand, one level per entry. */
+  include?: Record<string, ReadOptions>
+}
+
+/**
+ * A whole record read back through {@link ReadOptions} — its own values plus
+ * expanded relationships. Same absent-means-hidden rule as every other
+ * lookup here: a record the caller's user can't see is missing from a
+ * {@link getRecords} map entirely (never `null`), and {@link getRecord}
+ * itself returns `null` for the same record.
+ */
+export interface RecordNode {
+  recordId: string
+  entityDefinitionId: string
+  displayName: string | null
+  /** Native fields are a permissive scalar/JSON projection (`FieldValueOut`); an app's own identity fields narrow via the generated `.auxx/app-fields.d.ts`. */
+  values: Record<string, FieldValueOut | FieldValueOut[]>
+  included: Record<string, RecordNode | RecordNode[]>
+  /** Field keys and include keys the caller's scope withheld. Never a refusal — the caller decides what to do with a non-empty list. */
+  redacted: string[]
+}
+
 function sdkOrThrow(): any {
   if (typeof (global as any).AUXX_SERVER_SDK !== 'undefined') {
     return (global as any).AUXX_SERVER_SDK
@@ -174,4 +208,98 @@ export async function findContactByEmail(input: { email: string }): Promise<Enti
 /** Resolve a contact by any of its phone numbers (normalized to E.164 server-side). */
 export async function findContactByPhone(input: { phone: string }): Promise<EntityRef | null> {
   return sdkOrThrow().findContactByPhone(input)
+}
+
+/**
+ * Read a whole record — fields, related records, and the app's own identity
+ * fields on them — under the invoking user's capabilities. `null` when that
+ * user can't see the record (same non-enumeration contract the route uses:
+ * a hidden record and a missing one look identical).
+ *
+ * User-initiated invocations only (record actions, dialogs, quick actions):
+ * a server function invoked with no real user behind it has nothing to call
+ * this with.
+ *
+ * @example
+ * ```typescript
+ * import { getRecord } from '@auxx/sdk/server'
+ *
+ * const order = await getRecord(recordId, {
+ *   include: { line_items: {}, customer: {} },
+ * })
+ * ```
+ */
+export async function getRecord(recordId: string, opts?: ReadOptions): Promise<RecordNode | null> {
+  return sdkOrThrow().getRecord(recordId, opts)
+}
+
+/**
+ * {@link getRecord} for a batch of ids, keyed by `recordId`. A record the
+ * invoking user can't see is absent from the map, not `null` — a caller
+ * with a list of ids looks each one up without re-scanning.
+ */
+export async function getRecords(
+  recordIds: string[],
+  opts?: ReadOptions
+): Promise<Record<string, RecordNode>> {
+  return sdkOrThrow().getRecords(recordIds, opts)
+}
+
+/** One field of a {@link ResourceNode}; `key` is the key {@link RecordNode.values} uses. */
+export interface ResourceFieldNode {
+  id: string
+  key: string
+  systemAttribute?: string
+  label: string
+  type: string
+  fieldType?: string
+  options?: Record<string, unknown>
+  capabilities: Record<string, boolean | undefined>
+  validation?: Record<string, unknown>
+  relationship?: {
+    relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
+    inverseResourceFieldId: string | null
+  }
+  /** Set on an app-registered field — find your own by `appSlug` + `appFieldKey`. */
+  appSlug?: string
+  appFieldKey?: string
+  dataConnectorId?: string
+}
+
+/**
+ * The schema of one resource (system or custom entity definition) — what an app can act on
+ * (plans/apps/outbound/01-records-api.md §4). Same absent-means-hidden rule as records.
+ */
+export interface ResourceNode {
+  id: string
+  entityDefinitionId: string
+  apiSlug: string
+  entityType?: string
+  type: 'system' | 'custom'
+  label: string
+  plural: string
+  icon: string
+  color: string
+  dataConnectorId?: string
+  fields: ResourceFieldNode[]
+}
+
+/**
+ * Every resource the invoking user can see, with all fields — system, custom, app and
+ * connector fields alike.
+ *
+ * @example
+ * ```typescript
+ * import { getResources } from '@auxx/sdk/server'
+ *
+ * const orders = (await getResources()).find((r) => r.entityType === 'order')
+ * ```
+ */
+export async function getResources(): Promise<ResourceNode[]> {
+  return sdkOrThrow().getResources()
+}
+
+/** One resource by definition id, `entityType` or `apiSlug`; `null` when missing or not visible. */
+export async function getResource(idOrSlug: string): Promise<ResourceNode | null> {
+  return sdkOrThrow().getResource(idOrSlug)
 }

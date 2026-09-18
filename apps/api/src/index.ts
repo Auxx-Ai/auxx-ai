@@ -85,7 +85,11 @@ async function main() {
   app.route('/api/v1/apps', deployments) // POST/GET /apps/:appId/deployments
   app.route('/api/v1/apps', installations)
   app.route('/api/v1/bundles', bundleAssets) // GET /bundles/:appId/:type/:sha.js (stable CDN URLs)
-  app.route('/api/v1/organizations', organizations) // Organization-scoped routes (including bundles)
+  // Organization-scoped routes, including `/:handle/records/*`
+  // (plans/apps/outbound/01-records-api.md §2) — its callback-token principal
+  // is resolved by a middleware inside `routes/organizations/index.ts` itself,
+  // ahead of the blanket `authMiddleware`.
+  app.route('/api/v1/organizations', organizations)
   app.route('/api/v1/app-runtime', appRuntime) // Platform runtime files (shared by all extensions)
   app.route('/api/v1/sdk/webhooks', webhookHandlers) // SDK callback: Lambda → API
   app.route('/api/v1/sdk/settings', settings) // SDK callback: Lambda → API

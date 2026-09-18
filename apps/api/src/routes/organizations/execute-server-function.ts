@@ -71,6 +71,10 @@ executeServerFunction.post(
         userName: user.name,
         userConnection: connections.userConnection,
         organizationConnection: connections.organizationConnection,
+        // A server function always has a real, verified user (the caller of
+        // this route) — mint the `entities` token so it can call the SDK's
+        // entity value-I/O and record-read functions under that user.
+        includeEntitiesScope: true,
       })
 
       const lambdaResult = await invokeLambdaExecutor({

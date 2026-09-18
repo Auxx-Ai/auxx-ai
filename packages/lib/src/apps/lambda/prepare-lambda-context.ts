@@ -40,6 +40,13 @@ export function prepareLambdaContext(params: {
   const secret = process.env.LAMBDA_INVOKE_SECRET
   let callbackTokens: Record<CallbackScope, string> | undefined
 
+  // `'system'` is a sentinel passed by `apps/api/src/routes/webhooks.ts` and
+  // `apps/lib/src/apps/events.ts` for background invocations, not a real
+  // user — signing it in would let the records route (01-records-api.md §3)
+  // resolve capabilities for a user that doesn't exist. Treat it, and a
+  // missing userId, as no user at all.
+  const signableUserId = params.userId && params.userId !== 'system' ? params.userId : undefined
+
   if (secret) {
     const scopes: CallbackScope[] = params.includeEntitiesScope
       ? ['webhooks', 'settings', 'storage', 'entities']
@@ -51,9 +58,10 @@ export function prepareLambdaContext(params: {
         organizationId: params.organizationId,
         scope,
         secret,
-        // Bind the connection only on the entities token (the only scope that
-        // resolves connection-scoped fields).
+        // Bind the connection/user only on the entities token (the only
+        // scope the records route and the value-I/O routes authorize against).
         connectionId: scope === 'entities' ? params.boundConnectionId : undefined,
+        userId: scope === 'entities' ? signableUserId : undefined,
       })
     }
   }
