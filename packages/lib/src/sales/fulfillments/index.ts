@@ -25,12 +25,15 @@ export {
   isLiveFulfillment,
 } from './client'
 export {
+  FULFILLMENT_ATTRIBUTES,
+  FULFILLMENT_LINE_ATTRIBUTES,
+  type FulfillmentAttribute,
   type FulfillmentFieldContext,
+  type FulfillmentLineAttribute,
   loadFulfillmentFieldContext,
-  readFulfillmentsForOrder,
-  readFulfillmentsForOrders,
   requireFulfillmentFieldContext,
-} from './reads'
+} from './fields'
+export { readFulfillmentsForOrder, readFulfillmentsForOrders } from './reads'
 export type {
   CreatedFulfillment,
   CreateFulfillmentInput,

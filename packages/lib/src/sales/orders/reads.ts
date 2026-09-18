@@ -339,7 +339,7 @@ export async function readOrderForFulfillment(
       // Provisioning of the fulfillment entities is a separate concern from
       // the order's own fields (money/fulfillments/reads.ts owns it) - both
       // are required for a fulfillment to have anywhere to be recorded.
-      await requireFulfillmentFieldContext(organizationId, db)
+      await requireFulfillmentFieldContext(db, organizationId)
 
       const instance = await db.query.EntityInstance.findFirst({
         where: and(
