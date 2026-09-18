@@ -3,23 +3,35 @@
 // `readFulfillmentsForOrders` is the shared contract every other module reads
 // fulfillments through (`plans/money/tasks/55-shipment-lines.md` §6) - the
 // bulk poster, the credit-memo readers, the order drawer's ledger card, and
-// `money/orders/reads.ts`'s single-order path. This is the one place that
-// exercises the four-hop assembly end to end: which fulfillments belong to
-// these orders, their own fields, which lines belong to those fulfillments,
-// and the lines' fields.
+// `sales/orders/reads.ts`'s single-order path. This is the one place that
+// exercises the assembly end to end: which fulfillments belong to these
+// orders, their own cells, which lines belong to those fulfillments, and the
+// lines' cells.
 
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../../cache', () => ({ getCachedEntityDefId: vi.fn(), getOrgCache: vi.fn() }))
 
+/** The options every `readSystemRecords` call was made with, so the archived-row contract is asserted and not just described. */
+const readOptions = vi.hoisted(() => [] as (Record<string, unknown> | undefined)[])
+
+vi.mock('../../../resources/system-records', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../resources/system-records')>()
+  return {
+    ...actual,
+    readSystemRecords: (...args: Parameters<typeof actual.readSystemRecords>) => {
+      readOptions.push(args[3] as Record<string, unknown> | undefined)
+      return actual.readSystemRecords(...args)
+    },
+  }
+})
+
 import { getCachedEntityDefId, getOrgCache } from '../../../cache'
-import {
-  loadFulfillmentFieldContext,
-  readFulfillmentsForOrder,
-  readFulfillmentsForOrders,
-  requireFulfillmentFieldContext,
-} from '../reads'
+import { FULFILLMENT_FIELDS } from '../../../resources/registry/resources/fulfillment-fields'
+import { FULFILLMENT_LINE_FIELDS } from '../../../resources/registry/resources/fulfillment-line-fields'
+import { loadFulfillmentFieldContext, requireFulfillmentFieldContext } from '../fields'
+import { readFulfillmentsForOrder, readFulfillmentsForOrders } from '../reads'
 
 /** `systemAttribute -> field id`, standing in for the org cache's resolved `CustomFieldEntity`s. */
 const FIELD_IDS: Record<string, string> = {
@@ -42,22 +54,51 @@ const FIELD_IDS: Record<string, string> = {
   fulfillment_line_quantity_relieved: 'fld_line_quantity_relieved',
 }
 
-function allFields(): Record<string, { id: string }> {
-  return Object.fromEntries(Object.entries(FIELD_IDS).map(([attr, id]) => [attr, { id }]))
+/** The registry's own field type: a stub without one reads every cell as unset. */
+function fieldTypeOf(attribute: string): string {
+  for (const map of [FULFILLMENT_FIELDS, FULFILLMENT_LINE_FIELDS]) {
+    for (const field of Object.values(map)) {
+      if (field?.systemAttribute === attribute) return field.fieldType ?? 'TEXT'
+    }
+  }
+  throw new Error(`No fulfillment registry field declares ${attribute}`)
 }
 
-/** A `db` whose `.select().from().where()` resolves the next queued row set. */
+function allFields(): Record<string, { id: string; type: string }> {
+  return Object.fromEntries(
+    Object.entries(FIELD_IDS).map(([attr, id]) => [attr, { id, type: fieldTypeOf(attr) }])
+  )
+}
+
+/**
+ * A `db` whose `.select().from().where()` resolves the next queued row set.
+ *
+ * `where()` answers a promise carrying its own `orderBy`, so the values query's
+ * trailing `.orderBy(sortKey)` reads the SAME row set rather than consuming the
+ * next one.
+ */
 function stubDb(queue: unknown[][]): Database {
   let index = 0
-  const chain = {
+  const chain: Record<string, unknown> = {
     from: () => chain,
     innerJoin: () => chain,
-    where: () => Promise.resolve(queue[index++] ?? []),
+    where: () => {
+      const rows = queue[index++] ?? []
+      const settled = Promise.resolve(rows) as Promise<unknown[]> & { orderBy: () => unknown }
+      settled.orderBy = () => Promise.resolve(rows)
+      return settled
+    },
   }
   return { select: () => chain } as unknown as Database
 }
 
+/** One `fulfillment` instance row, as `readSystemRecords` selects it. */
+function instance(id: string): Record<string, unknown> {
+  return { id, createdAt: new Date('2026-09-01'), updatedAt: null, archivedAt: null }
+}
+
 beforeEach(() => {
+  readOptions.length = 0
   vi.mocked(getCachedEntityDefId).mockImplementation(async (_org: string, entityType: string) =>
     entityType === 'fulfillment'
       ? 'def_fulfillment'
@@ -72,19 +113,21 @@ beforeEach(() => {
 
 describe('loadFulfillmentFieldContext / requireFulfillmentFieldContext', () => {
   it('resolves both defs and the join fields', async () => {
-    const ctx = await loadFulfillmentFieldContext('org_1')
-    expect(ctx?.fulfillmentDefId).toBe('def_fulfillment')
-    expect(ctx?.fulfillmentLineDefId).toBe('def_fulfillment_line')
+    const ctx = await loadFulfillmentFieldContext(undefined, 'org_1')
+    expect(ctx?.fulfillment.defId).toBe('def_fulfillment')
+    expect(ctx?.line.defId).toBe('def_fulfillment_line')
   })
 
   it('is null when the org has not run entity migration 153', async () => {
     vi.mocked(getCachedEntityDefId).mockResolvedValue(undefined)
-    expect(await loadFulfillmentFieldContext('org_1')).toBeNull()
+    expect(await loadFulfillmentFieldContext(undefined, 'org_1')).toBeNull()
   })
 
   it('require throws the migration refusal instead of returning null', async () => {
     vi.mocked(getCachedEntityDefId).mockResolvedValue(undefined)
-    await expect(requireFulfillmentFieldContext('org_1')).rejects.toThrow(/migration 153/i)
+    await expect(requireFulfillmentFieldContext(undefined, 'org_1')).rejects.toThrow(
+      /migration 153/i
+    )
   })
 })
 
@@ -106,12 +149,20 @@ describe('readFulfillmentsForOrders', () => {
     expect(result).toEqual(new Map())
   })
 
-  it('assembles one fulfillment with two lines from the four hops', async () => {
+  it('assembles one fulfillment with two lines from its cells and its lines', async () => {
     const db = stubDb([
-      // Hop 1: fulfillment -> order edges.
-      [{ fulfillmentId: 'ful_1', orderId: 'ord_1' }],
-      // Hop 2: the fulfillment's own fields.
+      // Which fulfillments point at these orders.
+      [{ entityId: 'ful_1' }],
+      // Those instances.
+      [instance('ful_1')],
+      // Their cells.
       [
+        {
+          entityId: 'ful_1',
+          fieldId: 'fld_order',
+          relatedEntityId: 'ord_1',
+          relatedEntityDefinitionId: 'def_order',
+        },
         { entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 },
         { entityId: 'ful_1', fieldId: 'fld_shipped_at', valueDate: '2026-09-03T12:00:00.000Z' },
         { entityId: 'ful_1', fieldId: 'fld_status', optionId: 'success' },
@@ -121,20 +172,39 @@ describe('readFulfillmentsForOrders', () => {
         { entityId: 'ful_1', fieldId: 'fld_shipping_recognised', valueBoolean: true },
         { entityId: 'ful_1', fieldId: 'fld_recorded_at', valueDate: '2026-09-03T00:00:00.000Z' },
       ],
-      // Hop 3: fulfillment_line -> fulfillment edges.
+      // Which lines point at those fulfillments.
+      [{ entityId: 'fl_1' }, { entityId: 'fl_2' }],
+      [instance('fl_1'), instance('fl_2')],
       [
-        { lineId: 'fl_1', fulfillmentId: 'ful_1' },
-        { lineId: 'fl_2', fulfillmentId: 'ful_1' },
-      ],
-      // Hop 4: the lines' own fields.
-      [
-        { entityId: 'fl_1', fieldId: 'fld_line_line_item', relatedEntityId: 'li_1' },
+        {
+          entityId: 'fl_1',
+          fieldId: 'fld_line_fulfillment',
+          relatedEntityId: 'ful_1',
+          relatedEntityDefinitionId: 'def_fulfillment',
+        },
+        {
+          entityId: 'fl_1',
+          fieldId: 'fld_line_line_item',
+          relatedEntityId: 'li_1',
+          relatedEntityDefinitionId: 'def_line_item',
+        },
         { entityId: 'fl_1', fieldId: 'fld_line_quantity', valueNumber: 2 },
-        { entityId: 'fl_2', fieldId: 'fld_line_line_item', relatedEntityId: 'li_2' },
+        {
+          entityId: 'fl_2',
+          fieldId: 'fld_line_fulfillment',
+          relatedEntityId: 'ful_1',
+          relatedEntityDefinitionId: 'def_fulfillment',
+        },
+        {
+          entityId: 'fl_2',
+          fieldId: 'fld_line_line_item',
+          relatedEntityId: 'li_2',
+          relatedEntityDefinitionId: 'def_line_item',
+        },
         { entityId: 'fl_2', fieldId: 'fld_line_quantity', valueNumber: 3 },
         { entityId: 'fl_2', fieldId: 'fld_line_quantity_relieved', valueNumber: 1 },
       ],
-      // Hop 5: the fulfillment's live subject posting, if any (none here).
+      // The fulfillment's live subject posting, if any (none here).
       [],
     ])
 
@@ -182,18 +252,94 @@ describe('readFulfillmentsForOrders', () => {
     ])
   })
 
+  it('still returns an archived fulfillment and its archived lines', async () => {
+    const archived = (id: string) => ({ ...instance(id), archivedAt: new Date('2026-09-04') })
+    const db = stubDb([
+      [{ entityId: 'ful_1' }],
+      [archived('ful_1')],
+      [
+        {
+          entityId: 'ful_1',
+          fieldId: 'fld_order',
+          relatedEntityId: 'ord_1',
+          relatedEntityDefinitionId: 'def_order',
+        },
+        { entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 },
+      ],
+      [{ entityId: 'fl_1' }],
+      [archived('fl_1')],
+      [
+        {
+          entityId: 'fl_1',
+          fieldId: 'fld_line_fulfillment',
+          relatedEntityId: 'ful_1',
+          relatedEntityDefinitionId: 'def_fulfillment',
+        },
+        {
+          entityId: 'fl_1',
+          fieldId: 'fld_line_line_item',
+          relatedEntityId: 'li_1',
+          relatedEntityDefinitionId: 'def_line_item',
+        },
+        { entityId: 'fl_1', fieldId: 'fld_line_quantity', valueNumber: 2 },
+      ],
+      [],
+    ])
+
+    const result = await readFulfillmentsForOrders(db, {
+      organizationId: 'org_1',
+      orderIds: ['ord_1'],
+    })
+
+    // An archived fulfillment keeps its live `GlPostingSource` claim, so a
+    // reader that hid it would un-ship its quantity at the close.
+    expect(result.get('ord_1')?.[0]?.id).toBe('ful_1')
+    expect(result.get('ord_1')?.[0]?.lines.map((line) => line.id)).toEqual(['fl_1'])
+    expect(readOptions.map((options) => options?.includeArchived)).toEqual([true, true])
+  })
+
+  it('reads an order edge whose row carries no relatedEntityDefinitionId', async () => {
+    const db = stubDb([
+      [{ entityId: 'ful_1' }],
+      [instance('ful_1')],
+      // No `relatedEntityDefinitionId`: `related()` reads null and the raw
+      // column is the fallback, rather than the shipment vanishing.
+      [
+        { entityId: 'ful_1', fieldId: 'fld_order', relatedEntityId: 'ord_1' },
+        { entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 },
+      ],
+      [],
+      [],
+    ])
+
+    const result = await readFulfillmentsForOrders(db, {
+      organizationId: 'org_1',
+      orderIds: ['ord_1'],
+    })
+    expect(result.get('ord_1')?.[0]?.id).toBe('ful_1')
+  })
+
   it('sorts an order with several fulfillments by sequence, not by write order', async () => {
     const db = stubDb([
+      [{ entityId: 'ful_2' }, { entityId: 'ful_1' }],
+      [instance('ful_2'), instance('ful_1')],
       [
-        { fulfillmentId: 'ful_2', orderId: 'ord_1' },
-        { fulfillmentId: 'ful_1', orderId: 'ord_1' },
-      ],
-      [
+        {
+          entityId: 'ful_2',
+          fieldId: 'fld_order',
+          relatedEntityId: 'ord_1',
+          relatedEntityDefinitionId: 'def_order',
+        },
         { entityId: 'ful_2', fieldId: 'fld_sequence', valueNumber: 2 },
+        {
+          entityId: 'ful_1',
+          fieldId: 'fld_order',
+          relatedEntityId: 'ord_1',
+          relatedEntityDefinitionId: 'def_order',
+        },
         { entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 },
       ],
       [], // no lines on either fulfillment
-      [],
       [],
     ])
 
@@ -206,11 +352,29 @@ describe('readFulfillmentsForOrders', () => {
 
   it('drops a fulfillment_line row with no line_item edge rather than crashing', async () => {
     const db = stubDb([
-      [{ fulfillmentId: 'ful_1', orderId: 'ord_1' }],
-      [{ entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 }],
-      [{ lineId: 'fl_1', fulfillmentId: 'ful_1' }],
+      [{ entityId: 'ful_1' }],
+      [instance('ful_1')],
+      [
+        {
+          entityId: 'ful_1',
+          fieldId: 'fld_order',
+          relatedEntityId: 'ord_1',
+          relatedEntityDefinitionId: 'def_order',
+        },
+        { entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 },
+      ],
+      [{ entityId: 'fl_1' }],
+      [instance('fl_1')],
       // fl_1 carries a quantity but no line_item edge - unusable, not a crash.
-      [{ entityId: 'fl_1', fieldId: 'fld_line_quantity', valueNumber: 2 }],
+      [
+        {
+          entityId: 'fl_1',
+          fieldId: 'fld_line_fulfillment',
+          relatedEntityId: 'ful_1',
+          relatedEntityDefinitionId: 'def_fulfillment',
+        },
+        { entityId: 'fl_1', fieldId: 'fld_line_quantity', valueNumber: 2 },
+      ],
       [],
     ])
 
@@ -223,14 +387,19 @@ describe('readFulfillmentsForOrders', () => {
 
   it('reads glPosting and docNumber off the live subject claim, never a stamp field', async () => {
     const db = stubDb([
-      [{ fulfillmentId: 'ful_1', orderId: 'ord_1' }],
-      [{ entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 }],
-      // A line, so hop 4's `selectValues` actually queries rather than
-      // short-circuiting on an empty id list - which would silently shift
-      // hop 5's row set one slot earlier.
-      [{ lineId: 'fl_1', fulfillmentId: 'ful_1' }],
-      [{ entityId: 'fl_1', fieldId: 'fld_line_line_item', relatedEntityId: 'li_1' }],
-      // Hop 5: `GlPostingSource` joined to `GlPosting` for this fulfillment's subject row.
+      [{ entityId: 'ful_1' }],
+      [instance('ful_1')],
+      [
+        {
+          entityId: 'ful_1',
+          fieldId: 'fld_order',
+          relatedEntityId: 'ord_1',
+          relatedEntityDefinitionId: 'def_order',
+        },
+        { entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 },
+      ],
+      [], // no lines
+      // `GlPostingSource` joined to `GlPosting` for this fulfillment's subject row.
       [{ fulfillmentId: 'ful_1', glPostingId: 'gp_1', docNumber: 'AUXX-FUL-ORD1F1' }],
     ])
 
@@ -248,9 +417,17 @@ describe('readFulfillmentsForOrders', () => {
 describe('readFulfillmentsForOrder', () => {
   it('is readFulfillmentsForOrders for a single order id', async () => {
     const db = stubDb([
-      [{ fulfillmentId: 'ful_1', orderId: 'ord_1' }],
-      [{ entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 }],
-      [],
+      [{ entityId: 'ful_1' }],
+      [instance('ful_1')],
+      [
+        {
+          entityId: 'ful_1',
+          fieldId: 'fld_order',
+          relatedEntityId: 'ord_1',
+          relatedEntityDefinitionId: 'def_order',
+        },
+        { entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 },
+      ],
       [],
       [],
     ])
