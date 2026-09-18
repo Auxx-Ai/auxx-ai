@@ -487,15 +487,19 @@ function OutboxBody({
                           <RefreshCw className={cn(retrying && 'animate-spin')} />
                         </TreeRowButton>
                       )}
-                      {batch.state === 'sent' && canRollback && (
-                        <TreeRowButton
-                          persistent
-                          tooltipText={`Roll back from ${providerLabel}`}
-                          disabled={rollingBack}
-                          onClick={() => void runRollback([batch.id])}>
-                          <Undo2 className={cn(rollingBack && 'animate-pulse')} />
-                        </TreeRowButton>
-                      )}
+                      {/* A `failed` batch that names an object is the read-back orphan: it
+                          exists at the provider and this button is the only door to it. */}
+                      {(batch.state === 'sent' ||
+                        (batch.state === 'failed' && batch.providerObjectId)) &&
+                        canRollback && (
+                          <TreeRowButton
+                            persistent
+                            tooltipText={`Roll back from ${providerLabel}`}
+                            disabled={rollingBack}
+                            onClick={() => void runRollback([batch.id])}>
+                            <Undo2 className={cn(rollingBack && 'animate-pulse')} />
+                          </TreeRowButton>
+                        )}
                     </div>
                   }
                   onToggleOpen={() =>

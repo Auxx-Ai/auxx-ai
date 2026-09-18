@@ -97,6 +97,33 @@ it('withdraws the provider copy, marks the batch and frees its postings', async 
   expect(sets[1]?.withdrawnAt).toBeInstanceOf(Date)
 })
 
+// The orphan of plan 67 §8a(a): a create that landed and then failed its
+// read-back. The batch is `failed`, but it names a real object and this is the
+// only door that clears it.
+it('withdraws a failed batch that still names a provider object', async () => {
+  const mock = provider()
+  resolveAccountingProvider.mockResolvedValue(mock)
+  const { db, sets } = fakeDb(batch({ state: 'failed' }))
+
+  const result = await rollbackExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+  expect(result._unsafeUnwrap()).toMatchObject({ status: 'withdrawn', postingsFreed: 2 })
+  expect(mock.withdrawObject).toHaveBeenCalledWith(
+    { organizationId: ORG, connectionId: 'conn_1' },
+    { objectType: 'journal', externalId: 'qbo_184', remoteVersion: '3' }
+  )
+  expect(sets[0]).toMatchObject({ state: 'withdrawn' })
+})
+
+it('refuses a failed batch that names nothing', async () => {
+  resolveAccountingProvider.mockResolvedValue(provider())
+  const { db } = fakeDb(batch({ state: 'failed', providerObjectId: null }))
+
+  expect(
+    (await rollbackExportBatch(db, { organizationId: ORG, batchId: 'batch_1' }))._unsafeUnwrap()
+  ).toMatchObject({ status: 'refused' })
+})
+
 // 🛑 `already_gone` is a SUCCESS and it still frees the postings: convergence
 // means "the provider no longer holds it", however it stopped holding it.
 it('converges on a copy that is already gone', async () => {

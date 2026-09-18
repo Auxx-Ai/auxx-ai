@@ -195,6 +195,64 @@ describe('the readback', () => {
     expect(sets[1]).toMatchObject({ state: 'failed' })
   })
 
+  // Plan 67 §8a(a): the object EXISTS at the provider from the moment the create
+  // returned. Dropping its id left it unwithdrawable and unnameable.
+  it('records the provider object id even when the readback refuses', async () => {
+    resolveAccountingProvider.mockResolvedValue(
+      provider({
+        readObject: vi.fn(async () => err(new Error('QuickBooks timed out'))),
+      })
+    )
+    const { db, sets } = fakeDb(batch())
+
+    const result = await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(result._unsafeUnwrap()).toMatchObject({
+      status: 'failed',
+      providerObjectId: 'qbo_184',
+    })
+    expect(sets[1]).toMatchObject({
+      state: 'failed',
+      providerObjectId: 'qbo_184',
+      providerSyncToken: '0',
+    })
+  })
+
+  it('records the provider object id when what the provider holds does not match', async () => {
+    resolveAccountingProvider.mockResolvedValue(
+      provider({
+        readObject: vi.fn(async () =>
+          ok({
+            status: 'found' as const,
+            externalId: 'qbo_184',
+            remoteVersion: '0',
+            docNumber: 'AUXX-FUL-19990101',
+            totalMinor: null,
+            payloadHash: null,
+          })
+        ),
+      })
+    )
+    const { db, sets } = fakeDb(batch())
+
+    expect(
+      (await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' }))._unsafeUnwrap()
+    ).toMatchObject({ status: 'failed', providerObjectId: 'qbo_184' })
+    expect(sets[1]).toMatchObject({ state: 'failed', providerObjectId: 'qbo_184' })
+  })
+
+  it('records nothing when the send itself never created anything', async () => {
+    resolveAccountingProvider.mockResolvedValue(
+      provider({ sendObject: vi.fn(async () => err(new Error('QuickBooks said 2300'))) })
+    )
+    const { db, sets } = fakeDb(batch())
+
+    expect(
+      (await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' }))._unsafeUnwrap()
+    ).not.toHaveProperty('providerObjectId')
+    expect(sets[1]).not.toHaveProperty('providerObjectId')
+  })
+
   it('compares by payloadHash when the provider can produce one', async () => {
     resolveAccountingProvider.mockResolvedValue(
       provider({

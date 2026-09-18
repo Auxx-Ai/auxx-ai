@@ -121,8 +121,7 @@ function readbackMismatch(
   }
 ): string | null {
   if (read.status === 'unsupported') return null
-  if (read.status === 'gone')
-    return 'The provider does not hold the object we just created; nothing was recorded.'
+  if (read.status === 'gone') return 'The provider does not hold the object we just created.'
   if (read.payloadHash)
     return read.payloadHash === batch.payloadHash
       ? null
@@ -202,9 +201,12 @@ export async function sendExportBatch(
       externalId: result.externalId || null,
       docNumber: (batch.payload as { docNumber?: string }).docNumber ?? null,
     })
-    if (read.isErr()) return ok(await fail(db, batch, token, read.error.message))
+    // The object exists at the provider from here on, whatever the read-back
+    // says, so every refusal below carries its id.
+    const landed = { externalId: result.externalId, remoteVersion: result.remoteVersion }
+    if (read.isErr()) return ok(await fail(db, batch, token, read.error.message, landed))
     const mismatch = readbackMismatch(batch, read.value)
-    if (mismatch) return ok(await fail(db, batch, token, mismatch))
+    if (mismatch) return ok(await fail(db, batch, token, mismatch, landed))
 
     const kept = await releaseOwned(db, batch, token, {
       state: 'sent',
@@ -238,7 +240,15 @@ async function fail(
   db: Database,
   batch: ExportBatchEntity,
   token: string,
-  reason: string
+  reason: string,
+  /**
+   * What the provider created before the failure, when it created anything.
+   * A create that lands and then fails its read-back would otherwise leave an
+   * object at the provider that nothing here names: unwithdrawable, and
+   * invisible to a Payment waiting on it. Safe against the mirror, which reads
+   * `state = 'sent'` on both queries.
+   */
+  created?: { externalId: string; remoteVersion: string | null }
 ): Promise<SendExportBatchResult> {
   // `batch.attempts` already counts this attempt - `lease` incremented it - so
   // the backoff is indexed one behind.
@@ -248,6 +258,10 @@ async function fail(
     state: 'failed',
     lastError: reason,
     nextAttemptAt: new Date(Date.now() + backoff),
+    ...(created?.externalId && {
+      providerObjectId: created.externalId,
+      providerSyncToken: created.remoteVersion,
+    }),
   })
   if (batch.attempts >= MAX_AUTO_ATTEMPTS)
     logger.warn('Export batch will not be retried automatically; it needs a person', {
@@ -256,5 +270,11 @@ async function fail(
       attempts: batch.attempts,
       error: reason,
     })
-  return { batchId: batch.id, status: 'failed', error: reason, attempts: batch.attempts }
+  return {
+    batchId: batch.id,
+    status: 'failed',
+    error: reason,
+    attempts: batch.attempts,
+    ...(created?.externalId && { providerObjectId: created.externalId }),
+  }
 }
