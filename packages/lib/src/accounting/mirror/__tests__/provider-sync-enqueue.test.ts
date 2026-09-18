@@ -48,7 +48,16 @@ function openRun(silentMs: number): ProviderSyncRunRecord {
 
 beforeEach(() => {
   add.mockReset()
-  add.mockResolvedValue({ id: 'job_1' })
+  // BullMQ's own custom-id validation, verbatim from `Job.addJob`. Without it a
+  // mocked `add` accepts an id the real queue rejects outright, and the refusal
+  // only shows up as "could not be queued" in a browser.
+  add.mockImplementation(async (_name: string, _data: unknown, opts?: { jobId?: string }) => {
+    const id = opts?.jobId
+    if (id?.includes(':') && id.split(':').length !== 3) {
+      throw new Error('Custom Id cannot contain :')
+    }
+    return { id: id ?? 'job_1' }
+  })
   stored.blob = {}
 })
 
@@ -68,10 +77,19 @@ describe('enqueueProviderSync', () => {
     expect(add).toHaveBeenCalledWith(
       'provider-sync',
       expect.objectContaining({ organizationId: ORG, to: '2026-09-16', trigger: 'pressed' }),
-      { jobId: `provider-sync:${ORG}` }
+      { jobId: `provider-sync-${ORG}` }
     )
     // The run's identity is stamped here, once, and every slice folds into it.
     expect(add.mock.calls[0]?.[1].runStartedAt).toEqual(expect.any(String))
+  })
+
+  // `provider-sync:<org>` reached dev and made every press answer "could not be
+  // queued": BullMQ accepts a colon only in an id that splits into exactly
+  // three, and a mocked `add` never ran that check. `beforeEach` now does.
+  it('🛑 gives the job an id BullMQ will accept', async () => {
+    await expect(
+      enqueueProviderSync({ organizationId: ORG, to: '2026-09-16', trigger: 'pressed' })
+    ).resolves.toBe(true)
   })
 
   it('🛑 reports a refused queue instead of failing silently', async () => {

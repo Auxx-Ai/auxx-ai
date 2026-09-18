@@ -19,6 +19,7 @@
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { type DeletionRequestOutcome, executeDeletionRequest } from '../../data-deletion/execute'
+import { jobId } from '../job-id'
 import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:data-deletion')
@@ -82,7 +83,7 @@ export async function enqueueDataDeletionJob(data: DataDeletionJobData): Promise
   const queue = getQueue(Queues.maintenanceQueue)
 
   await queue.add(DATA_DELETION_JOB_NAME, data, {
-    jobId: `data-deletion:${data.requestId}`,
+    jobId: jobId('data-deletion', data.requestId),
     // Safe to retry — see the guard note on `dataDeletionJob` above. Worth
     // retrying, too: a transient Graph or DB blip on a compliance obligation
     // should not need a human.

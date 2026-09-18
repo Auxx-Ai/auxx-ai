@@ -366,8 +366,8 @@ export const jobMappings = {
 
   // Duplicate-suggestion scan (plans/records/duplicate-suggestion-plan-v2.md §1.4).
   // ONE handler behind FOUR doors — the coalesced mutation seam
-  // (jobId `dup-scan:{org}:{def}`, 45s delay), the `sync:records:changed`
-  // manifest consumer (jobId `dup-scan:{runId|importRef}`), and the 6h sweep
+  // (jobId `dup-scan-{org}-{def}`, 45s delay), the `sync:records:changed`
+  // manifest consumer (jobId `dup-scan-{runId|importRef}`), and the 6h sweep
   // (no scope) — all resolve their scope from the job data and run the same
   // watermark-driven pass.
   duplicateScanJob,

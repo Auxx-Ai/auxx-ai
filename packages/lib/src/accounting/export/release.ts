@@ -6,6 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../errors'
+import { jobId } from '../../jobs/job-id'
 
 const logger = createScopedLogger('postings:export-release')
 
@@ -72,7 +73,7 @@ export async function enqueueExportBatch(input: {
   try {
     const { getQueue, Queues } = await import('../../jobs/queues')
     const queued = getQueue(Queues.exportBatchQueue)
-      .add('export-batch', input, { jobId: `export-batch:${input.batchId}` })
+      .add('export-batch', input, { jobId: jobId('export-batch', input.batchId) })
       .catch((error) => {
         logger.warn('Could not enqueue an export batch; the sweep will pick it up', {
           ...input,

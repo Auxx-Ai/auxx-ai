@@ -9,6 +9,8 @@
 // idiom): `jobs/queues` pulls in bullmq + the Redis connection, and a static
 // import would drag both into every module that merely writes a record.
 
+import { jobId } from '../jobs/job-id'
+
 /** BullMQ job name. Must match the `jobMappings` key in `maintenance-worker.ts`. */
 export const DUPLICATE_SCAN_JOB_NAME = 'duplicateScanJob'
 
@@ -84,7 +86,7 @@ export async function enqueueDuplicateScan(
   return addScanJob(
     { organizationId, entityDefinitionId },
     {
-      jobId: `dup-scan:${organizationId}:${entityDefinitionId}`,
+      jobId: jobId('dup-scan', organizationId, entityDefinitionId),
       delay: DUPLICATE_SCAN_DELAY_MS,
     }
   )
@@ -119,7 +121,9 @@ export async function enqueueDuplicateScanContinuation(
   return addScanJob(
     { organizationId, entityDefinitionId },
     {
-      jobId: `dup-scan:cont:${organizationId}:${entityDefinitionId}:${cursor}`,
+      // The cursor is a watermark timestamp and carries its own colons - see
+      // `jobId`, which is why this is not a template string.
+      jobId: jobId('dup-scan-cont', organizationId, entityDefinitionId, cursor),
       delay: DUPLICATE_SCAN_CONTINUATION_DELAY_MS,
     }
   )
@@ -146,7 +150,7 @@ export interface EnqueueScanForRecordsParams {
  * no burst left to absorb and the whole point of this door is that a connector
  * record's pairs appear right after its run rather than up to 6h later.
  *
- * `jobId: 'dup-scan:{runId|importRef}'` gives at-most-once per run. That is the
+ * `jobId: 'dup-scan-{runId|importRef}'` gives at-most-once per run. That is the
  * ONLY idempotency this door needs — the dedup consumer must never `claim` the
  * manifest, because the claim is the record-rules consumer's once-only latch and
  * a second claimant would starve it. Pair upserts are idempotent anyway, so a
@@ -158,5 +162,5 @@ export async function enqueueDuplicateScanForRecords(
   const { organizationId, recordIds, scopeKey } = params
   if (recordIds.length === 0) return undefined
 
-  return addScanJob({ organizationId, recordIds }, { jobId: `dup-scan:${scopeKey}`, delay: 0 })
+  return addScanJob({ organizationId, recordIds }, { jobId: jobId('dup-scan', scopeKey), delay: 0 })
 }
