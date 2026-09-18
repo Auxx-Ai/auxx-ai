@@ -39,7 +39,7 @@ const gatewayStub = vi.hoisted(() => ({
   live: new Set<string>(),
   rows: [] as Array<{ id: string; name: string }>,
 }))
-vi.mock('../../payment-gateways/reads', () => ({
+vi.mock('../../accounting/rails/reads', () => ({
   getPaymentGateway: vi.fn(async (_db: unknown, _organizationId: string, id: string) => {
     const { ok } = await import('neverthrow')
     return ok(gatewayStub.live.has(id) ? { id } : null)

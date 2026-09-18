@@ -9,7 +9,7 @@
 
 import { database, schema } from '@auxx/database'
 import { eq, sql } from 'drizzle-orm'
-import { listObservedGatewayHandles } from '../src/payment-gateways/reads'
+import { listObservedGatewayHandles } from '../src/accounting/rails/reads'
 
 async function main(): Promise<void> {
   const db = database

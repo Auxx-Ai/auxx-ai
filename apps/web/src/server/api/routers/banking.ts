@@ -37,7 +37,7 @@ import {
   startBankConnection,
   syncBankAccountFeed,
   updateBankAccount,
-} from '@auxx/lib/banking'
+} from '@auxx/lib/accounting/banking'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'

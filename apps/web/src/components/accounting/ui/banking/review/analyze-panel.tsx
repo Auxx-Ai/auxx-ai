@@ -3,15 +3,15 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { parseBankDescriptor } from '@auxx/lib/banking/client'
-import type { BankTransactionRow } from '@auxx/lib/banking/review/client'
+import { parseBankDescriptor } from '@auxx/lib/accounting/banking/client'
+import type { BankTransactionRow } from '@auxx/lib/accounting/banking/review/client'
 import {
   BANK_RULE_MATCH_FIELDS,
   BANK_RULE_MATCH_OPERATORS,
   type BankRuleMatchField,
   type BankRuleMatchOperator,
   isSafeRegexPattern,
-} from '@auxx/lib/banking/rules/client'
+} from '@auxx/lib/accounting/banking/rules/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'

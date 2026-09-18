@@ -4,6 +4,7 @@
 // hands it plain arrays and a map and reads the plan back.
 
 import { describe, expect, it } from 'vitest'
+import { SUBTYPE_PROVIDER_ACCOUNT_TYPES } from '../../accounting/providers/suggest-account-identities'
 import { roleScopeAxis } from '../build-entry'
 import {
   PROVIDER_ACCOUNT_TYPE_SUBTYPE,
@@ -11,7 +12,6 @@ import {
   ROLE_IMPORT_MATCH,
 } from '../chart-import-plan'
 import { CHART_PACKS } from '../default-chart'
-import { SUBTYPE_PROVIDER_ACCOUNT_TYPES } from '../suggest-account-identities'
 import type { ChartAccountRow, ProviderAccount, RoleAssignmentRow } from '../types'
 
 function providerAccount(over: Partial<ProviderAccount> = {}): ProviderAccount {

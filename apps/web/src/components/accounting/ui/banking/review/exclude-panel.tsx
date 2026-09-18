@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { BankTransactionRow } from '@auxx/lib/banking/review/client'
+import type { BankTransactionRow } from '@auxx/lib/accounting/banking/review/client'
 import { Button } from '@auxx/ui/components/button'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { useState } from 'react'

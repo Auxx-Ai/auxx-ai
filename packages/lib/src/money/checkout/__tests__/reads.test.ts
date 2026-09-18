@@ -26,8 +26,8 @@ vi.mock('drizzle-orm', () => ({
 }))
 vi.mock('../../../cache', () => ({ getOrgCache: () => ({ get: async () => 'user-system' }) }))
 vi.mock('../../../resources/crud', () => ({ UnifiedCrudHandler: class {} }))
-vi.mock('../../../payment-gateways/reads', () => ({ listPaymentGateways: async () => ({}) }))
-vi.mock('../../payouts/stripe-account', () => ({ getPaymentAccount: async () => null }))
+vi.mock('../../../accounting/rails/reads', () => ({ listPaymentGateways: async () => ({}) }))
+vi.mock('../../stripe-connect/account', () => ({ getPaymentAccount: async () => null }))
 vi.mock('../../public-token', () => ({ isPaymentsConnected: () => false }))
 
 const { sumQuoteDeposits } = await import('../reads')

@@ -14,8 +14,8 @@
 // most rails.
 
 import { FieldType } from '@auxx/database/enums'
-import type { PaymentGatewayRow } from '@auxx/lib/payment-gateways/client'
-import { suggestRail } from '@auxx/lib/payment-gateways/rail-catalogue'
+import type { PaymentGatewayRow } from '@auxx/lib/accounting/rails/client'
+import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,

@@ -2,7 +2,7 @@
 
 'use client'
 
-import { describeProviderSyncCoverage } from '@auxx/lib/postings/client'
+import { describeProviderSyncCoverage } from '@auxx/lib/accounting/mirror/client'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { CloudOff, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'

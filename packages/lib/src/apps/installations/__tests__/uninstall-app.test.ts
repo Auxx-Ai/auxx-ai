@@ -30,7 +30,7 @@ vi.mock('../../../custom-fields/delete-field', () => ({
   deleteAppFields: (...args: unknown[]) => deleteAppFields(...args),
 }))
 
-vi.mock('../../../postings/book-connections', () => ({
+vi.mock('../../../accounting/providers/book-connections', () => ({
   disconnectAccountingInstallationInTx: vi.fn().mockResolvedValue(undefined),
 }))
 

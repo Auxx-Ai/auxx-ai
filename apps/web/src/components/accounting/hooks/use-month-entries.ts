@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { JournalEntryLine, PostingSummary } from '@auxx/lib/postings/client'
+import type { JournalEntryLine, PostingSummary } from '@auxx/lib/accounting/journals/client'
 import { useMemo } from 'react'
 import { api } from '~/trpc/react'
 

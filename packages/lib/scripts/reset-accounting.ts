@@ -68,11 +68,11 @@
 
 import { database as db, schema } from '@auxx/database'
 import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm'
-import { onCacheEvent } from '../src/cache/invalidate'
 import {
   clearQuickbooksAccountMapping,
   readQuickbooksAccountMap,
-} from '../src/money/quickbooks/account-map'
+} from '../src/accounting/providers/quickbooks/account-map'
+import { onCacheEvent } from '../src/cache/invalidate'
 import { listChartAccounts } from '../src/postings'
 import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'
 

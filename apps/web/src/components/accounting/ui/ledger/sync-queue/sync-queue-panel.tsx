@@ -24,9 +24,9 @@
 // the batch to be rebuilt. Nothing here reverses a posting - that stays the
 // ledger's own drawer.
 
+import type { ExportBatchMember } from '@auxx/lib/accounting/export'
+import { EXPORT_BATCH_TABS, type ExportBatchTab } from '@auxx/lib/accounting/export/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
-import type { ExportBatchMember } from '@auxx/lib/postings'
-import { EXPORT_BATCH_TABS, type ExportBatchTab } from '@auxx/lib/postings/client'
 import { ActionBar } from '@auxx/ui/components/action-bar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

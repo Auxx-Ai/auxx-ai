@@ -281,13 +281,6 @@ export {
   syncPayouts,
 } from './payouts'
 export {
-  disconnectPaymentAccount,
-  getPaymentAccount,
-  syncAccountState,
-  type UpsertPaymentAccountInput,
-  upsertPaymentAccount,
-} from './payouts/stripe-account'
-export {
   buildPayUrl,
   ensureInvoicePublicToken,
   getPublicInvoicePayload,
@@ -339,6 +332,13 @@ export {
   type RecordDocumentSendSignalInput,
   recordDocumentSendSignal,
 } from './send-email'
+export {
+  disconnectPaymentAccount,
+  getPaymentAccount,
+  syncAccountState,
+  type UpsertPaymentAccountInput,
+  upsertPaymentAccount,
+} from './stripe-connect/account'
 export { computeDocumentTotals, computeLineTotal, roundCents } from './totals'
 export {
   recomputeOnInvoiceBillingChange,

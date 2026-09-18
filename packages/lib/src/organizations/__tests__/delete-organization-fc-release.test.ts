@@ -51,7 +51,7 @@ vi.mock('@auxx/billing', () => ({
   },
 }))
 
-vi.mock('../../banking/feed/reaper', () => ({
+vi.mock('../../accounting/banking/feed/reaper', () => ({
   listBankFeedAccountsForOrganization: (...a: [never, never]) =>
     listBankFeedAccountsForOrganization(...a),
   reapBankFeedAccount: (...a: [never, never]) => reapBankFeedAccount(...a),

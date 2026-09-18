@@ -10,6 +10,8 @@
 
 import { database, schema } from '@auxx/database'
 import { and, eq, isNotNull } from 'drizzle-orm'
+import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../accounting/providers/provider'
+import { listObservedGatewayHandles } from '../accounting/rails'
 import {
   getAllCachedCustomFields,
   getCachedAgents,
@@ -17,8 +19,6 @@ import {
   getCachedMembers,
   getOrgCache,
 } from '../cache'
-import { listObservedGatewayHandles } from '../payment-gateways'
-import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../postings/provider'
 import { ENABLED_POSTING_TYPES, SINGLE_WRITER_ROLES_BY_POSTING_TYPE } from '../postings/regime'
 import { readRoleAssignments } from '../postings/role-assignments'
 import { resolveSetupReadiness } from '../postings/setup-readiness'

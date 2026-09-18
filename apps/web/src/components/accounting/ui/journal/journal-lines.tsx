@@ -2,7 +2,8 @@
 
 'use client'
 
-import type { ChartAccountRow, CounterpartyType, JournalEntryLine } from '@auxx/lib/postings/client'
+import type { JournalEntryLine } from '@auxx/lib/accounting/journals/client'
+import type { ChartAccountRow, CounterpartyType } from '@auxx/lib/postings/client'
 import { parseRecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {

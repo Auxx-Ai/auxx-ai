@@ -23,7 +23,7 @@ import { describe, expect, it } from 'vitest'
 import {
   PAYMENT_GATEWAY_FEE_TREATMENTS,
   resolvePaymentGatewayFeeTreatment,
-} from '../../../payment-gateways/client'
+} from '../../../accounting/rails/client'
 import { PaymentGatewayFeeTreatment } from '../../../resources/registry/enum-values'
 import { PAYMENT_GATEWAY_FIELDS } from '../../../resources/registry/resources/payment-gateway-fields'
 import { ALL_DATA_MIGRATIONS, PER_ORG_MIGRATIONS } from '../../registry'

@@ -17,7 +17,10 @@
 // nothing here changes that. What closes the gap is the sync WRITING rows
 // (§5 to §7), not a statement learning to read a provider.
 
-import type { ProviderAgreement, ProviderAgreementStatus } from '@auxx/lib/postings/client'
+import type {
+  ProviderAgreement,
+  ProviderAgreementStatus,
+} from '@auxx/lib/accounting/providers/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import type { BadgeProps } from '@auxx/ui/components/badge'
 import { Badge } from '@auxx/ui/components/badge'

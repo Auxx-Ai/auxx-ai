@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   // graph. The membership test and the handler both come from `banking/feed/webhook.ts`, so the
   // event-type list and the code that implements it cannot drift.
   const { applyFinancialConnectionsEvent, isFinancialConnectionsEvent } = await import(
-    '@auxx/lib/banking'
+    '@auxx/lib/accounting/banking'
   )
 
   if (!isFinancialConnectionsEvent(event.type)) return NextResponse.json({ success: true })

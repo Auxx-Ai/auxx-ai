@@ -2,7 +2,7 @@
 
 'use client'
 
-import { GENERAL_LEDGER_COLUMNS, toCsvRows } from '@auxx/lib/postings/client'
+import { GENERAL_LEDGER_COLUMNS, toCsvRows } from '@auxx/lib/accounting/reports/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'

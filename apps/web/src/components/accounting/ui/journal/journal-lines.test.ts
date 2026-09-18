@@ -1,6 +1,6 @@
 // apps/web/src/components/accounting/ui/journal/journal-lines.test.ts
 
-import type { JournalEntryLine } from '@auxx/lib/postings/client'
+import type { JournalEntryLine } from '@auxx/lib/accounting/journals/client'
 import { describe, expect, it } from 'vitest'
 import {
   computeJournalLineTotals,

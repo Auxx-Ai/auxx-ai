@@ -88,8 +88,8 @@
  * @see plans/accounting/tasks/58-one-mapping-table.md §5.3
  */
 
+import type { PaymentGatewayFeeTreatmentValue } from '../accounting/rails/client'
 import { UnprocessableEntityError } from '../errors'
-import type { PaymentGatewayFeeTreatmentValue } from '../payment-gateways/client'
 import { ACCOUNT_ROLES, buildEntry } from './build-entry'
 import { DOC_NUMBER_MAX_LENGTH } from './doc-number'
 import type { BuiltEntry, GlPostingLineInput, RoleSourceScope } from './types'

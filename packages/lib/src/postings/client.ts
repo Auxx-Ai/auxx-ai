@@ -210,19 +210,6 @@ export {
 // Types only - the read touches `@auxx/database` and stays server-only,
 // exported from `./index`. The close console's card renders this shape.
 export type { DuplicateMovementEntry, DuplicateMovementFinding } from './duplicate-movements'
-// The gate's prose and vocabulary. PURE - the queue panel renders findings as
-// rows, and a label that only existed on the server would have to be written a
-// second time in the browser. See `export-gate/findings.ts`'s own header.
-// TARGET §3: the export batch's own state vocabulary and prose.
-export {
-  EXPORT_BATCH_STATES,
-  EXPORT_BATCH_TABS,
-  type ExportBatchState,
-  type ExportBatchTab,
-  exportBatchStateHint,
-  exportBatchStateLabel,
-  exportObjectTypeLabel,
-} from './export/client'
 // TARGET §3: the export batch's settings. `readExportSettings` stays
 // server-only (`./index`) - these three reach nothing but `../types`.
 export {
@@ -234,15 +221,6 @@ export {
   type SummaryGrain,
   type SummaryGrainAvenue,
 } from './export-settings'
-export {
-  JOURNAL_ENTRY_POSTING_TYPE,
-  type JournalEntryKindValue,
-  type JournalEntryLine,
-  type JournalEntryRecord,
-  type JournalEntryStatusValue,
-  type ListJournalEntriesFilters,
-  type PostingSummary,
-} from './journal-entries/client'
 export { didLedgerAccept, isExpectedPostOutcome } from './ledger-accepted'
 export { LEDGER_CURRENCY } from './ledger-currency'
 // ── plans/accounting/tasks/26 §7.1: the code allocator ──────────────────────
@@ -250,22 +228,6 @@ export { LEDGER_CURRENCY } from './ledger-currency'
 // which are already on this surface. `mint-rail-accounts.ts` is the write half
 // and stays server-only: it imports `@auxx/database`.
 export { type CodedAccount, nextAccountCode } from './next-account-code'
-// ── plans/accounting/tasks/19: opening balances from the provider, pure half ──
-// PURE. No database, no io - see opening-fill-plan.ts's own header.
-export {
-  type ProviderOpeningFillInput,
-  type ProviderOpeningFillPlan,
-  planProviderOpeningFill,
-} from './opening-fill-plan'
-export {
-  OPENING_TRIAL_BALANCE_FREEZE_KEY,
-  OPENING_TRIAL_BALANCE_KIND,
-  type OpeningTrialBalancePosting,
-  type OpeningTrialBalanceRow,
-  type OpeningTrialBalanceView,
-  rowsToJournalEntryLines,
-  sortChartAccountsForStatement,
-} from './opening-trial-balance/client'
 export {
   assertCompactablePeriodKey,
   hashedPeriodKey,
@@ -302,67 +264,6 @@ export {
   type PostingTemplateLine,
   type PostingTrigger,
 } from './policy'
-// ── plans/accounting/tasks/20 §8: do our books and theirs agree ─────────────
-// PURE. No database, no io, no clock - reaches only `errors`, `account-label`
-// and two type-only imports. See provider-agreement.ts's own header.
-export {
-  type PlanProviderAgreementInput,
-  type ProviderAgreement,
-  type ProviderAgreementRow,
-  type ProviderAgreementStatus,
-  planProviderAgreement,
-} from './provider-agreement'
-// ── plans/accounting/tasks/20 §5-§7: the inbound half of the seam ───────────
-// The CLIENT-SAFE surface only: the contract in `provider-sync/client.ts`, the
-// pure planner and the pure range walker. Everything that touches a database or
-// the provider (`reads.ts`, `writes.ts`, `sync.ts`) is exported from `./index`
-// alone.
-//
-// 🛑 `isOurs` is on this surface because a screen has to be able to say WHY an
-// entry was not imported, and it is the most dangerous function in the module:
-// an import that gets it wrong re-reads our own ledger and doubles every posted
-// entry in it, with both copies balancing.
-export {
-  describeProviderSyncCoverage,
-  isOurs,
-  OUR_PROVIDER_TXN_TYPE,
-  type OurEntryCheck,
-  type OurEntryVerdict,
-  type OurPostedEntry,
-  type OurPostedLine,
-  PROVIDER_SYNC_POSTING_TYPE,
-  PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
-  PROVIDER_SYNC_SOURCE_TYPE,
-  PROVIDER_SYNC_STATE_SETTING_KEY,
-  PROVIDER_SYNCED_THROUGH_SETTING_KEY,
-  type ProviderLedger,
-  type ProviderLedgerEntry,
-  type ProviderLedgerLine,
-  type ProviderSyncCoverage,
-  type ProviderSyncMarker,
-  type ProviderSyncPlan,
-  type ProviderSyncRange,
-  type ProviderSyncReading,
-  type ProviderSyncRunRecord,
-  type ProviderSyncRunStatus,
-  type ProviderSyncScheduleConfig,
-  type ProviderSyncStateBlob,
-  providerDisplayName,
-} from './provider-sync/client'
-export {
-  groupProviderLedgerEntries,
-  invertAccountMap,
-  type PlanProviderSyncInput,
-  planProviderSync,
-  resolveProviderSyncLines,
-} from './provider-sync/plan'
-export {
-  firstDayAfterMonth,
-  type PlanSyncChunksInput,
-  planSyncChunks,
-  providerSyncFloor,
-} from './provider-sync/range'
-export type { RailFeeAccount, RailFeeStatus } from './rail-fee-status'
 export {
   ENABLED_POSTING_TYPES,
   EXPORT_ROUTE_BY_POSTING_TYPE,
@@ -371,77 +272,6 @@ export {
   SINGLE_WRITER_ROLES,
   SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
 } from './regime'
-// ── Statements (HANDOFF slot 1E, wave 1) - pure pieces only. The reads
-// (`readTrialBalance`, `readBalanceSheet`, `readProfitAndLoss`,
-// `readCompleteness`, `readGeneralLedger`) and the PDF render touch a database
-// or react-pdf/S3 and stay server-only, exported from `./index` only. ────────
-export {
-  balanceSheetColumns,
-  GENERAL_LEDGER_COLUMNS,
-  TRIAL_BALANCE_COLUMNS,
-  toBalanceSheetRows,
-  toGeneralLedgerRows,
-  toProfitAndLossRows,
-  toTrialBalanceRows,
-  toTrialBalanceStatementRows,
-} from './reports/adapters'
-export type { BalanceSheet, BalanceSheetRow, BalanceSheetSnapshot } from './reports/balance-sheet'
-export type { Completeness, CompletenessItem } from './reports/completeness'
-export {
-  DEFAULT_FISCAL_YEAR_START_MONTH,
-  FISCAL_YEAR_START_MONTH_OPTIONS,
-  FISCAL_YEAR_START_MONTH_SETTING_KEY,
-  fiscalYearStart,
-  normalizeFiscalYearStartMonth,
-  previousCalendarDay,
-} from './reports/fiscal-year'
-// The general ledger (task 21 §5). Types only: `readGeneralLedger` and its
-// `GENERAL_LEDGER_MAX_LINES` guard are a db read and a server policy, and stay
-// on `./index`. `toGeneralLedgerRows`/`GENERAL_LEDGER_COLUMNS` are pure and
-// come through the adapters block above, like every other statement's.
-export type { AccountLineRow, GeneralLedger, GeneralLedgerAccount } from './reports/general-ledger'
-export type {
-  RenderStatementPdfOptions,
-  RenderStatementPdfParamsByKind,
-  RenderStatementPdfResult,
-  StatementKind,
-} from './reports/pdf/render-statement-pdf'
-export type {
-  ProfitAndLoss,
-  ProfitAndLossRow,
-  ProfitAndLossSnapshot,
-} from './reports/profit-and-loss'
-export {
-  computedRow,
-  type StatementColumn,
-  type StatementLineInput,
-  type StatementRow,
-  statementSection,
-  toCsvRows,
-  totalRow,
-} from './reports/rows'
-export {
-  NATURAL_BALANCE_DIRECTION,
-  type NetIncomeRow,
-  netIncome,
-  type RetainedEarnings,
-  type RetainedEarningsInput,
-  retainedEarnings,
-  signedBalance,
-} from './reports/statement-math'
-export type { TrialBalance, TrialBalanceRow } from './reports/trial-balance'
-export type {
-  TrialBalanceRetainedEarnings,
-  TrialBalanceStatement,
-} from './reports/trial-balance-statement'
-export type { Vendor1099Row, Vendor1099Summary } from './reports/vendor-1099-rows'
-// ── HANDOFF slot 2K (accountant profile, 1099/W-9, write-off) ──────────────
-export {
-  toVendor1099CsvRows,
-  toVendor1099Rows,
-  VENDOR_1099_COLUMNS,
-  VENDOR_1099_THRESHOLD_MINOR,
-} from './reports/vendor-1099-rows'
 // The readiness extension: a fourth requirement whose input is not a setting.
 // Exported here rather than folded into the `setup-readiness` block above so
 // this slot appended, per HANDOFF §9a, instead of editing another slot's lines.
@@ -481,13 +311,6 @@ export {
   sourceAccountTooltip,
   sourceProviderLabel,
 } from './source-account-label'
-export {
-  type AccountSuggestion,
-  isMappableTo,
-  SUBTYPE_PROVIDER_ACCOUNT_TYPES,
-  suggestAccountIdentities,
-  validateProviderMapping,
-} from './suggest-account-identities'
 export { summaryGrainKey } from './summary-grain'
 // The manual bucket's identity, for screens that render a source account and
 // have to tell the sentinel row apart from a connected one (`source-scope.ts`).

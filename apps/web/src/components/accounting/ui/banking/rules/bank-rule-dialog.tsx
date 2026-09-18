@@ -8,7 +8,7 @@ import type {
   BankRuleMatchField,
   BankRuleMatchOperator,
   BankRuleRecord,
-} from '@auxx/lib/banking/rules/client'
+} from '@auxx/lib/accounting/banking/rules/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useEffect, useState } from 'react'
 import { RuleDialogShell } from '~/components/rules/ui/rule-dialog-shell'

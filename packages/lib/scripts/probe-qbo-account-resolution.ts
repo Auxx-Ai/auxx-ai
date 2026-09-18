@@ -20,7 +20,7 @@ import {
   listAccountIdentities,
   registerAccountingProvider,
   setConnectedProviderResolver,
-} from '../src/postings'
+} from '../src/accounting/providers'
 
 const ORG = process.argv[2] ?? ''
 if (!ORG) {
@@ -36,7 +36,7 @@ if (!ORG) {
  */
 async function registerQuickbooks() {
   const { createQuickbooksAccountingProvider } = await import(
-    '../src/money/quickbooks/quickbooks-accounting-provider'
+    '../src/accounting/providers/quickbooks/quickbooks-accounting-provider'
   )
   registerAccountingProvider('quickbooks', async () => createQuickbooksAccountingProvider())
   setConnectedProviderResolver(async () => 'quickbooks')

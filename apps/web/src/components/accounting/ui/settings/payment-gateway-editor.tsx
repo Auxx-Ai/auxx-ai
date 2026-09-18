@@ -26,11 +26,11 @@
 // with `FieldType.TAGS`, the same idiom `order_payment_gateways` uses.
 
 import { FieldType } from '@auxx/database/enums'
-import type { PaymentGatewayRow } from '@auxx/lib/payment-gateways/client'
+import type { PaymentGatewayRow } from '@auxx/lib/accounting/rails/client'
 import {
   PAYMENT_GATEWAY_FEE_TREATMENT_LABELS,
   PAYMENT_GATEWAY_FEE_TREATMENTS,
-} from '@auxx/lib/payment-gateways/client'
+} from '@auxx/lib/accounting/rails/client'
 import type { GlAccountSubtypeValue, GlAccountTypeValue } from '@auxx/lib/postings/client'
 import { AutosizeInput } from '@auxx/ui/components/autosize-input'
 import { Badge } from '@auxx/ui/components/badge'

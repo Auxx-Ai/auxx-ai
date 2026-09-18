@@ -16,7 +16,7 @@
 // unknown-tool error. The JSON is printed on stdout after the logger's boot
 // lines; the report starts at the first line that is exactly `{`.
 
-import { resolveQuickbooksContext } from '../src/money/quickbooks/invoke-quickbooks-tool'
+import { resolveQuickbooksContext } from '../src/accounting/providers/quickbooks/invoke-quickbooks-tool'
 
 const [orgId, asOf, method = 'Accrual', startDate] = process.argv.slice(2)
 

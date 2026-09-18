@@ -34,12 +34,12 @@ import { createScopedLogger } from '@auxx/logger'
 import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import type Stripe from 'stripe'
+import type { PaymentGatewayRow } from '../../../accounting/rails/client'
 import { BadRequestError } from '../../../errors'
-import type { PaymentGatewayRow } from '../../../payment-gateways/client'
+import { getPaymentAccount } from '../../stripe-connect/account'
+import { getStripeConnectClient } from '../../stripe-connect/client'
 import { listLinkedFeedAccounts } from '../reads'
 import type { PayoutHeader, PayoutItem, PayoutSource, PayoutSourceCtx } from '../source'
-import { getPaymentAccount } from '../stripe-account'
-import { getStripeConnectClient } from '../stripe-connect-client'
 
 const logger = createScopedLogger('payouts:stripe-connect')
 

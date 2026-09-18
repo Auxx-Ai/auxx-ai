@@ -17,11 +17,11 @@
 // second door that writes one without the other.
 
 import { FieldType } from '@auxx/database/enums'
-import { PermissionKey } from '@auxx/lib/permissions/client'
 import {
   PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
   type ProviderSyncScheduleConfig,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/mirror/client'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'

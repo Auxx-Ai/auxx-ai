@@ -3,7 +3,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { BANK_RULE_ACTIONS, type BankRuleAction } from '@auxx/lib/banking/rules/client'
+import { BANK_RULE_ACTIONS, type BankRuleAction } from '@auxx/lib/accounting/banking/rules/client'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'

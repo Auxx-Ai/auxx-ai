@@ -12,13 +12,13 @@
 //   npx dotenv -- npx tsx packages/lib/scripts/drive-opening-trial-balance.ts <organizationId>
 
 import { database } from '@auxx/database'
-import { onCacheEvent } from '../src/cache'
 import {
   postOpeningTrialBalance,
   previewOpeningTrialBalance,
   readOpeningTrialBalance,
   saveOpeningTrialBalance,
-} from '../src/postings/opening-trial-balance'
+} from '../src/accounting/opening'
+import { onCacheEvent } from '../src/cache'
 import { listChartAccounts } from '../src/postings/role-map'
 import { verifyBooksBalance } from '../src/postings/verify-balance'
 import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'

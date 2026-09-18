@@ -10,8 +10,8 @@
 // into is the one thing this screen exists to answer, and a state that can
 // only be discovered by selecting each row in turn stays unfinished.
 
-import type { ObservedGatewayHandle, PaymentGatewayRow } from '@auxx/lib/payment-gateways/client'
-import { PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS } from '@auxx/lib/payment-gateways/client'
+import type { ObservedGatewayHandle, PaymentGatewayRow } from '@auxx/lib/accounting/rails/client'
+import { PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS } from '@auxx/lib/accounting/rails/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ButtonSwitch } from '@auxx/ui/components/button-switch'

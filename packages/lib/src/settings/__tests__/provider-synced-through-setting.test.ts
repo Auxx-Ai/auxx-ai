@@ -14,7 +14,7 @@
 // what notices if a future prefix does.
 
 import { describe, expect, it } from 'vitest'
-import { PROVIDER_SYNCED_THROUGH_SETTING_KEY } from '../../postings/provider-sync/client'
+import { PROVIDER_SYNCED_THROUGH_SETTING_KEY } from '../../accounting/mirror/client'
 import { isFrozenSetupSettingKey } from '../../postings/settled-periods'
 import { SETTINGS_CATALOG } from '../catalog'
 import { normalizeSettingValue } from '../normalize-setting-value'

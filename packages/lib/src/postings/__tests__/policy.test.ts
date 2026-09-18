@@ -17,6 +17,7 @@
 // them would make the assertion tautological.
 
 import { describe, expect, it } from 'vitest'
+import { DISABLED_POSTING_TYPE_SENTENCES } from '../../accounting/reports/completeness'
 import { ACCOUNT_ROLES } from '../build-entry'
 import { LEDGER_WIDE_SETTING_KEYS, POSTING_POLICIES, POSTING_POLICY } from '../policy'
 import {
@@ -25,7 +26,6 @@ import {
   findWriterConflicts,
   SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
 } from '../regime'
-import { DISABLED_POSTING_TYPE_SENTENCES } from '../reports/completeness'
 import { POSTING_TYPES, type PostingType } from '../types'
 
 /**

@@ -7,7 +7,7 @@
 //   npx dotenv -- npx tsx packages/lib/scripts/drive-aging.ts
 
 import { closePools, database } from '@auxx/database'
-import { readAging } from '../src/postings/reports/aging'
+import { readAging } from '../src/accounting/reports/aging'
 
 // DemoOrg1, owner markus@auxx.ai (HANDOFF §9a). Has a write-off against
 // INV-0005 and may carry fulfillment postings from another slot.

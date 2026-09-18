@@ -10,7 +10,7 @@ import {
   type ExportBatchState,
   exportBatchStateHint,
   exportBatchStateLabel,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/export/client'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 

@@ -2,7 +2,7 @@
 
 'use client'
 
-import { EXPORT_BATCH_TABS, type ExportBatchTab } from '@auxx/lib/postings/client'
+import { EXPORT_BATCH_TABS, type ExportBatchTab } from '@auxx/lib/accounting/export/client'
 import { Button } from '@auxx/ui/components/button'
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'

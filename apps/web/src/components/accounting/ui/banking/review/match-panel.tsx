@@ -7,7 +7,7 @@ import {
   MATCH_RECORD_TYPE_LABELS,
   type MatchCandidate,
   type MatchRecordType,
-} from '@auxx/lib/banking/review/client'
+} from '@auxx/lib/accounting/banking/review/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'

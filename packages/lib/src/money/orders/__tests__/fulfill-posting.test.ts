@@ -109,11 +109,11 @@ vi.mock('../../../relief', () => ({
     }),
 }))
 
-import { listPostingsForSource } from '../../../postings/list-postings'
 import {
   __resetAccountingProvidersForTests,
   setConnectedProviderResolver,
-} from '../../../postings/provider'
+} from '../../../accounting/providers/provider'
+import { listPostingsForSource } from '../../../postings/list-postings'
 import { fulfillOrder, reverseFulfillmentPosting } from '../fulfill'
 
 const ORG = 'org_1'

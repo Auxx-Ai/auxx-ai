@@ -1,95 +1,101 @@
 // apps/web/src/server/api/routers/ledger.ts
 
 import { schema } from '@auxx/database'
-import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
-import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
-import { getPaymentAccount } from '@auxx/lib/money'
-// The naming catalogue is PURE and client-safe (brief 26 §7.2), so it lives on
-// its own leaf subpath and is imported from there rather than through the
-// `payment-gateways` barrel, which reaches Drizzle and the org cache.
-import { suggestRail } from '@auxx/lib/payment-gateways/rail-catalogue'
-import { PermissionKey } from '@auxx/lib/permissions'
 import {
-  ACCOUNT_ROLES,
-  accountingOpeningPolicySchema,
-  activateAccountingBookConnection,
-  assertAccountingSetupUnfrozen,
   buildExportBatches,
-  CHART_PACK_KEYS,
-  confirmSuggestedIdentities,
-  createAndLinkProviderAccount,
-  createChartAccount,
-  createJournalEntry,
-  DEFAULT_CHART_OF_ACCOUNTS,
-  type DefaultChartAccount,
-  discardDraftPosting,
-  discardJournalEntry,
-  EXPORT_AVENUES,
-  enqueueProviderSync,
-  GL_ACCOUNT_SUBTYPES,
-  GL_ACCOUNT_TYPES,
-  getJournalEntry,
-  getPosting,
-  importChartFromProvider,
-  listAccountIdentities,
-  listChartAccounts,
-  listChartAccountUsage,
-  listClosePeriods,
   listExportBatches,
-  listJournalEntries,
-  listPostings,
-  listPostingsForSource,
-  listRoleMap,
-  listRoleSources,
-  mintRailAccounts,
-  PROVIDER_SYNC_RUN_STALE_MS,
-  PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
-  postDraft,
-  postJournalEntry,
-  previewJournalEntry,
-  readAccountingBookConnectionStatus,
-  readActiveBookConnection,
-  readCloseBlockers,
-  readExportSettings,
-  readLatestPostingsByType,
-  readLedgerSummary,
-  readProviderSyncRunState,
-  readTrialBalance,
   releaseExportBatches,
-  removeChartAccount,
-  repairAccountingBookConnection,
-  resolveAccountingProvider,
-  resolvePeriodLock,
-  restoreChartAccount,
   retryExportBatch,
-  reverseEntries,
-  reverseEntry,
-  reverseJournalEntry,
   rollbackExportBatch,
-  type SaveMappingRow,
-  saveRoleAssignments,
   sendExportBatch,
-  setAccountIdentity,
-  setLockedThrough,
-  setRoleAssignment,
-  syncProviderSyncScheduler,
-  updateChartAccount,
-  updateJournalEntry,
-  verifyBooksBalance,
-} from '@auxx/lib/postings'
+} from '@auxx/lib/accounting/export'
 // The comparison itself is PURE (brief 20 §8.2), so it lives on the client-safe
 // leaf beside the other planners and is imported from there rather than being
 // re-exported through the server barrel for one call site.
+import { EXPORT_BATCH_STATES } from '@auxx/lib/accounting/export/client'
 import {
-  EXPORT_BATCH_STATES,
-  type ProviderSyncScheduleConfig,
-  planProviderAgreement,
-} from '@auxx/lib/postings/client'
+  createJournalEntry,
+  discardJournalEntry,
+  getJournalEntry,
+  listJournalEntries,
+  postJournalEntry,
+  previewJournalEntry,
+  reverseJournalEntry,
+  updateJournalEntry,
+} from '@auxx/lib/accounting/journals'
 import {
   clearRecurringJournalSchedule,
   listRecurringJournalTemplates,
   setRecurringJournalSchedule,
-} from '@auxx/lib/postings/recurring-journals'
+} from '@auxx/lib/accounting/journals/recurring'
+import {
+  enqueueProviderSync,
+  PROVIDER_SYNC_RUN_STALE_MS,
+  PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
+  readProviderSyncRunState,
+  syncProviderSyncScheduler,
+} from '@auxx/lib/accounting/mirror'
+import type { ProviderSyncScheduleConfig } from '@auxx/lib/accounting/mirror/client'
+import {
+  accountingOpeningPolicySchema,
+  activateAccountingBookConnection,
+  confirmSuggestedIdentities,
+  createAndLinkProviderAccount,
+  listAccountIdentities,
+  readAccountingBookConnectionStatus,
+  readActiveBookConnection,
+  repairAccountingBookConnection,
+  resolveAccountingProvider,
+  setAccountIdentity,
+} from '@auxx/lib/accounting/providers'
+import { planProviderAgreement } from '@auxx/lib/accounting/providers/client'
+import { mintRailAccounts } from '@auxx/lib/accounting/rails'
+// The naming catalogue is PURE and client-safe (brief 26 §7.2), so it lives on
+// its own leaf subpath and is imported from there rather than through the
+// `payment-gateways` barrel, which reaches Drizzle and the org cache.
+import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
+import { readTrialBalance } from '@auxx/lib/accounting/reports'
+import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
+import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
+import { getPaymentAccount } from '@auxx/lib/money'
+import { PermissionKey } from '@auxx/lib/permissions'
+import {
+  ACCOUNT_ROLES,
+  assertAccountingSetupUnfrozen,
+  CHART_PACK_KEYS,
+  createChartAccount,
+  DEFAULT_CHART_OF_ACCOUNTS,
+  type DefaultChartAccount,
+  discardDraftPosting,
+  EXPORT_AVENUES,
+  GL_ACCOUNT_SUBTYPES,
+  GL_ACCOUNT_TYPES,
+  getPosting,
+  importChartFromProvider,
+  listChartAccounts,
+  listChartAccountUsage,
+  listClosePeriods,
+  listPostings,
+  listPostingsForSource,
+  listRoleMap,
+  listRoleSources,
+  postDraft,
+  readCloseBlockers,
+  readExportSettings,
+  readLatestPostingsByType,
+  readLedgerSummary,
+  removeChartAccount,
+  resolvePeriodLock,
+  restoreChartAccount,
+  reverseEntries,
+  reverseEntry,
+  type SaveMappingRow,
+  saveRoleAssignments,
+  setLockedThrough,
+  setRoleAssignment,
+  updateChartAccount,
+  verifyBooksBalance,
+} from '@auxx/lib/postings'
 import { recurrencePatternSchema } from '@auxx/lib/recurrence'
 import { seedChartAccounts, seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
 import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'

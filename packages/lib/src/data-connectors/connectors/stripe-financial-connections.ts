@@ -25,10 +25,13 @@
 // `pending | succeeded | failed` for the FETCH. They are never abbreviated in this file.
 
 import { createScopedLogger } from '@auxx/logger'
-import { normalizeMatchKey } from '../../banking/feed/match-key'
-import { findBankFeedAccountForConnector, reapBankFeedAccount } from '../../banking/feed/reaper'
+import { normalizeMatchKey } from '../../accounting/banking/feed/match-key'
+import {
+  findBankFeedAccountForConnector,
+  reapBankFeedAccount,
+} from '../../accounting/banking/feed/reaper'
 import { readProviderAccountId } from '../../connections/hosted-provision/types'
-import { getStripeConnectClient } from '../../money/payouts/stripe-connect-client'
+import { getStripeConnectClient } from '../../money/stripe-connect/client'
 import { periodKeyForDate } from '../../postings/periods'
 import type { SyncCursor } from '../../sync-core/contracts'
 import { STRIPE_FC_CONNECTOR_TYPE } from './stripe-financial-connections-type'

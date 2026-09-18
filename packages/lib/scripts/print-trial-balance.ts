@@ -8,8 +8,8 @@
 
 import { database, schema } from '@auxx/database'
 import { inArray } from 'drizzle-orm'
-import { readBalanceSheet } from '../src/postings/reports/balance-sheet'
-import { readTrialBalance } from '../src/postings/reports/trial-balance'
+import { readBalanceSheet } from '../src/accounting/reports/balance-sheet'
+import { readTrialBalance } from '../src/accounting/reports/trial-balance'
 import { verifyBooksBalance } from '../src/postings/verify-balance'
 
 async function firstOrgWithPostedEntries(): Promise<string | null> {

@@ -3,7 +3,7 @@
   "credentialFrom": {
     "packages/lib/src/agents/agent-service.ts": 1,
     "packages/lib/src/apps/installations/app-field-provisioning.ts": 1,
-    "packages/lib/src/banking/feed/webhook.ts": 1,
+    "packages/lib/src/accounting/banking/feed/webhook.ts": 1,
     "packages/lib/src/cache/providers/installed-apps-provider.ts": 1,
     "packages/lib/src/cache/providers/mcp-servers-provider.ts": 1,
     "packages/lib/src/channels/quo-channel.ts": 1,

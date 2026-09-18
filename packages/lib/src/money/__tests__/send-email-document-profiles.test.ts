@@ -88,7 +88,7 @@ vi.mock('../public-token', () => ({
   isPaymentsConnected: mockIsPaymentsConnected,
   buildPayUrl: (t: string) => `https://pay.test/${t}`,
 }))
-vi.mock('../payouts/stripe-account', () => ({ getPaymentAccount: vi.fn(async () => null) }))
+vi.mock('../stripe-connect/account', () => ({ getPaymentAccount: vi.fn(async () => null) }))
 
 const ORG_ID = 'org_test'
 const USER_ID = 'user_test'

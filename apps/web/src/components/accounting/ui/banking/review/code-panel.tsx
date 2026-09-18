@@ -8,7 +8,7 @@ import {
   type SettlementOffer,
   settlementLabel,
   settlementOffers,
-} from '@auxx/lib/banking/review/client'
+} from '@auxx/lib/accounting/banking/review/client'
 import { didLedgerAccept, type ResolvedPostingLine } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
 import { Label } from '@auxx/ui/components/label'

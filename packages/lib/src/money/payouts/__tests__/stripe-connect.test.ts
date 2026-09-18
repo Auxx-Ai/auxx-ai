@@ -71,19 +71,19 @@ vi.mock('../reads', () => ({
   listLinkedFeedAccounts: h.listLinkedFeedAccounts,
   readBankAccountSettlementDestinations: h.readDestinations,
 }))
-vi.mock('../stripe-account', () => ({
+vi.mock('../../stripe-connect/account', () => ({
   getPaymentAccount: async () => ({ stripeAccountId: 'acct_1' }),
 }))
-vi.mock('../stripe-connect-client', () => ({
+vi.mock('../../stripe-connect/client', () => ({
   getStripeConnectClient: () => ({
     payouts: { list: h.payoutsList },
     balanceTransactions: { list: h.balanceList },
   }),
 }))
-vi.mock('../../../payment-gateways/reads', () => ({
+vi.mock('../../../accounting/rails/reads', () => ({
   listPaymentGateways: async () => ({ isErr: () => false, isOk: () => true, value: h.gateways }),
 }))
-vi.mock('../../../payment-gateways/writes', () => ({
+vi.mock('../../../accounting/rails/writes', () => ({
   stampPaymentGatewayLastSettlement: h.stamp,
 }))
 vi.mock('../../../postings/post-payout-entry', async (importOriginal) => ({
@@ -114,10 +114,10 @@ vi.mock('../../../users/system-user-service', () => ({
 vi.mock('../recognise', () => ({ recognise: h.recognise }))
 
 import type { Database } from '@auxx/database'
-import type { PaymentGatewayRow } from '../../../payment-gateways/client'
-import { registerPayoutSources } from '../../payout-sources'
+import type { PaymentGatewayRow } from '../../../accounting/rails/client'
 import type { PayoutSourceCtx } from '../source'
 import { __resetPayoutSourcesForTests } from '../source-registry'
+import { registerPayoutSources } from '../sources'
 import { STRIPE_CONNECT_PAYOUT_SOURCE } from '../sources/stripe-connect'
 import { syncPayouts } from '../sync'
 

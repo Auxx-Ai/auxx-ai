@@ -16,9 +16,9 @@
  * different accounts, which balances and is therefore undetectable downstream.
  */
 
-import type { GatewayHandleCensusRow, PaymentGatewayRow } from '@auxx/lib/payment-gateways/client'
-import { normaliseGatewayHandle } from '@auxx/lib/payment-gateways/client'
-import { type RailSuggestion, suggestRail } from '@auxx/lib/payment-gateways/rail-catalogue'
+import type { GatewayHandleCensusRow, PaymentGatewayRow } from '@auxx/lib/accounting/rails/client'
+import { normaliseGatewayHandle } from '@auxx/lib/accounting/rails/client'
+import { type RailSuggestion, suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
 
 /**
  * How long a rail can go without an order before the page offers to create its

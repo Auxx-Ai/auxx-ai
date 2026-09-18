@@ -29,8 +29,8 @@ import { createScopedLogger } from '@auxx/logger'
 import { toDateKey, toIso } from '@auxx/utils/calendar-day'
 import { and, desc, eq, gte, inArray, lt, ne } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
+import type { PostingSummary } from '../accounting/journals/entries/client'
 import { AuxxError } from '../errors'
-import type { PostingSummary } from './journal-entries/client'
 import type { PostingLinkRole, PostingType } from './types'
 
 const logger = createScopedLogger('postings:list-postings')

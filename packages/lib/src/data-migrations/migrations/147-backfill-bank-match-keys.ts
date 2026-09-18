@@ -4,7 +4,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import { and, eq, inArray, like } from 'drizzle-orm'
-import { normalizeMatchKey } from '../../banking/feed/match-key'
+import { normalizeMatchKey } from '../../accounting/banking/feed/match-key'
 import { fieldKey, loadExistingState } from '../../seed/entity-helpers'
 import type { PerOrgMigration, PerOrgMigrationResult } from '../per-org'
 

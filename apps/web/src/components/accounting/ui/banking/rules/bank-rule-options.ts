@@ -17,7 +17,7 @@ import type {
   BankRuleMatchField,
   BankRuleMatchOperator,
   BankRuleRecord,
-} from '@auxx/lib/banking/rules/client'
+} from '@auxx/lib/accounting/banking/rules/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { formatAccountLabel, type LabelAccount } from '../../account-label-format'
 

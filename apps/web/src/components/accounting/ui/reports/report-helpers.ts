@@ -18,7 +18,10 @@
 // range computed here and a range bound applied in SQL must not be two
 // implementations of "one month earlier".
 
-import type { StatementRow as LibStatementRow, StatementColumn } from '@auxx/lib/postings/client'
+import type {
+  StatementRow as LibStatementRow,
+  StatementColumn,
+} from '@auxx/lib/accounting/reports/client'
 import { isRecordId } from '@auxx/types/resource'
 import {
   addDaysToDayKey,

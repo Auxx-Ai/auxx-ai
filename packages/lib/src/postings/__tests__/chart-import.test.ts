@@ -27,7 +27,7 @@ vi.mock('../chart-write', () => ({
 }))
 
 const resolveAccountingProvider = vi.fn()
-vi.mock('../provider', () => ({
+vi.mock('../../accounting/providers/provider', () => ({
   resolveAccountingProvider: (...a: unknown[]) => resolveAccountingProvider(...a),
   NONE_PROVIDER_ID: 'none',
 }))

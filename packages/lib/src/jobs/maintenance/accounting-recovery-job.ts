@@ -2,10 +2,10 @@
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
+import { sweepExportBatches } from '../../accounting/export'
 import { sweepCustomerReceiptAccounting } from '../../money/customer-money/accounting'
 import { sweepDepositApplicationAccounting } from '../../money/customer-money/deposit-application-accounting'
 import { sweepImportedCustomerMoney } from '../../money/customer-money/ingest'
-import { sweepExportBatches } from '../../postings/export'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('accounting-recovery-job')

@@ -1,8 +1,8 @@
 // packages/lib/src/money/payouts/source-reads.ts
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { listPaymentGateways } from '../../payment-gateways/reads'
-import { exactEvidenceMinor } from './evidence-contracts'
+import { listPaymentGateways } from '../../accounting/rails/reads'
+import { exactEvidenceMinor } from '../customer-money/evidence-contracts'
 import type { PayoutRecord } from './types'
 
 /** Ordinary source fields needed by the settlement list. */

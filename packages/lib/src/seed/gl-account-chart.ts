@@ -63,12 +63,12 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull } from 'drizzle-orm'
-import { getCachedEntityDefId } from '../cache'
 import {
   createPaymentGateway,
   listPaymentGateways,
   normaliseGatewayHandle,
-} from '../payment-gateways'
+} from '../accounting/rails'
+import { getCachedEntityDefId } from '../cache'
 import { withAccountingCommitLock } from '../postings/accounting-commit-lock'
 import {
   CHART_PACK_KEYS,

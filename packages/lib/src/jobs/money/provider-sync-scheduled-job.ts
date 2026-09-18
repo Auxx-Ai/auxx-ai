@@ -5,21 +5,17 @@
 // nothing about a slice changes because a cron opened it.
 
 import { createScopedLogger } from '@auxx/logger'
+import { enqueueProviderSync, firstDayAfterMonth, providerSyncFloor } from '../../accounting/mirror'
 import { ConflictError } from '../../errors'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { periodKeyForDate } from '../../postings/periods'
-import {
-  enqueueProviderSync,
-  firstDayAfterMonth,
-  providerSyncFloor,
-} from '../../postings/provider-sync'
 import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import type { JobContext } from '../types'
 
 const logger = createScopedLogger('jobs:money:provider-sync-scheduled')
 
-export { PROVIDER_SYNC_SCHEDULED_JOB_NAME } from '../../postings/provider-sync'
+export { PROVIDER_SYNC_SCHEDULED_JOB_NAME } from '../../accounting/mirror'
 
 export interface ProviderSyncScheduledJobData {
   organizationId: string

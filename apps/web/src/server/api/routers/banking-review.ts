@@ -30,7 +30,7 @@ import {
   readQueueStats,
   transferTransaction,
   undoReview,
-} from '@auxx/lib/banking/review'
+} from '@auxx/lib/accounting/banking/review'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { didLedgerAccept, type PostResultStatus } from '@auxx/lib/postings/client'
 import { z } from 'zod'

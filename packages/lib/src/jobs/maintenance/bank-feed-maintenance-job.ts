@@ -30,9 +30,9 @@
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { refreshBankAccountCoverage } from '../../banking/feed/coverage'
-import { reapDisconnectedBankFeeds } from '../../banking/feed/reaper'
-import { runSuggestionsForAccount } from '../../banking/rules/writes'
+import { refreshBankAccountCoverage } from '../../accounting/banking/feed/coverage'
+import { reapDisconnectedBankFeeds } from '../../accounting/banking/feed/reaper'
+import { runSuggestionsForAccount } from '../../accounting/banking/rules/writes'
 import { SystemUserService } from '../../users/system-user-service'
 import type { JobContext } from '../types'
 

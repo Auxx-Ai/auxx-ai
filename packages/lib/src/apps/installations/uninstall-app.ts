@@ -4,6 +4,7 @@ import { database, schema, type Transaction } from '@auxx/database'
 import { fromDatabase } from '@auxx/services/shared/utils'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { disconnectAccountingInstallationInTx } from '../../accounting/providers/book-connections'
 import { getOrgCache } from '../../cache'
 import { deleteAppFields } from '../../custom-fields/delete-field'
 import {
@@ -11,8 +12,6 @@ import {
   deleteConnector,
   disconnectConnectors,
 } from '../../data-connectors/mutations'
-
-import { disconnectAccountingInstallationInTx } from '../../postings/book-connections'
 
 /**
  * Input parameters for uninstallApp

@@ -50,7 +50,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 // Reaches the same `payment_gateway` records `assertScopableGateway` in
 // `role-map.ts` reads through - the rail axis is a live gateway now, not
 // evidence (58 §3 rule 6).
-import { listPaymentGateways } from '../payment-gateways/reads'
+import { listPaymentGateways } from '../accounting/rails/reads'
 import type { ScopeAxis } from './build-entry'
 // 🛑 `RoleSourceRow` lives in `types.ts`, which is client-safe: a settings
 // screen holds the shape and this file reaches a database. Re-exported so a

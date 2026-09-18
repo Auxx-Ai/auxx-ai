@@ -9,7 +9,7 @@
 // mounts at once and `ledgerOpening.get` therefore fires before the previous
 // page's settings write lands.
 
-import type { OpeningTrialBalanceRow } from '@auxx/lib/postings/client'
+import type { OpeningTrialBalanceRow } from '@auxx/lib/accounting/opening/client'
 import { describe, expect, it } from 'vitest'
 import {
   accountIdFromRowId,

@@ -11,9 +11,9 @@
 import { schema } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
 import { beforeEach, describe, expect, it } from 'vitest'
+import type { PayoutRecordEvidence } from '../../customer-money/record-contracts'
+import { writeFinancialRecords } from '../../customer-money/record-storage'
 import { listPayoutEvidence, listPayoutSourceAccounts } from '../evidence-reads'
-import type { PayoutRecordEvidence } from '../record-contracts'
-import { writeFinancialRecords } from '../record-storage'
 
 const ALPHA = {
   providerKey: 'gateway_a',

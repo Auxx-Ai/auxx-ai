@@ -59,10 +59,10 @@ vi.mock('../../customer-money/refund-accounting', () => ({
     return { status: 'accepted', glPostingId: 'gl-1' }
   },
 }))
-vi.mock('../../payouts/stripe-account', () => ({
+vi.mock('../../stripe-connect/account', () => ({
   getPaymentAccount: async () => ({ stripeAccountId: 'acct_1' }),
 }))
-vi.mock('../../payouts/stripe-connect-client', () => ({
+vi.mock('../../stripe-connect/client', () => ({
   getStripeConnectClient: () => ({ refunds: { create: h.refundCreate } }),
 }))
 vi.mock('../../commands/run-money-command', () => ({

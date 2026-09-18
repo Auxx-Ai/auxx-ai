@@ -9,14 +9,14 @@
 
 import { closePools, database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { listChartAccounts, verifyBooksBalance } from '../src/postings'
 import {
   createJournalEntry,
   postJournalEntry,
   previewJournalEntry,
   reverseJournalEntry,
   updateJournalEntry,
-} from '../src/postings/journal-entries'
+} from '../src/accounting/journals/entries'
+import { listChartAccounts, verifyBooksBalance } from '../src/postings'
 import { listPostings, listPostingsForSource } from '../src/postings/list-postings'
 
 function show(label: string, value: unknown) {

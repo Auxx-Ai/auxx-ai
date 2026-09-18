@@ -20,7 +20,7 @@
 // our own page - so there is no navigation for the return route to catch, and the
 // browser POSTs the result back itself.
 
-import type { BankConnectionStart } from '@auxx/lib/banking/client'
+import type { BankConnectionStart } from '@auxx/lib/accounting/banking/client'
 import { Alert } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {

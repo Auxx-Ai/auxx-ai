@@ -47,7 +47,7 @@
 // person from being offered a choice that would be refused; it does not replace
 // the refusal.
 
-import { isMappableTo } from '@auxx/lib/postings/client'
+import { isMappableTo } from '@auxx/lib/accounting/providers/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

@@ -24,7 +24,7 @@ import {
   previewRulePattern,
   runSuggestionsForAccount,
   updateRule,
-} from '@auxx/lib/banking/rules'
+} from '@auxx/lib/accounting/banking/rules'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'

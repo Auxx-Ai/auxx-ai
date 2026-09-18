@@ -13,7 +13,7 @@
  * not an input to the summary).
  */
 
-import { fiscalYearStart } from '@auxx/lib/postings/client'
+import { fiscalYearStart } from '@auxx/lib/accounting/reports/client'
 import { todayInZone } from '@auxx/utils/calendar-day'
 import { useQueryState } from 'nuqs'
 import { useCallback } from 'react'
