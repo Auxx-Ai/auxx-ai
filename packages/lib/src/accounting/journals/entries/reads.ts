@@ -23,9 +23,10 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { NotFoundError, UnprocessableEntityError } from '../../../errors'
 import {
-  inPageOrder,
   readSystemRecords,
   type SystemRecord,
+  systemInstanceColumns,
+  systemRecordScope,
   systemValueJoin,
 } from '../../../resources/system-records'
 import { parsePeriodKey } from '../../ledger/periods/periods'
@@ -115,13 +116,9 @@ export async function listJournalEntries(
       const ctx = await loadJournalEntryFieldContext(db, organizationId)
       if (!ctx) return []
 
-      const where: SQL[] = [
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-        isNull(schema.EntityInstance.archivedAt),
-      ]
+      const where: SQL[] = [systemRecordScope(organizationId, ctx.defId)]
 
-      let query = db.select({ id: schema.EntityInstance.id }).from(schema.EntityInstance).$dynamic()
+      let query = db.select(systemInstanceColumns).from(schema.EntityInstance).$dynamic()
 
       // 🛑 Every draft carries a posting now (TARGET §1), so this is a plain
       // INNER join through the pointer to `GlPosting.status` - there is no
@@ -201,9 +198,8 @@ export async function listJournalEntries(
         .offset(filters.offset ?? 0)
 
       if (rows.length === 0) return []
-      const ids = rows.map((row) => row.id)
-      const records = await readSystemRecords(db, organizationId, ctx, { ids })
-      return hydrate(db, organizationId, ctx, inPageOrder(records, ids))
+      const records = await readSystemRecords(db, organizationId, ctx, { instances: rows })
+      return hydrate(db, organizationId, ctx, records)
     },
     'Failed to list journal entries',
     { organizationId, filters }

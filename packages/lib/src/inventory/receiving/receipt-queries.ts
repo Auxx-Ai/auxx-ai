@@ -24,12 +24,14 @@ import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-
 import { VENDOR_PART_FIELDS } from '../../resources/registry/resources/vendor-part-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import {
-  inPageOrder,
   readSystemRecords,
   type SystemFieldContext,
+  type SystemInstanceRow,
   type SystemRecord,
   systemFieldMap,
   systemFields,
+  systemInstanceColumns,
+  systemRecordScope,
   systemValueJoin,
 } from '../../resources/system-records'
 import { resolveOfferTariff } from '../costing/vendor-cost'
@@ -113,9 +115,7 @@ export async function listReceipts(
         : sql<Date>`${schema.EntityInstance.createdAt}`
 
       const where: SQL[] = [
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, defId),
-        isNull(schema.EntityInstance.archivedAt),
+        systemRecordScope(organizationId, defId),
         // A SINGLE_SELECT stores its chosen value in `optionId`; for a
         // system-seeded enum that id IS the value ('receive').
         eq(typeValue.optionId, 'receive'),
@@ -125,7 +125,7 @@ export async function listReceipts(
       if (filters.until) where.push(lte(accountingDate, filters.until))
 
       let query = db
-        .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
+        .select(systemInstanceColumns)
         .from(schema.EntityInstance)
         .innerJoin(typeValue, systemValueJoin(typeValue, fields.stock_movement_type!.id))
         .$dynamic()
@@ -160,12 +160,7 @@ export async function listReceipts(
         .offset(offset)
 
       if (rows.length === 0) return []
-      return hydrateReceipts(
-        db,
-        organizationId,
-        ctx,
-        rows.map((row) => row.id)
-      )
+      return hydrateReceipts(db, organizationId, ctx, rows)
     },
     'Failed to list receipts',
     { organizationId, filters }
@@ -188,7 +183,7 @@ function relationJoin(
 }
 
 /**
- * Turn a page of movement ids into full rows.
+ * Turn a page of movement rows into full rows.
  *
  * The alternative — a join per attribute on the paging query — multiplies the
  * row count by the number of multi-valued fields and makes `LIMIT` mean
@@ -198,10 +193,10 @@ async function hydrateReceipts(
   db: Database,
   organizationId: string,
   ctx: SystemFieldContext<ReceiptAttribute>,
-  ids: string[]
+  instances: SystemInstanceRow[]
 ): Promise<ReceiptRow[]> {
-  const records = await readSystemRecords(db, organizationId, ctx, { ids })
-  return inPageOrder(records, ids).map((record) => toReceiptRow(ctx, record))
+  const records = await readSystemRecords(db, organizationId, ctx, { instances })
+  return records.map((record) => toReceiptRow(ctx, record))
 }
 
 function toReceiptRow(

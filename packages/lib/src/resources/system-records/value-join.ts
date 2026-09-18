@@ -29,3 +29,15 @@ export function systemValueJoin(
     eq(table.fieldId, fieldId)
   )
 }
+
+/**
+ * A materialised field's id, or a sentinel that matches no row — for the optional
+ * fields a static query reaches through a LEFT JOIN, so an unmaterialised one reads
+ * `null` instead of forcing a conditional join and a different nullability per branch.
+ *
+ * 🛑 A missing field is therefore indistinguishable from an empty value. Never use it
+ * for a filter whose absence would WIDEN the answer; require that field outright.
+ */
+export function optionalFieldId(field: { id: string } | null | undefined): string {
+  return field?.id ?? '__unmaterialised__'
+}

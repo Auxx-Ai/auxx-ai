@@ -164,13 +164,17 @@ export { getResourceFor, listResourcesFor, projectResource } from './schema-read
 export type {
   ReadSystemRecordsOptions,
   SystemFieldContext,
+  SystemInstanceRow,
   SystemRecord,
 } from './system-records'
 export {
+  optionalFieldId,
   readSystemRecords,
   requireSystemFields,
   systemDefId,
   systemFieldMap,
   systemFields,
+  systemInstanceColumns,
+  systemRecordScope,
   systemValueJoin,
 } from './system-records'

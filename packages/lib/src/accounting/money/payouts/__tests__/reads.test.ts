@@ -164,6 +164,13 @@ describe('listPayouts', () => {
 
   /** Every `select().from(<table>)` resolves to a fixed row set by table identity. */
   function stubPayoutsDb(rows: { entityInstance: unknown[]; fieldValue: unknown[] }): Database {
+    // The scope columns the real paging query selects, so the fixtures stay terse
+    // and `readSystemRecords` still sees a page it owns.
+    const instances = rows.entityInstance.map((row) => ({
+      organizationId: ORG,
+      entityDefinitionId: PAYOUT_DEF,
+      ...(row as object),
+    }))
     const chain = (data: unknown[]): Record<string, unknown> => {
       const c: Record<string, unknown> = {}
       for (const method of ['innerJoin', 'where', 'orderBy', 'limit', 'offset', '$dynamic']) {
@@ -177,7 +184,7 @@ describe('listPayouts', () => {
     return {
       select: () => ({
         from: (target: unknown) =>
-          target === schema.EntityInstance ? chain(rows.entityInstance) : chain(rows.fieldValue),
+          target === schema.EntityInstance ? chain(instances) : chain(rows.fieldValue),
       }),
     } as unknown as Database
   }

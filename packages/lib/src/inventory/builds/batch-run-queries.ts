@@ -52,7 +52,7 @@ import { toDate } from '@auxx/utils/calendar-day'
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { systemValueJoin } from '../../resources/system-records'
+import { optionalFieldId, systemValueJoin } from '../../resources/system-records'
 import { loadBuildContext } from './build-queries'
 import { type BuildStatusValue, resolveBuildStatus } from './client'
 import { guard } from './guard'
@@ -195,7 +195,7 @@ async function queryBatchRunBuilds(
   const reversedByValue = alias(schema.FieldValue, 'batch_run_reversed_by_v')
   const reversedByInstance = alias(schema.EntityInstance, 'batch_run_reversed_by_ei')
 
-  const reversalFieldId = fieldId(ctx.fields.build_reversal_of)
+  const reversalFieldId = optionalFieldId(ctx.fields.build_reversal_of)
 
   const rows = await db
     .select({
@@ -220,14 +220,17 @@ async function queryBatchRunBuilds(
         ...(runNumber == null ? [] : [eq(runValue.valueNumber, runNumber)])
       )
     )
-    .leftJoin(statusValue, systemValueJoin(statusValue, fieldId(ctx.fields.build_status)))
-    .leftJoin(partValue, systemValueJoin(partValue, fieldId(ctx.fields.build_part)))
+    .leftJoin(statusValue, systemValueJoin(statusValue, optionalFieldId(ctx.fields.build_status)))
+    .leftJoin(partValue, systemValueJoin(partValue, optionalFieldId(ctx.fields.build_part)))
     .leftJoin(reversalOfValue, systemValueJoin(reversalOfValue, reversalFieldId))
     .leftJoin(
       periodStartValue,
-      systemValueJoin(periodStartValue, fieldId(ctx.fields.build_period_start))
+      systemValueJoin(periodStartValue, optionalFieldId(ctx.fields.build_period_start))
     )
-    .leftJoin(periodEndValue, systemValueJoin(periodEndValue, fieldId(ctx.fields.build_period_end)))
+    .leftJoin(
+      periodEndValue,
+      systemValueJoin(periodEndValue, optionalFieldId(ctx.fields.build_period_end))
+    )
     // 🛑 The reversal edge read BACKWARDS, which is what `willReverse` turns on.
     // A LEFT JOIN plus `IS NULL`, so a build nothing has reversed is kept
     // alongside one whose reversal is archived; an inner join would keep exactly
@@ -342,17 +345,4 @@ function later(current: Date | null, candidate: Date | null): Date | null {
   if (!candidate) return current
   if (!current) return candidate
   return candidate.getTime() > current.getTime() ? candidate : current
-}
-
-/**
- * A materialised field's id, or a sentinel that matches no row.
- *
- * Every field reached through it is on a LEFT JOIN, so joining on an id that
- * cannot exist gives exactly the behaviour an unmaterialised field should have:
- * the column reads `null`. `build_batch_run` itself is required above rather
- * than defaulted, because its absence would WIDEN the answer to every build in
- * the org. Same rule, same reason, as `backfill-queries.ts`.
- */
-function fieldId(field: { id: string } | null | undefined): string {
-  return field?.id ?? '__unmaterialised__'
 }
