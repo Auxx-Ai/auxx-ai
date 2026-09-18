@@ -23,13 +23,21 @@ import { toDate, toDateKey } from '@auxx/utils/calendar-day'
 import { and, desc, eq, gte, inArray, isNull, lte, or, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../../cache'
-import { NotFoundError, UnprocessableEntityError } from '../../../errors'
-import { toRecordId } from '../../../resources/resource-id'
-import { systemValueJoin } from '../../../resources/system-records'
+import { getCachedEntityDefId } from '../../../cache'
+import { NotFoundError } from '../../../errors'
+import {
+  readSystemRecords,
+  type SystemRecord,
+  systemValueJoin,
+} from '../../../resources/system-records'
 import { loadChartAccountsById } from '../../ledger/chart/chart-accounts'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import type { BankAccountRow } from '../client'
+import {
+  type BankTransactionReviewAttribute,
+  loadReviewFieldContext,
+  type ReviewFieldContext,
+} from '../fields'
 import { guard } from '../guard'
 import { listBankAccounts, readCoverage } from '../reads'
 import {
@@ -50,115 +58,8 @@ import {
   scoreCandidate,
 } from './client'
 
-/** Every `bank_transaction` attribute a {@link BankTransactionRow} is assembled from. */
-const TRANSACTION_ATTRIBUTES = [
-  'bank_transaction_external_id',
-  'bank_transaction_bank_account',
-  'bank_transaction_posted_at',
-  'bank_transaction_description',
-  'bank_transaction_amount',
-  'bank_transaction_bank_status',
-  'bank_transaction_match_key',
-  'bank_transaction_import_batch_id',
-  'bank_transaction_source',
-  'bank_transaction_review_status',
-  'bank_transaction_gl_account',
-  'bank_transaction_matched_record_id',
-  'bank_transaction_matched_record_type',
-  'bank_transaction_exclude_reason',
-  'bank_transaction_reviewed_at',
-  'bank_transaction_reviewed_by_user_id',
-  'bank_transaction_rule_id',
-] as const
-
-type TransactionAttribute = (typeof TRANSACTION_ATTRIBUTES)[number]
-type TransactionFields = Record<TransactionAttribute, { id: string } | null>
-
-/**
- * 3C's fields, read by NAME rather than through the typed cache.
- *
- * 🛑 These two are not in `SystemAttribute` yet - slot 3C adds them with the
- * `bank_rule` def (migration 125) - so `bySystemAttributes` cannot be asked for
- * them without a type error, and a closed union is the right place for that
- * error to be. Reading them off `CustomField` by string keeps this slot
- * independent of 3C's landing order: the queue works with no suggestion at all,
- * and the code panel prefills the moment the fields exist.
- *
- * The names are declared in HANDOFF §5 so 3C writes the same two.
- */
-const SUGGESTION_ATTRIBUTE_NAMES = [
-  'bank_transaction_suggested_gl_account',
-  'bank_transaction_suggestion_reason',
-] as const
-
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 500
-
-/** The resolved def and field ids every review read needs. */
-export interface ReviewFieldContext {
-  bankTransactionDefId: string
-  fields: TransactionFields
-  /** 3C's suggestion fields, keyed by attribute name. Empty until 3C lands. */
-  suggestionFields: Record<string, string>
-}
-
-/**
- * Resolve the `bank_transaction` def and its fields, or `null` when the org has
- * not run entity migration 125 yet.
- *
- * `null` rather than a throw so the queue on an unmigrated org renders an empty
- * state instead of 500ing. The WRITE paths call {@link requireReviewFieldContext}
- * instead: a treatment that silently did nothing would be worse than a refusal.
- */
-export async function loadReviewFieldContext(
-  organizationId: string
-): Promise<ReviewFieldContext | null> {
-  const bankTransactionDefId = await getCachedEntityDefId(organizationId, 'bank_transaction')
-  if (!bankTransactionDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...TRANSACTION_ATTRIBUTES])) as TransactionFields
-  // Without `review_status` and `amount` there is no queue at all: the state
-  // filter and every figure on the stat strip both reduce to nothing.
-  if (!fields.bank_transaction_review_status || !fields.bank_transaction_amount) return null
-  return { bankTransactionDefId, fields, suggestionFields: {} }
-}
-
-/** {@link loadReviewFieldContext}, as the refusal a write path needs. */
-export async function requireReviewFieldContext(
-  organizationId: string
-): Promise<ReviewFieldContext> {
-  const ctx = await loadReviewFieldContext(organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'The bank review queue is not available until the bank transaction entity and its ' +
-        'fields are provisioned (entity migration 125)'
-    )
-  }
-  return ctx
-}
-
-/** {@link loadReviewFieldContext} plus 3C's suggestion fields, when they exist. */
-async function loadReviewFieldContextWithSuggestions(
-  db: Database,
-  organizationId: string
-): Promise<ReviewFieldContext | null> {
-  const ctx = await loadReviewFieldContext(organizationId)
-  if (!ctx) return null
-  const rows = await db
-    .select({ id: schema.CustomField.id, attr: schema.CustomField.systemAttribute })
-    .from(schema.CustomField)
-    .where(
-      and(
-        eq(schema.CustomField.organizationId, organizationId),
-        eq(schema.CustomField.entityDefinitionId, ctx.bankTransactionDefId),
-        inArray(schema.CustomField.systemAttribute, [...SUGGESTION_ATTRIBUTE_NAMES])
-      )
-    )
-  const suggestionFields: Record<string, string> = {}
-  for (const row of rows) if (row.attr) suggestionFields[row.attr] = row.id
-  return { ...ctx, suggestionFields }
-}
 
 /** What {@link listForReview} narrows on. Every one of them runs in SQL. */
 export interface ListForReviewFilters {
@@ -194,12 +95,12 @@ export async function listForReview(
   const { organizationId } = filters
   return guard(
     async () => {
-      const ctx = await loadReviewFieldContextWithSuggestions(db, organizationId)
+      const ctx = await loadReviewFieldContext(db, organizationId)
       if (!ctx) return []
 
       const where: SQL[] = [
         eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.bankTransactionDefId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
         isNull(schema.EntityInstance.archivedAt),
       ]
 
@@ -340,7 +241,7 @@ async function readBankTransaction(
   organizationId: string,
   transactionId: string
 ): Promise<BankTransactionRow | null> {
-  const ctx = await loadReviewFieldContextWithSuggestions(db, organizationId)
+  const ctx = await loadReviewFieldContext(db, organizationId)
   if (!ctx) return null
   const [instance] = await db
     .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
@@ -349,7 +250,7 @@ async function readBankTransaction(
       and(
         eq(schema.EntityInstance.id, transactionId),
         eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.bankTransactionDefId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
         isNull(schema.EntityInstance.archivedAt)
       )
     )
@@ -391,7 +292,7 @@ export async function readQueueStats(
         coverageFrom: null,
         coverageGapCount: 0,
       }
-      const ctx = await loadReviewFieldContext(organizationId)
+      const ctx = await loadReviewFieldContext(db, organizationId)
       if (!ctx) return empty
 
       const statusField = ctx.fields.bank_transaction_review_status
@@ -441,7 +342,7 @@ export async function readQueueStats(
         .where(
           and(
             eq(schema.EntityInstance.organizationId, organizationId),
-            eq(schema.EntityInstance.entityDefinitionId, ctx.bankTransactionDefId),
+            eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
             isNull(schema.EntityInstance.archivedAt)
           )
         )
@@ -1119,8 +1020,11 @@ async function readBankLinesClaimingMoney(
 
 /**
  * Turn a page of bank-line ids into full rows with a bounded number of queries:
- * one for the field values, one for the accounts. Never one per row - a queue
- * page is a hundred lines and the real backlog is 2,390.
+ * the reader's two, one for the live postings, one for the accounts. Never one
+ * per row - a queue page is a hundred lines and the real backlog is 2,390.
+ *
+ * 🛑 The page's ORDER is the caller's, not the reader's: `listForReview` sorts
+ * on `postedAt` in SQL, and the reader answers in `createdAt` order.
  */
 async function hydrateTransactions(
   db: Database,
@@ -1129,33 +1033,8 @@ async function hydrateTransactions(
   page: { id: string; createdAt: Date | null }[]
 ): Promise<BankTransactionRow[]> {
   const ids = page.map((row) => row.id)
-  const fieldIds = [
-    ...Object.values(ctx.fields)
-      .filter((field): field is { id: string } => field != null)
-      .map((field) => field.id),
-    ...Object.values(ctx.suggestionFields),
-  ]
-
-  const values = fieldIds.length
-    ? await db
-        .select({
-          entityId: schema.FieldValue.entityId,
-          fieldId: schema.FieldValue.fieldId,
-          valueText: schema.FieldValue.valueText,
-          valueNumber: schema.FieldValue.valueNumber,
-          valueDate: schema.FieldValue.valueDate,
-          optionId: schema.FieldValue.optionId,
-          relatedEntityId: schema.FieldValue.relatedEntityId,
-        })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            inArray(schema.FieldValue.entityId, ids),
-            inArray(schema.FieldValue.fieldId, fieldIds)
-          )
-        )
-    : []
+  const records = await readSystemRecords(db, organizationId, ctx, { ids })
+  const byId = new Map(records.map((record) => [record.id, record]))
 
   // The live posting each line currently claims, read through `GlPostingSource`
   // (TARGET §1) rather than the retired `bank_transaction_gl_posting_id` stamp:
@@ -1179,25 +1058,6 @@ async function hydrateTransactions(
     : []
   const glPostingIdBySourceId = new Map(livePostings.map((row) => [row.sourceId, row.glPostingId]))
 
-  const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
-  for (const value of values) {
-    let bucket = byInstance.get(value.entityId)
-    if (!bucket) {
-      bucket = new Map()
-      byInstance.set(value.entityId, bucket)
-    }
-    bucket.set(value.fieldId, value)
-  }
-
-  const read = (instanceId: string, attr: TransactionAttribute) => {
-    const id = ctx.fields[attr]?.id
-    return id ? (byInstance.get(instanceId)?.get(id) ?? null) : null
-  }
-  const readSuggestion = (instanceId: string, attr: string) => {
-    const id = ctx.suggestionFields[attr]
-    return id ? (byInstance.get(instanceId)?.get(id) ?? null) : null
-  }
-
   // 🛑 The account's mapped GL code is read THROUGH the account, never copied
   // onto the line. One list read for the whole page - an org has a handful of
   // accounts and a page has a hundred lines.
@@ -1205,45 +1065,54 @@ async function hydrateTransactions(
   const accountById = new Map<string, BankAccountRow>()
   if (accounts.isOk()) for (const account of accounts.value) accountById.set(account.id, account)
 
-  return page.map((row) => {
-    const bankAccountId = read(row.id, 'bank_transaction_bank_account')?.relatedEntityId ?? null
-    const account = bankAccountId ? accountById.get(bankAccountId) : undefined
-    const postedAt = read(row.id, 'bank_transaction_posted_at')?.valueDate
-    return {
-      id: row.id,
-      recordId: toRecordId(ctx.bankTransactionDefId, row.id),
-      externalId: read(row.id, 'bank_transaction_external_id')?.valueText ?? null,
-      bankAccountId,
-      bankAccountName: account?.name ?? null,
-      bankAccountGlAccountId: account?.glAccountId ?? null,
-      bankAccountConnectorId: account?.connectorId ?? null,
-      postedAt: postedAt ? toDateKey(postedAt) : null,
-      description: read(row.id, 'bank_transaction_description')?.valueText ?? null,
-      // `valueNumber` is a DOUBLE, and this column is already integer minor
-      // units by the provider's own convention. Rounded, never divided.
-      amountMinor: Math.round(read(row.id, 'bank_transaction_amount')?.valueNumber ?? 0),
-      bankStatus: narrowBankStatus(read(row.id, 'bank_transaction_bank_status')?.optionId),
-      matchKey: read(row.id, 'bank_transaction_match_key')?.valueText ?? null,
-      source: read(row.id, 'bank_transaction_source')?.optionId ?? null,
-      importBatchId: read(row.id, 'bank_transaction_import_batch_id')?.valueText ?? null,
-      reviewStatus: narrowReviewStatus(read(row.id, 'bank_transaction_review_status')?.optionId),
-      glAccountId: read(row.id, 'bank_transaction_gl_account')?.valueText ?? null,
-      matchedRecordId: read(row.id, 'bank_transaction_matched_record_id')?.valueText ?? null,
-      matchedRecordType: narrowMatchRecordType(
-        read(row.id, 'bank_transaction_matched_record_type')?.valueText
-      ),
-      excludeReason: read(row.id, 'bank_transaction_exclude_reason')?.valueText ?? null,
-      reviewedAt: toDate(read(row.id, 'bank_transaction_reviewed_at')?.valueDate),
-      reviewedByUserId: read(row.id, 'bank_transaction_reviewed_by_user_id')?.valueText ?? null,
-      glPostingId: glPostingIdBySourceId.get(row.id) ?? null,
-      ruleId: read(row.id, 'bank_transaction_rule_id')?.valueText ?? null,
-      suggestedGlAccountId:
-        readSuggestion(row.id, 'bank_transaction_suggested_gl_account')?.valueText ?? null,
-      suggestionReason:
-        readSuggestion(row.id, 'bank_transaction_suggestion_reason')?.valueText ?? null,
-      createdAt: row.createdAt,
-    } satisfies BankTransactionRow
-  })
+  const out: BankTransactionRow[] = []
+  for (const row of page) {
+    const record = byId.get(row.id)
+    if (!record) continue
+    out.push(toTransactionRow(record, row.createdAt, accountById, glPostingIdBySourceId))
+  }
+  return out
+}
+
+function toTransactionRow(
+  record: SystemRecord<BankTransactionReviewAttribute>,
+  createdAt: Date | null,
+  accountById: Map<string, BankAccountRow>,
+  glPostingIdBySourceId: Map<string, string>
+): BankTransactionRow {
+  const bankAccountId = record.related('bank_transaction_bank_account')
+  const account = bankAccountId ? accountById.get(bankAccountId) : undefined
+  const postedAt = record.date('bank_transaction_posted_at')
+  return {
+    id: record.id,
+    recordId: record.recordId,
+    externalId: record.text('bank_transaction_external_id'),
+    bankAccountId,
+    bankAccountName: account?.name ?? null,
+    bankAccountGlAccountId: account?.glAccountId ?? null,
+    bankAccountConnectorId: account?.connectorId ?? null,
+    postedAt: postedAt ? toDateKey(postedAt) : null,
+    description: record.text('bank_transaction_description'),
+    // `valueNumber` is a DOUBLE, and this column is already integer minor units
+    // by the provider's own convention. Rounded, never divided.
+    amountMinor: Math.round(record.number('bank_transaction_amount') ?? 0),
+    bankStatus: narrowBankStatus(record.option('bank_transaction_bank_status')),
+    matchKey: record.text('bank_transaction_match_key'),
+    source: record.option('bank_transaction_source'),
+    importBatchId: record.text('bank_transaction_import_batch_id'),
+    reviewStatus: narrowReviewStatus(record.option('bank_transaction_review_status')),
+    glAccountId: record.text('bank_transaction_gl_account'),
+    matchedRecordId: record.text('bank_transaction_matched_record_id'),
+    matchedRecordType: narrowMatchRecordType(record.text('bank_transaction_matched_record_type')),
+    excludeReason: record.text('bank_transaction_exclude_reason'),
+    reviewedAt: toDate(record.date('bank_transaction_reviewed_at')),
+    reviewedByUserId: record.text('bank_transaction_reviewed_by_user_id'),
+    glPostingId: glPostingIdBySourceId.get(record.id) ?? null,
+    ruleId: record.text('bank_transaction_rule_id'),
+    suggestedGlAccountId: record.text('bank_transaction_suggested_gl_account'),
+    suggestionReason: record.text('bank_transaction_suggestion_reason'),
+    createdAt,
+  } satisfies BankTransactionRow
 }
 
 /**

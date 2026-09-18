@@ -16,9 +16,10 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { and, eq, isNotNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
+import { requireBankTransactionImportContext } from '../fields'
 import { guard } from '../guard'
 import { listBankAccounts } from '../reads'
-import { hydrateTransactions, requireBankTransactionImportContext } from './fields'
+import { hydrateTransactions } from './reads'
 import { refusalReason } from './reverse'
 import type { BankImportBatch } from './types'
 
@@ -35,7 +36,7 @@ export async function listImportBatches(
   const { organizationId, bankAccountId } = params
   return guard(
     async () => {
-      const ctx = await requireBankTransactionImportContext(organizationId)
+      const ctx = await requireBankTransactionImportContext(db, organizationId)
       const batchFieldId = ctx.fields.bank_transaction_import_batch_id?.id
       if (!batchFieldId) return []
 

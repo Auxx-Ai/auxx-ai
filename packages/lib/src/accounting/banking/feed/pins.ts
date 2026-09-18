@@ -34,36 +34,11 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { setConnectorFieldPin } from '../../../data-connectors/mutations'
-import { loadBankTransactionFieldContext } from '../reads'
+import { BANK_TRANSACTION_PIN_ATTRIBUTES, loadBankTransactionPinContext } from '../fields'
 
 const logger = createScopedLogger('banking-feed')
 
-/**
- * The raw columns the connector owns and the poster freezes.
- *
- * ⚠️ `matchKey` and `source` are deliberately NOT here. They are derived, not
- * transcribed: re-normalising a description the bank corrected is harmless, and a row's
- * source cannot change. Pinning them would only make a healed description disagree with
- * the key derived from it.
- *
- * 🛑 **`bankStatus` is deliberately NOT here either, and that is a correction.** The
- * fields that corrupt a posting are the ones the entry was BUILT from - the amount, the
- * date, the account, the identity - and `bankStatus` is none of them. What it does carry
- * is the bank withdrawing the transaction: a pending charge that was coded and then
- * VOIDED. The sink drops a pinned field silently (`entity-sink.ts` `buildWriteSet`), so
- * pinning it would leave the row reading `pending` forever, a posting standing in the
- * books for money that never moved, and no signal anywhere - where an unpinned status
- * flips the row to `void`, which is what the queue shows and what `undoReview` is for
- * (a void line is deliberately still undoable).
- */
-const PINNED_ATTRIBUTES = [
-  'bank_transaction_external_id',
-  'bank_transaction_bank_account',
-  'bank_transaction_posted_at',
-  'bank_transaction_description',
-  'bank_transaction_amount',
-] as const
-
+/** What the two pin verbs are told about one posted line. */
 export interface BankTransactionPinInput {
   organizationId: string
   /** The `bank_transaction` `EntityInstance.id`. */
@@ -112,19 +87,12 @@ async function setPins(
   input: BankTransactionPinInput,
   pinned: boolean
 ): Promise<number> {
-  const ctx = await loadBankTransactionFieldContext(input.organizationId)
+  const ctx = await loadBankTransactionPinContext(db, input.organizationId)
   if (!ctx) return 0
 
-  // `loadBankTransactionFieldContext` resolves only the two fields the coverage read
-  // needs, so the full set is read here from the same cache.
-  const { getOrgCache } = await import('../../../cache')
-  const fields = (await getOrgCache()
-    .from(input.organizationId, 'customFields')
-    .bySystemAttributes([...PINNED_ATTRIBUTES])) as Record<string, { id: string } | null>
-
   let changed = 0
-  for (const attribute of PINNED_ATTRIBUTES) {
-    const field = fields[attribute]
+  for (const attribute of BANK_TRANSACTION_PIN_ATTRIBUTES) {
+    const field = ctx.fields[attribute]
     if (!field) continue
     const result = await setConnectorFieldPin(db, {
       organizationId: input.organizationId,

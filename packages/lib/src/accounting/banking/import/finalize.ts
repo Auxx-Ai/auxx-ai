@@ -39,19 +39,18 @@ import { BadRequestError, NotFoundError } from '../../../errors'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
 import type { CoverageGap } from '../client'
-import { guard } from '../guard'
-import { getBankAccount, readCoverage, requireBankAccountFieldContext } from '../reads'
-import { runSuggestionsForAccount } from '../rules/writes'
-import { earliest, withinWindow } from './coverage-effect'
 import {
   type BankTransactionImportContext,
-  type BankTransactionRow,
-  hydrateTransactions,
-  readTransactionsByAccount,
+  requireBankAccountFieldContext,
   requireBankTransactionImportContext,
-} from './fields'
+} from '../fields'
+import { guard } from '../guard'
+import { getBankAccount, readCoverage } from '../reads'
+import { runSuggestionsForAccount } from '../rules/writes'
+import { earliest, withinWindow } from './coverage-effect'
 import { subtractCoveredRange } from './gaps'
 import { buildImportedExternalId, normalizeMatchKey } from './match-key'
+import { type BankTransactionRow, hydrateTransactions, readTransactionsByAccount } from './reads'
 import type { FinalizeBankImportResult } from './types'
 import { IMPORT_LINK_EXCLUSION_PREFIX } from './types'
 
@@ -83,7 +82,7 @@ export async function finalizeBankImport(
         throw new NotFoundError(`Bank account ${bankAccountId} was not found`)
       }
 
-      const ctx = await requireBankTransactionImportContext(organizationId)
+      const ctx = await requireBankTransactionImportContext(db, organizationId)
       const producedIds = await readProducedRecordIds(db, organizationId, importJobId)
       if (producedIds.length === 0) {
         throw new BadRequestError(
@@ -105,7 +104,7 @@ export async function finalizeBankImport(
 
       const produced = await readProducedRows(db, organizationId, ctx, producedIds)
       const accountRecordId = toRecordId(
-        (await requireBankAccountFieldContext(organizationId)).bankAccountDefId,
+        (await requireBankAccountFieldContext(db, organizationId)).defId,
         bankAccountId
       )
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
@@ -167,7 +166,7 @@ export async function finalizeBankImport(
           }
         }
 
-        await crud.update(toRecordId(ctx.bankTransactionDefId, row.id), patch)
+        await crud.update(toRecordId(ctx.defId, row.id), patch)
         stamped += 1
       }
 
@@ -255,9 +254,9 @@ export async function moveCoverage(
   const changedGaps = JSON.stringify(storedGaps) !== JSON.stringify(params.storedGaps)
 
   if (changedFrom || changedGaps) {
-    const accountCtx = await requireBankAccountFieldContext(organizationId)
+    const accountCtx = await requireBankAccountFieldContext(db, organizationId)
     const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-    await crud.update(toRecordId(accountCtx.bankAccountDefId, bankAccountId), {
+    await crud.update(toRecordId(accountCtx.defId, bankAccountId), {
       ...(changedFrom ? { bank_account_coverage_from: coverageFrom } : {}),
       ...(changedGaps ? { bank_account_coverage_gaps: storedGaps } : {}),
     })
@@ -313,7 +312,7 @@ async function readProducedRows(
     .where(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.bankTransactionDefId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
         inArray(schema.EntityInstance.id, producedIds)
       )
     )

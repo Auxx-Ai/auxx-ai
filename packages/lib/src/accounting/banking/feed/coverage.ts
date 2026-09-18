@@ -20,11 +20,16 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toDateKey } from '@auxx/utils/calendar-day'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
-import { loadBankAccountFieldContext, loadBankTransactionFieldContext } from '../reads'
+import { readSystemRecords } from '../../../resources/system-records'
+import {
+  type BankTransactionFieldContext,
+  loadBankAccountFieldContext,
+  loadBankTransactionFieldContext,
+} from '../fields'
 
 const logger = createScopedLogger('banking-feed')
 
@@ -46,8 +51,8 @@ export async function refreshBankAccountCoverage(
   input: RefreshCoverageInput
 ): Promise<number> {
   const { organizationId, connectorId } = input
-  const accountCtx = await loadBankAccountFieldContext(organizationId)
-  const txCtx = await loadBankTransactionFieldContext(organizationId)
+  const accountCtx = await loadBankAccountFieldContext(db, organizationId)
+  const txCtx = await loadBankTransactionFieldContext(db, organizationId)
   if (!accountCtx || !txCtx) return 0
 
   const connectorField = accountCtx.fields.bank_account_connector_id
@@ -57,7 +62,8 @@ export async function refreshBankAccountCoverage(
   if (!coverageField || !linkField || !dateField) return 0
 
   // Which accounts to look at: the one this connector feeds, or all of them.
-  let accountIds: string[]
+  // The connector id is a stored VALUE, so that half stays a raw lookup.
+  let connectorAccountIds: string[] | undefined
   if (connectorId) {
     if (!connectorField) return 0
     const rows = await db
@@ -70,34 +76,25 @@ export async function refreshBankAccountCoverage(
           eq(schema.FieldValue.valueText, connectorId)
         )
       )
-    accountIds = rows.map((row) => row.entityId)
-  } else {
-    const rows = await db
-      .select({ id: schema.EntityInstance.id })
-      .from(schema.EntityInstance)
-      .where(
-        and(
-          eq(schema.EntityInstance.organizationId, organizationId),
-          eq(schema.EntityInstance.entityDefinitionId, accountCtx.bankAccountDefId)
-        )
-      )
-    accountIds = rows.map((row) => row.id)
+    connectorAccountIds = rows.map((row) => row.entityId)
+    if (connectorAccountIds.length === 0) return 0
   }
-  if (accountIds.length === 0) return 0
 
-  const stored = await db
-    .select({ entityId: schema.FieldValue.entityId, valueDate: schema.FieldValue.valueDate })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, coverageField.id),
-        inArray(schema.FieldValue.entityId, accountIds)
-      )
-    )
+  // Archived accounts included, as this sweep has always included them: an
+  // archived account's stored floor is still read back by a restore.
+  const accounts = await readSystemRecords(db, organizationId, accountCtx, {
+    ids: connectorAccountIds,
+    includeArchived: true,
+  })
+  if (accounts.length === 0) return 0
+
   const storedByAccount = new Map(
-    stored.map((row) => [row.entityId, row.valueDate ? toDateKey(row.valueDate) : null])
+    accounts.map((account) => {
+      const stored = account.date('bank_account_coverage_from')
+      return [account.id, stored ? toDateKey(stored) : null]
+    })
   )
+  const accountIds = accounts.map((account) => account.id)
 
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   const crud = new UnifiedCrudHandler(organizationId, systemUserId, db)
@@ -106,8 +103,7 @@ export async function refreshBankAccountCoverage(
   for (const accountId of accountIds) {
     const earliest = await earliestTransactionDate(db, {
       organizationId,
-      linkFieldId: linkField.id,
-      dateFieldId: dateField.id,
+      txCtx,
       bankAccountId: accountId,
     })
     if (!earliest) continue
@@ -115,7 +111,7 @@ export async function refreshBankAccountCoverage(
     const current = storedByAccount.get(accountId) ?? null
     if (current && current <= earliest) continue
 
-    await crud.update(toRecordId(accountCtx.bankAccountDefId, accountId), {
+    await crud.update(toRecordId(accountCtx.defId, accountId), {
       bank_account_coverage_from: earliest,
     })
     moved += 1
@@ -149,39 +145,18 @@ async function earliestTransactionDate(
   db: Database,
   args: {
     organizationId: string
-    linkFieldId: string
-    dateFieldId: string
+    txCtx: BankTransactionFieldContext
     bankAccountId: string
   }
 ): Promise<string | null> {
-  const linked = await db
-    .select({ entityId: schema.FieldValue.entityId })
-    .from(schema.FieldValue)
-    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, args.organizationId),
-        eq(schema.FieldValue.fieldId, args.linkFieldId),
-        eq(schema.FieldValue.relatedEntityId, args.bankAccountId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-  const ids = [...new Set(linked.map((row) => row.entityId))]
-  if (ids.length === 0) return null
-
-  const dates = await db
-    .select({ valueDate: schema.FieldValue.valueDate })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, args.organizationId),
-        eq(schema.FieldValue.fieldId, args.dateFieldId),
-        inArray(schema.FieldValue.entityId, ids)
-      )
-    )
-
-  const keys = dates
-    .map((row) => (row.valueDate ? toDateKey(row.valueDate) : null))
+  const records = await readSystemRecords(db, args.organizationId, args.txCtx, {
+    by: { attribute: 'bank_transaction_bank_account', in: [args.bankAccountId] },
+  })
+  const keys = records
+    .map((record) => {
+      const posted = record.date('bank_transaction_posted_at')
+      return posted ? toDateKey(posted) : null
+    })
     .filter((key): key is string => key != null)
     .sort()
   return keys[0] ?? null

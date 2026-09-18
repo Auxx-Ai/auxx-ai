@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /** Which raw column a rule matches against. Mirrors bank plan 03 §4's input list. */
 export const BANK_RULE_MATCH_FIELD_OPTIONS = [
@@ -99,7 +99,7 @@ export const BANK_RULE_ACTION_OPTIONS = [
  * `applySuggestions` each time this rule fires, so "how much of my queue is
  * automatic" (03 §4) is answerable per rule, not just in aggregate.
  */
-export const BANK_RULE_FIELDS: Record<string, ResourceField> = {
+export const BANK_RULE_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -582,4 +582,4 @@ export const BANK_RULE_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

@@ -69,21 +69,18 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
     bulkDelete = h.crudBulkDelete
   },
 }))
+vi.mock('../fields', () => ({
+  requireReviewFieldContext: async () => ({ defId: 'def_bt', fields: {} }),
+  requireBankAccountFieldContext: async () => ({ defId: 'def_ba', fields: {} }),
+}))
 vi.mock('../review/reads', () => ({
-  requireReviewFieldContext: async () => ({
-    bankTransactionDefId: 'def_bt',
-    fields: {},
-    suggestionFields: {},
-  }),
   listForReview: async (_db: unknown, filters: { state?: string }) => ({
     isErr: () => false,
     isOk: () => true,
     value: h.linesByState.get(filters.state ?? 'for_review') ?? [],
   }),
-  loadReviewFieldContextWithSuggestions: async () => null,
 }))
 vi.mock('../reads', () => ({
-  requireBankAccountFieldContext: async () => ({ bankAccountDefId: 'def_ba', fields: {} }),
   getBankAccount: async () => ({
     isErr: () => false,
     isOk: () => true,

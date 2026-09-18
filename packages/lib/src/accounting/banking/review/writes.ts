@@ -48,8 +48,9 @@ import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import type { PostResult } from '../../ledger/types'
 import { clearBankDeposit } from '../../money/bank-deposits'
 import { pinPostedBankTransaction, unpinPostedBankTransaction } from '../feed/pins'
+import { requireBankAccountFieldContext, requireReviewFieldContext } from '../fields'
 import { guard } from '../guard'
-import { getBankAccount, requireBankAccountFieldContext } from '../reads'
+import { getBankAccount } from '../reads'
 import { buildCodedBankEntry, buildTransferEntry } from './build-entry'
 import {
   BANK_TRANSACTION_SOURCE_TYPE,
@@ -63,12 +64,7 @@ import {
   pickOppositeLeg,
   type ReviewOutcome,
 } from './client'
-import {
-  countBankTransactionPostings,
-  listForReview,
-  requireBankTransaction,
-  requireReviewFieldContext,
-} from './reads'
+import { countBankTransactionPostings, listForReview, requireBankTransaction } from './reads'
 
 const logger = createScopedLogger('banking-review')
 
@@ -117,7 +113,7 @@ export async function matchTransaction(
   const { organizationId, actorUserId, transactionId, recordType, recordId } = input
   return guard(
     async () => {
-      const ctx = await requireReviewFieldContext(organizationId)
+      const ctx = await requireReviewFieldContext(db, organizationId)
       const line = await requireBankTransaction(db, organizationId, transactionId)
       assertNotVoid(line, 'matched')
       // 🛑 A line that already posted may not be re-labelled `matched`. Match
@@ -150,7 +146,7 @@ export async function matchTransaction(
       }
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-      await crud.update(toRecordId(ctx.bankTransactionDefId, transactionId), {
+      await crud.update(toRecordId(ctx.defId, transactionId), {
         bank_transaction_review_status: 'matched',
         bank_transaction_matched_record_id: recordId,
         bank_transaction_matched_record_type: recordType,
@@ -226,7 +222,7 @@ export async function codeTransaction(
   const { organizationId, actorUserId, transactionId, glAccountId, memo } = input
   return guard(
     async () => {
-      const ctx = await requireReviewFieldContext(organizationId)
+      const ctx = await requireReviewFieldContext(db, organizationId)
       const line = await requireBankTransaction(db, organizationId, transactionId)
       assertNotVoid(line, 'coded')
       await assertNotPosted(db, organizationId, transactionId)
@@ -291,7 +287,7 @@ export async function codeTransaction(
       }
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-      await crud.update(toRecordId(ctx.bankTransactionDefId, transactionId), {
+      await crud.update(toRecordId(ctx.defId, transactionId), {
         bank_transaction_review_status: 'coded',
         bank_transaction_gl_account: glAccountId.trim(),
         bank_transaction_reviewed_at: new Date().toISOString(),
@@ -373,7 +369,7 @@ export async function transferTransaction(
   const { organizationId, actorUserId, transactionId, counterpartBankAccountId, memo } = input
   return guard(
     async () => {
-      const ctx = await requireReviewFieldContext(organizationId)
+      const ctx = await requireReviewFieldContext(db, organizationId)
       const line = await requireBankTransaction(db, organizationId, transactionId)
       assertNotVoid(line, 'transferred')
       await assertNotPosted(db, organizationId, transactionId)
@@ -412,7 +408,7 @@ export async function transferTransaction(
       if (alreadyPosted) {
         const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
         const linkedAt = new Date().toISOString()
-        await crud.update(toRecordId(ctx.bankTransactionDefId, transactionId), {
+        await crud.update(toRecordId(ctx.defId, transactionId), {
           bank_transaction_review_status: 'matched',
           bank_transaction_matched_record_id: alreadyPosted.id,
           bank_transaction_matched_record_type: 'bank_transaction',
@@ -423,7 +419,7 @@ export async function transferTransaction(
         // and where `undoReview` goes looking for it - but it stops being a
         // `coded` line pointing at an ACCOUNT and becomes the matched leg of a
         // pair, which is what it would have been had both legs arrived at once.
-        await crud.update(toRecordId(ctx.bankTransactionDefId, alreadyPosted.id), {
+        await crud.update(toRecordId(ctx.defId, alreadyPosted.id), {
           bank_transaction_review_status: 'matched',
           bank_transaction_matched_record_id: transactionId,
           bank_transaction_matched_record_type: 'bank_transaction',
@@ -520,7 +516,7 @@ export async function transferTransaction(
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
       const now = new Date().toISOString()
-      await crud.update(toRecordId(ctx.bankTransactionDefId, filedOn.id), {
+      await crud.update(toRecordId(ctx.defId, filedOn.id), {
         bank_transaction_review_status: other ? 'matched' : 'coded',
         bank_transaction_matched_record_id: other?.id ?? counterpartBankAccountId,
         bank_transaction_matched_record_type: other ? 'bank_transaction' : 'bank_account',
@@ -535,7 +531,7 @@ export async function transferTransaction(
       if (other) {
         // The second leg is `matched` and carries NO posting id: one event, one
         // entry, and the id lives on the leg that filed it.
-        await crud.update(toRecordId(ctx.bankTransactionDefId, other.id), {
+        await crud.update(toRecordId(ctx.defId, other.id), {
           bank_transaction_review_status: 'matched',
           bank_transaction_matched_record_id: filedOn.id,
           bank_transaction_matched_record_type: 'bank_transaction',
@@ -672,7 +668,7 @@ export async function excludeTransaction(
   const { organizationId, actorUserId, transactionId } = input
   return guard(
     async () => {
-      const ctx = await requireReviewFieldContext(organizationId)
+      const ctx = await requireReviewFieldContext(db, organizationId)
       // Existence check only - excluding needs nothing else off the row.
       await requireBankTransaction(db, organizationId, transactionId)
       await assertNotPosted(db, organizationId, transactionId)
@@ -686,7 +682,7 @@ export async function excludeTransaction(
       }
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-      await crud.update(toRecordId(ctx.bankTransactionDefId, transactionId), {
+      await crud.update(toRecordId(ctx.defId, transactionId), {
         bank_transaction_review_status: 'excluded',
         bank_transaction_exclude_reason: reason,
         bank_transaction_reviewed_at: new Date().toISOString(),
@@ -735,7 +731,7 @@ export async function undoReview(
   const { organizationId, actorUserId, transactionId, memo } = input
   return guard(
     async () => {
-      const ctx = await requireReviewFieldContext(organizationId)
+      const ctx = await requireReviewFieldContext(db, organizationId)
       const line = await requireBankTransaction(db, organizationId, transactionId)
 
       if (line.reviewStatus === 'for_review') {
@@ -820,7 +816,7 @@ export async function undoReview(
 
       if (line.matchedRecordId && line.matchedRecordType) {
         if (line.matchedRecordType === 'bank_transaction') {
-          await crud.update(toRecordId(ctx.bankTransactionDefId, line.matchedRecordId), {
+          await crud.update(toRecordId(ctx.defId, line.matchedRecordId), {
             bank_transaction_review_status: 'for_review',
             bank_transaction_matched_record_id: null,
             bank_transaction_matched_record_type: null,
@@ -837,7 +833,7 @@ export async function undoReview(
         }
       }
 
-      await crud.update(toRecordId(ctx.bankTransactionDefId, transactionId), {
+      await crud.update(toRecordId(ctx.defId, transactionId), {
         bank_transaction_review_status: 'for_review',
         bank_transaction_matched_record_id: null,
         bank_transaction_matched_record_type: null,
@@ -890,9 +886,9 @@ async function stampAccountHasPosted(
   // A line with no account cannot post - `buildCodedBankEntry` needs the bank
   // account's GL code - so this is defensive rather than a real branch.
   if (!line.bankAccountId) return
-  const ctx = await requireBankAccountFieldContext(organizationId)
+  const ctx = await requireBankAccountFieldContext(db, organizationId)
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-  await crud.update(toRecordId(ctx.bankAccountDefId, line.bankAccountId), {
+  await crud.update(toRecordId(ctx.defId, line.bankAccountId), {
     bank_account_has_posted: true,
   })
 }

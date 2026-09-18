@@ -21,11 +21,10 @@
 
 import { type Database, schema } from '@auxx/database'
 import { toDateKey } from '@auxx/utils/calendar-day'
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
-import { NotFoundError, UnprocessableEntityError } from '../../errors'
-import { toRecordId } from '../../resources/resource-id'
+import { NotFoundError } from '../../errors'
+import { readSystemRecords, type SystemRecord } from '../../resources/system-records'
 import {
   type BankAccountCoverage,
   type BankAccountRemovalFacts,
@@ -37,105 +36,16 @@ import {
   resolveBankAccountStatus,
   resolveBankAccountType,
 } from './client'
+import {
+  type BankAccountAttribute,
+  type BankTransactionFieldContext,
+  loadBankAccountFieldContext,
+  loadBankTransactionFieldContext,
+} from './fields'
 import { guard } from './guard'
 // The leaf, not `./rules`: the barrel drags the rule evaluator and the
 // suggestion miner in to answer "which rules name this account".
 import { listBankRules } from './rules/reads'
-
-/** Every `bank_account` attribute a {@link BankAccountRow} is assembled from. */
-const BANK_ACCOUNT_ATTRIBUTES = [
-  'bank_account_name',
-  'bank_account_institution',
-  'bank_account_last4',
-  'bank_account_type',
-  'bank_account_currency',
-  'bank_account_gl_account',
-  'bank_account_settlement_destinations',
-  'bank_account_feed_start_date',
-  'bank_account_coverage_from',
-  'bank_account_coverage_gaps',
-  'bank_account_connector_id',
-  'bank_account_status',
-  'bank_account_has_posted',
-] as const
-
-/** The `bank_transaction` attributes the coverage derivation reads. */
-const BANK_TRANSACTION_ATTRIBUTES = [
-  'bank_transaction_bank_account',
-  'bank_transaction_posted_at',
-  'bank_transaction_review_status',
-  // Read by `readAccountLinesByStatus` so a restore can tell the ARCHIVE's own
-  // exclusions from a person's without a second query per row.
-  'bank_transaction_exclude_reason',
-] as const
-
-type BankAccountAttribute = (typeof BANK_ACCOUNT_ATTRIBUTES)[number]
-type BankTransactionAttribute = (typeof BANK_TRANSACTION_ATTRIBUTES)[number]
-
-type BankAccountFields = Record<BankAccountAttribute, { id: string } | null>
-type BankTransactionFields = Record<BankTransactionAttribute, { id: string } | null>
-
-/** The resolved def and field ids every bank-account read needs. */
-export interface BankAccountFieldContext {
-  bankAccountDefId: string
-  fields: BankAccountFields
-}
-
-/** The resolved def and field ids the coverage derivation needs. */
-export interface BankTransactionFieldContext {
-  bankTransactionDefId: string
-  fields: BankTransactionFields
-}
-
-/**
- * Resolve the `bank_account` def and its fields, or `null` when the org has not
- * run entity migration 125 yet.
- *
- * `null` rather than a throw so the settings page on an unmigrated org renders
- * an empty state instead of 500ing. The WRITE paths call
- * {@link requireBankAccountFieldContext} instead: a write that silently did
- * nothing would be worse than a refusal.
- */
-export async function loadBankAccountFieldContext(
-  organizationId: string
-): Promise<BankAccountFieldContext | null> {
-  const bankAccountDefId = await getCachedEntityDefId(organizationId, 'bank_account')
-  if (!bankAccountDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...BANK_ACCOUNT_ATTRIBUTES])) as BankAccountFields
-  // Without `name` and `status` there is no account at all: the display value
-  // and the "is this feed live" question both reduce to nothing.
-  if (!fields.bank_account_name || !fields.bank_account_status) return null
-  return { bankAccountDefId, fields }
-}
-
-/** {@link loadBankAccountFieldContext}, as the refusal a write path needs. */
-export async function requireBankAccountFieldContext(
-  organizationId: string
-): Promise<BankAccountFieldContext> {
-  const ctx = await loadBankAccountFieldContext(organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Bank accounts are not available until the bank account entity and its fields are ' +
-        'provisioned (entity migration 125)'
-    )
-  }
-  return ctx
-}
-
-/** Resolve the `bank_transaction` def, or `null` on an unmigrated org. */
-export async function loadBankTransactionFieldContext(
-  organizationId: string
-): Promise<BankTransactionFieldContext | null> {
-  const bankTransactionDefId = await getCachedEntityDefId(organizationId, 'bank_transaction')
-  if (!bankTransactionDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...BANK_TRANSACTION_ATTRIBUTES])) as BankTransactionFields
-  if (!fields.bank_transaction_posted_at || !fields.bank_transaction_bank_account) return null
-  return { bankTransactionDefId, fields }
-}
 
 /**
  * Every bank account in the org, oldest first, each joined to its connector's
@@ -153,31 +63,16 @@ export async function listBankAccounts(
   const { organizationId, includeArchived = false } = params
   return guard(
     async () => {
-      const ctx = await loadBankAccountFieldContext(organizationId)
+      const ctx = await loadBankAccountFieldContext(db, organizationId)
       if (!ctx) return []
 
-      const instances = await db
-        .select({
-          id: schema.EntityInstance.id,
-          createdAt: schema.EntityInstance.createdAt,
-          archivedAt: schema.EntityInstance.archivedAt,
-        })
-        .from(schema.EntityInstance)
-        .where(
-          and(
-            eq(schema.EntityInstance.organizationId, organizationId),
-            eq(schema.EntityInstance.entityDefinitionId, ctx.bankAccountDefId),
-            // 🛑 Default FALSE, so every existing caller is unchanged. Only the
-            // settings list's "Show archived" toggle and the pickers - which
-            // have to render an archived account that is still a record's
-            // current value - ever ask for the other answer.
-            ...(includeArchived ? [] : [isNull(schema.EntityInstance.archivedAt)])
-          )
-        )
-        .orderBy(asc(schema.EntityInstance.createdAt))
-
-      if (instances.length === 0) return []
-      return hydrateBankAccounts(db, organizationId, ctx, instances)
+      // 🛑 `includeArchived` defaults FALSE, so every existing caller is
+      // unchanged. Only the settings list's "Show archived" toggle and the
+      // pickers - which have to render an archived account that is still a
+      // record's current value - ever ask for the other answer.
+      const records = await readSystemRecords(db, organizationId, ctx, { includeArchived })
+      if (records.length === 0) return []
+      return hydrateBankAccounts(db, organizationId, records)
     },
     'Failed to list bank accounts',
     { organizationId }
@@ -198,30 +93,17 @@ export async function getBankAccount(
   const { organizationId, bankAccountId, includeArchived = false } = params
   return guard(
     async () => {
-      const ctx = await loadBankAccountFieldContext(organizationId)
+      const ctx = await loadBankAccountFieldContext(db, organizationId)
       if (!ctx) return null
 
-      const [instance] = await db
-        .select({
-          id: schema.EntityInstance.id,
-          createdAt: schema.EntityInstance.createdAt,
-          archivedAt: schema.EntityInstance.archivedAt,
-        })
-        .from(schema.EntityInstance)
-        .where(
-          and(
-            eq(schema.EntityInstance.id, bankAccountId),
-            eq(schema.EntityInstance.organizationId, organizationId),
-            eq(schema.EntityInstance.entityDefinitionId, ctx.bankAccountDefId),
-            // Default false, as above. `restoreBankAccount` and the removal
-            // preview are the only readers that need an archived row back.
-            ...(includeArchived ? [] : [isNull(schema.EntityInstance.archivedAt)])
-          )
-        )
-        .limit(1)
-
-      if (!instance) return null
-      const [row] = await hydrateBankAccounts(db, organizationId, ctx, [instance])
+      // Default false, as in `listBankAccounts`. `restoreBankAccount` and the
+      // removal preview are the only readers that need an archived row back.
+      const records = await readSystemRecords(db, organizationId, ctx, {
+        ids: [bankAccountId],
+        includeArchived,
+      })
+      if (records.length === 0) return null
+      const [row] = await hydrateBankAccounts(db, organizationId, records)
       return row ?? null
     },
     'Failed to read bank account',
@@ -329,7 +211,7 @@ export async function readCoverage(
 
       const asOf = params.today ?? toDateKey(new Date())
       const storedGaps = account.value.coverageGaps
-      const txCtx = await loadBankTransactionFieldContext(organizationId)
+      const txCtx = await loadBankTransactionFieldContext(db, organizationId)
 
       // An org whose `bank_transaction` def is missing has no rows to derive
       // from, so the stored record is the whole answer - not "no gaps".
@@ -403,7 +285,7 @@ export async function readRemovalFacts(
         throw new NotFoundError(`Bank account ${bankAccountId} was not found`)
       }
 
-      const txCtx = await loadBankTransactionFieldContext(organizationId)
+      const txCtx = await loadBankTransactionFieldContext(db, organizationId)
       const counts = txCtx
         ? await readTransactionStatusCounts(db, organizationId, txCtx, bankAccountId)
         : { total: 0, matched: 0, unreviewed: 0 }
@@ -451,25 +333,14 @@ export async function readBankTransactionIdsForAccount(
   const { organizationId, bankAccountId } = params
   return guard(
     async () => {
-      const ctx = await loadBankTransactionFieldContext(organizationId)
-      const linkField = ctx?.fields.bank_transaction_bank_account
-      if (!ctx || !linkField) return { bankTransactionDefId: '', ids: [] }
+      const ctx = await loadBankTransactionFieldContext(db, organizationId)
+      if (!ctx?.fields.bank_transaction_bank_account) return { bankTransactionDefId: '', ids: [] }
 
-      const rows = await db
-        .select({ entityId: schema.FieldValue.entityId })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            eq(schema.FieldValue.fieldId, linkField.id),
-            eq(schema.FieldValue.relatedEntityId, bankAccountId)
-          )
-        )
-
-      return {
-        bankTransactionDefId: ctx.bankTransactionDefId,
-        ids: [...new Set(rows.map((row) => row.entityId))],
-      }
+      const records = await readSystemRecords(db, organizationId, ctx, {
+        by: { attribute: 'bank_transaction_bank_account', in: [bankAccountId] },
+        includeArchived: true,
+      })
+      return { bankTransactionDefId: ctx.defId, ids: records.map((record) => record.id) }
     },
     'Failed to read the bank transactions on an account',
     { organizationId, bankAccountId }
@@ -506,67 +377,23 @@ export async function readAccountLinesByStatus(
   const { organizationId, bankAccountId, statuses } = params
   return guard(
     async () => {
-      const ctx = await loadBankTransactionFieldContext(organizationId)
-      const linkField = ctx?.fields.bank_transaction_bank_account
-      if (!ctx || !linkField) return { bankTransactionDefId: '', lines: [] }
+      const ctx = await loadBankTransactionFieldContext(db, organizationId)
+      if (!ctx?.fields.bank_transaction_bank_account) return { bankTransactionDefId: '', lines: [] }
 
-      // Joined to the instance so an ARCHIVED line - a reversed import, a
-      // duplicate the feed converged away - is left alone.
-      const linked = await db
-        .select({ entityId: schema.FieldValue.entityId })
-        .from(schema.FieldValue)
-        .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            eq(schema.FieldValue.fieldId, linkField.id),
-            eq(schema.FieldValue.relatedEntityId, bankAccountId),
-            isNull(schema.EntityInstance.archivedAt)
-          )
+      // Live lines only - the reader drops an ARCHIVED one (a reversed import, a
+      // duplicate the feed converged away) by default, which is what a sweep wants.
+      const records = await readSystemRecords(db, organizationId, ctx, {
+        by: { attribute: 'bank_transaction_bank_account', in: [bankAccountId] },
+      })
+      const lines = records
+        .filter((record) =>
+          statuses.includes(record.option('bank_transaction_review_status') ?? 'for_review')
         )
-
-      const ids = [...new Set(linked.map((row) => row.entityId))]
-      if (ids.length === 0) return { bankTransactionDefId: ctx.bankTransactionDefId, lines: [] }
-
-      const statusField = ctx.fields.bank_transaction_review_status
-      const byStatus = new Map<string, string | null>()
-      if (statusField) {
-        const rows = await db
-          .select({ entityId: schema.FieldValue.entityId, optionId: schema.FieldValue.optionId })
-          .from(schema.FieldValue)
-          .where(
-            and(
-              eq(schema.FieldValue.organizationId, organizationId),
-              eq(schema.FieldValue.fieldId, statusField.id),
-              inArray(schema.FieldValue.entityId, ids)
-            )
-          )
-        for (const row of rows) byStatus.set(row.entityId, row.optionId)
-      }
-
-      const wanted = ids.filter((id) => statuses.includes(byStatus.get(id) ?? 'for_review'))
-      if (wanted.length === 0) return { bankTransactionDefId: ctx.bankTransactionDefId, lines: [] }
-
-      const reasonField = ctx.fields.bank_transaction_exclude_reason
-      const byReason = new Map<string, string | null>()
-      if (reasonField) {
-        const rows = await db
-          .select({ entityId: schema.FieldValue.entityId, valueText: schema.FieldValue.valueText })
-          .from(schema.FieldValue)
-          .where(
-            and(
-              eq(schema.FieldValue.organizationId, organizationId),
-              eq(schema.FieldValue.fieldId, reasonField.id),
-              inArray(schema.FieldValue.entityId, wanted)
-            )
-          )
-        for (const row of rows) byReason.set(row.entityId, row.valueText)
-      }
-
-      return {
-        bankTransactionDefId: ctx.bankTransactionDefId,
-        lines: wanted.map((id) => ({ id, excludeReason: byReason.get(id) ?? null })),
-      }
+        .map((record) => ({
+          id: record.id,
+          excludeReason: record.text('bank_transaction_exclude_reason'),
+        }))
+      return { bankTransactionDefId: ctx.defId, lines }
     },
     'Failed to read the bank transactions on an account by status',
     { organizationId, bankAccountId }
@@ -582,8 +409,8 @@ export async function readAccountLinesByStatus(
  * the books. `unreviewed` is `for_review` + `suggested` - the rows an ARCHIVE
  * bulk-excludes (§6), which is the other sentence the dialog owes a person.
  *
- * Both filters run in SQL. A post-read `.filter()` would pull every statement
- * line in the org into memory to answer a question about one account.
+ * Counted over one account's live lines, never over the org: the reader is
+ * asked for the children of this account and nothing else.
  */
 async function readTransactionStatusCounts(
   db: Database,
@@ -591,60 +418,32 @@ async function readTransactionStatusCounts(
   ctx: BankTransactionFieldContext,
   bankAccountId: string
 ): Promise<{ total: number; matched: number; unreviewed: number }> {
-  const linkField = ctx.fields.bank_transaction_bank_account
-  const statusField = ctx.fields.bank_transaction_review_status
-  if (!linkField) return { total: 0, matched: 0, unreviewed: 0 }
+  if (!ctx.fields.bank_transaction_bank_account) return { total: 0, matched: 0, unreviewed: 0 }
 
-  // Joined to the instance so an ARCHIVED line - a reversed import, a duplicate
-  // the feed converged away - is not counted as something a delete would remove.
-  const linked = await db
-    .select({ entityId: schema.FieldValue.entityId })
-    .from(schema.FieldValue)
-    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, linkField.id),
-        eq(schema.FieldValue.relatedEntityId, bankAccountId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
+  // Archived lines are excluded by default - a reversed import or a duplicate the
+  // feed converged away is not something a delete would take with it.
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    by: { attribute: 'bank_transaction_bank_account', in: [bankAccountId] },
+  })
 
-  const ids = [...new Set(linked.map((row) => row.entityId))]
-  if (ids.length === 0 || !statusField) {
-    return { total: ids.length, matched: 0, unreviewed: 0 }
-  }
-
-  const statuses = await db
-    .select({ entityId: schema.FieldValue.entityId, optionId: schema.FieldValue.optionId })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, statusField.id),
-        inArray(schema.FieldValue.entityId, ids)
-      )
-    )
-
-  const byInstance = new Map(statuses.map((row) => [row.entityId, row.optionId]))
   let matched = 0
   let unreviewed = 0
-  for (const id of ids) {
+  for (const record of records) {
     // A line with no status row at all has not been reviewed - the same default
     // `resolveReviewStatus` applies everywhere else.
-    const status = byInstance.get(id) ?? 'for_review'
+    const status = record.option('bank_transaction_review_status') ?? 'for_review'
     if (status === 'matched') matched += 1
     if (status === 'for_review' || status === 'suggested') unreviewed += 1
   }
-  return { total: ids.length, matched, unreviewed }
+  return { total: records.length, matched, unreviewed }
 }
 
 /**
  * Every `postedAt` date key on one account, ascending.
  *
- * Two joins on `FieldValue` - the account link and the date - so the filter runs
- * in SQL. A post-read `.filter()` would pull every statement line in the org
- * into memory to answer a question about one account.
+ * The account's live children, then their dates off the cells the same read
+ * already carries. An archived line - a reversed import, a duplicate the feed
+ * converged away - neither counts nor closes a gap it no longer fills.
  */
 async function readTransactionDateKeys(
   db: Database,
@@ -652,144 +451,72 @@ async function readTransactionDateKeys(
   ctx: BankTransactionFieldContext,
   bankAccountId: string
 ): Promise<string[]> {
-  const linkField = ctx.fields.bank_transaction_bank_account
-  const dateField = ctx.fields.bank_transaction_posted_at
-  if (!linkField || !dateField) return []
+  if (!ctx.fields.bank_transaction_bank_account || !ctx.fields.bank_transaction_posted_at) return []
 
-  // Joined to the instance so an ARCHIVED line (a reversed import, a duplicate
-  // the feed converged away) neither counts nor closes a gap it no longer fills.
-  const linked = await db
-    .select({ entityId: schema.FieldValue.entityId })
-    .from(schema.FieldValue)
-    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, linkField.id),
-        eq(schema.FieldValue.relatedEntityId, bankAccountId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-
-  const ids = [...new Set(linked.map((row) => row.entityId))]
-  if (ids.length === 0) return []
-
-  const dates = await db
-    .select({ valueDate: schema.FieldValue.valueDate })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, dateField.id),
-        inArray(schema.FieldValue.entityId, ids)
-      )
-    )
-
-  return dates
-    .map((row) => (row.valueDate ? toDateKey(row.valueDate) : null))
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    by: { attribute: 'bank_transaction_bank_account', in: [bankAccountId] },
+  })
+  return records
+    .map((record) => {
+      const posted = record.date('bank_transaction_posted_at')
+      return posted ? toDateKey(posted) : null
+    })
     .filter((key): key is string => key != null)
     .sort()
 }
 
-/**
- * Turn a page of account ids into full rows with a bounded number of queries:
- * one for the field values, one for the connectors.
- */
+/** Turn a page of account records into full rows: one more query, for the connectors. */
 async function hydrateBankAccounts(
   db: Database,
   organizationId: string,
-  ctx: BankAccountFieldContext,
-  page: { id: string; createdAt: Date | null; archivedAt: Date | null }[]
+  page: SystemRecord<BankAccountAttribute>[]
 ): Promise<BankAccountRow[]> {
-  const ids = page.map((row) => row.id)
-  const fieldIds = Object.values(ctx.fields)
-    .filter((field): field is { id: string } => field != null)
-    .map((field) => field.id)
-
-  const values = fieldIds.length
-    ? await db
-        .select({
-          entityId: schema.FieldValue.entityId,
-          fieldId: schema.FieldValue.fieldId,
-          valueText: schema.FieldValue.valueText,
-          valueBoolean: schema.FieldValue.valueBoolean,
-          valueDate: schema.FieldValue.valueDate,
-          valueJson: schema.FieldValue.valueJson,
-          optionId: schema.FieldValue.optionId,
-        })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            inArray(schema.FieldValue.entityId, ids),
-            inArray(schema.FieldValue.fieldId, fieldIds)
-          )
-        )
-    : []
-
-  const byInstance = new Map<string, Map<string, (typeof values)[number][]>>()
-  for (const value of values) {
-    let bucket = byInstance.get(value.entityId)
-    if (!bucket) {
-      bucket = new Map()
-      byInstance.set(value.entityId, bucket)
-    }
-    const rows = bucket.get(value.fieldId) ?? []
-    rows.push(value)
-    bucket.set(value.fieldId, rows)
-  }
-
-  const read = (instanceId: string, attr: BankAccountAttribute) => {
-    const id = ctx.fields[attr]?.id
-    return id ? (byInstance.get(instanceId)?.get(id)?.[0] ?? null) : null
-  }
-  // `settlementDestinations` is TAGS (58 §4.4) - one `FieldValue` row per destination, written
-  // with the typed text AS the `optionId`, mirroring `payment_gateway_handles`'s read.
-  const readMany = (instanceId: string, attr: BankAccountAttribute) => {
-    const id = ctx.fields[attr]?.id
-    return id ? (byInstance.get(instanceId)?.get(id) ?? []) : []
-  }
-
   const connectorIds = [
     ...new Set(
       page
-        .map((row) => read(row.id, 'bank_account_connector_id')?.valueText)
+        .map((record) => record.text('bank_account_connector_id'))
         .filter((id): id is string => !!id)
     ),
   ]
   const connectors = await readConnectorHealth(db, organizationId, connectorIds)
 
-  const readSettlementDestinations = (instanceId: string): string[] =>
-    readMany(instanceId, 'bank_account_settlement_destinations')
+  // `settlementDestinations` is TAGS (58 §4.4) - one `FieldValue` row per destination, written
+  // with the typed text AS the `optionId`, mirroring `payment_gateway_handles`'s read. Read off
+  // the stored rows because the open-tag fallback to `valueText` has no typed shape.
+  const readSettlementDestinations = (record: SystemRecord<BankAccountAttribute>): string[] =>
+    record
+      .rows('bank_account_settlement_destinations')
       .map((value) => value.optionId ?? value.valueText)
       .filter((destination): destination is string => !!destination)
 
-  return page.map((row) => {
-    const connectorId = read(row.id, 'bank_account_connector_id')?.valueText ?? null
-    const coverageFrom = read(row.id, 'bank_account_coverage_from')?.valueDate
-    const feedStartDate = read(row.id, 'bank_account_feed_start_date')?.valueDate
+  return page.map((record) => {
+    const connectorId = record.text('bank_account_connector_id')
+    const coverageFrom = record.date('bank_account_coverage_from')
+    const feedStartDate = record.date('bank_account_feed_start_date')
     return {
-      id: row.id,
-      recordId: toRecordId(ctx.bankAccountDefId, row.id),
-      name: read(row.id, 'bank_account_name')?.valueText ?? null,
-      institution: read(row.id, 'bank_account_institution')?.valueText ?? null,
-      last4: read(row.id, 'bank_account_last4')?.valueText ?? null,
-      type: resolveBankAccountType(read(row.id, 'bank_account_type')?.optionId),
-      currency: read(row.id, 'bank_account_currency')?.valueText ?? null,
-      glAccountId: read(row.id, 'bank_account_gl_account')?.valueText ?? null,
-      settlementDestinations: readSettlementDestinations(row.id),
+      id: record.id,
+      recordId: record.recordId,
+      name: record.text('bank_account_name'),
+      institution: record.text('bank_account_institution'),
+      last4: record.text('bank_account_last4'),
+      type: resolveBankAccountType(record.option('bank_account_type')),
+      currency: record.text('bank_account_currency'),
+      glAccountId: record.text('bank_account_gl_account'),
+      settlementDestinations: readSettlementDestinations(record),
       feedStartDate: feedStartDate ? toDateKey(feedStartDate) : null,
       coverageFrom: coverageFrom ? toDateKey(coverageFrom) : null,
-      coverageGaps: normalizeCoverageGaps(read(row.id, 'bank_account_coverage_gaps')?.valueJson),
+      // The stored JSON is an ARRAY, and the typed `json` cell unwraps an
+      // envelope object - so the raw column is the only shape that survives.
+      coverageGaps: normalizeCoverageGaps(record.rows('bank_account_coverage_gaps')[0]?.valueJson),
       connectorId,
-      status: resolveBankAccountStatus(read(row.id, 'bank_account_status')?.optionId),
+      status: resolveBankAccountStatus(record.option('bank_account_status')),
       // 🛑 Read STRAIGHT off the field, never derived from the rows. That is the
       // whole point of the field: `undoReview` nulls a line's posting id, so a
       // predicate computed off the transactions flips back to false while the
       // entry and its reversal both stay in the books (08 §5.1).
-      hasEverPosted: read(row.id, 'bank_account_has_posted')?.valueBoolean === true,
-      archivedAt: row.archivedAt,
-      createdAt: row.createdAt,
+      hasEverPosted: record.boolean('bank_account_has_posted') === true,
+      archivedAt: record.archivedAt,
+      createdAt: record.createdAt,
       connector: connectorId ? (connectors.get(connectorId) ?? null) : null,
     } satisfies BankAccountRow
   })

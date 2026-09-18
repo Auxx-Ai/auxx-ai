@@ -18,10 +18,8 @@ const h = vi.hoisted(() => ({
 vi.mock('../../../../data-connectors/mutations', () => ({
   setConnectorFieldPin: h.setConnectorFieldPin,
 }))
-vi.mock('../../reads', () => ({
-  loadBankTransactionFieldContext: async () => ({ bankTransactionDefId: 'def_bt', fields: {} }),
-}))
 vi.mock('../../../../cache', () => ({
+  getCachedEntityDefId: async () => 'def_bt',
   getOrgCache: () => ({
     from: () => ({ bySystemAttributes: async () => h.fields }),
   }),

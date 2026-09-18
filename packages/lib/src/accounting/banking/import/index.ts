@@ -21,14 +21,6 @@ export {
   previewCoverageEffect,
   withinWindow,
 } from './coverage-effect'
-export type { BankTransactionImportContext, BankTransactionRow } from './fields'
-export {
-  BANK_TRANSACTION_IMPORT_ATTRIBUTES,
-  hydrateTransactions,
-  readTransactionsByAccount,
-  readTransactionsByBatch,
-  requireBankTransactionImportContext,
-} from './fields'
 export { finalizeBankImport, moveCoverage, readProducedRecordIds } from './finalize'
 export { subtractCoveredRange } from './gaps'
 export { headerSignature, normaliseHeader } from './header-signature'
@@ -46,6 +38,8 @@ export {
   normaliseMatchKey,
   normalizeMatchKey,
 } from './match-key'
+export type { BankTransactionRow } from './reads'
+export { hydrateTransactions, readTransactionsByAccount, readTransactionsByBatch } from './reads'
 export { refusalReason, reverseImport } from './reverse'
 export type {
   BankImportBatch,

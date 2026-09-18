@@ -32,18 +32,20 @@ const h = vi.hoisted(() => ({
   }[],
 }))
 
-vi.mock('../../../cache', () => ({
-  getCachedEntityDefId: async (_org: string, entityType: string) =>
-    entityType === 'bank_account' ? 'def_ba' : 'def_bt',
-  getOrgCache: () => ({
-    from: () => ({
-      // Every attribute resolves to a field whose id IS the attribute name, so a
-      // captured predicate is legible without a fixture table.
-      bySystemAttributes: async (attrs: string[]) =>
-        Object.fromEntries(attrs.map((attr) => [attr, { id: attr }])),
+vi.mock('../../../cache', async () => {
+  const { fieldStubs } = await import('./support/field-stubs')
+  return {
+    getCachedEntityDefId: async (_org: string, entityType: string) =>
+      entityType === 'bank_account' ? 'def_ba' : 'def_bt',
+    getOrgCache: () => ({
+      from: () => ({
+        // Every attribute resolves to a field whose id IS the attribute name, so
+        // a captured predicate is legible without a fixture table.
+        bySystemAttributes: async (attrs: string[]) => fieldStubs(attrs),
+      }),
     }),
-  }),
-}))
+  }
+})
 
 vi.mock('../rules/reads', () => ({
   listBankRules: async () => ({ isErr: () => false, isOk: () => true, value: h.rules }),
@@ -159,13 +161,15 @@ describe('readRemovalFacts', () => {
       { entityId: 'acct_1', fieldId: 'bank_account_name', valueText: 'Chequing' },
       { entityId: 'acct_1', fieldId: 'bank_account_has_posted', valueBoolean: true },
     ])
-    // 3. the account's live lines...
+    // 3. the account's lines, by the relationship field...
     h.script.push([{ entityId: 'txn_1' }, { entityId: 'txn_2' }])
-    // 4. ...every one of which is back in `for_review` with no posting id, which
+    // 4. ...the live instances behind them...
+    h.script.push([{ id: 'txn_1' }, { id: 'txn_2' }])
+    // 5. ...every one of which is back in `for_review` with no posting id, which
     //    is exactly what the queue looks like after `undoReview`.
     h.script.push([
-      { entityId: 'txn_1', optionId: 'for_review' },
-      { entityId: 'txn_2', optionId: 'for_review' },
+      { entityId: 'txn_1', fieldId: 'bank_transaction_review_status', optionId: 'for_review' },
+      { entityId: 'txn_2', fieldId: 'bank_transaction_review_status', optionId: 'for_review' },
     ])
 
     const result = await readRemovalFacts(fakeDb(), {
@@ -191,11 +195,12 @@ describe('readRemovalFacts', () => {
       { entityId: 'txn_3' },
       { entityId: 'txn_4' },
     ])
+    h.script.push([{ id: 'txn_1' }, { id: 'txn_2' }, { id: 'txn_3' }, { id: 'txn_4' }])
     h.script.push([
-      { entityId: 'txn_1', optionId: 'matched' },
-      { entityId: 'txn_2', optionId: 'coded' },
-      { entityId: 'txn_3', optionId: 'suggested' },
-      { entityId: 'txn_4', optionId: 'for_review' },
+      { entityId: 'txn_1', fieldId: 'bank_transaction_review_status', optionId: 'matched' },
+      { entityId: 'txn_2', fieldId: 'bank_transaction_review_status', optionId: 'coded' },
+      { entityId: 'txn_3', fieldId: 'bank_transaction_review_status', optionId: 'suggested' },
+      { entityId: 'txn_4', fieldId: 'bank_transaction_review_status', optionId: 'for_review' },
     ])
 
     const result = await readRemovalFacts(fakeDb(), {

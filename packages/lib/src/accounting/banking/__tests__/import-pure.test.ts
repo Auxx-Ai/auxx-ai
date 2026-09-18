@@ -12,10 +12,10 @@
 
 import { describe, expect, it } from 'vitest'
 import { computeOverlap, earliest, withinWindow } from '../import/coverage-effect'
-import type { BankTransactionRow } from '../import/fields'
 import { subtractCoveredRange } from '../import/gaps'
 import { headerSignature, normaliseHeader } from '../import/header-signature'
 import { assignImportedExternalIds, buildImportedExternalId } from '../import/match-key'
+import type { BankTransactionRow } from '../import/reads'
 import { refusalReason } from '../import/reverse'
 import type { BankImportRow } from '../import/types'
 import { IMPORT_LINK_EXCLUSION_PREFIX } from '../import/types'

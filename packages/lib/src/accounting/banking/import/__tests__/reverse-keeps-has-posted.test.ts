@@ -22,7 +22,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BankTransactionRow } from '../fields'
+import type { BankTransactionRow } from '../reads'
 
 const h = vi.hoisted(() => ({
   crudUpdate: vi.fn(),
@@ -37,16 +37,15 @@ vi.mock('../../../../resources/crud/unified-handler', () => ({
     delete = h.crudDelete
   },
 }))
-vi.mock('../fields', () => ({
-  requireBankTransactionImportContext: async () => ({
-    bankTransactionDefId: 'def_bt',
-    fields: {},
-  }),
+vi.mock('../reads', () => ({
   readTransactionsByBatch: async () => h.rows,
   readTransactionsByAccount: async () => h.remaining,
 }))
+vi.mock('../../fields', () => ({
+  requireBankTransactionImportContext: async () => ({ defId: 'def_bt', fields: {} }),
+  requireBankAccountFieldContext: async () => ({ defId: 'def_ba', fields: {} }),
+}))
 vi.mock('../../reads', () => ({
-  requireBankAccountFieldContext: async () => ({ bankAccountDefId: 'def_ba', fields: {} }),
   getBankAccount: async () => ({
     isErr: () => false,
     isOk: () => true,

@@ -9,6 +9,7 @@
 // - an archived row from a reversed import, or a duplicate the feed converged
 // away - which leaves its `FieldValue` cells behind.
 
+import { PgDialect } from 'drizzle-orm/pg-core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
@@ -25,19 +26,19 @@ vi.mock('../../../../resources/crud/unified-handler', () => ({
     update = h.crudUpdate
   },
 }))
-vi.mock('../../reads', () => ({
+vi.mock('../../fields', () => ({
   loadBankAccountFieldContext: async () => ({
-    bankAccountDefId: 'def_ba',
+    defId: 'def_ba',
     fields: {
-      bank_account_connector_id: { id: 'f_connector' },
-      bank_account_coverage_from: { id: 'f_coverage' },
+      bank_account_connector_id: { id: 'f_connector', type: 'TEXT' },
+      bank_account_coverage_from: { id: 'f_coverage', type: 'DATE' },
     },
   }),
   loadBankTransactionFieldContext: async () => ({
-    bankTransactionDefId: 'def_bt',
+    defId: 'def_bt',
     fields: {
-      bank_transaction_bank_account: { id: 'f_link' },
-      bank_transaction_posted_at: { id: 'f_date' },
+      bank_transaction_bank_account: { id: 'f_link', type: 'RELATIONSHIP' },
+      bank_transaction_posted_at: { id: 'f_date', type: 'DATE' },
     },
   }),
 }))
@@ -65,7 +66,8 @@ function fakeDb() {
         where: (predicate: unknown) => {
           path.push('where')
           predicates.push(predicate)
-          return Promise.resolve(rows)
+          // The values read chains `.orderBy(sortKey)`; the others await here.
+          return Object.assign(Promise.resolve(rows), { orderBy: () => Promise.resolve(rows) })
         },
       })
       return stage()
@@ -80,25 +82,43 @@ beforeEach(() => {
   h.results = [
     // 1: the accounts this connector feeds
     [{ entityId: 'acct_1' }],
-    // 2: the stored coverage cells
-    [{ entityId: 'acct_1', valueDate: '2026-03-01T00:00:00.000Z' }],
-    // 3: the LINKED transaction cells - the query this test is about
+    // 2: those account instances
+    [{ id: 'acct_1', createdAt: null, updatedAt: null, archivedAt: null }],
+    // 3: their cells, carrying the stored coverage floor
+    [
+      {
+        entityId: 'acct_1',
+        fieldId: 'f_coverage',
+        sortKey: 'a',
+        valueDate: '2026-03-01T00:00:00.000Z',
+      },
+    ],
+    // 4: the LINKED transaction cells
     [{ entityId: 'txn_1' }],
-    // 4: their dates
-    [{ valueDate: '2026-01-04T00:00:00.000Z' }],
+    // 5: the live transaction instances - the query this test is about
+    [{ id: 'txn_1', createdAt: null, updatedAt: null, archivedAt: null }],
+    // 6: their cells
+    [
+      {
+        entityId: 'txn_1',
+        fieldId: 'f_date',
+        sortKey: 'a',
+        valueDate: '2026-01-04T00:00:00.000Z',
+      },
+    ],
   ]
 })
 
 describe('refreshBankAccountCoverage', () => {
-  it('🛑 joins the instance and excludes ARCHIVED lines when finding the earliest date', async () => {
-    // Without the join, a reversed import's leftover cells drag the floor back
+  it('🛑 excludes ARCHIVED lines when finding the earliest date', async () => {
+    // Without the filter, a reversed import's leftover cells drag the floor back
     // to a date the account no longer holds - and the floor never comes forward.
     await refreshBankAccountCoverage(fakeDb(), {
       organizationId: 'org_1',
       connectorId: 'conn_1',
     })
-    const linkedQuery = h.paths[2]
-    expect(linkedQuery).toContain('innerJoin')
+    // Query 5 is the transaction instances behind the linked cells.
+    expect(new PgDialect().sqlToQuery(predicates[4] as never).sql).toContain('is null')
   })
 
   it('moves the floor earlier and says so', async () => {
@@ -115,7 +135,14 @@ describe('refreshBankAccountCoverage', () => {
   it('never moves the floor LATER, however little the last sync saw', async () => {
     // Stripe reaches back up to 180 days and the window accumulates from there,
     // so a sync that only sees this week must not claim coverage begins now.
-    h.results[1] = [{ entityId: 'acct_1', valueDate: '2025-06-01T00:00:00.000Z' }]
+    h.results[2] = [
+      {
+        entityId: 'acct_1',
+        fieldId: 'f_coverage',
+        sortKey: 'a',
+        valueDate: '2025-06-01T00:00:00.000Z',
+      },
+    ]
     const moved = await refreshBankAccountCoverage(fakeDb(), {
       organizationId: 'org_1',
       connectorId: 'conn_1',
@@ -125,7 +152,7 @@ describe('refreshBankAccountCoverage', () => {
   })
 
   it('writes nothing when the account holds no dated line at all', async () => {
-    h.results[3] = []
+    h.results[5] = []
     expect(
       await refreshBankAccountCoverage(fakeDb(), { organizationId: 'org_1', connectorId: 'conn_1' })
     ).toBe(0)

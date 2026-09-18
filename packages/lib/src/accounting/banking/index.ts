@@ -80,6 +80,12 @@ export {
   syncBankAccountFeed,
   unpinPostedBankTransaction,
 } from './feed'
+export type { BankAccountFieldContext, BankTransactionFieldContext } from './fields'
+export {
+  loadBankAccountFieldContext,
+  loadBankTransactionFieldContext,
+  requireBankAccountFieldContext,
+} from './fields'
 // ── Statement file import (HANDOFF slot 3D) ───────────────────────────────
 // Appended per HANDOFF §9a: one block, after the final export, touching no
 // other slot's lines. See `./import/index.ts` for what each of these is.
@@ -87,7 +93,6 @@ export type {
   BankImportBatch,
   BankImportOverlap,
   BankImportRow,
-  BankTransactionImportContext,
   BankTransactionRow,
   CoverageEffect,
   FinalizeBankImportResult,
@@ -99,7 +104,6 @@ export type {
 export {
   assignImportedExternalIds,
   BANK_IMPORT_MAPPINGS_KEY,
-  BANK_TRANSACTION_IMPORT_ATTRIBUTES,
   buildImportedExternalId,
   CROSS_SOURCE_MATCH_DAYS,
   computeOverlap,
@@ -120,21 +124,11 @@ export {
   readTransactionsByAccount,
   readTransactionsByBatch,
   refusalReason,
-  requireBankTransactionImportContext,
   reverseImport,
   saveMapping,
   subtractCoveredRange,
 } from './import'
-export type { BankAccountFieldContext, BankTransactionFieldContext } from './reads'
-export {
-  getBankAccount,
-  listBankAccounts,
-  loadBankAccountFieldContext,
-  loadBankTransactionFieldContext,
-  readCoverage,
-  readRemovalFacts,
-  requireBankAccountFieldContext,
-} from './reads'
+export { getBankAccount, listBankAccounts, readCoverage, readRemovalFacts } from './reads'
 export type {
   ArchiveBankAccountInput,
   ArchiveBankAccountResult,
