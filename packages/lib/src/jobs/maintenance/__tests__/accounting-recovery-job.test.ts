@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   organizations: [] as Array<{ id: string; cursor: unknown }>,
   events: [] as string[],
+  bridge: vi.fn(),
   money: vi.fn(),
   receipt: vi.fn(),
   application: vi.fn(),
@@ -26,6 +27,9 @@ vi.mock('@auxx/database', () => ({
     }),
   },
 }))
+vi.mock('../../../accounting/money/customer-money/bridge-sweep', () => ({
+  sweepFinancialRecordBridge: h.bridge,
+}))
 vi.mock('../../../accounting/money/customer-money/ingest', () => ({
   sweepImportedCustomerMoney: h.money,
 }))
@@ -47,6 +51,10 @@ beforeEach(() => {
     { id: 'A', cursor: 'old-A' },
     { id: 'B', cursor: null },
   ]
+  h.bridge.mockImplementation(async (_db, input) => {
+    h.events.push(`bridge:${input.organizationId}`)
+    return { found: 0, bridged: 0, skipped: 0 }
+  })
   h.money.mockImplementation(async (_db, org) => {
     h.events.push(`money:${org}`)
   })
@@ -66,11 +74,13 @@ describe('accounting recovery organization rotation', () => {
     await accountingRecoveryJob({ jobId: 'fixture' } as JobContext)
     expect(h.events).toEqual([
       'cursor:A:old-A',
+      'bridge:A',
       'money:A',
       'receipt:A',
       'application:A',
       'delivery:A',
       'cursor:B:null',
+      'bridge:B',
       'money:B',
       'receipt:B',
       'application:B',

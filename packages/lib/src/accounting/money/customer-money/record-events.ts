@@ -27,6 +27,7 @@ import { PAYOUT_SOURCE_FIELDS } from '../../../resources/registry/resources/payo
 import { PROCESSOR_BALANCE_ENTRY_FIELDS } from '../../../resources/registry/resources/processor-balance-entry-fields'
 import { assessPayouts } from '../payouts/assess-payouts'
 import { markPayoutForAssessment, registerPayoutReconciler } from '../payouts/payout-reconciler'
+import { type BridgeRecordKind, bridgeFinancialRecords } from './bridge'
 import {
   markOrderEvidence,
   type OrderEvidenceKind,
@@ -159,6 +160,7 @@ export async function reconcileFinancialRecordsAfterBulk(
   const kinds = await financialKindByDefId(organizationId)
   const orderMarks: string[] = []
   const payoutInstanceIds: string[] = []
+  const bridged: Array<{ id: string; kind: BridgeRecordKind }> = []
   const candidates = new Set<RecordId>([
     ...(manifest.createdRecordIds ?? []),
     ...(manifest.archivedRecordIds ?? []),
@@ -169,6 +171,7 @@ export async function reconcileFinancialRecordsAfterBulk(
     const kind = kinds.get(entityDefinitionId)
     if (!kind) continue
     if (isPayoutOwner(kind)) {
+      bridged.push({ id: entityInstanceId, kind })
       payoutInstanceIds.push(entityInstanceId)
       continue
     }
@@ -179,6 +182,11 @@ export async function reconcileFinancialRecordsAfterBulk(
     for (const orderInstanceId of relationshipInstanceIds(fields.line_item_order?.o))
       orderMarks.push(`order:${orderInstanceId}`)
   }
+  // Evidence rows before the lanes that read them; assessing first assesses
+  // nothing. The order side is bridged inside `reconcileOrderEvidenceFromSync`,
+  // which resolves the three marked kinds down to order ids first.
   if (orderMarks.length) await reconcileOrderEvidenceFromSync(db, organizationId, orderMarks)
+  if (bridged.length)
+    await bridgeFinancialRecords(db, { organizationId, actorUserId: '', records: bridged })
   if (payoutInstanceIds.length) await assessPayouts(db, organizationId, payoutInstanceIds)
 }

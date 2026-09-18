@@ -9,6 +9,8 @@ const h = vi.hoisted(() => ({
   markPayout: vi.fn(),
   fromSync: vi.fn(),
   assess: vi.fn(),
+  bridge: vi.fn(),
+  order: [] as string[],
   db: {},
 }))
 
@@ -33,6 +35,7 @@ vi.mock('../../payouts/payout-reconciler', () => ({
   registerPayoutReconciler: vi.fn(),
 }))
 vi.mock('../../payouts/assess-payouts', () => ({ assessPayouts: h.assess }))
+vi.mock('../bridge', () => ({ bridgeFinancialRecords: h.bridge }))
 
 import { getNativeRuleHandler } from '../../../../record-rules/actions'
 import { getSystemRuleDeclarations } from '../../../../record-rules/system-rules'
@@ -45,7 +48,36 @@ describe('financial record event adapters', () => {
     h.markPayout.mockResolvedValue(undefined)
     h.fromSync.mockResolvedValue(undefined)
     h.assess.mockResolvedValue(0)
+    h.order = []
+    h.bridge.mockImplementation(async () => {
+      h.order.push('bridge')
+    })
+    h.assess.mockImplementation(async () => {
+      h.order.push('assess')
+      return 0
+    })
+    h.fromSync.mockImplementation(async () => {
+      h.order.push('order-evidence')
+    })
     registerFinancialRecordRules()
+  })
+
+  it('bridges the payout records before it assesses them', async () => {
+    const manifest = {
+      createdRecordIds: [toRecordId('payout-def', 'p1'), toRecordId('pbe-def', 'e1')],
+      touched: {},
+      archivedRecordIds: [],
+    } as unknown as SyncChangeManifest
+    await reconcileFinancialRecordsAfterBulk(h.db as never, 'org', manifest)
+    expect(h.order).toEqual(['bridge', 'assess'])
+    expect(h.bridge).toHaveBeenCalledWith(h.db, {
+      organizationId: 'org',
+      actorUserId: '',
+      records: [
+        { id: 'p1', kind: 'payout' },
+        { id: 'e1', kind: 'processor_balance_entry' },
+      ],
+    })
   })
 
   it('defers bulk replay until the post-integrity pass', async () => {
