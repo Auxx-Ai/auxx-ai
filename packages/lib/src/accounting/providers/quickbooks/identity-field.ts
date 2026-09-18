@@ -11,12 +11,10 @@
 // CustomField resolution is written once. The invoice mirror that also used it
 // (`sync-invoice.ts`, `upsert-item.ts`) was retired on 2026-09-10 (brief 14).
 
-import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq } from 'drizzle-orm'
-import { getCachedEntityDefId } from '../../../cache'
+import { getAllCachedCustomFields, getCachedEntityDefId } from '../../../cache'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { getRecordIdentitiesForRecords, upsertRecordIdentity } from '../../../identity'
 import type { UnifiedCrudHandler } from '../../../resources/crud'
@@ -26,22 +24,20 @@ const logger = createScopedLogger('quickbooks-identity-field')
 /** `RecordIdentity.source` for every id-map field this module reads/writes. */
 export const QUICKBOOKS_SOURCE = 'quickbooks'
 
-/** Resolve the connection-scoped `CustomField` the QuickBooks app provisioned for one identity key. */
-async function findAppField(params: {
+/** The connection-scoped `CustomField` the QuickBooks app provisioned for one identity key, off the org cache. */
+export async function findAppField(params: {
   organizationId: string
   installationId: string
   connectionId: string
   appFieldKey: string
 }): Promise<{ id: string } | undefined> {
-  return database.query.CustomField.findFirst({
-    where: and(
-      eq(schema.CustomField.organizationId, params.organizationId),
-      eq(schema.CustomField.appInstallationId, params.installationId),
-      eq(schema.CustomField.connectionId, params.connectionId),
-      eq(schema.CustomField.appFieldKey, params.appFieldKey)
-    ),
-    columns: { id: true },
-  })
+  const fields = await getAllCachedCustomFields(params.organizationId)
+  return fields.find(
+    (field) =>
+      field.appInstallationId === params.installationId &&
+      field.connectionId === params.connectionId &&
+      field.appFieldKey === params.appFieldKey
+  )
 }
 
 /**

@@ -57,6 +57,30 @@ function posting(
   }
 }
 
+describe('the note cap', () => {
+  it('cuts the private note to the provider limit, and leaves it whole without one', () => {
+    const memo = 'x'.repeat(5000)
+    const { lines, roleByGlAccountId } = withLines(
+      line('acct_ar', 'accounts_receivable', 'debit', 5000, { counterparty: CUSTOMER }),
+      line('acct_rev', 'revenue_product', 'credit', 5000)
+    )
+    const shape = (limits?: { noteLength: number }) =>
+      shapeForPosting({
+        posting: posting({ postingType: 'invoice_issued', memo }),
+        lines,
+        roleByGlAccountId,
+        counterparty: CUSTOMER,
+        exportShape: 'auto',
+        limits,
+      }).payload.privateNote as string
+
+    expect(shape({ noteLength: 999 })).toHaveLength(999)
+    expect(shape()).toHaveLength(4000)
+    // A provider cannot loosen the seam's own ceiling.
+    expect(shape({ noteLength: 9000 })).toHaveLength(4000)
+  })
+})
+
 describe('shapeForPosting', () => {
   it('a fulfillment fully paid under `auto` becomes a sales_receipt', () => {
     const { lines, roleByGlAccountId } = withLines(

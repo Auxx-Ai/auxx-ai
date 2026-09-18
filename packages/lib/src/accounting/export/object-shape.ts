@@ -6,6 +6,7 @@
 
 import type { AccountRole } from '../ledger/builders/entry'
 import type { CounterpartyType, PostingDirection, PostingType } from '../ledger/types'
+import type { AccountingProviderLimits } from '../providers/provider'
 import { BILL_OBJECT_TYPE, type ExportBillPayload, exportBillSchema } from './payloads/bill'
 import {
   CREDIT_MEMO_OBJECT_TYPE,
@@ -42,11 +43,12 @@ import {
   exportSalesReceiptSchema,
   SALES_RECEIPT_OBJECT_TYPE,
 } from './payloads/sales-receipt'
+import { PRIVATE_NOTE_MAX_LENGTH } from './payloads/shared'
 
 /** `auxx:gl:<type>:<date>:<id>` - the stamp a human greps the provider's register for. */
-function stamp(parts: string[], memo?: string): string {
+function stamp(parts: string[], memo: string | undefined, max: number | undefined): string {
   const composed = memo ? `${parts.join(':')} ${memo}` : parts.join(':')
-  return composed.slice(0, 4000)
+  return composed.slice(0, Math.min(PRIVATE_NOTE_MAX_LENGTH, max ?? Infinity))
 }
 
 export interface ShapeForPostingLine {
@@ -86,6 +88,8 @@ export interface ShapeForPostingInput {
   fullyPaidAtShipment?: boolean
   /** A `payment` payload's `appliesTo.glPostingId` - the invoice/fulfillment posting it settles. */
   appliesToGlPostingId?: string
+  /** The destination provider's caps; the note is cut to `noteLength`. */
+  limits?: AccountingProviderLimits
 }
 
 export interface ShapedPosting {
@@ -137,14 +141,15 @@ function findMoneyLeg(lines: RoledLine[], direction: PostingDirection): RoledLin
   )
 }
 
-function base(posting: ShapeForPostingCandidate) {
+function base(posting: ShapeForPostingCandidate, limits: AccountingProviderLimits | undefined) {
   return {
     v: 1 as const,
     txnDate: posting.txnDate,
     docNumber: posting.docNumber,
     privateNote: stamp(
       ['auxx', 'gl', posting.postingType, posting.txnDate, posting.id],
-      posting.memo
+      posting.memo,
+      limits?.noteLength
     ),
     currency: 'USD' as const,
     totalMinor: posting.totalMinor,
@@ -155,7 +160,7 @@ function base(posting: ShapeForPostingCandidate) {
 function buildJournal(input: ShapeForPostingInput): ShapedPosting {
   const lines = roled(input)
   const payload = exportJournalSchema.parse({
-    ...base(input.posting),
+    ...base(input.posting, input.limits),
     lines: lines.map((line) => ({
       glAccountId: line.glAccountId,
       accountCode: line.accountCode,
@@ -193,7 +198,7 @@ function shapeSalesReceipt(input: ShapeForPostingInput): ShapedPosting {
     )
   }
   const payload = exportSalesReceiptSchema.parse({
-    ...base(input.posting),
+    ...base(input.posting, input.limits),
     customer: input.counterparty,
     storeId: input.posting.storeId,
     lines: toItemLines(itemLines),
@@ -216,7 +221,7 @@ function shapeInvoice(input: ShapeForPostingInput): ShapedPosting {
     )
   }
   const payload = exportInvoiceSchema.parse({
-    ...base(input.posting),
+    ...base(input.posting, input.limits),
     customer: input.counterparty,
     storeId: input.posting.storeId,
     lines: toItemLines(itemLines),
@@ -244,7 +249,7 @@ function shapePayment(input: ShapeForPostingInput): ShapedPosting {
     )
   }
   const payload = exportPaymentSchema.parse({
-    ...base(input.posting),
+    ...base(input.posting, input.limits),
     customer: input.counterparty,
     appliesTo: { glPostingId: input.appliesToGlPostingId },
     amountMinor: input.posting.totalMinor,
@@ -267,7 +272,7 @@ function shapeCreditMemo(input: ShapeForPostingInput): ShapedPosting {
     )
   }
   const payload = exportCreditMemoSchema.parse({
-    ...base(input.posting),
+    ...base(input.posting, input.limits),
     customer: input.counterparty,
     lines: toItemLines(itemLines),
   } satisfies ExportCreditMemoPayload)
@@ -286,7 +291,7 @@ function shapeRefundReceipt(input: ShapeForPostingInput): ShapedPosting {
     )
   }
   const payload = exportRefundReceiptSchema.parse({
-    ...base(input.posting),
+    ...base(input.posting, input.limits),
     customer: input.counterparty,
     lines: toItemLines(itemLines),
     paidFrom: glRef(moneyLeg),
@@ -333,7 +338,7 @@ function shapeDeposit(input: ShapeForPostingInput): ShapedPosting {
       : []),
   ]
   const payload = exportDepositSchema.parse({
-    ...base(input.posting),
+    ...base(input.posting, input.limits),
     // The posting's own `totalMinor` is the entry's GROSS balancing total (Dr
     // bank + Dr fees); a Deposit's total is what actually lands in the bank -
     // the NET the signed lines sum to. Equal to `posting.totalMinor` whenever
@@ -366,7 +371,7 @@ function shapeBill(input: ShapeForPostingInput): ShapedPosting {
     )
   }
   const payload = exportBillSchema.parse({
-    ...base(input.posting),
+    ...base(input.posting, input.limits),
     vendor,
     lines: expenseLines.map((line) => ({
       glAccountId: line.glAccountId,

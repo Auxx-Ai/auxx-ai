@@ -42,7 +42,7 @@ import { getCachedEntityDefId } from '../../../cache'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { deleteRecordIdentity } from '../../../identity'
 import type { ProviderAccount } from '../../ledger/client'
-import { QUICKBOOKS_SOURCE, writeQuickbooksIdField } from './identity-field'
+import { findAppField, QUICKBOOKS_SOURCE, writeQuickbooksIdField } from './identity-field'
 import type { QuickbooksToolContext } from './invoke-quickbooks-tool'
 
 const logger = createScopedLogger('quickbooks-account-map')
@@ -168,14 +168,11 @@ export async function readQuickbooksAccountMap(params: {
 }): Promise<Map<string, string>> {
   const { organizationId, installationId, connectionId } = params
 
-  const field = await database.query.CustomField.findFirst({
-    where: and(
-      eq(schema.CustomField.organizationId, organizationId),
-      eq(schema.CustomField.appInstallationId, installationId),
-      eq(schema.CustomField.connectionId, connectionId),
-      eq(schema.CustomField.appFieldKey, QBO_ACCOUNT_ID_FIELD)
-    ),
-    columns: { id: true },
+  const field = await findAppField({
+    organizationId,
+    installationId,
+    connectionId,
+    appFieldKey: QBO_ACCOUNT_ID_FIELD,
   })
   if (!field) {
     logger.debug('qboAccountId is not provisioned for this connection - the map is empty', {
@@ -257,14 +254,11 @@ export async function clearQuickbooksAccountMapping(params: {
 }): Promise<void> {
   const { organizationId, installationId, connectionId, glAccountId, userId } = params
 
-  const field = await database.query.CustomField.findFirst({
-    where: and(
-      eq(schema.CustomField.organizationId, organizationId),
-      eq(schema.CustomField.appInstallationId, installationId),
-      eq(schema.CustomField.connectionId, connectionId),
-      eq(schema.CustomField.appFieldKey, QBO_ACCOUNT_ID_FIELD)
-    ),
-    columns: { id: true },
+  const field = await findAppField({
+    organizationId,
+    installationId,
+    connectionId,
+    appFieldKey: QBO_ACCOUNT_ID_FIELD,
   })
   if (!field) return
 

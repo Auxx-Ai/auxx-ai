@@ -7,7 +7,9 @@ import { z } from 'zod/v4'
 
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 export const docNumberSchema = z.string().min(1).max(21)
-export const privateNoteSchema = z.string().max(4000)
+/** The seam's own ceiling; a provider's `noteLength` may only tighten it. */
+export const PRIVATE_NOTE_MAX_LENGTH = 4000
+export const privateNoteSchema = z.string().max(PRIVATE_NOTE_MAX_LENGTH)
 export const moneySchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 /** A deposit's fee line is the one signed exception (§1's payout row). */
 export const signedMoneySchema = z.number().int().max(Number.MAX_SAFE_INTEGER)

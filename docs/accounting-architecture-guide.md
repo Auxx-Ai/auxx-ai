@@ -150,16 +150,16 @@ issuance and lifecycle are `sales/invoices`; recording a payment against that in
 `sales/credit-memos` because the record is a sales document — and `apply.ts` / `settle.ts` call
 into `accounting/money` from there.
 
-**A subfolder keeps the barrel it already has; a new one gets none by default.** Around thirty
+**A subfolder keeps the barrel it already has; a new one gets none by default.** Twenty-nine
 subfolder `index.ts` files exist under `accounting/` — every `ledger/` child, `money/`'s
-`bank-deposits` / `checkout` / `commands` / `customer-money`, `banking/`'s four, `journals/`'s two
-— and they stay. What the moves did *not* do is mint new ones: `accounting/money/invoice-payments`
-and `sales/{quotes,invoices,billing,totals}` have none, because nothing imports them as a unit. A
-subfolder is a filing decision first and an export surface only when a consumer wants the subpath,
-which `generate:exports` then picks up for free. Client code imports `<module>/client`, never a
-barrel.
+`bank-deposits` / `checkout` / `commands` / `customer-money` / `payouts`, `banking/`'s four,
+`journals/`'s two. `accounting/money/invoice-payments` and `sales/{quotes,invoices,billing,totals}`
+have none, because nothing imports them as a unit; `export/payloads` has one because the
+discriminated `parseExportPayload` is the unit (§11.3). A subfolder is a filing decision first and
+an export surface only when a consumer wants the subpath, which `generate:exports` then picks up
+for free. Client code imports `<module>/client`, never a barrel.
 
-### 2.2 Direction, and the eighteen edges that go the other way
+### 2.2 Direction, and the thirty edges that go the other way
 
 The sanctioned direction is:
 
@@ -171,18 +171,23 @@ documents  →  everything                 (a renderer; only accounting/reports 
 ```
 
 Everything below runs the other way. They are **listed so nobody "fixes" them, and so a
-nineteenth is noticed.**
+thirty-first is noticed.**
 
-**`accounting/ledger` → outside the ledger — 3.** These are the real back-edges, and two of them
-are one symbol:
+**`accounting/ledger` → outside the ledger — 11**, of which 2 leave `accounting/` altogether:
 
 | Site | Symbol | Why it is honest |
 | --- | --- | --- |
 | `ledger/periods/read-close-blockers.ts` | `countUnissuedChannelCreditMemos` ← `sales/credit-memos/reads` | A close blocker asking a document module a question |
 | `ledger/post/verify-balance.ts` | `countUnissuedChannelCreditMemos` ← `sales/credit-memos/reads` | The same question, from the after-the-fact sweep |
+| `ledger/periods/read-close-blockers.ts` | `readTrialBalance` ← `accounting/reports/trial-balance` | The inventory-balance blocker is a trial-balance read |
+| `ledger/post/post-entry.ts` | `buildExportBatches`, `sendExportBatch` ← `accounting/export` | `exportPostedEntry` — the after-commit half of the poster, §5.4 |
+| `ledger/chart/chart-import.ts` | `resolveAccountingProvider` ← `accounting/providers/provider` | Importing the chart is a provider read by definition |
+| `ledger/roles/source-scope.ts`, `ledger/roles/role-map.ts` | `listPaymentGateways` / `getPaymentGateway` ← `accounting/rails/reads` | The rail scope axis is named by `payment_gateway` records |
+| `ledger/reads/list-postings.ts` | `type PostingSummary` ← `accounting/journals/entries/client` | Type-only, erased |
 | `ledger/builders/payment.ts` | `type PaymentRoute` ← `accounting/money/bank-deposits/client` | **Type-only, erased.** A second copy of the union is the thing that drifts |
+| `ledger/builders/payout.ts` | `type PaymentGatewayFeeTreatmentValue` ← `accounting/rails/client` | Type-only, erased |
 
-**`accounting/money` → `sales` — 13**, every one pre-existing and every one a document read:
+**`accounting/money` → `sales` — 14**, every one a document read:
 
 - `money/types.ts` → `sales/types` (`MoneyMutationInput`)
 - `money/checkout/reads.ts`, `checkout/writes.ts` ×3 → `sales/public-token`,
@@ -205,7 +210,7 @@ in `lifecycle.ts`.
 
 ⚠️ **`MoneyMutationInput` is an actor envelope living in `sales/types.ts`**, and it is why both
 `accounting/money` and `purchasing` import into `sales`. There is no neutral home for it in this
-tree; moving it to `accounting/money/types.ts` would delete two of the eighteen and is an open
+tree; moving it to `accounting/money/types.ts` would delete two of the thirty and is an open
 follow-up, not a fact.
 
 ---
@@ -372,17 +377,20 @@ Declared in `ledger/types.ts` (`POSTING_TYPES`, 19 values) and mirrored by the `
 Postgres enum. **Two copies on purpose** — `types.ts` is client-safe and `@auxx/database` is not
 — and there must never be a third. `__tests__/types.test.ts` pins them to each other.
 
-| Enabled (16, in `ENABLED_POSTING_TYPES` order) | Declared, not enabled |
+| Enabled (16, in `ENABLED_POSTING_TYPES` order) | Not enabled |
 | --- | --- |
-| `inventory_movement`, `manual_journal`, `opening_balance`, `bank_deposit`, `fulfillment`, `payment`, `refund`, `payout`, `write_off`, `bank_transaction`, `invoice_issued`, `deposit_application`, `credit_memo`, `expense_bill`, `recurring_journal`, `provider_sync` | `vendor_bill`, `month_end_deferral`, `month_end_reversal` |
+| `inventory_movement`, `manual_journal`, `opening_balance`, `bank_deposit`, `fulfillment`, `payment`, `refund`, `payout`, `write_off`, `bank_transaction`, `invoice_issued`, `deposit_application`, `credit_memo`, `expense_bill`, `recurring_journal`, `vendor_bill` | `provider_sync`, `month_end_deferral`, `month_end_reversal` |
 
-🛑 **The existence of a builder does not mean a type is live.** `buildVendorBillEntry` is written,
-documented and tested, and has no posting caller. The `enabled` flag on its policy is what tells
-you.
+🛑 **The existence of a builder does not mean a type is live**, and neither does the absence of one
+mean it is dead. `buildReceiptEntry` is named by `regime.ts` and does not exist; the two `month_end_*`
+types have policies, an avenue and no writer. The `enabled` flag on the policy is what tells you.
 
-`provider_sync` is the one posting type **auxx does not author** (§12). Its avenue is `null`, and
-that declaration is the loop guard: pushing the accountant's own entries back at them would double
-every one, and both copies would balance.
+🛑 **`enabled: false` means "no close of ours emits this", not "this never posts".**
+`provider_sync` is the one posting type **auxx does not author** (§12) — the inbound translation
+writes it on the accountant's own schedule — so it can never sit in `ENABLED_POSTING_TYPES`, and
+`NEVER_CLOSE_EMITTED` subtracts it before the completeness banner reads the disabled list (§13).
+Its avenue is `null`, and that declaration is the loop guard: pushing the accountant's own entries
+back at them would double every one, and both copies would balance.
 
 ### 5.2 `policy.ts` — one declared record per type
 
@@ -421,10 +429,12 @@ truncation.** `INI` is `invoice_issued` because `INV` is `inventory_movement`'s 
 reused; the prefix table is pinned to `POSTING_TYPES` by exact-key equality, or a new type would
 mint `AUXX-undefined-…`.
 
-⚠️ **`builders/basis-hash.ts` and `builders/basis-dimension.ts` are not builders.** `basis-hash`
-is the pure half of the deleted effect layer — canonical JSON and the two USD minor-unit
-converters — and nothing in `ledger/` imports it; its live callers are `providers/book-connections`,
-`money/checkout/deposit-accounting` and `money/customer-money/stored-source-records`.
+⚠️ **`builders/basis-hash.ts` and `builders/basis-dimension.ts` are not builders**, and only the
+first is load-bearing. `basis-hash` is canonical JSON plus the two USD minor-unit converters;
+nothing in `ledger/` imports it and roughly twenty modules outside it do — every `money/`
+sub-module, `rails/settlement-discovery`, `providers/book-connections`,
+`resources/crud/financial-record-binding`, and `export/payloads/journal.ts`, whose
+`hashExportPayload` is what freezes a batch's payload and derives its idempotency key (§11.2).
 `basis-dimension` is a reserved `'accrual' | 'cash'` enum, exported and used by nothing.
 
 ### 5.4 The poster — `post-entry.ts`
@@ -571,7 +581,7 @@ vary by country, industry and taste. Once the chart is editable the number canno
 meaning: a customer renumbering GRNI from `2160` to `2155` would silently break posting, and the
 entry would still balance. So builders emit roles (`G8`).
 
-There are **26 roles**, all in `ledger/builders/entry.ts` (`ACCOUNT_ROLES`), with
+There are **27 roles**, all in `ledger/builders/entry.ts` (`ACCOUNT_ROLES`), with
 `ROLE_ACCOUNT_TYPES`, `ROLE_ACCOUNT_SUBTYPES`, `ACCOUNT_ROLE_LABELS`, `ROLES_WITHOUT_DEFAULT`,
 `SCOPABLE_ROLES` and `roleScopeAxis` beside them. That is the **only** copy of the vocabulary.
 
@@ -807,7 +817,7 @@ which is why `checkout/writes.ts` writes nothing to the money model when it crea
 
 ✅ **The Dispatch-era `PaymentTransaction` / `PaymentAllocation` lane is gone**, deleted rather
 than migrated. The only survivors are dead enum values in `packages/database/src/enums.ts`, a
-constraint-name string in `apps/web`'s record router, and five stale `apps/worker/scripts/verify-money-*.ts`
+constraint-name string in `apps/web`'s record router, and four stale `apps/worker/scripts/verify-money-*.ts`
 probes that no longer compile — `@auxx/worker` has no `typecheck` script, which is why nothing
 catches them.
 
@@ -981,8 +991,9 @@ links it. **A rail nothing points at is a manual rail.** It is durable configura
 created — the same class of thing as a bank account record, not connector plumbing re-minted on
 reconnect — so it survives a reinstall the same way the store scope does.
 
-`exportShape` (`auto` | `invoice`) is read at send time and decides whether a fulfillment ships as
-a Sales Receipt or an Invoice (§11.3).
+`exportShape` (`auto` | `invoice`) is read when the batch is BUILT, not when it is sent, and decides
+whether a fulfillment takes the shape of a Sales Receipt or an Invoice (§11.3). Changing it moves
+what is built next; it does not reshape a batch already frozen.
 
 `MoneyTransfer` and `ProcessorBalanceEntry` extend an existing canonical `EntityInstance`
 identity, with ordinary `FieldValue`s carrying provider facts and shared domain events doing
@@ -1036,9 +1047,11 @@ because that barrel pulls the Stripe SDK and the connector engine.
 
 ### 11.1 The batch
 
-**One `ExportBatch` is one provider object**: a frozen payload, the provider's id for it, its
-state, and the detail postings it rolls up through `ExportBatchPosting`. In Transaction mode a
-batch holds exactly one posting.
+**One `ExportBatch` is one provider object**: its `objectType`, a frozen payload and that payload's
+hash, the provider's id and sync token for it, its state, and the detail postings it rolls up
+through `ExportBatchPosting`. In Transaction mode a batch usually holds one posting — the exception
+is a Sales Receipt, which holds the fulfillment plus the receipts it absorbed (§11.3). The
+**grain** is still the fulfillment's own posting id either way.
 
 ```
 ready → sending → sent
@@ -1108,7 +1121,7 @@ refuses while one is still there.
 | `accounting.exportMode` | `transaction` \| `summary`. Fails closed to `transaction` |
 | `accounting.exportModeCutover` | The date the mode applies from. A posting dated below `max(cutover, connection.exportFromDate)` is skipped |
 | `accounting.autoSend.<avenue>` | Gate 2, per avenue. Unset → off |
-| `accounting.summaryGrain.<avenue>` | `day` \| `month` for the five grained avenues. Payouts, bank deposits and journals have no grain — one object each |
+| `accounting.summaryGrain.<avenue>` | `day` \| `month` for the six grained avenues. Payouts, bank deposits and journals have no grain — one object each |
 | `accounting.autoPost.<avenue>` | Gate 1 (§5.5). A different gate, on a different table |
 
 `avenueOfPostingType` is the exhaustive posting-type → avenue map, and it has **no `default`
@@ -1117,8 +1130,29 @@ silently landing in no avenue at all. Three types answer `null` — `opening_bal
 entry has no provider counterpart), `provider_sync` (the loop guard) and `bank_transaction` (the
 provider already has the bank feed).
 
-`object-shape.ts` is **pure** and turns one posting plus its roled lines into a native provider
-object, or a plain `journal`. On a fulfillment:
+**`ExportBatch.objectType` is one of eight, and `journal` is only one of them.**
+`export/payloads/` holds one file per object type — each a Zod schema, its `*_OBJECT_TYPE`
+constant, and nothing else — and `payloads/index.ts` owns `EXPORT_OBJECT_TYPES` plus the
+discriminated `parseExportPayload` that turns a stored `(objectType, payload)` pair back into its
+shape. 🛑 **The payload layer and the adapter's handler table are checked against each other at
+module load**: `quickbooks-accounting-provider.ts` throws on import if any `EXPORT_OBJECT_TYPE` has
+no handler, so a new object type cannot silently fall through `sendObject` as "unrecognised".
+
+`object-shape.ts` is **pure** and turns one posting plus its roled lines into one of those objects.
+`shapeForPosting` switches on `postingType`:
+
+| Posting type | Object |
+| --- | --- |
+| `fulfillment` | `sales_receipt` when `wantsSalesReceipt`, else `invoice` |
+| `invoice_issued` | `invoice` |
+| `payment`, `deposit_application` | `payment` |
+| `credit_memo` | `credit_memo` |
+| `refund` | `refund_receipt` |
+| `payout`, `bank_deposit` | `deposit` |
+| `expense_bill`, `vendor_bill` | `bill` |
+| everything else | `journal` |
+
+On a fulfillment:
 
 ```ts
 /** T14/D1: whether a fulfillment should ship as a Sales Receipt rather than an Invoice. */
@@ -1134,14 +1168,24 @@ members of that batch and excluded from their own `payment` batch.
 
 Each shape classifies its own lines by role and **falls back to `journal`, with a reason, the
 moment a line does not fit — never a refusal**. The default branch for `write_off`,
-`manual_journal`, `recurring_journal` and `inventory_movement` is a plain journal, *not* a
-fallback: nothing was tried and rejected.
+`manual_journal`, `recurring_journal`, `inventory_movement` and the two `month_end_*` types is a
+plain journal, *not* a fallback: nothing was tried and rejected. Two shapes fall back routinely
+rather than exceptionally: a `deposit_application` debits `customer_deposits`, which is not one of
+the three `MONEY_ROLES` a Payment's deposit leg may be, and a credit memo that carries the optional
+fourth `Dr accounts_receivable / Cr clearing` leg has a credit a CreditMemo cannot express.
 
-🛑 A journal line names `glAccountId` and `accountCode`, **never a provider account id** (decision
-`P2`). The adapter resolves them at send time, so a batch built before a mapping changed sends
-against the mapping that is live when it goes.
+🛑 A line names `glAccountId` and `accountCode`, **never a provider account id** (decision `P2`) —
+on a journal line, a `sales_receipt`'s `depositTo`, a `deposit`'s `fromAccount`, all of them. The
+adapter resolves them at send time, so a batch built before a mapping changed sends against the
+mapping that is live when it goes.
 
-Summary mode still emits only `journal`; native summary shapes are a follow-up.
+⚠️ **A Deposit's `totalMinor` is the bank leg's amount, not the posting's.** `GlPosting.totalMinor`
+is the entry's gross balancing total (`Dr bank + Dr fees`); what a Deposit records is the net that
+actually lands, which is what the signed lines — the fee carried as a negative — sum to.
+
+Summary mode still emits only `journal` (D3): `readLedgerSummary` already emits one row per posting
+for the grain-less avenues, so both shapes come out of one read, and a summary batch mints its own
+`AUXX-SUM-<hash>` document number because it has no posting to borrow one from.
 
 ### 11.4 The provider seam
 
@@ -1150,15 +1194,19 @@ one an organization has connected — shaped after the house provider/manager pa
 organization with nothing connected gets `NONE_ACCOUNTING_PROVIDER`; its postings are built and
 persisted identically.
 
-Twelve members: `id`, `init?`, `resolveAccount` (the ONLY place a code becomes a provider
+Fourteen members: `id`, `init?`, `resolveAccount` (the ONLY place a code becomes a provider
 identifier), `sendObject`, `readObject`, `listProviderAccounts`, `readProviderBalances`,
-`ledgerSlicer`, `listAccountMappings`, `setAccountMapping` / `clearAccountMapping`,
+`ledgerSlicer`, `listAccountMappings`, `setAccountMapping`, `clearAccountMapping`,
 `withdrawObject`, `objectUrl?`, `createProviderAccount?`.
 
 🛑 **`payload` is OPAQUE above the seam**, and its shape belongs to `objectType`, not to the
 interface: a second provider implements the same three methods over the same three words. No
 posting or batch vocabulary appears in the interface on purpose.
 🛑 **`readObject` answers `unsupported` rather than inventing a result.**
+🛑 **`sendObject`'s `waiting` is not a fault.** A Payment whose Invoice has not sent yet answers
+`waiting` with a reason; `send.ts` releases the lease and gives the attempt back, exactly as it does
+for `not_connected` and `disabled`. Nothing names the dependency across the seam in either
+direction — the sweep's `txnDate, createdAt` ordering is what normally sends the invoice first.
 🛑 **`withdrawObject` must converge on "not there"** rather than raising when the object is already
 gone — that is what makes an uncertain delete resolvable by retrying.
 🛑 **`objectUrl` is the only place a vendor URL may be built** — never in a component.
@@ -1173,10 +1221,15 @@ the null provider and is told *"No accounting system is connected"* on a fully c
 `registerAccountingProviders()` in any probe script, or the answer is meaningless. **Every process
 that posts must call it at boot — web AND the worker.**
 
-`providers/quickbooks/` is the one implementation. The three object methods dispatch on
-`objectType` to `objects/<type>.ts`, one file per provider object; `account-map.ts` keeps the
-mapping in a hidden connection-scoped cell on the `gl_account` instance; `account-types.ts` is the
-outbound half of the type vocabulary; `identity-field.ts` mirrors ids into `RecordIdentity`.
+`providers/quickbooks/` is the one implementation. The three object methods dispatch through one
+`OBJECT_HANDLERS` table to `objects/<type>.ts`, one file per object type, each owning its own
+`send` / `read` / `withdraw`; `objects/customers.ts` and `objects/items.ts` are not object types but
+the referenced-record resolvers a native payload needs first — a Customer or Vendor for the
+counterparty, one generic Service item per income account — and they are why a native object can
+refuse where a journal could not. `objectUrl` is a second table, `OBJECT_URL_PATH`, keyed the same
+way. `account-map.ts` keeps the mapping in a hidden connection-scoped cell on the `gl_account`
+instance; `account-types.ts` is the outbound half of the type vocabulary; `identity-field.ts`
+mirrors ids into `RecordIdentity`.
 `account-identities.ts` and `suggest-account-identities.ts` sit above the seam and **know nothing
 about QuickBooks** — the identity list is a checklist with a row for every live account, and 🛑 **a
 suggestion is never a mapping**.
@@ -1491,10 +1544,12 @@ are the two places in this subsystem that legitimately do.
    `sourceAccountId IS NULL` reads that assumed the old predicate made three `ON CONFLICT` paths
    throw `42P10` and left five reads silently choosing between an org default and a rail row.
 
-7. 🛑 **A provider entry id is unique PER COMPANY.** `providerTenantId` is the company, not the
-   connection: one `ExternalAccountingBook` has many `ExternalBookConnection` rows over time, so a
-   connection id is too narrow. ⚠️ NULLs are distinct in a unique index, so a row carrying an entry
-   id and no company sits outside the guarantee entirely.
+7. 🛑 **A provider entry id is unique PER BOOK, never per connection.**
+   `ProviderLedgerEntry_txn_key` is `(organizationId, bookId, providerTxnType, providerTxnId)`.
+   One `ExternalAccountingBook` has many `ExternalBookConnection` rows over time — every reconnect
+   mints a new `epoch` — so a connection id is too narrow to say whose ledger an entry came from.
+   `providerTxnType` is in the key for the same reason §12.1's authorship predicate is keyed on the
+   pair: a `Purchase` and a `JournalEntry` may share an id.
 
 8. 🛑 **A deleted contact can strand an already-posted entry forever.** The line's `counterpartyId`
    is frozen and still names the gone contact — a retry exports under the attribution the ledger
@@ -1523,7 +1578,9 @@ are the two places in this subsystem that legitimately do.
 
 ### The ones that waste a day
 
-13. **A builder existing does not mean the type posts.** Check the policy's `enabled` flag.
+13. **A builder existing does not mean the type posts, and `enabled: false` does not mean it
+    never does.** The flag says whether a close of ours emits the type; `provider_sync` is written
+    by the inbound sync with the flag off (§5.1).
 
 14. **`policy.ts` is declared, not derived.** If the code disagrees with the declaration, the
     declaration is the bug report.
@@ -1548,16 +1605,24 @@ are the two places in this subsystem that legitimately do.
 
 ### Comments in the code that are out of date
 
-The tree moved and the mechanism changed underneath some long file headers. These are known:
+The mechanism changed underneath some long file headers, and the tree moved under most of them.
+These are known:
 
-- `ledger/post/post-entry.ts`, `periods/period-key.ts` and `builders/doc-number.ts` describe the
-  claim as `ON CONFLICT (organizationId, postingType, periodKey, revision)` on `GlPosting`. It is
+- **Roughly thirty comments still name the retired `postings/` path** — `providers/provider.ts`'s
+  `postings/provider-sync/`, `accounting-providers.ts`, `payouts/rails.ts`, `banking/writes.ts`,
+  four in `ledger/post/policy.ts`, and more. Read them as the module the path's leaf now lives in.
+- `ledger/post/post-entry.ts` and `periods/period-key.ts` describe the claim as `ON CONFLICT
+  (organizationId, postingType, periodKey, revision)` on `GlPosting`. It is
   `GlPostingSource_claim_key` (§4.3).
-- `ledger/roles/regime.ts` names a `receipt` posting type and a `buildReceiptEntry`. Neither
-  exists.
-- `month_end_inventory` appears in prose in `post-entry.ts`, `regime.ts` and `close-periods.ts`. It
-  is not in `POSTING_TYPES`.
-- `types.ts`'s `POSTING_STATUSES` JSDoc says "two values" over a three-element tuple.
+- `ledger/roles/regime.ts` names a `receipt` posting type and a `buildReceiptEntry` — neither
+  exists — and calls `vendor_bill` "deliberately not enabled", which it no longer is (§5.1).
+- `month_end_inventory` appears in prose in `post-entry.ts` and `policy.ts` and is not in
+  `POSTING_TYPES`. ⚠️ It is also the sole `kind` of the live `PostingAssertions` type that
+  `draft.ts` parses — that one is code, not a comment.
+- `providers/book-connections.ts` says `externalCompanyId` is "what `GlPosting.providerTenantId`
+  stores". That column is gone; the company scopes the mirror's key instead (§15 item 7).
+- `types.ts`'s `POSTING_STATUSES` JSDoc says "two values" over a three-element tuple, and its
+  `provider_sync` comment names `EXPORT_ROUTE_BY_POSTING_TYPE`, now a derived view of the policy.
 - `builders/basis-dimension.ts` explains itself in terms of `AccountingEffect`, which is gone.
 
 ### The tensions nobody has adjudicated
