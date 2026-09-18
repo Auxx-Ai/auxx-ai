@@ -56,8 +56,9 @@ import type { ProviderLedgerSlicer, ProviderSyncRange } from './client'
 import { recordProviderSyncedThrough } from './marker-writes'
 import { invertAccountMap } from './plan'
 import { planSyncChunks } from './range'
-import { readOurProviderEntryIds } from './reads'
+import { readActiveBookId, readOurDocNumbers, readOurProviderEntryIds } from './reads'
 import { type ProviderSyncChunkOutcome, syncOneChunk } from './sync-chunk'
+import type { OurLedgerIdentity } from './writes'
 
 const logger = createScopedLogger('postings:provider-sync')
 
@@ -125,8 +126,9 @@ class ProviderLedgerSyncSource implements SyncSource {
       slicer: ProviderLedgerSlicer
       providerId: string
       providerTenantId: string | null
+      bookId: string
       lock: PeriodLock
-      ourProviderEntryIds: ReadonlySet<string>
+      ours: OurLedgerIdentity
       accountMap: ReadonlyMap<string, string>
       glAccountIdByProviderId: ReadonlyMap<string, string>
       actorUserId?: string
@@ -202,12 +204,12 @@ class ProviderLedgerSyncSource implements SyncSource {
 
     const outcome = await syncOneChunk(this.db, this.organizationId, {
       ledger,
-      ourProviderEntryIds: this.deps.ourProviderEntryIds,
+      bookId: this.deps.bookId,
+      ours: this.deps.ours,
       accountMap: this.deps.accountMap,
       glAccountIdByProviderId: this.deps.glAccountIdByProviderId,
       lock: this.deps.lock,
       providerId: this.deps.providerId,
-      providerTenantId: this.deps.providerTenantId,
       actorUserId: this.deps.actorUserId,
     })
     this.chunks.push(outcome)
@@ -306,9 +308,16 @@ export async function createProviderLedgerSyncSource(
       { organizationId }
     )
   }
-  // Resolved ONCE per run: a walk reads one connected book, and the company is
-  // what scopes every provider entry id it brings across (`G20`).
-  const providerTenantId = await readActiveBookCompanyId(db, organizationId)
+  // Resolved ONCE per run: a walk reads one connected book, and the book is what
+  // scopes every mirror row it writes.
+  const book = await readActiveBookId(db, organizationId)
+  if (book.isErr()) throw book.error
+  if (!book.value) {
+    throw new UnprocessableEntityError(
+      'No accounting book is connected, so there is no ledger to mirror.',
+      { organizationId }
+    )
+  }
 
   const lock = await resolvePeriodLock(organizationId)
 
@@ -317,6 +326,8 @@ export async function createProviderLedgerSyncSource(
   // which `readOurProviderEntryIds` deliberately excludes.
   const ourIds = await readOurProviderEntryIds(db, organizationId)
   if (ourIds.isErr()) throw ourIds.error
+  const ourDocNumbers = await readOurDocNumbers(db, organizationId)
+  if (ourDocNumbers.isErr()) throw ourDocNumbers.error
 
   const mappings = await provider.listAccountMappings(organizationId)
   if (mappings.isErr()) throw mappings.error
@@ -329,9 +340,10 @@ export async function createProviderLedgerSyncSource(
     range,
     slicer: provider.ledgerSlicer(),
     providerId: provider.id,
-    providerTenantId,
+    providerTenantId: await readActiveBookCompanyId(db, organizationId),
+    bookId: book.value,
     lock,
-    ourProviderEntryIds: ourIds.value,
+    ours: { providerEntryIds: ourIds.value, docNumbers: ourDocNumbers.value },
     accountMap: mappings.value,
     glAccountIdByProviderId: inverted.value,
     actorUserId: input.actorUserId,

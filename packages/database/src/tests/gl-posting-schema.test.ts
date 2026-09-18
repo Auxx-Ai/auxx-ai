@@ -312,6 +312,7 @@ describe('the enum vocabularies', () => {
       'bank_deposit',
       'write_off',
       'payment',
+      'refund',
       'invoice_issued',
       'deposit_application',
       'credit_memo',

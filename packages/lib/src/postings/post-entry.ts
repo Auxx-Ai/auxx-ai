@@ -729,236 +729,255 @@ class AlreadyClaimed extends Error {
 }
 
 /**
- * Claim the period, persist the entry, hand it to whichever provider the
- * organization has connected, and record what happened.
- *
- * **Never throws.** Every outcome is a {@link PostResult} status.
- *
- * Order of operations, and why it is this order:
- *
- * 1. **Period lock.** Refusing at the door is the only cheap moment - a posting
- *    into a closed month cannot be un-posted at the provider by anything this
- *    system can do.
- * 2. **Roles.** Resolved as a batch and BEFORE the claim, so a configuration
- *    error never leaves a claimed row behind.
- * 3. **Balance**, re-asserted in integer minor units.
- * 4. **The deterministic keys** - document number and `requestId`.
- * 5. **The claim**, `ON CONFLICT DO NOTHING`. No row means someone owns the
- *    period; read theirs and return `already_posted`, which is a SUCCESS.
- * 6. **The lines**, in the SAME transaction as the claim. A claimed header with
- *    no lines is a ledger row that balances to nothing.
- * 7. **The provider**, AFTER that transaction commits. A network call inside an
- *    open transaction holds the claim's index tuple for the length of an HTTP
- *    round trip, which is exactly how the concurrent loser turns into a
- *    timeout instead of an `already_posted`.
- * 8. **The outcome**, in one `UPDATE` - `GlPosting_posted_check` is
- *    `status <> 'posted' OR postedAt IS NOT NULL`, so status and timestamp
- *    cannot be two statements.
+ * What a freshly claimed row still owes the provider once its transaction has
+ * committed. Absent on a draft, on `already_posted` and on every refusal.
  */
-export async function postEntry(db: Database, options: PostEntryOptions): Promise<PostResult> {
+export interface PendingEntryExport {
+  organizationId: string
+  glPostingId: string
+  input: PostEntryInput
+  /** `EXPORT_ROUTE_BY_POSTING_TYPE` said `'none'`, so this never reaches the org's provider. */
+  routedToNone: boolean
+}
+
+/** A {@link PostResult} plus the export a committed claim still owes. */
+export type InTxPostResult = PostResult & { pendingExport?: PendingEntryExport }
+
+/** The shape refusals that happen before anything is written come back in. */
+function refusalResult(prepared: PreparedEntry): PostResult {
+  const refusal = prepared.refusal!
+  return {
+    status: refusal.status,
+    failureClass: refusal.failureClass,
+    // A configuration or data refusal is never retried: retrying cannot change
+    // the answer, and the operator has to change something first.
+    retryable: false,
+    error: refusal.error,
+    ...(refusal.items?.length ? { items: refusal.items } : {}),
+    docNumber: prepared.docNumber || undefined,
+  }
+}
+
+/**
+ * The poster on the CALLER'S transaction: resolve, balance, claim, persist.
+ *
+ * Use it when the source write and its posting must commit or roll back
+ * together - a shipment and its revenue entry, a document and its movements
+ * (MIGRATION follow-up 2). The caller owns the transaction and
+ * {@link withAccountingCommitLock}; this function takes neither.
+ *
+ * 🛑 It does NOT push to the provider. A network call inside an open
+ * transaction holds the claim's index tuple for the length of an HTTP round
+ * trip, which is exactly how a concurrent loser turns into a timeout instead of
+ * an `already_posted`. A fresh claim comes back with a {@link PendingEntryExport}
+ * the caller hands to {@link exportPostedEntry} after the commit.
+ *
+ * Unlike {@link postEntry} this THROWS: an `AuxxError` or a database failure
+ * propagates so the caller's transaction rolls back. A REFUSAL is not a throw -
+ * nothing has been written at that point, so it comes back as a `PostResult`
+ * and the caller decides whether its own work still stands.
+ */
+export async function postEntryInTx(
+  tx: Transaction,
+  options: PostEntryOptions
+): Promise<InTxPostResult> {
   const { organizationId, entry, actorUserId, memo, reversesId, assertions } = options
   const revision = options.revision ?? 0
 
+  // Fail CLOSED before the claim, not after. A `month_end_inventory` row
+  // written with no assertions holds the period - so no later run can repair
+  // it - while leaving the next close nothing to compute its delta from.
+  if (requiresAssertions(entry.postingType) && !assertions) {
+    return {
+      status: 'error',
+      failureClass: 'data',
+      retryable: false,
+      error:
+        `A ${entry.postingType} posting must carry balance assertions. ` +
+        'It asserts a balance rather than accumulating one, so the next period reads ' +
+        'its opening figures from this entry and there would be nothing to read.',
+    }
+  }
+
+  // `GlPosting_reversal_check` is `(revision = 0 AND reversesId IS NULL) OR
+  // (revision > 0 AND reversesId IS NOT NULL)`. Caught here so the caller
+  // gets a sentence instead of a constraint name.
+  if (revision === 0 && reversesId) {
+    return {
+      status: 'error',
+      failureClass: 'data',
+      retryable: false,
+      error:
+        'A posting that reverses another must claim a revision above 0. ' +
+        'Revision 0 is the original.',
+    }
+  }
+  if (revision > 0 && !reversesId) {
+    return {
+      status: 'error',
+      failureClass: 'data',
+      retryable: false,
+      error: `Revision ${revision} must name the posting it reverses. Only an original is revision 0.`,
+    }
+  }
+
+  await options.beforeCommit?.(tx)
+  const authoritativeLock = await resolvePeriodLock(organizationId, tx)
+  const prepared = await prepareEntry(tx, {
+    organizationId,
+    entry,
+    lock: authoritativeLock,
+    revision,
+    scope: options.scope,
+  })
+  if (prepared.refusal) {
+    logger.warn('Refusing to post', {
+      organizationId,
+      postingType: entry.postingType,
+      periodKey: entry.periodKey,
+      status: prepared.refusal.status,
+      error: prepared.refusal.error,
+    })
+    return refusalResult(prepared)
+  }
+  const docNumber = prepared.docNumber
+
+  let outcome: PostingWriteOutcome
   try {
-    // Fail CLOSED before the claim, not after. A `month_end_inventory` row
-    // written with no assertions holds the period - so no later run can repair
-    // it - while leaving the next close nothing to compute its delta from.
-    if (requiresAssertions(entry.postingType) && !assertions) {
-      return {
-        status: 'error',
-        failureClass: 'data',
-        retryable: false,
-        error:
-          `A ${entry.postingType} posting must carry balance assertions. ` +
-          'It asserts a balance rather than accumulating one, so the next period reads ' +
-          'its opening figures from this entry and there would be nothing to read.',
-      }
-    }
-
-    // `GlPosting_reversal_check` is `(revision = 0 AND reversesId IS NULL) OR
-    // (revision > 0 AND reversesId IS NOT NULL)`. Caught here so the caller
-    // gets a sentence instead of a constraint name.
-    if (revision === 0 && reversesId) {
-      return {
-        status: 'error',
-        failureClass: 'data',
-        retryable: false,
-        error:
-          'A posting that reverses another must claim a revision above 0. ' +
-          'Revision 0 is the original.',
-      }
-    }
-    if (revision > 0 && !reversesId) {
-      return {
-        status: 'error',
-        failureClass: 'data',
-        retryable: false,
-        error: `Revision ${revision} must name the posting it reverses. Only an original is revision 0.`,
-      }
-    }
-
-    let prepared: PreparedEntry | undefined
-    let docNumber = ''
-    let outcome: PostingWriteOutcome | undefined
-    try {
-      await db.transaction(async (tx) => {
-        await withAccountingCommitLock(tx, organizationId)
-        await options.beforeCommit?.(tx)
-        const authoritativeLock = await resolvePeriodLock(organizationId, tx)
-        prepared = await prepareEntry(tx, {
-          organizationId,
-          entry,
-          lock: authoritativeLock,
-          revision,
-          scope: options.scope,
-        })
-        docNumber = prepared.docNumber
-        if (prepared.refusal) return
-        outcome = await writePostingInTx(tx, {
-          organizationId,
-          entry,
-          revision,
-          reversesId,
-          prepared,
-          sources: options.sources,
-          mode: options.mode,
-          storeId: options.storeId,
-          railId: options.railId,
-          memo,
-          actorUserId,
-          assertions,
-        })
+    // A SAVEPOINT, so the loser of a claim race rolls back its own row without
+    // taking the caller's work with it.
+    outcome = await tx.transaction((nested) =>
+      writePostingInTx(nested, {
+        organizationId,
+        entry,
+        revision,
+        reversesId,
+        prepared,
+        sources: options.sources,
+        mode: options.mode,
+        storeId: options.storeId,
+        railId: options.railId,
+        memo,
+        actorUserId,
+        assertions,
       })
-    } catch (error) {
-      // The loser of a claim race. Its own row rolled back with the
-      // transaction; the winner's stands, and `already_posted` is a SUCCESS.
-      if (error instanceof AlreadyClaimed) {
-        outcome = { kind: 'posted', claim: { kind: 'existing', row: error.row } }
-      }
+    )
+  } catch (error) {
+    // The loser of a claim race. Its own row rolled back with the savepoint;
+    // the winner's stands, and `already_posted` is a SUCCESS.
+    if (error instanceof AlreadyClaimed) {
+      outcome = { kind: 'posted', claim: { kind: 'existing', row: error.row } }
+    } else {
       // 🛑 The claim's `ON CONFLICT DO NOTHING` swallows a conflict on
       // `GlPostingSource_claim_key` and no other. A violation of
       // `GlPosting_org_docNumber_key` still raises SQLSTATE 23505 out of a
       // statement that looks defended, and without this it escapes as an
       // anonymous 500 naming a constraint the reader has never heard of.
-      const constraint = outcome ? null : uniqueViolationConstraint(error)
+      const constraint = uniqueViolationConstraint(error)
       if (constraint !== null) {
-        const detail =
-          constraint === 'GlPosting_org_docNumber_key'
-            ? `Document number ${docNumber} is already used by a different posting in this organization. ` +
-              'Two posting identities minted the same number - the document-number keyspace is wrong, not the entry.'
-            : `A unique constraint (${constraint || 'unknown'}) rejected the claim for ${docNumber}.`
         logger.error('Claim rejected by a constraint other than the source claim', {
           organizationId,
           docNumber,
           constraint,
         })
-        return {
-          status: 'error',
-          failureClass: 'data',
-          retryable: false,
-          error: detail,
-          docNumber,
-        }
+        throw new UnprocessableEntityError(
+          constraint === 'GlPosting_org_docNumber_key'
+            ? `Document number ${docNumber} is already used by a different posting in this organization. ` +
+                'Two posting identities minted the same number - the document-number keyspace is wrong, not the entry.'
+            : `A unique constraint (${constraint || 'unknown'}) rejected the claim for ${docNumber}.`,
+          { organizationId, docNumber, constraint }
+        )
       }
-      if (!outcome) {
-        if (error instanceof AuxxError) {
-          return { status: 'error', failureClass: 'data', retryable: false, error: error.message }
-        }
-        throw error
-      }
+      throw error
     }
+  }
 
-    if (!prepared) throw new Error('Posting preparation returned no result')
-    if (prepared.refusal) {
-      logger.warn('Refusing to post', {
-        organizationId,
-        postingType: entry.postingType,
-        periodKey: entry.periodKey,
-        status: prepared.refusal.status,
-        error: prepared.refusal.error,
-      })
-      return {
-        status: prepared.refusal.status,
-        failureClass: prepared.refusal.failureClass,
-        // A configuration or data refusal is never retried: retrying cannot
-        // change the answer, and the operator has to change something first.
-        retryable: false,
-        error: prepared.refusal.error,
-        ...(prepared.refusal.items?.length ? { items: prepared.refusal.items } : {}),
-        docNumber: prepared.docNumber || undefined,
-      }
+  if (outcome.kind === 'drafted') {
+    logger.info('Entry drafted - it holds no claim and no document number', {
+      organizationId,
+      postingType: entry.postingType,
+      glPostingId: outcome.glPostingId,
+    })
+    return { status: 'drafted', glPostingId: outcome.glPostingId }
+  }
+
+  const claim = outcome.claim
+
+  if (claim.kind === 'existing') {
+    // A SUCCESS, and since the export split it is a HONEST one: the row that
+    // holds this claim is in the books, whatever its export did.
+    //
+    // Logged at info, never as an error: training everyone to ignore this
+    // channel is how a real double-post would go unnoticed.
+    logger.info('Source already claimed - not posting again', {
+      organizationId,
+      postingType: entry.postingType,
+      periodKey: entry.periodKey,
+      revision,
+      glPostingId: claim.row.id,
+      existingStatus: claim.row.status,
+      existingExportStatus: claim.row.exportStatus,
+    })
+    return {
+      status: 'already_posted',
+      exportStatus: claim.row.exportStatus,
+      glPostingId: claim.row.id,
+      docNumber: claim.row.docNumber ?? undefined,
+      providerId: claim.row.providerId ?? undefined,
+      providerEntryId: claim.row.providerEntryId ?? undefined,
     }
-    if (!outcome) throw new Error('Posting write returned no result')
-    const { lines } = prepared
+  }
 
-    if (outcome.kind === 'drafted') {
-      logger.info('Entry drafted - it holds no claim and no document number', {
+  const glPostingId = claim.row.id
+  // `EXPORT_ROUTE_BY_POSTING_TYPE` is read HERE and nowhere else - the route
+  // table is the one place that decides whether an entry ever leaves.
+  return {
+    status: 'posted',
+    exportStatus: 'pending',
+    glPostingId,
+    docNumber,
+    pendingExport: {
+      organizationId,
+      glPostingId,
+      routedToNone: EXPORT_ROUTE_BY_POSTING_TYPE[entry.postingType] === 'none',
+      input: {
         organizationId,
-        postingType: entry.postingType,
-        glPostingId: outcome.glPostingId,
-      })
-      return { status: 'drafted', glPostingId: outcome.glPostingId }
-    }
-
-    const claim = outcome.claim
-
-    if (claim.kind === 'existing') {
-      // A SUCCESS, and since the export split it is a HONEST one: the row that
-      // holds this claim is in the books, whatever its export did. Before the
-      // split this same return could hand back the id of a row that had been
-      // taken out of every report, and the caller would stamp it and move on.
-      //
-      // Logged at info, never as an error: training everyone to ignore this
-      // channel is how a real double-post would go unnoticed.
-      //
-      // A row whose EXPORT is still owed is re-pushed by `retryExport`, which
-      // reuses that row's claimed `requestId` and `docNumber`. It is not this
-      // function's job and never was.
-      logger.info('Source already claimed - not posting again', {
-        organizationId,
-        postingType: entry.postingType,
-        periodKey: entry.periodKey,
+        glPostingId,
         revision,
-        glPostingId: claim.row.id,
-        existingStatus: claim.row.status,
-        existingExportStatus: claim.row.exportStatus,
-      })
-      return {
-        status: 'already_posted',
-        exportStatus: claim.row.exportStatus,
-        glPostingId: claim.row.id,
-        docNumber: claim.row.docNumber ?? undefined,
-        providerId: claim.row.providerId ?? undefined,
-        providerEntryId: claim.row.providerEntryId ?? undefined,
-      }
-    }
+        postingType: entry.postingType,
+        periodKey: entry.periodKey,
+        txnDate: entry.txnDate,
+        docNumber: claim.row.docNumber ?? docNumber,
+        lines: prepared.lines.map((line) => line.resolved),
+        // Read back from the claimed row, never recomputed. The row is the
+        // record of what key this entry was pushed under.
+        idempotencyKey: claim.row.requestId,
+        memo,
+      },
+    },
+  }
+}
 
-    const glPostingId = claim.row.id
+/**
+ * Hand a committed entry to whichever provider the organization has connected,
+ * and record what happened.
+ *
+ * **Never throws.** Called AFTER the claim's transaction commits - see
+ * {@link postEntryInTx}'s 🛑.
+ */
+export async function exportPostedEntry(
+  db: Database,
+  pending: PendingEntryExport
+): Promise<PostResult> {
+  const { organizationId, glPostingId, input, routedToNone } = pending
+  const docNumber = input.docNumber
 
-    // ── The provider, after the claim has committed ────────────────────────
-    // This is the first and only reader of `EXPORT_ROUTE_BY_POSTING_TYPE`.
-    // `'none'` short-circuits to `NONE_ACCOUNTING_PROVIDER` instead of the
-    // org's connected one, so a route never reaches this file's own provider
-    // call. Do not branch other posting types here - the route table is the
-    // one place that decides this.
-    const routedToNone = EXPORT_ROUTE_BY_POSTING_TYPE[entry.postingType] === 'none'
+  try {
+    // `'none'` short-circuits to `NONE_ACCOUNTING_PROVIDER` instead of the org's
+    // connected one. Do not branch other posting types here.
     const provider = routedToNone
       ? NONE_ACCOUNTING_PROVIDER
       : await resolveAccountingProvider(organizationId)
-    const input: PostEntryInput = {
-      organizationId,
-      glPostingId,
-      revision,
-      postingType: entry.postingType,
-      periodKey: entry.periodKey,
-      txnDate: entry.txnDate,
-      docNumber: claim.row.docNumber ?? docNumber,
-      lines: lines.map((line) => line.resolved),
-      // Read back from the claimed row, never recomputed. The row is the record
-      // of what key this entry was pushed under.
-      idempotencyKey: claim.row.requestId,
-      memo,
-    }
 
     const pushed = await provider.postEntry(input)
 
@@ -981,15 +1000,9 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
         retryable: failure.retryable,
         error: failure.error,
       })
-      // 🛑 `posted`, not `error`. The ledger took this entry - it built,
-      // balanced, resolved its roles, cleared the period lock and committed
-      // with its lines - and a third party declining a COPY of it changes none
-      // of that. Returning `error` here is what made callers roll back a good
-      // document and what took the entry out of every report.
-      //
-      // The export problem is not swallowed: it is on the row, it is on this
-      // result as `exportStatus` plus `error`, it is logged above, and
-      // `listFailedExports` is the queue that surfaces it.
+      // 🛑 `posted`, not `error`. The ledger took this entry and a third party
+      // declining a COPY of it changes none of that. The export problem is on
+      // the row, on this result, logged above, and in `listFailedExports`.
       return {
         status: 'posted',
         exportStatus: 'failed',
@@ -1003,23 +1016,14 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
     const result = pushed.value
 
     // 🛑 A `'none'` ROUTE is not a missing integration, and must not say it is.
-    //
-    // `NONE_ACCOUNTING_PROVIDER` answers `not_connected` because from its own
-    // point of view that is true - it has nothing to push to. But it was handed
-    // this entry by the route table, not by the org's lack of a provider, and
-    // the org may well have QuickBooks connected. Reporting `not_connected`
-    // there made the close console tell a connected org it had no accounting
-    // system, sending a reader to debug a healthy connection (brief 22 §5).
-    //
-    // The translation lives HERE because this is the only place that knows
-    // which of the two reasons applied: the provider cannot tell, and the row
-    // records the same `exportStatus` either way.
+    // `NONE_ACCOUNTING_PROVIDER` answers `not_connected` because it has nothing
+    // to push to, but it was handed this entry by the route table rather than by
+    // the org's lack of a provider (brief 22 §5).
     const status: PostEntryStatus =
       routedToNone && result.status === 'not_connected' ? 'not_exported' : result.status
 
-    // Nothing was pushed and nothing is owed. `not_exported` joins the set for
-    // the same reason it exists - it pushed nothing BY DESIGN, so an export is
-    // not merely absent, it is never coming.
+    // Nothing was pushed and nothing is owed. `not_exported` joins the set
+    // because it pushed nothing BY DESIGN - an export is never coming.
     const exportStatus =
       status === 'not_connected' || status === 'disabled' || status === 'not_exported'
         ? ('not_required' as const)
@@ -1043,7 +1047,7 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
       docNumber,
       providerId: result.providerId,
       providerStatus: result.status,
-      lineCount: lines.length,
+      lineCount: input.lines.length,
     })
 
     return {
@@ -1057,19 +1061,59 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    logger.error('Exporting a posted entry failed', { organizationId, glPostingId, error: message })
+    return {
+      status: 'posted',
+      exportStatus: 'failed',
+      glPostingId,
+      docNumber,
+      failureClass: 'transport',
+      retryable: false,
+      error: message,
+    }
+  }
+}
+
+/**
+ * Claim the period, persist the entry, hand it to whichever provider the
+ * organization has connected, and record what happened.
+ *
+ * **Never throws.** Every outcome is a {@link PostResult} status.
+ *
+ * Its own transaction and its own {@link withAccountingCommitLock} around
+ * {@link postEntryInTx}, then the provider - which is deliberately outside that
+ * transaction. Use `postEntryInTx` directly when the source write must commit
+ * with its posting.
+ */
+export async function postEntry(db: Database, options: PostEntryOptions): Promise<PostResult> {
+  const { organizationId, entry } = options
+
+  let result: InTxPostResult
+  try {
+    result = await db.transaction(async (tx) => {
+      await withAccountingCommitLock(tx, organizationId)
+      return postEntryInTx(tx, options)
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
     logger.error('Posting failed', {
       organizationId,
       postingType: entry.postingType,
       periodKey: entry.periodKey,
       error: message,
     })
+    if (error instanceof AuxxError) {
+      return { status: 'error', failureClass: 'data', retryable: false, error: message }
+    }
     // `transport` because an unexpected throw on this path is overwhelmingly an
     // io failure - a dropped connection, a timed-out statement. `retryable` is
     // decided separately and conservatively: see `classifyProviderFailure`.
-    // `PostFailureClass` documents transport as the only class worth retrying,
-    // which makes transport NECESSARY for a retry, not sufficient for one.
     return { status: 'error', failureClass: 'transport', retryable: false, error: message }
   }
+
+  const { pendingExport, ...posted } = result
+  if (!pendingExport) return posted
+  return exportPostedEntry(db, pendingExport)
 }
 
 /**
@@ -1237,111 +1281,118 @@ export interface PostDraftOptions {
  * what a reviewer approved is what posts.
  */
 export async function postDraft(db: Database, options: PostDraftOptions): Promise<PostResult> {
-  const { organizationId, glPostingId, actorUserId } = options
-
+  const { organizationId, glPostingId } = options
   try {
-    const [row] = await db
-      .select({
-        id: schema.GlPosting.id,
-        status: schema.GlPosting.status,
-        revision: schema.GlPosting.revision,
-        built: schema.GlPosting.built,
-      })
-      .from(schema.GlPosting)
-      .where(
-        and(
-          eq(schema.GlPosting.id, glPostingId),
-          eq(schema.GlPosting.organizationId, organizationId)
-        )
-      )
-      .limit(1)
-
-    if (!row) {
-      return {
-        status: 'error',
-        failureClass: 'data',
-        retryable: false,
-        error: `No posting ${glPostingId} in this organization.`,
-      }
-    }
-    if (row.status !== 'draft') {
-      return {
-        status: 'error',
-        failureClass: 'data',
-        retryable: false,
-        error: `Posting ${glPostingId} is ${row.status}, not draft. Only a draft can be posted.`,
-        glPostingId,
-      }
-    }
-
-    const envelope = parsePostingDraft(row.built)
-    const entry = envelope.entry
-
-    const subject = envelope.sources?.find((source) => source.linkRole === 'subject')
-    if (!subject) {
-      return {
-        status: 'error',
-        failureClass: 'data',
-        retryable: false,
-        error: `Draft ${glPostingId} carries no subject source, so there is no claim to take.`,
-        glPostingId,
-      }
-    }
-
-    let prepared: PreparedEntry | undefined
-    let claimed: { heldBy: string } | null = null
-    await db.transaction(async (tx) => {
+    return await db.transaction(async (tx) => {
       await withAccountingCommitLock(tx, organizationId)
-      const authoritativeLock = await resolvePeriodLock(organizationId, tx)
-      prepared = await prepareEntry(tx, {
-        organizationId,
-        entry,
-        lock: authoritativeLock,
-        revision: row.revision,
-      })
-      if (prepared.refusal) return
-      claimed = await claimSubjectInTx(tx, { organizationId, glPostingId, subject })
-      if (claimed) return
-      await markPostedInTx(tx, {
-        organizationId,
-        glPostingId,
-        docNumber: prepared.docNumber,
-        requestId: prepared.requestId,
-        actorUserId,
-      })
+      return postDraftInTx(tx, options)
     })
-
-    if (!prepared) throw new Error('Draft preparation returned no result')
-    if (prepared.refusal) {
-      return {
-        status: prepared.refusal.status,
-        failureClass: prepared.refusal.failureClass,
-        retryable: false,
-        error: prepared.refusal.error,
-        ...(prepared.refusal.items?.length ? { items: prepared.refusal.items } : {}),
-        glPostingId,
-      }
-    }
-    if (claimed) {
-      const holder: { heldBy: string } = claimed
-      logger.info('Source already claimed - the draft was not posted', {
-        organizationId,
-        glPostingId,
-        heldBy: holder.heldBy,
-      })
-      return { status: 'already_posted', glPostingId: holder.heldBy }
-    }
-
-    logger.info('Draft posted', { organizationId, glPostingId, docNumber: prepared.docNumber })
-    return {
-      status: 'posted',
-      exportStatus: 'pending',
-      glPostingId,
-      docNumber: prepared.docNumber,
-    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     logger.error('Posting a draft failed', { organizationId, glPostingId, error: message })
     return { status: 'error', failureClass: 'transport', retryable: false, error: message }
+  }
+}
+
+/**
+ * {@link postDraft} on the caller's transaction, which owns the commit lock.
+ *
+ * Throws rather than swallowing, so a caller promoting a draft alongside its own
+ * write rolls both back together. A refusal writes nothing and so is a
+ * `PostResult`, not a throw.
+ */
+export async function postDraftInTx(
+  tx: Transaction,
+  options: PostDraftOptions
+): Promise<PostResult> {
+  const { organizationId, glPostingId, actorUserId } = options
+
+  const [row] = await tx
+    .select({
+      id: schema.GlPosting.id,
+      status: schema.GlPosting.status,
+      revision: schema.GlPosting.revision,
+      built: schema.GlPosting.built,
+    })
+    .from(schema.GlPosting)
+    .where(
+      and(eq(schema.GlPosting.id, glPostingId), eq(schema.GlPosting.organizationId, organizationId))
+    )
+    .limit(1)
+
+  if (!row) {
+    return {
+      status: 'error',
+      failureClass: 'data',
+      retryable: false,
+      error: `No posting ${glPostingId} in this organization.`,
+    }
+  }
+  if (row.status !== 'draft') {
+    return {
+      status: 'error',
+      failureClass: 'data',
+      retryable: false,
+      error: `Posting ${glPostingId} is ${row.status}, not draft. Only a draft can be posted.`,
+      glPostingId,
+    }
+  }
+
+  const envelope = parsePostingDraft(row.built)
+  const entry = envelope.entry
+
+  const subject = envelope.sources?.find((source) => source.linkRole === 'subject')
+  if (!subject) {
+    return {
+      status: 'error',
+      failureClass: 'data',
+      retryable: false,
+      error: `Draft ${glPostingId} carries no subject source, so there is no claim to take.`,
+      glPostingId,
+    }
+  }
+
+  const authoritativeLock = await resolvePeriodLock(organizationId, tx)
+  const prepared = await prepareEntry(tx, {
+    organizationId,
+    entry,
+    lock: authoritativeLock,
+    revision: row.revision,
+  })
+  if (prepared.refusal) {
+    return {
+      status: prepared.refusal.status,
+      failureClass: prepared.refusal.failureClass,
+      retryable: false,
+      error: prepared.refusal.error,
+      ...(prepared.refusal.items?.length ? { items: prepared.refusal.items } : {}),
+      glPostingId,
+    }
+  }
+
+  const claimed = await claimSubjectInTx(tx, { organizationId, glPostingId, subject })
+  if (claimed) {
+    logger.info('Source already claimed - the draft was not posted', {
+      organizationId,
+      glPostingId,
+      heldBy: claimed.heldBy,
+    })
+    return { status: 'already_posted', glPostingId: claimed.heldBy }
+  }
+
+  await markPostedInTx(tx, {
+    organizationId,
+    glPostingId,
+    docNumber: prepared.docNumber,
+    requestId: prepared.requestId,
+    actorUserId,
+  })
+
+  logger.info('Draft posted', { organizationId, glPostingId, docNumber: prepared.docNumber })
+  return {
+    status: 'posted',
+    exportStatus: 'pending',
+    glPostingId,
+    docNumber: prepared.docNumber,
   }
 }

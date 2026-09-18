@@ -19,7 +19,7 @@ import { balancedEntryLines, ledger } from './support/fixtures'
 
 const recordProviderSyncedThrough = vi.hoisted(() => vi.fn())
 const fetchBatch = vi.hoisted(() => vi.fn())
-const postProviderSyncEntry = vi.hoisted(() => vi.fn())
+const translate = vi.hoisted(() => vi.fn())
 /** The stored `providerSync.state` row, in memory. */
 const stored = vi.hoisted(() => ({ blob: {} as ProviderSyncStateBlob }))
 
@@ -69,13 +69,33 @@ vi.mock('../../provider', () => ({
 vi.mock('../reads', () => ({
   readOurProviderEntryIds: vi.fn(async () => ({ isErr: () => false, value: new Set<string>() })),
   readOurPostedEntries: vi.fn(async () => ({ isErr: () => false, value: [] })),
-  readSyncedEntriesInRange: vi.fn(async () => ({ isErr: () => false, value: [] })),
+  readActiveBookId: vi.fn(async () => ({ isErr: () => false, value: 'book_1' })),
+  readOurDocNumbers: vi.fn(async () => ({ isErr: () => false, value: new Set<string>() })),
 }))
 
 vi.mock('../writes', () => ({
-  postProviderSyncEntry,
-  reverseSyncedEntry: vi.fn(),
+  upsertMirrorChunk: vi.fn(async () => ({
+    isErr: () => false,
+    value: { mirrored: 0, ours: 0, withdrawn: 0, withdrawnIds: [] },
+  })),
 }))
+
+vi.mock('../translate', () => ({ translateMirrorRange: translate }))
+
+/** A translation pass that found nothing to do. Overridden per test. */
+function cleanTranslation() {
+  return {
+    isErr: () => false,
+    value: {
+      written: 0,
+      alreadyPosted: 0,
+      reversed: 0,
+      zeroValue: 0,
+      deferredToClosedMonths: [],
+      refusals: [],
+    },
+  }
+}
 
 const ORG = 'org_1'
 const RUN = '2026-09-16T10:00:00.000Z'
@@ -144,10 +164,10 @@ async function runJob(runStartedAt: string, sliceCursor?: { kind: 'token'; value
 beforeEach(() => {
   stored.blob = {}
   fetchBatch.mockReset()
-  postProviderSyncEntry.mockReset()
+  translate.mockReset()
+  translate.mockResolvedValue(cleanTranslation())
   recordProviderSyncedThrough.mockReset()
   recordProviderSyncedThrough.mockResolvedValue({ isErr: () => false, value: undefined })
-  postProviderSyncEntry.mockResolvedValue({ isErr: () => false, value: { status: 'posted' } })
 })
 
 describe('the marker block survives the source being rebuilt per job', () => {
@@ -167,8 +187,8 @@ describe('the marker block survives the source being rebuilt per job', () => {
     const july = await runJob(RUN, june.nextCursor as { kind: 'token'; value: string })
 
     expect(july.commit).toBe('all')
-    // July's entries were still written; only the marker is held back.
-    expect(postProviderSyncEntry).toHaveBeenCalledTimes(1)
+    // July was still mirrored and translated; only the marker is held back.
+    expect(translate).toHaveBeenCalledTimes(2)
     expect(recordProviderSyncedThrough).not.toHaveBeenCalled()
   })
 

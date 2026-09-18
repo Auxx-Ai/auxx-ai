@@ -27,14 +27,15 @@
 //
 // No permission checks here. The router asserts (docs/lib-module-guide.md §6).
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq } from 'drizzle-orm'
+import { withAccountingCommitLock } from './accounting-commit-lock'
 import { buildEntry } from './build-entry'
 import { parsePostingDraft, readDraftReasons, requiresAssertions, reverseAssertions } from './draft'
 import { didLedgerAccept } from './ledger-accepted'
 import type { PeriodLock } from './periods'
-import { postEntry } from './post-entry'
+import { exportPostedEntry, type InTxPostResult, postEntryInTx } from './post-entry'
 import type {
   CounterpartyType,
   GlPostingLineInput,
@@ -97,9 +98,40 @@ export async function reverseEntry(
   db: Database,
   options: ReverseEntryOptions
 ): Promise<PostResult> {
+  try {
+    const result = await db.transaction(async (tx) => {
+      await withAccountingCommitLock(tx, options.organizationId)
+      return reverseEntryInTx(tx, options)
+    })
+    const { pendingExport, ...reversed } = result
+    if (!pendingExport) return reversed
+    return exportPostedEntry(db, pendingExport)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logger.error('Reversal failed', {
+      organizationId: options.organizationId,
+      glPostingId: options.glPostingId,
+      error: message,
+    })
+    return { status: 'error', failureClass: 'transport', retryable: false, error: message }
+  }
+}
+
+/**
+ * {@link reverseEntry} on the caller's transaction, so an undo and the record
+ * change that motivated it commit or roll back together.
+ *
+ * Throws rather than swallowing - see {@link postEntryInTx}. A `Database` is
+ * accepted too, which is how `reverseEntry` reuses it.
+ */
+export async function reverseEntryInTx(
+  tx: Transaction,
+  options: ReverseEntryOptions
+): Promise<InTxPostResult> {
   const { organizationId, glPostingId, actorUserId, lock, memo } = options
 
-  try {
+  {
+    const db = tx
     const [original] = await db
       .select({
         id: schema.GlPosting.id,
@@ -264,7 +296,7 @@ export async function reverseEntry(
       lineCount: reversedLines.length,
     })
 
-    const result = await postEntry(db, {
+    return postEntryInTx(tx, {
       organizationId,
       entry,
       assertions: originalAssertions ? reverseAssertions(originalAssertions) : undefined,
@@ -287,12 +319,6 @@ export async function reverseEntry(
         },
       ],
     })
-
-    return result
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    logger.error('Reversal failed', { organizationId, glPostingId, error: message })
-    return { status: 'error', failureClass: 'transport', retryable: false, error: message }
   }
 }
 

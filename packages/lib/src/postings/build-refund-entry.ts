@@ -13,9 +13,6 @@
  * endpoint the money left by (a bank account, undeposited funds, or the
  * original receipt's gateway clearing account), and this turns them into a
  * balanced entry.
- *
- * ⚠️ The posting type is `payment`, not a `refund` of its own. A refund has no
- * enum value yet; TARGET §5 names one and adding it is a schema change.
  */
 
 import { UnprocessableEntityError } from '../errors'
@@ -25,8 +22,8 @@ import type { BuiltEntry, GlPostingLineInput } from './types'
 /** The `sourceType` every refund line carries - the movement. */
 export const REFUND_SOURCE_TYPE = 'money_transaction'
 
-/** The posting type a refund claims until TARGET §5's `refund` type exists. */
-export const REFUND_POSTING_TYPE = 'payment' as const
+/** TARGET §5's own type for a refund, distinct from the `payment` it used to borrow. */
+export const REFUND_POSTING_TYPE = 'refund' as const
 
 /** One credit memo's slice of a refund, already resolved to its control account. */
 export interface RefundSettlementLine {

@@ -52,6 +52,10 @@ export const POSTING_TYPES = [
   // `Dr undeposited_funds | cash | clearing` (per `accounting.paymentRoute.*`)
   // / `Cr accounts_receivable`. Added for slot 2G phase B, 2026-09-04.
   'payment',
+  // TARGET §5: a customer refund - `Dr returns / Cr clearing or bank`. Its own
+  // type rather than a sides-swapped `payment` so the export can send a Refund
+  // Receipt and a ledger card can name what it is.
+  'refund',
   // An invoice ISSUED: `Dr accounts_receivable / Cr revenue_service /
   // Cr sales_tax_payable`, dated the invoice's own `issuedAt`. The receivable
   // every payment entry relieves and nothing used to raise

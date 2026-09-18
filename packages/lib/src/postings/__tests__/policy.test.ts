@@ -41,6 +41,9 @@ const ENABLED_TYPES_PINNED: readonly PostingType[] = [
   'bank_deposit',
   'fulfillment',
   'payment',
+  // TARGET §5 gave a refund its own type, declared beside the payment it used
+  // to borrow. MIGRATION step 2.
+  'refund',
   'payout',
   'write_off',
   'bank_transaction',
@@ -86,7 +89,7 @@ describe('every posting type has a policy', () => {
 })
 
 describe('the derived regime reads exactly as the literal did', () => {
-  it('ENABLED_POSTING_TYPES equals the pre-unit-1 list plus recurring_journal, byte for byte', () => {
+  it('ENABLED_POSTING_TYPES equals the pre-unit-1 list plus recurring_journal and refund, byte for byte', () => {
     expect([...ENABLED_POSTING_TYPES]).toEqual([...ENABLED_TYPES_PINNED])
   })
 

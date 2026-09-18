@@ -39,6 +39,7 @@ const h = vi.hoisted(() => ({
   relieved: [] as Array<{ organizationId: string; userId: string; lines: unknown[] }>,
   /** Overridable per test - defaults to a clean run that wrote nothing skipped. */
   reliefResult: null as unknown,
+  autoPostMode: 'post' as 'draft' | 'post',
 }))
 
 vi.mock('../../../postings/accounting-enabled', () => ({
@@ -104,11 +105,13 @@ vi.mock('../../../postings/build-fulfillment-entry', async (importOriginal) => {
 
 vi.mock('../../../postings/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
-  postEntry: async (_db: unknown, options: Record<string, unknown>) => {
+  postEntryInTx: async (_tx: unknown, options: Record<string, unknown>) => {
     h.events.push('post')
     h.postCalls.push(options)
     return h.postResult
   },
+  // The push is outside the transaction; the poster's result rides through it.
+  exportPostedEntry: async () => h.postResult,
   previewEntry: async () => ({ lines: [] }),
 }))
 
@@ -140,6 +143,8 @@ vi.mock('../../../resources/crud/tx-write-flush', () => ({
 vi.mock('../../../postings/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
+
+vi.mock('../../../postings/auto-post', () => ({ readAutoPostMode: async () => h.autoPostMode }))
 
 vi.mock('../../../relief', async () => {
   const { ok } = await import('neverthrow')
@@ -234,6 +239,7 @@ beforeEach(() => {
   h.built = []
   h.relieved = []
   h.reliefResult = null
+  h.autoPostMode = 'post'
   h.isAccountingEnabled.mockResolvedValue(true)
 })
 
@@ -261,9 +267,11 @@ describe('fulfillOrder', () => {
     expect(statusWrite?.values.order_fulfillment_status).toBe('partial')
   })
 
-  it('locks and commits before posting - the entry posts right after the write', async () => {
+  it('posts inside the transaction that records the shipment', async () => {
     await fulfillOrder(stubDb(), input)
-    expect(h.events).toEqual(['lock', 'commit', 'flush', 'post'])
+    // The entry commits WITH the shipment now (follow-up 2), so the post is
+    // inside the transaction rather than after it.
+    expect(h.events).toEqual(['lock', 'post', 'commit', 'flush'])
   })
 
   it('posts subject/parent/counterparty sources, storeId from the order scope, and no rail', async () => {

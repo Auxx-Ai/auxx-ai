@@ -512,6 +512,63 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     singleWriterRoles: [],
   },
 
+  refund: {
+    type: 'refund',
+    label: 'Refund',
+    // money/customer-money/refund-accounting.ts, on a customer refund.
+    trigger: { kind: 'event', on: 'A customer refund is recorded' },
+    template: [
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES,
+        what: 'What the customer is being given back',
+      },
+      {
+        side: 'credit',
+        role: ACCOUNT_ROLES.CLEARING,
+        what: 'Card refunds, until the payout nets them',
+      },
+      { side: 'credit', role: 'by id', what: 'The cash bank account, for ACH and wire' },
+      {
+        side: 'credit',
+        role: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
+        what: 'Cash, cheques and unknown methods',
+      },
+    ],
+    settings: [
+      'accounting.paymentRoute.cash',
+      'accounting.paymentRoute.check',
+      'accounting.paymentRoute.card',
+      'accounting.paymentRoute.bank',
+      'accounting.paymentRoute.other',
+      'accounting.cashBankAccountId',
+      'accounting.autoPost.refund',
+    ],
+    sentence:
+      'A refund posts as it is issued, leaving by the same route the money arrived on: card clearing, the cash bank account, or undeposited funds.',
+    disabledSentence:
+      'Refund posting is off, so money given back to a customer never leaves the books and returns are never recognised.',
+    parameters: [
+      {
+        name: 'Route',
+        value: 'The method it left by',
+        sentence:
+          'A refund reads the same per-method route a receipt does, so the two sides of one card sale clear through the same account.',
+      },
+    ],
+    records: [BANK_ACCOUNTS_RECORD],
+    settingCopy: {
+      'accounting.autoPost.refund': {
+        title: 'Auto-post refunds',
+        description:
+          'On, a refund posts immediately. Off, it drafts on the ledger for review and approval.',
+      },
+    },
+    enabled: true,
+    exportRoute: 'journal',
+    singleWriterRoles: [],
+  },
+
   payout: {
     type: 'payout',
     label: 'Payout',

@@ -2,7 +2,7 @@
 
 /** Native shipment creation commits operational quantities, then posts revenue right after. */
 
-import type { Database } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
@@ -16,7 +16,13 @@ import {
 } from '../../postings/build-fulfillment-entry'
 import { listPostingsForSource } from '../../postings/list-postings'
 import { resolvePeriodLock } from '../../postings/period-lock'
-import { LEDGER_CURRENCY, postEntry, previewEntry } from '../../postings/post-entry'
+import {
+  exportPostedEntry,
+  type InTxPostResult,
+  LEDGER_CURRENCY,
+  postEntryInTx,
+  previewEntry,
+} from '../../postings/post-entry'
 import { reverseEntry } from '../../postings/reverse-entry'
 import type {
   BuiltEntry,
@@ -291,11 +297,12 @@ function buildForOrder(
  * belongs to the receipt, which posts through `receipt-accounting.ts` when the
  * money actually settles.
  *
- * Never throws - `postEntry` never does, and a refusal comes back as a
- * `PostResult` for the caller to retain alongside the shipment it recorded.
+ * Posts inside the fulfillment's own transaction, so the shipment and its entry
+ * commit together (MIGRATION follow-up 2). A REFUSAL is not a throw - nothing is
+ * written at that point - so a closed month still retains the shipment.
  */
-async function postFulfillmentEntry(
-  db: Database,
+async function postFulfillmentEntryInTx(
+  tx: Transaction,
   input: {
     organizationId: string
     orderId: string
@@ -305,7 +312,7 @@ async function postFulfillmentEntry(
     actorUserId: string
     memo?: string
   }
-): Promise<PostResult> {
+): Promise<InTxPostResult> {
   const {
     organizationId,
     orderId,
@@ -315,7 +322,7 @@ async function postFulfillmentEntry(
     actorUserId,
     memo,
   } = input
-  const scope = await readOrderSourceScope(db, organizationId, orderId)
+  const scope = await readOrderSourceScope(tx, organizationId, orderId)
   const sources: GlPostingSourceInput[] = [
     { sourceKind: 'fulfillment', sourceId: fulfillmentInstanceId, linkRole: 'subject' },
     { sourceKind: 'order', sourceId: orderId, linkRole: 'parent' },
@@ -323,9 +330,9 @@ async function postFulfillmentEntry(
       ? [{ sourceKind: 'contact', sourceId: contactInstanceId, linkRole: 'counterparty' as const }]
       : []),
   ]
-  const lock = await resolvePeriodLock(organizationId)
-  const mode = await readAutoPostMode(db, organizationId, 'fulfillment')
-  return postEntry(db, {
+  const lock = await resolvePeriodLock(organizationId, tx)
+  const mode = await readAutoPostMode(tx, organizationId, 'fulfillment')
+  return postEntryInTx(tx, {
     organizationId,
     entry,
     lock,
@@ -461,6 +468,18 @@ export async function fulfillOrder(
           const fulfillmentStatus = fulfillmentStatusFor(remainingAfter)
           const crud = new UnifiedCrudHandler(organizationId, actorUserId, tx)
           await crud.update(order.recordId, { order_fulfillment_status: fulfillmentStatus })
+          // The entry commits with the shipment it recognises (follow-up 2).
+          const post: InTxPostResult = entry
+            ? await postFulfillmentEntryInTx(tx, {
+                organizationId,
+                orderId,
+                fulfillmentInstanceId: created.fulfillmentInstanceId,
+                contactInstanceId: order.contactInstanceId,
+                entry,
+                actorUserId,
+                memo,
+              })
+            : { status: 'not_enabled' }
           const fulfillment: Fulfillment = {
             id: created.fulfillmentInstanceId,
             recordId: created.recordId,
@@ -493,33 +512,18 @@ export async function fulfillOrder(
             created,
             shipped,
             shippedAtInstant,
-            contactInstanceId: order.contactInstanceId,
-            entry,
+            post,
           }
         })
       )
       if (committed.owned) await flushTxWriteScope(committed.scope)
-      const {
-        fulfillment,
-        fulfillmentStatus,
-        created,
-        shipped,
-        shippedAtInstant,
-        contactInstanceId,
-        entry,
-      } = committed.result
+      const { fulfillment, fulfillmentStatus, created, shipped, shippedAtInstant } =
+        committed.result
 
-      const post: PostResult = entry
-        ? await postFulfillmentEntry(db, {
-            organizationId,
-            orderId,
-            fulfillmentInstanceId: created.fulfillmentInstanceId,
-            contactInstanceId,
-            entry,
-            actorUserId,
-            memo,
-          })
-        : { status: 'not_enabled' }
+      // The provider push is deliberately outside the transaction: a network
+      // call inside one holds the claim's index tuple for an HTTP round trip.
+      const { pendingExport, ...written } = committed.result.post
+      const post: PostResult = pendingExport ? await exportPostedEntry(db, pendingExport) : written
       fulfillment.glPosting = post.glPostingId ?? null
       fulfillment.docNumber = post.docNumber ?? null
       // Inventory follows the shipment even when bookkeeping refuses; its independent retry owns failures.

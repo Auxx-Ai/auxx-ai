@@ -12,6 +12,7 @@
 // posting, one `already_posted`, the loser's row rolled back. It does NOT prove
 // Postgres's partial-index behaviour; that is owed as an integration test.
 
+import type { Database, Transaction } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -32,7 +33,7 @@ vi.mock('../../cache', () => ({
 }))
 
 import { listPostingsForSource } from '../list-postings'
-import { postDraft, postEntry } from '../post-entry'
+import { postDraft, postEntry, postEntryInTx } from '../post-entry'
 import { __resetAccountingProvidersForTests, setConnectedProviderResolver } from '../provider'
 import { reverseEntry } from '../reverse-entry'
 import type { BuiltEntry, GlPostingSourceInput } from '../types'
@@ -168,7 +169,11 @@ function createFakeDb(chart: Array<{ role: string; account: Account }>) {
       transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
         const own: Journal = []
         try {
-          return await fn(makeDb(own))
+          const result = await fn(makeDb(own))
+          // A nested call is a SAVEPOINT: its rows survive its own release and
+          // are still the OUTER transaction's to roll back.
+          if (journal) journal.push(...own)
+          return result
         } catch (error) {
           for (const { table, row } of own) {
             const at = table.indexOf(row)
@@ -472,6 +477,77 @@ describe('postEntry in draft mode', () => {
     expect(result.status).toBe('period_closed')
     expect(fake.postings).toHaveLength(0)
     expect(fake.sources).toHaveLength(0)
+  })
+})
+
+// ── The in-transaction poster (MIGRATION follow-up 2) ──────────────────────
+
+/** `db.transaction`, typed for the fake - `Database` is `never` under the mock. */
+function inTx<T>(db: never, fn: (tx: Transaction) => Promise<T>): Promise<T> {
+  return (db as unknown as Database).transaction(fn)
+}
+
+describe('postEntryInTx', () => {
+  it("writes the entry into the CALLER's transaction, and owes the export back", async () => {
+    const fake = createFakeDb(CHART)
+
+    const result = await inTx(fake.db, (tx) =>
+      postEntryInTx(tx, {
+        organizationId: ORG,
+        entry: receiptEntry(),
+        lock: OPEN,
+        mode: 'post',
+        sources: [SUBJECT],
+      })
+    )
+
+    expect(result.status).toBe('posted')
+    // 🛑 The push is NOT made here: a network call inside an open transaction
+    // holds the claim's index tuple for the length of an HTTP round trip.
+    expect(result.pendingExport?.glPostingId).toBe(result.glPostingId)
+    expect(fake.postings).toHaveLength(1)
+  })
+
+  it("🛑 rolls back with the caller's transaction when the caller's own work fails", async () => {
+    const fake = createFakeDb(CHART)
+
+    await expect(
+      inTx(fake.db, async (tx) => {
+        await postEntryInTx(tx, {
+          organizationId: ORG,
+          entry: receiptEntry(),
+          lock: OPEN,
+          mode: 'post',
+          sources: [SUBJECT],
+        })
+        // The source write that motivated the posting fails AFTER it.
+        throw new Error('the shipment could not be recorded')
+      })
+    ).rejects.toThrow('the shipment could not be recorded')
+
+    // Nothing survives: the entry and the source write commit together, which
+    // is the whole point of the variant.
+    expect(fake.postings).toHaveLength(0)
+    expect(fake.sources).toHaveLength(0)
+    expect(fake.lines).toHaveLength(0)
+  })
+
+  it('returns a refusal rather than throwing, so nothing written is rolled back for it', async () => {
+    const fake = createFakeDb(CHART)
+    h.lockedThroughMonth = '2026-08'
+
+    const result = await inTx(fake.db, (tx) =>
+      postEntryInTx(tx, {
+        organizationId: ORG,
+        entry: receiptEntry(),
+        lock: OPEN,
+        mode: 'post',
+        sources: [SUBJECT],
+      })
+    )
+
+    expect(result.status).toBe('period_closed')
+    expect(fake.postings).toHaveLength(0)
   })
 })
 

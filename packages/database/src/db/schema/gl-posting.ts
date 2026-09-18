@@ -58,6 +58,10 @@ export const glPostingType = pgEnum('GlPostingType', [
   'write_off',
   // Slot 2G phase B, drizzle 0362.
   'payment',
+  // TARGET §5: a customer refund, its own type rather than a sides-swapped
+  // `payment`, so the export can send a Refund Receipt and the ledger card can
+  // name it. Added by MIGRATION step 2, drizzle 0378.
+  'refund',
   // plans/accounting/tasks/done/08-invoice-revenue.md and 07-customer-deposits.md,
   // drizzle 0362. An invoice's issuance entry, and the reclass of a held
   // customer deposit out of the liability and onto a receivable.

@@ -12,10 +12,23 @@
 // No permission checks here. The router asserts (docs/lib-module-guide.md §6).
 
 import { type Database, schema } from '@auxx/database'
-import { and, asc, between, eq, inArray, isNotNull, ne, or, type SQL } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  between,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  ne,
+  or,
+  type SQL,
+} from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import type { OurPostedEntry, OurPostedLine, ProviderSyncRange } from './client'
-import { PROVIDER_SYNC_POSTING_TYPE } from './client'
+import type { OurPostedEntry, OurPostedLine, ProviderLedgerLine, ProviderSyncRange } from './client'
+import { PROVIDER_LEDGER_SOURCE_KIND, PROVIDER_SYNC_POSTING_TYPE } from './client'
 import { guard } from './guard'
 
 /**
@@ -176,59 +189,6 @@ export async function readOurPostedEntries(
   )
 }
 
-/** One entry the sync has already written, as §7.1's convergence sees it. */
-export interface SyncedEntryRef {
-  glPostingId: string
-  /** Their transaction id. Also this row's `periodKey`. */
-  providerEntryId: string
-  docNumber: string
-  txnDate: string
-}
-
-/**
- * Every `provider_sync` entry we currently hold dated inside a range.
- *
- * §7.1: the sync converges by RE-READING rather than by tracking changes, so a
- * row of this kind whose id no longer appears in a fresh read of the same range
- * has been deleted on their side and is REVERSED - never deleted, per `G4`.
- * `status = 'posted'` is what keeps a second pass from reversing a reversal.
- */
-export async function readSyncedEntriesInRange(
-  db: Database,
-  organizationId: string,
-  range: ProviderSyncRange
-): Promise<Result<SyncedEntryRef[], Error>> {
-  return guard(
-    async () => {
-      const rows = await db
-        .select({
-          id: schema.GlPosting.id,
-          providerEntryId: schema.GlPosting.providerEntryId,
-          docNumber: schema.GlPosting.docNumber,
-          txnDate: schema.GlPosting.txnDate,
-        })
-        .from(schema.GlPosting)
-        .where(
-          and(
-            eq(schema.GlPosting.organizationId, organizationId),
-            eq(schema.GlPosting.postingType, PROVIDER_SYNC_POSTING_TYPE),
-            eq(schema.GlPosting.status, 'posted'),
-            between(schema.GlPosting.txnDate, range.from, range.to)
-          )
-        )
-      return rows.map((row) => ({
-        glPostingId: row.id,
-        providerEntryId: row.providerEntryId ?? '',
-        // Non-null: `status = 'posted'` above always carries a doc number.
-        docNumber: row.docNumber ?? '',
-        txnDate: toDateKey(row.txnDate),
-      }))
-    },
-    'Failed to read the entries already synced for this range',
-    { organizationId, from: range.from, to: range.to }
-  )
-}
-
 /**
  * Keep a Postgres `date` as `YYYY-MM-DD`.
  *
@@ -245,4 +205,185 @@ function toDateKey(value: Date | string): string {
 /** `bigint({ mode: 'number' })` crosses as a number through Drizzle and as a string through a raw driver. */
 function toMinor(value: string | number): number {
   return typeof value === 'number' ? value : Number(value)
+}
+
+/** The `ExternalAccountingBook` the org's active connection points at, or null. */
+export async function readActiveBookId(
+  db: Database,
+  organizationId: string
+): Promise<Result<string | null, Error>> {
+  return guard(
+    async () => {
+      const [row] = await db
+        .select({ bookId: schema.ExternalBookConnection.bookId })
+        .from(schema.ExternalBookConnection)
+        .where(
+          and(
+            eq(schema.ExternalBookConnection.organizationId, organizationId),
+            eq(schema.ExternalBookConnection.state, 'active')
+          )
+        )
+        .limit(1)
+      return row?.bookId ?? null
+    },
+    'Failed to read the active accounting book',
+    { organizationId }
+  )
+}
+
+/**
+ * Every document number this org has minted, for the mirror's authorship stamp.
+ *
+ * The second witness behind the transaction id: an entry carrying a number we
+ * issued is ours even when its id is not in the exclusion set, and calling it
+ * theirs would translate our own entry back into our own books.
+ */
+export async function readOurDocNumbers(
+  db: Database,
+  organizationId: string
+): Promise<Result<Set<string>, Error>> {
+  return guard(
+    async () => {
+      const rows = await db
+        .select({ docNumber: schema.GlPosting.docNumber })
+        .from(schema.GlPosting)
+        .where(
+          and(
+            eq(schema.GlPosting.organizationId, organizationId),
+            isNotNull(schema.GlPosting.docNumber),
+            ne(schema.GlPosting.postingType, PROVIDER_SYNC_POSTING_TYPE)
+          )
+        )
+      const numbers = new Set<string>()
+      for (const row of rows) if (row.docNumber) numbers.add(row.docNumber)
+      return numbers
+    },
+    'Failed to read the document numbers this organization minted',
+    { organizationId }
+  )
+}
+
+/** One mirror entry, with its lines, as the translation reads it. */
+export interface MirrorEntry {
+  id: string
+  providerTxnType: string
+  providerTxnId: string
+  txnDate: string
+  docNumber: string | null
+  withdrawn: boolean
+  lines: ProviderLedgerLine[]
+  /** The live `provider_sync` posting claiming this entry, when one exists. */
+  livePostingId: string | null
+  liveDocNumber: string | null
+}
+
+/**
+ * Every `author: 'provider'` entry the mirror holds in a range, with whether our
+ * books already carry it.
+ *
+ * `author` is what keeps this from re-importing the objects we sent: an `'auxx'`
+ * row stays in the mirror for the readback and the reconciliation and is never a
+ * translation candidate.
+ */
+export async function readMirrorForTranslation(
+  db: Database,
+  organizationId: string,
+  input: ProviderSyncRange & { bookId: string }
+): Promise<Result<MirrorEntry[], Error>> {
+  return guard(
+    async () => {
+      const entries = await db
+        .select({
+          id: schema.ProviderLedgerEntry.id,
+          providerTxnType: schema.ProviderLedgerEntry.providerTxnType,
+          providerTxnId: schema.ProviderLedgerEntry.providerTxnId,
+          txnDate: schema.ProviderLedgerEntry.txnDate,
+          docNumber: schema.ProviderLedgerEntry.docNumber,
+          withdrawnAt: schema.ProviderLedgerEntry.withdrawnAt,
+        })
+        .from(schema.ProviderLedgerEntry)
+        .where(
+          and(
+            eq(schema.ProviderLedgerEntry.organizationId, organizationId),
+            eq(schema.ProviderLedgerEntry.bookId, input.bookId),
+            eq(schema.ProviderLedgerEntry.author, 'provider'),
+            gte(schema.ProviderLedgerEntry.txnDate, input.from),
+            lte(schema.ProviderLedgerEntry.txnDate, input.to)
+          )
+        )
+      if (entries.length === 0) return []
+
+      const ids = entries.map((entry) => entry.id)
+      const lineRows = await db
+        .select({
+          entryId: schema.ProviderLedgerLine.entryId,
+          providerAccountId: schema.ProviderLedgerLine.providerAccountId,
+          providerAccountName: schema.ProviderLedgerLine.providerAccountName,
+          direction: schema.ProviderLedgerLine.direction,
+          amountMinor: schema.ProviderLedgerLine.amountMinor,
+          memo: schema.ProviderLedgerLine.memo,
+        })
+        .from(schema.ProviderLedgerLine)
+        .where(inArray(schema.ProviderLedgerLine.entryId, ids))
+        .orderBy(asc(schema.ProviderLedgerLine.sortOrder))
+
+      // The live claim, in one read rather than one per entry. `linkRole` is the
+      // claim and a reversal deletes it, so a row here means our books still
+      // stand behind that mirror entry.
+      const claims = await db
+        .select({
+          sourceId: schema.GlPostingSource.sourceId,
+          glPostingId: schema.GlPostingSource.glPostingId,
+          status: schema.GlPosting.status,
+          docNumber: schema.GlPosting.docNumber,
+        })
+        .from(schema.GlPostingSource)
+        .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId))
+        .where(
+          and(
+            eq(schema.GlPostingSource.organizationId, organizationId),
+            eq(schema.GlPostingSource.sourceKind, PROVIDER_LEDGER_SOURCE_KIND),
+            eq(schema.GlPostingSource.linkRole, 'subject'),
+            inArray(schema.GlPostingSource.sourceId, ids)
+          )
+        )
+
+      const linesByEntry = new Map<string, ProviderLedgerLine[]>()
+      for (const row of lineRows) {
+        const lines = linesByEntry.get(row.entryId) ?? []
+        const entry = entries.find((candidate) => candidate.id === row.entryId)!
+        const amount = toMinor(row.amountMinor)
+        lines.push({
+          txnType: entry.providerTxnType,
+          txnId: entry.providerTxnId,
+          txnDate: entry.txnDate,
+          providerAccountId: row.providerAccountId,
+          providerAccountName: row.providerAccountName ?? '',
+          debitMinor: row.direction === 'debit' ? amount : 0,
+          creditMinor: row.direction === 'credit' ? amount : 0,
+          docNumber: entry.docNumber,
+          memo: row.memo,
+        })
+        linesByEntry.set(row.entryId, lines)
+      }
+
+      const claimByEntry = new Map(
+        claims.filter((row) => row.status !== 'reversed').map((row) => [row.sourceId, row])
+      )
+
+      return entries.map((entry) => ({
+        id: entry.id,
+        providerTxnType: entry.providerTxnType,
+        providerTxnId: entry.providerTxnId,
+        txnDate: entry.txnDate,
+        docNumber: entry.docNumber,
+        withdrawn: entry.withdrawnAt !== null,
+        lines: linesByEntry.get(entry.id) ?? [],
+        livePostingId: claimByEntry.get(entry.id)?.glPostingId ?? null,
+        liveDocNumber: claimByEntry.get(entry.id)?.docNumber ?? null,
+      }))
+    },
+    'Failed to read the provider ledger mirror for translation',
+    { organizationId, bookId: input.bookId, from: input.from, to: input.to }
+  )
 }

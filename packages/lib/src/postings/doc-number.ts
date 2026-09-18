@@ -68,6 +68,7 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   month_end_reversal: 'REV',
   month_end_inventory: 'INV',
   receipt: 'RCP',
+  refund: 'RFD',
   vendor_bill: 'BIL',
   // Wave 0 (HANDOFF slot 0B). All five key on a DOCUMENT NUMBER, never a date
   // and never a cuid - see `DocNumberInput.periodKey`.

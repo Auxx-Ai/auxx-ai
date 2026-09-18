@@ -20,7 +20,7 @@ import { balancedEntryLines, ledger } from './support/fixtures'
 
 const recordProviderSyncedThrough = vi.hoisted(() => vi.fn())
 const fetchBatch = vi.hoisted(() => vi.fn())
-const postProviderSyncEntry = vi.hoisted(() => vi.fn())
+const translate = vi.hoisted(() => vi.fn())
 const add = vi.hoisted(() => vi.fn())
 /** The stored `providerSync.state` row, in memory. */
 const stored = vi.hoisted(() => ({ blob: {} as ProviderSyncStateBlob }))
@@ -76,13 +76,33 @@ vi.mock('../../provider', () => ({
 vi.mock('../reads', () => ({
   readOurProviderEntryIds: vi.fn(async () => ({ isErr: () => false, value: new Set<string>() })),
   readOurPostedEntries: vi.fn(async () => ({ isErr: () => false, value: [] })),
-  readSyncedEntriesInRange: vi.fn(async () => ({ isErr: () => false, value: [] })),
+  readActiveBookId: vi.fn(async () => ({ isErr: () => false, value: 'book_1' })),
+  readOurDocNumbers: vi.fn(async () => ({ isErr: () => false, value: new Set<string>() })),
 }))
 
 vi.mock('../writes', () => ({
-  postProviderSyncEntry,
-  reverseSyncedEntry: vi.fn(),
+  upsertMirrorChunk: vi.fn(async () => ({
+    isErr: () => false,
+    value: { mirrored: 0, ours: 0, withdrawn: 0, withdrawnIds: [] },
+  })),
 }))
+
+vi.mock('../translate', () => ({ translateMirrorRange: translate }))
+
+/** A translation pass that found nothing to do. Overridden per test. */
+function cleanTranslation() {
+  return {
+    isErr: () => false,
+    value: {
+      written: 0,
+      alreadyPosted: 0,
+      reversed: 0,
+      zeroValue: 0,
+      deferredToClosedMonths: [],
+      refusals: [],
+    },
+  }
+}
 
 const ORG = 'org_1'
 const CHAIN_1 = new Date('2026-09-16T10:00:00.000Z')
@@ -148,10 +168,10 @@ beforeEach(() => {
   add.mockReset()
   add.mockResolvedValue({ id: 'job_1' })
   fetchBatch.mockReset()
-  postProviderSyncEntry.mockReset()
+  translate.mockReset()
+  translate.mockResolvedValue(cleanTranslation())
   recordProviderSyncedThrough.mockReset()
   recordProviderSyncedThrough.mockResolvedValue({ isErr: () => false, value: undefined })
-  postProviderSyncEntry.mockResolvedValue({ isErr: () => false, value: { status: 'posted' } })
 })
 
 describe('a second walk cannot be opened while the first one is still going', () => {

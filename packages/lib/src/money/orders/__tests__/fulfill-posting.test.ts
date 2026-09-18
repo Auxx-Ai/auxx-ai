@@ -21,6 +21,8 @@ vi.mock('../../../postings/accounting-commit-lock', () => ({
 vi.mock('../../../postings/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
+// Gate 1 is on for this file: what is under test is the posting, not the draft.
+vi.mock('../../../postings/auto-post', () => ({ readAutoPostMode: async () => 'post' }))
 
 const h = vi.hoisted(() => ({
   fields: new Map<string, string>([
@@ -202,7 +204,11 @@ function createFakeDb() {
       transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
         const own: Journal = []
         try {
-          return await fn(makeDb(own))
+          const result = await fn(makeDb(own))
+          // A nested call is a SAVEPOINT: its rows survive its own release and
+          // are still the OUTER transaction's to roll back.
+          if (journal) journal.push(...own)
+          return result
         } catch (error) {
           for (const { table, row } of own) {
             const at = table.indexOf(row)
