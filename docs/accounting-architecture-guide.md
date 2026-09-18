@@ -753,8 +753,8 @@ attempt. It also owns `assertAccountingSetupUnfrozen`: once a posting exists, `a
 `bookTimeZone` and `cutoffPeriod` refuse to change with a 409. The browser-side freeze is the
 courtesy; this is the guard.
 
-`month-activity.ts` answers "what posted in this month, per type". ## A fact per type, never an
-alarm — no status, no severity, no verdict. ⚠️ **Matched on `txnDate`, never on `periodKey`**,
+`month-activity.ts` answers "what posted in this month, per type" — **a fact per type, never an
+alarm** — no status, no severity, no verdict. ⚠️ **Matched on `txnDate`, never on `periodKey`**,
 because for `manual_journal`, `bank_deposit` and `write_off` the period key is the source record's
 number, not a date.
 
