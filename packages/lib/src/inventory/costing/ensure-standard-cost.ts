@@ -1,4 +1,4 @@
-// packages/lib/src/builds/ensure-standard-cost.ts
+// packages/lib/src/inventory/costing/ensure-standard-cost.ts
 
 /**
  * `ensureStandardCost` — the ONLY writer that sets a FIRST standard cost.
@@ -37,16 +37,17 @@ import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
-import { getOrgCache } from '../cache'
-import { BadRequestError } from '../errors'
-import { createFieldValueContext } from '../field-values/field-value-helpers'
-import { setValueWithType } from '../field-values/field-value-mutations'
-import { toFieldType } from '../field-values/stored-field-type'
+import type { StandardCostComponents } from '../../builds/types'
+import { getOrgCache } from '../../cache'
+import { BadRequestError } from '../../errors'
+import { createFieldValueContext } from '../../field-values/field-value-helpers'
+import { setValueWithType } from '../../field-values/field-value-mutations'
+import { toFieldType } from '../../field-values/stored-field-type'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
   publishFieldValueUpdates,
-} from '../realtime'
+} from '../../realtime'
 import { guard } from './guard'
 import {
   loadStandardCostWriteContext,
@@ -54,7 +55,6 @@ import {
   type StandardCostFields,
   type StandardCostWriteContext,
 } from './standard-cost-queries'
-import type { StandardCostComponents } from './types'
 
 const logger = createScopedLogger('builds:ensure-standard-cost')
 

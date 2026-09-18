@@ -117,7 +117,7 @@ vi.mock('../../bom/subpart-graph', () => ({
   getDeductionTargets: h.getDeductionTargets,
 }))
 
-vi.mock('../standard-cost-queries', () => ({
+vi.mock('../../inventory/costing/standard-cost-queries', () => ({
   readStandardCost: vi.fn(async (_db: unknown, _org: string, partIds: string[]) => {
     const { ok } = await import('neverthrow')
     const map = new Map<string, { partId: string; standardCost: number }>()
@@ -133,7 +133,7 @@ vi.mock('../standard-cost-queries', () => ({
   ),
 }))
 
-vi.mock('../../bom/qoh', () => ({
+vi.mock('../../inventory/costing/qoh', () => ({
   batchRecalculateQoH: vi.fn(async (_org: string, partIds: string[]) => {
     h.trace.push('recalc')
     h.recalcCalls.push(partIds)

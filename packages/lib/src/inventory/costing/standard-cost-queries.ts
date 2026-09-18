@@ -1,4 +1,4 @@
-// packages/lib/src/builds/standard-cost-queries.ts
+// packages/lib/src/inventory/costing/standard-cost-queries.ts
 
 /**
  * Every READ the standard-cost roll needs, plus the two read-only public
@@ -16,11 +16,18 @@ import { type Database, schema } from '@auxx/database'
 import type { CustomFieldEntity } from '@auxx/database/types'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { buildParentGraph, buildSubpartGraph, loadOrgPricingData } from '../bom/cost-calculator'
-import { getOrgCache, requireCachedEntityDefId } from '../cache'
-import { UnprocessableEntityError } from '../errors'
-import { readOrganizationSettings } from '../settings/read'
-import { type PartKindValue, resolveAbsorptionRates, resolvePartKind } from './client'
+import { type PartKindValue, resolveAbsorptionRates, resolvePartKind } from '../../builds/client'
+import type {
+  AbsorptionRates,
+  PartStandardCost,
+  RollStandardCostInput,
+  StandardCostRollLine,
+  StandardCostRollPlan,
+} from '../../builds/types'
+import { getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { UnprocessableEntityError } from '../../errors'
+import { readOrganizationSettings } from '../../settings/read'
+import { buildParentGraph, buildSubpartGraph, loadOrgPricingData } from './cost-calculator'
 import { guard } from './guard'
 import {
   computeStandardCosts,
@@ -29,13 +36,6 @@ import {
   widenToAncestors,
   widenToUnvaluedDescendants,
 } from './standard-cost-roll'
-import type {
-  AbsorptionRates,
-  PartStandardCost,
-  RollStandardCostInput,
-  StandardCostRollLine,
-  StandardCostRollPlan,
-} from './types'
 
 /** The five fields entity migration 109 added, plus the three the roll reads. */
 const ROLL_ATTRIBUTES = [

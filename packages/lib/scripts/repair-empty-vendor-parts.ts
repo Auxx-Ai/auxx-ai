@@ -38,7 +38,7 @@
 import { database as db } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
 import { sql } from 'drizzle-orm'
-import { recalculateAffectedParts } from '../src/bom'
+import { recalculateAffectedParts } from '../src/inventory/costing'
 import { UnifiedCrudHandler } from '../src/resources/crud'
 import { SystemUserService } from '../src/users/system-user-service'
 

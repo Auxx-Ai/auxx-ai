@@ -11,7 +11,7 @@ const h = vi.hoisted(() => ({
   where: vi.fn(async () => [] as Array<{ relatedEntityId: string | null }>),
 }))
 
-vi.mock('../../../bom/cost-calculator', () => ({
+vi.mock('../../../inventory/costing/cost-calculator', () => ({
   recalculateAffectedParts: h.recalculateAffectedParts,
   recalculateAllPartCosts: h.recalculateAllPartCosts,
 }))

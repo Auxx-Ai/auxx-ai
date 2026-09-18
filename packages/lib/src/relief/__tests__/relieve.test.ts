@@ -8,7 +8,7 @@
  * decisions §1.5-§4.2 make, not about `writeStockMovements`,
  * `batchRecalculateQoH` or the roll-up's own SQL, each of which has its own
  * tests. `readPartLedgerAverages` / `readFulfillmentLineRelievedAverages`
- * (`./cost-reads`) are mocked to their documented return shapes rather than
+ * (`inventory/costing/cost-reads`) are mocked to their documented return shapes rather than
  * exercised for real, since that module is a different agent's surface.
  */
 
@@ -44,7 +44,7 @@ vi.mock('../../cache', () => ({
   },
 }))
 
-vi.mock('../../builds', () => ({
+vi.mock('../../inventory/costing', () => ({
   readStandardCost: async (_db: unknown, _orgId: string, partIds: string[]) => {
     const { ok } = await import('neverthrow')
     const map = new Map<string, { standardCost: number }>()
@@ -56,7 +56,7 @@ vi.mock('../../builds', () => ({
   },
 }))
 
-vi.mock('../../bom/qoh', () => ({
+vi.mock('../../inventory/costing/qoh', () => ({
   batchRecalculateQoH: h.batchRecalculateQoH,
 }))
 
@@ -65,13 +65,14 @@ vi.mock('../../field-hooks/post/fulfillment-line-rollups', () => ({
     h.recalculateFulfillmentLineQuantityRelievedBatch,
 }))
 
-vi.mock('../../stock-movements', async () => {
-  const actual =
-    await vi.importActual<typeof import('../../stock-movements')>('../../stock-movements')
+vi.mock('../../inventory/movements', async () => {
+  const actual = await vi.importActual<typeof import('../../inventory/movements')>(
+    '../../inventory/movements'
+  )
   return { ...actual, writeStockMovements: h.writeStockMovements }
 })
 
-vi.mock('../cost-reads', () => ({
+vi.mock('../../inventory/costing/cost-reads', () => ({
   readPartLedgerAverages: async () => {
     const { ok } = await import('neverthrow')
     return ok(h.ledgerAverages)

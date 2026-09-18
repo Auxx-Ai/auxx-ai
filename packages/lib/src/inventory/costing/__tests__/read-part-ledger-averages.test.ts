@@ -1,4 +1,4 @@
-// packages/lib/src/relief/__tests__/read-part-ledger-averages.test.ts
+// packages/lib/src/inventory/costing/__tests__/read-part-ledger-averages.test.ts
 //
 // Pins what a canned-result mock cannot catch: that readPartLedgerAverages's
 // SQL actually EXCLUDES a movement flagged adjust_subparts from BOTH the
@@ -133,7 +133,7 @@ vi.mock('@auxx/database', () => ({
     },
   },
 }))
-vi.mock('../../cache', () => ({
+vi.mock('../../../cache', () => ({
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: string[]) =>

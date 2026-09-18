@@ -1,4 +1,4 @@
-// packages/lib/src/stock-movements/types.ts
+// packages/lib/src/inventory/movements/types.ts
 
 /**
  * Input and output shapes for the shared `stock_movement` writer.
@@ -24,8 +24,8 @@
 
 import type { Database } from '@auxx/database'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import type { UnifiedCrudHandler } from '../resources/crud/unified-handler'
-import type { WriteSession } from '../resources/crud/write-origin'
+import type { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
+import type { WriteSession } from '../../resources/crud/write-origin'
 
 /**
  * The typed links a `stock_movement` may carry, per §2.4 item 4: one
@@ -172,4 +172,43 @@ export interface StockMovementsCtx {
    * `reverse-movement.ts`) already does.
    */
   handler?: UnifiedCrudHandler
+}
+
+/**
+ * What a write returns: enough to render the row that was just created and to
+ * link to it, without a second read.
+ *
+ * Every money field is the value actually STORED — already rounded — so a caller
+ * that echoes this back to the user is showing the ledger, not its own
+ * arithmetic.
+ */
+export interface MovementRecord {
+  /** `EntityInstance.id` of the created `stock_movement`. */
+  movementId: string
+  /** `<entityDefinitionId>:<instanceId>`, ready for a drawer or a picker. */
+  recordId: string
+  partInstanceId: string
+  /** Positive for a receipt; negative for a reversal or a removal. */
+  quantity: number
+  /**
+   * Landed cost per unit, whole minor units.
+   *
+   * Nullable in the TYPE only because pre-migration rows exist; every writer in
+   * this module now refuses to produce a row without a cost, INCLUDING a
+   * negative stock adjustment — decision `G12` values a removal at the part's
+   * frozen `part_standard_cost` exactly as it values an addition.
+   */
+  unitCost: number | null
+  /** `round(unitCost x quantity)`, signed like `quantity`; `null` with the cost. */
+  extendedCost: number | null
+  /** Raw supplier price per unit, whole minor units; `null` when not known. */
+  vendorUnitPrice: number | null
+  vendorPartId: string | null
+  /**
+   * The inventory account ROLE ('inventory_raw_materials'), never an account
+   * code and never a provider id (decision `G8` — the field name predates it).
+   */
+  glAccount: string | null
+  occurredAt: Date
+  purchaseOrderLineId: string | null
 }

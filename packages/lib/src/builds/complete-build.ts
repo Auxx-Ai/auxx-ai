@@ -47,8 +47,14 @@ import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { Result } from 'neverthrow'
-import { batchRecalculateQoH } from '../bom/qoh'
 import { BadRequestError, UnprocessableEntityError } from '../errors'
+import { batchRecalculateQoH } from '../inventory/costing/qoh'
+import {
+  loadAbsorptionRates,
+  loadPartAbsorptionOverrides,
+} from '../inventory/costing/standard-cost-queries'
+import { type StockMovementInput, writeStockMovements } from '../inventory/movements'
+import { resolveInventoryRoleForPartKind } from '../inventory/movements/client'
 import type { InventoryMovementLine } from '../postings/build-inventory-movement-entry'
 import type { InTxPostResult } from '../postings/post-entry'
 import {
@@ -61,7 +67,6 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../realtime'
-import { resolveInventoryRoleForPartKind } from '../receiving/client'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import {
   BuildStatus,
@@ -69,7 +74,6 @@ import {
   StockMovementType,
 } from '../resources/registry/enum-values'
 import { type RecordId, toRecordId } from '../resources/resource-id'
-import { type StockMovementInput, writeStockMovements } from '../stock-movements'
 import { BUILD_STATUS_BYPASS } from './build-mutations'
 import {
   assertBuildStatus,
@@ -83,7 +87,6 @@ import {
 } from './build-queries'
 import { canCompleteBuild, resolveAbsorptionRates, summarizeBuildCompletion } from './client'
 import { guard } from './guard'
-import { loadAbsorptionRates, loadPartAbsorptionOverrides } from './standard-cost-queries'
 import type {
   AbsorptionRates,
   BuildComponentPlan,

@@ -24,7 +24,8 @@ import type { Result } from 'neverthrow'
 import { loadDirectSubparts } from '../bom/subpart-graph'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
-import { computeExtendedCost, resolveInventoryRoleForPartKind } from '../receiving/client'
+import { readStandardCost } from '../inventory/costing/standard-cost-queries'
+import { computeExtendedCost, resolveInventoryRoleForPartKind } from '../inventory/movements/client'
 import { toRecordId } from '../resources/resource-id'
 import { systemValueJoin } from '../resources/system-records'
 import {
@@ -34,7 +35,6 @@ import {
   unitsStarted,
 } from './client'
 import { guard } from './guard'
-import { readStandardCost } from './standard-cost-queries'
 import type {
   BuildComponentLine,
   BuildComponentOverride,

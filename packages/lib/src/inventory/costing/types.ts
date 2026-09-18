@@ -1,4 +1,4 @@
-// packages/lib/src/relief/types.ts
+// packages/lib/src/inventory/costing/types.ts
 
 /**
  * The part's ledger-derived average unit cost

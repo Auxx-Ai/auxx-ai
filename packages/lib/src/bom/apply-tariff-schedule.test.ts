@@ -44,7 +44,7 @@ vi.mock('../cache', () => ({
   }),
 }))
 
-vi.mock('./cost-calculator', () => ({
+vi.mock('../inventory/costing/cost-calculator', () => ({
   recalculateAffectedParts: h.recalculateAffectedParts,
 }))
 

@@ -9,8 +9,8 @@
 // fails only that one, which is the whole reason it uses two codes.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { TariffRateRow } from '../inventory/costing/vendor-cost'
 import type { StarterAction } from './tariff-starters'
-import type { TariffRateRow } from './vendor-cost'
 
 const h = vi.hoisted(() => ({
   tariffCodeDefId: 'tariff_code_def' as string | undefined,
@@ -152,13 +152,13 @@ vi.mock('../postings/book-time-zone', () => ({
 }))
 
 import { BadRequestError, NotFoundError } from '../errors'
+import { resolveTariffRate } from '../inventory/costing/vendor-cost'
 import {
   applyTariffResync,
   MFN_ACTION_KEY,
   planTariffResync,
   type ResyncPlan,
 } from './resync-tariff-starters'
-import { resolveTariffRate } from './vendor-cost'
 
 const ORG = 'org_1'
 const USER = 'user_1'

@@ -13,8 +13,8 @@
 //
 // plans/money/tasks/15-costing-usability.md §2.2.
 
+import { resolveInventoryRoleForPartKind } from '@auxx/lib/inventory/movements/client'
 import { DEFAULT_CHART_OF_ACCOUNTS } from '@auxx/lib/postings/client'
-import { resolveInventoryRoleForPartKind } from '@auxx/lib/receiving/client'
 
 /** Everything the opening-stock section holds. */
 export interface OpeningStockFormValues {

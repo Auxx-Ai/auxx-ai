@@ -346,12 +346,6 @@
       "import": "./dist/bom/index.mjs",
       "default": "./src/bom/index.ts"
     },
-    "./bom/client": {
-      "types": "./src/bom/client.ts",
-      "source": "./src/bom/client.ts",
-      "import": "./dist/bom/client.mjs",
-      "default": "./src/bom/client.ts"
-    },
     "./builds": {
       "types": "./src/builds/index.ts",
       "source": "./src/builds/index.ts",
@@ -873,6 +867,30 @@
       "source": "./src/interactions/index.ts",
       "import": "./dist/interactions/index.mjs",
       "default": "./src/interactions/index.ts"
+    },
+    "./inventory/costing": {
+      "types": "./src/inventory/costing/index.ts",
+      "source": "./src/inventory/costing/index.ts",
+      "import": "./dist/inventory/costing/index.mjs",
+      "default": "./src/inventory/costing/index.ts"
+    },
+    "./inventory/costing/client": {
+      "types": "./src/inventory/costing/client.ts",
+      "source": "./src/inventory/costing/client.ts",
+      "import": "./dist/inventory/costing/client.mjs",
+      "default": "./src/inventory/costing/client.ts"
+    },
+    "./inventory/movements": {
+      "types": "./src/inventory/movements/index.ts",
+      "source": "./src/inventory/movements/index.ts",
+      "import": "./dist/inventory/movements/index.mjs",
+      "default": "./src/inventory/movements/index.ts"
+    },
+    "./inventory/movements/client": {
+      "types": "./src/inventory/movements/client.ts",
+      "source": "./src/inventory/movements/client.ts",
+      "import": "./dist/inventory/movements/client.mjs",
+      "default": "./src/inventory/movements/client.ts"
     },
     "./jobs": {
       "types": "./src/jobs/index.ts",

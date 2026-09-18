@@ -70,12 +70,12 @@ vi.mock('../../resources/crud/unified-handler', () => ({
   },
 }))
 
-vi.mock('../../builds/ensure-standard-cost', () => ({
+vi.mock('../../inventory/costing/ensure-standard-cost', () => ({
   ensureStandardCost: h.ensureSpy,
 }))
 
 // 🛑 Not because it is called — because it must NOT be. See the header.
-vi.mock('../../bom/qoh', () => ({
+vi.mock('../../inventory/costing/qoh', () => ({
   batchRecalculateQoH: h.batchQohSpy,
 }))
 

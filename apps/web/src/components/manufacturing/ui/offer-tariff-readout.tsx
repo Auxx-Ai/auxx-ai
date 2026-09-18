@@ -16,7 +16,7 @@
 // looking at when that happens, so it says so here as well as on the
 // Classification tab's Override badge.
 
-import type { OfferTariff } from '@auxx/lib/bom/client'
+import type { OfferTariff } from '@auxx/lib/inventory/costing/client'
 import { TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import { formatPercent } from '../hooks/use-offer-tariffs'

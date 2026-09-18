@@ -1,4 +1,4 @@
-// packages/lib/src/builds/standard-cost.ts
+// packages/lib/src/inventory/costing/standard-cost.ts
 
 /**
  * `rollStandardCost` — the ONLY writer of the five `part_standard_*` fields.
@@ -32,18 +32,22 @@ import { createScopedLogger } from '@auxx/logger'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import type { Result } from 'neverthrow'
-import { recalculateAllPartCosts } from '../bom/cost-calculator'
-import { createFieldValueContext } from '../field-values/field-value-helpers'
-import { setValueWithType } from '../field-values/field-value-mutations'
-import { toFieldType } from '../field-values/stored-field-type'
+import type {
+  RollStandardCostInput,
+  StandardCostRollLine,
+  StandardCostRollResult,
+} from '../../builds/types'
+import { createFieldValueContext } from '../../field-values/field-value-helpers'
+import { setValueWithType } from '../../field-values/field-value-mutations'
+import { toFieldType } from '../../field-values/stored-field-type'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
   publishFieldValueUpdates,
-} from '../realtime'
+} from '../../realtime'
+import { recalculateAllPartCosts } from './cost-calculator'
 import { guard } from './guard'
 import { planStandardCostRoll, type StandardCostFields } from './standard-cost-queries'
-import type { RollStandardCostInput, StandardCostRollLine, StandardCostRollResult } from './types'
 
 const logger = createScopedLogger('builds:standard-cost')
 

@@ -214,7 +214,7 @@ vi.mock('../../resources/crud/unified-handler', () => ({
 // A part's first standard cost — not this file's concern either; the real
 // implementation reads standard-cost fields this file's FIELDS map does not
 // materialise, which would fail the write it is meant to be a no-op belt on.
-vi.mock('../../builds/ensure-standard-cost', async () => {
+vi.mock('../../inventory/costing/ensure-standard-cost', async () => {
   const { ok } = await import('neverthrow')
   return {
     ensureStandardCost: vi.fn(async (_db: unknown, _org: string, partIds: string[]) =>

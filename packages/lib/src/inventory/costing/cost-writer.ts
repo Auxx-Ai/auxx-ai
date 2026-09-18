@@ -1,4 +1,4 @@
-// packages/lib/src/bom/cost-writer.ts
+// packages/lib/src/inventory/costing/cost-writer.ts
 //
 // The one-statement-per-kind writer behind `persistCosts`. Cost fields are
 // single-value system fields with no hooks, no display role and no
@@ -13,8 +13,8 @@ import type { FieldType } from '@auxx/database/types'
 import type { RecordId } from '@auxx/types/resource'
 import { nKeysAfter } from '@auxx/utils/fractional-indexing'
 import { sql } from 'drizzle-orm'
-import { buildFieldValueRow } from '../field-values/field-value-mutations'
-import { parseRecordId } from '../resources/resource-id'
+import { buildFieldValueRow } from '../../field-values/field-value-mutations'
+import { parseRecordId } from '../../resources/resource-id'
 
 /** One (part, field) value to store, with the stored row id when there is one. */
 export interface CostWrite {

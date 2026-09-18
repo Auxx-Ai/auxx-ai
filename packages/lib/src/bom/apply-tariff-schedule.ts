@@ -41,7 +41,7 @@ import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { ok, type Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
-import { recalculateAffectedParts } from './cost-calculator'
+import { recalculateAffectedParts } from '../inventory/costing/cost-calculator'
 
 const logger = createScopedLogger('bom:apply-tariff-schedule')
 

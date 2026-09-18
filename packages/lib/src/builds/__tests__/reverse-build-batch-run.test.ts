@@ -84,7 +84,7 @@ vi.mock('../../cache', () => ({
   }),
 }))
 
-vi.mock('../../bom/qoh', () => ({
+vi.mock('../../inventory/costing/qoh', () => ({
   batchRecalculateQoH: vi.fn(async () => {}),
   recalculatePartQoH: vi.fn(async () => {}),
 }))

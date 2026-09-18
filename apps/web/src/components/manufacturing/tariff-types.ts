@@ -2,7 +2,7 @@
 
 // Shared shapes for Parts > Settings > Tariffs (money 29-tariff-schedule.md).
 //
-// 🛑 The resolution rule lives in `@auxx/lib/bom/client`, never here. §6 of the
+// 🛑 The resolution rule lives in `@auxx/lib/inventory/costing/client`, never here. §6 of the
 // brief is explicit: `vendor-cost.ts` exists because the landed formula once
 // lived twice - once in the calculator and once hand-copied into the Suppliers
 // tab - and a second copy of *"latest row per authority, summed"* would be the
@@ -11,8 +11,11 @@
 // resolver's shape and mapping its answer back onto the records the list
 // renders.
 
-import type { TariffRateComponent, TariffResolutionStatus } from '@auxx/lib/bom/client'
-import { composeTariffCodeLabel, resolveTariffRate } from '@auxx/lib/bom/client'
+import type {
+  TariffRateComponent,
+  TariffResolutionStatus,
+} from '@auxx/lib/inventory/costing/client'
+import { composeTariffCodeLabel, resolveTariffRate } from '@auxx/lib/inventory/costing/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 
 /** apiSlug of the two definitions this page reads and writes. */
@@ -170,7 +173,7 @@ export function formatEffectiveFrom(iso: string | null): string {
 /**
  * The composed label: `8481.80.9005 CN`.
  *
- * 🛑 ONE composer, in `@auxx/lib/bom/client`, because the server stamps the
+ * 🛑 ONE composer, in `@auxx/lib/inventory/costing/client`, because the server stamps the
  * same string into the derived `tariff_code_label` field the importers match
  * on (task 30 §8). The two legs stay separate fields - the code half can be
  * typed ahead of, *"what origins have I classified this code for"* stays

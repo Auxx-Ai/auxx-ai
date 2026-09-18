@@ -10,7 +10,7 @@
 // third is what `useTariffSchedule` already loads, both defs in full, which its
 // header defends (a schedule is tens of codes with a handful of rows each).
 //
-// 🛑 The precedence rule is `resolveOfferTariff` from `@auxx/lib/bom/client` and
+// 🛑 The precedence rule is `resolveOfferTariff` from `@auxx/lib/inventory/costing/client` and
 // nothing here re-derives it. Six callers each deciding "override, else
 // schedule, else zero" is how the landed formula came to live twice.
 //
@@ -19,7 +19,11 @@
 // UTC a rate starting March 2 puts a March 1 evening on the wrong side of the
 // change, silently and by exactly one day.
 
-import { type OfferTariff, type OfferTariffInputs, resolveOfferTariff } from '@auxx/lib/bom/client'
+import {
+  type OfferTariff,
+  type OfferTariffInputs,
+  resolveOfferTariff,
+} from '@auxx/lib/inventory/costing/client'
 import { useMemo } from 'react'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'

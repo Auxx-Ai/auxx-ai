@@ -4,7 +4,10 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
-import { recalculateAffectedParts, recalculateAllPartCosts } from '../../bom/cost-calculator'
+import {
+  recalculateAffectedParts,
+  recalculateAllPartCosts,
+} from '../../inventory/costing/cost-calculator'
 import { unwrapRelationId } from '../../resources/events/captured-values'
 import type { FieldTriggerHandler } from '../types'
 
@@ -157,7 +160,7 @@ async function ensureFirstStandardCosts(organizationId: string, partIds: string[
 
   try {
     const [{ ensureStandardCost }, { getOrganizationSetting }] = await Promise.all([
-      import('../../builds/ensure-standard-cost'),
+      import('../../inventory/costing/ensure-standard-cost'),
       import('../../settings/settings-service'),
     ])
 

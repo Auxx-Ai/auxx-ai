@@ -8,6 +8,7 @@
 // `membershipsFor`'s behaviour against the worked examples the brief names.
 
 import { describe, expect, it } from 'vitest'
+import { resolveTariffRate, type TariffRateRow } from '../inventory/costing/vendor-cost'
 import { ISO_COUNTRY_OPTIONS } from '../resources/registry/iso-country-options'
 import { loadTariff301Memberships, type TariffMemberships } from './tariff-301-memberships'
 import {
@@ -18,7 +19,6 @@ import {
   TARIFF_ACTIONS,
   TARIFF_STARTERS_VERSION,
 } from './tariff-starters'
-import { resolveTariffRate, type TariffRateRow } from './vendor-cost'
 
 const ISO_COUNTRIES = new Set(ISO_COUNTRY_OPTIONS.map((option) => option.value))
 

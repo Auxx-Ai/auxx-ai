@@ -1,4 +1,4 @@
-// packages/lib/src/bom/vendor-cost.test.ts
+// packages/lib/src/inventory/costing/__tests__/vendor-cost.test.ts
 //
 // The landed formula and the winner rule are now shared between the cost
 // calculator and the Suppliers drawer tab, so their contract is tested here
@@ -10,7 +10,7 @@ import {
   computeLandedCost,
   selectWinningVendor,
   type VendorCostRow,
-} from './vendor-cost'
+} from '../vendor-cost'
 
 /** A priced offer; every cost is in minor units and `tariffRate` is a percent. */
 function offer(id: string, overrides: Partial<VendorCostRow> = {}): VendorCostRow {
