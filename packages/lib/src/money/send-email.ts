@@ -27,11 +27,11 @@ import { getOrganizationSetting } from '../settings/settings-service'
 import { recordSignal, toSignalRecordKey } from '../signals'
 import { getSystemSnippet } from '../snippets'
 import { markInvoiceSent } from './invoice-lifecycle'
-import { getPaymentAccount } from './payouts/stripe-account'
 import { buildPayUrl, ensureInvoicePublicToken, isPaymentsConnected } from './public-token'
 import { markPurchaseOrderSent } from './purchase-order-lifecycle'
 import { markQuoteSent } from './quote-lifecycle'
 import { buildQuoteViewUrl, ensureQuotePublicToken } from './quote-public-token'
+import { getPaymentAccount } from './stripe-connect/account'
 
 const logger = createScopedLogger('money-send-email')
 

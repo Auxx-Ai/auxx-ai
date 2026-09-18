@@ -14,8 +14,8 @@ const h = vi.hoisted(() => ({
 vi.mock('../recognise', () => ({ recognise: h.recognise }))
 
 import type { Database } from '@auxx/database'
+import type { PaymentGatewayRow } from '../../../accounting/rails/client'
 import { UnprocessableEntityError } from '../../../errors'
-import type { PaymentGatewayRow } from '../../../payment-gateways/client'
 import { gatherPayout } from '../gather'
 import type { PayoutHeader, PayoutSource, PayoutSourceCtx } from '../source'
 

@@ -2,7 +2,7 @@
 
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { sweepRecurringJournals } from '../../postings/recurring-journals'
+import { sweepRecurringJournals } from '../../accounting/journals/recurring'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('recurring-journals-job')

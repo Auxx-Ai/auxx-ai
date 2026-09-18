@@ -3,7 +3,7 @@
 import { database, schema } from '@auxx/database'
 import { parseRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
-import { assertJournalEntryIsDraft } from '../../postings/journal-entries/refusals'
+import { assertJournalEntryIsDraft } from '../../accounting/journals/entries/refusals'
 import { unwrapStatusValue } from '../../resources/events/captured-values'
 import type { EntityPreDeleteHandler } from '../types'
 

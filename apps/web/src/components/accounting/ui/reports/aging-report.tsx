@@ -2,7 +2,7 @@
 
 'use client'
 
-import { toCsvRows } from '@auxx/lib/postings/client'
+import { toCsvRows } from '@auxx/lib/accounting/reports/client'
 import type { RecordId } from '@auxx/types/resource'
 import { isRecordId } from '@auxx/types/resource'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'

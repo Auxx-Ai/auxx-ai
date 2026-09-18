@@ -12,7 +12,8 @@
 // One month at a time, unlike the sync queue: `ledger.listDrafts` takes a
 // `periodKey`, and a draft holds no claim to widen the read across periods for.
 
-import type { PostingSummary, PostResult } from '@auxx/lib/postings/client'
+import type { PostingSummary } from '@auxx/lib/accounting/journals/client'
+import type { PostResult } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'

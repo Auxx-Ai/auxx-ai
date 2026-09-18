@@ -19,7 +19,7 @@
 // badge for a manual one. A manual account has no connector, so a "synced" or
 // "action needed" vocabulary would be a claim about a feed that does not exist.
 
-import type { BankAccountRow } from '@auxx/lib/banking/client'
+import type { BankAccountRow } from '@auxx/lib/accounting/banking/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ButtonSwitch } from '@auxx/ui/components/button-switch'

@@ -3,9 +3,9 @@ import { type Database, schema } from '@auxx/database'
 import { and, asc, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { BadRequestError, ConflictError } from '../../errors'
-import { exactEvidenceMinor } from './evidence-contracts'
+import { exactEvidenceMinor } from '../customer-money/evidence-contracts'
+import { payoutRecordEvidenceSchema } from '../customer-money/record-contracts'
 import { matchProcessorEntries } from './match-entries'
-import { payoutRecordEvidenceSchema } from './record-contracts'
 
 type PageInput = { organizationId: string; limit: number; cursor?: string }
 /**

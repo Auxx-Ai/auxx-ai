@@ -18,7 +18,7 @@
 import {
   PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS,
   type PaymentGatewaySettlementSourceValue,
-} from '@auxx/lib/payment-gateways/client'
+} from '@auxx/lib/accounting/rails/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'

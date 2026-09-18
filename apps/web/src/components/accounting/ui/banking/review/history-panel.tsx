@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { ReviewHistoryEntry } from '@auxx/lib/banking/review/client'
+import type { ReviewHistoryEntry } from '@auxx/lib/accounting/banking/review/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { api } from '~/trpc/react'

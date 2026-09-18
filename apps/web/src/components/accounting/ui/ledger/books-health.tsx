@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { ExportBatchRow } from '@auxx/lib/postings'
+import type { ExportBatchRow } from '@auxx/lib/accounting/export'
 import { Button } from '@auxx/ui/components/button'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'

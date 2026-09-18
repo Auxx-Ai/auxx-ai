@@ -37,7 +37,7 @@ vi.mock('../../users/system-user-service', () => ({
   SystemUserService: { getSystemUserForActions: async () => 'system-user-1' },
 }))
 
-vi.mock('../../payment-gateways', () => ({
+vi.mock('../../accounting/rails', () => ({
   normaliseGatewayHandle: (value: string) => value.trim().toLowerCase(),
   listPaymentGateways: async () => ({
     isOk: () => true,

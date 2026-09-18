@@ -13,10 +13,13 @@
 // Without a userId the org's system user is the actor.
 
 import { database as db } from '@auxx/database'
+import { fillOpeningTrialBalanceFromProvider } from '../src/accounting/opening/fill-from-provider'
+import { readOpeningTrialBalance } from '../src/accounting/opening/reads'
+import {
+  registerAccountingProvider,
+  setConnectedProviderResolver,
+} from '../src/accounting/providers/provider'
 import { getOrgCache } from '../src/cache'
-import { fillOpeningTrialBalanceFromProvider } from '../src/postings/opening-trial-balance/fill-from-provider'
-import { readOpeningTrialBalance } from '../src/postings/opening-trial-balance/reads'
-import { registerAccountingProvider, setConnectedProviderResolver } from '../src/postings/provider'
 
 const [orgId, userArg] = process.argv.slice(2)
 
@@ -34,7 +37,7 @@ if (!orgId) {
  */
 async function registerQuickbooks() {
   const { createQuickbooksAccountingProvider } = await import(
-    '../src/money/quickbooks/quickbooks-accounting-provider'
+    '../src/accounting/providers/quickbooks/quickbooks-accounting-provider'
   )
   registerAccountingProvider('quickbooks', async () => createQuickbooksAccountingProvider())
   setConnectedProviderResolver(async () => 'quickbooks')

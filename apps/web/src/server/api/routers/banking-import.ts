@@ -20,7 +20,7 @@
 // posting gp_42" is the only sentence that says what to do next, and replacing
 // it with "Could not reverse" throws that away.
 
-import type { BankImportRow } from '@auxx/lib/banking'
+import type { BankImportRow } from '@auxx/lib/accounting/banking'
 import {
   finalizeBankImport,
   listImportBatches,
@@ -28,7 +28,7 @@ import {
   readSavedMapping,
   reverseImport,
   saveMapping,
-} from '@auxx/lib/banking'
+} from '@auxx/lib/accounting/banking'
 import { NotFoundError, UnprocessableEntityError } from '@auxx/lib/errors'
 import {
   getJobWithMapping,

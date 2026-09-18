@@ -10,6 +10,144 @@
       "import": "./dist/index.mjs",
       "default": "./src/index.ts"
     },
+    "./accounting/banking": {
+      "types": "./src/accounting/banking/index.ts",
+      "source": "./src/accounting/banking/index.ts",
+      "import": "./dist/accounting/banking/index.mjs",
+      "default": "./src/accounting/banking/index.ts"
+    },
+    "./accounting/banking/client": {
+      "types": "./src/accounting/banking/client.ts",
+      "source": "./src/accounting/banking/client.ts",
+      "import": "./dist/accounting/banking/client.mjs",
+      "default": "./src/accounting/banking/client.ts"
+    },
+    "./accounting/banking/review": {
+      "types": "./src/accounting/banking/review/index.ts",
+      "source": "./src/accounting/banking/review/index.ts",
+      "import": "./dist/accounting/banking/review/index.mjs",
+      "default": "./src/accounting/banking/review/index.ts"
+    },
+    "./accounting/banking/review/client": {
+      "types": "./src/accounting/banking/review/client.ts",
+      "source": "./src/accounting/banking/review/client.ts",
+      "import": "./dist/accounting/banking/review/client.mjs",
+      "default": "./src/accounting/banking/review/client.ts"
+    },
+    "./accounting/banking/rules": {
+      "types": "./src/accounting/banking/rules/index.ts",
+      "source": "./src/accounting/banking/rules/index.ts",
+      "import": "./dist/accounting/banking/rules/index.mjs",
+      "default": "./src/accounting/banking/rules/index.ts"
+    },
+    "./accounting/banking/rules/client": {
+      "types": "./src/accounting/banking/rules/client.ts",
+      "source": "./src/accounting/banking/rules/client.ts",
+      "import": "./dist/accounting/banking/rules/client.mjs",
+      "default": "./src/accounting/banking/rules/client.ts"
+    },
+    "./accounting/export": {
+      "types": "./src/accounting/export/index.ts",
+      "source": "./src/accounting/export/index.ts",
+      "import": "./dist/accounting/export/index.mjs",
+      "default": "./src/accounting/export/index.ts"
+    },
+    "./accounting/export/client": {
+      "types": "./src/accounting/export/client.ts",
+      "source": "./src/accounting/export/client.ts",
+      "import": "./dist/accounting/export/client.mjs",
+      "default": "./src/accounting/export/client.ts"
+    },
+    "./accounting/journals": {
+      "types": "./src/accounting/journals/index.ts",
+      "source": "./src/accounting/journals/index.ts",
+      "import": "./dist/accounting/journals/index.mjs",
+      "default": "./src/accounting/journals/index.ts"
+    },
+    "./accounting/journals/client": {
+      "types": "./src/accounting/journals/client.ts",
+      "source": "./src/accounting/journals/client.ts",
+      "import": "./dist/accounting/journals/client.mjs",
+      "default": "./src/accounting/journals/client.ts"
+    },
+    "./accounting/journals/recurring": {
+      "types": "./src/accounting/journals/recurring/index.ts",
+      "source": "./src/accounting/journals/recurring/index.ts",
+      "import": "./dist/accounting/journals/recurring/index.mjs",
+      "default": "./src/accounting/journals/recurring/index.ts"
+    },
+    "./accounting/mirror": {
+      "types": "./src/accounting/mirror/index.ts",
+      "source": "./src/accounting/mirror/index.ts",
+      "import": "./dist/accounting/mirror/index.mjs",
+      "default": "./src/accounting/mirror/index.ts"
+    },
+    "./accounting/mirror/client": {
+      "types": "./src/accounting/mirror/client.ts",
+      "source": "./src/accounting/mirror/client.ts",
+      "import": "./dist/accounting/mirror/client.mjs",
+      "default": "./src/accounting/mirror/client.ts"
+    },
+    "./accounting/opening": {
+      "types": "./src/accounting/opening/index.ts",
+      "source": "./src/accounting/opening/index.ts",
+      "import": "./dist/accounting/opening/index.mjs",
+      "default": "./src/accounting/opening/index.ts"
+    },
+    "./accounting/opening/client": {
+      "types": "./src/accounting/opening/client.ts",
+      "source": "./src/accounting/opening/client.ts",
+      "import": "./dist/accounting/opening/client.mjs",
+      "default": "./src/accounting/opening/client.ts"
+    },
+    "./accounting/providers": {
+      "types": "./src/accounting/providers/index.ts",
+      "source": "./src/accounting/providers/index.ts",
+      "import": "./dist/accounting/providers/index.mjs",
+      "default": "./src/accounting/providers/index.ts"
+    },
+    "./accounting/providers/accounting-providers": {
+      "types": "./src/accounting/providers/accounting-providers.ts",
+      "source": "./src/accounting/providers/accounting-providers.ts",
+      "import": "./dist/accounting/providers/accounting-providers.mjs",
+      "default": "./src/accounting/providers/accounting-providers.ts"
+    },
+    "./accounting/providers/client": {
+      "types": "./src/accounting/providers/client.ts",
+      "source": "./src/accounting/providers/client.ts",
+      "import": "./dist/accounting/providers/client.mjs",
+      "default": "./src/accounting/providers/client.ts"
+    },
+    "./accounting/rails": {
+      "types": "./src/accounting/rails/index.ts",
+      "source": "./src/accounting/rails/index.ts",
+      "import": "./dist/accounting/rails/index.mjs",
+      "default": "./src/accounting/rails/index.ts"
+    },
+    "./accounting/rails/client": {
+      "types": "./src/accounting/rails/client.ts",
+      "source": "./src/accounting/rails/client.ts",
+      "import": "./dist/accounting/rails/client.mjs",
+      "default": "./src/accounting/rails/client.ts"
+    },
+    "./accounting/rails/rail-catalogue": {
+      "types": "./src/accounting/rails/rail-catalogue.ts",
+      "source": "./src/accounting/rails/rail-catalogue.ts",
+      "import": "./dist/accounting/rails/rail-catalogue.mjs",
+      "default": "./src/accounting/rails/rail-catalogue.ts"
+    },
+    "./accounting/reports": {
+      "types": "./src/accounting/reports/index.ts",
+      "source": "./src/accounting/reports/index.ts",
+      "import": "./dist/accounting/reports/index.mjs",
+      "default": "./src/accounting/reports/index.ts"
+    },
+    "./accounting/reports/client": {
+      "types": "./src/accounting/reports/client.ts",
+      "source": "./src/accounting/reports/client.ts",
+      "import": "./dist/accounting/reports/client.mjs",
+      "default": "./src/accounting/reports/client.ts"
+    },
     "./actors": {
       "types": "./src/actors/index.ts",
       "source": "./src/actors/index.ts",
@@ -201,42 +339,6 @@
       "source": "./src/availability/client.ts",
       "import": "./dist/availability/client.mjs",
       "default": "./src/availability/client.ts"
-    },
-    "./banking": {
-      "types": "./src/banking/index.ts",
-      "source": "./src/banking/index.ts",
-      "import": "./dist/banking/index.mjs",
-      "default": "./src/banking/index.ts"
-    },
-    "./banking/client": {
-      "types": "./src/banking/client.ts",
-      "source": "./src/banking/client.ts",
-      "import": "./dist/banking/client.mjs",
-      "default": "./src/banking/client.ts"
-    },
-    "./banking/review": {
-      "types": "./src/banking/review/index.ts",
-      "source": "./src/banking/review/index.ts",
-      "import": "./dist/banking/review/index.mjs",
-      "default": "./src/banking/review/index.ts"
-    },
-    "./banking/review/client": {
-      "types": "./src/banking/review/client.ts",
-      "source": "./src/banking/review/client.ts",
-      "import": "./dist/banking/review/client.mjs",
-      "default": "./src/banking/review/client.ts"
-    },
-    "./banking/rules": {
-      "types": "./src/banking/rules/index.ts",
-      "source": "./src/banking/rules/index.ts",
-      "import": "./dist/banking/rules/index.mjs",
-      "default": "./src/banking/rules/index.ts"
-    },
-    "./banking/rules/client": {
-      "types": "./src/banking/rules/client.ts",
-      "source": "./src/banking/rules/client.ts",
-      "import": "./dist/banking/rules/client.mjs",
-      "default": "./src/banking/rules/client.ts"
     },
     "./bom": {
       "types": "./src/bom/index.ts",
@@ -982,12 +1084,6 @@
       "import": "./dist/money/index.mjs",
       "default": "./src/money/index.ts"
     },
-    "./money/accounting-providers": {
-      "types": "./src/money/accounting-providers.ts",
-      "source": "./src/money/accounting-providers.ts",
-      "import": "./dist/money/accounting-providers.mjs",
-      "default": "./src/money/accounting-providers.ts"
-    },
     "./money/client": {
       "types": "./src/money/client.ts",
       "source": "./src/money/client.ts",
@@ -1006,17 +1102,17 @@
       "import": "./dist/money/customer-money/client.mjs",
       "default": "./src/money/customer-money/client.ts"
     },
-    "./money/payout-sources": {
-      "types": "./src/money/payout-sources.ts",
-      "source": "./src/money/payout-sources.ts",
-      "import": "./dist/money/payout-sources.mjs",
-      "default": "./src/money/payout-sources.ts"
-    },
     "./money/payouts": {
       "types": "./src/money/payouts/index.ts",
       "source": "./src/money/payouts/index.ts",
       "import": "./dist/money/payouts/index.mjs",
       "default": "./src/money/payouts/index.ts"
+    },
+    "./money/payouts/sources": {
+      "types": "./src/money/payouts/sources.ts",
+      "source": "./src/money/payouts/sources.ts",
+      "import": "./dist/money/payouts/sources.mjs",
+      "default": "./src/money/payouts/sources.ts"
     },
     "./notifications": {
       "types": "./src/notifications/index.ts",
@@ -1059,24 +1155,6 @@
       "source": "./src/participants/search/index.ts",
       "import": "./dist/participants/search/index.mjs",
       "default": "./src/participants/search/index.ts"
-    },
-    "./payment-gateways": {
-      "types": "./src/payment-gateways/index.ts",
-      "source": "./src/payment-gateways/index.ts",
-      "import": "./dist/payment-gateways/index.mjs",
-      "default": "./src/payment-gateways/index.ts"
-    },
-    "./payment-gateways/client": {
-      "types": "./src/payment-gateways/client.ts",
-      "source": "./src/payment-gateways/client.ts",
-      "import": "./dist/payment-gateways/client.mjs",
-      "default": "./src/payment-gateways/client.ts"
-    },
-    "./payment-gateways/rail-catalogue": {
-      "types": "./src/payment-gateways/rail-catalogue.ts",
-      "source": "./src/payment-gateways/rail-catalogue.ts",
-      "import": "./dist/payment-gateways/rail-catalogue.mjs",
-      "default": "./src/payment-gateways/rail-catalogue.ts"
     },
     "./permissions": {
       "types": "./src/permissions/index.ts",
@@ -1203,12 +1281,6 @@
       "source": "./src/postings/client.ts",
       "import": "./dist/postings/client.mjs",
       "default": "./src/postings/client.ts"
-    },
-    "./postings/recurring-journals": {
-      "types": "./src/postings/recurring-journals/index.ts",
-      "source": "./src/postings/recurring-journals/index.ts",
-      "import": "./dist/postings/recurring-journals/index.mjs",
-      "default": "./src/postings/recurring-journals/index.ts"
     },
     "./presence": {
       "types": "./src/presence/index.ts",

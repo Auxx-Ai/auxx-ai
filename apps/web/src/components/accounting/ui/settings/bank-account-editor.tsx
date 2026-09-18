@@ -50,12 +50,16 @@
 // touching the inputs.
 
 import { FieldType } from '@auxx/database/enums'
-import type { BankAccountCoverage, BankAccountRow, RemovalVerb } from '@auxx/lib/banking/client'
+import type {
+  BankAccountCoverage,
+  BankAccountRow,
+  RemovalVerb,
+} from '@auxx/lib/accounting/banking/client'
 import {
   BANK_ACCOUNT_GL_TYPES,
   BANK_ACCOUNT_TYPE_LABELS,
   CREDIT_SIGN_WARNING,
-} from '@auxx/lib/banking/client'
+} from '@auxx/lib/accounting/banking/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { LastUpdated } from '@auxx/ui/components/last-updated'

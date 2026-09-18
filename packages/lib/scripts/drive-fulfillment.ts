@@ -13,10 +13,11 @@
 
 import { closePools, database, schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
+import { readTrialBalance } from '../src/accounting/reports'
 import { getCachedEntityDefId, getOrgCache } from '../src/cache'
 import { recordInvoicePayment } from '../src/money/invoices/record-payment'
 import { fulfillOrder, previewFulfillment, readOrderForFulfillment } from '../src/money/orders'
-import { readTrialBalance, verifyBooksBalance } from '../src/postings'
+import { verifyBooksBalance } from '../src/postings'
 import { UnifiedCrudHandler } from '../src/resources/crud/unified-handler'
 import { toRecordId } from '../src/resources/resource-id'
 

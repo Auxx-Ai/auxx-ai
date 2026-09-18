@@ -11,7 +11,7 @@
 
 import { closePools, database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { listBankAccounts } from '../src/banking'
+import { listBankAccounts } from '../src/accounting/banking'
 import { buildBankDepositPdfPayload } from '../src/documents/payload'
 import {
   clearBankDeposit,

@@ -15,8 +15,8 @@ const state = vi.hoisted(() => ({
   settings: new Map<string, string | null>(),
 }))
 
-vi.mock('../../../postings/provider-sync', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../../postings/provider-sync')>()),
+vi.mock('../../../accounting/mirror', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../accounting/mirror')>()),
   enqueueProviderSync,
 }))
 

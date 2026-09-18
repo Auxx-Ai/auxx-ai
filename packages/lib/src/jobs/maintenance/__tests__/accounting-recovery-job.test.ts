@@ -33,7 +33,7 @@ vi.mock('../../../money/customer-money/accounting', () => ({
 vi.mock('../../../money/customer-money/deposit-application-accounting', () => ({
   sweepDepositApplicationAccounting: h.application,
 }))
-vi.mock('../../../postings/export', () => ({ sweepExportBatches: h.delivery }))
+vi.mock('../../../accounting/export', () => ({ sweepExportBatches: h.delivery }))
 
 import type { JobContext } from '../../types/job-context'
 import { accountingRecoveryJob } from '../accounting-recovery-job'

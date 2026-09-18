@@ -3,9 +3,9 @@ import { type Database, schema, type Transaction, withAccountingCommitLock } fro
 import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
 import { accountingBasisHash } from '../../postings/basis-hash'
-import type { FinancialWriteProvenance } from '../payouts/record-storage'
 import { customerMoneyObservationSchema, orderPaymentEvidenceSchema } from './contracts'
 import { materializeImportedMoneyInTx } from './ingest'
+import type { FinancialWriteProvenance } from './record-storage'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
 
 /** Source versions order updates; replay timestamps and unchanged raw formatting do not. */

@@ -54,11 +54,11 @@ vi.mock('../../../settings/read', () => ({
   readOrganizationSettings: async (_organizationId: string, keys: readonly string[]) =>
     Object.fromEntries(keys.map((key) => [key, h.settings[key]])),
 }))
-vi.mock('../../payouts/stripe-account', () => ({ getPaymentAccount: async () => h.account }))
-vi.mock('../../payouts/stripe-connect-client', () => ({
+vi.mock('../../stripe-connect/account', () => ({ getPaymentAccount: async () => h.account }))
+vi.mock('../../stripe-connect/client', () => ({
   getStripeConnectClient: () => ({ checkout: { sessions: { create: h.create } } }),
 }))
-vi.mock('../../payouts/application-fee', () => ({ resolveApplicationFee: () => 0 }))
+vi.mock('../../stripe-connect/application-fee', () => ({ resolveApplicationFee: () => 0 }))
 vi.mock('../../public-token', () => ({
   buildPayUrl: (token: string) => `https://auxx.test/pay/${token}`,
   ensureInvoicePublicToken: async () => 'tok-inv',

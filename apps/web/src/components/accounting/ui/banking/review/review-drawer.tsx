@@ -6,7 +6,7 @@ import {
   type BankTransactionRow,
   MATCHED_RECORD_TYPE_LABELS,
   REVIEW_STATUS_LABELS,
-} from '@auxx/lib/banking/review/client'
+} from '@auxx/lib/accounting/banking/review/client'
 import { isRecordId } from '@auxx/lib/resources/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'

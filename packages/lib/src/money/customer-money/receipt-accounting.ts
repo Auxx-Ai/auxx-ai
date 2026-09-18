@@ -1,8 +1,8 @@
 // packages/lib/src/money/customer-money/receipt-accounting.ts
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, sql } from 'drizzle-orm'
+import { getPaymentGateway } from '../../accounting/rails/reads'
 import { UnprocessableEntityError } from '../../errors'
-import { getPaymentGateway } from '../../payment-gateways/reads'
 import { accountingBasisHash } from '../../postings/basis-hash'
 import { periodKeyForDate } from '../../postings/periods'
 import { confirmedCustomerMovement } from './contracts'

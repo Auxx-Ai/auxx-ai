@@ -10,15 +10,15 @@
 
 import { closePools, database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { createBankAccount } from '../src/banking'
-import { codeTransaction } from '../src/banking/review/writes'
+import { createBankAccount } from '../src/accounting/banking'
+import { codeTransaction } from '../src/accounting/banking/review/writes'
 import {
   applySuggestions,
   createRule,
   evaluateRules,
   getTransactionMatchRow,
   suggestFromHistory,
-} from '../src/banking/rules'
+} from '../src/accounting/banking/rules'
 import { getCachedEntityDefId } from '../src/cache'
 import { listChartAccounts } from '../src/postings/role-map'
 import { UnifiedCrudHandler } from '../src/resources/crud/unified-handler'

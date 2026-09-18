@@ -2,7 +2,10 @@
 
 'use client'
 
-import { REVIEW_STATUS_LABELS, type ReviewQueueState } from '@auxx/lib/banking/review/client'
+import {
+  REVIEW_STATUS_LABELS,
+  type ReviewQueueState,
+} from '@auxx/lib/accounting/banking/review/client'
 import { Button } from '@auxx/ui/components/button'
 import { type DateRange, DateRangePicker } from '@auxx/ui/components/date-range-picker'
 import { Input } from '@auxx/ui/components/input'

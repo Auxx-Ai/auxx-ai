@@ -6,7 +6,7 @@
 // the fee-fallback warning. No query, no component - the same shape
 // `pack-picker.test.ts` takes for the chart-pack cascade.
 
-import type { GatewayHandleCensusRow, PaymentGatewayRow } from '@auxx/lib/payment-gateways/client'
+import type { GatewayHandleCensusRow, PaymentGatewayRow } from '@auxx/lib/accounting/rails/client'
 import { describe, expect, it } from 'vitest'
 import {
   buildRailGroups,

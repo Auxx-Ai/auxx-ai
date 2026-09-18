@@ -14,14 +14,14 @@ import type { HostedProvisionHandler } from './types'
  *
  * Consumers register themselves by adding a case here — e.g. money's Stripe Connect handler:
  *   case 'stripeConnect':
- *     return (await import('../../money/payouts/stripe-onboarding')).stripeConnectHandler
+ *     return (await import('../../money/stripe-connect/onboarding')).stripeConnectHandler
  */
 export async function resolveHostedProvisionHandler(key: string): Promise<HostedProvisionHandler> {
   switch (key) {
     case 'stripeConnect':
-      return (await import('../../money/payouts/stripe-onboarding')).stripeConnectHandler
+      return (await import('../../money/stripe-connect/onboarding')).stripeConnectHandler
     case 'stripeFinancialConnections':
-      return (await import('../../banking/feed/fc-connect')).financialConnectionsHandler
+      return (await import('../../accounting/banking/feed/fc-connect')).financialConnectionsHandler
     default:
       throw new NotFoundError(`No hosted-provision handler registered for key "${key}"`)
   }

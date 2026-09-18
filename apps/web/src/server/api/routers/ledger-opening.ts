@@ -9,14 +9,14 @@
 // throws `ConflictError` / `UnprocessableEntityError`; `auxxErrorMiddleware`
 // maps them, and the wizard's Finalize page shows the verbatim message.
 
-import { PermissionKey } from '@auxx/lib/permissions'
 import {
   fillOpeningTrialBalanceFromProvider,
   postOpeningTrialBalance,
   previewOpeningTrialBalance,
   readOpeningTrialBalance,
   saveOpeningTrialBalance,
-} from '@auxx/lib/postings'
+} from '@auxx/lib/accounting/opening'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 

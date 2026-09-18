@@ -2,7 +2,7 @@
 
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { sendExportBatch } from '../../postings/export'
+import { sendExportBatch } from '../../accounting/export'
 import type { JobContext } from '../types'
 
 const logger = createScopedLogger('jobs:money:export-batch')

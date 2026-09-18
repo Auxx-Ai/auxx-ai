@@ -2,7 +2,7 @@
 // Read-only probe: what does the provider hold for one DocNumber right now.
 // Run: npx dotenv -- npx tsx packages/lib/scripts/probe-doc-number.ts <doc>...
 import { closePools } from '@auxx/database'
-import { resolveQuickbooksContext } from '../src/money/quickbooks/invoke-quickbooks-tool'
+import { resolveQuickbooksContext } from '../src/accounting/providers/quickbooks/invoke-quickbooks-tool'
 
 const ORG = process.env.SYNC_ORG_ID ?? 'abgwpa1l81reht2zmwrcihfu'
 

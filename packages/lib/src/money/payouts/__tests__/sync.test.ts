@@ -41,10 +41,10 @@ vi.mock('../reads', () => ({
   findPayoutByGatewayId: vi.fn(),
   listLinkedFeedAccounts: h.listLinkedFeedAccounts,
 }))
-vi.mock('../stripe-account', () => ({
+vi.mock('../../stripe-connect/account', () => ({
   getPaymentAccount: h.getPaymentAccount,
 }))
-vi.mock('../../../payment-gateways/reads', () => ({
+vi.mock('../../../accounting/rails/reads', () => ({
   listPaymentGateways: async () => ({
     isErr: () => false,
     isOk: () => true,
@@ -56,10 +56,10 @@ vi.mock('../../../users/system-user-service', () => ({
 }))
 
 import type { Database } from '@auxx/database'
-import type { PaymentGatewayRow } from '../../../payment-gateways/client'
-import { registerPayoutSources } from '../../payout-sources'
+import type { PaymentGatewayRow } from '../../../accounting/rails/client'
 import type { PayoutSource, PayoutSourceCtx } from '../source'
 import { __resetPayoutSourcesForTests, registerPayoutSource } from '../source-registry'
+import { registerPayoutSources } from '../sources'
 import { syncPayoutSource, syncPayouts } from '../sync'
 
 const ORG = 'org_1'

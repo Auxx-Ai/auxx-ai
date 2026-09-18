@@ -1,7 +1,7 @@
 // packages/lib/src/money/payouts/__tests__/evidence-reads.test.ts
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { PayoutRecordEvidence } from '../record-contracts'
+import type { PayoutRecordEvidence } from '../../customer-money/record-contracts'
 
 const state = vi.hoisted(() => ({ matches: vi.fn() }))
 vi.mock('../match-entries', () => ({ matchProcessorEntries: state.matches }))

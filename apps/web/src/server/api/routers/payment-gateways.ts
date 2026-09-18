@@ -22,16 +22,16 @@ import {
   listObservedGatewayHandles,
   listPaymentGateways,
   listUnlinkedFeeds,
+  mintRailAccounts,
   PAYMENT_GATEWAY_FEE_TREATMENTS,
   PAYMENT_GATEWAY_STATUSES,
   readClearingAccountBalance,
   readiness,
   unlinkFeed,
   updatePaymentGateway,
-} from '@auxx/lib/payment-gateways'
-import { suggestRail } from '@auxx/lib/payment-gateways/rail-catalogue'
+} from '@auxx/lib/accounting/rails'
+import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
 import { PermissionKey } from '@auxx/lib/permissions'
-import { mintRailAccounts } from '@auxx/lib/postings'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 

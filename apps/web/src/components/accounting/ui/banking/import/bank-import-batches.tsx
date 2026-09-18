@@ -13,7 +13,7 @@
 // "31 Jan, -$50.00, FUEL STOP 12 - carries posting gp_42" is the only sentence
 // that says what to do next.
 
-import type { BankImportBatch, ReverseImportRefusal } from '@auxx/lib/banking'
+import type { BankImportBatch, ReverseImportRefusal } from '@auxx/lib/accounting/banking'
 import { Alert, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

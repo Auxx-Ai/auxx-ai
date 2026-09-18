@@ -13,7 +13,7 @@ const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(async () => ({}) as Record<string, { id: string } | null>),
 }))
 
-vi.mock('../../../payment-gateways/reads', () => ({ listPaymentGateways: async () => ok([]) }))
+vi.mock('../../../accounting/rails/reads', () => ({ listPaymentGateways: async () => ok([]) }))
 
 vi.mock('../../../cache', () => ({
   getCachedEntityDefId: h.getCachedEntityDefId,

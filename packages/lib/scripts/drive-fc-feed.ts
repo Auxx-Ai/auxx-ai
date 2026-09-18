@@ -10,10 +10,10 @@
 
 import { database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
-import { refreshBankAccountCoverage } from '../src/banking/feed/coverage'
-import { retrieveAccount, subscribeToTransactions } from '../src/banking/feed/fc-client'
-import { financialConnectionsHandler } from '../src/banking/feed/fc-connect'
-import { listBankAccounts, readCoverage } from '../src/banking/reads'
+import { refreshBankAccountCoverage } from '../src/accounting/banking/feed/coverage'
+import { retrieveAccount, subscribeToTransactions } from '../src/accounting/banking/feed/fc-client'
+import { financialConnectionsHandler } from '../src/accounting/banking/feed/fc-connect'
+import { listBankAccounts, readCoverage } from '../src/accounting/banking/reads'
 import type { HostedProvisionCompleteResult } from '../src/connections/hosted-provision/types'
 import { saveConnection } from '../src/connections/save-connection'
 import {

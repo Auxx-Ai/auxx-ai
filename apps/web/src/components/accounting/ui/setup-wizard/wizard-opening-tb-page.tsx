@@ -1,7 +1,7 @@
 // apps/web/src/components/accounting/ui/setup-wizard/wizard-opening-tb-page.tsx
 'use client'
 
-import type { OpeningTrialBalanceRow } from '@auxx/lib/postings/client'
+import type { OpeningTrialBalanceRow } from '@auxx/lib/accounting/opening/client'
 import {
   ACCOUNT_ROLES,
   OPENING_BASELINE_SETTING_KEYS,

@@ -22,7 +22,7 @@ vi.mock('@auxx/credentials', () => ({
 vi.mock('@auxx/lib/webhooks', () => ({
   verifyStripeSignature: (...args: unknown[]) => verifyStripeSignature(...(args as [])),
 }))
-vi.mock('@auxx/lib/banking', () => ({
+vi.mock('@auxx/lib/accounting/banking', () => ({
   isFinancialConnectionsEvent: (type: string) => type.startsWith('financial_connections.'),
   applyFinancialConnectionsEvent: (...args: unknown[]) =>
     applyFinancialConnectionsEvent(...(args as [])),

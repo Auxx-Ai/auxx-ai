@@ -14,7 +14,7 @@ import {
   enqueueProviderSyncSlice,
   isMarkerBlockedForRun,
   type ProviderSyncJobData,
-} from '../../postings/provider-sync'
+} from '../../accounting/mirror'
 import type { SliceBudget } from '../../sync-core/contracts'
 import { runSyncSlice } from '../../sync-core/slice-runner'
 import { createThrottleHandle } from '../../sync-core/throttle'
@@ -23,7 +23,7 @@ import type { JobContext } from '../types'
 
 const logger = createScopedLogger('jobs:money:provider-sync')
 
-export { PROVIDER_SYNC_JOB_NAME, type ProviderSyncJobData } from '../../postings/provider-sync'
+export { PROVIDER_SYNC_JOB_NAME, type ProviderSyncJobData } from '../../accounting/mirror'
 
 /**
  * `maxPages: 1` is a fact about the QuickBooks report rather than a knob - one

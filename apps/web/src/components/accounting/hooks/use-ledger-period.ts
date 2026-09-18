@@ -3,11 +3,10 @@
 'use client'
 
 import {
-  type ClosePeriod,
-  FINALIZED_SETUP_STATE,
   FISCAL_YEAR_START_MONTH_SETTING_KEY,
   normalizeFiscalYearStartMonth,
-} from '@auxx/lib/postings/client'
+} from '@auxx/lib/accounting/reports/client'
+import { type ClosePeriod, FINALIZED_SETUP_STATE } from '@auxx/lib/postings/client'
 import { useMemo } from 'react'
 import { formatPeriodLabel } from '~/components/accounting/ui/ledger/format'
 import { useSettings } from '~/hooks/use-settings'

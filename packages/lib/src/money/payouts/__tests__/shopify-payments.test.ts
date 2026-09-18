@@ -26,11 +26,11 @@ vi.mock('../../../apps/invoke-app-tool', () => ({
 vi.mock('../reads', () => ({ listLinkedFeedAccounts: h.listLinkedFeedAccounts }))
 
 import type { Database } from '@auxx/database'
+import type { PaymentGatewayRow } from '../../../accounting/rails/client'
 import { ForbiddenError } from '../../../errors'
-import type { PaymentGatewayRow } from '../../../payment-gateways/client'
-import { registerPayoutSources } from '../../payout-sources'
 import type { PayoutSourceCtx } from '../source'
 import { __resetPayoutSourcesForTests, listPayoutSourceIds } from '../source-registry'
+import { registerPayoutSources } from '../sources'
 import {
   SHOPIFY_PAYMENTS_PAYOUT_SOURCE,
   SHOPIFY_PAYMENTS_PAYOUTS_SCOPE,

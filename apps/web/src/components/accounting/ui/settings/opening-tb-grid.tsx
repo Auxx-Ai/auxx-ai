@@ -20,7 +20,8 @@
 // primitive every statement, the aging report and this grid render through, and
 // its edit mode exists for this screen.
 
-import type { GlAccountTypeValue, OpeningTrialBalanceRow } from '@auxx/lib/postings/client'
+import type { OpeningTrialBalanceRow } from '@auxx/lib/accounting/opening/client'
+import type { GlAccountTypeValue } from '@auxx/lib/postings/client'
 import { GL_ACCOUNT_TYPES } from '@auxx/lib/postings/client'
 import { formatAccountLabel } from '../account-label-format'
 import { formatMinor } from '../ledger/format'

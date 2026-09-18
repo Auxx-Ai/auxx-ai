@@ -32,9 +32,12 @@ vi.mock('../../cache', () => ({
   }),
 }))
 
+import {
+  __resetAccountingProvidersForTests,
+  setConnectedProviderResolver,
+} from '../../accounting/providers/provider'
 import { listPostingsForSource } from '../list-postings'
 import { postDraft, postEntry, postEntryInTx } from '../post-entry'
-import { __resetAccountingProvidersForTests, setConnectedProviderResolver } from '../provider'
 import { reverseEntry } from '../reverse-entry'
 import type { BuiltEntry, GlPostingSourceInput } from '../types'
 

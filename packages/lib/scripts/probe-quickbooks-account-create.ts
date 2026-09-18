@@ -47,7 +47,7 @@
 //
 // Delete this script with the other spike tooling once the push is built.
 
-import { resolveQuickbooksContext } from '../src/money/quickbooks/invoke-quickbooks-tool'
+import { resolveQuickbooksContext } from '../src/accounting/providers/quickbooks/invoke-quickbooks-tool'
 
 const argv = process.argv.slice(2)
 const flags = new Set(argv.filter((a) => a.startsWith('--')))

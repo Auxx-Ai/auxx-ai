@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { ExportBatchRow } from '@auxx/lib/postings'
+import type { ExportBatchRow } from '@auxx/lib/accounting/export'
 import { ModuleSidebar } from '@auxx/ui/components/module-sidebar'
 import {
   SidebarGroup,

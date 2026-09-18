@@ -75,9 +75,11 @@ vi.mock('@auxx/lib/permissions', async () => {
   }
 })
 
-// A one-constant stub: the real `@auxx/lib/banking` barrel pulls in the whole
+// A one-constant stub: the real `@auxx/lib/accounting/banking` barrel pulls in the whole
 // banking module graph, which this route needs none of beyond the pointer.
-vi.mock('@auxx/lib/banking', () => ({ BANK_FEED_PROVIDER_KEY: 'stripeFinancialConnections' }))
+vi.mock('@auxx/lib/accounting/banking', () => ({
+  BANK_FEED_PROVIDER_KEY: 'stripeFinancialConnections',
+}))
 
 vi.mock('@auxx/database', () => ({
   database: { query: { ConnectionDefinition: { findFirst: findConnectionDefinition } } },

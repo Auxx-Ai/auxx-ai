@@ -2,7 +2,7 @@
 
 'use client'
 
-import { toCsvRows } from '@auxx/lib/postings/client'
+import { toCsvRows } from '@auxx/lib/accounting/reports/client'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'

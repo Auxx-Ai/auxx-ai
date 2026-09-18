@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/money.ts
 
-import { listBankAccounts } from '@auxx/lib/banking'
+import { listBankAccounts } from '@auxx/lib/accounting/banking'
 import { getOrgCache } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { isRecordConnectorManaged } from '@auxx/lib/data-connectors'

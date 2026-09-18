@@ -9,8 +9,8 @@
 // same month is matched onto it by the identical grouping key so the state
 // badge shows beside a row that has one, without a second column of state.
 
+import type { PostingSummary } from '@auxx/lib/accounting/journals/client'
 import type { LedgerSummaryRow } from '@auxx/lib/postings'
-import type { PostingSummary } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'

@@ -32,7 +32,7 @@ import type { Database } from '@auxx/database'
 import type {
   PaymentGatewayRow,
   PaymentGatewaySettlementSourceValue,
-} from '../../payment-gateways/client'
+} from '../../accounting/rails/client'
 
 /**
  * Which feed a source reads. Matches the `providerKey` a linked

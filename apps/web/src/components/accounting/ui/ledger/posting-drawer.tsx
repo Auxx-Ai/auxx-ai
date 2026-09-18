@@ -2,7 +2,8 @@
 
 'use client'
 
-import type { ExportBatchTab, PostingDetail } from '@auxx/lib/postings/client'
+import type { ExportBatchTab } from '@auxx/lib/accounting/export/client'
+import type { PostingDetail } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'

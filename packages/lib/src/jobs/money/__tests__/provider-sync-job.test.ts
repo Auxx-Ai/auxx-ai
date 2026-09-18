@@ -20,7 +20,7 @@ const runSyncSlice = vi.hoisted(() => vi.fn())
 
 vi.mock('@auxx/database', () => ({ database: {} }))
 
-vi.mock('../../../postings/provider-sync', () => ({
+vi.mock('../../../accounting/mirror', () => ({
   createProviderLedgerSyncSource: createSource,
   createProviderSyncRunLedger: () => ({ recordSlice, finalize, fail }),
   createProviderSyncStateStore: () => ({ load: vi.fn(), save: vi.fn() }),

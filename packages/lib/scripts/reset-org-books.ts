@@ -77,14 +77,14 @@
 
 import { database as db, schema } from '@auxx/database'
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import {
+  clearQuickbooksAccountMapping,
+  readQuickbooksAccountMap,
+} from '../src/accounting/providers/quickbooks/account-map'
 import { getOrgCache } from '../src/cache'
 import { onCacheEvent } from '../src/cache/invalidate'
 import { freshBackfillState } from '../src/data-connectors/slice-orchestrator'
 import { deleteEntityInstances } from '../src/entity-instances'
-import {
-  clearQuickbooksAccountMapping,
-  readQuickbooksAccountMap,
-} from '../src/money/quickbooks/account-map'
 import { listChartAccounts } from '../src/postings'
 import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'
 

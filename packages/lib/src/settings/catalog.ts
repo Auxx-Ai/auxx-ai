@@ -5,12 +5,6 @@
 // plans/settings/v2/README.md for the full design.
 
 import type { FieldType } from '@auxx/database/types'
-import type { FieldOptions } from '../custom-fields/field-options'
-// The option list for the `accounting.paymentRoute.*` keys, owned by the module
-// that reads them (`resolvePaymentRoute`) rather than restated here - a second
-// copy of the three destinations would let a form offer a value the resolver
-// does not recognise, which falls back silently.
-import { PAYMENT_ROUTE_SETTING_OPTIONS } from '../money/bank-deposits/route'
 // Same one-list rule for the fiscal year. `reports/fiscal-year.ts` is pure and
 // already client-safe (`postings/client.ts` exports `fiscalYearStart`), so the
 // months live beside the function that consumes them rather than in a split-out
@@ -18,7 +12,13 @@ import { PAYMENT_ROUTE_SETTING_OPTIONS } from '../money/bank-deposits/route'
 import {
   DEFAULT_FISCAL_YEAR_START_MONTH,
   FISCAL_YEAR_START_MONTH_OPTIONS,
-} from '../postings/reports/fiscal-year'
+} from '../accounting/reports/fiscal-year'
+import type { FieldOptions } from '../custom-fields/field-options'
+// The option list for the `accounting.paymentRoute.*` keys, owned by the module
+// that reads them (`resolvePaymentRoute`) rather than restated here - a second
+// copy of the three destinations would let a form offer a value the resolver
+// does not recognise, which falls back silently.
+import { PAYMENT_ROUTE_SETTING_OPTIONS } from '../money/bank-deposits/route'
 import type { SettingScope, SettingValue } from './types'
 
 /**

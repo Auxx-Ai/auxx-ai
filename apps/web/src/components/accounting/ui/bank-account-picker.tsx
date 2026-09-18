@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { BankAccountRow } from '@auxx/lib/banking/client'
+import type { BankAccountRow } from '@auxx/lib/accounting/banking/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { Badge } from '@auxx/ui/components/badge'

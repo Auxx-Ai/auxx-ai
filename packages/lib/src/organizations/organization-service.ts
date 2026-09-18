@@ -9,7 +9,10 @@ import { TRPCError } from '@trpc/server'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 // The LEAF, not the `banking` barrel: the barrel drags the org cache and the whole
 // review/rules surface into this module's import graph for two functions.
-import { listBankFeedAccountsForOrganization, reapBankFeedAccount } from '../banking/feed/reaper'
+import {
+  listBankFeedAccountsForOrganization,
+  reapBankFeedAccount,
+} from '../accounting/banking/feed/reaper'
 import { flushOrganization, onCacheEvent } from '../cache'
 import { DehydrationService } from '../dehydration'
 import type { ForwardingIntegrationMetadata } from '../email/inbound'

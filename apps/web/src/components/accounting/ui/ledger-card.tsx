@@ -18,8 +18,8 @@
 // as its own badge so a `parent` row (an order listing its fulfillments) reads
 // differently from the `subject` row a fulfillment's own card shows.
 
+import type { ExportBatchState } from '@auxx/lib/accounting/export/client'
 import type {
-  ExportBatchState,
   PostingDetail,
   PostingLinkRole,
   PostingStatus,

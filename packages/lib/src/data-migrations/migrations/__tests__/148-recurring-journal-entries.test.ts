@@ -15,11 +15,11 @@
 //    `manual` rows point at it by name.
 
 import { describe, expect, it } from 'vitest'
-import { JOURNAL_ENTRY_POSTING_TYPE } from '../../../postings/journal-entries/client'
+import { JOURNAL_ENTRY_POSTING_TYPE } from '../../../accounting/journals/entries/client'
 import {
   RECURRING_JOURNAL_DOC_PREFIX,
   RECURRING_JOURNAL_SUBJECT_TYPE,
-} from '../../../postings/recurring-journals/client'
+} from '../../../accounting/journals/recurring/client'
 import { JournalEntryKind } from '../../../resources/registry/enum-values'
 import { JOURNAL_ENTRY_FIELDS } from '../../../resources/registry/resources/journal-entry-fields'
 import { PER_ORG_MIGRATIONS } from '../../registry'

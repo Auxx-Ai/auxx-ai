@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { BankAccountRow } from '@auxx/lib/banking/client'
+import type { BankAccountRow } from '@auxx/lib/accounting/banking/client'
 import { cn } from '@auxx/ui/lib/utils'
 import type { VariantProps } from 'class-variance-authority'
 import { recordBadgeVariants } from '~/components/resources/ui/record-badge'

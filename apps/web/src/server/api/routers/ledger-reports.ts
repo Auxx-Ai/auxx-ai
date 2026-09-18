@@ -14,7 +14,7 @@
 // wire response always carries BOTH the typed model and `rows: StatementRow[]`
 // - the shape `StatementTable` (screen) and the PDF both render from.
 
-import { PermissionKey } from '@auxx/lib/permissions'
+import { readProviderSyncMarker } from '@auxx/lib/accounting/mirror'
 import {
   AGING_COLUMNS,
   balanceSheetColumns,
@@ -25,7 +25,6 @@ import {
   readCompleteness,
   readGeneralLedger,
   readProfitAndLoss,
-  readProviderSyncMarker,
   readTrialBalanceStatement,
   readVendor1099Summary,
   renderStatementPdf,
@@ -37,7 +36,8 @@ import {
   toTrialBalanceStatementRows,
   toVendor1099Rows,
   VENDOR_1099_COLUMNS,
-} from '@auxx/lib/postings'
+} from '@auxx/lib/accounting/reports'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 

@@ -15,6 +15,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, gte, isNotNull, lt, lte, sql } from 'drizzle-orm'
+import { readTrialBalance } from '../accounting/reports/trial-balance'
 import { getOrgCache } from '../cache'
 import { countUnissuedChannelCreditMemos } from '../money/credit-memos/reads'
 import {
@@ -23,7 +24,6 @@ import {
   describeInventoryBlockers,
 } from './close-blockers'
 import { INVENTORY_ROLES } from './regime'
-import { readTrialBalance } from './reports/trial-balance'
 import { readRoleAssignments } from './role-assignments'
 
 const logger = createScopedLogger('postings:close-blockers')

@@ -2,7 +2,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { z } from 'zod'
-import { financialSourceReferenceSchema } from './record-contracts'
+import { financialSourceReferenceSchema } from '../customer-money/record-contracts'
 
 /** Evidence needed to link activity to an already recorded customer movement. */
 export interface MatchableProcessorEntry {

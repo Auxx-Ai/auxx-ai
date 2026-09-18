@@ -5,13 +5,13 @@ import { toRecordId } from '@auxx/types/resource'
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { beforeEach, describe, expect, it } from 'vitest'
+import type { PayoutRecordEvidence } from '../../customer-money/record-contracts'
+import { writeFinancialRecords } from '../../customer-money/record-storage'
 import {
   reconcileFinancialRecords,
   reconcileTransferIds,
   recoverPayoutReconciliationPage,
 } from '../reconcile-records'
-import type { PayoutRecordEvidence } from '../record-contracts'
-import { writeFinancialRecords } from '../record-storage'
 
 let organizationId: string
 let actorUserId: string

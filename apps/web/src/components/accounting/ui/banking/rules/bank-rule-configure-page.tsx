@@ -10,7 +10,7 @@ import {
   type BankRuleDirection,
   type BankRuleMatchField,
   type BankRuleMatchOperator,
-} from '@auxx/lib/banking/rules/client'
+} from '@auxx/lib/accounting/banking/rules/client'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'

@@ -36,7 +36,10 @@
 // range, the signed in/out colouring and the suggestion badge, none of which the
 // registry can express. Reported in HANDOFF §5 for the coordinator.
 
-import { type BankTransactionRow, REVIEW_QUEUE_STATES } from '@auxx/lib/banking/review/client'
+import {
+  type BankTransactionRow,
+  REVIEW_QUEUE_STATES,
+} from '@auxx/lib/accounting/banking/review/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

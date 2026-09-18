@@ -2,7 +2,7 @@
 
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { database as db } from '@auxx/database'
-import { BANK_FEED_PROVIDER_KEY } from '@auxx/lib/banking'
+import { BANK_FEED_PROVIDER_KEY } from '@auxx/lib/accounting/banking'
 import { resolveHostedProvisionHandler } from '@auxx/lib/connections'
 import { getProviderByKey } from '@auxx/lib/connections/providers'
 import { PermissionKey, requirePermission } from '@auxx/lib/permissions'

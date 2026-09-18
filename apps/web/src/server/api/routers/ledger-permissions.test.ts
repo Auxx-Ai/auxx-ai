@@ -79,8 +79,8 @@ vi.mock('@auxx/lib/seed', async () => {
   }
 })
 
-vi.mock('@auxx/lib/banking', async () => {
-  const actual = await vi.importActual<Record<string, unknown>>('@auxx/lib/banking')
+vi.mock('@auxx/lib/accounting/banking', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@auxx/lib/accounting/banking')
   return {
     ...actual,
     createBankAccount: vi.fn(async () => okResult({ id: 'bnk_cuid00000000000000000000' })),
@@ -145,7 +145,7 @@ const { ledgerRouter } = await import('./ledger')
 const { bankingRouter } = await import('./banking')
 const { settingsRouter } = await import('./setting')
 const { GL_ACCOUNT_TYPES, ACCOUNT_ROLES } = await import('@auxx/lib/postings')
-const { BANK_ACCOUNT_TYPES } = await import('@auxx/lib/banking')
+const { BANK_ACCOUNT_TYPES } = await import('@auxx/lib/accounting/banking')
 const { seedDefaultPaymentGateways } = await import('@auxx/lib/seed')
 
 type Capabilities = InstanceType<typeof CapabilitySet>

@@ -24,7 +24,7 @@ import { type Database, schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const gatewayStub = vi.hoisted(() => ({ rows: [] as Array<{ id: string; name: string }> }))
-vi.mock('../../payment-gateways/reads', () => ({
+vi.mock('../../accounting/rails/reads', () => ({
   listPaymentGateways: vi.fn(async () => {
     const { ok } = await import('neverthrow')
     return ok(gatewayStub.rows)

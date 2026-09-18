@@ -2,7 +2,7 @@
 
 'use client'
 
-import { describeProviderSyncCoverage } from '@auxx/lib/postings/client'
+import { describeProviderSyncCoverage } from '@auxx/lib/accounting/mirror/client'
 import { RefreshCw } from 'lucide-react'
 import { api } from '~/trpc/react'
 

@@ -16,7 +16,7 @@
 
 import { closePools, database, schema } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
-import { createBankAccount, listBankAccounts, updateBankAccount } from '../src/banking'
+import { createBankAccount, listBankAccounts, updateBankAccount } from '../src/accounting/banking'
 import {
   codeTransaction,
   excludeTransaction,
@@ -27,7 +27,7 @@ import {
   readQueueStats,
   transferTransaction,
   undoReview,
-} from '../src/banking/review'
+} from '../src/accounting/banking/review'
 import { getCachedEntityDefId } from '../src/cache'
 import { listBankDeposits } from '../src/money/bank-deposits'
 import { createChartAccount } from '../src/postings/chart-write'

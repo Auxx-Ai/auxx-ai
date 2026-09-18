@@ -13,8 +13,11 @@
 //
 // Run: npx dotenv -- npx tsx packages/lib/scripts/probe-provider-sync.ts
 import { closePools, database as db } from '@auxx/database'
-import { registerAccountingProvider, setConnectedProviderResolver } from '../src/postings/provider'
-import { syncProviderLedger } from '../src/postings/provider-sync/sync'
+import { syncProviderLedger } from '../src/accounting/mirror/sync'
+import {
+  registerAccountingProvider,
+  setConnectedProviderResolver,
+} from '../src/accounting/providers/provider'
 
 const ORG = process.env.SYNC_ORG_ID ?? 'abgwpa1l81reht2zmwrcihfu'
 const TO = process.env.SYNC_TO ?? '2026-09-16'
@@ -22,7 +25,7 @@ const FROM = process.env.SYNC_FROM
 
 async function registerQuickbooks() {
   const { createQuickbooksAccountingProvider } = await import(
-    '../src/money/quickbooks/quickbooks-accounting-provider'
+    '../src/accounting/providers/quickbooks/quickbooks-accounting-provider'
   )
   registerAccountingProvider('quickbooks', async () => createQuickbooksAccountingProvider())
   setConnectedProviderResolver(async () => 'quickbooks')

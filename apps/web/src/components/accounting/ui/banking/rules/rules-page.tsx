@@ -35,7 +35,7 @@
 // silently posts to the ledger is a rule that silently posts a WRONG entry, and
 // once a period is locked that is a reversal, not an edit.
 
-import type { BankRuleRecord } from '@auxx/lib/banking/rules/client'
+import type { BankRuleRecord } from '@auxx/lib/accounting/banking/rules/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

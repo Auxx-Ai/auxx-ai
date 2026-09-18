@@ -11,7 +11,7 @@
 // decides whether the account maps to an asset or a liability.
 
 import { FieldType } from '@auxx/database/enums'
-import type { BankAccountRow } from '@auxx/lib/banking/client'
+import type { BankAccountRow } from '@auxx/lib/accounting/banking/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,

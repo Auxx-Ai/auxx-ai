@@ -1,6 +1,6 @@
 // apps/web/src/components/accounting/ui/reports/__tests__/report-helpers.test.ts
 
-import type { StatementRow as LibStatementRow } from '@auxx/lib/postings/client'
+import type { StatementRow as LibStatementRow } from '@auxx/lib/accounting/reports/client'
 import { daysBetween } from '@auxx/utils/calendar-day'
 import { describe, expect, it } from 'vitest'
 import {

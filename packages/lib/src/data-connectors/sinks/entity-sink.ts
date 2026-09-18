@@ -23,7 +23,7 @@ import {
   FinancialSourceIdentityConflictError,
   recordStaleFinancialObservation,
   StaleFinancialSourceRevisionError,
-} from '../../money/payouts/source-write-errors'
+} from '../../money/customer-money/source-write-errors'
 import { toRecordId } from '../../resources/resource-id'
 import { buildWriteKeyToFieldId } from '../field-id-resolver'
 import {

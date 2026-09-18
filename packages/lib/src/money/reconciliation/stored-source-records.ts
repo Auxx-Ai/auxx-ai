@@ -6,14 +6,17 @@ import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { ConflictError } from '../../errors'
 import { accountingBasisHash } from '../../postings/basis-hash'
+import type {
+  PayoutRecordEvidence,
+  ProcessorRecordEvidence,
+} from '../customer-money/record-contracts'
 import { stageOrderPaymentEvidenceInTx } from '../customer-money/record-evidence'
-import type { PayoutRecordEvidence, ProcessorRecordEvidence } from '../payouts/record-contracts'
 import {
   type FinancialRecordWrite,
   type FinancialWriteProvenance,
   writeFinancialRecords,
-} from '../payouts/record-storage'
-import { StaleFinancialSourceRevisionError } from '../payouts/source-write-errors'
+} from '../customer-money/record-storage'
+import { StaleFinancialSourceRevisionError } from '../customer-money/source-write-errors'
 
 export const FINANCIAL_SOURCE_TYPES = new Set([
   'payout',

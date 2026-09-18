@@ -7,8 +7,8 @@
 //   npx dotenv -- npx tsx packages/lib/scripts/drive-write-off.ts
 
 import { closePools, database } from '@auxx/database'
+import { readVendor1099Summary } from '../src/accounting/reports/vendor-1099'
 import { writeOffInvoice } from '../src/money/invoices/write-off'
-import { readVendor1099Summary } from '../src/postings/reports/vendor-1099'
 import { verifyBooksBalance } from '../src/postings/verify-balance'
 
 // DemoOrg1, owner markus@auxx.ai (HANDOFF §9a).

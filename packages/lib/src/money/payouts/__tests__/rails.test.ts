@@ -21,19 +21,19 @@ const h = vi.hoisted(() => ({
   listPayouts: vi.fn(),
 }))
 
-vi.mock('../../../payment-gateways/reads', () => ({
+vi.mock('../../../accounting/rails/reads', () => ({
   listPaymentGateways: h.listPaymentGateways,
 }))
-vi.mock('../../../payment-gateways/repoint', () => ({
+vi.mock('../../../accounting/rails/repoint', () => ({
   readClearingAccountBalance: h.readClearingAccountBalance,
 }))
-vi.mock('../../../postings/rail-fee-status', () => ({
+vi.mock('../../../accounting/rails/rail-fee-status', () => ({
   readRailFeeStatus: h.readRailFeeStatus,
 }))
 vi.mock('../reads', () => ({ listPayouts: h.listPayouts }))
 
 import type { Database } from '@auxx/database'
-import type { PaymentGatewayRow } from '../../../payment-gateways/client'
+import type { PaymentGatewayRow } from '../../../accounting/rails/client'
 import { listRailStrip } from '../rails'
 
 const ORG = 'org_1'

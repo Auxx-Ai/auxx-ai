@@ -3,7 +3,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import type { BankTransactionRow } from '@auxx/lib/banking/review/client'
+import type { BankTransactionRow } from '@auxx/lib/accounting/banking/review/client'
 import type { PostResultStatus } from '@auxx/lib/postings/client'
 import { Alert } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'

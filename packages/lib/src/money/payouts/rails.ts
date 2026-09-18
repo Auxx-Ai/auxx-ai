@@ -46,13 +46,13 @@ import type {
   PaymentGatewayFeeTreatmentValue,
   PaymentGatewaySettlementSourceValue,
   PaymentGatewayStatusValue,
-} from '../../payment-gateways/client'
+} from '../../accounting/rails/client'
+import { readRailFeeStatus } from '../../accounting/rails/rail-fee-status'
 // 🛑 The leaves, never `../../payment-gateways` - the barrel re-exports
 // `writes.ts`, which imports `postings/chart-accounts`, and this module sits
 // under `postings/` consumers already. Same call `rail-fee-status.ts` makes.
-import { listPaymentGateways } from '../../payment-gateways/reads'
-import { readClearingAccountBalance } from '../../payment-gateways/repoint'
-import { readRailFeeStatus } from '../../postings/rail-fee-status'
+import { listPaymentGateways } from '../../accounting/rails/reads'
+import { readClearingAccountBalance } from '../../accounting/rails/repoint'
 import { guard } from './guard'
 import { listPayouts } from './reads'
 

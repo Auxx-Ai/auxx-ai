@@ -4,7 +4,7 @@ import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({ gateways: vi.fn() }))
-vi.mock('../../../payment-gateways/reads', () => ({ listPaymentGateways: h.gateways }))
+vi.mock('../../../accounting/rails/reads', () => ({ listPaymentGateways: h.gateways }))
 
 import { loadPayoutSourceSummaries } from '../source-reads'
 

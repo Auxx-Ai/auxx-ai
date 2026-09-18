@@ -3,9 +3,12 @@ import { type Database, schema, type Transaction, withAccountingCommitLock } fro
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { and, eq, gt, inArray, or, sql } from 'drizzle-orm'
 import { accountingBasisHash } from '../../postings/basis-hash'
-import { exactEvidenceMinor, isOutgoingPayoutEntry } from './evidence-contracts'
+import { exactEvidenceMinor, isOutgoingPayoutEntry } from '../customer-money/evidence-contracts'
+import {
+  type PayoutRecordEvidence,
+  payoutRecordEvidenceSchema,
+} from '../customer-money/record-contracts'
 import { type MatchableProcessorEntry, matchProcessorEntries } from './match-entries'
-import { type PayoutRecordEvidence, payoutRecordEvidenceSchema } from './record-contracts'
 
 const OWNER_BATCH_SIZE = 100
 const OBSERVATION_BATCH_SIZE = 100
