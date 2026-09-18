@@ -21,6 +21,7 @@
 
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fieldStubs } from './support/field-stubs'
 
 const h = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
@@ -36,14 +37,21 @@ vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({
     get: async () => h.settings,
     from: () => ({
-      bySystemAttributes: async (attributes: string[]) =>
-        Object.fromEntries(attributes.map((attribute) => [attribute, { id: `fld_${attribute}` }])),
+      // `{ id, type }`: `readSystemRecords` converts a stored row through the
+      // field's TYPE, so a stub without one reads every cell as unset.
+      bySystemAttributes: async (attributes: string[]) => fieldStubs(attributes),
     }),
   }),
 }))
 
-const { listUndepositedPayments, readBankDepositDetail, readDepositPayments, readPaymentsByIds } =
-  await import('../reads')
+const {
+  listUndepositedPayments,
+  readBankDepositDetail,
+  readDepositBankAccount,
+  readDepositPayments,
+  readPaymentsByIds,
+} = await import('../reads')
+const { loadDepositBankAccountContext } = await import('../fields')
 
 const ORG = 'org_1'
 
@@ -68,16 +76,24 @@ function stubDb(): Database {
   } as unknown as Database
 }
 
-/** One `FieldValue` row, as the deposit's own (unaffected) FieldValue reads shape it. */
+/** One `FieldValue` row, in the whole-row shape `readSystemRecords` selects. */
 function depositValue(entityId: string, attribute: string, columns: Record<string, unknown>) {
   return {
+    id: `fv_${entityId}_${attribute}`,
     entityId,
     fieldId: `fld_${attribute}`,
+    sortKey: 'a0',
     valueText: null,
     valueNumber: null,
+    valueBoolean: null,
     valueDate: null,
+    valueJson: null,
     optionId: null,
+    actorId: null,
     relatedEntityId: null,
+    relatedEntityDefinitionId: null,
+    createdAt: new Date('2026-09-03T00:00:00Z'),
+    updatedAt: new Date('2026-09-03T00:00:00Z'),
     ...columns,
   }
 }
@@ -256,5 +272,29 @@ describe('a receipt with no method is listed when `other` routes to undeposited 
     const rows = await listUndepositedPayments(stubDb(), { organizationId: ORG, method: 'card' })
     expect(rows._unsafeUnwrap()).toEqual([])
     expect(h.calls).toEqual([])
+  })
+})
+
+describe('readDepositBankAccount', () => {
+  it('answers an ARCHIVED account rather than hiding it, so the write path can refuse by name', async () => {
+    h.results = [
+      [
+        {
+          id: 'acct_1',
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+          archivedAt: new Date('2026-08-01T00:00:00Z'),
+        },
+      ],
+      [
+        depositValue('acct_1', 'bank_account_name', { valueText: ' Business Checking ' }),
+        depositValue('acct_1', 'bank_account_gl_account', { valueText: ' gla_1 ' }),
+      ],
+    ]
+
+    const ctx = await loadDepositBankAccountContext(undefined, ORG)
+    const account = await readDepositBankAccount(stubDb(), ORG, ctx!, 'acct_1')
+    // "that account is archived" is a better answer than "no such account".
+    expect(account?.archivedAt).toEqual(new Date('2026-08-01T00:00:00Z'))
+    expect(account).toMatchObject({ name: 'Business Checking', glAccountId: 'gla_1' })
   })
 })
