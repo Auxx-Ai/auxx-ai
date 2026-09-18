@@ -173,9 +173,14 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
       ])
     }
 
-    const persist = () => {
+    // 🛑 AWAITED, and `onSuccess` returns the invalidation so this resolves only once
+    // `ledgerOpening.get` has refetched. The finalize page reads that query for the readiness
+    // verdict, the preview and `entryId`; a fire-and-forget save let it mount against the pre-save
+    // answer and report "No opening trial balance entered" about the entry just saved
+    // (plans/accounting/WIZARD-REVIEW.md F7).
+    const persist = async () => {
       if (frozen) return
-      save.mutate({
+      await save.mutateAsync({
         lines: rows.flatMap((row) => [
           ...(row.debitMinor
             ? [
@@ -201,7 +206,7 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
     }
 
     useImperativeHandle(ref, () => ({
-      tryAdvance: (direction) => {
+      tryAdvance: async (direction) => {
         // A frozen page has nothing to save and nothing to refuse: the entry it
         // would have written is already in the books.
         if (frozen) return true
@@ -224,7 +229,20 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
         // Back and "Set up later" save whatever is there and let the user out. An org that
         // declared it starts from nothing has nothing to save: `buildOpeningBalanceEntry` refuses
         // an empty entry, and a zero-row draft would only reach it to be refused.
-        if ((dirty || overlayDirty) && !(fromNothing && summary.rows === 0)) persist()
+        if ((dirty || overlayDirty) && !(fromNothing && summary.rows === 0)) {
+          try {
+            await persist()
+          } catch (error) {
+            // ⚠️ A failed save refuses Continue - walking on would finalize against a draft the
+            // server never took. Back and "Set up later" still let a person out, per the contract
+            // in `wizard-step-handle.ts`: an exit that can be refused is a trap.
+            setRefusal({
+              status: 'error',
+              error: error instanceof Error ? error.message : String(error),
+            })
+            return direction !== 'next'
+          }
+        }
         return true
       },
     }))
