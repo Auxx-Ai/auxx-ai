@@ -35,11 +35,12 @@
 // `catalog_item`'s one required field (task 15 §5 made the code optional), and
 // a validation refusal belongs on an act somebody knowingly performed.
 
-import type {
-  AccountRole,
-  ChartAccountRow,
-  GlAccountTypeValue,
-  RoleAssignmentRow,
+import {
+  type AccountRole,
+  accountPath,
+  type ChartAccountRow,
+  type GlAccountTypeValue,
+  type RoleAssignmentRow,
 } from '@auxx/lib/accounting/ledger/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
@@ -85,6 +86,11 @@ const BREADCRUMBS = [
 
 const PAGE_DESCRIPTION =
   'Which account each posting category lands on, per store and per payment rail, and the chart those accounts live in.'
+
+/** `Sales, 4100 · Product Income` - the accounts a toast has to name. */
+function accountNameList(created: Array<{ row: { account: ChartAccountRow } }>): string {
+  return created.map(({ row }) => formatAccountLabel(row.account)).join(', ')
+}
 
 export function AccountingAccountsSettingsPage() {
   useRequireCapability(PermissionKey.ledgerView)
@@ -400,24 +406,56 @@ export function AccountingAccountsSettingsPage() {
     async (glAccountId: string) => {
       const account = accounts.find((row) => row.id === glAccountId)
       const where = mapView.providerLabel ?? 'the connected accounting system'
+      // A sub-account cannot be nested under a parent the provider does not
+      // have yet, so the parents come along - named here, because they are
+      // accounts somebody did not click and they land in the same real books.
+      const parents = accountPath(accounts, glAccountId)
+        .slice(0, -1)
+        .filter((ancestor) => !mapView.byAccountId.get(ancestor.id)?.providerAccountId)
+      const parentNote =
+        parents.length > 0
+          ? ` Its parent ${parents.length === 1 ? 'account' : 'accounts'} ${parents
+              .map((ancestor) => formatAccountLabel(ancestor))
+              .join(
+                ', '
+              )} ${parents.length === 1 ? 'is' : 'are'} not linked yet and will be created first.`
+          : ''
       const confirmed = await confirm({
         title: `Create this account in ${where}?`,
-        description: `${formatAccountLabel(account)} will be added to ${where}'s chart of accounts and linked to this one. ${where} cannot delete an account once it exists - it can only be made inactive.`,
-        confirmText: 'Create and link',
+        description: `${formatAccountLabel(account)} will be added to ${where}'s chart of accounts and linked to this one.${parentNote} ${where} cannot delete an account once it exists - it can only be made inactive.`,
+        confirmText: parents.length > 0 ? 'Create all and link' : 'Create and link',
         cancelText: 'Cancel',
       })
       if (!confirmed) return
 
       setCreatingAccountId(glAccountId)
       try {
-        const result = await createInProvider.mutateAsync({ glAccountId })
+        const result = await createInProvider.mutateAsync({
+          glAccountId,
+          includeAncestors: parents.length > 0,
+        })
         await utils.ledger.accountMap.invalidate()
-        // ⚠️ Not a success toast - the page has none, and the link badge flipping
-        // to Linked is the confirmation. These are the two outcomes that are NOT
-        // what the button said it would do, so they are worth a sentence: the
-        // account already existed and nothing was created, or the code did not
-        // survive because the company keeps no account numbers.
-        if (result.outcome === 'existing') {
+        // ⚠️ Not success toasts - the page has none, and the link badge flipping
+        // to Linked is the confirmation. These are the outcomes that are NOT what
+        // the button said it would do, so they are worth a sentence: accounts
+        // nobody clicked were added to the provider's books, the account already
+        // existed and nothing was created, or the code did not survive because
+        // the company keeps no account numbers.
+        if (result.ancestors.length > 0) {
+          const created = result.ancestors.filter((row) => row.outcome === 'created')
+          const existing = result.ancestors.filter((row) => row.outcome === 'existing')
+          toastError({
+            title: `${result.ancestors.length} parent ${result.ancestors.length === 1 ? 'account' : 'accounts'} went to ${where} too`,
+            description: [
+              created.length > 0 &&
+                `${accountNameList(created)} ${created.length === 1 ? 'was' : 'were'} created and linked.`,
+              existing.length > 0 &&
+                `${accountNameList(existing)} already existed there and ${existing.length === 1 ? 'was' : 'were'} linked.`,
+            ]
+              .filter(Boolean)
+              .join(' '),
+          })
+        } else if (result.outcome === 'existing') {
           toastError({
             title: `${where} already had this account`,
             description: `Linked to '${result.row.providerAccountName}'. Nothing was created.`,
@@ -437,7 +475,7 @@ export function AccountingAccountsSettingsPage() {
         setCreatingAccountId(null)
       }
     },
-    [accounts, confirm, createInProvider, mapView.providerLabel, utils]
+    [accounts, confirm, createInProvider, mapView.byAccountId, mapView.providerLabel, utils]
   )
 
   const confirmSuggested = api.ledger.confirmSuggestedAccounts.useMutation({

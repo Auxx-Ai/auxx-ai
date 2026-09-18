@@ -327,4 +327,86 @@ describe('createAndLinkProviderAccount - a sub-account (CHART-HIERARCHY §6)', (
       expect.objectContaining({ glAccountId: 'gl_product_income', parentProviderId: 'qbo_sales' })
     )
   })
+
+  it('creates the unlinked parent FIRST and nests the child under what came back', async () => {
+    listChartAccounts.mockResolvedValue(ok([SALES, PRODUCT_INCOME]))
+    const p = provider({
+      createProviderAccount: vi.fn(async (input: { glAccountId: string }) =>
+        ok({
+          account:
+            input.glAccountId === 'gl_sales'
+              ? {
+                  ...CREATED,
+                  id: 'qbo_sales',
+                  name: 'Sales',
+                  fullyQualifiedName: 'Sales',
+                  number: null,
+                  classification: 'revenue' as const,
+                }
+              : {
+                  ...CREATED,
+                  id: 'qbo_product_income',
+                  name: 'Product Income',
+                  fullyQualifiedName: 'Sales:Product Income',
+                  number: null,
+                  classification: 'revenue' as const,
+                  parentId: 'qbo_sales',
+                },
+          outcome: 'created' as const,
+          numberDropped: false,
+        })
+      ),
+    })
+    resolveAccountingProvider.mockResolvedValue(p)
+
+    const result = await createAndLinkProviderAccount(db, {
+      organizationId: ORG,
+      glAccountId: 'gl_product_income',
+      includeAncestors: true,
+    })
+
+    expect(result.isOk()).toBe(true)
+    const calls = p.createProviderAccount.mock.calls.map(([input]) => input.glAccountId)
+    expect(calls).toEqual(['gl_sales', 'gl_product_income'])
+    // The parent's id is the one the provider JUST returned, not one read back.
+    expect(p.createProviderAccount).toHaveBeenLastCalledWith(
+      expect.objectContaining({ glAccountId: 'gl_product_income', parentProviderId: 'qbo_sales' })
+    )
+    const value = result._unsafeUnwrap()
+    expect(value.row.providerAccountId).toBe('qbo_product_income')
+    expect(value.ancestors.map((created) => created.row.account.id)).toEqual(['gl_sales'])
+  })
+
+  it('leaves an ancestor that is already linked alone', async () => {
+    listChartAccounts.mockResolvedValue(ok([SALES, PRODUCT_INCOME]))
+    const p = provider({
+      listAccountMappings: vi.fn(async () => ok(new Map([['gl_sales', 'qbo_sales']]))),
+      createProviderAccount: vi.fn(async () =>
+        ok({
+          account: {
+            ...CREATED,
+            id: 'qbo_product_income',
+            name: 'Product Income',
+            fullyQualifiedName: 'Sales:Product Income',
+            number: null,
+            classification: 'revenue' as const,
+            parentId: 'qbo_sales',
+          },
+          outcome: 'created' as const,
+          numberDropped: false,
+        })
+      ),
+    })
+    resolveAccountingProvider.mockResolvedValue(p)
+
+    const result = await createAndLinkProviderAccount(db, {
+      organizationId: ORG,
+      glAccountId: 'gl_product_income',
+      includeAncestors: true,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(p.createProviderAccount).toHaveBeenCalledTimes(1)
+    expect(result._unsafeUnwrap().ancestors).toEqual([])
+  })
 })

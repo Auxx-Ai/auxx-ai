@@ -646,11 +646,18 @@ export const ledgerRouter = createTRPCRouter({
    * says whether the connected system can be asked at all.
    */
   createProviderAccount: permissionProcedure(PermissionKey.ledgerControl)
-    .input(z.object({ glAccountId: z.string().min(1) }))
+    .input(
+      z.object({
+        glAccountId: z.string().min(1),
+        /** Create the account's unlinked parents first - the screen names them in its confirm. */
+        includeAncestors: z.boolean().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const result = await createAndLinkProviderAccount(ctx.db, {
         organizationId: ctx.session.organizationId,
         glAccountId: input.glAccountId,
+        includeAncestors: input.includeAncestors,
         actorUserId: ctx.session.userId,
       })
       if (result.isErr()) throw result.error
