@@ -6,6 +6,7 @@ import {
   check,
   date,
   foreignKey,
+  index,
   integer,
   pgTable,
   sql,
@@ -51,9 +52,27 @@ export const MoneyTransaction = pgTable(
     recordedByCommandId: text().notNull(),
     reference: text(),
     note: text(),
+    /**
+     * The quote this receipt was collected against, when it is a held deposit
+     * (MIGRATION follow-up 7). Set once, at checkout time - never read back off
+     * `MoneyCommand.actorSnapshot`.
+     */
+    quoteInstanceId: text(),
+    /** The work order a quote deposit's quote converted into, stamped after the fact. */
+    workOrderInstanceId: text(),
+    /**
+     * The `bank_deposit` this receipt was grouped into (MIGRATION follow-up 9) -
+     * the direct replacement for the retired `payment` entity's
+     * `payment_bank_deposit` mirror. Null while the receipt sits in undeposited
+     * funds.
+     */
+    bankDepositInstanceId: text(),
   },
   (t) => [
     unique('MoneyTransaction_org_id_key').on(t.organizationId, t.id),
+    index('MoneyTransaction_quote_idx').on(t.organizationId, t.quoteInstanceId),
+    index('MoneyTransaction_work_order_idx').on(t.organizationId, t.workOrderInstanceId),
+    index('MoneyTransaction_bank_deposit_idx').on(t.organizationId, t.bankDepositInstanceId),
     foreignKey({
       name: 'MoneyTransaction_partyInstanceId_fk',
       columns: [t.organizationId, t.partyInstanceId],

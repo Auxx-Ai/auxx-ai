@@ -57,6 +57,18 @@ const DROPPED_COLUMNS: Array<[table: string, column: string]> = [
   ['GlRoleAssignment', 'currency'],
 ]
 
+/** Constraints the abandoned 0377 added to tables outside accounting; the new 0377 re-adds them. */
+const DROPPED_CONSTRAINTS: Array<[table: string, constraint: string]> = [
+  ['Credential', 'Credential_org_id_key'],
+  ['EntityInstance', 'EntityInstance_org_id_key'],
+]
+
+async function dropStrayConstraints(client: pg.PoolClient): Promise<void> {
+  for (const [table, constraint] of DROPPED_CONSTRAINTS) {
+    await client.query(`alter table "${table}" drop constraint if exists "${constraint}"`)
+  }
+}
+
 /** Rows kept across the reset, then written back after the new 0377 lands. */
 const SNAPSHOT_TABLES = ['GlRoleAssignment', 'FinancialSourceAccount'] as const
 
@@ -144,10 +156,14 @@ async function restore(client: pg.PoolClient, table: string, rows: Array<Record<
  * and must not import `@auxx/lib` (tier 3). It runs when §0b step 6's data-
  * migration runner (a separate command, after this script) applies pending
  * migrations - `168` is one, for every org this script's caller reconciles.
+ *
+ * `169-remove-payment-entity` rides the same runner (MIGRATION.md follow-up 9,
+ * wave after step 3): it drops `invoice_payments` and `bank_deposit_payments`
+ * the same removal way, and archives the hidden `payment` def itself.
  */
 const DELETED_MIGRATION_IDS: readonly string[] = []
 
-/** The six fields migration 168 removes, named here only for the log line. */
+/** The fields migrations 168 and 169 remove, named here only for the log line. */
 const REMOVED_STAMP_ATTRIBUTES = [
   'fulfillment_gl_posting',
   'credit_memo_gl_posting',
@@ -155,6 +171,8 @@ const REMOVED_STAMP_ATTRIBUTES = [
   'bank_deposit_gl_posting_id',
   'bank_transaction_gl_posting_id',
   'order_payment_gl_posting',
+  'invoice_payments',
+  'bank_deposit_payments',
 ] as const
 
 async function reconcileDataMigrations(client: pg.PoolClient): Promise<void> {
@@ -167,8 +185,8 @@ async function reconcileDataMigrations(client: pg.PoolClient): Promise<void> {
     console.log('⏭  no migration ids deleted outright this wave - nothing to drop from the ledger')
   }
   console.log(
-    `⏭  ${REMOVED_STAMP_ATTRIBUTES.length} GL-posting stamp fields (${REMOVED_STAMP_ATTRIBUTES.join(', ')}) ` +
-      'are removed by entity data migration 168, not here - run the data-migration runner next'
+    `⏭  ${REMOVED_STAMP_ATTRIBUTES.length} fields (${REMOVED_STAMP_ATTRIBUTES.join(', ')}) are ` +
+      'removed by entity data migrations 168 and 169, not here - run the data-migration runner next'
   )
 }
 
@@ -179,9 +197,20 @@ async function main() {
   assertLocal(databaseUrl)
 
   const pool = new pg.Pool({ connectionString: databaseUrl })
+  // `--restore-only`: phases 1-3 already committed on an earlier run; migrate and restore from the saved snapshot.
+  const restoreOnly = process.argv.includes('--restore-only')
   const client = await pool.connect()
 
   try {
+    if (restoreOnly) {
+      if (!fs.existsSync(SNAPSHOT_PATH)) throw new Error(`--restore-only needs ${SNAPSHOT_PATH}`)
+      console.log(`⏭  --restore-only: using ${SNAPSHOT_PATH}`)
+      await dropStrayConstraints(client)
+      await migrate(drizzle(pool), { migrationsFolder: MIGRATIONS_FOLDER })
+      console.log('✅ migrations applied')
+      await restorePhase(pool)
+      return
+    }
     // ── 1. Snapshot the Mapping tab and the store-to-gateway links ──────────
     const taken = await snapshot(client)
     fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify(taken, null, 2))
@@ -195,9 +224,23 @@ async function main() {
     for (const table of DROPPED_TABLES) {
       await client.query(`drop table if exists "${table}" cascade`)
     }
+    // Scoped rows collapse onto (organizationId, role) once the scope columns go;
+    // the snapshot restores them after the new 0377 re-adds the columns.
+    const scoped = await client.query(
+      "select count(*)::int as n from information_schema.columns where table_schema = 'public' and table_name = 'GlRoleAssignment' and column_name in ('sourceAccountId', 'paymentGatewayId')"
+    )
+    if ((scoped.rows[0]?.n ?? 0) > 0) {
+      const removed = await client.query(
+        'delete from "GlRoleAssignment" where "sourceAccountId" is not null or "paymentGatewayId" is not null'
+      )
+      console.log(
+        `🧹 set aside ${removed.rowCount} scoped GlRoleAssignment rows (restored after 0377)`
+      )
+    }
     for (const [table, column] of DROPPED_COLUMNS) {
       await client.query(`alter table "${table}" drop column if exists "${column}" cascade`)
     }
+    await dropStrayConstraints(client)
     // Added by the abandoned 0377 and re-added by the new one.
     await client.query('alter table "GlPosting" drop constraint if exists "GlPosting_org_id_key"')
     // Dropped by the abandoned 0382; the new 0377 drops it again, so it has to be back.
@@ -233,7 +276,10 @@ async function main() {
   // ── 4. The squashed migration ─────────────────────────────────────────────
   await migrate(drizzle(pool), { migrationsFolder: MIGRATIONS_FOLDER })
   console.log('✅ 0377_accounting_target applied')
+  await restorePhase(pool)
+}
 
+async function restorePhase(pool: pg.Pool) {
   const after = await pool.connect()
   try {
     await reconcileDataMigrations(after)

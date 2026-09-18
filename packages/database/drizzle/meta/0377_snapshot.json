@@ -1,5 +1,5 @@
 {
-  "id": "5ee50c08-9a58-49f4-b2ce-04d8a5633037",
+  "id": "1e312e07-9089-4142-9f02-1035a22a5059",
   "prevId": "1e7ef366-85df-4487-a424-0304b7bc2ef2",
   "version": "7",
   "dialect": "postgresql",
@@ -148,662 +148,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.AccountingDelivery": {
-      "name": "AccountingDelivery",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "organizationId": {
-          "name": "organizationId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "createdAt": {
-          "name": "createdAt",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "bookId": {
-          "name": "bookId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "connectionId": {
-          "name": "connectionId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "glPostingId": {
-          "name": "glPostingId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "representation": {
-          "name": "representation",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "completedAt": {
-          "name": "completedAt",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "releasedAt": {
-          "name": "releasedAt",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "attemptEpoch": {
-          "name": "attemptEpoch",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "AccountingDelivery_organizationId_Organization_id_fk": {
-          "name": "AccountingDelivery_organizationId_Organization_id_fk",
-          "tableFrom": "AccountingDelivery",
-          "tableTo": "Organization",
-          "columnsFrom": [
-            "organizationId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "AccountingDelivery_book_scope_fk": {
-          "name": "AccountingDelivery_book_scope_fk",
-          "tableFrom": "AccountingDelivery",
-          "tableTo": "ExternalAccountingBook",
-          "columnsFrom": [
-            "organizationId",
-            "bookId"
-          ],
-          "columnsTo": [
-            "organizationId",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "AccountingDelivery_connection_scope_fk": {
-          "name": "AccountingDelivery_connection_scope_fk",
-          "tableFrom": "AccountingDelivery",
-          "tableTo": "ExternalBookConnection",
-          "columnsFrom": [
-            "organizationId",
-            "connectionId"
-          ],
-          "columnsTo": [
-            "organizationId",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "AccountingDelivery_posting_scope_fk": {
-          "name": "AccountingDelivery_posting_scope_fk",
-          "tableFrom": "AccountingDelivery",
-          "tableTo": "GlPosting",
-          "columnsFrom": [
-            "organizationId",
-            "glPostingId"
-          ],
-          "columnsTo": [
-            "organizationId",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "AccountingDelivery_org_id_key": {
-          "name": "AccountingDelivery_org_id_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "organizationId",
-            "id"
-          ]
-        },
-        "AccountingDelivery_posting_key": {
-          "name": "AccountingDelivery_posting_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "organizationId",
-            "bookId",
-            "glPostingId"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "AccountingDelivery_shape_check": {
-          "name": "AccountingDelivery_shape_check",
-          "value": "\"AccountingDelivery\".\"representation\" IN ('journal','invoice','payment','credit_memo') AND \"AccountingDelivery\".\"state\" IN ('pending','blocked','delivered')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.AccountingDeliveryCoverage": {
-      "name": "AccountingDeliveryCoverage",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "organizationId": {
-          "name": "organizationId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "createdAt": {
-          "name": "createdAt",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "bookId": {
-          "name": "bookId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "deliveryId": {
-          "name": "deliveryId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "effectId": {
-          "name": "effectId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "componentKey": {
-          "name": "componentKey",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'whole_effect'"
-        },
-        "lineKeys": {
-          "name": "lineKeys",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "AccountingDeliveryCoverage_organizationId_Organization_id_fk": {
-          "name": "AccountingDeliveryCoverage_organizationId_Organization_id_fk",
-          "tableFrom": "AccountingDeliveryCoverage",
-          "tableTo": "Organization",
-          "columnsFrom": [
-            "organizationId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "AccountingDeliveryCoverage_book_scope_fk": {
-          "name": "AccountingDeliveryCoverage_book_scope_fk",
-          "tableFrom": "AccountingDeliveryCoverage",
-          "tableTo": "ExternalAccountingBook",
-          "columnsFrom": [
-            "organizationId",
-            "bookId"
-          ],
-          "columnsTo": [
-            "organizationId",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "AccountingDeliveryCoverage_delivery_scope_fk": {
-          "name": "AccountingDeliveryCoverage_delivery_scope_fk",
-          "tableFrom": "AccountingDeliveryCoverage",
-          "tableTo": "AccountingDelivery",
-          "columnsFrom": [
-            "organizationId",
-            "deliveryId"
-          ],
-          "columnsTo": [
-            "organizationId",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "AccountingDeliveryCoverage_book_effect_component_key": {
-          "name": "AccountingDeliveryCoverage_book_effect_component_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "organizationId",
-            "bookId",
-            "effectId",
-            "componentKey"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "AccountingDeliveryCoverage_component_check": {
-          "name": "AccountingDeliveryCoverage_component_check",
-          "value": "\"AccountingDeliveryCoverage\".\"componentKey\" ~ '^[a-z0-9][a-z0-9_.:-]{0,63}$' AND ((\"AccountingDeliveryCoverage\".\"componentKey\" = 'whole_effect' AND \"AccountingDeliveryCoverage\".\"lineKeys\" IS NULL) OR (\"AccountingDeliveryCoverage\".\"componentKey\" <> 'whole_effect' AND jsonb_typeof(\"AccountingDeliveryCoverage\".\"lineKeys\") = 'array' AND jsonb_array_length(\"AccountingDeliveryCoverage\".\"lineKeys\") > 0))"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.AccountingDeliveryOperation": {
-      "name": "AccountingDeliveryOperation",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "organizationId": {
-          "name": "organizationId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "createdAt": {
-          "name": "createdAt",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "deliveryId": {
-          "name": "deliveryId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "operationKey": {
-          "name": "operationKey",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "objectType": {
-          "name": "objectType",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "requestId": {
-          "name": "requestId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "payload": {
-          "name": "payload",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "payloadHash": {
-          "name": "payloadHash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "mappingBasis": {
-          "name": "mappingBasis",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dependencies": {
-          "name": "dependencies",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "firstSentAt": {
-          "name": "firstSentAt",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "leaseToken": {
-          "name": "leaseToken",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "leaseExpiresAt": {
-          "name": "leaseExpiresAt",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "nextAttemptAt": {
-          "name": "nextAttemptAt",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "failureReason": {
-          "name": "failureReason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "outcome": {
-          "name": "outcome",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "AccountingDeliveryOperation_recovery_idx": {
-          "name": "AccountingDeliveryOperation_recovery_idx",
-          "columns": [
-            {
-              "expression": "state",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "nextAttemptAt",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "AccountingDeliveryOperation_organizationId_Organization_id_fk": {
-          "name": "AccountingDeliveryOperation_organizationId_Organization_id_fk",
-          "tableFrom": "AccountingDeliveryOperation",
-          "tableTo": "Organization",
-          "columnsFrom": [
-            "organizationId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "AccountingDeliveryOperation_delivery_scope_fk": {
-          "name": "AccountingDeliveryOperation_delivery_scope_fk",
-          "tableFrom": "AccountingDeliveryOperation",
-          "tableTo": "AccountingDelivery",
-          "columnsFrom": [
-            "organizationId",
-            "deliveryId"
-          ],
-          "columnsTo": [
-            "organizationId",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "AccountingDeliveryOperation_org_id_key": {
-          "name": "AccountingDeliveryOperation_org_id_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "organizationId",
-            "id"
-          ]
-        },
-        "AccountingDeliveryOperation_key": {
-          "name": "AccountingDeliveryOperation_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "organizationId",
-            "deliveryId",
-            "operationKey"
-          ]
-        },
-        "AccountingDeliveryOperation_request_key": {
-          "name": "AccountingDeliveryOperation_request_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "organizationId",
-            "requestId"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "AccountingDeliveryOperation_state_check": {
-          "name": "AccountingDeliveryOperation_state_check",
-          "value": "\"AccountingDeliveryOperation\".\"state\" IN ('pending','prepared','sending','uncertain','blocked','abandoned','succeeded') AND \"AccountingDeliveryOperation\".\"objectType\" IN ('journal','customer','invoice','payment','credit_memo') AND \"AccountingDeliveryOperation\".\"attempts\" >= 0"
-        },
-        "AccountingDeliveryOperation_payload_check": {
-          "name": "AccountingDeliveryOperation_payload_check",
-          "value": "((\"AccountingDeliveryOperation\".\"payload\" IS NULL AND \"AccountingDeliveryOperation\".\"payloadHash\" IS NULL AND \"AccountingDeliveryOperation\".\"firstSentAt\" IS NULL) OR (\"AccountingDeliveryOperation\".\"payload\" IS NOT NULL AND \"AccountingDeliveryOperation\".\"payloadHash\" ~ '^[0-9a-f]{64}$')) IS TRUE"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.ExternalAccountingObject": {
-      "name": "ExternalAccountingObject",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "organizationId": {
-          "name": "organizationId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "createdAt": {
-          "name": "createdAt",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "bookId": {
-          "name": "bookId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "operationId": {
-          "name": "operationId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "objectType": {
-          "name": "objectType",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "externalId": {
-          "name": "externalId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "author": {
-          "name": "author",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "remoteVersion": {
-          "name": "remoteVersion",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "remoteBasis": {
-          "name": "remoteBasis",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "componentCoverage": {
-          "name": "componentCoverage",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "withdrawnAt": {
-          "name": "withdrawnAt",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "ExternalAccountingObject_organizationId_Organization_id_fk": {
-          "name": "ExternalAccountingObject_organizationId_Organization_id_fk",
-          "tableFrom": "ExternalAccountingObject",
-          "tableTo": "Organization",
-          "columnsFrom": [
-            "organizationId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "ExternalAccountingObject_book_scope_fk": {
-          "name": "ExternalAccountingObject_book_scope_fk",
-          "tableFrom": "ExternalAccountingObject",
-          "tableTo": "ExternalAccountingBook",
-          "columnsFrom": [
-            "organizationId",
-            "bookId"
-          ],
-          "columnsTo": [
-            "organizationId",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "ExternalAccountingObject_operation_scope_fk": {
-          "name": "ExternalAccountingObject_operation_scope_fk",
-          "tableFrom": "ExternalAccountingObject",
-          "tableTo": "AccountingDeliveryOperation",
-          "columnsFrom": [
-            "organizationId",
-            "operationId"
-          ],
-          "columnsTo": [
-            "organizationId",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "ExternalAccountingObject_remote_key": {
-          "name": "ExternalAccountingObject_remote_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "organizationId",
-            "bookId",
-            "objectType",
-            "externalId"
-          ]
-        },
-        "ExternalAccountingObject_operation_key": {
-          "name": "ExternalAccountingObject_operation_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "organizationId",
-            "operationId"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "ExternalAccountingObject_shape_check": {
-          "name": "ExternalAccountingObject_shape_check",
-          "value": "\"ExternalAccountingObject\".\"author\" = 'auxx' AND \"ExternalAccountingObject\".\"objectType\" IN ('journal','customer','invoice','payment','credit_memo')"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.AgentProcedure": {
@@ -16881,6 +16225,473 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.ExportBatch": {
+      "name": "ExportBatch",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bookId": {
+          "name": "bookId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connectionId": {
+          "name": "connectionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "avenue": {
+          "name": "avenue",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grainKey": {
+          "name": "grainKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storeId": {
+          "name": "storeId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "railId": {
+          "name": "railId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "objectType": {
+          "name": "objectType",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payloadHash": {
+          "name": "payloadHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ready'"
+        },
+        "providerObjectId": {
+          "name": "providerObjectId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "providerSyncToken": {
+          "name": "providerSyncToken",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "nextAttemptAt": {
+          "name": "nextAttemptAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "leaseToken": {
+          "name": "leaseToken",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "leaseExpiresAt": {
+          "name": "leaseExpiresAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lastError": {
+          "name": "lastError",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "totalMinor": {
+          "name": "totalMinor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "sentAt": {
+          "name": "sentAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "withdrawnAt": {
+          "name": "withdrawnAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ExportBatch_grain_key": {
+          "name": "ExportBatch_grain_key",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bookId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "avenue",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "grainKey",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "coalesce(\"storeId\", '')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "coalesce(\"railId\", '')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "currency",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"ExportBatch\".\"state\" <> 'withdrawn'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ExportBatch_org_state_idx": {
+          "name": "ExportBatch_org_state_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ExportBatch_sweep_idx": {
+          "name": "ExportBatch_sweep_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "nextAttemptAt",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ExportBatch_organizationId_Organization_id_fk": {
+          "name": "ExportBatch_organizationId_Organization_id_fk",
+          "tableFrom": "ExportBatch",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ExportBatch_book_scope_fk": {
+          "name": "ExportBatch_book_scope_fk",
+          "tableFrom": "ExportBatch",
+          "tableTo": "ExternalAccountingBook",
+          "columnsFrom": [
+            "organizationId",
+            "bookId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ExportBatch_connection_scope_fk": {
+          "name": "ExportBatch_connection_scope_fk",
+          "tableFrom": "ExportBatch",
+          "tableTo": "ExternalBookConnection",
+          "columnsFrom": [
+            "organizationId",
+            "connectionId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ExportBatch_org_id_key": {
+          "name": "ExportBatch_org_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organizationId",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ExportBatch_state_check": {
+          "name": "ExportBatch_state_check",
+          "value": "\"ExportBatch\".\"state\" IN ('ready','sending','sent','failed','withdrawn') AND \"ExportBatch\".\"mode\" IN ('transaction','summary') AND \"ExportBatch\".\"attempts\" >= 0"
+        },
+        "ExportBatch_payloadHash_check": {
+          "name": "ExportBatch_payloadHash_check",
+          "value": "\"ExportBatch\".\"payloadHash\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ExportBatchPosting": {
+      "name": "ExportBatchPosting",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batchId": {
+          "name": "batchId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "glPostingId": {
+          "name": "glPostingId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "withdrawnAt": {
+          "name": "withdrawnAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ExportBatchPosting_live_posting_key": {
+          "name": "ExportBatchPosting_live_posting_key",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "glPostingId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"ExportBatchPosting\".\"withdrawnAt\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ExportBatchPosting_batch_idx": {
+          "name": "ExportBatchPosting_batch_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "batchId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ExportBatchPosting_organizationId_Organization_id_fk": {
+          "name": "ExportBatchPosting_organizationId_Organization_id_fk",
+          "tableFrom": "ExportBatchPosting",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ExportBatchPosting_glPostingId_GlPosting_id_fk": {
+          "name": "ExportBatchPosting_glPostingId_GlPosting_id_fk",
+          "tableFrom": "ExportBatchPosting",
+          "tableTo": "GlPosting",
+          "columnsFrom": [
+            "glPostingId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ExportBatchPosting_batch_scope_fk": {
+          "name": "ExportBatchPosting_batch_scope_fk",
+          "tableFrom": "ExportBatchPosting",
+          "tableTo": "ExportBatch",
+          "columnsFrom": [
+            "organizationId",
+            "batchId"
+          ],
+          "columnsTo": [
+            "organizationId",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.ExportJob": {
       "name": "ExportJob",
       "schema": "",
@@ -21036,38 +20847,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "requestId": {
-          "name": "requestId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "exportStatus": {
-          "name": "exportStatus",
-          "type": "GlPostingExportStatus",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'not_required'"
-        },
-        "providerId": {
-          "name": "providerId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "providerEntryId": {
-          "name": "providerEntryId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "providerTenantId": {
-          "name": "providerTenantId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "postedAt": {
           "name": "postedAt",
           "type": "timestamp (3)",
@@ -21079,19 +20858,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "failureReason": {
-          "name": "failureReason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "reversesId": {
           "name": "reversesId",
@@ -21136,40 +20902,6 @@
           "method": "btree",
           "with": {}
         },
-        "GlPosting_org_provider_entry_key": {
-          "name": "GlPosting_org_provider_entry_key",
-          "columns": [
-            {
-              "expression": "organizationId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "providerId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "providerTenantId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "providerEntryId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"GlPosting\".\"providerEntryId\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "GlPosting_org_status_idx": {
           "name": "GlPosting_org_status_idx",
           "columns": [
@@ -21181,27 +20913,6 @@
             },
             {
               "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "GlPosting_org_exportStatus_idx": {
-          "name": "GlPosting_org_exportStatus_idx",
-          "columns": [
-            {
-              "expression": "organizationId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "exportStatus",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -21304,16 +21015,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "GlPosting_org_id_key": {
-          "name": "GlPosting_org_id_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "organizationId",
-            "id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
         "GlPosting_totalMinor_check": {
@@ -21323,10 +21025,6 @@
         "GlPosting_revision_check": {
           "name": "GlPosting_revision_check",
           "value": "\"GlPosting\".\"revision\" >= 0"
-        },
-        "GlPosting_attempts_check": {
-          "name": "GlPosting_attempts_check",
-          "value": "\"GlPosting\".\"attempts\" >= 0"
         },
         "GlPosting_reversal_check": {
           "name": "GlPosting_reversal_check",
@@ -23999,6 +23697,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "quoteInstanceId": {
+          "name": "quoteInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "appliedAt": {
           "name": "appliedAt",
           "type": "timestamp with time zone",
@@ -24030,7 +23734,29 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "MoneyApplication_quote_idx": {
+          "name": "MoneyApplication_quote_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "quoteInstanceId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "MoneyApplication_organizationId_Organization_id_fk": {
           "name": "MoneyApplication_organizationId_Organization_id_fk",
@@ -24705,9 +24431,91 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "quoteInstanceId": {
+          "name": "quoteInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "workOrderInstanceId": {
+          "name": "workOrderInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bankDepositInstanceId": {
+          "name": "bankDepositInstanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "MoneyTransaction_quote_idx": {
+          "name": "MoneyTransaction_quote_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "quoteInstanceId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "MoneyTransaction_work_order_idx": {
+          "name": "MoneyTransaction_work_order_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "workOrderInstanceId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "MoneyTransaction_bank_deposit_idx": {
+          "name": "MoneyTransaction_bank_deposit_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bankDepositInstanceId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "MoneyTransaction_organizationId_Organization_id_fk": {
           "name": "MoneyTransaction_organizationId_Organization_id_fk",
@@ -35057,6 +34865,339 @@
           ],
           "onDelete": "set null",
           "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ProviderLedgerEntry": {
+      "name": "ProviderLedgerEntry",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organizationId": {
+          "name": "organizationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bookId": {
+          "name": "bookId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerTxnType": {
+          "name": "providerTxnType",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerTxnId": {
+          "name": "providerTxnId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "txnDate": {
+          "name": "txnDate",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "docNumber": {
+          "name": "docNumber",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "syncToken": {
+          "name": "syncToken",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author": {
+          "name": "author",
+          "type": "ProviderLedgerAuthor",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raw": {
+          "name": "raw",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetchedAt": {
+          "name": "fetchedAt",
+          "type": "timestamp (3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "withdrawnAt": {
+          "name": "withdrawnAt",
+          "type": "timestamp (3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp (3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp (3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ProviderLedgerEntry_txn_key": {
+          "name": "ProviderLedgerEntry_txn_key",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bookId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "providerTxnType",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "providerTxnId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ProviderLedgerEntry_range_idx": {
+          "name": "ProviderLedgerEntry_range_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bookId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "txnDate",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ProviderLedgerEntry_author_idx": {
+          "name": "ProviderLedgerEntry_author_idx",
+          "columns": [
+            {
+              "expression": "organizationId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bookId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "author",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ProviderLedgerEntry_organizationId_Organization_id_fk": {
+          "name": "ProviderLedgerEntry_organizationId_Organization_id_fk",
+          "tableFrom": "ProviderLedgerEntry",
+          "tableTo": "Organization",
+          "columnsFrom": [
+            "organizationId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ProviderLedgerEntry_bookId_ExternalAccountingBook_id_fk": {
+          "name": "ProviderLedgerEntry_bookId_ExternalAccountingBook_id_fk",
+          "tableFrom": "ProviderLedgerEntry",
+          "tableTo": "ExternalAccountingBook",
+          "columnsFrom": [
+            "bookId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ProviderLedgerLine": {
+      "name": "ProviderLedgerLine",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "entryId": {
+          "name": "entryId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerAccountId": {
+          "name": "providerAccountId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerAccountName": {
+          "name": "providerAccountName",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "direction": {
+          "name": "direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amountMinor": {
+          "name": "amountMinor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerCustomerId": {
+          "name": "providerCustomerId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "providerVendorId": {
+          "name": "providerVendorId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "memo": {
+          "name": "memo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sortOrder": {
+          "name": "sortOrder",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "raw": {
+          "name": "raw",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp (3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ProviderLedgerLine_entry_idx": {
+          "name": "ProviderLedgerLine_entry_idx",
+          "columns": [
+            {
+              "expression": "entryId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ProviderLedgerLine_entryId_ProviderLedgerEntry_id_fk": {
+          "name": "ProviderLedgerLine_entryId_ProviderLedgerEntry_id_fk",
+          "tableFrom": "ProviderLedgerLine",
+          "tableTo": "ProviderLedgerEntry",
+          "columnsFrom": [
+            "entryId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -47913,16 +48054,6 @@
         "credit"
       ]
     },
-    "public.GlPostingExportStatus": {
-      "name": "GlPostingExportStatus",
-      "schema": "public",
-      "values": [
-        "not_required",
-        "pending",
-        "exported",
-        "failed"
-      ]
-    },
     "public.GlPostingStatus": {
       "name": "GlPostingStatus",
       "schema": "public",
@@ -47938,11 +48069,9 @@
       "values": [
         "fulfillment",
         "payout",
-        "build",
         "month_end_deferral",
         "month_end_reversal",
-        "month_end_inventory",
-        "receipt",
+        "inventory_movement",
         "vendor_bill",
         "manual_journal",
         "opening_balance",
@@ -47950,6 +48079,7 @@
         "bank_deposit",
         "write_off",
         "payment",
+        "refund",
         "invoice_issued",
         "deposit_application",
         "credit_memo",
@@ -48009,6 +48139,14 @@
         "manual",
         "date",
         "work_order_completion"
+      ]
+    },
+    "public.ProviderLedgerAuthor": {
+      "name": "ProviderLedgerAuthor",
+      "schema": "public",
+      "values": [
+        "auxx",
+        "provider"
       ]
     }
   },

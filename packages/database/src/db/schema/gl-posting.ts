@@ -34,20 +34,16 @@ import { User } from './user'
 /**
  * What produced a posting.
  *
- * Mirrors `POSTING_TYPES` in `packages/lib/src/postings/types.ts`. The first six
- * are the L1 monthly/periodic entries; `receipt` and `vendor_bill` are the L3
- * per-event entries and are carried here from day one because widening a
- * Postgres enum later is a migration and carrying a value nothing writes is
- * free.
+ * Mirrors `POSTING_TYPES` in `packages/lib/src/postings/types.ts`.
  */
 export const glPostingType = pgEnum('GlPostingType', [
   'fulfillment',
   'payout',
-  'build',
   'month_end_deferral',
   'month_end_reversal',
-  'month_end_inventory',
-  'receipt',
+  // MIGRATION step 5, drizzle 0381. One entry per inventory DOCUMENT at frozen
+  // movement cost; `stock_movement` is the subledger it links its members to.
+  'inventory_movement',
   'vendor_bill',
   // Added 2026-09-04 (plans/accounting/HANDOFF.md slot 0B). Kept in step with
   // `POSTING_TYPES` by `lib/postings/__tests__/types.test.ts`.
@@ -176,7 +172,6 @@ export const GlPosting = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    unique('GlPosting_org_id_key').on(table.organizationId, table.id),
     // A deterministic docNumber colliding is already a bug — catch it here, not at the provider.
     uniqueIndex('GlPosting_org_docNumber_key').using(
       'btree',

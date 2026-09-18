@@ -815,19 +815,13 @@ export const FileVisibilityValues = ['PUBLIC', 'PRIVATE', 'INTERNAL'] as const
 // these and must not import the Drizzle schema to do it.
 // ============================================================================
 
-/**
- * What produced a posting. The first six are the L1 monthly/periodic entries;
- * `receipt` and `vendor_bill` are the L3 per-event entries, carried from day one
- * because widening a Postgres enum later is a migration.
- */
+/** What produced a posting. Mirrors the `GlPostingType` pgEnum exactly. */
 export const GlPostingTypeValues = [
   'fulfillment',
   'payout',
-  'build',
   'month_end_deferral',
   'month_end_reversal',
-  'month_end_inventory',
-  'receipt',
+  'inventory_movement',
   'vendor_bill',
   'manual_journal',
   'opening_balance',

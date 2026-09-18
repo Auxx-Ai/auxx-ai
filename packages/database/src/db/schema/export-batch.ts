@@ -130,7 +130,9 @@ export const ExportBatchPosting = pgTable(
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onDelete: 'cascade' }),
     batchId: text().notNull(),
-    glPostingId: text().notNull(),
+    glPostingId: text()
+      .notNull()
+      .references(() => GlPosting.id, { onDelete: 'no action' }),
     withdrawnAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
@@ -144,11 +146,6 @@ export const ExportBatchPosting = pgTable(
       columns: [t.organizationId, t.batchId],
       foreignColumns: [ExportBatch.organizationId, ExportBatch.id],
     }).onDelete('cascade'),
-    foreignKey({
-      name: 'ExportBatchPosting_posting_scope_fk',
-      columns: [t.organizationId, t.glPostingId],
-      foreignColumns: [GlPosting.organizationId, GlPosting.id],
-    }).onDelete('no action'),
   ]
 )
 

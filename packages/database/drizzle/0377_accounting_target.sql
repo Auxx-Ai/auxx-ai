@@ -1,77 +1,44 @@
+CREATE TYPE "public"."ProviderLedgerAuthor" AS ENUM('auxx', 'provider');--> statement-breakpoint
 ALTER TYPE "public"."GlPostingStatus" ADD VALUE 'draft' BEFORE 'posted';--> statement-breakpoint
-CREATE TABLE "AccountingDelivery" (
+CREATE TABLE "ExportBatch" (
 	"id" text PRIMARY KEY NOT NULL,
 	"organizationId" text NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
 	"bookId" text NOT NULL,
 	"connectionId" text NOT NULL,
-	"glPostingId" text NOT NULL,
-	"representation" text NOT NULL,
-	"state" text NOT NULL,
-	"completedAt" timestamp with time zone,
-	"releasedAt" timestamp with time zone,
-	"attemptEpoch" integer DEFAULT 0 NOT NULL,
-	CONSTRAINT "AccountingDelivery_org_id_key" UNIQUE("organizationId","id"),
-	CONSTRAINT "AccountingDelivery_posting_key" UNIQUE("organizationId","bookId","glPostingId"),
-	CONSTRAINT "AccountingDelivery_shape_check" CHECK ("AccountingDelivery"."representation" IN ('journal','invoice','payment','credit_memo') AND "AccountingDelivery"."state" IN ('pending','blocked','delivered'))
-);
---> statement-breakpoint
-CREATE TABLE "AccountingDeliveryCoverage" (
-	"id" text PRIMARY KEY NOT NULL,
-	"organizationId" text NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"bookId" text NOT NULL,
-	"deliveryId" text NOT NULL,
-	"effectId" text NOT NULL,
-	"componentKey" text DEFAULT 'whole_effect' NOT NULL,
-	"lineKeys" jsonb,
-	CONSTRAINT "AccountingDeliveryCoverage_book_effect_component_key" UNIQUE("organizationId","bookId","effectId","componentKey"),
-	CONSTRAINT "AccountingDeliveryCoverage_component_check" CHECK ("AccountingDeliveryCoverage"."componentKey" ~ '^[a-z0-9][a-z0-9_.:-]{0,63}$' AND (("AccountingDeliveryCoverage"."componentKey" = 'whole_effect' AND "AccountingDeliveryCoverage"."lineKeys" IS NULL) OR ("AccountingDeliveryCoverage"."componentKey" <> 'whole_effect' AND jsonb_typeof("AccountingDeliveryCoverage"."lineKeys") = 'array' AND jsonb_array_length("AccountingDeliveryCoverage"."lineKeys") > 0)))
-);
---> statement-breakpoint
-CREATE TABLE "AccountingDeliveryOperation" (
-	"id" text PRIMARY KEY NOT NULL,
-	"organizationId" text NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"deliveryId" text NOT NULL,
-	"operationKey" text NOT NULL,
+	"mode" text NOT NULL,
+	"avenue" text NOT NULL,
+	"grainKey" text NOT NULL,
+	"storeId" text,
+	"railId" text,
+	"currency" text NOT NULL,
 	"objectType" text NOT NULL,
-	"requestId" text NOT NULL,
-	"state" text NOT NULL,
-	"payload" jsonb,
-	"payloadHash" text,
-	"mappingBasis" jsonb,
-	"dependencies" jsonb DEFAULT '[]'::jsonb NOT NULL,
-	"firstSentAt" timestamp with time zone,
-	"leaseToken" text,
-	"leaseExpiresAt" timestamp with time zone,
+	"payload" jsonb NOT NULL,
+	"payloadHash" text NOT NULL,
+	"state" text DEFAULT 'ready' NOT NULL,
+	"providerObjectId" text,
+	"providerSyncToken" text,
 	"attempts" integer DEFAULT 0 NOT NULL,
 	"nextAttemptAt" timestamp with time zone,
-	"failureReason" text,
-	"outcome" jsonb,
-	CONSTRAINT "AccountingDeliveryOperation_org_id_key" UNIQUE("organizationId","id"),
-	CONSTRAINT "AccountingDeliveryOperation_key" UNIQUE("organizationId","deliveryId","operationKey"),
-	CONSTRAINT "AccountingDeliveryOperation_request_key" UNIQUE("organizationId","requestId"),
-	CONSTRAINT "AccountingDeliveryOperation_state_check" CHECK ("AccountingDeliveryOperation"."state" IN ('pending','prepared','sending','uncertain','blocked','abandoned','succeeded') AND "AccountingDeliveryOperation"."objectType" IN ('journal','customer','invoice','payment','credit_memo') AND "AccountingDeliveryOperation"."attempts" >= 0),
-	CONSTRAINT "AccountingDeliveryOperation_payload_check" CHECK ((("AccountingDeliveryOperation"."payload" IS NULL AND "AccountingDeliveryOperation"."payloadHash" IS NULL AND "AccountingDeliveryOperation"."firstSentAt" IS NULL) OR ("AccountingDeliveryOperation"."payload" IS NOT NULL AND "AccountingDeliveryOperation"."payloadHash" ~ '^[0-9a-f]{64}$')) IS TRUE)
+	"leaseToken" text,
+	"leaseExpiresAt" timestamp with time zone,
+	"lastError" text,
+	"totalMinor" bigint DEFAULT 0 NOT NULL,
+	"sentAt" timestamp with time zone,
+	"withdrawnAt" timestamp with time zone,
+	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
+	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "ExportBatch_org_id_key" UNIQUE("organizationId","id"),
+	CONSTRAINT "ExportBatch_state_check" CHECK ("ExportBatch"."state" IN ('ready','sending','sent','failed','withdrawn') AND "ExportBatch"."mode" IN ('transaction','summary') AND "ExportBatch"."attempts" >= 0),
+	CONSTRAINT "ExportBatch_payloadHash_check" CHECK ("ExportBatch"."payloadHash" ~ '^[0-9a-f]{64}$')
 );
 --> statement-breakpoint
-CREATE TABLE "ExternalAccountingObject" (
+CREATE TABLE "ExportBatchPosting" (
 	"id" text PRIMARY KEY NOT NULL,
 	"organizationId" text NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"bookId" text NOT NULL,
-	"operationId" text NOT NULL,
-	"objectType" text NOT NULL,
-	"externalId" text NOT NULL,
-	"author" text NOT NULL,
-	"remoteVersion" text,
-	"remoteBasis" jsonb NOT NULL,
-	"componentCoverage" jsonb NOT NULL,
+	"batchId" text NOT NULL,
+	"glPostingId" text NOT NULL,
 	"withdrawnAt" timestamp with time zone,
-	CONSTRAINT "ExternalAccountingObject_remote_key" UNIQUE("organizationId","bookId","objectType","externalId"),
-	CONSTRAINT "ExternalAccountingObject_operation_key" UNIQUE("organizationId","operationId"),
-	CONSTRAINT "ExternalAccountingObject_shape_check" CHECK ("ExternalAccountingObject"."author" = 'auxx' AND "ExternalAccountingObject"."objectType" IN ('journal','customer','invoice','payment','credit_memo'))
+	"createdAt" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ExternalAccountingBook" (
@@ -205,6 +172,7 @@ CREATE TABLE "MoneyApplication" (
 	"orderInstanceId" text,
 	"invoiceInstanceId" text,
 	"vendorBillInstanceId" text,
+	"quoteInstanceId" text,
 	"appliedAt" timestamp with time zone NOT NULL,
 	"effectiveDate" date NOT NULL,
 	"reversesApplicationId" text,
@@ -275,6 +243,9 @@ CREATE TABLE "MoneyTransaction" (
 	"recordedByCommandId" text NOT NULL,
 	"reference" text,
 	"note" text,
+	"quoteInstanceId" text,
+	"workOrderInstanceId" text,
+	"bankDepositInstanceId" text,
 	CONSTRAINT "MoneyTransaction_org_id_key" UNIQUE("organizationId","id"),
 	CONSTRAINT "MoneyTransaction_money_check" CHECK ("MoneyTransaction"."amountMinor" > 0 AND "MoneyTransaction"."currency" ~ '^[A-Z]{3}$' AND "MoneyTransaction"."currencyExponent" BETWEEN 0 AND 4 AND "MoneyTransaction"."purpose" IN ('customer_receipt','customer_refund','vendor_payment','vendor_refund')),
 	CONSTRAINT "MoneyTransaction_date_check" CHECK (("MoneyTransaction"."datePrecision" = 'instant' AND "MoneyTransaction"."occurredAt" IS NOT NULL AND "MoneyTransaction"."occurredOn" IS NULL) OR ("MoneyTransaction"."datePrecision" = 'date' AND "MoneyTransaction"."occurredAt" IS NULL AND "MoneyTransaction"."occurredOn" IS NOT NULL))
@@ -338,32 +309,67 @@ CREATE TABLE "ProcessorBalanceEntry" (
 	CONSTRAINT "ProcessorBalanceEntry_currency_check" CHECK ("ProcessorBalanceEntry"."currency" ~ '^[A-Z]{3}$' AND "ProcessorBalanceEntry"."currencyExponent" BETWEEN 0 AND 4)
 );
 --> statement-breakpoint
+CREATE TABLE "ProviderLedgerEntry" (
+	"id" text PRIMARY KEY NOT NULL,
+	"organizationId" text NOT NULL,
+	"bookId" text NOT NULL,
+	"providerTxnType" text NOT NULL,
+	"providerTxnId" text NOT NULL,
+	"txnDate" text NOT NULL,
+	"docNumber" text,
+	"syncToken" text,
+	"author" "ProviderLedgerAuthor" NOT NULL,
+	"raw" jsonb,
+	"fetchedAt" timestamp (3) DEFAULT now() NOT NULL,
+	"withdrawnAt" timestamp (3),
+	"createdAt" timestamp (3) DEFAULT now() NOT NULL,
+	"updatedAt" timestamp (3) DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "ProviderLedgerLine" (
+	"id" text PRIMARY KEY NOT NULL,
+	"entryId" text NOT NULL,
+	"providerAccountId" text NOT NULL,
+	"providerAccountName" text,
+	"direction" text NOT NULL,
+	"amountMinor" bigint NOT NULL,
+	"providerCustomerId" text,
+	"providerVendorId" text,
+	"memo" text,
+	"sortOrder" bigint DEFAULT 0 NOT NULL,
+	"raw" jsonb,
+	"createdAt" timestamp (3) DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 ALTER TABLE "PaymentAllocation" DISABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "PaymentTransaction" DISABLE ROW LEVEL SECURITY;--> statement-breakpoint
 DROP TABLE "PaymentAllocation" CASCADE;--> statement-breakpoint
 DROP TABLE "PaymentTransaction" CASCADE;--> statement-breakpoint
 ALTER TABLE "GlPosting" RENAME COLUMN "draft" TO "built";--> statement-breakpoint
+ALTER TABLE "GlPosting" DROP CONSTRAINT "GlPosting_attempts_check";--> statement-breakpoint
+ALTER TABLE "GlPosting" ALTER COLUMN "postingType" SET DATA TYPE text;--> statement-breakpoint
+DROP TYPE "public"."GlPostingType";--> statement-breakpoint
+CREATE TYPE "public"."GlPostingType" AS ENUM('fulfillment', 'payout', 'month_end_deferral', 'month_end_reversal', 'inventory_movement', 'vendor_bill', 'manual_journal', 'opening_balance', 'bank_transaction', 'bank_deposit', 'write_off', 'payment', 'refund', 'invoice_issued', 'deposit_application', 'credit_memo', 'provider_sync', 'recurring_journal', 'expense_bill');--> statement-breakpoint
+ALTER TABLE "GlPosting" ALTER COLUMN "postingType" SET DATA TYPE "public"."GlPostingType" USING "postingType"::"public"."GlPostingType";--> statement-breakpoint
 DROP INDEX "GlPosting_org_type_period_revision_key";--> statement-breakpoint
-DROP INDEX "GlRoleAssignment_org_role_key";--> statement-breakpoint
 DROP INDEX "GlPosting_org_provider_entry_key";--> statement-breakpoint
+DROP INDEX "GlPosting_org_exportStatus_idx";--> statement-breakpoint
+DROP INDEX "GlRoleAssignment_org_role_key";--> statement-breakpoint
 ALTER TABLE "GlPosting" ALTER COLUMN "docNumber" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "GlPosting" ADD COLUMN "storeId" text;--> statement-breakpoint
 ALTER TABLE "GlPosting" ADD COLUMN "railId" text;--> statement-breakpoint
 ALTER TABLE "GlRoleAssignment" ADD COLUMN "sourceAccountId" text;--> statement-breakpoint
 ALTER TABLE "GlRoleAssignment" ADD COLUMN "paymentGatewayId" text;--> statement-breakpoint
 ALTER TABLE "GlRoleAssignment" ADD COLUMN "currency" text;--> statement-breakpoint
-ALTER TABLE "AccountingDelivery" ADD CONSTRAINT "AccountingDelivery_organizationId_Organization_id_fk" FOREIGN KEY ("organizationId") REFERENCES "public"."Organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "AccountingDelivery" ADD CONSTRAINT "AccountingDelivery_book_scope_fk" FOREIGN KEY ("organizationId","bookId") REFERENCES "public"."ExternalAccountingBook"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "AccountingDelivery" ADD CONSTRAINT "AccountingDelivery_connection_scope_fk" FOREIGN KEY ("organizationId","connectionId") REFERENCES "public"."ExternalBookConnection"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "AccountingDelivery" ADD CONSTRAINT "AccountingDelivery_posting_scope_fk" FOREIGN KEY ("organizationId","glPostingId") REFERENCES "public"."GlPosting"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "AccountingDeliveryCoverage" ADD CONSTRAINT "AccountingDeliveryCoverage_organizationId_Organization_id_fk" FOREIGN KEY ("organizationId") REFERENCES "public"."Organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "AccountingDeliveryCoverage" ADD CONSTRAINT "AccountingDeliveryCoverage_book_scope_fk" FOREIGN KEY ("organizationId","bookId") REFERENCES "public"."ExternalAccountingBook"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "AccountingDeliveryCoverage" ADD CONSTRAINT "AccountingDeliveryCoverage_delivery_scope_fk" FOREIGN KEY ("organizationId","deliveryId") REFERENCES "public"."AccountingDelivery"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "AccountingDeliveryOperation" ADD CONSTRAINT "AccountingDeliveryOperation_organizationId_Organization_id_fk" FOREIGN KEY ("organizationId") REFERENCES "public"."Organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "AccountingDeliveryOperation" ADD CONSTRAINT "AccountingDeliveryOperation_delivery_scope_fk" FOREIGN KEY ("organizationId","deliveryId") REFERENCES "public"."AccountingDelivery"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "ExternalAccountingObject" ADD CONSTRAINT "ExternalAccountingObject_organizationId_Organization_id_fk" FOREIGN KEY ("organizationId") REFERENCES "public"."Organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "ExternalAccountingObject" ADD CONSTRAINT "ExternalAccountingObject_book_scope_fk" FOREIGN KEY ("organizationId","bookId") REFERENCES "public"."ExternalAccountingBook"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "ExternalAccountingObject" ADD CONSTRAINT "ExternalAccountingObject_operation_scope_fk" FOREIGN KEY ("organizationId","operationId") REFERENCES "public"."AccountingDeliveryOperation"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+-- Composite uniques hoisted above the foreign keys that reference them; drizzle-kit emits them after (statement order only, schema unchanged).--> statement-breakpoint
+ALTER TABLE "Credential" ADD CONSTRAINT "Credential_org_id_key" UNIQUE("organizationId","id");--> statement-breakpoint
+ALTER TABLE "EntityInstance" ADD CONSTRAINT "EntityInstance_org_id_key" UNIQUE("organizationId","id");--> statement-breakpoint
+ALTER TABLE "ExportBatch" ADD CONSTRAINT "ExportBatch_organizationId_Organization_id_fk" FOREIGN KEY ("organizationId") REFERENCES "public"."Organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ExportBatch" ADD CONSTRAINT "ExportBatch_book_scope_fk" FOREIGN KEY ("organizationId","bookId") REFERENCES "public"."ExternalAccountingBook"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ExportBatch" ADD CONSTRAINT "ExportBatch_connection_scope_fk" FOREIGN KEY ("organizationId","connectionId") REFERENCES "public"."ExternalBookConnection"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ExportBatchPosting" ADD CONSTRAINT "ExportBatchPosting_organizationId_Organization_id_fk" FOREIGN KEY ("organizationId") REFERENCES "public"."Organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ExportBatchPosting" ADD CONSTRAINT "ExportBatchPosting_glPostingId_GlPosting_id_fk" FOREIGN KEY ("glPostingId") REFERENCES "public"."GlPosting"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ExportBatchPosting" ADD CONSTRAINT "ExportBatchPosting_batch_scope_fk" FOREIGN KEY ("organizationId","batchId") REFERENCES "public"."ExportBatch"("organizationId","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ExternalAccountingBook" ADD CONSTRAINT "ExternalAccountingBook_organizationId_Organization_id_fk" FOREIGN KEY ("organizationId") REFERENCES "public"."Organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ExternalBookConnection" ADD CONSTRAINT "ExternalBookConnection_organizationId_Organization_id_fk" FOREIGN KEY ("organizationId") REFERENCES "public"."Organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ExternalBookConnection" ADD CONSTRAINT "ExternalBookConnection_book_scope_fk" FOREIGN KEY ("organizationId","bookId") REFERENCES "public"."ExternalAccountingBook"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -417,23 +423,42 @@ ALTER TABLE "ProcessorBalanceEntry" ADD CONSTRAINT "ProcessorBalanceEntry_record
 ALTER TABLE "ProcessorBalanceEntry" ADD CONSTRAINT "ProcessorBalanceEntry_sourceAccountId_fk" FOREIGN KEY ("organizationId","sourceAccountId") REFERENCES "public"."FinancialSourceAccount"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ProcessorBalanceEntry" ADD CONSTRAINT "ProcessorBalanceEntry_sourceObjectId_fk" FOREIGN KEY ("organizationId","sourceObjectId") REFERENCES "public"."FinancialSourceObject"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ProcessorBalanceEntry" ADD CONSTRAINT "ProcessorBalanceEntry_currentObservationId_fk" FOREIGN KEY ("organizationId","currentObservationId") REFERENCES "public"."FinancialSourceObservation"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "AccountingDeliveryOperation_recovery_idx" ON "AccountingDeliveryOperation" USING btree ("state","nextAttemptAt");--> statement-breakpoint
+ALTER TABLE "ProviderLedgerEntry" ADD CONSTRAINT "ProviderLedgerEntry_organizationId_Organization_id_fk" FOREIGN KEY ("organizationId") REFERENCES "public"."Organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ProviderLedgerEntry" ADD CONSTRAINT "ProviderLedgerEntry_bookId_ExternalAccountingBook_id_fk" FOREIGN KEY ("bookId") REFERENCES "public"."ExternalAccountingBook"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ProviderLedgerLine" ADD CONSTRAINT "ProviderLedgerLine_entryId_ProviderLedgerEntry_id_fk" FOREIGN KEY ("entryId") REFERENCES "public"."ProviderLedgerEntry"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "ExportBatch_grain_key" ON "ExportBatch" USING btree ("organizationId","bookId","avenue","grainKey",coalesce("storeId", ''),coalesce("railId", ''),"currency") WHERE "ExportBatch"."state" <> 'withdrawn';--> statement-breakpoint
+CREATE INDEX "ExportBatch_org_state_idx" ON "ExportBatch" USING btree ("organizationId","state");--> statement-breakpoint
+CREATE INDEX "ExportBatch_sweep_idx" ON "ExportBatch" USING btree ("state","nextAttemptAt");--> statement-breakpoint
+CREATE UNIQUE INDEX "ExportBatchPosting_live_posting_key" ON "ExportBatchPosting" USING btree ("organizationId","glPostingId") WHERE "ExportBatchPosting"."withdrawnAt" IS NULL;--> statement-breakpoint
+CREATE INDEX "ExportBatchPosting_batch_idx" ON "ExportBatchPosting" USING btree ("organizationId","batchId");--> statement-breakpoint
 CREATE UNIQUE INDEX "ExternalBookConnection_active_key" ON "ExternalBookConnection" USING btree ("organizationId") WHERE "ExternalBookConnection"."state" = 'active';--> statement-breakpoint
 CREATE INDEX "FinancialSourceAcceptance_recovery_idx" ON "FinancialSourceAcceptance" USING btree ("organizationId","state","nextAttemptAt");--> statement-breakpoint
 CREATE UNIQUE INDEX "GlPostingSource_claim_key" ON "GlPostingSource" USING btree ("organizationId","sourceKind","sourceId","occurrence") WHERE "GlPostingSource"."linkRole" = 'subject';--> statement-breakpoint
 CREATE INDEX "GlPostingSource_source_idx" ON "GlPostingSource" USING btree ("organizationId","sourceKind","sourceId");--> statement-breakpoint
 CREATE INDEX "GlPostingSource_posting_idx" ON "GlPostingSource" USING btree ("glPostingId");--> statement-breakpoint
+CREATE INDEX "MoneyApplication_quote_idx" ON "MoneyApplication" USING btree ("organizationId","quoteInstanceId");--> statement-breakpoint
+CREATE INDEX "MoneyTransaction_quote_idx" ON "MoneyTransaction" USING btree ("organizationId","quoteInstanceId");--> statement-breakpoint
+CREATE INDEX "MoneyTransaction_work_order_idx" ON "MoneyTransaction" USING btree ("organizationId","workOrderInstanceId");--> statement-breakpoint
+CREATE INDEX "MoneyTransaction_bank_deposit_idx" ON "MoneyTransaction" USING btree ("organizationId","bankDepositInstanceId");--> statement-breakpoint
 CREATE INDEX "ProcessorBalanceEntry_payout_idx" ON "ProcessorBalanceEntry" USING btree ("organizationId","sourceAccountId","payoutExternalId");--> statement-breakpoint
+CREATE UNIQUE INDEX "ProviderLedgerEntry_txn_key" ON "ProviderLedgerEntry" USING btree ("organizationId","bookId","providerTxnType","providerTxnId");--> statement-breakpoint
+CREATE INDEX "ProviderLedgerEntry_range_idx" ON "ProviderLedgerEntry" USING btree ("organizationId","bookId","txnDate");--> statement-breakpoint
+CREATE INDEX "ProviderLedgerEntry_author_idx" ON "ProviderLedgerEntry" USING btree ("organizationId","bookId","author");--> statement-breakpoint
+CREATE INDEX "ProviderLedgerLine_entry_idx" ON "ProviderLedgerLine" USING btree ("entryId");--> statement-breakpoint
 ALTER TABLE "GlPosting" ADD CONSTRAINT "GlPosting_storeId_FinancialSourceAccount_id_fk" FOREIGN KEY ("storeId") REFERENCES "public"."FinancialSourceAccount"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "GlRoleAssignment" ADD CONSTRAINT "GlRoleAssignment_sourceAccountId_fk" FOREIGN KEY ("organizationId","sourceAccountId") REFERENCES "public"."FinancialSourceAccount"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "GlRoleAssignment" ADD CONSTRAINT "GlRoleAssignment_paymentGatewayId_fk" FOREIGN KEY ("organizationId","paymentGatewayId") REFERENCES "public"."EntityInstance"("organizationId","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "GlRoleAssignment_org_role_default_key" ON "GlRoleAssignment" USING btree ("organizationId","role") WHERE "GlRoleAssignment"."sourceAccountId" IS NULL AND "GlRoleAssignment"."paymentGatewayId" IS NULL;--> statement-breakpoint
 CREATE UNIQUE INDEX "GlRoleAssignment_org_role_source_key" ON "GlRoleAssignment" USING btree ("organizationId","role","sourceAccountId") WHERE "GlRoleAssignment"."sourceAccountId" IS NOT NULL;--> statement-breakpoint
 CREATE UNIQUE INDEX "GlRoleAssignment_org_role_rail_key" ON "GlRoleAssignment" USING btree ("organizationId","role","paymentGatewayId",coalesce("currency", '')) WHERE "GlRoleAssignment"."paymentGatewayId" IS NOT NULL;--> statement-breakpoint
-CREATE UNIQUE INDEX "GlPosting_org_provider_entry_key" ON "GlPosting" USING btree ("organizationId","providerId","providerTenantId","providerEntryId") WHERE "GlPosting"."providerEntryId" IS NOT NULL;--> statement-breakpoint
-ALTER TABLE "Credential" ADD CONSTRAINT "Credential_org_id_key" UNIQUE("organizationId","id");--> statement-breakpoint
-ALTER TABLE "EntityInstance" ADD CONSTRAINT "EntityInstance_org_id_key" UNIQUE("organizationId","id");--> statement-breakpoint
-ALTER TABLE "GlPosting" ADD CONSTRAINT "GlPosting_org_id_key" UNIQUE("organizationId","id");--> statement-breakpoint
+ALTER TABLE "GlPosting" DROP COLUMN "requestId";--> statement-breakpoint
+ALTER TABLE "GlPosting" DROP COLUMN "exportStatus";--> statement-breakpoint
+ALTER TABLE "GlPosting" DROP COLUMN "providerId";--> statement-breakpoint
+ALTER TABLE "GlPosting" DROP COLUMN "providerEntryId";--> statement-breakpoint
+ALTER TABLE "GlPosting" DROP COLUMN "providerTenantId";--> statement-breakpoint
+ALTER TABLE "GlPosting" DROP COLUMN "failureReason";--> statement-breakpoint
+ALTER TABLE "GlPosting" DROP COLUMN "attempts";--> statement-breakpoint
 ALTER TABLE "GlRoleAssignment" ADD CONSTRAINT "GlRoleAssignment_scope_exclusive_check" CHECK (num_nonnulls("GlRoleAssignment"."sourceAccountId", "GlRoleAssignment"."paymentGatewayId") <= 1);--> statement-breakpoint
 ALTER TABLE "GlRoleAssignment" ADD CONSTRAINT "GlRoleAssignment_currency_rail_check" CHECK ("GlRoleAssignment"."currency" IS NULL OR "GlRoleAssignment"."paymentGatewayId" IS NOT NULL);--> statement-breakpoint
-ALTER TABLE "GlRoleAssignment" ADD CONSTRAINT "GlRoleAssignment_currency_format_check" CHECK ("GlRoleAssignment"."currency" IS NULL OR "GlRoleAssignment"."currency" ~ '^[A-Z]{3}$');
+ALTER TABLE "GlRoleAssignment" ADD CONSTRAINT "GlRoleAssignment_currency_format_check" CHECK ("GlRoleAssignment"."currency" IS NULL OR "GlRoleAssignment"."currency" ~ '^[A-Z]{3}$');--> statement-breakpoint
+DROP TYPE "public"."GlPostingExportStatus";

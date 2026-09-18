@@ -290,11 +290,9 @@ describe('the enum vocabularies', () => {
     expect(glPostingType.enumValues).toEqual([
       'fulfillment',
       'payout',
-      'build',
       'month_end_deferral',
       'month_end_reversal',
-      'month_end_inventory',
-      'receipt',
+      'inventory_movement',
       'vendor_bill',
       'manual_journal',
       'opening_balance',
