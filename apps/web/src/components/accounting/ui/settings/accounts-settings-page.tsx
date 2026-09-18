@@ -38,6 +38,7 @@
 import type {
   AccountRole,
   ChartAccountRow,
+  GlAccountTypeValue,
   RoleAssignmentRow,
 } from '@auxx/lib/accounting/ledger/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
@@ -57,6 +58,7 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import { formatAccountLabel } from '../account-label-format'
+import { ChartAccountCreateDialog } from '../chart-account-create-dialog'
 import type { ChartDraftHandle, ChartMapView } from './accounts-types'
 import {
   ChartAccountEditor,
@@ -139,6 +141,13 @@ export function AccountingAccountsSettingsPage() {
   // The Mapping tab's "Add accounts" action (brief 16 §3.2) - provisions a named
   // chart pack without going back through the wizard.
   const [addAccountsOpen, setAddAccountsOpen] = useState(false)
+  // The chart list's hover "Add sub-account" (CHART-HIERARCHY.md §7) - a small
+  // dialog rather than the phantom draft, so the parent and the type arrive
+  // pre-filled instead of being set by hand right after.
+  const [subAccountParent, setSubAccountParent] = useState<{
+    id: string
+    accountType: GlAccountTypeValue
+  } | null>(null)
 
   const roleRows = useMemo<RoleAssignmentRow[]>(() => roleMap.data?.roles ?? [], [roleMap.data])
   const accounts = useMemo(() => chart.data ?? [], [chart.data])
@@ -245,6 +254,7 @@ export function AccountingAccountsSettingsPage() {
         accountType: patch.accountType ?? undefined,
         isActive: patch.isActive,
         subtype: patch.subtype,
+        parentId: patch.parentId,
       })
       await invalidateChart()
       return updated
@@ -568,6 +578,9 @@ export function AccountingAccountsSettingsPage() {
               rolesByAccountId={rolesByAccountId}
               draft={chartDraft}
               onAddDraft={handleAddChartDraft}
+              onAddSubAccount={(account) =>
+                setSubAccountParent({ id: account.id, accountType: account.accountType })
+              }
               map={mapView}
               onConfirmSuggested={() => confirmSuggested.mutate()}
               confirming={confirmSuggested.isPending}
@@ -578,6 +591,20 @@ export function AccountingAccountsSettingsPage() {
       )}
 
       <ConfirmDialog />
+      <ChartAccountCreateDialog
+        // Remounts per target parent, so the draft's `useState(initial)` picks
+        // up the new `defaultParentId`/`defaultAccountType` fresh - this dialog
+        // stays mounted across opens, unlike the one-shot dialogs that already
+        // pass these defaults from a fixed-per-instance filter.
+        key={subAccountParent?.id ?? 'none'}
+        open={!!subAccountParent}
+        onOpenChange={(open) => {
+          if (!open) setSubAccountParent(null)
+        }}
+        defaultParentId={subAccountParent?.id}
+        defaultAccountType={subAccountParent?.accountType}
+        onCreated={(account) => handleSelectAccount(account.id)}
+      />
       <ChartPacksDialog
         open={addAccountsOpen}
         onOpenChange={setAddAccountsOpen}

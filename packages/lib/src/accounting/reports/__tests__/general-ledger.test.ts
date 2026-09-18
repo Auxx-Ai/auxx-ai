@@ -73,6 +73,7 @@ function account(overrides: Partial<ChartAccountRow> & { code: string | null }):
     name: '',
     accountType: 'asset',
     subtype: null,
+    parentId: null,
     isActive: true,
     ...overrides,
   }
@@ -495,6 +496,10 @@ describe('toGeneralLedgerRows', () => {
     organizationId: ORG,
     from: RANGE.from,
     to: RANGE.to,
+    // Empty: none of these tests exercise a nested account, so every account
+    // falls back to its plain code+name label, exactly as before `chart`
+    // existed on this type - see `toGeneralLedgerRows`'s own nesting tests.
+    chart: [],
     accounts: [
       {
         glAccountId: 'id_cash',
@@ -623,5 +628,39 @@ describe('toGeneralLedgerRows', () => {
     })
     expect(rows[0]?.label).toBe('id_gone')
     expect(rows[0]?.meta?.note).toContain('deleted from the current chart')
+  })
+
+  it('labels a sub-account by its path (D8), staying FLAT rather than nesting (CHART-HIERARCHY.md §5)', () => {
+    const nested = {
+      ...gl,
+      chart: [
+        {
+          id: 'id_bank',
+          code: '1000',
+          name: 'Bank',
+          accountType: 'asset' as const,
+          subtype: null,
+          parentId: null,
+          isActive: true,
+        },
+        {
+          id: 'id_cash',
+          code: '1010',
+          name: 'Petty Cash',
+          accountType: 'asset' as const,
+          subtype: null,
+          parentId: 'id_bank',
+          isActive: true,
+        },
+      ],
+      accounts: [{ ...gl.accounts[0]!, accountCode: '1010', accountName: 'Petty Cash' }],
+    }
+    const rows = toGeneralLedgerRows(nested)
+    expect(rows.map((r) => r.id)).toEqual(['id_cash', 'total'])
+    expect(rows[0]?.label).toBe('Bank: 1010 Petty Cash')
+    // The screen renders `row.label` verbatim for a nested account rather than
+    // `AccountLabel`'s code-track split - see `statement-table.tsx`.
+    expect(rows[0]?.meta?.accountCode).toBeUndefined()
+    expect(rows[0]?.meta?.accountName).toBeUndefined()
   })
 })

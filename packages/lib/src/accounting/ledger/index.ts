@@ -116,8 +116,13 @@ export {
 } from './builders'
 export {
   type AccountCodeBand,
+  type AccountNode,
+  accountDepth,
   accountLabel,
+  accountPath,
+  accountPathLabel,
   accountSubtypeLabel,
+  buildAccountTree,
   CHART_PACK_KEYS,
   CHART_PACKS,
   type ChartPack,
@@ -129,6 +134,7 @@ export {
   createChartAccount,
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
+  descendantIds,
   GL_ACCOUNT_SUBTYPES,
   GL_ACCOUNT_TYPES,
   type GlAccountSubtypeValue,
@@ -146,6 +152,7 @@ export {
   ROLE_IMPORT_MATCH,
   removeChartAccount,
   restoreChartAccount,
+  sortChartTree,
   type UpdateChartAccountOptions,
   updateChartAccount,
 } from './chart'

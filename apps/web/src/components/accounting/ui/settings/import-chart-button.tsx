@@ -43,10 +43,11 @@ export interface ImportChartButtonProps {
   onImported?: (result: ChartImportResult) => void
 }
 
-/** "12 added, 41 already here" - counts, never a list of rows. */
+/** "12 added, 3 nested under a parent, 41 already here" - counts, never a list of rows. */
 function summarise(result: ChartImportResult): string {
   const added = result.created + result.coreCreated.length
-  return `${added} added, ${result.alreadyImported} already here`
+  const nested = result.nestedUnder > 0 ? `, ${result.nestedUnder} nested under a parent` : ''
+  return `${added} added${nested}, ${result.alreadyImported} already here`
 }
 
 /**

@@ -36,6 +36,7 @@ const h = vi.hoisted(() => ({
   creates: [] as { defId: string; values: Record<string, unknown> }[],
   updates: [] as { recordId: string; values: Record<string, unknown> }[],
   archives: [] as string[],
+  restores: [] as string[],
   deletes: [] as string[],
   /** Set to make the next create/update throw. */
   writeError: null as Error | null,
@@ -73,13 +74,21 @@ vi.mock('../../../../resources/crud/unified-handler', () => ({
     async archive(recordId: string) {
       h.archives.push(recordId)
     }
+    async restore(recordId: string) {
+      h.restores.push(recordId)
+    }
     async delete(recordId: string) {
       h.deletes.push(recordId)
     }
   },
 }))
 
-import { createChartAccount, removeChartAccount, updateChartAccount } from '../chart-write'
+import {
+  createChartAccount,
+  removeChartAccount,
+  restoreChartAccount,
+  updateChartAccount,
+} from '../chart-write'
 
 const ORG = 'org_1'
 const OTHER_ORG = 'org_2'
@@ -89,6 +98,7 @@ const CODE_FIELD = 'fld_code'
 const NAME_FIELD = 'fld_name'
 const TYPE_FIELD = 'fld_type'
 const ACTIVE_FIELD = 'fld_active'
+const PARENT_FIELD = 'fld_parent'
 
 const USER = 'usr_bookkeeper'
 
@@ -101,6 +111,13 @@ interface Account {
   isActive?: boolean
   /** Archived rows are excluded by the query, so this models "not returned". */
   archived?: boolean
+  /** CHART-HIERARCHY §4: the parent's instance id, or absent for top level. */
+  parentId?: string
+}
+
+/** Adds `gl_account_parent` to the field map - most hierarchy tests opt in. */
+function provisionParentField(): void {
+  h.fields.set('gl_account_parent', { id: PARENT_FIELD, entityDefinitionId: DEF })
 }
 
 interface Assignment {
@@ -146,25 +163,56 @@ function stubDb(accounts: Account[], assignments: Assignment[] = []): Database {
   const notYetCreated = (a: Account) => a.id === h.createdId && h.creates.length === 0
   const liveAccounts = () =>
     accounts.filter((a) => !a.archived && (a.organizationId ?? ORG) === ORG && !notYetCreated(a))
-  const visibleFieldValues = () =>
-    liveAccounts().flatMap((account) => {
-      const rows: Record<string, unknown>[] = []
-      if (account.code !== undefined) {
-        rows.push({ entityId: account.id, fieldId: CODE_FIELD, valueText: account.code })
-      }
-      if (account.name !== undefined) {
-        rows.push({ entityId: account.id, fieldId: NAME_FIELD, valueText: account.name })
-      }
-      if (account.accountType !== undefined) {
-        rows.push({ entityId: account.id, fieldId: TYPE_FIELD, optionId: account.accountType })
-      }
-      if (account.isActive !== undefined) {
-        rows.push({ entityId: account.id, fieldId: ACTIVE_FIELD, valueBoolean: account.isActive })
-      }
-      return rows
-    })
+  // Archived-INCLUSIVE, matching production: `readChartAccountValues` is a bare
+  // `FieldValue` read with no join to `EntityInstance`, so liveness is always a
+  // SEPARATE query (`liveAccounts()` above) layered on top by the caller - see
+  // `loadLiveAccount` and `assertParentNotArchived`'s two-step read.
+  const allFieldValues = () =>
+    accounts
+      .filter((a) => (a.organizationId ?? ORG) === ORG && !notYetCreated(a))
+      .flatMap((account) => {
+        const rows: Record<string, unknown>[] = []
+        if (account.code !== undefined) {
+          rows.push({ entityId: account.id, fieldId: CODE_FIELD, valueText: account.code })
+        }
+        if (account.name !== undefined) {
+          rows.push({ entityId: account.id, fieldId: NAME_FIELD, valueText: account.name })
+        }
+        if (account.accountType !== undefined) {
+          rows.push({ entityId: account.id, fieldId: TYPE_FIELD, optionId: account.accountType })
+        }
+        if (account.isActive !== undefined) {
+          rows.push({ entityId: account.id, fieldId: ACTIVE_FIELD, valueBoolean: account.isActive })
+        }
+        if (account.parentId !== undefined) {
+          rows.push({
+            entityId: account.id,
+            fieldId: PARENT_FIELD,
+            relatedEntityId: account.parentId,
+          })
+        }
+        return rows
+      })
+
+  // `findGlAccountPointers` (the I4 guard) reads the org's pointer fields, then
+  // their values. `h.pointers` models both; empty means no TEXT pointer at all,
+  // which is the right default here - these cases are about ROLES.
+  const pointerFieldId = (attribute: string) => `pointer_field_${attribute}`
+  const pointerFields = () =>
+    [...new Set(h.pointers.map((p) => p.attribute))].map((attribute) => ({
+      id: pointerFieldId(attribute),
+      attribute,
+    }))
 
   const rowsFor = (table: unknown, params: string[]): unknown[] => {
+    if (table === schema.CustomField) return pointerFields()
+    if (params.some((p) => p.startsWith('pointer_field_'))) {
+      return h.pointers.map((p) => ({
+        fieldId: pointerFieldId(p.attribute),
+        entityId: p.entityId,
+        glAccountId: p.glAccountId,
+      }))
+    }
     if (table === schema.GlRoleAssignment) {
       // `liveRolesFor` reads the whole org through `readRoleAssignments`
       // (task 58 §4.9) and filters by account id and `markedUnused` itself, so
@@ -183,6 +231,13 @@ function stubDb(accounts: Account[], assignments: Assignment[] = []): Database {
         }))
     }
     if (table === schema.EntityInstance) {
+      // `loadLiveChart` (assertParentAllowed's cycle/depth checks) reads EVERY
+      // live account of the def, with no id filter at all - `entityDefinitionId`
+      // in its `where` is what distinguishes it from every id-keyed lookup below,
+      // none of which filter on the def.
+      if (params.includes(DEF)) {
+        return liveAccounts().map((a) => ({ id: a.id }))
+      }
       return liveAccounts()
         .filter((a) => params.includes(a.organizationId ?? ORG) && params.includes(a.id))
         .map((a) => ({ id: a.id }))
@@ -192,11 +247,19 @@ function stubDb(accounts: Account[], assignments: Assignment[] = []): Database {
     // `readChartAccountValues` also carries CODE_FIELD, but alongside the other
     // three field ids - so the absence of NAME_FIELD is what tells them apart.
     if (params.includes(CODE_FIELD) && !params.includes(NAME_FIELD)) {
-      return visibleFieldValues().filter(
+      return allFieldValues().filter(
         (row) => row.fieldId === CODE_FIELD && params.includes(row.valueText as string)
       )
     }
-    return visibleFieldValues().filter((row) => params.includes(row.entityId as string))
+    // `findLiveChildren` looks up who points AT an account - where-params are
+    // (org, PARENT_FIELD, accountId), no NAME_FIELD, same trick as the code
+    // lookup above.
+    if (params.includes(PARENT_FIELD) && !params.includes(NAME_FIELD)) {
+      return allFieldValues().filter(
+        (row) => row.fieldId === PARENT_FIELD && params.includes(row.relatedEntityId as string)
+      )
+    }
+    return allFieldValues().filter((row) => params.includes(row.entityId as string))
   }
 
   return {
@@ -211,16 +274,6 @@ function stubDb(accounts: Account[], assignments: Assignment[] = []): Database {
           limit: () => chain,
           orderBy: () => chain,
           groupBy: () => chain,
-          // `findGlAccountPointers` (the I4 guard) joins FieldValue to
-          // CustomField. This stub models no TEXT pointer at all, so the join
-          // resolves to nothing and the guard passes - which is the right
-          // default here: these cases are about ROLES, and a fixture that
-          // silently grew a payment gateway would be testing the wrong thing.
-          // The guard's own behaviour is covered in `gl-account-pointers.test.ts`.
-          innerJoin: () => ({
-            ...chain,
-            where: () => ({ ...chain, limit: async () => h.pointers }),
-          }),
           // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
           then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
             Promise.resolve(rowsFor(table, params)).then(resolve, reject),
@@ -249,6 +302,7 @@ beforeEach(() => {
   h.creates = []
   h.updates = []
   h.archives = []
+  h.restores = []
   h.deletes = []
   h.writeError = null
   h.createdId = 'acct_new'
@@ -300,6 +354,7 @@ describe('createChartAccount', () => {
       accountType: 'expense',
       isActive: true,
       subtype: null,
+      parentId: null,
     })
   })
 
@@ -457,6 +512,444 @@ describe('createChartAccount', () => {
 
     expect(error).toBeInstanceOf(UnprocessableEntityError)
     expect(h.creates).toHaveLength(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHART-HIERARCHY.md §4 - sub-accounts
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('createChartAccount: parentId (CHART-HIERARCHY §4)', () => {
+  const SALES: Account = {
+    id: 'acct_sales',
+    code: '4000',
+    name: 'Sales',
+    accountType: 'revenue',
+    isActive: true,
+  }
+
+  it('writes the parent as a RecordId through the RELATIONSHIP field', async () => {
+    provisionParentField()
+    h.createdId = 'acct_product_income'
+    const db = stubDb([
+      SALES,
+      {
+        id: 'acct_product_income',
+        code: '4010',
+        name: 'Product Income',
+        accountType: 'revenue',
+        parentId: SALES.id,
+      },
+    ])
+
+    const row = (
+      await createChartAccount(db, {
+        organizationId: ORG,
+        code: '4010',
+        name: 'Product Income',
+        accountType: 'revenue',
+        parentId: SALES.id,
+        actorUserId: USER,
+      })
+    )._unsafeUnwrap()
+
+    // The RELATIONSHIP shape: a RecordId ("defId:instanceId"), the same as
+    // `bank_deposit_bank_account_record` takes - never a bare instance id.
+    expect(h.creates[0]?.values.gl_account_parent).toBe(`${DEF}:${SALES.id}`)
+    // readBack decodes it straight back through the shared decoder.
+    expect(row.parentId).toBe(SALES.id)
+  })
+
+  it('refuses a parentId when the org has no gl_account_parent field', async () => {
+    // No `provisionParentField()` - the default, unstamped state.
+    const db = stubDb([SALES])
+
+    const error = (
+      await createChartAccount(db, {
+        organizationId: ORG,
+        name: 'Product Income',
+        accountType: 'revenue',
+        parentId: SALES.id,
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    expect(error.message).toContain('gl_account_parent')
+    expect(h.creates).toHaveLength(0)
+  })
+
+  it('refuses a parent that does not exist', async () => {
+    provisionParentField()
+    const db = stubDb([])
+
+    const error = (
+      await createChartAccount(db, {
+        organizationId: ORG,
+        name: 'Product Income',
+        accountType: 'revenue',
+        parentId: 'acct_ghost',
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    expect(error.message).toContain('does not exist')
+    expect(h.creates).toHaveLength(0)
+  })
+
+  it('refuses an archived parent', async () => {
+    provisionParentField()
+    const archivedSales: Account = { ...SALES, archived: true }
+    const db = stubDb([archivedSales])
+
+    const error = (
+      await createChartAccount(db, {
+        organizationId: ORG,
+        name: 'Product Income',
+        accountType: 'revenue',
+        parentId: SALES.id,
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    // Archived accounts are excluded from `loadLiveChart`'s query, so they
+    // read the same as "does not exist" - the collapse every reader makes.
+    expect(error.message).toContain('does not exist')
+    expect(h.creates).toHaveLength(0)
+  })
+
+  it('refuses a parent of a different accountType (D3)', async () => {
+    provisionParentField()
+    const db = stubDb([SALES])
+
+    const error = (
+      await createChartAccount(db, {
+        organizationId: ORG,
+        name: 'Office Supplies',
+        accountType: 'expense',
+        parentId: SALES.id,
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error.message).toContain('Sales')
+    expect(error.message).toContain('a revenue account')
+    expect(error.message).toContain('an expense account')
+    expect(h.creates).toHaveLength(0)
+  })
+
+  // D4: five levels, zero-based depths 0-4. A chain of five already fills the
+  // cap, so a sixth level - a child of the depth-4 account - refuses.
+  it('refuses when the resulting depth would exceed five levels', async () => {
+    provisionParentField()
+    const chain: Account[] = [
+      { id: 'acct_l0', code: '1', name: 'L0', accountType: 'asset' },
+      { id: 'acct_l1', code: '2', name: 'L1', accountType: 'asset', parentId: 'acct_l0' },
+      { id: 'acct_l2', code: '3', name: 'L2', accountType: 'asset', parentId: 'acct_l1' },
+      { id: 'acct_l3', code: '4', name: 'L3', accountType: 'asset', parentId: 'acct_l2' },
+      { id: 'acct_l4', code: '5', name: 'L4', accountType: 'asset', parentId: 'acct_l3' },
+    ]
+    const db = stubDb(chain)
+
+    const error = (
+      await createChartAccount(db, {
+        organizationId: ORG,
+        name: 'L5',
+        accountType: 'asset',
+        parentId: 'acct_l4',
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error.message).toContain('six levels deep')
+    expect(error.message).toContain("chart's five-level limit")
+    expect(h.creates).toHaveLength(0)
+  })
+
+  // The boundary right below the cap must still be allowed.
+  it('allows a parent at depth 3, landing the new account at depth 4', async () => {
+    provisionParentField()
+    h.createdId = 'acct_l4_new'
+    const chain: Account[] = [
+      { id: 'acct_l0', code: '1', name: 'L0', accountType: 'asset' },
+      { id: 'acct_l1', code: '2', name: 'L1', accountType: 'asset', parentId: 'acct_l0' },
+      { id: 'acct_l2', code: '3', name: 'L2', accountType: 'asset', parentId: 'acct_l1' },
+      { id: 'acct_l3', code: '4', name: 'L3', accountType: 'asset', parentId: 'acct_l2' },
+    ]
+    const db = stubDb([
+      ...chain,
+      { id: 'acct_l4_new', code: '5', name: 'L4', accountType: 'asset', parentId: 'acct_l3' },
+    ])
+
+    const result = await createChartAccount(db, {
+      organizationId: ORG,
+      name: 'L4',
+      accountType: 'asset',
+      parentId: 'acct_l3',
+      actorUserId: USER,
+    })
+
+    expect(result.isOk()).toBe(true)
+  })
+})
+
+describe('updateChartAccount: parentId (CHART-HIERARCHY §4)', () => {
+  const SALES: Account = {
+    id: 'acct_sales',
+    code: '4000',
+    name: 'Sales',
+    accountType: 'revenue',
+    isActive: true,
+  }
+  const PRODUCT_INCOME: Account = {
+    id: 'acct_product_income',
+    code: '4010',
+    name: 'Product Income',
+    accountType: 'revenue',
+    isActive: true,
+  }
+
+  it('sets a parent after the same D3/D4 checks a create runs', async () => {
+    provisionParentField()
+    const db = stubDb([SALES, PRODUCT_INCOME])
+
+    const result = await updateChartAccount(db, {
+      organizationId: ORG,
+      accountId: PRODUCT_INCOME.id,
+      parentId: SALES.id,
+      actorUserId: USER,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.updates[0]?.values).toEqual({ gl_account_parent: `${DEF}:${SALES.id}` })
+  })
+
+  it('clears the parent when sent null', async () => {
+    provisionParentField()
+    const child: Account = { ...PRODUCT_INCOME, parentId: SALES.id }
+    const db = stubDb([SALES, child])
+
+    const result = await updateChartAccount(db, {
+      organizationId: ORG,
+      accountId: child.id,
+      parentId: null,
+      actorUserId: USER,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.updates[0]?.values).toEqual({ gl_account_parent: null })
+  })
+
+  it('refuses an account naming itself as its own parent', async () => {
+    provisionParentField()
+    const db = stubDb([SALES])
+
+    const error = (
+      await updateChartAccount(db, {
+        organizationId: ORG,
+        accountId: SALES.id,
+        parentId: SALES.id,
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error.message).toContain('own parent')
+    expect(h.updates).toHaveLength(0)
+  })
+
+  // A cycle: `PRODUCT_INCOME` is already `SALES`'s child, so making `SALES`
+  // report to its own descendant would loop the tree.
+  it('refuses making an account a descendant of its own subtree', async () => {
+    provisionParentField()
+    const child: Account = { ...PRODUCT_INCOME, parentId: SALES.id }
+    const db = stubDb([SALES, child])
+
+    const error = (
+      await updateChartAccount(db, {
+        organizationId: ORG,
+        accountId: SALES.id,
+        parentId: child.id,
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error.message).toContain('sub-account of this account')
+    expect(h.updates).toHaveLength(0)
+  })
+
+  it('refuses changing the type of an account that currently has a parent (D3)', async () => {
+    provisionParentField()
+    const child: Account = { ...PRODUCT_INCOME, parentId: SALES.id }
+    const db = stubDb([SALES, child])
+
+    const error = (
+      await updateChartAccount(db, {
+        organizationId: ORG,
+        accountId: child.id,
+        accountType: 'asset',
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error.message).toContain('Sales')
+    expect(error.message).toContain('sub-account')
+    expect(h.updates).toHaveLength(0)
+  })
+
+  it('refuses changing the type of an account that has live children (D3)', async () => {
+    provisionParentField()
+    const child: Account = { ...PRODUCT_INCOME, parentId: SALES.id }
+    const db = stubDb([SALES, child])
+
+    const error = (
+      await updateChartAccount(db, {
+        organizationId: ORG,
+        accountId: SALES.id,
+        accountType: 'asset',
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error.message).toContain('1 sub-account')
+    expect(error.message).toContain('Product Income')
+    expect(h.updates).toHaveLength(0)
+  })
+
+  it('allows a type change once the account has no parent and no live children', async () => {
+    provisionParentField()
+    const db = stubDb([SALES])
+
+    const result = await updateChartAccount(db, {
+      organizationId: ORG,
+      accountId: SALES.id,
+      accountType: 'asset',
+      actorUserId: USER,
+    })
+
+    expect(result.isOk()).toBe(true)
+  })
+})
+
+describe('removeChartAccount: D6 - live sub-accounts', () => {
+  const SALES: Account = {
+    id: 'acct_sales',
+    code: '4000',
+    name: 'Sales',
+    accountType: 'revenue',
+    isActive: true,
+  }
+
+  it('refuses while a live sub-account still sits under it', async () => {
+    provisionParentField()
+    const child: Account = {
+      id: 'acct_product_income',
+      code: '4010',
+      name: 'Product Income',
+      accountType: 'revenue',
+      parentId: SALES.id,
+    }
+    const db = stubDb([SALES, child])
+
+    const error = (
+      await removeChartAccount(db, {
+        organizationId: ORG,
+        accountId: SALES.id,
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    expect(error.message).toContain('1 sub-account')
+    expect(error.message).toContain('Sales')
+    expect(h.archives).toEqual([])
+  })
+
+  it('allows removal once the sub-account has been moved or removed', async () => {
+    provisionParentField()
+    const db = stubDb([SALES])
+
+    const result = await removeChartAccount(db, {
+      organizationId: ORG,
+      accountId: SALES.id,
+      actorUserId: USER,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.archives).toHaveLength(1)
+  })
+})
+
+describe('restoreChartAccount: D6 - an archived parent', () => {
+  const ARCHIVED_SALES: Account = {
+    id: 'acct_sales',
+    code: '4000',
+    name: 'Sales',
+    accountType: 'revenue',
+    isActive: true,
+    archived: true,
+  }
+
+  it('refuses restoring an account whose parent is still archived', async () => {
+    provisionParentField()
+    const child: Account = {
+      id: 'acct_product_income',
+      code: '4010',
+      name: 'Product Income',
+      accountType: 'revenue',
+      archived: true,
+      parentId: ARCHIVED_SALES.id,
+    }
+    const db = stubDb([ARCHIVED_SALES, child])
+
+    const error = (
+      await restoreChartAccount(db, {
+        organizationId: ORG,
+        accountId: child.id,
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    expect(error.message).toContain('Sales')
+    expect(error.message).toContain('archived')
+    expect(h.restores).toEqual([])
+  })
+
+  it('allows restoring once the parent is live', async () => {
+    provisionParentField()
+    const liveSales: Account = { ...ARCHIVED_SALES, archived: false }
+    const child: Account = {
+      id: 'acct_product_income',
+      code: '4010',
+      name: 'Product Income',
+      accountType: 'revenue',
+      archived: true,
+      parentId: liveSales.id,
+    }
+    const db = stubDb([liveSales, child])
+
+    const result = await restoreChartAccount(db, {
+      organizationId: ORG,
+      accountId: child.id,
+      actorUserId: USER,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.restores).toHaveLength(1)
+  })
+
+  it('allows restoring a top-level account regardless of the field', async () => {
+    const db = stubDb([ARCHIVED_SALES])
+
+    const result = await restoreChartAccount(db, {
+      organizationId: ORG,
+      accountId: ARCHIVED_SALES.id,
+      actorUserId: USER,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.restores).toHaveLength(1)
   })
 })
 

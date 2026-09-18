@@ -877,6 +877,10 @@ export const SYSTEM_ATTRIBUTES = [
   // account (enforced), but an account may serve many roles (permitted), and a
   // `unique: true` SINGLE_SELECT enforces the constraint AND its converse.
   'gl_account_is_active',
+  // Self-referential sub-account hierarchy (plans/accounting/CHART-HIERARCHY.md
+  // D1): absent means top-level, so every pre-existing row is already valid.
+  'gl_account_parent',
+  'gl_account_children',
 
   // ─── Build / standard cost (plans/products/build/01-build-plan.md §1) ──
   // Entity migration 109. Every one of these reads NULL until the code that

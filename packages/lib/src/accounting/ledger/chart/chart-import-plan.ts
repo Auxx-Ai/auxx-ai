@@ -94,20 +94,44 @@ function pickOne<T>(items: readonly T[], predicate: (item: T) => boolean): T | n
 }
 
 /**
+ * Order a batch of about-to-be-created accounts so a parent always precedes
+ * its children - the writer needs its `providerId -> glAccountId` map already
+ * holding a parent by the time a child asks to be created under it.
+ *
+ * Only orders WITHIN this batch: a parent that is already imported, skipped
+ * as inactive, or simply not among `accounts` is left for the writer to
+ * resolve (or not find) through the map it keeps beside `alreadyImported` -
+ * see `chart-import.ts`.
+ */
+function topoSortByParent(accounts: readonly ProviderAccount[]): ProviderAccount[] {
+  const byId = new Map(accounts.map((account) => [account.id, account]))
+  const placed = new Set<string>()
+  const ordered: ProviderAccount[] = []
+
+  function place(account: ProviderAccount, ancestors: ReadonlySet<string>): void {
+    if (placed.has(account.id)) return
+    const parent = account.parentId ? byId.get(account.parentId) : undefined
+    // A cycle in the provider's own data (never expected) stops rather than loops.
+    if (parent && !ancestors.has(parent.id)) place(parent, new Set(ancestors).add(account.id))
+    if (placed.has(account.id)) return
+    placed.add(account.id)
+    ordered.push(account)
+  }
+
+  for (const account of accounts) place(account, new Set())
+  return ordered
+}
+
+/**
  * Plan an import of the provider's chart over the org's current one.
  *
  * `existingIdentities` maps `glAccountId -> providerAccountId`, the read
  * `listAccountIdentities` already makes. Pure and total: never throws on data,
  * and ambiguity (two candidates for one role) yields no candidate.
- *
- * `existingChart` is accepted for the same reason the writer reads it before
- * calling this - it is the caller's context, not this function's - but the
- * plan itself needs nothing from it beyond what `existingRoles` already
- * encodes: a role's current state and the account (if any) behind it.
  */
 export function planChartImport(
   providerAccounts: readonly ProviderAccount[],
-  _existingChart: readonly ChartAccountRow[],
+  existingChart: readonly ChartAccountRow[],
   existingIdentities: ReadonlyMap<string, string>,
   existingRoles: readonly RoleAssignmentRow[]
 ): ChartImportPlan {
@@ -115,6 +139,7 @@ export function planChartImport(
   for (const [glAccountId, providerAccountId] of existingIdentities) {
     glAccountIdByProviderId.set(providerAccountId, glAccountId)
   }
+  const chartById = new Map(existingChart.map((row) => [row.id, row]))
 
   const skippedInactive: ProviderAccount[] = []
   const active: ProviderAccount[] = []
@@ -123,24 +148,43 @@ export function planChartImport(
     else skippedInactive.push(account)
   }
 
-  const create: ChartImportPlan['create'] = []
+  const toCreate: ProviderAccount[] = []
   const alreadyImported: ChartImportPlan['alreadyImported'] = []
+  const reparent: ChartImportPlan['reparent'] = []
   for (const account of active) {
     const glAccountId = glAccountIdByProviderId.get(account.id)
-    if (glAccountId) {
-      alreadyImported.push({ providerAccount: account, glAccountId })
+    if (!glAccountId) {
+      toCreate.push(account)
       continue
     }
-    create.push({
-      providerAccount: account,
-      code: account.number?.trim() || null,
-      // The full `Parent:Child` path: the chart has no parent field, and leaf
-      // names repeat across a provider's sub-account trees.
-      name: account.fullyQualifiedName || account.name,
-      accountType: account.classification,
-      subtype: PROVIDER_ACCOUNT_TYPE_SUBTYPE[account.accountType] ?? null,
-    })
+    alreadyImported.push({ providerAccount: account, glAccountId })
+
+    // A refresh only ADDS what the provider has (CHART-HIERARCHY §6): an
+    // account imported before the parent link existed, or before it gained
+    // one over there, gets its parent set and nothing else about it changes.
+    const existingRow = chartById.get(glAccountId)
+    if (account.parentId && existingRow && existingRow.parentId === null) {
+      // Commit 2a027b6c0's stopgap named a parentless import by its full
+      // path; restore the leaf name now that there is a real parent to carry
+      // the rest of the path instead.
+      const leafName = existingRow.name === account.fullyQualifiedName ? account.name : null
+      reparent.push({ glAccountId, providerParentId: account.parentId, leafName })
+    }
   }
+
+  // Parents before children, so the writer's provider-id -> gl-account-id map
+  // already holds a parent by the time a child looks it up. A parent that is
+  // inactive (filtered into `skippedInactive` above, never here) or otherwise
+  // not created this run means the child simply imports top-level - the
+  // writer skips a `providerParentId` it cannot resolve rather than refusing.
+  const create: ChartImportPlan['create'] = topoSortByParent(toCreate).map((account) => ({
+    providerAccount: account,
+    code: account.number?.trim() || null,
+    name: account.name,
+    providerParentId: account.parentId,
+    accountType: account.classification,
+    subtype: PROVIDER_ACCOUNT_TYPE_SUBTYPE[account.accountType] ?? null,
+  }))
 
   // Every candidate for a role - whether already imported or about to be
   // created - is fair game: both will carry a `gl_account` once the writer is
@@ -174,5 +218,5 @@ export function planChartImport(
     return (stateByRole.get(account.role) ?? 'unmapped') === 'unmapped'
   })
 
-  return { create, skippedInactive, alreadyImported, roleCandidates, missingCore }
+  return { create, skippedInactive, alreadyImported, reparent, roleCandidates, missingCore }
 }

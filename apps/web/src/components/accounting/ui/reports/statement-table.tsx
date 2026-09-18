@@ -40,7 +40,8 @@ import { accountTypeIcon } from '../settings/accounts-types'
 export interface StatementRow {
   id: string
   label: string
-  depth: 0 | 1 | 2
+  /** Nesting level. Was `0 | 1 | 2`; a sub-account can nest past that (CHART-HIERARCHY.md §5, D4 caps the chart at 5). */
+  depth: number
   kind: 'section' | 'line' | 'subtotal' | 'total' | 'computed'
   /** Minor units, one per column. `null` renders {@link EMPTY_CELL}. */
   values: (number | null)[]

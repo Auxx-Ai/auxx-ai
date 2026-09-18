@@ -3,11 +3,12 @@
 // The WRITER half of importing a provider's chart of accounts (brief 16 §2.2):
 // resolves the connected provider, reads its chart and the org's, runs the pure
 // `planChartImport`, creates each planned account through `createChartAccount`
-// and sets its identity right after, assigns the unambiguous roles with
-// `source: 'import'`, then (unless `refreshOnly`) creates the role-bearing core
-// accounts the provider lacks, uncoded and with no identity. `db` first,
-// `Result` from neverthrow, no permission checks: the router asserts
-// `ledgerControl` and calls.
+// - already in parent-before-child order - and sets its identity right after,
+// repoints an already-imported account whose provider row gained a parent
+// (CHART-HIERARCHY §6), assigns the unambiguous roles with `source: 'import'`,
+// then (unless `refreshOnly`) creates the role-bearing core accounts the
+// provider lacks, uncoded and with no identity. `db` first, `Result` from
+// neverthrow, no permission checks: the router asserts `ledgerControl` and calls.
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -21,7 +22,7 @@ import { listChartAccounts, listRoleMap } from '../roles/role-map'
 import type { ChartImportResult } from '../types'
 import type { GlAccountSubtypeValue } from './account-subtype'
 import { planChartImport } from './chart-import-plan'
-import { createChartAccount } from './chart-write'
+import { createChartAccount, updateChartAccount } from './chart-write'
 import type { DefaultChartAccount, GlAccountTypeValue } from './default-chart'
 
 const logger = createScopedLogger('postings:chart-import')
@@ -39,6 +40,8 @@ interface CreateAccountInput {
   name: string
   accountType: GlAccountTypeValue
   subtype: GlAccountSubtypeValue | null
+  /** Resolved to a `glAccountId` already, or omitted when the provider's parent has no counterpart here yet. */
+  parentId?: string | null
 }
 
 /**
@@ -92,8 +95,19 @@ export async function importChartFromProvider(
     )
 
     let created = 0
+    let nestedUnder = 0
+    // `plan.create` is already parent-before-child (`topoSortByParent`), so a
+    // parent created earlier in this same loop is already in the map by the
+    // time its child looks it up.
     for (const item of plan.create) {
-      const glAccountId = await createAccount(db, organizationId, actorUserId, item)
+      const parentId = item.providerParentId
+        ? glAccountIdByProviderId.get(item.providerParentId)
+        : undefined
+      if (parentId) nestedUnder++
+      const glAccountId = await createAccount(db, organizationId, actorUserId, {
+        ...item,
+        parentId,
+      })
       glAccountIdByProviderId.set(item.providerAccount.id, glAccountId)
       created++
 
@@ -104,6 +118,33 @@ export async function importChartFromProvider(
         actorUserId,
       })
       if (mapped.isErr()) return err(mapped.error)
+    }
+
+    // A refresh's other half of §6: an already-imported account whose provider
+    // row gained a parent gets repointed, resolved through the SAME map -
+    // which by now also holds every account this run just created, so a
+    // parent created moments ago is found too.
+    for (const item of plan.reparent) {
+      const parentId = glAccountIdByProviderId.get(item.providerParentId)
+      if (!parentId) continue
+      const updated = await updateChartAccount(db, {
+        organizationId,
+        accountId: item.glAccountId,
+        parentId,
+        ...(item.leafName ? { name: item.leafName } : {}),
+        actorUserId,
+      })
+      if (updated.isErr()) {
+        // Same degradation as `createAccount`'s code collision: a refusal here
+        // (type mismatch, depth) must not abort a refresh after partial writes.
+        logger.warn('Chart import: reparent refused, left where it was', {
+          organizationId,
+          glAccountId: item.glAccountId,
+          message: updated.error.message,
+        })
+        continue
+      }
+      nestedUnder++
     }
 
     // Roles this run can resolve without asking - `source: 'import'`, only for
@@ -155,6 +196,7 @@ export async function importChartFromProvider(
       skippedInactive: plan.skippedInactive.length,
       rolesAssigned,
       coreCreated,
+      nestedUnder,
     })
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
@@ -186,6 +228,7 @@ async function createAccount(
     name: input.name,
     accountType: input.accountType,
     subtype: input.subtype,
+    parentId: input.parentId,
   })
   if (result.isOk()) return result.value.id
 
@@ -202,6 +245,7 @@ async function createAccount(
       name: input.name,
       accountType: input.accountType,
       subtype: input.subtype,
+      parentId: input.parentId,
     })
     if (retried.isOk()) return retried.value.id
     throw retried.error

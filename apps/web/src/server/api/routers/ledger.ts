@@ -875,6 +875,8 @@ export const ledgerRouter = createTRPCRouter({
         accountType: z.enum(GL_ACCOUNT_TYPES),
         isActive: z.boolean().optional(),
         subtype: z.enum(GL_ACCOUNT_SUBTYPES).nullable().optional(),
+        /** Sub-account parent (CHART-HIERARCHY §4). Omit or `null` for top level. */
+        parentId: z.string().min(1).nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -905,6 +907,8 @@ export const ledgerRouter = createTRPCRouter({
         accountType: z.enum(GL_ACCOUNT_TYPES).optional(),
         isActive: z.boolean().optional(),
         subtype: z.enum(GL_ACCOUNT_SUBTYPES).nullable().optional(),
+        /** `null` moves the account to top level (CHART-HIERARCHY §4). */
+        parentId: z.string().min(1).nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

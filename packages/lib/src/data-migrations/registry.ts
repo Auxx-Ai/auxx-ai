@@ -26,6 +26,7 @@ import { migration166OneMappingTable } from './migrations/166-one-mapping-table'
 import { migration167DocumentAttachments } from './migrations/167-document-attachments'
 import { migration168RemoveGlPostingStampFields } from './migrations/168-remove-gl-posting-stamp-fields'
 import { migration169RemovePaymentEntity } from './migrations/169-remove-payment-entity'
+import { migration170GlAccountParentField } from './migrations/170-gl-account-parent-field'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -86,6 +87,10 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // drops invoice.payments and bank_deposit.payments, archives the payment def
   // and any leftover instance - the removal shape again, widened to a def.
   migration169RemovePaymentEntity,
+  // Adds the self-referential parent / children relationship pair to the
+  // existing gl_account def: the same widen-and-link shape as 149, narrowed
+  // to one def (plans/accounting/CHART-HIERARCHY.md D1).
+  migration170GlAccountParentField,
   // Re-seeds the default entity dashboards. The one entry here that is NOT just an
   // example: `apps/worker/scripts/reseed-default-dashboard.ts` re-runs its ensure
   // after a `DEFAULT_DASHBOARD_CONFIGS` template change, so it is a live routine.

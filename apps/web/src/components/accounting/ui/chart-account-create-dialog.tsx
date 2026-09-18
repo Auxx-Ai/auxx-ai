@@ -41,7 +41,17 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
-import { ACCOUNT_SUBTYPE_OPTIONS, ACCOUNT_TYPE_OPTIONS } from './settings/accounts-types'
+import { GlAccountPicker, useChartAccounts } from './gl-account-picker'
+import {
+  ACCOUNT_SUBTYPE_OPTIONS,
+  ACCOUNT_TYPE_OPTIONS,
+  accountTypeLockReason,
+  resolveAccountTypeForParent,
+} from './settings/accounts-types'
+
+// Re-exported for `chart-account-create-dialog.test.ts`: the pure function now
+// lives in `accounts-types.ts` so `chart-account-editor.tsx` can share it too.
+export { resolveAccountTypeForParent } from './settings/accounts-types'
 
 /**
  * ⚠️ A `SINGLE_SELECT` hands its value back as an ARRAY - `['expense']` -
@@ -63,15 +73,27 @@ interface CreateDraft {
   name: string
   accountType: GlAccountTypeValue | null
   subtype: GlAccountSubtypeValue | null
+  /** `null` is top level (CHART-HIERARCHY.md §1 D1). */
+  parentId: string | null
 }
 
-const EMPTY_DRAFT: CreateDraft = { code: '', name: '', accountType: null, subtype: null }
+const EMPTY_DRAFT: CreateDraft = {
+  code: '',
+  name: '',
+  accountType: null,
+  subtype: null,
+  parentId: null,
+}
 
 export interface ChartAccountCreateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Pre-selects the type, for a caller whose picker is already filtered to one. */
   defaultAccountType?: GlAccountTypeValue
+  /** Pre-selects the subtype, for a picker pinned to one (`bank`, `clearing`) - without it the new account would not appear in that picker's list. */
+  defaultSubtype?: GlAccountSubtypeValue
+  /** Pre-selects the parent - the chart list's "Add sub-account" (CHART-HIERARCHY.md §7). Locks Type to the parent's. */
+  defaultParentId?: string | null
   /**
    * The account that was just written. `ledger.chartAccounts` is already
    * invalidated by the time this fires, so a caller only has to select it.
@@ -92,15 +114,25 @@ export function ChartAccountCreateDialog({
   open,
   onOpenChange,
   defaultAccountType,
+  defaultSubtype,
+  defaultParentId,
   onCreated,
 }: ChartAccountCreateDialogProps) {
   const utils = api.useUtils()
-  const [draft, setDraft] = useState<CreateDraft>({
+  const { accounts } = useChartAccounts()
+  const initial = (): CreateDraft => ({
     ...EMPTY_DRAFT,
     accountType: defaultAccountType ?? null,
+    subtype: defaultSubtype ?? null,
+    parentId: defaultParentId ?? null,
   })
+  const [draft, setDraft] = useState<CreateDraft>(initial)
 
-  const reset = () => setDraft({ ...EMPTY_DRAFT, accountType: defaultAccountType ?? null })
+  const reset = () => setDraft(initial())
+
+  // D3: a sub-account shares its parent's statement type, so choosing one
+  // locks Type below.
+  const typeLockReason = accountTypeLockReason({ parentId: draft.parentId, accounts })
 
   const create = api.ledger.chartAccountCreate.useMutation({
     onSuccess: async (account) => {
@@ -129,6 +161,7 @@ export function ChartAccountCreateDialog({
       name: draft.name.trim(),
       accountType: draft.accountType as GlAccountTypeValue,
       subtype: draft.subtype,
+      parentId: draft.parentId,
     })
   }
 
@@ -188,7 +221,7 @@ export function ChartAccountCreateDialog({
               fieldType={FieldType.SINGLE_SELECT}
               fieldOptions={{ options: ACCOUNT_TYPE_OPTIONS }}
               value={draft.accountType}
-              disabled={create.isPending}
+              disabled={create.isPending || !!typeLockReason}
               triggerProps={{ className: 'w-full ps-0 pe-1' }}
               placeholder='Select account type'
               onChange={(value) =>
@@ -197,6 +230,31 @@ export function ChartAccountCreateDialog({
                   accountType: firstSelected(value) as GlAccountTypeValue | null,
                 })
               }
+            />
+            {typeLockReason && (
+              <p className='mt-1 text-muted-foreground text-xs'>{typeLockReason}</p>
+            )}
+          </FieldPanelRow>
+
+          <FieldPanelRow
+            title='Parent account'
+            type={BaseType.RELATION}
+            showIcon
+            description='Nests this account under another of the same statement type. Leave it unset for a top-level account.'>
+            <GlAccountPicker
+              value={draft.parentId}
+              onChange={(next) =>
+                setDraft({
+                  ...draft,
+                  parentId: next,
+                  accountType: resolveAccountTypeForParent(next, accounts, draft.accountType),
+                })
+              }
+              selectBy='id'
+              filterTypes={draft.accountType ? [draft.accountType] : undefined}
+              disabled={create.isPending}
+              placeholder='No parent - top level'
+              triggerProps={{ className: 'w-full ps-0 pe-1' }}
             />
           </FieldPanelRow>
 

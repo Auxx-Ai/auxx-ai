@@ -14,6 +14,7 @@ import {
   type AccountIdentityRow,
   type AccountRole,
   type AccountSuggestionReason,
+  accountPath,
   accountSubtypeLabel,
   CHART_PACK_KEYS,
   CHART_PACKS,
@@ -29,7 +30,7 @@ import {
 import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { getIcon } from '@auxx/ui/components/icon-data'
 import { Landmark, type LucideIcon } from 'lucide-react'
-import { formatAccountLabel } from '../account-label-format'
+import { formatAccountLabel, formatAccountPath } from '../account-label-format'
 
 /**
  * The five statement classifications, for the type dropdown.
@@ -242,6 +243,64 @@ export const DEFAULT_UNUSED_ROLES: AccountRole[] = ['ppv', 'inventory_wip']
  */
 export function formatAccount(account: ChartAccountRow | null | undefined): string {
   return formatAccountLabel(account)
+}
+
+/**
+ * `formatAccount`, but `Sales: 1310 · Raw Materials` (D8) when the account is
+ * nested — a mapping row's own account sits beside the provider's
+ * `fullyQualifiedName`, and two accounts with the same leaf name (`Checking`
+ * under two banks) need the ancestor chain to stay distinguishable.
+ * `accounts` is the org's whole chart, for the ancestor walk.
+ */
+export function formatAccountRow(
+  accounts: ChartAccountRow[],
+  account: ChartAccountRow | null | undefined
+): string {
+  if (!account) return ''
+  const ancestors = accountPath(accounts, account.id).slice(0, -1)
+  return ancestors.length > 0 ? formatAccountPath(ancestors, account) : formatAccountLabel(account)
+}
+
+/**
+ * D3: choosing a parent locks Type to the parent's - a sub-account cannot
+ * carry a different statement type. `currentType` is the fallback: no parent,
+ * or a parent id the fetched chart does not (yet) hold. PURE, shared by the
+ * create dialog and the settings editor so both derive the same type the
+ * moment a parent is chosen. Exported for its tests.
+ */
+export function resolveAccountTypeForParent(
+  parentId: string | null,
+  accounts: ChartAccountRow[],
+  currentType: GlAccountTypeValue | null
+): GlAccountTypeValue | null {
+  if (!parentId) return currentType
+  const parent = accounts.find((a) => a.id === parentId)
+  return parent ? parent.accountType : currentType
+}
+
+/**
+ * The one-line reason the Type field is locked (D3): a sub-account shares its
+ * parent's statement type, so neither end can retype alone. `null` means Type
+ * is free to change. `accountId` is omitted for a not-yet-created account,
+ * where there is no existing subtree to check.
+ */
+export function accountTypeLockReason(params: {
+  parentId: string | null
+  accountId?: string
+  accounts: ChartAccountRow[]
+}): string | null {
+  const { parentId, accountId, accounts } = params
+  if (parentId) {
+    const parent = accounts.find((a) => a.id === parentId)
+    return `A sub-account of ${parent ? formatAccount(parent) : 'another account'} - it shares its parent's statement type.`
+  }
+  if (accountId) {
+    const children = accounts.filter((a) => a.parentId === accountId && !a.isArchived)
+    if (children.length > 0) {
+      return `${children.length} sub-account${children.length === 1 ? '' : 's'} share this account's type - move ${children.length === 1 ? 'it' : 'them'} first to change it.`
+    }
+  }
+  return null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -47,6 +47,7 @@
 // person from being offered a choice that would be refused; it does not replace
 // the refusal.
 
+import { accountPath } from '@auxx/lib/accounting/ledger/client'
 import { isMappableTo } from '@auxx/lib/accounting/providers/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
@@ -58,10 +59,10 @@ import { toastError } from '@auxx/ui/components/toast'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { Check, Landmark, Link2, Sparkles, TriangleAlert, X } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import { AccountLabel } from '../account-label'
-import { accountMatchesSearch } from '../account-label-format'
+import { accountMatchesSearch, formatAccountPath } from '../account-label-format'
 import {
   ACCOUNT_SUGGESTION_REASON_COPY,
   accountTypeColor,
@@ -124,6 +125,14 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
       toastError({ title: 'Error confirming the suggestions', description: error.message })
     },
   })
+
+  // Every account the map covers, for the ancestor walk behind each row's
+  // `AccountLabel path` (D8) - hooks run before the early returns below, so
+  // this reads `accountMap.data` directly rather than the destructured `rows`.
+  const chartRows = useMemo(
+    () => (accountMap.data?.rows ?? []).map((row) => row.account),
+    [accountMap.data]
+  )
 
   if (accountMap.isPending) return <EmptySection loading />
 
@@ -218,12 +227,24 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
             const options = providerAccounts
               .filter((account) => isMappableTo(row.account, account))
               .map((account) => ({ value: account.id, label: formatProviderAccount(account) }))
+            // Ancestors only, no leaf (D8) - `AccountLabel`'s `path` feeds the
+            // tooltip, so `Checking` under two banks stays distinguishable
+            // beside the provider's own `fullyQualifiedName` in `actions`.
+            const ancestors = accountPath(chartRows, row.account.id).slice(0, -1)
 
             return (
               <TreeRow
                 key={row.account.id}
                 icon={<Landmark className='size-4 text-muted-foreground' />}
-                title={<AccountLabel account={row.account} className='text-sm' />}
+                title={
+                  <AccountLabel
+                    account={row.account}
+                    path={
+                      ancestors.length > 0 ? formatAccountPath(ancestors, row.account) : undefined
+                    }
+                    className='text-sm'
+                  />
+                }
                 secondaryFill
                 rowClassName={cn(
                   'bg-primary-100/50 hover:bg-primary-100',

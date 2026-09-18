@@ -22,8 +22,10 @@ vi.mock('../../roles/role-map', () => ({
 }))
 
 const createChartAccountMock = vi.fn()
+const updateChartAccountMock = vi.fn()
 vi.mock('../chart-write', () => ({
   createChartAccount: (...a: unknown[]) => createChartAccountMock(...a),
+  updateChartAccount: (...a: unknown[]) => updateChartAccountMock(...a),
 }))
 
 const resolveAccountingProvider = vi.fn()
@@ -50,6 +52,7 @@ function providerAccount(over: Partial<ProviderAccount> = {}): ProviderAccount {
     accountType: 'Bank',
     classification: 'asset',
     active: true,
+    parentId: null,
     ...over,
   }
 }
@@ -135,24 +138,29 @@ function stubDb(alreadyAssigned: Set<string> = new Set()) {
 }
 
 let callLog: string[]
+let createCalls: Record<string, unknown>[]
 
 beforeEach(() => {
   vi.clearAllMocks()
   callLog = []
+  createCalls = []
   createChartAccountMock.mockImplementation(
     async (_db: Database, opts: Record<string, unknown>) => {
       const name = opts.name as string
       callLog.push(`create:${name}:${opts.code ?? 'null'}`)
+      createCalls.push(opts)
       return ok({
         id: `gl_${name.replace(/\s+/g, '_').toLowerCase()}`,
         code: (opts.code as string | null) ?? null,
         name,
         accountType: opts.accountType,
         subtype: (opts.subtype as string | null) ?? null,
+        parentId: (opts.parentId as string | null | undefined) ?? null,
         isActive: true,
       } as ChartAccountRow)
     }
   )
+  updateChartAccountMock.mockResolvedValue(ok({} as ChartAccountRow))
   listChartAccounts.mockResolvedValue(ok<ChartAccountRow[]>([]))
 })
 
@@ -189,6 +197,7 @@ describe('a normal import', () => {
     expect(value.created).toBe(2)
     expect(value.alreadyImported).toBe(0)
     expect(value.skippedInactive).toBe(0)
+    expect(value.nestedUnder).toBe(0)
     expect(value.rolesAssigned).toEqual(['accounts_receivable'])
 
     // Created in provider order, and each identity set right after its own create -
@@ -313,5 +322,208 @@ describe('refreshOnly', () => {
     // Only the one provider account was created - no core accounts.
     expect(value.created).toBe(1)
     expect(value.rolesAssigned).toEqual(['accounts_receivable'])
+  })
+})
+
+describe('nesting (CHART-HIERARCHY §6)', () => {
+  it('creates a child under the glAccountId its parent resolved to, even listed first', async () => {
+    const sales = providerAccount({
+      id: 'p_sales',
+      name: 'Sales',
+      accountType: 'Income',
+      classification: 'revenue',
+    })
+    const productIncome = providerAccount({
+      id: 'p_product_income',
+      name: 'Product Income',
+      accountType: 'Income',
+      classification: 'revenue',
+      parentId: 'p_sales',
+    })
+    // The provider lists the child first - the plan's topological order is what
+    // makes the parent's glAccountId exist by the time this loop reaches the child.
+    stubProvider({ accounts: [productIncome, sales] })
+    listRoleMap.mockResolvedValue(ok(roleMapRows()))
+    const { db } = stubDb()
+
+    const result = await importChartFromProvider(db, { organizationId: ORG, actorUserId: USER })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().nestedUnder).toBe(1)
+    expect(createCalls.find((c) => c.name === 'Sales')?.parentId).toBeUndefined()
+    expect(createCalls.find((c) => c.name === 'Product Income')?.parentId).toBe('gl_sales')
+  })
+
+  it('imports a child as top-level when its parent is inactive, rather than refusing', async () => {
+    const inactiveParent = providerAccount({
+      id: 'p_sales',
+      name: 'Sales',
+      accountType: 'Income',
+      classification: 'revenue',
+      active: false,
+    })
+    const productIncome = providerAccount({
+      id: 'p_product_income',
+      name: 'Product Income',
+      accountType: 'Income',
+      classification: 'revenue',
+      parentId: 'p_sales',
+    })
+    stubProvider({ accounts: [productIncome, inactiveParent] })
+    listRoleMap.mockResolvedValue(ok(roleMapRows()))
+    const { db } = stubDb()
+
+    const result = await importChartFromProvider(db, { organizationId: ORG, actorUserId: USER })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().nestedUnder).toBe(0)
+    expect(createCalls.find((c) => c.name === 'Product Income')?.parentId).toBeUndefined()
+  })
+})
+
+describe('reparent - repoints an already-imported account (CHART-HIERARCHY §6)', () => {
+  it('repoints via updateChartAccount and restores the leaf name from the full-path stopgap', async () => {
+    const sales = providerAccount({
+      id: 'p_sales',
+      name: 'Sales',
+      accountType: 'Income',
+      classification: 'revenue',
+    })
+    const productIncome = providerAccount({
+      id: 'p_product_income',
+      name: 'Product Income',
+      fullyQualifiedName: 'Sales:Product Income',
+      accountType: 'Income',
+      classification: 'revenue',
+      parentId: 'p_sales',
+    })
+    stubProvider({
+      accounts: [sales, productIncome],
+      mappings: new Map([['gl_existing_product_income', 'p_product_income']]),
+    })
+    listRoleMap.mockResolvedValue(ok(roleMapRows()))
+    listChartAccounts.mockResolvedValue(
+      ok<ChartAccountRow[]>([
+        {
+          id: 'gl_existing_product_income',
+          code: null,
+          name: 'Sales:Product Income',
+          accountType: 'revenue',
+          subtype: null,
+          parentId: null,
+          isActive: true,
+        },
+      ])
+    )
+    const { db } = stubDb()
+
+    const result = await importChartFromProvider(db, { organizationId: ORG, actorUserId: USER })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().nestedUnder).toBe(1)
+    expect(updateChartAccountMock).toHaveBeenCalledWith(db, {
+      organizationId: ORG,
+      accountId: 'gl_existing_product_income',
+      parentId: 'gl_sales',
+      name: 'Product Income',
+      actorUserId: USER,
+    })
+  })
+
+  it('leaves the name alone when it never carried the full-path stopgap', async () => {
+    const sales = providerAccount({
+      id: 'p_sales',
+      name: 'Sales',
+      accountType: 'Income',
+      classification: 'revenue',
+    })
+    const productIncome = providerAccount({
+      id: 'p_product_income',
+      name: 'Product Income',
+      fullyQualifiedName: 'Sales:Product Income',
+      accountType: 'Income',
+      classification: 'revenue',
+      parentId: 'p_sales',
+    })
+    stubProvider({
+      accounts: [sales, productIncome],
+      mappings: new Map([['gl_existing_product_income', 'p_product_income']]),
+    })
+    listRoleMap.mockResolvedValue(ok(roleMapRows()))
+    listChartAccounts.mockResolvedValue(
+      ok<ChartAccountRow[]>([
+        {
+          id: 'gl_existing_product_income',
+          code: null,
+          name: 'Product Income',
+          accountType: 'revenue',
+          subtype: null,
+          parentId: null,
+          isActive: true,
+        },
+      ])
+    )
+    const { db } = stubDb()
+
+    await importChartFromProvider(db, { organizationId: ORG, actorUserId: USER })
+
+    expect(updateChartAccountMock).toHaveBeenCalledWith(db, {
+      organizationId: ORG,
+      accountId: 'gl_existing_product_income',
+      parentId: 'gl_sales',
+      actorUserId: USER,
+    })
+  })
+
+  it('skips a refused reparent and still completes the run with the other counts', async () => {
+    const sales = providerAccount({
+      id: 'p_sales',
+      name: 'Sales',
+      accountType: 'Income',
+      classification: 'revenue',
+    })
+    const productIncome = providerAccount({
+      id: 'p_product_income',
+      name: 'Product Income',
+      fullyQualifiedName: 'Sales:Product Income',
+      accountType: 'Income',
+      classification: 'revenue',
+      parentId: 'p_sales',
+    })
+    // A second, brand-new provider account so `created` has something to count
+    // alongside the refused reparent.
+    const other = providerAccount({ id: 'p_other', name: 'Checking', accountType: 'Bank' })
+    stubProvider({
+      accounts: [sales, productIncome, other],
+      mappings: new Map([['gl_existing_product_income', 'p_product_income']]),
+    })
+    listRoleMap.mockResolvedValue(ok(roleMapRows()))
+    listChartAccounts.mockResolvedValue(
+      ok<ChartAccountRow[]>([
+        {
+          id: 'gl_existing_product_income',
+          code: null,
+          name: 'Sales:Product Income',
+          accountType: 'revenue',
+          subtype: null,
+          parentId: null,
+          isActive: true,
+        },
+      ])
+    )
+    updateChartAccountMock.mockResolvedValue(
+      err(new UnprocessableEntityError('Making Sales the parent would put this account too deep.'))
+    )
+    const { db } = stubDb()
+
+    const result = await importChartFromProvider(db, { organizationId: ORG, actorUserId: USER })
+
+    expect(result.isOk()).toBe(true)
+    const value = result._unsafeUnwrap()
+    expect(value.nestedUnder).toBe(0)
+    // Sales (new) and Checking (new) both create; only Product Income already
+    // existed, and its reparent is the one this test refuses.
+    expect(value.created).toBe(2)
+    expect(callLog).toContain('create:Checking:null')
   })
 })

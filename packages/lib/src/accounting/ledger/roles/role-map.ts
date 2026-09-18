@@ -62,7 +62,8 @@ import {
   roleScopeAxis,
   type ScopeAxis,
 } from '../builders/entry'
-import { accountLabel, compareAccountsByCodeThenName } from '../chart/account-label'
+import { accountLabel } from '../chart/account-label'
+import { sortChartTree } from '../chart/account-tree'
 import {
   type ChartAccountsRead,
   loadChartAccountFields,
@@ -297,8 +298,8 @@ export async function listRoleMap(
  * code is a label the account may not carry. The log line names the ids so a
  * malformed account is findable rather than merely invisible.
  *
- * Ordered by code then name (task 15 §5's 15.2 default): a coded account
- * before an uncoded one, then alphabetically within each.
+ * Ordered depth-first by the chart's tree (D9, CHART-HIERARCHY.md): a parent,
+ * then its subtree, siblings by code then name.
  */
 /** Options for {@link listChartAccounts}. */
 export interface ListChartAccountsOptions {
@@ -367,7 +368,7 @@ export async function listChartAccounts(
       }
     }
 
-    return ok([...accounts.values()].sort(compareAccountsByCodeThenName))
+    return ok(sortChartTree([...accounts.values()]))
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to list the chart of accounts', { error, organizationId })

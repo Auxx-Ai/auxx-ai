@@ -1,12 +1,25 @@
 // apps/web/src/components/accounting/ui/settings/mapping-account-select.tsx
 'use client'
 
-import type { GlAccountSubtypeValue, GlAccountTypeValue } from '@auxx/lib/accounting/ledger/client'
-import { Command, CommandDetailItem, CommandGroup, CommandInput } from '@auxx/ui/components/command'
+import {
+  accountPath,
+  type GlAccountSubtypeValue,
+  type GlAccountTypeValue,
+} from '@auxx/lib/accounting/ledger/client'
+import {
+  Command,
+  CommandDetailItem,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
 import { AccountLabel } from '../account-label'
+import { formatAccountPath } from '../account-label-format'
+import { ChartAccountCreateDialog } from '../chart-account-create-dialog'
 import { GlAccountList, useChartAccounts } from '../gl-account-picker'
 
 /** A mapped account id, `'inherit'` (falls through, see {@link inheritedAccountName}), `'unused'` (role marked unused), or `null` (not mapped). */
@@ -40,6 +53,9 @@ export function MappingAccountSelect({
   const { accounts: allAccounts, isLoading } = useChartAccounts()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  // A sibling of the Popover, never inside its content: Radix unmounts closed
+  // popover content, and the click that opens the dialog closes the popover.
+  const [createOpen, setCreateOpen] = useState(false)
 
   const accounts = useMemo(
     () =>
@@ -53,6 +69,13 @@ export function MappingAccountSelect({
   const selected = useMemo(
     () => accounts.find((account) => account.id === accountIdValue) ?? null,
     [accounts, accountIdValue]
+  )
+  // Ancestors only, no leaf (D8) - `AccountLabel`'s `path` prop appends the
+  // leaf itself, and it feeds only the tooltip, so `Checking` under two banks
+  // stays distinguishable on hover without widening this trigger.
+  const selectedAncestors = useMemo(
+    () => (selected ? accountPath(accounts, selected.id).slice(0, -1) : []),
+    [accounts, selected]
   )
 
   const hasInherit = inheritedAccountName !== undefined && inheritedAccountName !== null
@@ -78,7 +101,18 @@ export function MappingAccountSelect({
           {value === 'inherit' ? (
             <span className='truncate text-sm'>{inheritLabel}</span>
           ) : (
-            selected && <AccountLabel account={selected} density='compact' className='text-sm' />
+            selected && (
+              <AccountLabel
+                account={selected}
+                density='compact'
+                path={
+                  selectedAncestors.length > 0
+                    ? formatAccountPath(selectedAncestors, selected)
+                    : undefined
+                }
+                className='text-sm'
+              />
+            )
           )}
         </PickerTrigger>
       </PopoverTrigger>
@@ -113,8 +147,29 @@ export function MappingAccountSelect({
             value={accountIdValue}
             onSelect={select}
           />
+          {/* Outside the list, so it survives an empty search - the moment an
+              account is missing is when it is needed. */}
+          <CommandGroup className='border-t' aria-label='Add account'>
+            <CommandItem
+              value='__add-blank'
+              onSelect={() => {
+                setOpen(false)
+                setCreateOpen(true)
+              }}
+              className='h-7.5 cursor-pointer'>
+              <Plus className='text-muted-foreground' />
+              <span>New account</span>
+            </CommandItem>
+          </CommandGroup>
         </Command>
       </PopoverContent>
+      <ChartAccountCreateDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        defaultAccountType={filterTypes?.length === 1 ? filterTypes[0] : undefined}
+        defaultSubtype={subtypePin}
+        onCreated={(account) => select(account.id)}
+      />
     </Popover>
   )
 }

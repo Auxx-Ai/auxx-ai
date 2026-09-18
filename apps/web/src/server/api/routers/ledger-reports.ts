@@ -63,8 +63,10 @@ export const ledgerReportsRouter = createTRPCRouter({
         asOf: input.to,
       })
       if (result.isErr()) throw result.error
+      // `chart` is only for the adapters; the web already holds it via `useChartAccounts`.
+      const { chart: _chart, ...statement } = result.value
       return {
-        ...result.value,
+        ...statement,
         columns: TRIAL_BALANCE_COLUMNS,
         rows: toTrialBalanceStatementRows(result.value),
       }
@@ -83,10 +85,11 @@ export const ledgerReportsRouter = createTRPCRouter({
         compareAsOf: input.compareAsOf,
       })
       if (result.isErr()) throw result.error
+      const { chart: _chart, ...statement } = result.value
       return {
-        ...result.value,
+        ...statement,
         columns: balanceSheetColumns(result.value),
-        rows: toBalanceSheetRows(result.value, result.value.compare),
+        rows: toBalanceSheetRows(result.value, result.value.compare, result.value.chart),
       }
     }),
 
@@ -111,9 +114,10 @@ export const ledgerReportsRouter = createTRPCRouter({
         compare: input.compare,
       })
       if (result.isErr()) throw result.error
+      const { chart: _chart, ...statement } = result.value
       return {
-        ...result.value,
-        rows: toProfitAndLossRows(result.value, result.value.compare),
+        ...statement,
+        rows: toProfitAndLossRows(result.value, result.value.compare, result.value.chart),
       }
     }),
 
@@ -178,8 +182,9 @@ export const ledgerReportsRouter = createTRPCRouter({
         maxLines: GENERAL_LEDGER_MAX_LINES,
       })
       if (result.isErr()) throw result.error
+      const { chart: _chart, ...ledger } = result.value
       return {
-        ...result.value,
+        ...ledger,
         maxLines: GENERAL_LEDGER_MAX_LINES,
         columns: GENERAL_LEDGER_COLUMNS,
         rows: toGeneralLedgerRows(result.value),

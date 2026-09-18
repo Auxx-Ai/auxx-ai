@@ -34,6 +34,7 @@ const BANK_ACCOUNT: ChartAccountRow = {
   name: 'Operating Bank',
   accountType: 'asset',
   subtype: 'bank',
+  parentId: null,
   isActive: true,
 }
 
@@ -43,6 +44,7 @@ const NON_BANK_ACCOUNT: ChartAccountRow = {
   name: 'Bank Fees',
   accountType: 'expense',
   subtype: null,
+  parentId: null,
   isActive: true,
 }
 

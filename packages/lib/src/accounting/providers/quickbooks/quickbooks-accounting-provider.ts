@@ -567,6 +567,10 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
         ...(input.code ? { acctNum: input.code } : {}),
         accountType,
         accountSubType,
+        // TODO(accounting): the tool does not declare `parentId` yet - sent only
+        // when the caller resolved one, so an org with no nested accounts never
+        // exercises an argument the schema may not accept.
+        ...(input.parentProviderId ? { parentId: input.parentProviderId } : {}),
       })) as {
         account: MappedAccount
         outcome: 'created' | 'existing'

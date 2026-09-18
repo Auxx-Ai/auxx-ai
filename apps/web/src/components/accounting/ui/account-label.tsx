@@ -7,11 +7,18 @@ import {
   accountChipText,
   accountMatchesSearch,
   formatAccountLabel,
+  formatAccountPath,
   type LabelAccount,
 } from './account-label-format'
 import { useChartAccounts } from './use-chart-accounts'
 
-export { accountChipText, accountMatchesSearch, formatAccountLabel, type LabelAccount }
+export {
+  accountChipText,
+  accountMatchesSearch,
+  formatAccountLabel,
+  formatAccountPath,
+  type LabelAccount,
+}
 
 /**
  * Resolve one chart account by id against the one `ledger.chartAccounts`
@@ -59,6 +66,12 @@ interface AccountLabelProps {
    * up with, and a fixed track there is just dead space.
    */
   codeWidthCh?: number
+  /**
+   * Full path label (`Sales: 1310 Raw Materials`, via {@link formatAccountPath})
+   * shown as the `title` tooltip instead of the bare leaf label - for a picker
+   * trigger whose selected account has a parent (D8).
+   */
+  path?: string
   /** Rendered when nothing resolves. Defaults to the raw id, then nothing. */
   fallback?: string
   className?: string
@@ -84,6 +97,7 @@ export function AccountLabel({
   glAccountId,
   density = 'full',
   codeWidthCh,
+  path,
   fallback,
   className,
 }: AccountLabelProps) {
@@ -96,7 +110,7 @@ export function AccountLabel({
     return <span className={cn('truncate', className)}>{text}</span>
   }
 
-  const full = formatAccountLabel(target)
+  const full = path ?? formatAccountLabel(target)
   const code = target.code?.trim() || null
 
   if (density === 'chip') {

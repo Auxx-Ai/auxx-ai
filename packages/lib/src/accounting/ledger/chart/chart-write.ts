@@ -65,6 +65,7 @@ import { readRoleAssignments } from '../roles/role-assignments'
 import type { ChartAccountRow } from '../types'
 import { accountLabel } from './account-label'
 import type { GlAccountSubtypeValue } from './account-subtype'
+import { accountDepth, descendantIds } from './account-tree'
 import {
   type ChartAccountFields,
   loadChartAccountFields,
@@ -85,6 +86,10 @@ const logger = createScopedLogger('postings:chart-write')
 const NOT_PROVISIONED =
   'The chart of accounts is not provisioned for this organization - gl_account_code / gl_account_type are missing. Run the entity migrations.'
 
+/** What a caller naming a `parentId` gets when the org has no `gl_account_parent` field yet. */
+const PARENT_NOT_PROVISIONED =
+  'Sub-accounts are not provisioned for this organization - gl_account_parent is missing. Run the entity migrations.'
+
 /**
  * The `gl_account` attributes, as the crud handler wants them keyed.
  *
@@ -97,6 +102,15 @@ type AccountValues = {
   gl_account_type?: GlAccountTypeValue
   gl_account_is_active?: boolean
   gl_account_subtype?: GlAccountSubtypeValue | null
+  /**
+   * A RELATIONSHIP field, written as a `RecordId` ("defId:instanceId") - the
+   * same shape `bank_deposit_bank_account_record` takes
+   * (`money/bank-deposits/writes.ts`), confirmed against
+   * `field-values/field-value-validator.ts`'s `fieldValueSchemas.relationship`,
+   * which the handler runs every write through. A bare instance id is not one
+   * of the shapes that schema accepts.
+   */
+  gl_account_parent?: string | null
 }
 
 /** A role that still posts to an account, and the account row it points at. */
@@ -120,6 +134,8 @@ export interface CreateChartAccountOptions {
   isActive?: boolean
   /** The second fact about the account (task 13 §3), e.g. `cost_of_goods_sold`. */
   subtype?: GlAccountSubtypeValue | null
+  /** Parent account id (CHART-HIERARCHY §4); must be live and share `accountType`. Omit or `null` for top level. */
+  parentId?: string | null
   /** Who is doing this. Attributed on the write - never a system session. */
   actorUserId: string
 }
@@ -133,6 +149,8 @@ export interface UpdateChartAccountOptions {
   accountType?: GlAccountTypeValue
   isActive?: boolean
   subtype?: GlAccountSubtypeValue | null
+  /** `null` moves the account to top level. Omit to leave it unchanged. */
+  parentId?: string | null
   actorUserId: string
 }
 
@@ -168,16 +186,26 @@ export async function createChartAccount(
     const { fields, defId } = await loadChartTarget(organizationId)
     if (code) await assertCodeIsFree(db, organizationId, code, fields)
 
+    const values: AccountValues = {
+      gl_account_code: code,
+      gl_account_name: name,
+      gl_account_type: options.accountType,
+      gl_account_is_active: options.isActive ?? true,
+      gl_account_subtype: options.subtype ?? null,
+    }
+
+    if (options.parentId) {
+      if (!fields.parent) {
+        throw new UnprocessableEntityError(PARENT_NOT_PROVISIONED, { organizationId })
+      }
+      await assertParentAllowed(db, organizationId, options.parentId, fields, {
+        accountType: options.accountType,
+      })
+      values.gl_account_parent = toRecordId(defId, options.parentId)
+    }
+
     const handler = crudHandler(db, organizationId, actorUserId)
-    const created = await namingTheCode(code, () =>
-      handler.create(defId, {
-        gl_account_code: code,
-        gl_account_name: name,
-        gl_account_type: options.accountType,
-        gl_account_is_active: options.isActive ?? true,
-        gl_account_subtype: options.subtype ?? null,
-      } satisfies AccountValues)
-    )
+    const created = await namingTheCode(code, () => handler.create(defId, values))
 
     return ok(await readBack(db, organizationId, created.instance.id, fields))
   } catch (error) {
@@ -242,6 +270,9 @@ export async function updateChartAccount(
           )
         }
       }
+      // D3 (CHART-HIERARCHY §1): a sub-account shares its parent's statement
+      // type, so retyping either end of that pair would let them diverge.
+      await assertTypeChangeAllowed(db, organizationId, fields, account)
       values.gl_account_type = options.accountType
     }
 
@@ -267,6 +298,24 @@ export async function updateChartAccount(
 
     if (options.subtype !== undefined) {
       values.gl_account_subtype = options.subtype
+    }
+
+    // `null` moves the account to top level; a string sets a parent after the
+    // same D3/D4 checks a create runs, with THIS account excluded from the
+    // cycle search (§4).
+    if (options.parentId !== undefined) {
+      if (options.parentId === null) {
+        if (fields.parent) values.gl_account_parent = null
+      } else {
+        if (!fields.parent) {
+          throw new UnprocessableEntityError(PARENT_NOT_PROVISIONED, { organizationId })
+        }
+        await assertParentAllowed(db, organizationId, options.parentId, fields, {
+          accountId,
+          accountType: options.accountType ?? account.accountType,
+        })
+        values.gl_account_parent = toRecordId(defId, options.parentId)
+      }
     }
 
     if (Object.keys(values).length > 0) {
@@ -314,6 +363,18 @@ export async function removeChartAccount(
   try {
     const { fields, defId } = await loadChartTarget(organizationId)
     const account = await requireAccount(db, organizationId, accountId, fields)
+
+    // ── D6: an account with live sub-accounts refuses to archive ────────────
+    // No cascade in either direction (CHART-HIERARCHY §1) - a cascade archives
+    // accounts a person did not name.
+    const children = await findLiveChildren(db, organizationId, accountId, fields)
+    if (children.length > 0) {
+      throw new UnprocessableEntityError(
+        `${children.length} sub-account${children.length === 1 ? '' : 's'} still sit under ` +
+          `${accountLabel(account)}. Remove or move ${children.length === 1 ? 'it' : 'them'} first.`,
+        { organizationId, accountId, childCount: String(children.length) }
+      )
+    }
 
     // ── I3: removing an account a role still posts to ───────────────────────
     await assertNoLiveRole(
@@ -365,7 +426,12 @@ export async function restoreChartAccount(
   const { organizationId, accountId, actorUserId } = options
 
   try {
-    const { defId } = await loadChartTarget(organizationId)
+    const { fields, defId } = await loadChartTarget(organizationId)
+
+    // D6: a restored account whose parent is still archived would resurface as
+    // a live sub-account of a row every other reader treats as gone.
+    await assertParentNotArchived(db, organizationId, accountId, fields)
+
     const handler = crudHandler(db, organizationId, actorUserId)
     await handler.restore(toRecordId(defId, accountId))
 
@@ -715,5 +781,245 @@ async function assertNoLiveRole(
   throw new UnprocessableEntityError(
     `Cannot ${verb} ${accountLabel(account)}: ${named} ${live.length === 1 ? 'posts' : 'post'} here. Repoint ${live.length === 1 ? 'the role' : 'those roles'} on the Roles tab first, or mark ${live.length === 1 ? 'it' : 'them'} unused. ${consequence}`,
     { organizationId, accountId, roles: live.map((row) => row.role).join(',') }
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hierarchy (CHART-HIERARCHY.md §4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Every live account in the org's chart, decoded - read ONCE per write that
+ * touches a parent, since {@link assertParentAllowed}'s cycle and depth checks
+ * need the whole tree rather than one row. Mirrors `role-map.ts`'s
+ * `listChartAccounts` query rather than importing it, so this module's own
+ * dependency graph is unchanged.
+ */
+async function loadLiveChart(
+  db: Database,
+  organizationId: string,
+  fields: ChartAccountFields
+): Promise<ChartAccountRow[]> {
+  const defId = fields.code.entityDefinitionId
+  if (!defId) return []
+
+  const instances = await db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, defId),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+
+  const { accounts } = await readChartAccountValues(
+    db,
+    organizationId,
+    instances.map((row) => row.id),
+    fields
+  )
+  return [...accounts.values()]
+}
+
+/**
+ * `accountId`'s direct, LIVE sub-accounts - the D6 check on a remove and on a
+ * type change. A targeted `FieldValue` lookup by `relatedEntityId`, cheaper
+ * than {@link loadLiveChart} when only direct children matter. Empty when the
+ * org has no `gl_account_parent` field at all.
+ */
+async function findLiveChildren(
+  db: Database,
+  organizationId: string,
+  accountId: string,
+  fields: ChartAccountFields
+): Promise<ChartAccountRow[]> {
+  if (!fields.parent) return []
+
+  const pointing = await db
+    .select({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, fields.parent.id),
+        eq(schema.FieldValue.relatedEntityId, accountId)
+      )
+    )
+  const candidates = [...new Set(pointing.map((row) => row.entityId))]
+  if (candidates.length === 0) return []
+
+  const live = await db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        inArray(schema.EntityInstance.id, candidates),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+
+  const { accounts } = await readChartAccountValues(
+    db,
+    organizationId,
+    live.map((row) => row.id),
+    fields
+  )
+  return [...accounts.values()]
+}
+
+/**
+ * How many levels deep `accountId`'s own subtree currently goes, relative to
+ * itself (0 for a leaf). D4's depth check needs this because moving a subtree
+ * carries every descendant down by the same amount as its root.
+ */
+function subtreeHeight(chart: readonly ChartAccountRow[], accountId: string): number {
+  const base = accountDepth(chart, accountId)
+  let max = base
+  for (const id of descendantIds(chart, accountId)) {
+    max = Math.max(max, accountDepth(chart, id))
+  }
+  return max - base
+}
+
+/**
+ * D3/D4: refuse a parent that does not exist or is archived, is the account
+ * itself, is one of the account's own descendants (a cycle), carries a
+ * different `accountType`, or would push the subtree past five levels.
+ *
+ * `accountId` is omitted on a CREATE, where there is no existing subtree to
+ * cycle into or measure the height of.
+ */
+async function assertParentAllowed(
+  db: Database,
+  organizationId: string,
+  parentId: string,
+  fields: ChartAccountFields,
+  options: { accountId?: string; accountType: GlAccountTypeValue }
+): Promise<void> {
+  if (options.accountId && parentId === options.accountId) {
+    throw new UnprocessableEntityError('An account cannot be its own parent.', {
+      organizationId,
+      accountId: options.accountId,
+    })
+  }
+
+  const chart = await loadLiveChart(db, organizationId, fields)
+  const parent = chart.find((row) => row.id === parentId)
+  if (!parent) {
+    throw new UnprocessableEntityError(
+      'The parent account does not exist in this organization, or has been removed.',
+      { organizationId, parentId }
+    )
+  }
+
+  if (options.accountId && descendantIds(chart, options.accountId).has(parentId)) {
+    throw new UnprocessableEntityError(
+      `${accountLabel(parent)} is a sub-account of this account, so it cannot also be its parent.`,
+      { organizationId, accountId: options.accountId, parentId }
+    )
+  }
+
+  if (parent.accountType !== options.accountType) {
+    throw new UnprocessableEntityError(
+      `${accountLabel(parent)} is ${article(parent.accountType)} account, so it cannot be the ` +
+        `parent of ${article(options.accountType)} account - a sub-account shares its parent's ` +
+        'statement type.',
+      {
+        organizationId,
+        parentId,
+        accountType: options.accountType,
+        parentType: parent.accountType,
+      }
+    )
+  }
+
+  const resultingDepth =
+    accountDepth(chart, parentId) +
+    1 +
+    (options.accountId ? subtreeHeight(chart, options.accountId) : 0)
+  if (resultingDepth > 4) {
+    throw new UnprocessableEntityError(
+      `Making ${accountLabel(parent)} the parent would put this account six levels deep, past ` +
+        "the chart's five-level limit. Move it under a shallower account.",
+      { organizationId, parentId, resultingDepth: String(resultingDepth) }
+    )
+  }
+}
+
+/**
+ * D3: a sub-account shares its parent's statement type, and a parent shares
+ * its children's - so retyping either end would let the pair silently
+ * diverge. {@link assertParentAllowed} guards the moment a parent is CHOSEN;
+ * this guards the moment the type of an account already in a hierarchy changes.
+ */
+async function assertTypeChangeAllowed(
+  db: Database,
+  organizationId: string,
+  fields: ChartAccountFields,
+  account: ChartAccountRow
+): Promise<void> {
+  if (!fields.parent) return
+
+  if (account.parentId) {
+    const parent = await loadLiveAccount(db, organizationId, account.parentId, fields)
+    throw new UnprocessableEntityError(
+      `Cannot change ${accountLabel(account)}'s type while it is a sub-account of ` +
+        `${parent ? accountLabel(parent) : 'another account'} - a sub-account shares its ` +
+        "parent's statement type. Move it out from under its parent first.",
+      { organizationId, accountId: account.id, parentId: account.parentId }
+    )
+  }
+
+  const children = await findLiveChildren(db, organizationId, account.id, fields)
+  if (children.length > 0) {
+    throw new UnprocessableEntityError(
+      `Cannot change ${accountLabel(account)}'s type: ${children.length} sub-account` +
+        `${children.length === 1 ? '' : 's'} (${children.map((child) => accountLabel(child)).join(', ')}) ` +
+        `still ${children.length === 1 ? 'shares' : 'share'} its type. Move ` +
+        `${children.length === 1 ? 'it' : 'them'} first.`,
+      { organizationId, accountId: account.id, childCount: String(children.length) }
+    )
+  }
+}
+
+/**
+ * D6: refuse a restore while the account's PARENT is still archived - a live
+ * account whose parent reads as removed would confuse every reader that
+ * excludes archived rows from the tree.
+ */
+async function assertParentNotArchived(
+  db: Database,
+  organizationId: string,
+  accountId: string,
+  fields: ChartAccountFields
+): Promise<void> {
+  if (!fields.parent) return
+
+  const { accounts } = await readChartAccountValues(db, organizationId, [accountId], fields)
+  const parentId = accounts.get(accountId)?.parentId
+  if (!parentId) return
+
+  // Live (or gone) - nothing to block. `loadLiveAccount`'s query is the same
+  // liveness check every other reader of this chart makes.
+  if (await loadLiveAccount(db, organizationId, parentId, fields)) return
+
+  // Archived, or a dangling pointer with nothing left behind it at all - only
+  // the first is a real account to name.
+  const { accounts: parentRead } = await readChartAccountValues(
+    db,
+    organizationId,
+    [parentId],
+    fields
+  )
+  const parent = parentRead.get(parentId)
+  if (!parent) return
+
+  throw new UnprocessableEntityError(
+    `Cannot restore this account: its parent, ${accountLabel(parent)}, is archived. Restore the ` +
+      'parent first, or move this account out from under it.',
+    { organizationId, accountId, parentId }
   )
 }

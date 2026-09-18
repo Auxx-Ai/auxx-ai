@@ -62,6 +62,10 @@ export interface MappedAccount {
   accountType: string
   classification: string
   active: boolean
+  /** TODO(accounting): the apps-repo tool does not send `ParentRef` yet - see `toProviderAccount`. */
+  parentId?: string | null
+  /** Not yet sent by the tool either; unused until `parentId` lands. */
+  subAccount?: boolean
 }
 
 /**
@@ -111,7 +115,7 @@ export async function listQuickbooksProviderAccounts(
     }
     accounts.push(mapped)
   }
-  return accounts
+  return resolveDerivedParents(accounts)
 }
 
 /**
@@ -139,7 +143,50 @@ export function toProviderAccount(account: MappedAccount): ProviderAccount | nul
     accountType: account.accountType,
     classification,
     active: account.active !== false,
+    // TODO(accounting): trust this alone once the tool returns ParentRef -
+    // `resolveDerivedParents` fills it in from `fullyQualifiedName` until then.
+    parentId: account.parentId ?? null,
   }
+}
+
+/**
+ * Fill in `parentId` for every account the tool did not already answer, by
+ * matching the `Parent:Child` prefix of `fullyQualifiedName` against another
+ * account in the SAME list with that exact path and classification.
+ *
+ * TODO(accounting): delete this once `list_quickbooks_accounts` returns
+ * `ParentRef` and `toProviderAccount` no longer needs a second pass at all.
+ *
+ * A single created account (`createProviderAccount`'s conversion) is never run
+ * through this - it has no list to resolve against, and keeps whatever the
+ * tool returned.
+ */
+export function resolveDerivedParents(accounts: ProviderAccount[]): ProviderAccount[] {
+  const byPath = new Map<string, ProviderAccount>()
+  for (const account of accounts) {
+    byPath.set(`${account.classification}:${account.fullyQualifiedName}`, account)
+  }
+
+  let unresolved = 0
+  const resolved = accounts.map((account) => {
+    if (account.parentId !== null) return account
+    const splitAt = account.fullyQualifiedName.lastIndexOf(':')
+    if (splitAt < 0) return account
+    const prefix = account.fullyQualifiedName.slice(0, splitAt)
+    const parent = byPath.get(`${account.classification}:${prefix}`)
+    if (!parent) {
+      unresolved++
+      return account
+    }
+    return { ...account, parentId: parent.id }
+  })
+
+  if (unresolved > 0) {
+    logger.warn('Could not resolve the parent for one or more nested QuickBooks accounts', {
+      unresolved,
+    })
+  }
+  return resolved
 }
 
 /**

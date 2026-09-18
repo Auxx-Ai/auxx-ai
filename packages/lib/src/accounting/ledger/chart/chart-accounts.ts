@@ -60,6 +60,7 @@ export const ACCOUNT_ATTRIBUTES = [
   'gl_account_type',
   'gl_account_is_active',
   'gl_account_subtype',
+  'gl_account_parent',
 ] as const
 
 /** The five `CustomField` rows a `gl_account` is read through. */
@@ -79,6 +80,12 @@ export interface ChartAccountFields {
    * exactly like an unprovisioned `name` or `active`.
    */
   subtype: { id: string } | null
+  /**
+   * Absent for every org not yet stamped by the CHART-HIERARCHY per-org
+   * migration. Reads decode `parentId: null` for such an org - every row is
+   * top-level, same as before the field existed.
+   */
+  parent: { id: string } | null
 }
 
 /**
@@ -146,6 +153,7 @@ export async function loadChartAccountFields(
     type: { id: type.id },
     active: fields.gl_account_is_active ? { id: fields.gl_account_is_active.id } : null,
     subtype: fields.gl_account_subtype ? { id: fields.gl_account_subtype.id } : null,
+    parent: fields.gl_account_parent ? { id: fields.gl_account_parent.id } : null,
   }
 }
 
@@ -171,6 +179,7 @@ export async function readChartAccountValues(
   if (fields.name) fieldIds.push(fields.name.id)
   if (fields.active) fieldIds.push(fields.active.id)
   if (fields.subtype) fieldIds.push(fields.subtype.id)
+  if (fields.parent) fieldIds.push(fields.parent.id)
 
   const values = await db
     .select({
@@ -179,6 +188,7 @@ export async function readChartAccountValues(
       valueText: schema.FieldValue.valueText,
       optionId: schema.FieldValue.optionId,
       valueBoolean: schema.FieldValue.valueBoolean,
+      relatedEntityId: schema.FieldValue.relatedEntityId,
     })
     .from(schema.FieldValue)
     .where(
@@ -199,6 +209,7 @@ export interface ChartAccountValueRow {
   valueText: string | null
   optionId: string | null
   valueBoolean: boolean | null
+  relatedEntityId: string | null
 }
 
 /**
@@ -220,7 +231,14 @@ export function decodeChartAccounts(
 ): ChartAccountsRead {
   const draft = new Map<
     string,
-    { code?: string; name?: string; accountType?: string; isActive?: boolean; subtype?: string }
+    {
+      code?: string
+      name?: string
+      accountType?: string
+      isActive?: boolean
+      subtype?: string
+      parentId?: string
+    }
   >()
   for (const row of values) {
     const entry = draft.get(row.entityId) ?? {}
@@ -233,6 +251,8 @@ export function decodeChartAccounts(
       entry.isActive = row.valueBoolean ?? undefined
     else if (fields.subtype && row.fieldId === fields.subtype.id)
       entry.subtype = row.optionId ?? undefined
+    else if (fields.parent && row.fieldId === fields.parent.id)
+      entry.parentId = row.relatedEntityId ?? undefined
     draft.set(row.entityId, entry)
   }
 
@@ -257,6 +277,10 @@ export function decodeChartAccounts(
       // Null when the org has no `gl_account_subtype` field yet (unstamped by
       // entity migration 144) or the account itself carries no value.
       subtype: (entry.subtype as GlAccountSubtypeValue | undefined) ?? null,
+      // Null when the org has no `gl_account_parent` field yet, or the account
+      // is top-level. A dangling id (its parent got archived) decodes as-is -
+      // the tree builder treats an unknown parent as root.
+      parentId: entry.parentId ?? null,
     })
   }
 

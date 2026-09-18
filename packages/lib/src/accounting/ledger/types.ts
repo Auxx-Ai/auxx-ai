@@ -842,6 +842,8 @@ export interface ChartAccountRow {
    * code prefix, because a chart without codes has no prefix to test.
    */
   subtype: GlAccountSubtypeValue | null
+  /** The parent account's id, or null at the top level (D1, CHART-HIERARCHY.md). */
+  parentId: string | null
   isActive: boolean
   /**
    * The account has been removed from the chart (archived - `removeChartAccount`
@@ -1037,6 +1039,8 @@ export interface ProviderAccount {
   /** Normalised to the five statement sections every double-entry system shares. */
   classification: GlAccountTypeValue
   active: boolean
+  /** The provider's own id of the parent account, or null at the top level (CHART-HIERARCHY §6). */
+  parentId: string | null
 }
 
 /**
@@ -1164,11 +1168,21 @@ export interface ChartImportPlan {
     providerAccount: ProviderAccount
     code: string | null
     name: string
+    /** The provider's parent id, resolved to a `glAccountId` by the writer's create-order map. Null at the top level or when the parent was skipped. */
+    providerParentId: string | null
     accountType: GlAccountTypeValue
     subtype: GlAccountSubtypeValue | null
   }>
   skippedInactive: ProviderAccount[]
   alreadyImported: Array<{ providerAccount: ProviderAccount; glAccountId: string }>
+  /**
+   * An already-imported account whose provider row now carries a parent this
+   * org's chart does not yet reflect (CHART-HIERARCHY §6) - a refresh only
+   * ADDS what the provider has, so the writer repoints the parent and, when
+   * the account still carries the commit-2a027b6c0 full-path stopgap name,
+   * restores the leaf name alongside it.
+   */
+  reparent: Array<{ glAccountId: string; providerParentId: string; leafName: string | null }>
   /** Roles with exactly one unambiguous candidate, resolved AFTER creation. */
   roleCandidates: Array<{ role: AccountRole; match: 'subtype' | 'name'; providerAccountId: string }>
   /** Core role-bearing accounts the provider chart cannot satisfy. */
@@ -1187,6 +1201,8 @@ export interface ChartImportResult {
   rolesAssigned: AccountRole[]
   /** The uncoded, unmapped core accounts added because the provider lacks them. */
   coreCreated: DefaultChartAccount[]
+  /** Created under a parent, or an existing account the refresh just repointed under one. */
+  nestedUnder: number
 }
 
 /**

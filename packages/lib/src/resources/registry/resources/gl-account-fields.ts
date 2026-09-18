@@ -1,7 +1,7 @@
 // packages/lib/src/resources/registry/resources/gl-account-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
-import { toFieldId } from '@auxx/types/field'
+import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { GlAccountSubtype, GlAccountType } from '../enum-values'
 import type { ResourceField } from '../field-types'
@@ -178,6 +178,79 @@ export const GL_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       'The second fact about this account beyond its statement type (asset, liability, ...) - ' +
       'whether it is the bank, receivable, payable, inventory or cost-of-goods-sold account. ' +
       'The P&L groups cost of goods sold by this, never by a code prefix.',
+  },
+
+  // Self-referential sub-account hierarchy (plans/accounting/CHART-HIERARCHY.md
+  // D1). FieldValue-backed like every other field here, so — unlike `article`'s
+  // `parentId` dbColumn — both halves carry `relationship` (for the
+  // `preventCircular`/`maxDepth` constraints, D4) AND `relationshipConfig` (the
+  // seeder's seed-only pair shape), following `bank_deposit`'s `bankAccount`.
+  parent: {
+    id: toFieldId('parent'),
+    key: 'parent',
+    label: 'Parent account',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'gl_account_parent',
+    systemSortOrder: 'a3W',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'gl_account:children' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+      constraints: { preventCircular: true, maxDepth: 5 },
+    },
+    relationshipConfig: {
+      relatedEntityType: 'gl_account',
+      relationshipType: 'belongs_to',
+      inverseName: 'Sub-accounts',
+      inverseSystemAttribute: 'gl_account_children',
+    },
+    description: 'The account this one rolls up under, if any',
+  },
+
+  children: {
+    id: toFieldId('children'),
+    key: 'children',
+    label: 'Sub-accounts',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'gl_account_children',
+    systemSortOrder: 'a3X',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'gl_account:parent' as ResourceFieldId,
+      relationshipType: 'has_many',
+      // Actionable (both ends EntityInstance-backed, no dbColumn on the
+      // inverse) — D6 wants no cascade, so a parent with live children refuses.
+      onDelete: 'restrict',
+      isInverse: true,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'gl_account',
+      relationshipType: 'has_many',
+      onDelete: 'restrict',
+      inverseName: 'Parent account',
+      inverseSystemAttribute: 'gl_account_parent',
+    },
+    description: 'Accounts that roll up under this one',
   },
 
   isActive: {

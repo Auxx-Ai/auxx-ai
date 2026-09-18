@@ -10,9 +10,16 @@ import { describe, expect, it, vi } from 'vitest'
 import type { TrialBalance, TrialBalanceRow } from '../trial-balance'
 
 vi.mock('../trial-balance', () => ({ readTrialBalance: vi.fn() }))
+// `readProfitAndLoss` reads the chart once, up front, for CHART-HIERARCHY.md
+// §5's nesting - mocked to empty here because these tests are about the
+// COGS/operating-expense split, not the chart. `adapters.test.ts` covers nesting.
+vi.mock('../../ledger/roles/role-map', () => ({ listChartAccounts: vi.fn() }))
 
+import { listChartAccounts } from '../../ledger/roles/role-map'
 import { readProfitAndLoss } from '../profit-and-loss'
 import { readTrialBalance } from '../trial-balance'
+
+vi.mocked(listChartAccounts).mockResolvedValue(ok([]))
 
 const ORG = 'org_1'
 

@@ -37,12 +37,26 @@ export function accountChipText(account: LabelAccount): string {
   return account.code?.trim() || account.name
 }
 
-/** Case-insensitive match over code and name, null-safe on the code. */
-export function accountMatchesSearch(account: LabelAccount, search: string): boolean {
+/**
+ * `Sales: 1310 Raw Materials` (D8) - bare ancestor names, then the leaf's own
+ * {@link formatAccountLabel}. The web mirror of the lib's `accountPathLabel`,
+ * over `LabelAccount`s a caller already resolved rather than a chart lookup.
+ */
+export function formatAccountPath(ancestors: LabelAccount[], leaf: LabelAccount): string {
+  return [...ancestors.map((account) => account.name), formatAccountLabel(leaf)].join(': ')
+}
+
+/** Case-insensitive match over code, name, and an optional path label (D8), null-safe on the code. */
+export function accountMatchesSearch(
+  account: LabelAccount,
+  search: string,
+  path?: string
+): boolean {
   const needle = search.trim().toLowerCase()
   if (!needle) return true
   return (
     account.name.toLowerCase().includes(needle) ||
-    (account.code?.toLowerCase().includes(needle) ?? false)
+    (account.code?.toLowerCase().includes(needle) ?? false) ||
+    (path?.toLowerCase().includes(needle) ?? false)
   )
 }

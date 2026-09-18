@@ -40,8 +40,10 @@ import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { accountLabel } from '../ledger/chart/account-label'
+import { accountPathLabel } from '../ledger/chart/account-tree'
 import { listChartAccounts } from '../ledger/roles/role-map'
 import type { AccountIdentityRow } from '../ledger/types'
+import { providerDisplayName } from '../mirror/client'
 import { resolveAccountingProvider, supportsCreatingProviderAccounts } from './provider'
 import { isMappableTo, validateProviderMapping } from './suggest-account-identities'
 
@@ -131,6 +133,21 @@ export async function createAndLinkProviderAccount(
       )
     }
 
+    // CHART-HIERARCHY §6: a parent must already have its own counterpart, or the
+    // provider would create this account at the top level and silently drop the
+    // nesting - there is no way to reparent it after the fact through this seam.
+    let parentProviderId: string | undefined
+    if (account.parentId) {
+      const mappedParentId = mappings.value.get(account.parentId)
+      if (!mappedParentId) {
+        throw new UnprocessableEntityError(
+          `Link ${accountPathLabel(chart.value, account.parentId)} to ${providerDisplayName(provider.id)} first.`,
+          { organizationId, glAccountId, parentAccountId: account.parentId }
+        )
+      }
+      parentProviderId = mappedParentId
+    }
+
     const created = await provider.createProviderAccount({
       orgId: organizationId,
       glAccountId,
@@ -138,6 +155,7 @@ export async function createAndLinkProviderAccount(
       code: account.code,
       classification: account.accountType,
       subtype: account.subtype ?? null,
+      ...(parentProviderId ? { parentProviderId } : {}),
       actorUserId,
     })
     if (created.isErr()) return err(created.error)
