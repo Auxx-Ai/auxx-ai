@@ -400,6 +400,8 @@ describe('fulfillOrder', () => {
           lines: [
             {
               fulfillmentLineId: 'fl_1',
+              fulfillmentId: 'ful_1',
+              orderId: 'ord_1',
               lineItemId: 'li_1',
               quantity: 3,
               quantityRelieved: null,
