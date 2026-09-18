@@ -5,7 +5,7 @@ import {
   computeLandedBreakdown,
   type LandedCostBreakdown,
   type OfferTariff,
-} from '@auxx/lib/bom/client'
+} from '@auxx/lib/inventory/costing/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {

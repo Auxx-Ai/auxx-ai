@@ -84,11 +84,11 @@ vi.mock('../../bom/subpart-graph', () => ({
   loadSubpartGraph: async () => h.graph,
 }))
 
-vi.mock('../../bom/qoh', () => ({
+vi.mock('../../inventory/costing/qoh', () => ({
   batchRecalculateQoH: h.batchRecalculateQoH,
 }))
 
-vi.mock('../../builds', () => ({
+vi.mock('../../inventory/costing', () => ({
   readStandardCost: async (_db: unknown, _orgId: string, partIds: string[]) => {
     const { ok } = await import('neverthrow')
     const map = new Map<string, { standardCost: number }>()
@@ -100,19 +100,20 @@ vi.mock('../../builds', () => ({
   },
 }))
 
-vi.mock('../../stock-movements', async () => {
-  const actual =
-    await vi.importActual<typeof import('../../stock-movements')>('../../stock-movements')
-  return { ...actual, writeStockMovements: h.writeStockMovements }
+vi.mock('../../inventory/movements', async () => {
+  const actual = await vi.importActual<typeof import('../../inventory/movements')>(
+    '../../inventory/movements'
+  )
+  return {
+    ...actual,
+    writeStockMovements: h.writeStockMovements,
+    reverseMovement: h.reverseMovement,
+  }
 })
 
 vi.mock('../../realtime', () => ({
   getRealtimeService: () => ({}),
   publishRecordsChanged: h.publishRecordsChanged,
-}))
-
-vi.mock('../../receiving', () => ({
-  reverseMovement: h.reverseMovement,
 }))
 
 vi.mock('../../resources/crud/unified-handler', () => ({

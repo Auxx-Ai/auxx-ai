@@ -1,4 +1,4 @@
-// packages/lib/src/bom/vendor-cost.ts
+// packages/lib/src/inventory/costing/vendor-cost.ts
 
 /**
  * The landed-cost formula and the winning-supplier rule — the single definition
@@ -20,7 +20,7 @@
  */
 
 import { dayKeyInZone } from '@auxx/utils/calendar-day'
-import { BadRequestError } from '../errors'
+import { BadRequestError } from '../../errors'
 
 /**
  * One supplier's priced offer for a part.

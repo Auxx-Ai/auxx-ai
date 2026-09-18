@@ -1,11 +1,11 @@
-// packages/lib/src/bom/offer-tariff.test.ts
+// packages/lib/src/inventory/costing/__tests__/offer-tariff.test.ts
 //
 // 29 §3.1 as a function (30 §1): override, else schedule, else zero - with the
 // three "zero" readings kept apart, because the six callers that share this
 // would otherwise each collapse them differently.
 
 import { describe, expect, it } from 'vitest'
-import { resolveOfferTariff, type TariffRateRow } from './vendor-cost'
+import { resolveOfferTariff, type TariffRateRow } from '../vendor-cost'
 
 function rateRow(id: string, overrides: Partial<TariffRateRow> = {}): TariffRateRow {
   return {

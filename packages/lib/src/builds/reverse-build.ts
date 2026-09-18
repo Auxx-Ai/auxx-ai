@@ -51,6 +51,7 @@ import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import { BadRequestError, ConflictError, UnprocessableEntityError } from '../errors'
+import { type StockMovementInput, writeStockMovements } from '../inventory/movements'
 import {
   linkMovementsToPosting,
   reverseInventoryMovementPosting,
@@ -58,7 +59,6 @@ import {
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { BuildStatus, StockMovementCostBasis } from '../resources/registry/enum-values'
 import { toRecordId } from '../resources/resource-id'
-import { type StockMovementInput, writeStockMovements } from '../stock-movements'
 import { BUILD_STATUS_BYPASS, requireDefId } from './build-mutations'
 import {
   assertBuildStatus,

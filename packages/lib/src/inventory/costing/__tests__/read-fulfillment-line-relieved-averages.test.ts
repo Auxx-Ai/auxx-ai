@@ -1,4 +1,4 @@
-// packages/lib/src/relief/__tests__/read-fulfillment-line-relieved-averages.test.ts
+// packages/lib/src/inventory/costing/__tests__/read-fulfillment-line-relieved-averages.test.ts
 //
 // Pins the two things a canned-result mock cannot catch (brief 50 §3.5):
 //
@@ -129,7 +129,7 @@ vi.mock('@auxx/database', () => ({
     },
   },
 }))
-vi.mock('../../cache', () => ({
+vi.mock('../../../cache', () => ({
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: string[]) =>
@@ -141,7 +141,7 @@ vi.mock('../../cache', () => ({
 }))
 
 import type { Database } from '@auxx/database'
-import { StockMovementType } from '../../resources/registry/enum-values'
+import { StockMovementType } from '../../../resources/registry/enum-values'
 import { readFulfillmentLineRelievedAverages } from '../cost-reads'
 
 const fakeDb = {

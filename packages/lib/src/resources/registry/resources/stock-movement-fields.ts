@@ -350,7 +350,7 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
    * chain `role -> the org's gl_account -> code -> provider id` re-derives the
    * number at posting time.
    *
-   * `resolveInventoryRoleForPartKind` (receiving/client.ts) is the only thing
+   * `resolveInventoryRoleForPartKind` (inventory/movements/client.ts) is the only thing
    * that decides this value; `receiveStock`, `adjustStock` and `completeBuild`
    * stamp it, the two reversal paths copy it verbatim, and
    * `buildInventoryMovementEntry` sums the entry's lines by it.

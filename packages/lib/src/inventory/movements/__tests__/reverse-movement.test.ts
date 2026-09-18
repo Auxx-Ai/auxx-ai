@@ -1,4 +1,4 @@
-// packages/lib/src/receiving/__tests__/reverse-movement.test.ts
+// packages/lib/src/inventory/movements/__tests__/reverse-movement.test.ts
 // The correction path. The org cache and the CRUD handler are mocked with the
 // same doubles `receive-stock.test.ts` uses, and the three reads are served by a
 // db stand-in that routes on table identity — so nothing here needs a database.
@@ -21,7 +21,7 @@ import {
   ConflictError,
   NotFoundError,
   UnprocessableEntityError,
-} from '../../errors'
+} from '../../../errors'
 
 /** One stored `FieldValue`, in the projection `reverse-movement.ts` selects. */
 interface ValueRow {
@@ -48,7 +48,7 @@ const h = vi.hoisted(() => ({
   reversalRows: [] as { id: string }[],
 }))
 
-vi.mock('../../cache', () => ({
+vi.mock('../../../cache', () => ({
   getCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => h.defs.get(entityType)),
   requireCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => {
     const id = h.defs.get(entityType)
@@ -65,7 +65,7 @@ vi.mock('../../cache', () => ({
   }),
 }))
 
-vi.mock('../../resources/crud/unified-handler', () => ({
+vi.mock('../../../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
     create = h.createSpy
   },
@@ -411,7 +411,7 @@ describe('reverseMovement — the refusals', () => {
 
 // The posting seam has its own test (`postings/__tests__/post-inventory-movement.test.ts`);
 // this file is about the movements. `vi.mock` is hoisted, so placement is free.
-vi.mock('../../postings/post-inventory-movement', () => ({
+vi.mock('../../../postings/post-inventory-movement', () => ({
   postInventoryMovementInTx: async () => null,
   exportInventoryMovement: async () => null,
   inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),

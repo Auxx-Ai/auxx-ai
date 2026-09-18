@@ -71,7 +71,7 @@ vi.mock('../receipt-queries', async () => {
   }
 })
 
-vi.mock('../../builds/ensure-standard-cost', () => ({
+vi.mock('../../inventory/costing/ensure-standard-cost', () => ({
   ensureStandardCost: h.ensureSpy,
 }))
 

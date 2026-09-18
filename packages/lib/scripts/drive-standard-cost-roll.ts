@@ -12,7 +12,7 @@
 
 import { database as db } from '@auxx/database'
 import { skipReasonLabel } from '../src/builds/client'
-import { previewStandardCostRoll } from '../src/builds/standard-cost-queries'
+import { previewStandardCostRoll } from '../src/inventory/costing/standard-cost-queries'
 
 const ORG = process.argv[2] ?? ''
 

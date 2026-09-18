@@ -1,4 +1,4 @@
-// packages/lib/src/stock-movements/values.ts
+// packages/lib/src/inventory/movements/values.ts
 
 /**
  * The values bag every `stock_movement` writer hands to `UnifiedCrudHandler`.
@@ -12,8 +12,8 @@
  * which does not name cardinality as a shared axis).
  */
 
-import { computeExtendedCost } from '../receiving/client'
-import type { RecordId } from '../resources/resource-id'
+import type { RecordId } from '../../resources/resource-id'
+import { computeExtendedCost } from './client'
 
 /** Already-resolved link targets, keyed the way the movement stores them. */
 export interface ResolvedStockMovementLinks {

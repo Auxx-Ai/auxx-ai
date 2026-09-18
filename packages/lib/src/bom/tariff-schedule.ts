@@ -18,7 +18,7 @@
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
-import type { TariffRateRow } from './vendor-cost'
+import type { TariffRateRow } from '../inventory/costing/vendor-cost'
 
 /**
  * Every live `tariff_rate` row in the org, grouped by the `tariff_code` it

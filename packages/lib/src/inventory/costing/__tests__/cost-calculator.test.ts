@@ -1,4 +1,4 @@
-// packages/lib/src/bom/cost-calculator.test.ts
+// packages/lib/src/inventory/costing/__tests__/cost-calculator.test.ts
 //
 // Cover for plans/parts/cost-provenance-and-stale-values.md §1, §5.3-§5.5: `persistCosts`
 // used to be write-only, so a part that lost its last vendor part kept the number it had at
@@ -72,7 +72,7 @@ const FIELD: Record<string, { id: string; type: string }> = {
   part_cost_source: { id: 'f_part_cost_source', type: 'SINGLE_SELECT' },
 }
 
-vi.mock('../cache', () => ({
+vi.mock('../../../cache', () => ({
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: readonly string[]) =>
@@ -83,32 +83,32 @@ vi.mock('../cache', () => ({
   requireCachedEntityDefId: async (_orgId: string, entityType: string) => `${entityType}_def`,
 }))
 
-vi.mock('../field-values/field-value-helpers', () => ({
+vi.mock('../../../field-values/field-value-helpers', () => ({
   createFieldValueContext: h.createFieldValueContext,
 }))
 
-vi.mock('./cost-writer', () => ({
+vi.mock('../cost-writer', () => ({
   writeCostValues: h.writeCostValues,
 }))
 
-vi.mock('../field-values/stored-field-type', () => ({
+vi.mock('../../../field-values/stored-field-type', () => ({
   toFieldType: (stored: string) => stored,
 }))
 
-vi.mock('../realtime', () => ({
+vi.mock('../../../realtime', () => ({
   getRealtimeService: h.getRealtimeService,
   publishFieldValueUpdates: h.publishFieldValueUpdates,
 }))
 
-vi.mock('../money/catalog-pricing', () => ({
+vi.mock('../../../money/catalog-pricing', () => ({
   syncCatalogItemPricing: h.syncCatalogItemPricing,
 }))
 
-vi.mock('./tariff-schedule', () => ({
+vi.mock('../../../bom/tariff-schedule', () => ({
   loadTariffSchedule: h.loadTariffSchedule,
 }))
 
-vi.mock('../postings/book-time-zone', () => ({
+vi.mock('../../../postings/book-time-zone', () => ({
   readBookTimeZoneOrUtc: h.readBookTimeZoneOrUtc,
 }))
 
@@ -117,7 +117,7 @@ import {
   loadOrgPricingData,
   recalculateAffectedParts,
   recalculateAllPartCosts,
-} from './cost-calculator'
+} from '../cost-calculator'
 
 const ORG = 'org_1'
 const ASSEMBLY = 'part_assembly'

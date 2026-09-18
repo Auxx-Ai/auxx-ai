@@ -14,6 +14,7 @@ import {
 } from '@auxx/lib/bom'
 import { getCachedEntityDefId, getOrgCache } from '@auxx/lib/cache'
 import { NotFoundError, UnprocessableEntityError } from '@auxx/lib/errors'
+import { computeExtendedCost, reverseMovement } from '@auxx/lib/inventory/movements'
 import { markPurchaseOrderSent } from '@auxx/lib/money'
 import { PermissionKey } from '@auxx/lib/permissions'
 import {
@@ -46,7 +47,6 @@ import {
   adjustStock,
   bulkOpenStockBalance,
   bulkSetPartKind,
-  computeExtendedCost,
   getLastReceiptCost,
   getPartReceiptHistory,
   listOpeningStockCandidates,
@@ -54,7 +54,6 @@ import {
   openStockBalance,
   receivePurchaseOrder,
   receiveStock,
-  reverseMovement,
 } from '@auxx/lib/receiving'
 import { parseRecordId, type RecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'

@@ -82,8 +82,8 @@ const h = vi.hoisted(() => ({
   freshReadOutcomes: [] as Array<{ id: string; found: boolean }>,
 }))
 
-vi.mock('../../receiving/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../receiving/client')>()
+vi.mock('../../inventory/movements/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../inventory/movements/client')>()
   return {
     ...actual,
     resolveInventoryRoleForPartKind: (

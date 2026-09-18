@@ -1,4 +1,4 @@
-// packages/lib/src/receiving/cost-fields.ts
+// packages/lib/src/inventory/movements/cost-fields.ts
 
 /**
  * The one pre-flight every COSTED movement writer shares: are the cost fields
@@ -11,8 +11,8 @@
  * enforced while it is not.
  */
 
-import { getOrgCache } from '../cache'
-import { UnprocessableEntityError } from '../errors'
+import { getOrgCache } from '../../cache'
+import { UnprocessableEntityError } from '../../errors'
 
 /** The two attributes without which a cost cannot be expressed at all. */
 const REQUIRED_COST_ATTRIBUTES = ['stock_movement_unit_cost', 'stock_movement_cost_basis'] as const

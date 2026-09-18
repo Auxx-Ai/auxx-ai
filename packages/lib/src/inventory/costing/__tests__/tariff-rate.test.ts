@@ -1,4 +1,4 @@
-// packages/lib/src/bom/tariff-rate.test.ts
+// packages/lib/src/inventory/costing/__tests__/tariff-rate.test.ts
 //
 // The resolution rule (plans/money/tasks/29-tariff-schedule.md §3) is the
 // load-bearing half of the tariff schedule and it is shared between the cost
@@ -6,8 +6,8 @@
 // asserted indirectly through whatever happens to call it.
 
 import { describe, expect, it } from 'vitest'
-import { BadRequestError } from '../errors'
-import { resolveTariffRate, type TariffRateRow } from './vendor-cost'
+import { BadRequestError } from '../../../errors'
+import { resolveTariffRate, type TariffRateRow } from '../vendor-cost'
 
 /** A rate row. `rate` is a percentage and `effectiveFrom` is a calendar day. */
 function rateRow(id: string, overrides: Partial<TariffRateRow> = {}): TariffRateRow {

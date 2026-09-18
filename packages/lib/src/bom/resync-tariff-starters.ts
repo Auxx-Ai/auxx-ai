@@ -98,6 +98,12 @@ import { alias } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
 import { AuxxError, BadRequestError, NotFoundError } from '../errors'
+import {
+  authorityKey,
+  effectiveDay,
+  resolveTariffRate,
+  type TariffRateRow,
+} from '../inventory/costing/vendor-cost'
 import { readBookTimeZoneOrUtc } from '../postings/book-time-zone'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { loadTariffMemberships } from './tariff-301-memberships'
@@ -109,7 +115,6 @@ import {
   TARIFF_ACTIONS,
   TARIFF_STARTERS_VERSION,
 } from './tariff-starters'
-import { authorityKey, effectiveDay, resolveTariffRate, type TariffRateRow } from './vendor-cost'
 
 const logger = createScopedLogger('bom:resync-tariff-starters')
 

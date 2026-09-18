@@ -1,4 +1,4 @@
-// packages/lib/src/builds/__tests__/standard-cost.test.ts
+// packages/lib/src/inventory/costing/__tests__/standard-cost.test.ts
 //
 // The IO half of the roll: ancestor widening against real data, the revaluation
 // delta the preview exists to show, and what actually gets written.
@@ -61,7 +61,7 @@ const FIELD: Record<string, { id: string; type: string }> = {
   part_standard_cost_effective_at: { id: 'f_std_at', type: 'DATETIME' },
 }
 
-vi.mock('../../cache', () => ({
+vi.mock('../../../cache', () => ({
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: readonly string[]) =>
@@ -71,7 +71,7 @@ vi.mock('../../cache', () => ({
   requireCachedEntityDefId: async () => 'part_def',
 }))
 
-vi.mock('../../bom/cost-calculator', () => ({
+vi.mock('../cost-calculator', () => ({
   recalculateAllPartCosts: async (orgId: string) => {
     h.callOrder.push('recalculateAllPartCosts')
     return h.recalculateAllPartCosts(orgId)
@@ -100,31 +100,31 @@ vi.mock('../../bom/cost-calculator', () => ({
   },
 }))
 
-vi.mock('../../settings/settings-service', () => ({
+vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: async ({ key }: { key: string }) => h.settings[key] ?? null,
 }))
 
-vi.mock('../../settings/read', () => ({
+vi.mock('../../../settings/read', () => ({
   readOrganizationSettings: async (_organizationId: string, keys: readonly string[]) =>
     Object.fromEntries(keys.map((key) => [key, h.settings[key] ?? null])),
 }))
 
-vi.mock('../../field-values/field-value-helpers', () => ({
+vi.mock('../../../field-values/field-value-helpers', () => ({
   createFieldValueContext: (organizationId: string, userId?: string) => ({
     organizationId,
     userId,
   }),
 }))
 
-vi.mock('../../field-values/field-value-mutations', () => ({
+vi.mock('../../../field-values/field-value-mutations', () => ({
   setValueWithType: h.setValueWithType,
 }))
 
-vi.mock('../../field-values/stored-field-type', () => ({
+vi.mock('../../../field-values/stored-field-type', () => ({
   toFieldType: (stored: string) => stored,
 }))
 
-vi.mock('../../realtime', () => ({
+vi.mock('../../../realtime', () => ({
   getRealtimeService: () => ({}),
   publishFieldValueUpdates: h.publishFieldValueUpdates,
 }))

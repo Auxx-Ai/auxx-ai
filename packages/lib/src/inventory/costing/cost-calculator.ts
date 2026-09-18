@@ -1,4 +1,4 @@
-// packages/lib/src/bom/cost-calculator.ts
+// packages/lib/src/inventory/costing/cost-calculator.ts
 
 import { database, schema } from '@auxx/database'
 import type { CustomFieldEntity } from '@auxx/database/types'
@@ -8,16 +8,16 @@ import type { RecordId } from '@auxx/types/resource'
 import { toRecordId } from '@auxx/types/resource'
 import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { getOrgCache, requireCachedEntityDefId } from '../cache'
-import { toFieldType } from '../field-values/stored-field-type'
-import { readBookTimeZoneOrUtc } from '../postings/book-time-zone'
+import { loadTariffSchedule } from '../../bom/tariff-schedule'
+import { getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { toFieldType } from '../../field-values/stored-field-type'
+import { readBookTimeZoneOrUtc } from '../../postings/book-time-zone'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
   publishFieldValueUpdates,
-} from '../realtime'
+} from '../../realtime'
 import { type CostWrite, writeCostValues } from './cost-writer'
-import { loadTariffSchedule } from './tariff-schedule'
 import {
   computeLandedCost,
   resolveOfferTariff,
@@ -932,7 +932,7 @@ export async function recalculateAffectedParts(
  */
 async function syncCatalogPricingSafely(orgId: string, changedPartIds: string[]): Promise<void> {
   try {
-    const { syncCatalogItemPricing } = await import('../money/catalog-pricing')
+    const { syncCatalogItemPricing } = await import('../../money/catalog-pricing')
     await syncCatalogItemPricing(orgId, changedPartIds)
   } catch (error) {
     logger.error('Failed to sync catalog item pricing after part cost recalc', {

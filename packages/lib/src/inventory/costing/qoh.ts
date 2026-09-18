@@ -1,4 +1,4 @@
-// packages/lib/src/bom/qoh.ts
+// packages/lib/src/inventory/costing/qoh.ts
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -7,14 +7,14 @@ import type { RecordId } from '@auxx/types/resource'
 import { toRecordId } from '@auxx/types/resource'
 import { nextKeyAfter } from '@auxx/utils/fractional-indexing'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { getOrgCache, requireCachedEntityDefId } from '../cache'
-import { buildFieldValueRow } from '../field-values/field-value-mutations'
-import { toFieldType } from '../field-values/stored-field-type'
+import { getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { buildFieldValueRow } from '../../field-values/field-value-mutations'
+import { toFieldType } from '../../field-values/stored-field-type'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
   publishFieldValueUpdates,
-} from '../realtime'
+} from '../../realtime'
 
 const logger = createScopedLogger('bom:qoh')
 

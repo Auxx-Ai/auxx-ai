@@ -1,4 +1,4 @@
-// packages/lib/src/relief/cost-reads.ts
+// packages/lib/src/inventory/costing/cost-reads.ts
 
 /**
  * The two reads brief 50 §3 needs before a relief movement's cost can be
@@ -20,9 +20,9 @@
 import { type Database, schema } from '@auxx/database'
 import { and, eq, sql } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { getOrgCache } from '../cache'
-import { UnprocessableEntityError } from '../errors'
-import { StockMovementType } from '../resources/registry/enum-values'
+import { getOrgCache } from '../../cache'
+import { UnprocessableEntityError } from '../../errors'
+import { StockMovementType } from '../../resources/registry/enum-values'
 import { guard } from './guard'
 import type { FulfillmentLineRelievedAverage, PartLedgerAverage } from './types'
 

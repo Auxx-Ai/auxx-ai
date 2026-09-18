@@ -29,21 +29,22 @@
 import type { Database } from '@auxx/database'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
-import { batchRecalculateQoH } from '../bom/qoh'
 import { getCachedEntityDefId, requireCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../errors'
+import { batchRecalculateQoH } from '../inventory/costing/qoh'
+import { writeStockMovements } from '../inventory/movements'
+import { resolveInventoryRoleForPartKind } from '../inventory/movements/client'
+import { assertCostFieldsMaterialized } from '../inventory/movements/cost-fields'
+import type { MovementRecord } from '../inventory/movements/types'
 import {
   exportInventoryMovement,
   inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../postings/post-inventory-movement'
 import { StockMovementCostBasis, StockMovementType } from '../resources/registry/enum-values'
-import { writeStockMovements } from '../stock-movements'
-import { resolveInventoryRoleForPartKind } from './client'
-import { assertCostFieldsMaterialized } from './cost-fields'
 import { guard } from './guard'
 import { readPartKind, readPartStandardCost } from './receipt-queries'
-import type { AdjustStockInput, MovementRecord } from './types'
+import type { AdjustStockInput } from './types'
 
 /** What every adjustment stamps beyond the bare count change. */
 interface AdjustmentCost {

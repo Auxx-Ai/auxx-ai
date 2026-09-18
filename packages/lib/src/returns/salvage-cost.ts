@@ -19,7 +19,7 @@
  * backfilled builds in as gates on the salvage writer.
  *
  * Rounding happens **once, here**. The extended cost stays `computeExtendedCost`'s
- * job (`receiving/client.ts`), which rounds the product and not the factors.
+ * job (`inventory/movements/client.ts`), which rounds the product and not the factors.
  */
 
 import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'

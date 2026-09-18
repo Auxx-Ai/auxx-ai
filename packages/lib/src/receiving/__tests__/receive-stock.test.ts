@@ -59,7 +59,7 @@ vi.mock('../receipt-queries', async () => {
 // A part's first receipt gives it a standard cost
 // (plans/money/tasks/15-costing-usability.md §2c). Mocked here because the real
 // one reads the standard-cost fields, and this file has no database.
-vi.mock('../../builds/ensure-standard-cost', () => ({
+vi.mock('../../inventory/costing/ensure-standard-cost', () => ({
   ensureStandardCost: h.ensureSpy,
 }))
 

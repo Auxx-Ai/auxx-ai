@@ -1,4 +1,4 @@
-// packages/lib/src/builds/standard-cost-roll.ts
+// packages/lib/src/inventory/costing/standard-cost-roll.ts
 
 /**
  * The standard-cost roll itself — pure arithmetic over an already-loaded graph.
@@ -36,14 +36,14 @@
  */
 
 import { roundMinorUnits } from '@auxx/utils/currency'
-import { UnprocessableEntityError } from '../errors'
 import {
   absorbedRate,
   absorbsConversionCost,
   type PartKindValue,
   resolveAbsorptionRates,
-} from './client'
-import type { AbsorptionRates, SkippedPart, StandardCostComponents } from './types'
+} from '../../builds/client'
+import type { AbsorptionRates, SkippedPart, StandardCostComponents } from '../../builds/types'
+import { UnprocessableEntityError } from '../../errors'
 
 /** One edge of the bill of materials. Matches `bom/cost-calculator.ts`'s shape. */
 export interface SubpartEdge {

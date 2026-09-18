@@ -1,12 +1,13 @@
-// packages/lib/src/builds/__tests__/standard-cost-roll.test.ts
+// packages/lib/src/inventory/costing/__tests__/standard-cost-roll.test.ts
 //
 // Cover for plans/products/build/01-build-plan.md section 2.2a and README B11 —
 // the two rules that keep account 5090 meaningful. Every case here is pure
 // arithmetic over an in-memory graph, so it needs no `vi.mock` at all.
 
 import { describe, expect, it } from 'vitest'
-import { UnprocessableEntityError } from '../../errors'
-import type { PartKindValue } from '../client'
+import type { PartKindValue } from '../../../builds/client'
+import type { AbsorptionRates } from '../../../builds/types'
+import { UnprocessableEntityError } from '../../../errors'
 import {
   computeStandardCosts,
   type StandardCostRollInputs,
@@ -14,7 +15,6 @@ import {
   widenToAncestors,
   widenToUnvaluedDescendants,
 } from '../standard-cost-roll'
-import type { AbsorptionRates } from '../types'
 
 const MOTOR = 'part_motor'
 const TUBE = 'part_tube'

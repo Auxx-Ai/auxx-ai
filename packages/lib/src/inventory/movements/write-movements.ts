@@ -1,4 +1,4 @@
-// packages/lib/src/stock-movements/write-movements.ts
+// packages/lib/src/inventory/movements/write-movements.ts
 
 /**
  * `writeStockMovements` - the ONE writer behind `receive-stock.ts`,
@@ -40,11 +40,11 @@
  */
 
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId } from '../cache'
-import { UnprocessableEntityError } from '../errors'
-import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
-import { isRecordId, type RecordId, toRecordId } from '../resources/resource-id'
-import { createGuard } from '../utils/guard'
+import { getCachedEntityDefId } from '../../cache'
+import { UnprocessableEntityError } from '../../errors'
+import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
+import { isRecordId, type RecordId, toRecordId } from '../../resources/resource-id'
+import { guard } from './guard'
 import type {
   StockMovementInput,
   StockMovementLinks,
@@ -53,8 +53,6 @@ import type {
   WrittenStockMovement,
 } from './types'
 import { buildStockMovementValues, type ResolvedStockMovementLinks } from './values'
-
-const guard = createGuard('stock-movements')
 
 /** The entity type a bare link id resolves against, for every link but the two that point at a `stock_movement` itself. */
 const LINK_ENTITY_TYPES = {

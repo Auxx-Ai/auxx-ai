@@ -39,7 +39,7 @@ vi.mock('@auxx/database', () => ({
   },
 }))
 
-import { composeTariffCodeLabel } from '../../../bom/vendor-cost'
+import { composeTariffCodeLabel } from '../../../inventory/costing/vendor-cost'
 import { restampTariffCodeLabel, stampTariffCodeLabel } from '../tariff-code-label'
 
 const FIELDS = {

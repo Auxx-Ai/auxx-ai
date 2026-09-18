@@ -1,4 +1,4 @@
-// packages/lib/src/receiving/reverse-movement.ts
+// packages/lib/src/inventory/movements/reverse-movement.ts
 
 /**
  * The correction path for a stock movement
@@ -24,16 +24,21 @@
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../cache'
-import { BadRequestError, ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
+import { getCachedEntityDefId, getOrgCache } from '../../cache'
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  UnprocessableEntityError,
+} from '../../errors'
 import {
   linkMovementsToPosting,
   reversePostingForMovement,
-} from '../postings/post-inventory-movement'
-import { StockMovementType } from '../resources/registry/enum-values'
-import { writeStockMovements } from '../stock-movements'
+} from '../../postings/post-inventory-movement'
+import { StockMovementType } from '../../resources/registry/enum-values'
 import { guard } from './guard'
 import type { MovementRecord } from './types'
+import { writeStockMovements } from './write-movements'
 
 /** Which movement to undo, and why. */
 export interface ReverseMovementInput {

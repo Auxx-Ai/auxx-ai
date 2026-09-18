@@ -10,7 +10,7 @@
 // checked 2026-09-01) - offers are tens to hundreds of rows, the same shape as
 // the schedule read beside it.
 
-import type { OfferTariff } from '@auxx/lib/bom/client'
+import type { OfferTariff } from '@auxx/lib/inventory/costing/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { useMemo } from 'react'
 import { type AllRecordsItem, useAllRecords } from '~/components/resources/hooks/use-all-records'

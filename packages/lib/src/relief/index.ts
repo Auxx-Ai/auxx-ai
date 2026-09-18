@@ -15,10 +15,6 @@
  *   so neither can reach a fulfillment already on disk; this one sweeps the
  *   organization's orders instead. Idempotent by relief's own delta
  *   arithmetic - see its header.
- * - `cost-reads.ts` (§3, a separate agent's surface): the ledger-average and
- *   relieved-average reads `relieve.ts` is written against. Its exports
- *   belong in their own block below the relief ones, never interleaved -
- *   that keeps this a clean two-section diff for whoever lands second.
  *
  * Explicit named exports only (`docs/lib-module-guide.md` §5).
  */
@@ -29,11 +25,9 @@ export {
   type BackfillReliefProgress,
   backfillFulfillmentRelief,
 } from './backfill'
-export { readFulfillmentLineRelievedAverages, readPartLedgerAverages } from './cost-reads'
 export {
   type FulfillmentLineToRelieve,
   type RelieveFulfillmentLinesInput,
   type RelieveFulfillmentLinesResult,
   relieveFulfillmentLines,
 } from './relieve'
-export type { FulfillmentLineRelievedAverage, PartLedgerAverage } from './types'

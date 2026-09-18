@@ -21,7 +21,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
-import { recalculateAffectedParts } from '../src/bom/cost-calculator'
+import { recalculateAffectedParts } from '../src/inventory/costing/cost-calculator'
 
 async function partIdsForOrg(organizationId: string): Promise<string[]> {
   const defs = await db

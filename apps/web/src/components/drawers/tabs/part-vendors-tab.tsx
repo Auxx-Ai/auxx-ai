@@ -1,8 +1,8 @@
 // apps/web/src/components/drawers/tabs/part-vendors-tab.tsx
 'use client'
 
-import { selectWinningVendor } from '@auxx/lib/bom/client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { selectWinningVendor } from '@auxx/lib/inventory/costing/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'

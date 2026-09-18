@@ -87,11 +87,18 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { batchRecalculateQoH } from '../bom/qoh'
 import { loadSubpartGraph } from '../bom/subpart-graph'
-import { readStandardCost } from '../builds'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
+import { readStandardCost } from '../inventory/costing'
+import { batchRecalculateQoH } from '../inventory/costing/qoh'
+import {
+  reverseMovement,
+  type StockMovementInput,
+  type StockMovementsCtx,
+  writeStockMovements,
+} from '../inventory/movements'
+import { resolveInventoryRoleForPartKind } from '../inventory/movements/client'
 import type { InTxPostResult } from '../postings/post-entry'
 import {
   exportInventoryMovement,
@@ -99,17 +106,10 @@ import {
   postInventoryMovementInTx,
 } from '../postings/post-inventory-movement'
 import { getRealtimeService, publishRecordsChanged } from '../realtime'
-import { reverseMovement } from '../receiving'
-import { resolveInventoryRoleForPartKind } from '../receiving/client'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { quietSession, type WriteSession } from '../resources/crud/write-origin'
 import { StockMovementCostBasis, StockMovementType } from '../resources/registry/enum-values'
 import { type RecordId, toRecordId } from '../resources/resource-id'
-import {
-  type StockMovementInput,
-  type StockMovementsCtx,
-  writeStockMovements,
-} from '../stock-movements'
 import { requireReturnPartLineFieldContext } from './field-context'
 import { guard } from './guard'
 import {
