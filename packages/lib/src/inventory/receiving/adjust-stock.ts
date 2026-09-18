@@ -251,7 +251,7 @@ interface WriteAdjustMovementArgs {
 
 /**
  * Step 3: write the one movement, through the shared
- * `stock-movements/writeStockMovements` (plans/money/tasks/50-batch-inventory-relief.md
+ * `inventory/movements/writeStockMovements` (plans/money/tasks/50-batch-inventory-relief.md
  * §2) - the same writer `writeReceiveMovement` and `writeReversal` go through,
  * and what makes the post-commit triggers (QoH recalculation, timeline,
  * realtime) fire at all. A direct insert writes rows the rest of the system

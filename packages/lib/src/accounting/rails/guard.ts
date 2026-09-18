@@ -2,4 +2,4 @@
 
 import { createGuard } from '../../utils/guard'
 
-export const guard = createGuard('payment-gateways')
+export const guard = createGuard('accounting:rails')

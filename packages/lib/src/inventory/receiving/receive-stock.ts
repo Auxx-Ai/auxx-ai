@@ -312,7 +312,7 @@ export async function setFirstStandardCostFromReceipt(
 
 /**
  * Step 5: write the one movement, through the shared
- * `stock-movements/writeStockMovements` (plans/money/tasks/50-batch-inventory-relief.md
+ * `inventory/movements/writeStockMovements` (plans/money/tasks/50-batch-inventory-relief.md
  * §2). That is what makes the post-commit triggers (QoH, timeline, realtime)
  * fire at all - a direct insert writes rows the rest of the system never
  * hears about - and it is also what resolves `vendorPartId` /

@@ -12,7 +12,7 @@
  * ## What this is NOT
  *
  * 🔧 **A caller of `writeStockMovements`, never a ninth hand-rolled insert.**
- * `stock-movements/` is the one writer (task 50 section 2), and three of the
+ * `inventory/movements/` is the one writer (task 50 section 2), and three of the
  * rules this brief used to spell out are now properties of its contract rather
  * than things this file must remember: `adjustSubparts` is typed `?: true` so
  * silence is safe, `affectedPartIds` comes back from the call, and the link set

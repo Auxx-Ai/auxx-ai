@@ -43,7 +43,7 @@ import { defineResourceFields } from '../system-attributes'
  *
  * ⚠️ Ships INERT with entity migration 109 (`isVisible: false`, B10): the def
  * and every field below exist in each org and NOTHING writes them until
- * `packages/lib/src/builds/` lands. A def with zero rows can be reshaped for
+ * `packages/lib/src/inventory/builds/` lands. A def with zero rows can be reshaped for
  * free; the first row ends that.
  *
  * ## Visibility

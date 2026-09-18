@@ -2,4 +2,4 @@
 
 import { createGuard } from '../../../utils/guard'
 
-export const guard = createGuard('postings:journal-entries')
+export const guard = createGuard('accounting:journals')

@@ -8,7 +8,7 @@
 // `@auxx/ui/components/checkbox`) — bound via `form="accept-form"` to the Accept form so a
 // no-JS submit still carries selections (progressive enhancement, amendment 2). Toggling only
 // updates local React state and recomputes the displayed totals with `computeDocumentTotals`
-// from `@auxx/lib/money/client` — the same isomorphic function the line-builder footer uses —
+// from `@auxx/lib/sales/client` — the same isomorphic function the line-builder footer uses —
 // never a network call; nothing persists until the Accept POST (decision 3).
 
 import {
@@ -24,7 +24,7 @@ import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { PhotoGallery } from '~/components/money/ui/public-document/photo-gallery'
 import { PublicDocumentTotals } from '~/components/money/ui/public-document/public-document-totals'
 
-/** One quote line as the public page needs it — decoupled from `@auxx/lib/money`'s payload
+/** One quote line as the public page needs it — decoupled from `@auxx/lib/sales`'s payload
  * types on purpose so this client component never statically imports a server-only module. */
 export interface QuoteSelectionLine {
   lineInstanceId: string

@@ -355,7 +355,7 @@ async function main() {
       ],
       { discountType: 'percent', discountValue: 10, taxRate: 7.5 }
     )
-    // Whole-cent rounding convention (roundCents, packages/lib/src/money/totals.ts, PR #1128):
+    // Whole-cent rounding convention (roundCents, packages/lib/src/sales/totals/totals.ts, PR #1128):
     // raw tax 6.75 / total 186.75 round to 7 / 187.
     check(
       'computeDocumentTotals sanity: subtotal 200, discount 20, tax 7, total 187',

@@ -5,7 +5,7 @@
 // Totals footer for the line builder (money MQ1 build spec §H.1): subtotal →
 // discount → tax → total (the add-line row lives in the builder itself).
 // All amounts are computed client-side with `computeDocumentTotals` from
-// `@auxx/lib/money/client` over the same optimistic field-value store the
+// `@auxx/lib/sales/client` over the same optimistic field-value store the
 // editors write to. `LineBuilder` owns fetching and mutations; this footer is
 // a passive aggregate subscriber plus totals UI.
 

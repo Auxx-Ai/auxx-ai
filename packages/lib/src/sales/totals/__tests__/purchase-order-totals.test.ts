@@ -52,7 +52,6 @@ vi.mock('../../../field-values/field-value-service', () => ({
     setValuesForEntity = h.setValuesForEntity
   },
 }))
-vi.mock('./payments/ledger', () => ({ syncInvoicePaymentState: h.syncInvoicePaymentState }))
 
 import {
   PURCHASE_ORDER_LINE_TRIGGER_ATTRS,

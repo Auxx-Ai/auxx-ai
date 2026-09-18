@@ -308,7 +308,7 @@ export async function readBankAccountSettlementDestinations(
 
 /**
  * Every open destination mismatch on one rail's payouts (58 §5.4 rule 2), for the gateway
- * editor's readiness read (`payment-gateways/feeds.ts`).
+ * editor's readiness read (`accounting/rails/feeds.ts`).
  *
  * Narrowed in SQL on the rail pointer and a non-null mismatch, never read-then-filtered - the
  * same argument `listPayouts`'s `onlyUnidentified` makes.

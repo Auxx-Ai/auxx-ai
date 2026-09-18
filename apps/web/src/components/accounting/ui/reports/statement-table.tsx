@@ -31,7 +31,7 @@ import { accountTypeIcon } from '../settings/accounts-types'
  * and reads as a different product. One bordered frame, a sticky header, rows
  * that carry their own fill, and the money in `TreeRow`'s `actions` slot.
  *
- * The row MODEL did not change. `packages/lib/src/postings/reports/rows.ts`
+ * The row MODEL did not change. `packages/lib/src/accounting/reports/rows.ts`
  * builds it and `pdf/statement-parts.tsx` renders the same rows through
  * react-pdf with its own, deliberately different, look.
  */

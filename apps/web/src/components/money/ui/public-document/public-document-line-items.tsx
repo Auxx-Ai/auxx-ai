@@ -12,7 +12,7 @@ import { Fragment } from 'react'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { PhotoGallery } from './photo-gallery'
 
-/** One rendered line — decoupled from `@auxx/lib/money`'s payload types on purpose so this
+/** One rendered line — decoupled from `@auxx/lib/sales`'s payload types on purpose so this
  * presentational component never needs a server-only import. */
 export interface PublicDocumentLine {
   name: string

@@ -18,7 +18,7 @@
  * full-chain `lines` and the children index from the on-disk shape, and
  * memoises the result for the lifetime of the process.
  *
- * 🛑 **Never export this module (or the JSON) through `bom/client.ts`.** The
+ * 🛑 **Never export this module (or the JSON) through `inventory/tariffs/client.ts`.** The
  * whole point of the split in §1.4 is that the web bundle never carries the
  * generated schedule; the browser reaches it through the router, which calls
  * `loadHtsGeneral` and `listHtsChildren` server-side.

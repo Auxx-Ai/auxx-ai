@@ -7,26 +7,8 @@ import type { z } from 'zod'
 import { accountingBasisHash } from '../../../ledger/builders/basis-hash'
 import type { customerMoneyObservationSchema } from '../contracts'
 import { materializeImportedMoneyInTx } from '../ingest'
-import { reconcileOrderPaymentEvidence, stageOrderPaymentEvidenceInTx } from '../record-evidence'
-
-vi.mock('../../payments/connect-client', () => ({
-  getStripeConnectClient: () => ({
-    charges: {
-      retrieve: async () => ({
-        object: 'charge',
-        id: 'ch_fixture',
-        amount_captured: 6000,
-        currency: 'usd',
-        status: 'succeeded',
-        paid: true,
-        captured: true,
-        livemode: true,
-      }),
-    },
-  }),
-}))
-
 import { listOrderMoneyTransactions } from '../reads'
+import { reconcileOrderPaymentEvidence, stageOrderPaymentEvidenceInTx } from '../record-evidence'
 
 const db = () => getTestDb()
 let organizationId: string

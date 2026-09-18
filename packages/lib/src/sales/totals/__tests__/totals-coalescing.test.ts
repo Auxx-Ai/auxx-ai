@@ -42,7 +42,6 @@ vi.mock('../../../field-values/field-value-service', () => ({
     setValuesForEntity = h.setValuesForEntity
   },
 }))
-vi.mock('./payments/ledger', () => ({ syncInvoicePaymentState: h.syncInvoicePaymentState }))
 vi.mock('@auxx/database', async () => {
   const schema = await import('../../../../../database/src/db/schema/index')
   return {

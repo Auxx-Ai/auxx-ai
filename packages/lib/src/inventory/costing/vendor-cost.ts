@@ -11,7 +11,7 @@
  * say which supplier a part's cost actually came from. It marked *preferred*
  * instead, which is a different thing (see {@link selectWinningVendor}).
  *
- * Re-exported to the client through `bom/client.ts`; never import this module's
+ * Re-exported to the client through `inventory/costing/client.ts`; never import this module's
  * neighbours from here.
  *
  * The one import is `../errors`, which is a dependency-free leaf of plain
@@ -299,7 +299,7 @@ export interface TariffResolution {
  *
  * **Pure**, and deliberately so: it is called server-side by the cost
  * calculator and in the browser by the tariffs settings screen and the supplier
- * drawer, through `bom/client.ts`. Resolving server-side only and shipping the
+ * drawer, through `inventory/costing/client.ts`. Resolving server-side only and shipping the
  * client a number is how the landed formula came to live in two places once
  * already.
  *
@@ -439,7 +439,7 @@ export type OfferTariff =
  * collapses `pending` into `0%` and a server author does not, and the two then
  * disagree about whether an offer is classified.
  *
- * Pure, and exported through `bom/client.ts` for the same reason
+ * Pure, and exported through `inventory/costing/client.ts` for the same reason
  * {@link resolveTariffRate} is.
  *
  * @param offer The offer's override and pointer.

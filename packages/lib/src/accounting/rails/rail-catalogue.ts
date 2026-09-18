@@ -11,7 +11,7 @@
  * ## 🛑 Suggestions, never routing
  *
  * Nothing here decides where money lands. `matchGatewayRoute`
- * (`payment-gateways/client.ts`) is the single matcher from a handle to an
+ * (`accounting/rails/client.ts`) is the single matcher from a handle to an
  * account and it reads the org's own `payment_gateway` records, never this
  * table; `resolveFulfillmentDebit` reads that. A catalogue that started
  * answering "which account" would be a second matcher, and two matchers that

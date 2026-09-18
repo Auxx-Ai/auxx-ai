@@ -17,7 +17,7 @@
 //     row with no evidence pointing at it is invisible to all of them (§3.1).
 //  3. **A rail is never a `FinancialSourceAccount` row any more.** It is a live
 //     `payment_gateway` EntityInstance, read through a separate module
-//     (`payment-gateways/reads.ts`, mocked below) and appended to the same
+//     (`accounting/rails/reads.ts`, mocked below) and appended to the same
 //     list, always on the `rail` axis alone.
 
 import { type Database, schema } from '@auxx/database'

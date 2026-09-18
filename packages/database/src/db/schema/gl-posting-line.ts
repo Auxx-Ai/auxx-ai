@@ -81,7 +81,7 @@ export const GlPostingLine = pgTable(
      * from (decision G8). Nullable
      * because a manual or legacy entry may name a code directly, and because the
      * role vocabulary is `ACCOUNT_ROLES` in
-     * `packages/lib/src/postings/build-entry.ts`, not here: this column STORES a
+     * `packages/lib/src/accounting/ledger/builders/entry.ts`, not here: this column STORES a
      * role, it does not define the set. Plain `text` rather than a `pgEnum` on
      * purpose — a second copy of that vocabulary is the thing that would drift,
      * and `GlRoleAssignment.role` makes the same call for the same reason.
@@ -124,7 +124,7 @@ export const GlPostingLine = pgTable(
      * is a snapshot rather than a live read.
      *
      * Plain `text` rather than a `pgEnum`, for the reason `accountRole` gives:
-     * the vocabulary is `CounterpartyType` in `packages/lib/src/postings/types.ts`,
+     * the vocabulary is `CounterpartyType` in `packages/lib/src/accounting/ledger/types.ts`,
      * not here, and a second copy here is the thing that would drift.
      */
     counterpartyType: text(),

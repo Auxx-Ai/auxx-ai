@@ -139,7 +139,7 @@ describe('GlRoleAssignment', () => {
   })
 
   // Plain `text`, not a pgEnum: the role vocabulary is `ACCOUNT_ROLES` in
-  // `packages/lib/src/postings/build-entry.ts`, and a second copy is the thing
+  // `packages/lib/src/accounting/ledger/builders/entry.ts`, and a second copy is the thing
   // that drifts. `GlPostingLine.accountRole` made the same call.
   it('stores the role as plain text, never redefining the vocabulary', () => {
     const role = config.columns.find((c) => c.name === 'role')

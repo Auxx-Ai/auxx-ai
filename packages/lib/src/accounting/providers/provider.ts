@@ -542,7 +542,7 @@ const instances = new Map<string, AccountingProvider>()
  * Adapters are registered by a caller rather than imported here, so this seam
  * never depends on a specific accounting integration - which is the dependency
  * direction decision P1 is about. The QuickBooks adapter lives in
- * `packages/lib/src/money/quickbooks/`, and `registerAccountingProviders` in
+ * `packages/lib/src/accounting/providers/quickbooks/`, and `registerAccountingProviders` in
  * `@auxx/lib/accounting/providers/accounting-providers` is the one registration site, called
  * from both the web app's server bootstrap and the worker's.
  */

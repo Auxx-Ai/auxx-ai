@@ -62,7 +62,7 @@ export const GlRoleAssignment = pgTable(
      * An `ACCOUNT_ROLES` value — `'grni'`, `'inventory_raw_materials'`, `'ppv'`.
      *
      * Plain `text`, NOT a `pgEnum`. The vocabulary lives in
-     * `packages/lib/src/postings/build-entry.ts` and a second copy is the thing
+     * `packages/lib/src/accounting/ledger/builders/entry.ts` and a second copy is the thing
      * that drifts; `GlPostingLine.accountRole` already made the same call for
      * the same reason. Adding a role would otherwise be a Postgres migration on
      * top of a one-line constant edit.

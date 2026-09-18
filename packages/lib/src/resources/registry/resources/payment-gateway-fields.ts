@@ -47,7 +47,7 @@ import { defineResourceFields } from '../system-attributes'
  * single handle would need two rows for one rail; `handles` is a TAGS field so
  * one record can claim every spelling a gateway is seen under.  Compared
  * case-insensitively and trimmed at write time and at match time
- * (`normaliseGatewayHandle` in `payment-gateways/client.ts`), mirroring
+ * (`normaliseGatewayHandle` in `accounting/rails/client.ts`), mirroring
  * `normaliseGateways` in `postings/build-fulfillment-batch-entry.ts`.
  *
  * Hidden system entity (`isVisible: false`) - the door is Accounting >

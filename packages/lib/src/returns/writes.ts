@@ -11,7 +11,7 @@
  * and is gated on a chain ending at task 50, because nothing writes a `sale`
  * movement yet and recovering parts before shipping relieves them would make
  * the inventory number worse rather than better (section 6.1). So there is no
- * import of `receiving/`, `builds/` or `stock-movements/` here, and
+ * import of `inventory/receiving/`, `inventory/builds/` or `inventory/movements/` here, and
  * `return_part_line_unit_cost` and `return_part_line_movement` are never
  * written: they are that writer's output.
  *

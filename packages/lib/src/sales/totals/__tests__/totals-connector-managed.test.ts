@@ -36,7 +36,6 @@ vi.mock('../../../field-values/field-value-service', () => ({
     setValuesForEntity = h.setValuesForEntity
   },
 }))
-vi.mock('./payments/ledger', () => ({ syncInvoicePaymentState: vi.fn() }))
 // Real schema (so `eq`/`isNull` get real columns, and `table === schema.DataConnectorItem`
 // identity-matches inside `managed-fields.ts`), stubbed connection.
 vi.mock('@auxx/database', async () => {
