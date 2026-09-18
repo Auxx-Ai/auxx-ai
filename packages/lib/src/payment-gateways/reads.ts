@@ -19,11 +19,11 @@ import type { Result } from 'neverthrow'
 import { getOrgCache } from '../cache'
 import { UnprocessableEntityError } from '../errors'
 import type { FieldOptions } from '../field-values/converters'
-import { financialEntityDefId, financialFields } from '../money/fulfillments/field-context'
 import { ACCOUNT_ROLES } from '../postings/build-entry'
 import { readRoleAssignments } from '../postings/role-assignments'
 import { buildOptionIndex, resolveOptionId } from '../resources/registry/option-helpers'
 import { toRecordId } from '../resources/resource-id'
+import { systemDefId, systemFieldMap } from '../resources/system-records'
 import {
   type GatewayHandleCensusRow,
   normaliseGatewayHandle,
@@ -76,12 +76,12 @@ export async function loadPaymentGatewayFieldContext(
   organizationId: string,
   db?: Database | Transaction
 ): Promise<PaymentGatewayFieldContext | null> {
-  const paymentGatewayDefId = await financialEntityDefId(organizationId, 'payment_gateway', db)
+  const paymentGatewayDefId = await systemDefId(db, organizationId, 'payment_gateway')
   if (!paymentGatewayDefId) return null
-  const fields = (await financialFields(
+  const fields = (await systemFieldMap(
+    db,
     organizationId,
-    PAYMENT_GATEWAY_ATTRIBUTES,
-    db
+    PAYMENT_GATEWAY_ATTRIBUTES
   )) as PaymentGatewayFields
   // Without `name` there is no gateway at all: the display value is the one
   // thing every row must carry. `clearingAccount` used to gate this too, but

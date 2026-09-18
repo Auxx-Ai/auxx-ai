@@ -188,6 +188,9 @@ export {
 } from './option-helpers'
 // Re-export the tier-A output-shape helper (§10b step 4)
 export { toOutputShape } from './output-shape'
+// The attribute list a system-record read is scoped by (plans/accounting/LIB-LAYOUT.md §3b)
+export type { DeclaredResourceFields, SystemAttributesOf } from './system-attributes'
+export { defineResourceFields, systemAttributes } from './system-attributes'
 
 // export * from './enum-values'
 

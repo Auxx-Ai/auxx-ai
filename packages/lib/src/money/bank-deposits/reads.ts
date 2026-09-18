@@ -23,8 +23,8 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
-import { valueJoin } from '../../field-values/read-kit'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
+import { systemValueJoin } from '../../resources/system-records'
 import { methodsRoutedToUndepositedFunds, resolveBankDepositStatus } from './client'
 import { guard } from './guard'
 import type {
@@ -475,7 +475,7 @@ export async function listBankDeposits(
         query = query.innerJoin(
           statusValue,
           and(
-            valueJoin(statusValue, ctx.fields.bank_deposit_status.id),
+            systemValueJoin(statusValue, ctx.fields.bank_deposit_status.id),
             eq(statusValue.optionId, status)
           )
         )

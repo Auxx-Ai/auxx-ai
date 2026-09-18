@@ -25,10 +25,10 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { NotFoundError, UnprocessableEntityError } from '../../errors'
-import { valueJoin } from '../../field-values/read-kit'
 import { loadChartAccountsById } from '../../postings/chart-accounts'
 import { listPostingsForSource } from '../../postings/list-postings'
 import { toRecordId } from '../../resources/resource-id'
+import { systemValueJoin } from '../../resources/system-records'
 import type { BankAccountRow } from '../client'
 import { guard } from '../guard'
 import { listBankAccounts, readCoverage } from '../reads'
@@ -214,7 +214,7 @@ export async function listForReview(
         const statusValue = alias(schema.FieldValue, 'bt_status_v')
         query = query.innerJoin(
           statusValue,
-          and(valueJoin(statusValue, statusField.id), eq(statusValue.optionId, state))
+          and(systemValueJoin(statusValue, statusField.id), eq(statusValue.optionId, state))
         )
       }
 
@@ -235,7 +235,7 @@ export async function listForReview(
         const accountValue = alias(schema.FieldValue, 'bt_account_v')
         const accountInstance = alias(schema.EntityInstance, 'bt_account_i')
         query = query
-          .leftJoin(accountValue, valueJoin(accountValue, accountField.id))
+          .leftJoin(accountValue, systemValueJoin(accountValue, accountField.id))
           .leftJoin(accountInstance, eq(accountInstance.id, accountValue.relatedEntityId))
         where.push(isNull(accountInstance.archivedAt))
         if (filters.bankAccountId) {
@@ -252,7 +252,7 @@ export async function listForReview(
         query = query.leftJoin(
           dateValue,
           and(
-            valueJoin(dateValue, dateField.id),
+            systemValueJoin(dateValue, dateField.id),
             ...(filters.from ? [gte(dateValue.valueDate, `${filters.from}T00:00:00.000Z`)] : []),
             ...(filters.to ? [lte(dateValue.valueDate, `${filters.to}T23:59:59.999Z`)] : [])
           )
@@ -268,7 +268,7 @@ export async function listForReview(
         query = query.innerJoin(
           amountValue,
           and(
-            valueJoin(amountValue, amountField.id),
+            systemValueJoin(amountValue, amountField.id),
             ...(filters.amountMin != null ? [gte(amountValue.valueNumber, filters.amountMin)] : []),
             ...(filters.amountMax != null ? [lte(amountValue.valueNumber, filters.amountMax)] : [])
           )
@@ -420,18 +420,18 @@ export async function readQueueStats(
           >`to_char(min(${dateValue.valueDate}) at time zone 'UTC', 'YYYY-MM-DD')`,
         })
         .from(schema.EntityInstance)
-        .innerJoin(statusValue, valueJoin(statusValue, statusField.id))
-        .leftJoin(amountValue, valueJoin(amountValue, amountField.id))
+        .innerJoin(statusValue, systemValueJoin(statusValue, statusField.id))
+        .leftJoin(amountValue, systemValueJoin(amountValue, amountField.id))
         .$dynamic()
 
-      if (dateField) query = query.leftJoin(dateValue, valueJoin(dateValue, dateField.id))
+      if (dateField) query = query.leftJoin(dateValue, systemValueJoin(dateValue, dateField.id))
 
       const accountField = ctx.fields.bank_transaction_bank_account
       if (bankAccountId && accountField) {
         query = query.innerJoin(
           accountValue,
           and(
-            valueJoin(accountValue, accountField.id),
+            systemValueJoin(accountValue, accountField.id),
             eq(accountValue.relatedEntityId, bankAccountId)
           )
         )
