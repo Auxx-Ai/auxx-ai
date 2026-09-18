@@ -69,6 +69,9 @@ jobs:
       - name: Verify package exports resolve
         run: node scripts/ci/check-package-exports.js
 
+      - name: Raw-query ratchet (AuditLog / Credential bypasses)
+        run: node scripts/ci/raw-query-ratchet.js
+
   # A RATCHET, not a gate: lib and web carry thousands of pre-existing errors, so
   # this asserts only that a PR adds none. CI ran no typecheck at all until
   # 2026-07-30, when six TS2367s shipped a mail outage — see the script header.

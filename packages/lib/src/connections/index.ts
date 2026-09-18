@@ -39,6 +39,12 @@ export {
   type ConnectionSettledEvent,
 } from './connect-events'
 export {
+  type AppCredential,
+  type ListAppCredentialsFilter,
+  listAppCredentials,
+  readAppCredential,
+} from './credential-reads'
+export {
   type HostedProvisionCompleteCtx,
   type HostedProvisionCompleteResult,
   type HostedProvisionHandler,
