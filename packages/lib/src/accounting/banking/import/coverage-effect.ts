@@ -23,14 +23,11 @@ import type { Database } from '@auxx/database'
 import type { Result } from 'neverthrow'
 import { NotFoundError } from '../../../errors'
 import { type CoverageGap, daysBetween } from '../client'
+import { requireBankTransactionImportContext } from '../fields'
 import { guard } from '../guard'
 import { getBankAccount, readCoverage } from '../reads'
-import {
-  type BankTransactionRow,
-  readTransactionsByAccount,
-  requireBankTransactionImportContext,
-} from './fields'
 import { assignImportedExternalIds } from './match-key'
+import { type BankTransactionRow, readTransactionsByAccount } from './reads'
 import type { BankImportOverlap, BankImportRow, CoverageEffect } from './types'
 
 /**
@@ -86,7 +83,7 @@ export async function previewCoverageEffect(
       const fileTo = dateKeys[dateKeys.length - 1] ?? null
       const unusableRowCount = rows.length - dated.filter((row) => row.amountMinor != null).length
 
-      const ctx = await requireBankTransactionImportContext(organizationId)
+      const ctx = await requireBankTransactionImportContext(db, organizationId)
       const existing = await readTransactionsByAccount(db, organizationId, ctx, bankAccountId)
 
       return {

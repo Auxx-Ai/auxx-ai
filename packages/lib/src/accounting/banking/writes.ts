@@ -80,15 +80,14 @@ import { disconnectBankAccountFeed } from './feed/actions'
 // The LEAF, not the `./feed` barrel: the barrel pulls the Stripe SDK, the
 // connector engine and the org cache in to answer one join.
 import { findBankFeedAccountForConnector, reapBankFeedAccount } from './feed/reaper'
+import { requireBankAccountFieldContext, requireReviewFieldContext } from './fields'
 import { guard } from './guard'
 import {
   getBankAccount,
   readAccountLinesByStatus,
   readBankTransactionIdsForAccount,
   readRemovalFacts,
-  requireBankAccountFieldContext,
 } from './reads'
-import { requireReviewFieldContext } from './review/reads'
 
 const logger = createScopedLogger('banking')
 
@@ -154,7 +153,7 @@ export async function createBankAccount(
   const { organizationId, actorUserId } = input
   return guard(
     async () => {
-      const ctx = await requireBankAccountFieldContext(organizationId)
+      const ctx = await requireBankAccountFieldContext(db, organizationId)
 
       const name = input.name?.trim()
       if (!name) {
@@ -170,7 +169,7 @@ export async function createBankAccount(
       const settlementDestinations = resolveSettlementDestinations(input)
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-      const created = await crud.create(ctx.bankAccountDefId, {
+      const created = await crud.create(ctx.defId, {
         bank_account_name: name,
         bank_account_institution: input.institution?.trim() || undefined,
         bank_account_last4: last4 ?? undefined,
@@ -231,7 +230,7 @@ export async function updateBankAccount(
   const { organizationId, actorUserId, bankAccountId } = input
   return guard(
     async () => {
-      const ctx = await requireBankAccountFieldContext(organizationId)
+      const ctx = await requireBankAccountFieldContext(db, organizationId)
 
       const existing = await getBankAccount(db, { organizationId, bankAccountId })
       if (existing.isErr()) throw existing.error
@@ -285,7 +284,7 @@ export async function updateBankAccount(
 
       if (Object.keys(patch).length > 0) {
         const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-        await crud.update(toRecordId(ctx.bankAccountDefId, bankAccountId), patch)
+        await crud.update(toRecordId(ctx.defId, bankAccountId), patch)
       }
 
       const row = await getBankAccount(db, { organizationId, bankAccountId })
@@ -442,7 +441,7 @@ export async function deleteBankAccount(
   const { organizationId, actorUserId, bankAccountId } = input
   return guard(
     async () => {
-      const ctx = await requireBankAccountFieldContext(organizationId)
+      const ctx = await requireBankAccountFieldContext(db, organizationId)
       const account = await getBankAccount(db, { organizationId, bankAccountId })
       if (account.isErr()) throw account.error
       if (!account.value) {
@@ -541,7 +540,7 @@ export async function deleteBankAccount(
       }
 
       // 4. The account. Its `RecordIdentity` rows cascade off `EntityInstance`.
-      await crud.delete(toRecordId(ctx.bankAccountDefId, bankAccountId))
+      await crud.delete(toRecordId(ctx.defId, bankAccountId))
 
       logger.info('Deleted a bank account', {
         organizationId,
@@ -618,7 +617,7 @@ export async function archiveBankAccount(
   const { organizationId, actorUserId, bankAccountId } = input
   return guard(
     async () => {
-      const ctx = await requireBankAccountFieldContext(organizationId)
+      const ctx = await requireBankAccountFieldContext(db, organizationId)
       // Read the archived row too, so archiving one twice refuses with a sentence
       // that says so rather than a 404 on a record the caller is looking at.
       const account = await getBankAccount(db, {
@@ -653,7 +652,7 @@ export async function archiveBankAccount(
       })
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-      await crud.archive(toRecordId(ctx.bankAccountDefId, bankAccountId))
+      await crud.archive(toRecordId(ctx.defId, bankAccountId))
 
       logger.info('Archived a bank account', {
         organizationId,
@@ -697,7 +696,7 @@ async function excludeUnreviewedLines(
   }
 ): Promise<number> {
   const { organizationId, actorUserId, bankAccountId, accountLabel } = params
-  const ctx = await requireReviewFieldContext(organizationId)
+  const ctx = await requireReviewFieldContext(db, organizationId)
 
   const pending = await readAccountLinesByStatus(db, {
     organizationId,
@@ -713,7 +712,7 @@ async function excludeUnreviewedLines(
 
   const result = await crud.bulkUpdate(
     pending.value.lines.map((line) => ({
-      recordId: toRecordId(ctx.bankTransactionDefId, line.id),
+      recordId: toRecordId(ctx.defId, line.id),
       values: {
         bank_transaction_review_status: 'excluded',
         bank_transaction_exclude_reason: reason,
@@ -745,7 +744,7 @@ async function reopenArchiveExclusions(
   params: { organizationId: string; actorUserId: string; bankAccountId: string }
 ): Promise<number> {
   const { organizationId, actorUserId, bankAccountId } = params
-  const ctx = await requireReviewFieldContext(organizationId)
+  const ctx = await requireReviewFieldContext(db, organizationId)
 
   const excluded = await readAccountLinesByStatus(db, {
     organizationId,
@@ -760,7 +759,7 @@ async function reopenArchiveExclusions(
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
   const result = await crud.bulkUpdate(
     mine.map((line) => ({
-      recordId: toRecordId(ctx.bankTransactionDefId, line.id),
+      recordId: toRecordId(ctx.defId, line.id),
       values: {
         bank_transaction_review_status: 'for_review',
         bank_transaction_exclude_reason: null,
@@ -812,7 +811,7 @@ export async function restoreBankAccount(
   const { organizationId, actorUserId, bankAccountId } = input
   return guard(
     async () => {
-      const ctx = await requireBankAccountFieldContext(organizationId)
+      const ctx = await requireBankAccountFieldContext(db, organizationId)
       const existing = await getBankAccount(db, {
         organizationId,
         bankAccountId,
@@ -827,7 +826,7 @@ export async function restoreBankAccount(
       }
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-      await crud.restore(toRecordId(ctx.bankAccountDefId, bankAccountId))
+      await crud.restore(toRecordId(ctx.defId, bankAccountId))
 
       const reopened = await reopenArchiveExclusions(db, {
         organizationId,

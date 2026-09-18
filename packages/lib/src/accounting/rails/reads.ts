@@ -20,6 +20,8 @@ import { getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import type { FieldOptions } from '../../field-values/converters'
 import { buildOptionIndex, resolveOptionId } from '../../resources/registry/option-helpers'
+import { PAYMENT_GATEWAY_FIELDS } from '../../resources/registry/resources/payment-gateway-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import { toRecordId } from '../../resources/resource-id'
 import {
   readSystemRecords,
@@ -50,20 +52,15 @@ import { guard } from './guard'
  * `settlementBankAccount`) - what they answered now comes from the rail scope
  * (`GlRoleAssignment.paymentGatewayId`) and the linked feed, both read in
  * {@link hydratePaymentGateways}, never from a `FieldValue` on this record.
- *
- * Hand-listed until B3 lands a typed subset picker in
- * `resources/registry/system-attributes.ts`: `PAYMENT_GATEWAY_FIELDS` also
- * declares `payment_gateway_payouts`, a has-many inverse whose values no row
- * here reads and which would be a `FieldValue` row per payout per gateway.
  */
-const PAYMENT_GATEWAY_ATTRIBUTES = [
+const PAYMENT_GATEWAY_ATTRIBUTES = pickSystemAttributes(PAYMENT_GATEWAY_FIELDS, [
   'payment_gateway_name',
   'payment_gateway_handles',
   'payment_gateway_fee_treatment',
   'payment_gateway_status',
   'payment_gateway_last_settlement_at',
   'payment_gateway_last_fee_booked_at',
-] as const
+] as const)
 
 type PaymentGatewayAttribute = (typeof PAYMENT_GATEWAY_ATTRIBUTES)[number]
 type PaymentGatewayContext = SystemFieldContext<PaymentGatewayAttribute>

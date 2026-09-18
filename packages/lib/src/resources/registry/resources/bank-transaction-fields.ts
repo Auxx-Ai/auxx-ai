@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * What the BANK says about this line.
@@ -107,7 +107,7 @@ export const BANK_TRANSACTION_REVIEW_STATUS_OPTIONS = [
  * deterministic composite for an imported one; `importBatchId` and `source` are
  * what make a bad import undoable.
  */
-export const BANK_TRANSACTION_FIELDS: Record<string, ResourceField> = {
+export const BANK_TRANSACTION_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -734,4 +734,4 @@ export const BANK_TRANSACTION_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

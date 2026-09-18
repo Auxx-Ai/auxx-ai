@@ -47,7 +47,7 @@ import { UnprocessableEntityError } from '../../../errors'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
 import { readBookTimeZoneOrUtc } from '../../ledger/setup/book-time-zone'
-import { requireBankAccountFieldContext } from '../reads'
+import { requireBankAccountFieldContext } from '../fields'
 
 const logger = createScopedLogger('banking-feed')
 
@@ -218,7 +218,7 @@ async function repairBankFeed(
   // 🛑 Scoped to the connector-id FIELD, never `valueText` alone. Every TEXT cell in the
   // org lives in one table, so an unfielded match on a cuid would happily return some
   // other entity's cell and repair the wrong record.
-  const ctx = await requireBankAccountFieldContext(organizationId)
+  const ctx = await requireBankAccountFieldContext(db, organizationId)
   const connectorField = ctx.fields.bank_account_connector_id
   const bankAccount = connectorField
     ? await db.query.FieldValue.findFirst({

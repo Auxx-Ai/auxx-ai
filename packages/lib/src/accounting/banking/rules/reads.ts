@@ -11,12 +11,17 @@
 
 import { type Database, schema } from '@auxx/database'
 import { toDateKey } from '@auxx/utils/calendar-day'
-import { and, asc, eq, ilike, inArray, isNull } from 'drizzle-orm'
+import { and, eq, ilike, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../../cache'
-import { UnprocessableEntityError } from '../../../errors'
-import { toRecordId } from '../../../resources/resource-id'
+import { readSystemRecords, type SystemRecord } from '../../../resources/system-records'
 import { daysBetween } from '../client'
+import {
+  type BankRuleAttribute,
+  type BankRuleFieldContext,
+  loadBankRuleFieldContext,
+  loadRuleTransactionFieldContext,
+  type RuleTransactionFieldContext,
+} from '../fields'
 import {
   type BankRuleAction,
   type BankRuleConditions,
@@ -30,65 +35,6 @@ import {
 import { matchesRuleConditions } from './evaluate'
 import { guard } from './guard'
 
-// ─── bank_rule field context ─────────────────────────────────────────────
-
-const BANK_RULE_ATTRIBUTES = [
-  'bank_rule_name',
-  'bank_rule_enabled',
-  'bank_rule_auto_apply',
-  'bank_rule_priority',
-  'bank_rule_match_field',
-  'bank_rule_match_operator',
-  'bank_rule_match_value',
-  'bank_rule_amount_min',
-  'bank_rule_amount_max',
-  'bank_rule_direction',
-  'bank_rule_bank_account',
-  'bank_rule_action',
-  'bank_rule_gl_account',
-  'bank_rule_counterpart_bank_account',
-  'bank_rule_contact',
-  'bank_rule_memo',
-  'bank_rule_applied_count',
-  'bank_rule_last_applied_at',
-] as const
-
-type BankRuleAttribute = (typeof BANK_RULE_ATTRIBUTES)[number]
-type BankRuleFields = Record<BankRuleAttribute, { id: string } | null>
-
-/** The resolved def and field ids every `bank_rule` read and write needs. */
-export interface BankRuleFieldContext {
-  bankRuleDefId: string
-  fields: BankRuleFields
-}
-
-/** `null` when the org has not run migration 125 yet. */
-export async function loadBankRuleFieldContext(
-  organizationId: string
-): Promise<BankRuleFieldContext | null> {
-  const bankRuleDefId = await getCachedEntityDefId(organizationId, 'bank_rule')
-  if (!bankRuleDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...BANK_RULE_ATTRIBUTES])) as BankRuleFields
-  if (!fields.bank_rule_name || !fields.bank_rule_enabled) return null
-  return { bankRuleDefId, fields }
-}
-
-/** {@link loadBankRuleFieldContext}, as the refusal a write path needs. */
-export async function requireBankRuleFieldContext(
-  organizationId: string
-): Promise<BankRuleFieldContext> {
-  const ctx = await loadBankRuleFieldContext(organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Bank rules are not available until the bank_rule entity is provisioned (entity ' +
-        'migration 125)'
-    )
-  }
-  return ctx
-}
-
 /** One rule by id, or `null` when it does not exist, is archived, or is another org's. */
 export async function getBankRule(
   db: Database,
@@ -97,24 +43,11 @@ export async function getBankRule(
   const { organizationId, ruleId } = params
   return guard(
     async () => {
-      const ctx = await loadBankRuleFieldContext(organizationId)
+      const ctx = await loadBankRuleFieldContext(db, organizationId)
       if (!ctx) return null
 
-      const [instance] = await db
-        .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-        .from(schema.EntityInstance)
-        .where(
-          and(
-            eq(schema.EntityInstance.id, ruleId),
-            eq(schema.EntityInstance.organizationId, organizationId),
-            eq(schema.EntityInstance.entityDefinitionId, ctx.bankRuleDefId),
-            isNull(schema.EntityInstance.archivedAt)
-          )
-        )
-        .limit(1)
-
-      if (!instance) return null
-      const [row] = await hydrateRules(db, organizationId, ctx, [instance])
+      const records = await readSystemRecords(db, organizationId, ctx, { ids: [ruleId] })
+      const [row] = hydrateRules(records)
       return row ?? null
     },
     'Failed to read bank rule',
@@ -130,23 +63,10 @@ export async function listBankRules(
   const { organizationId, enabledOnly } = params
   return guard(
     async () => {
-      const ctx = await loadBankRuleFieldContext(organizationId)
+      const ctx = await loadBankRuleFieldContext(db, organizationId)
       if (!ctx) return []
 
-      const instances = await db
-        .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-        .from(schema.EntityInstance)
-        .where(
-          and(
-            eq(schema.EntityInstance.organizationId, organizationId),
-            eq(schema.EntityInstance.entityDefinitionId, ctx.bankRuleDefId),
-            isNull(schema.EntityInstance.archivedAt)
-          )
-        )
-        .orderBy(asc(schema.EntityInstance.createdAt))
-
-      if (instances.length === 0) return []
-      const rows = await hydrateRules(db, organizationId, ctx, instances)
+      const rows = hydrateRules(await readSystemRecords(db, organizationId, ctx, {}))
       const filtered = enabledOnly ? rows.filter((row) => row.enabled) : rows
       return [...filtered].sort((a, b) => (a.priority || 0) - (b.priority || 0))
     },
@@ -155,77 +75,30 @@ export async function listBankRules(
   )
 }
 
-async function hydrateRules(
-  db: Database,
-  organizationId: string,
-  ctx: BankRuleFieldContext,
-  page: { id: string; createdAt: Date | null }[]
-): Promise<BankRuleRecord[]> {
-  const ids = page.map((row) => row.id)
-  const fieldIds = Object.values(ctx.fields)
-    .filter((field): field is { id: string } => field != null)
-    .map((field) => field.id)
-
-  const values = fieldIds.length
-    ? await db
-        .select({
-          entityId: schema.FieldValue.entityId,
-          fieldId: schema.FieldValue.fieldId,
-          valueText: schema.FieldValue.valueText,
-          valueNumber: schema.FieldValue.valueNumber,
-          valueBoolean: schema.FieldValue.valueBoolean,
-          valueDate: schema.FieldValue.valueDate,
-          optionId: schema.FieldValue.optionId,
-        })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            inArray(schema.FieldValue.entityId, ids),
-            inArray(schema.FieldValue.fieldId, fieldIds)
-          )
-        )
-    : []
-
-  const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
-  for (const value of values) {
-    let bucket = byInstance.get(value.entityId)
-    if (!bucket) {
-      bucket = new Map()
-      byInstance.set(value.entityId, bucket)
-    }
-    bucket.set(value.fieldId, value)
-  }
-
-  const read = (instanceId: string, attr: BankRuleAttribute) => {
-    const id = ctx.fields[attr]?.id
-    return id ? (byInstance.get(instanceId)?.get(id) ?? null) : null
-  }
-
-  return page.map((row) => ({
-    id: row.id,
-    recordId: toRecordId(ctx.bankRuleDefId, row.id),
-    name: read(row.id, 'bank_rule_name')?.valueText ?? '',
-    enabled: read(row.id, 'bank_rule_enabled')?.valueBoolean ?? true,
-    autoApply: read(row.id, 'bank_rule_auto_apply')?.valueBoolean ?? false,
-    priority: read(row.id, 'bank_rule_priority')?.valueNumber ?? 0,
-    matchField: (read(row.id, 'bank_rule_match_field')?.optionId ??
-      'matchKey') as BankRuleMatchField,
-    matchOperator: (read(row.id, 'bank_rule_match_operator')?.optionId ??
+function hydrateRules(records: SystemRecord<BankRuleAttribute>[]): BankRuleRecord[] {
+  return records.map((record) => ({
+    id: record.id,
+    recordId: record.recordId,
+    name: record.text('bank_rule_name') ?? '',
+    enabled: record.boolean('bank_rule_enabled') ?? true,
+    autoApply: record.boolean('bank_rule_auto_apply') ?? false,
+    priority: record.number('bank_rule_priority') ?? 0,
+    matchField: (record.option('bank_rule_match_field') ?? 'matchKey') as BankRuleMatchField,
+    matchOperator: (record.option('bank_rule_match_operator') ??
       'contains') as BankRuleMatchOperator,
-    matchValue: read(row.id, 'bank_rule_match_value')?.valueText ?? '',
-    amountMinMinor: roundOrNull(read(row.id, 'bank_rule_amount_min')?.valueNumber),
-    amountMaxMinor: roundOrNull(read(row.id, 'bank_rule_amount_max')?.valueNumber),
-    direction: (read(row.id, 'bank_rule_direction')?.optionId ?? 'any') as BankRuleDirection,
-    bankAccountId: read(row.id, 'bank_rule_bank_account')?.valueText ?? null,
-    action: (read(row.id, 'bank_rule_action')?.optionId ?? 'code') as BankRuleAction,
-    glAccountId: read(row.id, 'bank_rule_gl_account')?.valueText ?? null,
-    counterpartBankAccountId: read(row.id, 'bank_rule_counterpart_bank_account')?.valueText ?? null,
-    contactId: read(row.id, 'bank_rule_contact')?.valueText ?? null,
-    memo: read(row.id, 'bank_rule_memo')?.valueText ?? null,
-    appliedCount: read(row.id, 'bank_rule_applied_count')?.valueNumber ?? 0,
-    lastAppliedAt: toDateOrNull(read(row.id, 'bank_rule_last_applied_at')?.valueDate),
-    createdAt: row.createdAt,
+    matchValue: record.text('bank_rule_match_value') ?? '',
+    amountMinMinor: roundOrNull(record.number('bank_rule_amount_min')),
+    amountMaxMinor: roundOrNull(record.number('bank_rule_amount_max')),
+    direction: (record.option('bank_rule_direction') ?? 'any') as BankRuleDirection,
+    bankAccountId: record.text('bank_rule_bank_account'),
+    action: (record.option('bank_rule_action') ?? 'code') as BankRuleAction,
+    glAccountId: record.text('bank_rule_gl_account'),
+    counterpartBankAccountId: record.text('bank_rule_counterpart_bank_account'),
+    contactId: record.text('bank_rule_contact'),
+    memo: record.text('bank_rule_memo'),
+    appliedCount: record.number('bank_rule_applied_count') ?? 0,
+    lastAppliedAt: toDateOrNull(record.date('bank_rule_last_applied_at')),
+    createdAt: record.createdAt,
   }))
 }
 
@@ -238,50 +111,6 @@ function toDateOrNull(value: string | null | undefined): string | null {
 }
 
 // ─── bank_transaction slice for matching ─────────────────────────────────
-
-const TX_MATCH_ATTRIBUTES = [
-  'bank_transaction_bank_account',
-  'bank_transaction_posted_at',
-  'bank_transaction_description',
-  'bank_transaction_amount',
-  'bank_transaction_match_key',
-  'bank_transaction_review_status',
-  'bank_transaction_gl_account',
-] as const
-
-type TxMatchAttribute = (typeof TX_MATCH_ATTRIBUTES)[number]
-type TxMatchFields = Record<TxMatchAttribute, { id: string } | null>
-
-/** The resolved `bank_transaction` field ids `suggestFromHistory` and `applySuggestions` need. */
-export interface RuleTransactionFieldContext {
-  bankTransactionDefId: string
-  fields: TxMatchFields
-}
-
-export async function loadRuleTransactionFieldContext(
-  organizationId: string
-): Promise<RuleTransactionFieldContext | null> {
-  const bankTransactionDefId = await getCachedEntityDefId(organizationId, 'bank_transaction')
-  if (!bankTransactionDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...TX_MATCH_ATTRIBUTES])) as TxMatchFields
-  if (!fields.bank_transaction_review_status || !fields.bank_transaction_amount) return null
-  return { bankTransactionDefId, fields }
-}
-
-export async function requireRuleTransactionFieldContext(
-  organizationId: string
-): Promise<RuleTransactionFieldContext> {
-  const ctx = await loadRuleTransactionFieldContext(organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Bank transactions are not available until the bank_transaction entity is provisioned ' +
-        '(entity migration 125)'
-    )
-  }
-  return ctx
-}
 
 /** What `evaluateRules`, `suggestFromHistory` and `applySuggestions` need from one line. */
 export interface TransactionMatchRow {
@@ -304,7 +133,7 @@ export async function getTransactionMatchRow(
   const { organizationId, transactionId } = params
   return guard(
     async () => {
-      const ctx = await loadRuleTransactionFieldContext(organizationId)
+      const ctx = await loadRuleTransactionFieldContext(db, organizationId)
       if (!ctx) return null
       const rows = await readTxMatchRows(db, organizationId, ctx, [transactionId])
       return rows[0] ?? null
@@ -322,7 +151,7 @@ export async function listForReviewTransactionIds(
   const { organizationId, bankAccountId } = params
   return guard(
     async () => {
-      const ctx = await loadRuleTransactionFieldContext(organizationId)
+      const ctx = await loadRuleTransactionFieldContext(db, organizationId)
       const statusField = ctx?.fields.bank_transaction_review_status
       if (!ctx || !statusField) return []
 
@@ -355,7 +184,9 @@ export async function listForReviewTransactionIds(
         const acctIds = new Set(acctRows.map((row) => row.entityId))
         ids = ids.filter((id) => acctIds.has(id))
       }
-      return filterLiveTransactionIds(db, organizationId, ctx.bankTransactionDefId, ids)
+      const live = await readSystemRecords(db, organizationId, ctx, { ids })
+      const liveIds = new Set(live.map((record) => record.id))
+      return ids.filter((id) => liveIds.has(id))
     },
     'Failed to list for-review transactions',
     { organizationId, bankAccountId }
@@ -383,7 +214,7 @@ export async function listHistoryMatches(
   const { organizationId, bankAccountId, matchKey, excludeTransactionId } = params
   return guard(
     async () => {
-      const ctx = await loadRuleTransactionFieldContext(organizationId)
+      const ctx = await loadRuleTransactionFieldContext(db, organizationId)
       const matchKeyField = ctx?.fields.bank_transaction_match_key
       const acctField = ctx?.fields.bank_transaction_bank_account
       const statusField = ctx?.fields.bank_transaction_review_status
@@ -465,7 +296,7 @@ export async function findTransferCandidate(
   return guard(
     async () => {
       if (!postedAt) return null
-      const ctx = await loadRuleTransactionFieldContext(organizationId)
+      const ctx = await loadRuleTransactionFieldContext(db, organizationId)
       const amountField = ctx?.fields.bank_transaction_amount
       if (!ctx || !amountField) return null
 
@@ -507,97 +338,43 @@ export async function findTransferCandidate(
 }
 
 /**
- * Keep only the ids that are still live `bank_transaction` instances, in the
- * order given.
+ * Turn a page of `bank_transaction` ids into {@link TransactionMatchRow}s, in
+ * the order given.
  *
- * 🛑 Every transaction read in this file starts from `FieldValue`, and a
+ * 🛑 The reader drops an ARCHIVED instance, and that filter is load-bearing.
+ * Every transaction read in this file starts from `FieldValue`, and a
  * `FieldValue` row outlives an archive - archiving a bank account archives its
- * lines but leaves their values in place. Without this filter a removed
- * account's lines still arrive as review candidates, history samples and
- * transfer legs, and `crud.update` then refuses them with `Entity not found`
- * (it reads through `getEntityInstanceRow`, which is `archivedAt IS NULL`).
+ * lines but leaves their values in place. Without it a removed account's lines
+ * still arrive as review candidates, history samples and transfer legs, and
+ * `crud.update` then refuses them with `Entity not found` (it reads through
+ * `getEntityInstanceRow`, which is `archivedAt IS NULL`).
  */
-async function filterLiveTransactionIds(
-  db: Database,
-  organizationId: string,
-  bankTransactionDefId: string,
-  ids: string[]
-): Promise<string[]> {
-  if (ids.length === 0) return []
-  const rows = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, bankTransactionDefId),
-        isNull(schema.EntityInstance.archivedAt),
-        inArray(schema.EntityInstance.id, ids)
-      )
-    )
-  const live = new Set(rows.map((row) => row.id))
-  return ids.filter((id) => live.has(id))
-}
-
-/** Turn a page of `bank_transaction` ids into {@link TransactionMatchRow}s, one query. */
 async function readTxMatchRows(
   db: Database,
   organizationId: string,
   ctx: RuleTransactionFieldContext,
   ids: string[]
 ): Promise<TransactionMatchRow[]> {
-  const liveIds = await filterLiveTransactionIds(db, organizationId, ctx.bankTransactionDefId, ids)
-  if (liveIds.length === 0) return []
-  const fieldIds = Object.values(ctx.fields)
-    .filter((field): field is { id: string } => field != null)
-    .map((field) => field.id)
+  if (ids.length === 0) return []
+  const records = await readSystemRecords(db, organizationId, ctx, { ids })
+  const byId = new Map(records.map((record) => [record.id, record]))
 
-  const values = fieldIds.length
-    ? await db
-        .select({
-          entityId: schema.FieldValue.entityId,
-          fieldId: schema.FieldValue.fieldId,
-          valueText: schema.FieldValue.valueText,
-          valueNumber: schema.FieldValue.valueNumber,
-          valueDate: schema.FieldValue.valueDate,
-          optionId: schema.FieldValue.optionId,
-          relatedEntityId: schema.FieldValue.relatedEntityId,
-        })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            inArray(schema.FieldValue.entityId, liveIds),
-            inArray(schema.FieldValue.fieldId, fieldIds)
-          )
-        )
-    : []
-
-  const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
-  for (const value of values) {
-    let bucket = byInstance.get(value.entityId)
-    if (!bucket) {
-      bucket = new Map()
-      byInstance.set(value.entityId, bucket)
-    }
-    bucket.set(value.fieldId, value)
+  const out: TransactionMatchRow[] = []
+  for (const id of ids) {
+    const record = byId.get(id)
+    if (!record) continue
+    out.push({
+      id,
+      bankAccountId: record.related('bank_transaction_bank_account'),
+      postedAt: toDateOrNull(record.date('bank_transaction_posted_at')),
+      description: record.text('bank_transaction_description'),
+      matchKey: record.text('bank_transaction_match_key'),
+      amountMinor: Math.round(record.number('bank_transaction_amount') ?? 0),
+      reviewStatus: record.option('bank_transaction_review_status'),
+      glAccountId: record.text('bank_transaction_gl_account'),
+    })
   }
-
-  const read = (id: string, attr: TxMatchAttribute) => {
-    const fieldId = ctx.fields[attr]?.id
-    return fieldId ? (byInstance.get(id)?.get(fieldId) ?? null) : null
-  }
-
-  return liveIds.map((id) => ({
-    id,
-    bankAccountId: read(id, 'bank_transaction_bank_account')?.relatedEntityId ?? null,
-    postedAt: toDateOrNull(read(id, 'bank_transaction_posted_at')?.valueDate),
-    description: read(id, 'bank_transaction_description')?.valueText ?? null,
-    matchKey: read(id, 'bank_transaction_match_key')?.valueText ?? null,
-    amountMinor: Math.round(read(id, 'bank_transaction_amount')?.valueNumber ?? 0),
-    reviewStatus: read(id, 'bank_transaction_review_status')?.optionId ?? null,
-    glAccountId: read(id, 'bank_transaction_gl_account')?.valueText ?? null,
-  }))
+  return out
 }
 
 // ─── pattern preview ─────────────────────────────────────────────────────
@@ -680,7 +457,7 @@ export async function previewRulePattern(
       }
       if (!conditions.matchValue.trim()) return empty
 
-      const ctx = await loadRuleTransactionFieldContext(organizationId)
+      const ctx = await loadRuleTransactionFieldContext(db, organizationId)
       if (!ctx) return empty
       const fieldAttribute =
         conditions.matchField === 'description'

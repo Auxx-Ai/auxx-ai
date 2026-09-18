@@ -18,9 +18,9 @@ const crudUpdate = vi.fn(async () => ({}))
 
 vi.mock('../../../../data-connectors/data-connector-queue', () => ({ enqueueConnectorSync }))
 vi.mock('../coverage', () => ({ refreshBankAccountCoverage }))
-vi.mock('../../reads', () => ({
+vi.mock('../../fields', () => ({
   loadBankAccountFieldContext: async () => ({
-    bankAccountDefId: 'def_bank_account',
+    defId: 'def_bank_account',
     fields: { bank_account_connector_id: { id: 'field_connector' } },
   }),
 }))

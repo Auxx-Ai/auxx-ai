@@ -15,6 +15,7 @@
 
 import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fieldTypeOf } from '../../__tests__/support/field-stubs'
 
 const ORG = 'org_1'
 const LINE_ID = 'txn_1'
@@ -23,24 +24,51 @@ const PAYOUT_DEF = 'def_payout'
 const DEPOSIT_DEF = 'def_deposit'
 
 /** The outer bank_transaction's own fields, read through `getOrgCache` - never the CustomField table. */
-const BT_FIELDS: Record<string, { id: string }> = {
-  bank_transaction_external_id: { id: 'f_ext' },
-  bank_transaction_bank_account: { id: 'f_acct' },
-  bank_transaction_posted_at: { id: 'f_posted' },
-  bank_transaction_description: { id: 'f_desc' },
-  bank_transaction_amount: { id: 'f_amount' },
-  bank_transaction_bank_status: { id: 'f_bank_status' },
-  bank_transaction_match_key: { id: 'f_key' },
-  bank_transaction_source: { id: 'f_source' },
-  bank_transaction_import_batch_id: { id: 'f_batch' },
-  bank_transaction_review_status: { id: 'f_review' },
-  bank_transaction_gl_account: { id: 'f_gl' },
-  bank_transaction_matched_record_id: { id: 'f_matched_id' },
-  bank_transaction_matched_record_type: { id: 'f_matched_type' },
-  bank_transaction_exclude_reason: { id: 'f_exclude' },
-  bank_transaction_reviewed_at: { id: 'f_reviewed_at' },
-  bank_transaction_reviewed_by_user_id: { id: 'f_reviewed_by' },
-  bank_transaction_rule_id: { id: 'f_rule' },
+const BT_FIELDS: Record<string, { id: string; type: string }> = {
+  bank_transaction_external_id: { id: 'f_ext', type: fieldTypeOf('bank_transaction_external_id') },
+  bank_transaction_bank_account: {
+    id: 'f_acct',
+    type: fieldTypeOf('bank_transaction_bank_account'),
+  },
+  bank_transaction_posted_at: { id: 'f_posted', type: fieldTypeOf('bank_transaction_posted_at') },
+  bank_transaction_description: { id: 'f_desc', type: fieldTypeOf('bank_transaction_description') },
+  bank_transaction_amount: { id: 'f_amount', type: fieldTypeOf('bank_transaction_amount') },
+  bank_transaction_bank_status: {
+    id: 'f_bank_status',
+    type: fieldTypeOf('bank_transaction_bank_status'),
+  },
+  bank_transaction_match_key: { id: 'f_key', type: fieldTypeOf('bank_transaction_match_key') },
+  bank_transaction_source: { id: 'f_source', type: fieldTypeOf('bank_transaction_source') },
+  bank_transaction_import_batch_id: {
+    id: 'f_batch',
+    type: fieldTypeOf('bank_transaction_import_batch_id'),
+  },
+  bank_transaction_review_status: {
+    id: 'f_review',
+    type: fieldTypeOf('bank_transaction_review_status'),
+  },
+  bank_transaction_gl_account: { id: 'f_gl', type: fieldTypeOf('bank_transaction_gl_account') },
+  bank_transaction_matched_record_id: {
+    id: 'f_matched_id',
+    type: fieldTypeOf('bank_transaction_matched_record_id'),
+  },
+  bank_transaction_matched_record_type: {
+    id: 'f_matched_type',
+    type: fieldTypeOf('bank_transaction_matched_record_type'),
+  },
+  bank_transaction_exclude_reason: {
+    id: 'f_exclude',
+    type: fieldTypeOf('bank_transaction_exclude_reason'),
+  },
+  bank_transaction_reviewed_at: {
+    id: 'f_reviewed_at',
+    type: fieldTypeOf('bank_transaction_reviewed_at'),
+  },
+  bank_transaction_reviewed_by_user_id: {
+    id: 'f_reviewed_by',
+    type: fieldTypeOf('bank_transaction_reviewed_by_user_id'),
+  },
+  bank_transaction_rule_id: { id: 'f_rule', type: fieldTypeOf('bank_transaction_rule_id') },
 }
 
 /** The candidate entities' own attributes, read through the `CustomField` table. */

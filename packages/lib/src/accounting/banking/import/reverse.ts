@@ -29,15 +29,18 @@ import type { Result } from 'neverthrow'
 import { BadRequestError } from '../../../errors'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
-import { guard } from '../guard'
-import { getBankAccount, readCoverage, requireBankAccountFieldContext } from '../reads'
 import {
   type BankTransactionImportContext,
+  requireBankAccountFieldContext,
+  requireBankTransactionImportContext,
+} from '../fields'
+import { guard } from '../guard'
+import { getBankAccount, readCoverage } from '../reads'
+import {
   type BankTransactionRow,
   readTransactionsByAccount,
   readTransactionsByBatch,
-  requireBankTransactionImportContext,
-} from './fields'
+} from './reads'
 import type { ReverseImportRefusal, ReverseImportResult } from './types'
 import { IMPORT_LINK_EXCLUSION_PREFIX } from './types'
 
@@ -57,7 +60,7 @@ export async function reverseImport(
   const { organizationId, actorUserId, importBatchId } = params
   return guard(
     async () => {
-      const ctx = await requireBankTransactionImportContext(organizationId)
+      const ctx = await requireBankTransactionImportContext(db, organizationId)
       const rows = await readTransactionsByBatch(db, organizationId, ctx, importBatchId)
       if (rows.length === 0) {
         throw new BadRequestError(
@@ -75,7 +78,7 @@ export async function reverseImport(
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
       for (const row of deletable) {
-        await crud.delete(toRecordId(ctx.bankTransactionDefId, row.id))
+        await crud.delete(toRecordId(ctx.defId, row.id))
       }
 
       const bankAccountId = rows.find((row) => row.bankAccountId)?.bankAccountId ?? null
@@ -188,9 +191,9 @@ async function recomputeAfterDelete(
   // is written here: the stored value is a claim about what we hold, and after a
   // reverse we may hold less.
   if (account.value.coverageFrom && account.value.coverageFrom !== (earliestRemaining ?? null)) {
-    const accountCtx = await requireBankAccountFieldContext(organizationId)
+    const accountCtx = await requireBankAccountFieldContext(db, organizationId)
     const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-    await crud.update(toRecordId(accountCtx.bankAccountDefId, bankAccountId), {
+    await crud.update(toRecordId(accountCtx.defId, bankAccountId), {
       bank_account_coverage_from: earliestRemaining ?? null,
     })
   }

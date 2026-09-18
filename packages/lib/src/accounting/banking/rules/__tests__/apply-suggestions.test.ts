@@ -37,8 +37,10 @@ vi.mock('../reads', () => ({
   getTransactionMatchRow: async () => ({ isErr: () => false, value: h.row }),
   listBankRules: async () => ({ isErr: () => false, value: [h.rule] }),
   listForReviewTransactionIds: async () => ({ isErr: () => false, value: ['txn_1'] }),
-  requireBankRuleFieldContext: async () => ({ bankRuleDefId: 'def_rule' }),
-  requireRuleTransactionFieldContext: async () => ({ bankTransactionDefId: 'def_bt' }),
+}))
+vi.mock('../../fields', () => ({
+  requireBankRuleFieldContext: async () => ({ defId: 'def_rule' }),
+  requireRuleTransactionFieldContext: async () => ({ defId: 'def_bt' }),
 }))
 
 const { applySuggestions } = await import('../writes')

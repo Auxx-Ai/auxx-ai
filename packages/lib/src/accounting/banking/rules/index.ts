@@ -33,10 +33,8 @@ export {
 } from './client'
 export { evaluateRules, matchesRuleConditions } from './evaluate'
 export type {
-  BankRuleFieldContext,
   RulePatternPreview,
   RulePatternPreviewLine,
-  RuleTransactionFieldContext,
   TransactionMatchRow,
 } from './reads'
 export {
@@ -46,11 +44,7 @@ export {
   listBankRules,
   listForReviewTransactionIds,
   listHistoryMatches,
-  loadBankRuleFieldContext,
-  loadRuleTransactionFieldContext,
   previewRulePattern,
-  requireBankRuleFieldContext,
-  requireRuleTransactionFieldContext,
 } from './reads'
 export { suggestFromHistory } from './suggest'
 export type {

@@ -29,6 +29,7 @@ import { err, type Result } from 'neverthrow'
 import { BadRequestError, NotFoundError } from '../../../errors'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
+import { requireBankRuleFieldContext, requireRuleTransactionFieldContext } from '../fields'
 import { codeTransaction, excludeTransaction, transferTransaction } from '../review/writes'
 import {
   BANK_RULE_ACTIONS,
@@ -50,8 +51,6 @@ import {
   getTransactionMatchRow,
   listBankRules,
   listForReviewTransactionIds,
-  requireBankRuleFieldContext,
-  requireRuleTransactionFieldContext,
 } from './reads'
 import { suggestFromHistory } from './suggest'
 
@@ -110,7 +109,7 @@ export async function createRule(
   const { organizationId, actorUserId } = input
   return guard(
     async () => {
-      const ctx = await requireBankRuleFieldContext(organizationId)
+      const ctx = await requireBankRuleFieldContext(db, organizationId)
       const name = input.name?.trim()
       if (!name) throw new BadRequestError('A bank rule needs a name')
       assertVocabulary('match field', BANK_RULE_MATCH_FIELDS, input.matchField)
@@ -119,7 +118,7 @@ export async function createRule(
       assertActionPayload(input.action, input.glAccountId, input.counterpartBankAccountId)
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-      const created = await crud.create(ctx.bankRuleDefId, {
+      const created = await crud.create(ctx.defId, {
         bank_rule_name: name,
         bank_rule_enabled: input.enabled ?? true,
         bank_rule_auto_apply: input.autoApply ?? false,
@@ -159,7 +158,7 @@ export async function updateRule(
   const { organizationId, actorUserId, ruleId } = input
   return guard(
     async () => {
-      const ctx = await requireBankRuleFieldContext(organizationId)
+      const ctx = await requireBankRuleFieldContext(db, organizationId)
       const existing = await getBankRule(db, { organizationId, ruleId })
       if (existing.isErr()) throw existing.error
       if (!existing.value) throw new NotFoundError(`Bank rule ${ruleId} was not found`)
@@ -211,7 +210,7 @@ export async function updateRule(
 
       if (Object.keys(patch).length > 0) {
         const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-        await crud.update(toRecordId(ctx.bankRuleDefId, ruleId), patch)
+        await crud.update(toRecordId(ctx.defId, ruleId), patch)
       }
 
       const row = await getBankRule(db, { organizationId, ruleId })
@@ -234,13 +233,13 @@ export async function deleteRule(
   const { organizationId, actorUserId, ruleId } = params
   return guard(
     async () => {
-      const ctx = await requireBankRuleFieldContext(organizationId)
+      const ctx = await requireBankRuleFieldContext(db, organizationId)
       const existing = await getBankRule(db, { organizationId, ruleId })
       if (existing.isErr()) throw existing.error
       if (!existing.value) throw new NotFoundError(`Bank rule ${ruleId} was not found`)
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-      await crud.archive(toRecordId(ctx.bankRuleDefId, ruleId))
+      await crud.archive(toRecordId(ctx.defId, ruleId))
       logger.info('Archived bank rule', { organizationId, ruleId })
     },
     'Failed to delete bank rule',
@@ -340,7 +339,7 @@ export async function applySuggestions(
   const { organizationId, actorUserId, transactionIds } = params
   return guard(
     async () => {
-      const txCtx = await requireRuleTransactionFieldContext(organizationId)
+      const txCtx = await requireRuleTransactionFieldContext(db, organizationId)
       const rulesResult = await listBankRules(db, { organizationId, enabledOnly: true })
       if (rulesResult.isErr()) throw rulesResult.error
       const rules = rulesResult.value
@@ -409,7 +408,7 @@ export async function applySuggestions(
           continue
         }
 
-        await crud.update(toRecordId(txCtx.bankTransactionDefId, transactionId), {
+        await crud.update(toRecordId(txCtx.defId, transactionId), {
           bank_transaction_suggested_gl_account: suggestion.glAccountId ?? null,
           bank_transaction_suggested_record_id: suggestion.recordId ?? null,
           bank_transaction_suggested_record_type: suggestion.recordType ?? null,
@@ -498,9 +497,9 @@ async function tryAutoApplyAction(
   // codeTransaction/transferTransaction/excludeTransaction stamp everything
   // about the review except which RULE did it - stamp that one field so "how
   // much of my queue is automatic" is answerable per line, not just per rule.
-  const ctx = await requireRuleTransactionFieldContext(organizationId)
+  const ctx = await requireRuleTransactionFieldContext(db, organizationId)
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-  await crud.update(toRecordId(ctx.bankTransactionDefId, transactionId), {
+  await crud.update(toRecordId(ctx.defId, transactionId), {
     bank_transaction_rule_id: rule.id,
   })
   return true
@@ -511,11 +510,11 @@ async function bumpRuleApplied(
   params: { organizationId: string; actorUserId: string; ruleId: string }
 ): Promise<void> {
   const { organizationId, actorUserId, ruleId } = params
-  const ctx = await requireBankRuleFieldContext(organizationId)
+  const ctx = await requireBankRuleFieldContext(db, organizationId)
   const existing = await getBankRule(db, { organizationId, ruleId })
   if (existing.isErr() || !existing.value) return
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-  await crud.update(toRecordId(ctx.bankRuleDefId, ruleId), {
+  await crud.update(toRecordId(ctx.defId, ruleId), {
     bank_rule_applied_count: existing.value.appliedCount + 1,
     bank_rule_last_applied_at: toDateKey(new Date()),
   })

@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * What kind of account the bank says this is, and therefore which side of the
@@ -89,7 +89,7 @@ export const BANK_ACCOUNT_STATUS_OPTIONS = [
  * an importer stamps when it knows something the transactions cannot say (a
  * statement was imported for a range that legitimately had no activity).
  */
-export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
+export const BANK_ACCOUNT_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -573,4 +573,4 @@ export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

@@ -32,7 +32,7 @@ import { enqueueConnectorSync } from '../../../data-connectors/data-connector-qu
 import { isSuspendedConnectorStatus } from '../../../data-connectors/data-connector-scheduler'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
-import { loadBankAccountFieldContext } from '../reads'
+import { loadBankAccountFieldContext } from '../fields'
 import { refreshBankAccountCoverage } from './coverage'
 import { FC_PROVIDER_KEY } from './fc-client'
 import { clearFeedDisconnectedAt, stampFeedDisconnectedAt } from './reaper'
@@ -241,7 +241,7 @@ async function setBankAccountStatus(
   feed: ResolvedFeedConnector,
   status: 'connected' | 'disconnected'
 ): Promise<void> {
-  const ctx = await loadBankAccountFieldContext(feed.organizationId)
+  const ctx = await loadBankAccountFieldContext(db, feed.organizationId)
   const field = ctx?.fields.bank_account_connector_id
   if (!ctx || !field) return
 
@@ -258,7 +258,7 @@ async function setBankAccountStatus(
 
   const systemUserId = await getOrgCache().get(feed.organizationId, 'systemUser')
   const crud = new UnifiedCrudHandler(feed.organizationId, systemUserId, db)
-  await crud.update(toRecordId(ctx.bankAccountDefId, row.entityId), {
+  await crud.update(toRecordId(ctx.defId, row.entityId), {
     bank_account_status: status,
   })
 }

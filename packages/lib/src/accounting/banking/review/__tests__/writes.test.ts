@@ -68,25 +68,23 @@ vi.mock('../../feed/pins', () => ({
   pinPostedBankTransaction: h.pin,
   unpinPostedBankTransaction: h.unpin,
 }))
+vi.mock('../../fields', () => ({
+  // The write-once posting high-water mark is stamped on the ACCOUNT beside the
+  // line's own `gl_posting_id`, so the treatments resolve the bank_account def
+  // too. `updateFor('def_ba:acct_1')` is how the tests below read that stamp.
+  requireBankAccountFieldContext: async () => ({ defId: 'def_ba', fields: {} }),
+  requireReviewFieldContext: async () => ({ defId: 'def_bt', fields: {} }),
+}))
 vi.mock('../../reads', () => ({
   getBankAccount: async (_db: unknown, params: { bankAccountId: string }) => ({
     isErr: () => false,
     isOk: () => true,
     value: { id: params.bankAccountId, name: 'Counterpart', glAccountId: '1010' },
   }),
-  // The write-once posting high-water mark is stamped on the ACCOUNT beside the
-  // line's own `gl_posting_id`, so the treatments resolve the bank_account def
-  // too. `updateFor('def_ba:acct_1')` is how the tests below read that stamp.
-  requireBankAccountFieldContext: async () => ({ bankAccountDefId: 'def_ba', fields: {} }),
 }))
 vi.mock('../reads', async () => {
   const { NotFoundError } = await import('../../../../errors')
   return {
-    requireReviewFieldContext: async () => ({
-      bankTransactionDefId: 'def_bt',
-      fields: {},
-      suggestionFields: {},
-    }),
     requireBankTransaction: async (_db: unknown, _org: string, id: string) => {
       const row = h.rows.get(id)
       if (!row) throw new NotFoundError(`Bank line ${id} was not found`)
