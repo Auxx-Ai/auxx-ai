@@ -275,6 +275,7 @@ export type {
   DataConnectorItemRow,
   DataConnectorMappingRow,
   DataConnectorRow,
+  DataConnectorRunListRow,
   DataConnectorRunRow,
   DataConnectorStreamRow,
   DecodedMapping,
