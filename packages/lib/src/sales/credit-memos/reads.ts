@@ -4,28 +4,31 @@
 // two contact-scoped reads the apply dialog needs. Reads only: the writers are
 // `writes.ts`, `apply.ts` and `settle.ts` (`docs/lib-module-guide.md` section 5).
 //
-// Values are read off `FieldValue`'s own columns rather than through
-// `UnifiedCrudHandler.getFieldValues`, the trade `money/invoices/write-off.ts`
-// and `money/orders/reads.ts` make: no actor is needed, so a preview and a
-// writer share one loader, and a relationship's `relatedEntityId` is read as the
-// id it is rather than unwrapped from a typed envelope.
+// Cells come through `readSystemRecords` (plan §3b), so a relationship is read
+// as the record it points at and the per-column guessing is gone. No actor is
+// needed, so a preview and a writer share one loader.
 //
 // No permission checks anywhere in this file. The router asserts (section 6).
 
 import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { toCalendarDay } from '@auxx/utils/calendar-day'
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
-import { getOrgCache } from '../../cache'
 import { BadRequestError, ConflictError, NotFoundError } from '../../errors'
+import { CREDIT_MEMO_APPLICATION_FIELDS } from '../../resources/registry/resources/credit-memo-application-fields'
+import { CREDIT_MEMO_FIELDS } from '../../resources/registry/resources/credit-memo-fields'
+import { CREDIT_MEMO_LINE_FIELDS } from '../../resources/registry/resources/credit-memo-line-fields'
+import { LINE_ITEM_FIELDS } from '../../resources/registry/resources/line-item-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
+import { getInstanceId } from '../../resources/resource-id'
 import {
-  cellReader,
-  type FieldMap,
-  fieldIdsOf,
-  liveInstanceIds,
-  selectValues,
-  type ValueRow,
-} from '../../field-values/read-kit'
+  readSystemRecords,
+  type SystemFieldContext,
+  type SystemRecord,
+  systemFieldMap,
+  systemFields,
+  systemValueJoin,
+} from '../../resources/system-records'
 import { isLiveFulfillment } from '../fulfillments/client'
 import { readFulfillmentsForOrder } from '../fulfillments/reads'
 import type {
@@ -37,8 +40,15 @@ import type {
   OpenInvoiceRow,
 } from './client'
 
-/** Every `credit_memo` attribute the module reads. */
-const CREDIT_MEMO_ATTRIBUTES = [
+/**
+ * Every `credit_memo` attribute one memo's header is assembled from.
+ *
+ * `credit_memo_lines` is the has_many INVERSE, picked here because this context
+ * only ever reads ONE memo and the mirror is where `lineIds` has always come
+ * from; {@link CONTACT_CREDIT_ATTRIBUTES} is the set the many-memo reads use so
+ * they do not pull a row per line per memo.
+ */
+const CREDIT_MEMO_ATTRIBUTES = pickSystemAttributes(CREDIT_MEMO_FIELDS, [
   'credit_memo_number',
   'credit_memo_status',
   'credit_memo_source',
@@ -55,10 +65,21 @@ const CREDIT_MEMO_ATTRIBUTES = [
   'credit_memo_amount_refunded',
   'credit_memo_balance',
   'credit_memo_lines',
-] as const
+] as const)
+
+/** The `credit_memo` attributes the contact drawer's credit list and the close gate read. */
+const CONTACT_CREDIT_ATTRIBUTES = pickSystemAttributes(CREDIT_MEMO_FIELDS, [
+  'credit_memo_number',
+  'credit_memo_status',
+  'credit_memo_source',
+  'credit_memo_issued_at',
+  'credit_memo_contact',
+  'credit_memo_total',
+  'credit_memo_balance',
+] as const)
 
 /** Every `credit_memo_line` attribute the module reads. */
-const CREDIT_MEMO_LINE_ATTRIBUTES = [
+const CREDIT_MEMO_LINE_ATTRIBUTES = pickSystemAttributes(CREDIT_MEMO_LINE_FIELDS, [
   'credit_memo_line_description',
   'credit_memo_line_qty',
   'credit_memo_line_unit_price',
@@ -67,19 +88,19 @@ const CREDIT_MEMO_LINE_ATTRIBUTES = [
   'credit_memo_line_disposition',
   'credit_memo_line_line_item',
   'credit_memo_line_sort_order',
-] as const
+] as const)
 
 /** Every `credit_memo_application` attribute the module reads. */
-const CREDIT_MEMO_APPLICATION_ATTRIBUTES = [
+const CREDIT_MEMO_APPLICATION_ATTRIBUTES = pickSystemAttributes(CREDIT_MEMO_APPLICATION_FIELDS, [
   'credit_memo_application_credit_memo',
   'credit_memo_application_invoice',
   'credit_memo_application_amount',
   'credit_memo_application_applied_at',
   'credit_memo_application_operation',
   'credit_memo_application_reverses',
-] as const
+] as const)
 
-/** Every `invoice` attribute the module reads. */
+/** Every `invoice` attribute the module reads. `invoice-fields.ts` is not a declared map yet, so this one stays hand-written. */
 const INVOICE_ATTRIBUTES = [
   'invoice_number',
   'invoice_status',
@@ -97,7 +118,7 @@ const INVOICE_ATTRIBUTES = [
 ] as const
 
 /** Every `line_item` attribute `createCreditMemoFromInvoice` copies from. */
-const LINE_ITEM_ATTRIBUTES = [
+const LINE_ITEM_ATTRIBUTES = pickSystemAttributes(LINE_ITEM_FIELDS, [
   'line_item_name',
   'line_item_qty',
   'line_item_unit_price',
@@ -106,41 +127,19 @@ const LINE_ITEM_ATTRIBUTES = [
   'line_item_tax_total',
   'line_item_sort_order',
   'line_item_work_order',
-] as const
+] as const)
 
-type CreditMemoAttribute = (typeof CREDIT_MEMO_ATTRIBUTES)[number]
-type CreditMemoLineAttribute = (typeof CREDIT_MEMO_LINE_ATTRIBUTES)[number]
 type CreditMemoApplicationAttribute = (typeof CREDIT_MEMO_APPLICATION_ATTRIBUTES)[number]
 type InvoiceAttribute = (typeof INVOICE_ATTRIBUTES)[number]
-type LineItemAttribute = (typeof LINE_ITEM_ATTRIBUTES)[number]
 
-/**
- * The owning-side rows of one belongs_to field that point at `targetId`: every
- * child whose `<child>_<parent>` relationship is this record. The one query
- * shape behind "the memos of a contact", "the applications of a memo" and "the
- * invoices of a contact".
- */
-async function childIdsPointingAt(
-  db: Database | Transaction,
-  organizationId: string,
-  field: { id: string } | null,
-  targetId: string
-): Promise<string[]> {
-  if (!field) return []
-  const rows = await db
-    .select({ entityId: schema.FieldValue.entityId })
-    .from(schema.FieldValue)
-    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, field.id),
-        eq(schema.FieldValue.relatedEntityId, targetId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
+/** The instance ids a has_many relationship cell points at, in `sortKey` order. */
+function relatedIds<A extends string>(record: SystemRecord<A>, attribute: A): string[] {
+  return record
+    .cells(attribute)
+    .map((value) =>
+      value.type === 'relationship' && value.recordId ? getInstanceId(value.recordId) : null
     )
-    .orderBy(asc(schema.EntityInstance.createdAt))
-  return [...new Set(rows.map((row) => row.entityId))]
+    .filter((id): id is string => !!id)
 }
 
 // ─── The memo ───────────────────────────────────────────────────────────────
@@ -180,51 +179,34 @@ export async function loadCreditMemo(
   organizationId: string,
   creditMemoId: string
 ): Promise<CreditMemoRecord | null> {
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...CREDIT_MEMO_ATTRIBUTES])) as FieldMap<CreditMemoAttribute>
-  if (!fields.credit_memo_status || !fields.credit_memo_contact) return null
+  const ctx = await systemFields(db, organizationId, 'credit_memo', CREDIT_MEMO_ATTRIBUTES)
+  if (!ctx?.fields.credit_memo_status || !ctx.fields.credit_memo_contact) return null
 
-  const [instance] = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.id, creditMemoId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .limit(1)
-  if (!instance) return null
+  const [memo] = await readSystemRecords(db, organizationId, ctx, { ids: [creditMemoId] })
+  if (!memo) return null
 
-  const buckets = await selectValues(db, organizationId, [creditMemoId], fieldIdsOf(fields))
-  const { cell, cells } = cellReader(fields, buckets.get(creditMemoId))
-
-  const status = cell('credit_memo_status')?.optionId
+  const status = memo.option('credit_memo_status')
   if (!status) return null
 
   return {
     id: creditMemoId,
-    number: cell('credit_memo_number')?.valueText ?? '',
+    number: memo.text('credit_memo_number') ?? '',
     status,
-    source: cell('credit_memo_source')?.optionId ?? 'native',
-    reason: cell('credit_memo_reason')?.optionId ?? null,
-    issuedAt: toCalendarDay(cell('credit_memo_issued_at')?.valueDate),
-    note: cell('credit_memo_note')?.valueText ?? null,
-    contactInstanceId: cell('credit_memo_contact')?.relatedEntityId ?? null,
-    invoiceInstanceId: cell('credit_memo_invoice')?.relatedEntityId ?? null,
-    orderInstanceId: cell('credit_memo_order')?.relatedEntityId ?? null,
-    subtotalMinor: cell('credit_memo_subtotal')?.valueNumber ?? 0,
-    taxTotalMinor: cell('credit_memo_tax_total')?.valueNumber ?? 0,
-    totalMinor: cell('credit_memo_total')?.valueNumber ?? 0,
-    amountAppliedMinor: cell('credit_memo_amount_applied')?.valueNumber ?? 0,
-    amountRefundedMinor: cell('credit_memo_amount_refunded')?.valueNumber ?? 0,
-    balanceMinor: cell('credit_memo_balance')?.valueNumber ?? 0,
-    lineIds: cells('credit_memo_lines')
-      .map((row) => row.relatedEntityId)
-      .filter((id): id is string => !!id),
-    hasSettlementFields: fields.credit_memo_amount_applied !== null,
+    source: memo.option('credit_memo_source') ?? 'native',
+    reason: memo.option('credit_memo_reason'),
+    issuedAt: toCalendarDay(memo.date('credit_memo_issued_at')),
+    note: memo.text('credit_memo_note'),
+    contactInstanceId: memo.related('credit_memo_contact'),
+    invoiceInstanceId: memo.related('credit_memo_invoice'),
+    orderInstanceId: memo.related('credit_memo_order'),
+    subtotalMinor: memo.number('credit_memo_subtotal') ?? 0,
+    taxTotalMinor: memo.number('credit_memo_tax_total') ?? 0,
+    totalMinor: memo.number('credit_memo_total') ?? 0,
+    amountAppliedMinor: memo.number('credit_memo_amount_applied') ?? 0,
+    amountRefundedMinor: memo.number('credit_memo_amount_refunded') ?? 0,
+    balanceMinor: memo.number('credit_memo_balance') ?? 0,
+    lineIds: relatedIds(memo, 'credit_memo_lines'),
+    hasSettlementFields: ctx.fields.credit_memo_amount_applied !== null,
   }
 }
 
@@ -261,28 +243,33 @@ export async function loadCreditMemoLines(
   lineIds: readonly string[]
 ): Promise<CreditMemoLineRecord[]> {
   if (lineIds.length === 0) return []
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...CREDIT_MEMO_LINE_ATTRIBUTES])) as FieldMap<CreditMemoLineAttribute>
+  const ctx = await systemFields(
+    db,
+    organizationId,
+    'credit_memo_line',
+    CREDIT_MEMO_LINE_ATTRIBUTES
+  )
+  if (!ctx) return []
 
-  const live = await liveInstanceIds(db, organizationId, lineIds)
-  const buckets = await selectValues(db, organizationId, live, fieldIdsOf(fields))
+  const records = await readSystemRecords(db, organizationId, ctx, { ids: lineIds })
+  const byId = new Map(records.map((record) => [record.id, record]))
 
-  return live
-    .map((lineId, index) => {
-      const { cell } = cellReader(fields, buckets.get(lineId))
-      return {
-        id: lineId,
-        description: cell('credit_memo_line_description')?.valueText ?? null,
-        qty: cell('credit_memo_line_qty')?.valueNumber ?? 0,
-        unitPriceMinor: cell('credit_memo_line_unit_price')?.valueNumber ?? null,
-        subtotalMinor: cell('credit_memo_line_subtotal')?.valueNumber ?? 0,
-        taxTotalMinor: cell('credit_memo_line_tax_total')?.valueNumber ?? null,
-        disposition: cell('credit_memo_line_disposition')?.optionId ?? null,
-        lineItemInstanceId: cell('credit_memo_line_line_item')?.relatedEntityId ?? null,
-        sortOrder: cell('credit_memo_line_sort_order')?.valueNumber ?? index,
-      }
-    })
+  // Walked in the order the memo named them, not the reader's `createdAt` order:
+  // the position is the fallback when a line carries no `sortOrder`.
+  return lineIds
+    .map((lineId) => byId.get(lineId))
+    .filter((line) => line !== undefined)
+    .map((line, index) => ({
+      id: line.id,
+      description: line.text('credit_memo_line_description'),
+      qty: line.number('credit_memo_line_qty') ?? 0,
+      unitPriceMinor: line.number('credit_memo_line_unit_price'),
+      subtotalMinor: line.number('credit_memo_line_subtotal') ?? 0,
+      taxTotalMinor: line.number('credit_memo_line_tax_total'),
+      disposition: line.option('credit_memo_line_disposition'),
+      lineItemInstanceId: line.related('credit_memo_line_line_item'),
+      sortOrder: line.number('credit_memo_line_sort_order') ?? index,
+    }))
     .sort((a, b) => a.sortOrder - b.sortOrder)
 }
 
@@ -301,37 +288,30 @@ export interface CreditMemoApplicationRecord {
   appliedAt: string | null
 }
 
-async function applicationFields(
+async function applicationContext(
+  db: Database | Transaction,
   organizationId: string
-): Promise<FieldMap<CreditMemoApplicationAttribute>> {
-  return (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      ...CREDIT_MEMO_APPLICATION_ATTRIBUTES,
-    ])) as FieldMap<CreditMemoApplicationAttribute>
+): Promise<SystemFieldContext<CreditMemoApplicationAttribute> | null> {
+  return systemFields(
+    db,
+    organizationId,
+    'credit_memo_application',
+    CREDIT_MEMO_APPLICATION_ATTRIBUTES
+  )
 }
 
-async function loadApplicationsById(
-  db: Database | Transaction,
-  organizationId: string,
-  fields: FieldMap<CreditMemoApplicationAttribute>,
-  ids: readonly string[]
-): Promise<CreditMemoApplicationRecord[]> {
-  if (ids.length === 0) return []
-  const buckets = await selectValues(db, organizationId, ids, fieldIdsOf(fields))
-  return ids.map((id) => {
-    const { cell } = cellReader(fields, buckets.get(id))
-    return {
-      id,
-      creditMemoInstanceId: cell('credit_memo_application_credit_memo')?.relatedEntityId ?? null,
-      invoiceInstanceId: cell('credit_memo_application_invoice')?.relatedEntityId ?? null,
-      operation:
-        cell('credit_memo_application_operation')?.valueText === 'unapply' ? 'unapply' : 'apply',
-      reversesApplicationId: cell('credit_memo_application_reverses')?.relatedEntityId ?? null,
-      amountMinor: cell('credit_memo_application_amount')?.valueNumber ?? 0,
-      appliedAt: cell('credit_memo_application_applied_at')?.valueDate ?? null,
-    }
-  })
+function applicationFrom(
+  record: SystemRecord<CreditMemoApplicationAttribute>
+): CreditMemoApplicationRecord {
+  return {
+    id: record.id,
+    creditMemoInstanceId: record.related('credit_memo_application_credit_memo'),
+    invoiceInstanceId: record.related('credit_memo_application_invoice'),
+    operation: record.text('credit_memo_application_operation') === 'unapply' ? 'unapply' : 'apply',
+    reversesApplicationId: record.related('credit_memo_application_reverses'),
+    amountMinor: record.number('credit_memo_application_amount') ?? 0,
+    appliedAt: record.date('credit_memo_application_applied_at'),
+  }
 }
 
 /**
@@ -344,14 +324,12 @@ export async function listCreditMemoApplications(
   organizationId: string,
   creditMemoId: string
 ): Promise<CreditMemoApplicationRecord[]> {
-  const fields = await applicationFields(organizationId)
-  const ids = await childIdsPointingAt(
-    db,
-    organizationId,
-    fields.credit_memo_application_credit_memo,
-    creditMemoId
-  )
-  return loadApplicationsById(db, organizationId, fields, ids)
+  const ctx = await applicationContext(db, organizationId)
+  if (!ctx) return []
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    by: { attribute: 'credit_memo_application_credit_memo', in: [creditMemoId] },
+  })
+  return records.map(applicationFrom)
 }
 
 /** One application by id, or `null`. */
@@ -360,11 +338,10 @@ export async function loadCreditMemoApplication(
   organizationId: string,
   applicationId: string
 ): Promise<CreditMemoApplicationRecord | null> {
-  const fields = await applicationFields(organizationId)
-  const live = await liveInstanceIds(db, organizationId, [applicationId])
-  if (live.length === 0) return null
-  const [row] = await loadApplicationsById(db, organizationId, fields, live)
-  return row ?? null
+  const ctx = await applicationContext(db, organizationId)
+  if (!ctx) return null
+  const [record] = await readSystemRecords(db, organizationId, ctx, { ids: [applicationId] })
+  return record ? applicationFrom(record) : null
 }
 
 /**
@@ -378,14 +355,12 @@ export async function sumInvoiceCreditApplications(
   organizationId: string,
   invoiceId: string
 ): Promise<number> {
-  const fields = await applicationFields(organizationId)
-  const ids = await childIdsPointingAt(
-    db,
-    organizationId,
-    fields.credit_memo_application_invoice,
-    invoiceId
-  )
-  const rows = await loadApplicationsById(db, organizationId, fields, ids)
+  const ctx = await applicationContext(db, organizationId)
+  if (!ctx) return 0
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    by: { attribute: 'credit_memo_application_invoice', in: [invoiceId] },
+  })
+  const rows = records.map(applicationFrom)
   return rows.reduce(
     (sum, row) => sum + (row.operation === 'unapply' ? -row.amountMinor : row.amountMinor),
     0
@@ -534,37 +509,31 @@ export function resolveInvoiceOutstandingMinor(invoice: InvoiceForCredit): numbe
   return Math.max(0, invoice.balanceMinor)
 }
 
-async function invoiceFields(organizationId: string): Promise<FieldMap<InvoiceAttribute>> {
-  return (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...INVOICE_ATTRIBUTES])) as FieldMap<InvoiceAttribute>
+function invoiceContext(
+  db: Database | Transaction,
+  organizationId: string
+): Promise<SystemFieldContext<InvoiceAttribute> | null> {
+  return systemFields(db, organizationId, 'invoice', INVOICE_ATTRIBUTES)
 }
 
-function invoiceFromBucket(
-  id: string,
-  fields: FieldMap<InvoiceAttribute>,
-  bucket: Map<string, ValueRow[]> | undefined
-): InvoiceForCredit | null {
-  const { cell, cells } = cellReader(fields, bucket)
-  const status = cell('invoice_status')?.optionId
+function invoiceFrom(record: SystemRecord<InvoiceAttribute>): InvoiceForCredit | null {
+  const status = record.option('invoice_status')
   if (!status) return null
   return {
-    id,
-    number: cell('invoice_number')?.valueText ?? '',
+    id: record.id,
+    number: record.text('invoice_number') ?? '',
     status,
-    contactInstanceId: cell('invoice_contact')?.relatedEntityId ?? null,
-    issuedAt: toCalendarDay(cell('invoice_issued_at')?.valueDate),
-    dueDate: toCalendarDay(cell('invoice_due_date')?.valueDate),
-    taxRate: cell('invoice_tax_rate')?.valueNumber ?? null,
-    subtotalMinor: cell('invoice_subtotal')?.valueNumber ?? 0,
-    taxTotalMinor: cell('invoice_tax_total')?.valueNumber ?? 0,
-    totalMinor: cell('invoice_total')?.valueNumber ?? 0,
-    amountPaidMinor: cell('invoice_amount_paid')?.valueNumber ?? 0,
-    amountCreditedMinor: cell('invoice_amount_credited')?.valueNumber ?? 0,
-    balanceMinor: cell('invoice_balance')?.valueNumber ?? 0,
-    lineIds: cells('invoice_line_items')
-      .map((row) => row.relatedEntityId)
-      .filter((lineId): lineId is string => !!lineId),
+    contactInstanceId: record.related('invoice_contact'),
+    issuedAt: toCalendarDay(record.date('invoice_issued_at')),
+    dueDate: toCalendarDay(record.date('invoice_due_date')),
+    taxRate: record.number('invoice_tax_rate'),
+    subtotalMinor: record.number('invoice_subtotal') ?? 0,
+    taxTotalMinor: record.number('invoice_tax_total') ?? 0,
+    totalMinor: record.number('invoice_total') ?? 0,
+    amountPaidMinor: record.number('invoice_amount_paid') ?? 0,
+    amountCreditedMinor: record.number('invoice_amount_credited') ?? 0,
+    balanceMinor: record.number('invoice_balance') ?? 0,
+    lineIds: relatedIds(record, 'invoice_line_items'),
   }
 }
 
@@ -574,12 +543,10 @@ export async function loadInvoiceForCredit(
   organizationId: string,
   invoiceId: string
 ): Promise<InvoiceForCredit | null> {
-  const fields = await invoiceFields(organizationId)
-  if (!fields.invoice_status) return null
-  const live = await liveInstanceIds(db, organizationId, [invoiceId])
-  if (live.length === 0) return null
-  const buckets = await selectValues(db, organizationId, [invoiceId], fieldIdsOf(fields))
-  return invoiceFromBucket(invoiceId, fields, buckets.get(invoiceId))
+  const ctx = await invoiceContext(db, organizationId)
+  if (!ctx?.fields.invoice_status) return null
+  const [record] = await readSystemRecords(db, organizationId, ctx, { ids: [invoiceId] })
+  return record ? invoiceFrom(record) : null
 }
 
 /** One invoice line, as `createCreditMemoFromInvoice` copies it. */
@@ -611,28 +578,28 @@ export async function loadInvoiceLinesForCredit(
   lineIds: readonly string[]
 ): Promise<InvoiceLineForCredit[]> {
   if (lineIds.length === 0) return []
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...LINE_ITEM_ATTRIBUTES])) as FieldMap<LineItemAttribute>
-  const live = await liveInstanceIds(db, organizationId, lineIds)
-  const buckets = await selectValues(db, organizationId, live, fieldIdsOf(fields))
+  const ctx = await systemFields(db, organizationId, 'line_item', LINE_ITEM_ATTRIBUTES)
+  if (!ctx) return []
+  const records = await readSystemRecords(db, organizationId, ctx, { ids: lineIds })
+  const byId = new Map(records.map((record) => [record.id, record]))
 
-  return live
-    .flatMap((lineId, index) => {
-      const { cell } = cellReader(fields, buckets.get(lineId))
-      if (cell('line_item_work_order')?.relatedEntityId) return []
-      const taxable = cell('line_item_taxable')?.valueBoolean
+  return lineIds
+    .map((lineId) => byId.get(lineId))
+    .filter((line) => line !== undefined)
+    .flatMap((line, index) => {
+      if (line.related('line_item_work_order')) return []
+      const taxable = line.boolean('line_item_taxable')
       return [
         {
-          id: lineId,
-          name: cell('line_item_name')?.valueText ?? 'Line item',
-          qty: cell('line_item_qty')?.valueNumber ?? 0,
-          unitPriceMinor: cell('line_item_unit_price')?.valueNumber ?? null,
-          lineTotalMinor: cell('line_item_line_total')?.valueNumber ?? null,
+          id: line.id,
+          name: line.text('line_item_name') ?? 'Line item',
+          qty: line.number('line_item_qty') ?? 0,
+          unitPriceMinor: line.number('line_item_unit_price'),
+          lineTotalMinor: line.number('line_item_line_total'),
           // An absent row is taxable, the default the totals engine applies.
           taxable: taxable == null ? true : taxable,
-          taxTotalMinor: cell('line_item_tax_total')?.valueNumber ?? null,
-          sortOrder: cell('line_item_sort_order')?.valueNumber ?? index,
+          taxTotalMinor: line.number('line_item_tax_total'),
+          sortOrder: line.number('line_item_sort_order') ?? index,
         },
       ]
     })
@@ -665,9 +632,9 @@ export async function readOrderGateways(
   organizationId: string,
   orderId: string
 ): Promise<string[]> {
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['order_payment_gateways'])) as FieldMap<'order_payment_gateways'>
+  // One attribute of one known order: `readSystemRecords` would cost a second
+  // `EntityInstance` query for the same two columns.
+  const fields = await systemFieldMap(db, organizationId, ['order_payment_gateways'] as const)
   const field = fields.order_payment_gateways
   if (!field) return []
 
@@ -744,12 +711,11 @@ export async function readCreditMemoSettlement(
   ]
   const invoiceNumbers = new Map<string, string>()
   if (invoiceIds.length > 0) {
-    const fields = await invoiceFields(organizationId)
-    if (fields.invoice_number) {
-      const buckets = await selectValues(db, organizationId, invoiceIds, [fields.invoice_number.id])
-      for (const invoiceId of invoiceIds) {
-        const { cell } = cellReader(fields, buckets.get(invoiceId))
-        invoiceNumbers.set(invoiceId, cell('invoice_number')?.valueText ?? '')
+    // The number alone, not the whole `INVOICE_ATTRIBUTES` slice: this is a label.
+    const ctx = await systemFields(db, organizationId, 'invoice', ['invoice_number'] as const)
+    if (ctx?.fields.invoice_number) {
+      for (const record of await readSystemRecords(db, organizationId, ctx, { ids: invoiceIds })) {
+        invoiceNumbers.set(record.id, record.text('invoice_number') ?? '')
       }
     }
   }
@@ -809,30 +775,23 @@ export async function readContactCredit(
   params: { organizationId: string; contactInstanceId: string }
 ): Promise<ContactCredit> {
   const { organizationId, contactInstanceId } = params
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...CREDIT_MEMO_ATTRIBUTES])) as FieldMap<CreditMemoAttribute>
+  const ctx = await systemFields(db, organizationId, 'credit_memo', CONTACT_CREDIT_ATTRIBUTES)
+  if (!ctx) return { contactInstanceId, creditAvailableMinor: 0, memos: [] }
 
-  const memoIds = await childIdsPointingAt(
-    db,
-    organizationId,
-    fields.credit_memo_contact,
-    contactInstanceId
-  )
-  if (memoIds.length === 0) return { contactInstanceId, creditAvailableMinor: 0, memos: [] }
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    by: { attribute: 'credit_memo_contact', in: [contactInstanceId] },
+  })
 
-  const buckets = await selectValues(db, organizationId, memoIds, fieldIdsOf(fields))
   const memos: ContactCreditMemo[] = []
-  for (const memoId of memoIds) {
-    const { cell } = cellReader(fields, buckets.get(memoId))
-    if (cell('credit_memo_status')?.optionId !== 'issued') continue
-    const balanceMinor = cell('credit_memo_balance')?.valueNumber ?? 0
+  for (const record of records) {
+    if (record.option('credit_memo_status') !== 'issued') continue
+    const balanceMinor = record.number('credit_memo_balance') ?? 0
     if (balanceMinor <= 0) continue
     memos.push({
-      creditMemoInstanceId: memoId,
-      number: cell('credit_memo_number')?.valueText ?? '',
-      issuedAt: toCalendarDay(cell('credit_memo_issued_at')?.valueDate),
-      totalMinor: cell('credit_memo_total')?.valueNumber ?? 0,
+      creditMemoInstanceId: record.id,
+      number: record.text('credit_memo_number') ?? '',
+      issuedAt: toCalendarDay(record.date('credit_memo_issued_at')),
+      totalMinor: record.number('credit_memo_total') ?? 0,
       balanceMinor,
     })
   }
@@ -858,26 +817,21 @@ export async function listOpenInvoicesForContact(
   params: { organizationId: string; contactInstanceId: string }
 ): Promise<OpenInvoiceRow[]> {
   const { organizationId, contactInstanceId } = params
-  const fields = await invoiceFields(organizationId)
-  if (!fields.invoice_status) return []
+  const ctx = await invoiceContext(db, organizationId)
+  if (!ctx?.fields.invoice_status) return []
 
-  const invoiceIds = await childIdsPointingAt(
-    db,
-    organizationId,
-    fields.invoice_contact,
-    contactInstanceId
-  )
-  if (invoiceIds.length === 0) return []
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    by: { attribute: 'invoice_contact', in: [contactInstanceId] },
+  })
 
-  const buckets = await selectValues(db, organizationId, invoiceIds, fieldIdsOf(fields))
   const rows: OpenInvoiceRow[] = []
-  for (const invoiceId of invoiceIds) {
-    const invoice = invoiceFromBucket(invoiceId, fields, buckets.get(invoiceId))
+  for (const record of records) {
+    const invoice = invoiceFrom(record)
     if (!invoice || !OPEN_INVOICE_STATUSES.has(invoice.status)) continue
     const balanceMinor = resolveInvoiceOutstandingMinor(invoice)
     if (balanceMinor <= 0) continue
     rows.push({
-      invoiceInstanceId: invoiceId,
+      invoiceInstanceId: record.id,
       number: invoice.number,
       status: invoice.status,
       issuedAt: invoice.issuedAt,
@@ -929,9 +883,7 @@ export async function countUnissuedChannelCreditMemos(
 ): Promise<number> {
   const { organizationId, month } = params
 
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...CREDIT_MEMO_ATTRIBUTES])) as FieldMap<CreditMemoAttribute>
+  const fields = await systemFieldMap(db, organizationId, CONTACT_CREDIT_ATTRIBUTES)
 
   const statusField = fields.credit_memo_status
   const sourceField = fields.credit_memo_source
@@ -951,22 +903,8 @@ export async function countUnissuedChannelCreditMemos(
         isNull(schema.EntityInstance.archivedAt)
       )
     )
-    .innerJoin(
-      source,
-      and(
-        eq(source.entityId, schema.FieldValue.entityId),
-        eq(source.organizationId, schema.FieldValue.organizationId),
-        eq(source.fieldId, sourceField.id)
-      )
-    )
-    .innerJoin(
-      issuedAt,
-      and(
-        eq(issuedAt.entityId, schema.FieldValue.entityId),
-        eq(issuedAt.organizationId, schema.FieldValue.organizationId),
-        eq(issuedAt.fieldId, issuedAtField.id)
-      )
-    )
+    .innerJoin(source, systemValueJoin(source, sourceField.id))
+    .innerJoin(issuedAt, systemValueJoin(issuedAt, issuedAtField.id))
     .where(
       and(
         eq(schema.FieldValue.organizationId, organizationId),

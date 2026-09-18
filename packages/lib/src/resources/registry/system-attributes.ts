@@ -1,7 +1,11 @@
 // packages/lib/src/resources/registry/system-attributes.ts
 
 import type { SystemAttribute } from '@auxx/types/system-attribute'
+import { ENTITY_INSTANCE_COLUMNS } from '../../seed/entity-seeder/constants'
 import type { ResourceField } from './field-types'
+
+/** The attributes the seeder reads off `EntityInstance` itself, so no `CustomField` exists for them. */
+type InstanceColumnAttribute = (typeof ENTITY_INSTANCE_COLUMNS)[number]
 
 declare const FIELD_SHAPE: unique symbol
 
@@ -29,18 +33,23 @@ export function defineResourceFields<F extends Record<string, ResourceField>>(
 /**
  * The FieldValue-backed system attributes of a declared field map.
  *
- * A field with a `dbColumn` is a column on `EntityInstance`, not a stored value,
- * so it is not an attribute `readSystemRecords` can hand back a cell for.
+ * Mirrors the seeder's `shouldCreateField`: an `EntityInstance` column attribute
+ * and an explicit `dbColumn: undefined` (a virtual field) get no `CustomField`.
+ * A `dbColumn` STRING does not — it is read by the workflow crud node for system
+ * resources, and on an entity def the value is still a `FieldValue` row.
  */
-export type SystemAttributesOf<F> = Extract<
-  {
-    [K in keyof F]: F[K] extends { dbColumn: string }
-      ? never
-      : F[K] extends { systemAttribute: infer A }
-        ? A
-        : never
-  }[keyof F],
-  SystemAttribute
+export type SystemAttributesOf<F> = Exclude<
+  Extract<
+    {
+      [K in keyof F]: F[K] extends { dbColumn: undefined }
+        ? never
+        : F[K] extends { systemAttribute: infer A }
+          ? A
+          : never
+    }[keyof F],
+    SystemAttribute
+  >,
+  InstanceColumnAttribute
 >
 
 /**
@@ -55,7 +64,9 @@ export function systemAttributes<F extends Record<string, ResourceField>>(
 ): SystemAttributesOf<F>[] {
   const out = new Set<string>()
   for (const field of Object.values(fields)) {
-    if (!field || field.dbColumn || !field.systemAttribute) continue
+    if (!field || !field.systemAttribute) continue
+    if ((ENTITY_INSTANCE_COLUMNS as readonly string[]).includes(field.systemAttribute)) continue
+    if (Object.hasOwn(field, 'dbColumn') && field.dbColumn === undefined) continue
     out.add(field.systemAttribute)
   }
   return [...out] as SystemAttributesOf<F>[]

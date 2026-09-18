@@ -14,9 +14,9 @@ import type { Database } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
 import { settledPeriodsFor } from '../../accounting/ledger/periods/settled-periods'
 import { syncInvoicePaymentState } from '../../accounting/money/invoice-payments/payment-state'
-import { getOrgCache } from '../../cache'
 import { BadRequestError, ConflictError, NotFoundError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud'
+import { systemFieldMap } from '../../resources/system-records'
 import { runCreditCommand } from './command'
 import {
   listCreditMemoApplications,
@@ -276,9 +276,10 @@ export async function unapplyCreditMemo(
 }
 
 async function requireHistoryFields(organizationId: string): Promise<void> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['credit_memo_application_operation', 'credit_memo_application_reverses'])
+  const fields = await systemFieldMap(undefined, organizationId, [
+    'credit_memo_application_operation',
+    'credit_memo_application_reverses',
+  ] as const)
   if (!fields.credit_memo_application_operation || !fields.credit_memo_application_reverses)
     throw new ConflictError('Update credit application fields before applying or undoing credit')
 }
