@@ -108,6 +108,7 @@ import {
 } from '../costing/vendor-cost'
 import { loadTariffMemberships } from './tariff-301-memberships'
 import { findHtsGeneral, loadHtsGeneral } from './tariff-hts-general'
+import { loadTariffActions } from './tariff-note52-actions'
 import { loadTariffSchedule } from './tariff-schedule'
 import {
   expandTariffStarter,
@@ -380,7 +381,10 @@ export async function planTariffResync(
   codeInstanceIds?: readonly string[],
   deps?: ResyncDeps
 ): Promise<Result<ResyncPlan, Error>> {
-  const actions = deps?.actions ?? (TARIFF_ACTIONS as Record<string, StarterAction>)
+  // The MERGED table (hand-kept + generated note 52), not `TARIFF_ACTIONS` -
+  // defaulting to the hand-kept half alone would make a resync silently drop
+  // note 52's 10-12.5% on every origin.
+  const actions = deps?.actions ?? (await loadTariffActions())
   const version = deps?.version ?? TARIFF_STARTERS_VERSION
 
   if (codeInstanceIds && codeInstanceIds.length === 0) return ok(emptyPlan(version))

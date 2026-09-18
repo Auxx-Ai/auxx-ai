@@ -38,7 +38,9 @@
  * client-safe by taking the table as an argument; the server loads it here.
  */
 
-/** `{ '8481.80.90': ['301-3'] }` — 8-digit subheading to the list keys covering it. */
+import { loadTariff232Derivatives } from './tariff-232-derivatives'
+
+/** `{ '8481.80.90': ['301-3'] }` — a code to the list keys covering it. */
 export type TariffMemberships = Readonly<Record<string, readonly string[]>>
 
 interface RawMembershipFile {
@@ -73,7 +75,27 @@ export async function loadTariff301Memberships(): Promise<Tariff301Memberships> 
   return cached
 }
 
-/** The table alone, for the callers that do not need the provenance. */
+/**
+ * **Every** membership table the expander consults, merged into one map: the
+ * Section 301 lists here, plus the Section 232 lists of
+ * `tariff-232-derivatives.ts`.
+ *
+ * 🛑 Merged rather than passed as a second argument to `expandTariffStarter` on
+ * purpose. `membershipsFor` resolves one code against one map; two maps
+ * consulted in turn would need every caller to union the results, and the three
+ * callers (adopt, resync, the picker preview) would each have to get it right.
+ *
+ * A code present in both tables gets both keys, 301 first.
+ */
 export async function loadTariffMemberships(): Promise<TariffMemberships> {
-  return (await loadTariff301Memberships()).memberships
+  const [lists301, derivatives232] = await Promise.all([
+    loadTariff301Memberships(),
+    loadTariff232Derivatives(),
+  ])
+  const merged: Record<string, readonly string[]> = { ...lists301.memberships }
+  for (const [code, keys] of Object.entries(derivatives232.memberships)) {
+    const held = merged[code]
+    merged[code] = held ? [...held, ...keys] : keys
+  }
+  return merged
 }

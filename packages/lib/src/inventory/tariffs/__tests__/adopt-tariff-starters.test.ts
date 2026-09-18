@@ -92,6 +92,7 @@ vi.mock('../tariff-hts-general', async (importOriginal) => {
 import { AuxxError, BadRequestError, NotFoundError } from '../../../errors'
 import { adoptTariffStarters } from '../adopt-tariff-starters'
 import { loadTariffMemberships } from '../tariff-301-memberships'
+import { loadTariffActions } from '../tariff-note52-actions'
 import { expandTariffStarter, TARIFF_STARTERS_VERSION } from '../tariff-starters'
 
 const ORG = 'org_1'
@@ -141,7 +142,8 @@ describe('adoptTariffStarters', () => {
     const expansion = expandTariffStarter(
       ['8481.80.90.05', 2, 'Solenoid valves'],
       'CN',
-      await loadTariffMemberships()
+      await loadTariffMemberships(),
+      { actions: await loadTariffActions() }
     )
     expect(value.created[0]?.rows).toBe(expansion.rows.length)
 
@@ -175,17 +177,33 @@ describe('adoptTariffStarters', () => {
     }
   })
 
-  it('gives DE exactly one row - the MFN base rate, no China actions apply', async () => {
+  it('gives DE the MFN base and its note 52 row, and no China action', async () => {
     const result = await adoptTariffStarters(db, ORG, USER, {
       entries: [{ code: '8481.80.90.05', country: 'DE' }],
     })
 
     const value = result._unsafeUnwrap()
+    // Germany is an EU member state, so note 52 reaches it: the MFN base plus
+    // one `topUpTo` row. No China action applies.
     expect(value.created).toEqual([
-      { code: '8481.80.90.05', country: 'DE', instanceId: expect.any(String), rows: 1 },
+      { code: '8481.80.90.05', country: 'DE', instanceId: expect.any(String), rows: 2 },
     ])
     const rateCalls = h.createCalls.filter((c) => c.entityDefinitionId === h.tariffRateDefId)
-    expect(rateCalls).toHaveLength(1)
+    expect(rateCalls).toHaveLength(2)
+
+    // The base MFN row omits the authority key entirely rather than nulling it.
+    const authorities = rateCalls.map((call) => call.values.tariff_rate_authority)
+    expect(authorities).toContain(undefined)
+    expect(authorities).toContain('HTS note 52 additional duty')
+    expect(authorities.some((a) => typeof a === 'string' && a.startsWith('Section 301'))).toBe(
+      false
+    )
+
+    // 8481.80.90.05 is 2% MFN against a 10% threshold, so the top-up is 8.
+    const note52 = rateCalls.find(
+      (call) => call.values.tariff_rate_authority === 'HTS note 52 additional duty'
+    )
+    expect(note52?.values.tariff_rate_rate).toBe(8)
   })
 
   it('skips a pair the org already holds and creates nothing', async () => {

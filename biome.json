@@ -106,7 +106,10 @@
       "!**/*.gen.ts",
       "!**/*.generated.ts",
       "!**/packages/sdk/template",
-      "!**/tariff-hts-general.json"
+      "!**/tariff-hts-general.json",
+      "!**/tariff-301-memberships.json",
+      "!**/tariff-232-derivatives.json",
+      "!**/tariff-note52-actions.json"
     ]
   },
   "overrides": [

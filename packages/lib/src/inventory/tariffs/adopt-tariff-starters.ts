@@ -64,6 +64,7 @@ import {
   loadHtsGeneral,
   normalizeHtsCode,
 } from './tariff-hts-general'
+import { loadTariffActions } from './tariff-note52-actions'
 import { expandTariffStarter } from './tariff-starters'
 
 const logger = createScopedLogger('bom:adopt-tariff-starters')
@@ -193,7 +194,8 @@ async function createPair(
   line: HtsGeneralLine,
   country: string
 ): Promise<{ instanceId: string; rows: number }> {
-  const expansion = expandTariffStarter(line, country, await loadTariffMemberships())
+  const [memberships, actions] = await Promise.all([loadTariffMemberships(), loadTariffActions()])
+  const expansion = expandTariffStarter(line, country, memberships, { actions })
 
   return db.transaction(async (tx) => {
     // See the file header: `UnifiedCrudHandler` takes a `Database`, not a
