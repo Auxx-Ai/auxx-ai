@@ -24,7 +24,7 @@ import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getOrgCache } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
-import { getOrganizationSetting } from '../../settings/settings-service'
+import { readOrganizationSettings } from '../../settings/read'
 import { resolvePartialPaymentBounds } from '../customer-money/partial-payment'
 import { resolveApplicationFee } from '../payouts/application-fee'
 import { getPaymentAccount } from '../payouts/stripe-account'
@@ -102,18 +102,14 @@ export async function createInvoiceCheckoutSession(
 
   let chargeMinor = invoice.balanceMinor
   if (input.amountMinor !== undefined) {
-    const allowed = await getOrganizationSetting({
-      db,
-      organizationId,
-      key: 'documents.invoice.allowPartialPayments',
-    })
-    if (!allowed) throw new BadRequestError('Partial payments are not enabled for this invoice')
+    const partialPaymentSettings = await readOrganizationSettings(organizationId, [
+      'documents.invoice.allowPartialPayments',
+      'documents.invoice.partialPaymentMinPercent',
+    ] as const)
+    if (!partialPaymentSettings['documents.invoice.allowPartialPayments'])
+      throw new BadRequestError('Partial payments are not enabled for this invoice')
     const minPercent = Number(
-      (await getOrganizationSetting({
-        db,
-        organizationId,
-        key: 'documents.invoice.partialPaymentMinPercent',
-      })) ?? 10
+      partialPaymentSettings['documents.invoice.partialPaymentMinPercent'] ?? 10
     )
     const { min } = resolvePartialPaymentBounds(invoice.balanceMinor, minPercent)
     if (input.amountMinor < min || input.amountMinor > invoice.balanceMinor)
@@ -124,11 +120,9 @@ export async function createInvoiceCheckoutSession(
   }
 
   const account = await requireConnectedAccount(organizationId)
-  const currency = (await getOrganizationSetting({
-    db,
-    organizationId,
-    key: 'organization.currency',
-  })) as string
+  const currency = (
+    await readOrganizationSettings(organizationId, ['organization.currency'] as const)
+  )['organization.currency']
   const applicationFeeAmount = resolveApplicationFee(account, chargeMinor)
   const payUrl = buildPayUrl(await ensureInvoicePublicToken(organizationId, invoiceInstanceId))
 
@@ -214,11 +208,9 @@ export async function createQuoteDepositCheckoutSession(
     throw new BadRequestError("This quote's deposit has already been paid")
 
   const account = await requireConnectedAccount(organizationId)
-  const currency = (await getOrganizationSetting({
-    db,
-    organizationId,
-    key: 'organization.currency',
-  })) as string
+  const currency = (
+    await readOrganizationSettings(organizationId, ['organization.currency'] as const)
+  )['organization.currency']
   const applicationFeeAmount = resolveApplicationFee(account, depositAmount)
   const quoteUrl = buildQuoteViewUrl(await ensureQuotePublicToken(organizationId, quoteInstanceId))
 

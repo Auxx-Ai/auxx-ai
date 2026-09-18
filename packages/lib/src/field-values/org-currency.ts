@@ -27,15 +27,18 @@ import { resolveCurrencyCode } from './converters/currency'
  * Backed by the `orgSettings` org-cache key, so this is a map lookup rather than
  * a query — but it is still `async`, so resolve it ONCE per batch and hand the
  * string down, never per field value inside a loop.
+ *
+ * `db`/`Transaction` kept for its many callers' signatures, but none write
+ * `organization.currency` earlier in the same transaction, so this always
+ * takes the cached path (decision 9) — `db` is otherwise unused here.
  */
 export async function getOrgCurrencyCode(
   organizationId: string,
-  db?: Database | Transaction
+  _db?: Database | Transaction
 ): Promise<string> {
   const value = await getOrganizationSetting({
     key: 'organization.currency',
     organizationId,
-    db,
   })
   return resolveCurrencyCode(undefined, value)
 }

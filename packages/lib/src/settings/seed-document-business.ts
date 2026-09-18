@@ -45,7 +45,6 @@ export async function seedDocumentBusinessFromProfile(params: {
   const existing = ((await getOrganizationSetting({
     organizationId,
     key: 'documents.business',
-    db,
   })) ?? {}) as Record<string, unknown> & ProfileBackedFields
 
   const patch: ProfileBackedFields = {}

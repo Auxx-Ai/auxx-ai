@@ -49,20 +49,20 @@ export const MAX_SAVED_MAPPINGS = 40
  * with a different normaliser than the one that stored it.
  */
 export async function readSavedMapping(
-  db: Database,
+  _db: Database,
   params: { organizationId: string; headers: readonly string[] }
 ): Promise<SavedMapping | null> {
   const signature = headerSignature(params.headers)
-  const store = await readStore(db, params.organizationId)
+  const store = await readStore(params.organizationId)
   return store[signature] ?? null
 }
 
 /** Every mapping the org has remembered, newest save first. */
 export async function listSavedMappings(
-  db: Database,
+  _db: Database,
   params: { organizationId: string }
 ): Promise<SavedMapping[]> {
-  const store = await readStore(db, params.organizationId)
+  const store = await readStore(params.organizationId)
   return Object.values(store).sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1))
 }
 
@@ -100,7 +100,7 @@ export async function saveMapping(
     label: params.label?.trim() || null,
   }
 
-  const store = await readStore(db, params.organizationId)
+  const store = await readStore(params.organizationId)
   store[signature] = entry
 
   const kept = Object.values(store)
@@ -122,7 +122,7 @@ export async function forgetMapping(
   db: Database,
   params: { organizationId: string; signature: string }
 ): Promise<boolean> {
-  const store = await readStore(db, params.organizationId)
+  const store = await readStore(params.organizationId)
   if (!store[params.signature]) return false
   delete store[params.signature]
   await updateOrganizationSetting({
@@ -141,14 +141,10 @@ export async function forgetMapping(
  * a future version of this code may reshape, and one bad entry must not make
  * every OTHER remembered mapping unreachable.
  */
-async function readStore(
-  db: Database,
-  organizationId: string
-): Promise<Record<string, SavedMapping>> {
+async function readStore(organizationId: string): Promise<Record<string, SavedMapping>> {
   const raw = await getOrganizationSetting({
     organizationId,
     key: BANK_IMPORT_MAPPINGS_KEY,
-    db,
   })
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
 

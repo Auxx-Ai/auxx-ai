@@ -206,28 +206,32 @@ export async function getPublicQuotePayload(token: string): Promise<PublicQuoteP
 
   // Dynamic import — see the module-doc comment above for why this can't be a static import.
   const { buildQuotePdfPayload } = await import('../documents/payload')
-  const { getOrganizationSetting } = await import('../settings/settings-service')
+  const { readOrganizationSettings } = await import('../settings/read')
 
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   const quoteRecordId = toRecordId('quote', quoteInstanceId)
   const handler = new UnifiedCrudHandler(organizationId, systemUserId)
   const cache = getOrgCache()
 
-  const [{ payload }, acceptancePageEnabled, allowDecline, requireSignature, cf] =
-    await Promise.all([
-      buildQuotePdfPayload({ organizationId, userId: systemUserId, quoteRecordId }),
-      getOrganizationSetting({ organizationId, key: 'documents.quote.acceptancePageEnabled' }),
-      getOrganizationSetting({ organizationId, key: 'documents.quote.allowDecline' }),
-      getOrganizationSetting({ organizationId, key: 'documents.quote.requireSignature' }),
-      cache
-        .from(organizationId, 'customFields')
-        .bySystemAttributes([
-          'quote_accepted_by_name',
-          'quote_accepted_at',
-          'quote_decline_reason',
-          'quote_total',
-        ] as const),
-    ])
+  const [{ payload }, pageSettings, cf] = await Promise.all([
+    buildQuotePdfPayload({ organizationId, userId: systemUserId, quoteRecordId }),
+    readOrganizationSettings(organizationId, [
+      'documents.quote.acceptancePageEnabled',
+      'documents.quote.allowDecline',
+      'documents.quote.requireSignature',
+    ] as const),
+    cache
+      .from(organizationId, 'customFields')
+      .bySystemAttributes([
+        'quote_accepted_by_name',
+        'quote_accepted_at',
+        'quote_decline_reason',
+        'quote_total',
+      ] as const),
+  ])
+  const acceptancePageEnabled = pageSettings['documents.quote.acceptancePageEnabled']
+  const allowDecline = pageSettings['documents.quote.allowDecline']
+  const requireSignature = pageSettings['documents.quote.requireSignature']
 
   const evidenceFieldIds = [
     cf.quote_accepted_by_name,

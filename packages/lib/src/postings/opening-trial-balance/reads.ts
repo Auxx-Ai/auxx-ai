@@ -24,7 +24,7 @@
 import { type Database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { getOrganizationSetting } from '../../settings/settings-service'
+import { readOrganizationSettings } from '../../settings/read'
 import { ACCOUNT_ROLES } from '../build-entry'
 import { cutoverDateFor } from '../build-opening-balance-entry'
 import type { JournalEntryLine, JournalEntryRecord } from '../journal-entries/client'
@@ -86,16 +86,22 @@ export async function readOpeningTrialBalance(
     async () => {
       const K = OPENING_BASELINE_SETTING_KEYS
 
-      const [cutoffRaw, zoneRaw, stateRaw, currencyRaw, rawMaterials, wip, finishedGoods] =
-        await Promise.all([
-          getOrganizationSetting({ organizationId, key: K.cutoffPeriod }),
-          getOrganizationSetting({ organizationId, key: K.bookTimeZone }),
-          getOrganizationSetting({ organizationId, key: K.setupState }),
-          getOrganizationSetting({ organizationId, key: 'organization.currency' }),
-          getOrganizationSetting({ organizationId, key: K.inventory_raw_materials }),
-          getOrganizationSetting({ organizationId, key: K.inventory_wip }),
-          getOrganizationSetting({ organizationId, key: K.inventory_finished_goods }),
-        ])
+      const settings = await readOrganizationSettings(organizationId, [
+        K.cutoffPeriod,
+        K.bookTimeZone,
+        K.setupState,
+        'organization.currency',
+        K.inventory_raw_materials,
+        K.inventory_wip,
+        K.inventory_finished_goods,
+      ] as const)
+      const cutoffRaw = settings[K.cutoffPeriod]
+      const zoneRaw = settings[K.bookTimeZone]
+      const stateRaw = settings[K.setupState]
+      const currencyRaw = settings['organization.currency']
+      const rawMaterials = settings[K.inventory_raw_materials]
+      const wip = settings[K.inventory_wip]
+      const finishedGoods = settings[K.inventory_finished_goods]
 
       const [entry, chart, inventoryAccounts, frozen] = await Promise.all([
         findOpeningTrialBalanceEntry(db, organizationId),

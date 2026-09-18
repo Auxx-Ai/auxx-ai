@@ -3,32 +3,27 @@
 // The two settings-store calls `run-state.ts` makes, isolated so the fold logic
 // above them is testable without a database.
 //
-// 🛑 The read does NOT go through `getOrganizationSetting`. That resolves from
-// the `orgSettings` org cache, which `updateOrganizationSetting` does not
-// invalidate (HANDOFF §10.5) - so a read-modify-write across a continuation
-// chain would fold every slice onto the same stale blob and lose all but the
-// last. The blob is written after every slice, far too often to bust the cache
-// on, so this reads the row directly instead.
+// 🛑 The read passes `database` to `readOrganizationSettings` rather than
+// omitting it. That resolves from the `orgSettings` org cache, which
+// `updateOrganizationSetting` does not invalidate (HANDOFF §10.5) - so a
+// read-modify-write across a continuation chain would fold every slice onto
+// the same stale blob and lose all but the last. The blob is written after
+// every slice, far too often to bust the cache on, so this reads the row
+// directly instead.
 
-import { database, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { database } from '@auxx/database'
+import { readOrganizationSettings } from '../../settings/read'
 import { updateOrganizationSetting } from '../../settings/settings-service'
 import { PROVIDER_SYNC_STATE_SETTING_KEY, type ProviderSyncStateBlob } from './client'
 
 /** The stored blob, or `{}` when this org has never run a sync. */
 export async function loadProviderSyncBlob(organizationId: string): Promise<ProviderSyncStateBlob> {
-  const [row] = await database
-    .select({ value: schema.OrganizationSetting.value })
-    .from(schema.OrganizationSetting)
-    .where(
-      and(
-        eq(schema.OrganizationSetting.organizationId, organizationId),
-        eq(schema.OrganizationSetting.key, PROVIDER_SYNC_STATE_SETTING_KEY)
-      )
-    )
-    .limit(1)
-
-  const value = row?.value
+  const settings = await readOrganizationSettings(
+    organizationId,
+    [PROVIDER_SYNC_STATE_SETTING_KEY] as const,
+    database
+  )
+  const value = settings[PROVIDER_SYNC_STATE_SETTING_KEY]
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as ProviderSyncStateBlob)
     : {}

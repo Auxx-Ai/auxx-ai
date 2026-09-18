@@ -375,7 +375,6 @@ export async function materializeImportedMoneyInTx(
       .set({ partyInstanceId: partyId })
       .where(eq(schema.MoneyTransaction.id, money.id))
   const zone = await getOrganizationSetting({
-    db: tx,
     organizationId,
     key: 'accounting.bookTimeZone',
   })

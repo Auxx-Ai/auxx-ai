@@ -9,6 +9,7 @@ import {
   schema,
 } from '@auxx/database'
 import { and, desc, eq, gte, inArray, isNotNull, lte, type SQL } from 'drizzle-orm'
+import { listOrganizationIdsBySetting } from '../settings/read'
 import type { BotStatus } from './bot/types'
 
 // ---------------------------------------------------------------------------
@@ -152,17 +153,9 @@ export async function createCallRecording(data: CallRecordingInsert): Promise<vo
 // findOrgsWithRecordingEnabled
 // ---------------------------------------------------------------------------
 
-/** Find all organizations that have recording.enabled = true. */
-export async function findOrgsWithRecordingEnabled() {
-  return db
-    .select()
-    .from(schema.OrganizationSetting)
-    .where(
-      and(
-        eq(schema.OrganizationSetting.key, 'recording.enabled'),
-        eq(schema.OrganizationSetting.value, true)
-      )
-    )
+/** Every organization id with `recording.enabled` on. */
+export async function findOrgsWithRecordingEnabled(): Promise<string[]> {
+  return listOrganizationIdsBySetting('recording.enabled', true)
 }
 
 // ---------------------------------------------------------------------------

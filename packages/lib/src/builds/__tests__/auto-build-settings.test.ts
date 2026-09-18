@@ -13,11 +13,15 @@ const h = vi.hoisted(() => ({
   keysRead: [] as string[],
 }))
 
-vi.mock('../../settings/settings-service', () => ({
-  getOrganizationSetting: vi.fn(async ({ key }: { key: string }) => {
-    h.keysRead.push(key)
-    return h.values.has(key) ? h.values.get(key) : null
-  }),
+vi.mock('../../settings/read', () => ({
+  readOrganizationSettings: vi.fn(async (_organizationId: string, keys: readonly string[]) =>
+    Object.fromEntries(
+      keys.map((key) => {
+        h.keysRead.push(key)
+        return [key, h.values.has(key) ? h.values.get(key) : null]
+      })
+    )
+  ),
 }))
 
 import { loadAutoBuildSettings } from '../auto-build-settings'

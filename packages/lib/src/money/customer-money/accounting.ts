@@ -39,8 +39,7 @@ import type {
   GlPostingSourceInput,
   PostResult,
 } from '../../postings/types'
-import type { SettingKey } from '../../settings/catalog'
-import { getOrganizationSetting } from '../../settings/settings-service'
+import { readOrganizationSettings } from '../../settings/read'
 import {
   listCustomerReceiptAccountingCandidates,
   readCustomerReceiptAccountingSource,
@@ -67,9 +66,6 @@ type Command = {
   automatic?: boolean
 }
 
-const setting = (tx: Transaction, organizationId: string, key: SettingKey) =>
-  getOrganizationSetting({ db: tx, organizationId, key })
-
 interface PreparedReceipt {
   entry: BuiltEntry
   sources: GlPostingSourceInput[]
@@ -77,8 +73,12 @@ interface PreparedReceipt {
   railId: string | null
 }
 
-async function prepareReceipt(tx: Transaction, input: Command): Promise<PreparedReceipt> {
-  const zone = await setting(tx, input.organizationId, 'accounting.bookTimeZone')
+async function prepareReceipt(
+  tx: Transaction,
+  input: Command,
+  zone: unknown,
+  cutoff: unknown
+): Promise<PreparedReceipt> {
   if (typeof zone !== 'string' || !zone)
     throw new UnprocessableEntityError('Book time zone is not configured')
   const source = await readCustomerReceiptAccountingSource(
@@ -185,7 +185,6 @@ async function prepareReceipt(tx: Transaction, input: Command): Promise<Prepared
     lines,
   })
 
-  const cutoff = await setting(tx, input.organizationId, 'accounting.cutoffPeriod')
   if (typeof cutoff === 'string' && entry.txnDate.slice(0, 7) <= cutoff)
     throw new UnprocessableEntityError(`Receipt is before the accounting opening cutoff ${cutoff}`)
 
@@ -226,17 +225,23 @@ export async function postCustomerReceiptAccounting(
 
   let prepared: PreparedReceipt
   try {
-    if (
-      (await getOrganizationSetting({
-        db,
-        organizationId: input.organizationId,
-        key: 'accounting.setupState',
-      })) !== FINALIZED_SETUP_STATE
-    )
+    const settings = await readOrganizationSettings(input.organizationId, [
+      'accounting.setupState',
+      'accounting.bookTimeZone',
+      'accounting.cutoffPeriod',
+    ] as const)
+    if (settings['accounting.setupState'] !== FINALIZED_SETUP_STATE)
       throw new UnprocessableEntityError(
         'Finalize accounting setup before posting customer payments'
       )
-    prepared = await db.transaction((tx) => prepareReceipt(tx, input))
+    prepared = await db.transaction((tx) =>
+      prepareReceipt(
+        tx,
+        input,
+        settings['accounting.bookTimeZone'],
+        settings['accounting.cutoffPeriod']
+      )
+    )
   } catch (error) {
     if (!(error instanceof AuxxError)) throw error
     logger.warn('A customer receipt could not be prepared', {

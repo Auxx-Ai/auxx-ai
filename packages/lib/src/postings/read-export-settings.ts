@@ -6,7 +6,7 @@
 
 import type { Database, Transaction } from '@auxx/database'
 import type { SettingKey } from '../settings/catalog'
-import { getOrganizationSetting } from '../settings/settings-service'
+import { readOrganizationSettings } from '../settings/read'
 import {
   EXPORT_AVENUES,
   type ExportAvenue,
@@ -30,45 +30,38 @@ function summaryGrainSettingKey(avenue: SummaryGrainAvenue): SettingKey {
  *
  * Off/unset fails closed to the safe value - `autoSend` false (batches hold for
  * release), `summaryGrain` `'day'`.
+ *
+ * `db`/`organizationId` order kept for its callers, but none of them write one
+ * of these keys earlier in the same transaction, so the read always takes the
+ * cached path (decision 9) — `db` is otherwise unused here.
  */
 export async function readExportSettings(
-  db: Database | Transaction,
+  _db: Database | Transaction,
   organizationId: string
 ): Promise<ExportSettings> {
-  const [mode, cutover] = await Promise.all([
-    getOrganizationSetting({ organizationId, key: 'accounting.exportMode', db }),
-    getOrganizationSetting({ organizationId, key: 'accounting.exportModeCutover', db }),
-  ])
+  const settings = await readOrganizationSettings(organizationId, [
+    'accounting.exportMode',
+    'accounting.exportModeCutover',
+    ...EXPORT_AVENUES.map(autoSendSettingKey),
+    ...SUMMARY_GRAIN_AVENUES.map(summaryGrainSettingKey),
+  ] as const)
 
-  const autoSendEntries = await Promise.all(
-    EXPORT_AVENUES.map(async (avenue) => {
-      const value = await getOrganizationSetting({
-        organizationId,
-        key: autoSendSettingKey(avenue),
-        db,
-      })
-      return [avenue, value === true] as const
-    })
-  )
+  const autoSend = Object.fromEntries(
+    EXPORT_AVENUES.map((avenue) => [avenue, settings[autoSendSettingKey(avenue)] === true])
+  ) as Record<ExportAvenue, boolean>
 
-  const summaryGrainEntries = await Promise.all(
-    SUMMARY_GRAIN_AVENUES.map(async (avenue) => {
-      const value = await getOrganizationSetting({
-        organizationId,
-        key: summaryGrainSettingKey(avenue),
-        db,
-      })
-      return [avenue, value === 'month' ? ('month' as const) : ('day' as const)] as const
-    })
-  )
+  const summaryGrain = Object.fromEntries(
+    SUMMARY_GRAIN_AVENUES.map((avenue) => [
+      avenue,
+      settings[summaryGrainSettingKey(avenue)] === 'month' ? 'month' : 'day',
+    ])
+  ) as Record<SummaryGrainAvenue, SummaryGrain>
 
+  const cutover = settings['accounting.exportModeCutover']
   return {
-    mode: mode === 'summary' ? 'summary' : 'transaction',
+    mode: settings['accounting.exportMode'] === 'summary' ? 'summary' : 'transaction',
     cutover: typeof cutover === 'string' && cutover ? cutover : null,
-    autoSend: Object.fromEntries(autoSendEntries) as Record<ExportAvenue, boolean>,
-    summaryGrain: Object.fromEntries(summaryGrainEntries) as Record<
-      SummaryGrainAvenue,
-      SummaryGrain
-    >,
+    autoSend,
+    summaryGrain,
   }
 }

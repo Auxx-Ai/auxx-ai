@@ -13,7 +13,7 @@
  * settings write path already performs.
  */
 
-import { getOrganizationSetting } from '../settings/settings-service'
+import { readOrganizationSettings } from '../settings/read'
 import {
   type AutoBuildStatus,
   type AutoBuildStockRule,
@@ -41,17 +41,17 @@ export interface AutoBuildSettings {
 
 /** Read the four settings for one org, all four concurrently. */
 export async function loadAutoBuildSettings(organizationId: string): Promise<AutoBuildSettings> {
-  const [enabled, enabledAt, status, stockRule] = await Promise.all([
-    getOrganizationSetting({ organizationId, key: 'inventory.autoBuildFromOrders' }),
-    getOrganizationSetting({ organizationId, key: 'inventory.autoBuildEnabledAt' }),
-    getOrganizationSetting({ organizationId, key: 'inventory.autoBuildStatus' }),
-    getOrganizationSetting({ organizationId, key: 'inventory.autoBuildStockRule' }),
-  ])
+  const settings = await readOrganizationSettings(organizationId, [
+    'inventory.autoBuildFromOrders',
+    'inventory.autoBuildEnabledAt',
+    'inventory.autoBuildStatus',
+    'inventory.autoBuildStockRule',
+  ] as const)
 
   return {
-    enabled: enabled === true,
-    enabledAt: parseAutoBuildEnabledAt(enabledAt),
-    status: resolveAutoBuildStatus(status),
-    stockRule: resolveAutoBuildStockRule(stockRule),
+    enabled: settings['inventory.autoBuildFromOrders'] === true,
+    enabledAt: parseAutoBuildEnabledAt(settings['inventory.autoBuildEnabledAt']),
+    status: resolveAutoBuildStatus(settings['inventory.autoBuildStatus']),
+    stockRule: resolveAutoBuildStockRule(settings['inventory.autoBuildStockRule']),
   }
 }

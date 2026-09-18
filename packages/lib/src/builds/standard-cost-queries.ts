@@ -19,7 +19,7 @@ import type { Result } from 'neverthrow'
 import { buildParentGraph, buildSubpartGraph, loadOrgPricingData } from '../bom/cost-calculator'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { UnprocessableEntityError } from '../errors'
-import { getOrganizationSetting } from '../settings/settings-service'
+import { readOrganizationSettings } from '../settings/read'
 import { type PartKindValue, resolveAbsorptionRates, resolvePartKind } from './client'
 import { guard } from './guard'
 import {
@@ -122,13 +122,19 @@ export async function loadStandardCostFields(organizationId: string): Promise<St
  * type and carried into storage. See {@link absorbedRate}.
  */
 export async function loadAbsorptionRates(organizationId: string): Promise<AbsorptionRates> {
-  const [labor, overhead] = await Promise.all([
-    getOrganizationSetting({ organizationId, key: 'manufacturing.assemblyLaborCostPerUnit' }),
-    getOrganizationSetting({ organizationId, key: 'manufacturing.overheadCostPerUnit' }),
-  ])
+  const rates = await readOrganizationSettings(organizationId, [
+    'manufacturing.assemblyLaborCostPerUnit',
+    'manufacturing.overheadCostPerUnit',
+  ] as const)
   return {
-    laborCostPerUnit: typeof labor === 'number' ? labor : null,
-    overheadCostPerUnit: typeof overhead === 'number' ? overhead : null,
+    laborCostPerUnit:
+      typeof rates['manufacturing.assemblyLaborCostPerUnit'] === 'number'
+        ? rates['manufacturing.assemblyLaborCostPerUnit']
+        : null,
+    overheadCostPerUnit:
+      typeof rates['manufacturing.overheadCostPerUnit'] === 'number'
+        ? rates['manufacturing.overheadCostPerUnit']
+        : null,
   }
 }
 

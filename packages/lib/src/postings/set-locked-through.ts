@@ -4,6 +4,7 @@ import { recordAudit } from '../audit-log'
 import { onCacheEvent } from '../cache'
 import { UnprocessableEntityError } from '../errors'
 import { SETTINGS_CATALOG } from '../settings/catalog'
+import { readOrganizationSettings } from '../settings/read'
 import { withAccountingCommitLock } from './accounting-commit-lock'
 import { PERIOD_LOCK_SETTING_KEY } from './period-lock'
 import { parsePeriodKey } from './periods'
@@ -25,10 +26,14 @@ export async function setLockedThrough(db: Database, input: SetLockedThroughInpu
   }
   await db.transaction(async (tx) => {
     await withAccountingCommitLock(tx, input.organizationId)
-    const previous = await tx.query.OrganizationSetting.findFirst({
-      where: (t, { and, eq }) =>
-        and(eq(t.organizationId, input.organizationId), eq(t.key, PERIOD_LOCK_SETTING_KEY)),
-    })
+    // Read the exact pre-write value for the audit row below — the setting is
+    // about to be overwritten in this same transaction, so the cached path
+    // (which wouldn't see this transaction's world) is not an option here.
+    const previous = await readOrganizationSettings(
+      input.organizationId,
+      [PERIOD_LOCK_SETTING_KEY] as const,
+      tx
+    )
     await tx
       .insert(schema.OrganizationSetting)
       .values({
@@ -51,7 +56,7 @@ export async function setLockedThrough(db: Database, input: SetLockedThroughInpu
         targetId: PERIOD_LOCK_SETTING_KEY,
         actorType: 'user',
         actorId: input.actorUserId,
-        previousState: { value: previous?.value ?? null },
+        previousState: { value: previous[PERIOD_LOCK_SETTING_KEY] },
         newState: { value: input.periodKey },
         context: {
           ipAddress: input.ipAddress,

@@ -10,8 +10,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const settings = vi.hoisted(() => ({ get: vi.fn() }))
 
-vi.mock('../../settings/settings-service', () => ({
-  getOrganizationSetting: settings.get,
+vi.mock('../../settings/read', () => ({
+  readOrganizationSettings: settings.get,
 }))
 
 import { listClosePeriods } from '../close-periods'
@@ -20,7 +20,9 @@ const ORG = 'org_1'
 
 /** Wire the three settings this module reads. */
 function withSettings(values: Record<string, unknown>) {
-  settings.get.mockImplementation(async ({ key }: { key: string }) => values[key] ?? null)
+  settings.get.mockImplementation(async (_organizationId: string, keys: readonly string[]) =>
+    Object.fromEntries(keys.map((key) => [key, values[key] ?? null]))
+  )
 }
 
 beforeEach(() => {

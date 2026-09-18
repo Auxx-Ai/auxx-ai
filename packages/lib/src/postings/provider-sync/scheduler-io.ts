@@ -8,6 +8,7 @@ import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { isDemoOrganization } from '../../demo'
+import { readOrganizationSettings } from '../../settings/read'
 import { listAccountingProviderIds, NONE_PROVIDER_ID, resolveAccountingProvider } from '../provider'
 import { PROVIDER_SYNC_SCHEDULE_SETTING_KEY, type ProviderSyncScheduleConfig } from './client'
 
@@ -16,26 +17,21 @@ const logger = createScopedLogger('postings:provider-sync:scheduler-io')
 /**
  * The org's cadence, read from the ROW.
  *
- * 🛑 Not through `getOrganizationSetting`, for `run-state-io.ts`'s reason: that
- * resolves from the `orgSettings` org cache, which `updateOrganizationSetting`
- * does not invalidate - so the settings mutation that has just written a cadence
- * and then reconciles the scheduler would register the one it replaced.
+ * 🛑 Passes `database` to `readOrganizationSettings` rather than omitting it,
+ * for `run-state-io.ts`'s reason: the cached path resolves from the
+ * `orgSettings` org cache, which `updateOrganizationSetting` does not
+ * invalidate - so the settings mutation that has just written a cadence and
+ * then reconciles the scheduler would register the one it replaced.
  */
 export async function readProviderSyncSchedule(
   organizationId: string
 ): Promise<ProviderSyncScheduleConfig | null> {
-  const [row] = await database
-    .select({ value: schema.OrganizationSetting.value })
-    .from(schema.OrganizationSetting)
-    .where(
-      and(
-        eq(schema.OrganizationSetting.organizationId, organizationId),
-        eq(schema.OrganizationSetting.key, PROVIDER_SYNC_SCHEDULE_SETTING_KEY)
-      )
-    )
-    .limit(1)
-
-  const value = row?.value
+  const settings = await readOrganizationSettings(
+    organizationId,
+    [PROVIDER_SYNC_SCHEDULE_SETTING_KEY] as const,
+    database
+  )
+  const value = settings[PROVIDER_SYNC_SCHEDULE_SETTING_KEY]
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as ProviderSyncScheduleConfig)
     : null

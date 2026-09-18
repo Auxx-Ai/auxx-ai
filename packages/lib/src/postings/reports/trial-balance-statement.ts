@@ -102,7 +102,7 @@ export async function readTrialBalanceStatement(
     if (chartResult.isErr()) return err(chartResult.error)
     const chart = chartResult.value
 
-    const fyStartMonth = await resolveFiscalYearStartMonth(organizationId, db)
+    const fyStartMonth = await resolveFiscalYearStartMonth(organizationId)
     const fyStart = fiscalYearStart(asOf, fyStartMonth)
     const dayBeforeFyStart = previousCalendarDay(fyStart)
 

@@ -29,16 +29,19 @@ export function autoPostSettingKey(avenue: AutoPostAvenue): SettingKey {
  *
  * Off is the default (fail closed): a writer that reads a mode it cannot
  * resolve must draft, never post unattended.
+ *
+ * `db`/`organizationId` order kept for its callers, but none write
+ * `accounting.autoPost.*` earlier in the same transaction, so this always
+ * takes the cached path (decision 9) — `db` is otherwise unused here.
  */
 export async function readAutoPostMode(
-  db: Database | Transaction,
+  _db: Database | Transaction,
   organizationId: string,
   avenue: AutoPostAvenue
 ): Promise<'draft' | 'post'> {
   const value = await getOrganizationSetting({
     organizationId,
     key: autoPostSettingKey(avenue),
-    db,
   })
   return value === true ? 'post' : 'draft'
 }

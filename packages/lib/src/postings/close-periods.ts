@@ -24,7 +24,7 @@
 
 import { err, ok, type Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../errors'
-import { getOrganizationSetting } from '../settings/settings-service'
+import { readOrganizationSettings } from '../settings/read'
 import { PERIOD_LOCK_SETTING_KEY } from './period-lock'
 import { compareMonths, parsePeriodKey, periodKeyForDate } from './periods'
 import { OPENING_BASELINE_SETTING_KEYS } from './setup-readiness'
@@ -57,18 +57,13 @@ export async function listClosePeriods(
   organizationId: string
 ): Promise<Result<ClosePeriod[], Error>> {
   try {
-    const cutoff = readText(
-      await getOrganizationSetting({
-        organizationId,
-        key: OPENING_BASELINE_SETTING_KEYS.cutoffPeriod,
-      })
-    )
-    const bookTimeZone = readText(
-      await getOrganizationSetting({
-        organizationId,
-        key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
-      })
-    )
+    const settings = await readOrganizationSettings(organizationId, [
+      OPENING_BASELINE_SETTING_KEYS.cutoffPeriod,
+      OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
+      PERIOD_LOCK_SETTING_KEY,
+    ] as const)
+    const cutoff = readText(settings[OPENING_BASELINE_SETTING_KEYS.cutoffPeriod])
+    const bookTimeZone = readText(settings[OPENING_BASELINE_SETTING_KEYS.bookTimeZone])
 
     // Setup has not been done. Not an error: the module home renders the
     // checklist, and there is genuinely no month to show yet.
@@ -77,9 +72,7 @@ export async function listClosePeriods(
     const months = monthsAfter(cutoff, bookTimeZone)
     if (months.length === 0) return ok([])
 
-    const lockedThrough = readText(
-      await getOrganizationSetting({ organizationId, key: PERIOD_LOCK_SETTING_KEY })
-    )
+    const lockedThrough = readText(settings[PERIOD_LOCK_SETTING_KEY])
 
     return ok(
       months.map((periodKey) => ({

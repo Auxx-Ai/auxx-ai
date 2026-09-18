@@ -9,8 +9,9 @@ import { describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({ settings: new Map<string, unknown>() }))
 
-vi.mock('../../settings/settings-service', () => ({
-  getOrganizationSetting: async ({ key }: { key: string }) => h.settings.get(key),
+vi.mock('../../settings/read', () => ({
+  readOrganizationSettings: async (_organizationId: string, keys: readonly string[]) =>
+    Object.fromEntries(keys.map((key) => [key, h.settings.get(key) ?? null])),
 }))
 
 import { avenueOfPostingType, EXPORT_AVENUES, SUMMARY_GRAIN_AVENUES } from '../export-settings'

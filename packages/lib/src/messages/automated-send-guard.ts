@@ -1,7 +1,7 @@
 // packages/lib/src/messages/automated-send-guard.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { getOrganizationSetting } from '../settings/settings-service'
+import { readOrganizationSettings } from '../settings/read'
 import { checkFixedWindowLimit } from '../utils/rate-limiter/fixed-window'
 
 const logger = createScopedLogger('automated-send-guard')
@@ -41,12 +41,12 @@ export async function checkAutomatedSendLimits(opts: {
 }): Promise<AutomatedSendLimitResult> {
   const { organizationId, recipientEmail } = opts
 
-  const [recipientRaw, orgRaw] = await Promise.all([
-    getOrganizationSetting({ organizationId, key: 'email.automation.maxPerRecipientPerHour' }),
-    getOrganizationSetting({ organizationId, key: 'email.automation.maxPerOrgPer15Min' }),
-  ])
-  const recipientLimit = typeof recipientRaw === 'number' ? recipientRaw : 0
-  const orgLimit = typeof orgRaw === 'number' ? orgRaw : 0
+  const limits = await readOrganizationSettings(organizationId, [
+    'email.automation.maxPerRecipientPerHour',
+    'email.automation.maxPerOrgPer15Min',
+  ] as const)
+  const recipientLimit = limits['email.automation.maxPerRecipientPerHour']
+  const orgLimit = limits['email.automation.maxPerOrgPer15Min']
 
   if (recipientLimit > 0) {
     const recipient = await checkFixedWindowLimit({
