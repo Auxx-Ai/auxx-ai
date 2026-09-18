@@ -5,8 +5,8 @@ import { toRecordId } from '@auxx/types/resource'
 import { getOrgCache } from '../cache'
 import { firstTyped } from '../field-values/client'
 import { FieldValueService } from '../field-values/field-value-service'
-import { convertQuoteToWorkOrder } from '../money/convert-quote'
 import { UnifiedCrudHandler } from '../resources/crud'
+import { convertQuoteToWorkOrder } from '../sales/quotes/convert-quote'
 import type { ConvertRequestToWorkOrderInput } from './types'
 
 /**

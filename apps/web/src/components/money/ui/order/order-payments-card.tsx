@@ -1,7 +1,7 @@
 // apps/web/src/components/money/ui/order/order-payments-card.tsx
 'use client'
 
-import type { OrderMoneyTransaction } from '@auxx/lib/money/customer-money/client'
+import type { OrderMoneyTransaction } from '@auxx/lib/accounting/money/customer-money/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

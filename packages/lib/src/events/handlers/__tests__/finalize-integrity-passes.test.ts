@@ -46,7 +46,7 @@ vi.mock('../../../cache', () => ({
 
 // Totals cores + the trigger vocabularies (literal copies — the sets are plain data; the
 // real ones live in money/totals-hooks.ts and are covered by the money suites).
-vi.mock('../../../money/totals-hooks', () => ({
+vi.mock('../../../sales/totals/totals-hooks', () => ({
   LINE_TRIGGER_ATTRS: new Set([
     'line_item_qty',
     'line_item_unit_price',

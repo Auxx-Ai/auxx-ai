@@ -34,7 +34,7 @@ vi.mock('../../../cache', () => ({
   }),
 }))
 
-vi.mock('../../../money/fulfillments/reads', () => ({
+vi.mock('../../../sales/fulfillments/reads', () => ({
   readFulfillmentsForOrders: vi.fn(async (_db, params: { orderIds: readonly string[] }) => {
     h.fulfillmentCalls += 1
     const map = new Map<string, unknown[]>()

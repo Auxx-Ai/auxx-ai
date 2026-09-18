@@ -5,7 +5,7 @@
 // server/read-only for INVOICES; the quote page uses its own client selection wrapper
 // (`public-quote/quote-lines-with-selection.tsx`, money plan 18 §4) instead of this component.
 
-import { formatLineItemUnit, type LineItemUnit } from '@auxx/lib/money/client'
+import { formatLineItemUnit, type LineItemUnit } from '@auxx/lib/sales/client'
 import { cn } from '@auxx/ui/lib/utils'
 import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { Fragment } from 'react'

@@ -12,7 +12,6 @@
 import { closePools, database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { listBankAccounts } from '../src/accounting/banking'
-import { buildBankDepositPdfPayload } from '../src/documents/payload'
 import {
   clearBankDeposit,
   createBankDeposit,
@@ -20,7 +19,8 @@ import {
   listBankDeposits,
   listUndepositedPayments,
   updateBankDeposit,
-} from '../src/money/bank-deposits'
+} from '../src/accounting/money/bank-deposits'
+import { buildBankDepositPdfPayload } from '../src/documents/payload'
 
 async function main() {
   const organizationId = process.argv[2]

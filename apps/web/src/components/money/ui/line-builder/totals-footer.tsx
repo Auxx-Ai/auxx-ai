@@ -19,7 +19,7 @@ import {
   type DocumentBillingInputs,
   type DocumentTotals,
   type LineForTotals,
-} from '@auxx/lib/money/client'
+} from '@auxx/lib/sales/client'
 import {
   Select,
   SelectContent,

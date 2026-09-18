@@ -18,9 +18,9 @@
  */
 
 import { database, schema } from '@auxx/database'
+import { sendPaymentReceipt } from '@auxx/lib/accounting/money'
 import { getOrgCache } from '@auxx/lib/cache'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
-import { sendPaymentReceipt } from '@auxx/lib/money'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'
 

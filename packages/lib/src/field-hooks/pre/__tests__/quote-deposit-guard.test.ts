@@ -19,7 +19,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({ findFirst: vi.fn() }))
 
-vi.mock('../../../money/checkout/reads', () => ({
+vi.mock('../../../accounting/money/checkout/reads', () => ({
   hasQuoteDeposit: (...args: unknown[]) => h.findFirst(...args).then(Boolean),
 }))
 

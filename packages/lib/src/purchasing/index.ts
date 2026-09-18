@@ -95,6 +95,8 @@ export {
   updateIntakeDraftPayload,
   type WriteBackTally,
 } from './intake'
+export type { PurchaseOrderLifecycleInput } from './lifecycle'
+export { markPurchaseOrderSent } from './lifecycle'
 export {
   DEFAULT_MATCH_TOLERANCE,
   describeAwaitingLine,

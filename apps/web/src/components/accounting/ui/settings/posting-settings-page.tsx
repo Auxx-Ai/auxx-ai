@@ -20,7 +20,7 @@
 // to `POSTING_PAGE_INPUT_KEYS` and diffs only against those.
 
 import type { PostingPolicy, PostingType } from '@auxx/lib/accounting/ledger/client'
-import { PAYMENT_ROUTE_SETTING_KEYS } from '@auxx/lib/money/client'
+import { PAYMENT_ROUTE_SETTING_KEYS } from '@auxx/lib/accounting/money/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingKey, SettingValue } from '@auxx/lib/settings/client'
 import { Badge } from '@auxx/ui/components/badge'

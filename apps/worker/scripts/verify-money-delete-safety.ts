@@ -30,10 +30,11 @@
  */
 
 import { database, schema } from '@auxx/database'
+import { recordManualPayment } from '@auxx/lib/accounting/money'
 import { getOrgCache } from '@auxx/lib/cache'
 import { AuxxError } from '@auxx/lib/errors'
-import { deleteInvoice, listUninvoicedLines, recordManualPayment } from '@auxx/lib/money'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
+import { deleteInvoice, listUninvoicedLines } from '@auxx/lib/sales'
 import { generateId } from '@auxx/utils'
 
 /** Build a RecordId string without pulling in `@auxx/types` (not a worker dependency). */

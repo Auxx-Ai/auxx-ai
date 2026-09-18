@@ -5,7 +5,7 @@
 export const runtime = 'nodejs'
 
 import { configService } from '@auxx/credentials'
-import { applyStripeCheckoutEvent } from '@auxx/lib/money'
+import { applyStripeCheckoutEvent } from '@auxx/lib/accounting/money'
 import { verifyStripeSignature } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'

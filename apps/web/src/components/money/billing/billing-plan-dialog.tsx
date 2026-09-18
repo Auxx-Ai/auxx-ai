@@ -1,7 +1,7 @@
 // apps/web/src/components/money/billing/billing-plan-dialog.tsx
 'use client'
 
-import { COMPATIBLE_BILLING_TIMINGS } from '@auxx/lib/money/client'
+import { COMPATIBLE_BILLING_TIMINGS } from '@auxx/lib/sales/client'
 import type { RecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import {

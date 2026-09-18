@@ -2,7 +2,7 @@
 
 import { isAtPrecision, RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 import { BadRequestError } from '../errors'
-import { roundCents } from '../money/totals'
+import { roundCents } from '../sales/totals/totals'
 import type { AllocationBasis, AllocationHeader, AllocationLine } from './types'
 
 /**

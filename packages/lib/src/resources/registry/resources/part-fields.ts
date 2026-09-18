@@ -3,7 +3,7 @@
 import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { RATE_DECIMALS } from '@auxx/utils/currency'
-import { LINE_ITEM_UNIT_OPTIONS } from '../../../money/units'
+import { LINE_ITEM_UNIT_OPTIONS } from '../../../sales/totals/units'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { CostSource, PartKind, StockStatus } from '../enum-values'

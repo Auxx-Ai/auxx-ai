@@ -3,8 +3,8 @@
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeValue } from '@auxx/database/types'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { computeLineTotal, type LineItemUnit, roundCents } from '@auxx/lib/money/client'
 import type { RecordId } from '@auxx/lib/resources/client'
+import { computeLineTotal, type LineItemUnit, roundCents } from '@auxx/lib/sales/client'
 import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 
 /**

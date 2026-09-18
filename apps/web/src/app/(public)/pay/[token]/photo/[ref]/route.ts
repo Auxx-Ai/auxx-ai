@@ -1,7 +1,7 @@
 // apps/web/src/app/(public)/pay/[token]/photo/[ref]/route.ts
 
 import { resolvePhotoRef } from '@auxx/lib/documents'
-import { getPublicInvoicePayload, resolveInvoiceByPublicToken } from '@auxx/lib/money'
+import { getPublicInvoicePayload, resolveInvoiceByPublicToken } from '@auxx/lib/sales'
 import { NextResponse } from 'next/server'
 
 /**

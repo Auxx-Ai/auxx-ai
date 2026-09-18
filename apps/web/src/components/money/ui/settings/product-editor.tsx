@@ -3,8 +3,8 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeValue } from '@auxx/database/types'
-import { formatLineItemUnit, type LineItemUnit } from '@auxx/lib/money/client'
 import type { RecordId } from '@auxx/lib/resources/client'
+import { formatLineItemUnit, type LineItemUnit } from '@auxx/lib/sales/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useRef, useState } from 'react'

@@ -9,8 +9,8 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { BadRequestError, NotFoundError } from '../errors'
-import { maybeGenerateVisitInvoiceDraft } from '../money/auto-invoice'
 import type { RecurrencePattern } from '../recurrence'
+import { maybeGenerateVisitInvoiceDraft } from '../sales/invoices/auto-invoice'
 import {
   enrollVisitEnRouteSequences,
   enrollVisitScheduledSequences,

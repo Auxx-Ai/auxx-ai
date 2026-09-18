@@ -53,7 +53,7 @@ vi.mock('../../ledger/roles/role-assignments', () => ({
   readRoleAssignments: async () => state.roleAssignments,
 }))
 
-vi.mock('../../../money/payouts/reads', () => ({
+vi.mock('../../money/payouts/reads', () => ({
   listOpenDestinationMismatches: async () => state.mismatches,
 }))
 

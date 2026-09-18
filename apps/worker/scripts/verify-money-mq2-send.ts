@@ -29,8 +29,8 @@ import {
   createThumbnailCleanupPort,
   deleteAsset,
 } from '@auxx/lib/files/server'
-import { prepareDocumentEmail } from '@auxx/lib/money'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
+import { prepareDocumentEmail } from '@auxx/lib/sales'
 
 /** Build a RecordId string without pulling in `@auxx/types` (not a worker dependency). */
 function toRecordId(entityDefinitionId: string, entityInstanceId: string) {

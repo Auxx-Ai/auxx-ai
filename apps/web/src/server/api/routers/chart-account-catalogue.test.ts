@@ -162,7 +162,7 @@ vi.mock('@auxx/lib/errors', () => ({
   },
 }))
 
-vi.mock('@auxx/lib/money', () => ({ getPaymentAccount: vi.fn() }))
+vi.mock('@auxx/lib/accounting/money', () => ({ getPaymentAccount: vi.fn() }))
 vi.mock('@auxx/lib/permissions', () => ({
   PermissionKey: {
     ledgerControl: LEDGER_CONTROL,

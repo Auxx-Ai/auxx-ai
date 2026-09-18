@@ -24,7 +24,7 @@ vi.mock('@auxx/database', async (importOriginal) => ({
 vi.mock('../../../entity-instances/activity', () => ({
   resolveThreadLinkedEntityIds: h.resolveThreadLinkedEntityIds,
 }))
-vi.mock('../../../money/send-email', () => ({
+vi.mock('../../../sales/send-email', () => ({
   documentTypeOf: h.documentTypeOf,
   recordDocumentSendSignal: h.recordDocumentSendSignal,
   documentEmailProfile: (documentType: string) => ({

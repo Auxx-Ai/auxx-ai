@@ -252,7 +252,7 @@ vi.mock('@auxx/lib/messages', () => ({
     retryFailedMessage = vi.fn(async () => ({ success: true, attemptNumber: 1 }))
   },
 }))
-vi.mock('@auxx/lib/money', () => ({
+vi.mock('@auxx/lib/sales', () => ({
   markInvoiceSent: vi.fn(),
   markQuoteSent: vi.fn(),
   recordDocumentSendSignal: vi.fn(),

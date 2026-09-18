@@ -58,7 +58,7 @@ vi.mock('../../../ledger/reads/list-postings', () => ({
 vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ mode: 'ledger', lockedThroughMonth: null }),
 }))
-vi.mock('../../../../money/bank-deposits', () => ({ clearBankDeposit: h.clearBankDeposit }))
+vi.mock('../../../money/bank-deposits', () => ({ clearBankDeposit: h.clearBankDeposit }))
 vi.mock('../../../../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
     update = h.crudUpdate

@@ -10,7 +10,7 @@ const state = vi.hoisted(() => ({
   rejected: vi.fn(),
 }))
 
-vi.mock('@auxx/lib/money/payouts', () => ({
+vi.mock('@auxx/lib/accounting/money/payouts', () => ({
   listPayoutEvidence: state.list,
   getPayoutEvidence: state.detail,
   listProcessorBalanceEntries: state.entries,
