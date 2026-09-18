@@ -6,7 +6,7 @@ import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { LINE_ITEM_UNIT_OPTIONS } from '../../../money/units'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 import { CATALOG_CATEGORY_OPTIONS } from './catalog-item-fields'
 
 /**
@@ -14,7 +14,7 @@ import { CATALOG_CATEGORY_OPTIONS } from './catalog-item-fields'
  * (money module, README). Hidden system entity — rendered only by the embedded
  * line-builder UIs (§H.1), never shown in the entity sidebar or generic dialogs.
  */
-export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
+export const LINE_ITEM_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -872,4 +872,4 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

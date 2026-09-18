@@ -5,7 +5,7 @@ import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { FulfillmentStatus } from '../enum-values'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Fulfillment resource
@@ -42,7 +42,7 @@ import type { ResourceField } from '../field-types'
  * a future multi-location on-hand would need, recorded here as an omission
  * rather than forgotten.
  */
-export const FULFILLMENT_FIELDS: Record<string, ResourceField> = {
+export const FULFILLMENT_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -557,4 +557,4 @@ export const FULFILLMENT_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

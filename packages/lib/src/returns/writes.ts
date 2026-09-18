@@ -46,7 +46,7 @@ import {
   requireReturnLineFieldContext,
   requireReturnPartLineFieldContext,
   requireReturnsDefId,
-} from './field-context'
+} from './fields'
 import { guard } from './guard'
 import { checkOverReturn } from './over-return-guard'
 import {
@@ -146,11 +146,11 @@ export async function createReturn(
 ): Promise<Result<ReturnWithLines, Error>> {
   return guard(
     async () => {
-      const ctx = await requireReturnFieldContext(organizationId)
-      const values = await buildReturnValues(organizationId, input)
+      const ctx = await requireReturnFieldContext(db, organizationId)
+      const values = await buildReturnValues(db, organizationId, input)
 
       const crud = new UnifiedCrudHandler(organizationId, userId, db)
-      const created = await crud.create(ctx.returnDefId, values)
+      const created = await crud.create(ctx.defId, values)
 
       logger.info('Raised return', {
         organizationId,
@@ -182,13 +182,13 @@ export async function updateReturn(
 ): Promise<Result<ReturnWithLines, Error>> {
   return guard(
     async () => {
-      const ctx = await requireReturnFieldContext(organizationId)
+      const ctx = await requireReturnFieldContext(db, organizationId)
       await requireReturnRecord(db, organizationId, input.returnId)
 
-      const values = await buildReturnValues(organizationId, input)
+      const values = await buildReturnValues(db, organizationId, input)
       if (Object.keys(values).length > 0) {
         const crud = new UnifiedCrudHandler(organizationId, userId, db)
-        await crud.update(toRecordId(ctx.returnDefId, input.returnId) as RecordId, values)
+        await crud.update(toRecordId(ctx.defId, input.returnId) as RecordId, values)
       }
 
       return requireReturnRecord(db, organizationId, input.returnId)
@@ -229,11 +229,11 @@ export async function createReturnLine(
 ): Promise<Result<ReturnLineRecord, Error>> {
   return guard(
     async () => {
-      const ctx = await requireReturnLineFieldContext(organizationId)
+      const ctx = await requireReturnLineFieldContext(db, organizationId)
       await requireReturnRecord(db, organizationId, input.returnId)
 
-      const returnDefId = await requireReturnsDefId(organizationId, 'return')
-      const partDefId = await requireReturnsDefId(organizationId, 'part')
+      const returnDefId = await requireReturnsDefId(db, organizationId, 'return')
+      const partDefId = await requireReturnsDefId(db, organizationId, 'part')
       await assertInstanceExists(db, organizationId, partDefId, input.partId, 'Part')
 
       if (input.lineItemId) {
@@ -248,11 +248,11 @@ export async function createReturnLine(
         return_line_return: toRecordId(returnDefId, input.returnId),
         return_line_part: toRecordId(partDefId, input.partId),
         return_line_quantity: input.quantity,
-        ...(await buildReturnLineValues(organizationId, input)),
+        ...(await buildReturnLineValues(db, organizationId, input)),
       }
 
       const crud = new UnifiedCrudHandler(organizationId, userId, db)
-      const created = await crud.create(ctx.returnLineDefId, values)
+      const created = await crud.create(ctx.defId, values)
 
       logger.info('Added return line', {
         organizationId,
@@ -283,7 +283,7 @@ export async function updateReturnLine(
 ): Promise<Result<ReturnLineRecord, Error>> {
   return guard(
     async () => {
-      const ctx = await requireReturnLineFieldContext(organizationId)
+      const ctx = await requireReturnLineFieldContext(db, organizationId)
       const existing = await requireReturnLine(db, organizationId, input.returnLineId)
 
       const lineItemId =
@@ -302,17 +302,17 @@ export async function updateReturnLine(
         })
       }
 
-      const values: Record<string, unknown> = await buildReturnLineValues(organizationId, input)
+      const values: Record<string, unknown> = await buildReturnLineValues(db, organizationId, input)
       if (input.quantity !== undefined) values.return_line_quantity = input.quantity
       if (input.partId !== undefined) {
-        const partDefId = await requireReturnsDefId(organizationId, 'part')
+        const partDefId = await requireReturnsDefId(db, organizationId, 'part')
         await assertInstanceExists(db, organizationId, partDefId, input.partId, 'Part')
         values.return_line_part = toRecordId(partDefId, input.partId)
       }
 
       if (Object.keys(values).length > 0) {
         const crud = new UnifiedCrudHandler(organizationId, userId, db)
-        await crud.update(toRecordId(ctx.returnLineDefId, input.returnLineId) as RecordId, values)
+        await crud.update(toRecordId(ctx.defId, input.returnLineId) as RecordId, values)
       }
 
       return requireReturnLine(db, organizationId, input.returnLineId)
@@ -487,7 +487,7 @@ export async function setSalvagePercent(
       const crud = new UnifiedCrudHandler(organizationId, userId, db)
       const { errors } = await crud.bulkUpdate(
         targets.map((node) => ({
-          recordId: toRecordId(salvage.ctx.returnPartLineDefId, node.key) as RecordId,
+          recordId: toRecordId(salvage.ctx.defId, node.key) as RecordId,
           values: { return_part_line_salvage_percent: input.salvagePercent },
         }))
       )
@@ -633,7 +633,7 @@ async function loadSalvageWriteContext(
   organizationId: string,
   returnLineId: string
 ): Promise<SalvageWriteContext> {
-  const ctx = await requireReturnPartLineFieldContext(organizationId)
+  const ctx = await requireReturnPartLineFieldContext(db, organizationId)
   const line = await requireReturnLine(db, organizationId, returnLineId)
   if (!line.partId) {
     throw new UnprocessableEntityError(
@@ -787,7 +787,7 @@ async function writeDraft(
   }
 
   const crud = new UnifiedCrudHandler(organizationId, userId, db)
-  await crud.update(toRecordId(salvage.ctx.returnPartLineDefId, target.rowId) as RecordId, values)
+  await crud.update(toRecordId(salvage.ctx.defId, target.rowId) as RecordId, values)
 }
 
 /** One `return_part_line`. Never writes a unit cost or a movement: step 7 owns those. */
@@ -798,8 +798,8 @@ async function createPartLineRow(
   salvage: SalvageWriteContext,
   target: SalvageTarget
 ): Promise<string> {
-  const returnLineDefId = await requireReturnsDefId(organizationId, 'return_line')
-  const partDefId = await requireReturnsDefId(organizationId, 'part')
+  const returnLineDefId = await requireReturnsDefId(db, organizationId, 'return_line')
+  const partDefId = await requireReturnsDefId(db, organizationId, 'part')
 
   const values: Record<string, unknown> = {
     return_part_line_return_line: toRecordId(returnLineDefId, salvage.line.returnLineId),
@@ -808,7 +808,7 @@ async function createPartLineRow(
     return_part_line_status: target.status,
   }
   if (target.parentRowId) {
-    values.return_part_line_parent = toRecordId(salvage.ctx.returnPartLineDefId, target.parentRowId)
+    values.return_part_line_parent = toRecordId(salvage.ctx.defId, target.parentRowId)
   }
   if (salvage.ctx.fields.return_part_line_salvage_percent) {
     values.return_part_line_salvage_percent = target.salvagePercent
@@ -819,7 +819,7 @@ async function createPartLineRow(
   }
 
   const crud = new UnifiedCrudHandler(organizationId, userId, db)
-  const created = await crud.create(salvage.ctx.returnPartLineDefId, values)
+  const created = await crud.create(salvage.ctx.defId, values)
   return created.instance.id
 }
 
@@ -907,6 +907,7 @@ async function assertOverReturn(
 
 /** The `return` values common to create and update. Absent keys stay untouched. */
 async function buildReturnValues(
+  db: Database,
   organizationId: string,
   input: ReturnInput
 ): Promise<Record<string, unknown>> {
@@ -944,7 +945,7 @@ async function buildReturnValues(
   ] as const) {
     if (value === undefined) continue
     values[attribute] = value
-      ? toRecordId(await requireReturnsDefId(organizationId, entityType), value)
+      ? toRecordId(await requireReturnsDefId(db, organizationId, entityType), value)
       : null
   }
 
@@ -953,6 +954,7 @@ async function buildReturnValues(
 
 /** The `return_line` values common to create and update, minus part and quantity. */
 async function buildReturnLineValues(
+  db: Database,
   organizationId: string,
   input: ReturnLineInput
 ): Promise<Record<string, unknown>> {
@@ -972,7 +974,7 @@ async function buildReturnLineValues(
   }
   if (input.lineItemId !== undefined) {
     values.return_line_line_item = input.lineItemId
-      ? toRecordId(await requireReturnsDefId(organizationId, 'line_item'), input.lineItemId)
+      ? toRecordId(await requireReturnsDefId(db, organizationId, 'line_item'), input.lineItemId)
       : null
   }
 

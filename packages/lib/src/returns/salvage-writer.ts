@@ -110,7 +110,7 @@ import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { quietSession, type WriteSession } from '../resources/crud/write-origin'
 import { StockMovementCostBasis, StockMovementType } from '../resources/registry/enum-values'
 import { type RecordId, toRecordId } from '../resources/resource-id'
-import { requireReturnPartLineFieldContext } from './field-context'
+import { requireReturnPartLineFieldContext } from './fields'
 import { guard } from './guard'
 import {
   type ReturnPartLineRecord,
@@ -249,7 +249,7 @@ export async function writeSalvageMovements(
 ): Promise<Result<WriteSalvageMovementsResult, Error>> {
   return guard(
     async () => {
-      const ctx = await requireReturnPartLineFieldContext(organizationId)
+      const ctx = await requireReturnPartLineFieldContext(db, organizationId)
       const line = await requireReturnLine(db, organizationId, input.returnLineId)
       const rows = await readReturnPartLines(db, organizationId, input.returnLineId)
       const tree = await assembleSalvageTree(db, organizationId, line, rows)
@@ -404,7 +404,7 @@ export async function writeSalvageMovements(
         // movement carries. One bulk call rather than a row loop.
         const freeze = await crud.bulkUpdate(
           movements.map((movement) => ({
-            recordId: toRecordId(ctx.returnPartLineDefId, movement.partLineId) as RecordId,
+            recordId: toRecordId(ctx.defId, movement.partLineId) as RecordId,
             values: {
               return_part_line_unit_cost: movement.unitCost,
               return_part_line_movement: toRecordId(movementDefId, movement.movementId),
@@ -459,7 +459,7 @@ export async function writeSalvageMovements(
       )
       announceQuietSalvageWrites(
         organizationId,
-        ctx.returnPartLineDefId,
+        ctx.defId,
         movements.map((movement) => movement.partLineId)
       )
 

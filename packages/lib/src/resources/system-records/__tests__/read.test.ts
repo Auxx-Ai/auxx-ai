@@ -18,7 +18,15 @@ import { schema } from '@auxx/database'
 import type { SystemFieldContext } from '../fields'
 import { readSystemRecords } from '../read'
 
-type Attribute = 'name' | 'handles' | 'status' | 'order' | 'placed_at' | 'amount'
+type Attribute =
+  | 'name'
+  | 'handles'
+  | 'status'
+  | 'order'
+  | 'placed_at'
+  | 'amount'
+  | 'billable'
+  | 'inspected_by'
 
 const ORG = 'org_1'
 
@@ -31,6 +39,8 @@ const ctx: SystemFieldContext<Attribute> = {
     order: field('f_order', 'RELATIONSHIP'),
     placed_at: field('f_placed', 'DATE'),
     amount: field('f_amount', 'NUMBER'),
+    billable: field('f_billable', 'CHECKBOX'),
+    inspected_by: field('f_inspected', 'ACTOR'),
   },
 }
 
@@ -134,6 +144,25 @@ describe('readSystemRecords', () => {
     expect(row?.cell('order')).toMatchObject({ recordId: 'def_order:inst_o1' })
     // A typed read of the wrong shape is null, not a coerced string.
     expect(row?.text('status')).toBeNull()
+  })
+
+  it('reads a checkbox and an actor without touching the columns', async () => {
+    const { conn } = db({
+      instances: [instance('a')],
+      values: [
+        valueRow('a', 'f_billable', 'a0', { valueBoolean: false }),
+        valueRow('a', 'f_inspected', 'a0', { actorId: 'user_7' }),
+      ],
+    })
+
+    const [row] = await readSystemRecords(conn, ORG, ctx)
+
+    // `false` is a stored answer, not an absence.
+    expect(row?.boolean('billable')).toBe(false)
+    expect(row?.actor('inspected_by')).toBe('user_7')
+    expect(row?.cell('inspected_by')).toMatchObject({ type: 'actor', actorId: 'user:user_7' })
+    expect(row?.boolean('name')).toBeNull()
+    expect(row?.actor('name')).toBeNull()
   })
 
   it('keeps sortKey order on a multi-value cell', async () => {

@@ -1,30 +1,29 @@
-// packages/lib/src/returns/field-context.ts
+// packages/lib/src/returns/fields.ts
 
 /**
- * The entity definition ids and `CustomField` ids every returns read and write
- * resolves before it touches a row.
+ * The def-and-field contexts every returns read and write resolves before it
+ * touches a row, picked from the registry rather than re-typed here.
  *
- * Shared by `reads.ts`, `salvage-reads.ts` and `writes.ts` rather than
- * duplicated into each: the three definitions are provisioned together by one
- * entity migration, and a reader that resolves them differently from the writer
- * is how "the field is there but nothing sees it" happens.
- *
- * Every attribute is optional in the resolved record on purpose. An
- * organization short of the entity migration that provisions `return` has no
- * fields at all, and a LIST on that org must render empty rather than 500 -
- * which is why the loaders return null and the `require*` variants, used by the
- * write paths, refuse instead. A write that silently did nothing would be worse
- * than a refusal.
+ * The loaders return null when the org is short of the entity migration that
+ * provisions the def OR of the fields without which the surface is a constant —
+ * a LIST on such an org renders empty rather than 500 — and the `require*`
+ * variants refuse instead, because a write that silently did nothing would be
+ * worse.
  *
  * No permission checks here or anywhere else in this module: the router asserts
  * (`docs/lib-module-guide.md` section 6).
  */
 
-import { getCachedEntityDefId, getOrgCache } from '../cache'
+import type { Database, Transaction } from '@auxx/database'
 import { UnprocessableEntityError } from '../errors'
+import { RETURN_FIELDS } from '../resources/registry/resources/return-fields'
+import { RETURN_LINE_FIELDS } from '../resources/registry/resources/return-line-fields'
+import { RETURN_PART_LINE_FIELDS } from '../resources/registry/resources/return-part-line-fields'
+import { pickSystemAttributes } from '../resources/registry/system-attributes'
+import { type SystemFieldContext, systemDefId, systemFields } from '../resources/system-records'
 
 /** Every `return` attribute the reads and writes in this module touch. */
-export const RETURN_ATTRIBUTES = [
+export const RETURN_ATTRIBUTES = pickSystemAttributes(RETURN_FIELDS, [
   'return_number',
   'return_status',
   'return_origin',
@@ -47,12 +46,13 @@ export const RETURN_ATTRIBUTES = [
   'return_credited_amount',
   'return_withheld_amount',
   'return_withheld_reason',
-] as const
+] as const)
 
 export type ReturnAttribute = (typeof RETURN_ATTRIBUTES)[number]
+export type ReturnFieldContext = SystemFieldContext<ReturnAttribute>
 
 /** Every `return_line` attribute the reads and writes in this module touch. */
-export const RETURN_LINE_ATTRIBUTES = [
+export const RETURN_LINE_ATTRIBUTES = pickSystemAttributes(RETURN_LINE_FIELDS, [
   'return_line_return',
   'return_line_line_item',
   'return_line_part',
@@ -62,19 +62,19 @@ export const RETURN_LINE_ATTRIBUTES = [
   'return_line_inspection_notes',
   'return_line_inspected_by',
   'return_line_inspected_at',
-] as const
+] as const)
 
 export type ReturnLineAttribute = (typeof RETURN_LINE_ATTRIBUTES)[number]
+export type ReturnLineFieldContext = SystemFieldContext<ReturnLineAttribute>
 
 /**
  * Every `return_part_line` attribute this module touches.
  *
  * 🛑 `return_part_line_unit_cost` and `return_part_line_movement` are read but
- * never written here. They are the salvage writer's output (plan section 6.3,
- * step 7), and that step is gated on a chain ending at task 50 - nothing in
- * this module moves inventory.
+ * never written here: they are the salvage writer's output (plan section 6.3,
+ * step 7).
  */
-export const RETURN_PART_LINE_ATTRIBUTES = [
+export const RETURN_PART_LINE_ATTRIBUTES = pickSystemAttributes(RETURN_PART_LINE_FIELDS, [
   'return_part_line_return_line',
   'return_part_line_parent',
   'return_part_line_part',
@@ -84,55 +84,34 @@ export const RETURN_PART_LINE_ATTRIBUTES = [
   'return_part_line_unit_cost',
   'return_part_line_sort_order',
   'return_part_line_movement',
-] as const
+] as const)
 
 export type ReturnPartLineAttribute = (typeof RETURN_PART_LINE_ATTRIBUTES)[number]
+export type ReturnPartLineFieldContext = SystemFieldContext<ReturnPartLineAttribute>
 
-/** A materialized `CustomField`, narrowed to the one property this module uses. */
-type FieldRef = { id: string } | null
-
-/** The `return` definition and its fields. */
-export interface ReturnFieldContext {
-  returnDefId: string
-  fields: Record<ReturnAttribute, FieldRef>
-}
-
-/** The `return_line` definition and its fields. */
-export interface ReturnLineFieldContext {
-  returnLineDefId: string
-  fields: Record<ReturnLineAttribute, FieldRef>
-}
-
-/** The `return_part_line` definition and its fields. */
-export interface ReturnPartLineFieldContext {
-  returnPartLineDefId: string
-  fields: Record<ReturnPartLineAttribute, FieldRef>
-}
+type ReadDb = Database | Transaction | undefined
 
 /**
- * Resolve the `return` definition, or null when the org has no returns yet.
+ * The `return` context, or null when the org has no returns yet.
  *
- * `return_status` is required for a usable context: without it there is no
- * lifecycle, and every saved view and risk badge in plan section 3.3 reduces to
- * a constant.
+ * `return_status` is required: without it there is no lifecycle, and every
+ * saved view and risk badge in plan section 3.3 reduces to a constant.
  */
 export async function loadReturnFieldContext(
+  db: ReadDb,
   organizationId: string
 ): Promise<ReturnFieldContext | null> {
-  const returnDefId = await getCachedEntityDefId(organizationId, 'return')
-  if (!returnDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...RETURN_ATTRIBUTES])) as Record<ReturnAttribute, FieldRef>
-  if (!fields.return_status) return null
-  return { returnDefId, fields }
+  const ctx = await systemFields(db, organizationId, 'return', RETURN_ATTRIBUTES)
+  if (!ctx?.fields.return_status) return null
+  return ctx
 }
 
 /** {@link loadReturnFieldContext}, as the refusal a write path needs. */
 export async function requireReturnFieldContext(
+  db: ReadDb,
   organizationId: string
 ): Promise<ReturnFieldContext> {
-  const ctx = await loadReturnFieldContext(organizationId)
+  const ctx = await loadReturnFieldContext(db, organizationId)
   if (!ctx) {
     throw new UnprocessableEntityError(
       'Returns are not available until the return entity and its fields are provisioned'
@@ -142,29 +121,27 @@ export async function requireReturnFieldContext(
 }
 
 /**
- * Resolve the `return_line` definition, or null when the org has none.
+ * The `return_line` context, or null when the org has none.
  *
  * `return_line_return` and `return_line_part` are required: a line that cannot
  * name its return is an orphan, and one that cannot name its part has no BOM
  * root, which is the whole of the salvage tree.
  */
 export async function loadReturnLineFieldContext(
+  db: ReadDb,
   organizationId: string
 ): Promise<ReturnLineFieldContext | null> {
-  const returnLineDefId = await getCachedEntityDefId(organizationId, 'return_line')
-  if (!returnLineDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...RETURN_LINE_ATTRIBUTES])) as Record<ReturnLineAttribute, FieldRef>
-  if (!fields.return_line_return || !fields.return_line_part) return null
-  return { returnLineDefId, fields }
+  const ctx = await systemFields(db, organizationId, 'return_line', RETURN_LINE_ATTRIBUTES)
+  if (!ctx?.fields.return_line_return || !ctx.fields.return_line_part) return null
+  return ctx
 }
 
 /** {@link loadReturnLineFieldContext}, as the refusal a write path needs. */
 export async function requireReturnLineFieldContext(
+  db: ReadDb,
   organizationId: string
 ): Promise<ReturnLineFieldContext> {
-  const ctx = await loadReturnLineFieldContext(organizationId)
+  const ctx = await loadReturnLineFieldContext(db, organizationId)
   if (!ctx) {
     throw new UnprocessableEntityError(
       'Return lines are not available until the return line entity and its fields are provisioned'
@@ -174,37 +151,37 @@ export async function requireReturnLineFieldContext(
 }
 
 /**
- * Resolve the `return_part_line` definition, or null when the org has none.
+ * The `return_part_line` context, or null when the org has none.
  *
  * The three the tree cannot be assembled without are required: the owning line,
  * the part, and the status the warehouse sets.
  */
 export async function loadReturnPartLineFieldContext(
+  db: ReadDb,
   organizationId: string
 ): Promise<ReturnPartLineFieldContext | null> {
-  const returnPartLineDefId = await getCachedEntityDefId(organizationId, 'return_part_line')
-  if (!returnPartLineDefId) return null
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...RETURN_PART_LINE_ATTRIBUTES])) as Record<
-    ReturnPartLineAttribute,
-    FieldRef
-  >
+  const ctx = await systemFields(
+    db,
+    organizationId,
+    'return_part_line',
+    RETURN_PART_LINE_ATTRIBUTES
+  )
   if (
-    !fields.return_part_line_return_line ||
-    !fields.return_part_line_part ||
-    !fields.return_part_line_status
+    !ctx?.fields.return_part_line_return_line ||
+    !ctx.fields.return_part_line_part ||
+    !ctx.fields.return_part_line_status
   ) {
     return null
   }
-  return { returnPartLineDefId, fields }
+  return ctx
 }
 
 /** {@link loadReturnPartLineFieldContext}, as the refusal a write path needs. */
 export async function requireReturnPartLineFieldContext(
+  db: ReadDb,
   organizationId: string
 ): Promise<ReturnPartLineFieldContext> {
-  const ctx = await loadReturnPartLineFieldContext(organizationId)
+  const ctx = await loadReturnPartLineFieldContext(db, organizationId)
   if (!ctx) {
     throw new UnprocessableEntityError(
       'The salvage tree is not available until the return part line entity and its fields are ' +
@@ -221,10 +198,11 @@ export async function requireReturnPartLineFieldContext(
  * order and this org has no orders" is something the UI can act on, not a 500.
  */
 export async function requireReturnsDefId(
+  db: ReadDb,
   organizationId: string,
   entityType: string
 ): Promise<string> {
-  const defId = await getCachedEntityDefId(organizationId, entityType)
+  const defId = await systemDefId(db, organizationId, entityType)
   if (!defId) {
     throw new UnprocessableEntityError(
       `This organization has no ${entityType} entity definition yet`

@@ -27,7 +27,10 @@ export interface SystemRecord<A extends string> {
   rows(attribute: A): FieldValueRow[]
   text(attribute: A): string | null
   number(attribute: A): number | null
+  boolean(attribute: A): boolean | null
   option(attribute: A): string | null
+  /** The actor's own id — `User.id`, `Agent.id`, or the group / worker instance id. */
+  actor(attribute: A): string | null
   /** The related record's INSTANCE id — `cell()` still carries the full `RecordId`. */
   related(attribute: A): string | null
   date(attribute: A): string | null
@@ -44,6 +47,9 @@ export interface ReadSystemRecordsOptions<A extends string> {
 /**
  * Instances of `ctx.defId` with their cells, in two chunked queries (three with
  * `by`). No permission checks — the router asserts and hands down its scope.
+ *
+ * There is no `limit`/`offset`: a paginated list pages the instance query
+ * itself with `systemValueJoin` and then hands the page's ids back here.
  */
 export async function readSystemRecords<A extends string>(
   db: Database | Transaction,
@@ -220,9 +226,17 @@ function buildRecord<A extends string>(
       const value = cell(attribute)
       return value?.type === 'number' ? value.value : null
     },
+    boolean: (attribute) => {
+      const value = cell(attribute)
+      return value?.type === 'boolean' ? value.value : null
+    },
     option: (attribute) => {
       const value = cell(attribute)
       return value?.type === 'option' ? value.optionId || null : null
+    },
+    actor: (attribute) => {
+      const value = cell(attribute)
+      return value?.type === 'actor' ? value.id || null : null
     },
     related: (attribute) => {
       const value = cell(attribute)

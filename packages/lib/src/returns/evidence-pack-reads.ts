@@ -26,12 +26,20 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import type { CustomFieldEntity } from '@auxx/database/types'
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
-import { getCachedEntityDefId, getOrgCache } from '../cache'
+import { and, asc, eq, inArray } from 'drizzle-orm'
+import { batchGetRelatedDisplayNames } from '../field-values/field-value-helpers'
 import { fetchAttachmentsForEntities } from '../files/attachments'
 import { readFulfillmentsForOrder } from '../money/fulfillments/reads'
+import { CREDIT_MEMO_FIELDS } from '../resources/registry/resources/credit-memo-fields'
+import { FULFILLMENT_FIELDS } from '../resources/registry/resources/fulfillment-fields'
+import { LINE_ITEM_FIELDS } from '../resources/registry/resources/line-item-fields'
+import { ORDER_FIELDS } from '../resources/registry/resources/order-fields'
+import { PARCEL_FIELDS } from '../resources/registry/resources/parcel-fields'
+import { RETURN_FIELDS } from '../resources/registry/resources/return-fields'
+import { RETURN_LINE_FIELDS } from '../resources/registry/resources/return-line-fields'
+import { pickSystemAttributes } from '../resources/registry/system-attributes'
 import { type RecordId, toRecordId } from '../resources/resource-id'
+import { readSystemRecords, systemDefId, systemFields } from '../resources/system-records'
 import { threadsForRecord } from '../threads'
 import type { ReturnWithLines } from './reads'
 
@@ -211,14 +219,14 @@ export async function readReturnEvidenceSources(
     correspondenceResult,
     creditMemos,
   ] = await Promise.all([
-    resolveContactRecordId(organizationId, returnRecord.contactId),
+    resolveContactRecordId(db, organizationId, returnRecord.contactId),
     readPhotoValues(db, organizationId, 'return_photos', [returnRecord.returnId]).then(
       (byEntity) => byEntity.get(returnRecord.returnId) ?? []
     ),
     readPhotoValues(db, organizationId, 'return_line_photos', returnLineIds),
     readOrder(db, organizationId, returnRecord.orderId),
     readLineItems(db, organizationId, lineItemIds),
-    readDisplayNames(db, organizationId, partIds),
+    readPartNames(db, organizationId, partIds),
     readDispatches(db, organizationId, returnRecord.orderId),
     readCorrespondence(db, organizationId, returnRecord.ticketId),
     readCreditMemos(db, organizationId, returnRecord.creditMemoIds),
@@ -253,93 +261,6 @@ function unique(values: Array<string | null>): string[] {
   return [...seen]
 }
 
-/** Resolve the fields this module names, tolerating an org that has none. */
-async function fieldsOf<A extends string>(
-  organizationId: string,
-  attributes: readonly A[]
-): Promise<Record<A, CustomFieldEntity | null>> {
-  return (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...attributes])) as Record<A, CustomFieldEntity | null>
-}
-
-/** One `FieldValue` row, in the columns this module reads. */
-interface ValueRow {
-  entityId: string
-  fieldId: string
-  valueText: string | null
-  valueNumber: number | null
-  valueDate: string | null
-  valueJson: unknown
-  optionId: string | null
-  relatedEntityId: string | null
-  createdAt: Date
-}
-
-/** `entityId -> fieldId -> every row`, ordered by `sortKey` so FILE keeps capture order. */
-async function readValues(
-  db: Database,
-  organizationId: string,
-  entityIds: string[],
-  fieldIds: string[]
-): Promise<Map<string, Map<string, ValueRow[]>>> {
-  const index = new Map<string, Map<string, ValueRow[]>>()
-  if (entityIds.length === 0 || fieldIds.length === 0) return index
-
-  const rows = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      valueNumber: schema.FieldValue.valueNumber,
-      valueDate: schema.FieldValue.valueDate,
-      valueJson: schema.FieldValue.valueJson,
-      optionId: schema.FieldValue.optionId,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-      createdAt: schema.FieldValue.createdAt,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, entityIds),
-        inArray(schema.FieldValue.fieldId, fieldIds)
-      )
-    )
-    .orderBy(asc(schema.FieldValue.sortKey))
-
-  for (const row of rows) {
-    let byField = index.get(row.entityId)
-    if (!byField) {
-      byField = new Map()
-      index.set(row.entityId, byField)
-    }
-    const bucket = byField.get(row.fieldId) ?? []
-    bucket.push(row)
-    byField.set(row.fieldId, bucket)
-  }
-  return index
-}
-
-/** A reader bound to one entity's values. */
-function cellReader<A extends string>(
-  fields: Record<A, CustomFieldEntity | null>,
-  byField: Map<string, ValueRow[]> | undefined
-) {
-  const all = (attribute: A): ValueRow[] => {
-    const id = fields[attribute]?.id
-    return id ? (byField?.get(id) ?? []) : []
-  }
-  return { all, one: (attribute: A): ValueRow | undefined => all(attribute)[0] }
-}
-
-/** Field ids of every provisioned attribute, for {@link readValues}. */
-function idsOf(fields: Record<string, CustomFieldEntity | null>): string[] {
-  return Object.values(fields)
-    .filter((field): field is CustomFieldEntity => field != null)
-    .map((field) => field.id)
-}
-
 /**
  * The contact as a `RecordId`, or undefined.
  *
@@ -347,55 +268,68 @@ function idsOf(fields: Record<string, CustomFieldEntity | null>): string[] {
  * an unannounced pallet and the record exists before anyone knows whose it is.
  */
 async function resolveContactRecordId(
+  db: Database,
   organizationId: string,
   contactId: string | null
 ): Promise<RecordId | undefined> {
   if (!contactId) return undefined
-  const contactDefId = await getCachedEntityDefId(organizationId, 'contact')
+  const contactDefId = await systemDefId(db, organizationId, 'contact')
   if (!contactDefId) return undefined
   return toRecordId(contactDefId, contactId)
 }
 
+/** The photo attributes, and the entity each hangs off. */
+const PHOTO_PICKS = {
+  return_photos: {
+    entityType: 'return',
+    attributes: pickSystemAttributes(RETURN_FIELDS, ['return_photos'] as const),
+  },
+  return_line_photos: {
+    entityType: 'return_line',
+    attributes: pickSystemAttributes(RETURN_LINE_FIELDS, ['return_line_photos'] as const),
+  },
+} as const
+
 /**
  * FILE values for one attribute over a set of records, keyed by record.
  *
- * `createdAt` on the value row is what makes the photos "timestamped": it is
- * when the warehouse attached the shot, which is the fact the pack asserts. The
- * `internal: true` flag is honoured exactly as the customer-facing payloads do
- * it - an internal photo stays out of a document that leaves the building.
+ * The stored rows rather than the typed cells: `createdAt` on the value row is
+ * what makes the photos "timestamped" - it is when the warehouse attached the
+ * shot, which is the fact the pack asserts. The `internal: true` flag is
+ * honoured exactly as the customer-facing payloads do it - an internal photo
+ * stays out of a document that leaves the building.
  */
-async function readPhotoValues(
+async function readPhotoValues<A extends 'return_photos' | 'return_line_photos'>(
   db: Database,
   organizationId: string,
-  attribute: 'return_photos' | 'return_line_photos',
+  attribute: A,
   entityIds: string[]
 ): Promise<Map<string, EvidencePackPhotoSource[]>> {
   const byEntity = new Map<string, EvidencePackPhotoSource[]>()
   if (entityIds.length === 0) return byEntity
 
-  const fields = await fieldsOf(organizationId, [attribute] as const)
-  const field = fields[attribute]
-  if (!field) return byEntity
+  const pick = PHOTO_PICKS[attribute]
+  const ctx = await systemFields(db, organizationId, pick.entityType, pick.attributes)
+  if (!ctx) return byEntity
 
-  const index = await readValues(db, organizationId, entityIds, [field.id])
-  for (const entityId of entityIds) {
-    const rows = index.get(entityId)?.get(field.id) ?? []
+  const records = await readSystemRecords(db, organizationId, ctx, { ids: entityIds })
+  for (const record of records) {
     const photos: EvidencePackPhotoSource[] = []
-    for (const row of rows) {
+    for (const row of record.rows(attribute)) {
       const value = row.valueJson as { ref?: unknown; caption?: unknown; internal?: unknown } | null
       if (!value || typeof value.ref !== 'string' || value.internal === true) continue
       photos.push({
         ref: value.ref,
         ...(typeof value.caption === 'string' && value.caption ? { caption: value.caption } : {}),
-        capturedAt: row.createdAt,
+        capturedAt: new Date(row.createdAt),
       })
     }
-    if (photos.length > 0) byEntity.set(entityId, photos)
+    if (photos.length > 0) byEntity.set(record.id, photos)
   }
   return byEntity
 }
 
-const ORDER_ATTRIBUTES = [
+const ORDER_PICK = pickSystemAttributes(ORDER_FIELDS, [
   'order_number',
   'order_placed_at',
   'order_currency',
@@ -404,7 +338,7 @@ const ORDER_ATTRIBUTES = [
   'order_tax_total',
   'order_shipping_total',
   'order_total',
-] as const
+] as const)
 
 /** The order header, or null. `provisioned` says whether there was one to read. */
 async function readOrder(
@@ -412,36 +346,40 @@ async function readOrder(
   organizationId: string,
   orderId: string | null
 ): Promise<{ order: EvidencePackOrderSource | null; provisioned: boolean }> {
-  const orderDefId = await getCachedEntityDefId(organizationId, 'order')
-  if (!orderDefId) return { order: null, provisioned: false }
+  const ctx = await systemFields(db, organizationId, 'order', ORDER_PICK)
+  if (!ctx) return { order: null, provisioned: false }
   if (!orderId) return { order: null, provisioned: true }
 
-  const fields = await fieldsOf(organizationId, ORDER_ATTRIBUTES)
-  const index = await readValues(db, organizationId, [orderId], idsOf(fields))
-  const read = cellReader(fields, index.get(orderId))
+  // `includeArchived`: an archived order still placed the goods this pack is
+  // arguing about, and a pack with no order header is the weaker document.
+  const [record] = await readSystemRecords(db, organizationId, ctx, {
+    ids: [orderId],
+    includeArchived: true,
+  })
+  if (!record) return { order: null, provisioned: true }
 
   return {
     provisioned: true,
     order: {
       orderId,
-      number: read.one('order_number')?.valueText ?? null,
-      placedAt: read.one('order_placed_at')?.valueDate ?? null,
-      currency: read.one('order_currency')?.valueText ?? null,
-      financialStatus: read.one('order_financial_status')?.optionId ?? null,
-      subtotalMinor: read.one('order_subtotal')?.valueNumber ?? null,
-      taxTotalMinor: read.one('order_tax_total')?.valueNumber ?? null,
-      shippingTotalMinor: read.one('order_shipping_total')?.valueNumber ?? null,
-      totalMinor: read.one('order_total')?.valueNumber ?? null,
+      number: record.text('order_number'),
+      placedAt: record.date('order_placed_at'),
+      currency: record.text('order_currency'),
+      financialStatus: record.option('order_financial_status'),
+      subtotalMinor: record.number('order_subtotal'),
+      taxTotalMinor: record.number('order_tax_total'),
+      shippingTotalMinor: record.number('order_shipping_total'),
+      totalMinor: record.number('order_total'),
     },
   }
 }
 
-const LINE_ITEM_ATTRIBUTES = [
+const LINE_ITEM_PICK = pickSystemAttributes(LINE_ITEM_FIELDS, [
   'line_item_name',
   'line_item_qty',
   'line_item_unit_price',
   'line_item_line_total',
-] as const
+] as const)
 
 /** Every sold line the return points at, in one read. */
 async function readLineItems(
@@ -451,54 +389,70 @@ async function readLineItems(
 ): Promise<Map<string, EvidencePackLineItemSource>> {
   const byId = new Map<string, EvidencePackLineItemSource>()
   if (lineItemIds.length === 0) return byId
-
-  const fields = await fieldsOf(organizationId, LINE_ITEM_ATTRIBUTES)
-  const index = await readValues(db, organizationId, lineItemIds, idsOf(fields))
   for (const lineItemId of lineItemIds) {
-    const read = cellReader(fields, index.get(lineItemId))
     byId.set(lineItemId, {
       lineItemId,
-      name: read.one('line_item_name')?.valueText ?? null,
-      qty: read.one('line_item_qty')?.valueNumber ?? null,
-      unitPriceMinor: read.one('line_item_unit_price')?.valueNumber ?? null,
-      lineTotalMinor: read.one('line_item_line_total')?.valueNumber ?? null,
+      name: null,
+      qty: null,
+      unitPriceMinor: null,
+      lineTotalMinor: null,
+    })
+  }
+
+  const ctx = await systemFields(db, organizationId, 'line_item', LINE_ITEM_PICK)
+  if (!ctx) return byId
+
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    ids: lineItemIds,
+    includeArchived: true,
+  })
+  for (const record of records) {
+    byId.set(record.id, {
+      lineItemId: record.id,
+      name: record.text('line_item_name'),
+      qty: record.number('line_item_qty'),
+      unitPriceMinor: record.number('line_item_unit_price'),
+      lineTotalMinor: record.number('line_item_line_total'),
     })
   }
   return byId
 }
 
-/** `EntityInstance.displayName` for a set of ids, in one read. */
-async function readDisplayNames(
+/** `EntityInstance.displayName` for a set of parts, in one read. */
+async function readPartNames(
   db: Database,
   organizationId: string,
-  entityIds: string[]
+  partIds: string[]
 ): Promise<Map<string, string>> {
   const byId = new Map<string, string>()
-  if (entityIds.length === 0) return byId
+  if (partIds.length === 0) return byId
 
-  const rows = await db
-    .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        inArray(schema.EntityInstance.id, entityIds)
-      )
-    )
-  for (const row of rows) {
-    if (row.displayName) byId.set(row.id, row.displayName)
+  const partDefId = await systemDefId(db, organizationId, 'part')
+  if (!partDefId) return byId
+
+  const names = await batchGetRelatedDisplayNames(
+    db,
+    organizationId,
+    partIds.map((partId) => toRecordId(partDefId, partId))
+  )
+  for (const [partId, displayName] of names) {
+    if (displayName) byId.set(partId, displayName)
   }
   return byId
 }
 
-const PARCEL_ATTRIBUTES = [
+const PARCEL_PICK = pickSystemAttributes(PARCEL_FIELDS, [
   'parcel_shipment',
   'parcel_tracking_number',
   'parcel_status',
   'parcel_status_description',
   'parcel_delivered_at',
   'parcel_received_by',
-] as const
+] as const)
+
+const FULFILLMENT_SHIPMENT_PICK = pickSystemAttributes(FULFILLMENT_FIELDS, [
+  'fulfillment_shipment',
+] as const)
 
 /**
  * Every dispatch of the order, with the delivery scan attached where one was
@@ -513,26 +467,22 @@ async function readDispatches(
   organizationId: string,
   orderId: string | null
 ): Promise<{ dispatches: EvidencePackDispatchSource[]; provisioned: boolean }> {
-  const fulfillmentDefId = await getCachedEntityDefId(organizationId, 'fulfillment')
-  if (!fulfillmentDefId) return { dispatches: [], provisioned: false }
+  const ctx = await systemFields(db, organizationId, 'fulfillment', FULFILLMENT_SHIPMENT_PICK)
+  if (!ctx) return { dispatches: [], provisioned: false }
   if (!orderId) return { dispatches: [], provisioned: true }
 
   const fulfillments = await readFulfillmentsForOrder(db, { organizationId, orderId })
   if (fulfillments.length === 0) return { dispatches: [], provisioned: true }
 
-  const shipmentFields = await fieldsOf(organizationId, ['fulfillment_shipment'] as const)
-  const shipmentField = shipmentFields.fulfillment_shipment
   const shipmentByFulfillment = new Map<string, string>()
-  if (shipmentField) {
-    const index = await readValues(
-      db,
-      organizationId,
-      fulfillments.map((f) => f.id),
-      [shipmentField.id]
-    )
-    for (const fulfillment of fulfillments) {
-      const related = index.get(fulfillment.id)?.get(shipmentField.id)?.[0]?.relatedEntityId
-      if (related) shipmentByFulfillment.set(fulfillment.id, related)
+  if (ctx.fields.fulfillment_shipment) {
+    const records = await readSystemRecords(db, organizationId, ctx, {
+      ids: fulfillments.map((fulfillment) => fulfillment.id),
+      includeArchived: true,
+    })
+    for (const record of records) {
+      const shipmentId = record.related('fulfillment_shipment')
+      if (shipmentId) shipmentByFulfillment.set(record.id, shipmentId)
     }
   }
 
@@ -573,66 +523,38 @@ async function readParcels(
   const byShipment = new Map<string, EvidencePackParcelSource[]>()
   if (shipmentIds.length === 0) return byShipment
 
-  const parcelDefId = await getCachedEntityDefId(organizationId, 'parcel')
-  if (!parcelDefId) return byShipment
+  const ctx = await systemFields(db, organizationId, 'parcel', PARCEL_PICK)
+  if (!ctx?.fields.parcel_shipment) return byShipment
 
-  const fields = await fieldsOf(organizationId, PARCEL_ATTRIBUTES)
-  const shipmentField = fields.parcel_shipment
-  if (!shipmentField) return byShipment
-
-  const edges = await db
-    .select({ parcelId: schema.FieldValue.entityId, shipmentId: schema.FieldValue.relatedEntityId })
-    .from(schema.FieldValue)
-    .innerJoin(
-      schema.EntityInstance,
-      and(
-        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, shipmentField.id),
-        inArray(schema.FieldValue.relatedEntityId, shipmentIds)
-      )
-    )
-  if (edges.length === 0) return byShipment
-
-  const index = await readValues(
-    db,
-    organizationId,
-    edges.map((edge) => edge.parcelId),
-    idsOf(fields)
-  )
-
-  for (const edge of edges) {
-    if (!edge.shipmentId) continue
-    const read = cellReader(fields, index.get(edge.parcelId))
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    by: { attribute: 'parcel_shipment', in: shipmentIds },
+  })
+  for (const record of records) {
+    const shipmentId = record.related('parcel_shipment')
+    if (!shipmentId) continue
     const parcel: EvidencePackParcelSource = {
-      parcelId: edge.parcelId,
-      trackingNumber: read.one('parcel_tracking_number')?.valueText ?? null,
-      status: read.one('parcel_status')?.optionId ?? null,
-      statusDescription: read.one('parcel_status_description')?.valueText ?? null,
-      deliveredAt: read.one('parcel_delivered_at')?.valueDate ?? null,
-      receivedBy: read.one('parcel_received_by')?.valueText ?? null,
+      parcelId: record.id,
+      trackingNumber: record.text('parcel_tracking_number'),
+      status: record.option('parcel_status'),
+      statusDescription: record.text('parcel_status_description'),
+      deliveredAt: record.date('parcel_delivered_at'),
+      receivedBy: record.text('parcel_received_by'),
     }
-    const bucket = byShipment.get(edge.shipmentId) ?? []
+    const bucket = byShipment.get(shipmentId) ?? []
     bucket.push(parcel)
-    byShipment.set(edge.shipmentId, bucket)
+    byShipment.set(shipmentId, bucket)
   }
   return byShipment
 }
 
-const CREDIT_MEMO_ATTRIBUTES = [
+const CREDIT_MEMO_PICK = pickSystemAttributes(CREDIT_MEMO_FIELDS, [
   'credit_memo_number',
   'credit_memo_status',
   'credit_memo_source',
   'credit_memo_issued_at',
   'credit_memo_total',
   'credit_memo_amount_refunded',
-] as const
+] as const)
 
 /** Every linked memo, in one read, oldest first by issue date then id. */
 async function readCreditMemos(
@@ -642,19 +564,25 @@ async function readCreditMemos(
 ): Promise<EvidencePackCreditMemoSource[]> {
   if (creditMemoIds.length === 0) return []
 
-  const fields = await fieldsOf(organizationId, CREDIT_MEMO_ATTRIBUTES)
-  const index = await readValues(db, organizationId, creditMemoIds, idsOf(fields))
+  const ctx = await systemFields(db, organizationId, 'credit_memo', CREDIT_MEMO_PICK)
+  if (!ctx) return []
+
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    ids: creditMemoIds,
+    includeArchived: true,
+  })
+  const byId = new Map(records.map((record) => [record.id, record]))
 
   const memos = creditMemoIds.map((creditMemoId) => {
-    const read = cellReader(fields, index.get(creditMemoId))
+    const record = byId.get(creditMemoId)
     return {
       creditMemoId,
-      number: read.one('credit_memo_number')?.valueText ?? null,
-      status: read.one('credit_memo_status')?.optionId ?? null,
-      source: read.one('credit_memo_source')?.optionId ?? null,
-      issuedAt: read.one('credit_memo_issued_at')?.valueDate ?? null,
-      totalMinor: read.one('credit_memo_total')?.valueNumber ?? null,
-      amountRefundedMinor: read.one('credit_memo_amount_refunded')?.valueNumber ?? null,
+      number: record?.text('credit_memo_number') ?? null,
+      status: record?.option('credit_memo_status') ?? null,
+      source: record?.option('credit_memo_source') ?? null,
+      issuedAt: record?.date('credit_memo_issued_at') ?? null,
+      totalMinor: record?.number('credit_memo_total') ?? null,
+      amountRefundedMinor: record?.number('credit_memo_amount_refunded') ?? null,
     }
   })
 

@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * What condition the returned units came back in
@@ -86,7 +86,7 @@ export const RETURN_LINE_LIABILITY_OPTIONS = [
  * the dispatch through the order, so nothing needs the return to name which
  * dispatch a unit came back from, and an unused relationship goes stale.
  */
-export const RETURN_LINE_FIELDS: Record<string, ResourceField> = {
+export const RETURN_LINE_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -507,4 +507,4 @@ export const RETURN_LINE_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Credit memo lifecycle (plans/accounting/tasks/done/10-credit-memos.md §2.4).
@@ -86,7 +86,7 @@ export const CREDIT_MEMO_REASON_OPTIONS = [
  *
  * Money is integer minor units.
  */
-export const CREDIT_MEMO_FIELDS: Record<string, ResourceField> = {
+export const CREDIT_MEMO_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -818,4 +818,4 @@ export const CREDIT_MEMO_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

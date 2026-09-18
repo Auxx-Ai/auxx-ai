@@ -22,6 +22,10 @@
  *    commercial reasons to refund fast, and the system's job is to say what was
  *    just given up.
  *
+ * Instances and their cells come from `resources/system-records`; the SQL here
+ * is only what that reader cannot express - the value-keyed filters behind the
+ * saved views and the two quantity aggregates.
+ *
  * Reads only. The writes are in `writes.ts`, because a file that both queries
  * and mutates is the first step back toward a service class
  * (`docs/lib-module-guide.md` section 5). No permission checks: the router
@@ -32,10 +36,20 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, desc, eq, exists, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getOrgCache } from '../cache'
 import { NotFoundError } from '../errors'
+import { CREDIT_MEMO_FIELDS } from '../resources/registry/resources/credit-memo-fields'
+import { FULFILLMENT_FIELDS } from '../resources/registry/resources/fulfillment-fields'
+import { FULFILLMENT_LINE_FIELDS } from '../resources/registry/resources/fulfillment-line-fields'
+import { LINE_ITEM_FIELDS } from '../resources/registry/resources/line-item-fields'
+import { pickSystemAttributes } from '../resources/registry/system-attributes'
 import { type RecordId, toRecordId } from '../resources/resource-id'
-import { systemValueJoin } from '../resources/system-records'
+import {
+  readSystemRecords,
+  type SystemRecord,
+  systemFieldMap,
+  systemFields,
+  systemValueJoin,
+} from '../resources/system-records'
 import {
   loadReturnFieldContext,
   loadReturnLineFieldContext,
@@ -46,8 +60,9 @@ import {
   type ReturnLineFieldContext,
   type ReturnPartLineAttribute,
   type ReturnPartLineFieldContext,
-} from './field-context'
+} from './fields'
 import { guard } from './guard'
+import type { ReturnedQuantityClaim } from './over-return-guard'
 import {
   PRE_INSPECTION_RETURN_STATUSES,
   type ReturnLineConditionGrade,
@@ -192,21 +207,18 @@ export async function listReturns(
 ): Promise<Result<ReturnRecord[], Error>> {
   return guard(
     async () => {
-      const ctx = await loadReturnFieldContext(organizationId)
+      const ctx = await loadReturnFieldContext(db, organizationId)
       if (!ctx) return []
 
       const limit = Math.min(filters.limit ?? DEFAULT_LIMIT, MAX_LIMIT)
       const offset = filters.offset ?? 0
       const where: SQL[] = [
         eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.returnDefId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
         isNull(schema.EntityInstance.archivedAt),
       ]
 
-      let query = db
-        .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-        .from(schema.EntityInstance)
-        .$dynamic()
+      let query = db.select({ id: schema.EntityInstance.id }).from(schema.EntityInstance).$dynamic()
 
       // The risk view narrows the status set rather than owning it, so
       // `status: ['received'], creditedNotInspected: true` means what it reads
@@ -252,7 +264,7 @@ export async function listReturns(
       }
 
       if (filters.creditedNotInspected) {
-        const memoFieldId = await loadCreditMemoReturnFieldId(organizationId)
+        const memoFieldId = await loadCreditMemoReturnFieldId(db, organizationId)
         // No `credit_memo.return` field means no memo can be linked to any
         // return, so nothing can be in the risk state. An empty list is the
         // honest answer; a missing predicate would return every return.
@@ -271,7 +283,9 @@ export async function listReturns(
         .offset(offset)
 
       if (rows.length === 0) return []
-      return hydrateReturns(db, organizationId, ctx, rows)
+      const page = rows.map((row) => row.id)
+      const records = await readSystemRecords(db, organizationId, ctx, { ids: page })
+      return hydrateReturns(db, organizationId, ctx, inPageOrder(records, page))
     },
     'Failed to list returns',
     { organizationId, filters }
@@ -292,24 +306,11 @@ export async function getReturn(
 ): Promise<Result<ReturnWithLines | null, Error>> {
   return guard(
     async () => {
-      const ctx = await loadReturnFieldContext(organizationId)
+      const ctx = await loadReturnFieldContext(db, organizationId)
       if (!ctx) return null
 
-      const [instance] = await db
-        .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-        .from(schema.EntityInstance)
-        .where(
-          and(
-            eq(schema.EntityInstance.id, returnId),
-            eq(schema.EntityInstance.organizationId, organizationId),
-            eq(schema.EntityInstance.entityDefinitionId, ctx.returnDefId),
-            isNull(schema.EntityInstance.archivedAt)
-          )
-        )
-        .limit(1)
-      if (!instance) return null
-
-      const [record] = await hydrateReturns(db, organizationId, ctx, [instance])
+      const records = await readSystemRecords(db, organizationId, ctx, { ids: [returnId] })
+      const [record] = await hydrateReturns(db, organizationId, ctx, records)
       if (!record) return null
 
       const lines = await readReturnLinesByReturn(db, organizationId, returnId)
@@ -351,31 +352,12 @@ export async function readReturnLinesByReturn(
   organizationId: string,
   returnId: string
 ): Promise<ReturnLineRecord[]> {
-  const ctx = await loadReturnLineFieldContext(organizationId)
+  const ctx = await loadReturnLineFieldContext(db, organizationId)
   if (!ctx) return []
-
-  const returnValue = alias(schema.FieldValue, 'return_line_return_v')
-  const rows = await db
-    .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-    .from(schema.EntityInstance)
-    .innerJoin(
-      returnValue,
-      and(
-        systemValueJoin(returnValue, ctx.fields.return_line_return?.id ?? ''),
-        eq(returnValue.relatedEntityId, returnId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.returnLineDefId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .orderBy(asc(schema.EntityInstance.createdAt))
-
-  if (rows.length === 0) return []
-  return hydrateReturnLines(db, organizationId, ctx, rows)
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    by: { attribute: 'return_line_return', in: [returnId] },
+  })
+  return records.map((record) => toReturnLineRecord(ctx, record))
 }
 
 /** One return line, or null. */
@@ -384,25 +366,10 @@ export async function readReturnLine(
   organizationId: string,
   returnLineId: string
 ): Promise<ReturnLineRecord | null> {
-  const ctx = await loadReturnLineFieldContext(organizationId)
+  const ctx = await loadReturnLineFieldContext(db, organizationId)
   if (!ctx) return null
-
-  const [instance] = await db
-    .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.id, returnLineId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.returnLineDefId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .limit(1)
-  if (!instance) return null
-
-  const [record] = await hydrateReturnLines(db, organizationId, ctx, [instance])
-  return record ?? null
+  const [record] = await readSystemRecords(db, organizationId, ctx, { ids: [returnLineId] })
+  return record ? toReturnLineRecord(ctx, record) : null
 }
 
 /** {@link readReturnLine}, as the `NotFoundError` a write path needs. */
@@ -419,7 +386,7 @@ export async function requireReturnLine(
 /**
  * Every materialized `return_part_line` under one return line.
  *
- * The whole checklist in one query, which is why `return_part_line_return_line`
+ * The whole checklist in one read, which is why `return_part_line_return_line`
  * is carried on every row in the tree rather than only on the roots.
  */
 export async function readReturnPartLines(
@@ -427,31 +394,12 @@ export async function readReturnPartLines(
   organizationId: string,
   returnLineId: string
 ): Promise<ReturnPartLineRecord[]> {
-  const ctx = await loadReturnPartLineFieldContext(organizationId)
+  const ctx = await loadReturnPartLineFieldContext(db, organizationId)
   if (!ctx) return []
-
-  const lineValue = alias(schema.FieldValue, 'return_part_line_line_v')
-  const rows = await db
-    .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-    .from(schema.EntityInstance)
-    .innerJoin(
-      lineValue,
-      and(
-        systemValueJoin(lineValue, ctx.fields.return_part_line_return_line?.id ?? ''),
-        eq(lineValue.relatedEntityId, returnLineId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.returnPartLineDefId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .orderBy(asc(schema.EntityInstance.createdAt))
-
-  if (rows.length === 0) return []
-  return hydrateReturnPartLines(db, organizationId, ctx, rows)
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    by: { attribute: 'return_part_line_return_line', in: [returnLineId] },
+  })
+  return records.map((record) => toReturnPartLineRecord(ctx, record))
 }
 
 /** One materialized part line, or null. Used by the write paths to re-read a row. */
@@ -460,30 +408,14 @@ export async function readReturnPartLine(
   organizationId: string,
   partLineId: string
 ): Promise<ReturnPartLineRecord | null> {
-  const ctx = await loadReturnPartLineFieldContext(organizationId)
+  const ctx = await loadReturnPartLineFieldContext(db, organizationId)
   if (!ctx) return null
-
-  const [instance] = await db
-    .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.id, partLineId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.returnPartLineDefId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .limit(1)
-  if (!instance) return null
-
-  const [record] = await hydrateReturnPartLines(db, organizationId, ctx, [instance])
-  return record ?? null
+  const [record] = await readSystemRecords(db, organizationId, ctx, { ids: [partLineId] })
+  return record ? toReturnPartLineRecord(ctx, record) : null
 }
 
 // ─── The over-return guard's two inputs ─────────────────────────────
 
-/** What {@link readReturnableQuantity} answers, for the create dialog and the guard. */
 /**
  * A connection OR an open transaction.
  *
@@ -519,46 +451,79 @@ export interface ReturnableQuantity {
   ceilingSource: 'shipped' | 'sold' | 'unknown'
 }
 
+/** What a line item's ceiling is and where it came from. */
+export interface ReturnCeiling {
+  ceiling: number | null
+  ceilingSource: 'shipped' | 'sold' | 'unknown'
+}
+
 /**
- * Every `return_line` already pointing at one `line_item`, across ALL returns.
+ * Every `return_line` already pointing at each `line_item`, across ALL returns.
  *
  * The grain is one row per sold line PER CONDITION, so several rows routinely
  * point at one line item and a per-row check is useless. This is the set
  * `checkOverReturn` sums.
+ *
+ * One query for the whole list. A line item with no claims is absent from the
+ * map, which reads the same as an empty list at every call site.
  */
-export async function readReturnedQuantityClaims(
+export async function readReturnedQuantityClaimsBatch(
   db: ReturnsReadDb,
   organizationId: string,
-  lineItemId: string
-): Promise<{ returnLineId: string; quantity: number }[]> {
-  const ctx = await loadReturnLineFieldContext(organizationId)
+  lineItemIds: readonly string[]
+): Promise<Map<string, ReturnedQuantityClaim[]>> {
+  const byLineItem = new Map<string, ReturnedQuantityClaim[]>()
+  const ids = [...new Set(lineItemIds)]
+  if (ids.length === 0) return byLineItem
+
+  const ctx = await loadReturnLineFieldContext(db, organizationId)
   const lineItemField = ctx?.fields.return_line_line_item
   const quantityField = ctx?.fields.return_line_quantity
-  if (!ctx || !lineItemField || !quantityField) return []
+  if (!ctx || !lineItemField || !quantityField) return byLineItem
 
   const lineItemValue = alias(schema.FieldValue, 'rl_line_item_v')
   const quantityValue = alias(schema.FieldValue, 'rl_quantity_v')
 
   const rows = await db
-    .select({ id: schema.EntityInstance.id, quantity: quantityValue.valueNumber })
+    .select({
+      id: schema.EntityInstance.id,
+      lineItemId: lineItemValue.relatedEntityId,
+      quantity: quantityValue.valueNumber,
+    })
     .from(schema.EntityInstance)
     .innerJoin(
       lineItemValue,
       and(
         systemValueJoin(lineItemValue, lineItemField.id),
-        eq(lineItemValue.relatedEntityId, lineItemId)
+        inArray(lineItemValue.relatedEntityId, ids)
       )
     )
     .leftJoin(quantityValue, systemValueJoin(quantityValue, quantityField.id))
     .where(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.returnLineDefId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
         isNull(schema.EntityInstance.archivedAt)
       )
     )
 
-  return rows.map((row) => ({ returnLineId: row.id, quantity: row.quantity ?? 0 }))
+  for (const row of rows) {
+    if (!row.lineItemId) continue
+    const bucket = byLineItem.get(row.lineItemId) ?? []
+    bucket.push({ returnLineId: row.id, quantity: row.quantity ?? 0 })
+    byLineItem.set(row.lineItemId, bucket)
+  }
+  return byLineItem
+}
+
+/** {@link readReturnedQuantityClaimsBatch} for one sold line. */
+export async function readReturnedQuantityClaims(
+  db: ReturnsReadDb,
+  organizationId: string,
+  lineItemId: string
+): Promise<ReturnedQuantityClaim[]> {
+  const byLineItem = await readReturnedQuantityClaimsBatch(db, organizationId, [lineItemId])
+  return byLineItem.get(lineItemId) ?? []
 }
 
 /**
@@ -609,52 +574,86 @@ export async function readReturnableQuantity(
 }
 
 /**
- * The ceiling alone, without the claims.
+ * The ceiling of every named line, without the claims.
  *
- * Split out because `checkOverReturn` takes the ceiling and the claim list as
- * two separate inputs - it derives neither - and the write path would otherwise
- * run the claims query twice.
+ * Two queries for any number of lines: the dispatch sum, then the sold
+ * quantities of whatever the first left unanswered. A caller that already holds
+ * `line_item_qty` for these lines passes it as `soldQuantities` and pays one.
+ *
+ * Split from the claims because `checkOverReturn` takes the ceiling and the
+ * claim list as two separate inputs - it derives neither - and the write path
+ * would otherwise run the claims query twice.
  */
+export async function readReturnCeilings(
+  db: ReturnsReadDb,
+  organizationId: string,
+  lineItemIds: readonly string[],
+  options: { soldQuantities?: Map<string, number | null> } = {}
+): Promise<Map<string, ReturnCeiling>> {
+  const ceilings = new Map<string, ReturnCeiling>()
+  const ids = [...new Set(lineItemIds)]
+  if (ids.length === 0) return ceilings
+
+  const shipped = await readShippedQuantities(db, organizationId, ids)
+  const unshipped = ids.filter((id) => shipped.get(id) == null)
+  const sold =
+    options.soldQuantities ??
+    (unshipped.length > 0 ? await readSoldQuantities(db, organizationId, unshipped) : new Map())
+
+  for (const id of ids) {
+    const shippedQuantity = shipped.get(id)
+    if (shippedQuantity != null) {
+      ceilings.set(id, { ceiling: shippedQuantity, ceilingSource: 'shipped' })
+      continue
+    }
+    const soldQuantity = sold.get(id)
+    if (soldQuantity != null) {
+      ceilings.set(id, { ceiling: soldQuantity, ceilingSource: 'sold' })
+      continue
+    }
+    // Neither door answered. The caller decides; the guard passes.
+    ceilings.set(id, { ceiling: null, ceilingSource: 'unknown' })
+  }
+  return ceilings
+}
+
+/** {@link readReturnCeilings} for one sold line. */
 export async function readReturnCeiling(
   db: ReturnsReadDb,
   organizationId: string,
   lineItemId: string
-): Promise<{ ceiling: number | null; ceilingSource: 'shipped' | 'sold' | 'unknown' }> {
-  const shipped = await readShippedQuantity(db, organizationId, lineItemId)
-  if (shipped !== null) return { ceiling: shipped, ceilingSource: 'shipped' }
-  const sold = await readSoldQuantity(db, organizationId, lineItemId)
-  if (sold !== null) return { ceiling: sold, ceilingSource: 'sold' }
-  // Neither door answered. The caller decides; the guard passes.
-  return { ceiling: null, ceilingSource: 'unknown' }
+): Promise<ReturnCeiling> {
+  const ceilings = await readReturnCeilings(db, organizationId, [lineItemId])
+  return ceilings.get(lineItemId) ?? { ceiling: null, ceilingSource: 'unknown' }
 }
 
 /**
- * Σ `fulfillment_line_quantity` for one sold line, over dispatches that were
- * not cancelled, or null when the line has no fulfillment lines at all.
+ * Σ `fulfillment_line_quantity` per sold line, over dispatches that were not
+ * cancelled. A line with no fulfillment lines at all is absent from the map.
  *
- * Null and zero mean different things here and the caller depends on it: null
- * is "there is no dispatch data for this line, use the sold quantity", zero is
- * "there are dispatches and none of them shipped this line", which correctly
- * refuses every return against it.
+ * Absent and zero mean different things here and the caller depends on it:
+ * absent is "there is no dispatch data for this line, use the sold quantity",
+ * zero is "there are dispatches and none of them shipped this line", which
+ * correctly refuses every return against it.
  */
-async function readShippedQuantity(
+async function readShippedQuantities(
   db: ReturnsReadDb,
   organizationId: string,
-  lineItemId: string
-): Promise<number | null> {
-  const cache = getOrgCache()
-  const fields = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
+  lineItemIds: string[]
+): Promise<Map<string, number>> {
+  const shipped = new Map<string, number>()
+  const fields = await systemFieldMap(db, organizationId, [
+    ...pickSystemAttributes(FULFILLMENT_LINE_FIELDS, [
       'fulfillment_line_line_item',
       'fulfillment_line_quantity',
       'fulfillment_line_fulfillment',
-      'fulfillment_status',
-    ] as const)
+    ] as const),
+    ...pickSystemAttributes(FULFILLMENT_FIELDS, ['fulfillment_status'] as const),
+  ])
 
   const lineItemField = fields.fulfillment_line_line_item
   const quantityField = fields.fulfillment_line_quantity
-  if (!lineItemField || !quantityField) return null
+  if (!lineItemField || !quantityField) return shipped
 
   const lineItemValue = alias(schema.FieldValue, 'fl_line_item_v')
   const quantityValue = alias(schema.FieldValue, 'fl_quantity_v')
@@ -671,13 +670,13 @@ async function readShippedQuantity(
   const canExcludeCancelled = fulfillmentField != null && statusField != null
 
   let query = db
-    .select({ id: schema.EntityInstance.id, quantity: quantityValue.valueNumber })
+    .select({ lineItemId: lineItemValue.relatedEntityId, quantity: quantityValue.valueNumber })
     .from(schema.EntityInstance)
     .innerJoin(
       lineItemValue,
       and(
         systemValueJoin(lineItemValue, lineItemField.id),
-        eq(lineItemValue.relatedEntityId, lineItemId)
+        inArray(lineItemValue.relatedEntityId, lineItemIds)
       )
     )
     .leftJoin(quantityValue, systemValueJoin(quantityValue, quantityField.id))
@@ -704,45 +703,45 @@ async function readShippedQuantity(
     )
   )
 
-  if (rows.length === 0) return null
-  return rows.reduce((total, row) => total + (row.quantity ?? 0), 0)
+  for (const row of rows) {
+    if (!row.lineItemId) continue
+    shipped.set(row.lineItemId, (shipped.get(row.lineItemId) ?? 0) + (row.quantity ?? 0))
+  }
+  return shipped
 }
 
 /**
- * `line_item_qty` - the documented fallback ceiling, or **null when the line
- * records no quantity at all**.
+ * `line_item_qty` per line - the documented fallback ceiling - or an empty map
+ * when the org has no such field.
  *
- * 🛑 Null and zero are different answers and must not be collapsed. Zero is a
- * ceiling that refuses every unit; null means nobody has said what the ceiling
- * is. Returning `0` for the unknown case silently turns the over-return guard
- * into a wall that blocks every return against any line whose quantity was
- * never recorded - a refusal built out of missing data rather than out of a
- * real breach.
+ * 🛑 Absent and zero are different answers and must not be collapsed. Zero is a
+ * ceiling that refuses every unit; absent means nobody has said what the
+ * ceiling is. A line that records no quantity reads as zero, exactly as it did
+ * before: only a missing FIELD yields the unknown answer.
  */
-async function readSoldQuantity(
+async function readSoldQuantities(
   db: ReturnsReadDb,
   organizationId: string,
-  lineItemId: string
-): Promise<number | null> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['line_item_qty'] as const)
-  const qtyField = fields.line_item_qty
-  if (!qtyField) return null
+  lineItemIds: string[]
+): Promise<Map<string, number>> {
+  const sold = new Map<string, number>()
+  const ctx = await systemFields(
+    db,
+    organizationId,
+    'line_item',
+    pickSystemAttributes(LINE_ITEM_FIELDS, ['line_item_qty'] as const)
+  )
+  if (!ctx?.fields.line_item_qty) return sold
 
-  const [row] = await db
-    .select({ quantity: schema.FieldValue.valueNumber })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.entityId, lineItemId),
-        eq(schema.FieldValue.fieldId, qtyField.id)
-      )
-    )
-    .limit(1)
-
-  return row?.quantity ?? 0
+  // `includeArchived`: the ceiling of a line that was archived after it shipped
+  // is still the number that shipped, and the guard must not silently widen.
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    ids: lineItemIds,
+    includeArchived: true,
+  })
+  for (const id of lineItemIds) sold.set(id, 0)
+  for (const record of records) sold.set(record.id, record.number('line_item_qty') ?? 0)
+  return sold
 }
 
 // ─── internals ──────────────────────────────────────────────────────
@@ -753,6 +752,16 @@ function resolveStatusFilter(filters: ListReturnsFilters): readonly ReturnStatus
   if (!filters.status) return PRE_INSPECTION_RETURN_STATUSES
   return filters.status.filter((status) => PRE_INSPECTION_RETURN_STATUSES.includes(status))
 }
+
+/** The `credit_memo` attributes the return surfaces read. */
+const CREDIT_MEMO_PICK = pickSystemAttributes(CREDIT_MEMO_FIELDS, [
+  'credit_memo_order',
+  'credit_memo_return',
+  'credit_memo_number',
+  'credit_memo_total',
+  'credit_memo_status',
+  'credit_memo_issued_at',
+] as const)
 
 /**
  * Credit memos on this return's order that no return has claimed yet, newest
@@ -782,47 +791,22 @@ export async function readUnlinkedCreditMemosForOrder(
   orderId: string
 ): Promise<Result<UnlinkedCreditMemo[], Error>> {
   return guard(async () => {
-    const fields = await getOrgCache()
-      .from(organizationId, 'customFields')
-      .bySystemAttributes([
-        'credit_memo_order',
-        'credit_memo_return',
-        'credit_memo_number',
-        'credit_memo_total',
-        'credit_memo_status',
-        'credit_memo_issued_at',
-      ] as const)
-
-    const orderField = fields.credit_memo_order
-    const returnField = fields.credit_memo_return
-    if (!orderField || !returnField) return []
+    const ctx = await systemFields(db, organizationId, 'credit_memo', CREDIT_MEMO_PICK)
+    const orderField = ctx?.fields.credit_memo_order
+    const returnField = ctx?.fields.credit_memo_return
+    if (!ctx || !orderField || !returnField) return []
 
     const orderValue = alias(schema.FieldValue, 'cm_order_v')
     const returnValue = alias(schema.FieldValue, 'cm_ret_v')
-    const numberValue = alias(schema.FieldValue, 'cm_num_v')
-    const totalValue = alias(schema.FieldValue, 'cm_total_v')
-    const statusValue = alias(schema.FieldValue, 'cm_status_v')
-    const issuedValue = alias(schema.FieldValue, 'cm_issued_v')
 
     const rows = await db
-      .select({
-        id: schema.EntityInstance.id,
-        number: numberValue.valueText,
-        total: totalValue.valueNumber,
-        status: statusValue.optionId,
-        issuedAt: issuedValue.valueDate,
-        createdAt: schema.EntityInstance.createdAt,
-      })
+      .select({ id: schema.EntityInstance.id })
       .from(schema.EntityInstance)
       .innerJoin(orderValue, systemValueJoin(orderValue, orderField.id))
       // A LEFT JOIN plus IS NULL, not a NOT EXISTS: the row is one-to-one
       // with the memo, so it cannot multiply the page, and "unclaimed" is
       // exactly the absence of this value.
       .leftJoin(returnValue, systemValueJoin(returnValue, returnField.id))
-      .leftJoin(numberValue, systemValueJoin(numberValue, fields.credit_memo_number?.id ?? ''))
-      .leftJoin(totalValue, systemValueJoin(totalValue, fields.credit_memo_total?.id ?? ''))
-      .leftJoin(statusValue, systemValueJoin(statusValue, fields.credit_memo_status?.id ?? ''))
-      .leftJoin(issuedValue, systemValueJoin(issuedValue, fields.credit_memo_issued_at?.id ?? ''))
       .where(
         and(
           eq(schema.EntityInstance.organizationId, organizationId),
@@ -833,23 +817,32 @@ export async function readUnlinkedCreditMemosForOrder(
       )
       .orderBy(desc(schema.EntityInstance.createdAt))
 
-    return rows.map((row) => ({
-      creditMemoId: row.id,
-      number: row.number,
-      total: row.total,
-      status: row.status,
+    if (rows.length === 0) return []
+    const page = rows.map((row) => row.id)
+    const records = await readSystemRecords(db, organizationId, ctx, { ids: page })
+
+    return inPageOrder(records, page).map((record) => ({
+      creditMemoId: record.id,
+      number: record.text('credit_memo_number'),
+      total: record.number('credit_memo_total'),
+      status: record.option('credit_memo_status'),
       // `valueDate` is a text column; every other date this module returns is
       // a `Date`, so convert here rather than leaking the raw string.
-      issuedAt: row.issuedAt ? new Date(row.issuedAt) : null,
+      issuedAt: toDate(record.date('credit_memo_issued_at')),
     }))
   }, 'readUnlinkedCreditMemosForOrder')
 }
 
 /** `credit_memo.return`'s field id, or null when the org has no such field. */
-async function loadCreditMemoReturnFieldId(organizationId: string): Promise<string | null> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['credit_memo_return'] as const)
+async function loadCreditMemoReturnFieldId(
+  db: Database,
+  organizationId: string
+): Promise<string | null> {
+  const fields = await systemFieldMap(
+    db,
+    organizationId,
+    pickSystemAttributes(CREDIT_MEMO_FIELDS, ['credit_memo_return'] as const)
+  )
   return fields.credit_memo_return?.id ?? null
 }
 
@@ -884,144 +877,77 @@ function linkedCreditMemoExists(db: Database, organizationId: string, memoFieldI
   )
 }
 
-/** One `FieldValue` row, narrowed to the columns this module reads. */
-interface ValueRow {
-  valueText: string | null
-  valueNumber: number | null
-  valueDate: string | null
-  valueBoolean: boolean | null
-  optionId: string | null
-  relatedEntityId: string | null
-  actorId: string | null
+/** The page's own order, which the reader replaces with `createdAt` ascending. */
+function inPageOrder<A extends string>(
+  records: SystemRecord<A>[],
+  ids: string[]
+): SystemRecord<A>[] {
+  const byId = new Map(records.map((record) => [record.id, record]))
+  return ids.map((id) => byId.get(id)).filter((record): record is SystemRecord<A> => record != null)
 }
 
-/** `entityId -> fieldId -> every row`, because TAGS is multi-row. */
-type ValueIndex = Map<string, Map<string, ValueRow[]>>
-
-/**
- * Turn a page of instance ids into their field values with ONE query.
- *
- * The alternative - a join per attribute on the paging query - multiplies the
- * row count and makes `LIMIT` mean something other than "this many returns".
- */
-async function readValues(
-  db: Database,
-  organizationId: string,
-  entityIds: string[],
-  fieldIds: string[]
-): Promise<ValueIndex> {
-  const index: ValueIndex = new Map()
-  if (entityIds.length === 0 || fieldIds.length === 0) return index
-
-  const values = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      valueNumber: schema.FieldValue.valueNumber,
-      valueDate: schema.FieldValue.valueDate,
-      valueBoolean: schema.FieldValue.valueBoolean,
-      optionId: schema.FieldValue.optionId,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-      actorId: schema.FieldValue.actorId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, entityIds),
-        inArray(schema.FieldValue.fieldId, fieldIds)
-      )
-    )
-
-  for (const value of values) {
-    let byField = index.get(value.entityId)
-    if (!byField) {
-      byField = new Map()
-      index.set(value.entityId, byField)
-    }
-    const bucket = byField.get(value.fieldId) ?? []
-    bucket.push(value)
-    byField.set(value.fieldId, bucket)
-  }
-  return index
+/** `EntityInstance.createdAt` is NOT NULL in the schema; the reader types it defensively. */
+function createdAtOf(record: { createdAt: Date | null }): Date {
+  return record.createdAt ?? new Date(0)
 }
 
-/** Every provisioned field id in a context, for {@link readValues}. */
-function fieldIdsOf(fields: Record<string, { id: string } | null>): string[] {
-  return Object.values(fields)
-    .filter((field): field is { id: string } => field != null)
-    .map((field) => field.id)
-}
-
-/** A reader bound to one instance's values, so the mapping below stays flat. */
-function valueReader<A extends string>(
-  fields: Record<A, { id: string } | null>,
-  byField: Map<string, ValueRow[]> | undefined
-) {
-  const all = (attribute: A): ValueRow[] => {
-    const id = fields[attribute]?.id
-    return id ? (byField?.get(id) ?? []) : []
-  }
-  const one = (attribute: A): ValueRow | null => all(attribute)[0] ?? null
-  const date = (attribute: A): Date | null => {
-    const raw = one(attribute)?.valueDate
-    return raw ? new Date(raw) : null
-  }
-  return { all, one, date }
+function toDate(iso: string | null): Date | null {
+  return iso ? new Date(iso) : null
 }
 
 async function hydrateReturns(
   db: Database,
   organizationId: string,
   ctx: ReturnFieldContext,
-  page: { id: string; createdAt: Date }[]
+  records: SystemRecord<ReturnAttribute>[]
 ): Promise<ReturnRecord[]> {
-  const ids = page.map((row) => row.id)
-  const index = await readValues(db, organizationId, ids, fieldIdsOf(ctx.fields))
-  const memos = await readLinkedCreditMemoIds(db, organizationId, ids)
+  if (records.length === 0) return []
+  const memos = await readLinkedCreditMemoIds(
+    db,
+    organizationId,
+    records.map((record) => record.id)
+  )
 
-  return page.map((row) => {
-    const read = valueReader<ReturnAttribute>(ctx.fields, index.get(row.id))
-    const status = toReturnStatus(read.one('return_status')?.optionId)
-    const contactId = read.one('return_contact')?.relatedEntityId ?? null
-    const creditMemoIds = memos.get(row.id) ?? []
+  return records.map((record) => {
+    const status = toReturnStatus(record.option('return_status'))
+    const contactId = record.related('return_contact')
+    const creditMemoIds = memos.get(record.id) ?? []
 
     return {
-      returnId: row.id,
-      recordId: toRecordId(ctx.returnDefId, row.id),
-      number: read.one('return_number')?.valueText ?? null,
+      returnId: record.id,
+      recordId: toRecordId(ctx.defId, record.id),
+      number: record.text('return_number'),
       status,
-      origin: (read.one('return_origin')?.optionId as ReturnOrigin | undefined) ?? null,
-      reasons: read
-        .all('return_reason')
-        .map((value) => value.optionId)
+      origin: (record.option('return_origin') as ReturnOrigin | null) ?? null,
+      reasons: record
+        .cells('return_reason')
+        .map((value) => (value.type === 'option' ? value.optionId : null))
         .filter((optionId): optionId is string => optionId != null),
-      customerNote: read.one('return_customer_note')?.valueText ?? null,
+      customerNote: record.text('return_customer_note'),
       contactId,
-      orderId: read.one('return_order')?.relatedEntityId ?? null,
-      ticketId: read.one('return_ticket')?.relatedEntityId ?? null,
-      requestedAt: read.date('return_requested_at'),
-      receivedAt: read.date('return_received_at'),
-      inspectedAt: read.date('return_inspected_at'),
-      closedAt: read.date('return_closed_at'),
-      senderNameRaw: read.one('return_sender_name_raw')?.valueText ?? null,
-      senderAddressRaw: read.one('return_sender_address_raw')?.valueText ?? null,
-      inboundCarrier: read.one('return_inbound_carrier')?.valueText ?? null,
-      // 🛑 `read.all`, never `read.one`. This field went multi-value in entity
-      // migration 155 and `one()` takes the FIRST value — a return covering
+      orderId: record.related('return_order'),
+      ticketId: record.related('return_ticket'),
+      requestedAt: toDate(record.date('return_requested_at')),
+      receivedAt: toDate(record.date('return_received_at')),
+      inspectedAt: toDate(record.date('return_inspected_at')),
+      closedAt: toDate(record.date('return_closed_at')),
+      senderNameRaw: record.text('return_sender_name_raw'),
+      senderAddressRaw: record.text('return_sender_address_raw'),
+      inboundCarrier: record.text('return_inbound_carrier'),
+      // 🛑 `cells`, never `cell`. This field went multi-value in entity
+      // migration 155 and `cell()` takes the FIRST value — a return covering
       // three parcels would have reported one tracking number with nothing
       // anywhere saying the other two existed.
-      inboundTracking: read
-        .all('return_inbound_tracking')
-        .map((value) => value.valueText)
+      inboundTracking: record
+        .cells('return_inbound_tracking')
+        .map((value) => (value.type === 'text' ? value.value : null))
         .filter((text): text is string => text != null && text !== ''),
-      labelProvided: read.one('return_label_provided')?.valueBoolean ?? null,
-      labelCost: read.one('return_label_cost')?.valueNumber ?? null,
-      goodsValue: read.one('return_goods_value')?.valueNumber ?? null,
-      creditedAmount: read.one('return_credited_amount')?.valueNumber ?? null,
-      withheldAmount: read.one('return_withheld_amount')?.valueNumber ?? null,
-      withheldReason: read.one('return_withheld_reason')?.valueText ?? null,
+      labelProvided: record.boolean('return_label_provided'),
+      labelCost: record.number('return_label_cost'),
+      goodsValue: record.number('return_goods_value'),
+      creditedAmount: record.number('return_credited_amount'),
+      withheldAmount: record.number('return_withheld_amount'),
+      withheldReason: record.text('return_withheld_reason'),
       creditMemoIds,
       unidentified: contactId === null,
       // Both halves derived, neither stored: memos present AND the goods not
@@ -1030,119 +956,80 @@ async function hydrateReturns(
         creditMemoIds.length > 0 &&
         status !== null &&
         PRE_INSPECTION_RETURN_STATUSES.includes(status),
-      createdAt: row.createdAt,
+      createdAt: createdAtOf(record),
     }
   })
 }
 
-/** `returnId -> the unarchived credit memos naming it`. One query for the page. */
+/** `returnId -> the unarchived credit memos naming it`. */
 async function readLinkedCreditMemoIds(
   db: Database,
   organizationId: string,
   returnIds: string[]
 ): Promise<Map<string, string[]>> {
   const byReturn = new Map<string, string[]>()
-  const memoFieldId = await loadCreditMemoReturnFieldId(organizationId)
-  if (!memoFieldId || returnIds.length === 0) return byReturn
+  if (returnIds.length === 0) return byReturn
 
-  const rows = await db
-    .select({
-      memoId: schema.FieldValue.entityId,
-      returnId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .innerJoin(
-      schema.EntityInstance,
-      and(
-        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, memoFieldId),
-        inArray(schema.FieldValue.relatedEntityId, returnIds)
-      )
-    )
+  const ctx = await systemFields(
+    db,
+    organizationId,
+    'credit_memo',
+    pickSystemAttributes(CREDIT_MEMO_FIELDS, ['credit_memo_return'] as const)
+  )
+  if (!ctx?.fields.credit_memo_return) return byReturn
 
-  for (const row of rows) {
-    if (!row.returnId) continue
-    const bucket = byReturn.get(row.returnId) ?? []
-    bucket.push(row.memoId)
-    byReturn.set(row.returnId, bucket)
+  const memos = await readSystemRecords(db, organizationId, ctx, {
+    by: { attribute: 'credit_memo_return', in: returnIds },
+  })
+  for (const memo of memos) {
+    const returnId = memo.related('credit_memo_return')
+    if (!returnId) continue
+    const bucket = byReturn.get(returnId) ?? []
+    bucket.push(memo.id)
+    byReturn.set(returnId, bucket)
   }
   return byReturn
 }
 
-async function hydrateReturnLines(
-  db: Database,
-  organizationId: string,
+function toReturnLineRecord(
   ctx: ReturnLineFieldContext,
-  page: { id: string; createdAt: Date }[]
-): Promise<ReturnLineRecord[]> {
-  const index = await readValues(
-    db,
-    organizationId,
-    page.map((row) => row.id),
-    fieldIdsOf(ctx.fields)
-  )
-
-  return page.map((row) => {
-    const read = valueReader<ReturnLineAttribute>(ctx.fields, index.get(row.id))
-    return {
-      returnLineId: row.id,
-      recordId: toRecordId(ctx.returnLineDefId, row.id),
-      returnId: read.one('return_line_return')?.relatedEntityId ?? null,
-      lineItemId: read.one('return_line_line_item')?.relatedEntityId ?? null,
-      partId: read.one('return_line_part')?.relatedEntityId ?? null,
-      quantity: read.one('return_line_quantity')?.valueNumber ?? null,
-      conditionGrade:
-        (read.one('return_line_condition_grade')?.optionId as
-          | ReturnLineConditionGrade
-          | undefined) ?? null,
-      liability:
-        (read.one('return_line_liability')?.optionId as ReturnLineLiability | undefined) ?? null,
-      inspectionNotes: read.one('return_line_inspection_notes')?.valueText ?? null,
-      inspectedByUserId: read.one('return_line_inspected_by')?.actorId ?? null,
-      inspectedAt: read.date('return_line_inspected_at'),
-      createdAt: row.createdAt,
-    }
-  })
+  record: SystemRecord<ReturnLineAttribute>
+): ReturnLineRecord {
+  return {
+    returnLineId: record.id,
+    recordId: toRecordId(ctx.defId, record.id),
+    returnId: record.related('return_line_return'),
+    lineItemId: record.related('return_line_line_item'),
+    partId: record.related('return_line_part'),
+    quantity: record.number('return_line_quantity'),
+    conditionGrade:
+      (record.option('return_line_condition_grade') as ReturnLineConditionGrade | null) ?? null,
+    liability: (record.option('return_line_liability') as ReturnLineLiability | null) ?? null,
+    inspectionNotes: record.text('return_line_inspection_notes'),
+    inspectedByUserId: record.actor('return_line_inspected_by'),
+    inspectedAt: toDate(record.date('return_line_inspected_at')),
+    createdAt: createdAtOf(record),
+  }
 }
 
-async function hydrateReturnPartLines(
-  db: Database,
-  organizationId: string,
+function toReturnPartLineRecord(
   ctx: ReturnPartLineFieldContext,
-  page: { id: string; createdAt: Date }[]
-): Promise<ReturnPartLineRecord[]> {
-  const index = await readValues(
-    db,
-    organizationId,
-    page.map((row) => row.id),
-    fieldIdsOf(ctx.fields)
-  )
-
-  return page.map((row) => {
-    const read = valueReader<ReturnPartLineAttribute>(ctx.fields, index.get(row.id))
-    return {
-      id: row.id,
-      recordId: toRecordId(ctx.returnPartLineDefId, row.id),
-      returnLineId: read.one('return_part_line_return_line')?.relatedEntityId ?? null,
-      parentId: read.one('return_part_line_parent')?.relatedEntityId ?? null,
-      partId: read.one('return_part_line_part')?.relatedEntityId ?? '',
-      quantity: read.one('return_part_line_quantity')?.valueNumber ?? 0,
-      // `undecided` by absence is the documented default, and a row whose
-      // status somehow went missing reads the same way rather than as `good`.
-      status:
-        (read.one('return_part_line_status')?.optionId as SalvageStatus | undefined) ?? 'undecided',
-      salvagePercent: read.one('return_part_line_salvage_percent')?.valueNumber ?? 100,
-      sortOrder: read.one('return_part_line_sort_order')?.valueText ?? null,
-      unitCost: read.one('return_part_line_unit_cost')?.valueNumber ?? null,
-      movementId: read.one('return_part_line_movement')?.relatedEntityId ?? null,
-      createdAt: row.createdAt,
-    }
-  })
+  record: SystemRecord<ReturnPartLineAttribute>
+): ReturnPartLineRecord {
+  return {
+    id: record.id,
+    recordId: toRecordId(ctx.defId, record.id),
+    returnLineId: record.related('return_part_line_return_line'),
+    parentId: record.related('return_part_line_parent'),
+    partId: record.related('return_part_line_part') ?? '',
+    quantity: record.number('return_part_line_quantity') ?? 0,
+    // `undecided` by absence is the documented default, and a row whose
+    // status somehow went missing reads the same way rather than as `good`.
+    status: (record.option('return_part_line_status') as SalvageStatus | null) ?? 'undecided',
+    salvagePercent: record.number('return_part_line_salvage_percent') ?? 100,
+    sortOrder: record.text('return_part_line_sort_order'),
+    unitCost: record.number('return_part_line_unit_cost'),
+    movementId: record.related('return_part_line_movement'),
+    createdAt: createdAtOf(record),
+  }
 }

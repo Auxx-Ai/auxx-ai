@@ -5,7 +5,7 @@ import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { ParcelTrackingStatus } from '../enum-values'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Parcel resource
@@ -63,7 +63,7 @@ import type { ResourceField } from '../field-types'
  * matched rather than created, so a carrier's reconciliation pass can never
  * archive ShipStation's rows.
  */
-export const PARCEL_FIELDS: Record<string, ResourceField> = {
+export const PARCEL_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -582,4 +582,4 @@ export const PARCEL_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

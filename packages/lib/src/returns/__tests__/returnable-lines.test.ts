@@ -3,182 +3,121 @@
 /**
  * `returns/returnable-lines.ts` - plan section 4.6's "Add from order" read.
  *
- * `readReturnCeiling` and `readReturnedQuantityClaims` are mocked rather than
- * driven through a fake `FieldValue` join: they already carry their own tests
- * in `over-return-guard.test.ts` and this module's whole job is to call them
- * per line and shape the result, not to re-derive the ceiling. What matters
- * here is the fan-out over the order's lines, the part-name lookup, and the
- * HARD RULE that `ceilingSource: 'unknown'` never collapses to a zero ceiling.
+ * `readReturnCeilings` and `readReturnedQuantityClaimsBatch` are mocked rather
+ * than driven through a fake `FieldValue` join: they already carry their own
+ * tests in `over-return-guard.test.ts` and this module's whole job is to call
+ * them ONCE for the order and shape the result, not to re-derive the ceiling.
+ * What matters here is that the fan-out is gone (one batched call, not one per
+ * line), the part-name lookup, and the HARD RULE that `ceilingSource:
+ * 'unknown'` never collapses to a zero ceiling.
  */
 
 import type { Database } from '@auxx/database'
-import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../cache', () => ({ getCachedEntityDefId: vi.fn(), getOrgCache: vi.fn() }))
-vi.mock('../reads', () => ({ readReturnCeiling: vi.fn(), readReturnedQuantityClaims: vi.fn() }))
+vi.mock('../../resources/system-records', () => ({
+  systemFields: vi.fn(),
+  readSystemRecords: vi.fn(),
+}))
+vi.mock('../../field-values/field-value-helpers', () => ({
+  batchGetRelatedDisplayNames: vi.fn(),
+}))
+vi.mock('../reads', () => ({
+  readReturnCeilings: vi.fn(),
+  readReturnedQuantityClaimsBatch: vi.fn(),
+}))
 
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
-import { readReturnCeiling, readReturnedQuantityClaims } from '../reads'
+import { batchGetRelatedDisplayNames } from '../../field-values/field-value-helpers'
+import { readSystemRecords, systemFields } from '../../resources/system-records'
+import { readReturnCeilings, readReturnedQuantityClaimsBatch } from '../reads'
 import { readReturnableLinesForOrder } from '../returnable-lines'
 
-const LINE_ITEM_FIELDS = {
-  line_item_order: { id: 'f_order' },
-  line_item_name: { id: 'f_name' },
-  line_item_part: { id: 'f_part' },
-  line_item_qty: { id: 'f_qty' },
-  line_item_sort_order: { id: 'f_sort' },
-  part_title: { id: 'f_part_title' },
+const db = {} as Database
+
+const CTX = {
+  defId: 'def_line_item',
+  fields: {
+    line_item_order: { id: 'f_order' },
+    line_item_name: { id: 'f_name' },
+    line_item_part: { id: 'f_part' },
+    line_item_qty: { id: 'f_qty' },
+    line_item_sort_order: { id: 'f_sort' },
+  },
 }
 
-interface InstanceRow {
-  id: string
-  createdAt: Date
-}
-
-interface FieldValueRow {
-  entityId: string
-  fieldId: string
-  valueText: string | null
-  valueNumber: number | null
-  relatedEntityId: string | null
-}
-
-/**
- * A `db` double for the three query shapes this module issues, in the order
- * it issues them: the order's `line_item` instances, then their batched
- * `FieldValue` rows, then the batched part-name lookup (also `FieldValue`,
- * distinguished by call order since both select from the same table).
- */
-function buildDb(
-  instanceRows: InstanceRow[],
-  lineItemValueRows: FieldValueRow[],
-  partRows: { partId: string; title: string }[]
+/** A `SystemRecord` stand-in: only the accessors this module calls. */
+function record(
+  id: string,
+  cells: { name?: string; partId?: string; qty?: number; sortOrder?: number }
 ) {
-  const entityChain: Record<string, unknown> = {}
-  Object.assign(entityChain, {
-    innerJoin: () => entityChain,
-    where: () => entityChain,
-    orderBy: async () => instanceRows,
-  })
-
-  let fieldValueCalls = 0
-  const db = {
-    select: () => ({
-      from: (table: unknown) => {
-        if (table === schema.EntityInstance) return entityChain
-        fieldValueCalls += 1
-        const rows = fieldValueCalls === 1 ? lineItemValueRows : partRows
-        return { where: async () => rows }
-      },
-    }),
-  } as unknown as Database
-
-  return db
+  const part = cells.partId ?? null
+  return {
+    id,
+    text: (attribute: string) => (attribute === 'line_item_name' ? (cells.name ?? null) : null),
+    number: (attribute: string) => {
+      if (attribute === 'line_item_qty') return cells.qty ?? null
+      if (attribute === 'line_item_sort_order') return cells.sortOrder ?? null
+      return null
+    },
+    related: (attribute: string) => (attribute === 'line_item_part' ? part : null),
+    cell: (attribute: string) =>
+      attribute === 'line_item_part' && part
+        ? { type: 'relationship' as const, recordId: `def_part:${part}` }
+        : undefined,
+  }
 }
 
 beforeEach(() => {
-  vi.mocked(getCachedEntityDefId).mockResolvedValue('def_line_item')
-  vi.mocked(getOrgCache).mockReturnValue({
-    from: () => ({ bySystemAttributes: async () => LINE_ITEM_FIELDS }),
-  } as unknown as ReturnType<typeof getOrgCache>)
+  vi.clearAllMocks()
+  // biome-ignore lint/suspicious/noExplicitAny: a SystemFieldContext stand-in
+  vi.mocked(systemFields).mockResolvedValue(CTX as any)
+  vi.mocked(batchGetRelatedDisplayNames).mockResolvedValue(new Map())
+  vi.mocked(readReturnCeilings).mockResolvedValue(new Map())
+  vi.mocked(readReturnedQuantityClaimsBatch).mockResolvedValue(new Map())
 })
 
 describe('readReturnableLinesForOrder', () => {
   it('returns an empty list for an order with no lines', async () => {
-    const db = buildDb([], [], [])
+    vi.mocked(readSystemRecords).mockResolvedValue([])
     const result = await readReturnableLinesForOrder(db, 'org_1', 'order_1')
     expect(result.isOk()).toBe(true)
     if (result.isOk()) expect(result.value).toEqual([])
-    expect(readReturnCeiling).not.toHaveBeenCalled()
+    expect(readReturnCeilings).not.toHaveBeenCalled()
   })
 
   it('carries each line’s ceiling and claim total, and never zeroes an unknown ceiling', async () => {
-    const instanceRows: InstanceRow[] = [
-      { id: 'li_1', createdAt: new Date('2026-01-01') },
-      { id: 'li_2', createdAt: new Date('2026-01-02') },
-      { id: 'li_3', createdAt: new Date('2026-01-03') },
-    ]
-    const lineItemValueRows: FieldValueRow[] = [
-      {
-        entityId: 'li_1',
-        fieldId: 'f_name',
-        valueText: 'Widget',
-        valueNumber: null,
-        relatedEntityId: null,
-      },
-      {
-        entityId: 'li_1',
-        fieldId: 'f_part',
-        valueText: null,
-        valueNumber: null,
-        relatedEntityId: 'part_1',
-      },
-      {
-        entityId: 'li_1',
-        fieldId: 'f_qty',
-        valueText: null,
-        valueNumber: 5,
-        relatedEntityId: null,
-      },
-      {
-        entityId: 'li_2',
-        fieldId: 'f_name',
-        valueText: 'Gadget',
-        valueNumber: null,
-        relatedEntityId: null,
-      },
-      {
-        entityId: 'li_2',
-        fieldId: 'f_part',
-        valueText: null,
-        valueNumber: null,
-        relatedEntityId: 'part_2',
-      },
-      {
-        entityId: 'li_2',
-        fieldId: 'f_qty',
-        valueText: null,
-        valueNumber: 2,
-        relatedEntityId: null,
-      },
-      {
-        entityId: 'li_3',
-        fieldId: 'f_name',
-        valueText: 'Gizmo',
-        valueNumber: null,
-        relatedEntityId: null,
-      },
-      {
-        entityId: 'li_3',
-        fieldId: 'f_qty',
-        valueText: null,
-        valueNumber: 1,
-        relatedEntityId: null,
-      },
+    vi.mocked(readSystemRecords).mockResolvedValue([
+      record('li_1', { name: 'Widget', partId: 'part_1', qty: 5 }),
+      record('li_2', { name: 'Gadget', partId: 'part_2', qty: 2 }),
       // li_3 names no part at all.
-    ]
-    const db = buildDb(instanceRows, lineItemValueRows, [
-      { partId: 'part_1', title: 'Widget Part' },
-      { partId: 'part_2', title: 'Gadget Part' },
-    ])
-
-    vi.mocked(readReturnCeiling).mockImplementation(async (_db, _org, lineItemId) => {
-      if (lineItemId === 'li_1') return { ceiling: 5, ceilingSource: 'shipped' }
-      if (lineItemId === 'li_2') return { ceiling: 2, ceilingSource: 'sold' }
-      return { ceiling: null, ceilingSource: 'unknown' }
-    })
-
+      record('li_3', { name: 'Gizmo', qty: 1 }),
+      // biome-ignore lint/suspicious/noExplicitAny: a SystemRecord stand-in
+    ] as any)
+    vi.mocked(batchGetRelatedDisplayNames).mockResolvedValue(
+      new Map([
+        ['part_1', 'Widget Part'],
+        ['part_2', 'Gadget Part'],
+      ])
+    )
+    vi.mocked(readReturnCeilings).mockResolvedValue(
+      new Map([
+        ['li_1', { ceiling: 5, ceilingSource: 'shipped' }],
+        ['li_2', { ceiling: 2, ceilingSource: 'sold' }],
+        ['li_3', { ceiling: null, ceilingSource: 'unknown' }],
+      ])
+    )
     // li_1 has two prior claims, across two different returns.
-    vi.mocked(readReturnedQuantityClaims).mockImplementation(async (_db, _org, lineItemId) => {
-      if (lineItemId === 'li_1') {
-        return [
-          { returnLineId: 'rl_return_a_line', quantity: 1 },
-          { returnLineId: 'rl_return_b_line', quantity: 1 },
-        ]
-      }
-      return []
-    })
+    vi.mocked(readReturnedQuantityClaimsBatch).mockResolvedValue(
+      new Map([
+        [
+          'li_1',
+          [
+            { returnLineId: 'rl_return_a_line', quantity: 1 },
+            { returnLineId: 'rl_return_b_line', quantity: 1 },
+          ],
+        ],
+      ])
+    )
 
     const result = await readReturnableLinesForOrder(db, 'org_1', 'order_1')
     expect(result.isOk()).toBe(true)
@@ -224,5 +163,36 @@ describe('readReturnableLinesForOrder', () => {
     })
     expect(lineUnknown.ceiling).not.toBe(0)
     expect(lineUnknown.remaining).not.toBe(0)
+  })
+
+  it('reads the order’s lines and their ceilings ONCE, not once per line', async () => {
+    vi.mocked(readSystemRecords).mockResolvedValue([
+      record('li_1', { qty: 1 }),
+      record('li_2', { qty: 1 }),
+      record('li_3', { qty: 1 }),
+      // biome-ignore lint/suspicious/noExplicitAny: a SystemRecord stand-in
+    ] as any)
+
+    await readReturnableLinesForOrder(db, 'org_1', 'order_1')
+
+    expect(readSystemRecords).toHaveBeenCalledTimes(1)
+    expect(readReturnCeilings).toHaveBeenCalledTimes(1)
+    expect(readReturnedQuantityClaimsBatch).toHaveBeenCalledTimes(1)
+    expect(readReturnCeilings).toHaveBeenCalledWith(db, 'org_1', ['li_1', 'li_2', 'li_3'], {
+      // The quantities already read with the lines: no line is measured twice.
+      soldQuantities: new Map([
+        ['li_1', 1],
+        ['li_2', 1],
+        ['li_3', 1],
+      ]),
+    })
+  })
+
+  it('asks the order for its lines by the relationship, not by a hand-written join', async () => {
+    vi.mocked(readSystemRecords).mockResolvedValue([])
+    await readReturnableLinesForOrder(db, 'org_1', 'order_1')
+    expect(readSystemRecords).toHaveBeenCalledWith(db, 'org_1', CTX, {
+      by: { attribute: 'line_item_order', in: ['order_1'] },
+    })
   })
 })

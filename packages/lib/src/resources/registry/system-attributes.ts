@@ -60,3 +60,18 @@ export function systemAttributes<F extends Record<string, ResourceField>>(
   }
   return [...out] as SystemAttributesOf<F>[]
 }
+
+/**
+ * The subset of a declared map's system attributes a module actually reads.
+ *
+ * {@link systemAttributes} fetches every attribute the def has — 36 on `order`
+ * — where most reads want four. The pick is checked against the registry, so a
+ * renamed attribute is a compile error rather than a silently `null` field, and
+ * the result keeps the picked literals so `cell()` accepts only those names.
+ */
+export function pickSystemAttributes<
+  F extends Record<string, ResourceField>,
+  const A extends readonly SystemAttributesOf<F>[],
+>(_fields: DeclaredResourceFields<F>, attributes: A): A[number][] {
+  return [...attributes]
+}
