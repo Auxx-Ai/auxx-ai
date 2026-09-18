@@ -108,6 +108,14 @@ export function formatAccountingDate(iso: string, timeZone: string): string {
   }).format(date)
 }
 
+/** `'manual_journal'` reads `'Manual journal'`. No hardcoded map: the posting-type union grows. */
+export function humanizePostingType(type: string): string {
+  const words = type.split('_')
+  return words
+    .map((word, index) => (index === 0 ? word[0]!.toUpperCase() + word.slice(1) : word))
+    .join(' ')
+}
+
 /**
  * An AUDIT timestamp: when auxx learned about a row.
  *

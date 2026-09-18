@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/ledger.ts
 
+import { schema } from '@auxx/database'
 import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
 import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
 import { getPaymentAccount } from '@auxx/lib/money'
@@ -13,7 +14,6 @@ import {
   accountingOpeningPolicySchema,
   activateAccountingBookConnection,
   assertAccountingSetupUnfrozen,
-  buildEntry,
   CHART_PACK_KEYS,
   confirmSuggestedIdentities,
   createAndLinkProviderAccount,
@@ -41,14 +41,11 @@ import {
   listRoleMap,
   listRoleSources,
   mintRailAccounts,
-  POSTING_TYPES,
   PROVIDER_SYNC_RUN_STALE_MS,
   PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
   postDraft,
-  postEntry,
   postJournalEntry,
   postMonthEnd,
-  previewEntry,
   previewJournalEntry,
   previewMonthEnd,
   readAccountingBookConnectionStatus,
@@ -88,123 +85,10 @@ import {
 import { recurrencePatternSchema } from '@auxx/lib/recurrence'
 import { seedChartAccounts, seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
 import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { requestAuditContext } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trpc'
-
-/**
- * One draft line, structurally.
- *
- * Deliberately thin on the money rules. `amount` is a plain number here rather
- * than `z.number().int().positive()` because `buildEntry` already refuses a
- * non-integer, a negative and a zero, and it names the offending role while
- * doing it. Restating those three rules in Zod would give the same input two
- * authorities and two error vocabularies, and the worse one would win: a Zod
- * issue reads `lines.3.amount: Number must be greater than 0`, where
- * `buildEntry` says which role the leg belongs to. A bookkeeper reads the
- * second one at 11pm on the 3rd.
- */
-const postingLineBase = {
-  direction: z.enum(['debit', 'credit']),
-  /** Integer minor units, positive. `direction` carries the sign. */
-  amount: z.number(),
-  memo: z.string().optional(),
-  /** The kind of row that produced this line - `'stock_movement'`, `'journal_entry'`. */
-  sourceType: z.string().min(1),
-  sourceId: z.string().min(1),
-  sortOrder: z.number().int().nonnegative(),
-}
-
-/**
- * A BUILDER's line: an auxx ROLE, never an account number.
- *
- * `.strict()`, and that is load-bearing - see {@link postingLine}.
- */
-const roleLine = z
-  .object({
-    /** One of `ACCOUNT_ROLES`. See `postings/types.ts` for why a builder emits a role. */
-    accountRole: z.string().min(1),
-    ...postingLineBase,
-  })
-  .strict()
-
-/** A HUMAN's line: a code out of this org's own chart. `.strict()`, see {@link postingLine}. */
-const codeLine = z
-  .object({
-    /** `'6300'`. Validated against the chart with the same refusals a role gets. */
-    accountCode: z.string().min(1),
-    ...postingLineBase,
-  })
-  .strict()
-
-/**
- * A union rather than two optional keys.
- *
- * `{ accountRole?: string; accountCode?: string }` would accept a line naming
- * both, and every reader downstream would need a precedence rule - which is a
- * rule about which of two named accounts money silently goes into.
- * `GlPostingLineInput` is a discriminated union for the same reason, and this is
- * that shape at the wire.
- *
- * 🛑 **Both branches are `.strict()` because a zod object STRIPS unknown keys.**
- * Non-strict, a line naming BOTH `accountRole` and `accountCode` parses cleanly
- * against `roleLine` - the union takes the first branch that fits - and the
- * `accountCode` is silently deleted before anything downstream sees it. That is
- * precisely the "money goes into one of two named accounts, quietly" case this
- * union exists to make unrepresentable, and it made `build-entry.ts`'s
- * both-at-once refusal unreachable from the wire. Strict, the line matches
- * neither branch and the request is refused.
- *
- * The cost is that a caller may send no extra keys at all. That is the intended
- * contract: `postingLineBase` is the whole of what a line is, and an unknown key
- * on a general-ledger line is a client that thinks it is writing something the
- * server does not read.
- *
- * Exported for `ledger-posting-line-schema.test.ts` only - nothing else imports
- * it, and it is not part of any client surface.
- */
-export const postingLine = z.union([roleLine, codeLine])
-
-/**
- * A draft entry, as a caller hands it in.
- *
- * ⚠️ **The totals are NOT part of this shape**, and that is the point. A
- * `BuiltEntry` carries `totalDebit`/`totalCredit` and is balanced by
- * construction, so accepting one over the wire would mean trusting a client's
- * arithmetic about a general ledger. What crosses the wire is the DRAFT; the
- * server runs `buildEntry` over it and that is where the totals come from and
- * where an unbalanced entry is refused.
- */
-const draftEntry = z.object({
-  /**
-   * Every declared type, `manual_journal` and `opening_balance` included since
-   * HANDOFF slot 0B. What is ENABLED is a separate question and `regime.ts`
-   * answers it; this enum is the vocabulary, not the permission.
-   */
-  postingType: z.enum(POSTING_TYPES),
-  /**
-   * `'2026-08'` for a month, `'2026-08-18'` for a day. `parsePeriodKey` owns the
-   * keyspace.
-   *
-   * ⚠️ Not always a period: `manual_journal`, `bank_deposit` and `write_off`
-   * key on the source record's own NUMBER (`'JNL-0007'`), because many can post
-   * in one day and a date key would make the second collide with the first on
-   * the claim's unique index. `doc-number.ts` is the authority.
-   */
-  periodKey: z.string().min(1),
-  /**
-   * `YYYY-MM-DD`. Validated here because nothing downstream does: `buildEntry`
-   * passes it through untouched and a provider handed a malformed date falls
-   * back to its own server date, which silently books the entry on the wrong day.
-   */
-  txnDate: z.iso.date({ error: 'txnDate must be YYYY-MM-DD' }),
-  /**
-   * Bounded rather than merely non-empty. The cap is far above any entry this
-   * poster produces - a month-end inventory entry is one line per account role -
-   * and exists only so a malformed client cannot send an unbounded array.
-   */
-  lines: z.array(postingLine).min(1).max(200),
-})
 
 /**
  * The general ledger's posting surface (plans/money/tasks/10-the-poster.md §6).
@@ -219,13 +103,11 @@ const draftEntry = z.object({
  *
  * | procedure         | gate         |
  * | ----------------- | ------------ |
- * | `preview`         | `ledger.view` |
  * | `failedExports` | `ledger.view` |
  * | `retryExport` | `ledger.post` |
  * | `syncExports` | `ledger.post` |
  * | `unsyncExports` | `ledger.control` |
  * | `verifyBalance`   | `ledger.view` |
- * | `post`            | `ledger.post` |
  * | `reverse`         | `ledger.post` |
  * | `reverseMany`     | `ledger.post` |
  * | `setLockedThrough` | `ledger.control` |
@@ -288,18 +170,12 @@ const optionalMonthKey = z.object({
 /**
  * One line of a journal-entry DRAFT, as the drawer stores it.
  *
- * Distinct from {@link postingLine} on purpose. That one is a posting line and
- * carries the audit pair (`sourceType` / `sourceId`) and a `sortOrder`; this one
- * is what a person typed, and its source pair is the record itself while its
- * order is the array's. Making the drawer supply four fields it cannot know
- * before the entry is saved would be the worse shape.
- *
  * 🛑 `amountMinor` is INTEGER MINOR UNITS. Dollars never cross this wire:
  * `toMinorUnits` from `@auxx/lib/postings/client` is the single conversion and
  * it runs in the browser, at the `CurrencyInput` boundary. Zod checks that it is
- * a number and no more, for `postingLine`'s reason - `buildManualEntry` refuses
- * a zero, a negative and a fraction of a cent, and it names the ROW while doing
- * it, which a Zod issue cannot.
+ * a number and no more - `buildManualEntry` refuses a zero, a negative and a
+ * fraction of a cent, and it names the ROW while doing it, which a Zod issue
+ * cannot.
  */
 const journalEntryLine = z.object({
   /**
@@ -359,69 +235,6 @@ export const ledgerRouter = createTRPCRouter({
         openingPolicy: input.openingPolicy,
       })
     ),
-
-  /**
-   * What an entry WOULD look like, resolved against the org's own chart.
-   *
-   * **Persists nothing.** It runs the same reads and the same refusals as
-   * {@link postEntry} - including the ones that would block it, which arrive on
-   * `blockedBy` - and writes not one row. Claiming the period is `post`'s job
-   * and only `post`'s.
-   *
-   * A `.mutation()` even though it writes nothing, for two reasons that both
-   * point the same way. The draft is a request BODY: queries are GETs on this
-   * app's link and a 200-line entry does not fit in a URL. And a preview keyed
-   * on the entire draft is not cacheable in any useful sense - the input already
-   * IS the answer's content - so mutation semantics (fire on click, no refetch)
-   * are what the Preview button actually wants.
-   */
-  preview: permissionProcedure(PermissionKey.ledgerView)
-    .input(draftEntry)
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-
-      const entry = buildEntry(input)
-      const lock = await resolvePeriodLock(organizationId)
-
-      return previewEntry(ctx.db, { organizationId, entry, lock })
-    }),
-
-  /**
-   * Claim the period, persist the entry, and push it to whichever provider the
-   * organization has connected - in one call.
-   *
-   * An org with NO provider connected is a first-class case, not a degraded one
-   * (decision P1): the entry is built, balanced and persisted exactly the same
-   * way and the result is `not_connected`. Likewise `already_posted` is a
-   * SUCCESS - a converged re-run, not a failure - and callers must not surface
-   * it as an error.
-   */
-  post: permissionProcedure(PermissionKey.ledgerPost)
-    .input(draftEntry.extend({ memo: z.string().max(4000).optional() }))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      const { memo, ...draft } = input
-
-      const entry = buildEntry(draft)
-      const lock = await resolvePeriodLock(organizationId)
-
-      return postEntry(ctx.db, {
-        organizationId,
-        entry,
-        actorUserId: userId,
-        memo,
-        lock,
-        // This surface takes a hand-built entry with no record behind it -
-        // there is nothing else to claim through. `sourceKind`/`sourceId`
-        // reproduce the pre-TARGET §1 claim exactly: `(organizationId,
-        // postingType, periodKey)`, now on `GlPostingSource` rather than a
-        // composite index on `GlPosting` itself.
-        sources: [
-          { sourceKind: entry.postingType, sourceId: entry.periodKey, linkRole: 'subject' },
-        ],
-        mode: 'post',
-      })
-    }),
 
   /**
    * Back out a posted entry with a second, opposite one.
@@ -628,6 +441,35 @@ export const ledgerRouter = createTRPCRouter({
       const result = await getPosting(ctx.db, ctx.session.organizationId, input.id)
       if (result.isErr()) throw result.error
       return result.value
+    }),
+
+  /**
+   * Every `GlPostingSource` row this posting carries - the posting drawer's
+   * Links list (accounting migration step 1c).
+   *
+   * A plain scoped select rather than a `postings/` lib read: nothing upstream
+   * of this needs the OTHER direction (`listPostingsForSource` walks
+   * `sourceKind`/`sourceId` → posting), and adding a one-off reverse read there
+   * for a single drawer would be a lib export with one caller.
+   */
+  postingSources: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ glPostingId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db
+        .select({
+          id: schema.GlPostingSource.id,
+          sourceKind: schema.GlPostingSource.sourceKind,
+          sourceId: schema.GlPostingSource.sourceId,
+          linkRole: schema.GlPostingSource.linkRole,
+          occurrence: schema.GlPostingSource.occurrence,
+        })
+        .from(schema.GlPostingSource)
+        .where(
+          and(
+            eq(schema.GlPostingSource.organizationId, ctx.session.organizationId),
+            eq(schema.GlPostingSource.glPostingId, input.glPostingId)
+          )
+        )
     }),
 
   /**

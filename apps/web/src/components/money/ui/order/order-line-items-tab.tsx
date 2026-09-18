@@ -137,10 +137,13 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
         onOpenChange={setFulfillOpen}
         orderId={orderId}
         onFulfilled={() => {
-          // The order's ledger card reads its shipment STAMPS now, not the
-          // postings whose lines name it (plans/money/tasks/49 §2.5), so this is
-          // the query a fulfillment has just changed.
-          void utils.money.orderFulfillmentPostings.invalidate({ orderId })
+          // The order's ledger card reads `listPostingsForSource` keyed on the
+          // order (the fulfillment's `parent` link, TARGET §1), so this is the
+          // query a fulfillment has just changed.
+          void utils.ledger.listPostingsForSource.invalidate({
+            sourceKind: 'order',
+            sourceId: orderId,
+          })
           void utils.money.orderForFulfillment.invalidate()
         }}
       />

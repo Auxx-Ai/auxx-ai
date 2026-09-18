@@ -10,6 +10,9 @@
 //   bank_deposit   `createBankDeposit` (money/bank-deposits/writes.ts)
 //   fulfillment    `buildFulfillmentEntry` (money/orders/fulfill.ts)
 //   payout         `buildPayoutEntry` (money/payouts/sync.ts)
+//   credit_memo    `buildCreditMemoEntry` (postings/build-credit-memo-entry.ts)
+//   order          the order is the fulfillment's `parent` link, not a subject
+//   build          `build-inventory-movement-entry.ts` (MIGRATION step 5, not yet wired)
 //
 // Never inferred from the record: the registry key names the entity, and the
 // writer names the source, and those two are the same string by convention,
@@ -19,11 +22,10 @@
 
 import { Section } from '@auxx/ui/components/section'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
-import { OrderFulfillmentLedgerCard } from '~/components/money/ui/order/order-fulfillment-ledger-card'
 import { OrderPaymentsCard } from '~/components/money/ui/order/order-payments-card'
 import { LedgerCard } from './ledger-card'
 
-/** Order accounting combines actual money observations with durable fulfillment effect membership. */
+/** Order accounting combines actual money observations with the fulfillments the order parents. */
 export function OrderLedgerCard(props: DrawerTabProps) {
   return (
     <>
@@ -31,7 +33,7 @@ export function OrderLedgerCard(props: DrawerTabProps) {
         <OrderPaymentsCard {...props} />
       </Section>
       <Section title='Fulfillment accounting' collapsible={false}>
-        <OrderFulfillmentLedgerCard {...props} />
+        <LedgerCard {...props} sourceKind='order' />
       </Section>
     </>
   )
@@ -39,6 +41,10 @@ export function OrderLedgerCard(props: DrawerTabProps) {
 
 export function InvoiceLedgerCard(props: DrawerTabProps) {
   return <LedgerCard {...props} sourceKind='invoice' />
+}
+
+export function CreditMemoLedgerCard(props: DrawerTabProps) {
+  return <LedgerCard {...props} sourceKind='credit_memo' />
 }
 
 // 🛑 `sourceKind='money_transaction'`, not `'payment'` - `payment-fields.ts`
@@ -69,4 +75,14 @@ export function PayoutLedgerCard(props: DrawerTabProps) {
 // no claimed posting.
 export function VendorBillLedgerCard(props: DrawerTabProps) {
   return <LedgerCard {...props} sourceKind='vendor_bill' />
+}
+
+// `build`'s own posting builder (`build-inventory-movement-entry.ts`) and its
+// writer (`builds/complete-build.ts`) do not exist until MIGRATION step 5 -
+// same "Nothing posted yet" fallback as `VendorBillLedgerCard` until then.
+// Replaces the former `BuildLedgerCard`'s bespoke stock-movement tree; that
+// audit trail has no home on this tab until step 5's `document / … / its
+// stock_movements` member links land.
+export function BuildLedgerCard(props: DrawerTabProps) {
+  return <LedgerCard {...props} sourceKind='build' />
 }

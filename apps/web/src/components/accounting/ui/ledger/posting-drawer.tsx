@@ -33,6 +33,7 @@ import { api } from '~/trpc/react'
 import { EntryJournal, journalLinesFromDetail } from './entry-journal'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatAuditTimestamp, formatPeriodLabel } from './format'
+import { LedgerSourceLink } from './ledger-source-link'
 import { OUTCOMES, type OutcomeCopy, providerEntryUrl } from './post-result-callout'
 import { readStoredAssertions, readStoredReasons, readStoredSources } from './stored-draft'
 
@@ -106,6 +107,17 @@ export function PostingDrawer({
   )
   const detail = postingQuery.data
 
+  // The Links section's primary read (accounting migration step 1c): the
+  // actual `GlPostingSource` rows. A draft written before `postEntry` gained
+  // `sources` support (or one built by an older revision) may have none, so
+  // the stored envelope below is the fallback for that case only - never the
+  // primary source for a posted entry, whose `GlPostingSource` rows are the
+  // claim itself and cannot drift from what is rendered here.
+  const postingSourcesQuery = api.ledger.postingSources.useQuery(
+    { glPostingId: postingId ?? '' },
+    { enabled: !!postingId, staleTime: 30_000 }
+  )
+
   /**
    * The provider outcome, carried by the header status badge rather than by a
    * body callout: it is one sentence about an entry whose identity is already
@@ -128,7 +140,13 @@ export function PostingDrawer({
 
   const assertions = detail ? readStoredAssertions(detail.draft) : null
   const reasons = detail ? readStoredReasons(detail.draft) : []
-  const sources = detail ? readStoredSources(detail.draft) : []
+  const linkedSources = postingSourcesQuery.data ?? []
+  const sources =
+    linkedSources.length > 0
+      ? linkedSources
+      : detail?.status === 'draft'
+        ? readStoredSources(detail.draft)
+        : []
   const isReversal = !!detail?.reversesId
 
   /**
@@ -351,11 +369,13 @@ export function PostingDrawer({
               </Section>
 
               {/* The links (TARGET §1): what this entry is OF (`subject`), and
-                  what it names as `parent`, `counterparty` or `member` - read
-                  off the stored envelope, the same rows `GlPostingSource`
-                  holds. Replaces the register (accounting migration step 1b,
-                  part E): a summary is a grouping of postings now, never its
-                  own kind of row, so there is no second ledger to drill into. */}
+                  what it names as `parent`, `counterparty` or `member` -
+                  `ledger.postingSources`' `GlPostingSource` rows, falling back
+                  to the stored envelope only for a draft with none written yet
+                  (see the query above). Replaces the register (accounting
+                  migration step 1b, part E): a summary is a grouping of
+                  postings now, never its own kind of row, so there is no
+                  second ledger to drill into. */}
               {sources.length > 0 && (
                 <Section
                   title='Links'
@@ -367,9 +387,10 @@ export function PostingDrawer({
                       <li
                         key={`${source.sourceKind}-${source.sourceId}-${index}`}
                         className='flex items-center justify-between gap-2'>
-                        <span className='truncate font-mono text-xs text-muted-foreground'>
-                          {source.sourceKind}:{source.sourceId}
-                        </span>
+                        <LedgerSourceLink
+                          sourceKind={source.sourceKind}
+                          sourceId={source.sourceId}
+                        />
                         <Badge variant='outline' size='xs'>
                           {source.linkRole}
                         </Badge>

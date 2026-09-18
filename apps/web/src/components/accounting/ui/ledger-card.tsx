@@ -4,13 +4,14 @@
 
 // `<entityType>:ledger` - every posting linked to this record on
 // `GlPostingSource` (TARGET §1), per `plans/accounting/ui-plan.md` §2.3 / §4.4.
+// The ONE ledger card (accounting migration step 1c) - `order`, `credit_memo`
+// and `build` collapsed into this component rather than keeping their own
+// composite/bespoke cards; see `ledger-card-registrations.tsx` for the
+// `sourceKind` each entity pins.
 //
-// Copies `manufacturing/builds/build-ledger-card.tsx`'s shape (a `TreeRowList`
-// read through a scoped query, click opens the detail), but the source data is
-// different: a build's ledger card reads ordinary `stock_movement` records
-// through the generic record list, while a `GlPosting` is a Drizzle table with
-// no entity mirror (decision `G6`), so this card reads it through a dedicated
-// tRPC procedure instead.
+// A `GlPosting` is a Drizzle table with no entity mirror (decision `G6`), so
+// this card reads it through a dedicated tRPC procedure rather than the
+// generic record list.
 //
 // Reads `ledger.listPostingsForSource` for every posting linked to this record
 // by `sourceKind`/`sourceId`, whatever the link role - `linkRole` is rendered
@@ -43,7 +44,7 @@ import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { EntryJournal, journalLinesFromDetail } from './ledger/entry-journal'
-import { formatAccountingDate, formatMinor } from './ledger/format'
+import { formatAccountingDate, formatMinor, humanizePostingType } from './ledger/format'
 
 /** One row of `ledger.listPostingsForSource`'s expected result. */
 export interface SourcePosting {
@@ -107,14 +108,6 @@ const LINK_ROLE_LABEL: Record<PostingLinkRole, string> = {
 const EXPORT_BADGE: Partial<Record<PostingExportStatus, { label: string; variant: Variant }>> = {
   failed: { label: 'Export refused', variant: 'amber' },
   pending: { label: 'Export pending', variant: 'outline' },
-}
-
-/** `'manual_journal'` reads `'Manual journal'`. No hardcoded map: the posting-type union grows across waves 1 and 2. */
-function humanizePostingType(type: string): string {
-  const words = type.split('_')
-  return words
-    .map((word, index) => (index === 0 ? word[0]!.toUpperCase() + word.slice(1) : word))
-    .join(' ')
 }
 
 /**
@@ -233,10 +226,10 @@ export function LedgerCard({ entityInstanceId, sourceKind }: LedgerCardProps) {
 /**
  * The posting's lines, opened from a row.
  *
- * Exported because the order's card reads a different list (its shipment
- * STAMPS, see `money/ui/order/order-fulfillment-ledger-card.tsx`) and would
- * otherwise be a second copy of this dialog: the journal a row opens must not
- * depend on which card the row came from.
+ * Exported because `order-payments-card.tsx` reads a different list (payments
+ * and refunds, not fulfillment postings) and would otherwise be a second copy
+ * of this dialog: the journal a row opens must not depend on which card the
+ * row came from.
  */
 export function PostingLinesDialog({
   postingId,

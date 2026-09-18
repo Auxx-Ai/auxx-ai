@@ -18,7 +18,7 @@ import {
   Plus,
   RefreshCw,
 } from 'lucide-react'
-import { parseAsStringLiteral, useQueryState } from 'nuqs'
+import { parseAsBoolean, parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useRef } from 'react'
 import { useAccountingMonth } from '~/components/accounting/hooks/use-accounting-month'
 import {
@@ -52,6 +52,7 @@ import { api } from '~/trpc/react'
 
 import { CloseMonthPanel } from './close-month-panel'
 import { type CountAdjustmentRow, CountEvidenceSection } from './count-evidence-section'
+import { DraftsPanel } from './drafts-panel'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatPeriodLabel, lockRefusalReason } from './format'
 import { type LateArrivalRow, LateArrivalsSection } from './late-arrivals-section'
@@ -109,18 +110,21 @@ const SECTION_BLEED = '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3
  *   2. A month is open      -> that month's entry, ready to preview and post
  *   3. Everything posted    -> the most recent posted month, plus "nothing to close"
  *
- * ## Two destinations, one route
+ * ## Three destinations, one route
  *
  * The rail (`ledger-sidebar.tsx`) picks what the content column shows:
  *
  *   - **Closeout** - the month. Its stats, its refusals, its month-end entry,
- *     the lock, its other entries. The absence of `?queue=`.
+ *     the lock, its other entries. The absence of `?queue=` and `?drafts=`.
+ *   - **Drafts** - `?drafts=1` (TARGET §4 gate 1). This month's drafts, every
+ *     avenue whose `autoPost` is off - approve or discard each one.
  *   - **Sync queue** - `?queue=<tab>`. Everything in the books and not in the
  *     provider's copy, EVERY period, which is why it does not share a screen
  *     with a month-scoped header.
  *
- * 🛑 Both are this URL. `?month=`, `?queue=` and `?posting=` are the whole of
- * the page's state, so every one of them survives a paste into Slack.
+ * 🛑 All three are this URL. `?month=`, `?drafts=`, `?queue=` and `?posting=`
+ * are the whole of the page's state, so every one of them survives a paste
+ * into Slack.
  *
  * 🛑 Under the L1 regime a month has exactly ONE entry (no receipt, build or
  * shipment posts individually), so the entry renders inline with no list. What a
@@ -157,6 +161,8 @@ export function LedgerPage() {
    */
   const [queueTab, setQueueTab] = useQueryState('queue', parseAsStringLiteral(SYNC_QUEUE_TABS))
   const isSyncQueueOpen = queueTab !== null
+  /** `?drafts=1` - the Drafts tab (TARGET §4 gate 1, step 1c), scoped to the month on screen. */
+  const [draftsOpen, setDraftsOpen] = useQueryState('drafts', parseAsBoolean.withDefault(false))
 
   /**
    * The queue opens on Ready to sync, which is the pile it exists to clear.
@@ -165,23 +171,32 @@ export function LedgerPage() {
    * from the queue can be from any month, and leaving its drawer over the
    * month view would show an entry the month below it does not list.
    */
-  const openSyncQueue = useCallback(() => void setQueueTab('held'), [setQueueTab])
+  const openSyncQueue = useCallback(() => {
+    void setDraftsOpen(null)
+    void setQueueTab('held')
+  }, [setQueueTab, setDraftsOpen])
   const closeSyncQueue = useCallback(() => {
     void setPostingId(null)
     void setQueueTab(null)
-  }, [setQueueTab, setPostingId])
+    void setDraftsOpen(null)
+  }, [setQueueTab, setPostingId, setDraftsOpen])
+  const openDrafts = useCallback(() => {
+    void setQueueTab(null)
+    void setDraftsOpen(true)
+  }, [setQueueTab, setDraftsOpen])
 
   /**
-   * The two rail items and the one param behind them. Closeout is the absence
-   * of `?queue=`, so selecting it is the same act as leaving the queue - there
-   * is no third state to keep in step.
+   * The three rail items and the two params behind them. Closeout is the
+   * absence of both `?queue=` and `?drafts=`, so selecting it is the same act
+   * as leaving either - there is no fourth state to keep in step.
    */
   const selectView = useCallback(
     (next: LedgerView) => {
       if (next === 'sync-queue') openSyncQueue()
+      else if (next === 'drafts') openDrafts()
       else closeSyncQueue()
     },
-    [openSyncQueue, closeSyncQueue]
+    [openSyncQueue, openDrafts, closeSyncQueue]
   )
 
   /**
@@ -253,6 +268,14 @@ export function LedgerPage() {
   })
 
   const failedExportsQuery = api.ledger.failedExports.useQuery({})
+  // The Drafts rail badge and the Drafts panel read the same query (TARGET §4
+  // gate 1) - one hook, so the count in the rail cannot disagree with the list
+  // under it. Skipped while no month has resolved, same as every other
+  // month-scoped read on this page.
+  const draftsQuery = api.ledger.listDrafts.useQuery(
+    { periodKey: activePeriodKey },
+    { enabled: !!activePeriodKey }
+  )
   // The month on screen rides along so the sweep can answer the COMPLETENESS
   // question too - what this month still owes the ledger. Without it the counts
   // come back `null` and the Books section renders the balance half alone.
@@ -467,10 +490,11 @@ export function LedgerPage() {
           `flex-col` here would leave a zero-height stub above the toolbar. */}
       <div className='flex h-full overflow-hidden'>
         <LedgerSidebar
-          view={isSyncQueueOpen ? 'sync-queue' : 'closeout'}
+          view={isSyncQueueOpen ? 'sync-queue' : draftsOpen ? 'drafts' : 'closeout'}
           onSelectView={selectView}
           syncQueue={failedExportsQuery.data}
           providerLabel={providerLabel}
+          draftCount={draftsQuery.data?.length ?? 0}
         />
 
         <div className='flex h-full min-w-0 flex-1 flex-col overflow-hidden'>
@@ -490,7 +514,7 @@ export function LedgerPage() {
                 period, so the two must not share a screen - a "September" header
                 over a list reaching back eighteen months is a wrong claim about
                 what is underneath it. */}
-            {!isChecklistState && !isSyncQueueOpen && (
+            {!isChecklistState && !isSyncQueueOpen && !draftsOpen && (
               <LedgerStats
                 loading={period.isLoading}
                 period={activePeriod}
@@ -538,6 +562,17 @@ export function LedgerPage() {
                   canUnsync={canControlLedger}
                   activePostingId={postingId}
                   onSelectPosting={openPosting}
+                />
+              ) : draftsOpen ? (
+                /* Scoped to the month on screen, like Closeout - unlike the
+                   sync queue above. `activePeriodKey` is always resolved here:
+                   `isChecklistState` (no month at all) is handled above. */
+                <DraftsPanel
+                  periodKey={activePeriodKey}
+                  currencyCode={currencyCode}
+                  bookTimeZone={bookTimeZone}
+                  providerLabel={providerLabel}
+                  connectedTenantId={provider.connectedTenantId ?? null}
                 />
               ) : period.isLoading ? (
                 <div className='flex flex-col gap-3 p-3'>
