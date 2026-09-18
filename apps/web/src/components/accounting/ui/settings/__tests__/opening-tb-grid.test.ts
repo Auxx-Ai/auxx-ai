@@ -147,6 +147,22 @@ describe('openingVerdict', () => {
     expect(openingVerdict(500_00, 500_00, 2, 'USD').ok).toBe(true)
   })
 
+  it('reads an empty grid as the finished answer once the org declares from-nothing', () => {
+    // The declaration turns "nothing entered" from a refusal into a statement.
+    expect(openingVerdict(0, 0, 0, 'USD', true)).toMatchObject({
+      ok: true,
+      label: 'Nothing to carry in.',
+    })
+  })
+
+  it('🛑 still reports an entered-but-unbalanced grid as unbalanced when from-nothing is set', () => {
+    // The flag suppresses the EMPTY branch only. A plug account is the worst
+    // thing that can happen on this page; a checkbox must not open a door to one.
+    const verdict = openingVerdict(500_00, 400_00, 3, 'USD', true)
+    expect(verdict.ok).toBe(false)
+    expect(verdict.detail).toMatch(/never add a plug account/i)
+  })
+
   it('names the difference and refuses to suggest a plug', () => {
     const verdict = openingVerdict(500_00, 400_00, 3, 'USD')
     expect(verdict.ok).toBe(false)
@@ -160,6 +176,12 @@ describe('openingVerdict', () => {
 })
 
 describe('openingEvidenceInstruction', () => {
+  it('stops asking for evidence when the books start from nothing', () => {
+    const text = openingEvidenceInstruction('none', '2026-12-31')
+    expect(text).toMatch(/no opening entry to post/)
+    expect(text).not.toMatch(/statement balance/i)
+  })
+
   it('gives the statement-balance instruction, verbatim, for a manual grid', () => {
     // Including the cutoverDate.slice(5).replace('-', '/') substitution the
     // page already did before this helper existed.

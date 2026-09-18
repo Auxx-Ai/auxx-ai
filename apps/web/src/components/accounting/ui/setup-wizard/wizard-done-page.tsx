@@ -4,6 +4,7 @@
 import type { PostResultStatus } from '@auxx/lib/accounting/ledger/client'
 import {
   didLedgerAccept,
+  readOpeningFromNothing,
   resolveSetupReadiness,
   SETUP_READINESS_SETTING_KEYS,
 } from '@auxx/lib/accounting/ledger/client'
@@ -80,6 +81,7 @@ export function WizardDonePage({ onFinish }: WizardDonePageProps) {
 
   const record: Record<string, unknown> = {}
   for (const key of SETUP_READINESS_SETTING_KEYS) record[key] = getSetting(key as SettingKey)
+  const fromNothing = readOpeningFromNothing(record)
 
   // The trial balance is the one requirement that is not a setting, so it is
   // passed in. An absent summary reads as met - see `SetupReadinessContext` -
@@ -128,7 +130,11 @@ export function WizardDonePage({ onFinish }: WizardDonePageProps) {
       return
     }
 
-    if (!entryId) return
+    // Nothing to post: either no draft was ever raised, or the org declared its books start from
+    // nothing. `buildOpeningBalanceEntry` refuses an empty entry ("an organization that genuinely
+    // opened with nothing has no opening entry to make"), so reaching it would turn a finished
+    // setup into a red card. The settings finalize above is the whole job here.
+    if (!entryId || fromNothing) return
 
     try {
       const result = await post.mutateAsync({})

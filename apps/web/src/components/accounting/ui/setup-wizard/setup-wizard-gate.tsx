@@ -1,7 +1,7 @@
 // apps/web/src/components/accounting/ui/setup-wizard/setup-wizard-gate.tsx
 'use client'
 
-import type { AccountingGoalKey } from '@auxx/lib/getting-started/client'
+import { ACCOUNTING_GOAL_KEYS, type AccountingGoalKey } from '@auxx/lib/getting-started/client'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { useQueryState } from 'nuqs'
 import { useEffect, useState } from 'react'
@@ -13,17 +13,15 @@ import { AccountingSetupWizard } from './accounting-setup-wizard'
 /**
  * The setup goals - an org where all of these are already done never sees the wizard.
  *
- * 🛑 `post-first-entry` is deliberately NOT here. Closing a month is what the module is FOR, not
- * part of setting it up: an org that has finished setup but has not yet had a month to close must
- * not be handed a modal telling it to go and post something.
+ * 🛑 This is `ACCOUNTING_GOAL_KEYS` minus `post-first-entry`, and it must stay that way. Closing a
+ * month is what the module is FOR, not part of setting it up: an org that has finished setup but
+ * has not yet had a month to close must not be handed a modal telling it to go and post something.
+ * Every OTHER goal belongs here - a page the wizard owns that this list omits is a page an org can
+ * skip forever (plans/accounting/WIZARD-REVIEW.md F1, F2).
  */
-const WIZARD_GOAL_KEYS: readonly AccountingGoalKey[] = [
-  'set-accounting-period',
-  'set-opening-balances',
-  'set-costing',
-  'map-accounts',
-  'finalize-setup',
-]
+const WIZARD_GOAL_KEYS: readonly AccountingGoalKey[] = ACCOUNTING_GOAL_KEYS.filter(
+  (key) => key !== 'post-first-entry'
+)
 
 /**
  * Auto-opens `AccountingSetupWizard` the first time an admin/owner visits `/app/accounting`.
@@ -35,7 +33,7 @@ const WIZARD_GOAL_KEYS: readonly AccountingGoalKey[] = [
  *   checklist is not dismissed - read from FRESH status only, never a stale cache entry
  * - the current user is ADMIN/OWNER (plain role check - never redirects, just does not render)
  * - `FeatureKey.accounting` is enabled for the org
- * - the five setup goals are not already all complete - an org that configured everything from the
+ * - the setup goals are not already all complete - an org that configured everything from the
  *   settings pages never sees it
  *
  * `/app/accounting?setup=wizard` opens it regardless of all of the above except the role and

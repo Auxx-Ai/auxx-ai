@@ -29,6 +29,7 @@
 
 import {
   ACCOUNT_ROLES,
+  OPENING_FROM_NOTHING_SETTING_KEY,
   openingDifference,
   openingDifferenceRows,
   readSettingMinorUnits,
@@ -105,8 +106,12 @@ export function AccountingOpeningSettingsPage() {
   const { frozen } = useAccountingSettingsFreeze()
   const { draft, patch, dirty, save, discard, controlled, isSaving, getSetting } =
     useAccountingSetupDraft(OPENING_DRAFT_KEYS)
-  const openingSource =
-    getSetting('accounting.openingSource') === 'provider' ? 'provider' : 'manual'
+  const fromNothing = getSetting(OPENING_FROM_NOTHING_SETTING_KEY) === true
+  const openingSource = fromNothing
+    ? 'none'
+    : getSetting('accounting.openingSource') === 'provider'
+      ? 'provider'
+      : 'manual'
 
   const utils = api.useUtils()
   const opening = api.ledgerOpening.get.useQuery()
@@ -327,7 +332,8 @@ export function AccountingOpeningSettingsPage() {
                     summary.debitMinor,
                     summary.creditMinor,
                     summary.rows,
-                    currency
+                    currency,
+                    fromNothing
                   )}
                 />
               </div>

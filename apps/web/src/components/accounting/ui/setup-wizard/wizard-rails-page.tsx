@@ -49,7 +49,7 @@ interface CreateDraft {
 }
 
 /**
- * Page 6 of `AccountingSetupWizard` - the payment rails on this org's own
+ * `AccountingSetupWizard`'s rails page - the payment rails on this org's own
  * orders, and an account for each (brief 26 §8).
  *
  * 🛑 **Placement is load-bearing, and both ends of it.** It sits AFTER

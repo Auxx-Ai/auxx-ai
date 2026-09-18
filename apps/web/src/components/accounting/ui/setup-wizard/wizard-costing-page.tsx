@@ -18,7 +18,7 @@ const OVERHEAD_KEY = 'manufacturing.overheadCostPerUnit'
 const DRAFT_KEYS = [LABOR_KEY, OVERHEAD_KEY] as const
 
 /**
- * Page 4 of `AccountingSetupWizard` - the two absorption rates, plus a pointer at the
+ * `AccountingSetupWizard`'s costing page - the two absorption rates, plus a pointer at the
  * standard-cost roll.
  *
  * ⚠️ An unset rate is NOT zero. `loadAbsorptionRates` returns `null` for one and must keep doing

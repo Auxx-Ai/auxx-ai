@@ -1,7 +1,7 @@
 // apps/web/src/components/accounting/ui/setup-wizard/wizard-account-map-page.tsx
 'use client'
 
-// Page 7 of `AccountingSetupWizard` - say which account in QuickBooks each of
+// `AccountingSetupWizard`'s account-map page - which account in QuickBooks each of
 // the org's own accounts corresponds to (decision `G19`, the provider half).
 //
 // 🛑 Unlike `wizard-accounts-page.tsx`, this one EDITS rather than summarising,

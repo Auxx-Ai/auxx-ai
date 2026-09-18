@@ -174,9 +174,15 @@ export function overlayInventorySettings(
  * rather than telling them they are done.
  */
 export function openingEvidenceInstruction(
-  source: 'manual' | 'provider',
+  source: 'manual' | 'provider' | 'none',
   cutoverDate: string
 ): string {
+  if (source === 'none') {
+    return (
+      `Your books begin at ${cutoverDate} with nothing carried in, so there is no evidence to ` +
+      'gather and no opening entry to post. Untick the box below if that is not right.'
+    )
+  }
   if (source === 'provider') {
     return (
       `These are book balances from QuickBooks as of ${cutoverDate}. They already account for ` +
@@ -419,14 +425,22 @@ export function openingVerdict(
   debitMinor: number,
   creditMinor: number,
   rowCount: number,
-  currency: string
+  currency: string,
+  /** The org declared it carries no opening balances, so an empty grid is the finished answer. */
+  fromNothing = false
 ): { label: string; ok: boolean; detail?: string } {
   if (rowCount === 0) {
-    return {
-      label: 'Nothing entered yet.',
-      ok: false,
-      detail: 'Enter what each account was worth on the cutover date.',
-    }
+    return fromNothing
+      ? {
+          label: 'Nothing to carry in.',
+          ok: true,
+          detail: 'These books start from nothing, so no opening entry will be posted.',
+        }
+      : {
+          label: 'Nothing entered yet.',
+          ok: false,
+          detail: 'Enter what each account was worth on the cutover date.',
+        }
   }
   const difference = debitMinor - creditMinor
   if (difference === 0) {

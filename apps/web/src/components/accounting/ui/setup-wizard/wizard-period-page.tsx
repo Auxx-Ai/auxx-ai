@@ -31,7 +31,7 @@ function text(value: unknown): string | null {
 }
 
 /**
- * Page 2 of `AccountingSetupWizard` - the settings that decide which month a piece of subledger
+ * `AccountingSetupWizard`'s period page - the settings that decide which month a piece of subledger
  * activity belongs to, and which month the fiscal year turns over in.
  *
  * 🛑 There is NO UTC fallback on the timezone, deliberately. A receipt logged at 7pm on January 31
