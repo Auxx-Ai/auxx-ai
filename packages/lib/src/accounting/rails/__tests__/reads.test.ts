@@ -1,9 +1,9 @@
 // packages/lib/src/accounting/rails/__tests__/reads.test.ts
 //
 // The one thing this hydration does that `banking/reads.ts`'s does not:
-// `handles` is a multi-value TAGS field, one `FieldValue` row per handle, so
-// the byInstance map has to group by (entityId, fieldId) into ARRAYS rather
-// than keep the single row `hydrateBankAccounts` does for every scalar field.
+// `handles` is a multi-value TAGS field, one `FieldValue` row per handle, and
+// an open one - a free-text tag is written with its own text AS the `optionId`
+// - so it is read off `record.rows()` rather than a typed cell.
 // Uses the same double `banking/__tests__/reads-archived.test.ts` does
 // (`docs/lib-module-guide.md` §9's "copy the reference module" rule, applied
 // to its tests too).
@@ -17,6 +17,18 @@
 import { schema } from '@auxx/database'
 import { getTableName } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+/** The registry field type behind each attribute these tests read. */
+const FIELD_TYPES = vi.hoisted<Record<string, string>>(() => ({
+  payment_gateway_name: 'TEXT',
+  payment_gateway_handles: 'TAGS',
+  payment_gateway_fee_treatment: 'SINGLE_SELECT',
+  payment_gateway_status: 'SINGLE_SELECT',
+  payment_gateway_last_settlement_at: 'DATE',
+  payment_gateway_last_fee_booked_at: 'DATE',
+  order_payment_gateways: 'TAGS',
+  order_placed_at: 'DATE',
+}))
 
 const state = vi.hoisted(() => ({
   /** FIFO rows per table name - each `.from(table)` call shifts the next page for it. */
@@ -34,13 +46,15 @@ vi.mock('../../../cache', () => ({
   getOrgCache: () => ({
     from: () => ({
       // Every attribute resolves to a field whose id IS the attribute name.
+      // `type` is what `readSystemRecords` shapes a stored row by, so it has
+      // to be the registry's own field type per attribute.
       bySystemAttributes: async (attrs: string[]) =>
         Object.fromEntries(
           attrs.map((attr) => [
             attr,
             attr === 'order_payment_gateways'
-              ? { id: attr, options: state.gatewayFieldOptions }
-              : { id: attr },
+              ? { id: attr, type: FIELD_TYPES[attr], options: state.gatewayFieldOptions }
+              : { id: attr, type: FIELD_TYPES[attr] },
           ])
         ),
     }),
@@ -89,6 +103,12 @@ const { getPaymentGateway, listObservedGatewayHandles, listPaymentGateways } = a
 describe('listPaymentGateways', () => {
   it('groups a multi-value TAGS field (handles) into an array per instance, and resolves the rail scope', async () => {
     queue(schema.EntityInstance, [{ id: 'pg_1', createdAt: null, updatedAt: null }])
+    queue(schema.FieldValue, [
+      { entityId: 'pg_1', fieldId: 'payment_gateway_name', valueText: 'Authorize.Net' },
+      { entityId: 'pg_1', fieldId: 'payment_gateway_handles', optionId: 'authorize_net' },
+      { entityId: 'pg_1', fieldId: 'payment_gateway_handles', optionId: 'authorize.net' },
+      { entityId: 'pg_1', fieldId: 'payment_gateway_status', optionId: 'closed' },
+    ])
     queue(schema.GlRoleAssignment, [
       {
         role: 'clearing',
@@ -102,12 +122,6 @@ describe('listPaymentGateways', () => {
       },
     ])
     queue(schema.FinancialSourceAccount, [])
-    queue(schema.FieldValue, [
-      { entityId: 'pg_1', fieldId: 'payment_gateway_name', valueText: 'Authorize.Net' },
-      { entityId: 'pg_1', fieldId: 'payment_gateway_handles', optionId: 'authorize_net' },
-      { entityId: 'pg_1', fieldId: 'payment_gateway_handles', optionId: 'authorize.net' },
-      { entityId: 'pg_1', fieldId: 'payment_gateway_status', optionId: 'closed' },
-    ])
 
     const result = await listPaymentGateways(fakeDb(), ORG)
     expect(result.isOk()).toBe(true)
@@ -122,13 +136,13 @@ describe('listPaymentGateways', () => {
 
   it('falls back to valueText for a handle with no optionId, and drops a truly empty row', async () => {
     queue(schema.EntityInstance, [{ id: 'pg_1', createdAt: null, updatedAt: null }])
-    queue(schema.GlRoleAssignment, [])
-    queue(schema.FinancialSourceAccount, [])
     queue(schema.FieldValue, [
       { entityId: 'pg_1', fieldId: 'payment_gateway_name', valueText: 'Shopify Payments' },
       { entityId: 'pg_1', fieldId: 'payment_gateway_handles', valueText: 'shopify_payments' },
       { entityId: 'pg_1', fieldId: 'payment_gateway_handles', optionId: null, valueText: null },
     ])
+    queue(schema.GlRoleAssignment, [])
+    queue(schema.FinancialSourceAccount, [])
 
     const result = await listPaymentGateways(fakeDb(), ORG)
     if (!result.isOk()) throw result.error
@@ -137,12 +151,12 @@ describe('listPaymentGateways', () => {
 
   it('reads settlementSource off the linked feed, never a stored field', async () => {
     queue(schema.EntityInstance, [{ id: 'pg_1', createdAt: null, updatedAt: null }])
+    queue(schema.FieldValue, [
+      { entityId: 'pg_1', fieldId: 'payment_gateway_name', valueText: 'Stripe' },
+    ])
     queue(schema.GlRoleAssignment, [])
     queue(schema.FinancialSourceAccount, [
       { paymentGatewayId: 'pg_1', providerKey: 'stripe', externalAccountId: 'acct_stripe_1' },
-    ])
-    queue(schema.FieldValue, [
-      { entityId: 'pg_1', fieldId: 'payment_gateway_name', valueText: 'Stripe' },
     ])
 
     const result = await listPaymentGateways(fakeDb(), ORG)
@@ -153,11 +167,11 @@ describe('listPaymentGateways', () => {
 
   it('defaults to unmapped clearing and no fee account when nothing is scoped to the rail', async () => {
     queue(schema.EntityInstance, [{ id: 'pg_1', createdAt: null, updatedAt: null }])
-    queue(schema.GlRoleAssignment, [])
-    queue(schema.FinancialSourceAccount, [])
     queue(schema.FieldValue, [
       { entityId: 'pg_1', fieldId: 'payment_gateway_name', valueText: 'Affirm' },
     ])
+    queue(schema.GlRoleAssignment, [])
+    queue(schema.FinancialSourceAccount, [])
 
     const result = await listPaymentGateways(fakeDb(), ORG)
     if (!result.isOk()) throw result.error
@@ -170,6 +184,9 @@ describe('listPaymentGateways', () => {
 
   it('ignores a marked-unused clearing row, and prefers the no-currency row over a currency one', async () => {
     queue(schema.EntityInstance, [{ id: 'pg_1', createdAt: null, updatedAt: null }])
+    queue(schema.FieldValue, [
+      { entityId: 'pg_1', fieldId: 'payment_gateway_name', valueText: 'Stripe' },
+    ])
     queue(schema.GlRoleAssignment, [
       {
         role: 'clearing',
@@ -203,9 +220,6 @@ describe('listPaymentGateways', () => {
       },
     ])
     queue(schema.FinancialSourceAccount, [])
-    queue(schema.FieldValue, [
-      { entityId: 'pg_1', fieldId: 'payment_gateway_name', valueText: 'Stripe' },
-    ])
 
     const result = await listPaymentGateways(fakeDb(), ORG)
     if (!result.isOk()) throw result.error
@@ -221,11 +235,11 @@ describe('listPaymentGateways', () => {
     // always produced - so its payouts keep their fee leg. Coercing the other
     // way would silently drop the fee leg off every unanswered rail.
     queue(schema.EntityInstance, [{ id: 'pg_1', createdAt: null, updatedAt: null }])
-    queue(schema.GlRoleAssignment, [])
-    queue(schema.FinancialSourceAccount, [])
     queue(schema.FieldValue, [
       { entityId: 'pg_1', fieldId: 'payment_gateway_name', valueText: 'Affirm' },
     ])
+    queue(schema.GlRoleAssignment, [])
+    queue(schema.FinancialSourceAccount, [])
 
     const result = await listPaymentGateways(fakeDb(), ORG)
     if (!result.isOk()) throw result.error
@@ -235,8 +249,6 @@ describe('listPaymentGateways', () => {
 
   it('reads a stamped billed treatment and a last-fee date off the option and date columns', async () => {
     queue(schema.EntityInstance, [{ id: 'pg_1', createdAt: null, updatedAt: null }])
-    queue(schema.GlRoleAssignment, [])
-    queue(schema.FinancialSourceAccount, [])
     queue(schema.FieldValue, [
       { entityId: 'pg_1', fieldId: 'payment_gateway_name', valueText: 'Authorize.Net' },
       // 🛑 `optionId`, not `valueText` - the column the CRUD handler writes a
@@ -248,6 +260,8 @@ describe('listPaymentGateways', () => {
         valueDate: '2026-07-14T00:00:00.000Z',
       },
     ])
+    queue(schema.GlRoleAssignment, [])
+    queue(schema.FinancialSourceAccount, [])
 
     const result = await listPaymentGateways(fakeDb(), ORG)
     if (!result.isOk()) throw result.error
@@ -274,8 +288,6 @@ describe('listObservedGatewayHandles', () => {
   /** Queue what `listPaymentGateways` reads for one claiming gateway. */
   function claimedBy(id: string, handles: string[]) {
     queue(schema.EntityInstance, [{ id, createdAt: null, updatedAt: null }])
-    queue(schema.GlRoleAssignment, [])
-    queue(schema.FinancialSourceAccount, [])
     queue(schema.FieldValue, [
       { entityId: id, fieldId: 'payment_gateway_name', valueText: id },
       ...handles.map((handle) => ({
@@ -284,6 +296,8 @@ describe('listObservedGatewayHandles', () => {
         optionId: handle,
       })),
     ])
+    queue(schema.GlRoleAssignment, [])
+    queue(schema.FinancialSourceAccount, [])
   }
 
   it('de-duplicates case-insensitively, drops the reserved handles, and marks what is claimed', async () => {
@@ -348,13 +362,13 @@ describe('listObservedGatewayHandles', () => {
     // routes its own history - so its handles are routed, not orphaned.
     queue(schema.FieldValue, [{ optionId: 'authorize_net', valueText: null }])
     queue(schema.EntityInstance, [{ id: 'pg_closed', createdAt: null, updatedAt: null }])
-    queue(schema.GlRoleAssignment, [])
-    queue(schema.FinancialSourceAccount, [])
     queue(schema.FieldValue, [
       { entityId: 'pg_closed', fieldId: 'payment_gateway_name', valueText: 'Authorize.Net' },
       { entityId: 'pg_closed', fieldId: 'payment_gateway_handles', optionId: 'AUTHORIZE_NET' },
       { entityId: 'pg_closed', fieldId: 'payment_gateway_status', optionId: 'closed' },
     ])
+    queue(schema.GlRoleAssignment, [])
+    queue(schema.FinancialSourceAccount, [])
 
     const result = await listObservedGatewayHandles(fakeDb(), ORG)
     expect(result.isOk()).toBe(true)

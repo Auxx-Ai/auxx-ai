@@ -47,14 +47,12 @@ export {
   type ReadRailFeeStatusOptions,
   readRailFeeStatus,
 } from './rail-fee-status'
-export type { PaymentGatewayFieldContext } from './reads'
 export {
   getPaymentGateway,
   listGatewayHandleCensus,
   listObservedGatewayHandles,
   listPaymentGateways,
-  loadPaymentGatewayFieldContext,
-  requirePaymentGatewayFieldContext,
+  requirePaymentGatewayDefId,
 } from './reads'
 export type { ClearingAccountBalance } from './repoint'
 export { readClearingAccountBalance } from './repoint'

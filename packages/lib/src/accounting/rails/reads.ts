@@ -13,7 +13,7 @@
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
@@ -21,7 +21,13 @@ import { UnprocessableEntityError } from '../../errors'
 import type { FieldOptions } from '../../field-values/converters'
 import { buildOptionIndex, resolveOptionId } from '../../resources/registry/option-helpers'
 import { toRecordId } from '../../resources/resource-id'
-import { systemDefId, systemFieldMap } from '../../resources/system-records'
+import {
+  readSystemRecords,
+  type SystemFieldContext,
+  type SystemRecord,
+  systemDefId,
+  systemFields,
+} from '../../resources/system-records'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { readRoleAssignments } from '../ledger/roles/role-assignments'
 import {
@@ -44,6 +50,11 @@ import { guard } from './guard'
  * `settlementBankAccount`) - what they answered now comes from the rail scope
  * (`GlRoleAssignment.paymentGatewayId`) and the linked feed, both read in
  * {@link hydratePaymentGateways}, never from a `FieldValue` on this record.
+ *
+ * Hand-listed until B3 lands a typed subset picker in
+ * `resources/registry/system-attributes.ts`: `PAYMENT_GATEWAY_FIELDS` also
+ * declares `payment_gateway_payouts`, a has-many inverse whose values no row
+ * here reads and which would be a `FieldValue` row per payout per gateway.
  */
 const PAYMENT_GATEWAY_ATTRIBUTES = [
   'payment_gateway_name',
@@ -55,54 +66,46 @@ const PAYMENT_GATEWAY_ATTRIBUTES = [
 ] as const
 
 type PaymentGatewayAttribute = (typeof PAYMENT_GATEWAY_ATTRIBUTES)[number]
-type PaymentGatewayFields = Record<PaymentGatewayAttribute, { id: string } | null>
-
-/** The resolved def and field ids every payment-gateway read needs. */
-export interface PaymentGatewayFieldContext {
-  paymentGatewayDefId: string
-  fields: PaymentGatewayFields
-}
+type PaymentGatewayContext = SystemFieldContext<PaymentGatewayAttribute>
 
 /**
- * Resolve the `payment_gateway` def and its fields, or `null` when the org has
- * not run entity migration 146 yet.
+ * The `payment_gateway` def and its fields, or `null` when the org has not run
+ * entity migration 146 yet.
  *
  * `null` rather than a throw so a caller that only wants to know whether the
  * feature is provisioned (the fulfillment planner, which has nothing to route
- * without it) gets an empty answer instead of a 500. Write paths call
- * {@link requirePaymentGatewayFieldContext} instead.
+ * without it) gets an empty answer instead of a 500.
  */
-export async function loadPaymentGatewayFieldContext(
-  organizationId: string,
-  db?: Database | Transaction
-): Promise<PaymentGatewayFieldContext | null> {
-  const paymentGatewayDefId = await systemDefId(db, organizationId, 'payment_gateway')
-  if (!paymentGatewayDefId) return null
-  const fields = (await systemFieldMap(
-    db,
-    organizationId,
-    PAYMENT_GATEWAY_ATTRIBUTES
-  )) as PaymentGatewayFields
+async function paymentGatewayContext(
+  db: Database | Transaction | undefined,
+  organizationId: string
+): Promise<PaymentGatewayContext | null> {
+  const ctx = await systemFields(db, organizationId, 'payment_gateway', PAYMENT_GATEWAY_ATTRIBUTES)
   // Without `name` there is no gateway at all: the display value is the one
   // thing every row must carry. `clearingAccount` used to gate this too, but
   // §4.3 removed it from the record - the rail scope answers that now.
-  if (!fields.payment_gateway_name) return null
-  return { paymentGatewayDefId, fields }
+  return ctx?.fields.payment_gateway_name ? ctx : null
 }
 
-/** {@link loadPaymentGatewayFieldContext}, as the refusal a write path needs. */
-export async function requirePaymentGatewayFieldContext(
+/**
+ * The `payment_gateway` def id, or the refusal a write path needs.
+ *
+ * The def id is the whole half the writes use - every value they set goes
+ * through `UnifiedCrudHandler`, which resolves the fields itself - but the
+ * fields are still resolved here, so a def without `name` refuses as it did.
+ */
+export async function requirePaymentGatewayDefId(
   organizationId: string,
   db?: Database | Transaction
-): Promise<PaymentGatewayFieldContext> {
-  const ctx = await loadPaymentGatewayFieldContext(organizationId, db)
+): Promise<string> {
+  const ctx = await paymentGatewayContext(db, organizationId)
   if (!ctx) {
     throw new UnprocessableEntityError(
       'Payment gateways are not available until the payment_gateway entity and its fields are ' +
         'provisioned (entity migration 146)'
     )
   }
-  return ctx
+  return ctx.defId
 }
 
 /**
@@ -120,27 +123,12 @@ export async function listPaymentGateways(
   const { includeArchived = false } = params
   return guard(
     async () => {
-      const ctx = await loadPaymentGatewayFieldContext(organizationId, db)
+      const ctx = await paymentGatewayContext(db, organizationId)
       if (!ctx) return []
 
-      const instances = await db
-        .select({
-          id: schema.EntityInstance.id,
-          createdAt: schema.EntityInstance.createdAt,
-          updatedAt: schema.EntityInstance.updatedAt,
-        })
-        .from(schema.EntityInstance)
-        .where(
-          and(
-            eq(schema.EntityInstance.organizationId, organizationId),
-            eq(schema.EntityInstance.entityDefinitionId, ctx.paymentGatewayDefId),
-            ...(includeArchived ? [] : [isNull(schema.EntityInstance.archivedAt)])
-          )
-        )
-        .orderBy(asc(schema.EntityInstance.createdAt))
-
-      if (instances.length === 0) return []
-      return hydratePaymentGateways(db, organizationId, ctx, instances)
+      const records = await readSystemRecords(db, organizationId, ctx, { includeArchived })
+      if (records.length === 0) return []
+      return hydratePaymentGateways(db, organizationId, records)
     },
     'Failed to list payment gateways',
     { organizationId }
@@ -160,28 +148,15 @@ export async function getPaymentGateway(
   const { includeArchived = false } = params
   return guard(
     async () => {
-      const ctx = await loadPaymentGatewayFieldContext(organizationId, db)
+      const ctx = await paymentGatewayContext(db, organizationId)
       if (!ctx) return null
 
-      const [instance] = await db
-        .select({
-          id: schema.EntityInstance.id,
-          createdAt: schema.EntityInstance.createdAt,
-          updatedAt: schema.EntityInstance.updatedAt,
-        })
-        .from(schema.EntityInstance)
-        .where(
-          and(
-            eq(schema.EntityInstance.id, paymentGatewayId),
-            eq(schema.EntityInstance.organizationId, organizationId),
-            eq(schema.EntityInstance.entityDefinitionId, ctx.paymentGatewayDefId),
-            ...(includeArchived ? [] : [isNull(schema.EntityInstance.archivedAt)])
-          )
-        )
-        .limit(1)
-
-      if (!instance) return null
-      const [row] = await hydratePaymentGateways(db, organizationId, ctx, [instance])
+      const records = await readSystemRecords(db, organizationId, ctx, {
+        ids: [paymentGatewayId],
+        includeArchived,
+      })
+      if (records.length === 0) return null
+      const [row] = await hydratePaymentGateways(db, organizationId, records)
       return row ?? null
     },
     'Failed to read payment gateway',
@@ -533,84 +508,39 @@ async function readGatewayLinkedFeeds(
 }
 
 /**
- * Turn a page of payment-gateway instance ids into full rows with exactly one
- * query for their field values, one for their rail-scoped role rows and one for
- * their linked feeds.
+ * Turn a page of payment-gateway records into full rows, with one query for
+ * their rail-scoped role rows and one for their linked feeds.
  *
  * `handles` is the one multi-value field here (TAGS - one `FieldValue` row per
- * handle), so this groups values by `(entityId, fieldId)` into arrays rather
- * than the single-row-per-field map {@link listBankAccounts}'s hydrate uses.
- * Free-text tags (`options: { options: [] }`, the same shape
- * `order_payment_gateways` declares) are written with the typed text AS the
- * `optionId` - `valueText` is read as a defensive fallback only, mirroring
+ * handle), and it is read through `rows()` rather than a typed cell: a
+ * free-text tag is written with its own text AS the `optionId`
+ * (`options: { options: [] }`, the same shape `order_payment_gateways`
+ * declares) and `valueText` is the defensive fallback, mirroring
  * `readOrderFacts` in `money/fulfillment-posting/reads.ts`.
  */
 async function hydratePaymentGateways(
   db: Database | Transaction,
   organizationId: string,
-  ctx: PaymentGatewayFieldContext,
-  page: { id: string; createdAt: Date | null; updatedAt: Date | null }[]
+  records: SystemRecord<PaymentGatewayAttribute>[]
 ): Promise<PaymentGatewayRow[]> {
-  const ids = page.map((row) => row.id)
   const [railAccounts, linkedFeeds] = await Promise.all([
     readGatewayRailAccounts(db, organizationId),
-    readGatewayLinkedFeeds(db, organizationId, ids),
+    readGatewayLinkedFeeds(
+      db,
+      organizationId,
+      records.map((record) => record.id)
+    ),
   ])
-  const fieldIds = Object.values(ctx.fields)
-    .filter((field): field is { id: string } => field != null)
-    .map((field) => field.id)
 
-  const values = fieldIds.length
-    ? await db
-        .select({
-          entityId: schema.FieldValue.entityId,
-          fieldId: schema.FieldValue.fieldId,
-          valueText: schema.FieldValue.valueText,
-          valueDate: schema.FieldValue.valueDate,
-          relatedEntityId: schema.FieldValue.relatedEntityId,
-          optionId: schema.FieldValue.optionId,
-        })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            inArray(schema.FieldValue.entityId, ids),
-            inArray(schema.FieldValue.fieldId, fieldIds)
-          )
-        )
-    : []
-
-  const byInstance = new Map<string, Map<string, (typeof values)[number][]>>()
-  for (const value of values) {
-    let bucket = byInstance.get(value.entityId)
-    if (!bucket) {
-      bucket = new Map()
-      byInstance.set(value.entityId, bucket)
-    }
-    const rows = bucket.get(value.fieldId) ?? []
-    rows.push(value)
-    bucket.set(value.fieldId, rows)
-  }
-
-  const readOne = (instanceId: string, attr: PaymentGatewayAttribute) => {
-    const id = ctx.fields[attr]?.id
-    return id ? (byInstance.get(instanceId)?.get(id)?.[0] ?? null) : null
-  }
-  const readMany = (instanceId: string, attr: PaymentGatewayAttribute) => {
-    const id = ctx.fields[attr]?.id
-    return id ? (byInstance.get(instanceId)?.get(id) ?? []) : []
-  }
-
-  return page.map((row) => {
-    const lastSettlementAt = readOne(row.id, 'payment_gateway_last_settlement_at')?.valueDate
-    const lastFeeBookedAt = readOne(row.id, 'payment_gateway_last_fee_booked_at')?.valueDate
-    const rail = railAccounts.get(row.id)
-    const feed = linkedFeeds.get(row.id)
+  return records.map((record) => {
+    const rail = railAccounts.get(record.id)
+    const feed = linkedFeeds.get(record.id)
     return {
-      id: row.id,
-      recordId: toRecordId(ctx.paymentGatewayDefId, row.id),
-      name: readOne(row.id, 'payment_gateway_name')?.valueText ?? '',
-      handles: readMany(row.id, 'payment_gateway_handles')
+      id: record.id,
+      recordId: record.recordId,
+      name: record.text('payment_gateway_name') ?? '',
+      handles: record
+        .rows('payment_gateway_handles')
         .map((value) => value.optionId ?? value.valueText)
         .filter((handle): handle is string => !!handle),
       clearingGlAccountId: rail?.clearingGlAccountId ?? '',
@@ -620,20 +550,20 @@ async function hydratePaymentGateways(
       processorAccountId: feed?.externalAccountId ?? null,
       settlementCurrency: rail?.currency ?? null,
       // §3: `bank` resolves to a `gl_account`, not a `bank_account` record - see
-      // `payment-gateways/feeds.ts` for the rail's actual bank mapping.
+      // `feeds.ts` for the rail's actual bank mapping.
       bankAccountId: null,
       // 🛑 An org short of migration 156 has no option row here, and
       // `resolvePaymentGatewayFeeTreatment` answers `netted` for it - which is
       // exactly the entry `buildPayoutEntry` has always produced. Defaulting the
       // other way would silently drop the fee leg off every unanswered rail.
       feeTreatment: resolvePaymentGatewayFeeTreatment(
-        readOne(row.id, 'payment_gateway_fee_treatment')?.optionId
+        record.option('payment_gateway_fee_treatment')
       ),
-      status: resolvePaymentGatewayStatus(readOne(row.id, 'payment_gateway_status')?.optionId),
-      lastSettlementAt: lastSettlementAt ? lastSettlementAt.slice(0, 10) : null,
-      lastFeeBookedAt: lastFeeBookedAt ? lastFeeBookedAt.slice(0, 10) : null,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
+      status: resolvePaymentGatewayStatus(record.option('payment_gateway_status')),
+      lastSettlementAt: record.date('payment_gateway_last_settlement_at')?.slice(0, 10) ?? null,
+      lastFeeBookedAt: record.date('payment_gateway_last_fee_booked_at')?.slice(0, 10) ?? null,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
     } satisfies PaymentGatewayRow
   })
 }
