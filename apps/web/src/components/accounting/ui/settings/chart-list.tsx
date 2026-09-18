@@ -696,7 +696,7 @@ function ChartAccountListRow({
       selected={isSelected}
       onSelectChange={(_next, event) => toggle(account.id, { shiftKey: event.shiftKey })}
       selectLabel={`Select ${account.code ? `${account.code} ` : ''}${account.name}`}
-      secondaryFill
+      // No `secondaryFill`: a filled secondary pushes the expand chevron to the row's far edge.
       // Selecting a parent must not select its children (CHART-HIERARCHY.md
       // §7) - the row click opens the detail pane, exactly as a leaf's does,
       // and the chevron (rendered because `expandable`) owns expand/collapse.

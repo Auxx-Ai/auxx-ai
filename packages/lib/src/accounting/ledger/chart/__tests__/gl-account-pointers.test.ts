@@ -84,13 +84,21 @@ describe('GL_ACCOUNT_POINTER_ATTRIBUTES', () => {
 })
 
 describe('findGlAccountPointers', () => {
-  /** A db stub that records the query and answers with `rows`. */
-  function stubDb(rows: unknown[]) {
+  const FIELDS = [
+    { id: 'f_bank', attribute: 'bank_account_gl_account' },
+    { id: 'f_future', attribute: 'some_future_gl_account' },
+  ]
+
+  /** A db stub answering the field read, then the value read, and recording the cap. */
+  function stubDb(rows: unknown[], fields: unknown[] = FIELDS) {
     const calls: { limit?: number } = {}
+    let reads = 0
     const chain = {
       from: () => chain,
-      innerJoin: () => chain,
-      where: () => chain,
+      where: () => {
+        reads += 1
+        return reads === 1 ? Promise.resolve(fields) : chain
+      },
       limit: (n: number) => {
         calls.limit = n
         return Promise.resolve(rows)
@@ -111,14 +119,14 @@ describe('findGlAccountPointers', () => {
     expect(queried).toBe(false)
   })
 
+  it('reads no values for an org with no pointer fields', async () => {
+    const { db, calls } = stubDb([{ fieldId: 'f_bank', entityId: 'x', glAccountId: 'a' }], [])
+    expect(await findGlAccountPointers(db, 'org-1', ['a'])).toEqual([])
+    expect(calls.limit).toBeUndefined()
+  })
+
   it('maps a row onto its human label', async () => {
-    const { db } = stubDb([
-      {
-        attribute: 'bank_account_gl_account',
-        entityId: 'ba_1',
-        glAccountId: 'acct_1010',
-      },
-    ])
+    const { db } = stubDb([{ fieldId: 'f_bank', entityId: 'ba_1', glAccountId: 'acct_1010' }])
     expect(await findGlAccountPointers(db, 'org-1', ['acct_1010'])).toEqual([
       {
         attribute: 'bank_account_gl_account',
@@ -129,14 +137,14 @@ describe('findGlAccountPointers', () => {
     ])
   })
 
-  // Both columns are nullable in the schema even though the query filters on
-  // them. Dropping the row beats asserting and throwing inside a guard whose
-  // whole job is to refuse cleanly.
-  it('drops a row with no attribute or no id rather than throwing', async () => {
+  // `valueText` is nullable in the schema even though the query filters on it.
+  // Dropping the row beats asserting and throwing inside a guard whose whole
+  // job is to refuse cleanly.
+  it('drops a row with an unknown field or no id rather than throwing', async () => {
     const { db } = stubDb([
-      { attribute: null, entityId: 'x', glAccountId: 'acct_1210' },
-      { attribute: 'bank_account_gl_account', entityId: 'y', glAccountId: null },
-      { attribute: 'bank_account_gl_account', entityId: 'z', glAccountId: 'acct_1210' },
+      { fieldId: 'f_unknown', entityId: 'x', glAccountId: 'acct_1210' },
+      { fieldId: 'f_bank', entityId: 'y', glAccountId: null },
+      { fieldId: 'f_bank', entityId: 'z', glAccountId: 'acct_1210' },
     ])
     const found = await findGlAccountPointers(db, 'org-1', ['acct_1210'])
     expect(found).toHaveLength(1)
@@ -144,17 +152,16 @@ describe('findGlAccountPointers', () => {
   })
 
   it('caps the rows it reads - a refusal needs examples, not every row', async () => {
-    const { db, calls } = stubDb([])
-    await findGlAccountPointers(db, 'org-1', ['acct_1210'])
-    expect(calls.limit).toBe(5)
-    await findGlAccountPointers(db, 'org-1', ['acct_1210'], 500)
-    expect(calls.limit).toBe(500)
+    const first = stubDb([])
+    await findGlAccountPointers(first.db, 'org-1', ['acct_1210'])
+    expect(first.calls.limit).toBe(5)
+    const second = stubDb([])
+    await findGlAccountPointers(second.db, 'org-1', ['acct_1210'], 500)
+    expect(second.calls.limit).toBe(500)
   })
 
   it('falls back to the raw attribute when one carries no label', async () => {
-    const { db } = stubDb([
-      { attribute: 'some_future_gl_account', entityId: 'q', glAccountId: 'acct_1210' },
-    ])
+    const { db } = stubDb([{ fieldId: 'f_future', entityId: 'q', glAccountId: 'acct_1210' }])
     const found = await findGlAccountPointers(db, 'org-1', ['acct_1210'])
     expect(found[0]?.label).toBe('some_future_gl_account')
   })

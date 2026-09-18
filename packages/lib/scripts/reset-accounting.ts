@@ -1,79 +1,47 @@
 // packages/lib/scripts/reset-accounting.ts
 //
 // 🛑 DEV-ONLY. Returns one organization's ACCOUNTING state to zero so the whole
-// flow - wizard, opening balances, connectors, close - can be driven again.
+// flow - wizard, chart, opening balances, export, close - can be driven again.
+// Source documents (orders, fulfillments, payouts, bank transactions, the money
+// model) and the book connection are never touched.
 //
 //   npx dotenv -- node --conditions source --import tsx/esm \
-//     packages/lib/scripts/reset-accounting.ts <org> --failed-only
+//     packages/lib/scripts/reset-accounting.ts DemoOrg1 --all --wizard --chart
 //   npx dotenv -- node --conditions source --import tsx/esm \
-//     packages/lib/scripts/reset-accounting.ts <org> --all --wizard --confirm
+//     packages/lib/scripts/reset-accounting.ts DemoOrg1 --all --wizard --chart --confirm
 //
 // `<org>` is an organization id, or a name to match (`DemoOrg1`).
 // Read-only without `--confirm`.
 //
-// ── Why this exists next to `reset-month-end-close.ts` ──────────────────────
+// Guards:
 //
-// That script takes a `periodKey` and validates it as `/^\d{4}-\d{2}$/`. Only
-// `month_end_inventory` keys on a month. Nine posting types key on a DOCUMENT
-// number instead (`doc-number.ts`: `DEP-0003`, `INV-0012`, `JNL-0004`,
-// `PMT-<hash>`), so the one script that can unwedge a claimed period refuses
-// every period the document-keyed types claim. This one takes the whole
-// organization, or any period key of any shape.
-//
-// ── The wedge this unsticks ─────────────────────────────────────────────────
-//
-// `postEntry` commits the claim and its lines, THEN calls the provider
-// (`post-entry.ts` step 7 - a network call inside an open transaction would
-// hold the claim's index tuple for the length of an HTTP round trip). When the
-// provider refuses, `recordFailure` stamps the row `failed` and the row keeps
-// its claim, its lines and its `requestId`.
-//
-// Nothing can then re-post that document:
-//
-//   - a fresh post converges on `already_posted`, which is a SUCCESS status;
-//   - `reverseEntry` accepts only a `posted` original;
-//   - re-pushing a failed row is a distinct operation and is NOT BUILT.
-//
-// And every report counts `['posted', 'reversed']` only (`trial-balance.ts`,
-// `verify-balance.ts`, `account-lines.ts`, `aging.ts`), so the lines are on
-// disk and out of the books at the same time.
-//
-// 🛑 That means an EXPORT fault silently subtracts from OUR ledger, which
-// decision P1 says it must not: the accounting system is an exporter, not the
-// system of record. An org with nothing connected posts fine; an org with
-// QuickBooks connected and one account unmapped ends up with a hole. Deleting
-// the row is the dev remedy. The product remedy is a re-push, or splitting
-// export state off `GlPosting.status` entirely.
-//
-// ── Guards kept from `reset-month-end-close.ts` ─────────────────────────────
-//
-// 1. A row carrying `providerEntryId` REFUSES without `--force`: deleting our
-//    row orphans a real journal entry on the provider, and the next close
-//    computes its delta against a snapshot the provider no longer agrees with.
+// 1. A posting in a SENT export batch REFUSES without `--force`: deleting our
+//    row orphans a real object at the provider.
 // 2. Delete order is descending `revision`. `GlPosting.reversesId` is ON DELETE
-//    RESTRICT, so a reversal has to go before the row it reverses. A reversal
-//    always claims a revision above its original and shares its period key, so
-//    ordering the whole set by revision descending is sufficient.
-// 3. Partial selections (`--failed-only`, `--period`) additionally refuse when
-//    a row OUTSIDE the selection reverses a row INSIDE it, which the RESTRICT
-//    would otherwise reject halfway through.
-// 4. The QuickBooks map is cleared through `clearQuickbooksAccountMapping`, so
-//    the `RecordIdentity` mirror goes with the cell. A raw FieldValue delete
-//    leaves the mirror behind and manufactures work for the identity
-//    reconciler.
-// 5. `--wizard` fires `org.settings.changed` itself.
-//    `batchUpdateOrganizationSettings` does NOT bust the `orgSettings` cache -
-//    the settings ROUTER does - and this script is not the router. Skipping it
-//    leaves the wizard reading `finalized` out of Redis for a day.
+//    RESTRICT, so a reversal has to go before the row it reverses.
+// 3. `--period` additionally refuses when a row OUTSIDE the selection reverses
+//    a row INSIDE it, which the RESTRICT would otherwise reject halfway through.
+// 4. The QuickBooks map is cleared through `clearQuickbooksAccountMapping` BEFORE
+//    the chart goes, so the `RecordIdentity` mirror goes with the cell rather
+//    than by cascade.
+// 5. `--chart` clears the text pointers at the chart (`bank_account_gl_account`
+//    and friends) first, then asks `findGlAccountPointers` to prove nothing is
+//    left - a wipe that leaves a dangling account id refuses the next posting.
+// 6. `--wizard` fires `org.settings.changed` itself; `batchUpdateOrganizationSettings`
+//    does not bust the `orgSettings` cache, the settings router does.
 
 import { database as db, schema } from '@auxx/database'
-import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { listChartAccounts } from '../src/accounting/ledger'
+import { findGlAccountPointers } from '../src/accounting/ledger/chart/gl-account-pointers'
+import { setLockedThrough } from '../src/accounting/ledger/periods/set-locked-through'
 import {
   clearQuickbooksAccountMapping,
   readQuickbooksAccountMap,
 } from '../src/accounting/providers/quickbooks/account-map'
+import { getOrgCache } from '../src/cache'
 import { onCacheEvent } from '../src/cache/invalidate'
+import { deleteEntityInstances } from '../src/entity-instances'
 import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'
 
 // `GlPostingSource` cascades on `GlPosting` delete, so the claim itself needs no
@@ -149,30 +117,29 @@ const ORG_ARG = process.argv[2] ?? ''
 const args = process.argv.slice(3)
 
 const ALL = args.includes('--all')
-const FAILED_ONLY = args.includes('--failed-only')
 const PERIOD = args.includes('--period') ? (args[args.indexOf('--period') + 1] ?? '') : ''
 const WIZARD = args.includes('--wizard')
+const CHART = args.includes('--chart')
 const KEEP_MAP = args.includes('--keep-map')
 const FORCE = args.includes('--force')
 const CONFIRM = args.includes('--confirm')
 
-const selectors = [ALL, FAILED_ONLY, !!PERIOD].filter(Boolean).length
+const selectors = [ALL, !!PERIOD].filter(Boolean).length
 
-if (!ORG_ARG || selectors !== 1) {
+if (!ORG_ARG || selectors !== 1 || (CHART && !ALL && !FORCE)) {
   console.error(
     'usage: reset-accounting.ts <organizationId|name> <selector> [options]\n\n' +
       '  selectors, exactly one:\n' +
-      '    --failed-only     delete postings whose EXPORT was refused.\n' +
-      '                      🛑 These are REAL entries: since the export split a refused\n' +
-      '                      push leaves the entry posted, so deleting one removes it\n' +
-      '                      from the books. The product remedy is Retry export.\n' +
       '    --period <key>    delete one period key, any shape (2026-08, DEP-0003, INV-0012)\n' +
-      '    --all             delete every posting this organization has\n\n' +
+      '    --all             delete every posting, export batch and mirror entry this\n' +
+      '                      organization has\n\n' +
       '  options:\n' +
       '    --wizard          also return the setup wizard, the opening baseline and the\n' +
       '                      provider sync marker to draft\n' +
+      '    --chart           also delete the chart of accounts, its role assignments and\n' +
+      '                      the bank-side pointers at it (needs --all)\n' +
       '    --keep-map        do not clear the QuickBooks account map\n' +
-      '    --force           past the providerEntryId and remaining-postings guards\n' +
+      '    --force           past the sent-batch and remaining-postings guards\n' +
       '    --confirm         actually write. Without it this is a dry run.\n'
   )
   process.exit(1)
@@ -180,29 +147,10 @@ if (!ORG_ARG || selectors !== 1) {
 
 /**
  * Every key the wizard, the close and the inbound sync write, returned to its
- * catalog default.
- *
- * Written through `batchUpdateOrganizationSettings` rather than deleted, so the
- * organization lands exactly where one that never opened the wizard sits, and
- * still passes that function's normalization and unknown-key check.
- *
- * 🛑 **A key belongs here when a posting delete makes its value a lie**, which
- * is a wider test than "the wizard wrote it". Two were missed on that narrower
- * reading and both survived a `--wizard` reset on DemoOrg1 (2026-09-14):
- *
- *  - `accounting.providerSyncedThrough` is stamped by the provider sync, not by
- *    the wizard, and `marker-writes.ts` exists to keep it from ever running
- *    ahead of what was genuinely read. Deleting every `provider_sync` posting
- *    puts it exactly there: the marker claimed QuickBooks had been read through
- *    2026-09-10 with not one of those entries left on disk, so every statement
- *    rendered itself complete over a range nothing had covered. That is the one
- *    direction the marker is not allowed to be wrong in.
- *  - `accounting.openingSource` / `...AsOf` describe an opening trial balance
- *    that the delete just removed, so they answer for a baseline that is gone
- *    and silently pre-arm the wizard's opening step with the last run's choice.
- *
- * ⚠️ `openingSource` resets to `'manual'`, not null - it is a SINGLE_SELECT
- * whose catalog default is a real option, and null is not one of its values.
+ * catalog default. A key belongs here when a posting delete makes its value a
+ * lie: `providerSyncedThrough` claims a range the mirror no longer covers, and
+ * the opening keys describe a baseline the delete removed. `openingSource`
+ * resets to `'manual'`, its real catalog default.
  */
 const WIZARD_KEYS = [
   { key: 'accounting.setupState' as const, value: 'draft' },
@@ -220,8 +168,26 @@ const WIZARD_KEYS = [
   { key: 'accounting.qboOpeningFinishedGoods' as const, value: null },
   { key: 'accounting.qboOpeningJournalRef' as const, value: null },
   { key: 'accounting.providerSyncedThrough' as const, value: null },
-  { key: 'ledger.lockedThroughMonth' as const, value: null },
 ]
+
+/**
+ * TEXT pointers at a `gl_account` instance, cleared before the chart goes.
+ * Mirrors `GL_ACCOUNT_POINTER_ATTRIBUTES`; the guard re-asks that helper after
+ * the clear, so a pointer this list misses stops the wipe instead of dangling.
+ */
+const CHART_POINTER_ATTRIBUTES = [
+  'bank_account_gl_account',
+  'bank_rule_gl_account',
+  'bank_transaction_gl_account',
+  'bank_transaction_suggested_gl_account',
+  'vendor_bill_line_gl_account',
+] as const
+
+/** Watermarks the payout and fee postings stamp on a rail; a lie once those postings go. */
+const RAIL_MARKER_ATTRIBUTES = [
+  'payment_gateway_last_settlement_at',
+  'payment_gateway_last_fee_booked_at',
+] as const
 
 const QUICKBOOKS_APP_SLUG = 'quickbooks'
 
@@ -255,12 +221,9 @@ async function resolveOrg(): Promise<{ id: string; name: string | null }> {
 
 /**
  * The org's QuickBooks installation and connection, by query rather than
- * through `resolveQuickbooksContext`.
- *
- * That helper also resolves the app DEPLOYMENT and answers `connected: false`
- * when the bundle cannot be resolved. For a tool whose whole job is cleaning up
- * after something went wrong, "the deployment is broken so I will not clear the
- * map" is the wrong failure mode. Nothing here invokes a tool.
+ * through `resolveQuickbooksContext`: that helper answers `connected: false`
+ * when the app deployment cannot be resolved, and a cleanup tool must not
+ * refuse to clear the map because the bundle is broken.
  */
 async function resolveQuickbooksConnection(
   organizationId: string
@@ -292,29 +255,64 @@ async function resolveQuickbooksConnection(
   return { installationId, connectionId }
 }
 
+/** `systemAttribute -> CustomField.id` for the attributes this org has. */
+async function resolveFieldIds(
+  organizationId: string,
+  attributes: readonly string[]
+): Promise<Map<string, string>> {
+  const rows = await db
+    .select({ id: schema.CustomField.id, attribute: schema.CustomField.systemAttribute })
+    .from(schema.CustomField)
+    .where(
+      and(
+        eq(schema.CustomField.organizationId, organizationId),
+        inArray(schema.CustomField.systemAttribute, [...attributes])
+      )
+    )
+  const map = new Map<string, string>()
+  for (const row of rows) if (row.attribute) map.set(row.attribute, row.id)
+  return map
+}
+
+async function countRows(organizationId: string, fieldIds: readonly string[]): Promise<number> {
+  if (!fieldIds.length) return 0
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        inArray(schema.FieldValue.fieldId, [...fieldIds])
+      )
+    )
+  return row?.n ?? 0
+}
+
 async function main() {
   const org = await resolveOrg()
-  const scope = ALL ? 'every posting' : FAILED_ONLY ? 'failed postings' : `period ${PERIOD}`
+  const scope = ALL ? 'every posting' : `period ${PERIOD}`
 
   console.log(`\norganization ${org.name} (${org.id})`)
   console.log(`selection    ${scope}`)
   console.log(`mode         ${CONFIRM ? 'DELETE' : 'dry run (pass --confirm to write)'}`)
   console.log(
     `also         ${
-      [KEEP_MAP ? null : 'clear QuickBooks account map', WIZARD ? 'reopen the setup wizard' : null]
+      [
+        KEEP_MAP ? null : 'clear QuickBooks account map',
+        CHART ? 'delete the chart of accounts' : null,
+        WIZARD ? 'reopen the setup wizard' : null,
+      ]
         .filter(Boolean)
         .join(', ') || 'nothing'
-    }\n`
+    }`
+  )
+  console.log(
+    'keeps        source documents, the money model, bank accounts, the book connection\n'
   )
 
   // ── 1. The postings in scope ──────────────────────────────────────────────
 
   const where = [eq(schema.GlPosting.organizationId, org.id)]
-  // Since the export split there is no `failed` LEDGER status: a refused push
-  // leaves the entry posted and stamps `exportStatus`. So this selector now
-  // means "entries whose export was refused", and deleting one throws away a
-  // real entry. That is right for a dev reset and wrong everywhere else, which
-  // is why the summary says so.
   if (PERIOD) where.push(eq(schema.GlPosting.periodKey, PERIOD))
 
   const postings = await db
@@ -358,10 +356,8 @@ async function main() {
   if (exportedRows.length > 0 && !FORCE) {
     console.error(
       `🛑 REFUSING. ${exportedRows.length} posting(s) sit in a SENT export batch and are already in\n` +
-        '   the accounting system. Deleting our row orphans a real journal entry over there and\n' +
-        '   leaves the next close computing its delta against a snapshot the provider no longer\n' +
-        '   agrees with.\n\n' +
-        '   Reverse them in the app, or pass --force once you have deleted them by hand.\n'
+        '   the accounting system. Deleting our row orphans a real object over there.\n\n' +
+        '   Roll the batch back in the app, or pass --force once you have deleted them by hand.\n'
     )
     process.exit(1)
   }
@@ -372,10 +368,6 @@ async function main() {
   }
 
   // ── 3. Guard: a reversal outside the selection ────────────────────────────
-  //
-  // Only reachable on a partial selection. `reversesId` is ON DELETE RESTRICT,
-  // so a row we keep that reverses a row we delete rejects the delete halfway
-  // through and leaves the reset half applied.
 
   if (postings.length > 0 && !ALL) {
     const ids = postings.map((p) => p.id)
@@ -406,7 +398,29 @@ async function main() {
     }
   }
 
-  // ── 4. The account map ────────────────────────────────────────────────────
+  // ── 4. Batches left over, and the mirror ──────────────────────────────────
+  //
+  // A withdrawn batch keeps its membership rows, so `releaseExportBatchRows`
+  // reaches it through the posting. Under `--all` the count is the whole table.
+
+  let batchCount = 0
+  let mirrorCount = 0
+  if (ALL) {
+    const [batches] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(schema.ExportBatch)
+      .where(eq(schema.ExportBatch.organizationId, org.id))
+    batchCount = batches?.n ?? 0
+    const [mirror] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(schema.ProviderLedgerEntry)
+      .where(eq(schema.ProviderLedgerEntry.organizationId, org.id))
+    mirrorCount = mirror?.n ?? 0
+    console.log(`export batches: ${batchCount}, all states`)
+    console.log(`mirror: ${mirrorCount} provider ledger entr${mirrorCount === 1 ? 'y' : 'ies'}\n`)
+  }
+
+  // ── 5. The account map ────────────────────────────────────────────────────
 
   let mappings: { glAccountId: string; code: string; name: string; providerAccountId: string }[] =
     []
@@ -434,16 +448,91 @@ async function main() {
       } else {
         console.log(`account map: ${mappings.length} mapped account(s)`)
         for (const m of mappings) {
-          console.log(`  ${m.code.padEnd(6)} ${m.name.padEnd(34)} -> ${m.providerAccountId}`)
+          console.log(`  ${m.code.padEnd(6)} ${m.name.padEnd(40)} -> ${m.providerAccountId}`)
         }
         console.log('')
       }
     }
   }
 
+  // ── 6. The chart ──────────────────────────────────────────────────────────
+
+  let chartIds: string[] = []
+  let roleAssignments = 0
+  let pointerFields = new Map<string, string>()
+  let pointerRows = 0
+
+  if (CHART) {
+    const rows = await db
+      .select({ id: schema.EntityInstance.id })
+      .from(schema.EntityInstance)
+      .innerJoin(
+        schema.EntityDefinition,
+        eq(schema.EntityDefinition.id, schema.EntityInstance.entityDefinitionId)
+      )
+      .where(
+        and(
+          eq(schema.EntityInstance.organizationId, org.id),
+          eq(schema.EntityDefinition.entityType, 'gl_account')
+        )
+      )
+    chartIds = rows.map((r) => r.id)
+
+    const [roles] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(schema.GlRoleAssignment)
+      .where(eq(schema.GlRoleAssignment.organizationId, org.id))
+    roleAssignments = roles?.n ?? 0
+
+    pointerFields = await resolveFieldIds(org.id, CHART_POINTER_ATTRIBUTES)
+    console.log(`chart: ${chartIds.length} account(s), ${roleAssignments} role assignment(s)`)
+    for (const attribute of CHART_POINTER_ATTRIBUTES) {
+      const fieldId = pointerFields.get(attribute)
+      if (!fieldId) continue
+      const n = await countRows(org.id, [fieldId])
+      pointerRows += n
+      if (n > 0) console.log(`  ${String(n).padStart(4)} ${attribute} -> cleared`)
+    }
+    if (KEEP_MAP && mappings.length === 0 && chartIds.length > 0) {
+      console.log('  ⚠️ --keep-map with --chart: the map lives on the chart rows and goes with them')
+    }
+    console.log('')
+  }
+
+  // ── 7. Markers and settings ───────────────────────────────────────────────
+
+  const markerFields = ALL
+    ? await resolveFieldIds(org.id, ['bank_account_has_posted', ...RAIL_MARKER_ATTRIBUTES])
+    : new Map<string, string>()
+  const hasPostedFieldId = markerFields.get('bank_account_has_posted')
+  const railMarkerFieldIds = RAIL_MARKER_ATTRIBUTES.map((a) => markerFields.get(a)).filter(
+    (id): id is string => !!id
+  )
+  const railMarkerRows = await countRows(org.id, railMarkerFieldIds)
+  if (railMarkerRows > 0) {
+    console.log(`payment gateways: ${railMarkerRows} settlement/fee marker(s) -> cleared\n`)
+  }
+  let hasPostedRows = 0
+  if (hasPostedFieldId) {
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.organizationId, org.id),
+          eq(schema.FieldValue.fieldId, hasPostedFieldId),
+          eq(schema.FieldValue.valueBoolean, true)
+        )
+      )
+    hasPostedRows = row?.n ?? 0
+    if (hasPostedRows > 0) {
+      console.log(`bank accounts: ${hasPostedRows} stamped has_posted -> false\n`)
+    }
+  }
+
   if (WIZARD) {
     console.log(
-      `settings: ${WIZARD_KEYS.length} key(s) back to their defaults, setupState -> draft\n`
+      `settings: ${WIZARD_KEYS.length + 1} key(s) back to their defaults, setupState -> draft\n`
     )
   }
 
@@ -452,7 +541,7 @@ async function main() {
     return
   }
 
-  // ── 5. Do it ──────────────────────────────────────────────────────────────
+  // ── 8. Do it ──────────────────────────────────────────────────────────────
 
   // Batches first: `ExportBatchPosting`'s FK to the posting is ON DELETE NO
   // ACTION. `GlPostingSource` cascades, so the claim needs nothing here.
@@ -469,6 +558,21 @@ async function main() {
     console.log(`deleted ${p.docNumber ?? p.id} (${p.status} rev${p.revision})`)
   }
 
+  if (ALL) {
+    await db
+      .delete(schema.ExportBatchPosting)
+      .where(eq(schema.ExportBatchPosting.organizationId, org.id))
+    await db.delete(schema.ExportBatch).where(eq(schema.ExportBatch.organizationId, org.id))
+    // Lines cascade.
+    await db
+      .delete(schema.ProviderLedgerEntry)
+      .where(eq(schema.ProviderLedgerEntry.organizationId, org.id))
+    console.log(`deleted ${batchCount} export batch(es) and ${mirrorCount} mirror entr(ies)`)
+  }
+
+  // BEFORE the chart wipe: the map is a cell on the `gl_account` row mirrored
+  // into `RecordIdentity`, and the cascade would otherwise make every call below
+  // a no-op against a row that is already gone.
   if (connection) {
     for (const m of mappings) {
       await clearQuickbooksAccountMapping({
@@ -479,6 +583,69 @@ async function main() {
       })
       console.log(`cleared mapping ${m.code} -> ${m.providerAccountId}`)
     }
+  }
+
+  if (CHART) {
+    const pointerFieldIds = [...pointerFields.values()]
+    if (pointerFieldIds.length > 0) {
+      await db
+        .delete(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, org.id),
+            inArray(schema.FieldValue.fieldId, pointerFieldIds)
+          )
+        )
+    }
+
+    if (chartIds.length > 0) {
+      const remaining = await findGlAccountPointers(db, org.id, chartIds)
+      if (remaining.length > 0) {
+        console.error(
+          `\n🛑 STOPPING before the chart wipe. ${remaining.length} record(s) still point at an\n` +
+            '   account through a field this script does not clear. Add the attribute to\n' +
+            '   CHART_POINTER_ATTRIBUTES and re-run; wiping now would leave a dangling id.\n'
+        )
+        for (const p of remaining) console.error(`   ${p.label} (${p.attribute})`)
+        process.exit(1)
+      }
+      const deleted = await deleteEntityInstances({ ids: chartIds, organizationId: org.id })
+      if (deleted.isErr()) {
+        console.error(`\n🛑 chart wipe failed: ${deleted.error.message}`)
+        process.exit(1)
+      }
+    }
+    await db
+      .delete(schema.GlRoleAssignment)
+      .where(eq(schema.GlRoleAssignment.organizationId, org.id))
+    console.log(
+      `deleted ${chartIds.length} account(s), ${roleAssignments} role assignment(s), ${pointerRows} pointer(s)`
+    )
+  }
+
+  if (railMarkerRows > 0) {
+    await db
+      .delete(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.organizationId, org.id),
+          inArray(schema.FieldValue.fieldId, railMarkerFieldIds)
+        )
+      )
+    console.log(`cleared ${railMarkerRows} payment gateway marker(s)`)
+  }
+
+  if (hasPostedFieldId && hasPostedRows > 0) {
+    await db
+      .update(schema.FieldValue)
+      .set({ valueBoolean: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.FieldValue.organizationId, org.id),
+          eq(schema.FieldValue.fieldId, hasPostedFieldId)
+        )
+      )
+    console.log(`bank_account_has_posted -> false on ${hasPostedRows} account(s)`)
   }
 
   // AFTER the deletes, so the remaining-postings check sees the world this run
@@ -500,22 +667,28 @@ async function main() {
       )
     } else {
       await batchUpdateOrganizationSettings({ organizationId: org.id, settings: WIZARD_KEYS })
-      // The router's job when a human does this. See the header.
+      // The period lock refuses the settings door; it has its own audited command.
+      await setLockedThrough(db, { organizationId: org.id, periodKey: null, actorUserId: 'system' })
       await onCacheEvent('org.settings.changed', { orgId: org.id, broadcastUserKeys: true })
       reopened = true
-      console.log(`reset ${WIZARD_KEYS.length} setting(s); accounting.setupState is draft`)
+      console.log(`reset ${WIZARD_KEYS.length + 1} setting(s); accounting.setupState is draft`)
     }
   }
 
+  // The chart and its counts are served from the org cache.
+  await getOrgCache().invalidateAndRecompute(org.id, ['resources', 'customFields', 'orgSettings'])
+
   console.log(
     `\ndone. ${postings.length} posting(s), ${mappings.length} mapping(s)` +
-      `${reopened ? ', wizard reopened' : ''}.\n` +
+      `${CHART ? `, ${chartIds.length} account(s)` : ''}${reopened ? ', wizard reopened' : ''}.\n` +
       (postings.length > 0
         ? 'Those period keys are unclaimed - the documents can be posted again.\n'
         : '') +
-      (mappings.length > 0
-        ? 'The account map is empty, so the first Post refuses until the accounts are re-mapped.\nThat refusal is the mapping step working.\n'
-        : '') +
+      (CHART
+        ? 'The chart is empty: Provision chart or Import from the provider in the setup wizard,\nthen re-link the bank accounts to their GL accounts.\n'
+        : mappings.length > 0
+          ? 'The account map is empty, so the first export refuses until the accounts are re-mapped.\n'
+          : '') +
       (reopened ? 'The wizard reruns from page 1 and the opening baseline is editable.\n' : '')
   )
 }

@@ -107,33 +107,45 @@ export async function findGlAccountPointers(
 ): Promise<GlAccountPointer[]> {
   if (accountIds.length === 0) return []
 
-  const attributes = Object.keys(GL_ACCOUNT_POINTER_ATTRIBUTES)
+  // The org's pointer fields first, so the value scan runs on
+  // `FieldValue_lookup_text_idx` (organizationId, fieldId, valueText). Joined
+  // on the attribute instead, the planner walked a million-row org by value
+  // and timed out.
+  const fields = await db
+    .select({ id: schema.CustomField.id, attribute: schema.CustomField.systemAttribute })
+    .from(schema.CustomField)
+    .where(
+      and(
+        eq(schema.CustomField.organizationId, organizationId),
+        inArray(schema.CustomField.systemAttribute, Object.keys(GL_ACCOUNT_POINTER_ATTRIBUTES))
+      )
+    )
+  if (fields.length === 0) return []
+  const attributeByFieldId = new Map(fields.map((f) => [f.id, f.attribute] as const))
 
   const rows = await db
     .select({
-      attribute: schema.CustomField.systemAttribute,
+      fieldId: schema.FieldValue.fieldId,
       entityId: schema.FieldValue.entityId,
       glAccountId: schema.FieldValue.valueText,
     })
     .from(schema.FieldValue)
-    .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
     .where(
       and(
         eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.CustomField.systemAttribute, attributes),
+        inArray(schema.FieldValue.fieldId, [...attributeByFieldId.keys()]),
         inArray(schema.FieldValue.valueText, [...accountIds])
       )
     )
     .limit(limit)
 
   return rows.flatMap((row) => {
-    // Both columns are nullable in the schema and neither can be null here -
-    // the `inArray`s filtered on them. Narrowed rather than asserted.
-    if (!row.attribute || !row.glAccountId) return []
+    const attribute = attributeByFieldId.get(row.fieldId)
+    if (!attribute || !row.glAccountId) return []
     return [
       {
-        attribute: row.attribute,
-        label: GL_ACCOUNT_POINTER_ATTRIBUTES[row.attribute] ?? row.attribute,
+        attribute,
+        label: GL_ACCOUNT_POINTER_ATTRIBUTES[attribute] ?? attribute,
         entityId: row.entityId,
         glAccountId: row.glAccountId,
       },
