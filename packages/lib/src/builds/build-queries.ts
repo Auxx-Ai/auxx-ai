@@ -24,9 +24,9 @@ import type { Result } from 'neverthrow'
 import { loadDirectSubparts } from '../bom/subpart-graph'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
-import { valueJoin } from '../field-values/read-kit'
 import { computeExtendedCost, resolveInventoryRoleForPartKind } from '../receiving/client'
 import { toRecordId } from '../resources/resource-id'
+import { systemValueJoin } from '../resources/system-records'
 import {
   type BuildStatusValue,
   componentConsumption,
@@ -317,7 +317,7 @@ async function queryBuilds(
     query = query.innerJoin(
       statusValue,
       and(
-        valueJoin(statusValue, ctx.fields.build_status.id),
+        systemValueJoin(statusValue, ctx.fields.build_status.id),
         eq(statusValue.optionId, filters.status)
       )
     )
@@ -328,7 +328,7 @@ async function queryBuilds(
     query = query.innerJoin(
       sourceValue,
       and(
-        valueJoin(sourceValue, ctx.fields.build_source.id),
+        systemValueJoin(sourceValue, ctx.fields.build_source.id),
         eq(sourceValue.optionId, filters.source)
       )
     )
@@ -339,7 +339,7 @@ async function queryBuilds(
     query = query.innerJoin(
       partValue,
       and(
-        valueJoin(partValue, ctx.fields.build_part.id),
+        systemValueJoin(partValue, ctx.fields.build_part.id),
         eq(partValue.relatedEntityId, filters.partId)
       )
     )
@@ -350,7 +350,7 @@ async function queryBuilds(
     query = query.innerJoin(
       orderValue,
       and(
-        valueJoin(orderValue, ctx.fields.build_order.id),
+        systemValueJoin(orderValue, ctx.fields.build_order.id),
         eq(orderValue.relatedEntityId, filters.orderId)
       )
     )
@@ -358,7 +358,7 @@ async function queryBuilds(
 
   for (const join of absent) {
     const absentValue = alias(schema.FieldValue, join.name)
-    query = query.leftJoin(absentValue, valueJoin(absentValue, join.fieldId))
+    query = query.leftJoin(absentValue, systemValueJoin(absentValue, join.fieldId))
     where.push(isNull(absentValue.valueDate))
   }
 

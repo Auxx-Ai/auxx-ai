@@ -1,12 +1,11 @@
 // packages/lib/src/field-values/read-kit.ts
 //
-// The reader kit re-typed per module: `valueJoin`, `selectValues`, `fieldIdsOf`,
-// `cellReader`, `liveInstanceIds`. Superseded long-term by `resources/system-records`
-// (plan §3b); this is the interim one home for the exact-duplicate copies.
+// The reader kit re-typed per module: `selectValues`, `fieldIdsOf`, `cellReader`,
+// `liveInstanceIds`. Superseded by `resources/system-records` (plan §3b), which
+// already owns the alias join; this is the interim home for the rest.
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, eq, inArray, isNull, type SQL } from 'drizzle-orm'
-import type { alias } from 'drizzle-orm/pg-core'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 
 /** The field ids a module resolved for its attributes, keyed by attribute — `null` where the org lacks the field. */
 export type FieldMap<A extends string> = Record<A, { id: string } | null>
@@ -114,16 +113,4 @@ export async function liveInstanceIds(
     )
   const live = new Set(rows.map((row) => row.id))
   return ids.filter((id) => live.has(id))
-}
-
-/** The `FieldValue` alias join on `(entityId, organizationId, fieldId)`, for a value-keyed filter in SQL. */
-export function valueJoin(
-  table: ReturnType<typeof alias<typeof schema.FieldValue, string>>,
-  fieldId: string
-): SQL | undefined {
-  return and(
-    eq(table.entityId, schema.EntityInstance.id),
-    eq(table.organizationId, schema.EntityInstance.organizationId),
-    eq(table.fieldId, fieldId)
-  )
 }

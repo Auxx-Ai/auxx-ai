@@ -34,8 +34,8 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../cache'
 import { NotFoundError } from '../errors'
-import { valueJoin } from '../field-values/read-kit'
 import { type RecordId, toRecordId } from '../resources/resource-id'
+import { systemValueJoin } from '../resources/system-records'
 import {
   loadReturnFieldContext,
   loadReturnLineFieldContext,
@@ -218,7 +218,7 @@ export async function listReturns(
         query = query.innerJoin(
           statusValue,
           and(
-            valueJoin(statusValue, ctx.fields.return_status.id),
+            systemValueJoin(statusValue, ctx.fields.return_status.id),
             inArray(statusValue.optionId, [...statuses])
           )
         )
@@ -226,7 +226,10 @@ export async function listReturns(
 
       if (filters.unidentified !== undefined && ctx.fields.return_contact) {
         const contactValue = alias(schema.FieldValue, 'return_unidentified_v')
-        query = query.leftJoin(contactValue, valueJoin(contactValue, ctx.fields.return_contact.id))
+        query = query.leftJoin(
+          contactValue,
+          systemValueJoin(contactValue, ctx.fields.return_contact.id)
+        )
         where.push(
           filters.unidentified
             ? isNull(contactValue.relatedEntityId)
@@ -244,7 +247,7 @@ export async function listReturns(
         const related = alias(schema.FieldValue, name)
         query = query.innerJoin(
           related,
-          and(valueJoin(related, field.id), eq(related.relatedEntityId, value))
+          and(systemValueJoin(related, field.id), eq(related.relatedEntityId, value))
         )
       }
 
@@ -358,7 +361,7 @@ export async function readReturnLinesByReturn(
     .innerJoin(
       returnValue,
       and(
-        valueJoin(returnValue, ctx.fields.return_line_return?.id ?? ''),
+        systemValueJoin(returnValue, ctx.fields.return_line_return?.id ?? ''),
         eq(returnValue.relatedEntityId, returnId)
       )
     )
@@ -434,7 +437,7 @@ export async function readReturnPartLines(
     .innerJoin(
       lineValue,
       and(
-        valueJoin(lineValue, ctx.fields.return_part_line_return_line?.id ?? ''),
+        systemValueJoin(lineValue, ctx.fields.return_part_line_return_line?.id ?? ''),
         eq(lineValue.relatedEntityId, returnLineId)
       )
     )
@@ -541,9 +544,12 @@ export async function readReturnedQuantityClaims(
     .from(schema.EntityInstance)
     .innerJoin(
       lineItemValue,
-      and(valueJoin(lineItemValue, lineItemField.id), eq(lineItemValue.relatedEntityId, lineItemId))
+      and(
+        systemValueJoin(lineItemValue, lineItemField.id),
+        eq(lineItemValue.relatedEntityId, lineItemId)
+      )
     )
-    .leftJoin(quantityValue, valueJoin(quantityValue, quantityField.id))
+    .leftJoin(quantityValue, systemValueJoin(quantityValue, quantityField.id))
     .where(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),
@@ -669,14 +675,17 @@ async function readShippedQuantity(
     .from(schema.EntityInstance)
     .innerJoin(
       lineItemValue,
-      and(valueJoin(lineItemValue, lineItemField.id), eq(lineItemValue.relatedEntityId, lineItemId))
+      and(
+        systemValueJoin(lineItemValue, lineItemField.id),
+        eq(lineItemValue.relatedEntityId, lineItemId)
+      )
     )
-    .leftJoin(quantityValue, valueJoin(quantityValue, quantityField.id))
+    .leftJoin(quantityValue, systemValueJoin(quantityValue, quantityField.id))
     .$dynamic()
 
   if (fulfillmentField && statusField) {
     query = query
-      .leftJoin(fulfillmentValue, valueJoin(fulfillmentValue, fulfillmentField.id))
+      .leftJoin(fulfillmentValue, systemValueJoin(fulfillmentValue, fulfillmentField.id))
       .leftJoin(
         statusValue,
         and(
@@ -805,15 +814,15 @@ export async function readUnlinkedCreditMemosForOrder(
         createdAt: schema.EntityInstance.createdAt,
       })
       .from(schema.EntityInstance)
-      .innerJoin(orderValue, valueJoin(orderValue, orderField.id))
+      .innerJoin(orderValue, systemValueJoin(orderValue, orderField.id))
       // A LEFT JOIN plus IS NULL, not a NOT EXISTS: the row is one-to-one
       // with the memo, so it cannot multiply the page, and "unclaimed" is
       // exactly the absence of this value.
-      .leftJoin(returnValue, valueJoin(returnValue, returnField.id))
-      .leftJoin(numberValue, valueJoin(numberValue, fields.credit_memo_number?.id ?? ''))
-      .leftJoin(totalValue, valueJoin(totalValue, fields.credit_memo_total?.id ?? ''))
-      .leftJoin(statusValue, valueJoin(statusValue, fields.credit_memo_status?.id ?? ''))
-      .leftJoin(issuedValue, valueJoin(issuedValue, fields.credit_memo_issued_at?.id ?? ''))
+      .leftJoin(returnValue, systemValueJoin(returnValue, returnField.id))
+      .leftJoin(numberValue, systemValueJoin(numberValue, fields.credit_memo_number?.id ?? ''))
+      .leftJoin(totalValue, systemValueJoin(totalValue, fields.credit_memo_total?.id ?? ''))
+      .leftJoin(statusValue, systemValueJoin(statusValue, fields.credit_memo_status?.id ?? ''))
+      .leftJoin(issuedValue, systemValueJoin(issuedValue, fields.credit_memo_issued_at?.id ?? ''))
       .where(
         and(
           eq(schema.EntityInstance.organizationId, organizationId),

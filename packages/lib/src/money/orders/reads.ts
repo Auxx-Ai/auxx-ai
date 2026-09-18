@@ -28,12 +28,12 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { NotFoundError, UnprocessableEntityError } from '../../errors'
 import { toRecordId } from '../../resources/resource-id'
+import { systemDefId, systemFieldMap } from '../../resources/system-records'
 import {
   type Fulfillment,
   readFulfillmentsForOrder,
   requireFulfillmentFieldContext,
 } from '../fulfillments'
-import { financialEntityDefId, financialFields } from '../fulfillments/field-context'
 import {
   netLineTotalMinor,
   netUnitPriceMinor,
@@ -139,13 +139,9 @@ export async function loadOrderFieldContext(
   organizationId: string,
   db?: Database | Transaction
 ): Promise<OrderFieldContext | null> {
-  const orderDefId = await financialEntityDefId(organizationId, 'order', db)
+  const orderDefId = await systemDefId(db, organizationId, 'order')
   if (!orderDefId) return null
-  const fields = await financialFields(
-    organizationId,
-    [...ORDER_ATTRIBUTES, ...LINE_ATTRIBUTES],
-    db
-  )
+  const fields = await systemFieldMap(db, organizationId, [...ORDER_ATTRIBUTES, ...LINE_ATTRIBUTES])
   const order: Record<OrderAttribute, CustomFieldEntity | null> = fields
   const line: Record<LineAttribute, CustomFieldEntity | null> = fields
   // Without the number there is no period key to post against.
@@ -240,7 +236,7 @@ export async function readOrderTaxLines(
   const byOrder = new Map<string, OrderTaxLine[]>()
   if (orderIds.length === 0) return byOrder
 
-  const fields = await financialFields(organizationId, TAX_LINE_ATTRIBUTES, db)
+  const fields = await systemFieldMap(db, organizationId, TAX_LINE_ATTRIBUTES)
   const attrs = fields as Record<TaxLineAttribute, CustomFieldEntity | null>
   const titleField = attrs.tax_line_title
   const priceField = attrs.tax_line_price

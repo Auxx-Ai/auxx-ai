@@ -2,7 +2,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../errors'
-import { financialFields } from '../fulfillments/field-context'
+import { systemFieldMap } from '../../resources/system-records'
 
 const attributes = [
   'order_subtotal',
@@ -26,7 +26,7 @@ export async function readOrderRecognitionFactsInTx(
   organizationId: string,
   orderId: string
 ) {
-  const fields = await financialFields(organizationId, attributes, tx)
+  const fields = await systemFieldMap(tx, organizationId, attributes)
   for (const attribute of attributes)
     if (attribute !== 'order_channel' && !fields[attribute])
       throw new UnprocessableEntityError(`Missing accounting field: ${attribute}`)

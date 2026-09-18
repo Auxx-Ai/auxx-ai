@@ -22,7 +22,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { NotFoundError, UnprocessableEntityError } from '../../errors'
-import { valueJoin } from '../../field-values/read-kit'
+import { systemValueJoin } from '../../resources/system-records'
 import { parsePeriodKey } from '../periods'
 import type {
   JournalEntryKindValue,
@@ -205,7 +205,7 @@ export async function listJournalEntries(
         query = query
           .innerJoin(
             postingIdValue,
-            valueJoin(postingIdValue, ctx.fields.journal_entry_gl_posting_id.id)
+            systemValueJoin(postingIdValue, ctx.fields.journal_entry_gl_posting_id.id)
           )
           .innerJoin(
             posting,
@@ -224,7 +224,10 @@ export async function listJournalEntries(
         // `manual`, so an inner join would hide an entry the drawer opens.
         // Every other kind is written explicitly at create time.
         if (filters.kinds.includes('manual')) {
-          query = query.leftJoin(kindValue, valueJoin(kindValue, ctx.fields.journal_entry_kind.id))
+          query = query.leftJoin(
+            kindValue,
+            systemValueJoin(kindValue, ctx.fields.journal_entry_kind.id)
+          )
           where.push(
             or(inArray(kindValue.optionId, filters.kinds), isNull(kindValue.optionId)) as SQL
           )
@@ -232,7 +235,7 @@ export async function listJournalEntries(
           query = query.innerJoin(
             kindValue,
             and(
-              valueJoin(kindValue, ctx.fields.journal_entry_kind.id),
+              systemValueJoin(kindValue, ctx.fields.journal_entry_kind.id),
               inArray(kindValue.optionId, filters.kinds)
             )
           )
@@ -257,7 +260,7 @@ export async function listJournalEntries(
         query = query.innerJoin(
           dateValue,
           and(
-            valueJoin(dateValue, ctx.fields.journal_entry_date.id),
+            systemValueJoin(dateValue, ctx.fields.journal_entry_date.id),
             gte(dateValue.valueDate, bounds.start),
             lt(dateValue.valueDate, bounds.end)
           )

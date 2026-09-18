@@ -5,7 +5,7 @@ import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { PaymentGatewayFeeTreatment, PaymentGatewayStatus } from '../enum-values'
-import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Payment Gateway resource
@@ -55,7 +55,7 @@ import type { ResourceField } from '../field-types'
  * `bank_account` uses and for the same reason: a purpose-built screen is a
  * better door than an auto-linked sidebar entry.
  */
-export const PAYMENT_GATEWAY_FIELDS: Record<string, ResourceField> = {
+export const PAYMENT_GATEWAY_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -304,4 +304,4 @@ export const PAYMENT_GATEWAY_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

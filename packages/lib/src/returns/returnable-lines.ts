@@ -16,8 +16,8 @@ import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
-import { valueJoin } from '../field-values/read-kit'
 import { type RecordId, toRecordId } from '../resources/resource-id'
+import { systemValueJoin } from '../resources/system-records'
 import { guard } from './guard'
 import { readReturnCeiling, readReturnedQuantityClaims } from './reads'
 
@@ -107,7 +107,7 @@ export async function readReturnableLinesForOrder(
         .innerJoin(
           orderValue,
           and(
-            valueJoin(orderValue, lineFields.orderFieldId),
+            systemValueJoin(orderValue, lineFields.orderFieldId),
             eq(orderValue.relatedEntityId, orderId)
           )
         )

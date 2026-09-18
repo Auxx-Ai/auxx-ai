@@ -159,3 +159,18 @@ export {
 // Schema read for apps and the public API (plans/apps/outbound/01-records-api.md §4)
 export type { ResourceFieldNode, ResourceNode } from './schema-read'
 export { getResourceFor, listResourcesFor, projectResource } from './schema-read'
+
+// The one reader for system records (plans/accounting/LIB-LAYOUT.md §3b)
+export type {
+  ReadSystemRecordsOptions,
+  SystemFieldContext,
+  SystemRecord,
+} from './system-records'
+export {
+  readSystemRecords,
+  requireSystemFields,
+  systemDefId,
+  systemFieldMap,
+  systemFields,
+  systemValueJoin,
+} from './system-records'

@@ -28,7 +28,7 @@ import type { CustomFieldEntity } from '@auxx/database/types'
 import { and, eq, inArray } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../errors'
 import { toRecordId } from '../../resources/resource-id'
-import { financialEntityDefId, financialFields } from './field-context'
+import { systemDefId, systemFieldMap } from '../../resources/system-records'
 import type { Fulfillment, FulfillmentLine, FulfillmentStatusValue } from './types'
 
 /** Every `fulfillment` attribute this module reads or writes. */
@@ -81,16 +81,15 @@ export async function loadFulfillmentFieldContext(
   db?: Database | Transaction
 ): Promise<FulfillmentFieldContext | null> {
   const [fulfillmentDefId, fulfillmentLineDefId] = await Promise.all([
-    financialEntityDefId(organizationId, 'fulfillment', db),
-    financialEntityDefId(organizationId, 'fulfillment_line', db),
+    systemDefId(db, organizationId, 'fulfillment'),
+    systemDefId(db, organizationId, 'fulfillment_line'),
   ])
   if (!fulfillmentDefId || !fulfillmentLineDefId) return null
 
-  const fields = await financialFields(
-    organizationId,
-    [...FULFILLMENT_ATTRIBUTES, ...FULFILLMENT_LINE_ATTRIBUTES],
-    db
-  )
+  const fields = await systemFieldMap(db, organizationId, [
+    ...FULFILLMENT_ATTRIBUTES,
+    ...FULFILLMENT_LINE_ATTRIBUTES,
+  ])
   const fulfillment: Record<FulfillmentAttribute, CustomFieldEntity | null> = fields
   const line: Record<FulfillmentLineAttribute, CustomFieldEntity | null> = fields
   // Without the order edge or the line edge there is nothing to join on -
