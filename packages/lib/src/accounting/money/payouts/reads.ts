@@ -383,7 +383,7 @@ async function hydrate(
       glPostingId: null,
       destinationMismatch: record.text('payout_destination_mismatch'),
       source: resolvePayoutSource(record.option('payout_source')),
-      createdAt: record.createdAt ?? new Date(0),
+      createdAt: record.createdAt,
     }
   })
   return withLivePostings(db, organizationId, records)

@@ -30,14 +30,6 @@ import { loadFulfillmentFieldContext } from './fields'
 import type { Fulfillment, FulfillmentLine, FulfillmentStatusValue } from './types'
 
 /**
- * The related record's instance id; `related()` needs the nullable
- * `relatedEntityDefinitionId`, and a lost order edge would un-ship a shipment.
- */
-function relatedId<A extends string>(record: SystemRecord<A>, attribute: A): string | null {
-  return record.related(attribute) ?? record.rows(attribute)[0]?.relatedEntityId ?? null
-}
-
-/**
  * Every fulfillment for a set of orders, ONE round of queries regardless of
  * how many orders are asked for.
  *
@@ -77,8 +69,8 @@ export async function readFulfillmentsForOrders(
   })
   const linesByFulfillment = new Map<string, FulfillmentLine[]>()
   for (const record of lines) {
-    const fulfillmentId = relatedId(record, 'fulfillment_line_fulfillment')
-    const lineItemId = relatedId(record, 'fulfillment_line_line_item')
+    const fulfillmentId = record.related('fulfillment_line_fulfillment')
+    const lineItemId = record.related('fulfillment_line_line_item')
     // A line with no line_item edge is unusable, not a crash.
     if (!fulfillmentId || !lineItemId) continue
     const line: FulfillmentLine = {
@@ -122,7 +114,7 @@ export async function readFulfillmentsForOrders(
   const postedById = new Map(subjects.map((row) => [row.fulfillmentId, row]))
 
   for (const record of fulfillments) {
-    const orderId = relatedId(record, 'fulfillment_order')
+    const orderId = record.related('fulfillment_order')
     if (!orderId) continue
 
     const fulfillment: Fulfillment = {

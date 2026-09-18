@@ -209,7 +209,7 @@ function toReceiptRow(
   record: SystemRecord<ReceiptAttribute>
 ): ReceiptRow {
   const occurredAt = record.date('stock_movement_occurred_at')
-  const createdAt = record.createdAt ?? new Date(0)
+  const createdAt = record.createdAt
   return {
     movementId: record.id,
     recordId: `${ctx.defId}:${record.id}`,

@@ -16,8 +16,8 @@ const CHUNK = 200
 export interface SystemRecord<A extends string> {
   id: string
   recordId: RecordId
-  createdAt: Date | null
-  updatedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
   archivedAt: Date | null
   /** The first stored value of `attribute`, or `undefined` when the field is missing or unset. */
   cell(attribute: A): TypedFieldValue | undefined
@@ -36,7 +36,7 @@ export interface SystemRecord<A extends string> {
   option(attribute: A): string | null
   /** The actor's own id — `User.id`, `Agent.id`, or the group / worker instance id. */
   actor(attribute: A): string | null
-  /** The related record's INSTANCE id — `cell()` still carries the full `RecordId`. */
+  /** The related record's INSTANCE id, falling back to the stored `relatedEntityId` when the row carries no def id (`cell()`/`cells()` cannot: a `RecordId` needs both halves). */
   related(attribute: A): string | null
   date(attribute: A): string | null
 }
@@ -79,6 +79,7 @@ export async function readSystemRecords<A extends string>(
 
   const instances = await readInstances(db, organizationId, ctx.defId, ids, includeArchived)
   if (instances.length === 0) return []
+  // `?.`: both columns are NOT NULL, but a row handed in short must not crash the sort.
   instances.sort(
     (a, b) =>
       (a[orderBy]?.getTime() ?? 0) - (b[orderBy]?.getTime() ?? 0) || a.id.localeCompare(b.id)
@@ -128,8 +129,8 @@ async function readChildIds<A extends string>(
 
 type InstanceRow = {
   id: string
-  createdAt: Date | null
-  updatedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
   archivedAt: Date | null
 }
 
@@ -265,7 +266,9 @@ function buildRecord<A extends string>(
     },
     related: (attribute) => {
       const value = cell(attribute)
-      return value?.type === 'relationship' && value.recordId ? getInstanceId(value.recordId) : null
+      if (value?.type !== 'relationship') return null
+      if (value.recordId) return getInstanceId(value.recordId)
+      return rows(attribute)[0]?.relatedEntityId ?? null
     },
     date: (attribute) => {
       const value = cell(attribute)

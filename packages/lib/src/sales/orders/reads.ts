@@ -99,17 +99,6 @@ const LINE_ITEM_PARENT = 'line_item_order'
 /** Any `line_item` attribute the registry declares as a stored value. */
 export type LineItemAttribute = DeclaredSystemAttributes<typeof LINE_ITEM_FIELDS>
 
-/**
- * A relationship's related INSTANCE id, falling back to the stored row.
- *
- * `SystemRecord.related()` answers `null` unless the row carries
- * `relatedEntityDefinitionId`; the hand-written reads this file replaces read
- * `relatedEntityId` alone, and both callers here feed an amount.
- */
-function relatedId<A extends string>(record: SystemRecord<A>, attribute: A): string | null {
-  return record.related(attribute) ?? record.rows(attribute)[0]?.relatedEntityId ?? null
-}
-
 /** One order's jurisdiction, as `splitTaxByJurisdiction` wants it. */
 export interface OrderTaxLine {
   title: string
@@ -222,7 +211,7 @@ export async function readOrderTaxLines(
   })
 
   for (const record of records) {
-    const orderId = relatedId(record, 'tax_line_order')
+    const orderId = record.related('tax_line_order')
     const title = record.text('tax_line_title')?.trim()
     const priceMinor = record.number('tax_line_price')
     // A tax line missing either value cannot enter the split - it would
@@ -297,7 +286,7 @@ export async function readOrderForFulfillment(
         lines: shapeLines(lineRecords, shipped),
         nextSequence: nextFulfillmentSequence(fulfillments),
         shippingOwed: shippingStillOwed(fulfillments),
-        contactInstanceId: relatedId(order, 'order_contact'),
+        contactInstanceId: order.related('order_contact'),
         taxLines,
       }
     },

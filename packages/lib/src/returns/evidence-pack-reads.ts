@@ -312,7 +312,11 @@ async function readPhotoValues<A extends 'return_photos' | 'return_line_photos'>
   const ctx = await systemFields(db, organizationId, pick.entityType, pick.attributes)
   if (!ctx) return byEntity
 
-  const records = await readSystemRecords(db, organizationId, ctx, { ids: entityIds })
+  // The pack must still show the photos of an archived return or line.
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    ids: entityIds,
+    includeArchived: true,
+  })
   for (const record of records) {
     const photos: EvidencePackPhotoSource[] = []
     for (const row of record.rows(attribute)) {
