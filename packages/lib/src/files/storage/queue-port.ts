@@ -69,6 +69,7 @@
 
 import { getRedisClient } from '@auxx/redis'
 import { AuxxError } from '../../errors'
+import { jobId as buildJobId } from '../../jobs/job-id'
 import { getQueue } from '../../jobs/queues'
 // `Queues` comes from the leaf module rather than the barrel: several job tests
 // replace `jobs/queues` wholesale with a `{ getQueue }`-only factory, and Vitest
@@ -167,7 +168,7 @@ async function enqueueThumbnail(p: EnqueueThumbnailParams): Promise<string> {
  */
 async function enqueueStorageCleanup(p: EnqueueStorageCleanupParams): Promise<string> {
   const job = await getQueue(Queues.maintenanceQueue).add('orphanedStorageObjectJob', p, {
-    jobId: `orphaned-storage-object:${p.bucket}:${p.key}`,
+    jobId: buildJobId('orphaned-storage-object', p.bucket, p.key),
     ...STORAGE_CLEANUP_JOB_OPTIONS,
   })
 

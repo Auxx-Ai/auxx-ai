@@ -24,6 +24,12 @@ const h = vi.hoisted(() => ({
 vi.mock('../../jobs/queues', () => ({
   getQueue: () => ({
     add: async (name: string, data: Record<string, unknown>, opts: AddCall['opts']) => {
+      // BullMQ's own custom-id validation, verbatim from `Job.addJob`. Modelled
+      // here because a cursor and a `RecordId` both carry colons, and without it
+      // a fake accepts an id the real queue rejects outright.
+      if (opts.jobId.includes(':') && opts.jobId.split(':').length !== 3) {
+        throw new Error('Custom Id cannot contain :')
+      }
       const call = { name, data, opts }
       h.calls.push(call)
       // BullMQ: a same-jobId add while the job is delayed is DROPPED.
@@ -59,7 +65,7 @@ describe('enqueueDuplicateScan — the org+def jobId IS the burst absorber', () 
 
     expect(h.calls).toHaveLength(200)
     expect(h.delayed.size).toBe(1)
-    expect([...h.delayed.keys()]).toEqual(['dup-scan:org_1:def_contact'])
+    expect([...h.delayed.keys()]).toEqual(['dup-scan-org_1-def_contact'])
   })
 
   it('never keys the job on a record — the watermark finds the dirty records', async () => {
@@ -69,7 +75,7 @@ describe('enqueueDuplicateScan — the org+def jobId IS the burst absorber', () 
     const call = h.calls[0]!
     expect(call.data).toEqual({ organizationId: 'org_1', entityDefinitionId: 'def_contact' })
     expect(call.data).not.toHaveProperty('recordIds')
-    expect(call.opts.jobId).toBe('dup-scan:org_1:def_contact')
+    expect(call.opts.jobId).toBe('dup-scan-org_1-def_contact')
   })
 
   it('keeps orgs and definitions on separate jobIds', async () => {
@@ -107,7 +113,7 @@ describe('enqueueDuplicateScanForRecords — one job per RUN', () => {
 
     expect(h.calls).toHaveLength(2)
     expect(h.delayed.size).toBe(1)
-    expect([...h.delayed.keys()]).toEqual(['dup-scan:run_1'])
+    expect([...h.delayed.keys()]).toEqual(['dup-scan-run_1'])
   })
 
   it('carries the manifest ids and runs immediately', async () => {
@@ -139,13 +145,13 @@ describe('enqueueDuplicateScanForRecords — one job per RUN', () => {
 describe('enqueueDuplicateScanContinuation — draining a capped backlog', () => {
   it('does NOT reuse the org+def jobId, which the running job still holds', async () => {
     // The bug this exists to avoid: the handler requeueing itself under
-    // `dup-scan:{org}:{def}` while it is the ACTIVE job under that very id, so
+    // `dup-scan-{org}-{def}` while it is the ACTIVE job under that very id, so
     // BullMQ drops the add and the backlog silently stalls.
     await enqueueDuplicateScan('org_1', 'def_contact')
     await enqueueDuplicateScanContinuation('org_1', 'def_contact', '2026-08-15 10:00:00')
 
     expect(h.delayed.size).toBe(2)
-    expect(h.calls[1]?.opts.jobId).toBe('dup-scan:cont:org_1:def_contact:2026-08-15 10:00:00')
+    expect(h.calls[1]?.opts.jobId).toBe('dup-scan-cont-org_1-def_contact-2026-08-15 10-00-00')
   })
 
   it('collapses a repeat at the same cursor and advances with a new one', async () => {
@@ -165,5 +171,12 @@ describe('enqueueDuplicateScanContinuation — draining a capped backlog', () =>
     })
     expect(h.calls[0]?.opts.delay).toBe(DUPLICATE_SCAN_CONTINUATION_DELAY_MS)
     expect(DUPLICATE_SCAN_CONTINUATION_DELAY_MS).toBeLessThan(DUPLICATE_SCAN_DELAY_MS)
+  })
+
+  // A colon reaches the id from the cursor, not from the template, so the door
+  // that looked safest was the one that threw on every call.
+  it('🛑 survives a watermark cursor, which carries colons of its own', async () => {
+    await enqueueDuplicateScanContinuation('org_1', 'def_contact', '2026-08-15 10:00:00')
+    expect(h.calls[0]?.opts.jobId).not.toContain(':')
   })
 })

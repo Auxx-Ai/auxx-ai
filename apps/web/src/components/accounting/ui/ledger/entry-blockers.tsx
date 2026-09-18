@@ -245,17 +245,15 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
     actionLabel: 'Open the account map',
   },
   // plans/accounting/tasks/20-two-authors-one-ledger.md §7.4. The INBOUND sync
-  // refused before it walked - most often the cutover floor (§5.4), which names
-  // both the date that was asked for and the earliest the sync may read. That
-  // floor is what stops brief 19's opening entry being imported a second time
-  // and the whole opening position doubling, so its message is the remedy and
-  // is carried verbatim.
+  // refused before it walked - the cutover floor (§5.4), a run already open, or
+  // a queue that would not take the job. Only the first names a date, so the
+  // guidance promises the message rather than what is in it.
   sync_refused: {
     tone: 'failure',
     icon: CloudOff,
     title: 'The sync did not run',
     guidance:
-      'Nothing was read and nothing was written - the refusal happened before the first request went out. The reason above names the dates or the setting involved. A range the sync may not read is never quietly moved to one it may.',
+      'Nothing was read and nothing was written - the refusal happened before the first request went out. The reason above is the refusal itself, verbatim. A range the sync may not read is never quietly moved to one it may.',
   },
 }
 

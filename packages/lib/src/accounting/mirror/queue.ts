@@ -5,6 +5,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { ConflictError } from '../../errors'
+import { jobId } from '../../jobs/job-id'
 import { loadProviderSyncBlob } from './run-state-io'
 
 const logger = createScopedLogger('postings:provider-sync:queue')
@@ -88,7 +89,7 @@ export async function enqueueProviderSync(input: {
   return addProviderSyncJob(data, {
     // One walk per org. A second press collapses onto the job already queued
     // rather than starting a rival chain against the same cursor and marker.
-    jobId: `provider-sync:${input.organizationId}`,
+    jobId: jobId('provider-sync', input.organizationId),
   })
 }
 
@@ -132,7 +133,7 @@ async function assertNoOpenRun(organizationId: string): Promise<void> {
  * check.
  *
  * 🛑 No `jobId`. The job doing the enqueueing still holds
- * `provider-sync:${organizationId}`, so a continuation under that id would be
+ * `provider-sync-${organizationId}`, so a continuation under that id would be
  * de-duped against its own parent and the chain would stop dead one slice in.
  * Serialization is the queue's concurrency 1, not the id.
  */
