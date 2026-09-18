@@ -38,7 +38,7 @@ import { resolveBankAccountGlAccountInTx } from '../../postings/resolve-cash-acc
 import { resolveRoles } from '../../postings/resolve-roles'
 import { FINALIZED_SETUP_STATE } from '../../postings/setup-readiness'
 import type { GlPostingSourceInput } from '../../postings/types'
-import { getOrganizationSetting } from '../../settings/settings-service'
+import { readOrganizationSettings } from '../../settings/read'
 import { resolvePaymentRoute } from '../bank-deposits/route'
 import { readCreditMemoControlAccount } from '../credit-memos/accounting'
 import {
@@ -222,7 +222,8 @@ interface PreparedRefund {
 
 async function prepareCustomerRefund(
   db: Database,
-  input: CustomerRefundAccountingInput
+  input: CustomerRefundAccountingInput,
+  zone: string | null
 ): Promise<PreparedRefund> {
   const money = await db.query.MoneyTransaction.findFirst({
     where: and(
@@ -239,13 +240,7 @@ async function prepareCustomerRefund(
   )
     throw new UnprocessableEntityError('Refund occurrence date is incomplete')
 
-  const zone = await getOrganizationSetting({
-    db,
-    organizationId: input.organizationId,
-    key: 'accounting.bookTimeZone',
-  })
-  if (typeof zone !== 'string' || !zone)
-    throw new UnprocessableEntityError('Book time zone is not configured')
+  if (!zone) throw new UnprocessableEntityError('Book time zone is not configured')
   const effectiveDate =
     money.datePrecision === 'date'
       ? money.occurredOn!
@@ -353,23 +348,18 @@ export async function postCustomerRefundAccounting(
 
   let prepared: PreparedRefund
   try {
-    if (
-      (await getOrganizationSetting({
-        db,
-        organizationId: input.organizationId,
-        key: 'accounting.setupState',
-      })) !== FINALIZED_SETUP_STATE
-    )
+    const settings = await readOrganizationSettings(input.organizationId, [
+      'accounting.setupState',
+      'accounting.bookTimeZone',
+      'accounting.cutoffPeriod',
+    ] as const)
+    if (settings['accounting.setupState'] !== FINALIZED_SETUP_STATE)
       throw new UnprocessableEntityError(
         'Finalize accounting setup before posting customer refunds'
       )
-    prepared = await prepareCustomerRefund(db, input)
-    const cutoff = await getOrganizationSetting({
-      db,
-      organizationId: input.organizationId,
-      key: 'accounting.cutoffPeriod',
-    })
-    if (typeof cutoff === 'string' && prepared.entry.entry.txnDate.slice(0, 7) <= cutoff)
+    prepared = await prepareCustomerRefund(db, input, settings['accounting.bookTimeZone'])
+    const cutoff = settings['accounting.cutoffPeriod']
+    if (cutoff && prepared.entry.entry.txnDate.slice(0, 7) <= cutoff)
       throw new UnprocessableEntityError(`Refund is before the accounting opening cutoff ${cutoff}`)
   } catch (error) {
     if (!(error instanceof AuxxError)) throw error
@@ -391,7 +381,7 @@ export async function postCustomerRefundAccounting(
     sources: prepared.sources,
     railId: prepared.railId,
     ...(prepared.railId ? { scope: { rail: prepared.railId } } : {}),
-    mode: await readAutoPostMode(db, input.organizationId, 'refund'),
+    mode: await readAutoPostMode(input.organizationId, 'refund'),
   })
   if (!didLedgerAccept(post) || !post.glPostingId)
     return { status: 'blocked', reason: post.error ?? `The ledger answered ${post.status}` }

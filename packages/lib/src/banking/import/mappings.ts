@@ -48,21 +48,20 @@ export const MAX_SAVED_MAPPINGS = 40
  * Takes the HEADERS, not a signature, so the caller never computes a signature
  * with a different normaliser than the one that stored it.
  */
-export async function readSavedMapping(
-  db: Database,
-  params: { organizationId: string; headers: readonly string[] }
-): Promise<SavedMapping | null> {
+export async function readSavedMapping(params: {
+  organizationId: string
+  headers: readonly string[]
+}): Promise<SavedMapping | null> {
   const signature = headerSignature(params.headers)
-  const store = await readStore(db, params.organizationId)
+  const store = await readStore(undefined, params.organizationId)
   return store[signature] ?? null
 }
 
 /** Every mapping the org has remembered, newest save first. */
-export async function listSavedMappings(
-  db: Database,
-  params: { organizationId: string }
-): Promise<SavedMapping[]> {
-  const store = await readStore(db, params.organizationId)
+export async function listSavedMappings(params: {
+  organizationId: string
+}): Promise<SavedMapping[]> {
+  const store = await readStore(undefined, params.organizationId)
   return Object.values(store).sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1))
 }
 
@@ -137,12 +136,17 @@ export async function forgetMapping(
 /**
  * The stored blob, narrowed to well-formed entries.
  *
- * ⚠️ Silently drops a malformed one rather than throwing. This is a JSON column
- * a future version of this code may reshape, and one bad entry must not make
- * every OTHER remembered mapping unreachable.
+ * `db` is passed through from `saveMapping`/`forgetMapping`: both merge this
+ * into a patch and overwrite the same key, and a cached read racing another
+ * writer's invalidation could hand back a value already superseded, dropping
+ * that write.
+ *
+ * Silently drops a malformed entry rather than throwing — this is a JSON
+ * column a future version of this code may reshape, and one bad entry must
+ * not make every OTHER remembered mapping unreachable.
  */
 async function readStore(
-  db: Database,
+  db: Database | undefined,
   organizationId: string
 ): Promise<Record<string, SavedMapping>> {
   const raw = await getOrganizationSetting({

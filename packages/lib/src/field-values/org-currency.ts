@@ -1,6 +1,5 @@
 // packages/lib/src/field-values/org-currency.ts
 
-import type { Database, Transaction } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import type { FieldOptions } from '../custom-fields/field-options'
 import { getOrganizationSetting } from '../settings'
@@ -26,16 +25,14 @@ import { resolveCurrencyCode } from './converters/currency'
  *
  * Backed by the `orgSettings` org-cache key, so this is a map lookup rather than
  * a query — but it is still `async`, so resolve it ONCE per batch and hand the
- * string down, never per field value inside a loop.
+ * string down, never per field value inside a loop. No caller writes
+ * `organization.currency` earlier in the same transaction, so this always
+ * takes the cached path (decision 9).
  */
-export async function getOrgCurrencyCode(
-  organizationId: string,
-  db?: Database | Transaction
-): Promise<string> {
+export async function getOrgCurrencyCode(organizationId: string): Promise<string> {
   const value = await getOrganizationSetting({
     key: 'organization.currency',
     organizationId,
-    db,
   })
   return resolveCurrencyCode(undefined, value)
 }

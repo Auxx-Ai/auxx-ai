@@ -170,9 +170,7 @@ export class DisplayFieldService {
         // The org rung for CURRENCY — resolved ONCE for the batch, never per
         // value inside the loop. A no-op for every other field type.
         const orgCurrencyCode =
-          field.fieldType === 'CURRENCY'
-            ? await getOrgCurrencyCode(this.organizationId, this.db)
-            : undefined
+          field.fieldType === 'CURRENCY' ? await getOrgCurrencyCode(this.organizationId) : undefined
 
         for (const instanceId of instanceIds) {
           const typedValue = valuesByEntity.get(instanceId) ?? null

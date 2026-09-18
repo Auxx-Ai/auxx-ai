@@ -77,7 +77,6 @@ export async function acceptQuoteDepositAccounting(
       throw new UnprocessableEntityError('A quote deposit requires a confirmed USD receipt')
 
     const zone = await getOrganizationSetting({
-      db,
       organizationId: input.organizationId,
       key: 'accounting.bookTimeZone',
     })
@@ -158,6 +157,6 @@ export async function acceptQuoteDepositAccounting(
     sources,
     railId: input.railId,
     scope: { rail: input.railId },
-    mode: await readAutoPostMode(db, input.organizationId, 'receipt'),
+    mode: await readAutoPostMode(input.organizationId, 'receipt'),
   })
 }

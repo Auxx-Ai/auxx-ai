@@ -106,6 +106,11 @@ vi.mock('../../settings/settings-service', () => ({
   getOrganizationSetting: async ({ key }: { key: string }) => h.settings[key] ?? null,
 }))
 
+vi.mock('../../settings/read', () => ({
+  readOrganizationSettings: async (_organizationId: string, keys: readonly string[]) =>
+    Object.fromEntries(keys.map((key) => [key, h.settings[key] ?? null])),
+}))
+
 vi.mock('../../field-values/field-value-helpers', () => ({
   createFieldValueContext: (organizationId: string, userId?: string) => ({
     organizationId,

@@ -233,14 +233,17 @@ export async function createQuoteFromRequest(input: CreateQuoteFromRequestInput)
   // §F.5, deposit fields added by money MP2 §B.3) — always unset at this point (this is the
   // only quote-create path today), so "only prefill when empty" is trivially satisfied by
   // setting them unconditionally here.
-  const { getOrganizationSetting } = await import('../settings/settings-service')
-  const [validDays, defaultTerms, depositType, depositValue] = await Promise.all([
-    getOrganizationSetting({ organizationId, key: 'documents.quote.validDays' }),
-    getOrganizationSetting({ organizationId, key: 'documents.quote.defaultTerms' }),
-    getOrganizationSetting({ organizationId, key: 'documents.quote.depositType' }),
-    getOrganizationSetting({ organizationId, key: 'documents.quote.depositValue' }),
-  ])
-  const validUntil = new Date(Date.now() + Number(validDays ?? 30) * 24 * 60 * 60 * 1000)
+  const { readOrganizationSettings } = await import('../settings/read')
+  const documentDefaults = await readOrganizationSettings(organizationId, [
+    'documents.quote.validDays',
+    'documents.quote.defaultTerms',
+    'documents.quote.depositType',
+    'documents.quote.depositValue',
+  ] as const)
+  const defaultTerms = documentDefaults['documents.quote.defaultTerms']
+  const validUntil = new Date(
+    Date.now() + Number(documentDefaults['documents.quote.validDays'] ?? 30) * 24 * 60 * 60 * 1000
+  )
     .toISOString()
     .split('T')[0]
 
@@ -248,8 +251,8 @@ export async function createQuoteFromRequest(input: CreateQuoteFromRequestInput)
     quote_title: title || `Quote for ${requestInstanceId}`,
     quote_request: requestRecordId,
     quote_valid_until: validUntil,
-    quote_deposit_type: depositType ?? 'none',
-    quote_deposit_value: Number(depositValue ?? 0),
+    quote_deposit_type: documentDefaults['documents.quote.depositType'] ?? 'none',
+    quote_deposit_value: Number(documentDefaults['documents.quote.depositValue'] ?? 0),
   }
   if (contactRecordId) values.quote_contact = contactRecordId
   if (defaultTerms) values.quote_terms = defaultTerms

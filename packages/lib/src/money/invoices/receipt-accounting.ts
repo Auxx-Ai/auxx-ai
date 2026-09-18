@@ -44,7 +44,7 @@ import type {
   GlPostingSourceInput,
   PostResult,
 } from '../../postings/types'
-import { getOrganizationSetting } from '../../settings/settings-service'
+import { readOrganizationSettings } from '../../settings/read'
 import { loadInvoiceForIssuance } from './issuance-reads'
 
 const logger = createScopedLogger('invoice-receipt-accounting')
@@ -188,20 +188,14 @@ async function prepareInvoiceReceipt(
   tx: Transaction,
   input: AcceptInvoiceReceiptInput
 ): Promise<PreparedInvoiceReceipt> {
-  const currency = await getOrganizationSetting({
-    db: tx,
-    organizationId: input.organizationId,
-    key: 'organization.currency',
-  })
-  if (currency !== 'USD')
+  const settings = await readOrganizationSettings(input.organizationId, [
+    'organization.currency',
+    OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
+  ] as const)
+  if (settings['organization.currency'] !== 'USD')
     throw new UnprocessableEntityError('Invoice receipt accounting requires USD')
-  const zone = await getOrganizationSetting({
-    db: tx,
-    organizationId: input.organizationId,
-    key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
-  })
-  if (typeof zone !== 'string' || !zone)
-    throw new UnprocessableEntityError('Book time zone is not configured')
+  const zone = settings[OPENING_BASELINE_SETTING_KEYS.bookTimeZone]
+  if (!zone) throw new UnprocessableEntityError('Book time zone is not configured')
 
   const source = await readInvoiceReceiptSource(
     tx,
@@ -325,6 +319,6 @@ export async function acceptInvoiceReceiptAccounting(
     memo: `Invoice payment - movement ${input.moneyTransactionId}`,
     sources: prepared.sources,
     ...(input.railId ? { railId: input.railId, scope: { rail: input.railId } } : {}),
-    mode: await readAutoPostMode(db, input.organizationId, 'receipt'),
+    mode: await readAutoPostMode(input.organizationId, 'receipt'),
   })
 }

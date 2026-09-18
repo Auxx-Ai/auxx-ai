@@ -145,7 +145,7 @@ export async function readBalanceSheet(
     // Once per call, for the same reason the chart is: both snapshots must draw
     // the boundary in the same month, and a compare period that resolved it
     // separately could straddle a settings change mid-read.
-    const fyStartMonth = await resolveFiscalYearStartMonth(organizationId, db)
+    const fyStartMonth = await resolveFiscalYearStartMonth(organizationId)
 
     const primary = await computeSnapshot(db, organizationId, asOf, chart, fyStartMonth)
     if (primary.isErr()) return err(primary.error)

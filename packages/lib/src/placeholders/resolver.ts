@@ -305,7 +305,7 @@ export async function resolveFieldTokens(
   // alike. Skipped entirely when no currency token resolved.
   const currencyIds = [...result].filter(([, r]) => r?.fieldType === 'CURRENCY').map(([id]) => id)
   if (currencyIds.length > 0) {
-    const orgCurrencyCode = await getOrgCurrencyCode(ctx.organizationId, ctx.db)
+    const orgCurrencyCode = await getOrgCurrencyCode(ctx.organizationId)
     for (const id of currencyIds) {
       const resolved = result.get(id)!
       result.set(id, {

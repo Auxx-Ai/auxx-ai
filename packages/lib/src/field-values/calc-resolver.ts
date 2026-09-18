@@ -113,7 +113,7 @@ export async function resolveCalcForRecord(
       ? withOrgCurrency(
           field.options as never,
           'CURRENCY',
-          await getOrgCurrencyCode(ctx.organizationId, ctx.db)
+          await getOrgCurrencyCode(ctx.organizationId)
         )
       : ((field.options ?? undefined) as never)
   const formatted = typed

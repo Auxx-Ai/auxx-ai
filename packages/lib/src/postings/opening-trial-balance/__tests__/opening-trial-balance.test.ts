@@ -32,6 +32,11 @@ vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: async ({ key }: { key: string }) => h.settings.get(key) ?? null,
 }))
 
+vi.mock('../../../settings/read', () => ({
+  readOrganizationSettings: async (_organizationId: string, keys: readonly string[]) =>
+    Object.fromEntries(keys.map((key) => [key, h.settings.get(key) ?? null])),
+}))
+
 vi.mock('../../journal-entries/reads', () => ({
   listJournalEntries: async () => ({ isErr: () => false, value: h.entries }),
   requireJournalEntryFieldContext: async () => ({ journalEntryDefId: 'def_je', fields: {} }),

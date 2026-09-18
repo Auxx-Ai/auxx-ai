@@ -349,7 +349,7 @@ export async function buildExportBatches(
     if (!connection)
       return ok({ built: 0, batchIds: [], skippedBeforeCutover: 0, connected: false })
 
-    const settings = await readExportSettings(db, organizationId)
+    const settings = await readExportSettings(organizationId)
     const cutover =
       settings.cutover && settings.cutover > connection.exportFromDate
         ? settings.cutover

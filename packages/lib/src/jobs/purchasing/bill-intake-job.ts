@@ -280,9 +280,7 @@ export async function billIntakeJob(ctx: JobContext<BillIntakeJobData>) {
       ? await loadPurchaseOrderCurrency(database, organizationId, purchaseOrderRecordId)
       : null
     const currency =
-      transcription.currency ??
-      orderCurrency ??
-      (await getOrgCurrencyCode(organizationId, database))
+      transcription.currency ?? orderCurrency ?? (await getOrgCurrencyCode(organizationId))
     let orderLines: OrderLineFacts[] = []
     if (purchaseOrderRecordId) {
       const orderLinesResult = await loadOrderLineFacts(

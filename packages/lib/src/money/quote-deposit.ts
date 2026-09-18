@@ -13,7 +13,7 @@ import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { getOrgCache } from '../cache'
 import { UnifiedCrudHandler } from '../resources/crud'
-import { getOrganizationSetting } from '../settings/settings-service'
+import { readOrganizationSettings } from '../settings/read'
 import { listWorkOrderDepositReceipts } from './checkout/reads'
 import { applyMoneyToInvoice } from './invoices/apply-money'
 
@@ -96,12 +96,13 @@ export async function resolveQuoteDeposit(
   let depositValue = depositValueTyped ? Number(extractValue(depositValueTyped)) : undefined
 
   if (!depositType && depositValue == null) {
-    const [orgDepositType, orgDepositValue] = await Promise.all([
-      getOrganizationSetting({ organizationId, key: 'documents.quote.depositType' }),
-      getOrganizationSetting({ organizationId, key: 'documents.quote.depositValue' }),
-    ])
-    depositType = (orgDepositType as QuoteDepositType | undefined) ?? 'none'
-    depositValue = Number(orgDepositValue ?? 0)
+    const orgDefaults = await readOrganizationSettings(organizationId, [
+      'documents.quote.depositType',
+      'documents.quote.depositValue',
+    ] as const)
+    depositType =
+      (orgDefaults['documents.quote.depositType'] as QuoteDepositType | undefined) ?? 'none'
+    depositValue = Number(orgDefaults['documents.quote.depositValue'] ?? 0)
   }
 
   const resolvedType = depositType ?? 'none'

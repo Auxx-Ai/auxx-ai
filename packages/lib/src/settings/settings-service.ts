@@ -11,6 +11,7 @@ import { UnprocessableEntityError } from '../errors'
 import { withAccountingCommitLock } from '../postings/accounting-commit-lock'
 import { SETTINGS_CATALOG, type SettingConfig, type SettingKey } from './catalog'
 import { normalizeSettingValue } from './normalize-setting-value'
+import { readOrganizationSettings, type SettingValueFor } from './read'
 import type { SettingScope, SettingValue } from './types'
 
 const logger = createScopedLogger('settings-service')
@@ -68,8 +69,9 @@ async function writeInvoiceDefaultTimingCustomFields(params: {
  */
 async function bustInvoiceDefaultTimingCache(organizationId: string): Promise<void> {
   // Dynamic import — `../cache` transitively pulls in the org-settings cache
-  // provider, which imports this module (see `getOrganizationSetting` above
-  // for the same pattern), so a static import here would cycle.
+  // provider, which imports this module's barrel (`read.ts`'s
+  // `readOrganizationSettings` does the same dynamic import for the same
+  // reason), so a static import here would cycle.
   const { onCacheEvent } = await import('../cache/invalidate')
   await onCacheEvent('custom-field.updated', { orgId: organizationId })
 }
@@ -142,39 +144,17 @@ async function stampAutoBuildEnabledAt(params: {
 }
 
 /**
- * Get an organization setting, ignoring user overrides.
+ * Get an organization setting, ignoring user overrides. Sugar over
+ * {@link readOrganizationSettings} for the common one-key case.
  */
-export async function getOrganizationSetting(params: {
+export async function getOrganizationSetting<K extends SettingKey>(params: {
   organizationId: string
-  key: SettingKey
+  key: K
   db?: Database | Transaction
-}): Promise<SettingValue> {
-  const { organizationId, key, db = defaultDb } = params
-
-  const settingConfig = SETTINGS_CATALOG[key]
-  if (!settingConfig) {
-    throw new Error(`Unknown setting: ${key}`)
-  }
-
-  // Injected database (e.g. transaction) → read directly for write-after-read consistency
-  if (db !== defaultDb) {
-    const [orgSetting] = await db
-      .select()
-      .from(schema.OrganizationSetting)
-      .where(
-        and(
-          eq(schema.OrganizationSetting.organizationId, organizationId),
-          eq(schema.OrganizationSetting.key, key)
-        )
-      )
-      .limit(1)
-    return orgSetting ? (orgSetting.value as SettingValue) : settingConfig.defaultValue
-  }
-
-  // Org cache map already merges catalog defaults with persisted org rows
-  const { getOrgCache } = await import('../cache')
-  const settings = await getOrgCache().get(organizationId, 'orgSettings')
-  return key in settings ? settings[key]! : settingConfig.defaultValue
+}): Promise<SettingValueFor<K>> {
+  const { organizationId, key, db } = params
+  const result = await readOrganizationSettings(organizationId, [key] as const, db)
+  return result[key]
 }
 
 /**
@@ -437,7 +417,7 @@ async function updateOrganizationSettingInner(params: {
   // and it is not observable from the row once the write has landed.
   const previousValue =
     key === 'inventory.autoBuildFromOrders'
-      ? await readOrganizationSettingValue({ organizationId, key, db })
+      ? (await readOrganizationSettings(organizationId, [key] as const, db))[key]
       : undefined
 
   await db
@@ -460,25 +440,6 @@ async function updateOrganizationSettingInner(params: {
   if (key === 'inventory.autoBuildFromOrders') {
     await stampAutoBuildEnabledAt({ organizationId, previousValue, value: normalizedValue, db })
   }
-}
-
-/** The raw stored value for one key, or `undefined` when the org has no row. */
-async function readOrganizationSettingValue(params: {
-  organizationId: string
-  key: SettingKey
-  db: Database | Transaction
-}): Promise<SettingValue | undefined> {
-  const [row] = await params.db
-    .select({ value: schema.OrganizationSetting.value })
-    .from(schema.OrganizationSetting)
-    .where(
-      and(
-        eq(schema.OrganizationSetting.organizationId, params.organizationId),
-        eq(schema.OrganizationSetting.key, params.key)
-      )
-    )
-    .limit(1)
-  return row ? (row.value as SettingValue) : undefined
 }
 
 /**
@@ -592,7 +553,7 @@ export async function batchUpdateOrganizationSettings(params: {
       // transition AB8's stamp keys on is already gone.
       const previousValue =
         key === 'inventory.autoBuildFromOrders'
-          ? await readOrganizationSettingValue({ organizationId, key, db: tx })
+          ? (await readOrganizationSettings(organizationId, [key] as const, tx))[key]
           : undefined
 
       await tx

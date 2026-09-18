@@ -187,7 +187,11 @@ function createFakeDb(chart: Array<{ role: string; account: Account }>) {
       select: () => ({
         from: (table: unknown) => {
           if (table === schema.OrganizationSetting) {
-            return thenable(() => (h.lockedThroughMonth ? [{ value: h.lockedThroughMonth }] : []))
+            return thenable(() =>
+              h.lockedThroughMonth
+                ? [{ key: 'ledger.lockedThroughMonth', value: h.lockedThroughMonth }]
+                : []
+            )
           }
           if (table === schema.GlRoleAssignment) {
             return thenable(() =>

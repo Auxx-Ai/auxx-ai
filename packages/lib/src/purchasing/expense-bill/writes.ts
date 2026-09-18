@@ -291,7 +291,7 @@ export async function postExpenseBill(
   let post: PostResult
   if (await isAccountingEnabled(db, organizationId)) {
     const lock = await resolvePeriodLock(organizationId)
-    const mode = await readAutoPostMode(db, organizationId, 'expenseBill')
+    const mode = await readAutoPostMode(organizationId, 'expenseBill')
     post = await postEntry(db, {
       organizationId,
       entry: built.entry,

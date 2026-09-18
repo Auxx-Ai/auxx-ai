@@ -50,8 +50,9 @@ vi.mock('../../../field-values/field-value-service', () => ({
     }
   },
 }))
-vi.mock('../../../settings/settings-service', () => ({
-  getOrganizationSetting: async ({ key }: { key: string }) => h.settings[key],
+vi.mock('../../../settings/read', () => ({
+  readOrganizationSettings: async (_organizationId: string, keys: readonly string[]) =>
+    Object.fromEntries(keys.map((key) => [key, h.settings[key]])),
 }))
 vi.mock('../../payouts/stripe-account', () => ({ getPaymentAccount: async () => h.account }))
 vi.mock('../../payouts/stripe-connect-client', () => ({

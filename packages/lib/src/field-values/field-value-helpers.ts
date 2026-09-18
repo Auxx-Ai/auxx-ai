@@ -1528,7 +1528,7 @@ export async function maybeUpdateDisplayValue(
           ? withOrgCurrency(
               field.options as never,
               'CURRENCY',
-              await getOrgCurrencyCode(ctx.organizationId, ctx.db)
+              await getOrgCurrencyCode(ctx.organizationId)
             )
           : (field.options as never)
       displayValue = primaryTyped

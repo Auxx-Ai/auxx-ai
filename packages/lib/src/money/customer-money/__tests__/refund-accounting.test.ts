@@ -37,6 +37,14 @@ vi.mock('../../../postings/setup-readiness', () => ({ FINALIZED_SETUP_STATE: 'fi
 vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: h.getOrganizationSetting,
 }))
+vi.mock('../../../settings/read', () => ({
+  readOrganizationSettings: async (organizationId: string, keys: readonly string[]) =>
+    Object.fromEntries(
+      await Promise.all(
+        keys.map(async (key) => [key, await h.getOrganizationSetting({ organizationId, key })])
+      )
+    ),
+}))
 vi.mock('../../credit-memos/accounting', () => ({
   readCreditMemoControlAccount: h.readCreditMemoControlAccount,
 }))

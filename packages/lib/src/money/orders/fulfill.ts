@@ -331,7 +331,7 @@ async function postFulfillmentEntryInTx(
       : []),
   ]
   const lock = await resolvePeriodLock(organizationId, tx)
-  const mode = await readAutoPostMode(tx, organizationId, 'fulfillment')
+  const mode = await readAutoPostMode(organizationId, 'fulfillment')
   return postEntryInTx(tx, {
     organizationId,
     entry,

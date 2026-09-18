@@ -41,7 +41,12 @@ function chain(rows: unknown[]) {
 
 const db = {
   select: () => ({
-    from: () => chain(h.storedValue === undefined ? [] : [{ value: h.storedValue }]),
+    from: () =>
+      chain(
+        h.storedValue === undefined
+          ? []
+          : [{ key: 'inventory.autoBuildFromOrders', value: h.storedValue }]
+      ),
   }),
   insert: () => ({
     values: (row: Upsert) => ({

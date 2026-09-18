@@ -36,6 +36,11 @@ vi.mock('../../../settings/settings-service', () => ({
   },
 }))
 
+vi.mock('../../../settings/read', () => ({
+  readOrganizationSettings: async (_organizationId: string, keys: readonly string[]) =>
+    Object.fromEntries(keys.map((key) => [key, h.settings.get(key) ?? null])),
+}))
+
 vi.mock('../../../cache/invalidate', () => ({
   onCacheEvent: async (...args: unknown[]) => {
     h.cacheEvents.push(args)

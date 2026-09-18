@@ -22,8 +22,10 @@ const settings = {
   'email.automation.maxPerOrgPer15Min': 30,
 } as Record<string, unknown>
 
-vi.mock('../../settings/settings-service', () => ({
-  getOrganizationSetting: vi.fn(async ({ key }: { key: string }) => settings[key]),
+vi.mock('../../settings/read', () => ({
+  readOrganizationSettings: vi.fn(async (_organizationId: string, keys: readonly string[]) =>
+    Object.fromEntries(keys.map((key) => [key, settings[key]]))
+  ),
 }))
 
 const sendNotification = vi.fn(async () => ({}))

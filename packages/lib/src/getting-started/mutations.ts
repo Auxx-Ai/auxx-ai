@@ -11,7 +11,12 @@ import {
 } from './client'
 import type { GettingStartedContext } from './types'
 
-/** Read a checklist's current persisted state directly (not via cache — write path). */
+/**
+ * Read a checklist's current persisted state. `db` is passed through: every
+ * caller below merges this into a patch and overwrites the same key, and a
+ * cached read racing the cache's invalidation window can hand back a value
+ * that a concurrent write already replaced, silently dropping it.
+ */
 async function readState(
   db: Database | Transaction | undefined,
   organizationId: string,

@@ -242,7 +242,7 @@ export async function purchaseIntakeJob(ctx: JobContext<PurchaseIntakeJobData>) 
   // ── Phase 3: the lines ───────────────────────────────────────────────────
   await phase(organizationId, draftId, 'lines')
 
-  const currency = transcription.currency ?? (await getOrgCurrencyCode(organizationId, database))
+  const currency = transcription.currency ?? (await getOrgCurrencyCode(organizationId))
 
   const lines = await resolveQuoteLines(database, organizationId, {
     vendorRecordId,

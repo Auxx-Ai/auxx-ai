@@ -16,7 +16,7 @@ import type {
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { quietSession } from '../resources/crud/write-origin'
-import { getOrganizationSetting } from '../settings/settings-service'
+import { readOrganizationSettings } from '../settings/read'
 import { isCheckoutAvailable, sumInvoiceDepositApplications } from './checkout/reads'
 import { resolvePartialPaymentBounds } from './customer-money/partial-payment'
 import type { DiscountType } from './types'
@@ -214,18 +214,21 @@ export async function getPublicInvoicePayload(token: string): Promise<PublicInvo
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
 
-  const [{ payload }, allowPartialPayments, partialPaymentMinPercent] = await Promise.all([
+  const [{ payload }, paymentSettings] = await Promise.all([
     buildInvoicePdfPayload({ organizationId, userId: systemUserId, invoiceRecordId }),
-    getOrganizationSetting({ organizationId, key: 'documents.invoice.allowPartialPayments' }),
-    getOrganizationSetting({ organizationId, key: 'documents.invoice.partialPaymentMinPercent' }),
+    readOrganizationSettings(organizationId, [
+      'documents.invoice.allowPartialPayments',
+      'documents.invoice.partialPaymentMinPercent',
+    ] as const),
   ])
+  const allowPartialPayments = paymentSettings['documents.invoice.allowPartialPayments']
   const [paymentsEnabled, depositApplied] = await Promise.all([
     isCheckoutAvailable(organizationId),
     sumInvoiceDepositApplications(database, organizationId, invoiceInstanceId),
   ])
   const minPaymentAmount = resolvePartialPaymentBounds(
     payload.balance,
-    Number(partialPaymentMinPercent ?? 10)
+    Number(paymentSettings['documents.invoice.partialPaymentMinPercent'] ?? 10)
   ).min
 
   return {

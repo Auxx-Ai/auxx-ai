@@ -33,11 +33,9 @@ export async function scheduleBotsForUpcomingMeetings(): Promise<
   let skipped = 0
 
   // Find organizations with recording enabled
-  const orgSettings = await findOrgsWithRecordingEnabled()
+  const organizationIds = await findOrgsWithRecordingEnabled()
 
-  for (const orgSetting of orgSettings) {
-    const organizationId = orgSetting.organizationId
-
+  for (const organizationId of organizationIds) {
     // Get all recording settings for this org in a single query
     const recordingSettings = await getAllOrganizationSettings({
       organizationId,

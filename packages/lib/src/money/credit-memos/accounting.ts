@@ -74,7 +74,7 @@ export async function postCreditMemoEntry(
     scope,
     sources,
     storeId: typeof scope.store === 'string' ? scope.store : null,
-    mode: await readAutoPostMode(db, organizationId, 'creditMemo'),
+    mode: await readAutoPostMode(organizationId, 'creditMemo'),
   })
 }
 
