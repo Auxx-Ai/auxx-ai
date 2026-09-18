@@ -1,7 +1,8 @@
 // packages/lib/src/email/inbound/body-ingest.service.ts
 
+// Namespace import, deliberately — see `lazyDatabase`'s doc comment in `@auxx/database`.
+import * as auxxDatabase from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { defaultDatabase } from '../../files/default-database'
 import { findStorageLocationByExternalId } from '../../files/storage/location-queries'
 import { createStorageManager } from '../../files/storage/storage-manager'
 import type { IngestedBodyMeta } from './ingest-types'
@@ -54,7 +55,7 @@ export class InboundBodyIngestService {
     // to the upload rather than lose the message.
     try {
       const existing = await findStorageLocationByExternalId(
-        { db: defaultDatabase(), organizationId: context.organizationId },
+        { db: auxxDatabase.lazyDatabase(), organizationId: context.organizationId },
         'S3',
         key
       )

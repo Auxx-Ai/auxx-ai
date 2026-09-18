@@ -1,5 +1,7 @@
 // packages/lib/src/documents/render.ts
 
+// Namespace import, deliberately — see `lazyDatabase`'s doc comment in `@auxx/database`.
+import * as auxxDatabase from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { DocumentProps } from '@react-pdf/renderer'
 import { renderToBuffer } from '@react-pdf/renderer'
@@ -7,7 +9,6 @@ import type { ReactElement } from 'react'
 import { createElement } from 'react'
 import { getAssetContent } from '../files/assets/content'
 import { assertSharpSafeInput, UnsupportedImageError } from '../files/core/image-processing'
-import { defaultDatabase } from '../files/default-database'
 import { getFolderFileContent } from '../files/folder-files'
 import { createS3StoragePort } from '../files/storage/ports'
 import { THUMBNAIL_LIMITS } from '../files/thumbnails/presets'
@@ -75,7 +76,7 @@ export async function resolvePhotoRef(organizationId: string, ref: string): Prom
 
     if (kind !== 'asset' && kind !== 'file') return null
 
-    const ctx = { db: defaultDatabase(), organizationId }
+    const ctx = { db: auxxDatabase.lazyDatabase(), organizationId }
     const deps = { storage: createS3StoragePort(organizationId) }
     const content =
       kind === 'asset'
@@ -156,7 +157,7 @@ export async function renderDocumentPdf(
 
   if (logoAssetId) {
     const logo = await getAssetContent(
-      { db: defaultDatabase(), organizationId: payload.organizationId },
+      { db: auxxDatabase.lazyDatabase(), organizationId: payload.organizationId },
       { storage: createS3StoragePort(payload.organizationId) },
       logoAssetId
     )

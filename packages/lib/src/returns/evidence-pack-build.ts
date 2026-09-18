@@ -16,6 +16,7 @@
  * assert be covered without a fixture organization.
  */
 
+import type { Database } from '@auxx/database'
 import { stableHash } from '@auxx/utils/hash'
 import { getOrgCache } from '../cache'
 import { loadPdfContact } from '../documents/payload'
@@ -23,7 +24,6 @@ import { resolveDocumentSettings } from '../documents/resolve-settings'
 import { NotFoundError } from '../errors'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { parseRecordId, type RecordId } from '../resources/resource-id'
-import { defaultEvidenceDatabase } from './evidence-pack-database'
 import {
   assembleReturnEvidencePack,
   type ReturnEvidencePackPdfPayload,
@@ -34,22 +34,18 @@ import { getReturn } from './reads'
 /**
  * Build one return's evidence-pack payload and its content hash.
  *
- * The registry hands every builder `(organizationId, userId, recordId)` and no
- * connection, so this resolves the module database the same way every payload
- * builder in `documents/payload.ts` does.
- *
- * 🛑 Nothing in here refuses on missing data. The only failure is a return that
+ * Nothing in here refuses on missing data. The only failure is a return that
  * does not exist in this organization: a return with no order, no contact and
  * no ticket is the dock case and gets a pack that says so.
  */
 export async function buildReturnEvidencePackPayload(params: {
+  db: Database
   organizationId: string
   userId: string
   recordId: RecordId
 }): Promise<{ payload: ReturnEvidencePackPdfPayload; hash: string }> {
-  const { organizationId, userId, recordId } = params
+  const { db, organizationId, userId, recordId } = params
   const { entityInstanceId } = parseRecordId(recordId)
-  const db = defaultEvidenceDatabase()
 
   const returnResult = await getReturn(db, organizationId, entityInstanceId)
   if (returnResult.isErr()) throw returnResult.error

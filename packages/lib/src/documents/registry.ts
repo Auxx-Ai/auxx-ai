@@ -6,6 +6,7 @@
 // side-effect self-registration / import-order magic): adding a document type means adding
 // an entry to `RENDER_ENTRIES` below plus a descriptor in `./client.ts`.
 
+import type { Database } from '@auxx/database'
 import type { RecordId } from '@auxx/types/resource'
 import type { ComponentType } from 'react'
 import { buildReturnEvidencePackPayload } from '../returns/evidence-pack-build'
@@ -40,6 +41,7 @@ export interface RegisteredDocumentType {
   /** systemAttribute of the last-rendered pdf-asset pointer field (`ensure-pdf.ts`). */
   pointerAttr: string
   buildPayload(params: {
+    db: Database
     organizationId: string
     userId: string
     recordId: RecordId
@@ -147,6 +149,7 @@ const RENDER_ENTRIES: Array<
     pointerAttr: 'return_evidence_pack_asset',
     buildPayload: (params) =>
       buildReturnEvidencePackPayload({
+        db: params.db,
         organizationId: params.organizationId,
         userId: params.userId,
         recordId: params.recordId,

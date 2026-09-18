@@ -29,6 +29,8 @@ export { ThreadMergeService } from './thread-merge.service'
 export type { MutationResult, ThreadUpdates } from './thread-mutation.service'
 export { ThreadMutationService } from './thread-mutation.service'
 export { ThreadQueryService } from './thread-query.service'
+export type { RecordThread } from './threads-for-record'
+export { threadsForRecord } from './threads-for-record'
 
 export type {
   ChannelProvider,

@@ -19,8 +19,7 @@ import {
   StorageAuthError,
   StorageFileNotFoundError,
 } from '../adapters/base-adapter'
-import type { FilesCtx } from '../ctx'
-import { defaultDatabase } from '../default-database'
+import { type FilesCtx, lazyDatabase } from '../ctx'
 import type { UploadPreparedConfig } from '../upload/init-types'
 import { resolveProviderAuth } from './auth'
 import { bucketForVisibility, buildExternalUrl, type StorageVisibility } from './buckets'
@@ -169,13 +168,10 @@ export class StorageManager {
    *
    * This is the whole seam between the class and the functional layer, and it
    * is the **only** place this facade reaches the process-wide pool.
-   * `defaultDatabase()` is imported from `files/default-database.ts` rather
-   * than re-derived here on purpose: that accessor already carries the namespace
-   * import and the 20-line explanation of the Vitest link-time hazard (a *named*
-   * `database` binding kills every downstream file at collection for any test
-   * that mocks `@auxx/database` without that key — see PR #1823). Borrowing it
-   * keeps `files/storage/**` free of any module-scope database reach, named or
-   * namespace, which is the Phase-3 exit criterion.
+   * `lazyDatabase()` is imported from `files/ctx.ts` rather than re-derived here
+   * on purpose: that keeps `files/storage/**` free of any module-scope reach
+   * into `@auxx/database`, named or namespace, which is the Phase-3 exit
+   * criterion.
    *
    * `organizationId` is optional on this class but required by `FilesCtx`, and
    * that gap is real rather than cosmetic: the reads below are now org-scoped,
@@ -191,7 +187,7 @@ export class StorageManager {
         operation
       )
     }
-    return { db: defaultDatabase(), organizationId: this.organizationId }
+    return { db: lazyDatabase(), organizationId: this.organizationId }
   }
 
   /**
@@ -536,7 +532,7 @@ export class StorageManager {
         // just paid for an S3 DELETE. Phase 6 folds this into the caller's own
         // transaction and the wrapper goes away.
         const ctx = this.filesCtx('deleteFile')
-        const deleted = await defaultDatabase().transaction((tx) =>
+        const deleted = await lazyDatabase().transaction((tx) =>
           deleteStorageLocation(tx, { ...ctx, db: tx }, locationId)
         )
         if (deleted.isErr()) throw deleted.error
@@ -669,7 +665,7 @@ export class StorageManager {
       //   hottest write path in the app. The cast disappears with this method.
       const result = opts?.tx
         ? await createStorageLocation(opts.tx as Transaction, ctx, input)
-        : await defaultDatabase().transaction((tx) =>
+        : await lazyDatabase().transaction((tx) =>
             createStorageLocation(tx, { ...ctx, db: tx }, input)
           )
 

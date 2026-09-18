@@ -1,6 +1,6 @@
 // packages/lib/src/users/system-user-service.ts
 
-// Namespace import, deliberately — see `prepared` below.
+// Namespace import, deliberately — see `lazyDatabase`'s doc comment in `@auxx/database`.
 import * as auxxDatabase from '@auxx/database'
 import { schema } from '@auxx/database'
 import type { UserEntity, UserType } from '@auxx/database/types'
@@ -14,13 +14,10 @@ const logger = createScopedLogger('system-user-service')
  * The two prepared statements, built on FIRST USE and memoized thereafter.
  *
  * These used to be module-level `const`s, which meant `db.select().from(…)
- * .prepare(…)` ran at module EVALUATION. Two things then went wrong under any
- * test that declares its own `vi.mock('@auxx/database', …)`: a factory without a
- * `database` key fails the named-binding link check, and one whose `schema.User`
- * is undefined dies inside Drizzle. Either kills every test in the importing
- * file at collection — and this module sits under `sequences/runtime.ts`, which
- * sits under the `@auxx/lib/cache` barrel, so "the importing file" is most
- * router tests.
+ * .prepare(…)` ran at module EVALUATION, dying inside Drizzle under any test
+ * whose `schema.User` mock is undefined. This module sits under
+ * `sequences/runtime.ts`, which sits under the `@auxx/lib/cache` barrel, so
+ * "the importing file" is most router tests.
  *
  * Preparation is still once per process; only the timing moved.
  * See `plans/testing/database-mock-collection-hazard.md`.
@@ -31,7 +28,8 @@ const prepared: {
 } = {}
 
 function buildByIdStmt() {
-  return auxxDatabase.database
+  return auxxDatabase
+    .lazyDatabase()
     .select()
     .from(schema.User)
     .where(eq(schema.User.id, '$1'))
@@ -40,7 +38,8 @@ function buildByIdStmt() {
 }
 
 function buildTypeStmt() {
-  return auxxDatabase.database
+  return auxxDatabase
+    .lazyDatabase()
     .select({ userType: schema.User.userType })
     .from(schema.User)
     .where(eq(schema.User.id, '$1'))
@@ -104,7 +103,8 @@ export class SystemUserService {
       }
       // Fallback to database (using regular query to avoid prepared statement cache issues)
       logger.debug('getOrganizationSystemUser: querying DB', { organizationId })
-      const orgWithUser = await auxxDatabase.database
+      const orgWithUser = await auxxDatabase
+        .lazyDatabase()
         .select({
           organization: schema.Organization,
           systemUser: schema.User,
@@ -155,7 +155,7 @@ export class SystemUserService {
       logger.info('createSystemUser: cache invalidated, starting transaction', { organizationId })
 
       // Use transaction to ensure atomicity
-      const systemUser = await auxxDatabase.database.transaction(async (tx) => {
+      const systemUser = await auxxDatabase.lazyDatabase().transaction(async (tx) => {
         // Create the system user
         logger.info('createSystemUser: inserting system user', { organizationId })
         const [newUser] = await tx
