@@ -2,7 +2,7 @@
 
 'use client'
 
-import { EXPORT_BATCH_TABS, type ExportBatchTab } from '@auxx/lib/accounting/export/client'
+import { OUTBOX_TABS, type OutboxTab } from '@auxx/lib/accounting/export/client'
 import { Button } from '@auxx/ui/components/button'
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
@@ -11,7 +11,7 @@ import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { ArrowLeftRight, ClipboardCheck, Clock3, FileText, Layers, Lock, Plus } from 'lucide-react'
-import { parseAsBoolean, parseAsStringLiteral, useQueryState } from 'nuqs'
+import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useRef } from 'react'
 import { useAccountingMonth } from '~/components/accounting/hooks/use-accounting-month'
 import {
@@ -45,7 +45,6 @@ import { api } from '~/trpc/react'
 
 import { CloseMonthPanel } from './close-month-panel'
 import { type CountAdjustmentRow, CountEvidenceSection } from './count-evidence-section'
-import { DraftsPanel } from './drafts-panel'
 import { formatPeriodLabel, lockRefusalReason } from './format'
 import { type LateArrivalRow, LateArrivalsSection } from './late-arrivals-section'
 import { LedgerBanners } from './ledger-banners'
@@ -53,8 +52,8 @@ import { LedgerSidebar, type LedgerView } from './ledger-sidebar'
 import { LedgerStats } from './ledger-stats'
 import { LedgerSummaryPanel } from './ledger-summary-panel'
 import { LedgerToolbar } from './ledger-toolbar'
+import { OutboxPanel } from './outbox/outbox-panel'
 import { PostingDrawer } from './posting-drawer'
-import { SyncQueuePanel } from './sync-queue/sync-queue-panel'
 
 /** The setting that declares how far the books are closed. `DOCUMENTS` scope. */
 const LOCKED_THROUGH_KEY = 'ledger.lockedThroughMonth'
@@ -100,21 +99,19 @@ const SECTION_BLEED = '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3
  *   2. A month is open      -> that month's entry, ready to preview and post
  *   3. Everything posted    -> the most recent posted month, plus "nothing to close"
  *
- * ## Three destinations, one route
+ * ## Two destinations, one route
  *
  * The rail (`ledger-sidebar.tsx`) picks what the content column shows:
  *
  *   - **Closeout** - the month. Its stats, its refusals, its month-end entry,
- *     the lock, its other entries. The absence of `?queue=` and `?drafts=`.
- *   - **Drafts** - `?drafts=1` (TARGET §4 gate 1). This month's drafts, every
- *     avenue whose `autoPost` is off - approve or discard each one.
- *   - **Sync queue** - `?queue=<tab>`. Everything in the books and not in the
- *     provider's copy, EVERY period, which is why it does not share a screen
- *     with a month-scoped header.
+ *     the lock, its other entries. The absence of `?queue=`.
+ *   - **Outbox** - `?queue=<tab>` over `OUTBOX_TABS`. Everything on its way out
+ *     of the books: `drafts` (TARGET §4 gate 1 - approve or discard), then the
+ *     four export-batch states. EVERY period on every tab, which is why it does
+ *     not share a screen with a month-scoped header.
  *
- * 🛑 All three are this URL. `?month=`, `?drafts=`, `?queue=` and `?posting=`
- * are the whole of the page's state, so every one of them survives a paste
- * into Slack.
+ * 🛑 Both are this URL. `?month=`, `?queue=` and `?posting=` are the whole of
+ * the page's state, so every one of them survives a paste into Slack.
  *
  * 🛑 Under the L1 regime a month has exactly ONE entry (no receipt, build or
  * shipment posts individually), so the entry renders inline with no list. What a
@@ -143,16 +140,14 @@ export function LedgerPage() {
   // `?je=new` or `?je=<journalEntryId>` - the JE drawer (HANDOFF slot 1B).
   const [journalEntryParam, setJournalEntryParam] = useQueryState('je')
   /**
-   * 🛑 The sync queue is a VIEW of this page, not a second route (53 D17).
+   * 🛑 The outbox is a VIEW of this page, not a second route (53 D17).
    * `GlPosting` is already the aggregate, so an exports page would list the same
    * rows with different columns. One param carries both halves - present means
-   * the queue is what the column is showing, and its value is the tab - so a
+   * the outbox is what the column is showing, and its value is the tab - so a
    * pasted link reopens the pile somebody was actually looking at.
    */
-  const [queueTab, setQueueTab] = useQueryState('queue', parseAsStringLiteral(EXPORT_BATCH_TABS))
-  const isSyncQueueOpen = queueTab !== null
-  /** `?drafts=1` - the Drafts tab (TARGET §4 gate 1, step 1c), scoped to the month on screen. */
-  const [draftsOpen, setDraftsOpen] = useQueryState('drafts', parseAsBoolean.withDefault(false))
+  const [queueTab, setQueueTab] = useQueryState('queue', parseAsStringLiteral(OUTBOX_TABS))
+  const isOutboxOpen = queueTab !== null
   /**
    * The Entries section's own view (TARGET §6) - Detail is one row per
    * posting, Summary groups them by avenue, grain, store, rail and currency.
@@ -171,51 +166,43 @@ export function LedgerPage() {
    * from the queue can be from any month, and leaving its drawer over the
    * month view would show an entry the month below it does not list.
    */
-  const openSyncQueue = useCallback(() => {
-    void setDraftsOpen(null)
+  const openOutbox = useCallback(() => {
     void setQueueTab('ready')
-  }, [setQueueTab, setDraftsOpen])
-  const closeSyncQueue = useCallback(() => {
+  }, [setQueueTab])
+  const closeOutbox = useCallback(() => {
     void setPostingId(null)
     void setQueueTab(null)
-    void setDraftsOpen(null)
-  }, [setQueueTab, setPostingId, setDraftsOpen])
-  const openDrafts = useCallback(() => {
-    void setQueueTab(null)
-    void setDraftsOpen(true)
-  }, [setQueueTab, setDraftsOpen])
+  }, [setQueueTab, setPostingId])
 
   /**
-   * The three rail items and the two params behind them. Closeout is the
-   * absence of both `?queue=` and `?drafts=`, so selecting it is the same act
-   * as leaving either - there is no fourth state to keep in step.
+   * The two rail items and the one param behind them. Closeout is the absence
+   * of `?queue=`, so selecting it is the same act as leaving the outbox.
    */
   const selectView = useCallback(
     (next: LedgerView) => {
-      if (next === 'sync-queue') openSyncQueue()
-      else if (next === 'drafts') openDrafts()
-      else closeSyncQueue()
+      if (next === 'outbox') openOutbox()
+      else closeOutbox()
     },
-    [openSyncQueue, openDrafts, closeSyncQueue]
+    [openOutbox, closeOutbox]
   )
 
   /**
    * "Review the lock" from a close refusal. The lock is a section in the
-   * Closeout column now, so the remedy leaves the queue if that is what is on
+   * Closeout column now, so the remedy leaves the outbox if that is what is on
    * screen and then scrolls to it.
    *
-   * 🛑 Both halves are needed. Scrolling alone does nothing while the queue is
+   * 🛑 Both halves are needed. Scrolling alone does nothing while the outbox is
    * the column's content (the section is not mounted), and switching alone
    * lands the reader at the top of a long scroll with no idea what moved.
    */
   const closeSectionRef = useRef<HTMLDivElement>(null)
   const revealLock = useCallback(() => {
-    closeSyncQueue()
+    closeOutbox()
     // After the switch has rendered, not before it.
     requestAnimationFrame(() =>
       closeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     )
-  }, [closeSyncQueue])
+  }, [closeOutbox])
 
   const { activePeriod, activePeriodKey, bookTimeZone, currencyCode } = period
 
@@ -263,14 +250,11 @@ export function LedgerPage() {
   })
 
   const exportBatchesQuery = api.ledger.exportBatches.list.useQuery({})
-  // The Drafts rail badge and the Drafts panel read the same query (TARGET §4
+  // The Outbox rail badge and the Drafts tab read the same query (TARGET §4
   // gate 1) - one hook, so the count in the rail cannot disagree with the list
-  // under it. Skipped while no month has resolved, same as every other
-  // month-scoped read on this page.
-  const draftsQuery = api.ledger.listDrafts.useQuery(
-    { periodKey: activePeriodKey },
-    { enabled: !!activePeriodKey }
-  )
+  // under it. `ledgerPost`-gated on the server, so a read-only member does not
+  // fire a read that 403s.
+  const draftsQuery = api.ledger.listDrafts.useQuery({}, { enabled: can('ledger.post') })
   // The month on screen rides along so the sweep can answer the COMPLETENESS
   // question too - what this month still owes the ledger. Without it the counts
   // come back `null` and the Books section renders the balance half alone.
@@ -415,9 +399,8 @@ export function LedgerPage() {
       currencyCode={currencyCode}
       bookTimeZone={bookTimeZone}
       providerLabel={providerLabel}
-      onOpenExportQueue={(tab) => {
+      onOpenOutbox={(tab) => {
         void setPostingId(null)
-        void setDraftsOpen(null)
         void setQueueTab(tab)
       }}
       onReverse={actions.runReverse}
@@ -476,7 +459,7 @@ export function LedgerPage() {
           column, not across the top of both. The toolbar is the month picker
           and the month's state - it is about what the column below it is
           showing, and spanning it over the rail claimed it governed the rail
-          too, which it never did (the Sync queue is every period). This is the
+          too, which it never did (the Outbox is every period). This is the
           shape `accounting/banking/layout.tsx` and its two siblings already
           have: nav column on the left, everything else to the right of it.
 
@@ -487,7 +470,7 @@ export function LedgerPage() {
           `flex-col` here would leave a zero-height stub above the toolbar. */}
       <div className='flex h-full overflow-hidden'>
         <LedgerSidebar
-          view={isSyncQueueOpen ? 'sync-queue' : draftsOpen ? 'drafts' : 'closeout'}
+          view={isOutboxOpen ? 'outbox' : 'closeout'}
           onSelectView={selectView}
           syncQueue={exportBatchesQuery.data}
           providerLabel={providerLabel}
@@ -511,7 +494,7 @@ export function LedgerPage() {
                 period, so the two must not share a screen - a "September" header
                 over a list reaching back eighteen months is a wrong claim about
                 what is underneath it. */}
-            {!isChecklistState && !isSyncQueueOpen && !draftsOpen && (
+            {!isChecklistState && !isOutboxOpen && (
               <LedgerStats
                 loading={period.isLoading}
                 period={activePeriod}
@@ -531,10 +514,12 @@ export function LedgerPage() {
                 side of each one. Anything in this column that is NOT a `Section`
                 pads itself instead - the skeletons here, `LedgerBanners`, and
                 `AccountingChecklistPanel`'s own `p-6`. */}
-            <div className='flex w-full flex-col'>
+            {/* `flex-1` so a view with little in it (the outbox's empty
+                tabs) can centre itself against the viewport, not hug the top. */}
+            <div className='flex w-full flex-1 flex-col'>
               {isChecklistState ? (
                 <AccountingChecklistPanel />
-              ) : isSyncQueueOpen ? (
+              ) : isOutboxOpen ? (
                 /* 🛑 A VIEW of this page, not a route (D17). The rows open the
                    same `?posting=` drawer that is already docked beside it.
 
@@ -544,26 +529,17 @@ export function LedgerPage() {
                    the section header made two affordances for one act and only
                    one of them looked like navigation. */
 
-                <SyncQueuePanel
+                <OutboxPanel
                   tab={queueTab ?? 'ready'}
-                  onTabChange={(next: ExportBatchTab) => void setQueueTab(next)}
+                  onTabChange={(next: OutboxTab) => void setQueueTab(next)}
                   periodKey={activePeriodKey}
                   periodLabel={periodLabel}
                   bookTimeZone={bookTimeZone}
+                  currencyCode={currencyCode}
+                  connectedTenantId={provider.connectedTenantId ?? null}
                   providerLabel={providerLabel}
                   activePostingId={postingId}
                   onSelectPosting={openPosting}
-                />
-              ) : draftsOpen ? (
-                /* Scoped to the month on screen, like Closeout - unlike the
-                   sync queue above. `activePeriodKey` is always resolved here:
-                   `isChecklistState` (no month at all) is handled above. */
-                <DraftsPanel
-                  periodKey={activePeriodKey}
-                  currencyCode={currencyCode}
-                  bookTimeZone={bookTimeZone}
-                  providerLabel={providerLabel}
-                  connectedTenantId={provider.connectedTenantId ?? null}
                 />
               ) : period.isLoading ? (
                 <div className='flex flex-col gap-3 p-3'>
@@ -578,7 +554,7 @@ export function LedgerPage() {
                     periodLabel={periodLabel}
                     exports={exportBatchesQuery.data ?? []}
                     providerLabel={providerLabel}
-                    onOpenSyncQueue={openSyncQueue}
+                    onOpenOutbox={openOutbox}
                     blockers={activePeriodKey ? entry.blockers : []}
                     isSoftRefusal={false}
                     onFix={onFix}

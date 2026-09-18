@@ -38,7 +38,7 @@ import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { EntryJournal, journalLinesFromDetail } from './ledger/entry-journal'
 import { formatAccountingDate, formatMinor, humanizePostingType } from './ledger/format'
-import { ExportBatchStateBadge } from './ledger/sync-queue/export-batch-badge'
+import { ExportBatchStateBadge } from './ledger/outbox/export-batch-badge'
 
 /** One row of `ledger.listPostingsForSource`'s expected result. */
 export interface SourcePosting {

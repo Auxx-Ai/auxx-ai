@@ -21,7 +21,7 @@ import { api } from '~/trpc/react'
 import { firstDayOfPeriod, lastDayOfPeriod } from '../journal/period-helpers'
 import { exportAvenueLabel } from './export-avenue-labels'
 import { EMPTY_CELL, formatAccountingDate, formatMinor } from './format'
-import { ExportBatchStateBadge } from './sync-queue/export-batch-badge'
+import { ExportBatchStateBadge } from './outbox/export-batch-badge'
 import { useLedgerSources } from './use-ledger-sources'
 
 interface LedgerSummaryPanelProps {

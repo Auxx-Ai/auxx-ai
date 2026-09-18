@@ -22,7 +22,7 @@ interface LedgerBannersProps {
   exports: ExportBatchRow[]
   /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
   providerLabel: string
-  onOpenSyncQueue: () => void
+  onOpenOutbox: () => void
   /** Why this month cannot be closed. Empty on a month with nothing in its way. */
   blockers: LedgerBlocker[]
   /** Every blocker is an ordinary outcome rather than a fault. */
@@ -49,7 +49,7 @@ export function LedgerBanners({
   periodLabel,
   exports,
   providerLabel,
-  onOpenSyncQueue,
+  onOpenOutbox,
   blockers,
   isSoftRefusal,
   onFix,
@@ -59,7 +59,7 @@ export function LedgerBanners({
   // 🛑 REFUSALS only. With the hold on, every batch rests `ready`, so a banner
   // keyed on the whole queue would be open on every visit forever - and a banner
   // that is always there is one nobody reads by the time something has actually
-  // gone wrong. What is merely HELD is the export queue's.
+  // gone wrong. What is merely HELD is the outbox's.
   const refused = exports.filter((row) => row.state === 'failed')
   const nothingToSay = hasPeriod && hasOpenPeriod && refused.length === 0 && blockers.length === 0
   // 🛑 `null`, not an empty padded div. The column this sits in has no padding
@@ -89,7 +89,7 @@ export function LedgerBanners({
         <FailedExportsRow
           exports={refused}
           providerLabel={providerLabel}
-          onOpenSyncQueue={onOpenSyncQueue}
+          onOpenOutbox={onOpenOutbox}
         />
         <CloseBlockersRow
           periodLabel={periodLabel}

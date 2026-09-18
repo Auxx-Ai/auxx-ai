@@ -1,8 +1,13 @@
-// apps/web/src/components/accounting/ui/ledger/sync-queue/sync-queue-panel.tsx
+// apps/web/src/components/accounting/ui/ledger/outbox/outbox-panel.tsx
 
 'use client'
 
-// Accounting > Ledger > the EXPORT QUEUE (TARGET §3, §4 gate 2, step 3 part C).
+// Accounting > Ledger > the OUTBOX (TARGET §3, §4 gate 1 and 2, step 3 part C).
+//
+// One strip over the whole pipeline of work leaving the books: Drafts (posted
+// with `autoPost` off, waiting for approval - `drafts-panel.tsx`) then the four
+// export-batch states. It was two rail items, "Drafts" and "Sync queue", which
+// split one question ("what is outstanding?") across two screens.
 //
 // Rebuilt onto `ExportBatch`, which replaces the old `AccountingDelivery`
 // pile this panel used to show (step 3 part B deleted that version). One row
@@ -12,9 +17,9 @@
 // single read `ledger.exportBatches.list` returns, expandable to the postings
 // each batch carries.
 //
-// 🛑 All periods, always. Unlike the ledger page's own month-scoped sections,
-// the queue is a backlog that can span months, so it reads with no `month`
-// bound and the tabs (`EXPORT_BATCH_TABS`) are the only filter. "Build batches
+// 🛑 All periods, EVERY tab. Unlike the ledger page's own month-scoped
+// sections, the outbox is a backlog that can span months, so every tab reads
+// with no `month` bound and `OUTBOX_TABS` is the only filter. "Build batches
 // for this month" is the one control that DOES take the month on screen -
 // building freezes a payload out of POSTED entries, which is inherently a
 // month's worth of work at a time.
@@ -25,7 +30,7 @@
 // ledger's own drawer.
 
 import type { ExportBatchMember } from '@auxx/lib/accounting/export'
-import { EXPORT_BATCH_TABS, type ExportBatchTab } from '@auxx/lib/accounting/export/client'
+import { isExportBatchTab, OUTBOX_TABS, type OutboxTab } from '@auxx/lib/accounting/export/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { ActionBar } from '@auxx/ui/components/action-bar'
 import { Badge } from '@auxx/ui/components/badge'
@@ -42,6 +47,7 @@ import {
   CheckCircle2,
   CircleAlert,
   ExternalLink,
+  FileClock,
   Hammer,
   Loader,
   PanelRight,
@@ -65,32 +71,38 @@ import { api, type RouterOutputs } from '~/trpc/react'
 import { exportAvenueLabel } from '../export-avenue-labels'
 import { EMPTY_CELL, formatAccountingDate, formatMinor } from '../format'
 import { useLedgerSources } from '../use-ledger-sources'
+import { DraftsPanel } from './drafts-panel'
 import { ExportBatchStateBadge } from './export-batch-badge'
 
 /** `ExportBatchRow` plus the server-computed deep link (plan 67 §5.6) - never built in the browser. */
 type ExportBatchRow = RouterOutputs['ledger']['exportBatches']['list'][number]
 
-const TAB_ICON: Record<ExportBatchTab, typeof CheckCircle2> = {
+const TAB_ICON: Record<OutboxTab, typeof CheckCircle2> = {
+  drafts: FileClock,
   ready: CheckCircle2,
   sending: Loader,
   sent: CheckCheck,
   failed: CircleAlert,
 }
 
-const TAB_LABEL: Record<ExportBatchTab, string> = {
+const TAB_LABEL: Record<OutboxTab, string> = {
+  drafts: 'Drafts',
   ready: 'Ready',
   sending: 'Sending',
   sent: 'Sent',
   failed: 'Failed',
 }
 
-interface SyncQueuePanelProps {
-  tab: ExportBatchTab
-  onTabChange: (tab: ExportBatchTab) => void
+interface OutboxPanelProps {
+  tab: OutboxTab
+  onTabChange: (tab: OutboxTab) => void
   /** The month on screen, for "Build batches for this month". `''` resolves none. */
   periodKey: string
   periodLabel: string
   bookTimeZone: string
+  currencyCode: string
+  /** 🔌 The provider's own tenant, for a `PostResultCallout` deep link. */
+  connectedTenantId: string | null
   /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
   providerLabel: string
   /** So an open row reads as "the one you are looking at" the same as the rail strip does. */
@@ -99,28 +111,29 @@ interface SyncQueuePanelProps {
 }
 
 /**
- * The queue. One `ListSelectionProvider` per mount, same as the banking review
- * queue and the old version of this panel - leaving the queue disposes the
- * selection.
+ * The outbox. One `ListSelectionProvider` per mount, same as the banking review
+ * queue - leaving the outbox disposes the selection.
  */
-export function SyncQueuePanel(props: SyncQueuePanelProps) {
+export function OutboxPanel(props: OutboxPanelProps) {
   return (
     <ListSelectionProvider>
-      <SyncQueueBody {...props} />
+      <OutboxBody {...props} />
     </ListSelectionProvider>
   )
 }
 
-function SyncQueueBody({
+function OutboxBody({
   tab,
   onTabChange,
   periodKey,
   periodLabel,
   bookTimeZone,
+  currencyCode,
+  connectedTenantId,
   providerLabel,
   activePostingId,
   onSelectPosting,
-}: SyncQueuePanelProps) {
+}: OutboxPanelProps) {
   const utils = api.useUtils()
   const { can } = useAccess()
   const [confirm, ConfirmDialog] = useConfirm()
@@ -136,14 +149,42 @@ function SyncQueueBody({
   const all = useMemo(() => batchesQuery.data ?? [], [batchesQuery.data])
   const isLoading = batchesQuery.isPending
 
-  const visible = useMemo(() => all.filter((batch) => batch.state === tab), [all, tab])
+  // 🛑 Drafts is `ledgerPost`-gated on the server (`ledger.listDrafts`), so the
+  // tab is absent, not disabled, for a read-only member - a tab that 403s on
+  // click is worse than one that was never offered. `effectiveTab` catches the
+  // pasted `?queue=drafts` link that member has no read for.
+  const showDrafts = canRelease
+  const effectiveTab: OutboxTab = tab === 'drafts' && !showDrafts ? 'ready' : tab
+  const isDrafts = effectiveTab === 'drafts'
+  /** The same tab, narrowed for the export-only copy below. `ready` is unreachable when `isDrafts`. */
+  const exportTab = isExportBatchTab(effectiveTab) ? effectiveTab : 'ready'
+  const tabs = useMemo(
+    () => OUTBOX_TABS.filter((value) => showDrafts || value !== 'drafts'),
+    [showDrafts]
+  )
+
+  // Count only - `DraftsPanel` runs the same query for its rows, and React Query
+  // dedupes the two into one fetch.
+  const draftsQuery = api.ledger.listDrafts.useQuery({}, { enabled: showDrafts })
+
+  const visible = useMemo(
+    () => (isDrafts ? [] : all.filter((batch) => batch.state === effectiveTab)),
+    [all, effectiveTab, isDrafts]
+  )
   const tally = useMemo(() => {
-    const counts: Record<ExportBatchTab, number> = { ready: 0, sending: 0, sent: 0, failed: 0 }
-    for (const batch of all) {
-      if (batch.state in counts) counts[batch.state as ExportBatchTab]++
+    const counts: Record<OutboxTab, number> = {
+      drafts: 0,
+      ready: 0,
+      sending: 0,
+      sent: 0,
+      failed: 0,
     }
+    for (const batch of all) {
+      if (batch.state in counts) counts[batch.state as OutboxTab]++
+    }
+    counts.drafts = draftsQuery.data?.length ?? 0
     return counts
-  }, [all])
+  }, [all, draftsQuery.data])
 
   const selectedIds = useSelectionIds()
   const selecting = useBulkMode()
@@ -160,7 +201,7 @@ function SyncQueueBody({
   // biome-ignore lint/correctness/useExhaustiveDependencies: the tab is the trigger
   useEffect(() => {
     exitSelection()
-  }, [tab])
+  }, [effectiveTab])
 
   const [openBatchIds, setOpenBatchIds] = useState<Set<string>>(new Set())
   function toggleOpen(batchId: string) {
@@ -262,16 +303,18 @@ function SyncQueueBody({
     release.mutate({ batchIds })
   }
 
-  const selectable = tab === 'ready' || tab === 'sent'
+  const selectable = effectiveTab === 'ready' || effectiveTab === 'sent'
 
   return (
-    <div className='flex flex-col gap-3 p-3'>
-      <div className='flex flex-wrap items-center justify-between gap-2'>
-        <p className='text-muted-foreground text-xs'>
-          Every batch in the books that is not yet a settled copy in {providerLabel}, or was
-          refused. Every period, not only the month below.
-        </p>
-        {canRelease && (
+    // `flex-1` + a full-bleed `ListToolbar`: the bar draws a `border-b` that has
+    // to reach both edges, so the padding lives on the blocks around it, not here.
+    <div className='flex flex-1 flex-col'>
+      {/* `min-h-7` is the `size='sm'` Button's own height: the build control is
+          absent on Drafts and on a read-only member, and without the floor the
+          whole list shifted on every tab change. */}
+      <div className='flex min-h-7 flex-wrap items-center justify-between gap-2 p-3 pb-2'>
+        <p className='text-muted-foreground text-xs'>{introSentence(isDrafts, providerLabel)}</p>
+        {canRelease && !isDrafts && (
           <div className='flex items-center gap-2'>
             <Button
               variant='outline'
@@ -288,17 +331,19 @@ function SyncQueueBody({
       </div>
 
       {buildResult && (
-        <p className='text-muted-foreground text-xs'>{buildResultSentence(buildResult)}</p>
+        <p className='px-3 pb-2 text-muted-foreground text-xs'>
+          {buildResultSentence(buildResult)}
+        </p>
       )}
 
       <ListToolbar>
-        {selectable && <SelectAllCheckbox listPadding={12} />}
+        <SelectAllCheckbox listPadding={12} disabled={!selectable} />
         <ListToolbarGroup className='shrink-0'>
           <RadioTab
-            value={tab}
-            onValueChange={(value) => onTabChange(value as ExportBatchTab)}
+            value={effectiveTab}
+            onValueChange={(value) => onTabChange(value as OutboxTab)}
             size='sm'>
-            {EXPORT_BATCH_TABS.map((value) => {
+            {tabs.map((value) => {
               const Icon = TAB_ICON[value]
               const count = tally[value]
               return (
@@ -313,18 +358,25 @@ function SyncQueueBody({
         </ListToolbarGroup>
       </ListToolbar>
 
-      {batchesQuery.isError ? (
+      {isDrafts ? (
+        <DraftsPanel
+          currencyCode={currencyCode}
+          bookTimeZone={bookTimeZone}
+          providerLabel={providerLabel}
+          connectedTenantId={connectedTenantId}
+        />
+      ) : batchesQuery.isError ? (
         <p className='p-3 text-destructive text-xs'>
-          The export queue could not be read. {batchesQuery.error.message}
+          The outbox could not be read. {batchesQuery.error.message}
         </p>
       ) : !isLoading && visible.length === 0 ? (
         <EmptyState
-          icon={TAB_ICON[tab]}
-          title={emptyTitle(tab)}
-          description={<span>{emptyDescription(tab, providerLabel)}</span>}
+          icon={TAB_ICON[effectiveTab]}
+          title={emptyTitle(exportTab)}
+          description={<span>{emptyDescription(exportTab, providerLabel)}</span>}
         />
       ) : (
-        <div className='flex flex-col gap-px pb-16'>
+        <div className='flex flex-col gap-px p-3 pb-16'>
           <TreeRowList
             items={visible}
             loading={isLoading}
@@ -472,7 +524,7 @@ function SyncQueueBody({
         selectedLabel='selected'
         showClose
         actions={[
-          ...(tab === 'ready' && canRelease
+          ...(effectiveTab === 'ready' && canRelease
             ? [
                 {
                   id: 'release',
@@ -483,7 +535,7 @@ function SyncQueueBody({
                 },
               ]
             : []),
-          ...(tab === 'sent' && canRollback
+          ...(effectiveTab === 'sent' && canRollback
             ? [
                 {
                   id: 'rollback',
@@ -577,8 +629,15 @@ function buildResultSentence(result: {
   return `Built ${result.built} batch${result.built === 1 ? '' : 'es'}.${tail}`
 }
 
+/** What the tab on screen is a list OF. Every tab spans every period. */
+function introSentence(isDrafts: boolean, providerLabel: string): string {
+  return isDrafts
+    ? 'Every posting waiting for approval, from any month - its avenue posts with autoPost switched off.'
+    : `Every batch in the books that is not yet a settled copy in ${providerLabel}, or was refused. Every period, not only the month below.`
+}
+
 /** ⚠️ An empty Ready tab is the HEALTHY state and has to read like one. */
-function emptyTitle(tab: ExportBatchTab): string {
+function emptyTitle(tab: Exclude<OutboxTab, 'drafts'>): string {
   switch (tab) {
     case 'ready':
       return 'Nothing is waiting to be sent'
@@ -591,7 +650,7 @@ function emptyTitle(tab: ExportBatchTab): string {
   }
 }
 
-function emptyDescription(tab: ExportBatchTab, providerLabel: string): string {
+function emptyDescription(tab: Exclude<OutboxTab, 'drafts'>, providerLabel: string): string {
   switch (tab) {
     case 'ready':
       return `Every batch is either sent or has not been built. "Build batches for this month" freezes posted entries into batches.`

@@ -17,17 +17,17 @@ import { WARNING_RING, WARNING_ROW } from '../tone-rows'
 function refusedReasonSummary(refused: readonly ExportBatchRow[]): string {
   const reasons = new Set(refused.map((row) => row.lastError).filter(Boolean))
   if (reasons.size === 1) return [...reasons][0] as string
-  if (reasons.size === 0) return 'No reason was recorded. Open the export queue for the detail.'
-  return `${reasons.size} different reasons. Open the export queue for the detail.`
+  if (reasons.size === 0) return 'No reason was recorded. Open the outbox for the detail.'
+  return `${reasons.size} different reasons. Open the outbox for the detail.`
 }
 
 interface FailedExportsRowProps {
-  /** ONLY refused batches. Held and in-flight ones belong in the export queue. */
+  /** ONLY refused batches. Held and in-flight ones belong in the outbox. */
   exports: ExportBatchRow[]
   /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
   providerLabel: string
-  /** Opens the export queue, where the rest of the outstanding copies live. */
-  onOpenSyncQueue: () => void
+  /** Opens the outbox, where the rest of the outstanding copies live. */
+  onOpenOutbox: () => void
 }
 
 /**
@@ -36,7 +36,7 @@ interface FailedExportsRowProps {
  * 🛑 Refusals only, and a summary rather than a list (53 §7.2.2). With the
  * export hold on, `ready` is where every batch rests, so a row keyed on the
  * whole queue would be open forever; and 28 batches naming one unmapped account
- * are one reason, not 28 rows. The export queue is the list; this counts and
+ * are one reason, not 28 rows. The outbox is the list; this counts and
  * points at it.
  *
  * 🛑 The wording matters: these are not missing from the statements - they are
@@ -46,7 +46,7 @@ interface FailedExportsRowProps {
 export function FailedExportsRow({
   exports: refused,
   providerLabel,
-  onOpenSyncQueue,
+  onOpenOutbox,
 }: FailedExportsRowProps) {
   const [isOpen, setIsOpen] = useState(false)
 
@@ -78,8 +78,8 @@ export function FailedExportsRow({
           </span>
         }
         actions={
-          <Button variant='outline' size='xs' onClick={onOpenSyncQueue}>
-            Open the export queue
+          <Button variant='outline' size='xs' onClick={onOpenOutbox}>
+            Open the outbox
           </Button>
         }
       />

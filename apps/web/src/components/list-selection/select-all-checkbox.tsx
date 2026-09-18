@@ -25,6 +25,8 @@ const TOOLBAR_INSET_PX = 12
 interface SelectAllCheckboxProps {
   /** The list container's own padding, in px - `p-3` is 12, `p-4` is 16. */
   listPadding: number
+  /** Force the disabled look on a list that cannot be selected at all. */
+  disabled?: boolean
   className?: string
 }
 
@@ -42,14 +44,18 @@ interface SelectAllCheckboxProps {
  * and dropping it shifts every filter beside it sideways the moment somebody
  * lands on a tab with nothing in it.
  */
-export function SelectAllCheckbox({ listPadding, className }: SelectAllCheckboxProps) {
+export function SelectAllCheckbox({
+  listPadding,
+  disabled = false,
+  className,
+}: SelectAllCheckboxProps) {
   const id = useId()
   const selectedIds = useSelectionIds()
   const itemIds = useListSelection((state) => state.itemIds)
   const selectAll = useListSelection((state) => state.selectAll)
   const clear = useListSelection((state) => state.clear)
 
-  const empty = itemIds.length === 0
+  const empty = disabled || itemIds.length === 0
   const anySelected = selectedIds.length > 0
   // The store prunes the selection to `itemIds`, so "all" can only ever mean
   // the rows currently listed.

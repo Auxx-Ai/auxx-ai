@@ -284,7 +284,7 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * Reverse several postings in one press - the sync queue's bulk Reverse.
+   * Reverse several postings in one press - the outbox's bulk Reverse.
    *
    * 🛑 A LEDGER operation, unlike `unsyncExports` beside it in the same bulk
    * bar. Every accepted row writes a NEW entry into the books and flips its
@@ -1497,28 +1497,28 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * Every DRAFT posting in one accounting month - the Drafts tab (TARGET §4
-   * gate 1, step 1c). A draft holds no claim and no doc number; `autoPost` off
-   * on its avenue is what leaves one here instead of `posted`.
+   * Every DRAFT posting - the Outbox's Drafts tab (TARGET §4 gate 1, step 1c).
+   * A draft holds no claim and no doc number; `autoPost` off on its avenue is
+   * what leaves one here instead of `posted`.
    *
-   * Filtered in this router rather than in `listPostings` itself: the lib read
-   * answers "what is in this month", and status is one more thing a caller
-   * narrows on, the same way the close console excludes `month_end_inventory`
-   * by name rather than the read growing a parameter per screen.
+   * 🛑 The month is OPTIONAL, and the Outbox omits it. Drafts sits beside the
+   * export tabs, which span every period, and a tab strip whose scope changed
+   * per tab made "3 drafts" mean two different things on one screen. A draft
+   * older than the month on the toolbar is still work somebody owes.
    *
-   * `ledgerPost`, not `ledgerView`: the Drafts tab is where a draft gets
-   * approved or discarded, and reviewing what is queued to post is part of
-   * that authority, not a separate read anyone with `ledgerView` should get.
+   * `ledgerPost`, not `ledgerView`: the tab is where a draft gets approved or
+   * discarded, and reviewing what is queued to post is part of that authority.
    */
   listDrafts: permissionProcedure(PermissionKey.ledgerPost)
-    .input(monthKey)
+    .input(optionalMonthKey)
     .query(async ({ ctx, input }) => {
       const result = await listPostings(ctx.db, {
         organizationId: ctx.session.organizationId,
         periodKey: input.periodKey,
+        status: 'draft',
       })
       if (result.isErr()) throw result.error
-      return result.value.filter((posting) => posting.status === 'draft')
+      return result.value
     }),
 
   /**

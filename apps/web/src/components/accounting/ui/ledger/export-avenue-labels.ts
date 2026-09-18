@@ -1,7 +1,7 @@
 // apps/web/src/components/accounting/ui/ledger/export-avenue-labels.ts
 //
 // Display copy for `ExportAvenue` (TARGET §3's provider-object table), shared by
-// the export queue, the ledger summary view and the Posting settings page's
+// the outbox, the ledger summary view and the Posting settings page's
 // per-avenue export row - nowhere else names these, so there is one spelling.
 
 import type { ExportAvenue } from '@auxx/lib/accounting/ledger/client'

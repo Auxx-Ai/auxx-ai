@@ -6,9 +6,21 @@
 export const EXPORT_BATCH_STATES = ['ready', 'sending', 'sent', 'failed', 'withdrawn'] as const
 export type ExportBatchState = (typeof EXPORT_BATCH_STATES)[number]
 
-/** The queue's tabs, in the order they render. `withdrawn` is history, not a tab. */
+/** The export tabs, in the order they render. `withdrawn` is history, not a tab. */
 export const EXPORT_BATCH_TABS = ['ready', 'sending', 'sent', 'failed'] as const
 export type ExportBatchTab = (typeof EXPORT_BATCH_TABS)[number]
+
+/**
+ * The Outbox's tabs: the ledger's own drafts, then the four export states.
+ * `drafts` is not an `ExportBatchState` - a draft has no batch yet, which is
+ * the point of it leading the strip.
+ */
+export const OUTBOX_TABS = ['drafts', ...EXPORT_BATCH_TABS] as const
+export type OutboxTab = (typeof OUTBOX_TABS)[number]
+
+export function isExportBatchTab(tab: OutboxTab): tab is ExportBatchTab {
+  return tab !== 'drafts'
+}
 
 const LABELS: Record<ExportBatchState, string> = {
   ready: 'Ready',
@@ -30,7 +42,7 @@ export function exportBatchStateHint(state: ExportBatchState, autoSend: boolean)
   return null
 }
 
-/** Plan 67 §1's mapping table, in the words the sync queue shows for `ExportBatchRow.objectType`. */
+/** Plan 67 §1's mapping table, in the words the outbox shows for `ExportBatchRow.objectType`. */
 const OBJECT_TYPE_LABELS: Record<string, string> = {
   journal: 'Journal entry',
   sales_receipt: 'Sales receipt',

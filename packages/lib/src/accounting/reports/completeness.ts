@@ -14,11 +14,11 @@
 // the books and in the figures, and the item's own sentence said as much
 // directly underneath a title claiming the opposite. It was also unbounded and
 // spanned every period, and `pending` is the RESTING state of every entry an
-// org posts once the sync hold is on (`sync-queue-rows.ts`), so a healthy org
+// org posts once the sync hold is on (`outbox-panel.tsx`), so a healthy org
 // got a banner reprinting its entire ledger, one button per row, on every
 // statement and in every statement PDF.
 //
-// The outbound copy is the sync queue's subject (`?queue=` on the ledger page),
+// The outbound copy is the outbox's subject (`?queue=` on the ledger page),
 // which tallies the same rows by state and can act on them; the inbound half is
 // `ProviderSyncMarker`'s. A statement says what is missing from ITS OWN
 // figures, and nothing else.

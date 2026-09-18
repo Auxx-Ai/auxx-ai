@@ -1,34 +1,35 @@
-// apps/web/src/components/accounting/ui/ledger/drafts-panel.tsx
+// apps/web/src/components/accounting/ui/ledger/outbox/drafts-panel.tsx
 
 'use client'
 
-// Accounting > Ledger > DRAFTS (accounting migration step 1c, TARGET §4 gate
-// 1). Every avenue whose `accounting.autoPost.<avenue>` is off leaves a draft
-// `GlPosting` here instead of posting straight through - `journal_entry`'s
-// own draft (raised from the Entries section's New journal entry) is the one
-// exception, still edited through its own drawer, but it too shows up here
-// once created and lands on this list like any other avenue's draft.
+// Accounting > Ledger > Outbox > the DRAFTS tab (accounting migration step 1c,
+// TARGET §4 gate 1). Every avenue whose `accounting.autoPost.<avenue>` is off
+// leaves a draft `GlPosting` here instead of posting straight through -
+// `journal_entry`'s own draft (raised from the Entries section's New journal
+// entry) is the one exception, still edited through its own drawer, but it too
+// shows up here once created and lands on this list like any other avenue's.
 //
-// One month at a time, unlike the sync queue: `ledger.listDrafts` takes a
-// `periodKey`, and a draft holds no claim to widen the read across periods for.
+// 🛑 EVERY period, like the export tabs beside it. This is a tab in one strip
+// now, and a strip whose scope changed per tab made "3 drafts" mean two
+// different things on one screen. `ledger.listDrafts` takes no `periodKey`
+// from here and narrows to `status = 'draft'` in SQL, before its own cap.
 
 import type { PostingSummary } from '@auxx/lib/accounting/journals/client'
 import type { PostResult } from '@auxx/lib/accounting/ledger/client'
 import { Button } from '@auxx/ui/components/button'
-import { EmptySection } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { Check, FileClock, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { EmptyState } from '~/components/global/empty-state'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { EntryBlockers } from './entry-blockers'
-import { formatAccountingDate, formatMinor, humanizePostingType } from './format'
-import { LedgerSourceLink } from './ledger-source-link'
-import { PostResultCallout } from './post-result-callout'
+import { EntryBlockers } from '../entry-blockers'
+import { formatAccountingDate, formatMinor, humanizePostingType } from '../format'
+import { LedgerSourceLink } from '../ledger-source-link'
+import { PostResultCallout } from '../post-result-callout'
 
 interface DraftsPanelProps {
-  periodKey: string
   currencyCode: string
   bookTimeZone: string
   providerLabel: string
@@ -46,7 +47,6 @@ interface DraftsPanelProps {
  * `OUTCOMES` does.
  */
 export function DraftsPanel({
-  periodKey,
   currencyCode,
   bookTimeZone,
   providerLabel,
@@ -54,12 +54,9 @@ export function DraftsPanel({
 }: DraftsPanelProps) {
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
-  // `periodKey` is `''` for a finalized org whose cutoff is still ahead of the
-  // wall clock (no month resolves at all) - `monthKey` on the server requires
-  // `YYYY-MM`, so the read is skipped rather than 400ing.
-  const draftsQuery = api.ledger.listDrafts.useQuery({ periodKey }, { enabled: !!periodKey })
+  const draftsQuery = api.ledger.listDrafts.useQuery({})
   const rows = draftsQuery.data ?? []
-  const loading = !!periodKey && draftsQuery.isPending
+  const loading = draftsQuery.isPending
 
   /** The last `postDraft` outcome per row, BY POSTING. Cleared on discard. */
   const [results, setResults] = useState<Record<string, PostResult>>({})
@@ -74,7 +71,7 @@ export function DraftsPanel({
   const [discardRefusal, setDiscardRefusal] = useState<string | null>(null)
 
   function refresh() {
-    void utils.ledger.listDrafts.invalidate({ periodKey })
+    void utils.ledger.listDrafts.invalidate()
     void utils.ledger.listPostings.invalidate()
     void utils.ledger.periods.invalidate()
   }
@@ -148,12 +145,10 @@ export function DraftsPanel({
   }
 
   return (
-    <div className='flex flex-col gap-3 p-3'>
-      <div className='flex items-center justify-between gap-2'>
-        <span className='text-muted-foreground text-xs tabular-nums'>
-          {rows.length} {rows.length === 1 ? 'draft' : 'drafts'}
-        </span>
-        {rows.length > 1 && (
+    // No count line: the Outbox's own tab badge carries it.
+    <div className='flex flex-1 flex-col gap-3 p-3'>
+      {rows.length > 1 && (
+        <div className='flex justify-end'>
           <Button
             variant='outline'
             size='sm'
@@ -164,18 +159,18 @@ export function DraftsPanel({
             <Check />
             Approve all
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {discardRefusal && (
         <EntryBlockers blockers={[{ status: 'discard_refused', error: discardRefusal }]} />
       )}
 
       {!loading && rows.length === 0 ? (
-        <EmptySection
-          icon={<FileClock className='size-5' />}
-          title='No drafts this month'
-          description='A draft is left here when its avenue posts with autoPost switched off (Settings › Posting). Nothing is waiting for review.'
+        <EmptyState
+          icon={FileClock}
+          title='Nothing is waiting for approval'
+          description='A draft is left here when its avenue posts with autoPost switched off (Settings › Posting).'
         />
       ) : (
         <TreeRowList
