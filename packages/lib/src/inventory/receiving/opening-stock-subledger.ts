@@ -79,9 +79,11 @@ import { alias } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { DEFAULT_CHART_OF_ACCOUNTS } from '../../accounting/ledger/chart/default-chart'
 import { OPENING_BASELINE_SETTING_KEYS } from '../../accounting/ledger/setup/setup-readiness'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import { StockMovementType } from '../../resources/registry/enum-values'
+import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
+import { systemDefId, systemFieldMap, systemValueJoin } from '../../resources/system-records'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import { guard } from './guard'
 
@@ -122,12 +124,12 @@ export interface OpeningStockDivergence {
 }
 
 /** The movement attributes this reader needs. Every one is required. */
-const MOVEMENT_ATTRIBUTES = [
+const MOVEMENT_PICK = pickSystemAttributes(STOCK_MOVEMENT_FIELDS, [
   'stock_movement_type',
   'stock_movement_unit_cost',
   'stock_movement_extended_cost',
   'stock_movement_gl_account',
-] as const
+] as const)
 
 /** How many offending movement ids a refusal names before it stops. */
 const MAX_NAMED_OFFENDERS = 10
@@ -165,19 +167,14 @@ export async function readOpeningStockSubledgerTotals(
     async () => {
       const byRole = emptyTotals()
 
-      const movementDefId = await getCachedEntityDefId(organizationId, 'stock_movement')
+      const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
       // No `stock_movement` definition means no movements, which is a fact
       // rather than a failure: the subledger is worth nothing yet.
       if (!movementDefId) return byRole
 
-      const fields = (await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes([...MOVEMENT_ATTRIBUTES])) as Record<
-        (typeof MOVEMENT_ATTRIBUTES)[number],
-        { id: string } | null
-      >
+      const fields = await systemFieldMap(db, organizationId, MOVEMENT_PICK)
 
-      const missing = MOVEMENT_ATTRIBUTES.filter((attribute) => !fields[attribute])
+      const missing = MOVEMENT_PICK.filter((attribute) => !fields[attribute])
       if (missing.length > 0) {
         throw new UnprocessableEntityError(
           'The opening-stock subledger cannot be valued until the stock movement costing ' +
@@ -190,14 +187,6 @@ export async function readOpeningStockSubledgerTotals(
       const extendedCost = alias(schema.FieldValue, 'osl_extended')
       const unitCost = alias(schema.FieldValue, 'osl_unit')
       const glAccount = alias(schema.FieldValue, 'osl_gl')
-
-      /** `EntityInstance` -> its `FieldValue` row for one field. */
-      const on = (table: FieldValueAlias, fieldId: string): SQL | undefined =>
-        and(
-          eq(table.entityId, schema.EntityInstance.id),
-          eq(table.organizationId, schema.EntityInstance.organizationId),
-          eq(table.fieldId, fieldId)
-        )
 
       /**
        * Every live `initial` movement in the org.
@@ -221,10 +210,13 @@ export async function readOpeningStockSubledgerTotals(
       const offenders = await db
         .select({ id: schema.EntityInstance.id })
         .from(schema.EntityInstance)
-        .innerJoin(movementType, on(movementType, fields.stock_movement_type!.id))
-        .leftJoin(extendedCost, on(extendedCost, fields.stock_movement_extended_cost!.id))
-        .leftJoin(unitCost, on(unitCost, fields.stock_movement_unit_cost!.id))
-        .leftJoin(glAccount, on(glAccount, fields.stock_movement_gl_account!.id))
+        .innerJoin(movementType, systemValueJoin(movementType, fields.stock_movement_type!.id))
+        .leftJoin(
+          extendedCost,
+          systemValueJoin(extendedCost, fields.stock_movement_extended_cost!.id)
+        )
+        .leftJoin(unitCost, systemValueJoin(unitCost, fields.stock_movement_unit_cost!.id))
+        .leftJoin(glAccount, systemValueJoin(glAccount, fields.stock_movement_gl_account!.id))
         .where(
           and(
             scope,
@@ -259,9 +251,12 @@ export async function readOpeningStockSubledgerTotals(
           total: sql<string | number>`coalesce(sum(${extendedCost.valueNumber}), 0)`,
         })
         .from(schema.EntityInstance)
-        .innerJoin(movementType, on(movementType, fields.stock_movement_type!.id))
-        .innerJoin(extendedCost, on(extendedCost, fields.stock_movement_extended_cost!.id))
-        .innerJoin(glAccount, on(glAccount, fields.stock_movement_gl_account!.id))
+        .innerJoin(movementType, systemValueJoin(movementType, fields.stock_movement_type!.id))
+        .innerJoin(
+          extendedCost,
+          systemValueJoin(extendedCost, fields.stock_movement_extended_cost!.id)
+        )
+        .innerJoin(glAccount, systemValueJoin(glAccount, fields.stock_movement_gl_account!.id))
         .where(scope)
         .groupBy(glAccount.valueText)
 
@@ -336,15 +331,6 @@ export async function findOpeningStockDivergences(
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-/**
- * An aliased `FieldValue` table, as `alias()` returns it.
- *
- * Widened over the alias NAME on purpose: `alias(t, 'osl_gl')` and
- * `alias(t, 'osl_type')` have different types, so one join helper cannot be
- * typed against a single alias.
- */
-type FieldValueAlias = ReturnType<typeof alias<typeof schema.FieldValue, string>>
 
 function emptyTotals(): OpeningStockSubledgerTotals {
   return { inventory_raw_materials: 0, inventory_wip: 0, inventory_finished_goods: 0 }

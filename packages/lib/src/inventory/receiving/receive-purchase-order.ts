@@ -33,9 +33,8 @@
  * No permission checks. The router asserts (build plan section 3.3).
  */
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
 import {
@@ -43,12 +42,20 @@ import {
   inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
-import { getCachedEntityDefId, getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { requireCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import {
   PURCHASE_ORDER_LINE_ROLLUPS,
   recalculatePurchaseOrderLineRollups,
 } from '../../field-hooks/post/purchase-order-line-rollups'
+import { PURCHASE_ORDER_LINE_FIELDS } from '../../resources/registry/resources/purchase-order-line-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
+import {
+  readSystemRecords,
+  type SystemRecord,
+  systemDefId,
+  systemFields,
+} from '../../resources/system-records'
 import { batchRecalculateQoH } from '../costing/qoh'
 import { type StockMovementInput, writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
@@ -61,8 +68,13 @@ import type { ReceivePurchaseOrderInput, ReceivePurchaseOrderLineInput } from '.
 
 const logger = createScopedLogger('receiving:receive-purchase-order')
 
-/** The one field this door reads to price a receipt. */
-const EXPECTED_UNIT_PRICE_ATTRIBUTE = 'purchase_order_line_expected_unit_price'
+/** The agreed price this door values a receipt at, and the order it credits the posting to. */
+const PO_LINE_PICK = pickSystemAttributes(PURCHASE_ORDER_LINE_FIELDS, [
+  'purchase_order_line_expected_unit_price',
+  'purchase_order_line_purchase_order',
+] as const)
+
+type PoLineAttribute = (typeof PO_LINE_PICK)[number]
 
 /**
  * Receive a purchase order, valuing every line at its agreed price.
@@ -107,15 +119,19 @@ export async function receivePurchaseOrder(
       const lines = input.lines ?? []
       assertReceivableLines(lines)
 
-      const stored = await readExpectedUnitPrices(db, organizationId, lines)
+      const poLines = await readPurchaseOrderLines(db, organizationId, lines)
       const unitCosts = lines.map((line, index) =>
-        assertAgreedUnitPrice(stored.get(line.purchaseOrderLineId), line, index)
+        assertAgreedUnitPrice(
+          poLines.get(line.purchaseOrderLineId)?.number('purchase_order_line_expected_unit_price'),
+          line,
+          index
+        )
       )
 
       const occurredAt = input.occurredAt ?? new Date()
 
       const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-      const movementDefId = await getCachedEntityDefId(organizationId, 'stock_movement')
+      const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
       if (!movementDefId) {
         throw new NotFoundError('This organization has no stock_movement entity definition')
       }
@@ -136,7 +152,7 @@ export async function receivePurchaseOrder(
       // (TARGET §5: "document / order or PO"). `null` when the relation isn't
       // materialised; a receipt against more than one order is refused, since
       // the posting has exactly one parent slot to put it in.
-      const purchaseOrderId = await resolvePurchaseOrderId(db, organizationId, lines)
+      const purchaseOrderId = resolvePurchaseOrderId(poLines)
 
       // A part's FIRST receipt gives it a standard cost (`receiveStock`'s step
       // 4). Sequential, in line order: `ensureStandardCost` only writes where
@@ -308,100 +324,61 @@ function assertReceivableLines(lines: ReceivePurchaseOrderLineInput[]): void {
 }
 
 /**
- * The agreed unit price of every line being received, in ONE query.
+ * Every purchase-order line being received, with the two cells this door reads.
  *
- * One statement for the whole set rather than one per line: a fifty-line
- * container receipt would otherwise open fifty round trips before writing
- * anything, and the read has to complete for the entire set before the first
- * movement anyway (see the write path's validation contract).
+ * One read for the whole set rather than one per line: a fifty-line container
+ * receipt would otherwise open fifty round trips before writing anything, and
+ * the read has to complete for the entire set before the first movement anyway
+ * (see the write path's validation contract).
  *
- * Keyed by `purchase_order_line` instance id. A line with no stored value is
- * simply absent from the map, and {@link assertAgreedUnitPrice} turns that into
- * the refusal — this function reports what is there, it does not judge it.
+ * A line with no stored price is simply present with an absent cell, and
+ * {@link assertAgreedUnitPrice} turns that into the refusal — this function
+ * reports what is there, it does not judge it.
  *
- * The `organizationId` predicate plus a `fieldId` that only exists on
- * `purchase_order_line` is the scope: a caller cannot read another org's prices,
- * and an id that is not a purchase order line matches nothing.
+ * `includeArchived`: a receipt against a line somebody archived after ordering
+ * is still valued at the price that line froze.
  */
-async function readExpectedUnitPrices(
+async function readPurchaseOrderLines(
   db: Database,
   organizationId: string,
   lines: ReceivePurchaseOrderLineInput[]
-): Promise<Map<string, number | null>> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([EXPECTED_UNIT_PRICE_ATTRIBUTE])
-  const priceField = fields[EXPECTED_UNIT_PRICE_ATTRIBUTE]
-  if (!priceField) {
+): Promise<Map<string, SystemRecord<PoLineAttribute>>> {
+  const ctx = await systemFields(db, organizationId, 'purchase_order_line', PO_LINE_PICK)
+  if (!ctx?.fields.purchase_order_line_expected_unit_price) {
     // Same shape as the receipt cost fields: "purchasing is not set up" beats
     // silently receiving a shipment nobody can value.
     throw new UnprocessableEntityError(
-      'Receiving is not available until the purchase order line price field is provisioned'
+      'Receiving is not available until purchase order lines and their price field are provisioned'
     )
   }
 
-  const lineIds = [...new Set(lines.map((line) => line.purchaseOrderLineId))]
-  const rows = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      valueNumber: schema.FieldValue.valueNumber,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, lineIds),
-        eq(schema.FieldValue.fieldId, priceField.id)
-      )
-    )
-
-  return new Map(rows.map((row) => [row.entityId, row.valueNumber]))
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    ids: lines.map((line) => line.purchaseOrderLineId),
+    includeArchived: true,
+  })
+  return new Map(records.map((record) => [record.id, record]))
 }
 
-/** The relationship every `purchase_order_line` carries back to its order. */
-const PURCHASE_ORDER_LINE_ORDER_ATTRIBUTE = 'purchase_order_line_purchase_order'
-
 /**
- * The ONE purchase order every line in this receipt belongs to, in one query —
- * the same relation `purchase-order-status-writer.ts`'s `readOrdersForLines`
- * and `purchasing/match-hook.ts` read, just against this door's own `db`
- * instead of the module-level singleton so it stays testable without one.
+ * The ONE purchase order every line in this receipt belongs to.
  *
  * `null` when the relation isn't materialised for this org — the posting then
  * carries no `parent`, the same as it carried none before this existed. A
- * receipt naming lines from more than one order is refused: `postInventoryMovementInTx`'s
- * `parent` is a single link, and picking one of two orders to credit would be
- * a silent, wrong answer rather than a missing one. In practice this never
- * fires — `receive-po-lines.ts` only ever builds a receipt from one order's own
- * lines — but the assertion is what makes that a guarantee instead of an
- * assumption.
+ * receipt naming lines from more than one order is refused:
+ * `postInventoryMovementInTx`'s `parent` is a single link, and picking one of
+ * two orders to credit would be a silent, wrong answer rather than a missing
+ * one. In practice this never fires — `receive-po-lines.ts` only ever builds a
+ * receipt from one order's own lines — but the assertion is what makes that a
+ * guarantee instead of an assumption.
  */
-async function resolvePurchaseOrderId(
-  db: Database,
-  organizationId: string,
-  lines: ReceivePurchaseOrderLineInput[]
-): Promise<string | null> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([PURCHASE_ORDER_LINE_ORDER_ATTRIBUTE])
-  const orderField = fields[PURCHASE_ORDER_LINE_ORDER_ATTRIBUTE]
-  if (!orderField) return null
-
-  const lineIds = [...new Set(lines.map((line) => line.purchaseOrderLineId))]
-  const rows = await db
-    .select({ relatedEntityId: schema.FieldValue.relatedEntityId })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, lineIds),
-        eq(schema.FieldValue.fieldId, orderField.id)
-      )
-    )
-
-  const orderIds = new Set(
-    rows.map((row) => row.relatedEntityId).filter((id): id is string => !!id)
-  )
+function resolvePurchaseOrderId(
+  poLines: ReadonlyMap<string, SystemRecord<PoLineAttribute>>
+): string | null {
+  const orderIds = new Set<string>()
+  for (const record of poLines.values()) {
+    const orderId = record.related('purchase_order_line_purchase_order')
+    if (orderId) orderIds.add(orderId)
+  }
   if (orderIds.size === 0) return null
   if (orderIds.size > 1) {
     throw new BadRequestError(

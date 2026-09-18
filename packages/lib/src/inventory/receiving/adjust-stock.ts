@@ -34,9 +34,10 @@ import {
   inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
-import { getCachedEntityDefId, requireCachedEntityDefId } from '../../cache'
+import { requireCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
+import { systemDefId } from '../../resources/system-records'
 import { batchRecalculateQoH } from '../costing/qoh'
 import { writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
@@ -109,7 +110,7 @@ export async function adjustStock(
       assertAdjustableQuantity(input.quantity)
 
       const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-      const movementDefId = await getCachedEntityDefId(organizationId, 'stock_movement')
+      const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
       if (!movementDefId) {
         throw new NotFoundError('This organization has no stock_movement entity definition')
       }

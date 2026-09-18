@@ -125,6 +125,19 @@ describe('readReturnCeilings', () => {
     expect(h.systemFields).not.toHaveBeenCalled()
   })
 
+  it('reads the database for the ids a partial soldQuantities map leaves out', async () => {
+    h.readSystemRecords.mockResolvedValue([{ id: 'li_2', number: () => 5 }])
+
+    const ceilings = await readReturnCeilings(db, 'org_1', ['li_1', 'li_2'], {
+      soldQuantities: new Map([['li_1', 9]]),
+    })
+
+    expect(h.readSystemRecords.mock.calls[0]?.[3]).toMatchObject({ ids: ['li_2'] })
+    expect(ceilings.get('li_1')).toEqual({ ceiling: 9, ceilingSource: 'sold' })
+    // Not `unknown`: a missing id must not loosen the over-return guard.
+    expect(ceilings.get('li_2')).toEqual({ ceiling: 5, ceilingSource: 'sold' })
+  })
+
   it('derives the single-line read from the batch', async () => {
     h.rows.mockResolvedValue([{ lineItemId: 'li_1', quantity: 2 }])
     expect(await readReturnCeiling(db, 'org_1', 'li_1')).toEqual({

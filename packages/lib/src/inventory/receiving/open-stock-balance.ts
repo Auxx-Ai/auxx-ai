@@ -38,11 +38,14 @@ import { type Database, schema } from '@auxx/database'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { and, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { requireCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
+import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import { toRecordId } from '../../resources/resource-id'
+import { systemDefId, systemFieldMap, systemValueJoin } from '../../resources/system-records'
 import { ensureStandardCost } from '../costing/ensure-standard-cost'
 import { computeExtendedCost, resolveInventoryRoleForPartKind } from '../movements/client'
 import { assertCostFieldsMaterialized } from '../movements/cost-fields'
@@ -71,7 +74,7 @@ export async function openStockBalance(
       assertOpeningUnitCost(input.unitCost)
 
       const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-      const movementDefId = await getCachedEntityDefId(organizationId, 'stock_movement')
+      const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
       if (!movementDefId) {
         throw new NotFoundError('This organization has no stock_movement entity definition')
       }
@@ -150,6 +153,10 @@ function assertOpeningUnitCost(unitCost: number): void {
   }
 }
 
+const MOVEMENT_PART_PICK = pickSystemAttributes(STOCK_MOVEMENT_FIELDS, [
+  'stock_movement_part',
+] as const)
+
 /**
  * Step 2: the load-bearing guard. Opening is once.
  *
@@ -172,6 +179,10 @@ function assertOpeningUnitCost(unitCost: number): void {
  * Archived movements still count. A soft-deleted movement is a movement that
  * happened, and letting an archive re-open the door would make the guard
  * bypassable by anybody who could archive a row.
+ *
+ * Deliberately not on `readSystemRecords`: this asks which movements point AT a
+ * part, which is a filter on the value rather than a read of one, and it must
+ * see archived rows.
  */
 async function assertPartHasNoMovements(
   db: Database,
@@ -179,9 +190,7 @@ async function assertPartHasNoMovements(
   movementDefId: string,
   partId: string
 ): Promise<void> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['stock_movement_part'])
+  const fields = await systemFieldMap(db, organizationId, MOVEMENT_PART_PICK)
   const partField = fields.stock_movement_part
   if (!partField) {
     throw new UnprocessableEntityError(
@@ -192,14 +201,7 @@ async function assertPartHasNoMovements(
   const [existing] = await db
     .select({ id: schema.EntityInstance.id })
     .from(schema.EntityInstance)
-    .innerJoin(
-      schema.FieldValue,
-      and(
-        eq(schema.FieldValue.entityId, schema.EntityInstance.id),
-        eq(schema.FieldValue.organizationId, schema.EntityInstance.organizationId),
-        eq(schema.FieldValue.fieldId, partField.id)
-      )
-    )
+    .innerJoin(schema.FieldValue, systemValueJoin(schema.FieldValue, partField.id))
     .where(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),

@@ -23,22 +23,35 @@ import { type Database, schema } from '@auxx/database'
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { requireCachedEntityDefId } from '../../cache'
 import { StockMovementType } from '../../resources/registry/enum-values'
+import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
+import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
+import { SUBPART_FIELDS } from '../../resources/registry/resources/subpart-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
+import { systemDefId, systemFieldMap, systemValueJoin } from '../../resources/system-records'
 import { guard } from './guard'
 import type { OpeningStockCandidate } from './types'
 
 /** Every part-side attribute a candidate row is assembled from. */
-const PART_ATTRIBUTES = [
-  'part_sku',
+const PART_PICK = pickSystemAttributes(PART_FIELDS, [
   'part_kind',
   'part_standard_cost',
   'part_product',
-  'subpart_child_part',
-] as const
+] as const)
+
+// `part_sku` carries a stale `dbColumn` in the registry, which excludes it from
+// `pickSystemAttributes`; a part is an `EntityInstance` and its SKU is a stored value.
+const PART_ATTRIBUTES = [...PART_PICK, 'part_sku'] as const
+
+/** The BOM edge behind `isSubpartOfAssembly`; on `subpart`, not on `part`. */
+const SUBPART_PICK = pickSystemAttributes(SUBPART_FIELDS, ['subpart_child_part'] as const)
 
 /** The movement-side attributes the "has it ever moved?" probe needs. */
-const MOVEMENT_ATTRIBUTES = ['stock_movement_part', 'stock_movement_type'] as const
+const MOVEMENT_PICK = pickSystemAttributes(STOCK_MOVEMENT_FIELDS, [
+  'stock_movement_part',
+  'stock_movement_type',
+] as const)
 
 /**
  * Every part in the org, with the five facts the opening-stock checklist and
@@ -74,9 +87,8 @@ export async function listOpeningStockCandidates(
   return guard(
     async () => {
       const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes([...PART_ATTRIBUTES])
+      const fields = await systemFieldMap(db, organizationId, PART_ATTRIBUTES)
+      const subpartFields = await systemFieldMap(db, organizationId, SUBPART_PICK)
 
       // A field the org has not materialised joins on a sentinel that matches
       // nothing, so its column comes back NULL rather than the query failing.
@@ -96,10 +108,13 @@ export async function listOpeningStockCandidates(
           productId: productValue.relatedEntityId,
         })
         .from(schema.EntityInstance)
-        .leftJoin(skuValue, joinValue(skuValue, fields.part_sku?.id))
-        .leftJoin(kindValue, joinValue(kindValue, fields.part_kind?.id))
-        .leftJoin(standardValue, joinValue(standardValue, fields.part_standard_cost?.id))
-        .leftJoin(productValue, joinValue(productValue, fields.part_product?.id))
+        .leftJoin(skuValue, systemValueJoin(skuValue, fields.part_sku?.id ?? ''))
+        .leftJoin(kindValue, systemValueJoin(kindValue, fields.part_kind?.id ?? ''))
+        .leftJoin(
+          standardValue,
+          systemValueJoin(standardValue, fields.part_standard_cost?.id ?? '')
+        )
+        .leftJoin(productValue, systemValueJoin(productValue, fields.part_product?.id ?? ''))
         .where(
           and(
             eq(schema.EntityInstance.organizationId, organizationId),
@@ -112,7 +127,7 @@ export async function listOpeningStockCandidates(
       const subpartChildren = await readSubpartChildPartIds(
         db,
         organizationId,
-        fields.subpart_child_part?.id
+        subpartFields.subpart_child_part?.id
       )
 
       return rows.map((row) => {
@@ -132,18 +147,6 @@ export async function listOpeningStockCandidates(
     },
     'Failed to list opening stock candidates',
     { organizationId }
-  )
-}
-
-/** The `entityId`/`organizationId`/`fieldId` triple every value join is keyed on. */
-function joinValue(
-  value: ReturnType<typeof alias<typeof schema.FieldValue, string>>,
-  fieldId?: string
-) {
-  return and(
-    eq(value.entityId, schema.EntityInstance.id),
-    eq(value.organizationId, schema.EntityInstance.organizationId),
-    eq(value.fieldId, fieldId ?? '')
   )
 }
 
@@ -169,12 +172,10 @@ async function readMovementCoverage(
 ): Promise<Map<string, MovementCoverage>> {
   const coverage = new Map<string, MovementCoverage>()
 
-  const movementDefId = await getCachedEntityDefId(organizationId, 'stock_movement')
+  const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
   if (!movementDefId) return coverage
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...MOVEMENT_ATTRIBUTES])
+  const fields = await systemFieldMap(db, organizationId, MOVEMENT_PICK)
   const partField = fields.stock_movement_part
   // Without the part link a movement cannot be attributed to anything, so there
   // is no coverage to report and every part reads as never moved.
@@ -191,22 +192,8 @@ async function readMovementCoverage(
       hasInitial: sql<boolean>`BOOL_OR(${typeValue.optionId} = ${StockMovementType.INITIAL})`,
     })
     .from(schema.EntityInstance)
-    .innerJoin(
-      partValue,
-      and(
-        eq(partValue.entityId, schema.EntityInstance.id),
-        eq(partValue.organizationId, schema.EntityInstance.organizationId),
-        eq(partValue.fieldId, partField.id)
-      )
-    )
-    .leftJoin(
-      typeValue,
-      and(
-        eq(typeValue.entityId, schema.EntityInstance.id),
-        eq(typeValue.organizationId, schema.EntityInstance.organizationId),
-        eq(typeValue.fieldId, fields.stock_movement_type?.id ?? '')
-      )
-    )
+    .innerJoin(partValue, systemValueJoin(partValue, partField.id))
+    .leftJoin(typeValue, systemValueJoin(typeValue, fields.stock_movement_type?.id ?? ''))
     .where(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),
@@ -232,6 +219,9 @@ async function readMovementCoverage(
  *
  * Archived `subpart` rows are excluded — a BOM line somebody removed must not
  * keep suppressing the suggestion forever.
+ *
+ * Deliberately not on `readSystemRecords`: this asks which parts are pointed AT
+ * by a BOM edge, which is a distinct over the value rather than a read of one.
  */
 async function readSubpartChildPartIds(
   db: Database,

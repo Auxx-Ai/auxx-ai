@@ -597,9 +597,7 @@ export async function readReturnCeilings(
 
   const shipped = await readShippedQuantities(db, organizationId, ids)
   const unshipped = ids.filter((id) => shipped.get(id) == null)
-  const sold =
-    options.soldQuantities ??
-    (unshipped.length > 0 ? await readSoldQuantities(db, organizationId, unshipped) : new Map())
+  const sold = await resolveSoldQuantities(db, organizationId, unshipped, options.soldQuantities)
 
   for (const id of ids) {
     const shippedQuantity = shipped.get(id)
@@ -616,6 +614,30 @@ export async function readReturnCeilings(
     ceilings.set(id, { ceiling: null, ceilingSource: 'unknown' })
   }
   return ceilings
+}
+
+/**
+ * The caller's `soldQuantities` where it answers, the database for the rest.
+ *
+ * A partial map must not widen the ceiling: an id the caller left out would
+ * otherwise read `unknown` and let the over-return guard pass anything.
+ */
+async function resolveSoldQuantities(
+  db: ReturnsReadDb,
+  organizationId: string,
+  lineItemIds: readonly string[],
+  provided: Map<string, number | null> | undefined
+): Promise<Map<string, number | null>> {
+  const sold = new Map<string, number | null>()
+  const missing: string[] = []
+  for (const id of lineItemIds) {
+    if (provided?.has(id)) sold.set(id, provided.get(id) ?? null)
+    else missing.push(id)
+  }
+  if (missing.length === 0) return sold
+  for (const [id, quantity] of await readSoldQuantities(db, organizationId, missing))
+    sold.set(id, quantity)
+  return sold
 }
 
 /** {@link readReturnCeilings} for one sold line. */

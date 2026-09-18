@@ -6,11 +6,12 @@ import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Vendor Part resource
  */
-export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
+export const VENDOR_PART_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -486,4 +487,4 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})

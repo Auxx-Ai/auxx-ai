@@ -13,8 +13,8 @@ import type { ReceivePurchaseOrderLineInput } from '../types'
 
 const h = vi.hoisted(() => ({
   createSpy: vi.fn(async (..._args: unknown[]) => ({ instance: { id: 'mv_1' } })),
-  /** One call per `db.select(...)` on the caller's own connection. */
-  selectSpy: vi.fn(),
+  /** One call per `readSystemRecords`, so the read stays batched. */
+  readRecords: vi.fn(),
   /** systemAttributes the org has materialised. */
   materialised: new Set<string>(),
   /** entityType -> def id; a missing key models a def the org does not have. */
@@ -31,6 +31,7 @@ const h = vi.hoisted(() => ({
   settleSpy: vi.fn(),
 }))
 
+// `inventory/movements` still reads the cache directly; this door does not.
 vi.mock('../../../cache', () => ({
   getCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => h.defs.get(entityType)),
   requireCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => {
@@ -46,6 +47,24 @@ vi.mock('../../../cache', () => ({
         ),
     }),
   }),
+}))
+
+// The system-records reader, standing in for the two queries this door used to
+// write by hand: the purchase-order lines with their price and their order.
+vi.mock('../../../resources/system-records', () => ({
+  systemDefId: async (_db: unknown, _org: string, entityType: string) =>
+    h.defs.get(entityType) ?? null,
+  systemFields: async (_db: unknown, _org: string, entityType: string, attrs: string[]) => {
+    const defId = h.defs.get(entityType)
+    if (!defId) return null
+    return {
+      defId,
+      fields: Object.fromEntries(
+        attrs.map((a) => [a, h.materialised.has(a) ? { id: `fld_${a}` } : null])
+      ),
+    }
+  },
+  readSystemRecords: (...args: unknown[]) => h.readRecords(...args),
 }))
 
 vi.mock('../../../resources/crud/unified-handler', () => ({
@@ -90,26 +109,22 @@ const PRICE_ATTR = 'purchase_order_line_expected_unit_price'
 const ORDER_ATTR = 'purchase_order_line_purchase_order'
 const COST_ATTRS = ['stock_movement_unit_cost', 'stock_movement_cost_basis']
 
-/**
- * The write and its posting share one transaction, so the stub has to run it.
- * Routed by the projection's keys: `resolvePurchaseOrderId` projects only
- * `relatedEntityId`, `readExpectedUnitPrices` projects `entityId`/`valueNumber`.
- */
+/** The write and its posting share one transaction, so the stub has to run it. */
 const db = {
-  select: (projection: Record<string, unknown>) => {
-    h.selectSpy(projection)
-    const keys = Object.keys(projection).sort().join(',')
-    return {
-      from: () => ({
-        where: async () =>
-          keys === 'relatedEntityId'
-            ? h.orderIds.map((relatedEntityId) => ({ relatedEntityId }))
-            : [...h.prices.entries()].map(([entityId, valueNumber]) => ({ entityId, valueNumber })),
-      }),
-    }
-  },
   transaction: async (fn: (tx: unknown) => unknown) => fn(db),
 } as never
+
+/** One `SystemRecord` per requested line that `h.prices` knows about, in request order. */
+function purchaseOrderLineRecords(ids: string[]) {
+  return ids
+    .filter((id) => h.prices.has(id))
+    .map((id, index) => ({
+      id,
+      number: (attr: string) => (attr === PRICE_ATTR ? (h.prices.get(id) ?? null) : null),
+      related: (attr: string) =>
+        attr === ORDER_ATTR && h.materialised.has(ORDER_ATTR) ? (h.orderIds[index] ?? null) : null,
+    }))
+}
 
 const line = (
   overrides: Partial<ReceivePurchaseOrderLineInput> = {}
@@ -135,6 +150,10 @@ beforeEach(() => {
     ['pol_3', 300],
   ])
   h.orderIds = ['po_1']
+  h.readRecords.mockImplementation(
+    async (_db: unknown, _org: string, _ctx: unknown, options: { ids: string[] }) =>
+      purchaseOrderLineRecords(options.ids)
+  )
   h.partKind = null
   h.settleSpy.mockResolvedValue(undefined)
   h.postSpy.mockResolvedValue(null)
@@ -254,7 +273,7 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
     expect(writtenValues(1).stock_movement_unit_cost).toBe(99)
   })
 
-  it('reads every price in ONE query, not one per line', async () => {
+  it('reads every line in ONE read, not one per line', async () => {
     await receivePurchaseOrder(db, ORG, USER, {
       lines: [
         line(),
@@ -262,9 +281,9 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
         line({ partId: 'part_3', purchaseOrderLineId: 'pol_3' }),
       ],
     })
-    // One for the prices, one for the shared parent purchase order — neither
-    // scales with the line count.
-    expect(h.selectSpy).toHaveBeenCalledTimes(2)
+    // One read for the whole set: the price and the parent order come off the
+    // same records, so neither scales with the line count.
+    expect(h.readRecords).toHaveBeenCalledTimes(1)
     expect(h.createSpy).toHaveBeenCalledTimes(3)
   })
 

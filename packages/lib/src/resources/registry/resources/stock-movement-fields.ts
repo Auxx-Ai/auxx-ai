@@ -7,6 +7,7 @@ import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { StockMovementCostBasis, StockMovementType } from '../enum-values'
 import type { ResourceField } from '../field-types'
+import { defineResourceFields } from '../system-attributes'
 
 /**
  * Field definitions for the Stock Movement resource.
@@ -22,7 +23,7 @@ import type { ResourceField } from '../field-types'
  * system knew *how many* motors arrived and had never known *what they cost* —
  * the only price it stored was one overwritable field on `vendor_part`.
  */
-export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
+export const STOCK_MOVEMENT_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
     key: 'id',
@@ -645,4 +646,4 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
   },
 
   createdBy: CREATED_BY_FIELD,
-}
+})
