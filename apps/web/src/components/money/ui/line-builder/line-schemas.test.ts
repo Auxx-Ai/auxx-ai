@@ -375,17 +375,19 @@ describe('the amount is an input only where the field is writable', () => {
     expect(amountMode === 'stored').toBe(attrs.lineTotal !== null)
   })
 
-  // The credit memo joined the vendor bill here because `credit_memo_line_subtotal`
-  // is a writable field with no engine writer of its own (the channel connector
-  // transcribes it; the totals hook only re-sums the parent from it), so the
-  // builder has to be what writes a typed concession line's amount.
-  it('only the vendor bill and the credit memo store their own amount', () => {
+  // The credit memo and the vendor credit joined the vendor bill here because
+  // their amount fields are writable with no engine writer of their own (the
+  // totals hook only re-sums the parent from them), so the builder has to be what
+  // writes a typed concession line's amount.
+  it('only the vendor bill and the two credits store their own amount', () => {
     expect(ALL.filter((d) => lineSchemaFor(d).amountMode === 'stored')).toEqual([
       'vendor_bill',
       'credit_memo',
+      'vendor_credit',
     ])
     expect(LINE_SCHEMAS.vendor_bill.attrs.lineTotal).toBe('vendor_bill_line_line_total')
     expect(LINE_SCHEMAS.credit_memo.attrs.lineTotal).toBe('credit_memo_line_subtotal')
+    expect(LINE_SCHEMAS.vendor_credit.attrs.lineTotal).toBe('vendor_credit_line_line_total')
   })
 
   // 🛑 `line_item_line_total` and `purchase_order_line_line_total` both EXIST and
@@ -587,14 +589,22 @@ describe('the two buy-side documents disagree about the part', () => {
 })
 
 describe('the match key', () => {
-  it('belongs to the vendor bill alone, with the order that scopes it', () => {
+  // The vendor credit carries one too: a supplier return is priced off the order
+  // line it reverses, so the credit line points at the same key under its own
+  // order scope.
+  it('belongs to the bill and the vendor credit, each with the order that scopes it', () => {
     expect(ALL.filter((d) => lineSchemaFor(d).attrs.purchaseOrderLineRecordId !== null)).toEqual([
       'vendor_bill',
+      'vendor_credit',
     ])
     expect(LINE_SCHEMAS.vendor_bill.attrs.purchaseOrderLineRecordId).toBe(
       'vendor_bill_line_purchase_order_line'
     )
     expect(LINE_SCHEMAS.vendor_bill.matchScopeAttr).toBe('vendor_bill_purchase_order')
+    expect(LINE_SCHEMAS.vendor_credit.attrs.purchaseOrderLineRecordId).toBe(
+      'vendor_credit_line_purchase_order_line'
+    )
+    expect(LINE_SCHEMAS.vendor_credit.matchScopeAttr).toBe('vendor_credit_purchase_order')
   })
 
   // 🛑 The scope and the key are one feature. A match key with no scope attribute
@@ -632,10 +642,16 @@ describe('the landed bill', () => {
   })
 })
 
+// A coded line is a buy-side concept: both documents post their non-stock lines
+// straight to the account named on the line rather than through GRNI.
 describe('the GL account', () => {
-  it('belongs to the vendor bill alone', () => {
-    expect(ALL.filter((d) => lineSchemaFor(d).attrs.glAccount !== null)).toEqual(['vendor_bill'])
+  it('belongs to the vendor bill and the vendor credit', () => {
+    expect(ALL.filter((d) => lineSchemaFor(d).attrs.glAccount !== null)).toEqual([
+      'vendor_bill',
+      'vendor_credit',
+    ])
     expect(LINE_SCHEMAS.vendor_bill.attrs.glAccount).toBe('vendor_bill_line_gl_account')
+    expect(LINE_SCHEMAS.vendor_credit.attrs.glAccount).toBe('vendor_credit_line_gl_account')
   })
 })
 

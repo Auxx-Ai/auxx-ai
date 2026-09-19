@@ -7,8 +7,8 @@
 **Scope:** Everything under `packages/lib/src/accounting/` — the general ledger and the pipeline
 that writes it, account roles and the chart, periods and the close, the statements, the money
 model, source evidence, the export batch and the provider mirror, the payment rails, and the bank
-feed. The documents these serve (`sales/`, `purchasing/`, `returns/`) are described where they
-touch the books and nowhere else.
+feed, and the buy side in `accounting/purchasing/`. The document flows outside it (`sales/`,
+`returns/`) are described where they touch the books and nowhere else.
 
 > **This guide is the mechanism. It is not the status.**
 > What is merged, what is open and what the counts are lives in
@@ -133,16 +133,25 @@ packages/lib/src/
                  reconcilers (customer-money/order-evidence-reconciler.ts,
                  payouts/payout-reconciler.ts)
     banking/     feed/ import/ review/ rules/
+    purchasing/  POs, the three-way match, bills, vendor credits, landed cost,
+                 both intake lanes
   inventory/     movements/ costing/ receiving/ builds/ relief/ bom/ tariffs/
   sales/         quotes, orders, fulfillments, invoice issuance, credit memos, billing, totals
-  purchasing/    POs, the three-way match, bills, both intake lanes
   returns/       returns, salvage, the evidence pack, intake
   documents/     PDF rendering
 ```
 
-**The document flows stay top level, and that is the cut.** `sales/`, `purchasing/`, `returns/`
-and `documents/` are what the two parents serve; they are neither books nor stock. A reader
-looking for quote acceptance looks under `sales`, not `accounting`.
+**`purchasing/` sits under `accounting/` because it talks to the ledger and not to stock.** Its
+whole output is postings and payables; measured before the move it held 33 imports into
+`accounting/` and none at all into `inventory/`. Under `accounting/` it sits with what it uses,
+and the back-edges the ledger and the money model had into it stop being exceptions and become
+sibling imports.
+
+**The remaining document flows stay top level, and that is the cut.** `sales/`, `returns/` and
+`documents/` are what the two parents serve; they are neither books nor stock. A reader looking
+for quote acceptance looks under `sales`, not `accounting`. `sales/` has the same shape as
+purchasing and is expected to follow it down later; `returns/` does not — it is stock and
+customer facing.
 
 **The line runs through the record, not through the table a function writes.** An invoice's
 issuance and lifecycle are `sales/invoices`; recording a payment against that invoice writes a
@@ -164,8 +173,8 @@ for free. Client code imports `<module>/client`, never a barrel.
 The sanctioned direction is:
 
 ```
-sales, purchasing, returns  →  accounting/*, inventory/*
-accounting/{money,banking,rails,export,mirror,providers}  →  accounting/ledger
+sales, returns  →  accounting/*, inventory/*
+accounting/{money,banking,rails,export,mirror,providers,purchasing}  →  accounting/ledger
 inventory/*  →  accounting/ledger        (to post)
 documents  →  everything                 (a renderer; only accounting/reports imports it, for the PDF theme)
 ```
@@ -200,9 +209,19 @@ thirty-first is noticed.**
   `sales/invoices/issuance-reads` (`loadInvoiceForIssuance`, the one loader)
 - `money/invoice-payments/payment-state.ts` → `sales/credit-memos/reads`
 
-**`purchasing` → `sales` — 4**: `roundCents` from `sales/totals/totals` in `match.ts`,
+**`accounting/purchasing` → `sales` — 4**: `roundCents` from `sales/totals/totals` in `match.ts`,
 `post-vendor-bill.ts` and `allocate-landed-cost.ts`; `type MoneyMutationInput` from `sales/types`
 in `lifecycle.ts`.
+
+**What the move deleted, and the one edge it added.** The four back-edges that used to run
+`accounting/ledger` and `accounting/money` → `purchasing` — `ledger/builders/entry.ts` for
+`allocateCapitalisedCost` and the allocation types, and `money/vendor-payments/`'s three into
+`expense-bill/writes`, `vendor-credit/reads` and `vendor-credit/accounting` — are now sibling
+imports inside `accounting/` and are not exceptions to anything. In their place there is **one
+new `accounting/purchasing` → `inventory` edge**: `vendor-credit/stock-return.ts`, which writes
+the `return_out` movements a flagged credit line implies. It is honest — a supplier return is
+the one buy-side document that moves stock — but it is the first, and purchasing measured 0
+edges into `inventory` before it.
 
 **`inventory` → `sales` — 1**: `inventory/relief/backfill.ts` → `sales/fulfillments`
 (`readFulfillmentsForOrders`, `isLiveFulfillment`). The live relief path has no such edge —
@@ -379,7 +398,26 @@ Postgres enum. **Two copies on purpose** — `types.ts` is client-safe and `@aux
 
 | Enabled (16, in `ENABLED_POSTING_TYPES` order) | Not enabled |
 | --- | --- |
-| `inventory_movement`, `manual_journal`, `opening_balance`, `bank_deposit`, `fulfillment`, `payment`, `refund`, `payout`, `write_off`, `bank_transaction`, `invoice_issued`, `deposit_application`, `credit_memo`, `expense_bill`, `recurring_journal`, `vendor_bill` | `provider_sync`, `month_end_deferral`, `month_end_reversal` |
+| `inventory_movement`, `manual_journal`, `opening_balance`, `bank_deposit`, `fulfillment`, `payment`, `refund`, `payout`, `write_off`, `bank_transaction`, `invoice_issued`, `deposit_application`, `credit_memo`, `vendor_credit`, `recurring_journal`, `vendor_bill` | `provider_sync`, `month_end_deferral`, `month_end_reversal` |
+
+🛑 **`vendor_bill` is the ONE type for a supplier invoice, with or without a purchase order.**
+`expense_bill` was a second type for the second kind — same record, same lines, same A/P line,
+told apart only by whether `vendor_bill_purchase_order` was set — and one record cannot have two
+entries. It is retired along with its `EXB` document prefix and its policy row. The builder is
+the superset: a line linked to a purchase order line debits `grni` at billed × agreed with the
+difference to `ppv`; a line that is not debits the account it was coded to; the header's
+shipping, tax and discount take one leg each; `Cr accounts_payable` at the bill total, refusing
+by name when the lines and the header do not tie.
+
+**The trigger is the Post action, never the match.** The three-way verdict moved to
+`vendor_bill_match_status`, where it recomputes on every line write and every receipt with no
+ledger effect. `vendor_bill_status` is `draft | posted | void` and is written only by Post,
+Save and Void. A posted bill is locked by a field pre-hook until somebody presses Edit, which
+writes `metadata.editOpen`; **Save** is where the ledger is touched again — one transaction
+under the commit lock that builds the entry from current values, compares it to the live
+posting's built lines, and reverses-then-reposts only if they differ. Void refuses unless the
+bill is unpaid, reverses every live `vendor_bill` posting, and returns the order lines to
+billable.
 
 🛑 **The existence of a builder does not mean a type is live**, and neither does the absence of one
 mean it is dead. `buildReceiptEntry` is named by `regime.ts` and does not exist; the two `month_end_*`
@@ -581,7 +619,7 @@ vary by country, industry and taste. Once the chart is editable the number canno
 meaning: a customer renumbering GRNI from `2160` to `2155` would silently break posting, and the
 entry would still balance. So builders emit roles (`G8`).
 
-There are **27 roles**, all in `ledger/builders/entry.ts` (`ACCOUNT_ROLES`), with
+There are **31 roles**, all in `ledger/builders/entry.ts` (`ACCOUNT_ROLES`), with
 `ROLE_ACCOUNT_TYPES`, `ROLE_ACCOUNT_SUBTYPES`, `ACCOUNT_ROLE_LABELS`, `ROLES_WITHOUT_DEFAULT`,
 `SCOPABLE_ROLES` and `roleScopeAxis` beside them. That is the **only** copy of the vocabulary.
 
@@ -593,6 +631,14 @@ has a rail scope.** `BANK` is admissible precisely because it can never be unsco
 *this rail* pays into". `bank` and `clearing` are also the two roles with a subtype pin in
 `ROLE_ACCOUNT_SUBTYPES`, checked by `setRoleAssignment` before it writes and by `resolveRoles` on
 every read.
+
+The four newest are the buy side's: `cogs_direct_labor` (`5010`, the labour share of a relieved
+unit, beside `cogs_product_cost` and `applied_overhead`), `purchase_tax` (`5040`, tax a vendor
+charges on a goods bill — it is never in the landed standard, so it is a period cost and never
+inventory), `build_variance` (`5091`, scrap and a run that did not close to standard) and
+`inventory_revaluation` (`5092`, the other leg of a `revalue` movement). ⚠️ `build_variance` sits
+at `5091` rather than at `ppv`'s `5090`: a role is unique per account in the seed, so two roles
+cannot share one code even where an org would happily see them in one place.
 
 `SCOPABLE_ROLES` has exactly six entries: `revenue_product`, `revenue_shipping` and
 `revenue_returns_allowances` on the **store** axis; `clearing`, `payment_processing_fees` and
@@ -914,15 +960,15 @@ a settings table.
 ### 8.4a The vendor credit and the vendor refund
 
 A supplier's credit note is a DOCUMENT, not an edit to a bill's total:
-`purchasing/vendor-credit/`, the mirror of `sales/credit-memos/` with the parties swapped. The
+`accounting/purchasing/vendor-credit/`, the mirror of `sales/credit-memos/` with the parties swapped. The
 `vendor_credit` entity carries lines, a status (`draft -> issued -> settled`, `void` off either),
 attachments and a PDF, numbered `VC-0001` from its own `RecordSequence` scope. The supplier's own
 reference lives beside it on `vendor_credit_vendor_reference` and is never the entry's key: two
 suppliers may print the same string.
 
-Issuing it posts `Dr accounts_payable (counterparty: vendor) / Cr <each line's account>` —
-`buildExpenseBillEntry` with the sides flipped, and the entry ties to the stored total or it does
-not post. A line names its account by **id**, like a `vendor_bill_line`, and a credit raised
+Issuing it posts `Dr accounts_payable (counterparty: vendor) / Cr <each line's account>` — the
+vendor bill's coded-line arm with the sides flipped, and the entry ties to the stored total or it
+does not post. A line names its account by **id**, like a `vendor_bill_line`, and a credit raised
 against a PO-backed bill has its lines prefilled with the org's resolved `grni` account
 (`resolveGrniAccountId`, never a hardcoded code), so the short-shipment case `Dr A/P / Cr GRNI` is
 the same entry with that account on the line. One builder, no per-line roles. Auto-post reads the
@@ -931,6 +977,16 @@ the same entry with that account on the line. One builder, no per-line roles. Au
 Applying a credit to a bill posts NOTHING — the issue entry already debited the payable. What
 moves is `vendor_bill_amount_credited`, the bill's balance (`total − paid − credited`) and its
 `vendor_bill_payment_status`.
+
+**A supplier return is a credit line that moved stock**, not a document of its own.
+`vendor_credit_line_returns_stock` on a line makes issuing the credit write one `return_out`
+movement at the part's current standard inside the same transaction, linked to the line's
+purchase order line, and post a second `inventory_movement` entry of kind `return_to_vendor`:
+`Cr <inventory role>` at the standard, `Dr grni` at the agreed price, the remainder — freight and
+duty on goods no longer held — to `ppv`. The money entry above is unchanged and is what closes
+GRNI for those units. Leaving the flag off is the right answer for a price adjustment and for a
+short shipment, where there is no stock to move and the money entry clears GRNI on its own. The
+receipt reversal stays the keying-mistake door and is never offered as a return.
 
 A supplier paying the credit back is a `MoneyTransaction` with purpose `vendor_refund` and a
 `MoneyRefundSettlement` at disposition `vendor_credit`. It posts `Dr <the cash endpoint> /
@@ -1228,7 +1284,7 @@ no handler, so a new object type cannot silently fall through `sendObject` as "u
 | `credit_memo` | `credit_memo` |
 | `refund` | `refund_receipt` |
 | `payout`, `bank_deposit` | `deposit` |
-| `expense_bill`, `vendor_bill` | `bill` |
+| `vendor_bill` | `bill` |
 | everything else | `journal` |
 
 On a fulfillment:
