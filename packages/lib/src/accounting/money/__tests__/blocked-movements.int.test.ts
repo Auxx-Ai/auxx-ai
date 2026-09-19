@@ -108,6 +108,8 @@ async function claim(moneyTransactionId: string, txnDate: string): Promise<void>
       totalMinor: 1000,
       built: {},
       status: 'posted',
+      // `GlPosting_posted_check`: only a `posted` row may carry one, and it must.
+      postedAt: new Date(`${txnDate}T00:00:00Z`),
     })
     .returning({ id: schema.GlPosting.id })
   await db().insert(schema.GlPostingSource).values({
