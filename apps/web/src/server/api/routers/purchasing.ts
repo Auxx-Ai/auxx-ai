@@ -61,6 +61,7 @@ import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
+import { vendorCreditRouter } from './vendor-credit'
 
 /** An AMOUNT - money owed, paid or booked - is an integer minor unit everywhere in this subsystem. */
 const minorUnits = z.number().int()
@@ -369,6 +370,9 @@ async function requireDefId(organizationId: string, entityType: string): Promise
  * a `TRPCError` would flatten every 404/422 into a 500.
  */
 export const purchasingRouter = createTRPCRouter({
+  /** The supplier's credit note (71 §5 U7). */
+  vendorCredit: vendorCreditRouter,
+
   /**
    * Send a draft purchase order to its vendor — the writer `purchase_order_status`
    * never had.

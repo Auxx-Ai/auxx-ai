@@ -80,7 +80,6 @@ export {
   type CreditMemoLineInput,
   type CreditMemoReason,
   type CreditMemoRefundRow,
-  type CreditMemoSettlement,
   type CreditMemoSource,
   type CreditMemoStatus,
   type OpenInvoiceRow,

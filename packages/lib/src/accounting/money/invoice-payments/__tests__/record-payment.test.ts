@@ -2,13 +2,9 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const settings = vi.hoisted(() => ({ value: {} as Record<string, unknown> }))
 const runMoneyCommand = vi.hoisted(() => vi.fn())
 const loadInvoice = vi.hoisted(() => vi.fn())
 
-vi.mock('../../../../cache/singletons', () => ({
-  getOrgCache: () => ({ get: async () => settings.value }),
-}))
 vi.mock('../../commands/run-money-command', () => ({ runMoneyCommand }))
 vi.mock('../../../../sales/invoices/issuance-reads', () => ({
   loadInvoiceForIssuance: loadInvoice,
@@ -27,7 +23,6 @@ const input = {
 }
 
 beforeEach(() => {
-  settings.value = {}
   runMoneyCommand.mockReset()
   runMoneyCommand.mockResolvedValue({ moneyTransactionId: 'money-1', moneyApplicationId: 'app-1' })
   loadInvoice.mockReset()
@@ -56,60 +51,36 @@ describe('recordInvoicePayment input guards', () => {
   })
 })
 
-describe('recordInvoicePayment route rules', () => {
-  it('records a cheque with no bank account — it waits in undeposited funds', async () => {
+describe('recordInvoicePayment cash endpoint', () => {
+  it('records a payment with no endpoint — it waits in undeposited funds', async () => {
     await expect(recordInvoicePayment({} as never, input)).resolves.toEqual({
       moneyTransactionId: 'money-1',
       moneyApplicationId: 'app-1',
     })
-    expect(runMoneyCommand).toHaveBeenCalledOnce()
+    expect(runMoneyCommand.mock.calls[0]![1].payload).toMatchObject({
+      paymentGatewayId: null,
+      bankAccountInstanceId: null,
+    })
   })
 
-  it('refuses a cheque that names a bank account', async () => {
-    await expect(
-      recordInvoicePayment({} as never, { ...input, bankAccountInstanceId: 'bank-1' })
-    ).rejects.toThrow(/undeposited funds/)
+  it('records a payment into a named bank account, whatever the method', async () => {
+    await recordInvoicePayment({} as never, {
+      ...input,
+      method: 'check',
+      bankAccountInstanceId: 'bank-1',
+    })
+    expect(runMoneyCommand.mock.calls[0]![1].payload).toMatchObject({
+      paymentGatewayId: null,
+      bankAccountInstanceId: 'bank-1',
+    })
   })
 
-  it('requires a bank account for a bank transfer, which routes straight to cash', async () => {
-    await expect(recordInvoicePayment({} as never, { ...input, method: 'bank' })).rejects.toThrow(
-      /bank account this payment landed in/
-    )
-  })
-
-  it('accepts a bank transfer that names one', async () => {
-    await expect(
-      recordInvoicePayment({} as never, {
-        ...input,
-        method: 'bank',
-        bankAccountInstanceId: 'bank-1',
-      })
-    ).resolves.toMatchObject({ moneyTransactionId: 'money-1' })
-  })
-
-  it('lets a hand-recorded card payment sit in undeposited funds', async () => {
-    // Card routes to `clearing` by default, but a terminal auxx knows nothing
-    // about produces no payout to drain it.
-    await expect(
-      recordInvoicePayment({} as never, { ...input, method: 'card' })
-    ).resolves.toMatchObject({ moneyTransactionId: 'money-1' })
-  })
-
-  it('lets a hand-recorded card payment name the bank it was deposited into', async () => {
-    await expect(
-      recordInvoicePayment({} as never, {
-        ...input,
-        method: 'card',
-        bankAccountInstanceId: 'bank-1',
-      })
-    ).resolves.toMatchObject({ moneyTransactionId: 'money-1' })
-  })
-
-  it('obeys an org that has re-routed cheques to a bank account', async () => {
-    settings.value = { 'accounting.paymentRoute.check': 'cash' }
-    await expect(recordInvoicePayment({} as never, input)).rejects.toThrow(
-      /bank account this payment landed in/
-    )
+  it('records a payment onto a named rail', async () => {
+    await recordInvoicePayment({} as never, { ...input, method: 'card', paymentGatewayId: 'pg-1' })
+    expect(runMoneyCommand.mock.calls[0]![1].payload).toMatchObject({
+      paymentGatewayId: 'pg-1',
+      bankAccountInstanceId: null,
+    })
   })
 
   it('treats a blank bank account as none, not as a named one', async () => {
@@ -135,6 +106,7 @@ describe('recordInvoicePayment command identity', () => {
       amountMinor: 12_000,
       date: '2026-09-15',
       method: 'check',
+      paymentGatewayId: null,
       bankAccountInstanceId: null,
     })
   })

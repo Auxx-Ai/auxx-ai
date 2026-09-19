@@ -1,21 +1,10 @@
-// apps/web/src/components/purchasing/vendor-bill/mark-bill-paid-dialog.tsx
+// apps/web/src/components/purchasing/vendor-bill/record-bill-payment-dialog.tsx
 'use client'
 
-// Mark-a-vendor-bill-paid dialog — the `record-payment-dialog.tsx` FieldPanel recipe
-// applied to the bill's own six payment fields (plans/purchasing/01-build-plan.md
-// §5.3, decision P12).
-//
-// 🛑 It writes FIELDS, it does not create a payment record. `vendor_payment` and
-// `vendor_payment_allocation` ship inert under P13 and `108-purchasing.test.ts` fails
-// if any file in packages/lib so much as names them, so a payment object is not
-// available to write and must not be improvised here.
-//
-// 🛑 It also does not POST. P12 says a ledger-mode org (no accounting provider)
-// relieves A/P with `Dr 2000 / Cr 1000` when a bill is marked paid — but
-// `post-entry.ts` is phase 7 and does not exist, so nothing here can fire it. The
-// six fields are `creatable: true` and a human can already type them in the Details
-// panel today; this dialog is that same write made convenient, and carries the same
-// gap. See plans/purchasing/02-handoff.md §4.7.
+// Paying a vendor bill — the `record-payment-dialog.tsx` recipe with the sides
+// flipped. It records a `vendor_payment` movement and posts `Dr A/P / Cr <the
+// endpoint>`; the bill's `amount_paid` / `paid_at` / `status` follow as a
+// projection (task 71 D7), never as a hand-written field.
 
 import { FieldType } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/lib/resources/client'
@@ -30,17 +19,26 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
-import { useSaveSystemValues } from '~/components/resources/hooks'
+import {
+  cashEndpointOptions,
+  cashEndpointValueOf,
+  UNDEPOSITED_VALUE,
+} from '~/components/money/ui/cash-endpoint-select'
+import {
+  PAYMENT_METHOD_OPTIONS,
+  type PaymentMethod,
+} from '~/components/money/ui/invoice/payment-method-options'
 import { BaseType } from '~/components/workflow/types'
+import { api } from '~/trpc/react'
 
-interface MarkBillPaidDialogProps {
+interface RecordBillPaymentDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   billRecordId: RecordId
-  /** Bill total, integer minor units — the ceiling a payment settles against. */
+  /** Bill total, integer minor units. */
   total: number
   /** Already settled before this payment, integer minor units. */
   amountPaid: number
@@ -52,7 +50,7 @@ function todayIso(): string {
   return new Date().toISOString()
 }
 
-export function MarkBillPaidDialog({
+export function RecordBillPaymentDialog({
   open,
   onOpenChange,
   billRecordId,
@@ -60,73 +58,82 @@ export function MarkBillPaidDialog({
   amountPaid,
   currencyCode,
   onSaved,
-}: MarkBillPaidDialogProps) {
+}: RecordBillPaymentDialogProps) {
   const balance = total - amountPaid
   const [amount, setAmount] = useState<number | null>(balance)
   const [date, setDate] = useState<string>(todayIso())
-  const [method, setMethod] = useState('')
+  const [method, setMethod] = useState<PaymentMethod>('bank')
   const [reference, setReference] = useState('')
+  const [paidFrom, setPaidFrom] = useState<string>(UNDEPOSITED_VALUE)
 
-  const { save, isPending } = useSaveSystemValues(billRecordId)
+  const { data: destinations } = api.money.paymentDestinations.useQuery(undefined, {
+    enabled: open,
+  })
 
-  // Reset to a fresh prefill every time the dialog opens.
+  const commandKey = useRef<string | null>(null)
+  // Undeposited funds is not a sensible default for money going OUT: the first
+  // bank account is.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-init only when the dialog opens.
   useEffect(() => {
     if (!open) return
     setAmount(balance)
     setDate(todayIso())
-    setMethod('')
+    setMethod('bank')
     setReference('')
+    commandKey.current = crypto.randomUUID()
   }, [open])
 
-  const canSave = !!amount && amount > 0
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the default follows the first account once it lands.
+  useEffect(() => {
+    if (!open) return
+    const first = destinations?.bankAccounts[0]
+    setPaidFrom(first ? `bank:${first.id}` : UNDEPOSITED_VALUE)
+  }, [open, destinations])
+
+  const utils = api.useUtils()
+  const recordBillPayment = api.money.recordBillPayment.useMutation({
+    onError: (error) =>
+      toastError({ title: 'Error recording payment', description: error.message }),
+  })
+
+  const canSave = !!amount && amount > 0 && amount <= balance
 
   const handleSubmit = async () => {
     if (!canSave || !amount) return
-    const nextAmountPaid = amountPaid + amount
-    const ok = await save({
-      vendor_bill_paid_at: date,
-      vendor_bill_amount_paid: nextAmountPaid,
-      vendor_bill_payment_method: method.trim() || null,
-      vendor_bill_payment_reference: reference.trim() || null,
-      // P12: `manual` is a HUMAN confirming the payment. Never `rule` — that value
-      // is reserved for a presumption, and the two must stay distinguishable.
-      vendor_bill_paid_source: 'manual',
-      // A fully settled bill becomes `paid`; a partial one becomes
-      // `partially_paid`. Neither may be left reading `matched`: a bill with
-      // $400 of $1,000 settled would otherwise be indistinguishable from one
-      // nobody has paid a cent of, with the remaining balance visible only on
-      // this card. Same discipline as `paidSource` — never let a partial fact
-      // render as a complete one.
-      ...(total > 0
-        ? { vendor_bill_status: nextAmountPaid >= total ? 'paid' : 'partially_paid' }
-        : {}),
-    })
-    if (!ok) {
-      toastError({
-        title: 'Error recording payment',
-        description: 'The bill could not be updated.',
+    try {
+      await recordBillPayment.mutateAsync({
+        vendorBillRecordId: billRecordId,
+        amount,
+        date: date.split('T')[0]!,
+        method,
+        ...cashEndpointValueOf(paidFrom),
+        reference: reference.trim() || undefined,
+        commandKey: commandKey.current ?? crypto.randomUUID(),
       })
-      return
+      await utils.money.billPayments.invalidate({ vendorBillRecordId: billRecordId })
+      onSaved?.()
+      onOpenChange(false)
+    } catch {
+      // onError above already surfaced the toast.
     }
-    onSaved?.()
-    onOpenChange(false)
   }
+
+  const isPending = recordBillPayment.isPending
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent position='tc'>
         <DialogHeader>
-          <DialogTitle>Mark paid</DialogTitle>
+          <DialogTitle>Record payment</DialogTitle>
           <DialogDescription>
-            Record what was paid against this bill. This does not post to the ledger.
+            Pay some or all of this bill. The payment is recorded and posted to the ledger.
           </DialogDescription>
         </DialogHeader>
 
         <FieldPanel
           orientation='responsive'
           breakpoint='md'
-          resizeId='mark-bill-paid-form'
+          resizeId='record-bill-payment-form'
           defaultLabelWidth={110}
           className='p-0'>
           <FieldPanelRow title='Amount' type={BaseType.CURRENCY} showIcon isRequired>
@@ -141,21 +148,31 @@ export function MarkBillPaidDialog({
 
           <FieldPanelRow title='Paid on' type={BaseType.DATE} showIcon isRequired>
             <FieldInputAdapter
-              fieldType={FieldType.DATETIME}
+              fieldType={FieldType.DATE}
               value={date}
               onChange={(val) => setDate(val as string)}
               disabled={isPending}
             />
           </FieldPanelRow>
 
-          {/* Free text, not a select: `vendor_bill_payment_method` is FieldType.TEXT
-              because the values have not settled yet (see the field's own note). */}
-          <FieldPanelRow title='Method' type={BaseType.STRING} showIcon>
+          <FieldPanelRow title='Method' type={BaseType.ENUM} showIcon isRequired>
             <FieldInputAdapter
-              fieldType={FieldType.TEXT}
+              fieldType={FieldType.SINGLE_SELECT}
+              fieldOptions={{ options: [...PAYMENT_METHOD_OPTIONS] }}
+              triggerProps={{ className: 'w-full ps-0 pe-1' }}
               value={method}
-              onChange={(val) => setMethod(val as string)}
-              placeholder='Check, ACH, card'
+              onChange={(val) => setMethod(((val as string[])[0] as PaymentMethod) ?? 'bank')}
+              disabled={isPending}
+            />
+          </FieldPanelRow>
+
+          <FieldPanelRow title='Paid from' type={BaseType.ENUM} showIcon isRequired>
+            <FieldInputAdapter
+              fieldType={FieldType.SINGLE_SELECT}
+              fieldOptions={{ options: cashEndpointOptions(destinations) }}
+              triggerProps={{ className: 'w-full ps-0 pe-1' }}
+              value={paidFrom}
+              onChange={(val) => setPaidFrom((val as string[])[0] ?? UNDEPOSITED_VALUE)}
               disabled={isPending}
             />
           </FieldPanelRow>
@@ -185,10 +202,10 @@ export function MarkBillPaidDialog({
             variant='outline'
             size='sm'
             loading={isPending}
-            loadingText='Saving...'
+            loadingText='Recording...'
             disabled={!canSave}
             data-dialog-submit>
-            Mark paid <KbdSubmit variant='outline' size='sm' />
+            Record payment <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

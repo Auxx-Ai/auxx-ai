@@ -1,5 +1,5 @@
 // packages/lib/src/accounting/money/customer-money/index.ts
-export { postCustomerReceiptAccounting, sweepCustomerReceiptAccounting } from './accounting'
+export { postCustomerReceiptAccounting, sweepCustomerMoneyAccounting } from './accounting'
 export {
   type BridgeKindCounts,
   type BridgeRecordKind,

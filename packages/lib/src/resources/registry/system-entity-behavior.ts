@@ -169,6 +169,20 @@ export const SYSTEM_ENTITY_BEHAVIOR: Record<string, Partial<SystemEntityBehavior
     inPromptCatalog: false,
     sidebar: 'never',
   }, // new to AI
+  // The two owned children of `vendor_credit` (71 §5 U7). The visible parent
+  // carries no entry here: like `credit_memo`, it resolves to pure defaults.
+  vendor_credit_line: {
+    searchable: false,
+    inPromptCatalog: false,
+    creatable: false,
+    sidebar: 'never',
+  },
+  vendor_credit_application: {
+    searchable: false,
+    inPromptCatalog: false,
+    creatable: false,
+    sidebar: 'never',
+  },
   stock_movement: {
     searchable: false,
     inPromptCatalog: false,
@@ -184,11 +198,6 @@ export const SYSTEM_ENTITY_BEHAVIOR: Record<string, Partial<SystemEntityBehavior
     aiVisible: false,
     sidebar: 'never',
   }, // child of part, reach it through the parent
-  vendor_payment_allocation: {
-    searchable: false,
-    aiVisible: false,
-    sidebar: 'never',
-  }, // child of vendor_payment
   entity_group: {
     searchable: false,
     aiVisible: false,
@@ -259,10 +268,6 @@ export const SYSTEM_ENTITY_BEHAVIOR: Record<string, Partial<SystemEntityBehavior
     inPromptCatalog: false,
     sidebar: 'never',
   }, // Accounting > Settings
-  vendor_payment: {
-    inPromptCatalog: false,
-    sidebar: 'never',
-  }, // new to AI
   tariff_code: {
     searchable: false,
     inPromptCatalog: false,

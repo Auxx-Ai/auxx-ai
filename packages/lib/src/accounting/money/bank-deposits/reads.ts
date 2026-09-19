@@ -30,7 +30,7 @@ import {
   systemRecordScope,
   systemValueJoin,
 } from '../../../resources/system-records'
-import { methodsRoutedToUndepositedFunds, resolveBankDepositStatus } from './client'
+import { resolveBankDepositStatus } from './client'
 import {
   type BankDepositAttribute,
   type DepositBankAccountContext,
@@ -55,7 +55,16 @@ const RECEIPT_COLUMNS = {
   reference: schema.MoneyTransaction.reference,
   currency: schema.MoneyTransaction.currency,
   bankDepositInstanceId: schema.MoneyTransaction.bankDepositInstanceId,
+  paymentGatewayId: schema.MoneyTransaction.paymentGatewayId,
+  cashAccountInstanceId: schema.MoneyTransaction.cashAccountInstanceId,
 } as const
+
+/** What `createBankDeposit` needs off the row and the list must not leak. */
+interface ReceiptWritePathFields {
+  bankDepositId: string | null
+  paymentGatewayId: string | null
+  cashAccountInstanceId: string | null
+}
 
 /** The account a deposit is banked into, as this module needs it. */
 export interface DepositBankAccount {
@@ -98,24 +107,17 @@ export async function readDepositBankAccount(
 }
 
 /**
- * Receipts that are waiting to be banked: routed to `undeposited_funds` by the
- * org's route table, and in no deposit.
+ * Receipts that are waiting to be banked: naming no rail and no bank account, and
+ * in no deposit.
  *
  * MIGRATION follow-up 9: reads `MoneyTransaction` directly - `cashAccountInstanceId
- * IS NULL` is what "sitting in undeposited funds" means on the row itself
- * (`record-payment.ts` only sets it for the `cash` route), and
- * `bankDepositInstanceId IS NULL` is "in no deposit". Both are SQL filters, no
- * FieldValue join needed now that neither fact lives on a `payment` entity mirror.
+ * IS NULL AND paymentGatewayId IS NULL` is what "sitting in undeposited funds"
+ * means on the row itself, and `bankDepositInstanceId IS NULL` is "in no
+ * deposit". All three are SQL filters.
  *
- * ⚠️ An org whose route table sends NOTHING to undeposited funds gets an empty
- * list rather than every receipt. That is the correct answer, not a bug: with
- * every rail posting direct there is nothing to group.
- *
- * ⚠️ A receipt with NO method is listed when the `other` route points at
- * undeposited funds, because that is exactly where it was recorded. See
- * `includeMethodless` below - this read and `createBankDeposit` must resolve a
- * receipt's route identically, or undeposited funds carries a balance no
- * deposit can ever reach.
+ * ⚠️ A receipt naming a rail or a bank account is never listed: it arrives at the
+ * bank on its own line, or a payout drains it, and banking it would assert a bank
+ * line that does not exist.
  */
 export async function listUndepositedPayments(
   db: Database,
@@ -124,32 +126,16 @@ export async function listUndepositedPayments(
   const { organizationId, method, from, to, limit, offset } = params
   return guard(
     async () => {
-      const settings = await getOrgCache().get(organizationId, 'orgSettings')
-      const routed = methodsRoutedToUndepositedFunds(settings)
-      // An explicit method filter still has to obey the route table: asking for
-      // `card` when card routes to a clearing account must answer nothing, not
-      // "here is a card receipt you can bank".
-      const methods = method ? routed.filter((m) => m === method) : routed
-
-      // Only when no explicit method filter was asked for: "show me the cheques"
-      // must not answer with a receipt that has no method.
-      const includeMethodless = !method && routed.includes('other')
-      if (methods.length === 0 && !includeMethodless) return []
-
-      const methodPredicate = includeMethodless
-        ? or(
-            isNull(schema.MoneyTransaction.method),
-            inArray(schema.MoneyTransaction.method, methods)
-          )!
-        : inArray(schema.MoneyTransaction.method, methods)
-
       const where: SQL[] = [
         eq(schema.MoneyTransaction.organizationId, organizationId),
         eq(schema.MoneyTransaction.purpose, 'customer_receipt'),
         isNull(schema.MoneyTransaction.cashAccountInstanceId),
+        isNull(schema.MoneyTransaction.paymentGatewayId),
         isNull(schema.MoneyTransaction.bankDepositInstanceId),
-        methodPredicate,
       ]
+      // The explicit method filter stays as a plain predicate; it narrows the
+      // list, it no longer decides what belongs in it.
+      if (method) where.push(eq(schema.MoneyTransaction.method, method as never))
       // Hand-recorded receipts (the only kind that ever route to undeposited
       // funds) always carry `occurredOn` - `record-payment.ts` stamps
       // `datePrecision: 'date'`. A quote-deposit checkout's `instant` receipt has
@@ -165,11 +151,17 @@ export async function listUndepositedPayments(
         .limit(limit ?? DEFAULT_LIMIT)
         .offset(offset ?? 0)
 
-      // Every one of these rows is already `bankDepositInstanceId IS NULL`
-      // (the WHERE clause above); drop the write-path-only field rather than
-      // leak it onto the public `UndepositedPaymentRow` shape.
+      // Drop the write-path-only fields rather than leak them onto the public
+      // `UndepositedPaymentRow` shape.
       const hydrated = await hydrateReceipts(db, organizationId, rows)
-      return hydrated.map(({ bankDepositId: _bankDepositId, ...row }) => row)
+      return hydrated.map(
+        ({
+          bankDepositId: _bankDepositId,
+          paymentGatewayId: _paymentGatewayId,
+          cashAccountInstanceId: _cashAccountInstanceId,
+          ...row
+        }) => row
+      )
     },
     'Failed to list undeposited payments',
     { organizationId, method }
@@ -196,8 +188,10 @@ async function hydrateReceipts(
     reference: string | null
     currency: string
     bankDepositInstanceId: string | null
+    paymentGatewayId: string | null
+    cashAccountInstanceId: string | null
   }>
-): Promise<Array<UndepositedPaymentRow & { bankDepositId: string | null }>> {
+): Promise<Array<UndepositedPaymentRow & ReceiptWritePathFields>> {
   if (page.length === 0) return []
   const ids = page.map((row) => row.id)
 
@@ -256,6 +250,8 @@ async function hydrateReceipts(
       invoiceName: invoiceInstanceId ? (invoiceNames.get(invoiceInstanceId) ?? null) : null,
       currency: row.currency,
       bankDepositId: row.bankDepositInstanceId,
+      paymentGatewayId: row.paymentGatewayId,
+      cashAccountInstanceId: row.cashAccountInstanceId,
     }
   })
 }
@@ -370,7 +366,7 @@ export async function readPaymentsByIds(
   db: Database,
   organizationId: string,
   paymentIds: string[]
-): Promise<Array<UndepositedPaymentRow & { bankDepositId: string | null }>> {
+): Promise<Array<UndepositedPaymentRow & ReceiptWritePathFields>> {
   if (paymentIds.length === 0) return []
   const rows = await db
     .select(RECEIPT_COLUMNS)

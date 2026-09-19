@@ -19,11 +19,13 @@ import {
   applyCreditMemo,
   issueCreditMemo,
   listOpenInvoicesForContact,
+  listRefundableReceipts,
   previewIssueCreditMemo,
   readContactCredit,
   readCreditMemoSettlement,
   recordCreditMemoRefund,
   refundCreditMemoToCard,
+  requireCreditMemo,
   settleCreditMemo,
   unapplyCreditMemo,
   voidCreditMemo,
@@ -140,10 +142,9 @@ export const creditMemoRouter = createTRPCRouter({
         /** Integer minor units, at most the memo's balance. */
         amount: z.number().int().positive(),
         method: z.enum(['cash', 'check', 'card', 'bank', 'other']).optional(),
-        /**
-         * The `bank_account` the money left. Required when the method's route
-         * is `cash`, forbidden when it is `undeposited_funds`.
-         */
+        /** The rail the money went back through. Exclusive with `bankAccountInstanceId`. */
+        paymentGatewayId: z.string().min(1).nullish(),
+        /** The `bank_account` the money left. Exclusive with the rail. */
         bankAccountInstanceId: z.string().min(1).nullish(),
         reference: z.string().max(200).optional(),
         note: z.string().max(2000).optional(),
@@ -167,6 +168,7 @@ export const creditMemoRouter = createTRPCRouter({
         commandKey: input.commandKey,
         date: input.date ?? new Date().toISOString().slice(0, 10),
         method: input.method ?? 'other',
+        paymentGatewayId: input.paymentGatewayId ?? null,
         bankAccountInstanceId: input.bankAccountInstanceId ?? null,
         reference: input.reference,
         note: input.note,
@@ -223,6 +225,28 @@ export const creditMemoRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         creditMemoInstanceId: entityInstanceId,
       })
+    }),
+
+  /**
+   * Where the newest receipt on this memo's invoice landed — the refund dialog's
+   * "Refunded from" prefill. A refund resolves its own endpoint (D5); this only
+   * saves the person retyping it.
+   */
+  refundEndpoint: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ creditMemoRecordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.creditMemoRecordId)
+      const memo = await requireCreditMemo(ctx.db, ctx.session.organizationId, entityInstanceId)
+      if (!memo.invoiceInstanceId) return { paymentGatewayId: null, cashAccountInstanceId: null }
+      const [newest] = await listRefundableReceipts(
+        ctx.db,
+        ctx.session.organizationId,
+        memo.invoiceInstanceId
+      )
+      return {
+        paymentGatewayId: newest?.paymentGatewayId ?? null,
+        cashAccountInstanceId: newest?.cashAccountInstanceId ?? null,
+      }
     }),
 
   /** The credit a contact can still draw on, and the issued memos it is the sum of. */

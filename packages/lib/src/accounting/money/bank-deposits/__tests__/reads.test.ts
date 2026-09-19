@@ -13,11 +13,9 @@
 //     no `FieldValue` join. `listUndepositedPayments`, `readDepositPayments` and
 //     `readPaymentsByIds` all read the same columns through `hydrateReceipts`.
 //
-//  3. **The undeposited list and `createBankDeposit` must resolve the same
-//     receipt the same way.** A receipt with no method is still listed when
-//     `other` routes to undeposited funds - `resolvePaymentRoute(null,
-//     settings)` falls through to the `other` row and the money really is
-//     sitting in 1050.
+//  3. **The undeposited list and `createBankDeposit` must read the same
+//     receipt the same way**: a movement naming neither a rail nor a bank
+//     account really is sitting in 1050, whatever its method says.
 
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -246,7 +244,7 @@ describe('readDepositPayments / readPaymentsByIds carry the deposit link', () =>
   })
 })
 
-describe('a receipt with no method is listed when `other` routes to undeposited funds', () => {
+describe('the undeposited filter is the movement\u2019s own endpoint columns', () => {
   it('lists a method-less receipt rather than dropping it', async () => {
     h.results = [[receipt('mt_1', { method: null })]]
     const rows = await listUndepositedPayments(stubDb(), { organizationId: ORG })
@@ -254,24 +252,10 @@ describe('a receipt with no method is listed when `other` routes to undeposited 
     expect(rows._unsafeUnwrap()[0]).toMatchObject({ paymentId: 'mt_1', method: null })
   })
 
-  it('still answers nothing when the route table sends nothing to undeposited funds', async () => {
-    h.settings = {
-      'accounting.paymentRoute.cash': 'cash',
-      'accounting.paymentRoute.check': 'cash',
-      'accounting.paymentRoute.card': 'clearing',
-      'accounting.paymentRoute.bank': 'cash',
-      'accounting.paymentRoute.other': 'cash',
-    }
-    const rows = await listUndepositedPayments(stubDb(), { organizationId: ORG })
-    expect(rows._unsafeUnwrap()).toEqual([])
-    // Not even a query: with every rail posting direct there is nothing to group.
-    expect(h.calls).toEqual([])
-  })
-
-  it('answers nothing for a method whose route is not undeposited funds', async () => {
-    const rows = await listUndepositedPayments(stubDb(), { organizationId: ORG, method: 'card' })
-    expect(rows._unsafeUnwrap()).toEqual([])
-    expect(h.calls).toEqual([])
+  it('narrows on an explicit method without deciding what belongs in the list', async () => {
+    h.results = [[receipt('mt_1', { method: 'check' })]]
+    const rows = await listUndepositedPayments(stubDb(), { organizationId: ORG, method: 'check' })
+    expect(rows._unsafeUnwrap()).toHaveLength(1)
   })
 })
 

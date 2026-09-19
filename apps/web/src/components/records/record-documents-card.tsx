@@ -403,6 +403,18 @@ export function CreditMemoDocumentsCard(props: DrawerTabProps) {
   )
 }
 
+/** The supplier's credit note as received, plus the generated PDF. */
+export function VendorCreditDocumentsCard(props: DrawerTabProps) {
+  return (
+    <RecordDocumentsCard
+      {...props}
+      primaryAttribute='vendor_credit_document'
+      attachmentsAttribute='vendor_credit_attachments'
+      emptyDescription="The supplier's credit note goes here."
+    />
+  )
+}
+
 /**
  * The deposit slip plus what the bank handed back.
  *

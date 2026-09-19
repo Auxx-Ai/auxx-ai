@@ -38,6 +38,7 @@ import { guardOrderDelete } from '../pre/order-delete-guard'
 import { guardPartDelete } from '../pre/part-delete-guard'
 import { guardPurchaseOrderDelete } from '../pre/purchase-order-delete-guard'
 import { guardVendorBillDelete } from '../pre/vendor-bill-delete-guard'
+import { guardVendorCreditDelete } from '../pre/vendor-credit-delete-guard'
 import { getEntityPreDeleteHooks } from '../registry'
 
 /** Every slug that must carry a pre-delete hook, and the handler it must carry. */
@@ -57,6 +58,8 @@ const GUARDED = [
   // subsystem's `MONEY_ENTITY_TYPES` below, so it is pinned here by name
   // (plans/accounting/tasks/done/10-credit-memos.md section 2.6).
   { slug: 'credit-memos', handler: guardCreditMemoDelete },
+  // `vendor-credits` is the buy-side mirror, pinned here for the same reason.
+  { slug: 'vendor-credits', handler: guardVendorCreditDelete },
 ] as const
 
 /**
@@ -93,8 +96,6 @@ const MONEY_ENTITY_TYPES = [
   'vendor_part',
   'subpart',
   'gl_account',
-  'vendor_payment',
-  'vendor_payment_allocation',
   // The tariff schedule (tasks 29/30). `tariff_code` is a parent with two child
   // types behind it, and it is listed here so that the day somebody flips it
   // back to visible, the derivation below fails and the guard question gets

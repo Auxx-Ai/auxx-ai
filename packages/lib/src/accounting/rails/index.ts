@@ -11,7 +11,6 @@
 
 export type {
   GatewayHandleCensusRow,
-  GatewayRoute,
   ObservedGatewayHandle,
   PaymentGatewayFeeTreatmentValue,
   PaymentGatewayRow,
@@ -19,6 +18,8 @@ export type {
   PaymentGatewayStatusValue,
 } from './client'
 export {
+  type GatewayRoute,
+  matchGatewayRoute,
   normaliseGatewayHandle,
   PAYMENT_GATEWAY_FEE_TREATMENT_LABELS,
   PAYMENT_GATEWAY_FEE_TREATMENTS,

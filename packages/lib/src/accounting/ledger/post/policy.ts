@@ -415,91 +415,67 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
   payment: {
     type: 'payment',
     label: 'Payment',
-    // money/invoices/receipt-accounting.ts and money/customer-money/accounting.ts
-    // on a receipt; money/customer-money/refund-accounting.ts on a refund.
-    trigger: { kind: 'event', on: 'A customer receipt or refund is recorded' },
+    // money/post-movement.ts, from the invoice receipt, the channel receipt, the
+    // quote deposit and the vendor payment.
+    trigger: { kind: 'event', on: 'A customer receipt or a vendor payment is recorded' },
     template: [
       {
         side: 'debit',
         role: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
-        what: 'Cash, cheques and unknown methods, until a deposit run banks them',
+        what: 'A receipt naming no destination, until a deposit run banks it',
       },
-      { side: 'debit', role: ACCOUNT_ROLES.CLEARING, what: 'Card payments, until the payout' },
-      { side: 'debit', role: 'by id', what: 'The cash bank account, for ACH and wire' },
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.CLEARING,
+        what: 'A receipt on a rail, until its payout',
+      },
+      { side: 'debit', role: 'by id', what: 'A receipt into a named bank account' },
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.ACCOUNTS_PAYABLE,
+        what: 'The vendor bill an outgoing payment settles',
+      },
       {
         side: 'credit',
         role: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
-        what: 'The invoice the payment settles',
+        what: 'The invoice an incoming payment settles',
       },
       {
         side: 'credit',
         role: ACCOUNT_ROLES.CUSTOMER_DEPOSITS,
         what: 'Any amount not yet applied to an invoice, held as a deposit',
       },
+      {
+        side: 'credit',
+        role: 'by id',
+        what: 'The rail, bank account or undeposited funds an outgoing payment left by',
+      },
     ],
-    settings: [
-      'accounting.paymentRoute.cash',
-      'accounting.paymentRoute.check',
-      'accounting.paymentRoute.card',
-      'accounting.paymentRoute.bank',
-      'accounting.paymentRoute.other',
-      'accounting.cashBankAccountId',
-      'accounting.autoPost.receipt',
-      'accounting.autoPost.refund',
-    ],
+    settings: ['accounting.autoPost.receipt'],
     sentence:
-      'Every payment posts as it arrives, landing where its method says: undeposited funds, card clearing, or straight into the cash bank account.',
+      'Every payment posts as it is recorded, landing where the payment itself says: a rail\u2019s clearing account, a bank account, or undeposited funds.',
     disabledSentence:
-      'Payment posting is off, so receivables are never relieved and no money reaches clearing or the bank.',
+      'Payment posting is off, so receivables and payables are never relieved and no money reaches clearing or the bank.',
     parameters: [
       {
-        name: 'Routes',
-        value: 'One per method',
+        name: 'Destination',
+        value: 'Per payment',
         sentence:
-          'Where a payment lands is a property of its method, declared once per method, so a cheque groups through undeposited funds and a card settles through clearing.',
+          "Where a payment lands is answered once, when it is recorded: a rail's clearing account, a bank account, or undeposited funds.",
       },
       {
-        name: 'Refund',
-        value: 'The same entry, sides swapped',
-        sentence: 'A refund is a payment with the sides reversed, through the same route.',
+        name: 'Direction',
+        value: 'Both',
+        sentence:
+          'A customer receipt debits the destination and relieves a receivable; a vendor payment credits it and relieves a payable.',
       },
     ],
-    records: [BANK_ACCOUNTS_RECORD],
+    records: [BANK_ACCOUNTS_RECORD, PAYMENT_GATEWAYS_RECORD],
     settingCopy: {
-      'accounting.paymentRoute.cash': {
-        title: 'Cash',
-        description: 'Banked in a run, so it waits to be grouped.',
-      },
-      'accounting.paymentRoute.check': {
-        title: 'Check',
-        description: 'Five cheques banked together are one bank line.',
-      },
-      'accounting.paymentRoute.card': {
-        title: 'Card',
-        description: 'Settles as a net payout, so it clears rather than banks.',
-      },
-      'accounting.paymentRoute.bank': {
-        title: 'Bank transfer',
-        description: 'ACH or wire, arrives on its own line.',
-      },
-      'accounting.paymentRoute.other': {
-        title: 'Other',
-        description: 'The unknown rail. Undeposited funds is the safe unknown.',
-      },
-      'accounting.cashBankAccountId': {
-        title: 'Cash bank account',
-        description:
-          'Where a payment routed to cash is banked. A cash-routed payment refuses to post until this is set.',
-      },
       'accounting.autoPost.receipt': {
         title: 'Auto-post receipts',
         description:
-          'On, a customer receipt posts immediately. Off, it drafts on the ledger for review and approval.',
-      },
-      'accounting.autoPost.refund': {
-        title: 'Auto-post refunds',
-        description:
-          'On, a refund posts immediately. Off, it drafts on the ledger for review and approval.',
+          'On, a payment posts immediately. Off, it drafts on the ledger for review and approval.',
       },
     },
     enabled: true,
@@ -510,48 +486,52 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
   refund: {
     type: 'refund',
     label: 'Refund',
-    // money/customer-money/refund-accounting.ts, on a customer refund.
-    trigger: { kind: 'event', on: 'A customer refund is recorded' },
+    // money/customer-money/refund-accounting.ts on a customer refund, and
+    // money/vendor-payments/refund-accounting.ts on a supplier's refund of a
+    // vendor credit - one type, both directions (71 U7).
+    trigger: { kind: 'event', on: 'A customer or vendor refund is recorded' },
     template: [
       {
         side: 'debit',
-        role: ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES,
-        what: 'What the customer is being given back',
+        role: 'by id',
+        what: "The credit memo's own control account, as its issue entry credited it",
       },
       {
         side: 'credit',
         role: ACCOUNT_ROLES.CLEARING,
-        what: 'Card refunds, until the payout nets them',
+        what: 'A refund on a rail, until the payout nets it',
       },
-      { side: 'credit', role: 'by id', what: 'The cash bank account, for ACH and wire' },
+      { side: 'credit', role: 'by id', what: 'A refund out of a named bank account' },
       {
         side: 'credit',
         role: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
-        what: 'Cash, cheques and unknown methods',
+        what: 'A refund naming no source',
+      },
+      {
+        side: 'debit',
+        role: 'by id',
+        what: 'A supplier refund arrives instead, into whatever endpoint it names',
+      },
+      {
+        side: 'credit',
+        role: ACCOUNT_ROLES.ACCOUNTS_PAYABLE,
+        what: "The vendor credit's own control account, as its issue entry debited it",
       },
     ],
-    settings: [
-      'accounting.paymentRoute.cash',
-      'accounting.paymentRoute.check',
-      'accounting.paymentRoute.card',
-      'accounting.paymentRoute.bank',
-      'accounting.paymentRoute.other',
-      'accounting.cashBankAccountId',
-      'accounting.autoPost.refund',
-    ],
+    settings: ['accounting.autoPost.refund'],
     sentence:
-      'A refund posts as it is issued, leaving by the same route the money arrived on: card clearing, the cash bank account, or undeposited funds.',
+      "A refund posts as it is issued, leaving by whatever the refund itself names: a rail's clearing account, a bank account, or undeposited funds. A supplier's refund of a vendor credit is the same entry arriving instead of leaving.",
     disabledSentence:
       'Refund posting is off, so money given back to a customer never leaves the books and returns are never recognised.',
     parameters: [
       {
-        name: 'Route',
-        value: 'The method it left by',
+        name: 'Destination',
+        value: 'Per refund',
         sentence:
-          'A refund reads the same per-method route a receipt does, so the two sides of one card sale clear through the same account.',
+          'A refund is a forward event: it names its own rail or bank account, pre-filled from the receipt it settles, and resolves it at refund time.',
       },
     ],
-    records: [BANK_ACCOUNTS_RECORD],
+    records: [BANK_ACCOUNTS_RECORD, PAYMENT_GATEWAYS_RECORD],
     settingCopy: {
       'accounting.autoPost.refund': {
         title: 'Auto-post refunds',
@@ -799,6 +779,45 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
           'On, a credit memo posts immediately at issue. Off, it drafts on the ledger for review and approval.',
       },
     },
+    enabled: true,
+    exportRoute: 'journal',
+    singleWriterRoles: [],
+  },
+
+  vendor_credit: {
+    type: 'vendor_credit',
+    label: 'Vendor credit',
+    // purchasing/vendor-credit/accounting.ts `postEntry` call, on Issue.
+    trigger: { kind: 'event', on: "Issue on a supplier's credit note" },
+    template: [
+      { side: 'debit', role: ACCOUNT_ROLES.ACCOUNTS_PAYABLE, what: 'The supplier is owed less' },
+      {
+        side: 'credit',
+        role: 'by id',
+        what: 'Each line, the account the original charge was coded to',
+      },
+    ],
+    // Decision 2 (71 U7): no new avenue. A vendor credit auto-posts on the
+    // expense bill's switch, because it is the same document lane.
+    settings: ['accounting.autoPost.expenseBill'],
+    sentence:
+      "Issuing a supplier's credit note reduces the payable and gives back whatever the original bill was coded to, dated the credit.",
+    disabledSentence:
+      'Vendor credit posting is off, so a supplier credit note never reduces the payable and the original expense stands.',
+    parameters: [
+      {
+        name: 'Short shipment',
+        value: 'Coded to GRNI',
+        sentence:
+          "A credit raised against a purchase-order bill is prefilled with the organisation's goods-received-not-invoiced account, so the accrual clears rather than the expense.",
+      },
+      {
+        name: 'Returned goods',
+        value: 'Recorded, not restocked',
+        sentence:
+          'A vendor credit is the money side only; a physical return to the supplier is its own stock movement.',
+      },
+    ],
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],

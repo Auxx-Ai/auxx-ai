@@ -27,6 +27,7 @@ export const SEQUENCE_SCOPES = [
   'journal_entry',
   'payout',
   'credit_memo',
+  'vendor_credit',
   'return',
 ] as const
 
@@ -89,6 +90,9 @@ const SCOPE_DEFAULTS: Record<AnySequenceScope, { prefix: string }> = {
   // (`postings/build-credit-memo-entry.ts`), so it stays short for the same
   // reason the three above do (plans/accounting/tasks/10 section 2.1).
   credit_memo: { prefix: 'CM' },
+  // `VC-0001`, the mirror of `CM`. The issue entry's `periodKey` IS this string
+  // (never the supplier's own reference), so it stays short for the same reason.
+  vendor_credit: { prefix: 'VC' },
   // The batch run counter (plans/money/tasks/45 §3.2). The prefix is COSMETIC
   // here and nothing renders it: the run number is consumed as the raw
   // `sequenceNumber` integer, because `build_batch_run` is an integer field.

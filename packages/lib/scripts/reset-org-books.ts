@@ -125,15 +125,8 @@ const DELETE_WAVES: readonly (readonly string[])[] = [
   ['line_item', 'tax_line', 'credit_memo_application', 'credit_memo_line', 'credit_memo'],
   // The inventory ledger, then what wrote it.
   ['stock_movement', 'build'],
-  // Purchasing: lines before documents, allocations before payments.
-  [
-    'purchase_order_line',
-    'vendor_bill_line',
-    'vendor_payment_allocation',
-    'purchase_order',
-    'vendor_bill',
-    'vendor_payment',
-  ],
+  // Purchasing: lines before documents.
+  ['purchase_order_line', 'vendor_bill_line', 'purchase_order', 'vendor_bill'],
   // The accounting documents.
   ['payment', 'invoice', 'bank_deposit', 'bank_transaction', 'payout', 'journal_entry'],
   // The sales pipeline.

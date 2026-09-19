@@ -54,9 +54,9 @@ export const POSTING_TYPES = [
   'bank_deposit',
   // An invoice written off to bad debt.
   'write_off',
-  // A customer payment or refund, posted from `PaymentTransaction`:
-  // `Dr undeposited_funds | cash | clearing` (per `accounting.paymentRoute.*`)
-  // / `Cr accounts_receivable`. Added for slot 2G phase B, 2026-09-04.
+  // A customer receipt or a vendor payment, posted off `MoneyTransaction`:
+  // `Dr <the cash endpoint> / Cr accounts_receivable`, or the same with both
+  // sides flipped for money going out (task 71 §0).
   'payment',
   // TARGET §5: a customer refund - `Dr returns / Cr clearing or bank`. Its own
   // type rather than a sides-swapped `payment` so the export can send a Refund
@@ -101,6 +101,11 @@ export const POSTING_TYPES = [
   // invoice. Distinct from `vendor_bill`, which is the L3 purchasing story
   // (`Dr GRNI / PPV`) and cannot express an expense-coded line.
   'expense_bill',
+  // A vendor credit ISSUED: `Dr accounts_payable / Cr <each line's account>`,
+  // dated the credit's own `issuedAt`. The expense bill's entry with the sides
+  // flipped, and its own type so the export can send a Vendor Credit and a
+  // ledger card can name what it is (task 71 §5 U7, D10).
+  'vendor_credit',
 ] as const
 
 export type PostingType = (typeof POSTING_TYPES)[number]

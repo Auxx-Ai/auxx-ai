@@ -11,20 +11,20 @@
  *     Dr sales_tax_payable            taxTotal        (omitted when zero)
  *         Cr accounts_receivable        total
  *
- *   money leg (settlement, a channel refund already paid out):
- *     Dr accounts_receivable          amount
- *         Cr clearing              amount
+ *   pre-fulfillment (reverseRevenue false):
+ *     Dr customer_deposits            total
+ *         Cr accounts_receivable        total
  * ```
  *
  * ## One builder, both sources
  *
  * A native memo is a person conceding part of an invoice: the revenue leg and
- * nothing else, because the money, if any moves, is a `PaymentTransaction` of
- * `kind: 'refund'` and posts through `build-payment-entry.ts`'s refund branch.
- * A channel memo is a Shopify refund that was created and paid back in the same
- * instant, and Shopify money never passes through `PaymentTransaction`, so its
- * money leg rides in this entry as the mirror of the channel receipt:
- * `Cr clearing`, which `build-payout-entry.ts` then drains net of refunds.
+ * nothing else. A channel memo is the same entry when the order shipped first.
+ *
+ * 🛑 **No money leg, either way** (71 D6). The refund is its own `refund` entry
+ * off its own `MoneyTransaction`, `Dr <this memo's control account> / Cr <the
+ * cash endpoint>`, so one memo refunded on two rails stays two credits and this
+ * entry never has to know which rail paid.
  *
  * ## 4090 always, never the original revenue account
  *
@@ -37,7 +37,11 @@
  *
  * A channel memo whose order was never fulfilled before `issuedAt` reverses
  * revenue that was never posted, so the caller passes `reverseRevenue: false`
- * and only the money leg remains. A native memo always reverses revenue,
+ * and the entry moves the customer's ADVANCE instead: the pre-fulfillment
+ * receipt credited the whole amount, tax included, to `customer_deposits`
+ * (`customer-money/accounting.ts`), so the memo debits that liability in full
+ * and credits the control account the refund later draws down (71 D14). No
+ * `sales_tax_payable` line: none was ever credited. A native memo always reverses revenue,
  * because it exists only where an invoice was issued. A channel memo with
  * neither is refused, naming why: there is no entry to build.
  *
@@ -70,28 +74,6 @@ export const CREDIT_MEMO_SOURCE_TYPE = 'credit_memo'
 /** The posting type an issue entry claims. Prefix `CRM`. */
 export const CREDIT_MEMO_POSTING_TYPE = 'credit_memo' as const
 
-/**
- * The money leg of a channel memo: WHERE the refund comes back out of.
- *
- * 🛑 **It has to be the account the SALE debited, whatever that was.** The sale
- * debited `clearing` scoped to its rail, so a memo copies the FROZEN account
- * rather than re-resolving the role (64 A4): re-resolving after the rail was
- * repointed would credit an account the money never entered and leave the other
- * overstated forever, and the entry balances either way.
- *
- * | Member | When |
- * | --- | --- |
- * | `{ role: 'clearing' }` | the order names no rail - the same default the fulfillment debit fork takes |
- * | `{ glAccountId }` | the sale debited that account |
- *
- * `amount` is integer minor units, > 0 and at most `total` - what the channel
- * actually paid back.
- */
-export type CreditMemoSettlement = { amount: number } & (
-  | { role: 'clearing'; glAccountId?: never }
-  | { glAccountId: string; role?: never }
-)
-
 /** One explicit entitlement component. Cash refunds are separate effects. */
 export interface CreditMemoEntitlementComponent {
   componentKey: 'earned_revenue' | 'customer_deposit' | 'sales_tax'
@@ -121,22 +103,12 @@ export interface BuiltCreditMemoEntitlementEntry {
 
 /** The amounts one memo contributes, all integer minor units. */
 export interface CreditMemoAmounts {
-  /** Zero when `reverseRevenue` is false: the memo contributes a money leg only. */
+  /** Zero when `reverseRevenue` is false: there is no revenue leg to split. */
   subtotalMinor: number
   /** Zero when `reverseRevenue` is false. */
   taxTotalMinor: number
-  /** Zero when `reverseRevenue` is false. */
+  /** The memo total, `reverseRevenue` or not — the control credit is always for it. */
   totalMinor: number
-  /** The refund that actually moved. Always contributed, `reverseRevenue` or not. */
-  settlementMinor: number
-  /**
-   * 🛑 The resolved settlement account, kept PER MEMO and never collapsed.
-   *
-   * An Affirm memo and a card memo in one group must stay two credit lines,
-   * or `1210` is overstated forever in an entry that balances and that
-   * nothing downstream can detect. Absent means the `clearing` role.
-   */
-  settlementGlAccountId?: string
   reverseRevenue: boolean
 }
 
@@ -154,8 +126,6 @@ export interface CreditMemoAmountsInput {
   total: number | null | undefined
   /** Whether revenue was ever posted for what this memo credits. */
   reverseRevenue: boolean
-  /** The channel money leg. Absent for a native memo. */
-  settlement?: CreditMemoSettlement
 }
 
 /**
@@ -169,18 +139,16 @@ export interface CreditMemoAmountsInput {
  * two refusal ladders, free to drift, and a drifted one is undetectable: both
  * entries balance.
  *
- * `reverseRevenue: false` zeroes the three revenue numbers rather than
- * dropping the memo. The settlement always survives, because the money moved
- * whether or not revenue was ever recognised (§3.1 item 3).
+ * `reverseRevenue: false` zeroes the two revenue numbers rather than dropping
+ * the memo: its entry moves the customer's advance instead (71 D14), and the
+ * total is what that entry is for.
  *
  * @throws {UnprocessableEntityError} on a subtotal, tax or total that is
- *   negative or not whole minor units, a total that is zero or that does not
- *   equal `subtotal + taxTotal`, a settlement amount that is not a positive
- *   whole number of minor units or exceeds the total, or a memo with neither a
- *   revenue leg nor a settlement, which has no entry to build.
+ *   negative or not whole minor units, or a total that is zero or that does not
+ *   equal `subtotal + taxTotal`.
  */
 export function computeCreditMemoAmounts(input: CreditMemoAmountsInput): CreditMemoAmounts {
-  const { creditMemoId, number, reverseRevenue, settlement } = input
+  const { creditMemoId, number, reverseRevenue } = input
 
   // `FieldValue.valueNumber` is a `doublePrecision` column, so `12000` can read
   // back as `11999.999999999998`. `toAmountMinor` rounds the double's own noise
@@ -220,44 +188,10 @@ export function computeCreditMemoAmounts(input: CreditMemoAmountsInput): CreditM
     )
   }
 
-  const settlementMinor = settlement?.amount ?? 0
-  if (settlement) {
-    if (
-      !Number.isFinite(settlementMinor) ||
-      !Number.isInteger(settlementMinor) ||
-      settlementMinor <= 0
-    ) {
-      throw new UnprocessableEntityError(
-        `Credit memo ${number} says ${String(settlementMinor)} was refunded at the channel. A ` +
-          'settlement is a positive whole number of minor units - a refund of nothing is no ' +
-          'settlement, and the sign lives in the line direction.',
-        { ...context, settlementMinor: String(settlementMinor) }
-      )
-    }
-    if (settlementMinor > totalMinor) {
-      throw new UnprocessableEntityError(
-        `Credit memo ${number} says ${settlementMinor} was refunded against a credit of ` +
-          `${totalMinor}. The channel cannot have paid back more than the memo credits.`,
-        { ...context, settlementMinor: String(settlementMinor) }
-      )
-    }
-  }
-
-  if (!reverseRevenue && !settlement) {
-    throw new UnprocessableEntityError(
-      `Credit memo ${number} reverses no revenue and carries no settlement, so there is no entry ` +
-        'to build. A channel memo on an unfulfilled order posts only its money leg; a native memo ' +
-        'always reverses revenue.',
-      context
-    )
-  }
-
   return {
     subtotalMinor: reverseRevenue ? subtotalMinor : 0,
     taxTotalMinor: reverseRevenue ? taxTotalMinor : 0,
-    totalMinor: reverseRevenue ? totalMinor : 0,
-    settlementMinor,
-    ...(settlement?.glAccountId ? { settlementGlAccountId: settlement.glAccountId } : {}),
+    totalMinor,
     reverseRevenue,
   }
 }
@@ -394,8 +328,6 @@ export interface BuildCreditMemoEntryInput {
    * the revenue and there is nothing to reverse.
    */
   reverseRevenue: boolean
-  /** The channel money leg. Absent for a native memo. */
-  settlement?: CreditMemoSettlement
   /**
    * The memo's own contact (`credit_memo_contact`), for the counterparty on
    * every `accounts_receivable` line this entry carries (brief 13 §1.2) - never
@@ -408,14 +340,12 @@ export interface BuildCreditMemoEntryInput {
 export interface BuiltCreditMemoEntry {
   entry: BuiltEntry
   periodKey: string
-  /** The receivable relieved by the revenue leg. Zero when `reverseRevenue` is false. */
+  /** The receivable this entry credits — the memo total, either branch. */
   totalMinor: number
   /** What went to `revenue_returns_allowances`. Zero when `reverseRevenue` is false. */
   subtotalMinor: number
   /** What came back out of `sales_tax_payable`. `0` omits the leg. */
   taxTotalMinor: number
-  /** What the money leg moved out of `clearing`. Zero without a settlement. */
-  settlementMinor: number
 }
 
 /**
@@ -423,13 +353,11 @@ export interface BuiltCreditMemoEntry {
  *
  * @throws {UnprocessableEntityError} on a blank or over-long memo number, a
  *   currency that differs from the ledger's, a subtotal, tax or total that is
- *   negative or not whole minor units, a total that is zero or that does not
- *   equal `subtotal + taxTotal`, a settlement amount that is not a positive
- *   whole number of minor units or exceeds the total, or a memo with neither a
- *   revenue leg nor a settlement, which has no entry to build.
+ *   negative or not whole minor units, or a total that is zero or that does not
+ *   equal `subtotal + taxTotal`.
  */
 export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCreditMemoEntry {
-  const { creditMemoId, issuedAt, reverseRevenue, settlement, memo, contactInstanceId } = input
+  const { creditMemoId, issuedAt, reverseRevenue, memo, contactInstanceId } = input
 
   const number = assertCompactablePeriodKey({
     value: input.number,
@@ -453,14 +381,13 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
   // and the same memo posted alone can never disagree about what it credits.
   // The three revenue numbers come back zeroed when `reverseRevenue` is false,
   // which is exactly what the revenue leg below is skipped for.
-  const { subtotalMinor, taxTotalMinor, totalMinor, settlementMinor } = computeCreditMemoAmounts({
+  const { subtotalMinor, taxTotalMinor, totalMinor } = computeCreditMemoAmounts({
     creditMemoId,
     number,
     subtotal: input.subtotal,
     taxTotal: input.taxTotal,
     total: input.total,
     reverseRevenue,
-    settlement,
   })
 
   const lineMemo = memo ?? `Credit memo ${number}`
@@ -504,30 +431,28 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
       sortOrder: lines.length,
       ...counterparty,
     })
-  }
-
-  if (settlement) {
+  } else {
+    // 71 D14. Nothing was recognised, so there is no revenue to reverse and no
+    // tax to give back: the pre-fulfillment receipt credited the whole amount to
+    // `customer_deposits`. The memo moves that advance onto the control account
+    // the refund then draws down, so `readCreditMemoControlAccount` finds a live
+    // posting and the refund poster stays the one shape for every memo.
     lines.push({
       ...source,
-      accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
+      accountRole: ACCOUNT_ROLES.CUSTOMER_DEPOSITS,
       direction: 'debit',
-      amount: settlementMinor,
-      memo: `${lineMemo} refunded`,
+      amount: totalMinor,
+      memo: `${lineMemo} against the customer's advance`,
       sortOrder: lines.length,
-      ...counterparty,
     })
     lines.push({
       ...source,
-      // By ID when a `payment_gateway` record routed the sale, by ROLE
-      // otherwise - see {@link CreditMemoSettlement}. The two are mutually
-      // exclusive on the type, so exactly one of these keys is ever set.
-      ...(settlement.glAccountId
-        ? { glAccountId: settlement.glAccountId }
-        : { accountRole: ACCOUNT_ROLES.CLEARING }),
+      accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
       direction: 'credit',
-      amount: settlementMinor,
-      memo: `${lineMemo} refunded`,
+      amount: totalMinor,
+      memo: lineMemo,
       sortOrder: lines.length,
+      ...counterparty,
     })
   }
 
@@ -542,6 +467,5 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
     totalMinor,
     subtotalMinor,
     taxTotalMinor,
-    settlementMinor,
   }
 }

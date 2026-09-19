@@ -12,7 +12,7 @@
  *
  * ## Why this is a SECOND entry and not an amendment of the first
  *
- * `buildPaymentEntry` books what was true when the money arrived: a deposit
+ * The receipt's own entry books what was true when the money arrived: a deposit
  * taken on quote acceptance, before any invoice existed, was owed to the
  * customer, so the receipt credited `customer_deposits`. That entry is never
  * amended when allocations change later - not because the claim index makes it

@@ -81,6 +81,7 @@ import * as paymentObject from './objects/payment'
 import * as refundReceiptObject from './objects/refund-receipt'
 import * as salesReceiptObject from './objects/sales-receipt'
 import { errorMessage, norm, QUICKBOOKS_PROVIDER_ID, resolveMappedAccounts } from './objects/shared'
+import * as vendorCreditObject from './objects/vendor-credit'
 
 const logger = createScopedLogger('quickbooks-accounting-provider')
 
@@ -115,6 +116,7 @@ const OBJECT_HANDLERS: Record<string, QuickbooksObjectHandler> = {
   refund_receipt: refundReceiptObject,
   deposit: depositObject,
   bill: billObject,
+  vendor_credit: vendorCreditObject,
 }
 
 /** The deep-link path per object type (plan 67 §5.6). All take `?txnId=`. */
@@ -127,6 +129,7 @@ const OBJECT_URL_PATH: Record<string, string> = {
   refund_receipt: '/app/refundreceipt',
   deposit: '/app/deposit',
   bill: '/app/bill',
+  vendor_credit: '/app/vendorcredit',
 }
 
 // A cheap exactness check the moment this module loads: every object type the

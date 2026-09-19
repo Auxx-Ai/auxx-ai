@@ -6,7 +6,7 @@
 // each builder's subject link carries:
 //
 //   invoice        `buildInvoiceEntry` (postings/build-invoice-entry.ts)
-//   money_transaction  `buildPaymentEntry`/refund/deposit-application writers
+//   money_transaction  `postMovementEntry`/deposit-application writers
 //   bank_deposit   `createBankDeposit` (money/bank-deposits/writes.ts)
 //   fulfillment    `buildFulfillmentEntry` (money/orders/fulfill.ts)
 //   payout         `buildPayoutEntry` (money/payouts/sync.ts)
@@ -45,6 +45,10 @@ export function InvoiceLedgerCard(props: DrawerTabProps) {
 
 export function CreditMemoLedgerCard(props: DrawerTabProps) {
   return <LedgerCard {...props} sourceKind='credit_memo' />
+}
+
+export function VendorCreditLedgerCard(props: DrawerTabProps) {
+  return <LedgerCard {...props} sourceKind='vendor_credit' />
 }
 
 // 🛑 `sourceKind='money_transaction'`, not `'payment'` - `payment-fields.ts`

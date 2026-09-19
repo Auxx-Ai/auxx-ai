@@ -41,13 +41,20 @@ export const MoneyTransaction = pgTable(
     partyInstanceId: text(),
     cashAccountInstanceId: text(),
     /**
-     * How the money moved — `cash` | `check` | `card` | `bank` | `other`.
-     *
-     * 🔑 Nullable, because source-imported money does not have one: a Shopify
-     * receipt carries a GATEWAY, which is a different fact and already lives on
-     * the source object. This is the hand-recorded rail's answer to "what was
-     * it paid by", and it is what `accounting.paymentRoute.<method>` keys on.
+     * The `payment_gateway` the money moved through, when it moved through one.
+     * Set once, when known: at record time by hand, at post time from the feed
+     * link for a channel movement. Exclusive with `cashAccountInstanceId`.
      */
+    paymentGatewayId: text(),
+    /**
+     * Why the ledger last refused this movement, and when. Written by
+     * `postMovementEntry` on every `blocked` result, cleared on `accepted`; the
+     * sweep backs off on it rather than retrying the same refusal every run.
+     * The mirror of `payout_blocked_reason` on the payout record.
+     */
+    postingBlockedReason: text(),
+    postingBlockedAt: timestamp({ withTimezone: true }),
+    /** How the money moved — descriptive only; nullable because channel money has none. */
     method: text().$type<'cash' | 'check' | 'card' | 'bank' | 'other'>(),
     recordedByCommandId: text().notNull(),
     reference: text(),
@@ -73,6 +80,7 @@ export const MoneyTransaction = pgTable(
     index('MoneyTransaction_quote_idx').on(t.organizationId, t.quoteInstanceId),
     index('MoneyTransaction_work_order_idx').on(t.organizationId, t.workOrderInstanceId),
     index('MoneyTransaction_bank_deposit_idx').on(t.organizationId, t.bankDepositInstanceId),
+    index('MoneyTransaction_payment_gateway_idx').on(t.organizationId, t.paymentGatewayId),
     foreignKey({
       name: 'MoneyTransaction_partyInstanceId_fk',
       columns: [t.organizationId, t.partyInstanceId],
@@ -95,6 +103,10 @@ export const MoneyTransaction = pgTable(
     check(
       'MoneyTransaction_date_check',
       sql`(${t.datePrecision} = 'instant' AND ${t.occurredAt} IS NOT NULL AND ${t.occurredOn} IS NULL) OR (${t.datePrecision} = 'date' AND ${t.occurredAt} IS NULL AND ${t.occurredOn} IS NOT NULL)`
+    ),
+    check(
+      'MoneyTransaction_endpoint_check',
+      sql`NOT (${t.paymentGatewayId} IS NOT NULL AND ${t.cashAccountInstanceId} IS NOT NULL)`
     ),
   ]
 )

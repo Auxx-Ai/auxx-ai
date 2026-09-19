@@ -537,9 +537,8 @@ export const StockMovementCostBasis = {
  * The decisive case is prepayment: a vendor that will not ship until the invoice
  * is paid leaves the order *fully billed, fully paid, nothing received* for
  * weeks, and one enum cannot say that — whichever axis you pick, the other
- * becomes invisible. {@link VendorBillStatus} is what this looks like when the
- * two are left conflated: its payment values destroy its match verdict, and
- * `partially_paid` had to be invented to compensate.
+ * becomes invisible. {@link VendorBillStatus} is the same split one entity
+ * down, beside `vendor_bill_payment_status`.
  *
  * `OrderFinancialStatus` / `OrderFulfillmentStatus` are the same split on the
  * sell side; the purchase order simply predates them.
@@ -635,12 +634,18 @@ export const LandedCostAllocationBasis = {
 } as const
 
 /**
- * Vendor Bill Status
- * plans/purchasing/01-build-plan.md §5.1.
+ * Vendor Bill Status — the document LIFECYCLE axis, and nothing else
+ * plans/purchasing/01-build-plan.md §5.1, split by task 73 D1.
  *
  * `matched` / `exception` are written by the three-way match, never by hand —
  * that split is the control. A control a person has to run by comparing three
  * documents is a control that stops being run.
+ *
+ * 🛑 `partially_paid` and `paid` are NOT here. A money-state value landing on
+ * this field destroyed the match verdict, because `MATCHABLE_STATUSES` admits
+ * only the four verdict values — so a paid bill could never be rematched when
+ * the vendor short-shipped it. The money state is `vendor_bill_payment_status`
+ * on `vendor-bill-fields.ts`, projected from the applications.
  */
 export const VendorBillStatus = {
   DRAFT: 'draft',
@@ -648,8 +653,6 @@ export const VendorBillStatus = {
   MATCHED: 'matched',
   EXCEPTION: 'exception',
   POSTED: 'posted',
-  PARTIALLY_PAID: 'partially_paid',
-  PAID: 'paid',
   VOID: 'void',
 
   values: [
@@ -667,53 +670,6 @@ export const VendorBillStatus = {
     { value: 'matched', label: 'Matched', color: 'green' },
     { value: 'exception', label: 'Exception', color: 'red' },
     { value: 'posted', label: 'Posted', color: 'blue' },
-    // 🛑 `partially_paid` is not cosmetic. Without it a bill with $400 of $1,000
-    // settled reads `matched` — indistinguishable from one nobody has paid a cent
-    // of, with the remaining balance visible only on the payment card. Same
-    // discipline as `paidSource`: never let a partial fact render as a complete
-    // one. It sits before `paid` because that is the lifecycle order, and `amber`
-    // because it is a state that still needs something to happen.
-    { value: 'partially_paid', label: 'Partially Paid', color: 'amber' },
-    { value: 'paid', label: 'Paid', color: 'forest' },
-    { value: 'void', label: 'Void', color: 'orange' },
-  ] satisfies FieldOptionItem[],
-} as const
-
-/**
- * Vendor Bill Paid Source
- * What evidence marked a bill paid (plans/purchasing/01-build-plan.md §5.3).
- *
- * 🛑 Not decoration. An auto-mark that cannot be told apart from a confirmed
- * payment is how a genuinely unpaid bill goes quiet until the vendor calls.
- * `rule` is a **presumption** and stays in an unconfirmed filter until a
- * provider read or a bank line confirms it.
- */
-export const VendorBillPaidSource = {
-  MANUAL: 'manual',
-  PROVIDER: 'provider',
-  BANK_IMPORT: 'bank_import',
-  RULE: 'rule',
-
-  values: [
-    { value: 'manual', label: 'Entered by hand', color: 'gray' },
-    { value: 'provider', label: 'From accounting system', color: 'blue' },
-    { value: 'bank_import', label: 'Matched to a bank line', color: 'green' },
-    { value: 'rule', label: 'Presumed by rule', color: 'amber' },
-  ] satisfies FieldOptionItem[],
-} as const
-
-/**
- * Vendor Payment Status
- * plans/purchasing/01-build-plan.md §5.4. Ships INERT — nothing writes it yet.
- */
-export const VendorPaymentStatus = {
-  DRAFT: 'draft',
-  POSTED: 'posted',
-  VOID: 'void',
-
-  values: [
-    { value: 'draft', label: 'Draft', color: 'gray' },
-    { value: 'posted', label: 'Posted', color: 'green' },
     { value: 'void', label: 'Void', color: 'orange' },
   ] satisfies FieldOptionItem[],
 } as const
@@ -969,7 +925,7 @@ export const PaymentGatewayFeeTreatment = {
  * (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md` §5.1). A rail
  * is not permanent - Authorize.Net closed May 2026 with a clearing balance
  * still winding down to zero - so `closed` marks a gateway retired without
- * deleting it: `toGatewayRoutes` still routes a closed rail's history.
+ * deleting it: movements already stamped with a closed rail still post to it.
  */
 export const PaymentGatewayStatus = {
   ACTIVE: 'active',

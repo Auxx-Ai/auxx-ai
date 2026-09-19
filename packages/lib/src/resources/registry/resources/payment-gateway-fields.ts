@@ -176,8 +176,8 @@ export const PAYMENT_GATEWAY_FIELDS = defineResourceFields({
     defaultValue: 'active',
     description:
       'A rail is not permanent (§5.1: Authorize.Net closed May 2026, its clearing balance ' +
-      'still winding down to zero). `closed` marks it retired; a closed rail still routes its ' +
-      'history, because `toGatewayRoutes` reads active AND closed rows.',
+      'still winding down to zero). `closed` marks it retired; movements already stamped ' +
+      'with a closed rail still post to its clearing account.',
   },
 
   lastSettlementAt: {

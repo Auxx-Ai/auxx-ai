@@ -33,28 +33,6 @@ import {
 const ORG = 'org_1'
 
 describe('readVendor1099Summary - early returns before any query runs', () => {
-  it('is empty, not an error, when the org has no vendor_payment def', async () => {
-    vi.mocked(getCachedEntityDefId).mockResolvedValue(undefined)
-
-    const result = await readVendor1099Summary({} as never, { organizationId: ORG, year: 2026 })
-
-    const summary = result._unsafeUnwrap()
-    expect(summary.rows).toEqual([])
-    expect(summary.totalMinor).toBe(0)
-    expect(summary.thresholdMinor).toBe(VENDOR_1099_THRESHOLD_MINOR)
-  })
-
-  it('is empty when vendor_payment exists but its fields do not', async () => {
-    vi.mocked(getCachedEntityDefId).mockResolvedValue('def_vendor_payment')
-    vi.mocked(getOrgCache).mockReturnValue({
-      from: () => ({ bySystemAttributes: async () => ({}) }),
-    } as never)
-
-    const result = await readVendor1099Summary({} as never, { organizationId: ORG, year: 2026 })
-
-    expect(result._unsafeUnwrap().rows).toEqual([])
-  })
-
   it('refuses a year that is not four digits', async () => {
     const result = await readVendor1099Summary({} as never, { organizationId: ORG, year: 99 })
     expect(result.isErr()).toBe(true)

@@ -279,27 +279,37 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     isVisible: false, // Internal entity, managed from the bill
   },
   {
-    // Ships INERT (plans/purchasing/README.md P13): the def and its fields exist
-    // in every org, and NOTHING writes them until the write path is built. A def
-    // with zero rows can be reshaped for free; the first row ends that.
-    entityType: 'vendor_payment',
-    apiSlug: 'vendor-payments',
-    singular: 'Vendor Payment',
-    plural: 'Vendor Payments',
-    icon: 'banknote',
-    color: 'emerald',
-    isVisible: false,
+    // A supplier's credit note as a DOCUMENT, the purchase-side mirror of
+    // `credit_memo` (plans/accounting/tasks/71-one-cash-endpoint.md §5 U7).
+    // `isVisible: true` like `vendor_bill`: it gets its own records view, and
+    // the bill and purchase-order drawers render it as a card.
+    entityType: 'vendor_credit',
+    apiSlug: 'vendor-credits',
+    singular: 'Vendor Credit',
+    plural: 'Vendor Credits',
+    icon: 'receipt-text',
+    color: 'orange',
+    isVisible: true,
   },
   {
-    // Inert, as above. The header/allocation split is what lets ONE bank line
-    // clear several bills (P15) - the shape a flat belongs_to cannot hold.
-    entityType: 'vendor_payment_allocation',
-    apiSlug: 'vendor-payment-allocations',
-    singular: 'Payment Allocation',
-    plural: 'Payment Allocations',
-    icon: 'calculator',
-    color: 'emerald',
-    isVisible: false,
+    entityType: 'vendor_credit_line',
+    apiSlug: 'vendor-credit-lines',
+    singular: 'Vendor Credit Line',
+    plural: 'Vendor Credit Lines',
+    icon: 'list',
+    color: 'orange',
+    isVisible: false, // Internal entity, rendered only by the line builder
+  },
+  {
+    // One row per "this much of this credit went against this bill". Not money
+    // and posts nothing, exactly like `credit_memo_application`.
+    entityType: 'vendor_credit_application',
+    apiSlug: 'vendor-credit-applications',
+    singular: 'Vendor Credit Application',
+    plural: 'Vendor Credit Applications',
+    icon: 'arrow-left-right',
+    color: 'orange',
+    isVisible: false, // Internal entity, managed from the credit and bill drawers
   },
   {
     // The chart of accounts, ours. The accounting provider's own id for each
@@ -835,13 +845,17 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
     primaryDisplayField: 'description',
     secondaryDisplayField: undefined,
   },
-  vendor_payment: {
-    primaryDisplayField: 'reference',
+  vendor_credit: {
+    primaryDisplayField: 'number',
     secondaryDisplayField: 'vendor',
   },
-  vendor_payment_allocation: {
+  vendor_credit_line: {
+    primaryDisplayField: 'description',
+    secondaryDisplayField: 'lineTotal',
+  },
+  vendor_credit_application: {
     primaryDisplayField: 'amount',
-    secondaryDisplayField: undefined,
+    secondaryDisplayField: 'vendorBill',
   },
   // 🛑 The primary is the DERIVED `label` - `8481.80.9005 CN` - stamped by a
   // hook from the two legs on every write (task 30 §8), so the display name and

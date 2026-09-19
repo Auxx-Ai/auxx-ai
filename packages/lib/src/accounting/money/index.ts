@@ -14,24 +14,23 @@ export {
   type CreateBankDepositResult,
   clearBankDeposit,
   createBankDeposit,
-  DEFAULT_PAYMENT_ROUTES,
   getBankDeposit,
   groupByDay,
   hasBankDeposits,
   isBankDepositFrozen,
   listBankDeposits,
   listUndepositedPayments,
-  methodsRoutedToUndepositedFunds,
-  PAYMENT_ROUTE_SETTING_KEYS,
-  PAYMENT_ROUTE_SETTING_OPTIONS,
-  type PaymentRoute,
-  type PaymentRouteMethod,
   resolveBankDepositStatus,
-  resolvePaymentRoute,
   type UndepositedPaymentRow,
   updateBankDeposit,
 } from './bank-deposits'
-
+export {
+  type CashEndpoint,
+  type CashEndpointKind,
+  type CashEndpointSource,
+  cashEndpointSourceOf,
+  resolveCashEndpoint,
+} from './cash-endpoint'
 // The legacy `PaymentTransaction` payment lane (`money/payments/`) is gone. Its
 // Stripe-account plumbing lives in `payouts/`, the deposit math in `./quote-deposit`, and
 // online collection in `./checkout`.
@@ -50,26 +49,24 @@ export {
   sumUnappliedCustomerMoney,
   sumWorkOrderDeposits,
 } from './checkout'
-
+export { validateCashEndpointSource } from './client'
+export { type InsertMovementInput, insertMovement } from './commands/insert-movement'
 export {
   type ApplyMoneyToInvoiceInput,
   type ApplyMoneyToInvoiceResult,
   applyMoneyToInvoice,
 } from './invoice-payments/apply-money'
-
 export {
   type MoveInvoicePaymentInput,
   type MoveInvoicePaymentResult,
   moveInvoicePayment,
 } from './invoice-payments/move-payment'
-
 export {
   type InvoicePaymentRow,
   listInvoiceMoneyPayments,
   listWorkOrderMoneyPayments,
   type WorkOrderPaymentRow,
 } from './invoice-payments/payment-reads'
-
 // ── Task 54: money received against an issued invoice ──────────────────────
 // The `customer_receipt` family's second policy. `customer-money/accounting.ts`
 // is the same family's ORDER policy; the two never see each other's movements.
@@ -77,25 +74,21 @@ export {
   type AcceptInvoiceReceiptInput,
   acceptInvoiceReceiptAccounting,
 } from './invoice-payments/receipt-accounting'
-
 export {
   type RecordInvoicePaymentInput,
   type RecordInvoicePaymentResult,
   recordInvoicePayment,
 } from './invoice-payments/record-payment'
-
 export {
   type UnapplyMoneyFromInvoiceInput,
   type UnapplyMoneyFromInvoiceResult,
   unapplyMoneyFromInvoice,
 } from './invoice-payments/unapply-money'
-
 export {
   type VoidInvoicePaymentInput,
   type VoidInvoicePaymentResult,
   voidInvoicePayment,
 } from './invoice-payments/void-payment'
-
 export {
   findPayoutByGatewayId,
   type GatheredPayout,
@@ -116,7 +109,13 @@ export {
   splitPayout,
   syncPayouts,
 } from './payouts'
-
+export {
+  type LoadedMovement,
+  MOVEMENT_SOURCE_TYPE,
+  type MovementPostingResult,
+  type PreparedMovement,
+  postMovementEntry,
+} from './post-movement'
 export {
   disconnectPaymentAccount,
   getPaymentAccount,
@@ -124,5 +123,37 @@ export {
   type UpsertPaymentAccountInput,
   upsertPaymentAccount,
 } from './stripe-connect/account'
-
 export type { SyncInvoicePaymentStateInput } from './types'
+export {
+  type AcceptVendorPaymentInput,
+  acceptVendorPaymentAccounting,
+} from './vendor-payments/payment-accounting'
+export {
+  listVendorBillPayments,
+  type VendorBillPaymentRow,
+} from './vendor-payments/payment-reads'
+export {
+  type SyncVendorBillPaymentStateInput,
+  sumVendorBillPayments,
+  syncVendorBillPaymentState,
+} from './vendor-payments/payment-state'
+export {
+  type RecordVendorPaymentInput,
+  type RecordVendorPaymentResult,
+  recordVendorPayment,
+} from './vendor-payments/record-payment'
+export {
+  type RecordVendorRefundInput,
+  type RecordVendorRefundResult,
+  recordVendorRefund,
+} from './vendor-payments/record-refund'
+export {
+  postVendorRefundAccounting,
+  type VendorRefundAccountingInput,
+  type VendorRefundAccountingResult,
+} from './vendor-payments/refund-accounting'
+export {
+  type VoidVendorPaymentInput,
+  type VoidVendorPaymentResult,
+  voidVendorPayment,
+} from './vendor-payments/void-payment'

@@ -10,18 +10,16 @@ import { VendorBillStatus } from '../../resources/registry/enum-values'
 import type { EntityPreDeleteEvent, EntityPreDeleteHandler } from '../types'
 
 /**
- * The bill statuses that mean the document is already in the books or already
- * part-settled with the vendor.
+ * The lifecycle value that means the document is already in the books.
  *
  * `posted` is usually implied by the period predicates below, but not always. A
  * bill can be marked posted before its month closes, so it is checked
  * explicitly rather than reasoned about.
  */
-const SETTLED_BILL_STATUSES: ReadonlySet<string> = new Set([
-  VendorBillStatus.POSTED,
-  VendorBillStatus.PARTIALLY_PAID,
-  VendorBillStatus.PAID,
-])
+const SETTLED_BILL_STATUSES: ReadonlySet<string> = new Set([VendorBillStatus.POSTED])
+
+/** The money-axis values that mean cash or credit has already moved (73 D1). */
+const SETTLED_PAYMENT_STATUSES: ReadonlySet<string> = new Set(['partially_paid', 'paid'])
 
 /**
  * Pre-delete guard for `vendor-bills`
@@ -36,17 +34,17 @@ const SETTLED_BILL_STATUSES: ReadonlySet<string> = new Set([
  * `createdAt` "is routinely a different period". So the settled test runs on one
  * date rather than over a set of children.
  *
- * Two refusals, both conditional on state the registry cannot see:
+ * Three refusals, all conditional on state the registry cannot see:
  *
- *   1. **REFUSE on status**: `posted`, `partially_paid`, `paid`.
- *   2. **REFUSE when the bill date's period is settled.**
+ *   1. **REFUSE on the lifecycle**: `posted` — the bill is in the books.
+ *   2. **REFUSE on the money axis**: `partially_paid`, `paid` — money has moved.
+ *   3. **REFUSE when the bill date's period is settled.**
  *
  * **What is NOT here, and why.**
  *
- *   - "A vendor payment has been applied to this bill" is `onDelete: 'restrict'`
- *     on `vendor_bill_payment_allocations`. The delete engine refuses it from the
- *     declaration, archived allocations included: money that has been applied
- *     stays applied whether or not somebody archived the row recording it.
+ *   - "A vendor payment has been applied to this bill" is covered by refusal 2:
+ *     applying a payment or a credit projects `vendor_bill_payment_status`
+ *     (`vendor-payments/payment-state.ts`), and both settled values are refused.
  *   - The lines are `onDelete: 'cascade'` on `vendor_bill_lines`. The engine
  *     collects them into the closure and runs this guard before writing
  *     anything. This hook used to delete them by hand with post-delete hooks
@@ -72,13 +70,23 @@ export const guardVendorBillDelete: EntityPreDeleteHandler = async (event) => {
   }
 }
 
-/** The status wall, read off the values `deleteEntity` already captured. */
+/** The two status walls, read off the values `deleteEntity` already captured. */
 function refuseOnStatus(event: EntityPreDeleteEvent): void {
+  const paymentStatus = unwrapStatus(event.values.vendor_bill_payment_status)
+  if (paymentStatus !== null && SETTLED_PAYMENT_STATUSES.has(paymentStatus)) {
+    throw new BadRequestError(
+      `This vendor bill is ${paymentStatus.replace(/_/g, ' ')}. Money has already moved against ` +
+        'it, so it is corrected by reversing the payment, never by deleting the bill. Archive ' +
+        'it instead.',
+      { organizationId: event.organizationId, recordId: event.recordId, paymentStatus }
+    )
+  }
+
   const status = unwrapStatus(event.values.vendor_bill_status)
   if (status !== null && SETTLED_BILL_STATUSES.has(status)) {
     throw new BadRequestError(
-      `This vendor bill is ${status.replace(/_/g, ' ')}. A bill that is in the books or ` +
-        'part-paid is corrected by reversing it, never by deleting it. Archive it instead.',
+      `This vendor bill is ${status.replace(/_/g, ' ')}. A bill that is in the books is ` +
+        'corrected by reversing it, never by deleting it. Archive it instead.',
       { organizationId: event.organizationId, recordId: event.recordId, status }
     )
   }

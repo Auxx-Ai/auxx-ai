@@ -88,6 +88,7 @@ beforeEach(() => {
     number: 'RENT-SEP',
     internalNumber: 'BILL-0007',
     status: 'draft',
+    paymentStatus: 'unpaid',
     billedAt: '2026-09-01',
     currency: 'USD',
     totalMinor: 250_000,
@@ -231,7 +232,7 @@ describe('postExpenseBill', () => {
 
 describe('previewExpenseBill', () => {
   it('runs the same refusals and writes nothing', async () => {
-    h.bill = { ...h.bill, status: 'paid' }
+    h.bill = { ...h.bill, status: 'void' }
     await expect(
       previewExpenseBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(BadRequestError)
@@ -304,7 +305,7 @@ describe('voidExpenseBill', () => {
   })
 
   it('refuses to void a bill that has been paid', async () => {
-    h.bill = { ...h.bill, status: 'paid' }
+    h.bill = { ...h.bill, paymentStatus: 'paid' }
     await expect(
       voidExpenseBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(/money has already moved/)

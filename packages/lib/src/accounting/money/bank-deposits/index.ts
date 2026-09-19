@@ -14,16 +14,9 @@
 export {
   BANK_DEPOSIT_SOURCE_TYPE,
   type BankDepositStatus,
-  DEFAULT_PAYMENT_ROUTES,
   groupByDay,
   isBankDepositFrozen,
-  methodsRoutedToUndepositedFunds,
-  PAYMENT_ROUTE_SETTING_KEYS,
-  PAYMENT_ROUTE_SETTING_OPTIONS,
-  type PaymentRoute,
-  type PaymentRouteMethod,
   resolveBankDepositStatus,
-  resolvePaymentRoute,
 } from './client'
 export {
   type BankDepositFieldContext,

@@ -127,8 +127,6 @@ Seeded in `packages/lib/src/seed/entity-seeder/constants.ts`:
 | `gl_account` | ❌ | Our chart of accounts. The provider's id hangs off it via `RecordIdentity`. |
 | ~~`gl_posting`~~ | — | 🛑 **NOT an entity.** One journal entry is a **`GlPosting` Drizzle table** row. The def was deleted 2026-08-28 (entity migration 114). |
 | ~~`gl_posting_line`~~ | — | 🛑 **NOT an entity.** `GlPostingLine`, a table. Double-entry lines keyed on an account **code** (`'2160'`), never a provider id. Def deleted 2026-08-28. |
-| `vendor_payment` | ❌ | 🛑 **INERT.** Seeded, zero writers, zero rows. See §11. |
-| `vendor_payment_allocation` | ❌ | 🛑 **INERT.** The header/allocation split that lets one bank line clear several bills. |
 
 ### 3.1 Why the line entities are their own type
 
@@ -454,7 +452,7 @@ action in a browser and then asking the database whether it had happened. Budget
 | `part` | **true** | ✅ `guardPartDelete` — refuses when a movement sits in a settled period; cascades `subpart` + `vendor_part`; leaves the vendor documents |
 | `build` | **true** | ✅ `guardBuildDelete` — refuses on a settled movement **or** on either end of a reversal pair; cascades the `build_consume`/`build_produce` movements |
 | `purchase_order` | **true** | ✅ `guardPurchaseOrderDelete` — refuses when any `vendor_bill` names it, or when a receipt under any of its lines is settled; cascades receipts **then** lines |
-| `vendor_bill` | **true** | ✅ `guardVendorBillDelete` — refuses on `posted`/`partially_paid`/`paid`, on any `vendor_payment_allocation`, or on a settled `billedAt`; cascades its lines |
+| `vendor_bill` | **true** | ✅ `guardVendorBillDelete` — refuses on `posted`/`partially_paid`/`paid` or on a settled `billedAt`; cascades its lines |
 | `stock_movement`, `subpart`, `vendor_part`, `purchase_order_line`, `vendor_bill_line`, `gl_account` | false | n/a — not reachable from a records table, only through a parent |
 
 All four share `accounting/ledger/periods/settled-periods.ts` (`settledPeriodsFor`) and, where they read the ledger,

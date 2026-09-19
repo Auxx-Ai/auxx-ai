@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import { VendorBillPaidSource, VendorBillStatus } from '../enum-values'
+import { VendorBillStatus } from '../enum-values'
 import { defineResourceFields } from '../system-attributes'
 
 /**
@@ -25,6 +25,22 @@ import { defineResourceFields } from '../system-attributes'
  * silently correct the vendor's own arithmetic, which is precisely the
  * discrepancy the match exists to surface.
  */
+/**
+ * The money axis of a vendor bill (task 73 D1) — `vendor_bill_status` carries
+ * the lifecycle and nothing else.
+ *
+ * Amber for `partially_paid` for the same reason `awaiting_receipt` is: a state
+ * that still needs something to happen but is not a failure.
+ */
+export const VENDOR_BILL_PAYMENT_STATUS_OPTIONS = [
+  { value: 'unpaid', label: 'Unpaid', color: 'gray' },
+  { value: 'partially_paid', label: 'Partially Paid', color: 'amber' },
+  { value: 'paid', label: 'Paid', color: 'forest' },
+] as const
+
+/** One of {@link VENDOR_BILL_PAYMENT_STATUS_OPTIONS}. */
+export type VendorBillPaymentStatus = (typeof VENDOR_BILL_PAYMENT_STATUS_OPTIONS)[number]['value']
+
 export const VENDOR_BILL_FIELDS = defineResourceFields({
   id: {
     id: toFieldId('id'),
@@ -436,7 +452,7 @@ export const VENDOR_BILL_FIELDS = defineResourceFields({
       configurable: false,
     },
     placeholder: 'Select payment date',
-    description: 'When the bill was paid — null means unpaid',
+    description: 'When the bill was fully settled — null means unpaid or part-paid',
   },
 
   amountPaid: {
@@ -463,8 +479,8 @@ export const VENDOR_BILL_FIELDS = defineResourceFields({
       configurable: false,
     },
     description:
-      'How much of this bill has been settled, integer minor units — written by a human or by ' +
-      'the provider poll while `vendor_payment` is inert',
+      'How much of this bill has been settled, integer minor units — a projection of the ' +
+      "bill's `MoneyApplication` rows, written only by `vendor-payments/payment-state.ts`",
   },
 
   // Written by `purchasing/vendor-bill-balance.ts`, never by hand — a
@@ -509,74 +525,120 @@ export const VENDOR_BILL_FIELDS = defineResourceFields({
     description: 'What is still owed on this bill — the total minus what has been paid',
   },
 
-  paymentMethod: {
-    id: toFieldId('paymentMethod'),
-    key: 'paymentMethod',
-    label: 'Payment Method',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'vendor_bill_payment_method',
-    systemSortOrder: 'aI',
-    showInTable: false,
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    placeholder: 'Check, ACH, card',
-    description: 'How it was paid — free text; a select is premature until the values settle',
-  },
-
-  paymentReference: {
-    id: toFieldId('paymentReference'),
-    key: 'paymentReference',
-    label: 'Payment Reference',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'vendor_bill_payment_reference',
-    systemSortOrder: 'aJ',
-    showInTable: false,
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    placeholder: 'Check no. / ACH trace / bank line id',
-    description: 'Check number, ACH trace or bank line id — what a query to the bank quotes',
-  },
-
-  paidSource: {
-    id: toFieldId('paidSource'),
-    key: 'paidSource',
-    label: 'Paid Source',
+  /**
+   * The MONEY axis, beside `status`'s lifecycle axis (task 73 D1).
+   *
+   * One writer: `accounting/money/vendor-payments/payment-state.ts`, as a
+   * projection of the bill's `MoneyApplication` rows plus its credits. Never
+   * typed, never written by a dialog — which is why `updatable` is false.
+   */
+  paymentStatus: {
+    id: toFieldId('paymentStatus'),
+    key: 'paymentStatus',
+    label: 'Payment Status',
     type: BaseType.ENUM,
     fieldType: FieldType.SINGLE_SELECT,
     isSystem: true,
-    systemAttribute: 'vendor_bill_paid_source',
-    systemSortOrder: 'aK',
+    systemAttribute: 'vendor_bill_payment_status',
+    systemSortOrder: 'aI',
     nullable: true,
-    options: { options: VendorBillPaidSource.values },
+    options: { options: [...VENDOR_BILL_PAYMENT_STATUS_OPTIONS] },
     capabilities: {
       filterable: true,
       sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description: 'How much of this bill has been settled — projected from its payments and credits',
+    defaultValue: 'unpaid',
+  },
+
+  // The mirror of `invoice_amount_credited`. Written only by
+  // `purchasing/vendor-credit/apply.ts`; `vendor-bill-balance.ts` subtracts it.
+  amountCredited: {
+    id: toFieldId('amountCredited'),
+    key: 'amountCredited',
+    label: 'Amount Credited',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'vendor_bill_amount_credited',
+    systemSortOrder: 'aJ',
+    nullable: true,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description:
+      'How much of this bill a vendor credit has cancelled, integer minor units — the sum of ' +
+      'its credit applications',
+  },
+
+  vendorCredits: {
+    id: toFieldId('vendorCredits'),
+    key: 'vendorCredits',
+    label: 'Vendor Credits',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'vendor_bill_vendor_credits',
+    systemSortOrder: 'aJ1',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
       creatable: true,
       updatable: true,
       configurable: false,
     },
-    placeholder: 'Select paid source',
-    description:
-      'What evidence marked this bill paid. Not decoration: an auto-mark that cannot be told ' +
-      'apart from a confirmed payment is how a genuinely unpaid bill goes quiet until the ' +
-      'vendor calls. `rule` is a PRESUMPTION, not evidence — those bills stay in a presumed-paid, ' +
-      'unconfirmed filter until a provider read or a bank line confirms them.',
+    relationship: {
+      inverseResourceFieldId: 'vendor_credit:bill' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'unlink',
+      isInverse: true,
+    },
+    description: 'Credit notes raised against this bill',
+  },
+
+  // `restrict`, like `invoice_credit_applications`: a bill with credit applied
+  // cannot be deleted out from under the credit that reduced it.
+  creditApplications: {
+    id: toFieldId('creditApplications'),
+    key: 'creditApplications',
+    label: 'Credit Applications',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'vendor_bill_credit_applications',
+    systemSortOrder: 'aJ2',
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'vendor_credit_application:vendorBill' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'restrict',
+      isInverse: true,
+    },
+    description: 'Shares of a vendor credit applied to this bill',
   },
 
   // The vendor's own paper — the bill itself, as a single FILE value
@@ -669,39 +731,6 @@ export const VENDOR_BILL_FIELDS = defineResourceFields({
       isInverse: true,
     },
     description: 'Lines on this bill',
-  },
-
-  // Reverse relationship: paymentAllocations (from
-  // vendor_payment_allocation.vendorBill). `vendor_payment_allocation` ships
-  // seeded, hidden and INERT (§5.4) — nothing writes it yet, so this edge reads
-  // empty until the payment write path is built.
-  paymentAllocations: {
-    id: toFieldId('paymentAllocations'),
-    key: 'paymentAllocations',
-    label: 'Payment Allocations',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'vendor_bill_payment_allocations',
-    systemSortOrder: 'aN',
-    showInPanel: false,
-    showInTable: false,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'vendor_payment_allocation:vendorBill' as ResourceFieldId,
-      relationshipType: 'has_many',
-      onDelete: 'restrict',
-      isInverse: true,
-    },
-    description:
-      'Shares of vendor payments applied to this bill — one row per payment that covers part of ' +
-      'it',
   },
 
   createdAt: {

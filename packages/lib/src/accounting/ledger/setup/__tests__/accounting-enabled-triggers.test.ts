@@ -39,9 +39,10 @@ const TRIGGER_FILES = [
   // `post-deposit-application.ts`) is gone (accounting migration step 0). Every
   // receipt now posts off `MoneyTransaction`/`MoneyApplication` through one of
   // these two builders, and both are gated.
-  'accounting/money/invoice-payments/receipt-accounting.ts',
-  'accounting/money/customer-money/accounting.ts',
-  'accounting/money/customer-money/refund-accounting.ts',
+  // Task 71: the invoice receipt, the channel receipt, the channel/hand refund,
+  // the quote deposit and the vendor payment all build through one frame, and the
+  // gate sits there once rather than in five copies.
+  'accounting/money/post-movement.ts',
   'accounting/money/customer-money/deposit-application-accounting.ts',
   // D19: `write-off.ts` still checks the gate before its own reads, and
   // `write-off-accounting.ts` is where the entry is now built and accepted — so

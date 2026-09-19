@@ -64,8 +64,7 @@ const logger = createScopedLogger('purchasing:expense-bill')
 /**
  * The bill statuses a Post action may start from.
  *
- * The complement of the three the delete guard already calls settled
- * (`posted`, `partially_paid`, `paid`) plus `void`. `exception` is in: a bill
+ * The complement of `posted` and `void`. `exception` is in: a bill
  * the three-way match flagged is still a bill somebody may decide to accept and
  * book, and refusing to post it would leave the payable off the balance sheet
  * for as long as the exception is open - which is the wrong side to be wrong on.
@@ -376,11 +375,13 @@ export async function voidExpenseBill(db: Database, input: VoidExpenseBillInput)
   if (bill.status === 'void') {
     throw new BadRequestError('This vendor bill is already void', { vendorBillInstanceId })
   }
-  if (bill.status === 'partially_paid' || bill.status === 'paid') {
+  // The money axis, not the lifecycle (73 D1): "in the books" is `status`,
+  // "money has moved" is `paymentStatus`.
+  if (bill.paymentStatus === 'partially_paid' || bill.paymentStatus === 'paid') {
     throw new BadRequestError(
       'This vendor bill has been paid. Reverse the payment before voiding the bill - the money ' +
         'has already moved.',
-      { vendorBillInstanceId, status: bill.status }
+      { vendorBillInstanceId, paymentStatus: bill.paymentStatus }
     )
   }
 

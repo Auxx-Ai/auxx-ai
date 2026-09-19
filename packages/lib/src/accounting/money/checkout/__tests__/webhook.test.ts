@@ -149,6 +149,8 @@ describe('an invoice paid online', () => {
       method: 'card',
       reference: 'pi_1',
       partyInstanceId: 'contact-1',
+      // The rail rides on the movement itself; the poster no longer takes one.
+      paymentGatewayId: 'gw-stripe',
     })
     expect(h.inserts.find((row) => row.table === 'MoneyApplication')!.values).toMatchObject({
       invoiceInstanceId: 'inv-1',

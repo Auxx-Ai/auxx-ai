@@ -11,6 +11,7 @@ import { JOURNAL_OBJECT_TYPE, parseExportJournal } from './journal'
 import { exportPaymentSchema, PAYMENT_OBJECT_TYPE } from './payment'
 import { exportRefundReceiptSchema, REFUND_RECEIPT_OBJECT_TYPE } from './refund-receipt'
 import { exportSalesReceiptSchema, SALES_RECEIPT_OBJECT_TYPE } from './sales-receipt'
+import { exportVendorCreditSchema, VENDOR_CREDIT_OBJECT_TYPE } from './vendor-credit'
 
 export {
   BILL_OBJECT_TYPE,
@@ -49,6 +50,12 @@ export {
   exportSalesReceiptSchema,
   SALES_RECEIPT_OBJECT_TYPE,
 } from './sales-receipt'
+export {
+  type ExportVendorCreditLine,
+  type ExportVendorCreditPayload,
+  exportVendorCreditSchema,
+  VENDOR_CREDIT_OBJECT_TYPE,
+} from './vendor-credit'
 
 /** Every object type an export batch may carry (plan 67 §1's mapping table). */
 export const EXPORT_OBJECT_TYPES = [
@@ -60,6 +67,7 @@ export const EXPORT_OBJECT_TYPES = [
   REFUND_RECEIPT_OBJECT_TYPE,
   DEPOSIT_OBJECT_TYPE,
   BILL_OBJECT_TYPE,
+  VENDOR_CREDIT_OBJECT_TYPE,
 ] as const
 
 export type ExportObjectType = (typeof EXPORT_OBJECT_TYPES)[number]
@@ -83,6 +91,8 @@ export function parseExportPayload(objectType: string, payload: unknown): unknow
       return exportDepositSchema.parse(payload)
     case BILL_OBJECT_TYPE:
       return exportBillSchema.parse(payload)
+    case VENDOR_CREDIT_OBJECT_TYPE:
+      return exportVendorCreditSchema.parse(payload)
     default:
       throw new UnprocessableEntityError(`Unknown export object type '${objectType}'`)
   }

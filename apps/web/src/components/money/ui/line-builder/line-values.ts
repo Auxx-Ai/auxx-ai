@@ -22,6 +22,7 @@ export type DocumentType =
   | 'purchase_order'
   | 'vendor_bill'
   | 'credit_memo'
+  | 'vendor_credit'
 
 /**
  * How a document's totals relate to its lines.
@@ -621,6 +622,40 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
       excludeWorkOrderSourceLines: false,
       deleteMode: 'delete',
     },
+  },
+  // The supplier's credit note (71 §5 U7). A BUY-side line: it names the GL
+  // account the original charge was coded to, and carries no tax of its own.
+  vendor_credit: {
+    slug: 'vendor-credit-lines',
+    lineEntityType: 'vendor_credit_line',
+    // `line_total` is writable with no engine writer behind it, exactly as the
+    // credit memo line's subtotal is, so the amount is an input that a typed
+    // rate cross-fills.
+    amountMode: 'stored',
+    matchScopeAttr: 'vendor_credit_purchase_order',
+    vendorAttr: null,
+    relKey: 'vendor_credit_line_vendor_credit',
+    relFieldId: 'vendor_credit_line:vendorCredit',
+    sortAttr: 'vendor_credit_line_sort_order',
+    primaryTextKey: 'description',
+    primaryColumnLabel: 'Part',
+    // Subtotal and total are mirrors written by the totals hook; the stated tax
+    // is a header input beside them.
+    totalsMode: 'stored',
+    billingPrefix: 'vendor_credit',
+    billingAttrs: ['vendor_credit_subtotal', 'vendor_credit_tax_total', 'vendor_credit_total'],
+    attrs: {
+      ...NO_LINE_ATTRS,
+      description: 'vendor_credit_line_description',
+      qty: 'vendor_credit_line_quantity',
+      unitPriceCents: 'vendor_credit_line_unit_price',
+      partRecordId: 'vendor_credit_line_part',
+      lineTotal: 'vendor_credit_line_line_total',
+      purchaseOrderLineRecordId: 'vendor_credit_line_purchase_order_line',
+      glAccount: 'vendor_credit_line_gl_account',
+    },
+    photosAttr: null,
+    capabilities: BUY_SIDE_CAPABILITIES,
   },
 }
 

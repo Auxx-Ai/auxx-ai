@@ -123,6 +123,29 @@ const LINE_BUILDER_CONTRACT: Record<
       'credit_memo_line_sort_order',
     ],
   },
+  vendor_credit: {
+    lineEntityType: 'vendor_credit_line',
+    // Subtotal and total are totals-hook mirrors; the stated tax is a header
+    // input beside them (71 §5 U7).
+    header: [
+      'vendor_credit_subtotal',
+      'vendor_credit_tax_total',
+      'vendor_credit_total',
+      // Scopes the match-key picker, as the bill's purchase order does.
+      'vendor_credit_purchase_order',
+    ],
+    line: [
+      'vendor_credit_line_vendor_credit',
+      'vendor_credit_line_part',
+      'vendor_credit_line_description',
+      'vendor_credit_line_quantity',
+      'vendor_credit_line_unit_price',
+      'vendor_credit_line_line_total',
+      'vendor_credit_line_purchase_order_line',
+      'vendor_credit_line_gl_account',
+      'vendor_credit_line_sort_order',
+    ],
+  },
 }
 
 /** Every systemAttribute declared on one entity type in the registry. */

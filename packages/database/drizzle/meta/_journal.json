@@ -2661,6 +2661,27 @@
       "when": 1789760061002,
       "tag": "0379_processor_entry_match",
       "breakpoints": true
+    },
+    {
+      "idx": 380,
+      "version": "7",
+      "when": 1789770284338,
+      "tag": "0380_money_transaction_payment_gateway",
+      "breakpoints": true
+    },
+    {
+      "idx": 381,
+      "version": "7",
+      "when": 1789773842831,
+      "tag": "0381_money_transaction_posting_block",
+      "breakpoints": true
+    },
+    {
+      "idx": 382,
+      "version": "7",
+      "when": 1789777717268,
+      "tag": "0382_gl_posting_type_vendor_credit",
+      "breakpoints": true
     }
   ]
 }

@@ -419,7 +419,7 @@ export async function listMatchCandidates(
       const candidates = await Promise.all(
         flow === 'out'
           ? [
-              readVendorPaymentCandidates(db, organizationId, dateKey, absMinor, search),
+              readMoneyCandidates(db, organizationId, dateKey, absMinor, 'vendor_payment', search),
               readVendorBillCandidates(db, organizationId, dateKey, absMinor, search),
               readMoneyCandidates(db, organizationId, dateKey, absMinor, 'customer_refund', search),
             ]
@@ -620,7 +620,7 @@ function windowBounds(dateKey: string, days = CANDIDATE_DAY_WINDOW) {
 async function readEntityCandidates(params: {
   db: Database
   organizationId: string
-  entityType: 'vendor_payment' | 'vendor_bill' | 'bank_deposit' | 'payout'
+  entityType: 'vendor_bill' | 'bank_deposit' | 'payout'
   recordType: MatchRecordType
   amountAttribute: string
   dateAttribute: string
@@ -786,28 +786,6 @@ async function readEntityCandidates(params: {
   return out
 }
 
-function readVendorPaymentCandidates(
-  db: Database,
-  organizationId: string,
-  dateKey: string,
-  absMinor: number,
-  search?: string
-): Promise<MatchCandidate[]> {
-  return readEntityCandidates({
-    db,
-    organizationId,
-    entityType: 'vendor_payment',
-    recordType: 'vendor_payment',
-    amountAttribute: 'vendor_payment_amount',
-    dateAttribute: 'vendor_payment_paid_at',
-    linkAttribute: 'vendor_payment_bank_transaction_id',
-    secondaryAttribute: 'vendor_payment_reference',
-    dateKey,
-    absMinor,
-    search,
-  })
-}
-
 function readVendorBillCandidates(
   db: Database,
   organizationId: string,
@@ -822,9 +800,9 @@ function readVendorBillCandidates(
     recordType: 'vendor_bill',
     amountAttribute: 'vendor_bill_total',
     dateAttribute: 'vendor_bill_billed_at',
-    // A bill has no bank-line pointer of its own: it is marked `bank_import` by
-    // `vendor_bill_paid_source` instead, which is a fact about HOW it was
-    // confirmed rather than a link, so nothing here can be already-matched.
+    // A bill has no bank-line pointer of its own: coding a line to a bill records
+    // a vendor payment and matches the line to THAT movement (D9), so nothing
+    // here can be already-matched.
     linkAttribute: null,
     secondaryAttribute: 'vendor_bill_number',
     dateKey,
@@ -865,7 +843,7 @@ function readBankDepositCandidates(
  * sitting in the account.
  *
  * ⚠️ **Excluded once matched to a DIFFERENT bank line**, not merely greyed out
- * the way `bank_deposit` and `vendor_payment` candidates are. A payout has
+ * the way `bank_deposit` candidates are. A payout has
  * exactly one bank line that confirms it, and it has already been offered once;
  * relisting it invites a second reviewer to match a second line to money that
  * only arrived once. Still offered for THIS line, so re-opening the drawer on a
@@ -903,7 +881,8 @@ function readPayoutCandidates(
 }
 
 /**
- * `MoneyTransaction` rows - where a customer receipt or refund actually lives.
+ * `MoneyTransaction` rows - where every movement actually lives, in all four
+ * purposes.
  *
  * 🛑 The movement table, never an entity mirror: the money model mints no
  * mirror at all, so a matcher reading entities could never match money going
@@ -918,7 +897,7 @@ async function readMoneyCandidates(
   organizationId: string,
   dateKey: string,
   absMinor: number,
-  purpose: 'customer_receipt' | 'customer_refund',
+  purpose: 'customer_receipt' | 'customer_refund' | 'vendor_payment' | 'vendor_refund',
   search?: string
 ): Promise<MatchCandidate[]> {
   const bounds = windowBounds(dateKey)
@@ -1144,7 +1123,6 @@ function narrowBankStatus(value: string | null | undefined): BankStatus {
 
 function narrowMatchRecordType(value: string | null | undefined): MatchedRecordType | null {
   switch (value) {
-    case 'vendor_payment':
     case 'money_transaction':
     case 'bank_deposit':
     case 'vendor_bill':

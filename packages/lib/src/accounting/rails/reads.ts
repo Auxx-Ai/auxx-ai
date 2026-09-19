@@ -355,8 +355,8 @@ export async function listGatewayHandleCensus(
 /**
  * Normalised handle -> the `payment_gateway` id claiming it.
  *
- * Closed rails included: a closed gateway still routes its own history
- * (`toGatewayRoutes`), so its handles are claimed, not orphaned.
+ * Closed rails included: a closed gateway still carries its own history, so its
+ * handles are claimed, not orphaned.
  *
  * 🛑 Shared by both census reads deliberately. Two copies of "who claims this
  * handle" that drifted would let one screen report a handle as unrouted while

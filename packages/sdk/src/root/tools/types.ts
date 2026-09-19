@@ -59,8 +59,8 @@ export interface ToolActionContext {
  * Admission rule: an entity a user thinks about and could open — business
  * records, not join rows or ledger lines. So no `line_item`, `subpart`,
  * `stock_movement`, `purchase_order_line`, `vendor_bill_line` or
- * `gl_posting_line`. `quote` / `work_order` / `payment` / `vendor_payment`
- * would qualify under the rule but wait for a consumer.
+ * `gl_posting_line`. `quote` / `work_order` / `payment` would qualify under the
+ * rule but wait for a consumer.
  *
  * 🛑 The HAZARD the rule guards against is admitting a kind **no org
  * resolves**: `provisionAppField` warns-and-skips when `getCachedEntityDefId`
@@ -191,6 +191,9 @@ export type EntityRefKind =
   | 'credit_memo'
   | 'credit_memo_line'
   | 'credit_memo_application'
+  | 'vendor_credit'
+  | 'vendor_credit_line'
+  | 'vendor_credit_application'
   | 'tax_line'
   | 'shipment'
   | 'parcel'

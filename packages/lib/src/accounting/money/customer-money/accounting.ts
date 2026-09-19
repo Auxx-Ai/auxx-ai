@@ -4,44 +4,37 @@
  * A channel customer receipt against an ORDER.
  *
  * ```
- *   Dr <the gateway's clearing account>   the receipt
- *       Cr accounts_receivable              the shipped part
- *       Cr customer_deposits                the advance part
- *       Cr sales_tax_payable                per jurisdiction
+ *   Dr <the cash endpoint — the gateway's clearing account>   the receipt
+ *       Cr accounts_receivable                                  the shipped part
+ *       Cr customer_deposits                                    the advance part
+ *       Cr sales_tax_payable                                    per jurisdiction
  * ```
  *
  * The split comes from the order's recognition timeline, which is what a
- * standalone invoice does not need - see `invoices/receipt-accounting.ts`.
+ * standalone invoice does not need - see `invoice-payments/receipt-accounting.ts`.
  *
  * Subject the `MoneyTransaction`, parent the order, counterparty the customer;
- * `storeId` is the feed's `FinancialSourceAccount` and `railId` the gateway the
- * receipt routed through (TARGET §1).
+ * `storeId` is the feed's `FinancialSourceAccount`. The rail is stamped onto the
+ * movement here, inside the posting transaction, because the feed link is set by
+ * a person and may not exist when the movement arrives (task 71 §3).
  *
  * No permission checks here. The router asserts (docs/lib-module-guide.md §6).
  */
 
 import type { Database, Transaction } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
-import { AuxxError, UnprocessableEntityError } from '../../../errors'
+import { UnprocessableEntityError } from '../../../errors'
 import { readOrganizationSettings } from '../../../settings/read'
 import { toLedgerMinor } from '../../ledger/builders/basis-hash'
-import { buildEntry } from '../../ledger/builders/entry'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import { readAutoPostMode } from '../../ledger/post/auto-post'
-import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
-import { postEntry } from '../../ledger/post/post-entry'
-import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
-import { resolveRoles } from '../../ledger/roles/resolve-roles'
-import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
-import { FINALIZED_SETUP_STATE } from '../../ledger/setup/setup-readiness'
-import type {
-  BuiltEntry,
-  GlPostingLineInput,
-  GlPostingSourceInput,
-  PostResult,
-} from '../../ledger/types'
+import type { GlPostingLineInput } from '../../ledger/types'
 import {
-  listCustomerReceiptAccountingCandidates,
+  type LoadedMovement,
+  type MovementPostingResult,
+  type PreparedMovement,
+  postMovementEntry,
+} from '../post-movement'
+import {
+  listCustomerMoneyAccountingCandidates,
+  POSTING_RETRY_INTERVAL_MS,
   readCustomerReceiptAccountingSource,
 } from './receipt-accounting'
 import { allocateRecognitionTaxComponents } from './recognition'
@@ -50,14 +43,9 @@ import {
   readOrderRecognitionSource,
   requireCompleteOrderRecognitionSource,
 } from './recognition-source'
+import { postCustomerRefundAccounting } from './refund-accounting'
 
-const logger = createScopedLogger('customer-receipt-accounting')
-
-export interface CustomerReceiptAccountingResult {
-  status: 'accepted' | 'blocked' | 'skipped'
-  glPostingId?: string
-  reason?: string
-}
+export type CustomerReceiptAccountingResult = MovementPostingResult
 
 type Command = {
   organizationId: string
@@ -66,36 +54,27 @@ type Command = {
   automatic?: boolean
 }
 
-interface PreparedReceipt {
-  entry: BuiltEntry
-  sources: GlPostingSourceInput[]
-  storeId: string | null
-  railId: string | null
-}
-
 async function prepareReceipt(
   tx: Transaction,
-  input: Command,
-  zone: string | null,
-  cutoff: string | null
-): Promise<PreparedReceipt> {
-  if (!zone) throw new UnprocessableEntityError('Book time zone is not configured')
+  organizationId: string,
+  loaded: LoadedMovement
+): Promise<PreparedMovement> {
   const source = await readCustomerReceiptAccountingSource(
     tx,
-    input.organizationId,
-    input.moneyTransactionId,
-    zone
+    organizationId,
+    loaded.money.id,
+    loaded.bookTimeZone
   )
-  const facts = await readOrderRecognitionFactsInTx(tx, input.organizationId, source.orderId)
+  const facts = await readOrderRecognitionFactsInTx(tx, organizationId, source.orderId)
   if (source.money.partyInstanceId && source.money.partyInstanceId !== facts.customerInstanceId)
     throw new UnprocessableEntityError('Receipt customer differs from the order customer')
   const timeline = requireCompleteOrderRecognitionSource(
     await readOrderRecognitionSource(tx, {
-      organizationId: input.organizationId,
+      organizationId,
       orderId: source.orderId,
       orderNetMinor: (facts.subtotal + facts.shipping).toString(),
       orderTaxMinor: facts.tax.toString(),
-      bookTimeZone: zone,
+      bookTimeZone: loaded.bookTimeZone,
       target: { kind: 'receipt', id: source.money.id },
     })
   )
@@ -110,19 +89,18 @@ async function prepareReceipt(
     amountMinor: taxShares.find((share) => share.componentKey === component.componentKey)!
       .amountMinor,
   }))
-  // 58 §5.6: the clearing account resolves through the receipt's rail scope,
-  // exactly like a fulfillment's, not the gateway's own (retired) field.
-  const clearing = await resolveRoles(tx, input.organizationId, ['clearing'], {
-    rail: source.paymentGatewayId,
-  })
-  if (clearing.isErr()) throw clearing.error
-  const clearingGlAccountId = clearing.value.get('clearing')!.glAccountId
+  // The handle (or, failing that, the feed link) is the rail: stamped onto the
+  // movement here so the movement and its posting agree, then resolved through
+  // the one cash endpoint. A reserved handle names no rail and lands in
+  // undeposited funds.
+  if (source.paymentGatewayId) await loaded.stampGateway(source.paymentGatewayId)
+  const endpoint = await loaded.endpoint()
 
   const dimensions = {
     sourceProvider: source.sourceProvider,
     ...(facts.channel ? { channel: facts.channel } : {}),
     sourceStoreId: source.sourceStoreId,
-    paymentGatewayId: source.paymentGatewayId,
+    ...(source.paymentGatewayId ? { paymentGatewayId: source.paymentGatewayId } : {}),
     orderId: source.orderId,
   }
   const base = { sourceType: 'money_transaction', sourceId: source.money.id, dimensions }
@@ -130,7 +108,7 @@ async function prepareReceipt(
   const lines: GlPostingLineInput[] = [
     {
       ...base,
-      glAccountId: clearingGlAccountId,
+      glAccountId: endpoint.glAccountId,
       direction: 'debit',
       amount: money(allocation.amountMinor),
       sortOrder: 0,
@@ -177,29 +155,11 @@ async function prepareReceipt(
     .join(' / ')
   for (const line of lines) line.memo = `${label}: ${line.memo}`
 
-  const entry = buildEntry({
-    postingType: 'payment',
-    periodKey: source.effectiveDate,
-    txnDate: source.effectiveDate,
-    lines,
-  })
-
-  if (cutoff && entry.txnDate.slice(0, 7) <= cutoff)
-    throw new UnprocessableEntityError(`Receipt is before the accounting opening cutoff ${cutoff}`)
-
   return {
-    entry,
+    lines,
+    parent: { sourceKind: 'order', sourceId: source.orderId },
+    counterparty: { sourceKind: 'contact', sourceId: facts.customerInstanceId },
     storeId: source.sourceStoreId,
-    railId: source.paymentGatewayId,
-    sources: [
-      { sourceKind: 'money_transaction', sourceId: source.money.id, linkRole: 'subject' },
-      { sourceKind: 'order', sourceId: source.orderId, linkRole: 'parent' },
-      {
-        sourceKind: 'contact',
-        sourceId: facts.customerInstanceId,
-        linkRole: 'counterparty',
-      },
-    ],
   }
 }
 
@@ -211,82 +171,53 @@ export async function postCustomerReceiptAccounting(
   db: Database,
   input: Command
 ): Promise<CustomerReceiptAccountingResult> {
-  const live = await findLiveSubjectPosting(db, {
+  return postMovementEntry(db, {
     organizationId: input.organizationId,
-    sourceKind: 'money_transaction',
-    sourceId: input.moneyTransactionId,
-  })
-  if (live.isErr()) return { status: 'blocked', reason: live.error.message }
-  if (live.value) return { status: 'accepted', glPostingId: live.value.id }
-
-  if (!(await isAccountingEnabled(db, input.organizationId)))
-    return { status: 'skipped', reason: 'Accounting is not enabled' }
-
-  let prepared: PreparedReceipt
-  try {
-    const settings = await readOrganizationSettings(input.organizationId, [
-      'accounting.setupState',
-      'accounting.bookTimeZone',
-      'accounting.cutoffPeriod',
-    ] as const)
-    if (settings['accounting.setupState'] !== FINALIZED_SETUP_STATE)
-      throw new UnprocessableEntityError(
-        'Finalize accounting setup before posting customer payments'
-      )
-    prepared = await db.transaction((tx) =>
-      prepareReceipt(
-        tx,
-        input,
-        settings['accounting.bookTimeZone'],
-        settings['accounting.cutoffPeriod']
-      )
-    )
-  } catch (error) {
-    if (!(error instanceof AuxxError)) throw error
-    logger.warn('A customer receipt could not be prepared', {
-      organizationId: input.organizationId,
-      moneyTransactionId: input.moneyTransactionId,
-      error: error.message,
-    })
-    return { status: 'blocked', reason: error.message }
-  }
-
-  const lock = await resolvePeriodLock(input.organizationId)
-  const post: PostResult = await postEntry(db, {
-    organizationId: input.organizationId,
-    entry: prepared.entry,
+    moneyTransactionId: input.moneyTransactionId,
+    purpose: 'customer_receipt',
+    avenue: 'receipt',
+    label: 'Customer payment',
     actorUserId: input.actorUserId,
-    lock,
-    memo: `Customer payment - movement ${input.moneyTransactionId}`,
-    sources: prepared.sources,
-    scope: { store: prepared.storeId ?? undefined, rail: prepared.railId ?? undefined },
-    storeId: prepared.storeId,
-    railId: prepared.railId,
-    mode: await readAutoPostMode(input.organizationId, 'receipt'),
+    prepare: (tx, loaded) => prepareReceipt(tx, input.organizationId, loaded),
   })
-  if (!didLedgerAccept(post))
-    return { status: 'blocked', reason: post.error ?? `The ledger answered ${post.status}` }
-  return { status: 'accepted', glPostingId: post.glPostingId }
 }
 
-/** Bounded recovery retries repaired receipt evidence without starving later movements. */
-export async function sweepCustomerReceiptAccounting(
+/**
+ * Bounded recovery retries repaired channel-money evidence without starving later
+ * movements. One sweep over both purposes — a blocked receipt and a blocked refund
+ * are the same repair with the same schedule (task 71 Q3).
+ */
+export async function sweepCustomerMoneyAccounting(
   db: Database,
   input: { organizationId: string; limit?: number; timeBudgetMs?: number }
 ) {
   const started = Date.now()
-  const ids = await listCustomerReceiptAccountingCandidates(
+  // Hoisted, so the window is one settings read for the whole run rather than one
+  // refusal per movement.
+  const settings = await readOrganizationSettings(input.organizationId, [
+    'accounting.bookTimeZone',
+    'accounting.cutoffPeriod',
+  ] as const)
+  const candidates = await listCustomerMoneyAccountingCandidates(
     db,
     input.organizationId,
-    Math.min(input.limit ?? 100, 500)
+    Math.min(input.limit ?? 100, 500),
+    {
+      cutoffPeriod: settings['accounting.cutoffPeriod'],
+      bookTimeZone: settings['accounting.bookTimeZone'] ?? 'UTC',
+      retryBefore: new Date(started - POSTING_RETRY_INTERVAL_MS),
+    }
   )
   const counts = { scanned: 0, accepted: 0, blocked: 0, skipped: 0 }
-  for (const moneyTransactionId of ids) {
+  for (const candidate of candidates) {
     if (input.timeBudgetMs != null && Date.now() - started >= input.timeBudgetMs) break
-    const result = await postCustomerReceiptAccounting(db, {
+    const post =
+      candidate.purpose === 'customer_refund'
+        ? postCustomerRefundAccounting
+        : postCustomerReceiptAccounting
+    const result = await post(db, {
       organizationId: input.organizationId,
-      moneyTransactionId,
-      automatic: true,
+      moneyTransactionId: candidate.id,
     })
     counts.scanned++
     counts[result.status]++

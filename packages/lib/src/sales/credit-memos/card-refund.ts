@@ -12,13 +12,13 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq, inArray } from 'drizzle-orm'
+import { resolveStripeRail } from '../../accounting/money/checkout/reads'
 import { runMoneyCommand } from '../../accounting/money/commands/run-money-command'
 import { postCustomerRefundAccounting } from '../../accounting/money/customer-money/refund-accounting'
 import { getPaymentAccount } from '../../accounting/money/stripe-connect/account'
 import { getStripeConnectClient } from '../../accounting/money/stripe-connect/client'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
-import { readCreditMemoForRefund } from './reads'
+import { listRefundableReceipts, readCreditMemoForRefund } from './reads'
 import { settleCreditMemo } from './settle'
 
 export interface RefundCreditMemoToCardInput {
@@ -42,58 +42,6 @@ export interface RefundCreditMemoToCardResult extends Record<string, string> {
   moneyTransactionId: string
   moneySettlementId: string
   stripeRefundId: string
-}
-
-/** Card receipts against a memo's invoice with refundable room left, newest first. */
-async function readRefundableCardReceipts(
-  db: Database,
-  organizationId: string,
-  invoiceInstanceId: string
-) {
-  const applications = await db.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.invoiceInstanceId, invoiceInstanceId),
-      eq(schema.MoneyApplication.operation, 'apply')
-    ),
-  })
-  if (applications.length === 0) return []
-  const receipts = await db.query.MoneyTransaction.findMany({
-    where: and(
-      eq(schema.MoneyTransaction.organizationId, organizationId),
-      eq(schema.MoneyTransaction.purpose, 'customer_receipt'),
-      inArray(
-        schema.MoneyTransaction.id,
-        applications.map((row) => row.moneyTransactionId)
-      )
-    ),
-  })
-  const settlements = await db.query.MoneyRefundSettlement.findMany({
-    where: and(
-      eq(schema.MoneyRefundSettlement.organizationId, organizationId),
-      inArray(
-        schema.MoneyRefundSettlement.originalTransactionId,
-        receipts.map((row) => row.id)
-      )
-    ),
-  })
-  const usedById = new Map<string, bigint>()
-  for (const row of settlements)
-    usedById.set(
-      row.originalTransactionId!,
-      (usedById.get(row.originalTransactionId!) ?? 0n) + row.amountMinor
-    )
-  return receipts
-    .filter((row) => row.method === 'card' && !!row.reference)
-    .map((row) => ({
-      id: row.id,
-      reference: row.reference!,
-      partyInstanceId: row.partyInstanceId,
-      refundableMinor: Number(row.amountMinor - (usedById.get(row.id) ?? 0n)),
-      occurredAt: row.occurredAt?.getTime() ?? 0,
-    }))
-    .filter((row) => row.refundableMinor > 0)
-    .sort((a, b) => b.occurredAt - a.occurredAt)
 }
 
 /**
@@ -127,11 +75,9 @@ export async function refundCreditMemoToCard(
   if (!memo.invoiceInstanceId)
     throw new UnprocessableEntityError('This credit memo names no invoice to refund a card on')
 
-  const candidates = await readRefundableCardReceipts(
-    db,
-    input.organizationId,
-    memo.invoiceInstanceId
-  )
+  const candidates = (
+    await listRefundableReceipts(db, input.organizationId, memo.invoiceInstanceId)
+  ).filter((row) => row.method === 'card' && !!row.reference)
   const receipt = input.moneyTransactionId
     ? candidates.find((row) => row.id === input.moneyTransactionId)
     : candidates.find((row) => row.refundableMinor >= input.amountMinor)
@@ -144,13 +90,16 @@ export async function refundCreditMemoToCard(
   if (memo.contactInstanceId && receipt.partyInstanceId !== memo.contactInstanceId)
     throw new BadRequestError('The credit memo belongs to a different contact than this payment')
 
+  // The refund names the Stripe rail itself; nothing is frozen off the receipt's
+  // posting (D5).
+  const rail = await resolveStripeRail(db, input.organizationId)
   const account = await getPaymentAccount(input.organizationId)
   if (!account?.stripeAccountId)
     throw new NotFoundError('No Stripe account is connected for this organization')
 
   const refund = await getStripeConnectClient().refunds.create(
     {
-      payment_intent: receipt.reference,
+      payment_intent: receipt.reference!,
       amount: input.amountMinor,
       refund_application_fee: true,
     },
@@ -183,6 +132,7 @@ export async function refundCreditMemoToCard(
           datePrecision: 'instant',
           occurredAt: new Date((refund.created ?? Math.floor(Date.now() / 1000)) * 1000),
           partyInstanceId: memo.contactInstanceId,
+          paymentGatewayId: rail?.paymentGatewayId ?? null,
           method: 'card',
           recordedByCommandId: commandId,
           reference: refund.id,

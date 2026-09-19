@@ -8,16 +8,6 @@
  * client-reference proxy there (`docs/lib-module-guide.md` §7).
  */
 
-export {
-  DEFAULT_PAYMENT_ROUTES,
-  methodsRoutedToUndepositedFunds,
-  PAYMENT_ROUTE_SETTING_KEYS,
-  PAYMENT_ROUTE_SETTING_OPTIONS,
-  type PaymentRoute,
-  type PaymentRouteMethod,
-  resolvePaymentRoute,
-} from './route'
-
 /** A deposit is `pending` until the bank shows it, then `cleared`. */
 export type BankDepositStatus = 'pending' | 'cleared'
 

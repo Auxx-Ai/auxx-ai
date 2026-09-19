@@ -69,6 +69,7 @@ export const GL_ACCOUNT_POINTER_ATTRIBUTES: Readonly<Record<string, string>> = {
   bank_transaction_gl_account: 'a bank transaction',
   bank_transaction_suggested_gl_account: 'a bank transaction suggestion',
   vendor_bill_line_gl_account: 'a vendor bill line',
+  vendor_credit_line_gl_account: 'a vendor credit line',
 }
 
 /** One thing found pointing at an account. */

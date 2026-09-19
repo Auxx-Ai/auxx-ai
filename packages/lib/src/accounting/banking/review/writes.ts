@@ -16,9 +16,8 @@
  * | **Transfer** | One entry, cash to cash, filed on the outgoing leg |
  * | **Exclude** | Nothing |
  *
- * The match row is the most important line in this file. `buildPaymentEntry`
- * and the bill-payment builder already credit cash for the event the bank line
- * corroborates; a second entry from the feed credits cash TWICE, both entries
+ * The match row is the most important line in this file. The movement's own
+ * posting already moves cash for the event the bank line corroborates; a second entry from the feed credits cash TWICE, both entries
  * balance, the trial balance balances, and nothing detects it until a cash
  * account will not tie months later. A bank line's job on a document auxx
  * already holds is confirmation and dating, never posting.
@@ -33,6 +32,7 @@
  * posting is the whole remedy.
  */
 
+import { randomUUID } from 'node:crypto'
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -47,6 +47,9 @@ import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import type { PostResult } from '../../ledger/types'
 import { clearBankDeposit } from '../../money/bank-deposits'
+import { acceptVendorPaymentAccounting } from '../../money/vendor-payments/payment-accounting'
+import { recordVendorPayment } from '../../money/vendor-payments/record-payment'
+import { voidVendorPayment } from '../../money/vendor-payments/void-payment'
 import { pinPostedBankTransaction, unpinPostedBankTransaction } from '../feed/pins'
 import { requireBankAccountFieldContext, requireReviewFieldContext } from '../fields'
 import { guard } from '../guard'
@@ -65,6 +68,20 @@ import {
   type ReviewOutcome,
 } from './client'
 import { countBankTransactionPostings, listForReview, requireBankTransaction } from './reads'
+
+/**
+ * The money-command key prefix a bank match mints its vendor payment under.
+ *
+ * 🛑 A per-attempt nonce follows it, and it has to: `runMoneyCommand` replays a
+ * repeated key, so a stable key would make match → undo → match return the
+ * VOIDED movement and record nothing, or throw the retry-key conflict when the
+ * second attempt names a different bill. The line's own `reviewStatus` guard is
+ * what stops a double match, not the command key. The prefix is what
+ * {@link wasRecordedByThisMatch} reads back.
+ */
+function bankMatchKeyPrefix(transactionId: string): string {
+  return `bank-match:${transactionId}:`
+}
 
 const logger = createScopedLogger('banking-review')
 
@@ -90,12 +107,11 @@ export interface MatchTransactionInput extends ActorParams {
  * `matchedRecordType` and `reviewStatus: 'matched'`; the document gets whichever
  * of these it has:
  *
- * - `vendor_payment` - `bankTransactionId` and `clearedAt`.
  * - `bank_deposit` - through `clearBankDeposit`, never by writing its fields
  *   here: it is the writer that also flips the deposit to `cleared` and freezes
  *   it against edits, and a second writer would drift from it.
- * - `vendor_bill` - `paidSource: 'bank_import'`, which is the vocabulary that
- *   already exists for "a bank line confirmed this".
+ * - `vendor_bill` - never matched directly: coding an outgoing line to a bill
+ *   RECORDS a vendor payment and matches the line to that movement (D9).
  * - `payment_transaction` - a `metadata` stamp. ⚠️ **A departure, reported.**
  *   Neither `PaymentTransaction` nor the `payment` entity has a bank-line
  *   column, so there is nowhere typed to put it; `metadata.bankImport` is the
@@ -145,11 +161,39 @@ export async function matchTransaction(
         )
       }
 
+      // D9: coding an outgoing line to a bill RECORDS a vendor payment from that
+      // bank account, and the line is matched to the movement it is evidence of.
+      // The entry is the payment's; the match itself still posts nothing (B5).
+      let linkType: MatchRecordType = recordType
+      let linkId = recordId
+      let recordedPaymentId: string | null = null
+      if (recordType === 'vendor_bill') {
+        if (line.amountMinor >= 0)
+          throw new BadRequestError(
+            'Only money leaving the account can pay a vendor bill. This line is a deposit.'
+          )
+        if (!line.postedAt) throw new BadRequestError('This bank line carries no posted date.')
+        const recorded = await recordVendorPayment(db, {
+          organizationId,
+          userId: actorUserId,
+          vendorBillInstanceId: recordId,
+          amountMinor: Math.abs(line.amountMinor),
+          date: line.postedAt,
+          method: 'bank',
+          bankAccountInstanceId: line.bankAccountId,
+          reference: line.description ?? null,
+          commandKey: `${bankMatchKeyPrefix(transactionId)}${randomUUID()}`,
+        })
+        recordedPaymentId = recorded.moneyTransactionId
+        linkType = 'money_transaction'
+        linkId = recorded.moneyTransactionId
+      }
+
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
       await crud.update(toRecordId(ctx.defId, transactionId), {
         bank_transaction_review_status: 'matched',
-        bank_transaction_matched_record_id: recordId,
-        bank_transaction_matched_record_type: recordType,
+        bank_transaction_matched_record_id: linkId,
+        bank_transaction_matched_record_type: linkType,
         bank_transaction_reviewed_at: new Date().toISOString(),
         bank_transaction_reviewed_by_user_id: actorUserId,
       })
@@ -157,16 +201,23 @@ export async function matchTransaction(
       await stampDocument(db, {
         organizationId,
         actorUserId,
-        recordType,
-        recordId,
+        recordType: linkType,
+        recordId: linkId,
         transactionId,
       })
+
+      if (recordedPaymentId)
+        await acceptVendorPaymentAccounting(db, {
+          organizationId,
+          moneyTransactionId: recordedPaymentId,
+          actorUserId,
+        })
 
       logger.info('Matched a bank line to a document', {
         organizationId,
         transactionId,
-        recordType,
-        recordId,
+        recordType: linkType,
+        recordId: linkId,
       })
       return {
         transaction: await requireBankTransaction(db, organizationId, transactionId),
@@ -824,6 +875,24 @@ export async function undoReview(
             bank_transaction_reviewed_by_user_id: null,
           })
         } else if (line.matchedRecordType !== 'bank_account') {
+          // A vendor payment THIS match recorded (D9) is VOIDED, never deleted:
+          // its posting is reversed and its applications taken back, so the bill
+          // owes what it owed. A payment recorded by hand is only unlinked.
+          const minedHere = await wasRecordedByThisMatch(
+            db,
+            organizationId,
+            transactionId,
+            line.matchedRecordType,
+            line.matchedRecordId
+          )
+          if (minedHere)
+            await voidVendorPayment(db, {
+              organizationId,
+              userId: actorUserId,
+              moneyTransactionId: line.matchedRecordId,
+              reason: memo ?? `Undo bank review ${line.externalId ?? transactionId}`,
+              commandKey: `bank-match-undo:${transactionId}:${randomUUID()}`,
+            })
           await unstampDocument(db, {
             organizationId,
             actorUserId,
@@ -903,19 +972,16 @@ async function readDocumentLink(
   recordId: string
 ): Promise<string | null> {
   const attribute =
-    recordType === 'vendor_payment'
-      ? 'vendor_payment_bank_transaction_id'
-      : recordType === 'bank_deposit'
-        ? 'bank_deposit_bank_transaction_id'
-        : recordType === 'payout'
-          ? 'payout_bank_transaction_id'
-          : null
+    recordType === 'bank_deposit'
+      ? 'bank_deposit_bank_transaction_id'
+      : recordType === 'payout'
+        ? 'payout_bank_transaction_id'
+        : null
   if (!attribute) {
-    // 🛑 `vendor_bill` has no pointer field of its own - `paid_source` records
-    // THAT a bank line confirmed it, never WHICH one - so the only record of the
-    // link is the bank line's own `matchedRecordId`. Answering null here would
-    // make the "already matched to bank line X" refusal unreachable for a bill,
-    // and two bank lines could each claim to have paid it.
+    // 🛑 `vendor_bill` and `money_transaction` have no pointer field of their
+    // own, so the only record of the link is the bank line's own
+    // `matchedRecordId`. Answering null here would make the "already matched to
+    // bank line X" refusal unreachable, and two lines could each claim it.
     return readBankLineClaiming(db, organizationId, recordId)
   }
 
@@ -996,19 +1062,6 @@ async function stampDocument(
   if (recordType === 'money_transaction') return
   const defId = await resolveDefIdForRecord(db, organizationId, recordId)
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-  if (recordType === 'vendor_payment') {
-    await crud.update(toRecordId(defId, recordId), {
-      vendor_payment_bank_transaction_id: transactionId,
-      vendor_payment_cleared_at: now,
-    })
-    return
-  }
-  if (recordType === 'vendor_bill') {
-    await crud.update(toRecordId(defId, recordId), {
-      vendor_bill_paid_source: 'bank_import',
-    })
-    return
-  }
   if (recordType === 'payout') {
     // 🛑 Prevention half of the duplicate detector (brief 18 §1). A matched
     // payout posts nothing of its own - the payout's own sync already posted
@@ -1018,6 +1071,47 @@ async function stampDocument(
       payout_bank_transaction_id: transactionId,
     })
   }
+}
+
+/**
+ * Whether this match is the thing that RECORDED the vendor payment behind it.
+ *
+ * 🛑 The two halves of D9 undo differently. A line coded to a BILL mints a
+ * payment, so undoing it has to take that payment back. A line MATCHED to a
+ * payment somebody recorded by hand is evidence of money that moved without the
+ * feed's help, and undoing the match must only unlink — voiding it would reverse
+ * a posting and reopen a bill nobody asked to touch.
+ *
+ * The provenance is the movement's own command: `record_vendor_payment` keyed
+ * under this line's match prefix. A hand-recorded payment carries the dialog's
+ * key instead, and a payment minted by a DIFFERENT line carries that line's.
+ */
+async function wasRecordedByThisMatch(
+  db: Database,
+  organizationId: string,
+  transactionId: string,
+  recordType: MatchRecordType,
+  recordId: string
+): Promise<boolean> {
+  if (recordType !== 'money_transaction') return false
+  const movement = await db.query.MoneyTransaction.findFirst({
+    where: and(
+      eq(schema.MoneyTransaction.organizationId, organizationId),
+      eq(schema.MoneyTransaction.id, recordId),
+      eq(schema.MoneyTransaction.purpose, 'vendor_payment')
+    ),
+  })
+  if (!movement) return false
+  const command = await db.query.MoneyCommand.findFirst({
+    where: and(
+      eq(schema.MoneyCommand.organizationId, organizationId),
+      eq(schema.MoneyCommand.id, movement.recordedByCommandId)
+    ),
+  })
+  return (
+    command?.kind === 'record_vendor_payment' &&
+    command.commandKey.startsWith(bankMatchKeyPrefix(transactionId))
+  )
 }
 
 /** Undo {@link stampDocument}. */
@@ -1038,13 +1132,6 @@ async function unstampDocument(
   if (recordType === 'money_transaction') return
   const defId = await resolveDefIdForRecord(db, organizationId, recordId)
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-  if (recordType === 'vendor_payment') {
-    await crud.update(toRecordId(defId, recordId), {
-      vendor_payment_bank_transaction_id: null,
-      vendor_payment_cleared_at: null,
-    })
-    return
-  }
   if (recordType === 'bank_deposit') {
     // A cleared deposit is frozen against edits by `updateBankDeposit`, so the
     // status and the pointer are cleared directly - this is the one writer that
@@ -1055,10 +1142,6 @@ async function unstampDocument(
       bank_deposit_bank_transaction_id: null,
       bank_deposit_cleared_at: null,
     })
-    return
-  }
-  if (recordType === 'vendor_bill') {
-    await crud.update(toRecordId(defId, recordId), { vendor_bill_paid_source: null })
     return
   }
   if (recordType === 'payout') {

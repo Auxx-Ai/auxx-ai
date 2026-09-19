@@ -726,6 +726,32 @@ export const PURCHASE_ORDER_FIELDS: Record<string, ResourceField> = {
     description: 'Supplier bills raised against this order — one order can be billed several times',
   },
 
+  vendorCredits: {
+    id: toFieldId('vendorCredits'),
+    key: 'vendorCredits',
+    label: 'Vendor Credits',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'purchase_order_vendor_credits',
+    systemSortOrder: 'aJa',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'vendor_credit:purchaseOrder' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'restrict',
+      isInverse: true,
+    },
+    description: 'Supplier credit notes raised against this order',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

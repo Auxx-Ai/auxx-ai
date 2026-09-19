@@ -80,6 +80,9 @@ const NO_CHILD_READS = [
   'journal-entry-delete-guard.ts',
   'order-delete-guard.ts',
   'vendor-bill-delete-guard.ts',
+  // `vendor-credit` is `credit-memo`'s mirror: its own status and issue date
+  // off the event, plus the `MoneyRefundSettlement` table.
+  'vendor-credit-delete-guard.ts',
   'work-order-delete-guard.ts',
 ]
 

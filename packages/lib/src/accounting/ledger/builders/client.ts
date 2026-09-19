@@ -15,7 +15,6 @@ export {
   CREDIT_MEMO_SOURCE_TYPE,
   type CreditMemoAmountsInput,
   type CreditMemoEntitlementComponent,
-  type CreditMemoSettlement,
   computeCreditMemoAmounts,
 } from './credit-memo'
 // ── plans/accounting/tasks/07: customer deposits are a liability ────────────
@@ -127,18 +126,17 @@ export {
   type OpeningBalanceLine,
 } from './opening-balance'
 export {
-  type BuildPaymentEntryInput,
-  type BuiltPaymentEntry,
-  buildPaymentEntry,
-  PAYMENT_PERIOD_KEY_PREFIX,
-  PAYMENT_ROUTE_ROLE,
-  PAYMENT_SOURCE_TYPE,
-  type PaymentEntryTransaction,
-  paymentPeriodKey,
-} from './payment'
-export {
   type BuildPayoutEntryInput,
   type BuiltPayoutEntry,
   buildPayoutEntry,
   PAYOUT_SOURCE_TYPE,
 } from './payout'
+// -- task 71 U7: the supplier's credit note, the expense bill sides-flipped ---
+export {
+  type BuildVendorCreditEntryInput,
+  type BuiltVendorCreditEntry,
+  buildVendorCreditEntry,
+  VENDOR_CREDIT_POSTING_TYPE,
+  VENDOR_CREDIT_SOURCE_TYPE,
+  type VendorCreditLineInput,
+} from './vendor-credit'

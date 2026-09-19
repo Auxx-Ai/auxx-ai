@@ -42,7 +42,7 @@ import { RecordIcon } from '~/components/resources/ui/record-icon'
 import { useSettings } from '~/hooks/use-settings'
 import { numberValue, PurchasingSummaryStrip, unwrapValue } from '../purchasing-summary-strip'
 import { AddBillDialog } from '../vendor-bill/add-bill-dialog'
-import { MarkBillPaidDialog } from '../vendor-bill/mark-bill-paid-dialog'
+import { RecordBillPaymentDialog } from '../vendor-bill/record-bill-payment-dialog'
 
 const PO_ATTRS = [
   'purchase_order_bills',
@@ -55,6 +55,7 @@ const BILL_ATTRS = [
   'vendor_bill_total',
   'vendor_bill_amount_paid',
   'vendor_bill_status',
+  'vendor_bill_payment_status',
   'vendor_bill_number',
 ] as const
 
@@ -161,7 +162,7 @@ export function PurchaseOrderBillsCard({ recordId }: DrawerTabProps) {
       )}
 
       {payTarget && (
-        <MarkBillPaidDialog
+        <RecordBillPaymentDialog
           open
           onOpenChange={(next) => !next && setPayTarget(null)}
           billRecordId={payTarget.recordId}
@@ -201,11 +202,14 @@ function BillRow({
   const balance = total - amountPaid
   const status = unwrapValue(values?.vendor_bill_status) as string | undefined
   const statusOption = statusField?.options?.options?.find((option) => option.value === status)
+  // The money axis (73 D1), separate from the lifecycle above.
+  const paymentStatus = (unwrapValue(values?.vendor_bill_payment_status) as string) || 'unpaid'
 
-  // A void bill owes nothing by definition, and a zero-total bill has no amount to
-  // settle — offering Pay on either is offering an action against a number nobody
-  // has entered yet.
-  const canPay = status !== 'void' && total > 0 && balance > 0
+  // A bill out of the books has no payable to pay, and a zero-total bill has no
+  // amount to settle — offering Pay on either is offering an action against a
+  // number nobody has entered yet.
+  const canPay =
+    status !== 'void' && status !== 'draft' && paymentStatus !== 'paid' && total > 0 && balance > 0
 
   return (
     <TreeRow
@@ -239,7 +243,7 @@ function BillRow({
         canPay ? (
           <TreeRowButton
             persistent
-            tooltipText='Mark paid'
+            tooltipText='Record payment'
             onClick={() => onPay({ recordId: billRecordId, total, amountPaid })}>
             <Banknote />
           </TreeRowButton>

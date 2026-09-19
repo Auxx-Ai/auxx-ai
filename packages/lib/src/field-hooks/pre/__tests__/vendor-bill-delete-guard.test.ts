@@ -7,9 +7,9 @@
 // settled test runs on ONE date, `vendor_bill_billed_at`, which the field's own
 // description calls "the ACCOUNTING date".
 //
-// The allocation refusal and the line cascade are no longer here: they are
-// `onDelete: 'restrict'` on `vendor_bill_payment_allocations` and `onDelete:
-// 'cascade'` on `vendor_bill_lines`, run by the delete engine.
+// The line cascade is no longer here: it is `onDelete: 'cascade'` on
+// `vendor_bill_lines`, run by the delete engine. A bill with a payment against it
+// is already refused by its status.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntityPreDeleteEvent } from '../../types'
@@ -81,12 +81,20 @@ beforeEach(() => {
 })
 
 describe('guardVendorBillDelete: status', () => {
-  for (const status of ['posted', 'partially_paid', 'paid']) {
-    it(`refuses a ${status} bill`, async () => {
-      await expect(guardVendorBillDelete(event({ vendor_bill_status: status }))).rejects.toThrow(
-        /in the books or part-paid/i
-      )
-      // The status wall reads nothing: a refused bill never reaches the period read.
+  it('refuses a posted bill', async () => {
+    await expect(guardVendorBillDelete(event({ vendor_bill_status: 'posted' }))).rejects.toThrow(
+      /in the books/i
+    )
+    // The status wall reads nothing: a refused bill never reaches the period read.
+    expect(h.resolvePeriodLock).not.toHaveBeenCalled()
+  })
+
+  // 73 D1: the money axis is its own field, and it is what "money has moved" reads.
+  for (const paymentStatus of ['partially_paid', 'paid']) {
+    it(`refuses a ${paymentStatus} bill`, async () => {
+      await expect(
+        guardVendorBillDelete(event({ vendor_bill_payment_status: paymentStatus }))
+      ).rejects.toThrow(/money has already moved/i)
       expect(h.resolvePeriodLock).not.toHaveBeenCalled()
     })
   }
@@ -99,13 +107,21 @@ describe('guardVendorBillDelete: status', () => {
     })
   }
 
+  it('allows an unpaid bill through the money wall', async () => {
+    await expect(
+      guardVendorBillDelete(event({ vendor_bill_payment_status: 'unpaid' }))
+    ).resolves.toBeUndefined()
+  })
+
   it('unwraps a coerced SINGLE_SELECT value', async () => {
     // The `build-status-guard.ts` trap: on the field chain a select arrives as
     // `{ type: 'option', optionId }`, and a guard comparing the raw value is
     // inert while reading perfectly in review.
     await expect(
-      guardVendorBillDelete(event({ vendor_bill_status: { type: 'option', optionId: 'paid' } }))
-    ).rejects.toThrow(/part-paid/i)
+      guardVendorBillDelete(
+        event({ vendor_bill_payment_status: { type: 'option', optionId: 'paid' } })
+      )
+    ).rejects.toThrow(/money has already moved/i)
   })
 })
 

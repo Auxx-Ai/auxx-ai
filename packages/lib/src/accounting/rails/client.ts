@@ -139,17 +139,14 @@ export function normaliseGatewayHandle(handle: string): string {
 /**
  * The two handles that never belong to a `payment_gateway` record.
  *
- * `resolveFulfillmentDebit` (`postings/build-fulfillment-batch-entry.ts`)
- * answers both from its own fork, before any route is consulted: `manual` is
- * money that did not come through a rail at all and debits
- * `accounts_receivable`, and `bogus` is Shopify's test gateway and excludes the
- * shipment outright. Neither can ever be "claimed", so the census
+ * `manual` is money that did not come through a rail at all and `bogus` is
+ * Shopify's test gateway. A receipt carrying either names NO rail and lands in
+ * undeposited funds (task 71 U2); neither can ever be "claimed", so the census
  * ({@link listObservedGatewayHandles}) drops them rather than reporting two
  * permanently unroutable handles at every org forever.
  *
  * 🛑 A deliberate mirror of that file's private `MANUAL_GATEWAY` /
- * `TEST_GATEWAY`, not an import - `build-fulfillment-batch-entry.ts` imports
- * THIS file for `GatewayRoute`, and an import back would be a cycle. Same call
+ * `TEST_GATEWAY`, not an import - an import back would be a cycle. Same call
  * {@link normaliseGatewayHandle} makes about `normaliseGateways`.
  */
 export const RESERVED_GATEWAY_HANDLES: readonly string[] = ['manual', 'bogus']
@@ -249,8 +246,9 @@ export interface PaymentGatewayRow {
 }
 
 /**
- * What `resolveFulfillmentDebit` reads to answer which RAIL a handle belongs to
- * (task 58 §5.2; before it, this answered with the rail's clearing account id).
+ * What a movement's own gateway HANDLE is matched against to find its rail
+ * (task 71 U2): the handles a `payment_gateway` record claims, and its id. The
+ * one caller is `customer-money/receipt-accounting.ts`, at post time.
  *
  * `handles` are RAW (not normalised) - the caller normalises both sides at
  * match time with {@link normaliseGatewayHandle}, the same way
@@ -258,52 +256,46 @@ export interface PaymentGatewayRow {
  */
 export interface GatewayRoute {
   handles: readonly string[]
-  clearingGlAccountId: string
+  /** The `payment_gateway` record's id. `resolveCashEndpoint` scopes `clearing` to it. */
+  paymentGatewayId: string
   /** False for a closed rail. A closed rail still routes its OWN history - see below. */
   active: boolean
 }
 
 /**
- * Every route `resolveFulfillmentDebit` can match a normalised gateway
- * against, from ACTIVE and CLOSED rows alike.
+ * Every route a normalised gateway handle can match against, from ACTIVE and
+ * CLOSED rows alike.
  *
- * 🛑 **Closed rows are included on purpose.** Authorize.Net is closed as of
- * May 2026 but its orders are still in the ledger; excluding a closed
- * gateway's route would silently fall the fulfillment debit fork back to its
- * `clearing` default the moment somebody marks the rail closed, which is
- * a posting change disguised as a settings edit. `active` rides along on the
- * route so a caller that wants to treat closed differently (a report, a
- * warning) can, without a second query.
+ * 🛑 **Closed rows are included on purpose.** Authorize.Net is closed as of May
+ * 2026 but its orders are still in the ledger; excluding it would stop its
+ * receipts posting the moment somebody marks the rail closed — a posting change
+ * disguised as a settings edit. `active` rides along so a caller that wants to
+ * treat closed differently (a report, a warning) can.
  */
 export function toGatewayRoutes(rows: readonly PaymentGatewayRow[]): GatewayRoute[] {
   return rows.map((row) => ({
     handles: row.handles,
-    clearingGlAccountId: row.clearingGlAccountId,
+    paymentGatewayId: row.id,
     active: row.status === 'active',
   }))
 }
 
 /**
- * Which route's clearing account one gateway names, when EXACTLY ONE claims it.
+ * Which RAIL one gateway handle belongs to, when EXACTLY ONE claims it.
  *
- * 🛑 **The single matcher.** Every posting path that turns a gateway into an
- * account goes through this one function, because two copies that disagree put
- * a sale and its refund in different accounts - which balances, and is
- * therefore undetectable downstream. `build-fulfillment-batch-entry.ts`
- * (the sale) and `money/credit-memos/writes.ts` (the refund) are the two
- * callers; they used to be a private copy and a hardcoded `clearing`
- * respectively.
+ * 🛑 **The single matcher.** Every path that turns a handle into a rail goes
+ * through this one function, because two copies that disagree put a receipt and
+ * its refund on different rails - which balances, and is therefore undetectable
+ * downstream.
  *
  * Both sides are normalised with {@link normaliseGatewayHandle}, so `'Affirm'`,
  * `' affirm '` and `'AFFIRM'` are one gateway.
  *
- * Returns undefined - meaning *fall back to the role default* - on:
- *
- * - **zero matches.** The record has nothing to say about this gateway yet.
- * - **more than one match.** Two routes claiming one handle is a state the
- *   record's own write path should never allow, and guessing which is right
- *   would put real money in one of two accounts. Refusing to choose leaves it
- *   in `clearing`, where a wrong answer fails to reconcile visibly.
+ * Returns undefined on zero matches (the handle is unmapped) and on more than
+ * one (two routes claiming one handle is a state the record's own write path
+ * should never allow, and guessing would put real money on one of two rails).
+ * The caller decides what an undefined answer means; the channel receipt poster
+ * refuses, naming the handle, rather than guessing.
  *
  * ⚠️ A CLOSED route still matches. Its past orders are still in the ledger and
  * must keep reconciling; treating `active: false` as absent would silently move
@@ -319,6 +311,6 @@ export function matchGatewayRoute(
   const matches = routes.filter((route) =>
     route.handles.some((handle) => normaliseGatewayHandle(handle) === wanted)
   )
-  return matches.length === 1 ? matches[0]?.clearingGlAccountId : undefined
+  return matches.length === 1 ? matches[0]?.paymentGatewayId : undefined
 }
 export type { RailFeeAccount, RailFeeStatus } from './rail-fee-status'

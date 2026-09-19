@@ -10,10 +10,10 @@
  * them directly the way `pack-picker.test.ts` reads the pack cascade.
  *
  * 🛑 **Nothing here routes.** `suggestRail` is a suggestion catalogue and this
- * file only groups by what it suggests; `matchGatewayRoute` is the single
- * matcher from a handle to an account and it reads the org's own records. A
- * second thing that answered "which account" would put a sale and its refund in
- * different accounts, which balances and is therefore undetectable downstream.
+ * file only groups by what it suggests; a movement names its rail and
+ * `resolveCashEndpoint` resolves that rail's clearing account. A second thing
+ * that answered "which account" would put a sale and its refund in different
+ * accounts, which balances and is therefore undetectable downstream.
  */
 
 import type { GatewayHandleCensusRow, PaymentGatewayRow } from '@auxx/lib/accounting/rails/client'
@@ -24,10 +24,9 @@ import { type RailSuggestion, suggestRail } from '@auxx/lib/accounting/rails/rai
  * How long a rail can go without an order before the page offers to create its
  * account AND mark it closed in one action (§9).
  *
- * ⚠️ A display threshold, never a posting rule. A closed rail still routes its
- * own history (`toGatewayRoutes` reads active AND closed rows), so getting this
- * number wrong costs a pre-ticked checkbox somebody unticks, not a misposted
- * entry. Six months is long enough that a seasonal rail is not called dead and
+ * ⚠️ A display threshold, never a posting rule. Movements already stamped with a
+ * closed rail still post to its clearing account, so getting this number wrong
+ * costs a pre-ticked checkbox somebody unticks, not a misposted entry. Six months is long enough that a seasonal rail is not called dead and
  * short enough that a rail switched away from last quarter is.
  */
 export const STALE_RAIL_DAYS = 180

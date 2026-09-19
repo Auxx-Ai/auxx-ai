@@ -6,9 +6,8 @@
 // `MoneyTransaction` plus one `customer_credit` `MoneyRefundSettlement` naming
 // the memo, and NO `MoneyApplication` - an application relieves an INVOICE's
 // receivable, and this money settles the memo (10-credit-memos §8 step 3 leaves
-// the invoice at its full balance). Second, the two-way endpoint: the org's
-// `accounting.paymentRoute.<method>` setting decides whether the refund must
-// name a bank account or must not, and both wrong answers still balance.
+// the invoice at its full balance). Second, the cash endpoint: a rail, a bank
+// account, or neither, stamped onto the movement for the poster to resolve.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -16,7 +15,6 @@ const h = vi.hoisted(() => ({
   memo: {} as Record<string, unknown>,
   /** Every `insert(table).values(...)`: `[tableName, values]`. */
   inserts: [] as Array<[string, Record<string, unknown>]>,
-  settings: {} as Record<string, unknown>,
 }))
 
 vi.mock('../../../accounting/money/commands/run-money-command', () => ({
@@ -46,9 +44,6 @@ vi.mock('../reads', async () => {
     },
   }
 })
-vi.mock('../../../cache/singletons', () => ({
-  getOrgCache: () => ({ get: async () => h.settings }),
-}))
 vi.mock('@auxx/database', () => {
   const tableName = (table: unknown) => (table as { __table: string }).__table
   return {
@@ -90,8 +85,6 @@ const run = (overrides: Partial<Parameters<typeof recordCreditMemoRefund>[1]> = 
 beforeEach(() => {
   h.memo = { status: 'issued', balance: 120, contact: 'contact-1', invoice: 'inv-1' }
   h.inserts = []
-  // Shipped defaults: check -> undeposited_funds, bank -> cash, card -> clearing.
-  h.settings = {}
 })
 
 describe('the rows', () => {
@@ -110,6 +103,7 @@ describe('the rows', () => {
       occurredOn: '2026-09-08',
       partyInstanceId: 'contact-1',
       cashAccountInstanceId: null,
+      paymentGatewayId: null,
       method: 'check',
       recordedByCommandId: 'command-1',
       reference: '1042',
@@ -129,32 +123,36 @@ describe('the rows', () => {
   })
 })
 
-describe('the two-way endpoint', () => {
-  it('requires a bank account when the method routes to cash', async () => {
-    await expect(run({ method: 'bank' })).rejects.toThrow(/bank account this refund was paid from/)
-    expect(h.inserts).toEqual([])
+describe('the cash endpoint', () => {
+  it('holds a refund that names nothing in undeposited funds', async () => {
+    await run()
+    expect(h.inserts[0]![1]).toMatchObject({
+      cashAccountInstanceId: null,
+      paymentGatewayId: null,
+    })
+  })
+
+  it('stamps the bank account the money left', async () => {
     await run({ method: 'bank', bankAccountInstanceId: 'bank-1' })
-    expect(h.inserts[0]![1]).toMatchObject({ cashAccountInstanceId: 'bank-1' })
+    expect(h.inserts[0]![1]).toMatchObject({
+      cashAccountInstanceId: 'bank-1',
+      paymentGatewayId: null,
+    })
   })
 
-  it('refuses a bank account when the method is held in undeposited funds', async () => {
-    await expect(run({ bankAccountInstanceId: 'bank-1' })).rejects.toThrow(/undeposited funds/)
+  it('stamps the rail the money went back through', async () => {
+    await run({ method: 'card', paymentGatewayId: 'pg-1' })
+    expect(h.inserts[0]![1]).toMatchObject({
+      cashAccountInstanceId: null,
+      paymentGatewayId: 'pg-1',
+    })
+  })
+
+  it('refuses a refund that names both', async () => {
+    await expect(
+      run({ paymentGatewayId: 'pg-1', bankAccountInstanceId: 'bank-1' })
+    ).rejects.toThrow(/never both/)
     expect(h.inserts).toEqual([])
-  })
-
-  // `clearing` exists to be drained by a payout, and a hand-recorded refund
-  // produces none - so the recorder chooses, and either answer is allowed.
-  it('lets a clearing-routed method take either side', async () => {
-    await run({ method: 'card' })
-    expect(h.inserts[0]![1]).toMatchObject({ cashAccountInstanceId: null })
-    h.inserts = []
-    await run({ method: 'card', bankAccountInstanceId: 'bank-1' })
-    expect(h.inserts[0]![1]).toMatchObject({ cashAccountInstanceId: 'bank-1' })
-  })
-
-  it('honours an org setting that moves a method to the other side', async () => {
-    h.settings = { 'accounting.paymentRoute.check': 'cash' }
-    await expect(run()).rejects.toBeInstanceOf(BadRequestError)
   })
 })
 

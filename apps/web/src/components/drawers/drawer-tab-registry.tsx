@@ -409,11 +409,37 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('../purchasing/vendor-card').then((m) => ({ default: m.PurchaseOrderVendorCard })),
   'vendor_bill:vendor': () =>
     import('../purchasing/vendor-card').then((m) => ({ default: m.VendorBillVendorCard })),
-  // The bill's six P12 payment fields. NOT the AR-side `invoice:payments` shape:
-  // `vendor_payment` is inert under P13, so there are no payment records to list.
+  // The bill's payments: its `MoneyApplication` rows, the A/P mirror of
+  // `invoice:payments`.
   'vendor_bill:payment': () =>
     import('../purchasing/vendor-bill/vendor-bill-payment-card').then((m) => ({
       default: m.VendorBillPaymentCard,
+    })),
+  // The supplier credit notes against the bill, and what each one cancelled.
+  'vendor_bill:vendor-credits': () =>
+    import('../purchasing/vendor-bill/vendor-bill-credits-card').then((m) => ({
+      default: m.VendorBillCreditsCard,
+    })),
+
+  // ─────────────────────────────────────────────────────────────────
+  // VENDOR CREDIT OVERVIEW CARDS (71 §5 U7) — the buy-side mirror of the
+  // credit memo's three, drawer-only for the same reason.
+  // ─────────────────────────────────────────────────────────────────
+  'vendor_credit:lines': () =>
+    import('../purchasing/vendor-credit/vendor-credit-lines-card').then((m) => ({
+      default: m.VendorCreditLinesCard,
+    })),
+  'vendor_credit:settlement': () =>
+    import('../purchasing/vendor-credit/vendor-credit-settlement-card').then((m) => ({
+      default: m.VendorCreditSettlementCard,
+    })),
+  'vendor_credit:documents': () =>
+    import('../records/record-documents-card').then((m) => ({
+      default: m.VendorCreditDocumentsCard,
+    })),
+  'vendor_credit:ledger': () =>
+    import('../accounting/ui/ledger-card-registrations').then((m) => ({
+      default: m.VendorCreditLedgerCard,
     })),
 
   // ─────────────────────────────────────────────────────────────────

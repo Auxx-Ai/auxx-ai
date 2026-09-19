@@ -467,8 +467,26 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         { value: 'documents', label: 'Documents', icon: 'paperclip' },
         { value: 'vendor', label: 'Vendor', icon: 'store' },
         { value: 'payment', label: 'Payment', icon: 'credit-card' },
+        // The supplier's credit notes against this bill, read-only (71 U7).
+        { value: 'vendor-credits', label: 'Credits', icon: 'receipt-text' },
         // Accounting migration step 1b, part E. Empty until the vendor-bill
         // posting builder is wired to a writer (TARGET §5, MIGRATION step 5).
+        { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
+      ],
+    },
+  },
+
+  // The supplier's credit note (71 §5 U7) — the mirror of `credit_memo`, and
+  // laid out as one: lines, the settlement card (apply, refund), documents and
+  // the issue entry.
+  vendor_credit: {
+    entityType: 'vendor_credit',
+    additionalTabs: [],
+    tabCards: {
+      overview: [
+        { value: 'lines', label: 'Lines', icon: 'file-text', fullBleed: false },
+        { value: 'settlement', label: 'Settlement', icon: 'arrow-left-right' },
+        { value: 'documents', label: 'Documents', icon: 'paperclip' },
         { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
       ],
     },

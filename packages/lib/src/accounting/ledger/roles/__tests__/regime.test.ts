@@ -5,13 +5,7 @@
 // perfectly - so nothing else, anywhere, can catch it.
 
 import { describe, expect, it } from 'vitest'
-import {
-  DEFAULT_PAYMENT_ROUTES,
-  type PaymentRouteMethod,
-  resolvePaymentRoute,
-} from '../../../money/bank-deposits/route'
 import { ACCOUNT_ROLES } from '../../builders/entry'
-import { PAYMENT_ROUTE_ROLE } from '../../builders/payment'
 import { POSTING_TYPES, type PostingType } from '../../types'
 import {
   ENABLED_POSTING_TYPES,
@@ -125,17 +119,6 @@ describe('cash is gone as a role, and the guard is narrowed back to inventory', 
   it('the enabled regime still has no writer conflict', () => {
     expect(findWriterConflicts()).toEqual([])
   })
-
-  it('the `cash` payment route resolves to a bank account, not a role', () => {
-    expect(PAYMENT_ROUTE_ROLE.cash).toEqual({ kind: 'bank_account' })
-  })
-
-  it('every default payment route still resolves to exactly one destination', () => {
-    const methods = Object.keys(DEFAULT_PAYMENT_ROUTES) as PaymentRouteMethod[]
-    for (const method of methods) {
-      expect(resolvePaymentRoute(method, null)).toBe(DEFAULT_PAYMENT_ROUTES[method])
-    }
-  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -182,7 +165,7 @@ const POSTING_FAMILIES: Record<string, readonly PostingType[]> = {
   // `inventory` family beside `vendor_bill`: that one is the L3 purchasing
   // story and this one touches no inventory account, no GRNI and no three-way
   // match (brief 21 §3.2).
-  payables: ['expense_bill'],
+  payables: ['expense_bill', 'vendor_credit'],
 }
 
 describe('the export route is declared, total, and per family', () => {

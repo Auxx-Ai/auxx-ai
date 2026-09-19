@@ -4,6 +4,7 @@ import { type Database, schema, type Transaction, withAccountingCommitLock } fro
 import { and, asc, eq, inArray, isNull, lte, or } from 'drizzle-orm'
 import { ConflictError } from '../../../errors'
 import {
+  readReceiptRefundEndpoints,
   sumCreditMemoApplications,
   sumReservedCreditMemoRefunds,
 } from '../../../sales/credit-memos/reads'
@@ -571,6 +572,32 @@ export async function materializeImportedMoneyInTx(
         commandId: command!.id,
         commandItemKey: 'initial_credit',
       })
+      // The refund went back the way the receipt came in — read THROUGH the
+      // receipt's deposit, so a banked receipt's refund leaves the account the
+      // deposit put it in rather than undeposited funds (task 71 D6).
+      const endpoint = (
+        await readReceiptRefundEndpoints(tx as unknown as Database, organizationId, [original])
+      ).get(original.id)
+      if (
+        endpoint &&
+        (endpoint.paymentGatewayId || endpoint.cashAccountInstanceId) &&
+        !money.paymentGatewayId &&
+        !money.cashAccountInstanceId
+      )
+        await tx
+          .update(schema.MoneyTransaction)
+          .set({
+            paymentGatewayId: endpoint.paymentGatewayId,
+            cashAccountInstanceId: endpoint.cashAccountInstanceId,
+          })
+          .where(
+            and(
+              eq(schema.MoneyTransaction.organizationId, organizationId),
+              eq(schema.MoneyTransaction.id, money.id),
+              isNull(schema.MoneyTransaction.paymentGatewayId),
+              isNull(schema.MoneyTransaction.cashAccountInstanceId)
+            )
+          )
     }
   }
   await updateAcceptance(tx, acceptance.id, {

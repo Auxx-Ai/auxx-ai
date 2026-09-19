@@ -23,7 +23,6 @@ import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import type Stripe from 'stripe'
 import { getOrgCache } from '../../../cache'
-import { isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
 import { runMoneyCommand } from '../commands/run-money-command'
 import { syncInvoicePaymentState } from '../invoice-payments/payment-state'
 import { acceptInvoiceReceiptAccounting } from '../invoice-payments/receipt-accounting'
@@ -168,6 +167,7 @@ async function recordCheckoutReceipt(db: Database, payment: ConfirmedPayment): P
           datePrecision: 'instant',
           occurredAt: payment.occurredAt,
           partyInstanceId: target.contactInstanceId,
+          paymentGatewayId: rail?.paymentGatewayId ?? null,
           method: 'card',
           recordedByCommandId: commandId,
           reference: payment.paymentIntentId,
@@ -209,7 +209,6 @@ async function recordCheckoutReceipt(db: Database, payment: ConfirmedPayment): P
         organizationId,
         moneyTransactionId: result.moneyTransactionId,
         actorUserId: systemUserId,
-        ...(rail ? { railId: rail.paymentGatewayId } : {}),
       })
     : rail
       ? await acceptQuoteDepositAccounting(db, {
@@ -217,12 +216,11 @@ async function recordCheckoutReceipt(db: Database, payment: ConfirmedPayment): P
           moneyTransactionId: result.moneyTransactionId,
           parentKind: payment.quoteInstanceId ? 'quote' : 'invoice',
           parentInstanceId: (payment.quoteInstanceId ?? payment.invoiceInstanceId)!,
-          railId: rail.paymentGatewayId,
           actorUserId: systemUserId,
         })
       : null
 
-  if (!posted || !isExpectedPostOutcome(posted))
+  if (!posted || posted.status === 'blocked')
     logger.warn('An online payment was recorded but not posted', {
       organizationId,
       moneyTransactionId: result.moneyTransactionId,

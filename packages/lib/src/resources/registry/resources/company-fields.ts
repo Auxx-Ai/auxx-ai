@@ -727,17 +727,17 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     description: 'Bills received from this supplier',
   },
 
-  // Reverse relationship: vendorPayments (from vendor_payment.vendor)
-  vendorPayments: {
-    id: toFieldId('vendorPayments'),
-    key: 'vendorPayments',
-    label: 'Vendor Payments',
+  // Reverse relationship: vendorCredits (from vendor_credit.vendor)
+  vendorCredits: {
+    id: toFieldId('vendorCredits'),
+    key: 'vendorCredits',
+    label: 'Vendor Credits',
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
-    systemAttribute: 'company_vendor_payments',
+    systemAttribute: 'company_vendor_credits',
     showInPanel: false,
-    systemSortOrder: 'c2',
+    systemSortOrder: 'c1a',
     capabilities: {
       filterable: true,
       sortable: false,
@@ -746,12 +746,12 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      inverseResourceFieldId: 'vendor_payment:vendor' as ResourceFieldId,
+      inverseResourceFieldId: 'vendor_credit:vendor' as ResourceFieldId,
       relationshipType: 'has_many',
       onDelete: 'unlink',
       isInverse: true,
     },
-    description: 'Payments made to this supplier',
+    description: 'Credit notes received from this supplier',
   },
 
   // ── 1099 / W-9 (plans/accounting/HANDOFF.md slot 2K, added by entity

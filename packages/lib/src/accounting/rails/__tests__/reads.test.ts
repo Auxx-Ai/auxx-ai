@@ -358,8 +358,7 @@ describe('listObservedGatewayHandles', () => {
   })
 
   it('counts a CLOSED gateway as claiming its handles', async () => {
-    // `toGatewayRoutes` keeps closed rows on purpose - a closed rail still
-    // routes its own history - so its handles are routed, not orphaned.
+    // A closed rail still carries its own history, so its handles are claimed.
     queue(schema.FieldValue, [{ optionId: 'authorize_net', valueText: null }])
     queue(schema.EntityInstance, [{ id: 'pg_closed', createdAt: null, updatedAt: null }])
     queue(schema.FieldValue, [

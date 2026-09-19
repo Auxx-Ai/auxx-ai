@@ -25,7 +25,6 @@ import { formatMinor } from '../../ledger/format'
  * (brief 18 §1.1 a).
  */
 const RECORD_TYPE_ICONS: Record<MatchRecordType, LucideIcon> = {
-  vendor_payment: FileCheck2,
   money_transaction: CreditCard,
   bank_deposit: FileCheck2,
   vendor_bill: FileCheck2,
@@ -145,7 +144,7 @@ export function MatchPanel({ line, currencyCode, onDone }: MatchPanelProps) {
                       match.mutate({
                         id: line.id,
                         recordType: row.recordType as
-                          | 'vendor_payment'
+                          | 'money_transaction'
                           | 'bank_deposit'
                           | 'vendor_bill'
                           | 'payout',
