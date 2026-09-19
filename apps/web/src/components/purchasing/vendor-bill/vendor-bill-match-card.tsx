@@ -40,7 +40,7 @@
 // `TabCardSection`: the portal target is absent and `DrawerCardActions` yields
 // null, which is the documented behaviour and not a badge worth duplicating.
 
-import { DEFAULT_MATCH_TOLERANCE, isAwaitingReceipt } from '@auxx/lib/purchasing/client'
+import { DEFAULT_MATCH_TOLERANCE, isAwaitingReceipt } from '@auxx/lib/accounting/purchasing/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { EmptySection } from '@auxx/ui/components/section'

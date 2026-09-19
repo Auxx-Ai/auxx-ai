@@ -38,7 +38,7 @@ import {
   parseIntakeTotal,
   parseIntakeUnitPrice,
   printedLineGap,
-} from '@auxx/lib/purchasing/intake/client'
+} from '@auxx/lib/accounting/purchasing/intake/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'

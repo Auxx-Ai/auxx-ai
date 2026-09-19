@@ -22,7 +22,7 @@
 import {
   INTAKE_POINTER_STORAGE_KEY,
   type IntakeDraftPointer,
-} from '@auxx/lib/purchasing/intake/client'
+} from '@auxx/lib/accounting/purchasing/intake/client'
 import { useCallback, useEffect, useState } from 'react'
 
 /** Cross-component notification: `storage` only fires in OTHER tabs. */

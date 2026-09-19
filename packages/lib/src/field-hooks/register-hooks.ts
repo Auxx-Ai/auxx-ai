@@ -3,6 +3,16 @@
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import { registerFinancialRecordRules } from '../accounting/money/customer-money/record-events'
 import {
+  rematchAfterBillLineDelete,
+  rematchOnBillChange,
+  rematchOnBillLineChange,
+} from '../accounting/purchasing/match-hook'
+import { registerMatchReconcilers } from '../accounting/purchasing/match-reconciler'
+import {
+  recalculateBalanceOnBillChange,
+  registerVendorBillBalanceReconcilers,
+} from '../accounting/purchasing/vendor-bill-balance'
+import {
   ensureVisitOnWorkOrderCreate,
   syncVisitPinsOnAddressNormalized,
 } from '../dispatch/visit-hooks'
@@ -22,16 +32,6 @@ import {
 } from '../inventory/builds/drift-hooks'
 import { registerOrderDriftReconcilers } from '../inventory/builds/drift-reconciler'
 import { derivePhoneGeoOnChange, warmPhoneGeo } from '../phone-geo'
-import {
-  rematchAfterBillLineDelete,
-  rematchOnBillChange,
-  rematchOnBillLineChange,
-} from '../purchasing/match-hook'
-import { registerMatchReconcilers } from '../purchasing/match-reconciler'
-import {
-  recalculateBalanceOnBillChange,
-  registerVendorBillBalanceReconcilers,
-} from '../purchasing/vendor-bill-balance'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import { repairNameCasing } from '../records/name-case/hook'
 import {

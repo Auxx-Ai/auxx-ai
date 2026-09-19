@@ -24,7 +24,7 @@ vi.mock('../../../cache', () => ({
     from: () => ({ bySystemAttributes: async () => h.fields }),
   }),
 }))
-vi.mock('../../../purchasing/bill-edit-flag', () => ({
+vi.mock('../../../accounting/purchasing/bill-edit-flag', () => ({
   readBillEditOpen: async () => h.editOpen,
 }))
 

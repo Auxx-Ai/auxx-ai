@@ -1,34 +1,6 @@
 // apps/web/src/server/api/routers/purchasing.ts
 
 import { type Database, schema } from '@auxx/database'
-import { getCachedEntityDefId, getOrgCache } from '@auxx/lib/cache'
-import { NotFoundError, UnprocessableEntityError } from '@auxx/lib/errors'
-import { computeExtendedCost, reverseMovement } from '@auxx/lib/inventory/movements'
-import {
-  adjustStock,
-  bulkOpenStockBalance,
-  bulkSetPartKind,
-  getLastReceiptCost,
-  getPartReceiptHistory,
-  listOpeningStockCandidates,
-  listReceipts,
-  openStockBalance,
-  receivePurchaseOrder,
-  receiveStock,
-} from '@auxx/lib/inventory/receiving'
-import {
-  adoptTariffStarters,
-  applyTariffResync,
-  applyTariffSchedule,
-  expandTariffStarter,
-  listHtsChildren,
-  loadHtsGeneral,
-  loadTariffActions,
-  loadTariffMemberships,
-  planTariffResync,
-  TARIFF_STARTERS_VERSION,
-} from '@auxx/lib/inventory/tariffs'
-import { PermissionKey } from '@auxx/lib/permissions'
 import {
   allocateLandedCost,
   checkIntakeModelCapability,
@@ -59,8 +31,36 @@ import {
   updateBillIntakeRun,
   updateIntakeDraftPayload,
   voidVendorBill,
-} from '@auxx/lib/purchasing'
-import { INTAKE_TIERS } from '@auxx/lib/purchasing/intake/client'
+} from '@auxx/lib/accounting/purchasing'
+import { INTAKE_TIERS } from '@auxx/lib/accounting/purchasing/intake/client'
+import { getCachedEntityDefId, getOrgCache } from '@auxx/lib/cache'
+import { NotFoundError, UnprocessableEntityError } from '@auxx/lib/errors'
+import { computeExtendedCost, reverseMovement } from '@auxx/lib/inventory/movements'
+import {
+  adjustStock,
+  bulkOpenStockBalance,
+  bulkSetPartKind,
+  getLastReceiptCost,
+  getPartReceiptHistory,
+  listOpeningStockCandidates,
+  listReceipts,
+  openStockBalance,
+  receivePurchaseOrder,
+  receiveStock,
+} from '@auxx/lib/inventory/receiving'
+import {
+  adoptTariffStarters,
+  applyTariffResync,
+  applyTariffSchedule,
+  expandTariffStarter,
+  listHtsChildren,
+  loadHtsGeneral,
+  loadTariffActions,
+  loadTariffMemberships,
+  planTariffResync,
+  TARIFF_STARTERS_VERSION,
+} from '@auxx/lib/inventory/tariffs'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { parseRecordId, type RecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -393,7 +393,7 @@ export const purchasingRouter = createTRPCRouter({
    * order, and nothing about a receipt.
    *
    * `markPurchaseOrderSent` throws its `AuxxError` directly rather than returning a
-   * `Result` — it is a `@auxx/lib/purchasing` lifecycle mutation and follows that
+   * `Result` — it is a `@auxx/lib/accounting/purchasing` lifecycle mutation and follows that
    * module's convention, not `@auxx/lib/inventory/receiving`'s. `auxxErrorMiddleware` maps it,
    * so there is nothing to unwrap here.
    */

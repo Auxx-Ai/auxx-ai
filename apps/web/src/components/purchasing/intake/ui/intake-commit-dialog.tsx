@@ -29,8 +29,11 @@
 // after the parts were picked (no prefill re-runs), so the stored link can name
 // a different supplier's row. A label that can lie about this is worse than none.
 
-import type { IntakeDraftPayload, IntakeWriteBack } from '@auxx/lib/purchasing/intake/client'
-import { orderableLines } from '@auxx/lib/purchasing/intake/client'
+import type {
+  IntakeDraftPayload,
+  IntakeWriteBack,
+} from '@auxx/lib/accounting/purchasing/intake/client'
+import { orderableLines } from '@auxx/lib/accounting/purchasing/intake/client'
 import { parseRecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

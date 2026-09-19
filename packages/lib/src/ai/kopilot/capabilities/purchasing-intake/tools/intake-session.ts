@@ -1,14 +1,14 @@
 // packages/lib/src/ai/kopilot/capabilities/purchasing-intake/tools/intake-session.ts
 
 import type { Database } from '@auxx/database'
-import { getCachedEntityDefId } from '../../../../../cache'
-import type { CapabilityView } from '../../../../../permissions/capabilities/capability-view'
 import type {
   IntakeDraftPayload,
   IntakeDraftView,
   IntakeTier,
-} from '../../../../../purchasing/intake/client'
-import { getIntakeDraft } from '../../../../../purchasing/intake/draft-queries'
+} from '../../../../../accounting/purchasing/intake/client'
+import { getIntakeDraft } from '../../../../../accounting/purchasing/intake/draft-queries'
+import { getCachedEntityDefId } from '../../../../../cache'
+import type { CapabilityView } from '../../../../../permissions/capabilities/capability-view'
 import type { AgentDeps } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'

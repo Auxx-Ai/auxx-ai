@@ -19,7 +19,7 @@ import {
   unquantifiedLines,
   unreconciledLines,
   unresolvedLines,
-} from '@auxx/lib/purchasing/intake/client'
+} from '@auxx/lib/accounting/purchasing/intake/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

@@ -10,7 +10,7 @@
 // and the tooltip says which of the two happened rather than leaving the colour
 // to carry it.
 
-import { INTAKE_TIER_LABELS, type IntakeTier } from '@auxx/lib/purchasing/intake/client'
+import { INTAKE_TIER_LABELS, type IntakeTier } from '@auxx/lib/accounting/purchasing/intake/client'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'

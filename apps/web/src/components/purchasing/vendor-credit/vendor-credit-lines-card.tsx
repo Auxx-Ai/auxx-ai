@@ -13,7 +13,7 @@
 // The "Lines" section title is rendered by the drawer's `TabCardSection`
 // wrapper, so this card must not draw one.
 
-import { VENDOR_CREDIT_EDITABLE_STATUSES } from '@auxx/lib/purchasing/client'
+import { VENDOR_CREDIT_EDITABLE_STATUSES } from '@auxx/lib/accounting/purchasing/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'

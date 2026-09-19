@@ -14,7 +14,10 @@
 // that mints records, and the button that calls it stays DISABLED while any line
 // is still missing a part.
 
-import { type IntakeWriteBack, unresolvedLines } from '@auxx/lib/purchasing/intake/client'
+import {
+  type IntakeWriteBack,
+  unresolvedLines,
+} from '@auxx/lib/accounting/purchasing/intake/client'
 import { parseRecordId } from '@auxx/lib/resources/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'

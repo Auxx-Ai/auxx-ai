@@ -1,9 +1,9 @@
 // apps/web/src/server/lib/intake-draft-asset-access.ts
 
+import { getIntakeDraft } from '@auxx/lib/accounting/purchasing'
 import { getCachedEntityDefId } from '@auxx/lib/cache'
 import { NotFoundError } from '@auxx/lib/errors'
 import type { CapabilitySet } from '@auxx/lib/permissions/capabilities/capability-set'
-import { getIntakeDraft } from '@auxx/lib/purchasing'
 
 /**
  * Authorize a preview of the `MediaAsset` a purchase-order intake draft was

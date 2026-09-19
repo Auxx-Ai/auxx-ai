@@ -17,7 +17,7 @@
 // part's id goes onto the line through the caller's `onPatch`, which is the same
 // draft-state write the part PICKER uses.
 
-import type { IntakeLine } from '@auxx/lib/purchasing/intake/client'
+import type { IntakeLine } from '@auxx/lib/accounting/purchasing/intake/client'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { useCallback, useMemo } from 'react'
 import {

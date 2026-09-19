@@ -72,11 +72,11 @@ vi.mock('../../../realtime', () => ({
   getRealtimeService: () => ({}),
   publishFieldValueUpdates: h.publishFieldValueUpdates,
 }))
-vi.mock('../../../purchasing/purchase-order-status-writer', () => ({
+vi.mock('../../../accounting/purchasing/purchase-order-status-writer', () => ({
   recalculatePurchaseOrderStatuses: h.recalculatePurchaseOrderStatuses,
   recalculatePurchaseOrderStatusesForLines: h.recalculatePurchaseOrderStatusesForLines,
 }))
-vi.mock('../../../purchasing/match-reconciler', () => ({
+vi.mock('../../../accounting/purchasing/match-reconciler', () => ({
   rematchBillsForPurchaseOrderLines: h.rematchBillsForPurchaseOrderLines,
 }))
 vi.mock('../../../reconcilers/parent-reconciler', () => ({

@@ -7,16 +7,16 @@ import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm'
+import {
+  type PurchaseOrderStatusEvidence,
+  recalculatePurchaseOrderStatuses,
+  recalculatePurchaseOrderStatusesForLines,
+} from '../../accounting/purchasing/purchase-order-status-writer'
 import { getOrgCache, requireCachedEntityDefId } from '../../cache'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
 import { extractRelationshipRecordIds } from '../../field-values/relationship-field'
 import { type StoredFieldType, toFieldType } from '../../field-values/stored-field-type'
-import {
-  type PurchaseOrderStatusEvidence,
-  recalculatePurchaseOrderStatuses,
-  recalculatePurchaseOrderStatusesForLines,
-} from '../../purchasing/purchase-order-status-writer'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
@@ -571,7 +571,9 @@ async function rematchBillsAfterReceipt(
 ): Promise<void> {
   if (spec.evidence !== 'receipt' || changedLineIds.length === 0) return
   try {
-    const { rematchBillsForPurchaseOrderLines } = await import('../../purchasing/match-reconciler')
+    const { rematchBillsForPurchaseOrderLines } = await import(
+      '../../accounting/purchasing/match-reconciler'
+    )
     await rematchBillsForPurchaseOrderLines(organizationId, ROLLUP_ACTOR, changedLineIds)
   } catch (error) {
     logger.error('Failed to re-match bills after a receipt roll-up', {

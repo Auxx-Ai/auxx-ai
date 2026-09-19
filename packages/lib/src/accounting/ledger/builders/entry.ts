@@ -12,12 +12,12 @@
 
 import { isAtPrecision } from '@auxx/utils/currency'
 import { UnprocessableEntityError } from '../../../errors'
-// Pure arithmetic, no io - 73 §5.2 keeps the spread in one place rather than
-// copying it here. `purchasing/` becomes a sibling of this module in 73 U9.
-import { allocateCapitalisedCost } from '../../../purchasing/allocate-landed-cost'
-import type { AllocationBasis, AllocationLine } from '../../../purchasing/types'
 // Plain data, no io - the same direction `account-subtype.ts` already takes.
 import { GlAccountSubtype } from '../../../resources/registry/enum-values'
+// Pure arithmetic, no io - 73 §5.2 keeps the spread in one place rather than
+// copying it here. `purchasing/` becomes a sibling of this module in 73 U9.
+import { allocateCapitalisedCost } from '../../purchasing/allocate-landed-cost'
+import type { AllocationBasis, AllocationLine } from '../../purchasing/types'
 import type { GlAccountSubtypeValue } from '../chart/account-subtype'
 // Type-only, so this file stays pure: `default-chart.ts` imports the statement
 // classifications from the registry at runtime, and nothing of that reaches here.

@@ -24,7 +24,7 @@ import {
   requireVendorCredit,
   sumVendorCreditApplications,
   sumVendorCreditRefunds,
-} from '../../../purchasing/vendor-credit/reads'
+} from '../../purchasing/vendor-credit/reads'
 import type { PaymentMethod } from '../client'
 import { insertMovement } from '../commands/insert-movement'
 import { runMoneyCommand } from '../commands/run-money-command'

@@ -12,7 +12,6 @@
 // writes to the books or moves A/P, `ledgerView` for the reads and the preview.
 
 import { postVendorRefundAccounting, recordVendorRefund } from '@auxx/lib/accounting/money'
-import { PermissionKey } from '@auxx/lib/permissions'
 import {
   applyVendorCredit,
   createVendorCredit,
@@ -24,7 +23,8 @@ import {
   settleVendorCredit,
   unapplyVendorCredit,
   voidVendorCredit,
-} from '@auxx/lib/purchasing'
+} from '@auxx/lib/accounting/purchasing'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '../trpc'

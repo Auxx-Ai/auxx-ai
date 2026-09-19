@@ -25,7 +25,7 @@ vi.mock('../../commands/run-money-command', () => ({
   ) => run(db, 'cmd_1'),
 }))
 vi.mock('../payment-state', () => ({ syncVendorBillPaymentState: h.syncState }))
-vi.mock('../../../../purchasing/expense-bill/writes', () => ({
+vi.mock('../../../purchasing/expense-bill/writes', () => ({
   listVendorBillPostings: async () => h.postings,
 }))
 vi.mock('../../../../cache', () => ({
