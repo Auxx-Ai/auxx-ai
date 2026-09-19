@@ -15,15 +15,16 @@ export const EXPORT_BATCH_TABS = ['ready', 'sent', 'failed'] as const
 export type ExportBatchTab = (typeof EXPORT_BATCH_TABS)[number]
 
 /**
- * The Outbox's tabs: the ledger's own drafts, then the four export states.
- * `drafts` is not an `ExportBatchState` - a draft has no batch yet, which is
- * the point of it leading the strip.
+ * The Outbox's tabs: the ledger's own drafts, the movements the ledger refused,
+ * then the export states. Neither `drafts` nor `blocked` is an
+ * `ExportBatchState` - one has no batch yet and the other has no posting at
+ * all, which is the point of the two leading the strip (75-D1).
  */
-export const OUTBOX_TABS = ['drafts', ...EXPORT_BATCH_TABS] as const
+export const OUTBOX_TABS = ['drafts', 'blocked', ...EXPORT_BATCH_TABS] as const
 export type OutboxTab = (typeof OUTBOX_TABS)[number]
 
 export function isExportBatchTab(tab: OutboxTab): tab is ExportBatchTab {
-  return tab !== 'drafts'
+  return tab !== 'drafts' && tab !== 'blocked'
 }
 
 /** `?queue=` values a pasted link may still carry - tabs that no longer render included. */

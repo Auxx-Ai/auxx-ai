@@ -13,7 +13,7 @@ import {
 describe('the outbox tabs (75-D6)', () => {
   it('has no sending tab', () => {
     expect(EXPORT_BATCH_TABS).toEqual(['ready', 'sent', 'failed'])
-    expect(OUTBOX_TABS).toEqual(['drafts', 'ready', 'sent', 'failed'])
+    expect(OUTBOX_TABS).toEqual(['drafts', 'blocked', 'ready', 'sent', 'failed'])
   })
 
   it('keeps `sending` a state, with its own label', () => {

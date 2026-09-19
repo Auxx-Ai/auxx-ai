@@ -39,11 +39,13 @@ function tallyExportBatches(rows: ExportBatchRow[] | undefined): ExportQueueTall
 function outboxRailSentence(
   tally: ExportQueueTally,
   draftCount: number,
+  blockedCount: number,
   providerLabel: string
 ): string | null {
-  if (tally.total === 0 && draftCount === 0) return null
+  if (tally.total === 0 && draftCount === 0 && blockedCount === 0) return null
   const parts: string[] = []
   if (draftCount > 0) parts.push(`${draftCount} waiting for approval`)
+  if (blockedCount > 0) parts.push(`${blockedCount} refused by the ledger`)
   if (tally.ready > 0) parts.push(`${tally.ready} ready to send`)
   if (tally.sending > 0) parts.push(`${tally.sending} sending`)
   if (tally.failed > 0) parts.push(`${tally.failed} refused`)
@@ -88,6 +90,8 @@ interface LedgerSidebarProps {
   providerLabel: string
   /** Drafts awaiting approval, ALL periods - `ledger.listDrafts`' own count, not `syncQueue`'s. */
   draftCount: number
+  /** Movements the ledger refused, ALL periods - `ledger.listBlockedMovements`' SQL count. */
+  blockedCount: number
 }
 
 /**
@@ -126,13 +130,14 @@ export function LedgerSidebar({
   syncQueue,
   providerLabel,
   draftCount,
+  blockedCount,
 }: LedgerSidebarProps) {
   const open = useLedgerSidebarStore((state) => state.open)
   const setOpen = useLedgerSidebarStore((state) => state.setOpen)
 
   const tally = tallyExportBatches(syncQueue)
-  const outboxSentence = outboxRailSentence(tally, draftCount, providerLabel)
-  const outboxCount = tally.total + draftCount
+  const outboxSentence = outboxRailSentence(tally, draftCount, blockedCount, providerLabel)
+  const outboxCount = tally.total + draftCount + blockedCount
 
   return (
     <ModuleSidebar open={open} onOpenChange={setOpen} className={SECONDARY_SURFACE}>

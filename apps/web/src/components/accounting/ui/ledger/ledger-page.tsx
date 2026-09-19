@@ -260,6 +260,12 @@ export function LedgerPage() {
   // under it. `ledgerPost`-gated on the server, so a read-only member does not
   // fire a read that 403s.
   const draftsQuery = api.ledger.listDrafts.useQuery({}, { enabled: can('ledger.post') })
+  // The rail's badge counts what is parked as well as what is queued; one row is
+  // enough, the total is the `count()` beside it (75-D1).
+  const blockedQuery = api.ledger.listBlockedMovements.useQuery(
+    { limit: 1, offset: 0 },
+    { enabled: can('ledger.post') }
+  )
   // The month on screen rides along so the sweep can answer the COMPLETENESS
   // question too - what this month still owes the ledger. Without it the counts
   // come back `null` and the Books section renders the balance half alone.
@@ -480,6 +486,7 @@ export function LedgerPage() {
           syncQueue={exportBatchesQuery.data}
           providerLabel={providerLabel}
           draftCount={draftsQuery.data?.length ?? 0}
+          blockedCount={blockedQuery.data?.total ?? 0}
         />
 
         <div className='flex h-full min-w-0 flex-1 flex-col overflow-hidden'>

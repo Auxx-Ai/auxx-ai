@@ -161,6 +161,13 @@ describe('postMovementEntry', () => {
     ])
   })
 
+  // What Retry on the Outbox's Blocked tab relies on: mapping the role and
+  // posting again is the whole of clearing the mark (75-D1).
+  it('clears the posting block once the ledger accepts', async () => {
+    await expect(post()).resolves.toEqual({ status: 'accepted', glPostingId: 'gl_1' })
+    expect(h.marks).toEqual([{ postingBlockedReason: null, postingBlockedAt: null }])
+  })
+
   it('answers accepted when the movement already holds a live posting', async () => {
     h.findLiveSubjectPosting.mockResolvedValue(ok({ id: 'gl_old', txnDate: '2026-09-01' }))
     await expect(post()).resolves.toEqual({ status: 'accepted', glPostingId: 'gl_old' })

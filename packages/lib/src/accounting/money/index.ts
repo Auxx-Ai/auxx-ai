@@ -25,6 +25,18 @@ export {
   updateBankDeposit,
 } from './bank-deposits'
 export {
+  type BlockedMovementRow,
+  countBlockedMovements,
+  listBlockedMovements,
+  listMovementAccountingCandidates,
+  type MovementCandidateWindow,
+  type MovementPurpose,
+  POSTING_RETRY_INTERVAL_MS,
+  type PostBlockedMovementInput,
+  postBlockedMovement,
+  sweepMovementAccounting,
+} from './blocked-movements'
+export {
   type CashEndpoint,
   type CashEndpointKind,
   type CashEndpointSource,
