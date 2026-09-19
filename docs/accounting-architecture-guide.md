@@ -637,6 +637,23 @@ lift without a refetch.
 recompute a document past its editable statuses; during an edit it must, or the header total the
 Save floor reads would be the pre-edit one.
 
+🛑 **Cancel restores the derived totals itself** (75 D4). Restoring the lines does not bring the
+header back with them: the reconciler drains post-commit, by which time the edit row is gone and
+the freeze above is back on. So the snapshot's skip list is two lists — fields owned by a
+projection whose input is outside the edit are left alone (`PROJECTED_ATTRIBUTES`: the statuses,
+the paid/credited/refunded amounts, `vendor_bill_paid_at` — a payment landing mid-edit must
+survive Cancel), while the content-derived ones are written back from the snapshot through
+`setValueWithType`, after the children and **before** the row is dropped, in the same transaction.
+Which ones those are is named per family as `derivedTotalAttrs` on `spec.ts`, never inferred: the
+invoice's and the memo's subtotal, tax, total and balance, and the bill's balance alone — a bill's
+totals are transcribed from the vendor's document, `updatable`, and come back through the ordinary
+path.
+
+**Save re-projects payment state** (75 D5). `spec.ts`'s `afterSave` runs post-commit on `reposted`
+and `not_posted` — `syncVendorBillPaymentState`, `syncInvoicePaymentState`, `settleCreditMemo` — because
+an edit that moves a total moves what is still owed, and the projection is the only writer of the
+status that gates Record payment.
+
 `routers/document-edit.ts` carries `readState`, `open`, `save` and `cancel`, all four gated on
 **`ledgerPost`** for all three families: an edit reverses and reposts, so it belongs with Void and
 the write-off, not with the desk mutations that move a description.
@@ -1001,6 +1018,15 @@ money with a discount is **refused by name**: a settlement with no money in it i
 which is the vendor's own document. `purchase_discounts` is an `expense` role seeded at **5093**,
 a contra-COGS beside `ppv` 5090 — discounts show in margin, not in other income. The bank-review
 coding path passes zero; settling a remainder as discount from a bank line is not built.
+
+🛑 **Both halves of that leg had to be provisioned per org, and neither is automatic.** Adding
+5093 to `DEFAULT_CHART_OF_ACCOUNTS` gave it to nobody — the pack walk runs once, in the wizard, so
+every account the catalogue gains afterwards is unreachable to an org that already ran it. Data
+migration **180** closes that class for good by recomputing each org's `packState` and re-walking
+every pack reading `partial`; `absent` packs are never walked, because provisioning `payroll` for
+an org that never adopted it is worse than a missing row (75 D2). The mirror field
+`vendor_bill_amount_discounted` is ensured by **181** (75 D3). Until both ran, a discounted payment
+was refused on the unmapped role and the discount fell out of the balance in silence.
 
 ### 8.4a The vendor credit and the vendor refund
 
@@ -1418,6 +1444,38 @@ suggestion is never a mapping**.
 
 `providers/provider-agreement.ts` compares our trial balance against their balance sheet. 🛑 **It
 renders a COMPARISON and never becomes a statement source.**
+
+### 11.5 The Outbox — the one screen, five tabs
+
+`OUTBOX_TABS = ['drafts', 'blocked', 'ready', 'sent', 'failed']` (`export/client.ts`). The two
+leading tabs are not `ExportBatchState`s: `drafts` holds entries awaiting gate 1 and `blocked` holds
+movements that have no posting at all, which is why they stand ahead of the export states rather
+than among them. Every tab lists **all periods**; only the Build button is scoped to the month in
+the header, and its empty states say so.
+
+🛑 **`sending` is a state, not a tab** (75 D6). A batch mid-send stays listed under Ready and spins
+there — a momentary state is not a place to stand, and a batch that vanished from the tab you were
+looking at read as a failure. `exportBatchTabAdmits` is what makes Ready admit both, and
+`parseOutboxTab` lands a pasted `?queue=sending` on Ready rather than an empty strip.
+
+**Blocked is the money model's parked work** (75 D1). One row per `MoneyTransaction` carrying a
+`postingBlockedReason` with no live subject posting: the party, the amount, `postEntry`'s own words
+rendered verbatim, and — when the refusal is an unmapped role — the same remedy card the synchronous
+callout uses. **Map** deep-links to `/app/accounting/settings/accounts?role=<role>`, which seeds the
+Mapping tab's search box so the row is on screen; **Retry** re-runs the movement's poster and the
+mark clears on acceptance through `markPostingBlock(…, null)`. The list paginates and derives its
+`reasonKind` in SQL, because a dev org already holds ~1,100 of these.
+
+`money/blocked-movements.ts` is both halves: the reader above and `sweepMovementAccounting`, the
+scheduled retry the recovery job calls. It replaced a sweep that lived in `customer-money/` and was
+filtered to two purposes and to Shopify-sourced evidence, so a blocked `vendor_payment` was parked
+forever. 🛑 **The poster is chosen from the movement's own `MoneyApplication` evidence** — an
+application to an invoice is the invoice door, one to an order is the recognition door (§8.3) —
+never from a provider key. The back-off window and the never-tried-first ordering are 71 D12's,
+unchanged: a thousand refusals must not starve one postable movement.
+
+⚠️ A **document**-level refusal (a bill's Post button) has no lane here and needs none: it refuses
+synchronously, the callout names the remedy, and nothing is written.
 
 ---
 
