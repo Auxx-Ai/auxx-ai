@@ -18,6 +18,7 @@
 import { UnprocessableEntityError } from '../../../errors'
 import type { BuiltEntry, GlPostingLineInput } from '../types'
 import { buildEntry } from './entry'
+import { movementPeriodKey } from './movement-key'
 
 /** The `sourceType` every refund line carries - the movement. */
 export const REFUND_SOURCE_TYPE = 'money_transaction'
@@ -119,7 +120,7 @@ export function buildRefundEntry(input: BuildRefundEntryInput): BuiltRefundEntry
     sortOrder: lines.length,
   })
 
-  const periodKey = `refund:${moneyTransactionId}`
+  const periodKey = movementPeriodKey(REFUND_POSTING_TYPE, moneyTransactionId)
   return {
     entry: buildEntry({
       postingType: REFUND_POSTING_TYPE,

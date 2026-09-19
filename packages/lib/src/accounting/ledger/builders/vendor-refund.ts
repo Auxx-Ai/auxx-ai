@@ -16,6 +16,7 @@
 import { UnprocessableEntityError } from '../../../errors'
 import type { BuiltEntry, GlPostingLineInput } from '../types'
 import { buildEntry } from './entry'
+import { movementPeriodKey } from './movement-key'
 import { REFUND_POSTING_TYPE, REFUND_SOURCE_TYPE } from './refund'
 
 /** One vendor credit's slice of a refund, already resolved to its control account. */
@@ -119,7 +120,7 @@ export function buildVendorRefundEntry(input: BuildVendorRefundEntryInput): Buil
 
   // The same key shape the customer refund uses: one entry per movement falls
   // out of the claim index, and a reversal is that key at `-R1`.
-  const periodKey = `refund:${moneyTransactionId}`
+  const periodKey = movementPeriodKey(REFUND_POSTING_TYPE, moneyTransactionId)
   return {
     entry: buildEntry({
       postingType: REFUND_POSTING_TYPE,

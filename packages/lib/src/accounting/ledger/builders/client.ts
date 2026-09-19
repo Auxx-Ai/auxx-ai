@@ -112,6 +112,7 @@ export {
   type ManualPostingType,
   toMinorUnits,
 } from './manual'
+export { type MovementPostingType, movementPeriodKey } from './movement-key'
 export {
   type BuildOpeningBalanceEntryInput,
   type BuiltOpeningBalanceEntry,
