@@ -24,6 +24,7 @@ import {
 } from '../builders/inventory-movement'
 import { resolvePeriodLock } from '../periods/period-lock'
 import { listPostingsForSource } from '../reads/list-postings'
+import { readPostingLineSourceIds } from '../reads/read-posting'
 import { isAccountingEnabled } from '../setup/accounting-enabled'
 import type { GlPostingSourceInput, PostResult } from '../types'
 import { exportPostedEntry, type InTxPostResult, postEntryInTx } from './post-entry'
@@ -117,7 +118,7 @@ export async function postInventoryMovementInTx(
   ]
 
   const lock = await resolvePeriodLock(organizationId, tx)
-  return postEntryInTx(tx, {
+  const result = await postEntryInTx(tx, {
     organizationId,
     entry: built.entry,
     lock,
@@ -128,6 +129,51 @@ export async function postInventoryMovementInTx(
     actorUserId,
     memo,
   })
+  return (await inventoryKeyCollision(tx, organizationId, subject.sourceId, result)) ?? result
+}
+
+/**
+ * Turn an `already_posted` into a refusal when the posting holding our key is a
+ * DIFFERENT document.
+ *
+ * 🛑 `inventoryPeriodKey` folds into 36^6, so two documents can mint one key,
+ * and `already_posted` is a SUCCESS - without this the loser's movements sit in
+ * the subledger with nothing in the ledger and a clean outcome recorded. Every
+ * leg carries the document id as its line `sourceId`, so the winner's lines say
+ * whose entry it is. An unreadable winner leaves the status alone, exactly as
+ * `findRecurringKeyCollision` does.
+ */
+async function inventoryKeyCollision(
+  tx: Transaction,
+  organizationId: string,
+  documentId: string,
+  result: InTxPostResult
+): Promise<InTxPostResult | undefined> {
+  if (result.status !== 'already_posted' || !result.glPostingId) return undefined
+
+  const sources = await readPostingLineSourceIds(tx, organizationId, {
+    glPostingId: result.glPostingId,
+    sourceType: 'stock_movement',
+  })
+  if (sources.isErr() || sources.value.length === 0) return undefined
+  if (sources.value.includes(documentId)) return undefined
+
+  logger.error('An inventory period key collided with another document', {
+    organizationId,
+    documentId,
+    glPostingId: result.glPostingId,
+    docNumber: result.docNumber,
+    heldBy: sources.value.join(', '),
+  })
+  return {
+    status: 'error',
+    failureClass: 'data',
+    retryable: false,
+    error:
+      `This document minted the document number ${result.docNumber ?? '(unknown)'}, which is ` +
+      `already held by a different inventory document (${sources.value.join(', ')}). That is a ` +
+      'period-key hash collision, not a re-post: nothing was written for this document.',
+  }
 }
 
 /**

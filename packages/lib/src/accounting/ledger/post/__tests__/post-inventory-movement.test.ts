@@ -13,9 +13,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   accountingEnabled: true,
-  postEntryInTx: vi.fn(async () => ({ status: 'posted' as const, glPostingId: 'gp_1' })),
+  postEntryInTx: vi.fn(
+    async (): Promise<Record<string, unknown>> => ({ status: 'posted', glPostingId: 'gp_1' })
+  ),
   reverseEntry: vi.fn(async () => ({ status: 'posted' as const, glPostingId: 'gp_2' })),
   sourcePostings: [] as Array<Record<string, unknown>>,
+  lineSourceIds: [] as string[],
 }))
 
 vi.mock('../../setup/accounting-enabled', () => ({
@@ -34,6 +37,9 @@ vi.mock('../../reads/list-postings', () => ({
     isErr: () => false,
     value: h.sourcePostings,
   }),
+}))
+vi.mock('../../reads/read-posting', () => ({
+  readPostingLineSourceIds: async () => ({ isErr: () => false, value: h.lineSourceIds }),
 }))
 
 import {
@@ -139,6 +145,61 @@ describe('what it declines to post', () => {
       })
     ).toBeNull()
     expect(h.postEntryInTx).not.toHaveBeenCalled()
+  })
+})
+
+describe('the hashed claim key', () => {
+  it('keys the entry on a hash of the subject, short enough to mint a document number', async () => {
+    h.postEntryInTx.mockClear()
+    await postInventoryMovementInTx(TX, {
+      ...SALE,
+      subject: { sourceKind: 'fulfillment', sourceId: 'vk7igmn5dmleap9c9ghqqki7' },
+    })
+    const call = h.postEntryInTx.mock.calls.at(-1) as unknown as [
+      unknown,
+      { entry: { periodKey: string } },
+    ]
+    expect(call[1].entry.periodKey).toBe('INV-2U62A5')
+  })
+
+  it('trusts `already_posted` when the winning posting holds THIS document', async () => {
+    h.postEntryInTx.mockResolvedValue({ status: 'already_posted', glPostingId: 'gp_held' })
+    h.lineSourceIds = ['ful_1']
+
+    const result = await postInventoryMovementInTx(TX, {
+      ...SALE,
+      subject: { sourceKind: 'fulfillment', sourceId: 'ful_1' },
+    })
+
+    expect(result?.status).toBe('already_posted')
+  })
+
+  it('refuses `already_posted` when the key is held by a DIFFERENT document', async () => {
+    // A 36^6 fold can collide, and `already_posted` is a SUCCESS - untreated,
+    // this document's movements would sit in the subledger with no entry.
+    h.postEntryInTx.mockResolvedValue({ status: 'already_posted', glPostingId: 'gp_other' })
+    h.lineSourceIds = ['ful_999']
+
+    const result = await postInventoryMovementInTx(TX, {
+      ...SALE,
+      subject: { sourceKind: 'fulfillment', sourceId: 'ful_1' },
+    })
+
+    expect(result?.status).toBe('error')
+    expect(result?.error).toMatch(/collision/)
+  })
+
+  it('leaves an unreadable winner alone rather than refusing an ordinary re-post', async () => {
+    h.postEntryInTx.mockResolvedValue({ status: 'already_posted', glPostingId: 'gp_held' })
+    h.lineSourceIds = []
+
+    const result = await postInventoryMovementInTx(TX, {
+      ...SALE,
+      subject: { sourceKind: 'fulfillment', sourceId: 'ful_1' },
+    })
+
+    expect(result?.status).toBe('already_posted')
+    h.postEntryInTx.mockResolvedValue({ status: 'posted', glPostingId: 'gp_1' })
   })
 })
 

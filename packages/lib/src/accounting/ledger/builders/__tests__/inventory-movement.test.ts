@@ -6,8 +6,13 @@
 
 import { describe, expect, it } from 'vitest'
 import type { BuiltEntry } from '../../types'
+import { buildDocNumber, DOC_NUMBER_MAX_LENGTH } from '../doc-number'
 import { ACCOUNT_ROLES } from '../entry'
-import { buildInventoryMovementEntry, type InventoryMovementLine } from '../inventory-movement'
+import {
+  buildInventoryMovementEntry,
+  type InventoryMovementLine,
+  inventoryPeriodKey,
+} from '../inventory-movement'
 
 const RAW = ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS
 const FG = ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS
@@ -493,9 +498,47 @@ describe('the claim identity', () => {
       movements: [movement('sm_1', -100, FG)],
     })!
 
-    expect(built.entry.periodKey).toBe('ful_7')
+    expect(built.entry.periodKey).toBe(inventoryPeriodKey('ful_7'))
     expect(built.entry.postingType).toBe('inventory_movement')
     expect(built.entry.txnDate).toBe('2026-08-18')
+  })
+
+  it('keys on a HASH of the document, so a cuid subject fits the document number', () => {
+    // The receipt from the browser test: two movements, the first anchoring.
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      documentId: 'vk7igmn5dmleap9c9ghqqki7',
+      kind: 'receive',
+      movements: [movement('vk7igmn5dmleap9c9ghqqki7', 100_000)],
+    })!
+
+    expect(built.entry.periodKey).toBe('INV-2U62A5')
+    const original = buildDocNumber({ postingType: 'inventory_movement', periodKey: 'INV-2U62A5' })
+    expect(original).toBe('AUXX-INV-INV2U62A5')
+    // The reversal has to fit too, or the entry could never be taken back out.
+    const reversal = buildDocNumber({
+      postingType: 'inventory_movement',
+      periodKey: 'INV-2U62A5',
+      revision: 1,
+    })
+    expect(reversal).toBe('AUXX-INV-INV2U62A5-R1')
+    expect(reversal.length).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
+  })
+
+  it('is deterministic per document and distinct across documents', () => {
+    expect(inventoryPeriodKey('sm_abc')).toBe(inventoryPeriodKey('sm_abc'))
+    expect(inventoryPeriodKey('sm_abc')).not.toBe(inventoryPeriodKey('sm_abd'))
+  })
+
+  it('leaves the number-keyed posting types byte-identical', () => {
+    // A build keys on `build.number` and a fulfillment on its own number. The
+    // hash is the inventory builder's, and reaches neither.
+    expect(buildDocNumber({ postingType: 'fulfillment', periodKey: 'FUL-0007' })).toBe(
+      'AUXX-FUL-FUL0007'
+    )
+    expect(buildDocNumber({ postingType: 'manual_journal', periodKey: 'BLD-0007' })).toBe(
+      'AUXX-JNL-BLD0007'
+    )
   })
 
   it('names every movement as a member, in the order they were written', () => {

@@ -64,7 +64,8 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   payout: 'PAY',
   month_end_deferral: 'DEF',
   month_end_reversal: 'REV',
-  // An inventory document keys on its own subject id, never on a month.
+  // An inventory document keys on a HASH of its own subject id, never on a
+  // month - `inventoryPeriodKey`, which carries the collision caveat.
   inventory_movement: 'INV',
   refund: 'RFD',
   // 🛑 Keys on `vendor_bill_internal_number`, OURS, and never on

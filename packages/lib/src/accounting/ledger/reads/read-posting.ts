@@ -51,7 +51,7 @@
  * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
  */
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toDateKey, toIso } from '@auxx/utils/calendar-day'
 import { toMinor } from '@auxx/utils/currency'
@@ -203,7 +203,9 @@ export async function getPosting(
  * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
  */
 export async function readPostingLineSourceIds(
-  db: Database,
+  // A `Transaction` too: an in-transaction poster checks its own
+  // `already_posted` before its caller's work commits.
+  db: Database | Transaction,
   organizationId: string,
   params: { glPostingId: string; sourceType: string }
 ): Promise<Result<string[], Error>> {
