@@ -16,6 +16,8 @@ import { PayoutEvidenceDetail } from './payout-evidence-detail'
 
 interface PayoutEvidenceDrawerProps {
   payoutId: string | null
+  /** Overrides `!!payoutId` so a caller still resolving the id keeps the panel mounted. */
+  open?: boolean
   onOpenChange: (open: boolean) => void
   /** Docked into the Banking layout's `MainPageContent`, or a floating overlay. */
   isDocked: boolean
@@ -43,6 +45,7 @@ interface PayoutEvidenceDrawerProps {
  */
 export function PayoutEvidenceDrawer({
   payoutId,
+  open = !!payoutId,
   onOpenChange,
   isDocked,
   width,
@@ -58,7 +61,7 @@ export function PayoutEvidenceDrawer({
 
   return (
     <DockableDrawer
-      open={!!payoutId}
+      open={open}
       onOpenChange={onOpenChange}
       isDocked={isDocked}
       width={width}

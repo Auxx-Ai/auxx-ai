@@ -45,6 +45,7 @@
 // to stay on the screen.
 
 import { PermissionKey } from '@auxx/lib/permissions/client'
+import { ActionBar } from '@auxx/ui/components/action-bar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -54,10 +55,17 @@ import { cn } from '@auxx/ui/lib/utils'
 import { CircleHelp, Landmark, PanelRight, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
+import {
+  ListSelectionProvider,
+  SelectAllCheckbox,
+  useBulkMode,
+  useListSelection,
+  useSelectionIds,
+} from '~/components/list-selection'
 import { useMedia } from '~/hooks/use-media'
 import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
@@ -97,6 +105,14 @@ const STATUS_DOT: Record<string, string> = {
 
 /** Inspect settlements recorded through the existing payout workflow. */
 export function SettlementsPage() {
+  return (
+    <ListSelectionProvider>
+      <SettlementsBody />
+    </ListSelectionProvider>
+  )
+}
+
+function SettlementsBody() {
   const { can } = useAccess()
   useRequireCapability(PermissionKey.ledgerView)
 
@@ -122,6 +138,23 @@ export function SettlementsPage() {
     { externalId: openPayoutId ?? '' },
     { enabled: !!openPayoutId }
   )
+  // A payout nothing was imported for has no evidence to show, so the link closes.
+  useEffect(() => {
+    if (openPayoutId && evidenceId.isSuccess && evidenceId.data === null) void setOpenPayoutId(null)
+  }, [openPayoutId, evidenceId.isSuccess, evidenceId.data, setOpenPayoutId])
+
+  // Selection works as the review queue's does: available on every row, pinned
+  // once something is picked, and a row click extends the pick until it clears.
+  // There is no bulk action on a payout yet, so the bar only counts and clears.
+  const selectedIds = useSelectionIds()
+  const selecting = useBulkMode()
+  const toggle = useListSelection((state) => state.toggle)
+  const setItemIds = useListSelection((state) => state.setItemIds)
+  const exitSelection = useListSelection((state) => state.exit)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the view tab is the trigger
+  useEffect(() => {
+    exitSelection()
+  }, [onlyUnidentified])
 
   /** ⚠️ 1280px, the breakpoint `payouts-page.tsx` docks at behind the same layout. */
   const isDesktop = useMedia('(min-width: 1280px)')
@@ -169,6 +202,10 @@ export function SettlementsPage() {
     () => payoutsQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [payoutsQuery.data?.pages]
   )
+  const payoutIds = useMemo(() => payouts.map((payout) => payout.payoutId), [payouts])
+  useEffect(() => {
+    setItemIds(payoutIds)
+  }, [payoutIds, setItemIds])
 
   /** Whether an empty list is "these filters exclude everything" or "nothing exists". */
   const narrowed = !!filters.search.trim() || !!filters.from || !!filters.to
@@ -179,6 +216,9 @@ export function SettlementsPage() {
     () => (
       <PayoutEvidenceDrawer
         payoutId={evidenceId.data ?? null}
+        /* Open on the URL, not on the resolved id: switching rows re-resolves,
+           and gating on the result unmounted and remounted the panel each time. */
+        open={!!openPayoutId}
         onOpenChange={(open) => {
           if (!open) void setOpenPayoutId(null)
         }}
@@ -187,12 +227,12 @@ export function SettlementsPage() {
         onWidthChange={setDockedWidth}
       />
     ),
-    [evidenceId.data, setOpenPayoutId, isDesktop, dockedWidth, setDockedWidth]
+    [evidenceId.data, openPayoutId, setOpenPayoutId, isDesktop, dockedWidth, setDockedWidth]
   )
 
   const dockedPanels = useMemo(
     () =>
-      isDesktop && openPayoutId && evidenceId.data
+      isDesktop && openPayoutId
         ? [
             {
               key: 'payout',
@@ -204,7 +244,7 @@ export function SettlementsPage() {
             },
           ]
         : [],
-    [isDesktop, openPayoutId, evidenceId.data, drawer, dockedWidth, setDockedWidth]
+    [isDesktop, openPayoutId, drawer, dockedWidth, setDockedWidth]
   )
   useRegisterDockedPanels(dockedPanels)
 
@@ -260,9 +300,10 @@ export function SettlementsPage() {
           onOnlyUnidentifiedChange={(next) => void setOnlyUnidentified(next)}
           filters={filters}
           onChange={setFilters}
+          selectAll={<SelectAllCheckbox listPadding={16} />}
         />
 
-        <div className='flex flex-1 flex-col gap-1 p-4'>
+        <div className='flex flex-1 flex-col gap-1 p-4 pb-24'>
           {payoutsQuery.isPending ? (
             <div className='flex flex-col gap-2'>
               <Skeleton className='h-10 w-full' />
@@ -312,6 +353,13 @@ export function SettlementsPage() {
                     <TreeRow
                       className={TREE_SECONDARY_NOTRUNCATE}
                       icon={<Landmark className='size-4 text-muted-foreground' />}
+                      selectable
+                      selecting={selecting}
+                      selected={selectedIds.includes(payout.payoutId)}
+                      onSelectChange={(_next, event) =>
+                        toggle(payout.payoutId, { shiftKey: event.shiftKey })
+                      }
+                      selectLabel={`Select ${payout.number ?? payout.payoutId}`}
                       /* Date then number in one fixed-width mono column, the way
                        the Payouts list leads its rows. */
                       title={
@@ -407,8 +455,19 @@ export function SettlementsPage() {
                           )}
                         </div>
                       }
+                      /* Mid-selection a row click extends the pick; otherwise it
+                       opens the drawer, the same split the review queue makes. */
+                      onToggleOpen={() => {
+                        if (selecting) toggle(payout.payoutId)
+                        else if (externalId) void setOpenPayoutId(externalId)
+                      }}
                       rowClassName={cn(
-                        openPayoutId === externalId && 'bg-primary-100 ring-1 ring-primary-200'
+                        openPayoutId === externalId && 'bg-primary-100 ring-1 ring-primary-200',
+                        selectedIds.includes(payout.payoutId) &&
+                          cn(
+                            'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25',
+                            openPayoutId === externalId && 'ring-info/40'
+                          )
                       )}
                     />
                     {/* 🛑 Brief 13 §2.3: a payout debits a bank account, not a role, and
@@ -454,6 +513,15 @@ export function SettlementsPage() {
           )}
         </div>
       </div>
+
+      <ActionBar
+        open={selectedIds.length > 0}
+        onOpenChange={(open) => !open && exitSelection()}
+        selectedCount={selectedIds.length}
+        selectedLabel='selected'
+        actions={[]}
+        showClose
+      />
 
       {/* Below the dock breakpoint the same drawer is a floating overlay. */}
       {!isDesktop && drawer}

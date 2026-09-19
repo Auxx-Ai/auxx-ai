@@ -33,6 +33,8 @@ interface SettlementsToolbarProps {
   onOnlyUnidentifiedChange: (next: boolean) => void
   filters: SettlementFilters
   onChange: (next: SettlementFilters) => void
+  /** The list's select-all box, first in the row; the page owns the store it reads. */
+  selectAll?: React.ReactNode
 }
 
 /**
@@ -47,6 +49,7 @@ export function SettlementsToolbar({
   onOnlyUnidentifiedChange,
   filters,
   onChange,
+  selectAll,
 }: SettlementsToolbarProps) {
   const set = <K extends keyof SettlementFilters>(key: K, value: SettlementFilters[K]) =>
     onChange({ ...filters, [key]: value })
@@ -60,6 +63,8 @@ export function SettlementsToolbar({
 
   return (
     <ListToolbar sticky={false}>
+      {selectAll}
+
       <ListToolbarGroup className='shrink-0'>
         <RadioTab
           value={onlyUnidentified ? 'unidentified' : 'all'}
