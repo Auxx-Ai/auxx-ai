@@ -150,8 +150,8 @@ export const PAYMENT_GATEWAY_FIELDS = defineResourceFields({
       'Whether the processor withholds its cut from the deposit (`netted`) or bills for it ' +
       'later (`billed`). A payout entry on a billed rail has NO fee leg and its deposit is ' +
       'gross, so this decides the shape of the entry, not just a label. Deliberately not ' +
-      'folded into settlementSource: PayPal and Authorize.Net are both `manual` and disagree ' +
-      'on this, and Affirm reads a feed and still nets its fee.',
+      'folded into settlementSource: Affirm and Authorize.Net both read a feed and disagree ' +
+      'on this - Affirm nets its discount fee, the acquirer behind Authorize.Net bills monthly.',
   },
 
   status: {

@@ -80,6 +80,11 @@ export const customerTransactionFieldMappings: readonly FinancialSourceFieldMapp
   { sourcePath: 'parentTransactionId', target: 'customer_transaction_parent_transaction_id' },
   { sourcePath: 'creditMemoExternalId', target: 'customer_transaction_credit_memo_id' },
   { sourcePath: 'paymentId', target: 'customer_transaction_payment_id' },
+  { sourcePath: 'authorizationCode', target: 'customer_transaction_authorization_code' },
+  {
+    sourcePath: 'gatewayTransactionId',
+    target: 'customer_transaction_gateway_transaction_id',
+  },
   { sourcePath: 'test', target: 'customer_transaction_test' },
   { sourcePath: 'sourceUpdatedAt', target: 'customer_transaction_source_updated_at' },
   { sourcePath: 'orderExternalId', target: 'customer_transaction_order_external_id' },

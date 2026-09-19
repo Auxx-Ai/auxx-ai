@@ -91,9 +91,9 @@ interface RailEntry {
  * of handles and one account, which is exactly this shape.
  *
  * ⚠️ `settlementSource` here is what auxx can actually READ, not who owns the
- * rail. `stripe`, `shopify_payments` and `affirm` are the three rails a reader
- * is being built for; `afterpay`, `klarna`, `paypal`, `braintree`, `amazon_pay`,
- * `square` and the acquirer behind Authorize.Net all still suggest `manual` even
+ * rail. `stripe`, `shopify_payments`, `affirm` and `authorize_net` are the four
+ * rails a reader is being built for; `afterpay`, `klarna`, `paypal`,
+ * `braintree`, `amazon_pay` and `square` all still suggest `manual` even
  * though every one of those processors plainly has an API - a settlement source
  * that promises a drain nobody wrote is worse than one that says "by hand".
  * A rail is promoted out of `manual` HERE only when its feed is being read, not
@@ -101,11 +101,9 @@ interface RailEntry {
  *
  * ⚠️ `feeTreatment` is a SEPARATE question from `settlementSource` and does not
  * follow from it (§4). The clearest proof is two rails that share a settlement
- * source and disagree on fees: PayPal is `manual` and nets its cut out of the
- * deposit, while the traditional acquirer behind Authorize.Net is `manual`,
- * batches daily GROSS and bills monthly. Affirm makes the same point from the
- * other side - it now has a reader AND nets its discount fee. Two questions,
- * two fields.
+ * source and disagree on fees: Affirm reads its own feed AND nets its discount
+ * fee, while the acquirer behind Authorize.Net now reads a feed too and still
+ * deposits GROSS and bills monthly. Two questions, two fields.
  */
 const RAILS: Record<string, RailEntry> = {
   stripe: { name: 'Stripe', settlementSource: 'stripe', feeTreatment: 'netted' },
@@ -131,9 +129,23 @@ const RAILS: Record<string, RailEntry> = {
   // what settles: a daily batch to the bank, gross, with the card fees billed
   // on a monthly statement. Three spellings are in the wild (§1.5's census
   // found two of them on one org).
-  authorize_net: { name: 'Authorize.Net', settlementSource: 'manual', feeTreatment: 'billed' },
-  'authorize.net': { name: 'Authorize.Net', settlementSource: 'manual', feeTreatment: 'billed' },
-  authorizenet: { name: 'Authorize.Net', settlementSource: 'manual', feeTreatment: 'billed' },
+  // The settled-batch reader is `plans/apps/authorize-net/authorize-net-build-plan.md`
+  // §5.2; `billed` is unchanged by it, because a batch carries no fee (§4.1).
+  authorize_net: {
+    name: 'Authorize.Net',
+    settlementSource: 'authorize_net',
+    feeTreatment: 'billed',
+  },
+  'authorize.net': {
+    name: 'Authorize.Net',
+    settlementSource: 'authorize_net',
+    feeTreatment: 'billed',
+  },
+  authorizenet: {
+    name: 'Authorize.Net',
+    settlementSource: 'authorize_net',
+    feeTreatment: 'billed',
+  },
 
   // ✔ Affirm settles to the bank on its own weekly `deposit_id`, and none of it
   // rides inside a Shopify Payments deposit (`plans/apps/affirm/portal-probe-2026-09-15.md`

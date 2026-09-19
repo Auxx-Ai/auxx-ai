@@ -31,15 +31,17 @@
  * (`money/payouts/source.ts` - `Exclude<…, 'manual'>`), which is the key type of
  * the `PayoutSource` registry. A value may sit in this vocabulary with no source
  * registered against it: `getPayoutSource` answers a `NotFoundError` naming the
- * id, and the sweep only polls sources that registered themselves. `affirm` is
- * permanently in that state on purpose - it is read by the financial connector,
- * which is mutually exclusive with the `PayoutSource` registry
- * (`plans/apps/affirm/affirm-build-plan.md` §5.3).
+ * id, and the sweep only polls sources that registered themselves. `affirm` and
+ * `authorize_net` are permanently in that state on purpose - both are read by
+ * the financial connector, which is mutually exclusive with the `PayoutSource`
+ * registry (`plans/apps/affirm/affirm-build-plan.md` §5.3,
+ * `plans/apps/authorize-net/authorize-net-build-plan.md` §5.4).
  */
 export const PAYMENT_GATEWAY_SETTLEMENT_SOURCES = [
   'stripe',
   'shopify_payments',
   'affirm',
+  'authorize_net',
   'manual',
 ] as const
 export type PaymentGatewaySettlementSourceValue =
@@ -71,6 +73,7 @@ export const PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS: Record<
   stripe: 'Stripe',
   shopify_payments: 'Shopify Payments',
   affirm: 'Affirm',
+  authorize_net: 'Authorize.Net',
   manual: 'By hand',
 }
 

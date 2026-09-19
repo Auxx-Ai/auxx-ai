@@ -9,7 +9,7 @@
  * join per row.
  */
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeValue } from '@auxx/database/types'
 import { readEnvelope } from '@auxx/types/field-value'
@@ -172,7 +172,7 @@ export async function bridgeFieldSpecs(
  * never reported an acquisition instant from its own last write.
  */
 export async function pivotRecordFields(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   entityIds: string[],
   specs: Map<string, FieldSpec>

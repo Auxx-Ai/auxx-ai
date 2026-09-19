@@ -34,6 +34,7 @@ import { migration175StockMovementAccruals } from './migrations/175-stock-moveme
 import { migration177VendorBillLineLandedBill } from './migrations/177-vendor-bill-line-landed-bill'
 import { migration178VendorCreditLineReturnsStock } from './migrations/178-vendor-credit-line-returns-stock'
 import { migration179RemovePurchaseOrderTaxRecoverable } from './migrations/179-remove-purchase-order-tax-recoverable'
+import { migration180CustomerTransactionGatewayIds } from './migrations/180-customer-transaction-gateway-ids'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -179,6 +180,10 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // One CHECKBOX off the existing `purchase_order` def and its values with it:
   // the flag nothing ever read, tax on a bill being an expense (74 §5, 74-D8).
   migration179RemovePurchaseOrderTaxRecoverable,
+  // Two TEXT fields on the existing `customer_transaction` def, no backfill: the
+  // gateway's authorisation code and its own transaction id, which is what joins
+  // an Authorize.net batch member to a Shopify order (authorize-net plan §6).
+  migration180CustomerTransactionGatewayIds,
 ]
 
 /**

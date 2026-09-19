@@ -152,6 +152,45 @@ describe('readRailFeeStatus', () => {
     ])
   })
 
+  // A billed rail with a connector feed is the Authorize.Net case
+  // (`plans/accounting/decisions.md` 27a-3b): the batch is evidence with a zero
+  // fee, so the monthly statement is still outstanding and this read must keep
+  // saying so. Having a feed is not having been billed.
+  it('still reports a fee statement pending for a billed rail that reads a feed', async () => {
+    listPaymentGateways.mockResolvedValue(
+      ok([
+        gateway({
+          id: 'pg_authnet',
+          name: 'Authorize.Net',
+          feeTreatment: 'billed',
+          settlementSource: 'authorize_net',
+          processorAccountId: 'fsa_authnet',
+          clearingGlAccountId: 'gl_1201',
+          feeGlAccountId: 'gl_6150',
+        }),
+      ])
+    )
+
+    const result = await readRailFeeStatus(
+      stubDb(
+        [{ role: 'payment_processing_fees', glAccountId: 'gl_6100' }],
+        // Batches settled all month; nothing ever reached the rail's fee account.
+        [{ glAccountId: 'gl_1201', lastAt: '2026-09-28', lastInMonthAt: '2026-09-28' }]
+      ),
+      { organizationId: ORG, month: MONTH }
+    )
+
+    expect(result._unsafeUnwrap()).toEqual([
+      {
+        paymentGatewayId: 'pg_authnet',
+        name: 'Authorize.Net',
+        feeTreatment: 'billed',
+        tradedInMonth: true,
+        fees: { kind: 'own', glAccountId: 'gl_6150', bookedInMonth: false, lastBookedAt: null },
+      },
+    ])
+  })
+
   // 🔑 §5. The whole reason `RailFeeAccount` is a union.
   it('refuses to quote a date for a rail pointed at the payment_processing_fees account', async () => {
     listPaymentGateways.mockResolvedValue(

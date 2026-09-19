@@ -903,9 +903,10 @@ export const JournalEntryKind = {
 
 /**
  * How a `payment_gateway` drains (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md`
- * §5.3). `stripe`, `shopify_payments` and `affirm` read a real settlement feed;
- * `manual` is worked by hand in the review queue. `manual` is not a gap - it is
- * what Authorize.Net and every rail whose feed nobody reads correctly are.
+ * §5.3). `stripe`, `shopify_payments`, `affirm` and `authorize_net` read a real
+ * settlement feed; `manual` is worked by hand in the review queue. `manual` is
+ * not a gap - it is what PayPal and every rail whose feed nobody reads
+ * correctly are.
  *
  * 🛑 Mirrored by `PAYMENT_GATEWAY_SETTLEMENT_SOURCES`
  * (`accounting/rails/client.ts`), which is what the settings picker, the router
@@ -917,12 +918,14 @@ export const PaymentGatewaySettlementSource = {
   STRIPE: 'stripe',
   SHOPIFY_PAYMENTS: 'shopify_payments',
   AFFIRM: 'affirm',
+  AUTHORIZE_NET: 'authorize_net',
   MANUAL: 'manual',
 
   values: [
     { value: 'stripe', label: 'Stripe', color: 'purple' },
     { value: 'shopify_payments', label: 'Shopify Payments', color: 'green' },
     { value: 'affirm', label: 'Affirm', color: 'blue' },
+    { value: 'authorize_net', label: 'Authorize.Net', color: 'teal' },
     { value: 'manual', label: 'By hand', color: 'gray' },
   ] satisfies FieldOptionItem[],
 } as const
@@ -939,10 +942,10 @@ export const PaymentGatewaySettlementSource = {
  *   weeks later as one ACH debit or an invoice.
  *
  * 🛑 **Not the same question `PaymentGatewaySettlementSource` answers.** The two
- * correlate - `manual` tends to be billed - but PayPal is `manual` and nets its
- * cut out of the deposit, while the acquirer behind Authorize.Net is also
- * `manual` and bills monthly. Same settlement source, opposite entry shapes.
- * Two questions, two fields.
+ * correlate - `manual` tends to be billed - but Affirm and Authorize.Net both
+ * read a settlement feed and disagree: Affirm nets its discount fee, the
+ * acquirer behind Authorize.Net deposits gross and bills monthly. Two
+ * questions, two fields.
  *
  * `netted` is the default because it preserves today's behaviour on every
  * existing record: a payout entry with a fee leg is what the builder has always

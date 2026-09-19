@@ -65,6 +65,18 @@ export const CUSTOMER_TRANSACTION_FIELDS = {
     'Payment reference',
     'customer_transaction_payment_id'
   ),
+  // Authorize.net's own two ids, carried on a Shopify transaction: the gateway id
+  // is derived from `receiptJson` and is the join §6 of the Authorize.net plan needs.
+  authorizationCode: financialSourceField(
+    'authorizationCode',
+    'Authorization code',
+    'customer_transaction_authorization_code'
+  ),
+  gatewayTransactionId: financialSourceField(
+    'gatewayTransactionId',
+    'Gateway transaction ID',
+    'customer_transaction_gateway_transaction_id'
+  ),
   test: financialSourceField('test', 'Test', 'customer_transaction_test', 'boolean'),
   sourceUpdatedAt: financialSourceField(
     'sourceUpdatedAt',

@@ -28,6 +28,7 @@ vi.mock('../reads', () => ({ listLinkedFeedAccounts: h.listLinkedFeedAccounts })
 import type { Database } from '@auxx/database'
 import { ForbiddenError } from '../../../../errors'
 import type { PaymentGatewayRow } from '../../../rails/client'
+import { getEntryReferenceResolver } from '../reference-resolvers'
 import type { PayoutSourceCtx } from '../source'
 import { __resetPayoutSourcesForTests, listPayoutSourceIds } from '../source-registry'
 import { registerPayoutSources } from '../sources'
@@ -203,6 +204,15 @@ describe('registerPayoutSources', () => {
     registerPayoutSources()
 
     expect(listPayoutSourceIds()).toEqual(['stripe', 'shopify_payments'])
+    __resetPayoutSourcesForTests()
+  })
+
+  // The same boot call fills the reference-resolver seam; a process that filled
+  // only the source registry would leave every Authorize.net item `no_reference`.
+  it('fills the entry reference resolver seam in the same call', () => {
+    registerPayoutSources()
+
+    expect(getEntryReferenceResolver('authorize_net')?.providerKey).toBe('authorize_net')
     __resetPayoutSourcesForTests()
   })
 })

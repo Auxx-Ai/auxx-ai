@@ -1,6 +1,8 @@
 // packages/lib/src/accounting/money/payouts/sources.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import { registerEntryReferenceResolver } from './reference-resolvers'
+import { AUTHORIZE_NET_ENTRY_REFERENCE_RESOLVER } from './resolvers/authorize-net'
 import { registerPayoutSource } from './source-registry'
 import { SHOPIFY_PAYMENTS_PAYOUT_SOURCE } from './sources/shopify-payments'
 import { STRIPE_CONNECT_PAYOUT_SOURCE } from './sources/stripe-connect'
@@ -32,7 +34,22 @@ const logger = createScopedLogger('payout-sources')
 export function registerPayoutSources(): void {
   registerPayoutSource(STRIPE_CONNECT_PAYOUT_SOURCE)
   registerPayoutSource(SHOPIFY_PAYMENTS_PAYOUT_SOURCE)
+  registerEntryReferenceResolvers()
   logger.debug('Payout sources registered', {
     sources: [STRIPE_CONNECT_PAYOUT_SOURCE.id, SHOPIFY_PAYMENTS_PAYOUT_SOURCE.id],
   })
+}
+
+/**
+ * Fill the {@link registerEntryReferenceResolver} seam
+ * (`plans/accounting/payout-links.md` §12 T3).
+ *
+ * The second registry the payout lane fills at boot, and for the same reason as
+ * the first: `syncStoredMatches` knows only the `EntryReferenceResolver`
+ * interface, and a `providerKey` with no resolver leaves every one of its items
+ * `no_reference`. Called from `registerPayoutSources` so the two boot sequences
+ * that already fill one registry cannot fill only one.
+ */
+export function registerEntryReferenceResolvers(): void {
+  registerEntryReferenceResolver(AUTHORIZE_NET_ENTRY_REFERENCE_RESOLVER)
 }
