@@ -23,6 +23,7 @@ vi.mock('../../../../cache', () => ({
         vendor_bill_payment_status: { id: 'f_pay_status', type: 'SINGLE_SELECT' },
         vendor_bill_amount_paid: { id: 'f_paid', type: 'CURRENCY' },
         vendor_bill_amount_credited: { id: 'f_credited', type: 'CURRENCY' },
+        vendor_bill_amount_discounted: { id: 'f_discounted', type: 'CURRENCY' },
         vendor_bill_paid_at: { id: 'f_paid_at', type: 'DATETIME' },
       }),
     }),
@@ -63,6 +64,7 @@ beforeEach(() => {
     ['f_pay_status', 'unpaid'],
     ['f_paid', 0],
     ['f_credited', 0],
+    ['f_discounted', 0],
   ])
 })
 
@@ -106,6 +108,45 @@ describe('syncVendorBillPaymentState', () => {
     h.applications = [{ operation: 'apply', amountMinor: 40_000n, effectiveDate: '2026-09-01' }]
     await run()
     expect(last()).toContainEqual({ fieldId: 'f_pay_status', value: 'paid' })
+  })
+
+  it('mirrors the discount taken and pays the bill off with it, leaving amount_paid the money', async () => {
+    h.applications = [
+      {
+        operation: 'apply',
+        amountMinor: 98_000n,
+        discountMinor: 2_000n,
+        effectiveDate: '2026-09-10',
+      },
+    ]
+    await run()
+    expect(last()).toContainEqual({ fieldId: 'f_paid', value: 98_000 })
+    expect(last()).toContainEqual({ fieldId: 'f_discounted', value: 2_000 })
+    expect(last()).toContainEqual({ fieldId: 'f_pay_status', value: 'paid' })
+  })
+
+  it('returns the discount mirror to zero when the payment is voided', async () => {
+    h.scalars.set('f_paid', 98_000)
+    h.scalars.set('f_discounted', 2_000)
+    h.scalars.set('f_pay_status', 'paid')
+    h.applications = [
+      {
+        operation: 'apply',
+        amountMinor: 98_000n,
+        discountMinor: 2_000n,
+        effectiveDate: '2026-09-10',
+      },
+      {
+        operation: 'unapply',
+        amountMinor: 98_000n,
+        discountMinor: 2_000n,
+        effectiveDate: '2026-09-22',
+      },
+    ]
+    await run()
+    expect(last()).toContainEqual({ fieldId: 'f_paid', value: 0 })
+    expect(last()).toContainEqual({ fieldId: 'f_discounted', value: 0 })
+    expect(last()).toContainEqual({ fieldId: 'f_pay_status', value: 'unpaid' })
   })
 
   it('never writes the lifecycle field, whatever the bill is settled to', async () => {

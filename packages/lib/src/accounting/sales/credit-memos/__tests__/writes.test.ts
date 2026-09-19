@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   recomputeTotals: vi.fn(async () => {}),
   sumCreditMemoApplications: vi.fn(async () => 0),
   sumSucceededCreditMemoRefunds: vi.fn(async () => 0),
+  readEditStamp: vi.fn(async (): Promise<{ openedAt: string; byUserId: string } | null> => null),
 }))
 
 vi.mock('@auxx/database', async () => {
@@ -41,7 +42,10 @@ vi.mock('../../../ledger/post/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
   previewEntry: vi.fn(),
 }))
-vi.mock('../accounting', () => ({
+// Partial: `buildEntryForCreditMemo` and `organizationCurrency` are the real
+// ones — the builder they call is mocked above, which is what these tests read.
+vi.mock('../accounting', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../accounting')>()),
   postCreditMemoEntry: h.postCreditMemoEntry,
   reverseCreditMemoEntry: h.reverseCreditMemoEntry,
 }))
@@ -71,6 +75,9 @@ vi.mock('../reads', () => ({
   sumSucceededCreditMemoRefunds: h.sumSucceededCreditMemoRefunds,
   sumReservedCreditMemoRefunds: async () =>
     h.memo.source === 'channel' ? h.memo.amountRefundedMinor : h.sumSucceededCreditMemoRefunds(),
+}))
+vi.mock('../../../../entity-instances/edit-snapshot', () => ({
+  readEditStamp: h.readEditStamp,
 }))
 vi.mock('../settle', () => ({
   CREDIT_MEMO_STATUS_BYPASS: new Set(['credit_memo_status']),
@@ -262,6 +269,14 @@ describe('voidCreditMemo', () => {
 
     await expect(voidCreditMemo(db, input)).rejects.toThrow('Unapply this credit memo')
     expect(h.reverseCreditMemoEntry).not.toHaveBeenCalled()
+  })
+
+  it('refuses a memo with an open edit, before it touches the ledger', async () => {
+    h.readEditStamp.mockResolvedValueOnce({ openedAt: '2026-09-19T10:00:00.000Z', byUserId: USER })
+
+    await expect(voidCreditMemo(db, input)).rejects.toThrow('open for editing')
+    expect(h.reverseCreditMemoEntry).not.toHaveBeenCalled()
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
 
   it('refuses an already-void memo', async () => {

@@ -24,6 +24,9 @@ import {
   getCachedResources,
   getOrgCache,
 } from '../../cache'
+// Leaf path: the edit-snapshot module reaches back into `resources/crud`, so
+// the `entity-instances` barrel must not be pulled into this file's graph.
+import { readEditStamps } from '../../entity-instances/edit-snapshot'
 import { BadRequestError, ForbiddenError } from '../../errors'
 import { getRecordIdentitiesForRecords } from '../../identity'
 import {
@@ -1022,7 +1025,27 @@ export class RecordPickerService {
     )
 
     await this.attachRecordSources(result)
+    await this.attachRecordEditStamps(result)
     return result
+  }
+
+  /**
+   * Stamp every row in this response with its open edit-in-place, in ONE
+   * batched query that never selects the snapshot column (74-D1 §1.2.1).
+   *
+   * `null` for a row with no open edit is deliberate and load-bearing: it is
+   * what distinguishes "this lane stamped and there is none" from the absent
+   * stamp every non-stamping lane leaves, which readers must treat as locked.
+   */
+  private async attachRecordEditStamps(items: Record<RecordId, RecordPickerItem>): Promise<void> {
+    const rows = Object.values(items)
+    if (rows.length === 0) return
+    const stamps = await readEditStamps(
+      this.db as Database,
+      this.organizationId,
+      rows.map((item) => item.id)
+    )
+    for (const item of rows) item.edit = stamps.get(item.id) ?? null
   }
 
   /**

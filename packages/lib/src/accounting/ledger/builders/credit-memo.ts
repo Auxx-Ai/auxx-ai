@@ -304,6 +304,15 @@ export interface BuildCreditMemoEntryInput {
    * owner check is needed on top of it.
    */
   number: string
+  /**
+   * The claim and document-number key, when it is NOT the memo number.
+   *
+   * A repost after an edit passes one: the reversed original's claim row is
+   * gone but its document number is still in the books, and re-keying on
+   * `number` would mint that same number again. See
+   * `accounting/documents/document-entry-key.ts`.
+   */
+  periodKey?: string | null
   /** `YYYY-MM-DD`. The memo's own `issuedAt`. The ledger dates from this. */
   issuedAt: string
   /**
@@ -366,6 +375,15 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
       'Shorten the credit memo number, or reduce the receivable with a manual journal entry instead.',
     context: { creditMemoId },
   })
+
+  const periodKey = input.periodKey?.trim()
+    ? assertCompactablePeriodKey({
+        value: input.periodKey,
+        label: 'Credit memo entry key',
+        remedy: 'Shorten the credit memo number before re-posting it.',
+        context: { creditMemoId },
+      })
+    : number
 
   const currency = input.currency?.trim() || input.ledgerCurrency
   if (input.ledgerCurrency && currency !== input.ledgerCurrency) {
@@ -459,11 +477,11 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
   return {
     entry: buildEntry({
       postingType: CREDIT_MEMO_POSTING_TYPE,
-      periodKey: number,
+      periodKey,
       txnDate: issuedAt,
       lines,
     }),
-    periodKey: number,
+    periodKey,
     totalMinor,
     subtotalMinor,
     taxTotalMinor,

@@ -222,16 +222,16 @@ describe('the union of every pack', () => {
   // `1210 Affirm Clearing` and `6105 Merchant Fees - Affirm` left with the
   // `clearing_affirm` role: a default chart must not name a vendor.
   // The number itself is not the point; being made to state it is.
-  it('totals fifty-nine accounts: twenty-seven core, then three, two, eleven, five, five, three and three', () => {
+  it('totals sixty accounts: twenty-seven core, then three, two, eleven, six, five, three and three', () => {
     expect(codesOf('core')).toHaveLength(27)
     expect(codesOf('card_rail')).toHaveLength(3)
     expect(codesOf('prepayments')).toHaveLength(2)
     expect(codesOf('inventory')).toHaveLength(11)
-    expect(codesOf('purchasing')).toHaveLength(5)
+    expect(codesOf('purchasing')).toHaveLength(6)
     expect(codesOf('payroll')).toHaveLength(5)
     expect(codesOf('fixed_assets')).toHaveLength(3)
     expect(codesOf('debt')).toHaveLength(3)
-    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(59)
+    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(60)
   })
 })
 
@@ -371,6 +371,7 @@ describe('the other packs', () => {
         ACCOUNT_ROLES.DUTIES_ACCRUAL,
         ACCOUNT_ROLES.PPV,
         ACCOUNT_ROLES.PURCHASE_TAX,
+        ACCOUNT_ROLES.PURCHASE_DISCOUNTS,
       ].sort()
     )
     // And the three packs brief 21 added drive no role at all - they exist so a
@@ -388,6 +389,19 @@ describe('the other packs', () => {
     expect(codesOf('inventory')).toContain('5095')
     expect(byCode.get('5090')?.role).toBe(ACCOUNT_ROLES.PPV)
     expect(byCode.get('5095')?.role).toBe(ACCOUNT_ROLES.INVENTORY_COUNT_VARIANCE)
+  })
+
+  // 74 D3: the discount shows in margin, so it is contra-COGS beside the
+  // variances rather than other income.
+  it('seeds purchase discounts once, at 5093 in purchasing, as cost of goods sold', () => {
+    expect(codesOf('purchasing')).toContain('5093')
+    expect(byCode.get('5093')?.role).toBe(ACCOUNT_ROLES.PURCHASE_DISCOUNTS)
+    expect(byCode.get('5093')?.subtype).toBe('cost_of_goods_sold')
+    expect(
+      DEFAULT_CHART_OF_ACCOUNTS.filter(
+        (account) => account.role === ACCOUNT_ROLES.PURCHASE_DISCOUNTS
+      )
+    ).toHaveLength(1)
   })
 
   // Inbound freight is CAPITALISED into landed cost and accrues to a liability;

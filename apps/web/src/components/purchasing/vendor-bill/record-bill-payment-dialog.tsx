@@ -42,6 +42,8 @@ interface RecordBillPaymentDialogProps {
   total: number
   /** Already settled before this payment, integer minor units. */
   amountPaid: number
+  /** Already cancelled by a vendor credit or an earlier discount, integer minor units. */
+  amountSettledOtherwise?: number
   currencyCode: string
   onSaved?: () => void
 }
@@ -56,11 +58,13 @@ export function RecordBillPaymentDialog({
   billRecordId,
   total,
   amountPaid,
+  amountSettledOtherwise = 0,
   currencyCode,
   onSaved,
 }: RecordBillPaymentDialogProps) {
-  const balance = total - amountPaid
+  const balance = total - amountPaid - amountSettledOtherwise
   const [amount, setAmount] = useState<number | null>(balance)
+  const [discount, setDiscount] = useState<number | null>(null)
   const [date, setDate] = useState<string>(todayIso())
   const [method, setMethod] = useState<PaymentMethod>('bank')
   const [reference, setReference] = useState('')
@@ -77,6 +81,7 @@ export function RecordBillPaymentDialog({
   useEffect(() => {
     if (!open) return
     setAmount(balance)
+    setDiscount(null)
     setDate(todayIso())
     setMethod('bank')
     setReference('')
@@ -96,7 +101,10 @@ export function RecordBillPaymentDialog({
       toastError({ title: 'Error recording payment', description: error.message }),
   })
 
-  const canSave = !!amount && amount > 0 && amount <= balance
+  const discountTaken = discount ?? 0
+  // The vendor is relieved of the money AND the discount, so the two together
+  // are what the balance caps — the server refuses the same sum.
+  const canSave = !!amount && amount > 0 && discountTaken >= 0 && amount + discountTaken <= balance
 
   const handleSubmit = async () => {
     if (!canSave || !amount) return
@@ -104,6 +112,7 @@ export function RecordBillPaymentDialog({
       await recordBillPayment.mutateAsync({
         vendorBillRecordId: billRecordId,
         amount,
+        discount: discountTaken || undefined,
         date: date.split('T')[0]!,
         method,
         ...cashEndpointValueOf(paidFrom),
@@ -142,6 +151,16 @@ export function RecordBillPaymentDialog({
               fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
               value={amount}
               onChange={(val) => setAmount(val as number | null)}
+              disabled={isPending}
+            />
+          </FieldPanelRow>
+
+          <FieldPanelRow title='Discount taken' type={BaseType.CURRENCY} showIcon>
+            <FieldInputAdapter
+              fieldType={FieldType.CURRENCY}
+              fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
+              value={discount}
+              onChange={(val) => setDiscount(val as number | null)}
               disabled={isPending}
             />
           </FieldPanelRow>

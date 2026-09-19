@@ -649,6 +649,37 @@ export const VENDOR_BILL_FIELDS = defineResourceFields({
       'its credit applications',
   },
 
+  // The early-payment discount's mirror, beside the credit's. Written only by
+  // `money/vendor-payments/payment-state.ts`; the balance subtracts it (74 D3).
+  amountDiscounted: {
+    id: toFieldId('amountDiscounted'),
+    key: 'amountDiscounted',
+    label: 'Amount Discounted',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'vendor_bill_amount_discounted',
+    systemSortOrder: 'aJ0V',
+    nullable: true,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description:
+      'How much of this bill an early-payment discount settled, integer minor units — the sum ' +
+      'of the discounts taken on its payments',
+  },
+
   vendorCredits: {
     id: toFieldId('vendorCredits'),
     key: 'vendorCredits',

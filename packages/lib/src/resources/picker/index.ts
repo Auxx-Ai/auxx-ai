@@ -8,6 +8,7 @@ export {
 export { RecordPickerCacheService } from './record-picker-cache'
 export { RecordPickerService } from './record-picker-service'
 export type {
+  EditStamp,
   GetResourceByIdInput,
   GetResourcesInput,
   GlobalSearchParams,

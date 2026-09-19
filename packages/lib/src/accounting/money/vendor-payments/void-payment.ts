@@ -98,6 +98,9 @@ export async function voidVendorPayment(
           moneyTransactionId: input.moneyTransactionId,
           operation: 'unapply',
           amountMinor: application.amountMinor,
+          // Taken back with the money, so the bill's discounted mirror re-sums
+          // to zero and its balance returns to what it owed (74 D3).
+          discountMinor: application.discountMinor,
           vendorBillInstanceId: application.vendorBillInstanceId,
           appliedAt: new Date(),
           effectiveDate,

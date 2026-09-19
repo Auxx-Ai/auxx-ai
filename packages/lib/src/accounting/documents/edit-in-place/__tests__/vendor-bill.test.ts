@@ -1,20 +1,15 @@
-// packages/lib/src/accounting/purchasing/__tests__/bill-edit.test.ts
+// packages/lib/src/accounting/documents/edit-in-place/__tests__/vendor-bill.test.ts
 //
-// 73 D4's two doors. The rules under test, in the order they matter:
+// The lane's four doors through the `vendor_bill` spec row (73 D4, 74 §1.3):
 //
-//  1. **Edit is refused on anything but `posted`** — a draft is already
+//  1. **Edit is refused on anything in `editRefusedIn`** — a draft is already
 //     editable and a void bill is corrected by raising a new one.
 //  2. **Save posts NOTHING when the entry has not moved.** Re-posting an
 //     identical entry would leave a reversal and its twin in the books for
 //     every Save that only fixed a description.
-//  3. **A change reverses, then re-posts**, in that order, and the flag is
-//     cleared only after both.
-//  4. **A refusal leaves the entry, the values AND the flag untouched** —
-//     a floor, or a reversal the ledger will not take.
-//
-// The collaborators are stubbed at the module boundary, the shape
-// `expense-bill/__tests__/writes.test.ts` uses: `postEntry` and `reverseEntry`
-// have their own exhaustive suites.
+//  3. **A change reverses, then re-posts** at the next generation, and the
+//     snapshot row is dropped only after both.
+//  4. **A refusal leaves the entry, the values AND the row untouched.**
 //
 // 🛑 The BUILDER is real here, only the poster is stubbed. Stubbing
 // `buildEntryForVendorBill` too is what hid the repost's document-number
@@ -27,20 +22,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   bill: {} as Record<string, unknown>,
   lines: [] as unknown[],
-  editOpen: null as { openedAt: string; byUserId: string } | null,
+  editStamp: null as { openedAt: string; byUserId: string } | null,
+  readEditStamp: vi.fn(),
   postings: [] as unknown[],
   reverseEntry: vi.fn(),
   discardDraftPosting: vi.fn(),
   postVendorBillEntry: vi.fn(),
-  writeBillEditOpen: vi.fn(),
-  clearBillEditOpen: vi.fn(),
+  captureRecordSnapshot: vi.fn(),
+  restoreRecordSnapshot: vi.fn(),
+  deleteEditSnapshot: vi.fn(),
+  publishRecordEditStamp: vi.fn(),
   ledgerState: { draftGlPostingId: null as string | null, generation: 1 },
-  writeBillLedgerGeneration: vi.fn(),
+  writeDocumentLedgerGeneration: vi.fn(),
 }))
 
 vi.mock('@auxx/database', async () => {
-  const schema = await import('../../../../../database/src/db/schema/index')
-  const enums = await import('../../../../../database/src/enums')
+  const schema = await import('../../../../../../database/src/db/schema/index')
+  const enums = await import('../../../../../../database/src/enums')
   return {
     schema,
     ...enums,
@@ -48,48 +46,62 @@ vi.mock('@auxx/database', async () => {
     withAccountingCommitLock: vi.fn(async () => {}),
   }
 })
-vi.mock('../../ledger/periods/period-lock', () => ({
+vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
-vi.mock('../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
-vi.mock('../../ledger/post/draft-lines', () => ({ discardDraftPosting: h.discardDraftPosting }))
-vi.mock('../../ledger/setup/book-time-zone', () => ({
+vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
+vi.mock('../../../ledger/post/draft-lines', () => ({ discardDraftPosting: h.discardDraftPosting }))
+vi.mock('../../../ledger/setup/book-time-zone', () => ({
   todayInBookTimeZone: async () => '2026-09-18',
 }))
-vi.mock('../bill-edit-flag', () => ({
-  readBillEditOpen: async () => h.editOpen,
-  writeBillEditOpen: h.writeBillEditOpen,
-  clearBillEditOpen: h.clearBillEditOpen,
+vi.mock('../../../../cache', () => ({ getCachedEntityDefId: async () => 'def_bill' }))
+vi.mock('../../../../entity-instances/edit-snapshot', () => ({
+  readEditStamp: h.readEditStamp,
+  captureRecordSnapshot: h.captureRecordSnapshot,
+  restoreRecordSnapshot: h.restoreRecordSnapshot,
+  deleteEditSnapshot: h.deleteEditSnapshot,
+  publishRecordEditStamp: h.publishRecordEditStamp,
 }))
-vi.mock('../expense-bill/reads', () => ({
+vi.mock('../../../purchasing/expense-bill/reads', () => ({
   requireVendorBill: async () => h.bill,
   loadVendorBillLines: async () => h.lines,
 }))
-vi.mock('../expense-bill/writes', () => ({
+vi.mock('../../../purchasing/expense-bill/writes', () => ({
   listVendorBillPostings: async () => h.postings,
 }))
-vi.mock('../bill-ledger-state', () => ({
-  readBillLedgerState: async () => h.ledgerState,
-  writeBillLedgerGeneration: h.writeBillLedgerGeneration,
-  writeBillDraftPosting: vi.fn(),
+vi.mock('../../../purchasing/landed-cost/reads', () => ({
+  readLandedAccrualRemaining: async () => new Map(),
+}))
+vi.mock('../../document-ledger-state', () => ({
+  readDocumentLedgerState: async () => h.ledgerState,
+  writeDocumentLedgerGeneration: h.writeDocumentLedgerGeneration,
+  writeDocumentDraftPosting: vi.fn(),
 }))
 // Partial: the builder and the key scheme are the real ones - see the header.
-vi.mock('../post-vendor-bill', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../post-vendor-bill')>()),
+vi.mock('../../../purchasing/post-vendor-bill', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../purchasing/post-vendor-bill')>()),
   readAllocationBasis: async () => 'value' as const,
   postVendorBillEntry: h.postVendorBillEntry,
 }))
 
 import type { Database } from '@auxx/database'
-import { BadRequestError, ConflictError } from '../../../errors'
-import { buildDocNumber, DOC_NUMBER_MAX_LENGTH } from '../../ledger/builders/doc-number'
-import { openBillEdit, saveBillEdit } from '../bill-edit'
-import type { VendorBillLineRecord, VendorBillRecord } from '../expense-bill/reads'
-import { buildEntryForVendorBill, vendorBillEntryKey } from '../post-vendor-bill'
+import { BadRequestError, ConflictError } from '../../../../errors'
+import { buildDocNumber, DOC_NUMBER_MAX_LENGTH } from '../../../ledger/builders/doc-number'
+import type { VendorBillLineRecord, VendorBillRecord } from '../../../purchasing/expense-bill/reads'
+import { buildEntryForVendorBill } from '../../../purchasing/post-vendor-bill'
+import { cancelDocumentEdit } from '../cancel'
+import { openDocumentEdit } from '../open'
+import { saveDocumentEdit } from '../save'
 
 const ORG = 'org_1'
 const USER = 'user_1'
 const BILL_ID = 'ei_bill_1'
+const target = {
+  organizationId: ORG,
+  userId: USER,
+  family: 'vendor_bill' as const,
+  entityInstanceId: BILL_ID,
+}
 
 /** What the live posting's stored `built` envelope says, per test. */
 let storedBuilt: unknown = null
@@ -111,12 +123,10 @@ function raiseTheBill() {
 
 /** The entry the poster was handed on the Nth call. */
 function postedEntry(call = 0) {
-  return h.postVendorBillEntry.mock.calls[call]?.[1]?.entry?.entry as {
-    periodKey: string
-  }
+  return h.postVendorBillEntry.mock.calls[call]?.[1]?.entry?.entry as { periodKey: string }
 }
 
-/** A fake `db` that answers the one `GlPosting.built` read `saveBillEdit` makes. */
+/** A fake `db` that answers the one `GlPosting.built` read Save makes. */
 const db = {
   select: () => ({
     from: () => ({
@@ -128,6 +138,7 @@ const db = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  h.readEditStamp.mockImplementation(async () => h.editStamp)
   h.bill = {
     id: BILL_ID,
     number: 'INV-77',
@@ -136,6 +147,7 @@ beforeEach(() => {
     paymentStatus: 'unpaid',
     amountPaidMinor: 0,
     amountCreditedMinor: 0,
+    amountDiscountedMinor: 0,
     billedAt: '2026-09-01',
     currency: 'USD',
     totalMinor: 250_000,
@@ -159,7 +171,7 @@ beforeEach(() => {
       sortOrder: 0,
     },
   ]
-  h.editOpen = { openedAt: '2026-09-18T00:00:00.000Z', byUserId: USER }
+  h.editStamp = { openedAt: '2026-09-18T00:00:00.000Z', byUserId: USER }
   h.ledgerState = { draftGlPostingId: null, generation: 1 }
   h.postings = [
     {
@@ -170,6 +182,12 @@ beforeEach(() => {
     },
   ]
   storedBuilt = { entry: currentEntry() }
+  h.captureRecordSnapshot.mockResolvedValue({
+    openedAt: '2026-09-18T00:00:00.000Z',
+    byUserId: USER,
+  })
+  h.restoreRecordSnapshot.mockResolvedValue(undefined)
+  h.deleteEditSnapshot.mockResolvedValue(true)
   h.reverseEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_2' })
   h.discardDraftPosting.mockResolvedValue({ isErr: () => false, error: undefined })
   h.postVendorBillEntry.mockResolvedValue({
@@ -179,79 +197,72 @@ beforeEach(() => {
   })
 })
 
-describe('openBillEdit', () => {
-  it('writes the flag on a posted bill', async () => {
-    h.editOpen = null
-    const flag = await openBillEdit(db, {
-      organizationId: ORG,
-      userId: USER,
-      vendorBillInstanceId: BILL_ID,
-    })
+describe('openDocumentEdit', () => {
+  it('captures the snapshot on a posted bill and publishes the stamp', async () => {
+    h.editStamp = null
+    const edit = await openDocumentEdit(db, target)
 
-    expect(flag.byUserId).toBe(USER)
-    expect(h.writeBillEditOpen).toHaveBeenCalled()
-  })
-
-  it('is idempotent — a second Edit returns the standing flag and writes nothing', async () => {
-    const flag = await openBillEdit(db, {
-      organizationId: ORG,
-      userId: USER,
-      vendorBillInstanceId: BILL_ID,
-    })
-
-    expect(flag.openedAt).toBe('2026-09-18T00:00:00.000Z')
-    expect(h.writeBillEditOpen).not.toHaveBeenCalled()
+    expect(edit.byUserId).toBe(USER)
+    expect(h.captureRecordSnapshot).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ children: ['lines'], entityInstanceId: BILL_ID })
+    )
+    expect(h.publishRecordEditStamp).toHaveBeenCalledWith(expect.objectContaining({ edit }))
   })
 
   it('refuses a void bill', async () => {
-    h.editOpen = null
     h.bill = { ...h.bill, status: 'void' }
-    await expect(
-      openBillEdit(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-    ).rejects.toThrow(/void/)
-    expect(h.writeBillEditOpen).not.toHaveBeenCalled()
+    await expect(openDocumentEdit(db, target)).rejects.toThrow(/void/)
+    expect(h.captureRecordSnapshot).not.toHaveBeenCalled()
   })
 
   it('refuses a draft bill — there is nothing to unlock', async () => {
-    h.editOpen = null
     h.bill = { ...h.bill, status: 'draft' }
-    await expect(
-      openBillEdit(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-    ).rejects.toThrow(BadRequestError)
-    expect(h.writeBillEditOpen).not.toHaveBeenCalled()
+    await expect(openDocumentEdit(db, target)).rejects.toThrow(BadRequestError)
+    expect(h.captureRecordSnapshot).not.toHaveBeenCalled()
   })
 })
 
-describe('saveBillEdit', () => {
+describe('cancelDocumentEdit', () => {
+  it('restores the snapshot and clears the stamp', async () => {
+    const result = await cancelDocumentEdit(db, target)
+
+    expect(result.edit).toBeNull()
+    expect(h.restoreRecordSnapshot).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ entityInstanceId: BILL_ID, actorUserId: USER })
+    )
+    expect(h.publishRecordEditStamp).toHaveBeenCalledWith(expect.objectContaining({ edit: null }))
+  })
+
+  it('refuses by name when no edit is open', async () => {
+    h.editStamp = null
+    await expect(cancelDocumentEdit(db, target)).rejects.toThrow(/not open for editing/)
+    expect(h.restoreRecordSnapshot).not.toHaveBeenCalled()
+  })
+})
+
+describe('saveDocumentEdit', () => {
   it('refuses when the bill is not open for editing', async () => {
-    h.editOpen = null
-    await expect(
-      saveBillEdit(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-    ).rejects.toThrow(/not open for editing/)
+    h.editStamp = null
+    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/not open for editing/)
     expect(h.reverseEntry).not.toHaveBeenCalled()
   })
 
-  it('posts nothing when the rebuilt entry equals the live one, and clears the flag', async () => {
-    const result = await saveBillEdit(db, {
-      organizationId: ORG,
-      userId: USER,
-      vendorBillInstanceId: BILL_ID,
-    })
+  it('posts nothing when the rebuilt entry equals the live one, and drops the row', async () => {
+    const result = await saveDocumentEdit(db, target)
 
     expect(result.outcome).toBe('unchanged')
+    expect(result.edit).toBeNull()
     expect(h.reverseEntry).not.toHaveBeenCalled()
     expect(h.postVendorBillEntry).not.toHaveBeenCalled()
-    expect(h.clearBillEditOpen).toHaveBeenCalled()
+    expect(h.deleteEditSnapshot).toHaveBeenCalled()
   })
 
-  it('reverses then re-posts when a line moved, and clears the flag', async () => {
+  it('reverses then re-posts when a line moved, and drops the row', async () => {
     raiseTheBill()
 
-    const result = await saveBillEdit(db, {
-      organizationId: ORG,
-      userId: USER,
-      vendorBillInstanceId: BILL_ID,
-    })
+    const result = await saveDocumentEdit(db, target)
 
     expect(result.outcome).toBe('reposted')
     expect(h.reverseEntry).toHaveBeenCalledWith(
@@ -262,32 +273,26 @@ describe('saveBillEdit', () => {
     expect(h.reverseEntry.mock.invocationCallOrder[0]!).toBeLessThan(
       h.postVendorBillEntry.mock.invocationCallOrder[0]!
     )
-    expect(h.clearBillEditOpen).toHaveBeenCalled()
+    expect(h.deleteEditSnapshot).toHaveBeenCalled()
+    expect(h.publishRecordEditStamp).toHaveBeenCalledWith(expect.objectContaining({ edit: null }))
   })
 
   it('treats a moved accounting date as a change', async () => {
     storedBuilt = { entry: { ...currentEntry(), txnDate: '2026-08-01' } }
 
-    const result = await saveBillEdit(db, {
-      organizationId: ORG,
-      userId: USER,
-      vendorBillInstanceId: BILL_ID,
-    })
-
+    const result = await saveDocumentEdit(db, target)
     expect(result.outcome).toBe('reposted')
   })
 
   // The floor, and what it protects: A/P driven negative on a bill the vendor
   // has already been paid for.
-  it('refuses when the new total is below what has been paid and credited', async () => {
+  it('refuses when the new total is below what has been settled', async () => {
     h.bill = { ...h.bill, totalMinor: 100_000, amountPaidMinor: 150_000 }
 
-    await expect(
-      saveBillEdit(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-    ).rejects.toThrow(ConflictError)
+    await expect(saveDocumentEdit(db, target)).rejects.toThrow(ConflictError)
     expect(h.reverseEntry).not.toHaveBeenCalled()
     expect(h.postVendorBillEntry).not.toHaveBeenCalled()
-    expect(h.clearBillEditOpen).not.toHaveBeenCalled()
+    expect(h.deleteEditSnapshot).not.toHaveBeenCalled()
   })
 
   it('saves a bill that bills less than has been received - that is ordinary GRNI', async () => {
@@ -302,65 +307,66 @@ describe('saveBillEdit', () => {
     ]
     storedBuilt = { entry: currentEntry() }
 
-    const result = await saveBillEdit(db, {
-      organizationId: ORG,
-      userId: USER,
-      vendorBillInstanceId: BILL_ID,
-    })
+    const result = await saveDocumentEdit(db, target)
     expect(result.outcome).toBe('unchanged')
-    expect(h.clearBillEditOpen).toHaveBeenCalled()
+    expect(h.deleteEditSnapshot).toHaveBeenCalled()
   })
 
   it('leaves everything alone when the reversal is refused', async () => {
     raiseTheBill()
     h.reverseEntry.mockResolvedValue({ status: 'period_closed', error: 'September is locked' })
 
-    await expect(
-      saveBillEdit(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-    ).rejects.toThrow(/September is locked/)
+    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/September is locked/)
     expect(h.postVendorBillEntry).not.toHaveBeenCalled()
-    expect(h.clearBillEditOpen).not.toHaveBeenCalled()
+    expect(h.deleteEditSnapshot).not.toHaveBeenCalled()
   })
 
   it('leaves everything alone when the re-post is refused', async () => {
     raiseTheBill()
     h.postVendorBillEntry.mockResolvedValue({ status: 'account_unmapped', error: 'no ppv account' })
 
-    await expect(
-      saveBillEdit(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-    ).rejects.toThrow(/no ppv account/)
-    expect(h.clearBillEditOpen).not.toHaveBeenCalled()
+    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/no ppv account/)
+    expect(h.deleteEditSnapshot).not.toHaveBeenCalled()
   })
 
   it('reads not_posted only when accounting is off', async () => {
     h.postings = []
     h.postVendorBillEntry.mockResolvedValue(null)
 
-    const result = await saveBillEdit(db, {
-      organizationId: ORG,
-      userId: USER,
-      vendorBillInstanceId: BILL_ID,
-    })
+    const result = await saveDocumentEdit(db, target)
 
     expect(result.outcome).toBe('not_posted')
     expect(result.docNumber).toBeNull()
     expect(h.reverseEntry).not.toHaveBeenCalled()
-    expect(h.clearBillEditOpen).toHaveBeenCalled()
+    expect(h.deleteEditSnapshot).toHaveBeenCalled()
+  })
+
+  // Two concurrent Saves both clear the pre-lock precondition. The one that
+  // loses the commit lock finds no snapshot row left and must write nothing -
+  // reversing here would back out the entry the winner just posted.
+  it('writes nothing when another Save closed the edit before the lock was taken', async () => {
+    raiseTheBill()
+    h.readEditStamp.mockResolvedValueOnce(h.editStamp).mockResolvedValueOnce(null)
+
+    const result = await saveDocumentEdit(db, target)
+
+    expect(result.outcome).toBe('unchanged')
+    expect(result.docNumber).toBe('AUXX-BIL-BILL0007')
+    expect(h.reverseEntry).not.toHaveBeenCalled()
+    expect(h.postVendorBillEntry).not.toHaveBeenCalled()
+    expect(h.deleteEditSnapshot).not.toHaveBeenCalled()
   })
 
   it('refuses a bill that is no longer posted', async () => {
     h.bill = { ...h.bill, status: 'void' }
-    await expect(
-      saveBillEdit(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-    ).rejects.toThrow(BadRequestError)
+    await expect(saveDocumentEdit(db, target)).rejects.toThrow(BadRequestError)
   })
 })
 
 // Defect 2. `buildDocNumber` is deterministic on `(postingType, periodKey,
 // revision)`, so a repost keyed on the internal number mints the number the
 // reversed original still holds - and `GlPosting_org_docNumber_key` is unique
-// per org. In auto-post mode that threw inside the transaction and made Save
-// permanently impossible; in draft mode the outbox hit it on approve.
+// per org.
 describe('the repost generation', () => {
   it('keys the repost on a NEW document number, and leaves room for its own reversal', async () => {
     h.bill = { ...h.bill, internalNumber: 'BILL-0002' }
@@ -375,7 +381,7 @@ describe('the repost generation', () => {
     storedBuilt = { entry: currentEntry() }
     raiseTheBill()
 
-    await saveBillEdit(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+    await saveDocumentEdit(db, target)
 
     const key = postedEntry().periodKey
     expect(key).toBe('0002G2')
@@ -385,23 +391,7 @@ describe('the repost generation', () => {
     expect(
       buildDocNumber({ postingType: 'vendor_bill', periodKey: key, revision: 1 }).length
     ).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
-    expect(h.writeBillLedgerGeneration).toHaveBeenCalledWith(db, ORG, BILL_ID, 2)
-  })
-
-  // `BIL-123456` and not `BILL-123456`: the latter compacts to 10 and is over
-  // the cap at generation 1 already, so it never posts in the first place.
-  it('fits a six-digit internal number with its reversal suffix', async () => {
-    h.bill = { ...h.bill, internalNumber: 'BIL-123456' }
-    storedBuilt = { entry: currentEntry() }
-    raiseTheBill()
-
-    await saveBillEdit(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-
-    const key = postedEntry().periodKey
-    expect(key).toBe('123456G2')
-    expect(
-      buildDocNumber({ postingType: 'vendor_bill', periodKey: key, revision: 1 }).length
-    ).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
+    expect(h.writeDocumentLedgerGeneration).toHaveBeenCalledWith(db, ORG, BILL_ID, 2)
   })
 
   it('claims generation 3 when a second Save reverses the repost', async () => {
@@ -418,22 +408,10 @@ describe('the repost generation', () => {
     storedBuilt = { entry: currentEntry() }
     raiseTheBill()
 
-    await saveBillEdit(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+    await saveDocumentEdit(db, target)
 
     expect(postedEntry().periodKey).toBe('0002G3')
-    expect(h.writeBillLedgerGeneration).toHaveBeenCalledWith(db, ORG, BILL_ID, 3)
-  })
-
-  it('falls back to a hashed key when the internal number carries no digits', () => {
-    const key = vendorBillEntryKey('BILL', 2)
-    expect(key).toMatch(/^BGN-[0-9a-z]{6}$/i)
-    expect(
-      buildDocNumber({ postingType: 'vendor_bill', periodKey: key!, revision: 1 }).length
-    ).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
-  })
-
-  it('leaves the FIRST post keyed on the internal number', () => {
-    expect(vendorBillEntryKey('BILL-0002', 1)).toBeUndefined()
+    expect(h.writeDocumentLedgerGeneration).toHaveBeenCalledWith(db, ORG, BILL_ID, 3)
   })
 })
 
@@ -452,11 +430,7 @@ describe('saving against a drafted entry', () => {
     storedBuilt = { entry: currentEntry() }
     raiseTheBill()
 
-    const result = await saveBillEdit(db, {
-      organizationId: ORG,
-      userId: USER,
-      vendorBillInstanceId: BILL_ID,
-    })
+    const result = await saveDocumentEdit(db, target)
 
     expect(h.discardDraftPosting).toHaveBeenCalledWith(db, {
       organizationId: ORG,
@@ -464,45 +438,26 @@ describe('saving against a drafted entry', () => {
     })
     expect(h.reverseEntry).not.toHaveBeenCalled()
     expect(postedEntry().periodKey).toBe('BILL-0007')
-    expect(h.writeBillLedgerGeneration).not.toHaveBeenCalled()
+    expect(h.writeDocumentLedgerGeneration).not.toHaveBeenCalled()
     expect(result.outcome).toBe('reposted')
-    expect(h.clearBillEditOpen).toHaveBeenCalled()
+    expect(h.deleteEditSnapshot).toHaveBeenCalled()
   })
 
-  // The stale-draft bug this closes: the pointer was invisible, so Save read
-  // `not_posted`, cleared the flag and left the draft standing in the outbox.
-  it('no longer reads a drafted bill as not posted', async () => {
-    storedBuilt = { entry: currentEntry() }
-    raiseTheBill()
-
-    const result = await saveBillEdit(db, {
-      organizationId: ORG,
-      userId: USER,
-      vendorBillInstanceId: BILL_ID,
-    })
-
-    expect(result.outcome).not.toBe('not_posted')
-  })
-
+  // The stranding this closes: the bill is `posted` from the moment Post ran,
+  // so Post refuses it, and before this Save read `not_posted` and cleared the
+  // flag - leaving a bill in the books' lifecycle with no entry and no door.
   it('posts again on the same generation when the draft was discarded in the outbox', async () => {
-    // The stranding this closes: the bill is `posted` from the moment Post ran,
-    // so Post refuses it, and before this Save read `not_posted` and cleared the
-    // flag - leaving a bill in the books' lifecycle with no entry and no door.
     h.ledgerState = { draftGlPostingId: null, generation: 1 }
     h.postings = []
 
-    const result = await saveBillEdit(db, {
-      organizationId: ORG,
-      userId: USER,
-      vendorBillInstanceId: BILL_ID,
-    })
+    const result = await saveDocumentEdit(db, target)
 
     expect(result.outcome).toBe('reposted')
     expect(h.reverseEntry).not.toHaveBeenCalled()
     expect(h.discardDraftPosting).not.toHaveBeenCalled()
     expect(postedEntry().periodKey).toBe('BILL-0007')
-    expect(h.writeBillLedgerGeneration).not.toHaveBeenCalled()
-    expect(h.clearBillEditOpen).toHaveBeenCalled()
+    expect(h.writeDocumentLedgerGeneration).not.toHaveBeenCalled()
+    expect(h.deleteEditSnapshot).toHaveBeenCalled()
   })
 
   // posted -> Save reversed it and bumped to 2 -> that repost's DRAFT was
@@ -520,29 +475,23 @@ describe('saving against a drafted entry', () => {
       },
     ]
 
-    const result = await saveBillEdit(db, {
-      organizationId: ORG,
-      userId: USER,
-      vendorBillInstanceId: BILL_ID,
-    })
+    const result = await saveDocumentEdit(db, target)
 
     expect(result.outcome).toBe('reposted')
     expect(postedEntry().periodKey).toBe('0002G2')
-    expect(h.writeBillLedgerGeneration).not.toHaveBeenCalled()
+    expect(h.writeDocumentLedgerGeneration).not.toHaveBeenCalled()
     expect(h.reverseEntry).not.toHaveBeenCalled()
   })
 
-  it('leaves the flag standing when the re-post of a discarded entry is refused', async () => {
+  it('leaves the row standing when the re-post of a discarded entry is refused', async () => {
     h.postings = []
     h.postVendorBillEntry.mockResolvedValue({
       status: 'period_closed',
       error: 'September is locked',
     })
 
-    await expect(
-      saveBillEdit(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-    ).rejects.toThrow(/September is locked/)
-    expect(h.clearBillEditOpen).not.toHaveBeenCalled()
+    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/September is locked/)
+    expect(h.deleteEditSnapshot).not.toHaveBeenCalled()
   })
 
   it('leaves everything alone when the draft cannot be discarded', async () => {
@@ -553,10 +502,8 @@ describe('saving against a drafted entry', () => {
       error: new Error('it is posted, not draft'),
     })
 
-    await expect(
-      saveBillEdit(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-    ).rejects.toThrow(/could not be discarded/)
+    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/could not be discarded/)
     expect(h.postVendorBillEntry).not.toHaveBeenCalled()
-    expect(h.clearBillEditOpen).not.toHaveBeenCalled()
+    expect(h.deleteEditSnapshot).not.toHaveBeenCalled()
   })
 })

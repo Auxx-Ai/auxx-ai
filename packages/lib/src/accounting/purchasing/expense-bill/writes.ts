@@ -37,8 +37,13 @@ import { toRecordId } from '@auxx/types/resource'
 import { calendarDayToInstant } from '@auxx/utils/calendar-day'
 import { and, eq } from 'drizzle-orm'
 import { getEntityDefIdResolver } from '../../../cache'
-import { BadRequestError } from '../../../errors'
+import { readEditStamp } from '../../../entity-instances/edit-snapshot'
+import { BadRequestError, ConflictError } from '../../../errors'
 import { FieldValueService } from '../../../field-values/field-value-service'
+import {
+  readDocumentLedgerState,
+  writeDocumentDraftPosting,
+} from '../../documents/document-ledger-state'
 import type { BuiltVendorBillEntry } from '../../ledger/builders/entry'
 import { VENDOR_BILL_POSTING_TYPE, VENDOR_BILL_SOURCE_TYPE } from '../../ledger/builders/entry'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
@@ -49,8 +54,7 @@ import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../ledger/types'
-import { readBillEditOpen } from '../bill-edit-flag'
-import { readBillLedgerState, writeBillDraftPosting } from '../bill-ledger-state'
+import { readLandedAccrualRemaining } from '../landed-cost/reads'
 import {
   buildEntryForVendorBill,
   postVendorBillEntry,
@@ -185,7 +189,21 @@ async function resolveVendorBill(
   // The order's basis, not the builder's default: a freight-by-weight order
   // spreads its shipping leg by weight, and the bill has no basis of its own.
   const allocationBasis = await readAllocationBasis(db, organizationId, bill.purchaseOrderId)
-  const built = buildEntryForVendorBill({ bill, lines, billedAt, allocationBasis })
+  // 74 D4: a landed line relieves its shipment's accrual only as far as that
+  // shipment still has one; the read is here so the builder stays pure.
+  const landedRemaining = await readLandedAccrualRemaining(
+    db,
+    organizationId,
+    bill.id,
+    lines.map((line) => line.id)
+  )
+  const built = buildEntryForVendorBill({
+    bill,
+    lines,
+    billedAt,
+    allocationBasis,
+    landedRemaining,
+  })
 
   return { bill, lines, billedAt, built }
 }
@@ -332,12 +350,16 @@ export async function listVendorBillPostings(
         postingType: posting.postingType,
       }))
 
-  const { draftGlPostingId } = await readBillLedgerState(db, organizationId, vendorBillInstanceId)
+  const { draftGlPostingId } = await readDocumentLedgerState(
+    db,
+    organizationId,
+    vendorBillInstanceId
+  )
   if (!draftGlPostingId) return claimed
   // Promoted since the pointer was written: the subject link exists and the row
   // is already above, so the pointer has nothing left to say.
   if (claimed.some((posting) => posting.glPostingId === draftGlPostingId)) {
-    await writeBillDraftPosting(db, organizationId, vendorBillInstanceId, null)
+    await writeDocumentDraftPosting(db, organizationId, vendorBillInstanceId, null)
     return claimed
   }
 
@@ -361,7 +383,7 @@ export async function listVendorBillPostings(
   // that is no longer a draft). Either way the pointer is stale; drop it rather
   // than reading it again on every call.
   if (!row || row.status !== 'draft') {
-    await writeBillDraftPosting(db, organizationId, vendorBillInstanceId, null)
+    await writeDocumentDraftPosting(db, organizationId, vendorBillInstanceId, null)
     return claimed
   }
 
@@ -407,8 +429,8 @@ export async function voidVendorBill(db: Database, input: VoidVendorBillInput): 
   // An open edit means the values on screen are not the values the live entry was
   // built from, so "reverse every live posting" would back out the wrong figures.
   // Save or re-post first; then void (73 D4).
-  if (await readBillEditOpen(db, organizationId, vendorBillInstanceId)) {
-    throw new BadRequestError(
+  if (await readEditStamp(db, organizationId, vendorBillInstanceId)) {
+    throw new ConflictError(
       'This vendor bill is open for editing. Save the edit first, then void it - a void has to ' +
         'reverse the entry the bill actually posted.',
       { vendorBillInstanceId }
@@ -448,7 +470,7 @@ export async function voidVendorBill(db: Database, input: VoidVendorBillInput): 
             { vendorBillInstanceId, glPostingId: posting.glPostingId }
           )
         }
-        await writeBillDraftPosting(db, organizationId, vendorBillInstanceId, null)
+        await writeDocumentDraftPosting(db, organizationId, vendorBillInstanceId, null)
         continue
       }
       const result = await reverseEntry(db, {

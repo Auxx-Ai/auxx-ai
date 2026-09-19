@@ -61,6 +61,9 @@ export function avenueOfPostingType(postingType: PostingType): ExportAvenue | nu
     // A vendor credit rides the buy-side avenue: its auto-post mode is the
     // expense bill's, and no new avenue was added for it (71 U7, decision 2).
     case 'vendor_credit':
+    // The landed-cost clear rides the same buy-side avenue, for the same
+    // reason: it is the vendor bill's own accrual, taken back out (74 D4).
+    case 'landed_cost_clear':
       return 'expenseBill'
     case 'payout':
       return 'payout'

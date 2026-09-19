@@ -28,6 +28,7 @@ const VENDOR_BILL_ATTRIBUTES = pickSystemAttributes(VENDOR_BILL_FIELDS, [
   'vendor_bill_payment_status',
   'vendor_bill_amount_paid',
   'vendor_bill_amount_credited',
+  'vendor_bill_amount_discounted',
   'vendor_bill_billed_at',
   'vendor_bill_currency',
   'vendor_bill_subtotal',
@@ -86,6 +87,8 @@ export interface VendorBillRecord {
   amountPaidMinor: number
   /** Integer minor units, settled by vendor credit. The same floor. */
   amountCreditedMinor: number
+  /** Integer minor units, settled by an early-payment discount. The same floor (74 D3). */
+  amountDiscountedMinor: number
   /** `YYYY-MM-DD`, or `null` when the bill has not been dated yet. */
   billedAt: string | null
   currency: string | null
@@ -127,6 +130,7 @@ export async function loadVendorBill(
     paymentStatus: bill.option('vendor_bill_payment_status') ?? 'unpaid',
     amountPaidMinor: bill.number('vendor_bill_amount_paid') ?? 0,
     amountCreditedMinor: bill.number('vendor_bill_amount_credited') ?? 0,
+    amountDiscountedMinor: bill.number('vendor_bill_amount_discounted') ?? 0,
     billedAt: toCalendarDay(bill.date('vendor_bill_billed_at')),
     currency: bill.text('vendor_bill_currency'),
     totalMinor: bill.number('vendor_bill_total') ?? 0,

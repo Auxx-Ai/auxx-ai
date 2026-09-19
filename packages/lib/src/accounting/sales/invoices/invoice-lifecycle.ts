@@ -7,7 +7,8 @@ import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../../../cache'
-import { BadRequestError } from '../../../errors'
+import { readEditStamp } from '../../../entity-instances/edit-snapshot'
+import { BadRequestError, ConflictError } from '../../../errors'
 import { firstTyped } from '../../../field-values/client'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
@@ -185,6 +186,17 @@ export async function voidInvoice(input: InvoiceLifecycleInput): Promise<void> {
     allocations.lineAllocations.at(0)?.workOrderId ??
     allocations.visitAllocations.at(0)?.workOrderId ??
     allocations.scheduleAllocations.at(0)?.workOrderId
+
+  // The bill's rule one family over (73 D4): an open edit means the values on
+  // screen are not the ones the live entry was built from, so the reversal below
+  // would back out the wrong figures.
+  if (await readEditStamp(database, organizationId, invoiceInstanceId)) {
+    throw new ConflictError(
+      'This invoice is open for editing. Save or cancel the edit first, then void it - a void ' +
+        'has to reverse the entry the invoice actually posted.',
+      { invoiceInstanceId }
+    )
+  }
 
   // Accounting migration step 0: `listInvoiceMoneyPayments` nets `unapply` against
   // `apply`, so a fully-unapplied receipt no longer blocks the void.

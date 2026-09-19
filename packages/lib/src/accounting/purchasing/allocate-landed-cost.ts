@@ -95,15 +95,10 @@ function basisWeights(lines: AllocationLine[], basis: AllocationBasis): number[]
   }
 }
 
-/**
- * The header amount that actually becomes part of what the goods cost.
- *
- * Tax is included only when it is NOT recoverable: an org reclaiming input tax
- * holds a receivable from the tax authority, not more expensive inventory.
- */
+/** The header amount that actually becomes part of what the goods cost. */
 export function capitalisableAmount(header: AllocationHeader): number {
   assertHeader(header)
-  return header.shipping + (header.taxRecoverable ? 0 : header.tax) - header.discount
+  return header.shipping + header.tax - header.discount
 }
 
 /**

@@ -7,6 +7,7 @@ import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getOrgCache } from '../../../cache'
 import { isFieldConnectorManaged } from '../../../data-connectors/managed-fields'
+import { readEditStamp } from '../../../entity-instances/edit-snapshot'
 import { BadRequestError } from '../../../errors'
 import type { EntityFieldChangeHandler, EntityPostDeleteHandler } from '../../../field-hooks/types'
 import { firstTyped } from '../../../field-values/client'
@@ -601,13 +602,18 @@ async function recomputeDocumentTotals(params: {
     const statusTyped = statusField ? firstTyped(headerValues.get(statusField.id)) : undefined
     const status = statusTyped ? (extractValue(statusTyped) as string) : undefined
     if (status && !spec.frozenStatus.editableValues.has(status)) {
-      logger.debug('totals recompute skipped - document is past its editable statuses', {
-        organizationId,
-        documentType,
-        documentInstanceId,
-        status,
-      })
-      return
+      // ...unless an edit is open on it (74 §1.3). The lane's Save rebuilds the
+      // entry from the LINES, so a frozen header here would leave the document on
+      // screen — and the Save floor that reads its total — behind the entry.
+      if (!(await readEditStamp(db ?? database, organizationId, documentInstanceId))) {
+        logger.debug('totals recompute skipped - document is past its editable statuses', {
+          organizationId,
+          documentType,
+          documentInstanceId,
+          status,
+        })
+        return
+      }
     }
   }
 

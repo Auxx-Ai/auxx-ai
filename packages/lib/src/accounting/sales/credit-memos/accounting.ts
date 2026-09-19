@@ -20,14 +20,80 @@
 import { type Database, schema } from '@auxx/database'
 import { and, asc, eq } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
-import { CREDIT_MEMO_SOURCE_TYPE } from '../../ledger/builders/credit-memo'
+import { getOrganizationSetting } from '../../../settings/settings-service'
+import { documentEntryKey } from '../../documents/document-entry-key'
+import {
+  type DocumentPosting,
+  foldDraftPosting,
+  writeDocumentDraftPosting,
+} from '../../documents/document-ledger-state'
+import {
+  type BuiltCreditMemoEntry,
+  buildCreditMemoEntry,
+  CREDIT_MEMO_SOURCE_TYPE,
+} from '../../ledger/builders/credit-memo'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { readAutoPostMode } from '../../ledger/post/auto-post'
-import { postEntry } from '../../ledger/post/post-entry'
+import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
-import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
+import { findLiveSubjectPosting, listPostingsForSource } from '../../ledger/reads/list-postings'
 import type { BuiltEntry, GlPostingSourceInput, PostResult } from '../../ledger/types'
 import { readOrderSourceScope } from '../../money/customer-money/reads'
+import { roundCents } from '../totals/totals'
+import type { CreditMemoLineRecord, CreditMemoRecord } from './reads'
+
+/** The org's document currency, or the ledger's when the setting is blank. */
+export async function organizationCurrency(organizationId: string): Promise<string> {
+  const raw = await getOrganizationSetting({ organizationId, key: 'organization.currency' })
+  return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : LEDGER_CURRENCY
+}
+
+/** How a memo's repost key hashes when the generation marker will not fit beside its digits. */
+export const CREDIT_MEMO_ENTRY_KEY_HASH = {
+  prefix: 'CGN',
+  label: 'credit memo repost',
+} as const
+
+export interface CreditMemoEntrySource {
+  memo: CreditMemoRecord
+  lines: readonly CreditMemoLineRecord[]
+  /** `YYYY-MM-DD`. The accounting date the entry is dated, resolved by the door. */
+  issuedAt: string
+  /** The org's document currency; refused when it differs from the ledger's. */
+  currency: string
+  /** Whether revenue was ever posted for what this memo credits. See `resolveIssue`. */
+  reverseRevenue: boolean
+  /** How many times this memo has posted. 1 (the default) keys on the memo number. */
+  generation?: number
+}
+
+/**
+ * The entry this memo's CURRENT lines produce - pure, persists nothing.
+ *
+ * The one place the record shape meets the builder, so Issue, the preview and
+ * the edit lane's compare-and-repost on Save cannot disagree about what a memo's
+ * entry is. The totals are summed from the LINES (74 D6: the header amounts are
+ * the totals hook's projection of them), never read off the header's mirrors.
+ */
+export function buildEntryForCreditMemo(source: CreditMemoEntrySource): BuiltCreditMemoEntry {
+  const { memo, lines, issuedAt, currency, reverseRevenue } = source
+  const subtotal = roundCents(lines.reduce((sum, line) => sum + line.subtotalMinor, 0))
+  const taxTotal = roundCents(lines.reduce((sum, line) => sum + (line.taxTotalMinor ?? 0), 0))
+  return buildCreditMemoEntry({
+    creditMemoId: memo.id,
+    number: memo.number,
+    periodKey: documentEntryKey(memo.number, source.generation ?? 1, CREDIT_MEMO_ENTRY_KEY_HASH),
+    issuedAt,
+    currency,
+    ledgerCurrency: LEDGER_CURRENCY,
+    subtotal,
+    taxTotal,
+    total: subtotal + taxTotal,
+    reverseRevenue,
+    contactInstanceId: memo.contactInstanceId,
+    memo: `Credit memo ${memo.number} issued`,
+  })
+}
 
 export interface PostCreditMemoEntryInput {
   organizationId: string
@@ -65,7 +131,7 @@ export async function postCreditMemoEntry(
       : []),
   ]
   const lock = await resolvePeriodLock(organizationId)
-  return postEntry(db, {
+  const result = await postEntry(db, {
     organizationId,
     entry,
     actorUserId,
@@ -76,6 +142,41 @@ export async function postCreditMemoEntry(
     storeId: typeof scope.store === 'string' ? scope.store : null,
     mode: await readAutoPostMode(organizationId, 'creditMemo'),
   })
+
+  // A draft writes no subject row, so this pointer is the memo's only way back
+  // to the entry it is waiting on; a real post makes the subject link the truth.
+  if (result.status === 'drafted' && result.glPostingId) {
+    await writeDocumentDraftPosting(db, organizationId, creditMemoInstanceId, result.glPostingId)
+  } else if (result.status === 'posted' || result.status === 'already_posted') {
+    await writeDocumentDraftPosting(db, organizationId, creditMemoInstanceId, null)
+  }
+  return result
+}
+
+/**
+ * Every general-ledger entry sourced on one credit memo, newest first, with the
+ * memo's own drafted entry folded in — a draft holds no subject claim, so
+ * `GlPostingSource` cannot see it.
+ */
+export async function listCreditMemoPostings(
+  db: Database,
+  params: { organizationId: string; creditMemoInstanceId: string }
+): Promise<DocumentPosting[]> {
+  const { organizationId, creditMemoInstanceId } = params
+  const result = await listPostingsForSource(db, {
+    organizationId,
+    sourceKind: CREDIT_MEMO_SOURCE_TYPE,
+    sourceId: creditMemoInstanceId,
+  })
+  const claimed: DocumentPosting[] = result.isErr()
+    ? []
+    : result.value.map((posting) => ({
+        glPostingId: posting.id,
+        docNumber: posting.docNumber,
+        status: posting.status,
+        postingType: posting.postingType,
+      }))
+  return foldDraftPosting(db, organizationId, creditMemoInstanceId, claimed)
 }
 
 /**

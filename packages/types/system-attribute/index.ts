@@ -768,9 +768,8 @@ export const SYSTEM_ATTRIBUTES = [
 
   // ─── Purchase order ─────────────────────────────────────────────
   // plans/purchasing/01-build-plan.md §4. The header's shipping/tax/discount
-  // totals plus allocationBasis + taxRecoverable are exactly
-  // `allocateLandedCost`'s argument list — which is why no separate
-  // `goods_receipt` header is needed.
+  // totals plus allocationBasis are why no separate `goods_receipt` header is
+  // needed.
   'purchase_order_number',
   'purchase_order_vendor',
   // The ADDRESSEE. `purchase_order_vendor` targets a `company`, and a company
@@ -796,7 +795,6 @@ export const SYSTEM_ATTRIBUTES = [
   'purchase_order_discount_value',
   'purchase_order_total',
   'purchase_order_allocation_basis',
-  'purchase_order_tax_recoverable',
   'purchase_order_notes',
   'purchase_order_pdf_asset', // FILE — the generated PO PDF, written only by ensureDocumentPdf
   'purchase_order_attachments', // FILE, multi — vendor confirmations, drawings, signed terms
@@ -857,6 +855,7 @@ export const SYSTEM_ATTRIBUTES = [
   // The money axis, beside `vendor_bill_status`'s lifecycle axis (73 D1).
   'vendor_bill_payment_status',
   'vendor_bill_amount_credited',
+  'vendor_bill_amount_discounted', // early-payment discounts taken on its payments (74 D3)
   'vendor_bill_vendor_credits', // inverse of vendor_credit_bill
   'vendor_bill_credit_applications', // inverse of vendor_credit_application_vendor_bill
   'vendor_bill_landed_cost_lines', // inverse of vendor_bill_line_landed_bill

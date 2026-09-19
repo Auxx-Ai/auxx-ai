@@ -16,20 +16,30 @@ import { toRecordId } from '@auxx/types/resource'
 import { calendarDayToInstant } from '@auxx/utils/calendar-day'
 import { and, count, eq } from 'drizzle-orm'
 import { getEntityDefIdResolver } from '../../../cache'
-import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../../errors'
+import { readEditStamp } from '../../../entity-instances/edit-snapshot'
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  UnprocessableEntityError,
+} from '../../../errors'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
-import { getOrganizationSetting } from '../../../settings/settings-service'
-import { type BuiltCreditMemoEntry, buildCreditMemoEntry } from '../../ledger/builders/credit-memo'
+import type { BuiltCreditMemoEntry } from '../../ledger/builders/credit-memo'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
-import { LEDGER_CURRENCY, previewEntry } from '../../ledger/post/post-entry'
+import { previewEntry } from '../../ledger/post/post-entry'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../ledger/types'
 import { roundCents } from '../totals/totals'
 import { recomputeTotals } from '../totals/totals-hooks'
-import { postCreditMemoEntry, reverseCreditMemoEntry } from './accounting'
+import {
+  buildEntryForCreditMemo,
+  organizationCurrency,
+  postCreditMemoEntry,
+  reverseCreditMemoEntry,
+} from './accounting'
 import type { CreditMemoLineInput, CreditMemoReason, CreditMemoSource } from './client'
 import { runCreditCommand } from './command'
 import {
@@ -47,12 +57,6 @@ import {
 import { CREDIT_MEMO_STATUS_BYPASS, settleCreditMemo } from './settle'
 
 const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/
-
-/** The org's document currency, or the ledger's when the setting is blank. */
-async function organizationCurrency(organizationId: string): Promise<string> {
-  const raw = await getOrganizationSetting({ organizationId, key: 'organization.currency' })
-  return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : LEDGER_CURRENCY
-}
 
 /** A writer for the fields the status wall protects. Mirrors `settle.ts`'s. */
 async function statusWriter(
@@ -476,19 +480,12 @@ export async function resolveIssue(
         : false
       : true
 
-  const currency = await organizationCurrency(organizationId)
-  const built = buildCreditMemoEntry({
-    creditMemoId: creditMemoInstanceId,
-    number: memo.number,
+  const built = buildEntryForCreditMemo({
+    memo,
+    lines,
     issuedAt,
-    currency,
-    ledgerCurrency: LEDGER_CURRENCY,
-    subtotal,
-    taxTotal,
-    total,
+    currency: await organizationCurrency(organizationId),
     reverseRevenue,
-    contactInstanceId: memo.contactInstanceId,
-    memo: `Credit memo ${memo.number} issued`,
   })
 
   return { memo, lines, issuedAt, built }
@@ -629,6 +626,17 @@ export async function voidCreditMemo(db: Database, input: CreditMemoLifecycleInp
 
       if (memo.status === 'void') {
         throw new BadRequestError('This credit memo is already void', { creditMemoInstanceId })
+      }
+      // The bill's rule one family over (73 D4): an open edit means the values on
+      // screen are not the ones the live entry was built from. It also strands the
+      // memo - `void` refuses both Save and Cancel, and the lock freezes a void
+      // memo whatever the snapshot row says, so the edit could never be closed.
+      if (await readEditStamp(db, organizationId, creditMemoInstanceId)) {
+        throw new ConflictError(
+          'This credit memo is open for editing. Save or cancel the edit first, then void it - a ' +
+            'void has to reverse the entry the memo actually posted.',
+          { creditMemoInstanceId }
+        )
       }
       const writer = await statusWriter(db, organizationId, userId)
 

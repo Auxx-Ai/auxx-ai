@@ -4,8 +4,8 @@ import { database, schema } from '@auxx/database'
 import { parseRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq, inArray } from 'drizzle-orm'
-import { readBillEditOpen } from '../../accounting/purchasing/bill-edit-flag'
 import { getOrgCache } from '../../cache'
+import { readEditStamp } from '../../entity-instances/edit-snapshot'
 import { ConflictError } from '../../errors'
 import { unwrapRelationId } from '../../resources/events/captured-values'
 import { VendorBillStatus } from '../../resources/registry/enum-values'
@@ -47,8 +47,10 @@ const LINE_PARENT_ATTR: SystemAttribute = 'vendor_bill_line_vendor_bill'
  *                    └──[Void]──▶ void
  * ```
  *
- * 🛑 **The predicate is `posted` AND no `editOpen` flag, on the BILL — never the
- * line's own state.** A bill line has no lifecycle of its own; the document it
+ * 🛑 **The predicate is `posted` AND no edit-snapshot row, on the BILL — never
+ * the line's own state.** The row's existence IS the edit flag (74 D1), and it is
+ * an indexed key lookup rather than a read of the instance's whole jsonb.
+ * A bill line has no lifecycle of its own; the document it
  * belongs to has one, and it is the document that is in the books. So every
  * guard below resolves the parent bill first and asks it the same two questions.
  *
@@ -122,7 +124,7 @@ async function refuseWhenLocked(
 ): Promise<void> {
   const bill = await readBillLockState(organizationId, billInstanceId)
   if (!bill || bill.status !== VendorBillStatus.POSTED) return
-  if (await readBillEditOpen(database, organizationId, billInstanceId)) return
+  if (await readEditStamp(database, organizationId, billInstanceId)) return
 
   throw new ConflictError(
     `Bill ${bill.label} is posted and in the books, so you cannot ${what}. Press Edit to ` +

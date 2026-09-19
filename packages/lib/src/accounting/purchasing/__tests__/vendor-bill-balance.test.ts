@@ -95,6 +95,10 @@ describe('vendorBillBalance', () => {
     expect(vendorBillBalance(20000, null)).toBe(20000)
   })
 
+  it('subtracts a credit and an early-payment discount too (74 D3)', () => {
+    expect(vendorBillBalance(100_000, 88_000, 10_000, 2_000)).toBe(0)
+  })
+
   it('has NO balance when the bill has no total', () => {
     // Not zero. A bill nobody has keyed a total onto owes an unknown amount, and
     // storing `0 - paid` would render an unentered invoice as fully settled —

@@ -2696,6 +2696,13 @@
       "when": 1789789217395,
       "tag": "0384_drop_expense_bill_posting_type",
       "breakpoints": true
+    },
+    {
+      "idx": 385,
+      "version": "7",
+      "when": 1789798574937,
+      "tag": "0385_accounting_74_edit_snapshot_discount_landed_clear",
+      "breakpoints": true
     }
   ]
 }

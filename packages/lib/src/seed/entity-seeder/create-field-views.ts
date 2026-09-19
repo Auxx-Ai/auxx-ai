@@ -220,8 +220,8 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
   {
     // Create is an allowlist: the supplier, when it was ordered and when it is
     // expected. Status defaults to `draft`, totals are computed from the lines,
-    // and the allocation knobs (basis, taxRecoverable) are set when freight is
-    // actually keyed at receipt - not when the order is raised.
+    // and the allocation basis is set when freight is actually keyed at
+    // receipt - not when the order is raised.
     entityType: 'purchase_order',
     contextType: 'dialog_create',
     name: 'Default Create Dialog',

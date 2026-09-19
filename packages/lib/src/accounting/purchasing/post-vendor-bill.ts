@@ -12,20 +12,21 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { readSystemRecords, systemFields } from '../../resources/system-records'
+import { documentEntryKey } from '../documents/document-entry-key'
+import { writeDocumentDraftPosting } from '../documents/document-ledger-state'
 import {
   type BuiltVendorBillEntry,
   buildVendorBillEntry,
   VENDOR_BILL_POSTING_TYPE,
   VENDOR_BILL_SOURCE_TYPE,
 } from '../ledger/builders/entry'
-import { hashedPeriodKey, MAX_COMPACT_PERIOD_KEY } from '../ledger/periods/period-key'
 import { resolvePeriodLock } from '../ledger/periods/period-lock'
 import { readAutoPostMode } from '../ledger/post/auto-post'
 import { LEDGER_CURRENCY, postEntry } from '../ledger/post/post-entry'
 import { isAccountingEnabled } from '../ledger/setup/accounting-enabled'
 import type { PostResult } from '../ledger/types'
-import { writeBillDraftPosting } from './bill-ledger-state'
 import type { VendorBillLineRecord, VendorBillRecord } from './expense-bill/reads'
+import type { LandedAccrualRemaining } from './landed-cost/reads'
 import type { AllocationBasis } from './types'
 
 const ORDER_BASIS_ATTRIBUTES = ['purchase_order_allocation_basis'] as const
@@ -64,36 +65,20 @@ export interface VendorBillEntrySource {
   allocationBasis?: AllocationBasis
   /** How many times this bill has posted. 1 (the default) keys on the internal number. */
   generation?: number
+  /**
+   * Per line id, what that landed line may still relieve of its shipment's
+   * accrual - `readLandedAccrualRemaining` (74 D4). Omitted leaves every line
+   * on the ordinary coded-line path, which is what a bill with no landed line
+   * is.
+   */
+  landedRemaining?: ReadonlyMap<string, LandedAccrualRemaining>
 }
 
-/**
- * The claim and document-number key for one generation of a bill's entry.
- *
- * Generation 1 is the internal number verbatim (`BILL-0002` -> `AUXX-BIL-BILL0002`)
- * and must stay so, or every bill already in a ledger re-keys. A repost cannot
- * reuse it: Save reverses the original at `-R1`, which frees the CLAIM but
- * leaves `AUXX-BIL-BILL0002` standing on the reversed row, and `docNumber` is
- * unique per org.
- *
- * So a repost keys on the number's DIGITS plus a generation marker -
- * `0002G2` -> `AUXX-BIL-0002G2`, whose own reversal `AUXX-BIL-0002G2-R1` is 18
- * of the 21 characters allowed. `BILL0002G2` would be 10 against a 9-character
- * budget and does not fit. When the internal number carries no digits, or the
- * marker would not fit beside them, the key falls back to a 6-digit hash of the
- * number and the generation (`BGN-<hash>`), which always fits.
- */
-export function vendorBillEntryKey(internalNumber: string, generation: number): string | undefined {
-  if (generation <= 1) return undefined
-  const digits = internalNumber.replace(/\D/g, '')
-  const marked = `${digits}G${generation}`
-  if (digits.length > 0 && marked.length <= MAX_COMPACT_PERIOD_KEY) return marked
-  return hashedPeriodKey({
-    prefix: 'BGN',
-    sourceId: `${internalNumber}:${generation}`,
-    label: 'vendor bill repost',
-    idLabel: 'internal number',
-  })
-}
+/** How a bill's repost key hashes when the generation marker will not fit beside its digits. */
+export const VENDOR_BILL_ENTRY_KEY_HASH = {
+  prefix: 'BGN',
+  label: 'vendor bill repost',
+} as const
 
 /**
  * The entry this bill's CURRENT values produce - pure, persists nothing.
@@ -107,7 +92,11 @@ export function buildEntryForVendorBill(source: VendorBillEntrySource): BuiltVen
   return buildVendorBillEntry({
     vendorBillId: bill.id,
     internalNumber: bill.internalNumber,
-    periodKey: vendorBillEntryKey(bill.internalNumber, source.generation ?? 1),
+    periodKey: documentEntryKey(
+      bill.internalNumber,
+      source.generation ?? 1,
+      VENDOR_BILL_ENTRY_KEY_HASH
+    ),
     billedAt,
     currency: bill.currency,
     ledgerCurrency: LEDGER_CURRENCY,
@@ -116,15 +105,20 @@ export function buildEntryForVendorBill(source: VendorBillEntrySource): BuiltVen
     taxMinor: bill.taxMinor,
     discountMinor: bill.discountMinor,
     allocationBasis: source.allocationBasis,
-    lines: lines.map((line) => ({
-      lineId: line.id,
-      description: line.description,
-      lineTotalMinor: line.lineTotalMinor,
-      quantityBilled: line.quantityBilled,
-      purchaseOrderLineId: line.purchaseOrderLineId,
-      unitPriceExpectedMinor: line.unitPriceExpectedMinor,
-      glAccountId: line.glAccountId,
-    })),
+    lines: lines.map((line) => {
+      const landed = source.landedRemaining?.get(line.id)
+      return {
+        lineId: line.id,
+        description: line.description,
+        lineTotalMinor: line.lineTotalMinor,
+        quantityBilled: line.quantityBilled,
+        purchaseOrderLineId: line.purchaseOrderLineId,
+        unitPriceExpectedMinor: line.unitPriceExpectedMinor,
+        glAccountId: line.glAccountId,
+        landedPoolKey: landed?.poolKey,
+        remainingAccrualMinor: landed?.remainingMinor,
+      }
+    }),
     vendorCompanyInstanceId: bill.vendorCompanyInstanceId,
     memo: `Bill ${bill.number || bill.internalNumber}`,
   })
@@ -150,7 +144,7 @@ export interface PostVendorBillEntryInput {
  * INTERNAL number, `RecordSequence`-issued and unique in the org, so a second
  * Post claims the same `(org, vendor_bill, periodKey, revision=0)` tuple and
  * converges to `already_posted`. A repost after an edit keys on a later
- * generation of it - see {@link vendorBillEntryKey}. The mode follows the `expenseBill` avenue,
+ * generation of it - see {@link documentEntryKey}. The mode follows the `expenseBill` avenue,
  * which is the one buy-side document lane.
  *
  * **Never throws.** Every outcome is a `PostResult`; `null` means accounting is
@@ -198,9 +192,9 @@ export async function postVendorBillEntry(
   // A draft writes no subject row, so this pointer is the bill's only way back
   // to the entry it is waiting on; a real post makes the subject link the truth.
   if (result.status === 'drafted' && result.glPostingId) {
-    await writeBillDraftPosting(db, organizationId, vendorBillInstanceId, result.glPostingId)
+    await writeDocumentDraftPosting(db, organizationId, vendorBillInstanceId, result.glPostingId)
   } else if (result.status === 'posted' || result.status === 'already_posted') {
-    await writeBillDraftPosting(db, organizationId, vendorBillInstanceId, null)
+    await writeDocumentDraftPosting(db, organizationId, vendorBillInstanceId, null)
   }
 
   logger.info('Posted a vendor bill', {

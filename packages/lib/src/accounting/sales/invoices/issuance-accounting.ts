@@ -14,7 +14,13 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { AuxxError, UnprocessableEntityError } from '../../../errors'
-import { buildInvoiceEntry, INVOICE_SOURCE_TYPE } from '../../ledger/builders/invoice'
+import { documentEntryKey } from '../../documents/document-entry-key'
+import { writeDocumentDraftPosting } from '../../documents/document-ledger-state'
+import {
+  type BuiltInvoiceEntry,
+  buildInvoiceEntry,
+  INVOICE_SOURCE_TYPE,
+} from '../../ledger/builders/invoice'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { readAutoPostMode } from '../../ledger/post/auto-post'
 import { postEntry } from '../../ledger/post/post-entry'
@@ -23,9 +29,97 @@ import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { GlPostingSourceInput, PostResult } from '../../ledger/types'
-import { loadInvoiceForIssuance } from './issuance-reads'
+import { type InvoiceForIssuance, loadInvoiceForIssuance } from './issuance-reads'
 
 const logger = createScopedLogger('money-invoice-issuance-accounting')
+
+/** How an invoice's repost key hashes when the generation marker will not fit beside its digits. */
+export const INVOICE_ENTRY_KEY_HASH = {
+  prefix: 'IGN',
+  label: 'invoice repost',
+} as const
+
+export interface InvoiceIssuanceEntrySource {
+  /** The `invoice` EntityInstance id. The entry's subject and its claim. */
+  invoiceId: string
+  invoice: InvoiceForIssuance
+  /** `YYYY-MM-DD`. The accounting date the entry is dated, resolved by the door. */
+  issuedAt: string
+  /** How many times this invoice has posted. 1 (the default) keys on the invoice number. */
+  generation?: number
+}
+
+/**
+ * The entry this invoice's CURRENT values produce - pure, persists nothing.
+ *
+ * The one place the record shape meets the builder, so the send path and the
+ * edit lane's compare-and-repost cannot disagree about what an invoice's entry is.
+ */
+export function buildEntryForInvoiceIssuance(
+  source: InvoiceIssuanceEntrySource
+): BuiltInvoiceEntry {
+  const { invoiceId, invoice, issuedAt } = source
+  return buildInvoiceEntry({
+    invoiceId,
+    invoiceNumber: invoice.number,
+    periodKey: documentEntryKey(invoice.number, source.generation ?? 1, INVOICE_ENTRY_KEY_HASH),
+    issuedAt,
+    subtotalMinor: invoice.subtotalMinor,
+    taxTotalMinor: invoice.taxTotalMinor,
+    totalMinor: invoice.totalMinor,
+    contactInstanceId: invoice.contactInstanceId,
+  })
+}
+
+export interface PostInvoiceIssuanceBuiltEntryInput {
+  organizationId: string
+  invoiceId: string
+  /** `invoice_contact`, for the receivable line's counterparty. */
+  contactInstanceId?: string | null
+  entry: BuiltInvoiceEntry
+  actorUserId?: string
+  memo: string
+}
+
+/**
+ * Put the built issuance entry in the books.
+ *
+ * **Never throws.** Every outcome is a `PostResult`; `null` means accounting is
+ * off, which is a first-class case and not a degraded one.
+ */
+export async function postInvoiceIssuanceBuiltEntry(
+  db: Database,
+  input: PostInvoiceIssuanceBuiltEntryInput
+): Promise<PostResult | null> {
+  const { organizationId, invoiceId, contactInstanceId, entry, actorUserId, memo } = input
+  if (!(await isAccountingEnabled(db, organizationId))) return null
+
+  const sources: GlPostingSourceInput[] = [
+    { sourceKind: INVOICE_SOURCE_TYPE, sourceId: invoiceId, linkRole: 'subject' },
+    ...(contactInstanceId
+      ? [{ sourceKind: 'contact', sourceId: contactInstanceId, linkRole: 'counterparty' as const }]
+      : []),
+  ]
+  const lock = await resolvePeriodLock(organizationId)
+  const result = await postEntry(db, {
+    organizationId,
+    entry: entry.entry,
+    actorUserId,
+    lock,
+    memo,
+    sources,
+    mode: await readAutoPostMode(organizationId, 'invoice'),
+  })
+
+  // A draft writes no subject row, so this pointer is the invoice's only way
+  // back to the entry it is waiting on; a real post makes the subject link true.
+  if (result.status === 'drafted' && result.glPostingId) {
+    await writeDocumentDraftPosting(db, organizationId, invoiceId, result.glPostingId)
+  } else if (result.status === 'posted' || result.status === 'already_posted') {
+    await writeDocumentDraftPosting(db, organizationId, invoiceId, null)
+  }
+  return result
+}
 
 export interface PostInvoiceIssuanceEntryInput {
   organizationId: string
@@ -34,6 +128,8 @@ export interface PostInvoiceIssuanceEntryInput {
   actorUserId?: string
   /** Override the invoice's own `issuedAt`. Absent uses the stamped date, else today. */
   issuedAt?: string
+  /** How many times this invoice has posted. Absent keys on the invoice number. */
+  generation?: number
 }
 
 /**
@@ -59,38 +155,22 @@ export async function postInvoiceIssuanceEntry(
 
     const issuedAt =
       input.issuedAt ?? invoice.issuedAt ?? (await todayInBookTimeZone(organizationId))
-    const built = buildInvoiceEntry({
+    const built = buildEntryForInvoiceIssuance({
       invoiceId,
-      invoiceNumber: invoice.number,
+      invoice,
       issuedAt,
-      subtotalMinor: invoice.subtotalMinor,
-      taxTotalMinor: invoice.taxTotalMinor,
-      totalMinor: invoice.totalMinor,
-      contactInstanceId: invoice.contactInstanceId,
+      generation: input.generation,
     })
 
-    const sources: GlPostingSourceInput[] = [
-      { sourceKind: INVOICE_SOURCE_TYPE, sourceId: invoiceId, linkRole: 'subject' },
-      ...(invoice.contactInstanceId
-        ? [
-            {
-              sourceKind: 'contact',
-              sourceId: invoice.contactInstanceId,
-              linkRole: 'counterparty' as const,
-            },
-          ]
-        : []),
-    ]
-    const lock = await resolvePeriodLock(organizationId)
-    return await postEntry(db, {
+    const posted = await postInvoiceIssuanceBuiltEntry(db, {
       organizationId,
-      entry: built.entry,
+      invoiceId,
+      contactInstanceId: invoice.contactInstanceId,
+      entry: built,
       actorUserId,
-      lock,
       memo: `Invoice ${invoice.number || invoiceId} issued`,
-      sources,
-      mode: await readAutoPostMode(organizationId, 'invoice'),
     })
+    return posted ?? { status: 'not_enabled' }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     logger.warn('An invoice issuance was not posted to the ledger', {

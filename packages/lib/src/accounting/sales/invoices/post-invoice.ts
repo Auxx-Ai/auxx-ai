@@ -29,6 +29,7 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { type DocumentPosting, foldDraftPosting } from '../../documents/document-ledger-state'
 import { INVOICE_SOURCE_TYPE } from '../../ledger/builders/invoice'
 import { didLedgerAccept, isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
@@ -131,6 +132,23 @@ export async function listInvoicePostings(
     status: posting.status,
     postingType: posting.postingType,
   }))
+}
+
+/**
+ * The same list plus the invoice's DRAFT entry, which holds no subject claim and
+ * so is invisible to {@link listInvoicePostings} (74 §1.3).
+ *
+ * Read by the edit lane alone: `hasLiveInvoicePostings` and the delete guard
+ * deliberately keep their claim-only view, where a draft is not yet a reason to
+ * refuse anything.
+ */
+export async function listInvoiceEditPostings(
+  db: Database,
+  params: { organizationId: string; entityInstanceId: string }
+): Promise<DocumentPosting[]> {
+  const { organizationId, entityInstanceId } = params
+  const claimed = await listInvoicePostings(db, { organizationId, invoiceId: entityInstanceId })
+  return foldDraftPosting(db, organizationId, entityInstanceId, claimed)
 }
 
 /**

@@ -29,10 +29,14 @@ const h = vi.hoisted(() => ({
   resolveFulfillmentDeliveryIntentInTx: vi.fn(),
   planAccountingDeliveryInTx: vi.fn(),
   withAccountingCommitLock: vi.fn(),
+  readEditStamp: vi.fn(),
 }))
 
 vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({ from: () => ({ bySystemAttributes: h.bySystemAttributes }) }),
+}))
+vi.mock('../../../../entity-instances/edit-snapshot', () => ({
+  readEditStamp: h.readEditStamp,
 }))
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
@@ -192,6 +196,7 @@ beforeEach(() => {
   )
   h.isAccountingEnabled.mockResolvedValue(true)
   h.readAutoPostMode.mockResolvedValue('post')
+  h.readEditStamp.mockResolvedValue(null)
 })
 
 describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
@@ -218,6 +223,22 @@ describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
         reason: 'Bankrupt',
       })
     ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  // An open edit means the balance on screen is not the one the live entry was
+  // built from, so the write-off would land on the wrong figure (73 D4).
+  it('refuses while an edit is open', async () => {
+    wireInvoice('sent')
+    h.readEditStamp.mockResolvedValue({ openedAt: '2026-09-18T00:00:00.000Z', byUserId: USER })
+    await expect(
+      writeOffInvoice(stubDb(), {
+        organizationId: ORG,
+        actorUserId: USER,
+        invoiceId: INVOICE,
+        reason: 'Bankrupt',
+      })
+    ).rejects.toThrow(/open for editing/)
+    expect(h.postEntry).not.toHaveBeenCalled()
   })
 
   it.each(['void', 'draft'])('refuses a %s invoice on its status alone', async (status) => {

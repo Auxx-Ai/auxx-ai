@@ -57,6 +57,8 @@ const ENABLED_TYPES_PINNED: readonly PostingType[] = [
   // 73 D3: the ONE bill type, of either kind, posted by the Post action. It is
   // declared last because it was switched on last.
   'vendor_bill',
+  // 74 D4, switched on after it.
+  'landed_cost_clear',
 ]
 
 /**

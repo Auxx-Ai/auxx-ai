@@ -95,6 +95,11 @@ export interface BuildInvoiceEntryInput {
    * `already_posted`.
    */
   invoiceNumber: string
+  /**
+   * Override the key a repost claims on (74 §1.3). Absent keys on
+   * {@link BuildInvoiceEntryInput.invoiceNumber}, which generation 1 must keep.
+   */
+  periodKey?: string
   /** `YYYY-MM-DD`. The invoice's own `issuedAt`, honouring a deliberate backdate. */
   issuedAt: string
   /**
@@ -154,6 +159,9 @@ export function buildInvoiceEntry(input: BuildInvoiceEntryInput): BuiltInvoiceEn
       'Shorten the invoice number, or raise the receivable with a manual journal entry instead.',
     context: { invoiceId },
   })
+  // A repost cannot reuse the number the reversed original still holds, so Save
+  // hands in a generation key instead (`documentEntryKey`).
+  const periodKey = input.periodKey ?? invoiceNumber
 
   // `FieldValue.valueNumber` is a `doublePrecision` column and every one of
   // `invoice_subtotal`, `invoice_tax_total` and `invoice_total` lives in it, so
@@ -246,11 +254,11 @@ export function buildInvoiceEntry(input: BuildInvoiceEntryInput): BuiltInvoiceEn
   return {
     entry: buildEntry({
       postingType: INVOICE_ISSUED_POSTING_TYPE,
-      periodKey: invoiceNumber,
+      periodKey,
       txnDate: issuedAt,
       lines,
     }),
-    periodKey: invoiceNumber,
+    periodKey,
     totalMinor,
     revenueMinor,
     taxTotalMinor,

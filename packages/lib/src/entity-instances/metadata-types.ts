@@ -51,12 +51,6 @@ export type PartMetadata = {
  * Used when EntityDefinition.entityType = 'vendor_bill'
  */
 export type VendorBillMetadata = {
-  /** Set while a posted bill is unlocked for editing (73 D4). Absent = locked. */
-  editOpen?: {
-    /** ISO timestamp the Edit button was pressed. */
-    openedAt: string
-    byUserId: string
-  }
   /** What the bill knows about its own entry that `GlPostingSource` cannot say. */
   ledger?: {
     /**
@@ -70,6 +64,15 @@ export type VendorBillMetadata = {
 }
 
 /**
+ * Invoice metadata stored in EntityInstance.metadata
+ * Used when EntityDefinition.entityType = 'invoice'
+ */
+export type InvoiceMetadata = {
+  /** The same document-ledger state the bill carries (74 §1.3). */
+  ledger?: VendorBillMetadata['ledger']
+}
+
+/**
  * Union type for all entity metadata types
  */
 export type EntityMetadata =
@@ -77,6 +80,7 @@ export type EntityMetadata =
   | ContactMetadata
   | PartMetadata
   | VendorBillMetadata
+  | InvoiceMetadata
   | Record<string, unknown>
 
 /**
@@ -90,4 +94,6 @@ export type MetadataByEntityType<T extends string> = T extends 'ticket'
       ? PartMetadata
       : T extends 'vendor_bill'
         ? VendorBillMetadata
-        : Record<string, unknown>
+        : T extends 'invoice'
+          ? InvoiceMetadata
+          : Record<string, unknown>

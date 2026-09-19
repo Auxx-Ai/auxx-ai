@@ -50,8 +50,8 @@ import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
 import { RecordPickerContent } from '~/components/pickers/record-picker/record-picker-content'
 import { useResourceProperty } from '~/components/resources'
+import { useRecordEditState } from '~/components/resources/hooks/use-record-edit-state'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
-import { api } from '~/trpc/react'
 import { PurchaseOrderLinePicker } from '../purchase-order/purchase-order-line-picker'
 import { AddPurchaseOrderLinesButton } from './add-purchase-order-lines-button'
 import { VendorBillActions } from './vendor-bill-actions'
@@ -71,12 +71,9 @@ export function VendorBillLinesCard({ recordId }: DrawerTabProps) {
   const purchaseOrderRecordId =
     extractRelationshipRecordIds(values.vendor_bill_purchase_order)[0] ?? null
   const status = (values.vendor_bill_status as string | undefined) ?? 'draft'
-  // The flag lives on `EntityInstance.metadata`, not on a field, so it is its own
-  // read rather than another attribute above.
-  const { data: editState } = api.purchasing.billEditState.useQuery({
-    vendorBillId: instanceIdOf(recordId as RecordId),
-  })
-  const editing = !!editState?.editOpen
+  // The edit stamp rides the record itself (74 §1.2.1), so this is a store read
+  // and not a query. Unknown reads as locked.
+  const { editing } = useRecordEditState(recordId as RecordId)
   // 73 D4/D5: the transcribed headers and the whole line grid are typed until the
   // bill is in the books, and again while it is open for editing.
   const headersLocked = status === 'posted' && !editing
@@ -130,10 +127,4 @@ export function VendorBillLinesCard({ recordId }: DrawerTabProps) {
       />
     </div>
   )
-}
-
-/** The bill's own instance id — every purchasing procedure takes that, not a `RecordId`. */
-function instanceIdOf(recordId: RecordId): string {
-  const [, instanceId] = recordId.split(':')
-  return instanceId ?? recordId
 }

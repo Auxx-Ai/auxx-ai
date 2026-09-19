@@ -71,11 +71,11 @@ import { usePurchaseOrderLines } from './use-purchase-order-lines'
 
 // 🛑 This dialog reads NO field off the purchase order header any more. It used
 // to read `shipping_total` / `tax_total` / `discount_value` /
-// `tax_recoverable` / `allocation_basis` to spread freight across the receipt,
-// and `currency` to render the money columns that spread produced. All of that
-// left with the allocation. Those fields are still declared on the PO and still
-// reachable through the generic field panel — nothing was retired, this surface
-// simply stopped being one of their readers.
+// `allocation_basis` to spread freight across the receipt, and `currency` to
+// render the money columns that spread produced. All of that left with the
+// allocation. Those fields are still declared on the PO and still reachable
+// through the generic field panel — this surface simply stopped being one of
+// their readers.
 
 interface ReceivePurchaseOrderDialogProps {
   open: boolean

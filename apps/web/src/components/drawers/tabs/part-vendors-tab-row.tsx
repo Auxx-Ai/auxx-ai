@@ -19,6 +19,7 @@ import { TableCell, TableRow } from '@auxx/ui/components/table'
 import { pluralize } from '@auxx/utils'
 import { formatCurrency, RATE_DECIMALS } from '@auxx/utils/currency'
 import { BadgeCheck, Edit, Globe, MoreHorizontal, Star, Trash2 } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { authorityLabel } from '~/components/manufacturing/tariff-types'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
@@ -67,6 +68,8 @@ interface VendorPartRowProps {
    * landed offer wins, and before this marker existed nothing on screen said so.
    */
   isWinner: boolean
+  /** The accrued-vs-billed line beneath the landed cost (74 D5), or nothing. */
+  landedCost?: ReactNode
   onEdit: () => void
   onDelete: () => void
   onSetPreferred: () => void
@@ -143,6 +146,7 @@ export function VendorPartRow({
   tariff,
   codeLabel,
   isWinner,
+  landedCost,
   onEdit,
   onDelete,
   onSetPreferred,
@@ -232,22 +236,25 @@ export function VendorPartRow({
         )}
       </TableCell>
       <TableCell className='text-right tabular-nums'>
-        {breakdown ? (
-          // Always shown when there is a price. It previously rendered a dash
-          // whenever landed equalled the unit price, which is most rows — a
-          // supplier with no shipping, tariff or other costs still HAS a landed
-          // cost, and it is that supplier's unit price.
-          <Tooltip
-            contentComponent={
-              <LandedBreakdown breakdown={breakdown} tariff={tariff} codeLabel={codeLabel} />
-            }>
-            <span className='underline decoration-dotted underline-offset-4'>
-              {formatCurrency(breakdown.landed, { decimals: RATE_DECIMALS })}
-            </span>
-          </Tooltip>
-        ) : (
-          <span className='text-muted-foreground'>—</span>
-        )}
+        <div className='flex flex-col items-end'>
+          {breakdown ? (
+            // Always shown when there is a price. It previously rendered a dash
+            // whenever landed equalled the unit price, which is most rows — a
+            // supplier with no shipping, tariff or other costs still HAS a landed
+            // cost, and it is that supplier's unit price.
+            <Tooltip
+              contentComponent={
+                <LandedBreakdown breakdown={breakdown} tariff={tariff} codeLabel={codeLabel} />
+              }>
+              <span className='underline decoration-dotted underline-offset-4'>
+                {formatCurrency(breakdown.landed, { decimals: RATE_DECIMALS })}
+              </span>
+            </Tooltip>
+          ) : (
+            <span className='text-muted-foreground'>—</span>
+          )}
+          {landedCost}
+        </div>
       </TableCell>
       <TableCell className='text-right'>
         {leadTime ? (

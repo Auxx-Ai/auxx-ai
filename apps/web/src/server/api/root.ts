@@ -42,6 +42,7 @@ import { dataImportRouter } from './routers/data-import'
 import { datasetRouter } from './routers/dataset'
 import { dispatchRouter } from './routers/dispatch'
 import { documentRouter } from './routers/document'
+import { documentEditRouter } from './routers/document-edit'
 import { draftRouter } from './routers/draft'
 import { duplicatesRouter } from './routers/duplicates'
 import { emailTemplateRouter } from './routers/emailTemplate'
@@ -150,6 +151,7 @@ export const appRouter = createTRPCRouter({
   customField: customFieldRouter,
   dataset: datasetRouter,
   document: documentRouter,
+  documentEdit: documentEditRouter,
   draft: draftRouter,
   duplicates: duplicatesRouter,
   segment: segmentRouter,

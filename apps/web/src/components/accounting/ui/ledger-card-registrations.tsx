@@ -66,9 +66,9 @@ export function PayoutLedgerCard(props: DrawerTabProps) {
 
 // The one wrapper that reads something beyond `GlPostingSource`: under an
 // avenue with auto-post off a bill's entry is DRAFTED, and a draft writes no
-// subject link, so `billEditState` hands the card the pointer the bill holds.
+// subject link, so `billLedgerState` hands the card the pointer the bill holds.
 export function VendorBillLedgerCard(props: DrawerTabProps) {
-  const { data } = api.purchasing.billEditState.useQuery(
+  const { data } = api.purchasing.billLedgerState.useQuery(
     { vendorBillId: props.entityInstanceId },
     { enabled: !!props.entityInstanceId }
   )

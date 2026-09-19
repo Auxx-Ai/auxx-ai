@@ -105,6 +105,11 @@ export const POSTING_TYPES = [
   // flipped, and its own type so the export can send a Vendor Credit and a
   // ledger card can name what it is (task 71 §5 U7, D10).
   'vendor_credit',
+  // The landed-cost under-run, cleared by hand on a goods bill:
+  // `Dr freight_accrual / Dr duties_accrual / Cr ppv` for whatever the receipts
+  // accrued and no carrier or broker ever billed (74 D4). Its own type so the
+  // remaining is read back off the postings rather than off a flag.
+  'landed_cost_clear',
 ] as const
 
 export type PostingType = (typeof POSTING_TYPES)[number]

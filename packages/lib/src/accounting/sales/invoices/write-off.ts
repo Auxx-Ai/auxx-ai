@@ -18,7 +18,8 @@
 import type { Database } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { BadRequestError, NotFoundError } from '../../../errors'
+import { readEditStamp } from '../../../entity-instances/edit-snapshot'
+import { BadRequestError, ConflictError, NotFoundError } from '../../../errors'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { type BuildWriteOffEntryInput, buildWriteOffEntry } from '../../ledger/builders/write-off'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
@@ -280,6 +281,16 @@ export async function writeOffInvoice(
   const invoice = await loadInvoiceForWriteOff(db, organizationId, invoiceId)
   if (!invoice) throw new NotFoundError('Invoice not found', { invoiceId })
   assertWriteOffAllowed(invoice, invoiceId)
+  // The bill's rule one family over (73 D4): an open edit means the values on
+  // screen are not the ones the live entry was built from, so the balance this
+  // would write off is not the one in the books.
+  if (await readEditStamp(db, organizationId, invoiceId)) {
+    throw new ConflictError(
+      'This invoice is open for editing. Save or cancel the edit first, then write it off - a ' +
+        'write-off has to land on the balance the invoice actually posted.',
+      { invoiceId }
+    )
+  }
   const amount = resolveWriteOffAmount(invoice, invoiceId, amountMinor)
 
   // 🛑 The org's own accounting-off case is checked FIRST, before the reads and

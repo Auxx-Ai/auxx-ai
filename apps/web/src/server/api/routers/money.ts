@@ -575,6 +575,8 @@ export const moneyRouter = createTRPCRouter({
         vendorBillRecordId: recordIdSchema,
         /** Integer cents. */
         amount: z.number().int().positive(),
+        /** Integer cents the vendor forgave under terms (74 D3). */
+        discount: z.number().int().nonnegative().optional(),
         /** ISO date string (`yyyy-MM-dd`) — the day the money left. */
         date: z.string(),
         method: z.enum(['cash', 'check', 'card', 'bank', 'other']),
@@ -594,6 +596,7 @@ export const moneyRouter = createTRPCRouter({
         userId: ctx.session.user.id,
         vendorBillInstanceId: entityInstanceId,
         amountMinor: input.amount,
+        discountMinor: input.discount ?? 0,
         date: input.date,
         method: input.method,
         paymentGatewayId: input.paymentGatewayId,

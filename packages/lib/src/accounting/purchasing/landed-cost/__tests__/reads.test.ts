@@ -18,10 +18,18 @@ vi.mock('../../../../resources/system-records', () => ({
 vi.mock('../../../ledger/roles/role-assignments', () => ({
   readRoleAssignments: vi.fn(),
 }))
+// The cleared total is a `GlPostingLine` join; what this file tests is the
+// arithmetic over it, not the join.
+vi.mock('../cleared', () => ({ readClearedByAccount: vi.fn() }))
 
 import { readSystemRecords, systemFields } from '../../../../resources/system-records'
 import { readRoleAssignments } from '../../../ledger/roles/role-assignments'
-import { readLandedCostByBill, readLandedCostByVendorPart } from '../reads'
+import { readClearedByAccount } from '../cleared'
+import {
+  readLandedAccrualRemaining,
+  readLandedCostByBill,
+  readLandedCostByVendorPart,
+} from '../reads'
 
 const db = {} as Database
 const FREIGHT_ACCOUNT = 'acct_freight_accrual'
@@ -79,6 +87,7 @@ function route(rows: Record<string, ReturnType<typeof makeRecord>[]>) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(readClearedByAccount).mockResolvedValue(new Map())
   vi.mocked(systemFields).mockImplementation(
     (async (_db: unknown, _org: unknown, entityType: string) =>
       (CONTEXTS[entityType] ?? null) as any) as never
@@ -149,11 +158,15 @@ describe('readLandedCostByBill', () => {
       accruedMinor: 1_000,
       billedMinor: 1_700,
       differenceMinor: -700,
+      clearedMinor: 0,
+      remainingMinor: 0,
     })
     expect(result.value.duties).toEqual({
       accruedMinor: 3_000,
       billedMinor: 3_000,
       differenceMinor: 0,
+      clearedMinor: 0,
+      remainingMinor: 0,
     })
     expect(result.value.otherBilledMinor).toBe(0)
     expect(result.value.receiptCount).toBe(1)
@@ -275,12 +288,101 @@ describe('readLandedCostByVendorPart', () => {
       accruedMinor: 3_000,
       billedMinor: 3_000,
       differenceMinor: 0,
+      clearedMinor: 0,
+      remainingMinor: 0,
     })
     expect(result.value.freight).toEqual({
       accruedMinor: 1_000,
       billedMinor: 600,
       differenceMinor: 400,
+      clearedMinor: 0,
+      remainingMinor: 400,
     })
     expect(result.value.billCount).toBe(1)
+  })
+})
+
+describe('the remaining, with the cleared read off the postings (74 D4)', () => {
+  /** The carrier billed 8 of the 10 accrued, and a clear took the other 2. */
+  function underBilledShipment() {
+    route({
+      vendor_bill_line_vendor_bill: [
+        record('vbl_goods', {
+          vendor_bill_line_purchase_order_line: 'pol_1',
+          vendor_bill_line_line_total: 12_000,
+        }),
+      ],
+      vendor_bill_line_landed_bill: [
+        record('vbl_freight', {
+          vendor_bill_line_vendor_bill: 'vb_carrier',
+          vendor_bill_line_line_total: 800,
+          vendor_bill_line_gl_account: FREIGHT_ACCOUNT,
+        }),
+      ],
+      stock_movement_purchase_order_line: [
+        record('sm_1', {
+          stock_movement_purchase_order_line: 'pol_1',
+          stock_movement_freight_accrued: 1_000,
+          stock_movement_duties_accrued: 0,
+        }),
+      ],
+      // The by-id read: the carrier bill's own line, as the remaining read sees it.
+      ids: [
+        record('vbl_freight', {
+          vendor_bill_line_landed_bill: 'vb_goods',
+          vendor_bill_line_gl_account: FREIGHT_ACCOUNT,
+        }),
+      ],
+    })
+  }
+
+  it('remaining is accrued − billed before a clear, and zero after it', async () => {
+    underBilledShipment()
+    const before = await readLandedCostByBill(db, 'org_1', 'vb_goods')
+    expect(before._unsafeUnwrap().freight).toMatchObject({
+      billedMinor: 800,
+      clearedMinor: 0,
+      remainingMinor: 200,
+    })
+
+    vi.mocked(readClearedByAccount).mockResolvedValue(new Map([[FREIGHT_ACCOUNT, 200]]))
+    const after = await readLandedCostByBill(db, 'org_1', 'vb_goods')
+    expect(after._unsafeUnwrap().freight).toMatchObject({
+      clearedMinor: 200,
+      remainingMinor: 0,
+    })
+  })
+
+  it('a landed line on the bill being posted does not count against its OWN draw', async () => {
+    underBilledShipment()
+    const remaining = await readLandedAccrualRemaining(db, 'org_1', 'vb_carrier', ['vbl_freight'])
+    // The carrier's own 800 is excluded, so its line draws on the whole 1,000.
+    expect(remaining.get('vbl_freight')).toEqual({
+      poolKey: `vb_goods:${FREIGHT_ACCOUNT}`,
+      remainingMinor: 1_000,
+    })
+  })
+
+  it('offers nothing to draw on once the shipment has been cleared', async () => {
+    underBilledShipment()
+    vi.mocked(readClearedByAccount).mockResolvedValue(new Map([[FREIGHT_ACCOUNT, 1_000]]))
+    const remaining = await readLandedAccrualRemaining(db, 'org_1', 'vb_carrier', ['vbl_freight'])
+    expect(remaining.get('vbl_freight')?.remainingMinor).toBe(0)
+  })
+
+  it('leaves a landed line coded to a third account out of the map entirely', async () => {
+    route({
+      vendor_bill_line_vendor_bill: [],
+      vendor_bill_line_landed_bill: [],
+      stock_movement_purchase_order_line: [],
+      ids: [
+        record('vbl_storage', {
+          vendor_bill_line_landed_bill: 'vb_goods',
+          vendor_bill_line_gl_account: 'acct_office_supplies',
+        }),
+      ],
+    })
+    const remaining = await readLandedAccrualRemaining(db, 'org_1', 'vb_carrier', ['vbl_storage'])
+    expect(remaining.size).toBe(0)
   })
 })

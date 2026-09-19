@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
   listInvoiceAllocations: vi.fn(),
   postInvoiceIssuance: vi.fn(),
   reverseInvoiceIssuance: vi.fn(),
+  readEditStamp: vi.fn(),
   /** Every ledger and status call, in order, so "reversed BEFORE flipped" is assertable. */
   calls: [] as string[],
   /** Constructor arguments every `FieldValueService` was built with. */
@@ -79,6 +80,9 @@ vi.mock('../../billing/projection', () => ({
 }))
 vi.mock('../../../money/invoice-payments/payment-reads', () => ({
   listInvoiceMoneyPayments: h.listInvoiceMoneyPayments,
+}))
+vi.mock('../../../../entity-instances/edit-snapshot', () => ({
+  readEditStamp: h.readEditStamp,
 }))
 vi.mock('../post-invoice', () => ({
   postInvoiceIssuance: h.postInvoiceIssuance,
@@ -146,6 +150,7 @@ beforeEach(() => {
     return null
   })
   h.listInvoiceMoneyPayments.mockResolvedValue([])
+  h.readEditStamp.mockResolvedValue(null)
   h.listInvoiceAllocations.mockResolvedValue({
     lineAllocations: [],
     visitAllocations: [],
@@ -253,6 +258,19 @@ describe('voidInvoice', () => {
     wireInvoice('sent')
     await voidInvoice({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
     expect(h.calls.indexOf('reverse-issuance')).toBeLessThan(h.calls.indexOf('write-status'))
+  })
+
+  // An open edit means the values on screen are not the ones the live entry was
+  // built from, so the reversal would back out the wrong figures (73 D4).
+  it('refuses while an edit is open, before the ledger is touched', async () => {
+    wireInvoice('sent')
+    h.readEditStamp.mockResolvedValue({ openedAt: '2026-09-18T00:00:00.000Z', byUserId: USER })
+
+    await expect(
+      voidInvoice({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    ).rejects.toThrow(/open for editing/)
+    expect(h.reverseInvoiceIssuance).not.toHaveBeenCalled()
+    expect(h.calls).not.toContain('write-status')
   })
 
   it('refuses the void when the reversal is refused, and writes nothing', async () => {

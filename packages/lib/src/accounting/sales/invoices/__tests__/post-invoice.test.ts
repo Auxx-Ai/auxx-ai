@@ -15,6 +15,7 @@ const h = vi.hoisted(() => ({
   listPostingsForSource: vi.fn(),
   resolvePeriodLock: vi.fn(),
   readAutoPostMode: vi.fn(async () => 'post'),
+  writeDocumentDraftPosting: vi.fn(),
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
@@ -31,6 +32,11 @@ vi.mock('../../../ledger/builders/invoice', () => ({
   buildInvoiceEntry: h.buildInvoiceEntry,
 }))
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
+// 74 §1.3: a drafted entry holds no subject claim, so the poster stamps the
+// pointer to it on the invoice. `db` here is a stub with no writer.
+vi.mock('../../../documents/document-ledger-state', () => ({
+  writeDocumentDraftPosting: h.writeDocumentDraftPosting,
+}))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
 vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: h.resolvePeriodLock,
@@ -163,9 +169,17 @@ describe('postInvoiceIssuance', () => {
   it('drafts the entry when the invoice avenue does not auto-post', async () => {
     h.readAutoPostMode.mockResolvedValue('draft')
 
+    h.postEntry.mockResolvedValue({ status: 'drafted', glPostingId: 'gp-draft' })
+
     await postInvoiceIssuance(wireInvoice(), { organizationId: ORG, invoiceId: INVOICE })
 
     expect(h.postEntry.mock.calls[0]![1].mode).toBe('draft')
+    expect(h.writeDocumentDraftPosting).toHaveBeenCalledWith(
+      expect.anything(),
+      ORG,
+      INVOICE,
+      'gp-draft'
+    )
   })
 
   it('never posts, and never reads, when accounting is off', async () => {

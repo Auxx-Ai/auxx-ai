@@ -178,6 +178,9 @@ export async function matchTransaction(
           userId: actorUserId,
           vendorBillInstanceId: recordId,
           amountMinor: Math.abs(line.amountMinor),
+          // Explicitly none: settling the remainder as a discount from a bank
+          // line is a later refinement (74 D3), not something to infer here.
+          discountMinor: 0,
           date: line.postedAt,
           method: 'bank',
           bankAccountInstanceId: line.bankAccountId,

@@ -276,6 +276,9 @@ export function useResourceSync() {
                 // or a member whose share was revoked keeps the edit affordance
                 // until the row is evicted.
                 _access: item._access,
+                // Same lane, same reason: a missed open/close frame would
+                // otherwise leave the lock showing the wrong state.
+                edit: item.edit,
               })
             }
           })
@@ -366,6 +369,7 @@ export function useResourceSync() {
                 // Same reason as `runCatchUp`: the row-effective rung may have
                 // moved with the write, and only `_access` carries it.
                 _access: item._access,
+                edit: item.edit,
               })
             }
           })
@@ -426,12 +430,14 @@ export function useResourceSync() {
   const handleRecordUpdated = useCallback(
     (raw: unknown) => {
       const data = raw as RecordUpdatedEvent['data']
-      const { displayName, secondaryDisplayValue, avatarUrl, updatedAt } = data.record
+      const { displayName, secondaryDisplayValue, avatarUrl, updatedAt, edit } = data.record
       const patch: Record<string, unknown> = {}
       if (displayName !== undefined) patch.displayName = displayName
       if (secondaryDisplayValue !== undefined) patch.secondaryDisplayValue = secondaryDisplayValue
       if (avatarUrl !== undefined) patch.avatarUrl = avatarUrl
       if (updatedAt !== undefined) patch.updatedAt = updatedAt
+      // `null` clears the stamp (the edit closed); absent leaves it untouched.
+      if (edit !== undefined) patch.edit = edit
       if (Object.keys(patch).length === 0) return
       updateRecord(data.entityDefinitionId, data.record.id, patch)
       patchParticipantsForRecordMeta(data.record)

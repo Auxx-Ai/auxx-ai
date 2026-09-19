@@ -11,7 +11,7 @@ import type { AllocationHeader, AllocationLine } from '../types'
 
 // Every amount is integer minor units (cents): 100000 = $1,000.00.
 
-const NO_HEADER: AllocationHeader = { shipping: 0, tax: 0, discount: 0, taxRecoverable: false }
+const NO_HEADER: AllocationHeader = { shipping: 0, tax: 0, discount: 0 }
 
 function header(partial: Partial<AllocationHeader>): AllocationHeader {
   return { ...NO_HEADER, ...partial }
@@ -22,14 +22,8 @@ function sum(values: number[]): number {
 }
 
 describe('capitalisableAmount', () => {
-  it('capitalises shipping plus non-recoverable tax, less the header discount', () => {
+  it('capitalises shipping plus tax, less the header discount', () => {
     expect(capitalisableAmount(header({ shipping: 1000, tax: 500, discount: 200 }))).toBe(1300)
-  })
-
-  it('excludes tax when it is recoverable', () => {
-    expect(capitalisableAmount(header({ shipping: 1000, tax: 500, taxRecoverable: true }))).toBe(
-      1000
-    )
   })
 
   it('can be negative when the discount exceeds shipping and tax', () => {
@@ -71,17 +65,6 @@ describe('allocateLandedCost - worked examples from the costing plan', () => {
     // Exact figure is $105,714.2857; 10571429 minor units after rounding.
     expect(allocateLandedCost(lines, purchase, 'value')).toEqual([10_571_429, 528_571])
     expect(sum(allocateCapitalisedCost(lines, purchase, 'value'))).toBe(600_000)
-  })
-
-  it('does not capitalise the tax of that purchase when it is recoverable', () => {
-    const lines: AllocationLine[] = [
-      { lineTotal: 10_000_000, quantity: 1 },
-      { lineTotal: 500_000, quantity: 1 },
-    ]
-    const purchase = header({ shipping: 100_000, tax: 500_000, taxRecoverable: true })
-
-    expect(sum(allocateCapitalisedCost(lines, purchase, 'value'))).toBe(100_000)
-    expect(allocateLandedCost(lines, purchase, 'value')).toEqual([10_095_238, 504_762])
   })
 })
 

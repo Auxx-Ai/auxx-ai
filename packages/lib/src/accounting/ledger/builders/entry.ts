@@ -262,6 +262,17 @@ export const ACCOUNT_ROLES = {
    * it with freight and never references this.
    */
   PURCHASE_TAX: 'purchase_tax',
+  /**
+   * Purchase discounts (default `5093`). An early-payment discount taken on a
+   * vendor payment: the bill's A/P is relieved in full and the part the vendor
+   * forgave is credited here (74 D3).
+   *
+   * 🛑 A CONTRA-COGS account, not other income - the discount is a reduction of
+   * what the goods cost, so it must show in margin. Debit-normal is impossible
+   * here, which is why the `expense` class is the right one: it runs credit, the
+   * same reading `revenue_returns_allowances` gets in the other direction.
+   */
+  PURCHASE_DISCOUNTS: 'purchase_discounts',
 
   // ── Added 2026-09-04 by plans/accounting/HANDOFF.md wave 0 (slot 0A) ──────
   // The roles the revenue, payment, deposit, opening-balance and statement work
@@ -428,6 +439,7 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   build_variance: 'expense',
   inventory_revaluation: 'expense',
   purchase_tax: 'expense',
+  purchase_discounts: 'expense',
   accounts_receivable: 'asset',
   undeposited_funds: 'asset',
   clearing: 'asset',
@@ -491,6 +503,7 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   build_variance: 'Build Variance',
   inventory_revaluation: 'Inventory Revaluation',
   purchase_tax: 'Purchase Tax',
+  purchase_discounts: 'Purchase Discounts',
   accounts_receivable: 'Accounts Receivable',
   undeposited_funds: 'Undeposited Funds',
   clearing: 'Clearing',
@@ -809,6 +822,21 @@ export interface VendorBillLineInput {
   glAccountId?: string | null
   /** Shipping weight, for a `weight` allocation basis. */
   weight?: number | null
+  /**
+   * `<goods bill id>:<accrual account id>` - the accrual pool this LANDED line
+   * draws on. Set only on a line linked to a goods bill through
+   * `vendor_bill_line_landed_bill` AND coded to one of the two accrual
+   * accounts; two lines on one pool draw from it in bill order (74 D4).
+   */
+  landedPoolKey?: string | null
+  /**
+   * What that pool still has accrued, integer minor units - the caller's read
+   * of `accrued − billed − cleared`. The line debits its coded account only up
+   * to this and the excess debits `ppv`; `0` sends the whole line to `ppv`.
+   * Absent leaves the line untouched, which is what a landed line coded to a
+   * third account is.
+   */
+  remainingAccrualMinor?: number | null
 }
 
 export interface VendorBillEntryInput {
@@ -829,7 +857,7 @@ export interface VendorBillEntryInput {
    * A repost after an edit passes one: the reversed original's claim row is
    * gone but its document number is still in the books, and re-keying on
    * `internalNumber` would mint that same number again. See
-   * `purchasing/post-vendor-bill.ts`'s `vendorBillEntryKey`. The messages keep
+   * `accounting/documents/document-entry-key.ts`. The messages keep
    * naming the internal number either way.
    */
   periodKey?: string | null
@@ -889,6 +917,8 @@ export interface BuiltVendorBillEntry {
  * linked line     Dr grni                billed qty x expected price
  *                 Dr/Cr ppv              line total - billed x expected, less its discount share
  * unlinked line   Dr <its coded account> line total, less its discount share (signed)
+ * landed line     Dr <the accrual>       up to what that shipment still has accrued
+ *                 Dr ppv                 the excess over it       (74 D4)
  * shipping        Dr freight_accrual     the header, one leg      (the receipt accrued it)
  * tax             Dr purchase_tax        the header, one leg
  *                   Cr accounts_payable  vendor_bill_total        (counterparty: the vendor)
@@ -1052,6 +1082,8 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
   const drafts: DraftLine[] = []
   const idLines: GlPostingLineInput[] = []
   const source = { sourceType: VENDOR_BILL_SOURCE_TYPE, sourceId: vendorBillId }
+  /** What each landed pool has left as the lines consume it, in bill order. */
+  const accrualPools = new Map<string, number>()
 
   read.forEach((row, index) => {
     // The discount reduces what the line cost us: on a linked line that is a
@@ -1074,6 +1106,37 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
       return
     }
     if (netMinor === 0 || !row.glAccountId) return
+
+    // 74 D4: a landed line relieves its accrual only as far as the shipment
+    // still has one, and the excess is a price variance like any other.
+    const remaining = row.line.remainingAccrualMinor
+    if (remaining != null && netMinor > 0) {
+      const poolKey = row.line.landedPoolKey ?? row.glAccountId
+      const pool = accrualPools.get(poolKey) ?? Math.max(0, remaining)
+      const relieved = Math.min(netMinor, pool)
+      accrualPools.set(poolKey, pool - relieved)
+      const excess = netMinor - relieved
+      if (relieved > 0) {
+        idLines.push({
+          ...source,
+          glAccountId: row.glAccountId,
+          direction: 'debit' as const,
+          amount: relieved,
+          memo: row.label,
+          sortOrder: 0,
+        })
+      }
+      if (excess > 0) {
+        drafts.push({
+          accountRole: ACCOUNT_ROLES.PPV,
+          direction: 'debit',
+          amount: excess,
+          memo: `${row.label} - over the accrued landed cost`,
+        })
+      }
+      return
+    }
+
     idLines.push({
       ...source,
       // The IDENTITY, never a role and never a code: the expense account is the
@@ -1152,11 +1215,7 @@ function spreadHeaders(
   // `value` it never reads one, so the placeholder is invisible.
   const rows = lines.map((line) => ({ ...line, quantity: line.quantity > 0 ? line.quantity : 1 }))
   const one = (amount: number, only: AllocationBasis): number[] =>
-    allocateCapitalisedCost(
-      rows,
-      { shipping: amount, tax: 0, discount: 0, taxRecoverable: false },
-      only
-    )
+    allocateCapitalisedCost(rows, { shipping: amount, tax: 0, discount: 0 }, only)
   return {
     shipping: one(header.shippingMinor, basis),
     tax: one(header.taxMinor, basis),

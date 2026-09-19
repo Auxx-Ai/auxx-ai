@@ -22,6 +22,7 @@ const STATE_ATTRS = [
   'vendor_bill_payment_status',
   'vendor_bill_amount_paid',
   'vendor_bill_amount_credited',
+  'vendor_bill_amount_discounted',
   'vendor_bill_paid_at',
 ] as const satisfies readonly SystemAttribute[]
 
@@ -51,6 +52,30 @@ export async function sumVendorBillPayments(
   )
 }
 
+/**
+ * Integer minor units: the early-payment discounts taken on this bill's
+ * payments, netted (74 D3). Separate from {@link sumVendorBillPayments} because
+ * `amount_paid` is the MONEY and nothing else.
+ */
+export async function sumVendorBillDiscounts(
+  db: Database,
+  organizationId: string,
+  vendorBillInstanceId: string
+): Promise<number> {
+  const applications = await db.query.MoneyApplication.findMany({
+    where: and(
+      eq(schema.MoneyApplication.organizationId, organizationId),
+      eq(schema.MoneyApplication.vendorBillInstanceId, vendorBillInstanceId)
+    ),
+  })
+  return Number(
+    applications.reduce(
+      (sum, a) => sum + (a.operation === 'apply' ? 1n : -1n) * (a.discountMinor ?? 0n),
+      0n
+    )
+  )
+}
+
 /** Recompute one bill's settled amount, paid date and payment status. */
 export async function syncVendorBillPaymentState(
   db: Database,
@@ -67,6 +92,8 @@ export async function syncVendorBillPaymentState(
   // Absent until the vendor credit def lands on the org; an org without it
   // simply has no credits to net off.
   const amountCreditedField = fields.vendor_bill_amount_credited
+  // Absent until the org has been provisioned with 74's discount field.
+  const amountDiscountedField = fields.vendor_bill_amount_discounted
   if (!totalField || !paymentStatusField || !amountPaidField || !paidAtField) return
 
   const applications = await db.query.MoneyApplication.findMany({
@@ -81,6 +108,14 @@ export async function syncVendorBillPaymentState(
       0n
     )
   )
+  // The forgiven part, netted the same way: a void's `unapply` row carries the
+  // discount it takes back, so this returns to zero with the money.
+  const amountDiscounted = Number(
+    applications.reduce(
+      (sum, a) => sum + (a.operation === 'apply' ? 1n : -1n) * (a.discountMinor ?? 0n),
+      0n
+    )
+  )
   const latestApplied = applications
     .filter((a) => a.operation === 'apply')
     .map((a) => a.effectiveDate)
@@ -89,6 +124,7 @@ export async function syncVendorBillPaymentState(
 
   const readFieldIds = [totalField.id, paymentStatusField.id, amountPaidField.id]
   if (amountCreditedField) readFieldIds.push(amountCreditedField.id)
+  if (amountDiscountedField) readFieldIds.push(amountDiscountedField.id)
   const scalars = (
     await readFieldScalars(db, organizationId, [vendorBillInstanceId], readFieldIds)
   ).get(vendorBillInstanceId)
@@ -96,10 +132,14 @@ export async function syncVendorBillPaymentState(
   const paymentStatus = scalars?.get(paymentStatusField.id)
   const currentAmountPaid = numberOrZero(scalars?.get(amountPaidField.id))
   const credited = amountCreditedField ? numberOrZero(scalars?.get(amountCreditedField.id)) : 0
+  const currentAmountDiscounted = amountDiscountedField
+    ? numberOrZero(scalars?.get(amountDiscountedField.id))
+    : 0
 
-  // A credit note settles a bill just as a payment does: it is what the vendor
-  // no longer asks for. `paid` is "nothing is owed", not "cash left".
-  const settled = amountPaid + credited
+  // A credit note settles a bill just as a payment does, and so does a discount
+  // the vendor granted: each is what the vendor no longer asks for. `paid` is
+  // "nothing is owed", not "cash left".
+  const settled = amountPaid + credited + amountDiscounted
   let nextStatus = 'unpaid'
   if (settled > 0 && typeof total === 'number' && settled >= Math.round(total)) nextStatus = 'paid'
   else if (settled > 0) nextStatus = 'partially_paid'
@@ -110,6 +150,8 @@ export async function syncVendorBillPaymentState(
   const writes: Array<{ fieldId: string; value: unknown }> = []
   if (amountPaid !== currentAmountPaid)
     writes.push({ fieldId: amountPaidField.id, value: amountPaid })
+  if (amountDiscountedField && amountDiscounted !== currentAmountDiscounted)
+    writes.push({ fieldId: amountDiscountedField.id, value: amountDiscounted })
   writes.push({ fieldId: paidAtField.id, value: paidAt })
   if (nextStatus !== paymentStatus)
     writes.push({ fieldId: paymentStatusField.id, value: nextStatus })
