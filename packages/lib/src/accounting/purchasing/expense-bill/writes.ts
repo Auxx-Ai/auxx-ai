@@ -31,16 +31,18 @@
 //
 // plans/accounting/tasks/73-the-buy-side-against-the-ledger.md §3
 
-import { type Database, database } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { calendarDayToInstant } from '@auxx/utils/calendar-day'
+import { and, eq } from 'drizzle-orm'
 import { getEntityDefIdResolver } from '../../../cache'
 import { BadRequestError } from '../../../errors'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import type { BuiltVendorBillEntry } from '../../ledger/builders/entry'
 import { VENDOR_BILL_POSTING_TYPE, VENDOR_BILL_SOURCE_TYPE } from '../../ledger/builders/entry'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
+import { discardDraftPosting } from '../../ledger/post/draft-lines'
 import { isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
 import { previewEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
@@ -48,6 +50,7 @@ import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../ledger/types'
 import { readBillEditOpen } from '../bill-edit-flag'
+import { readBillLedgerState, writeBillDraftPosting } from '../bill-ledger-state'
 import {
   buildEntryForVendorBill,
   postVendorBillEntry,
@@ -290,28 +293,84 @@ export async function postVendorBill(
   return { post, docNumber: post.docNumber ?? null, totalMinor: built.totalMinor }
 }
 
+/** One row of {@link listVendorBillPostings}. `status` is `draft | posted | reversed`. */
+export interface VendorBillPosting {
+  glPostingId: string
+  docNumber: string
+  status: string
+  postingType: string
+}
+
 /**
  * Every general-ledger entry sourced on one vendor bill, newest first.
  *
  * One source type for both kinds of bill since 73 D3, which is what lets a void
  * and the delete guard reckon with the whole document rather than half of it.
+ *
+ * 🛑 A DRAFT is reached through the bill's own `metadata.ledger.draftGlPostingId`
+ * and not through `GlPostingSource`: the subject row is the claim and a draft
+ * holds none, so the link this read is built on does not exist yet. Callers that
+ * need a LIVE payable must therefore test `status === 'posted'`, never merely
+ * "a row came back".
  */
 export async function listVendorBillPostings(
   db: Database,
   params: { organizationId: string; vendorBillInstanceId: string }
-): Promise<Array<{ glPostingId: string; docNumber: string; status: string; postingType: string }>> {
+): Promise<VendorBillPosting[]> {
+  const { organizationId, vendorBillInstanceId } = params
   const result = await listPostingsForSource(db, {
-    organizationId: params.organizationId,
+    organizationId,
     sourceKind: VENDOR_BILL_SOURCE_TYPE,
-    sourceId: params.vendorBillInstanceId,
+    sourceId: vendorBillInstanceId,
   })
-  if (result.isErr()) return []
-  return result.value.map((posting) => ({
-    glPostingId: posting.id,
-    docNumber: posting.docNumber,
-    status: posting.status,
-    postingType: posting.postingType,
-  }))
+  const claimed: VendorBillPosting[] = result.isErr()
+    ? []
+    : result.value.map((posting) => ({
+        glPostingId: posting.id,
+        docNumber: posting.docNumber,
+        status: posting.status,
+        postingType: posting.postingType,
+      }))
+
+  const { draftGlPostingId } = await readBillLedgerState(db, organizationId, vendorBillInstanceId)
+  if (!draftGlPostingId) return claimed
+  // Promoted since the pointer was written: the subject link exists and the row
+  // is already above.
+  if (claimed.some((posting) => posting.glPostingId === draftGlPostingId)) return claimed
+
+  const [row] = await db
+    .select({
+      id: schema.GlPosting.id,
+      docNumber: schema.GlPosting.docNumber,
+      status: schema.GlPosting.status,
+      postingType: schema.GlPosting.postingType,
+    })
+    .from(schema.GlPosting)
+    .where(
+      and(
+        eq(schema.GlPosting.id, draftGlPostingId),
+        eq(schema.GlPosting.organizationId, organizationId)
+      )
+    )
+    .limit(1)
+
+  // Discarded in the outbox, or promoted and reversed away. Either way the
+  // pointer is stale; drop it rather than reading it again on every call.
+  if (!row) {
+    await writeBillDraftPosting(db, organizationId, vendorBillInstanceId, null)
+    return claimed
+  }
+  if (row.status !== 'draft') return claimed
+
+  return [
+    {
+      glPostingId: row.id,
+      docNumber: row.docNumber ?? '',
+      status: row.status,
+      postingType: row.postingType,
+    },
+    ...claimed,
+  ]
 }
 
 export interface VoidVendorBillInput {
@@ -332,7 +391,8 @@ export interface VoidVendorBillInput {
  * been written at that point.
  *
  * The reversal claims revision 1 on the same period key, so its document number
- * is the original's with `-R1` on the end.
+ * is the original's with `-R1` on the end. An entry still only DRAFTED is
+ * discarded instead - it holds no claim and no place in the books.
  */
 export async function voidVendorBill(db: Database, input: VoidVendorBillInput): Promise<void> {
   const { organizationId, userId, vendorBillInstanceId, memo } = input
@@ -362,14 +422,32 @@ export async function voidVendorBill(db: Database, input: VoidVendorBillInput): 
   }
 
   const postings = await listVendorBillPostings(db, { organizationId, vendorBillInstanceId })
-  // `PostingStatus` is `posted | reversed` since the export split; a reversed
-  // original has already left the books.
+  // A reversed original has already left the books; a draft never entered them.
   const live = postings.filter(
     (posting) => posting.postingType === VENDOR_BILL_POSTING_TYPE && posting.status !== 'reversed'
   )
   if (live.length > 0) {
     const lock = await resolvePeriodLock(organizationId)
     for (const posting of live) {
+      // A draft is thrown away rather than reversed: reversing nothing writes a
+      // second entry, and a draft left standing can still be approved later and
+      // raise a payable for a bill that is void.
+      if (posting.status === 'draft') {
+        const discarded = await discardDraftPosting(db, {
+          organizationId,
+          glPostingId: posting.glPostingId,
+        })
+        if (discarded.isErr()) {
+          throw new BadRequestError(
+            `This vendor bill has a drafted general ledger entry that could not be discarded: ` +
+              `${discarded.error.message}. Voiding it would leave a draft that can still be ` +
+              'approved into the books.',
+            { vendorBillInstanceId, glPostingId: posting.glPostingId }
+          )
+        }
+        await writeBillDraftPosting(db, organizationId, vendorBillInstanceId, null)
+        continue
+      }
       const result = await reverseEntry(db, {
         organizationId,
         glPostingId: posting.glPostingId,

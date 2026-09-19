@@ -42,6 +42,9 @@ export function VendorBillActions({ billRecordId, status, editing }: VendorBillA
     utils.purchasing.billEditState.invalidate({ vendorBillId }).catch(() => {})
 
   const postBill = api.purchasing.postVendorBill.useMutation({
+    // Under an avenue with auto-post off this leaves a DRAFT, and the ledger
+    // card reads the pointer to it off `billEditState`.
+    onSuccess: refreshEditState,
     onError: (error) => toastError({ title: 'Error posting bill', description: error.message }),
   })
   const openEdit = api.purchasing.openBillEdit.useMutation({

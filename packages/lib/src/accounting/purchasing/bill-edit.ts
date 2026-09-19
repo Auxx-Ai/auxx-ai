@@ -24,6 +24,7 @@ import { and, eq } from 'drizzle-orm'
 import { BadRequestError, ConflictError } from '../../errors'
 import { VENDOR_BILL_POSTING_TYPE } from '../ledger/builders/entry'
 import { resolvePeriodLock } from '../ledger/periods/period-lock'
+import { discardDraftPosting } from '../ledger/post/draft-lines'
 import { isExpectedPostOutcome } from '../ledger/post/ledger-accepted'
 import { reverseEntry } from '../ledger/post/reverse-entry'
 import { todayInBookTimeZone } from '../ledger/setup/book-time-zone'
@@ -34,6 +35,7 @@ import {
   readBillEditOpen,
   writeBillEditOpen,
 } from './bill-edit-flag'
+import { readBillLedgerState, writeBillLedgerGeneration } from './bill-ledger-state'
 import type { VendorBillRecord } from './expense-bill/reads'
 import { loadVendorBillLines, requireVendorBill } from './expense-bill/reads'
 import { listVendorBillPostings } from './expense-bill/writes'
@@ -112,6 +114,9 @@ export async function openBillEdit(db: Database, input: BillEditInput): Promise<
  * When the rebuilt entry's lines equal the live posting's, nothing is posted: a
  * Save that only fixed a description would otherwise leave a reversal and its
  * twin in the books.
+ *
+ * Under an avenue with auto-post off the live entry is a DRAFT: it is discarded
+ * and the bill drafted again, with no reversal pair and no new generation.
  */
 export async function saveBillEdit(
   db: Database,
@@ -170,6 +175,7 @@ export async function saveBillEdit(
   }
 
   const lock = await resolvePeriodLock(organizationId)
+  const ledgerState = await readBillLedgerState(db, organizationId, vendorBillInstanceId)
   const docNumber = await db.transaction(async (tx) => {
     await withAccountingCommitLock(tx, organizationId)
     // The poster and the reverser each open a transaction of their own. Handed
@@ -177,7 +183,26 @@ export async function saveBillEdit(
     // lock above is re-entered rather than waited on and the pair is atomic.
     const txDb = tx as unknown as Database
 
+    let reversed = false
     for (const posting of live) {
+      // A draft never reached the books, so it is thrown away rather than
+      // reversed - and it took no document number with it, so the repost below
+      // stays on the same generation.
+      if (posting.status === 'draft') {
+        const discarded = await discardDraftPosting(txDb, {
+          organizationId,
+          glPostingId: posting.glPostingId,
+        })
+        if (discarded.isErr()) {
+          throw new BadRequestError(
+            `This vendor bill's drafted entry could not be discarded: ` +
+              `${discarded.error.message}. The edit cannot be saved, and nothing has been changed.`,
+            { vendorBillInstanceId, glPostingId: posting.glPostingId }
+          )
+        }
+        continue
+      }
+
       const reversal = await reverseEntry(txDb, {
         organizationId,
         glPostingId: posting.glPostingId,
@@ -193,17 +218,25 @@ export async function saveBillEdit(
           { vendorBillInstanceId, docNumber: posting.docNumber, status: reversal.status }
         )
       }
+      reversed = true
     }
 
-    // Reversing DELETED the subject claim, so this claims the next generation on
-    // the bill's own internal number rather than converging to `already_posted`.
+    // Reversing DELETED the subject claim but LEFT the original's document
+    // number in the books, and that number is unique per org - so the repost
+    // moves to the next generation and keys on it.
+    const generation = reversed ? ledgerState.generation + 1 : ledgerState.generation
+    const entry =
+      generation === ledgerState.generation
+        ? built
+        : buildEntryForVendorBill({ bill, lines, billedAt, allocationBasis, generation })
+
     const post = await postVendorBillEntry(txDb, {
       organizationId,
       actorUserId: userId,
       vendorBillInstanceId,
       purchaseOrderId: bill.purchaseOrderId,
       vendorCompanyInstanceId: bill.vendorCompanyInstanceId,
-      entry: built,
+      entry,
       memo: `Bill ${bill.number || bill.internalNumber} re-posted after an edit`,
     })
     if (post && !isExpectedPostOutcome(post)) {
@@ -214,6 +247,9 @@ export async function saveBillEdit(
       )
     }
 
+    if (generation !== ledgerState.generation) {
+      await writeBillLedgerGeneration(txDb, organizationId, vendorBillInstanceId, generation)
+    }
     await clearBillEditOpen(txDb, organizationId, vendorBillInstanceId)
     return post?.docNumber ?? null
   })

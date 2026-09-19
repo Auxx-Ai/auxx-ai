@@ -69,6 +69,14 @@ export interface LedgerCardProps extends Partial<DrawerTabProps> {
    * the record itself.
    */
   sourceKind: string
+  /**
+   * A `draft` posting this record is waiting on in the outbox.
+   *
+   * Passed in rather than read here: `post-entry.ts` writes NO subject
+   * `GlPostingSource` row for a draft - the subject row IS the claim - so the
+   * read below cannot reach it, and the record itself holds the pointer.
+   */
+  draftPostingId?: string | null
 }
 
 const STATUS_VARIANT: Record<PostingStatus, Variant> = {
@@ -98,7 +106,7 @@ const LINK_ROLE_LABEL: Record<PostingLinkRole, string> = {
  * renders), since these entries are not on the ledger page's own `?posting=`
  * deep link from here.
  */
-export function LedgerCard({ entityInstanceId, sourceKind }: LedgerCardProps) {
+export function LedgerCard({ entityInstanceId, sourceKind, draftPostingId }: LedgerCardProps) {
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
   const bookTimeZone = (getSetting('accounting.bookTimeZone') as string | null) ?? 'UTC'
@@ -151,7 +159,13 @@ export function LedgerCard({ entityInstanceId, sourceKind }: LedgerCardProps) {
     return `/app/accounting/reports/general-ledger?${params.toString()}`
   }, [postings, sourceKind, entityInstanceId])
 
-  if (!loading && postings.length === 0 && sweeps.length === 0) {
+  // Once the outbox approves it the draft takes its claim and arrives above.
+  const pendingDraftId =
+    draftPostingId && !postings.some((posting) => posting.id === draftPostingId)
+      ? draftPostingId
+      : null
+
+  if (!loading && postings.length === 0 && sweeps.length === 0 && !pendingDraftId) {
     return <EmptyRow label='Nothing posted yet' />
   }
 
@@ -167,6 +181,29 @@ export function LedgerCard({ entityInstanceId, sourceKind }: LedgerCardProps) {
           </Button>
         </DrawerCardActions>
       )}
+      {pendingDraftId && (
+        <TreeRow
+          className={TREE_SECONDARY_NOTRUNCATE}
+          icon={<BookOpenCheck className='size-4' />}
+          title={
+            <span className='truncate text-sm'>Drafted — awaiting approval in the outbox</span>
+          }
+          secondary={
+            <Badge variant={STATUS_VARIANT.draft} size='xs'>
+              {STATUS_LABEL.draft}
+            </Badge>
+          }
+          actions={
+            <Button asChild variant='ghost' size='xs'>
+              <Link href={`/app/accounting?queue=drafts&posting=${pendingDraftId}`}>
+                <ExternalLink />
+                Open outbox
+              </Link>
+            </Button>
+          }
+        />
+      )}
+
       <TreeRowList
         items={postings}
         loading={loading}

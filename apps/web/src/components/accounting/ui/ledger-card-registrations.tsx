@@ -21,6 +21,7 @@
 'use client'
 
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
+import { api } from '~/trpc/react'
 import { LedgerCard } from './ledger-card'
 
 /** The fulfillment entries the order parents; its money is `order:payments`, its own card. */
@@ -62,12 +63,21 @@ export function PayoutLedgerCard(props: DrawerTabProps) {
   return <LedgerCard {...props} sourceKind='payout' />
 }
 
-// `vendor_bill`'s own posting builder exists but is not wired to a writer
-// until the perpetual inventory regime lands (TARGET §5, MIGRATION step 5) -
-// this renders `Nothing posted yet` until then, same as any other source with
-// no claimed posting.
+// The one wrapper that reads something beyond `GlPostingSource`: under an
+// avenue with auto-post off a bill's entry is DRAFTED, and a draft writes no
+// subject link, so `billEditState` hands the card the pointer the bill holds.
 export function VendorBillLedgerCard(props: DrawerTabProps) {
-  return <LedgerCard {...props} sourceKind='vendor_bill' />
+  const { data } = api.purchasing.billEditState.useQuery(
+    { vendorBillId: props.entityInstanceId },
+    { enabled: !!props.entityInstanceId }
+  )
+  return (
+    <LedgerCard
+      {...props}
+      sourceKind='vendor_bill'
+      draftPostingId={data?.draftGlPostingId ?? null}
+    />
+  )
 }
 
 // `build`'s own posting builder (`build-inventory-movement-entry.ts`) and its
