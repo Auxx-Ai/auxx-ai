@@ -2,6 +2,8 @@
 
 import { describe, expect, it } from 'vitest'
 import { AuxxError } from '../../../../errors'
+import { buildDocNumber } from '../doc-number'
+import { movementPeriodKey } from '../movement-key'
 import { buildRefundEntry } from '../refund'
 
 const BASE = {
@@ -68,9 +70,13 @@ describe('buildRefundEntry', () => {
     expect(built.entry.lines[1]?.dimensions).toEqual({ paymentGatewayId: 'pg_1' })
   })
 
-  it('keys the entry on the movement, so a re-post converges', () => {
-    expect(buildRefundEntry(BASE).periodKey).toBe('refund:mt_1')
-    expect(buildRefundEntry(BASE).entry.periodKey).toBe('refund:mt_1')
+  it('keys the entry on a HASH of the movement, inside the document-number cap', () => {
+    // `refund:<cuid>` compacted to 31 characters and refused at `buildDocNumber`.
+    expect(buildRefundEntry(BASE).periodKey).toBe(movementPeriodKey('refund', 'mt_1'))
+    expect(buildRefundEntry(BASE).entry.periodKey).toBe(movementPeriodKey('refund', 'mt_1'))
+    expect(
+      buildDocNumber({ postingType: 'refund', periodKey: buildRefundEntry(BASE).periodKey })
+    ).toHaveLength(18)
   })
 
   it('sources every line on the movement', () => {

@@ -18,6 +18,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { readOrganizationSettings } from '../../settings/read'
 import { buildEntry } from '../ledger/builders/entry'
+import { movementPeriodKey } from '../ledger/builders/movement-key'
 import { REFUND_POSTING_TYPE } from '../ledger/builders/refund'
 import { resolvePeriodLock } from '../ledger/periods/period-lock'
 import { periodKeyForDate } from '../ledger/periods/periods'
@@ -286,9 +287,9 @@ export async function postMovementEntry(
       const isRefund = input.avenue === 'refund'
       const entry = buildEntry({
         postingType: isRefund ? REFUND_POSTING_TYPE : 'payment',
-        // A refund keys on its own movement, as `buildRefundEntry` always did; a
-        // payment keys on its book date.
-        periodKey: isRefund ? `refund:${money.id}` : effectiveDate,
+        // Both key on the MOVEMENT, never on the book date: two payments settle
+        // on one day routinely, and `AUXX-PMT-<yyyymmdd>` is one number for both.
+        periodKey: movementPeriodKey(isRefund ? 'refund' : 'payment', money.id),
         txnDate: effectiveDate,
         lines: prepared.lines,
       })

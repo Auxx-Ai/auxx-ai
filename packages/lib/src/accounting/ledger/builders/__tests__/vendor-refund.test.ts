@@ -6,6 +6,7 @@
 // export refuses an A/P line without one) and the endpoint leg carries none.
 
 import { describe, expect, it } from 'vitest'
+import { movementPeriodKey } from '../movement-key'
 import { REFUND_POSTING_TYPE } from '../refund'
 import { buildVendorRefundEntry } from '../vendor-refund'
 
@@ -36,7 +37,7 @@ describe('buildVendorRefundEntry', () => {
       ],
     })
 
-    expect(built.periodKey).toBe('refund:mt_1')
+    expect(built.periodKey).toBe(movementPeriodKey('refund', 'mt_1'))
     expect(built.totalMinor).toBe(20_000)
     expect(built.entry.postingType).toBe(REFUND_POSTING_TYPE)
 

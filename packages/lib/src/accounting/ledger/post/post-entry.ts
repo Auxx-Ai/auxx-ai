@@ -1108,12 +1108,38 @@ export async function postDraftInTx(
     return { status: 'already_posted', glPostingId: claimed.heldBy }
   }
 
-  await markPostedInTx(tx, {
-    organizationId,
-    glPostingId,
-    docNumber: prepared.docNumber,
-    actorUserId,
-  })
+  // The claim above defends `GlPostingSource_claim_key` and nothing else. A
+  // draft minted on a keyspace that is not one-per-subject still collides on
+  // `GlPosting_org_docNumber_key` HERE, and without this the violation reaches
+  // the outbox as the raw UPDATE statement.
+  try {
+    await markPostedInTx(tx, {
+      organizationId,
+      glPostingId,
+      docNumber: prepared.docNumber,
+      actorUserId,
+    })
+  } catch (error) {
+    const constraint = uniqueViolationConstraint(error)
+    if (constraint === null) throw error
+    logger.error('A draft could not take its document number', {
+      organizationId,
+      glPostingId,
+      docNumber: prepared.docNumber,
+      constraint,
+    })
+    return {
+      status: 'error',
+      failureClass: 'data',
+      retryable: false,
+      error:
+        constraint === 'GlPosting_org_docNumber_key'
+          ? `Document number ${prepared.docNumber} is already used by a different posting in this organization. ` +
+            'Two posting identities minted the same number - the document-number keyspace is wrong, not the entry.'
+          : `A unique constraint (${constraint || 'unknown'}) rejected the post of ${prepared.docNumber}.`,
+      glPostingId,
+    }
+  }
 
   logger.info('Draft posted', { organizationId, glPostingId, docNumber: prepared.docNumber })
   return { status: 'posted', glPostingId, docNumber: prepared.docNumber }

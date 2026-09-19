@@ -45,6 +45,7 @@ vi.mock('@auxx/logger', () => ({
 
 import type { Database } from '@auxx/database'
 import { UnprocessableEntityError } from '../../../errors'
+import { movementPeriodKey } from '../../ledger/builders/movement-key'
 import { postMovementEntry } from '../post-movement'
 
 const ORG = 'org_1'
@@ -151,7 +152,7 @@ describe('postMovementEntry', () => {
     await expect(post()).resolves.toEqual({ status: 'accepted', glPostingId: 'gl_1' })
     const options = h.postEntry.mock.calls[0]![1]
     expect(options.entry.postingType).toBe('payment')
-    expect(options.entry.periodKey).toBe('2026-09-10')
+    expect(options.entry.periodKey).toBe(movementPeriodKey('payment', MOVEMENT))
     expect(options.railId).toBeNull()
     expect(options.sources).toEqual([
       { sourceKind: 'money_transaction', sourceId: MOVEMENT, linkRole: 'subject' },
@@ -259,7 +260,7 @@ describe('postMovementEntry', () => {
     })
     const options = h.postEntry.mock.calls[0]![1]
     expect(options.entry.postingType).toBe('refund')
-    expect(options.entry.periodKey).toBe(`refund:${MOVEMENT}`)
+    expect(options.entry.periodKey).toBe(movementPeriodKey('refund', MOVEMENT))
     expect(h.readAutoPostMode).toHaveBeenCalledWith(ORG, 'refund')
   })
 

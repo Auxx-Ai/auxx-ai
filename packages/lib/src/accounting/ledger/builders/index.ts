@@ -97,6 +97,7 @@ export {
   type ManualPostingType,
   toMinorUnits,
 } from './manual'
+export { type MovementPostingType, movementPeriodKey } from './movement-key'
 // ── HANDOFF slot 1C: the opening trial balance ─────────────────────────────
 export {
   type BuildOpeningBalanceEntryInput,
