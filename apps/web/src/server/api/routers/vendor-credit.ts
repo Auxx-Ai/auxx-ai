@@ -154,7 +154,7 @@ export const vendorCreditRouter = createTRPCRouter({
     }),
 
   /** Apply part of an issued credit's balance to one posted bill of the same vendor. */
-  apply: permissionProcedure(PermissionKey.ledgerPost)
+  applyToBill: permissionProcedure(PermissionKey.ledgerPost)
     .input(
       z.object({
         vendorCreditRecordId: recordIdSchema,
@@ -176,7 +176,7 @@ export const vendorCreditRouter = createTRPCRouter({
     }),
 
   /** Take an application back. Refused when it was applied in a settled period. */
-  unapply: permissionProcedure(PermissionKey.ledgerPost)
+  unapplyFromBill: permissionProcedure(PermissionKey.ledgerPost)
     .input(z.object({ applicationRecordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.applicationRecordId)

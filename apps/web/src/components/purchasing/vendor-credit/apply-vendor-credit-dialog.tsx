@@ -85,7 +85,7 @@ export function ApplyVendorCreditDialog({
     return key
   }
 
-  const apply = api.purchasing.vendorCredit.apply.useMutation({
+  const apply = api.purchasing.vendorCredit.applyToBill.useMutation({
     onError: (error) => toastError({ title: 'Error applying credit', description: error.message }),
   })
 

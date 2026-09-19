@@ -63,7 +63,12 @@ export interface RenderStatementPdfParamsByKind {
   'ar-aging': { asOf: string }
   'ap-aging': { asOf: string }
   'vendor-1099': { year: number }
-  'general-ledger': { from: string; to: string; glAccountId?: string }
+  'general-ledger': {
+    from: string
+    to: string
+    glAccountId?: string
+    source?: { sourceKind: string; sourceId: string }
+  }
 }
 
 export interface RenderStatementPdfOptions<K extends StatementKind = StatementKind> {
@@ -169,7 +174,8 @@ async function buildPayload<K extends StatementKind>(
   }
 
   if (kind === 'general-ledger') {
-    const { from, to, glAccountId } = params as RenderStatementPdfParamsByKind['general-ledger']
+    const { from, to, glAccountId, source } =
+      params as RenderStatementPdfParamsByKind['general-ledger']
     // 🛑 The SAME `GENERAL_LEDGER_MAX_LINES` the router hands the screen read.
     // A PDF that stopped at a different line than the page it was rendered from
     // is the one thing this file's header promises can never happen - and an
@@ -184,6 +190,7 @@ async function buildPayload<K extends StatementKind>(
       // The printed copy is narrowed to whatever the screen was narrowed to,
       // for the same reason the cap is shared: the two must not differ.
       glAccountId,
+      source,
       maxLines: GENERAL_LEDGER_MAX_LINES,
     })
     if (result.isErr()) throw result.error

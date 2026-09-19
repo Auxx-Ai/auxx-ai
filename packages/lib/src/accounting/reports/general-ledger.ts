@@ -160,6 +160,12 @@ export interface ReadGeneralLedgerOptions {
    */
   glAccountId?: string
   /**
+   * Narrow to the postings linked to ONE record on `GlPostingSource`, any link
+   * role. A record's drawer "Open in ledger" lands here. Opening balances are
+   * skipped: a record's entries are not a running account.
+   */
+  source?: { sourceKind: string; sourceId: string }
+  /**
    * Stop after this many LINES and set {@link GeneralLedger.truncated}.
    *
    * A safety valve, not a page size: the intended use is a range small enough
@@ -185,7 +191,7 @@ export async function readGeneralLedger(
   db: Database,
   options: ReadGeneralLedgerOptions
 ): Promise<Result<GeneralLedger, Error>> {
-  const { organizationId, from, to, glAccountId, maxLines } = options
+  const { organizationId, from, to, glAccountId, source, maxLines } = options
 
   try {
     assertDayFormat(from, 'from')
@@ -198,12 +204,9 @@ export async function readGeneralLedger(
     if (chartResult.isErr()) return err(chartResult.error)
     const chartById = new Map(chartResult.value.map((account) => [account.id, account]))
 
-    const opening = await readOpeningBalances(
-      db,
-      organizationId,
-      previousCalendarDay(from),
-      glAccountId
-    )
+    const opening = source
+      ? new Map<string, { debitMinor: number; creditMinor: number }>()
+      : await readOpeningBalances(db, organizationId, previousCalendarDay(from), glAccountId)
 
     // 🛑 `limit` is applied in SQL, not after the fact. The guard exists to
     // protect the PROCESS, and a JS `.slice()` over a result set the driver
@@ -228,7 +231,16 @@ export async function readGeneralLedger(
           inArray(schema.GlPosting.status, [...POSTED_STATUSES]),
           gte(schema.GlPosting.txnDate, from),
           lte(schema.GlPosting.txnDate, to),
-          ...(glAccountId ? [eq(schema.GlPostingLine.glAccountId, glAccountId)] : [])
+          ...(glAccountId ? [eq(schema.GlPostingLine.glAccountId, glAccountId)] : []),
+          ...(source
+            ? [
+                sql`EXISTS (SELECT 1 FROM ${schema.GlPostingSource} link
+                  WHERE link."glPostingId" = ${schema.GlPosting.id}
+                  AND link."organizationId" = ${organizationId}
+                  AND link."sourceKind" = ${source.sourceKind}
+                  AND link."sourceId" = ${source.sourceId})`,
+              ]
+            : [])
         )
       )
       // Account first, then chronological within the account: the cut, when it
