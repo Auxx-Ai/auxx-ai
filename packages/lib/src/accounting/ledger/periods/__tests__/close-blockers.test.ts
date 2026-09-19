@@ -207,6 +207,50 @@ describe('describeInventoryBlockers', () => {
     expect(over[0]?.label).toContain('10000')
   })
 
+  // 73 §6.2 rule 4. The movement sum and the ledger are the same money added
+  // twice, so a residue hand-written into an inventory account ties against
+  // both; the parts list does not, and that is the whole point of the check.
+  it('catches a residue the movement sum cannot see', () => {
+    const items = describeInventoryBlockers({
+      periodKey: MONTH,
+      unpostedMovements: 0,
+      // Somebody journalled 2,200 into Raw Materials. Both of these agree.
+      subledgerMinor: 100_000,
+      ledgerMinor: 100_000,
+      // The shelf holds 8 x 14 + 6 x 22 = 244.00 - not 1,000.00.
+      standardValueMinor: 97_800,
+    })
+
+    expect(items.map((item) => item.key)).toEqual(['inventory_standard_value'])
+    expect(items[0]?.label).toContain('-2200')
+    expect(items[0]?.remedy).toContain('July 2026')
+  })
+
+  it('says nothing when the accounts equal quantity on hand times standard', () => {
+    expect(
+      describeInventoryBlockers({
+        periodKey: MONTH,
+        unpostedMovements: 0,
+        subledgerMinor: 24_400,
+        ledgerMinor: 24_400,
+        standardValueMinor: 24_400,
+      })
+    ).toEqual([])
+  })
+
+  it('says nothing when the parts list could not be valued at all', () => {
+    // An org short of the standard-cost fields gets no blocker it cannot act on.
+    expect(
+      describeInventoryBlockers({
+        periodKey: MONTH,
+        unpostedMovements: 0,
+        subledgerMinor: 24_400,
+        ledgerMinor: 24_400,
+        standardValueMinor: null,
+      })
+    ).toEqual([])
+  })
+
   it('carries the month on every item so a remedy knows what to act on', () => {
     const items = describeInventoryBlockers({
       periodKey: MONTH,

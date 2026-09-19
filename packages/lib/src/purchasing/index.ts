@@ -53,15 +53,15 @@ export {
   updateBillIntakeRun,
 } from './bill-intake'
 export {
-  type ExpenseBillPostInput,
   listVendorBillPostings,
   loadVendorBill,
   loadVendorBillLines,
-  type PostExpenseBillResult,
-  postExpenseBill,
-  previewExpenseBill,
+  type PostVendorBillResult,
+  postVendorBill,
+  previewVendorBill,
   requireVendorBill,
   type VendorBillLineRecord,
+  type VendorBillPostInput,
   type VendorBillRecord,
   type VoidExpenseBillInput,
   voidExpenseBill,
@@ -118,6 +118,12 @@ export {
   rematchOnBillChange,
   rematchOnBillLineChange,
 } from './match-hook'
+export {
+  buildEntryForVendorBill,
+  type PostVendorBillEntryInput,
+  postVendorBillEntry,
+  type VendorBillEntrySource,
+} from './post-vendor-bill'
 export type {
   PurchaseOrderBillingStatusValue,
   PurchaseOrderDerivedStatuses,

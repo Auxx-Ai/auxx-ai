@@ -53,7 +53,7 @@ import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { PurchaseOrderLinePicker } from '../purchase-order/purchase-order-line-picker'
 import { AddPurchaseOrderLinesButton } from './add-purchase-order-lines-button'
 
-const BILL_ORDER_ATTRS = ['vendor_bill_purchase_order'] as const
+const BILL_ORDER_ATTRS = ['vendor_bill_purchase_order', 'vendor_bill_status'] as const
 
 export function VendorBillLinesCard({ recordId }: DrawerTabProps) {
   const lineDefId = useResourceProperty('vendor_bill_line', 'id')
@@ -66,6 +66,9 @@ export function VendorBillLinesCard({ recordId }: DrawerTabProps) {
   })
   const purchaseOrderRecordId =
     extractRelationshipRecordIds(values.vendor_bill_purchase_order)[0] ?? null
+  // 73 D5: the footer's transcribed headers are typed until the bill is in the
+  // books. U3 widens this to "posted and no edit flag" in one place.
+  const headersLocked = values.vendor_bill_status === 'posted'
 
   return (
     <div className='max-h-[60vh] overflow-auto ps-3 pe-3'>
@@ -79,6 +82,7 @@ export function VendorBillLinesCard({ recordId }: DrawerTabProps) {
       <LineBuilder
         documentRecordId={recordId}
         documentType='vendor_bill'
+        amountsReadOnly={headersLocked}
         // The order to offer lines from is resolved by the builder from
         // `schema.matchScopeAttr` (`vendor_bill_purchase_order`) and handed back
         // as `scopeRecordId`, so this never re-reads the bill it is rendered in.

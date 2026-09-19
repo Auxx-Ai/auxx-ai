@@ -1,9 +1,8 @@
 // packages/lib/src/purchasing/expense-bill/index.ts
 //
-// The standalone company's A/P bill: `Dr <expense> / Cr accounts_payable`, for
-// rent, insurance, a legal invoice or a subscription
-// (plans/accounting/tasks/21-the-books-stand-alone.md §3.2). Distinct from the
-// L3 purchasing bill, which relieves GRNI and is not built.
+// The Post and Void actions on a vendor bill - ONE door for both kinds (73 D3):
+// a bill raised against a purchase order and a bill for rent, insurance or a
+// subscription are the same record, the same entry and the same posting type.
 
 export {
   loadVendorBill,
@@ -13,11 +12,11 @@ export {
   type VendorBillRecord,
 } from './reads'
 export {
-  type ExpenseBillPostInput,
   listVendorBillPostings,
-  type PostExpenseBillResult,
-  postExpenseBill,
-  previewExpenseBill,
+  type PostVendorBillResult,
+  postVendorBill,
+  previewVendorBill,
+  type VendorBillPostInput,
   type VoidExpenseBillInput,
   voidExpenseBill,
 } from './writes'

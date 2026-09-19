@@ -152,6 +152,12 @@ export interface LineBuilderProps {
   documentType: DocumentType
   readOnly?: boolean
   /**
+   * Whether the footer's transcribed header amounts are inputs or text, on a
+   * `stored` document. Defaults to {@link readOnly}; the vendor bill passes its
+   * own lock (73 D5, widened by U3's edit flag).
+   */
+  amountsReadOnly?: boolean
+  /**
    * Scope the builder to a single visit's occurrence extras (work_order only, money 01-ui #13):
    * set → shows/creates lines stamped `line_item_visit_id = visitId`; unset → the job's per-cycle
    * set (`visitId` empty). The two sets never overlap — that split is enforced in `filters` below.
@@ -206,6 +212,7 @@ export function LineBuilder({
   documentRecordId,
   documentType,
   readOnly = false,
+  amountsReadOnly,
   visitId,
   className,
   renderMatchKeyEditor,
@@ -602,8 +609,9 @@ export function LineBuilder({
   )
 
   /**
-   * Write one of a `stated` document's own amount mirrors (`shipping_total`,
-   * `tax_total`, `discount_value`).
+   * Write one of the document's own amount mirrors: `shipping_total`,
+   * `tax_total` and `discount_value` on a `stated` document, and the five
+   * transcribed headers on a `stored` one (73 D5).
    *
    * 🛑 These are INPUTS, not derived figures — `purchase_order_shipping_total` is
    * described in the registry as *"typed by hand from the freight invoice"* and is
@@ -614,7 +622,9 @@ export function LineBuilder({
    */
   const updateStatedAmount = useCallback(
     (attribute: string, cents: number | null) => {
-      if (schema.totalsMode !== 'stated') return
+      // `stored` writes them too since 73 D5: a bill's transcribed headers had
+      // no writer anywhere in the app, so its shipping and tax were unreachable.
+      if (schema.totalsMode === 'none' || schema.totalsMode === 'computed') return
       saveFieldValue(docRecordId, `${billingPrefix}_${attribute}`, cents, FieldType.CURRENCY)
     },
     [schema.totalsMode, saveFieldValue, docRecordId, billingPrefix]
@@ -1327,6 +1337,7 @@ export function LineBuilder({
       <TotalsFooter
         documentType={documentType}
         readOnly={readOnly}
+        amountsReadOnly={amountsReadOnly}
         currencyCode={currencyCode}
         lineRecordIds={lineRecordIds}
         draftLines={visibleDrafts}

@@ -45,6 +45,35 @@ export type InventoryDocumentKind =
    */
   | 'revalue'
 
+/**
+ * What one `receive` movement accrued to parties other than the goods vendor
+ * (73 §7.2). Every figure is EXTENDED and signed like the movement's own cost.
+ *
+ * The three together are what the receipt owes; the inventory debit is the
+ * frozen standard, and the difference is `ppv`.
+ */
+export interface ReceiveAccrualInput {
+  /** `qty x agreed price`. Credits `grni` - the goods vendor's bill clears it. */
+  grniMinor: number
+  /** `qty x (shippingCost + otherCost)`. Credits `freight_accrual`. */
+  freightMinor: number
+  /** `qty x agreed price x tariffRate/100`. Credits `duties_accrual`. */
+  dutiesMinor: number
+}
+
+/**
+ * The labour and overhead a relief carries out of inventory (73 §6.2 rule 3),
+ * read off the finished good's frozen standard composition.
+ *
+ * Signed like the COGS debit: positive on a relief, negative on an un-relief.
+ * The material share is never passed - it is the remainder, so the three legs
+ * tie to the movements by construction.
+ */
+export interface ReliefCogsSplit {
+  laborMinor: number
+  overheadMinor: number
+}
+
 /** One `stock_movement` this document wrote, as the entry reads it. */
 export interface InventoryMovementLine {
   /** The `stock_movement` EntityInstance id. Becomes a `member` source link. */
@@ -59,6 +88,11 @@ export interface InventoryMovementLine {
   extendedCostMinor: number
   /** The movement's frozen `stock_movement_gl_account` - an inventory ROLE. */
   glAccountRole: string
+  /**
+   * `kind: 'receive'` only. Absent means nothing was accrued and `grni` takes
+   * the whole cost, which is what an ad hoc receipt against no supplier row does.
+   */
+  accrual?: ReceiveAccrualInput
 }
 
 export interface InventoryMovementEntryInput {
@@ -77,6 +111,12 @@ export interface InventoryMovementEntryInput {
    * and without these that difference would land in purchase price variance.
    */
   absorbed?: { laborMinor: number; overheadMinor: number }
+  /**
+   * A relief's labour and overhead share. Only `kind: 'sale'` reads it; without
+   * it the whole relief lands on `cogs_product_cost`, which is what it did
+   * before 73 §6.2 rule 3.
+   */
+  cogsSplit?: ReliefCogsSplit
   memo?: string
 }
 
@@ -122,13 +162,75 @@ const COUNTER_ROLE: Record<Exclude<InventoryDocumentKind, 'build'>, string> = {
 }
 
 /**
+ * A receipt's four credit-side legs (73 §7.2): the goods vendor's `grni`, the
+ * carrier's `freight_accrual`, the broker's `duties_accrual`, and `ppv` for
+ * whatever the frozen standard differs from the three together.
+ *
+ * 🛑 **`ppv` is the plug, not a computed variance.** The inventory debit is the
+ * standard and the three credits are today's landed estimate; making the
+ * remainder anything other than the balancing figure would emit an entry that
+ * does not balance. On §6.4's provisional first receipt the standard has just
+ * been replaced by that same estimate, so the plug is zero without a flag.
+ *
+ * A movement with no {@link ReceiveAccrualInput} puts its whole cost in `grni`,
+ * which is what an ad hoc receipt against no supplier row accrues.
+ */
+function receiveCounterLegs(
+  movements: readonly InventoryMovementLine[],
+  net: number,
+  documentId: string,
+  memo: string | undefined
+): Leg[] {
+  let grni = 0
+  let freight = 0
+  let duties = 0
+  for (const movement of movements) {
+    const accrual = movement.accrual
+    if (!accrual) {
+      grni += movement.extendedCostMinor
+      continue
+    }
+    assertMinor(accrual.grniMinor, `Movement ${movement.id} goods accrual`)
+    assertMinor(accrual.freightMinor, `Movement ${movement.id} freight accrual`)
+    assertMinor(accrual.dutiesMinor, `Movement ${movement.id} duties accrual`)
+    grni += accrual.grniMinor
+    freight += accrual.freightMinor
+    duties += accrual.dutiesMinor
+  }
+
+  return [
+    { role: ACCOUNT_ROLES.GRNI, amountMinor: -grni, memo, sourceId: documentId },
+    {
+      role: ACCOUNT_ROLES.FREIGHT_ACCRUAL,
+      amountMinor: -freight,
+      memo: 'Inbound freight accrued on receipt',
+      sourceId: documentId,
+    },
+    {
+      role: ACCOUNT_ROLES.DUTIES_ACCRUAL,
+      amountMinor: -duties,
+      memo: 'Duty accrued on receipt',
+      sourceId: documentId,
+    },
+    {
+      role: ACCOUNT_ROLES.PPV,
+      amountMinor: grni + freight + duties - net,
+      memo: 'Receipt against standard',
+      sourceId: documentId,
+    },
+  ]
+}
+
+/**
  * Build one document's inventory entry, or `null` when it moves no money.
  *
  * The shape per kind, with the sign always following the movements:
  *
  * ```
- * sale      Dr cogs_product_cost          Cr <inventory role(s)>
- * receive   Dr <inventory role(s)>        Cr grni
+ * sale      Dr cogs_product_cost (+ cogs_direct_labor + applied_overhead when
+ *           the finished good's standard is split)   Cr <inventory role(s)>
+ * receive   Dr <inventory role(s)> at standard
+ *           Cr grni, Cr freight_accrual, Cr duties_accrual, Dr|Cr ppv remainder
  * adjust    Dr/Cr <inventory role(s)>     Cr/Dr inventory_count_variance
  * scrap     Cr <inventory role(s)>        Dr inventory_count_variance
  * return    Dr <inventory role(s)>        Cr cogs_product_cost
@@ -193,6 +295,34 @@ export function buildInventoryMovementEntry(
       memo: 'Build variance',
       sourceId: documentId,
     })
+  } else if (kind === 'receive') {
+    legs.push(...receiveCounterLegs(movements, net, documentId, input.memo))
+  } else if (kind === 'sale' && input.cogsSplit) {
+    const { laborMinor, overheadMinor } = input.cogsSplit
+    assertMinor(laborMinor, 'Relieved labour')
+    assertMinor(overheadMinor, 'Relieved overhead')
+    legs.push(
+      {
+        role: ACCOUNT_ROLES.COGS_DIRECT_LABOR,
+        amountMinor: laborMinor,
+        memo: 'Direct labour relieved at standard',
+        sourceId: documentId,
+      },
+      {
+        role: ACCOUNT_ROLES.APPLIED_OVERHEAD,
+        amountMinor: overheadMinor,
+        memo: 'Overhead relieved at standard',
+        sourceId: documentId,
+      },
+      // The remainder, so the three COGS legs tie to the movements exactly
+      // whatever the components round to.
+      {
+        role: ACCOUNT_ROLES.COGS_PRODUCT_COST,
+        amountMinor: -net - laborMinor - overheadMinor,
+        memo: input.memo,
+        sourceId: documentId,
+      }
+    )
   } else {
     legs.push({
       role: COUNTER_ROLE[kind],

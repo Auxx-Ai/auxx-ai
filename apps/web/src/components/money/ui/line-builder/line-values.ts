@@ -247,6 +247,17 @@ export interface LineSchema {
    */
   primaryColumnLabel: string
   totalsMode: TotalsMode
+  /**
+   * `stored` only: whether the header amounts are TYPED off the document or
+   * written by the totals hook.
+   *
+   * 🛑 Not derivable from `totalsMode`. A vendor bill's headers are transcribed
+   * from the vendor's paper and this footer is the only surface they have
+   * (73 D5); a credit memo's are `creatable: false` mirrors whose only writer is
+   * `recomputeOnCreditMemoLineChange`, so offering an input there would let a
+   * person type a figure the next line write silently re-sums away.
+   */
+  headerAmountsTyped: boolean
   /** Whether the line's amount is computed from qty x rate or transcribed. */
   amountMode: AmountMode
   /**
@@ -406,6 +417,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     primaryTextKey: 'name',
     primaryColumnLabel: 'Description',
     totalsMode: 'computed',
+    headerAmountsTyped: false,
     billingPrefix: 'quote',
     billingAttrs: billingAttrsFor('quote'),
     attrs: LINE_ITEM_ATTRS,
@@ -424,6 +436,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     primaryTextKey: 'name',
     primaryColumnLabel: 'Description',
     totalsMode: 'computed',
+    headerAmountsTyped: false,
     billingPrefix: 'invoice',
     billingAttrs: [
       ...billingAttrsFor('invoice'),
@@ -452,6 +465,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     primaryTextKey: 'name',
     primaryColumnLabel: 'Description',
     totalsMode: 'computed',
+    headerAmountsTyped: false,
     billingPrefix: 'order',
     billingAttrs: billingAttrsFor('order'),
     attrs: LINE_ITEM_ATTRS,
@@ -473,6 +487,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     // every use is gated on `totalsMode`. It is still a real prefix rather than an
     // empty string so a missed gate fails loudly instead of building `_tax_rate`.
     totalsMode: 'none',
+    headerAmountsTyped: false,
     billingPrefix: 'work_order',
     billingAttrs: [],
     attrs: LINE_ITEM_ATTRS,
@@ -501,6 +516,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     // `creatable: false`) — but shipping and tax are stated amounts, not rates.
     // Contrast `vendor_bill` below, whose totals are transcribed entirely.
     totalsMode: 'stated',
+    headerAmountsTyped: false,
     billingPrefix: 'purchase_order',
     // ⚠️ Verified against PURCHASE_ORDER_FIELDS, not derived from the prefix.
     // `billingAttrsFor` would have asked for `_discount_type`, `_tax_name` and
@@ -551,11 +567,13 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     primaryColumnLabel: 'Part',
     // 🛑 See TotalsMode. The bill is THEIRS; its totals are transcribed.
     totalsMode: 'stored',
+    headerAmountsTyped: true,
     billingPrefix: 'vendor_bill',
     billingAttrs: [
       'vendor_bill_subtotal',
       'vendor_bill_shipping_total',
       'vendor_bill_tax_total',
+      'vendor_bill_discount',
       'vendor_bill_total',
     ],
     attrs: {
@@ -598,6 +616,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     // Tax is transcribed per line and never derived from a rate, so there is no
     // rate control to render: the footer displays the three mirrors.
     totalsMode: 'stored',
+    headerAmountsTyped: false,
     billingPrefix: 'credit_memo',
     billingAttrs: ['credit_memo_subtotal', 'credit_memo_tax_total', 'credit_memo_total'],
     attrs: {
@@ -642,6 +661,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     // Subtotal and total are mirrors written by the totals hook; the stated tax
     // is a header input beside them.
     totalsMode: 'stored',
+    headerAmountsTyped: false,
     billingPrefix: 'vendor_credit',
     billingAttrs: ['vendor_credit_subtotal', 'vendor_credit_tax_total', 'vendor_credit_total'],
     attrs: {

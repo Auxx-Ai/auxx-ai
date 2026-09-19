@@ -188,6 +188,7 @@ export async function createBillFromIntake(
         vendor_bill_subtotal: parseIntakeTotal(transcription.subtotalText, currency),
         vendor_bill_shipping_total: parseIntakeTotal(transcription.shippingText, currency),
         vendor_bill_tax_total: parseIntakeTotal(transcription.taxText, currency),
+        vendor_bill_discount: parseIntakeTotal(transcription.discountText, currency),
         vendor_bill_total: parseIntakeTotal(transcription.totalText, currency),
         // The single-file slot, not `attachments` - the array shape mirrors how
         // `intake/commit.ts` writes a FILE field's value.

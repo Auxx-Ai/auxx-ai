@@ -17,6 +17,7 @@ import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
+import type { ReceiveAccrualInput } from '../../accounting/ledger/builders/inventory-movement'
 import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
 import {
   exportInventoryMovement,
@@ -29,10 +30,12 @@ import { systemDefId } from '../../resources/system-records'
 import { ensureStandardCost } from '../costing/ensure-standard-cost'
 import { replaceProvisionalStandard } from '../costing/provisional-standard'
 import { batchRecalculateQoH } from '../costing/qoh'
+import { readStandardCost } from '../costing/standard-cost-queries'
 import { writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
 import { assertCostFieldsMaterialized } from '../movements/cost-fields'
 import type { MovementRecord } from '../movements/types'
+import { computeReceiptAccrual } from './accruals'
 import { computeReceiptLandedCost, type ReceiptCostInputs } from './client'
 import { guard } from './guard'
 import { readPartKind, readVendorPartCostInputs } from './receipt-queries'
@@ -84,6 +87,8 @@ export async function receiveStock(
       const priced = await resolveReceiptPrice(db, organizationId, input)
       const partKind = await unwrap(readPartKind(db, organizationId, input.partId))
 
+      // `priced.unitCost` IS the landed estimate — base plus every adder — which
+      // is what §6.4 replaces a provisional guess with, not the base alone.
       await setFirstStandardCostFromReceipt(
         db,
         organizationId,
@@ -91,6 +96,29 @@ export async function receiveStock(
         priced.unitCost,
         userId
       )
+
+      // 73 §6.2 rule 1: valued at the STANDARD, read after the line above. The
+      // landed estimate is the fallback for a part with no readable standard.
+      const standards = await readStandardCost(db, organizationId, [input.partId])
+      const unitValue =
+        (standards.isOk() ? standards.value.get(input.partId)?.standardCost : null) ??
+        priced.unitCost
+
+      // What the receipt owes the carrier and the broker (§7.2). The agreed
+      // price is the base `grni` is credited at; with no supplier row and no
+      // known base there is nothing to split and `grni` takes the whole cost.
+      const accrual =
+        priced.vendorUnitPrice == null
+          ? undefined
+          : computeReceiptAccrual(
+              {
+                agreedUnitPrice: priced.vendorUnitPrice,
+                shippingCost: priced.terms?.shippingCost,
+                otherCost: priced.terms?.otherCost,
+                tariffRate: priced.terms?.tariffRate,
+              },
+              input.quantity
+            )
 
       // The movement and its entry commit together (MIGRATION step 5): a
       // receipt whose row landed and whose entry did not is exactly the state
@@ -102,12 +130,17 @@ export async function receiveStock(
           movementDefId,
           partDefId,
           input,
-          unitCost: priced.unitCost,
+          unitCost: unitValue,
           vendorUnitPrice: priced.vendorUnitPrice,
+          tariffRate: priced.terms?.tariffRate ?? undefined,
+          accrual,
           glAccount: resolveInventoryRoleForPartKind(partKind),
           occurredAt: input.occurredAt ?? new Date(),
         })
-        return { written: record, post: await postReceipt(tx, organizationId, userId, record) }
+        return {
+          written: record,
+          post: await postReceipt(tx, organizationId, userId, record, accrual),
+        }
       })
 
       // Belt on the plain lane's own recalculation, which fired against a
@@ -141,10 +174,15 @@ function assertReceivableQuantity(quantity: number): void {
 }
 
 interface ResolvedPrice {
-  /** Whole minor units, strictly positive. */
+  /** The LANDED estimate per unit, whole minor units, strictly positive. */
   unitCost: number
   /** Whole minor units, or `null` when the raw supplier price is not known. */
   vendorUnitPrice: number | null
+  /**
+   * The supplier row's adders, when one was named (73 §7.2). `null` means
+   * nothing is accrued and `grni` takes the receipt's whole cost.
+   */
+  terms: ReceiptCostInputs | null
 }
 
 /**
@@ -197,11 +235,12 @@ async function resolveReceiptPrice(
 
   let landed: number | null = supplied != null && Number.isFinite(supplied) ? supplied : null
 
-  // The supplier row is read when it can still contribute something: the adders
-  // for an unresolved cost, or the raw price when none was sent. When both are
-  // already known it is not read at all.
+  // The supplier row is read whenever one is named. It used to be skipped when
+  // the price was already settled; since 73 §7.2 its adders are also what the
+  // receipt ACCRUES, so they are needed even when they contribute nothing to
+  // the valuation.
   let terms: ReceiptCostInputs | null = null
-  if ((landed == null || vendorUnitPrice == null) && input.vendorPartId) {
+  if (input.vendorPartId) {
     // Resolved at the receipt's accounting date, not at now: a back-dated receipt
     // takes the duty rate that was in force on the day (29 §5.1, 30 §5).
     terms = await unwrap(
@@ -213,9 +252,16 @@ async function resolveReceiptPrice(
       )
     )
     if (!terms) {
-      throw new NotFoundError(`Vendor part ${input.vendorPartId} not found`)
+      // Only a refusal when the valuation NEEDED the row. When the caller
+      // already settled both numbers the row was read for its adders alone, and
+      // a receipt whose price nobody disputes must not fail over a supplier row
+      // somebody archived: it simply accrues nothing.
+      if (landed == null || vendorUnitPrice == null) {
+        throw new NotFoundError(`Vendor part ${input.vendorPartId} not found`)
+      }
+    } else if (vendorUnitPrice == null) {
+      vendorUnitPrice = terms.unitPrice
     }
-    if (vendorUnitPrice == null) vendorUnitPrice = terms.unitPrice
   }
 
   if (landed == null) {
@@ -257,6 +303,7 @@ async function resolveReceiptPrice(
       vendorUnitPrice != null && Number.isFinite(vendorUnitPrice)
         ? roundMinorUnits(vendorUnitPrice)
         : null,
+    terms,
   }
 }
 
@@ -264,8 +311,12 @@ interface WriteReceiveMovementArgs {
   movementDefId: string
   partDefId: string
   input: ReceiveStockInput
+  /** The part's frozen standard, or the landed estimate when it has none. */
   unitCost: number
   vendorUnitPrice: number | null
+  /** The resolved duty PERCENTAGE, frozen with the accrual it produced. */
+  tariffRate?: number
+  accrual?: ReceiveAccrualInput
   glAccount: string
   occurredAt: Date
 }
@@ -279,12 +330,9 @@ interface WriteReceiveMovementArgs {
  * rolled. It is not gated on a setting: a receipt carries a landed cost off an
  * invoice, which is a fact, not an inference from a price list.
  *
- * 🛑 **This does NOT change what the receipt is valued at.** The movement below
- * still stamps `cost_basis: 'actual'` at the landed cost, exactly as before.
- * Receiving AT standard and posting the difference to `5090` is a books change
- * and lives in `plans/money/design/ppv-treatment.md`; all this does is make the
- * part HAVE a standard afterwards, so the adjust, build and close paths that
- * refuse without one stop refusing.
+ * 🛑 **`unitCost` is the LANDED estimate, not the agreed price** (73 §7.2): the
+ * standard is landed, so a first standard set from the base alone would post the
+ * whole freight-and-duty estimate to `ppv` on the very receipt that set it.
  *
  * 🛑 **A receipt never MOVES an existing standard, with ONE exception.** That is
  * the same file's §5: a standard that follows the last purchase is a moving
@@ -366,6 +414,7 @@ async function writeReceiveMovement(
 ): Promise<MovementRecord> {
   const { movementDefId, partDefId, input, unitCost, vendorUnitPrice, glAccount, occurredAt } = args
   const quantity = input.quantity
+  const { accrual, tariffRate } = args
 
   const written = await writeStockMovements(
     { db, organizationId, userId, movementDefId, partDefId, lane: { kind: 'plain' } },
@@ -375,12 +424,17 @@ async function writeReceiveMovement(
         type: 'receive',
         quantity,
         unitCost,
-        // A receipt is the first writer of `actual`: this cost is what was
-        // paid, not what the standard cost roll-up expects it to have been.
-        costBasis: 'actual',
+        // 73 §6.2 rule 1: a receipt freezes the STANDARD, and the difference
+        // from what was paid is the receipt's `ppv`.
+        costBasis: 'standard',
         glAccount,
         occurredAt,
         vendorUnitPrice: vendorUnitPrice ?? undefined,
+        accrued: {
+          freightMinor: accrual?.freightMinor,
+          dutiesMinor: accrual?.dutiesMinor,
+          tariffRate,
+        },
         reference: input.reference,
         reason: input.reason,
         links: {
@@ -425,15 +479,18 @@ async function unwrap<T>(promise: Promise<Result<T, Error>>): Promise<T> {
  * whole receipt instead, with every line's movement as a member (TARGET §5) -
  * see that file's own posting call.
  *
- * GRNI is credited at the movement's whole extended cost, which for every
- * purchase-order receipt IS the agreed price (nothing is capitalised at receipt
- * since 05 §3.2), so the vendor bill relieves exactly what this credited.
+ * Since 73 §7.2 the entry has four credit-side legs, not one: `grni` at the
+ * agreed price, `freight_accrual` and `duties_accrual` at what the supplier row
+ * says the shipment costs on top of it, and `ppv` for whatever the frozen
+ * standard differs from the three. With no supplier row there is nothing to
+ * split and `grni` is credited at the whole extended cost, as before.
  */
 async function postReceipt(
   tx: Transaction,
   organizationId: string,
   userId: string,
-  record: MovementRecord
+  record: MovementRecord,
+  accrual?: ReceiveAccrualInput
 ): Promise<InTxPostResult | null> {
   if (record.extendedCost == null || record.glAccount == null) return null
   return postInventoryMovementInTx(tx, {
@@ -451,6 +508,7 @@ async function postReceipt(
         id: record.movementId,
         extendedCostMinor: record.extendedCost,
         glAccountRole: record.glAccount,
+        ...(accrual ? { accrual } : {}),
       },
     ],
     actorUserId: userId,

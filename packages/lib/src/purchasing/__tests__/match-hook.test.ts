@@ -672,6 +672,15 @@ describe('coalescing (plan 08 phase 2)', () => {
   })
 })
 
-// The bill's ledger entry has its own writer and its own builder test; this file
-// is about the VERDICT. `vi.mock` is hoisted, so placement is free.
-vi.mock('../post-vendor-bill', () => ({ postVendorBillEntry: async () => null }))
+// 🛑 The match NEVER posts (73 D3): the Post action is the one door, and this
+// hook no longer imports the poster at all. The mock stays so that a
+// reintroduced import fails here loudly instead of reaching a real `postEntry`.
+// `vi.mock` is hoisted, so placement is free.
+vi.mock('../post-vendor-bill', () => ({
+  postVendorBillEntry: () => {
+    throw new Error('the three-way match must never post')
+  },
+  buildEntryForVendorBill: () => {
+    throw new Error('the three-way match must never build an entry')
+  },
+}))

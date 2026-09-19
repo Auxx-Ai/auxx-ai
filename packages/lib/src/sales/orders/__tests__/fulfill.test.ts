@@ -166,7 +166,6 @@ vi.mock('../../../inventory/relief', async () => {
         skippedNoPart: 0,
         skippedZeroDelta: 0,
         skippedNoCost: 0,
-        fallbackStandardCostPartIds: [],
         negativeQoHPartIds: [],
       })
     },

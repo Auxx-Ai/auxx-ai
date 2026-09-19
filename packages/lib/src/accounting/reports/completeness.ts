@@ -96,7 +96,7 @@ const NEVER_CLOSE_EMITTED = new Set<PostingType>(['provider_sync'])
  * not this table. `__tests__/policy.test.ts` pins every currently-disabled
  * type's sentence to the words this table held before it was derived.
  *
- * 🛑 `expense_bill` is deliberately NOT in `NEVER_CLOSE_EMITTED`. It is written
+ * 🛑 `vendor_bill` is deliberately NOT in `NEVER_CLOSE_EMITTED`. It is written
  * by auxx's own writer on a bill's Post action, exactly as `invoice_issued` is
  * written on an invoice's Send - so it belongs enabled on its policy, not
  * exempted from the subtraction here. `provider_sync` is exempt because NOTHING

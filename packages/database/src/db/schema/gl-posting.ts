@@ -76,7 +76,6 @@ export const glPostingType = pgEnum('GlPostingType', [
   // gives per-transaction idempotency for free.
   'provider_sync',
   'recurring_journal',
-  'expense_bill',
   // plans/accounting/tasks/71-one-cash-endpoint.md §5 U7: a supplier's credit
   // note - `Dr A/P / Cr <each line's account>`, the expense bill sides-flipped.
   'vendor_credit',

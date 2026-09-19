@@ -39,6 +39,7 @@ export {
   ACCOUNT_ROLES,
   type AccountRole,
   type BuildEntryInput,
+  type BuiltVendorBillEntry,
   buildEntry,
   buildVendorBillEntry,
   ROLE_ACCOUNT_TYPES,
@@ -46,17 +47,11 @@ export {
   roleScopeAxis,
   SCOPABLE_ROLES,
   type ScopeAxis,
+  VENDOR_BILL_POSTING_TYPE,
+  VENDOR_BILL_SOURCE_TYPE,
   type VendorBillEntryInput,
+  type VendorBillLineInput,
 } from './entry'
-// ── plans/accounting/tasks/21 §3.2: the standalone company's A/P bill ───────
-export {
-  type BuildExpenseBillEntryInput,
-  type BuiltExpenseBillEntry,
-  buildExpenseBillEntry,
-  EXPENSE_BILL_POSTING_TYPE,
-  EXPENSE_BILL_SOURCE_TYPE,
-  type ExpenseBillLineInput,
-} from './expense-bill'
 // ── HANDOFF slot 2G: the revenue side (tasks/01 phases A to C) ──────────────
 export {
   type BuildFulfillmentEntryInput,
@@ -81,6 +76,8 @@ export {
   type InventoryDocumentKind,
   type InventoryMovementEntryInput,
   type InventoryMovementLine,
+  type ReceiveAccrualInput,
+  type ReliefCogsSplit,
 } from './inventory-movement'
 // ── plans/accounting/tasks/08: the receivable nothing debits ────────────────
 export {

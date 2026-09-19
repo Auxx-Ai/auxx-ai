@@ -149,6 +149,7 @@ function invoice(partial: Partial<TranscribedInvoice> = {}): TranscribedInvoice 
     subtotalText: '210.00',
     shippingText: null,
     taxText: null,
+    discountText: null,
     totalText: '210.00',
     lines: [invoiceLine()],
     ...partial,

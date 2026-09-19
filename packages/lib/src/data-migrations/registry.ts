@@ -30,6 +30,7 @@ import { migration170GlAccountParentField } from './migrations/170-gl-account-pa
 import { migration171OneCashEndpoint } from './migrations/171-one-cash-endpoint'
 import { migration172VendorBillMatchStatus } from './migrations/172-vendor-bill-match-status'
 import { migration173PartStandardCostSource } from './migrations/173-part-standard-cost-source'
+import { migration175StockMovementAccruals } from './migrations/175-stock-movement-accruals'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -162,6 +163,10 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // standard came from, so the first receipt of a typed guess replaces it
   // instead of varying against it (73 §6.4).
   migration173PartStandardCostSource,
+  // Three fields on the existing `stock_movement` def, no backfill: what a
+  // receipt credited the freight and duties accruals, and the rate behind it
+  // (73 §7.2).
+  migration175StockMovementAccruals,
 ]
 
 /**

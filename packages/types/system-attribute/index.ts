@@ -750,6 +750,13 @@ export const SYSTEM_ATTRIBUTES = [
   'stock_movement_occurred_at', // the ACCOUNTING date; createdAt is when it was typed
   'stock_movement_vendor_part',
   'stock_movement_vendor_unit_price', // raw invoice price, before landed adders
+  // What a receipt accrued to parties other than the goods vendor, and the rate
+  // that produced the duty (73 §7.2). Stamped so the two accrual accounts can be
+  // reconciled to the movements that raised them without re-reading the supplier
+  // row, which moves.
+  'stock_movement_freight_accrued',
+  'stock_movement_duties_accrued',
+  'stock_movement_tariff_rate',
   'stock_movement_purchase_order_line',
   'stock_movement_reverses_movement', // NOT parentMovement — that means BOM explosion
   'stock_movement_reversed_by_movements',
@@ -831,6 +838,8 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_bill_subtotal',
   'vendor_bill_shipping_total',
   'vendor_bill_tax_total',
+  // The trade discount printed on the invoice, the mirror of the order's (73 D5).
+  'vendor_bill_discount',
   'vendor_bill_total',
   // The match axis, beside `vendor_bill_status`'s lifecycle axis (73 D1).
   'vendor_bill_match_status',

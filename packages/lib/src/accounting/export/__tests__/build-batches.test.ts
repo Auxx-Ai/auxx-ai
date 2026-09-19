@@ -465,13 +465,13 @@ describe('Transaction mode', () => {
     )
   })
 
-  it('an expense bill becomes a bill', async () => {
+  it('a vendor bill becomes a bill', async () => {
     const { db, inserted } = fakeDb([
       [
         posting({
           id: 'glp_bil1',
-          postingType: 'expense_bill',
-          docNumber: 'AUXX-EXB-1',
+          postingType: 'vendor_bill',
+          docNumber: 'AUXX-BIL-1',
           totalMinor: 600,
         }),
       ],

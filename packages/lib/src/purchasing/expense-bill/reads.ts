@@ -13,6 +13,7 @@
 import type { Database } from '@auxx/database'
 import { toCalendarDay } from '@auxx/utils/calendar-day'
 import { NotFoundError } from '../../errors'
+import { PURCHASE_ORDER_LINE_FIELDS } from '../../resources/registry/resources/purchase-order-line-fields'
 import { VENDOR_BILL_FIELDS } from '../../resources/registry/resources/vendor-bill-fields'
 import { VENDOR_BILL_LINE_FIELDS } from '../../resources/registry/resources/vendor-bill-line-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
@@ -27,27 +28,45 @@ const VENDOR_BILL_ATTRIBUTES = pickSystemAttributes(VENDOR_BILL_FIELDS, [
   'vendor_bill_payment_status',
   'vendor_bill_billed_at',
   'vendor_bill_currency',
+  'vendor_bill_subtotal',
+  'vendor_bill_shipping_total',
+  'vendor_bill_tax_total',
+  'vendor_bill_discount',
   'vendor_bill_total',
   'vendor_bill_vendor',
+  'vendor_bill_purchase_order',
   'vendor_bill_lines',
 ] as const)
 
 /** Every `vendor_bill_line` attribute the posting path reads. */
 const VENDOR_BILL_LINE_ATTRIBUTES = pickSystemAttributes(VENDOR_BILL_LINE_FIELDS, [
   'vendor_bill_line_description',
+  'vendor_bill_line_quantity_billed',
   'vendor_bill_line_line_total',
   'vendor_bill_line_gl_account',
+  'vendor_bill_line_purchase_order_line',
   'vendor_bill_line_sort_order',
 ] as const)
 
-/** One coded line of a bill, as the builder reads it. */
+/** The order-line figures a LINKED bill line is posted against (73 D2). */
+const PURCHASE_ORDER_LINE_ATTRIBUTES = pickSystemAttributes(PURCHASE_ORDER_LINE_FIELDS, [
+  'purchase_order_line_expected_unit_price',
+] as const)
+
+/** One line of a bill, as the builder reads it. */
 export interface VendorBillLineRecord {
   id: string
   description: string | null
   /** Integer minor units. `0` when the line carries no total at all. */
   lineTotalMinor: number
+  /** Units the vendor is billing for, or `null` when none is typed. */
+  quantityBilled: number | null
   /** The `gl_account` instance id, or `null` when the line is uncoded. */
   glAccountId: string | null
+  /** The `purchase_order_line` this line matches, or `null` when unlinked. */
+  purchaseOrderLineId: string | null
+  /** The agreed unit price off that order line, integer minor units. */
+  unitPriceExpectedMinor: number | null
   sortOrder: number
 }
 
@@ -66,8 +85,14 @@ export interface VendorBillRecord {
   currency: string | null
   /** Integer minor units. Transcribed from the vendor's document, never derived. */
   totalMinor: number
+  subtotalMinor: number
+  shippingMinor: number
+  taxMinor: number
+  discountMinor: number
   /** The `company` instance id this bill is owed to. The A/P counterparty. */
   vendorCompanyInstanceId: string | null
+  /** The `purchase_order` the bill was raised from, when it names one. */
+  purchaseOrderId: string | null
   lineIds: string[]
 }
 
@@ -97,7 +122,12 @@ export async function loadVendorBill(
     billedAt: toCalendarDay(bill.date('vendor_bill_billed_at')),
     currency: bill.text('vendor_bill_currency'),
     totalMinor: bill.number('vendor_bill_total') ?? 0,
+    subtotalMinor: bill.number('vendor_bill_subtotal') ?? 0,
+    shippingMinor: bill.number('vendor_bill_shipping_total') ?? 0,
+    taxMinor: bill.number('vendor_bill_tax_total') ?? 0,
+    discountMinor: bill.number('vendor_bill_discount') ?? 0,
     vendorCompanyInstanceId: bill.related('vendor_bill_vendor'),
+    purchaseOrderId: bill.related('vendor_bill_purchase_order'),
     lineIds: bill
       .cells('vendor_bill_lines')
       .map((value) =>
@@ -138,15 +168,52 @@ export async function loadVendorBillLines(
 
   // Walked in the order the bill named them, not the reader's `createdAt` order:
   // the position is the fallback when a line carries no `sortOrder`.
-  return lineIds
+  const lines = lineIds
     .map((lineId) => byId.get(lineId))
     .filter((line) => line !== undefined)
     .map((line, index) => ({
       id: line.id,
       description: line.text('vendor_bill_line_description'),
       lineTotalMinor: line.number('vendor_bill_line_line_total') ?? 0,
+      quantityBilled: line.number('vendor_bill_line_quantity_billed'),
       glAccountId: line.text('vendor_bill_line_gl_account'),
+      purchaseOrderLineId: line.related('vendor_bill_line_purchase_order_line'),
+      unitPriceExpectedMinor: null as number | null,
       sortOrder: line.number('vendor_bill_line_sort_order') ?? index,
     }))
     .sort((a, b) => a.sortOrder - b.sortOrder)
+
+  const expected = await loadExpectedUnitPrices(
+    db,
+    organizationId,
+    lines.map((line) => line.purchaseOrderLineId).filter((id): id is string => !!id)
+  )
+  for (const line of lines) {
+    line.unitPriceExpectedMinor = line.purchaseOrderLineId
+      ? (expected.get(line.purchaseOrderLineId) ?? null)
+      : null
+  }
+  return lines
+}
+
+/** The agreed unit price per order line, integer minor units. */
+async function loadExpectedUnitPrices(
+  db: Database,
+  organizationId: string,
+  purchaseOrderLineIds: readonly string[]
+): Promise<Map<string, number | null>> {
+  if (purchaseOrderLineIds.length === 0) return new Map()
+  const ctx = await systemFields(
+    db,
+    organizationId,
+    'purchase_order_line',
+    PURCHASE_ORDER_LINE_ATTRIBUTES
+  )
+  if (!ctx) return new Map()
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    ids: [...new Set(purchaseOrderLineIds)],
+  })
+  return new Map(
+    records.map((record) => [record.id, record.number('purchase_order_line_expected_unit_price')])
+  )
 }

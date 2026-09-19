@@ -447,7 +447,6 @@ export function shapeForPosting(input: ShapeForPostingInput): ShapedPosting {
     case 'payout':
     case 'bank_deposit':
       return shapeDeposit(input)
-    case 'expense_bill':
     case 'vendor_bill':
       return shapeBill(input)
     case 'vendor_credit':

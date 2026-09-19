@@ -1,5 +1,5 @@
 // packages/lib/src/accounting/export/payloads/bill.ts
-// An `expense_bill` / `vendor_bill` posting (`Dr expense / Cr A/P`) - a
+// A `vendor_bill` posting (`Dr expense-or-accrual / Cr A/P`) - a
 // QuickBooks Bill with account-based lines, no items (plan 67 §1-2).
 
 import { z } from 'zod/v4'

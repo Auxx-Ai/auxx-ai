@@ -1,6 +1,6 @@
 // packages/lib/src/purchasing/expense-bill/__tests__/writes.test.ts
 //
-// The trigger, not the arithmetic - the builder has its own suite. Three rules:
+// The trigger, not the arithmetic - the builder has its own suite. Four rules:
 //
 //  1. **The ledger goes FIRST and a refused post refuses the transition.** A
 //     bill marked `posted` whose entry never landed is a document asserting it
@@ -10,6 +10,9 @@
 //  3. **The accounting date is the bill's own `billedAt`**, never today - the
 //     field's registry description says outright that `createdAt` is routinely
 //     a different period.
+//  4. **One door, one posting type** (73 D3): a bill of either kind posts here
+//     and nowhere else, so a second Post converges to `already_posted` and a
+//     void reverses the one type.
 //
 // The collaborators are stubbed at the module boundary rather than through a
 // fake database: `postEntry` and `reverseEntry` have their own exhaustive
@@ -47,7 +50,7 @@ vi.mock('../../../accounting/ledger/periods/period-lock', () => ({
 vi.mock('../../../accounting/ledger/post/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
   postEntry: h.postEntry,
-  previewEntry: vi.fn(async () => ({ docNumber: 'AUXX-EXB-BILL0007', lines: [] })),
+  previewEntry: vi.fn(async () => ({ docNumber: 'AUXX-BIL-BILL0007', lines: [] })),
 }))
 vi.mock('../../../accounting/ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
 vi.mock('../../../settings/settings-service', () => ({
@@ -65,7 +68,7 @@ vi.mock('../reads', () => ({
 
 import type { Database } from '@auxx/database'
 import { BadRequestError } from '../../../errors'
-import { postExpenseBill, previewExpenseBill, voidExpenseBill } from '../writes'
+import { postVendorBill, previewVendorBill, voidExpenseBill } from '../writes'
 
 const ORG = 'org_1'
 const USER = 'user_1'
@@ -92,7 +95,12 @@ beforeEach(() => {
     billedAt: '2026-09-01',
     currency: 'USD',
     totalMinor: 250_000,
+    subtotalMinor: 250_000,
+    shippingMinor: 0,
+    taxMinor: 0,
+    discountMinor: 0,
     vendorCompanyInstanceId: 'ei_company_1',
+    purchaseOrderId: null,
     lineIds: ['l1'],
   }
   h.lines = [
@@ -100,22 +108,25 @@ beforeEach(() => {
       id: 'l1',
       description: 'September rent',
       lineTotalMinor: 250_000,
+      quantityBilled: null,
       glAccountId: 'ei_acct_rent',
+      purchaseOrderLineId: null,
+      unitPriceExpectedMinor: null,
       sortOrder: 0,
     },
   ]
   h.postEntry.mockResolvedValue({
     status: 'posted',
     glPostingId: 'gp_1',
-    docNumber: 'AUXX-EXB-BILL0007',
+    docNumber: 'AUXX-BIL-BILL0007',
   })
   h.reverseEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_2' })
   h.listPostingsForSource.mockResolvedValue({ isErr: () => false, isOk: () => true, value: [] })
 })
 
-describe('postExpenseBill', () => {
+describe('postVendorBill', () => {
   it('posts the entry and flips the bill to posted', async () => {
-    const result = await postExpenseBill(db, {
+    const result = await postVendorBill(db, {
       organizationId: ORG,
       userId: USER,
       vendorBillInstanceId: BILL_ID,
@@ -126,15 +137,15 @@ describe('postExpenseBill', () => {
     expect(lastWrite()).toContainEqual({ fieldId: 'vendor_bill_status', value: 'posted' })
   })
 
-  it('hands the poster an expense_bill entry keyed on the bill INTERNAL number', async () => {
-    await postExpenseBill(db, {
+  it('hands the poster a vendor_bill entry keyed on the bill INTERNAL number', async () => {
+    await postVendorBill(db, {
       organizationId: ORG,
       userId: USER,
       vendorBillInstanceId: BILL_ID,
     })
 
     const entry = h.postEntry.mock.calls[0]?.[1]?.entry
-    expect(entry.postingType).toBe('expense_bill')
+    expect(entry.postingType).toBe('vendor_bill')
     // 🛑 Never `vendor_bill_number` ('RENT-SEP'), which two vendors may share -
     // two bills on one period key converge to `already_posted` and the loser's
     // payable is never recorded.
@@ -149,7 +160,7 @@ describe('postExpenseBill', () => {
     })
 
     await expect(
-      postExpenseBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+      postVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(/August is locked/)
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
@@ -157,7 +168,7 @@ describe('postExpenseBill', () => {
   it('still posts the document when the org has never enabled accounting', async () => {
     h.isAccountingEnabled.mockResolvedValue(false)
 
-    const result = await postExpenseBill(db, {
+    const result = await postVendorBill(db, {
       organizationId: ORG,
       userId: USER,
       vendorBillInstanceId: BILL_ID,
@@ -171,7 +182,7 @@ describe('postExpenseBill', () => {
   it('stamps the accounting date it used when the bill carried none', async () => {
     h.bill = { ...h.bill, billedAt: null }
 
-    await postExpenseBill(db, {
+    await postVendorBill(db, {
       organizationId: ORG,
       userId: USER,
       vendorBillInstanceId: BILL_ID,
@@ -187,14 +198,14 @@ describe('postExpenseBill', () => {
   it('refuses a bill that is already posted', async () => {
     h.bill = { ...h.bill, status: 'posted' }
     await expect(
-      postExpenseBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+      postVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(BadRequestError)
   })
 
   it('refuses a bill with no vendor - the payable would fail every export', async () => {
     h.bill = { ...h.bill, vendorCompanyInstanceId: null }
     await expect(
-      postExpenseBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+      postVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(/no vendor/)
     expect(h.postEntry).not.toHaveBeenCalled()
   })
@@ -202,14 +213,14 @@ describe('postExpenseBill', () => {
   it('refuses a bill with no internal reference to key the claim on', async () => {
     h.bill = { ...h.bill, internalNumber: '' }
     await expect(
-      postExpenseBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+      postVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(/internal reference/)
   })
 
   it('refuses a bill with no lines', async () => {
     h.lines = []
     await expect(
-      postExpenseBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+      postVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(/at least one line/)
   })
 
@@ -219,22 +230,92 @@ describe('postExpenseBill', () => {
         id: 'l1',
         description: 'September rent',
         lineTotalMinor: 250_000,
+        quantityBilled: null,
         glAccountId: null,
+        purchaseOrderLineId: null,
+        unitPriceExpectedMinor: null,
         sortOrder: 0,
       },
     ]
     await expect(
-      postExpenseBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+      postVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(/September rent/)
     expect(h.postEntry).not.toHaveBeenCalled()
   })
+
+  // 73 D3. One posting type means the claim's unique index answers the second
+  // Post, where two types used to let one invoice land in the books twice.
+  it('converges to already_posted on a second Post', async () => {
+    h.postEntry.mockResolvedValue({
+      status: 'already_posted',
+      glPostingId: 'gp_1',
+      docNumber: 'AUXX-BIL-BILL0007',
+    })
+
+    const result = await postVendorBill(db, {
+      organizationId: ORG,
+      userId: USER,
+      vendorBillInstanceId: BILL_ID,
+    })
+
+    expect(result.post.status).toBe('already_posted')
+    expect(lastWrite()).toContainEqual({ fieldId: 'vendor_bill_status', value: 'posted' })
+  })
+
+  it('surfaces the builder refusal for an UNTYPED linked line, naming it', async () => {
+    h.lines = [
+      {
+        id: 'l1',
+        description: 'Motors',
+        lineTotalMinor: 250_000,
+        quantityBilled: 10,
+        glAccountId: null,
+        purchaseOrderLineId: 'pol_1',
+        unitPriceExpectedMinor: null,
+        sortOrder: 0,
+      },
+    ]
+    await expect(
+      postVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+    ).rejects.toThrow(/Motors/)
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  // 73 D2. The bill posts on the Post action, never on a verdict - and there is
+  // no verdict input anywhere on this path to gate it.
+  it('posts a PO bill whose goods have not arrived, relieving GRNI at billed x agreed', async () => {
+    h.bill = { ...h.bill, purchaseOrderId: 'ei_po_1' }
+    h.lines = [
+      {
+        id: 'l1',
+        description: 'Motors',
+        lineTotalMinor: 250_000,
+        quantityBilled: 50,
+        glAccountId: null,
+        purchaseOrderLineId: 'pol_1',
+        unitPriceExpectedMinor: 5_000,
+        sortOrder: 0,
+      },
+    ]
+
+    await postVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+
+    const entry = h.postEntry.mock.calls[0]?.[1]?.entry
+    expect(
+      entry.lines.find((line: { accountRole?: string }) => line.accountRole === 'grni')
+    ).toMatchObject({
+      direction: 'debit',
+      amount: 250_000,
+    })
+    expect(lastWrite()).toContainEqual({ fieldId: 'vendor_bill_status', value: 'posted' })
+  })
 })
 
-describe('previewExpenseBill', () => {
+describe('previewVendorBill', () => {
   it('runs the same refusals and writes nothing', async () => {
     h.bill = { ...h.bill, status: 'void' }
     await expect(
-      previewExpenseBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+      previewVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(BadRequestError)
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
@@ -249,9 +330,9 @@ describe('voidExpenseBill', () => {
       value: [
         {
           id: 'gp_1',
-          docNumber: 'AUXX-EXB-BILL0007',
+          docNumber: 'AUXX-BIL-BILL0007',
           status: 'posted',
-          postingType: 'expense_bill',
+          postingType: 'vendor_bill',
         },
       ],
     })
@@ -287,9 +368,9 @@ describe('voidExpenseBill', () => {
       value: [
         {
           id: 'gp_1',
-          docNumber: 'AUXX-EXB-BILL0007',
+          docNumber: 'AUXX-BIL-BILL0007',
           status: 'reversed',
-          postingType: 'expense_bill',
+          postingType: 'vendor_bill',
         },
       ],
     })

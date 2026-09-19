@@ -97,6 +97,7 @@ const invoice: TranscribedInvoice = {
   subtotalText: '4.20',
   shippingText: null,
   taxText: null,
+  discountText: null,
   totalText: '4.20',
   lines: [
     {

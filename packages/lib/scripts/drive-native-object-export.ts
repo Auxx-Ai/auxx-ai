@@ -64,7 +64,6 @@ const EXPECTED_OBJECT_TYPE: Partial<Record<PostingType, string>> = {
   refund: REFUND_RECEIPT_OBJECT_TYPE,
   payout: DEPOSIT_OBJECT_TYPE,
   bank_deposit: DEPOSIT_OBJECT_TYPE,
-  expense_bill: BILL_OBJECT_TYPE,
   vendor_bill: BILL_OBJECT_TYPE,
 }
 

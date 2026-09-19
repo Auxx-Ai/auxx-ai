@@ -193,116 +193,243 @@ describe('buildEntry - line validation', () => {
   })
 })
 
-describe('buildVendorBillEntry', () => {
+describe('buildVendorBillEntry - the one bill entry (73 D2, D3, D5)', () => {
+  const LINKED = {
+    lineId: 'vbl_1',
+    description: 'Motors',
+    lineTotalMinor: 50_000,
+    purchaseOrderLineId: 'pol_1',
+    quantityBilled: 10,
+    unitPriceExpectedMinor: 5_000,
+  }
   const BILL = {
     vendorBillId: 'vb_1',
-    periodKey: '2026-09-02',
-    txnDate: '2026-09-02',
-    matchedMinor: 50_000,
-    billTotalMinor: 50_000,
+    internalNumber: 'BILL-0007',
+    billedAt: '2026-09-02',
+    totalMinor: 50_000,
+    lines: [LINKED],
   }
+  const role = (built: ReturnType<typeof buildVendorBillEntry>, name: string) =>
+    built.entry.lines.find((line) => line.accountRole === name)
+  const roles = (built: ReturnType<typeof buildVendorBillEntry>) =>
+    built.entry.lines.map((line) => line.accountRole)
 
-  it('debits GRNI for the matched portion and credits A/P for the bill total', () => {
-    const entry = buildVendorBillEntry(BILL)
-    expect(entry.lines.find((l) => l.accountRole === ACCOUNT_ROLES.GRNI)).toMatchObject({
-      direction: 'debit',
+  it('a PO bill debits GRNI at billed x expected and credits A/P at the bill total', () => {
+    const built = buildVendorBillEntry(BILL)
+    expect(role(built, ACCOUNT_ROLES.GRNI)).toMatchObject({ direction: 'debit', amount: 50_000 })
+    expect(role(built, ACCOUNT_ROLES.ACCOUNTS_PAYABLE)).toMatchObject({
+      direction: 'credit',
       amount: 50_000,
     })
-    expect(entry.lines.find((l) => l.accountRole === ACCOUNT_ROLES.ACCOUNTS_PAYABLE)).toMatchObject(
-      { direction: 'credit', amount: 50_000 }
-    )
+    expect(roles(built)).not.toContain(ACCOUNT_ROLES.PPV)
+    expect(built.periodKey).toBe('BILL-0007')
+    expect(built.totalMinor).toBe(50_000)
   })
 
-  it('carries the vendor counterparty on the A/P line only, and posts fine with none (13 §1.2)', () => {
-    const withVendor = buildVendorBillEntry({ ...BILL, vendorCompanyInstanceId: 'ei_company_1' })
-    expect(
-      withVendor.lines.find((l) => l.accountRole === ACCOUNT_ROLES.ACCOUNTS_PAYABLE)
-    ).toMatchObject({ counterpartyType: 'vendor', counterpartyId: 'ei_company_1' })
-    expect(
-      withVendor.lines.find((l) => l.accountRole === ACCOUNT_ROLES.GRNI)?.counterpartyType
-    ).toBe(undefined)
+  it('an expense bill debits each coded line by ACCOUNT ID, never a role', () => {
+    const built = buildVendorBillEntry({
+      ...BILL,
+      totalMinor: 90_000,
+      lines: [
+        { lineId: 'l1', description: 'Rent', lineTotalMinor: 60_000, glAccountId: 'ei_rent' },
+        { lineId: 'l2', description: 'Insurance', lineTotalMinor: 30_000, glAccountId: 'ei_ins' },
+      ],
+    })
+    expect(built.entry.lines.filter((line) => line.glAccountId)).toMatchObject([
+      { glAccountId: 'ei_rent', direction: 'debit', amount: 60_000 },
+      { glAccountId: 'ei_ins', direction: 'debit', amount: 30_000 },
+    ])
+    expect(roles(built)).not.toContain(ACCOUNT_ROLES.GRNI)
+    expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
+  })
 
-    const withoutVendor = buildVendorBillEntry(BILL)
+  it('a MIXED bill posts both kinds of line in one entry', () => {
+    const built = buildVendorBillEntry({
+      ...BILL,
+      totalMinor: 56_000,
+      lines: [
+        LINKED,
+        { lineId: 'l2', description: 'Pallets', lineTotalMinor: 6_000, glAccountId: 'ei_sup' },
+      ],
+    })
+    expect(role(built, ACCOUNT_ROLES.GRNI)?.amount).toBe(50_000)
+    expect(built.entry.lines.find((line) => line.glAccountId)).toMatchObject({
+      glAccountId: 'ei_sup',
+      amount: 6_000,
+    })
+    expect(role(built, ACCOUNT_ROLES.ACCOUNTS_PAYABLE)?.amount).toBe(56_000)
+  })
+
+  it('debits PPV when the vendor billed HIGH and credits it when LOW', () => {
+    const high = buildVendorBillEntry({
+      ...BILL,
+      totalMinor: 52_500,
+      lines: [{ ...LINKED, lineTotalMinor: 52_500 }],
+    })
+    expect(role(high, ACCOUNT_ROLES.PPV)).toMatchObject({ direction: 'debit', amount: 2_500 })
+
+    const low = buildVendorBillEntry({
+      ...BILL,
+      totalMinor: 47_500,
+      lines: [{ ...LINKED, lineTotalMinor: 47_500 }],
+    })
+    expect(role(low, ACCOUNT_ROLES.PPV)).toMatchObject({ direction: 'credit', amount: 2_500 })
+  })
+
+  // 73 D2. Billed-based: 10 invoiced, 8 received leaves GRNI holding a debit for
+  // the two that have not landed. Nothing here reads a received quantity at all.
+  it('leaves a SHORT RECEIPT in GRNI as a debit rather than calling it a variance', () => {
+    const built = buildVendorBillEntry(BILL)
+    expect(role(built, ACCOUNT_ROLES.GRNI)?.amount).toBe(50_000)
+    expect(roles(built)).not.toContain(ACCOUNT_ROLES.PPV)
+  })
+
+  it('posts identically whatever the match verdict is - the verdict is not an input', () => {
+    // The builder takes no verdict at all, which is the guarantee: the same
+    // values produce the same entry at awaiting_receipt, matched and exception.
+    const built = [1, 2, 3].map(() => buildVendorBillEntry(BILL))
+    expect(built[1]?.entry.lines).toEqual(built[0]?.entry.lines)
+    expect(built[2]?.entry.lines).toEqual(built[0]?.entry.lines)
+  })
+
+  it('carries the vendor counterparty on the A/P line only, and posts fine with none', () => {
+    const withVendor = buildVendorBillEntry({ ...BILL, vendorCompanyInstanceId: 'ei_company_1' })
+    expect(role(withVendor, ACCOUNT_ROLES.ACCOUNTS_PAYABLE)).toMatchObject({
+      counterpartyType: 'vendor',
+      counterpartyId: 'ei_company_1',
+    })
+    expect(role(withVendor, ACCOUNT_ROLES.GRNI)?.counterpartyType).toBeUndefined()
     expect(
-      withoutVendor.lines.find((l) => l.accountRole === ACCOUNT_ROLES.ACCOUNTS_PAYABLE)
-        ?.counterpartyId
+      role(buildVendorBillEntry(BILL), ACCOUNT_ROLES.ACCOUNTS_PAYABLE)?.counterpartyId
     ).toBeUndefined()
   })
 
-  it('emits no PPV line when the bill matches exactly', () => {
-    const entry = buildVendorBillEntry(BILL)
-    expect(entry.lines.map((l) => l.accountRole)).not.toContain(ACCOUNT_ROLES.PPV)
-    expect(entry.lines).toHaveLength(2)
-  })
-
-  it('debits PPV when the vendor billed HIGH', () => {
-    const entry = buildVendorBillEntry({ ...BILL, billTotalMinor: 52_500 })
-    expect(entry.lines.find((l) => l.accountRole === ACCOUNT_ROLES.PPV)).toMatchObject({
-      direction: 'debit',
-      amount: 2_500,
+  describe('the header amounts (73 D5)', () => {
+    it('shipping debits the freight accrual and tax the purchase-tax role, one leg each', () => {
+      const built = buildVendorBillEntry({
+        ...BILL,
+        shippingMinor: 6_000,
+        taxMinor: 4_000,
+        totalMinor: 60_000,
+      })
+      expect(role(built, ACCOUNT_ROLES.FREIGHT_ACCRUAL)).toMatchObject({
+        direction: 'debit',
+        amount: 6_000,
+      })
+      expect(role(built, ACCOUNT_ROLES.PURCHASE_TAX)).toMatchObject({
+        direction: 'debit',
+        amount: 4_000,
+      })
+      expect(
+        built.entry.lines.filter((line) => line.accountRole === ACCOUNT_ROLES.FREIGHT_ACCRUAL)
+      ).toHaveLength(1)
+      expect(built.entry.totalDebit).toBe(60_000)
     })
-    expect(entry.totalDebit).toBe(52_500)
-    expect(entry.totalCredit).toBe(52_500)
-  })
 
-  it('credits PPV when the vendor billed LOW', () => {
-    const entry = buildVendorBillEntry({ ...BILL, billTotalMinor: 47_500 })
-    expect(entry.lines.find((l) => l.accountRole === ACCOUNT_ROLES.PPV)).toMatchObject({
-      direction: 'credit',
-      amount: 2_500,
+    it('emits no leg for a zero header amount', () => {
+      const built = buildVendorBillEntry(BILL)
+      expect(roles(built)).not.toContain(ACCOUNT_ROLES.FREIGHT_ACCRUAL)
+      expect(roles(built)).not.toContain(ACCOUNT_ROLES.PURCHASE_TAX)
     })
-    expect(entry.totalDebit).toBe(50_000)
-    expect(entry.totalCredit).toBe(50_000)
+
+    // The spread the ledger does not read but item 11 does: it must reconcile to
+    // the header to the cent on an input that does not divide evenly.
+    it('spreads shipping and tax across the lines, reconciling to the cent', () => {
+      const built = buildVendorBillEntry({
+        ...BILL,
+        totalMinor: 30_020,
+        shippingMinor: 1_000,
+        taxMinor: 7,
+        lines: [
+          { lineId: 'a', lineTotalMinor: 10_001, glAccountId: 'ei_a', quantityBilled: 1 },
+          { lineId: 'b', lineTotalMinor: 10_005, glAccountId: 'ei_b', quantityBilled: 1 },
+          { lineId: 'c', lineTotalMinor: 9_007, glAccountId: 'ei_c', quantityBilled: 1 },
+        ],
+      })
+      const sum = (key: 'shippingMinor' | 'taxMinor') =>
+        built.allocations.reduce((total, row) => total + row[key], 0)
+      expect(sum('shippingMinor')).toBe(1_000)
+      expect(sum('taxMinor')).toBe(7)
+      expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
+    })
+
+    it('a discount lands as a favourable PPV credit on a PO bill', () => {
+      const built = buildVendorBillEntry({ ...BILL, discountMinor: 5_000, totalMinor: 45_000 })
+      expect(role(built, ACCOUNT_ROLES.GRNI)?.amount).toBe(50_000)
+      expect(role(built, ACCOUNT_ROLES.PPV)).toMatchObject({ direction: 'credit', amount: 5_000 })
+      expect(role(built, ACCOUNT_ROLES.ACCOUNTS_PAYABLE)?.amount).toBe(45_000)
+    })
+
+    it('a discount reduces each coded line pro rata on an expense bill', () => {
+      const built = buildVendorBillEntry({
+        ...BILL,
+        discountMinor: 1_000,
+        totalMinor: 29_000,
+        lines: [
+          { lineId: 'a', lineTotalMinor: 20_000, glAccountId: 'ei_a' },
+          { lineId: 'b', lineTotalMinor: 10_000, glAccountId: 'ei_b' },
+        ],
+      })
+      expect(built.entry.lines.filter((line) => line.glAccountId)).toMatchObject([
+        { glAccountId: 'ei_a', direction: 'debit', amount: 19_333 },
+        { glAccountId: 'ei_b', direction: 'debit', amount: 9_667 },
+      ])
+      expect(built.allocations.reduce((total, row) => total + row.discountMinor, 0)).toBe(1_000)
+    })
   })
 
-  it('balances for every residual sign', () => {
-    for (const billTotalMinor of [1, 49_999, 50_000, 50_001, 999_999]) {
-      const entry = buildVendorBillEntry({ ...BILL, billTotalMinor })
-      expect(entry.totalDebit).toBe(entry.totalCredit)
+  describe('the refusals', () => {
+    it('refuses a tie that fails, naming the difference', () => {
+      expect(() => buildVendorBillEntry({ ...BILL, totalMinor: 56_000 })).toThrow(
+        /a difference of 6000/
+      )
+    })
+
+    it('refuses an unlinked line with no account, naming the line', () => {
+      expect(() =>
+        buildVendorBillEntry({
+          ...BILL,
+          totalMinor: 1_000,
+          lines: [{ lineId: 'l1', description: 'Pallets', lineTotalMinor: 1_000 }],
+        })
+      ).toThrow(/no GL account: Pallets/)
+    })
+
+    it('refuses an UNTYPED linked line, naming the line', () => {
+      expect(() =>
+        buildVendorBillEntry({ ...BILL, lines: [{ ...LINKED, unitPriceExpectedMinor: null }] })
+      ).toThrow(/Motors/)
+    })
+
+    it('refuses a non-positive total, a fractional amount and a foreign currency', () => {
+      expect(() => buildVendorBillEntry({ ...BILL, totalMinor: 0 })).toThrow(/positive whole/)
+      expect(() => buildVendorBillEntry({ ...BILL, totalMinor: 50_000.5 })).toThrow(
+        /whole number of cents/
+      )
+      expect(() =>
+        buildVendorBillEntry({ ...BILL, currency: 'EUR', ledgerCurrency: 'USD' })
+      ).toThrow(/implied 1.0 rate/)
+    })
+
+    it('refuses a blank internal number - the claim keys on it', () => {
+      expect(() => buildVendorBillEntry({ ...BILL, internalNumber: '  ' })).toThrow(
+        /Bill reference/
+      )
+    })
+  })
+
+  it('stamps the vendor bill as the source on every line, and is a vendor_bill posting', () => {
+    const built = buildVendorBillEntry({ ...BILL, shippingMinor: 1_000, totalMinor: 51_000 })
+    for (const line of built.entry.lines) {
+      expect(line.sourceType).toBe('vendor_bill')
+      expect(line.sourceId).toBe('vb_1')
     }
+    expect(built.entry.postingType).toBe('vendor_bill')
+    expect(built.entry.txnDate).toBe('2026-09-02')
   })
 
-  it('sends the whole bill to PPV when nothing matched', () => {
-    const entry = buildVendorBillEntry({ ...BILL, matchedMinor: 0 })
-    expect(entry.lines.map((l) => l.accountRole)).not.toContain(ACCOUNT_ROLES.GRNI)
-    expect(entry.lines.find((l) => l.accountRole === ACCOUNT_ROLES.PPV)?.amount).toBe(50_000)
-    expect(entry.totalDebit).toBe(entry.totalCredit)
-  })
-
-  it('never touches the freight or duty accruals', () => {
-    const codes = buildVendorBillEntry({ ...BILL, billTotalMinor: 52_500 }).lines.map(
-      (l) => l.accountRole
-    )
-    expect(codes).not.toContain(ACCOUNT_ROLES.FREIGHT_ACCRUAL)
-    expect(codes).not.toContain(ACCOUNT_ROLES.DUTIES_ACCRUAL)
-  })
-
-  it('stamps the vendor bill as the source on every line', () => {
-    const entry = buildVendorBillEntry({ ...BILL, billTotalMinor: 52_500 })
-    for (const l of entry.lines) {
-      expect(l.sourceType).toBe('vendor_bill')
-      expect(l.sourceId).toBe('vb_1')
-    }
-  })
-
-  it('is typed as a vendor_bill posting', () => {
-    expect(buildVendorBillEntry(BILL).postingType).toBe('vendor_bill')
-  })
-
-  it('rejects a non-positive bill total', () => {
-    expect(() => buildVendorBillEntry({ ...BILL, billTotalMinor: 0 })).toThrow(/must be positive/)
-    expect(() => buildVendorBillEntry({ ...BILL, billTotalMinor: -1 })).toThrow(/must be positive/)
-  })
-
-  it('rejects a negative matched portion', () => {
-    expect(() => buildVendorBillEntry({ ...BILL, matchedMinor: -1 })).toThrow(
-      /must be non-negative/
-    )
-  })
-
-  it('rejects fractional minor units', () => {
-    expect(() => buildVendorBillEntry({ ...BILL, billTotalMinor: 50_000.5 })).toThrow(
-      /integer number of minor units/
-    )
+  it('never touches the duties accrual - the broker bills that separately', () => {
+    const built = buildVendorBillEntry({ ...BILL, shippingMinor: 1_000, totalMinor: 51_000 })
+    expect(roles(built)).not.toContain(ACCOUNT_ROLES.DUTIES_ACCRUAL)
   })
 })

@@ -53,6 +53,8 @@ export interface TranscribedInvoice {
   subtotalText: string | null
   shippingText: string | null
   taxText: string | null
+  /** The trade discount as printed, positive. Subtracted to reach the total. */
+  discountText: string | null
   /** The vendor's printed total, never a sum of the lines (HANDOFF rule 4). */
   totalText: string | null
   lines: TranscribedInvoiceLine[]

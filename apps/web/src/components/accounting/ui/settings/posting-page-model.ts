@@ -153,7 +153,7 @@ const PRIMARY_POSTING_TYPE_BY_AVENUE: Record<ExportAvenue, PostingType> = {
   refund: 'refund',
   creditMemo: 'credit_memo',
   invoice: 'invoice_issued',
-  expenseBill: 'expense_bill',
+  expenseBill: 'vendor_bill',
   payout: 'payout',
   bankDeposit: 'bank_deposit',
   journal: 'manual_journal',

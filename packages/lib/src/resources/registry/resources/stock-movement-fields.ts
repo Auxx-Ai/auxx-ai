@@ -464,6 +464,95 @@ export const STOCK_MOVEMENT_FIELDS = defineResourceFields({
     },
   },
 
+  /**
+   * What this receipt accrued for inbound freight and brokerage — the extended
+   * amount it credited `freight_accrual` (73 §7.2).
+   *
+   * Stamped rather than re-derived: the `vendor_part` row's shipping and other
+   * costs are standing terms that move, and an accrual account can only be
+   * reconciled against the receipts that raised it if each row says what it put
+   * there.
+   */
+  freightAccrued: {
+    id: toFieldId('freightAccrued'),
+    key: 'freightAccrued',
+    label: 'Freight Accrued',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'stock_movement_freight_accrued',
+    systemSortOrder: 'b6a',
+    nullable: true,
+    showInPanel: false,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+  },
+
+  /** The extended amount this receipt credited `duties_accrual` (73 §7.2). */
+  dutiesAccrued: {
+    id: toFieldId('dutiesAccrued'),
+    key: 'dutiesAccrued',
+    label: 'Duties Accrued',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'stock_movement_duties_accrued',
+    systemSortOrder: 'b6b',
+    nullable: true,
+    showInPanel: false,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+  },
+
+  /**
+   * The duty PERCENTAGE in force when this receipt was valued — `25` means 25%.
+   *
+   * The resolved rate, override or schedule, frozen with the accrual it
+   * produced: a rate change months later must not restate what the shipment
+   * owed.
+   */
+  tariffRate: {
+    id: toFieldId('tariffRate'),
+    key: 'tariffRate',
+    label: 'Tariff Rate',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'stock_movement_tariff_rate',
+    systemSortOrder: 'b6c',
+    nullable: true,
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+  },
+
   purchaseOrderLine: {
     id: toFieldId('purchaseOrderLine'),
     key: 'purchaseOrderLine',

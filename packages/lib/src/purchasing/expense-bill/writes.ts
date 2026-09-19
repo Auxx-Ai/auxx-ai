@@ -1,12 +1,13 @@
 // packages/lib/src/purchasing/expense-bill/writes.ts
 //
-// Posting a standalone company's A/P bill to the general ledger, and backing it
-// out again when the bill is voided.
+// The Post and Void actions on a vendor bill - the ONE door into the books for
+// either kind of bill (73 D3), whether its lines match a purchase order or are
+// coded to expense accounts by hand.
 //
-// The write half of `postings/build-expense-bill-entry.ts`, kept out of
-// `purchasing/match.ts` and `match-hook.ts` so the match stays what it is - the
-// bill's VERDICT writer - and so the read, the build and the post do not share a
-// file with it (`docs/lib-module-guide.md` §5).
+// Kept out of `purchasing/match.ts` and `match-hook.ts` so the match stays what
+// it is - the bill's VERDICT writer, with no ledger effect - and so the read,
+// the build and the post do not share a file with it
+// (`docs/lib-module-guide.md` §5). The entry itself is `post-vendor-bill.ts`.
 //
 // ## The trigger
 //
@@ -14,7 +15,7 @@
 // `markInvoiceSent` posts `invoice_issued` on the draft -> sent transition and
 // `issueCreditMemo` posts `credit_memo` on draft -> issued, both from a router
 // mutation, both with the ledger going FIRST and a refused post refusing the
-// transition. {@link postExpenseBill} is the bill's draft -> posted transition
+// transition. {@link postVendorBill} is the bill's draft -> posted transition
 // and does the same. The three-way match keeps running on a posted bill and
 // writes its own field (73 D1); it never touches the lifecycle.
 //
@@ -28,30 +29,28 @@
 //
 // No permission checks here. The router asserts (§6).
 //
-// plans/accounting/tasks/21-the-books-stand-alone.md §3.2
+// plans/accounting/tasks/73-the-buy-side-against-the-ledger.md §3
 
 import { type Database, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { calendarDayToInstant } from '@auxx/utils/calendar-day'
+import type { BuiltVendorBillEntry } from '../../accounting/ledger/builders/entry'
 import {
-  type BuiltExpenseBillEntry,
-  buildExpenseBillEntry,
-  EXPENSE_BILL_POSTING_TYPE,
-  EXPENSE_BILL_SOURCE_TYPE,
-} from '../../accounting/ledger/builders/expense-bill'
+  VENDOR_BILL_POSTING_TYPE,
+  VENDOR_BILL_SOURCE_TYPE,
+} from '../../accounting/ledger/builders/entry'
 import { resolvePeriodLock } from '../../accounting/ledger/periods/period-lock'
-import { readAutoPostMode } from '../../accounting/ledger/post/auto-post'
 import { isExpectedPostOutcome } from '../../accounting/ledger/post/ledger-accepted'
-import { LEDGER_CURRENCY, postEntry, previewEntry } from '../../accounting/ledger/post/post-entry'
+import { previewEntry } from '../../accounting/ledger/post/post-entry'
 import { reverseEntry } from '../../accounting/ledger/post/reverse-entry'
 import { listPostingsForSource } from '../../accounting/ledger/reads/list-postings'
-import { isAccountingEnabled } from '../../accounting/ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../accounting/ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../accounting/ledger/types'
 import { getEntityDefIdResolver } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
+import { buildEntryForVendorBill, postVendorBillEntry } from '../post-vendor-bill'
 import {
   loadVendorBillLines,
   requireVendorBill,
@@ -107,7 +106,7 @@ async function billWriter(
   }
 }
 
-export interface ExpenseBillPostInput {
+export interface VendorBillPostInput {
   organizationId: string
   /** The `vendor_bill` EntityInstance id. */
   vendorBillInstanceId: string
@@ -117,22 +116,22 @@ export interface ExpenseBillPostInput {
 }
 
 /** Everything the entry is built from, shared by the post and the preview. */
-interface ResolvedExpenseBill {
+interface ResolvedVendorBill {
   bill: VendorBillRecord
   lines: VendorBillLineRecord[]
   billedAt: string
-  built: BuiltExpenseBillEntry
+  built: BuiltVendorBillEntry
 }
 
 /**
  * Refuse a post that cannot be made, resolve its date, and build the entry.
- * Shared by {@link postExpenseBill} and {@link previewExpenseBill} so the two
- * can never disagree about what is refusable before the ledger is asked.
+ * Shared by {@link postVendorBill} and {@link previewVendorBill} so the two can
+ * never disagree about what is refusable before the ledger is asked.
  */
-async function resolveExpenseBill(
+async function resolveVendorBill(
   db: Database,
-  input: ExpenseBillPostInput
-): Promise<ResolvedExpenseBill> {
+  input: VendorBillPostInput
+): Promise<ResolvedVendorBill> {
   const { organizationId, vendorBillInstanceId } = input
   const bill = await requireVendorBill(db, organizationId, vendorBillInstanceId)
 
@@ -178,22 +177,7 @@ async function resolveExpenseBill(
     })
   }
 
-  const built = buildExpenseBillEntry({
-    vendorBillId: vendorBillInstanceId,
-    internalNumber: bill.internalNumber,
-    billedAt,
-    currency: bill.currency,
-    ledgerCurrency: LEDGER_CURRENCY,
-    total: bill.totalMinor,
-    lines: lines.map((line) => ({
-      lineId: line.id,
-      glAccountId: line.glAccountId,
-      amount: line.lineTotalMinor,
-      description: line.description,
-    })),
-    vendorCompanyInstanceId: bill.vendorCompanyInstanceId,
-    memo: `Bill ${bill.number || bill.internalNumber}`,
-  })
+  const built = buildEntryForVendorBill({ bill, lines, billedAt })
 
   return { bill, lines, billedAt, built }
 }
@@ -203,55 +187,53 @@ async function resolveExpenseBill(
  * Persists nothing - the drawer's live journal preview, the same shape
  * `previewIssueCreditMemo` returns.
  */
-export async function previewExpenseBill(
+export async function previewVendorBill(
   db: Database,
-  input: ExpenseBillPostInput
+  input: VendorBillPostInput
 ): Promise<EntryPreview> {
-  const { built } = await resolveExpenseBill(db, input)
+  const { built } = await resolveVendorBill(db, input)
   const lock = await resolvePeriodLock(input.organizationId)
   return previewEntry(db, { organizationId: input.organizationId, entry: built.entry, lock })
 }
 
-export interface PostExpenseBillResult {
+export interface PostVendorBillResult {
   post: PostResult
-  /** `AUXX-EXB-BILL0007`, once the entry was built. */
+  /** `AUXX-BIL-BILL0007`, once the entry was built. */
   docNumber: string | null
   /** Integer minor units - the payable raised. */
   totalMinor: number
 }
 
 /**
- * Post one expense-coded vendor bill and flip it to `posted`.
+ * Post one vendor bill - of EITHER kind - and flip it to `posted` (73 D3).
  *
  * ```
- *   Dr <each line's coded account>   line total
- *       Cr accounts_payable            bill total   (counterparty: the vendor)
+ *   Dr grni / Dr-or-Cr ppv          per line matched to an order line
+ *   Dr <each coded line's account>  per unlinked line
+ *   Dr freight_accrual / purchase_tax   the header's shipping and tax
+ *       Cr accounts_payable           bill total   (counterparty: the vendor)
  * ```
+ *
+ * It requires a vendor, a date and every line typed. It does NOT require a
+ * match verdict (73 D2): a bill posts at `awaiting_receipt`, `matched` or
+ * `exception` alike, because a payable held off the balance sheet while a
+ * dispute is open is the wrong side to be wrong on.
  *
  * The ledger goes FIRST and a refused post refuses the action, naming the
- * reason: a locked period, an uncoded line, an unmapped `accounts_payable`
- * role. Nothing has been written at that point, so the bill stays where it was.
- *
- * Idempotent by the claim's unique index: the period key is the bill's own
- * INTERNAL number, which is `RecordSequence`-issued and unique in the org, so a
- * second call claims the same `(org, expense_bill, periodKey, revision=0)`
- * tuple and converges to `already_posted` - and unlike a minted hash key it
- * cannot fold two different bills together.
+ * reason: a locked period, an uncoded line, a tie that fails, an unmapped role.
+ * Nothing has been written at that point, so the bill stays where it was.
  *
  * 🛑 The status write happens AFTER the post has committed, never inside it.
  */
-export async function postExpenseBill(
+export async function postVendorBill(
   db: Database,
-  input: ExpenseBillPostInput
-): Promise<PostExpenseBillResult> {
+  input: VendorBillPostInput
+): Promise<PostVendorBillResult> {
   const { organizationId, userId, vendorBillInstanceId } = input
 
-  const { bill, billedAt, built } = await resolveExpenseBill(db, input)
+  const { bill, billedAt, built } = await resolveVendorBill(db, input)
 
-  // An org that has never turned the accounting module on is a first-class
-  // case, not a degraded one (task 17 §3): the bill still posts as a document,
-  // and nothing is claimed, written or logged in the ledger.
-  // `resolveExpenseBill` already refused a bill with no vendor - see there.
+  // `resolveVendorBill` already refused a bill with no vendor - see there.
   const vendorCompanyInstanceId = bill.vendorCompanyInstanceId
   if (!vendorCompanyInstanceId) {
     throw new BadRequestError(
@@ -260,33 +242,18 @@ export async function postExpenseBill(
     )
   }
 
-  let post: PostResult
-  if (await isAccountingEnabled(db, organizationId)) {
-    const lock = await resolvePeriodLock(organizationId)
-    const mode = await readAutoPostMode(organizationId, 'expenseBill')
-    post = await postEntry(db, {
-      organizationId,
-      entry: built.entry,
-      actorUserId: userId,
-      lock,
-      memo: `Bill ${bill.number || bill.internalNumber} posted`,
-      mode,
-      sources: [
-        {
-          sourceKind: EXPENSE_BILL_SOURCE_TYPE,
-          sourceId: vendorBillInstanceId,
-          linkRole: 'subject',
-        },
-        {
-          sourceKind: 'company',
-          sourceId: vendorCompanyInstanceId,
-          linkRole: 'counterparty',
-        },
-      ],
-    })
-  } else {
-    post = { status: 'not_enabled' }
-  }
+  // An org that has never turned the accounting module on is a first-class
+  // case, not a degraded one (task 17 §3): the bill still posts as a document,
+  // and nothing is claimed, written or logged in the ledger.
+  const post: PostResult = (await postVendorBillEntry(db, {
+    organizationId,
+    actorUserId: userId,
+    vendorBillInstanceId,
+    purchaseOrderId: bill.purchaseOrderId,
+    vendorCompanyInstanceId,
+    entry: built,
+    memo: `Bill ${bill.number || bill.internalNumber} posted`,
+  })) ?? { status: 'not_enabled' }
 
   if (!isExpectedPostOutcome(post)) {
     throw new BadRequestError(
@@ -307,7 +274,7 @@ export async function postExpenseBill(
   const writer = await billWriter(db, organizationId, userId)
   await writer.write(vendorBillInstanceId, writes)
 
-  logger.info('Posted an expense bill to the general ledger', {
+  logger.info('Posted a vendor bill to the general ledger', {
     organizationId,
     vendorBillInstanceId,
     internalNumber: bill.internalNumber,
@@ -321,9 +288,8 @@ export async function postExpenseBill(
 /**
  * Every general-ledger entry sourced on one vendor bill, newest first.
  *
- * `sourceType: 'vendor_bill'` covers the expense-bill entry AND, when the L3
- * regime is switched on, the purchasing bill entry - which is exactly what a
- * void and the delete guard have to reckon with.
+ * One source type for both kinds of bill since 73 D3, which is what lets a void
+ * and the delete guard reckon with the whole document rather than half of it.
  */
 export async function listVendorBillPostings(
   db: Database,
@@ -331,7 +297,7 @@ export async function listVendorBillPostings(
 ): Promise<Array<{ glPostingId: string; docNumber: string; status: string; postingType: string }>> {
   const result = await listPostingsForSource(db, {
     organizationId: params.organizationId,
-    sourceKind: EXPENSE_BILL_SOURCE_TYPE,
+    sourceKind: VENDOR_BILL_SOURCE_TYPE,
     sourceId: params.vendorBillInstanceId,
   })
   if (result.isErr()) return []
@@ -384,7 +350,7 @@ export async function voidExpenseBill(db: Database, input: VoidExpenseBillInput)
   // `PostingStatus` is `posted | reversed` since the export split; a reversed
   // original has already left the books.
   const live = postings.filter(
-    (posting) => posting.postingType === EXPENSE_BILL_POSTING_TYPE && posting.status !== 'reversed'
+    (posting) => posting.postingType === VENDOR_BILL_POSTING_TYPE && posting.status !== 'reversed'
   )
   if (live.length > 0) {
     const lock = await resolvePeriodLock(organizationId)

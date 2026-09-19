@@ -47,8 +47,8 @@ import {
   linkBillLines,
   markPurchaseOrderSent,
   matchBill,
-  postExpenseBill,
-  previewExpenseBill,
+  postVendorBill,
+  previewVendorBill,
   proposeBillLineLinks,
   resumeBillIntakeRun,
   updateBillIntakeRun,
@@ -425,7 +425,7 @@ export const purchasingRouter = createTRPCRouter({
    * general ledger are different questions, and `money.writeOffInvoice` and
    * `creditMemo.issue` already answer it this way.
    */
-  postExpenseBill: permissionProcedure(PermissionKey.ledgerPost)
+  postVendorBill: permissionProcedure(PermissionKey.ledgerPost)
     .input(
       z.object({
         vendorBillId: z.string().min(1),
@@ -434,7 +434,7 @@ export const purchasingRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      return postExpenseBill(ctx.db, {
+      return postVendorBill(ctx.db, {
         organizationId: ctx.session.organizationId,
         userId: ctx.session.userId,
         vendorBillInstanceId: input.vendorBillId,
@@ -443,7 +443,7 @@ export const purchasingRouter = createTRPCRouter({
     }),
 
   /** What posting WOULD write. Persists nothing; `blockedBy` carries a refusal. */
-  previewExpenseBill: permissionProcedure(PermissionKey.ledgerView)
+  previewVendorBill: permissionProcedure(PermissionKey.ledgerView)
     .input(
       z.object({
         vendorBillId: z.string().min(1),
@@ -451,7 +451,7 @@ export const purchasingRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      return previewExpenseBill(ctx.db, {
+      return previewVendorBill(ctx.db, {
         organizationId: ctx.session.organizationId,
         userId: ctx.session.userId,
         vendorBillInstanceId: input.vendorBillId,

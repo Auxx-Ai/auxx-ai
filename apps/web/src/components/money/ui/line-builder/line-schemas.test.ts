@@ -81,16 +81,29 @@ describe('the billingPrefix trap', () => {
     expect(TOTALLED).not.toContain('vendor_bill')
   })
 
-  // The `stored` footer renders Subtotal / Shipping / Tax / Total. It showed a
-  // subtotal and a total with NOTHING between them until `shipping_total` joined
-  // the set — a bill whose shipping was entered did not add up on screen.
+  // The `stored` footer renders Subtotal / Shipping / Tax / Discount / Total. It
+  // showed a subtotal and a total with NOTHING between them until
+  // `shipping_total` joined the set; `discount` joined it with 73 D5's tie.
   it('the vendor bill fetches every total its footer displays', () => {
     expect(LINE_SCHEMAS.vendor_bill.billingAttrs).toEqual([
       'vendor_bill_subtotal',
       'vendor_bill_shipping_total',
       'vendor_bill_tax_total',
+      'vendor_bill_discount',
       'vendor_bill_total',
     ])
+  })
+
+  // 73 D5. The bill is the only document whose header amounts a person types
+  // into this footer: a credit memo's three mirrors are `creatable: false` and
+  // written by `recomputeOnCreditMemoLineChange`, so an input there would offer
+  // a figure the next line write re-sums away.
+  it('only the vendor bill takes its header amounts by hand', () => {
+    for (const documentType of Object.keys(LINE_SCHEMAS) as DocumentType[]) {
+      expect(LINE_SCHEMAS[documentType].headerAmountsTyped, documentType).toBe(
+        documentType === 'vendor_bill'
+      )
+    }
   })
 
   // The PO's subtotal IS ours to compute, but the rest of the document carries

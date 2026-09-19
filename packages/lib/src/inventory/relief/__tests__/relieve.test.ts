@@ -4,7 +4,7 @@
  * `relieveFulfillmentLines` (plans/money/tasks/50-batch-inventory-relief.md §1).
  *
  * Every collaborator that touches the database or another module's write lane
- * is mocked - this file is about the ARITHMETIC and the SKIP/FALLBACK/WARN
+ * is mocked - this file is about the ARITHMETIC and the SKIP/WARN
  * decisions §1.5-§4.2 make, not about `writeStockMovements`,
  * `batchRecalculateQoH` or the roll-up's own SQL, each of which has its own
  * tests. `readPartLedgerAverages` / `readFulfillmentLineRelievedAverages`
@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
   ledgerAverages: new Map<string, unknown>(),
   relievedAverages: new Map<string, unknown>(),
   standardCosts: new Map<string, unknown>(),
+  postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
   writeStockMovements: vi.fn(),
   batchRecalculateQoH: vi.fn(async () => {}),
   recalculateFulfillmentLineQuantityRelievedBatch: vi.fn(async () => {}),
@@ -47,10 +48,16 @@ vi.mock('../../../cache', () => ({
 vi.mock('../../costing', () => ({
   readStandardCost: async (_db: unknown, _orgId: string, partIds: string[]) => {
     const { ok } = await import('neverthrow')
-    const map = new Map<string, { standardCost: number }>()
+    const map = new Map<string, Record<string, number | null>>()
     for (const id of partIds) {
       const value = h.standardCosts.get(id)
-      if (value != null) map.set(id, { standardCost: value as number })
+      if (value == null) continue
+      map.set(
+        id,
+        typeof value === 'number'
+          ? { standardCost: value, standardLaborCost: null, standardOverheadCost: null }
+          : (value as Record<string, number | null>)
+      )
     }
     return ok(map)
   },
@@ -163,7 +170,6 @@ describe('relieveFulfillmentLines', () => {
       skippedNoPart: 0,
       skippedZeroDelta: 0,
       skippedNoCost: 0,
-      fallbackStandardCostPartIds: [],
       negativeQoHPartIds: [],
     })
     expect(h.writeStockMovements).not.toHaveBeenCalled()
@@ -213,17 +219,20 @@ describe('relieveFulfillmentLines', () => {
     expect(h.writeStockMovements).not.toHaveBeenCalled()
   })
 
-  it('§1.5/§3.3 - a positive delta writes a NEGATIVE movement priced at the ledger average', async () => {
+  it('73 §6.2 rule 3 - a positive delta writes a NEGATIVE movement priced at the STANDARD', async () => {
     const db = fakeDb({
       line_item_part: [{ entityId: 'li_1', relatedEntityId: 'part_1' }],
       part_kind: [{ entityId: 'part_1', optionId: 'finished_good' }],
     })
+    // The ledger average says 4,000 and is deliberately ignored: since 73 the
+    // standard is the only price, or the close's qty x standard check fails.
     h.ledgerAverages.set('part_1', {
       partInstanceId: 'part_1',
       valueMinor: 40_000,
       quantity: 10,
       unitCostMinor: 4_000,
     })
+    h.standardCosts.set('part_1', 5_500)
 
     const result = await relieveFulfillmentLines(db, {
       organizationId: ORG,
@@ -244,7 +253,6 @@ describe('relieveFulfillmentLines', () => {
     expect(result.isOk()).toBe(true)
     const value = result._unsafeUnwrap()
     expect(value.skippedNoCost).toBe(0)
-    expect(value.fallbackStandardCostPartIds).toEqual([])
     expect(h.writeStockMovements).toHaveBeenCalledTimes(1)
     const [ctx, inputs] = h.writeStockMovements.mock.calls[0]!
     expect(ctx.lane.kind).toBe('quiet')
@@ -253,7 +261,7 @@ describe('relieveFulfillmentLines', () => {
         partInstanceId: 'part_1',
         type: 'sale',
         quantity: -3, // -(quantity - quantityRelieved) = -(3 - 0)
-        unitCost: 4_000,
+        unitCost: 5_500,
         costBasis: 'standard',
         glAccount: 'inventory_finished_goods',
         occurredAt: OCCURRED_AT,
@@ -305,18 +313,37 @@ describe('relieveFulfillmentLines', () => {
     ])
   })
 
-  it('§3.6 - falls back to part_standard_cost when the ledger average is unusable (QoH <= 0)', async () => {
+  // 73 §6.3's month, the relief line: F = 1 material + 5 labour + 3 overhead =
+  // 20; four shipped -> Dr COGS mat 48 / Dr COGS labour 20 / Dr COGS OH 12 /
+  // Cr FG 80. The entry builder turns the split into the three legs; this
+  // asserts the two figures relief hands it, and that material is the rest.
+  it('73 §6.2 rule 3 - hands the posting the labour and overhead of the standard it relieved', async () => {
     const db = fakeDb({
       line_item_part: [{ entityId: 'li_1', relatedEntityId: 'part_1' }],
       part_kind: [{ entityId: 'part_1', optionId: 'finished_good' }],
     })
-    h.ledgerAverages.set('part_1', {
-      partInstanceId: 'part_1',
-      valueMinor: 0,
-      quantity: 0,
-      unitCostMinor: null,
+    h.standardCosts.set('part_1', {
+      standardCost: 2_000,
+      standardLaborCost: 500,
+      standardOverheadCost: 300,
     })
-    h.standardCosts.set('part_1', 5_500)
+    h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
+      ok({
+        records: (inputs as Array<{ partInstanceId: string; quantity: number }>).map(
+          (input, index) => ({
+            movementId: `mv_${index}`,
+            recordId: `def_stock_movement:mv_${index}`,
+            partInstanceId: input.partInstanceId,
+            quantity: input.quantity,
+            unitCost: 2_000,
+            extendedCost: -8_000,
+            glAccount: 'inventory_finished_goods',
+            occurredAt: OCCURRED_AT,
+          })
+        ),
+        affectedPartIds: ['part_1'],
+      })
+    )
 
     const result = await relieveFulfillmentLines(db, {
       organizationId: ORG,
@@ -327,7 +354,7 @@ describe('relieveFulfillmentLines', () => {
           fulfillmentId: 'ful_1',
           orderId: 'ord_1',
           lineItemId: 'li_1',
-          quantity: 2,
+          quantity: 4,
           quantityRelieved: null,
           occurredAt: OCCURRED_AT,
         },
@@ -335,18 +362,65 @@ describe('relieveFulfillmentLines', () => {
     })
 
     expect(result.isOk()).toBe(true)
-    const value = result._unsafeUnwrap()
-    expect(value.fallbackStandardCostPartIds).toEqual(['part_1'])
     const [, inputs] = h.writeStockMovements.mock.calls[0]!
-    expect(inputs).toEqual([expect.objectContaining({ unitCost: 5_500 })])
+    expect(inputs).toEqual([expect.objectContaining({ unitCost: 2_000, costBasis: 'standard' })])
+    const posted = h.postSpy.mock.calls[0]![1] as { cogsSplit: unknown }
+    expect(posted.cogsSplit).toEqual({ laborMinor: 2_000, overheadMinor: 1_200 })
   })
 
-  it('never posts a zero cost - a line with no average and no standard cost is skipped and counted', async () => {
+  it('an un-relief carries no split - it is priced at what the line was relieved at', async () => {
     const db = fakeDb({
       line_item_part: [{ entityId: 'li_1', relatedEntityId: 'part_1' }],
       part_kind: [{ entityId: 'part_1', optionId: 'finished_good' }],
     })
-    // No ledger average, no standard cost at all.
+    h.standardCosts.set('part_1', {
+      standardCost: 2_000,
+      standardLaborCost: 500,
+      standardOverheadCost: 300,
+    })
+    h.relievedAverages.set('fl_1', { fulfillmentLineId: 'fl_1', unitCostMinor: 4_200 })
+    h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
+      ok({
+        records: (inputs as Array<{ partInstanceId: string }>).map((input, index) => ({
+          movementId: `mv_${index}`,
+          recordId: `def_stock_movement:mv_${index}`,
+          partInstanceId: input.partInstanceId,
+          quantity: 2,
+          unitCost: 4_200,
+          extendedCost: 8_400,
+          glAccount: 'inventory_finished_goods',
+          occurredAt: OCCURRED_AT,
+        })),
+        affectedPartIds: ['part_1'],
+      })
+    )
+
+    await relieveFulfillmentLines(db, {
+      organizationId: ORG,
+      userId: USER,
+      lines: [
+        {
+          fulfillmentLineId: 'fl_1',
+          fulfillmentId: 'ful_1',
+          orderId: 'ord_1',
+          lineItemId: 'li_1',
+          quantity: 10,
+          quantityRelieved: 12,
+          occurredAt: OCCURRED_AT,
+        },
+      ],
+    })
+
+    const posted = h.postSpy.mock.calls[0]![1] as { cogsSplit: unknown }
+    expect(posted.cogsSplit).toEqual({ laborMinor: 0, overheadMinor: 0 })
+  })
+
+  it('never posts a zero cost - a line whose part has no standard cost is skipped and counted', async () => {
+    const db = fakeDb({
+      line_item_part: [{ entityId: 'li_1', relatedEntityId: 'part_1' }],
+      part_kind: [{ entityId: 'part_1', optionId: 'finished_good' }],
+    })
+    // No standard cost at all, and since 73 there is no average behind it.
 
     const result = await relieveFulfillmentLines(db, {
       organizationId: ORG,
@@ -380,6 +454,7 @@ describe('relieveFulfillmentLines', () => {
       quantity: 2,
       unitCostMinor: 4_000,
     })
+    h.standardCosts.set('part_1', 4_000)
 
     const result = await relieveFulfillmentLines(db, {
       organizationId: ORG,
@@ -415,6 +490,7 @@ describe('relieveFulfillmentLines', () => {
       quantity: 10,
       unitCostMinor: 4_000,
     })
+    h.standardCosts.set('part_1', 4_000)
 
     const result = await relieveFulfillmentLines(db, {
       organizationId: ORG,
@@ -442,7 +518,7 @@ describe('relieveFulfillmentLines', () => {
 // The posting seam has its own test (`postings/__tests__/post-inventory-movement.test.ts`);
 // this file is about the movements. `vi.mock` is hoisted, so placement is free.
 vi.mock('../../../accounting/ledger/post/post-inventory-movement', () => ({
-  postInventoryMovementInTx: async () => null,
+  postInventoryMovementInTx: (...args: unknown[]) => h.postSpy(...args),
   exportInventoryMovement: async () => null,
   inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
   reverseInventoryMovementPosting: async () => null,

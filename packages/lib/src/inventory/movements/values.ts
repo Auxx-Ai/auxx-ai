@@ -45,6 +45,8 @@ export interface StockMovementValueFields {
   reference?: string
   qtyPerUnit?: number | null
   vendorUnitPrice?: number
+  /** See {@link StockMovementInput.accrued}. Receipts only; omitted keys stay absent. */
+  accrued?: { freightMinor?: number; dutiesMinor?: number; tariffRate?: number }
   links?: ResolvedStockMovementLinks
 }
 
@@ -90,6 +92,7 @@ export function buildStockMovementValues(
     reference,
     qtyPerUnit,
     vendorUnitPrice,
+    accrued,
     links,
   } = fields
 
@@ -108,6 +111,12 @@ export function buildStockMovementValues(
   if (reason) values.stock_movement_reason = reason
   if (reference) values.stock_movement_reference = reference
   if (vendorUnitPrice != null) values.stock_movement_vendor_unit_price = vendorUnitPrice
+  // 73 §7.2: what this receipt credited the two accrual accounts, and the rate
+  // that produced the duty. Absent on every movement that accrued nothing - a
+  // zero would read as "we checked, it was free" rather than "not a receipt".
+  if (accrued?.freightMinor) values.stock_movement_freight_accrued = accrued.freightMinor
+  if (accrued?.dutiesMinor) values.stock_movement_duties_accrued = accrued.dutiesMinor
+  if (accrued?.tariffRate) values.stock_movement_tariff_rate = accrued.tariffRate
   // NULL is the off-BOM marker and is written as an absence, not a zero.
   if (qtyPerUnit != null) values.stock_movement_qty_per_unit = qtyPerUnit
 

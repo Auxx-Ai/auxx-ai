@@ -24,7 +24,12 @@ const h = vi.hoisted(() => ({
   /** The raw `purchase_order_line_purchase_order` relation rows the org holds. */
   orderIds: [] as (string | null)[],
   partKind: null as string | null,
+  /** The winning supplier row's adders, per `vendor_part` id. */
+  vendorTerms: new Map<string, Record<string, number | null>>(),
+  /** `part` id -> its frozen standard, as `readStandardCost` returns it. */
+  standardCosts: new Map<string, number>(),
   ensureSpy: vi.fn(),
+  replaceSpy: vi.fn(),
   postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
   exportSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
   /** The batched roll-up this door runs once the whole receipt is committed. */
@@ -77,6 +82,32 @@ vi.mock('../receipt-queries', async () => {
   const { ok } = await import('neverthrow')
   return {
     readPartKind: vi.fn(async () => ok(h.partKind)),
+    readVendorPartCostInputs: vi.fn(async (_db: unknown, _org: string, vendorPartId: string) =>
+      ok(h.vendorTerms.get(vendorPartId) ?? null)
+    ),
+  }
+})
+
+// 73 §6.2 rule 1: the movement is valued at the part's frozen standard, read
+// after `setFirstStandardCostFromReceipt` has had its chance to write one.
+vi.mock('../../costing/standard-cost-queries', async () => {
+  const { ok } = await import('neverthrow')
+  return {
+    readStandardCost: vi.fn(async (_db: unknown, _org: string, partIds: string[]) => {
+      const map = new Map<string, { standardCost: number }>()
+      for (const id of partIds) {
+        const value = h.standardCosts.get(id)
+        if (value != null) map.set(id, { standardCost: value })
+      }
+      return ok(map)
+    }),
+  }
+})
+
+vi.mock('../../costing/provisional-standard', async () => {
+  const { ok } = await import('neverthrow')
+  return {
+    replaceProvisionalStandard: (...args: unknown[]) => h.replaceSpy(...args) ?? ok({}),
   }
 })
 
@@ -101,6 +132,7 @@ vi.mock('../../../accounting/ledger/post/post-inventory-movement', () => ({
   inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
 }))
 
+import type { ReceiveAccrualInput } from '../../../accounting/ledger/builders/inventory-movement'
 import { receivePurchaseOrder } from '../receive-purchase-order'
 
 const ORG = 'org_1'
@@ -155,6 +187,17 @@ beforeEach(() => {
       purchaseOrderLineRecords(options.ids)
   )
   h.partKind = null
+  h.vendorTerms = new Map()
+  h.standardCosts = new Map()
+  h.replaceSpy.mockImplementation(async () => {
+    const { ok } = await import('neverthrow')
+    return ok({
+      replaced: false,
+      previousStandard: null,
+      newStandard: null,
+      revaluationPostedMinor: 0,
+    })
+  })
   h.settleSpy.mockResolvedValue(undefined)
   h.postSpy.mockResolvedValue(null)
   h.exportSpy.mockResolvedValue(null)
@@ -349,6 +392,120 @@ describe('receivePurchaseOrder — nothing is allocated at receipt', () => {
     await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 1 })] })
     expect(firstReceiptCost).toBe(1250)
     expect(writtenValues(1).stock_movement_unit_cost).toBe(1250)
+  })
+})
+
+// 73 §6.2 rule 1 and §7.2. M: agreed 12.00, shipping 0.10, tariff 25%, other 0
+// -> landed standard 16.00. Receiving 10 debits Raw 160.00 and owes the vendor
+// 120.00, the carrier 1.00 and the broker 30.00.
+describe('receivePurchaseOrder — the standard is frozen and the landed parts accrue', () => {
+  beforeEach(() => {
+    h.prices = new Map([['pol_1', 1_200]])
+    h.vendorTerms.set('vp_1', { shippingCost: 100, otherCost: 0, tariffRate: 25 })
+    h.standardCosts.set('part_1', 1_600)
+  })
+
+  it('values the movement at the STANDARD, keeping the agreed price as provenance', async () => {
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line({ quantity: 10, vendorPartId: 'vp_1' })],
+    })
+    expect(writtenValues(0).stock_movement_unit_cost).toBe(1_600)
+    expect(writtenValues(0).stock_movement_vendor_unit_price).toBe(1_200)
+    expect(writtenValues(0).stock_movement_cost_basis).toBe('standard')
+  })
+
+  it('stamps what it accrued, and the rate behind it', async () => {
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line({ quantity: 10, vendorPartId: 'vp_1' })],
+    })
+    expect(writtenValues(0).stock_movement_freight_accrued).toBe(1_000)
+    expect(writtenValues(0).stock_movement_duties_accrued).toBe(3_000)
+    expect(writtenValues(0).stock_movement_tariff_rate).toBe(25)
+  })
+
+  it('hands the posting the three credit amounts: 120 goods, 10 freight, 30 duty', async () => {
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line({ quantity: 10, vendorPartId: 'vp_1' })],
+    })
+    const input = h.postSpy.mock.calls[0]![1] as { movements: Array<{ accrual: unknown }> }
+    expect(input.movements[0]!.accrual).toEqual({
+      grniMinor: 12_000,
+      freightMinor: 1_000,
+      dutiesMinor: 3_000,
+    })
+  })
+
+  it('accrues no duty for an org with no tariffs', async () => {
+    h.vendorTerms.set('vp_1', { shippingCost: 100, otherCost: 0, tariffRate: null })
+    h.standardCosts.set('part_1', 1_300)
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line({ quantity: 10, vendorPartId: 'vp_1' })],
+    })
+    const input = h.postSpy.mock.calls[0]![1] as { movements: Array<{ accrual: unknown }> }
+    expect(input.movements[0]!.accrual).toEqual({
+      grniMinor: 12_000,
+      freightMinor: 1_000,
+      dutiesMinor: 0,
+    })
+    expect(writtenValues(0).stock_movement_duties_accrued).toBeUndefined()
+  })
+
+  it('accrues nothing when the line names no supplier row', async () => {
+    h.standardCosts.set('part_1', 1_200)
+    await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 10 })] })
+    const input = h.postSpy.mock.calls[0]![1] as { movements: Array<{ accrual: unknown }> }
+    expect(input.movements[0]!.accrual).toEqual({
+      grniMinor: 12_000,
+      freightMinor: 0,
+      dutiesMinor: 0,
+    })
+  })
+
+  // §6.4: the standard is replaced by today's LANDED estimate, not the agreed
+  // price alone, which is what makes the receipt's `ppv` remainder zero without
+  // any flag telling the builder to suppress it.
+  it('hands the provisional replace the landed estimate, not the agreed price', async () => {
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line({ quantity: 10, vendorPartId: 'vp_1' })],
+    })
+    // 1_200 + 100 shipping + 300 duty + 0 other
+    expect(h.replaceSpy.mock.calls[0]![4]).toBe(1_600)
+    expect(h.ensureSpy.mock.calls[0]![3]).toEqual({ kind: 'receipt', unitCost: 1_600 })
+  })
+
+  it('posts no ppv on a provisional first receipt: standard and accruals agree', async () => {
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line({ quantity: 10, vendorPartId: 'vp_1' })],
+    })
+    const input = h.postSpy.mock.calls[0]![1] as {
+      movements: Array<{ extendedCostMinor: number; accrual: ReceiveAccrualInput }>
+    }
+    const movement = input.movements[0]!
+    const accrued =
+      movement.accrual.grniMinor + movement.accrual.freightMinor + movement.accrual.dutiesMinor
+    expect(accrued).toBe(movement.extendedCostMinor)
+  })
+
+  it('leaves the remainder in ppv when the agreed price has moved off the standard', async () => {
+    // 73 §6.3: standard 12.00, agreed 14.00, 20 received -> PPV 40.00 debit.
+    h.prices = new Map([['pol_1', 1_400]])
+    h.vendorTerms = new Map()
+    h.standardCosts.set('part_1', 1_200)
+    await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 20 })] })
+    const input = h.postSpy.mock.calls[0]![1] as {
+      movements: Array<{ extendedCostMinor: number; accrual: ReceiveAccrualInput }>
+    }
+    const movement = input.movements[0]!
+    expect(movement.extendedCostMinor).toBe(24_000)
+    expect(movement.accrual.grniMinor).toBe(28_000)
+  })
+
+  it('falls back to the landed estimate for a part with no readable standard', async () => {
+    h.standardCosts = new Map()
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line({ quantity: 10, vendorPartId: 'vp_1' })],
+    })
+    expect(writtenValues(0).stock_movement_unit_cost).toBe(1_600)
   })
 })
 

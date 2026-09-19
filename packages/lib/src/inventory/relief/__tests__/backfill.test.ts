@@ -61,7 +61,6 @@ vi.mock('../relieve', async () => {
         skippedNoPart: 0,
         skippedZeroDelta: 0,
         skippedNoCost: 0,
-        fallbackStandardCostPartIds: [],
         negativeQoHPartIds: [],
         ...(next?.extra ?? {}),
       })
@@ -261,7 +260,6 @@ describe('backfillFulfillmentRelief', () => {
           skippedNoPart: 1,
           skippedZeroDelta: 2,
           skippedNoCost: 3,
-          fallbackStandardCostPartIds: ['p1'],
           negativeQoHPartIds: ['p2'],
         },
       },
@@ -273,7 +271,6 @@ describe('backfillFulfillmentRelief', () => {
           skippedNoPart: 10,
           skippedZeroDelta: 20,
           skippedNoCost: 30,
-          fallbackStandardCostPartIds: ['p1'],
           negativeQoHPartIds: ['p9'],
         },
       },
@@ -287,8 +284,6 @@ describe('backfillFulfillmentRelief', () => {
     expect(summary.skippedZeroDelta).toBe(22)
     expect(summary.skippedNoCost).toBe(33)
     expect(summary.affectedPartIds.sort()).toEqual(['p1', 'p2', 'p3'])
-    // 🛑 One warning per part per RUN, not per batch - p1 fell back twice.
-    expect(summary.fallbackStandardCostPartIds).toEqual(['p1'])
     expect(summary.negativeQoHPartIds.sort()).toEqual(['p2', 'p9'])
   })
 

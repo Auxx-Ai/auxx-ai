@@ -19,7 +19,8 @@ import { defineResourceFields } from '../system-attributes'
  *
  * Money is stored in **integer minor units** throughout.
  *
- * The header totals (`subtotal`, `shippingTotal`, `taxTotal`, `total`) are
+ * The header totals (`subtotal`, `shippingTotal`, `taxTotal`, `discount`,
+ * `total`) are
  * deliberately NOT computed, unlike their `purchase_order` namesakes: they are
  * transcribed from the vendor's paper. Recomputing them from the lines would
  * silently correct the vendor's own arithmetic, which is precisely the
@@ -351,6 +352,34 @@ export const VENDOR_BILL_FIELDS = defineResourceFields({
       configurable: false,
     },
     description: 'Tax as the vendor stated it, integer minor units',
+  },
+
+  discount: {
+    id: toFieldId('discount'),
+    key: 'discount',
+    label: 'Discount',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'vendor_bill_discount',
+    systemSortOrder: 'aBV',
+    nullable: true,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'The trade discount as the vendor stated it, integer minor units and positive - it is ' +
+      'SUBTRACTED from the lines, shipping and tax to reach the total',
   },
 
   total: {

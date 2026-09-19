@@ -44,6 +44,7 @@ const invoiceSchema = z.object({
   subtotalText: intakeTextField,
   shippingText: intakeTextField,
   taxText: intakeTextField,
+  discountText: intakeTextField,
   totalText: intakeTextField,
   lines: z.array(lineSchema).optional(),
 })
@@ -72,6 +73,7 @@ export const TRANSCRIBED_INVOICE_JSON_SCHEMA: Record<string, unknown> = {
     'subtotalText',
     'shippingText',
     'taxText',
+    'discountText',
     'totalText',
     'lines',
   ],
@@ -95,6 +97,11 @@ export const TRANSCRIBED_INVOICE_JSON_SCHEMA: Record<string, unknown> = {
     subtotalText: { type: ['string', 'null'], description: 'As printed. Never computed.' },
     shippingText: { type: ['string', 'null'], description: 'As printed. Never computed.' },
     taxText: { type: ['string', 'null'], description: 'As printed. Never computed.' },
+    discountText: {
+      type: ['string', 'null'],
+      description:
+        'The trade discount as printed, POSITIVE and without its minus sign. Never computed.',
+    },
     totalText: {
       type: ['string', 'null'],
       description:
@@ -159,6 +166,7 @@ export const TRANSCRIBE_INVOICE_PROMPT = [
   '7. Include every line, in the order printed, including freight, surcharges and tooling.',
   "8. If the invoice prints the buyer's own part number beside the vendor's code, put it in",
   "   customerCode; the vendor's code stays in vendorCode.",
+  '9. Copy a trade discount into discountText as a POSITIVE amount, without its minus sign.',
 ].join('\n')
 
 function toLine(raw: z.infer<typeof lineSchema>): TranscribedInvoiceLine {
@@ -208,6 +216,7 @@ export function parseTranscribedInvoice(raw: unknown): TranscribedInvoice {
     subtotalText: value.subtotalText,
     shippingText: value.shippingText,
     taxText: value.taxText,
+    discountText: value.discountText,
     totalText: value.totalText,
     lines: (value.lines ?? []).map(toLine),
   }

@@ -161,11 +161,9 @@ const POSTING_FAMILIES: Record<string, readonly PostingType[]> = {
   // Its own family, because it is the only one auxx did not author: the
   // accountant's entry, read back off the provider's ledger (brief 20 §6).
   sync: ['provider_sync'],
-  // `Dr <expense> / Cr A/P` for rent, insurance, a legal invoice. NOT in the
-  // `inventory` family beside `vendor_bill`: that one is the L3 purchasing
-  // story and this one touches no inventory account, no GRNI and no three-way
-  // match (brief 21 §3.2).
-  payables: ['expense_bill', 'vendor_credit'],
+  // The supplier's credit note. `vendor_bill` is in the `inventory` family
+  // beside the receipt, because it is the half that relieves GRNI.
+  payables: ['vendor_credit'],
 }
 
 describe('the export route is declared, total, and per family', () => {

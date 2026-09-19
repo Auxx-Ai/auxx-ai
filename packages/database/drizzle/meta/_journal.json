@@ -2689,6 +2689,13 @@
       "when": 1789788503640,
       "tag": "0383_money_transaction_draft_posting",
       "breakpoints": true
+    },
+    {
+      "idx": 384,
+      "version": "7",
+      "when": 1789789217395,
+      "tag": "0384_drop_expense_bill_posting_type",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 // packages/lib/src/accounting/providers/quickbooks/objects/bill.ts
-// An `expense_bill` / `vendor_bill` posting, sent as a QuickBooks Bill with
+// A `vendor_bill` posting, sent as a QuickBooks Bill with
 // account-based lines - no items, unlike the sales-side objects (plan 67 §1,
 // §5.1).
 

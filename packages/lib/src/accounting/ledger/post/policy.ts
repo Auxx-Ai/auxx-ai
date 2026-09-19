@@ -833,45 +833,6 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     singleWriterRoles: [],
   },
 
-  expense_bill: {
-    type: 'expense_bill',
-    label: 'Expense bill',
-    // purchasing/expense-bill/writes.ts `postEntry` call, on Post.
-    trigger: { kind: 'event', on: 'Post on a vendor bill coded to expense accounts' },
-    template: [
-      {
-        side: 'debit',
-        role: 'by id',
-        what: 'Each line, the expense account the bill was coded to',
-      },
-      { side: 'credit', role: ACCOUNT_ROLES.ACCOUNTS_PAYABLE, what: 'What the vendor is owed' },
-    ],
-    settings: ['accounting.autoPost.expenseBill'],
-    sentence:
-      'Posting a bill for rent, insurance or a subscription raises the payable and puts the expense on the profit and loss, dated the bill.',
-    disabledSentence:
-      'Expense bill posting is off, so a vendor bill for rent, insurance or a subscription raises ' +
-      'no payable and its expense never reaches the profit and loss.',
-    parameters: [
-      {
-        name: 'Totals',
-        value: "The vendor's, transcribed",
-        sentence:
-          "The bill's totals are copied from the vendor's document, never recomputed, so the payable is what the vendor will collect.",
-      },
-    ],
-    settingCopy: {
-      'accounting.autoPost.expenseBill': {
-        title: 'Auto-post expense bills',
-        description:
-          'On, an expense bill posts immediately. Off, it drafts on the ledger for review and approval.',
-      },
-    },
-    enabled: true,
-    exportRoute: 'journal',
-    singleWriterRoles: [],
-  },
-
   recurring_journal: {
     type: 'recurring_journal',
     label: 'Recurring journal',
@@ -975,30 +936,64 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
   vendor_bill: {
     type: 'vendor_bill',
     label: 'Vendor bill',
-    // purchasing/post-vendor-bill.ts, from the three-way match's `matched` verdict.
-    trigger: { kind: 'event', on: 'The three-way match writing a vendor bill status of matched' },
+    // purchasing/expense-bill/writes.ts `postVendorBill`, on Post. ONE door for
+    // both kinds of bill since 73 D3; the three-way match posts nothing.
+    trigger: {
+      kind: 'event',
+      on: 'Post on a vendor bill, whether it names a purchase order or not',
+    },
     template: [
-      { side: 'debit', role: ACCOUNT_ROLES.GRNI, what: 'The receipt this bill invoices' },
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.GRNI,
+        what: 'Each line matched to an order line, at the quantity billed times the agreed price',
+      },
       {
         side: 'debit',
         role: ACCOUNT_ROLES.PPV,
         what: 'Price variance against the order; the side follows the sign',
       },
+      { side: 'debit', role: 'by id', what: 'Each unmatched line, the account it was coded to' },
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.FREIGHT_ACCRUAL,
+        what: "The header's shipping, which the receipt already accrued",
+      },
+      { side: 'debit', role: ACCOUNT_ROLES.PURCHASE_TAX, what: "The header's tax" },
       { side: 'credit', role: ACCOUNT_ROLES.ACCOUNTS_PAYABLE, what: 'What the vendor is owed' },
     ],
-    settings: [],
+    settings: ['accounting.autoPost.expenseBill'],
     sentence:
-      'A matched purchasing bill relieves the goods-received accrual its receipt raised and books the difference as purchase price variance.',
+      'Posting a vendor bill raises the payable for what the vendor is asking: a line against a purchase order relieves the goods-received accrual at the agreed price and books the difference as purchase price variance, and any other line lands on the account it was coded to.',
     disabledSentence:
-      'Per-event vendor bill posting is off, so goods received not invoiced is never relieved and the accrual grows without bound.',
+      'Vendor bill posting is off, so no bill raises a payable, goods received not invoiced is never relieved and the accrual grows without bound.',
     parameters: [
       {
-        name: 'Matched portion',
-        value: 'Received quantity at the agreed price',
+        name: 'The accrual relieved',
+        value: 'Quantity BILLED at the agreed price',
         sentence:
-          'Exactly what the receipt credited to the accrual, which is why the accrual closes to zero per line rather than drifting.',
+          'What the vendor is invoicing, not what has been received, so a short shipment stays in the accrual as invoiced-not-received rather than reading as a price variance (73 D2).',
+      },
+      {
+        name: 'The match verdict',
+        value: 'Not consulted',
+        sentence:
+          'A bill posts whether it is awaiting its goods, matched or in exception; the verdict is a control, never a posting trigger.',
+      },
+      {
+        name: 'Totals',
+        value: "The vendor's, transcribed",
+        sentence:
+          "The bill's totals are copied from the vendor's document and never recomputed, and the entry refuses unless the lines, shipping, tax and discount tie to the stated total.",
       },
     ],
+    settingCopy: {
+      'accounting.autoPost.expenseBill': {
+        title: 'Auto-post vendor bills',
+        description:
+          'On, a bill posts immediately on Post. Off, it drafts on the ledger for review and approval.',
+      },
+    },
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],

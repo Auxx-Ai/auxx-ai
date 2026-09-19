@@ -25,6 +25,7 @@ export {
   type BackfillReliefProgress,
   backfillFulfillmentRelief,
 } from './backfill'
+export { type ReliefCostSplit, splitReliefCost } from './cogs-split'
 export {
   type FulfillmentLineToRelieve,
   type RelieveFulfillmentLinesInput,
