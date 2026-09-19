@@ -193,7 +193,14 @@ function OutboxBody({
   const exitSelection = useListSelection((state) => state.exit)
   const { run: runBulk, ConfirmDialog: BulkConfirmDialog, isRunning: bulkRunning } = useBulkRunner()
 
-  const visibleIds = useMemo(() => visible.map((batch) => batch.id), [visible])
+  // Drafts select too: the provider is the same, the ids are the drafts' own.
+  const visibleIds = useMemo(
+    () =>
+      isDrafts
+        ? (draftsQuery.data ?? []).map((draft) => draft.id)
+        : visible.map((batch) => batch.id),
+    [isDrafts, draftsQuery.data, visible]
+  )
   useEffect(() => {
     setItemIds(visibleIds)
   }, [visibleIds, setItemIds])
@@ -303,7 +310,7 @@ function OutboxBody({
     release.mutate({ batchIds })
   }
 
-  const selectable = effectiveTab === 'ready' || effectiveTab === 'sent'
+  const selectable = effectiveTab === 'ready' || effectiveTab === 'sent' || isDrafts
 
   return (
     // `flex-1` + a full-bleed `ListToolbar`: the bar draws a `border-b` that has
@@ -312,7 +319,7 @@ function OutboxBody({
       {/* `min-h-7` is the `size='sm'` Button's own height: the build control is
           absent on Drafts and on a read-only member, and without the floor the
           whole list shifted on every tab change. */}
-      <div className='flex min-h-7 flex-wrap items-center justify-between gap-2 p-3 pb-2'>
+      <div className='flex min-h-12 flex-wrap items-center justify-between gap-2 p-3 pb-2'>
         <p className='text-muted-foreground text-xs'>{introSentence(isDrafts, providerLabel)}</p>
         {canRelease && !isDrafts && (
           <div className='flex items-center gap-2'>
@@ -364,6 +371,8 @@ function OutboxBody({
           bookTimeZone={bookTimeZone}
           providerLabel={providerLabel}
           connectedTenantId={connectedTenantId}
+          activePostingId={activePostingId}
+          onSelectPosting={onSelectPosting}
         />
       ) : batchesQuery.isError ? (
         <p className='p-3 text-destructive text-xs'>
@@ -500,7 +509,12 @@ function OutboxBody({
                   }
                   onToggleOpen={() =>
                     selecting && selectable ? toggle(batch.id) : toggleOpen(batch.id)
-                  }>
+                  }
+                  rowClassName={cn(
+                    'bg-primary-100/50 hover:bg-primary-100',
+                    selectedIds.includes(batch.id) &&
+                      'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25'
+                  )}>
                   <BatchMembers
                     members={batch.members}
                     currencyCode={batch.currency}
@@ -515,8 +529,9 @@ function OutboxBody({
         </div>
       )}
 
+      {/* Drafts carry their own bar (`DraftsPanel`): approve and discard are its verbs. */}
       <ActionBar
-        open={selecting && selectable}
+        open={selecting && selectable && !isDrafts}
         onOpenChange={(open) => !open && exitSelection()}
         duration={Number.POSITIVE_INFINITY}
         position='bottom-center'

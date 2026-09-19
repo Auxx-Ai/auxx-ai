@@ -4,6 +4,7 @@
 
 import type { ExportBatchTab } from '@auxx/lib/accounting/export/client'
 import type { PostingDetail } from '@auxx/lib/accounting/ledger/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
@@ -14,6 +15,8 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
+import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import {
   BookOpenCheck,
   CalendarClock,
@@ -28,6 +31,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { EntryJournal, journalLinesFromDetail } from './entry-journal'
@@ -336,21 +340,36 @@ export function PostingDrawer({
                   icon={<Link2 className='size-4' />}
                   description='Every record this entry is linked to, and how.'
                   collapsible={false}>
-                  <ul className='flex flex-col gap-1.5 text-sm'>
-                    {sources.map((source, index) => (
-                      <li
-                        key={`${source.sourceKind}-${source.sourceId}-${index}`}
-                        className='flex items-center justify-between gap-2'>
-                        <LedgerSourceLink
-                          sourceKind={source.sourceKind}
-                          sourceId={source.sourceId}
+                  <TreeRowList
+                    items={sources}
+                    visibleLimit={5}
+                    getKey={(source, index) => `${source.sourceKind}-${source.sourceId}-${index}`}
+                    renderRow={(source) => {
+                      // A linked row carries a `RecordId`; a stored draft envelope does not.
+                      const recordId = (
+                        'recordId' in source ? source.recordId : null
+                      ) as RecordId | null
+                      return (
+                        <TreeRow
+                          title={
+                            recordId ? (
+                              <RecordBadge recordId={recordId} size='sm' />
+                            ) : (
+                              <LedgerSourceLink
+                                sourceKind={source.sourceKind}
+                                sourceId={source.sourceId}
+                              />
+                            )
+                          }
+                          trailing={
+                            <Badge variant='outline' size='xs'>
+                              {source.linkRole}
+                            </Badge>
+                          }
                         />
-                        <Badge variant='outline' size='xs'>
-                          {source.linkRole}
-                        </Badge>
-                      </li>
-                    ))}
-                  </ul>
+                      )
+                    }}
+                  />
                 </Section>
               )}
 

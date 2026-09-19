@@ -1,0 +1,1 @@
+ALTER TABLE "MoneyTransaction" ADD COLUMN "draftGlPostingId" text;

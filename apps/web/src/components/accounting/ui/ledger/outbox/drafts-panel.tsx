@@ -16,12 +16,15 @@
 
 import type { PostingSummary } from '@auxx/lib/accounting/journals/client'
 import type { PostResult } from '@auxx/lib/accounting/ledger/client'
-import { Button } from '@auxx/ui/components/button'
+import { ActionBar } from '@auxx/ui/components/action-bar'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
+import { cn } from '@auxx/ui/lib/utils'
 import { Check, FileClock, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import { useBulkMode, useListSelection, useSelectionIds } from '~/components/list-selection'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { EntryBlockers } from '../entry-blockers'
@@ -34,11 +37,16 @@ interface DraftsPanelProps {
   bookTimeZone: string
   providerLabel: string
   connectedTenantId: string | null
+  /** The draft open in the ledger's `?posting=` drawer, so its row reads as the one you are looking at. */
+  activePostingId: string | null
+  onSelectPosting: (glPostingId: string) => void
 }
 
 /**
  * The month's drafts, with Approve (`postDraft`) and Discard
- * (`discardDraft`) per row, plus a bulk Approve all over what is visible.
+ * (`discardDraft`) per row and over a selection. Selection state is the
+ * outbox's own `ListSelectionProvider`; the outbox sets the item ids and
+ * draws the select-all box, this panel draws the rows and the action bar.
  *
  * 🛑 A refusal from `postDraft` is a card, never a toast (ground rule 9,
  * matching `post-result-callout.tsx`'s own doc). `already_posted`,
@@ -51,6 +59,8 @@ export function DraftsPanel({
   bookTimeZone,
   providerLabel,
   connectedTenantId,
+  activePostingId,
+  onSelectPosting,
 }: DraftsPanelProps) {
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
@@ -58,9 +68,15 @@ export function DraftsPanel({
   const rows = draftsQuery.data ?? []
   const loading = draftsQuery.isPending
 
+  const selectedIds = useSelectionIds()
+  const selecting = useBulkMode()
+  const toggle = useListSelection((state) => state.toggle)
+  const exitSelection = useListSelection((state) => state.exit)
+
   /** The last `postDraft` outcome per row, BY POSTING. Cleared on discard. */
   const [results, setResults] = useState<Record<string, PostResult>>({})
-  const [approvingAll, setApprovingAll] = useState(false)
+  const [approvingMany, setApprovingMany] = useState(false)
+  const [discardingMany, setDiscardingMany] = useState(false)
   /**
    * The server's own refusal sentence for the last discard, or `null` - held
    * in state and rendered through `EntryBlockers`, never a toast (ground rule
@@ -101,12 +117,12 @@ export function DraftsPanel({
    * for, and there is no card for "the network failed", so that one stays a
    * toast (ground rule 9 is about refusals the server named, not this).
    */
-  async function approveAll() {
-    setApprovingAll(true)
+  async function approveMany(glPostingIds: string[]) {
+    setApprovingMany(true)
     const nextResults: Record<string, PostResult> = {}
-    for (const posting of rows) {
+    for (const glPostingId of glPostingIds) {
       try {
-        nextResults[posting.id] = await postDraft.mutateAsync({ glPostingId: posting.id })
+        nextResults[glPostingId] = await postDraft.mutateAsync({ glPostingId })
       } catch {
         // A thrown `AuxxError` here is upstream of the poster (a malformed
         // lock setting, a network failure) - `postDraft` itself never throws
@@ -114,7 +130,39 @@ export function DraftsPanel({
       }
     }
     setResults((prev) => ({ ...prev, ...nextResults }))
-    setApprovingAll(false)
+    setApprovingMany(false)
+    exitSelection()
+    refresh()
+  }
+
+  /** Sequential like {@link approveMany}; every refusal lands on the one `EntryBlockers` card. */
+  async function discardMany(glPostingIds: string[]) {
+    const confirmed = await confirm({
+      title: `Discard ${glPostingIds.length} drafts?`,
+      description:
+        'A draft holds no claim and no document number, so nothing else is affected. This cannot be undone from here.',
+      confirmText: 'Discard the drafts',
+      cancelText: 'Keep them',
+      destructive: true,
+    })
+    if (!confirmed) return
+    setDiscardRefusal(null)
+    setDiscardingMany(true)
+    const refusals: string[] = []
+    for (const glPostingId of glPostingIds) {
+      try {
+        await discardDraft.mutateAsync({ glPostingId })
+        setResults((prev) => {
+          const { [glPostingId]: _dropped, ...rest } = prev
+          return rest
+        })
+      } catch (error) {
+        refusals.push(error instanceof Error ? error.message : 'The draft was not discarded.')
+      }
+    }
+    setDiscardingMany(false)
+    if (refusals.length > 0) setDiscardRefusal(refusals.join(' '))
+    exitSelection()
     refresh()
   }
 
@@ -146,22 +194,7 @@ export function DraftsPanel({
 
   return (
     // No count line: the Outbox's own tab badge carries it.
-    <div className='flex flex-1 flex-col gap-3 p-3'>
-      {rows.length > 1 && (
-        <div className='flex justify-end'>
-          <Button
-            variant='outline'
-            size='sm'
-            disabled={approvingAll || postDraft.isPending}
-            loading={approvingAll}
-            loadingText='Approving...'
-            onClick={() => void approveAll()}>
-            <Check />
-            Approve all
-          </Button>
-        </div>
-      )}
-
+    <div className='flex flex-1 flex-col gap-3 p-3 pb-16'>
       {discardRefusal && (
         <EntryBlockers blockers={[{ status: 'discard_refused', error: discardRefusal }]} />
       )}
@@ -187,19 +220,45 @@ export function DraftsPanel({
               <div className='flex flex-col gap-1.5'>
                 <TreeRow
                   className={TREE_SECONDARY_NOTRUNCATE}
+                  selectable
+                  selecting={selecting}
+                  selected={selectedIds.includes(posting.id)}
+                  onSelectChange={(_next, event) =>
+                    toggle(posting.id, { shiftKey: event.shiftKey })
+                  }
+                  selectLabel={`Select draft ${posting.memo || posting.id}`}
+                  // While picking, a row click extends the selection rather than
+                  // opening the drawer - the review queue's rule.
+                  onToggleOpen={() =>
+                    selecting ? toggle(posting.id) : onSelectPosting(posting.id)
+                  }
+                  // The review queue's idiom: `info` is what a picked row wears, `primary-*` the row you look at.
+                  rowClassName={cn(
+                    'bg-primary-100/50 hover:bg-primary-100',
+                    activePostingId === posting.id && 'bg-primary-100 ring-1 ring-primary-200',
+                    selectedIds.includes(posting.id) &&
+                      cn(
+                        'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25',
+                        activePostingId === posting.id && 'ring-info/40'
+                      )
+                  )}
                   icon={<FileClock className='size-4 text-muted-foreground' />}
+                  // The review queue's columns: a width-pinned date first, so every
+                  // row's label starts at the same x and the eye reads straight down.
                   title={
-                    <span className='truncate text-sm'>
-                      {posting.memo || humanizePostingType(posting.postingType)}
+                    <span className='flex min-w-0 items-center gap-1.5'>
+                      <span className='w-24 shrink-0 font-mono text-muted-foreground text-xs tabular-nums'>
+                        {formatAccountingDate(posting.txnDate, bookTimeZone)}
+                      </span>
+                      <span className='truncate text-sm'>
+                        {posting.memo || humanizePostingType(posting.postingType)}
+                      </span>
                     </span>
                   }
                   secondary={
                     <span className='flex items-center gap-1.5 text-muted-foreground text-xs'>
                       <span className='shrink-0'>{humanizePostingType(posting.postingType)}</span>
-                      <span className='shrink-0'>
-                        {formatAccountingDate(posting.txnDate, bookTimeZone)}
-                      </span>
-                      <DraftSubjectLink glPostingId={posting.id} />
+                      <DraftLinks glPostingId={posting.id} />
                     </span>
                   }
                   actions={
@@ -210,14 +269,14 @@ export function DraftsPanel({
                       <TreeRowButton
                         variant='destructive'
                         tooltipText='Discard this draft'
-                        disabled={discarding || busy}
+                        disabled={discarding || busy || discardingMany}
                         onClick={() => void requestDiscard(posting)}>
                         <Trash2 />
                       </TreeRowButton>
                       <TreeRowButton
                         persistent
                         tooltipText='Approve and post'
-                        disabled={busy || discarding || approvingAll}
+                        disabled={busy || discarding || approvingMany}
                         onClick={() => approveOne(posting.id)}>
                         <Check className={busy ? 'animate-pulse' : undefined} />
                       </TreeRowButton>
@@ -239,15 +298,59 @@ export function DraftsPanel({
         />
       )}
 
+      <ActionBar
+        open={selecting}
+        onOpenChange={(open) => !open && exitSelection()}
+        duration={Number.POSITIVE_INFINITY}
+        position='bottom-center'
+        selectedCount={selectedIds.length}
+        selectedLabel='selected'
+        showClose
+        actions={[
+          {
+            id: 'approve',
+            label: 'Approve and post',
+            icon: Check,
+            disabled: approvingMany || discardingMany || postDraft.isPending,
+            onClick: () => void approveMany(selectedIds),
+          },
+          {
+            id: 'discard',
+            label: 'Discard',
+            icon: Trash2,
+            variant: 'destructive' as const,
+            disabled: approvingMany || discardingMany || discardDraft.isPending,
+            onClick: () => void discardMany(selectedIds),
+          },
+        ]}
+      />
       <ConfirmDialog />
     </div>
   )
 }
 
-/** One row's subject link - the record this draft is FOR, per `GlPostingSource`. */
-function DraftSubjectLink({ glPostingId }: { glPostingId: string }) {
+/**
+ * The records a draft is about, as badges. A draft holds no subject claim yet
+ * (`postDraft` takes it), so its `parent` and `counterparty` links are what
+ * identify it - the order it settles and who paid.
+ */
+function DraftLinks({ glPostingId }: { glPostingId: string }) {
   const sourcesQuery = api.ledger.postingSources.useQuery({ glPostingId })
-  const subject = (sourcesQuery.data ?? []).find((source) => source.linkRole === 'subject')
-  if (!subject) return null
-  return <LedgerSourceLink sourceKind={subject.sourceKind} sourceId={subject.sourceId} />
+  const sources = sourcesQuery.data ?? []
+  if (sources.length === 0) return null
+  return (
+    <span className='flex min-w-0 items-center gap-1'>
+      {sources.map((source) =>
+        source.recordId ? (
+          <RecordBadge key={source.id} recordId={source.recordId} size='sm' />
+        ) : (
+          <LedgerSourceLink
+            key={source.id}
+            sourceKind={source.sourceKind}
+            sourceId={source.sourceId}
+          />
+        )
+      )}
+    </span>
+  )
 }

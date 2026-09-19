@@ -15,6 +15,8 @@ const h = vi.hoisted(() => ({
   resolveCashEndpoint: vi.fn(),
   settings: {} as Record<string, unknown>,
   money: null as unknown,
+  /** The id `findLiveDraft` answers with, or null. */
+  draft: null as string | null,
   updates: [] as unknown[],
   marks: [] as unknown[],
 }))
@@ -53,8 +55,18 @@ function db(): Database {
     query: { MoneyTransaction: { findFirst: async () => h.money } },
     update: () => ({ set: (values: unknown) => ({ where: async () => h.updates.push(values) }) }),
   }
+  // `findLiveDraft`'s select chain, answering `h.draft`.
+  const chain = (): Record<string, unknown> => {
+    const self: Record<string, unknown> = {}
+    for (const method of ['from', 'innerJoin', 'where', 'limit']) self[method] = () => self
+    // biome-ignore lint/suspicious/noThenProperty: chainable drizzle query-builder stub
+    self.then = (resolve: (v: unknown) => unknown) =>
+      Promise.resolve(h.draft ? [{ id: h.draft }] : []).then(resolve)
+    return self
+  }
   return {
     ...base,
+    select: () => chain(),
     // The posting-block mark is written on `db`, never the prepare transaction.
     update: () => ({ set: (values: unknown) => ({ where: async () => h.marks.push(values) }) }),
     transaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn(base),
@@ -101,6 +113,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.updates = []
   h.marks = []
+  h.draft = null
   h.isAccountingEnabled.mockResolvedValue(true)
   h.findLiveSubjectPosting.mockResolvedValue(ok(null))
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
@@ -151,6 +164,22 @@ describe('postMovementEntry', () => {
     h.findLiveSubjectPosting.mockResolvedValue(ok({ id: 'gl_old', txnDate: '2026-09-01' }))
     await expect(post()).resolves.toEqual({ status: 'accepted', glPostingId: 'gl_old' })
     expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it('answers drafted and stamps the draft when the avenue posts with autoPost off', async () => {
+    h.postEntry.mockResolvedValue({ status: 'drafted', glPostingId: 'gl_draft' })
+    await expect(post()).resolves.toEqual({ status: 'drafted', glPostingId: 'gl_draft' })
+    // A draft is not a refusal: the stamp names it and the block clears.
+    expect(h.marks).toEqual([
+      { draftGlPostingId: 'gl_draft', postingBlockedReason: null, postingBlockedAt: null },
+    ])
+  })
+
+  it('answers drafted without building again while the movement waits on a live draft', async () => {
+    h.draft = 'gl_draft'
+    await expect(post()).resolves.toEqual({ status: 'drafted', glPostingId: 'gl_draft' })
+    expect(h.postEntry).not.toHaveBeenCalled()
+    expect(h.marks).toEqual([])
   })
 
   it('skips when accounting is not enabled', async () => {

@@ -21,8 +21,8 @@ import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getOrgCache } from '../../../cache'
-import type { RecordId } from '../../../resources/resource-id'
+import { getCachedEntityDefId } from '../../../cache'
+import { type RecordId, toRecordId } from '../../../resources/resource-id'
 import {
   readSystemRecords,
   type SystemRecord,
@@ -57,6 +57,7 @@ const RECEIPT_COLUMNS = {
   bankDepositInstanceId: schema.MoneyTransaction.bankDepositInstanceId,
   paymentGatewayId: schema.MoneyTransaction.paymentGatewayId,
   cashAccountInstanceId: schema.MoneyTransaction.cashAccountInstanceId,
+  partyInstanceId: schema.MoneyTransaction.partyInstanceId,
 } as const
 
 /** What `createBankDeposit` needs off the row and the list must not leak. */
@@ -190,38 +191,28 @@ async function hydrateReceipts(
     bankDepositInstanceId: string | null
     paymentGatewayId: string | null
     cashAccountInstanceId: string | null
+    partyInstanceId: string | null
   }>
 ): Promise<Array<UndepositedPaymentRow & ReceiptWritePathFields>> {
   if (page.length === 0) return []
   const ids = page.map((row) => row.id)
 
-  // A receipt is applied to at most one invoice in practice
-  // (`record-payment.ts` applies immediately, one invoice, on write) - net the
-  // apply/unapply pair per invoice per transaction and keep whichever invoice
-  // still nets positive, the same rule `listInvoiceMoneyPayments` reads by.
+  // A hand-recorded receipt applies to one invoice, a channel receipt to one
+  // order; either way the apply/unapply pairs are netted per target and the one
+  // still positive wins, the same rule `listInvoiceMoneyPayments` reads by.
   const applications = await db.query.MoneyApplication.findMany({
     where: and(
       eq(schema.MoneyApplication.organizationId, organizationId),
       inArray(schema.MoneyApplication.moneyTransactionId, ids)
     ),
   })
-  const netByTransaction = new Map<string, Map<string, bigint>>()
-  for (const row of applications) {
-    if (!row.invoiceInstanceId) continue
-    const byInvoice = netByTransaction.get(row.moneyTransactionId) ?? new Map<string, bigint>()
-    const delta = row.operation === 'apply' ? row.amountMinor : -row.amountMinor
-    byInvoice.set(row.invoiceInstanceId, (byInvoice.get(row.invoiceInstanceId) ?? 0n) + delta)
-    netByTransaction.set(row.moneyTransactionId, byInvoice)
-  }
-  const invoiceIdByTransaction = new Map<string, string>()
-  for (const [transactionId, byInvoice] of netByTransaction) {
-    for (const [invoiceInstanceId, net] of byInvoice) {
-      if (net > 0n) {
-        invoiceIdByTransaction.set(transactionId, invoiceInstanceId)
-        break
-      }
-    }
-  }
+  const invoiceIdByTransaction = netAppliedTarget(applications, 'invoiceInstanceId')
+  const orderIdByTransaction = netAppliedTarget(applications, 'orderInstanceId')
+  const [invoiceDefId, orderDefId, contactDefId] = await Promise.all(
+    ['invoice', 'order', 'contact'].map((type) => getCachedEntityDefId(organizationId, type))
+  )
+  const recordId = (defId: string | undefined, instanceId: string | null) =>
+    defId && instanceId ? toRecordId(defId, instanceId) : null
 
   const invoiceIds = [...new Set(invoiceIdByTransaction.values())]
   const invoiceNames = new Map<string, string | null>()
@@ -248,12 +239,47 @@ async function hydrateReceipts(
       reference: row.reference,
       invoiceInstanceId,
       invoiceName: invoiceInstanceId ? (invoiceNames.get(invoiceInstanceId) ?? null) : null,
+      invoiceRecordId: recordId(invoiceDefId, invoiceInstanceId),
+      orderRecordId: recordId(orderDefId, orderIdByTransaction.get(row.id) ?? null),
+      partyRecordId: recordId(contactDefId, row.partyInstanceId),
       currency: row.currency,
       bankDepositId: row.bankDepositInstanceId,
       paymentGatewayId: row.paymentGatewayId,
       cashAccountInstanceId: row.cashAccountInstanceId,
     }
   })
+}
+
+/** Per transaction, the one `key` target its applications still net positive against. */
+function netAppliedTarget(
+  applications: Array<{
+    moneyTransactionId: string
+    operation: string
+    amountMinor: bigint
+    invoiceInstanceId: string | null
+    orderInstanceId: string | null
+  }>,
+  key: 'invoiceInstanceId' | 'orderInstanceId'
+): Map<string, string> {
+  const netByTransaction = new Map<string, Map<string, bigint>>()
+  for (const row of applications) {
+    const target = row[key]
+    if (!target) continue
+    const byTarget = netByTransaction.get(row.moneyTransactionId) ?? new Map<string, bigint>()
+    const delta = row.operation === 'apply' ? row.amountMinor : -row.amountMinor
+    byTarget.set(target, (byTarget.get(target) ?? 0n) + delta)
+    netByTransaction.set(row.moneyTransactionId, byTarget)
+  }
+  const result = new Map<string, string>()
+  for (const [transactionId, byTarget] of netByTransaction) {
+    for (const [target, net] of byTarget) {
+      if (net > 0n) {
+        result.set(transactionId, target)
+        break
+      }
+    }
+  }
+  return result
 }
 
 /** Recorded bank deposits, newest first. */
