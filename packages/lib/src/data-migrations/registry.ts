@@ -35,6 +35,8 @@ import { migration177VendorBillLineLandedBill } from './migrations/177-vendor-bi
 import { migration178VendorCreditLineReturnsStock } from './migrations/178-vendor-credit-line-returns-stock'
 import { migration179RemovePurchaseOrderTaxRecoverable } from './migrations/179-remove-purchase-order-tax-recoverable'
 import { migration180CustomerTransactionGatewayIds } from './migrations/180-customer-transaction-gateway-ids'
+import { migration181RewalkProvisionedChartPacks } from './migrations/181-rewalk-provisioned-chart-packs'
+import { migration182VendorBillAmountDiscounted } from './migrations/182-vendor-bill-amount-discounted'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -184,6 +186,15 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // gateway's authorisation code and its own transaction id, which is what joins
   // an Authorize.net batch member to a Shopify order (authorize-net plan §6).
   migration180CustomerTransactionGatewayIds,
+  // Re-walks every chart pack an org has PARTLY adopted, landing the catalogue
+  // accounts added since it was provisioned: the drift shape. Not a widening —
+  // it writes entity instances through the idempotent chart seeder, not fields
+  // (75 §1.3, 75-D2).
+  migration181RewalkProvisionedChartPacks,
+  // One CURRENCY field on the existing `vendor_bill` def, no backfill: the
+  // early-payment discount's mirror 74 declared and never provisioned
+  // (75 §1.4, 75-D3).
+  migration182VendorBillAmountDiscounted,
 ]
 
 /**
