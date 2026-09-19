@@ -226,6 +226,18 @@
       "import": "./dist/accounting/reports/client.mjs",
       "default": "./src/accounting/reports/client.ts"
     },
+    "./accounting/sales": {
+      "types": "./src/accounting/sales/index.ts",
+      "source": "./src/accounting/sales/index.ts",
+      "import": "./dist/accounting/sales/index.mjs",
+      "default": "./src/accounting/sales/index.ts"
+    },
+    "./accounting/sales/client": {
+      "types": "./src/accounting/sales/client.ts",
+      "source": "./src/accounting/sales/client.ts",
+      "import": "./dist/accounting/sales/client.mjs",
+      "default": "./src/accounting/sales/client.ts"
+    },
     "./actors": {
       "types": "./src/actors/index.ts",
       "source": "./src/actors/index.ts",
@@ -1581,18 +1593,6 @@
       "source": "./src/returns/intake/group.ts",
       "import": "./dist/returns/intake/group.mjs",
       "default": "./src/returns/intake/group.ts"
-    },
-    "./sales": {
-      "types": "./src/sales/index.ts",
-      "source": "./src/sales/index.ts",
-      "import": "./dist/sales/index.mjs",
-      "default": "./src/sales/index.ts"
-    },
-    "./sales/client": {
-      "types": "./src/sales/client.ts",
-      "source": "./src/sales/client.ts",
-      "import": "./dist/sales/client.mjs",
-      "default": "./src/sales/client.ts"
     },
     "./seed": {
       "types": "./src/seed/index.ts",

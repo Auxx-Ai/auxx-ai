@@ -13,6 +13,39 @@ import {
   registerVendorBillBalanceReconcilers,
 } from '../accounting/purchasing/vendor-bill-balance'
 import {
+  BILLING_PROJECTION_ATTRS,
+  guardAllocatedLineDelete,
+  guardAllocatedSourceLineChange,
+  guardBillingConfiguration,
+  guardBillingProjectionWrite,
+  syncBillingAfterInvoiceDelete,
+  syncBillingAfterLineDelete,
+  syncBillingOnInvoiceChange,
+  syncBillingOnLineChange,
+  syncBillingOnWorkOrderChange,
+  syncContactAfterWorkOrderDelete,
+} from '../accounting/sales/billing/hooks'
+import { registerBillingReconcilers } from '../accounting/sales/billing/reconciler'
+import { generateDraftOnCompletion } from '../accounting/sales/invoices/auto-invoice'
+import {
+  pauseMarkupOnPriceEdit,
+  recomputePriceOnMarkupChange,
+  syncCatalogCostOnPartChange,
+} from '../accounting/sales/totals/catalog-pricing'
+import {
+  recomputeCreditMemoAfterLineDelete,
+  recomputeOnCreditMemoLineChange,
+  recomputeOnInvoiceBillingChange,
+  recomputeOnLineChange,
+  recomputeOnOrderBillingChange,
+  recomputeOnPurchaseOrderBillingChange,
+  recomputeOnPurchaseOrderLineChange,
+  recomputeOnQuoteBillingChange,
+  recomputeOnVendorCreditLineChange,
+  recomputeVendorCreditAfterLineDelete,
+} from '../accounting/sales/totals/totals-hooks'
+import { registerMoneyTotalsReconcilers } from '../accounting/sales/totals/totals-reconciler'
+import {
   ensureVisitOnWorkOrderCreate,
   syncVisitPinsOnAddressNormalized,
 } from '../dispatch/visit-hooks'
@@ -34,39 +67,6 @@ import { registerOrderDriftReconcilers } from '../inventory/builds/drift-reconci
 import { derivePhoneGeoOnChange, warmPhoneGeo } from '../phone-geo'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import { repairNameCasing } from '../records/name-case/hook'
-import {
-  BILLING_PROJECTION_ATTRS,
-  guardAllocatedLineDelete,
-  guardAllocatedSourceLineChange,
-  guardBillingConfiguration,
-  guardBillingProjectionWrite,
-  syncBillingAfterInvoiceDelete,
-  syncBillingAfterLineDelete,
-  syncBillingOnInvoiceChange,
-  syncBillingOnLineChange,
-  syncBillingOnWorkOrderChange,
-  syncContactAfterWorkOrderDelete,
-} from '../sales/billing/hooks'
-import { registerBillingReconcilers } from '../sales/billing/reconciler'
-import { generateDraftOnCompletion } from '../sales/invoices/auto-invoice'
-import {
-  pauseMarkupOnPriceEdit,
-  recomputePriceOnMarkupChange,
-  syncCatalogCostOnPartChange,
-} from '../sales/totals/catalog-pricing'
-import {
-  recomputeCreditMemoAfterLineDelete,
-  recomputeOnCreditMemoLineChange,
-  recomputeOnInvoiceBillingChange,
-  recomputeOnLineChange,
-  recomputeOnOrderBillingChange,
-  recomputeOnPurchaseOrderBillingChange,
-  recomputeOnPurchaseOrderLineChange,
-  recomputeOnQuoteBillingChange,
-  recomputeOnVendorCreditLineChange,
-  recomputeVendorCreditAfterLineDelete,
-} from '../sales/totals/totals-hooks'
-import { registerMoneyTotalsReconcilers } from '../sales/totals/totals-reconciler'
 import {
   enrollInvoiceReminderOnSent,
   enrollJobFollowUpOnCompletion,

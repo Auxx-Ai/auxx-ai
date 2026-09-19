@@ -1,6 +1,6 @@
 // apps/web/src/app/(public)/pay/[token]/page.tsx
 
-import { getPublicInvoicePayload } from '@auxx/lib/sales'
+import { getPublicInvoicePayload } from '@auxx/lib/accounting/sales'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { PublicInvoiceDocument } from '~/components/money/ui/public-invoice/public-invoice-document'

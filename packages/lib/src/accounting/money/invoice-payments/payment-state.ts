@@ -28,7 +28,7 @@ import { getOrgCache } from '../../../cache'
 import { firstTyped } from '../../../field-values/client'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
-import { sumInvoiceCreditApplications } from '../../../sales/credit-memos/reads'
+import { sumInvoiceCreditApplications } from '../../sales/credit-memos/reads'
 import type { SyncInvoicePaymentStateInput } from '../types'
 import { listInvoiceMoneyPayments } from './payment-reads'
 

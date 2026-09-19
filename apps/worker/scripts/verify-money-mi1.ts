@@ -18,9 +18,6 @@
 
 import { database } from '@auxx/database'
 import { deleteManualPayment, recordManualPayment } from '@auxx/lib/accounting/money'
-import { onCacheEvent } from '@auxx/lib/cache'
-import { AuxxError } from '@auxx/lib/errors'
-import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import {
   computeDocumentTotals,
   createInvoiceFromWorkOrder,
@@ -28,7 +25,10 @@ import {
   deleteInvoiceLine,
   listUninvoicedLines,
   voidInvoice,
-} from '@auxx/lib/sales'
+} from '@auxx/lib/accounting/sales'
+import { onCacheEvent } from '@auxx/lib/cache'
+import { AuxxError } from '@auxx/lib/errors'
+import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'
 
 /** Build a RecordId string without pulling in `@auxx/types` (not a worker dependency). */
@@ -104,7 +104,7 @@ async function instanceExists(instanceId: string): Promise<boolean> {
  * Active `InvoiceLineAllocation` row whose `invoiceLineItemId` is `copyId` — the allocation-
  * table replacement for reading the removed `line_item_source_line_id` field off a gather copy
  * (entity migration 043 hard-deleted that field; provenance now lives in
- * `packages/lib/src/sales/billing/allocations.ts`'s tables).
+ * `packages/lib/src/accounting/sales/billing/allocations.ts`'s tables).
  */
 async function activeAllocationForCopy(copyId: string) {
   return database.query.InvoiceLineAllocation.findFirst({

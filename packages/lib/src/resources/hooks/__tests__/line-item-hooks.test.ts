@@ -273,7 +273,7 @@ describe('the stamp never moves a total', () => {
     // input. In LINE_TRIGGER_ATTRS it would fire a full document recompute per stamped
     // line for a number that provably did not change — and that set is also the
     // vocabulary the finalize integrity passes match on.
-    const { LINE_TRIGGER_ATTRS } = await import('../../../sales/totals/totals-hooks')
+    const { LINE_TRIGGER_ATTRS } = await import('../../../accounting/sales/totals/totals-hooks')
     expect(LINE_TRIGGER_ATTRS.has('line_item_part')).toBe(false)
     expect(LINE_TRIGGER_ATTRS.has('line_item_catalog_item')).toBe(false)
   })

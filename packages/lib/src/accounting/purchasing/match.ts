@@ -3,7 +3,7 @@
 import { toDateKey } from '@auxx/utils/calendar-day'
 import { isAtPrecision, minorToMajorString, RATE_DECIMALS } from '@auxx/utils/currency'
 import { BadRequestError } from '../../errors'
-import { roundCents } from '../../sales/totals/totals'
+import { roundCents } from '../sales/totals/totals'
 import type { AwaitingLine, MatchLine, MatchReason, MatchResult, MatchTolerance } from './types'
 
 /**

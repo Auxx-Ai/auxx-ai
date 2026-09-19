@@ -1,6 +1,7 @@
 // packages/lib/src/field-hooks/pre/credit-application-guard.ts
+
+import { isCreditApplicationWrite } from '../../accounting/sales/credit-memos/write-scope'
 import { ConflictError } from '../../errors'
-import { isCreditApplicationWrite } from '../../sales/credit-memos/write-scope'
 import type { EntityPreCreateHandler, EntityPreDeleteHandler, FieldPreHookHandler } from '../types'
 
 function requireCommand() {

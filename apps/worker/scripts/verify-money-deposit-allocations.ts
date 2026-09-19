@@ -36,16 +36,16 @@ import {
   recordManualPayment,
   syncInvoicePaymentState,
 } from '@auxx/lib/accounting/money'
-import { setVisitStatus } from '@auxx/lib/dispatch'
-import { AuxxError } from '@auxx/lib/errors'
-import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import {
   createVisitInvoice,
   deleteInvoice,
   getContactBillingOverview,
   getWorkOrderBillingState,
   voidInvoice,
-} from '@auxx/lib/sales'
+} from '@auxx/lib/accounting/sales'
+import { setVisitStatus } from '@auxx/lib/dispatch'
+import { AuxxError } from '@auxx/lib/errors'
+import { UnifiedCrudHandler } from '@auxx/lib/resources'
 
 /** Build a RecordId string without pulling in `@auxx/types` (not a worker dependency). */
 function toRecordId(entityDefinitionId: string, entityInstanceId: string) {

@@ -19,7 +19,6 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import { AuxxError, UnprocessableEntityError } from '../../../errors'
-import { loadInvoiceForIssuance } from '../../../sales/invoices/issuance-reads'
 import { toLedgerMinor } from '../../ledger/builders/basis-hash'
 import { buildDepositApplicationEntry } from '../../ledger/builders/deposit-application'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
@@ -29,6 +28,7 @@ import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import type { GlPostingSourceInput, PostResult } from '../../ledger/types'
+import { loadInvoiceForIssuance } from '../../sales/invoices/issuance-reads'
 
 const logger = createScopedLogger('money-deposit-application-accounting')
 

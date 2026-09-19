@@ -3,8 +3,8 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
-import { readFulfillmentsForOrder } from '../../../sales/fulfillments/reads'
 import { periodKeyForDate } from '../../ledger/periods/periods'
+import { readFulfillmentsForOrder } from '../../sales/fulfillments/reads'
 import { readOrderMoneyCoverage } from './reads'
 import {
   allocateOrderRecognition,

@@ -5,14 +5,14 @@
 // server/read-only for INVOICES; the quote page uses its own client selection wrapper
 // (`public-quote/quote-lines-with-selection.tsx`, money plan 18 §4) instead of this component.
 
-import { formatLineItemUnit, type LineItemUnit } from '@auxx/lib/sales/client'
+import { formatLineItemUnit, type LineItemUnit } from '@auxx/lib/accounting/sales/client'
 import { cn } from '@auxx/ui/lib/utils'
 import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { Fragment } from 'react'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { PhotoGallery } from './photo-gallery'
 
-/** One rendered line — decoupled from `@auxx/lib/sales`'s payload types on purpose so this
+/** One rendered line — decoupled from `@auxx/lib/accounting/sales`'s payload types on purpose so this
  * presentational component never needs a server-only import. */
 export interface PublicDocumentLine {
   name: string

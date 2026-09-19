@@ -1,8 +1,8 @@
 // apps/web/src/app/(public)/pay/[token]/checkout/route.ts
 
 import { createInvoiceCheckoutSession } from '@auxx/lib/accounting/money'
+import { resolveInvoiceByPublicToken } from '@auxx/lib/accounting/sales'
 import { AuxxError } from '@auxx/lib/errors'
-import { resolveInvoiceByPublicToken } from '@auxx/lib/sales'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 

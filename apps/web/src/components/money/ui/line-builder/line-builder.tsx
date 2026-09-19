@@ -26,7 +26,7 @@
 //   server-side field-change hooks (§F.2) recompute lineTotal + quote totals
 //   and publish via realtime back into the same store.
 // - Totals footer: pure client math via `computeDocumentTotals` /
-//   `computeLineTotal` from `@auxx/lib/sales/client` over store values — the
+//   `computeLineTotal` from `@auxx/lib/accounting/sales/client` over store values — the
 //   same function the server hook uses, so the optimistic footer and the
 //   stored mirrors can never disagree.
 // - Add: pushes a purely-local "phantom draft" row (`DraftLine`, line-rows.tsx)

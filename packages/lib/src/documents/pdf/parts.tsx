@@ -5,7 +5,7 @@
 import { formatCurrency } from '@auxx/utils/currency'
 import { Image, Text, View } from '@react-pdf/renderer'
 import { format } from 'date-fns'
-import { formatLineItemUnit, type LineItemUnit } from '../../sales/totals/units'
+import { formatLineItemUnit, type LineItemUnit } from '../../accounting/sales/totals/units'
 import type { PdfPhotoRef } from '../payload'
 import type { DocumentBusinessSettings } from '../resolve-settings'
 import type { createDocumentStyles } from './theme'

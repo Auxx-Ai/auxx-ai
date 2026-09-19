@@ -34,17 +34,6 @@ import {
 } from '@auxx/lib/accounting/money/customer-money'
 import { listRailStrip } from '@auxx/lib/accounting/money/payouts'
 import { listPaymentGateways } from '@auxx/lib/accounting/rails'
-import { conditionGroupsSchema } from '@auxx/lib/conditions'
-import { isRecordConnectorManaged } from '@auxx/lib/data-connectors'
-import { renderPreviewQuotePdf } from '@auxx/lib/documents'
-import { NotFoundError } from '@auxx/lib/errors'
-import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
-import { FeatureKey } from '@auxx/lib/permissions/client'
-import {
-  describeRecurrence,
-  type RecurrencePattern,
-  recurrencePatternSchema,
-} from '@auxx/lib/recurrence'
 import {
   addVisitExtrasToContract,
   approveQuote,
@@ -78,7 +67,18 @@ import {
   setInvoiceSchedule,
   voidInvoice,
   writeOffInvoice,
-} from '@auxx/lib/sales'
+} from '@auxx/lib/accounting/sales'
+import { conditionGroupsSchema } from '@auxx/lib/conditions'
+import { isRecordConnectorManaged } from '@auxx/lib/data-connectors'
+import { renderPreviewQuotePdf } from '@auxx/lib/documents'
+import { NotFoundError } from '@auxx/lib/errors'
+import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
+import { FeatureKey } from '@auxx/lib/permissions/client'
+import {
+  describeRecurrence,
+  type RecurrencePattern,
+  recurrencePatternSchema,
+} from '@auxx/lib/recurrence'
 import { getOrganizationSetting } from '@auxx/lib/settings'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { z } from 'zod'

@@ -2,9 +2,9 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeValue } from '@auxx/database/types'
+import { computeLineTotal, type LineItemUnit, roundCents } from '@auxx/lib/accounting/sales/client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { RecordId } from '@auxx/lib/resources/client'
-import { computeLineTotal, type LineItemUnit, roundCents } from '@auxx/lib/sales/client'
 import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 
 /**
@@ -53,7 +53,7 @@ export type TotalsMode = 'computed' | 'stated' | 'stored' | 'none'
  * which is about the document FOOTER. A document can have one without the other.
  *
  * `derived` — `…_line_total` is `creatable: false` on that line entity and the
- * server totals hook (`packages/lib/src/sales/totals/totals-hooks.ts`) is its only
+ * server totals hook (`packages/lib/src/accounting/sales/totals/totals-hooks.ts`) is its only
  * writer, so the cell renders `qty × unitPrice` and is read-only.
  *
  * 🛑 It USED to be that typing there could only back-solve the rate at whole

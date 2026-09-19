@@ -44,13 +44,13 @@ import type { CustomFieldEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
+import type { TotalledDocumentType } from '../../accounting/sales/totals/totals-hooks'
 import type { EntityFieldChangeEvent } from '../../field-hooks/types'
 import type { CachedField } from '../../field-values/types'
 import type {
   ManifestFieldChange,
   SyncChangeManifest,
 } from '../../record-rules/sync-manifest-types'
-import type { TotalledDocumentType } from '../../sales/totals/totals-hooks'
 
 const logger = createScopedLogger('finalize-integrity')
 
@@ -307,7 +307,7 @@ async function totalsPass(
   resolveDef: DefFieldResolver
 ): Promise<void> {
   try {
-    const totalsHooks = await import('../../sales/totals/totals-hooks')
+    const totalsHooks = await import('../../accounting/sales/totals/totals-hooks')
     const hasAny = (keys: string[], set: ReadonlySet<SystemAttribute>) =>
       keys.some((key) => set.has(key as SystemAttribute))
 

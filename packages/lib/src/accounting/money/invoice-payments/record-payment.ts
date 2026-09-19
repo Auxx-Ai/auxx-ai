@@ -20,7 +20,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
 import { BadRequestError, UnprocessableEntityError } from '../../../errors'
-import { loadInvoiceForIssuance } from '../../../sales/invoices/issuance-reads'
+import { loadInvoiceForIssuance } from '../../sales/invoices/issuance-reads'
 import type { PaymentMethod } from '../client'
 import { insertMovement } from '../commands/insert-movement'
 import { runMoneyCommand } from '../commands/run-money-command'

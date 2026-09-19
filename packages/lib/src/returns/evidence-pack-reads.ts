@@ -27,6 +27,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, asc, eq, inArray } from 'drizzle-orm'
+import { readFulfillmentsForOrder } from '../accounting/sales/fulfillments/reads'
 import { batchGetRelatedDisplayNames } from '../field-values/field-value-helpers'
 import { fetchAttachmentsForEntities } from '../files/attachments'
 import { CREDIT_MEMO_FIELDS } from '../resources/registry/resources/credit-memo-fields'
@@ -39,7 +40,6 @@ import { RETURN_LINE_FIELDS } from '../resources/registry/resources/return-line-
 import { pickSystemAttributes } from '../resources/registry/system-attributes'
 import { type RecordId, toRecordId } from '../resources/resource-id'
 import { readSystemRecords, systemDefId, systemFields } from '../resources/system-records'
-import { readFulfillmentsForOrder } from '../sales/fulfillments/reads'
 import { threadsForRecord } from '../threads'
 import type { ReturnWithLines } from './reads'
 

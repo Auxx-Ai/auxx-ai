@@ -1,6 +1,6 @@
 // apps/web/src/app/(public)/quote/[token]/page.tsx
 
-import { getPublicQuotePayload } from '@auxx/lib/sales'
+import { getPublicQuotePayload } from '@auxx/lib/accounting/sales'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { PublicQuoteDocument } from '~/components/money/ui/public-quote/public-quote-document'

@@ -932,7 +932,7 @@ export async function recalculateAffectedParts(
  */
 async function syncCatalogPricingSafely(orgId: string, changedPartIds: string[]): Promise<void> {
   try {
-    const { syncCatalogItemPricing } = await import('../../sales/totals/catalog-pricing')
+    const { syncCatalogItemPricing } = await import('../../accounting/sales/totals/catalog-pricing')
     await syncCatalogItemPricing(orgId, changedPartIds)
   } catch (error) {
     logger.error('Failed to sync catalog item pricing after part cost recalc', {

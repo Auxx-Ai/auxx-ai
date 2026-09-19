@@ -14,7 +14,6 @@
 // the preview. Record ids cross the wire as `RecordId`.
 
 import { postCustomerRefundAccounting } from '@auxx/lib/accounting/money/customer-money'
-import { PermissionKey } from '@auxx/lib/permissions'
 import {
   applyCreditMemo,
   issueCreditMemo,
@@ -29,7 +28,8 @@ import {
   settleCreditMemo,
   unapplyCreditMemo,
   voidCreditMemo,
-} from '@auxx/lib/sales'
+} from '@auxx/lib/accounting/sales'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '../trpc'

@@ -59,15 +59,15 @@ vi.mock('../../stripe-connect/client', () => ({
   getStripeConnectClient: () => ({ checkout: { sessions: { create: h.create } } }),
 }))
 vi.mock('../../stripe-connect/application-fee', () => ({ resolveApplicationFee: () => 0 }))
-vi.mock('../../../../sales/public-token', () => ({
+vi.mock('../../../sales/public-token', () => ({
   buildPayUrl: (token: string) => `https://auxx.test/pay/${token}`,
   ensureInvoicePublicToken: async () => 'tok-inv',
 }))
-vi.mock('../../../../sales/quotes/quote-public-token', () => ({
+vi.mock('../../../sales/quotes/quote-public-token', () => ({
   buildQuoteViewUrl: (token: string) => `https://auxx.test/quote/${token}`,
   ensureQuotePublicToken: async () => 'tok-quote',
 }))
-vi.mock('../../../../sales/quotes/quote-deposit', () => ({
+vi.mock('../../../sales/quotes/quote-deposit', () => ({
   resolveQuoteDeposit: async () => ({ depositType: 'percent', depositAmount: 10_000 }),
 }))
 vi.mock('../reads', () => ({

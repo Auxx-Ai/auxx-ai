@@ -32,7 +32,7 @@ const loadInvoice = vi.hoisted(() => vi.fn())
 vi.mock('../../../../cache/singletons', () => ({
   getOrgCache: () => ({ get: async () => settings.value }),
 }))
-vi.mock('../../../../sales/invoices/issuance-reads', () => ({
+vi.mock('../../../sales/invoices/issuance-reads', () => ({
   loadInvoiceForIssuance: loadInvoice,
 }))
 // The invoice mirror projection is its own writer with its own test; this one
