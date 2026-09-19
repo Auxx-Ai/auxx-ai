@@ -189,7 +189,9 @@ All event shapes live in `events.ts` (server) and are re-exported from
 
 This is what lets, e.g., `record:updated` carry just the one denormalized column
 that changed, or a `fieldValues:updated` entry carry an AI-status transition with
-no value (`{ key, aiStatus: 'generating' }`).
+no value (`{ key, aiStatus: 'generating' }`). `record:updated`'s `edit` key rides the
+same convention and means all three things: a stamp opens an edit-in-place on the
+record, `null` closes it, absent leaves it alone.
 
 ---
 
