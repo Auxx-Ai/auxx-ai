@@ -87,7 +87,8 @@ export const DataConnectorRun = pgTable(
     // (v2) and `SyncChangeManifestV1` in `@auxx/lib/record-rules` (can't import
     // across the tier boundary — keep in sync BY HAND, including literal `version`).
     // Rows written before the v2 deploy hold the v1 shape — readers upgrade via
-    // `upgradeManifestV1` at the read edge. Null when nothing was captured. See
+    // `upgradeManifestV1` at the read edge. Null when nothing was captured, and
+    // cleared by `run-retention-job` 48h after finalize (a fat one nears 16MB). See
     // plans/events/07-two-tier-sync-capture-plan.md.
     manifest: jsonb().$type<
       | {

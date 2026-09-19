@@ -8,6 +8,9 @@
 // touched since the last sweep can have crossed the threshold — we gate the
 // window function to those active in the last RUN_RETENTION_ACTIVE_HOURS, instead
 // of re-ranking every connector's full partition every night.
+//
+// It also clears the `manifest` jsonb off runs past the consumer window. A manifest
+// reaches ~16MB, so the 200 kept runs are otherwise ~3GB of dead weight per connector.
 
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -27,11 +30,24 @@ const RUN_RETENTION_KEEP = 200
  */
 const RUN_RETENTION_ACTIVE_HOURS = 25
 
+/**
+ * Age past which a finished run's `manifest` is cleared. The `sync:records:changed`
+ * consumers read it within seconds of finalize; 48h covers any redelivery. Not keyed
+ * on `manifestConsumedAt` — that latch is only ever stamped by the record-rules
+ * consumer, so an org with no rules would keep every manifest forever.
+ */
+const MANIFEST_RETENTION_HOURS = 48
+
+/** Runs whose manifest is cleared per statement, so one sweep can't rewrite a huge toast set at once. */
+const MANIFEST_CLEAR_BATCH = 500
+
 interface RunRetentionJobData {
   /** Override the per-connector keep count (default {@link RUN_RETENTION_KEEP}). */
   keep?: number
   /** Override the active-connector window in hours (default {@link RUN_RETENTION_ACTIVE_HOURS}). */
   activeHours?: number
+  /** Override the manifest-clear age in hours (default {@link MANIFEST_RETENTION_HOURS}). */
+  manifestHours?: number
 }
 
 /**
@@ -66,5 +82,34 @@ export async function dataConnectorRunRetentionJob(
   const deleted = result.rowCount ?? 0
   if (deleted > 0) {
     logger.info('Pruned old connector runs', { deleted, keep, activeHours })
+  }
+
+  const cleared = await clearAgedManifests(ctx.data?.manifestHours ?? MANIFEST_RETENTION_HOURS)
+  if (cleared > 0) {
+    logger.info('Cleared aged run manifests', { cleared })
+  }
+}
+
+/**
+ * Null the `manifest` jsonb on finished runs older than `hours`, in batches until
+ * none remain. Survivors keep their counters, `errorSample` and `progress` — the
+ * whole run history still renders, only the worker-internal change set goes.
+ */
+async function clearAgedManifests(hours: number): Promise<number> {
+  let cleared = 0
+  for (;;) {
+    const result = await database.execute(sql`
+      UPDATE "DataConnectorRun" SET manifest = NULL
+      WHERE id IN (
+        SELECT id FROM "DataConnectorRun"
+        WHERE manifest IS NOT NULL
+          AND "finishedAt" IS NOT NULL
+          AND "finishedAt" < now() - (${hours} * interval '1 hour')
+        LIMIT ${MANIFEST_CLEAR_BATCH}
+      )
+    `)
+    const n = result.rowCount ?? 0
+    cleared += n
+    if (n < MANIFEST_CLEAR_BATCH) return cleared
   }
 }

@@ -446,6 +446,7 @@ export async function foldRunManifest(
  * Read the folded manifest from a run row (consumer + publish decision). Returns the
  * STORED shape — rows written before the v2 deploy are still v1; callers upgrade via
  * `upgradeManifestV1` at their read edge (the two `sync:records:changed` consumers do).
+ * Null past the retention window: `run-retention-job` clears manifests after 48h.
  */
 export async function getRunManifest(
   db: Database,
@@ -1398,14 +1399,55 @@ export async function getConnector(
   return row ? ok(row) : err(new Error(`DataConnector not found: ${id}`))
 }
 
-/** List runs for a connector, newest first. */
+/**
+ * The run columns the UI reads. `manifest`, `chainSnapshot` and the cursors are
+ * excluded on purpose — a single manifest reaches ~16MB, so a `SELECT *` over 50
+ * runs OOMs the server serializing rows nobody renders.
+ */
+const RUN_LIST_COLUMNS = {
+  id: true,
+  dataConnectorId: true,
+  organizationId: true,
+  trigger: true,
+  mode: true,
+  status: true,
+  phase: true,
+  sampleLimit: true,
+  fetched: true,
+  created: true,
+  updated: true,
+  skipped: true,
+  archived: true,
+  deleted: true,
+  markedDeleted: true,
+  restored: true,
+  failed: true,
+  relationshipWarnings: true,
+  pagesProcessed: true,
+  rateLimitWaitMs: true,
+  errorSample: true,
+  progress: true,
+  startedAt: true,
+  heartbeatAt: true,
+  finishedAt: true,
+  durationMs: true,
+} as const
+
+/** A run as returned by {@link listRuns} — no manifest, snapshot or cursors. */
+export type DataConnectorRunListRow = Pick<
+  DataConnectorRunRow,
+  keyof typeof RUN_LIST_COLUMNS & keyof DataConnectorRunRow
+>
+
+/** List runs for a connector, newest first. Heavy jsonb columns are not selected. */
 export async function listRuns(
   db: Database,
   organizationId: string,
   dataConnectorId: string,
   limit = 50
-): Promise<DataConnectorRunRow[]> {
+): Promise<DataConnectorRunListRow[]> {
   return db.query.DataConnectorRun.findMany({
+    columns: RUN_LIST_COLUMNS,
     where: and(
       eq(schema.DataConnectorRun.dataConnectorId, dataConnectorId),
       eq(schema.DataConnectorRun.organizationId, organizationId)
