@@ -222,16 +222,16 @@ describe('the union of every pack', () => {
   // `1210 Affirm Clearing` and `6105 Merchant Fees - Affirm` left with the
   // `clearing_affirm` role: a default chart must not name a vendor.
   // The number itself is not the point; being made to state it is.
-  it('totals fifty-six accounts: twenty-seven core, then three, two, nine, four, five, three and three', () => {
+  it('totals fifty-nine accounts: twenty-seven core, then three, two, eleven, five, five, three and three', () => {
     expect(codesOf('core')).toHaveLength(27)
     expect(codesOf('card_rail')).toHaveLength(3)
     expect(codesOf('prepayments')).toHaveLength(2)
-    expect(codesOf('inventory')).toHaveLength(9)
-    expect(codesOf('purchasing')).toHaveLength(4)
+    expect(codesOf('inventory')).toHaveLength(11)
+    expect(codesOf('purchasing')).toHaveLength(5)
     expect(codesOf('payroll')).toHaveLength(5)
     expect(codesOf('fixed_assets')).toHaveLength(3)
     expect(codesOf('debt')).toHaveLength(3)
-    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(56)
+    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(59)
   })
 })
 
@@ -357,8 +357,11 @@ describe('the other packs', () => {
         ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
         ACCOUNT_ROLES.PAYROLL_CLEARING,
         ACCOUNT_ROLES.COGS_PRODUCT_COST,
+        ACCOUNT_ROLES.COGS_DIRECT_LABOR,
         ACCOUNT_ROLES.APPLIED_OVERHEAD,
         ACCOUNT_ROLES.INVENTORY_COUNT_VARIANCE,
+        ACCOUNT_ROLES.BUILD_VARIANCE,
+        ACCOUNT_ROLES.INVENTORY_REVALUATION,
       ].sort()
     )
     expect([...rolesOf('purchasing')].sort()).toEqual(
@@ -367,6 +370,7 @@ describe('the other packs', () => {
         ACCOUNT_ROLES.GRNI,
         ACCOUNT_ROLES.DUTIES_ACCRUAL,
         ACCOUNT_ROLES.PPV,
+        ACCOUNT_ROLES.PURCHASE_TAX,
       ].sort()
     )
     // And the three packs brief 21 added drive no role at all - they exist so a
@@ -429,8 +433,9 @@ describe('the other packs', () => {
     // are still pinned by code; the "no new roles" half is the test below.
     // `6105 Merchant Fees - Affirm` was in this list until 2026-09-10, when it
     // left the chart with `1210` and the `clearing_affirm` role. `2300` took its
-    // place; `3900` was here too until step 5 gave it the opening-balance role.
-    for (const code of ['1000', '3000', '5010', '5030', '2300']) {
+    // place; `3900` was here too until step 5 gave it the opening-balance role,
+    // and `5010` until 73 §6.2 rule 3 gave relief a labour share to split to.
+    for (const code of ['1000', '3000', '5030', '2300']) {
       expect(byCode.get(code)?.role, code).toBeUndefined()
     }
     const packsWithRoleless = new Set(

@@ -67,6 +67,10 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   // An inventory document keys on its own subject id, never on a month.
   inventory_movement: 'INV',
   refund: 'RFD',
+  // 🛑 Keys on `vendor_bill_internal_number`, OURS, and never on
+  // `vendor_bill_number`, THEIRS: the vendor's number is not unique in our org,
+  // and two bills on one period key means the loser converges to
+  // `already_posted` - a SUCCESS - with its payable never recorded.
   vendor_bill: 'BIL',
   // Wave 0 (HANDOFF slot 0B). All five key on a DOCUMENT NUMBER, never a date
   // and never a cuid - see `DocNumberInput.periodKey`.
@@ -96,7 +100,7 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   credit_memo: 'CRM',
   // The supplier's credit note. Keys on `vendor_credit_number` - OURS, `VC-0001`
   // - and never on the supplier's own reference, for exactly the reason
-  // `expense_bill` keys on the internal number: two suppliers may print the same
+  // `vendor_bill` keys on the internal number: two suppliers may print the same
   // credit-note string, and two entries on one period key means the loser
   // converges to `already_posted` with its credit never recorded.
   vendor_credit: 'VCR',
@@ -123,20 +127,6 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   // `already_posted`, exactly as `postPaymentTransaction` does. Skip it and a
   // one-in-2.2e9 fold silently swallows a real entry.
   recurring_journal: 'RJE',
-  // brief 21 §3.2. `BIL` is `vendor_bill`'s and cannot be reused.
-  //
-  // 🛑 Keys on `vendor_bill_internal_number`, OURS, and never on
-  // `vendor_bill_number`, THEIRS. The vendor's number is not unique in our org
-  // and its own registry note says two vendors may legitimately use the same
-  // string. Two bills on one period key contend for one
-  // `(org, expense_bill, key, 0)` tuple and the loser converges to
-  // `already_posted` - a SUCCESS - with its payable never recorded. That is
-  // `build-payment-entry.ts`'s warning wearing a different hat.
-  //
-  // `vendor_bill_internal_number` is `RecordSequence`-issued on create and
-  // unique in the org, so `BILL-0007` mints `AUXX-EXB-BILL0007` (17 of 21) and
-  // survives `-R1` at 20.
-  expense_bill: 'EXB',
 }
 
 /** What identifies one entry of one type. See {@link buildDocNumber}. */

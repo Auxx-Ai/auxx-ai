@@ -19,7 +19,7 @@ import {
   type IntakeFold,
   type IntakeLine,
   parseIntakeUnitPrice,
-} from '@auxx/lib/purchasing/intake/client'
+} from '@auxx/lib/accounting/purchasing/intake/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LinePatch } from '~/components/money/ui/line-builder/line-values'

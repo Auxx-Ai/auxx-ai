@@ -21,7 +21,7 @@ import {
   INTAKE_PHASE_LABELS,
   INTAKE_PHASES,
   type IntakeDraftPhase,
-} from '@auxx/lib/purchasing/intake/client'
+} from '@auxx/lib/accounting/purchasing/intake/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Dialog, DialogContent, DialogFooter } from '@auxx/ui/components/dialog'

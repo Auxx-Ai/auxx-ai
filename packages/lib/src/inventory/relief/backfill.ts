@@ -48,12 +48,11 @@
  *
  * ## Order matters against the builds backfill
  *
- * Relief prices at the part's ledger average and falls back to
- * `part_standard_cost` only when on-hand is <= 0 (`relieve.ts` §3.6). Run this
- * BEFORE the builds backfill has put `build_produce` movements in the ledger
- * and every sale line prices off the fallback, or is skipped entirely as
- * `skippedNoCost` when the part carries no standard cost either. Neither is an
- * error and neither is loud. Builds first, then relief.
+ * Relief prices at the part's frozen `part_standard_cost` (73 §6.2 rule 3) and
+ * skips a line whose part has none, counting it as `skippedNoCost`. Run this
+ * BEFORE the builds backfill has given assembled parts a standard and every
+ * sale line of one is skipped - not an error, and not loud. Builds first, then
+ * relief.
  *
  * No permission checks. A router that exposes this asserts first
  * (`docs/lib-module-guide.md` §6).
@@ -124,7 +123,6 @@ export interface BackfillFulfillmentReliefSummary {
   skippedZeroDelta: number
   /** A real delta that could not be priced at all. Never written at zero. */
   skippedNoCost: number
-  fallbackStandardCostPartIds: string[]
   negativeQoHPartIds: string[]
   /**
    * Batches whose `relieveFulfillmentLines` call returned an error. The run
@@ -189,17 +187,14 @@ export async function backfillFulfillmentRelief(
         skippedNoPart: 0,
         skippedZeroDelta: 0,
         skippedNoCost: 0,
-        fallbackStandardCostPartIds: [],
         negativeQoHPartIds: [],
         batchesFailed: 0,
       }
       if (orderIds.length === 0) return summary
 
       // Accumulated as sets: a part is `affected` once however many batches
-      // touched it, and a part that fell back to standard cost in three
-      // batches is one warning, not three.
+      // touched it, and a part that went negative in three is one warning.
       const affectedPartIds = new Set<string>()
-      const fallbackPartIds = new Set<string>()
       const negativeQoHPartIds = new Set<string>()
 
       const batches = chunk(orderIds, ORDERS_PER_BATCH)
@@ -261,7 +256,6 @@ export async function backfillFulfillmentRelief(
             summary.skippedZeroDelta += value.skippedZeroDelta
             summary.skippedNoCost += value.skippedNoCost
             for (const id of value.affectedPartIds) affectedPartIds.add(id)
-            for (const id of value.fallbackStandardCostPartIds) fallbackPartIds.add(id)
             for (const id of value.negativeQoHPartIds) negativeQoHPartIds.add(id)
           }
         }
@@ -275,7 +269,6 @@ export async function backfillFulfillmentRelief(
       }
 
       summary.affectedPartIds = [...affectedPartIds]
-      summary.fallbackStandardCostPartIds = [...fallbackPartIds]
       summary.negativeQoHPartIds = [...negativeQoHPartIds]
 
       logger.info('relief backfill done', {

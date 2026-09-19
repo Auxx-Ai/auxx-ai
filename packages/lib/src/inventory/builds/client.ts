@@ -151,10 +151,10 @@ export function buildVariance(parts: {
 }
 
 /**
- * The account a build's variance belongs to. Never posted here (README B9) —
- * carried so the number and its destination stay in one place.
+ * The default account behind the `build_variance` role — what the run missed
+ * the standard by, scrap included. Display only; the entry names the role.
  */
-export const BUILD_VARIANCE_ACCOUNT = '5090'
+export const BUILD_VARIANCE_ACCOUNT = '5091'
 
 /**
  * The absorbed amount for one rate over the WHOLE run, in whole minor units.

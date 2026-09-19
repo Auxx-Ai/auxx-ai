@@ -63,6 +63,54 @@ describe('a sale', () => {
     })
   })
 
+  // 73 §6.3: F = 1 material + 5 labour + 3 overhead = 20; four shipped ->
+  // Dr COGS mat 48 / Dr COGS labour 20 / Dr COGS OH 12 / Cr FG 80.
+  it('73 §6.2 rule 3 - splits the debit three ways from the standard it relieved', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'sale',
+      movements: [movement('sm_1', -8_000, FG)],
+      cogsSplit: { laborMinor: 2_000, overheadMinor: 1_200 },
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [ACCOUNT_ROLES.COGS_PRODUCT_COST]: 4_800,
+      [ACCOUNT_ROLES.COGS_DIRECT_LABOR]: 2_000,
+      [ACCOUNT_ROLES.APPLIED_OVERHEAD]: 1_200,
+      [FG]: -8_000,
+    })
+  })
+
+  it('emits no labour or overhead leg for a part whose standard is all material', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'sale',
+      movements: [movement('sm_1', -8_000, FG)],
+      cogsSplit: { laborMinor: 0, overheadMinor: 0 },
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [ACCOUNT_ROLES.COGS_PRODUCT_COST]: 8_000,
+      [FG]: -8_000,
+    })
+  })
+
+  it('flips the split with the movements on an over-relief correction', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'sale',
+      movements: [movement('sm_1', 8_000, FG)],
+      cogsSplit: { laborMinor: -2_000, overheadMinor: -1_200 },
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [ACCOUNT_ROLES.COGS_PRODUCT_COST]: -4_800,
+      [ACCOUNT_ROLES.COGS_DIRECT_LABOR]: -2_000,
+      [ACCOUNT_ROLES.APPLIED_OVERHEAD]: -1_200,
+      [FG]: 8_000,
+    })
+  })
+
   it('flips both sides on an over-relief correction', () => {
     const built = buildInventoryMovementEntry({
       ...BASE,
@@ -78,7 +126,7 @@ describe('a sale', () => {
 })
 
 describe('a receipt', () => {
-  it('debits inventory and credits goods received not invoiced', () => {
+  it('credits goods received not invoiced for the whole cost when nothing was accrued', () => {
     const built = buildInventoryMovementEntry({
       ...BASE,
       kind: 'receive',
@@ -86,6 +134,116 @@ describe('a receipt', () => {
     })!
 
     expect(legs(built.entry)).toEqual({ [RAW]: 50_000, [ACCOUNT_ROLES.GRNI]: -50_000 })
+  })
+
+  // 73 §7.2's worked shipment: M at agreed 12, shipping 1, tariff 25% (3),
+  // other 0 -> landed standard 16. Receiving 10 debits Raw 160 and owes three
+  // parties: the vendor 120, the carrier 10, the broker 30.
+  it('73 §7.2 - splits the credit across grni, freight and duties, with no ppv', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'receive',
+      movements: [
+        {
+          ...movement('sm_1', 16_000),
+          accrual: { grniMinor: 12_000, freightMinor: 1_000, dutiesMinor: 3_000 },
+        },
+      ],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [RAW]: 16_000,
+      [ACCOUNT_ROLES.GRNI]: -12_000,
+      [ACCOUNT_ROLES.FREIGHT_ACCRUAL]: -1_000,
+      [ACCOUNT_ROLES.DUTIES_ACCRUAL]: -3_000,
+    })
+  })
+
+  it('emits no duties leg for an org with no tariffs', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'receive',
+      movements: [
+        {
+          ...movement('sm_1', 13_000),
+          accrual: { grniMinor: 12_000, freightMinor: 1_000, dutiesMinor: 0 },
+        },
+      ],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [RAW]: 13_000,
+      [ACCOUNT_ROLES.GRNI]: -12_000,
+      [ACCOUNT_ROLES.FREIGHT_ACCRUAL]: -1_000,
+    })
+    expect(Object.keys(legs(built.entry))).not.toContain(ACCOUNT_ROLES.DUTIES_ACCRUAL)
+  })
+
+  // 73 §6.3: standard 12, agreed 14, 20 received -> Dr Raw 240 / Dr PPV 40 /
+  // Cr GRNI 280. Debit means the vendor is charging more than standard.
+  it('debits ppv when the agreed price runs above the frozen standard', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'receive',
+      movements: [
+        {
+          ...movement('sm_1', 24_000),
+          accrual: { grniMinor: 28_000, freightMinor: 0, dutiesMinor: 0 },
+        },
+      ],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [RAW]: 24_000,
+      [ACCOUNT_ROLES.GRNI]: -28_000,
+      [ACCOUNT_ROLES.PPV]: 4_000,
+    })
+  })
+
+  it('credits ppv when the agreed price runs below it', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'receive',
+      movements: [
+        {
+          ...movement('sm_1', 24_000),
+          accrual: { grniMinor: 21_500, freightMinor: 0, dutiesMinor: 0 },
+        },
+      ],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [RAW]: 24_000,
+      [ACCOUNT_ROLES.GRNI]: -21_500,
+      [ACCOUNT_ROLES.PPV]: -2_500,
+    })
+  })
+
+  it('sums the accruals across a multi-line receipt and splits inventory by role', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'receive',
+      movements: [
+        {
+          ...movement('sm_1', 16_000),
+          accrual: { grniMinor: 12_000, freightMinor: 1_000, dutiesMinor: 3_000 },
+        },
+        {
+          ...movement('sm_2', 5_000, FG),
+          accrual: { grniMinor: 4_000, freightMinor: 500, dutiesMinor: 0 },
+        },
+      ],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [RAW]: 16_000,
+      [FG]: 5_000,
+      [ACCOUNT_ROLES.GRNI]: -16_000,
+      [ACCOUNT_ROLES.FREIGHT_ACCRUAL]: -1_500,
+      [ACCOUNT_ROLES.DUTIES_ACCRUAL]: -3_000,
+      // 21,000 of standard against 20,500 of estimate: favourable, a credit.
+      [ACCOUNT_ROLES.PPV]: -500,
+    })
   })
 })
 
@@ -147,9 +305,10 @@ describe('a build', () => {
     })
   })
 
-  it('lands the residual in purchase price variance, on the side its sign says', () => {
+  it('lands the residual in BUILD variance, on the side its sign says', () => {
     // Produced value below what the run consumed and absorbed is unfavourable:
-    // a debit. Reading it as a credit would report a loss as a gain.
+    // a debit. Reading it as a credit would report a loss as a gain. Its own
+    // role since 73 §6.2 rule 5 — never `ppv`, which answers a vendor question.
     const built = buildInventoryMovementEntry({
       ...BASE,
       kind: 'build',
@@ -157,7 +316,8 @@ describe('a build', () => {
       absorbed: { laborMinor: 8_000, overheadMinor: 4_000 },
     })!
 
-    expect(legs(built.entry)[ACCOUNT_ROLES.PPV]).toBe(2_000)
+    expect(legs(built.entry)[ACCOUNT_ROLES.BUILD_VARIANCE]).toBe(2_000)
+    expect(legs(built.entry)[ACCOUNT_ROLES.PPV]).toBeUndefined()
   })
 
   it('emits no absorption legs at all when a run absorbed nothing', () => {
@@ -168,6 +328,47 @@ describe('a build', () => {
     })!
 
     expect(legs(built.entry)).toEqual({ [RAW]: -40_000, [FG]: 40_000 })
+  })
+})
+
+describe('a revaluation', () => {
+  // The cost-only document (73 §6.2 rule 2). Its movements carry quantity 0, so
+  // the only thing the builder ever sees is the signed extended cost — which is
+  // why the kind needs no new arithmetic, only its own counter-role.
+  it('debits the inventory roles it restated and credits inventory revaluation', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'revalue',
+      movements: [movement('sm_1', 1_800, RAW), movement('sm_2', 1_200, FG)],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [RAW]: 1_800,
+      [FG]: 1_200,
+      [ACCOUNT_ROLES.INVENTORY_REVALUATION]: -3_000,
+    })
+    expect(built.memberMovementIds).toEqual(['sm_1', 'sm_2'])
+  })
+
+  it('reverses both sides when the standard fell', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'revalue',
+      movements: [movement('sm_1', -2_500, RAW)],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [RAW]: -2_500,
+      [ACCOUNT_ROLES.INVENTORY_REVALUATION]: 2_500,
+    })
+  })
+
+  it('builds nothing when every part it was handed nets to zero', () => {
+    // A roll that moved a standard on a part with no stock on hand. The caller
+    // skips; it is not a refusal.
+    expect(
+      buildInventoryMovementEntry({ ...BASE, kind: 'revalue', movements: [movement('sm_1', 0)] })
+    ).toBeNull()
   })
 })
 
@@ -196,6 +397,52 @@ describe('a return and the opening run', () => {
       [RAW]: 100_000,
       [FG]: 25_000,
       [ACCOUNT_ROLES.EQUITY_OPENING_BALANCE]: -125_000,
+    })
+  })
+})
+
+describe('a return to the vendor', () => {
+  // 73 §8.2, worked: 10 M received at a landed standard of 16 against an agreed
+  // 12; two go back and the vendor credits 24.
+  it('credits inventory at the standard, debits GRNI at what was credited, plugs ppv', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'return_to_vendor',
+      movements: [{ ...movement('sm_1', -3_200), grniReliefMinor: 2_400 }],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [RAW]: -3_200,
+      [ACCOUNT_ROLES.GRNI]: 2_400,
+      [ACCOUNT_ROLES.PPV]: 800,
+    })
+  })
+
+  it('puts the whole frozen cost in GRNI when nothing says what was credited', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'return_to_vendor',
+      movements: [movement('sm_1', -3_200)],
+    })!
+
+    expect(legs(built.entry)).toEqual({ [RAW]: -3_200, [ACCOUNT_ROLES.GRNI]: 3_200 })
+  })
+
+  it('sums several lines and splits the credit by the frozen account', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'return_to_vendor',
+      movements: [
+        { ...movement('sm_1', -3_200, RAW), grniReliefMinor: 2_400 },
+        { ...movement('sm_2', -1_000, FG), grniReliefMinor: 1_000 },
+      ],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [RAW]: -3_200,
+      [FG]: -1_000,
+      [ACCOUNT_ROLES.GRNI]: 3_400,
+      [ACCOUNT_ROLES.PPV]: 800,
     })
   })
 })

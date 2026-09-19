@@ -36,7 +36,6 @@ const h = vi.hoisted(() => ({
         skippedNoPart: 0,
         skippedZeroDelta: 0,
         skippedNoCost: 0,
-        fallbackStandardCostPartIds: [],
         negativeQoHPartIds: [],
       })
     }
@@ -114,7 +113,6 @@ beforeEach(() => {
       skippedNoPart: 0,
       skippedZeroDelta: 0,
       skippedNoCost: 0,
-      fallbackStandardCostPartIds: [],
       negativeQoHPartIds: [],
     })
   })

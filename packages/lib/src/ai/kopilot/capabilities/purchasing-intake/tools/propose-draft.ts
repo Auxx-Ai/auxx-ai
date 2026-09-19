@@ -6,15 +6,15 @@ import type {
   IntakeDraftPayload,
   IntakeFold,
   IntakeLine,
-} from '../../../../../purchasing/intake/client'
+} from '../../../../../accounting/purchasing/intake/client'
 import {
   foldAmountCents,
   parseIntakeMoney,
   parseIntakeUnitPrice,
   resolveIntakeUnitPrice,
   unresolvedLines,
-} from '../../../../../purchasing/intake/client'
-import { markIntakeDraftReady } from '../../../../../purchasing/intake/draft-mutations'
+} from '../../../../../accounting/purchasing/intake/client'
+import { markIntakeDraftReady } from '../../../../../accounting/purchasing/intake/draft-mutations'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 import { refuseUnlessDefViewable, resolveIntakeSession } from './intake-session'

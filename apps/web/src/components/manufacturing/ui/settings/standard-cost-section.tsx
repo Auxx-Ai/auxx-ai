@@ -179,6 +179,18 @@ export function StandardCostSection() {
             </div>
           )}
 
+          {/* How much of the chart is a guess nobody has paid yet (73 §6.4). A
+              provisional standard is replaced by its part's first receipt, not
+              varied against, so the roll's delta is smaller than it looks while
+              this number is short of the total. */}
+          {plan.standardCount > 0 && (
+            <p className='border-border/50 border-t pt-2 text-muted-foreground text-xs'>
+              {plan.confirmedStandardCount} of {plan.standardCount} parts have a confirmed standard.
+              {plan.confirmedStandardCount < plan.standardCount &&
+                ' The rest are provisional — a typed guess, replaced by the part’s first receipt.'}
+            </p>
+          )}
+
           {/* The number this whole preview exists for. */}
           <div className='space-y-1 border-t border-border/50 pt-2 text-xs tabular-nums'>
             <SummaryRow

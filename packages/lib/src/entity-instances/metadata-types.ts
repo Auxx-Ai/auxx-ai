@@ -47,12 +47,26 @@ export type PartMetadata = {
 }
 
 /**
+ * Vendor-bill metadata stored in EntityInstance.metadata
+ * Used when EntityDefinition.entityType = 'vendor_bill'
+ */
+export type VendorBillMetadata = {
+  /** Set while a posted bill is unlocked for editing (73 D4). Absent = locked. */
+  editOpen?: {
+    /** ISO timestamp the Edit button was pressed. */
+    openedAt: string
+    byUserId: string
+  }
+}
+
+/**
  * Union type for all entity metadata types
  */
 export type EntityMetadata =
   | TicketMetadata
   | ContactMetadata
   | PartMetadata
+  | VendorBillMetadata
   | Record<string, unknown>
 
 /**
@@ -64,4 +78,6 @@ export type MetadataByEntityType<T extends string> = T extends 'ticket'
     ? ContactMetadata
     : T extends 'part'
       ? PartMetadata
-      : Record<string, unknown>
+      : T extends 'vendor_bill'
+        ? VendorBillMetadata
+        : Record<string, unknown>

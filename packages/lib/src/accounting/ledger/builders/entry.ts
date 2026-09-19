@@ -14,11 +14,19 @@ import { isAtPrecision } from '@auxx/utils/currency'
 import { UnprocessableEntityError } from '../../../errors'
 // Plain data, no io - the same direction `account-subtype.ts` already takes.
 import { GlAccountSubtype } from '../../../resources/registry/enum-values'
+// Pure arithmetic, no io - 73 §5.2 keeps the spread in one place rather than
+// copying it here. `purchasing/` becomes a sibling of this module in 73 U9.
+import { allocateCapitalisedCost } from '../../purchasing/allocate-landed-cost'
+import type { AllocationBasis, AllocationLine } from '../../purchasing/types'
 import type { GlAccountSubtypeValue } from '../chart/account-subtype'
 // Type-only, so this file stays pure: `default-chart.ts` imports the statement
 // classifications from the registry at runtime, and nothing of that reaches here.
 import type { GlAccountTypeValue } from '../chart/default-chart'
+import { assertCompactablePeriodKey } from '../periods/period-key'
 import type { BuiltEntry, CounterpartyType, GlPostingLineInput, PostingType } from '../types'
+// A cycle with `fulfillment.ts`, which imports this module: safe because every
+// use on both sides is inside a function body, never at module scope.
+import { toAmountMinor } from './fulfillment'
 
 /**
  * The posting ROLES this module emits, in one place.
@@ -194,15 +202,19 @@ export const ACCOUNT_ROLES = {
    * but a unit that ships carries its whole frozen cost - materials, labour and
    * overhead together - out of finished goods. The difference lands here.
    *
-   * There is no `cogs_direct_labor` role and there cannot be one: a
-   * `stock_movement` freezes a single total `unit_cost` and carries no labour or
-   * overhead column, so nothing can say how much of a shipped unit's cost was
-   * labour. Reconstructing it from the part's CURRENT `standardLaborCost` would
-   * value last month's shipments at this month's rates, which is the
-   * restatement the frozen-cost rule exists to prevent. `5010 COGS - Direct
-   * Labor` is therefore in the chart with no role and stays at zero under L1.
+   * Under L1 it held the labour and overhead of a shipped unit as well, for want
+   * of anywhere to split them to. 73 §6.2 rule 3 gives relief the finished
+   * good's own frozen composition, so it lands across this,
+   * {@link ACCOUNT_ROLES.COGS_DIRECT_LABOR} and
+   * {@link ACCOUNT_ROLES.APPLIED_OVERHEAD} instead.
    */
   COGS_PRODUCT_COST: 'cogs_product_cost',
+  /**
+   * COGS - direct labour (default `5010`). The labour share of a relieved unit,
+   * read off the finished good's frozen `part_standard_labor_cost` (73 §6.2
+   * rule 3).
+   */
+  COGS_DIRECT_LABOR: 'cogs_direct_labor',
   /**
    * COGS - applied overhead (default `5020`). Overhead absorbed into inventory
    * this period, credited by the L1 month-end entry.
@@ -226,6 +238,30 @@ export const ACCOUNT_ROLES = {
    * question. Placed at `5095` so it and `5090` read as siblings.
    */
   INVENTORY_COUNT_VARIANCE: 'inventory_count_variance',
+  /**
+   * Build variance (default `5091`). Scrap, and a run that did not close to the
+   * parent's standard.
+   *
+   * 🛑 **Not `ppv`** (73 §6.2 rule 5). A build's residual is "the shop floor
+   * consumed something other than the bill of materials says"; purchase price
+   * variance is "the vendor billed other than we accrued". Different owner,
+   * different remedy - the same argument `G12` makes for count variance.
+   */
+  BUILD_VARIANCE: 'build_variance',
+  /**
+   * Inventory revaluation (default `5092`). The other leg of a `revalue`
+   * movement: a standard-cost roll restating what the on-hand units are worth,
+   * and the first receipt of a provisional part replacing the guess it was
+   * valued at (73 §6.2 rule 2, §6.4).
+   */
+  INVENTORY_REVALUATION: 'inventory_revaluation',
+  /**
+   * Purchase tax (default `5040`). Tax a vendor charges on a goods bill, which
+   * is not in the landed formula and is deliberately kept out of the standard
+   * (73 §7.2). An org that puts it in `vendor_part_other_cost` instead accrues
+   * it with freight and never references this.
+   */
+  PURCHASE_TAX: 'purchase_tax',
 
   // ── Added 2026-09-04 by plans/accounting/HANDOFF.md wave 0 (slot 0A) ──────
   // The roles the revenue, payment, deposit, opening-balance and statement work
@@ -385,9 +421,13 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   grni: 'liability',
   duties_accrual: 'liability',
   cogs_product_cost: 'expense',
+  cogs_direct_labor: 'expense',
   applied_overhead: 'expense',
   ppv: 'expense',
   inventory_count_variance: 'expense',
+  build_variance: 'expense',
+  inventory_revaluation: 'expense',
+  purchase_tax: 'expense',
   accounts_receivable: 'asset',
   undeposited_funds: 'asset',
   clearing: 'asset',
@@ -444,9 +484,13 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   grni: 'Goods Received Not Invoiced',
   duties_accrual: 'Duties Accrual',
   cogs_product_cost: 'COGS - Product Cost',
+  cogs_direct_labor: 'COGS — Direct Labor',
   applied_overhead: 'COGS — Applied Overhead',
   ppv: 'Purchase Price Variance',
   inventory_count_variance: 'Inventory Count Variance',
+  build_variance: 'Build Variance',
+  inventory_revaluation: 'Inventory Revaluation',
+  purchase_tax: 'Purchase Tax',
   accounts_receivable: 'Accounts Receivable',
   undeposited_funds: 'Undeposited Funds',
   clearing: 'Clearing',
@@ -716,100 +760,388 @@ function materialize(
     }))
 }
 
-export interface VendorBillEntryInput {
-  /** The `vendor_bill` row this entry accounts for. */
-  vendorBillId: string
-  periodKey: string
-  /** `YYYY-MM-DD`. */
-  txnDate: string
+/**
+ * The `sourceType` every vendor-bill line carries: the `vendor_bill` record.
+ *
+ * 🛑 One source type for both kinds of bill, because there is one record.
+ * `reports/aging.ts` resolves a payable line whose `sourceType` is
+ * `vendor_bill` through `vendor_bill_number`, `vendor_bill_due_at`,
+ * `vendor_bill_vendor` and `vendor_bill_status`, giving the A/P aging its
+ * label, its due-date bucket, its vendor group and its drawer link.
+ */
+export const VENDOR_BILL_SOURCE_TYPE = 'vendor_bill'
+
+/** The posting type both kinds of bill claim (73 D3). Prefix `BIL`. */
+export const VENDOR_BILL_POSTING_TYPE = 'vendor_bill' as const
+
+/**
+ * One line of the bill, as it is transcribed on the record.
+ *
+ * A line is LINKED (it names a `purchase_order_line`) or UNLINKED. The link is
+ * what decides the debit, and nothing else does: a linked line relieves the
+ * accrual its receipt raised, an unlinked line is coded to an account by hand.
+ */
+export interface VendorBillLineInput {
+  /** The `vendor_bill_line` EntityInstance id. Named in a refusal. */
+  lineId: string
   /**
-   * The portion of the bill that matches an accrued receipt, in minor units:
-   * `SUM(qtyBilled x vendorUnitPrice)` over the matched receipt lines. This is
-   * what is relieved from GRNI, and it is why GRNI had to be credited at the
-   * vendor price in the first place.
+   * `vendor_bill_line_line_total`, integer minor units. Signed: a negative line
+   * (a credit the vendor put on the same document) posts on the other side.
+   * THE one amount the ledger reads - see 73 §5.2.
    */
-  matchedMinor: number
-  /** What the vendor is actually charging, in minor units. */
-  billTotalMinor: number
+  lineTotalMinor: number | null | undefined
+  /** `vendor_bill_line_description`, for the line memo and the refusal. */
+  description?: string | null
+  /** The `purchase_order_line` this line matches, when it names one. */
+  purchaseOrderLineId?: string | null
+  /** `vendor_bill_line_quantity_billed`. Read on a LINKED line only. */
+  quantityBilled?: number | null
+  /**
+   * `purchase_order_line_expected_unit_price`, integer minor units - the agreed
+   * price the receipt credited GRNI at. `null` on a linked line is a REFUSAL:
+   * the line is untyped and there is nothing to relieve the accrual against.
+   */
+  unitPriceExpectedMinor?: number | null
+  /**
+   * `vendor_bill_line_gl_account`. Required on an UNLINKED line; missing is a
+   * refusal naming the line, never a fallback account.
+   */
+  glAccountId?: string | null
+  /** Shipping weight, for a `weight` allocation basis. */
+  weight?: number | null
+}
+
+export interface VendorBillEntryInput {
+  /** The `vendor_bill` EntityInstance id. Becomes every line's `sourceId`. */
+  vendorBillId: string
+  /**
+   * OUR own reference (`'BILL-0007'`), off `vendor_bill_internal_number`. The
+   * claim key and the document number's key.
+   *
+   * 🛑 Never `vendor_bill_number`, the VENDOR's: two vendors may print the same
+   * string, and two bills on one period key means the loser converges to
+   * `already_posted` - a SUCCESS - with its payable never recorded.
+   */
+  internalNumber: string
+  /** `YYYY-MM-DD`. The bill's own `billedAt` - the ACCOUNTING date, never today. */
+  billedAt: string
+  /** The bill's currency; refused when it differs from `ledgerCurrency`. */
+  currency?: string | null
+  /** The one currency the books are kept in. Omit to skip the currency check. */
+  ledgerCurrency?: string
+  /** The bill's lines, in display order. */
+  lines: readonly VendorBillLineInput[]
+  /** `vendor_bill_shipping_total`, integer minor units. */
+  shippingMinor?: number | null
+  /** `vendor_bill_tax_total`, integer minor units. */
+  taxMinor?: number | null
+  /** `vendor_bill_discount`, integer minor units, positive. */
+  discountMinor?: number | null
+  /** The order's `allocation_basis`. Defaults to `value`. */
+  allocationBasis?: AllocationBasis
+  /** `vendor_bill_total`, integer minor units, > 0. Transcribed, never computed. */
+  totalMinor: number | null | undefined
   /**
    * The bill's own vendor - a `company` EntityInstance id - for the
-   * counterparty on the `accounts_payable` line (brief 13 §1.2). Null or
-   * absent still posts; the export is what refuses a payable line with none.
+   * counterparty on the `accounts_payable` line (brief 13 §1.2).
+   *
+   * 🛑 Required in practice even though the ledger posts without it: the
+   * QuickBooks provider refuses a line on an `accounts_payable` account that
+   * carries no counterparty, so an absent vendor makes the EXPORT fail.
    */
   vendorCompanyInstanceId?: string | null
   memo?: string
 }
 
-/**
- * The matched vendor bill entry (build plan 7.5):
+export interface BuiltVendorBillEntry {
+  entry: BuiltEntry
+  /** `internalNumber`, trimmed. The claim key and the document number's key. */
+  periodKey: string
+  /** The payable raised. Equals the bill's stored total. */
+  totalMinor: number
+  /**
+   * What each line bore of the header's shipping, tax and discount, in bill
+   * order and reconciling to those headers to the cent. Nothing in the ledger
+   * reads it - the header legs are one each - but 73 item 11's landed-cost
+   * voucher is the split, so it is returned rather than recomputed later.
+   */
+  allocations: Array<{
+    lineId: string
+    shippingMinor: number
+    taxMinor: number
+    discountMinor: number
+  }>
+}
+
+/** The one vendor-bill entry, for the Post action on either kind of bill (73 D2, D3, D5).
  *
  * ```
- * Dr grni                    the matched portion
- * Dr/Cr ppv                  the residual, if any
- *   Cr accounts_payable      the bill total
+ * linked line     Dr grni                billed qty x expected price
+ *                 Dr/Cr ppv              line total - billed x expected, less its discount share
+ * unlinked line   Dr <its coded account> line total, less its discount share (signed)
+ * shipping        Dr freight_accrual     the header, one leg      (the receipt accrued it)
+ * tax             Dr purchase_tax        the header, one leg
+ *                   Cr accounts_payable  vendor_bill_total        (counterparty: the vendor)
  * ```
  *
- * The residual is `billTotal - matched`. Billed HIGH (positive residual) is a
- * debit to PPV - an unfavourable variance, a cost we did not accrue. Billed LOW
- * is a credit. Exactly zero produces no PPV line at all, which is the ordinary
- * case and should stay visibly ordinary in the register.
+ * 🛑 **Billed-based, and verdict-independent** (73 D2). GRNI is debited at what
+ * the vendor is BILLING at the agreed price, never at what was received. A short
+ * receipt leaves a GRNI debit - *invoiced, not received* - which is the true
+ * statement and which U7's vendor credit clears. The received-based formula that
+ * stood here pushed the unreceived goods' cost into PPV as if it were a price
+ * disagreement, which it is not yet.
  *
- * Note what is NOT here: freight and duty. They were accrued to their own roles
- * on receipt and are relieved by the carrier's and the broker's own bills, on
- * their own schedules. A vendor bill that also carried freight would be two
- * postings, not one line: the accruals are kept apart so each clears against
- * the bill that actually states it.
+ * The entry ties to the bill's transcribed total or it refuses and names the
+ * difference: `Σ line totals + shipping + tax - discount = total`. It never
+ * plugs - a plug is a guess about which account the difference belongs in, and a
+ * wrong guess balances perfectly and is invisible until somebody reads the P&L.
  *
- * @throws {UnprocessableEntityError} on non-integer minor units, or (via
- * `buildEntry`) an entry that does not balance.
+ * @throws {UnprocessableEntityError} on a blank or over-long internal number, a
+ *   currency that differs from the ledger's, a total that is not a positive
+ *   whole number of minor units, an untyped linked line, an unlinked line with
+ *   no `glAccount`, a tie that fails, or (via `buildEntry`) an entry that does
+ *   not balance.
  */
-export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltEntry {
-  const { matchedMinor, billTotalMinor } = input
+export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBillEntry {
+  const { vendorBillId, billedAt, memo, vendorCompanyInstanceId } = input
 
-  assertMinorUnits(matchedMinor, 'Matched portion')
-  assertMinorUnits(billTotalMinor, 'Bill total')
-  if (matchedMinor < 0) {
-    throw new UnprocessableEntityError(
-      `Matched portion must be non-negative, got ${matchedMinor}`,
-      { matchedMinor: String(matchedMinor) }
-    )
-  }
-  if (billTotalMinor <= 0) {
-    throw new UnprocessableEntityError(
-      `Bill total must be positive, got ${billTotalMinor} - a vendor credit is a separate posting`,
-      { billTotalMinor: String(billTotalMinor) }
-    )
-  }
-
-  const residualMinor = billTotalMinor - matchedMinor
-
-  const drafts: DraftLine[] = [
-    {
-      accountRole: ACCOUNT_ROLES.GRNI,
-      direction: 'debit',
-      amount: matchedMinor,
-      memo: input.memo ?? 'Relieve goods received not invoiced',
-    },
-    {
-      accountRole: ACCOUNT_ROLES.PPV,
-      direction: residualMinor >= 0 ? 'debit' : 'credit',
-      amount: Math.abs(residualMinor),
-      memo: 'Purchase price variance',
-    },
-    {
-      accountRole: ACCOUNT_ROLES.ACCOUNTS_PAYABLE,
-      direction: 'credit',
-      amount: billTotalMinor,
-      ...(input.vendorCompanyInstanceId
-        ? { counterpartyType: 'vendor' as const, counterpartyId: input.vendorCompanyInstanceId }
-        : {}),
-    },
-  ]
-
-  return buildEntry({
-    postingType: 'vendor_bill',
-    periodKey: input.periodKey,
-    txnDate: input.txnDate,
-    lines: materialize(drafts, { sourceType: 'vendor_bill', sourceId: input.vendorBillId }),
+  const number = assertCompactablePeriodKey({
+    value: input.internalNumber,
+    label: 'Bill reference',
+    remedy:
+      'Shorten the vendor bill sequence prefix, or record the payable with a manual journal ' +
+      'entry instead.',
+    context: { vendorBillId },
   })
+
+  const currency = input.currency?.trim() || input.ledgerCurrency
+  if (input.ledgerCurrency && currency !== input.ledgerCurrency) {
+    throw new UnprocessableEntityError(
+      `Bill ${number} is in ${currency} and the ledger is kept in ${input.ledgerCurrency}. ` +
+        'Posting it would use an implied 1.0 rate, so it is refused rather than mis-stated.',
+      { vendorBillId, number, currency: String(currency), ledgerCurrency: input.ledgerCurrency }
+    )
+  }
+
+  // `FieldValue.valueNumber` is a `doublePrecision` column, so `12000` can read
+  // back as `11999.999999999998`. `toAmountMinor` rounds the double's own noise
+  // floor and refuses a genuinely fractional value.
+  const totalMinor = toAmountMinor(input.totalMinor, `Bill ${number} total`)
+  if (totalMinor <= 0) {
+    throw new UnprocessableEntityError(
+      `Bill ${number} totals ${totalMinor}. A bill raises a payable, which is a positive whole ` +
+        'number of minor units - a vendor credit is its own document, not a negative bill.',
+      { vendorBillId, number, totalMinor: String(totalMinor) }
+    )
+  }
+
+  const shippingMinor = toAmountMinor(input.shippingMinor, `Bill ${number} shipping`)
+  const taxMinor = toAmountMinor(input.taxMinor, `Bill ${number} tax`)
+  const discountMinor = toAmountMinor(input.discountMinor, `Bill ${number} discount`)
+
+  // ── Every line read and refused before anything is built ─────────────────
+  // Batched rather than fail-fast: a bill with four uncoded lines names all
+  // four, so the bookkeeper fixes them in one pass instead of four.
+  const uncoded: string[] = []
+  const untyped: string[] = []
+  const read: Array<{
+    line: VendorBillLineInput
+    label: string
+    amountMinor: number
+    /** Set on a linked line that is fully typed. */
+    grniMinor: number | null
+    glAccountId: string | null
+  }> = []
+  let lineSumMinor = 0
+
+  for (const [index, line] of input.lines.entries()) {
+    const label = line.description?.trim() || `Line ${index + 1}`
+    const amountMinor = toAmountMinor(line.lineTotalMinor, `Bill ${number} ${label}`)
+    lineSumMinor += amountMinor
+
+    if (line.purchaseOrderLineId) {
+      if (line.unitPriceExpectedMinor == null || line.quantityBilled == null) {
+        untyped.push(label)
+        continue
+      }
+      const grniMinor = Math.round(line.quantityBilled * line.unitPriceExpectedMinor)
+      read.push({ line, label, amountMinor, grniMinor, glAccountId: null })
+      continue
+    }
+
+    const glAccountId = line.glAccountId?.trim()
+    // A zero line needs no account: `buildEntry` refuses a leg that moves
+    // nothing, so it is dropped rather than refused. Checked after the drop.
+    if (!glAccountId && amountMinor !== 0) {
+      uncoded.push(label)
+      continue
+    }
+    read.push({ line, label, amountMinor, grniMinor: null, glAccountId: glAccountId ?? null })
+  }
+
+  if (untyped.length > 0) {
+    throw new UnprocessableEntityError(
+      `Bill ${number} has ${untyped.length === 1 ? 'a line' : `${untyped.length} lines`} matched ` +
+        `to a purchase order line with no quantity or agreed price to compare: ` +
+        `${untyped.join(', ')}. Type the quantity billed, or unlink the line and code it to an ` +
+        'account.',
+      { vendorBillId, number, lines: untyped.join(', ') }
+    )
+  }
+
+  if (uncoded.length > 0) {
+    throw new UnprocessableEntityError(
+      `Bill ${number} has ${uncoded.length === 1 ? 'a line' : `${uncoded.length} lines`} with no ` +
+        `GL account: ${uncoded.join(', ')}. Code ${uncoded.length === 1 ? 'it' : 'them'} to an ` +
+        'account, or match it to a purchase order line - there is no default expense account to ' +
+        'fall back on, and guessing one puts real money somewhere nobody will ever look.',
+      { vendorBillId, number, lines: uncoded.join(', ') }
+    )
+  }
+
+  // ── The tie (73 §5.2) ────────────────────────────────────────────────────
+  const tied = lineSumMinor + shippingMinor + taxMinor - discountMinor
+  if (tied !== totalMinor) {
+    const difference = totalMinor - tied
+    throw new UnprocessableEntityError(
+      `Bill ${number} totals ${totalMinor} but its lines, shipping, tax and discount come to ` +
+        `${tied}, a difference of ${difference}. A bill's total is transcribed from the vendor's ` +
+        'document and never recomputed, so the entry ties to it or it does not post. Correct ' +
+        'whichever figure was mis-keyed rather than letting the difference land on an account ' +
+        'nothing chose.',
+      {
+        vendorBillId,
+        number,
+        totalMinor: String(totalMinor),
+        linesMinor: String(lineSumMinor),
+        shippingMinor: String(shippingMinor),
+        taxMinor: String(taxMinor),
+        discountMinor: String(discountMinor),
+        differenceMinor: String(difference),
+      }
+    )
+  }
+
+  const spread = spreadHeaders(
+    read.map((row) => ({
+      lineTotal: row.amountMinor,
+      quantity: row.line.quantityBilled ?? 0,
+      weight: row.line.weight ?? undefined,
+    })),
+    { shippingMinor, taxMinor, discountMinor, basis: input.allocationBasis ?? 'value' }
+  )
+
+  const drafts: DraftLine[] = []
+  const idLines: GlPostingLineInput[] = []
+  const source = { sourceType: VENDOR_BILL_SOURCE_TYPE, sourceId: vendorBillId }
+
+  read.forEach((row, index) => {
+    // The discount reduces what the line cost us: on a linked line that is a
+    // favourable PPV credit, on a coded line a smaller debit (73 §5.2).
+    const netMinor = row.amountMinor - (spread.discount[index] ?? 0)
+    if (row.grniMinor !== null) {
+      drafts.push({
+        accountRole: ACCOUNT_ROLES.GRNI,
+        direction: 'debit',
+        amount: row.grniMinor,
+        memo: `${row.label} - relieve goods received not invoiced`,
+      })
+      const ppvMinor = netMinor - row.grniMinor
+      drafts.push({
+        accountRole: ACCOUNT_ROLES.PPV,
+        direction: ppvMinor >= 0 ? 'debit' : 'credit',
+        amount: Math.abs(ppvMinor),
+        memo: `${row.label} - purchase price variance`,
+      })
+      return
+    }
+    if (netMinor === 0 || !row.glAccountId) return
+    idLines.push({
+      ...source,
+      // The IDENTITY, never a role and never a code: the expense account is the
+      // BOOKKEEPER's own pick out of THEIR chart, and most of a chart carries no
+      // auxx role at all. `buildEntry` refuses a line that names two.
+      glAccountId: row.glAccountId,
+      direction: netMinor > 0 ? ('debit' as const) : ('credit' as const),
+      amount: Math.abs(netMinor),
+      memo: row.label,
+      sortOrder: 0,
+    })
+  })
+
+  // The header legs, one each, decided by 73 §7.2: the receipt already accrued
+  // the freight this vendor is billing on the same invoice, so shipping clears
+  // that accrual; tax is not in the landed formula and is its own expense.
+  drafts.push({
+    accountRole: ACCOUNT_ROLES.FREIGHT_ACCRUAL,
+    direction: 'debit',
+    amount: shippingMinor,
+    memo: `Bill ${number} - freight`,
+  })
+  drafts.push({
+    accountRole: ACCOUNT_ROLES.PURCHASE_TAX,
+    direction: 'debit',
+    amount: taxMinor,
+    memo: `Bill ${number} - purchase tax`,
+  })
+  drafts.push({
+    accountRole: ACCOUNT_ROLES.ACCOUNTS_PAYABLE,
+    direction: 'credit',
+    amount: totalMinor,
+    memo: memo ?? `Bill ${number}`,
+    ...(vendorCompanyInstanceId
+      ? { counterpartyType: 'vendor' as const, counterpartyId: vendorCompanyInstanceId }
+      : {}),
+  })
+
+  const roleLines = materialize(drafts, source)
+  const lines = [...idLines, ...roleLines].map((line, index) => ({ ...line, sortOrder: index }))
+
+  return {
+    entry: buildEntry({
+      postingType: VENDOR_BILL_POSTING_TYPE,
+      periodKey: number,
+      txnDate: billedAt,
+      lines,
+    }),
+    periodKey: number,
+    totalMinor,
+    allocations: read.map((row, index) => ({
+      lineId: row.line.lineId,
+      shippingMinor: spread.shipping[index] ?? 0,
+      taxMinor: spread.tax[index] ?? 0,
+      discountMinor: spread.discount[index] ?? 0,
+    })),
+  }
+}
+
+/**
+ * The three header amounts spread over the lines, each reconciling to its header
+ * exactly.
+ *
+ * The discount is always by VALUE (73 §5.2); shipping and tax follow the order's
+ * own basis. A basis that needs a quantity falls back to `value` when any line
+ * carries none, because an expense bill's lines routinely do and refusing the
+ * post over an allocation the ledger does not read would be the wrong trade.
+ */
+function spreadHeaders(
+  lines: AllocationLine[],
+  header: { shippingMinor: number; taxMinor: number; discountMinor: number; basis: AllocationBasis }
+): { shipping: number[]; tax: number[]; discount: number[] } {
+  const basis =
+    header.basis !== 'value' && lines.some((line) => !(line.quantity > 0)) ? 'value' : header.basis
+  // `allocateCapitalisedCost` refuses a non-positive quantity on any basis; under
+  // `value` it never reads one, so the placeholder is invisible.
+  const rows = lines.map((line) => ({ ...line, quantity: line.quantity > 0 ? line.quantity : 1 }))
+  const one = (amount: number, only: AllocationBasis): number[] =>
+    allocateCapitalisedCost(
+      rows,
+      { shipping: amount, tax: 0, discount: 0, taxRecoverable: false },
+      only
+    )
+  return {
+    shipping: one(header.shippingMinor, basis),
+    tax: one(header.taxMinor, basis),
+    discount: one(header.discountMinor, 'value'),
+  }
 }

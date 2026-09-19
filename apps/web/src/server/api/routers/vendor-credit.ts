@@ -12,7 +12,6 @@
 // writes to the books or moves A/P, `ledgerView` for the reads and the preview.
 
 import { postVendorRefundAccounting, recordVendorRefund } from '@auxx/lib/accounting/money'
-import { PermissionKey } from '@auxx/lib/permissions'
 import {
   applyVendorCredit,
   createVendorCredit,
@@ -24,7 +23,8 @@ import {
   settleVendorCredit,
   unapplyVendorCredit,
   voidVendorCredit,
-} from '@auxx/lib/purchasing'
+} from '@auxx/lib/accounting/purchasing'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '../trpc'
@@ -42,6 +42,8 @@ const lineSchema = z.object({
   glAccountInstanceId: z.string().min(1).optional(),
   partRecordId: recordIdSchema.optional(),
   purchaseOrderLineRecordId: recordIdSchema.optional(),
+  /** 73 §8.2: issuing this line sends the goods back. Needs a part. */
+  returnsStock: z.boolean().optional(),
 })
 
 export const vendorCreditRouter = createTRPCRouter({
@@ -97,6 +99,7 @@ export const vendorCreditRouter = createTRPCRouter({
                   .entityInstanceId,
               }
             : {}),
+          ...(line.returnsStock ? { returnsStock: true } : {}),
         })),
       })
     }),

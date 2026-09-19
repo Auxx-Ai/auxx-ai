@@ -6,7 +6,7 @@ import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { LINE_ITEM_UNIT_OPTIONS } from '../../../sales/totals/units'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import { CostSource, PartKind, StockStatus } from '../enum-values'
+import { CostSource, PartKind, PartStandardCostSource, StockStatus } from '../enum-values'
 import type { ResourceField } from '../field-types'
 import { defineResourceFields } from '../system-attributes'
 
@@ -940,6 +940,37 @@ export const PART_FIELDS = defineResourceFields({
     description:
       'When the current standard took effect. Stamped by rollStandardCost — the delta ' +
       'between part_cost and part_standard_cost since this date is what tells you a roll is due',
+  },
+
+  // 🛑 The one `part_standard_*` field that IS a table column by default: a
+  // provisional standard is a number nobody has paid yet, and the parts list is
+  // where somebody notices (73 §6.4).
+  standardCostSource: {
+    id: toFieldId('standardCostSource'),
+    key: 'standardCostSource',
+    label: 'Standard Cost Source',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'part_standard_cost_source',
+    systemSortOrder: 'a5iV',
+    nullable: true,
+    showInPanel: false,
+    showInTable: true,
+    showInDialogs: false,
+    options: { options: PartStandardCostSource.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description:
+      'Whether the frozen standard is a typed guess (provisional) or came off a receipt ' +
+      "(confirmed). A provisional part's first receipt REPLACES the standard with the agreed " +
+      'price and posts no purchase price variance',
   },
 
   // ─── Per-part absorption overrides (plans/money/tasks/22) ───────────

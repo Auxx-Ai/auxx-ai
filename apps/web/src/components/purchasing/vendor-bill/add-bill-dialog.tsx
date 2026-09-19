@@ -2,13 +2,13 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import {
   BILL_INTAKE_PHASE_LABELS,
   BILL_INTAKE_PHASES,
   type BillIntakePhase,
   type BillIntakeRunView,
-} from '@auxx/lib/purchasing/bill-intake/client'
+} from '@auxx/lib/accounting/purchasing/bill-intake/client'
+import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import type { RelationshipConfig, SelectOption } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
 import { type RecordId, toRecordId } from '@auxx/types/resource'

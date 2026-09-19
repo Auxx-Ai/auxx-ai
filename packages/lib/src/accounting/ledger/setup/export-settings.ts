@@ -57,7 +57,6 @@ export function avenueOfPostingType(postingType: PostingType): ExportAvenue | nu
     case 'invoice_issued':
     case 'write_off':
       return 'invoice'
-    case 'expense_bill':
     case 'vendor_bill':
     // A vendor credit rides the buy-side avenue: its auto-post mode is the
     // expense bill's, and no new avenue was added for it (71 U7, decision 2).

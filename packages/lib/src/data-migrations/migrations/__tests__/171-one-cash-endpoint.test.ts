@@ -36,16 +36,16 @@ describe('migration 171', () => {
 })
 
 describe('rematerialiseStatusOptions', () => {
-  it('drops the two money values and keeps the six lifecycle ones', () => {
+  // The registry has since shrunk again (73 D1's second half, migration 172), so
+  // the three verdict values survive THIS pass as unknown options and 172 removes
+  // them. What 171 owns is the two money values.
+  it('drops the two money values', () => {
     const next = rematerialiseStatusOptions(LEGACY_OPTIONS, VendorBillStatus.values)
-    expect(next?.map((option) => option.value)).toEqual([
-      'draft',
-      'awaiting_receipt',
-      'matched',
-      'exception',
-      'posted',
-      'void',
-    ])
+    expect(next?.map((option) => option.value)).not.toContain('paid')
+    expect(next?.map((option) => option.value)).not.toContain('partially_paid')
+    expect(next?.map((option) => option.value)).toEqual(
+      expect.arrayContaining(['draft', 'posted', 'void'])
+    )
   })
 
   it("keeps an org's own label on a value it edited", () => {

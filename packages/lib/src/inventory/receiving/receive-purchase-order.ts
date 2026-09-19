@@ -57,12 +57,14 @@ import {
   systemFields,
 } from '../../resources/system-records'
 import { batchRecalculateQoH } from '../costing/qoh'
+import { readStandardCost } from '../costing/standard-cost-queries'
 import { type StockMovementInput, writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
 import { assertCostFieldsMaterialized } from '../movements/cost-fields'
 import type { MovementRecord } from '../movements/types'
+import { computeReceiptAccrual, landedUnitEstimate, type ReceiptAccrualTerms } from './accruals'
 import { guard } from './guard'
-import { readPartKind } from './receipt-queries'
+import { readPartKind, readVendorPartCostInputs } from './receipt-queries'
 import { setFirstStandardCostFromReceipt } from './receive-stock'
 import type { ReceivePurchaseOrderInput, ReceivePurchaseOrderLineInput } from './types'
 
@@ -77,7 +79,9 @@ const PO_LINE_PICK = pickSystemAttributes(PURCHASE_ORDER_LINE_FIELDS, [
 type PoLineAttribute = (typeof PO_LINE_PICK)[number]
 
 /**
- * Receive a purchase order, valuing every line at its agreed price.
+ * Receive a purchase order, valuing every line at the part's frozen STANDARD
+ * (73 §6.2 rule 1) and accruing the landed components the standard already
+ * contains to the parties that will bill for them (§7.2).
  *
  * Each line becomes one `receive` movement with its `purchaseOrderLine` set —
  * which is what lets `quantityReceived` roll up from the ledger instead of being
@@ -85,9 +89,10 @@ type PoLineAttribute = (typeof PO_LINE_PICK)[number]
  * bill against.
  *
  * 🛑 **The price is read here, not received here.** Any price on the wire is
- * ignored; the value frozen onto the movement is
+ * ignored; the AGREED price is
  * `purchase_order_line_expected_unit_price`, read server-side from the line
- * being received against. The PO's agreed price previously reached the ledger by
+ * being received against, and it is what `grni` is credited at and what the
+ * match compares. The PO's agreed price previously reached the ledger by
  * round-tripping through an editable text box, so a browser could value stock at
  * any number it asserted — receipt 3 on PO-0001 is stored at $200.00 against an
  * agreed $12.50, and the three-way match cannot see it because the match reads
@@ -130,6 +135,32 @@ export async function receivePurchaseOrder(
 
       const occurredAt = input.occurredAt ?? new Date()
 
+      // 73 §7.2: the standard is LANDED, so the receipt accrues freight and duty
+      // to the parties that will bill for them. The adders come off the supplier
+      // row the buyer chose on the order line, resolved at the receipt's own
+      // date; the BASE stays the order's agreed price, because D2's bill debits
+      // `grni` at that figure and the accrual has to close against it.
+      const terms: ReceiptAccrualTerms[] = await Promise.all(
+        lines.map(async (line, index) => {
+          const agreedUnitPrice = unitCosts[index]!
+          if (!line.vendorPartId) return { agreedUnitPrice }
+          const read = await readVendorPartCostInputs(
+            db,
+            organizationId,
+            line.vendorPartId,
+            occurredAt
+          )
+          if (read.isErr() || !read.value) return { agreedUnitPrice }
+          return {
+            agreedUnitPrice,
+            shippingCost: read.value.shippingCost,
+            tariffRate: read.value.tariffRate,
+            otherCost: read.value.otherCost,
+          }
+        })
+      )
+      const landedEstimates = terms.map((line) => landedUnitEstimate(line))
+
       const partDefId = await requireCachedEntityDefId(organizationId, 'part')
       const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
       if (!movementDefId) {
@@ -159,8 +190,33 @@ export async function receivePurchaseOrder(
       // one is missing, so two lines of the same part must run in the order the
       // caller sent them, exactly as the per-line delegation this replaces did.
       for (let i = 0; i < lines.length; i++) {
-        await setFirstStandardCostFromReceipt(db, organizationId, lines[i]!.partId, unitCosts[i]!)
+        await setFirstStandardCostFromReceipt(
+          db,
+          organizationId,
+          lines[i]!.partId,
+          landedEstimates[i]!,
+          userId
+        )
       }
+
+      // 73 §6.2 rule 1: the movement is valued at the STANDARD, read after the
+      // step above so a part whose provisional guess was just replaced is
+      // received at what replaced it. The landed estimate is the fallback for a
+      // part with no readable standard — the pre-73 valuation, and a `ppv` of
+      // zero, rather than a receipt nobody can post.
+      const standards = await readStandardCost(
+        db,
+        organizationId,
+        lines.map((line) => line.partId)
+      )
+      const unitValues = lines.map(
+        (line, index) =>
+          (standards.isOk() ? standards.value.get(line.partId)?.standardCost : null) ??
+          landedEstimates[index]!
+      )
+      const accruals = lines.map((line, index) =>
+        computeReceiptAccrual(terms[index]!, line.quantity)
+      )
 
       // The movements and the ONE entry that raises them, together — a
       // multi-line receipt is one document, not N (TARGET §5).
@@ -170,16 +226,22 @@ export async function receivePurchaseOrder(
           partInstanceId: line.partId,
           type: 'receive',
           quantity: line.quantity,
-          unitCost: unitCosts[i]!,
-          // A receipt is the first writer of `actual`: this cost is what was
-          // paid, not what the standard cost roll-up expects it to have been.
-          costBasis: 'actual',
+          unitCost: unitValues[i]!,
+          // 73 §6.2 rule 1. A receipt freezes the STANDARD: every consume and
+          // every relief leaves at standard, so a receipt at the agreed price
+          // left the difference sitting in the inventory account with no
+          // quantity behind it, forever.
+          costBasis: 'standard',
           glAccount: glAccounts[i]!,
           occurredAt,
-          // The same number in both roles, and that is the point: with nothing
-          // capitalised at receipt the landed cost IS the agreed price, and
-          // `vendorUnitPrice` carries it as provenance for the three-way match.
+          // The agreed price, unchanged: it is what the three-way match compares
+          // the vendor's bill against, and what `grni` is credited at.
           vendorUnitPrice: unitCosts[i]!,
+          accrued: {
+            freightMinor: accruals[i]!.freightMinor,
+            dutiesMinor: accruals[i]!.dutiesMinor,
+            tariffRate: terms[i]!.tariffRate ?? undefined,
+          },
           reference: input.reference,
           reason: input.reason,
           links: { vendorPartId: line.vendorPartId, purchaseOrderLineId: line.purchaseOrderLineId },
@@ -204,11 +266,16 @@ export async function receivePurchaseOrder(
             : {}),
           txnDate: inventoryTxnDate(occurredAt),
           movements: records
-            .filter((record) => record.glAccount && record.extendedCost !== 0)
-            .map((record) => ({
+            // `records` is in `lines` order, so the accrual pairs by index —
+            // filtered together, or a dropped row would take its accrual's
+            // credit legs with it and leave the entry plugging the gap to `ppv`.
+            .map((record, i) => ({ record, accrual: accruals[i]! }))
+            .filter(({ record }) => record.glAccount && record.extendedCost !== 0)
+            .map(({ record, accrual }) => ({
               id: record.movementId,
               extendedCostMinor: record.extendedCost,
               glAccountRole: record.glAccount as string,
+              accrual,
             })),
           actorUserId: userId,
         })

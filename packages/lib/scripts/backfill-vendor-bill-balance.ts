@@ -20,7 +20,7 @@
 import { database } from '@auxx/database'
 import { sql } from 'drizzle-orm'
 // Relative import on purpose — see the note in backfill-po-line-rollups.ts.
-import { recalculateVendorBillBalance } from '../src/purchasing/vendor-bill-balance'
+import { recalculateVendorBillBalance } from '../src/accounting/purchasing/vendor-bill-balance'
 
 /** Every (org, vendor bill) pair where a total has been keyed. */
 async function billsWithATotal(): Promise<{ org: string; bill: string }[]> {

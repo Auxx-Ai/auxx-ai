@@ -19,8 +19,9 @@
  *
  * 🛑 **This function touches no existing `stock_movement`. Ever.** A mid-period
  * standard change is a one-time revaluation of ON-HAND inventory, never a
- * restatement of history. The revaluation delta is computed and RETURNED; it is
- * not posted, because GL posting is out of scope for this directory (README B9).
+ * restatement of history. Since 73 §6.2 rule 2 the delta is POSTED, through new
+ * `revalue` movements of quantity 0 — which is still not a restatement: the
+ * rows that froze last month's cost are untouched.
  *
  * No permission checks: the router asserts before calling
  * (`docs/lib-module-guide.md` section 6).
@@ -31,6 +32,7 @@ import type { CustomFieldEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
+import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
@@ -40,8 +42,11 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../../realtime'
+import { resolveInventoryRoleForPartKind } from '../movements/client'
+import type { PartKindValue } from './client'
 import { recalculateAllPartCosts } from './cost-calculator'
 import { guard } from './guard'
+import { type RevaluationLine, writeRevaluation } from './revalue'
 import { planStandardCostRoll, type StandardCostFields } from './standard-cost-queries'
 import type { RollStandardCostInput, StandardCostRollLine, StandardCostRollResult } from './types'
 
@@ -51,7 +56,11 @@ const logger = createScopedLogger('builds:standard-cost')
 const WRITE_BATCH_SIZE = 20
 
 /** One field of one part, already reduced to the value that will be stored. */
-type StandardFieldValue = { type: 'number'; value: number } | { type: 'date'; value: string } | null
+type StandardFieldValue =
+  | { type: 'number'; value: number }
+  | { type: 'date'; value: string }
+  | { type: 'option'; optionId: string }
+  | null
 
 interface PendingWrite {
   field: CustomFieldEntity
@@ -75,9 +84,19 @@ interface PendingWrite {
  *    date forward would erase the one signal that says how stale it is. The
  *    writes follow the same bottom-up order and stop at the first failure, so a
  *    roll can never freeze a parent and then fail before the children under it.
- * 4. Return the revaluation delta. Never post it.
+ * 4. Post the revaluation: one `revalue` movement per part that moved and holds
+ *    stock, and one `inventory_movement` entry over all of them, in a single
+ *    transaction under the accounting commit lock (73 §6.2 rule 2).
  *
- * @returns the plan that was executed plus `writtenPartIds`.
+ * ⚠️ Step 4 runs AFTER step 3 and outside its writes. The standards have to be
+ * the ones on the record before the entry that values the shelf at them lands,
+ * and step 3 deliberately holds no transaction across ~1000 field-value writes.
+ * A failure in step 4 leaves the new standards written and nothing posted,
+ * which the close's `inventory_unposted` blocker reports; re-running the roll
+ * finds nothing changed and posts nothing, so the recovery is to revalue by
+ * hand rather than to roll again.
+ *
+ * @returns the plan that was executed, `writtenPartIds`, and what was posted.
  */
 export async function rollStandardCost(
   db: Database,
@@ -92,7 +111,11 @@ export async function rollStandardCost(
       await recalculateAllPartCosts(organizationId)
 
       // Step 2.
-      const { partDefId, fields, plan } = await planStandardCostRoll(db, organizationId, input)
+      const { partDefId, fields, plan, stored } = await planStandardCostRoll(
+        db,
+        organizationId,
+        input
+      )
 
       // Step 3.
       const writtenPartIds = await persistStandardCosts(db, organizationId, userId, {
@@ -102,6 +125,14 @@ export async function rollStandardCost(
         lines: plan.lines,
       })
 
+      // Step 4.
+      const revaluation = await postRollRevaluation(db, organizationId, userId, {
+        lines: plan.lines,
+        writtenPartIds,
+        partKinds: stored.partKinds,
+        effectiveAt: plan.effectiveAt,
+      })
+
       logger.info('Rolled standard cost', {
         organizationId,
         scopedPartIds: input.partIds?.length ?? 'all',
@@ -109,17 +140,72 @@ export async function rollStandardCost(
         written: writtenPartIds.length,
         skipped: plan.skipped.length,
         revaluationDelta: plan.revaluationDelta,
+        revaluationPostedMinor: revaluation.postedMinor,
         initialValue: plan.initialValue,
         laborRateDeclared: plan.rates.laborCostPerUnit != null,
         overheadRateDeclared: plan.rates.overheadCostPerUnit != null,
       })
 
-      // Step 4. Computed and returned, never posted (README B9).
-      return { ...plan, writtenPartIds }
+      return {
+        ...plan,
+        writtenPartIds,
+        revaluationMovementIds: revaluation.movementIds,
+        revaluationPostedMinor: revaluation.postedMinor,
+      }
     },
     'Failed to roll standard cost',
     { organizationId, partIds: input.partIds?.length ?? 'all' }
   )
+}
+
+/**
+ * Step 4: restate the on-hand stock the roll just repriced (73 §6.2 rule 2).
+ *
+ * Only the lines that were actually WRITTEN post — a part whose field writes
+ * failed still carries its old standard, and revaluing it would move the
+ * account away from `qty x standard` rather than toward it.
+ *
+ * 🛑 **`isInitial` lines never post.** A part that had no standard is being
+ * valued for the first time, not revalued: its stock came in through a receipt
+ * or an opening run that already booked what it was worth. The plan keeps the
+ * two apart in `initialValue` for exactly this reason.
+ */
+async function postRollRevaluation(
+  db: Database,
+  organizationId: string,
+  userId: string,
+  args: {
+    lines: readonly StandardCostRollLine[]
+    writtenPartIds: readonly string[]
+    partKinds: ReadonlyMap<string, PartKindValue>
+    effectiveAt: Date
+  }
+): Promise<{ movementIds: string[]; postedMinor: number }> {
+  const written = new Set(args.writtenPartIds)
+  const lines: RevaluationLine[] = []
+
+  for (const line of args.lines) {
+    if (!written.has(line.partId)) continue
+    if (line.isInitial || line.previousStandardCost == null) continue
+    const extendedDeltaMinor = roundMinorUnits(line.revaluationDelta)
+    if (extendedDeltaMinor === 0) continue
+    lines.push({
+      partInstanceId: line.partId,
+      unitDeltaMinor: line.standardCost - line.previousStandardCost,
+      extendedDeltaMinor,
+      glAccountRole: resolveInventoryRoleForPartKind(args.partKinds.get(line.partId) ?? null),
+    })
+  }
+
+  if (lines.length === 0) return { movementIds: [], postedMinor: 0 }
+
+  const posted = await writeRevaluation(db, organizationId, userId, {
+    lines,
+    occurredAt: args.effectiveAt,
+    reason: 'Standard cost roll',
+  })
+  if (posted.isErr()) throw posted.error
+  return posted.value
 }
 
 /**
@@ -159,6 +245,18 @@ async function persistStandardCosts(
         { field: fields.overhead, value: numberValue(line.standardOverheadCost) },
         { field: fields.standard, value: numberValue(line.standardCost) },
         { field: fields.effectiveAt, value: { type: 'date', value: effectiveAtIso } },
+        // Absent on an org short of migration 173, and a `null` source is
+        // written as a CLEAR for the same reason the absorption rates are.
+        ...(fields.source
+          ? [
+              {
+                field: fields.source,
+                value: line.standardCostSource
+                  ? ({ type: 'option', optionId: line.standardCostSource } as const)
+                  : null,
+              },
+            ]
+          : []),
       ] satisfies PendingWrite[],
     }))
 

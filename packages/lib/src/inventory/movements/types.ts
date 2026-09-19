@@ -84,6 +84,18 @@ export interface StockMovementInput {
    * Three-way-match provenance, `receive-stock.ts` only.
    */
   vendorUnitPrice?: number
+  /**
+   * A receipt's audit trail for the two accrual legs its entry posts (73 §7.2):
+   * what it credited `freight_accrual` and `duties_accrual`, extended, and the
+   * duty rate in force when it was valued. The two receiving doors are the only
+   * writers; every other caller leaves it undefined.
+   */
+  accrued?: {
+    freightMinor?: number
+    dutiesMinor?: number
+    /** A PERCENTAGE - `25` means 25%. */
+    tariffRate?: number
+  }
 }
 
 /** One `stock_movement` this call wrote, back to the caller. */

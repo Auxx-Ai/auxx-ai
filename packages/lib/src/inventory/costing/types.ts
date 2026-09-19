@@ -1,6 +1,6 @@
 // packages/lib/src/inventory/costing/types.ts
 
-import type { PartKindValue } from './client'
+import type { PartKindValue, StandardCostSourceValue } from './client'
 
 /**
  * The two `manufacturing.*` org settings, per assembled unit, in minor units.
@@ -89,6 +89,10 @@ export interface StandardCostRollLine extends StandardCostComponents {
   partKind: PartKindValue
   /** The standard this part carried before the roll. `null` = never rolled. */
   previousStandardCost: number | null
+  /** `part_standard_cost_source` as stored. `null` = rolled before the field existed. */
+  previousStandardCostSource: StandardCostSourceValue | null
+  /** What the roll will stamp: `confirmed` only when every child already is (73 §6.4). */
+  standardCostSource: StandardCostSourceValue | null
   /** `part_quantity_on_hand`, or 0 when the part has never been counted. */
   quantityOnHand: number
   /**
@@ -132,12 +136,22 @@ export interface StandardCostRollPlan {
   initialValue: number
   /** Parts in scope that cannot be valued at all. */
   skipped: SkippedPart[]
+  /** ORG-WIDE, not scope-wide: parts carrying a usable standard at all. */
+  standardCount: number
+  /** Of {@link standardCount}, how many came off a receipt (73 §6.4). */
+  confirmedStandardCount: number
 }
 
 /** What a roll DID. */
 export interface StandardCostRollResult extends StandardCostRollPlan {
   /** The parts whose field values were actually written. */
   writtenPartIds: string[]
+  /**
+   * The `revalue` movements the roll posted for its revaluation delta, and the
+   * signed amount that reached `inventory_revaluation` (73 §6.2 rule 2).
+   */
+  revaluationMovementIds: string[]
+  revaluationPostedMinor: number
 }
 
 /** Input to {@link rollStandardCost} and {@link previewStandardCostRoll}. */
@@ -167,16 +181,12 @@ export interface RollStandardCostInput {
 
 /**
  * The part's ledger-derived average unit cost
- * (plans/money/tasks/50-batch-inventory-relief.md §3.3-§3.4) - the cost a
- * relief movement freezes onto itself instead of `part_standard_cost`, which
- * §3.1 shows drifts permanently whenever a standard-cost roll's revaluation
- * delta goes unposted (and it is never posted, by design).
+ * (plans/money/tasks/50-batch-inventory-relief.md §3.3-§3.4).
  *
- * `valueMinor` and `quantity` are the signed sums a relief movement's cost is
- * derived from - `unitCostMinor` is just `valueMinor / quantity`, carried
- * alongside because a caller pricing a positive relief delta wants the ratio,
- * while a caller checking §4.2's "would this go negative" warning wants the
- * quantity on its own.
+ * ⚠️ **A report since 73 §6.2 rule 3, not a relief basis.** It priced relief
+ * only because a roll's revaluation delta went unposted; rule 2 posts it, and
+ * relief is back at `part_standard_cost`. `quantity` is still read live by
+ * `relieve.ts` for §4.2's "would this go negative" warning.
  */
 export interface PartLedgerAverage {
   partInstanceId: string
@@ -187,10 +197,8 @@ export interface PartLedgerAverage {
   /**
    * `valueMinor / quantity`, rounded, or NULL when `quantity <= 0`.
    *
-   * §3.6: a non-positive quantity has no average at all. The caller falls
-   * back to `part_standard_cost` and warns naming the part - that fallback is
-   * the CALLER's job, not this read's; it never guesses on this module's
-   * behalf.
+   * §3.6: a non-positive quantity has no average at all - reported as an
+   * absence rather than guessed at on a caller's behalf.
    */
   unitCostMinor: number | null
 }
@@ -198,7 +206,7 @@ export interface PartLedgerAverage {
 /**
  * What one fulfillment line has already been relieved at (§3.5) - the price a
  * negative relief delta (an un-relieving row, written when a fulfillment is
- * down-revised) must use instead of today's ledger average, so a quantity
+ * down-revised) must use instead of today's standard, so a quantity
  * correction can never make inventory value appear or disappear out of
  * nothing (§3.5's worked example: relieve 5 at $4,000, un-relieve 2 at
  * $4,200, and $400 appears from nowhere).

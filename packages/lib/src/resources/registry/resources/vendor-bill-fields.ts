@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import { VendorBillStatus } from '../enum-values'
+import { VendorBillMatchStatus, VendorBillStatus } from '../enum-values'
 import { defineResourceFields } from '../system-attributes'
 
 /**
@@ -19,7 +19,8 @@ import { defineResourceFields } from '../system-attributes'
  *
  * Money is stored in **integer minor units** throughout.
  *
- * The header totals (`subtotal`, `shippingTotal`, `taxTotal`, `total`) are
+ * The header totals (`subtotal`, `shippingTotal`, `taxTotal`, `discount`,
+ * `total`) are
  * deliberately NOT computed, unlike their `purchase_order` namesakes: they are
  * transcribed from the vendor's paper. Recomputing them from the lines would
  * silently correct the vendor's own arithmetic, which is precisely the
@@ -353,6 +354,34 @@ export const VENDOR_BILL_FIELDS = defineResourceFields({
     description: 'Tax as the vendor stated it, integer minor units',
   },
 
+  discount: {
+    id: toFieldId('discount'),
+    key: 'discount',
+    label: 'Discount',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'vendor_bill_discount',
+    systemSortOrder: 'aBV',
+    nullable: true,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'The trade discount as the vendor stated it, integer minor units and positive - it is ' +
+      'SUBTRACTED from the lines, shipping and tax to reach the total',
+  },
+
   total: {
     id: toFieldId('total'),
     key: 'total',
@@ -379,6 +408,40 @@ export const VENDOR_BILL_FIELDS = defineResourceFields({
     description:
       'What the vendor is asking for, integer minor units — keyed from their document, not ' +
       're-derived from the lines',
+  },
+
+  /**
+   * The MATCH axis (task 73 D1) — the three-way match's verdict, beside
+   * `status`'s lifecycle and `paymentStatus`'s money.
+   *
+   * One writer: `purchasing/match-hook.ts`, which recomputes it on every line
+   * write and every receipt. A posted, paid bill still matches: the verdict has
+   * no ledger effect, and a short shipment found after payment is exactly what
+   * the queue exists to surface.
+   */
+  matchStatus: {
+    id: toFieldId('matchStatus'),
+    key: 'matchStatus',
+    label: 'Match Status',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'vendor_bill_match_status',
+    systemSortOrder: 'aC1',
+    nullable: true,
+    options: { options: VendorBillMatchStatus.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false, // the three-way match hook is the only writer
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description:
+      'Whether this bill agrees with its purchase order and its receipts — computed by the ' +
+      'three-way match',
+    defaultValue: VendorBillMatchStatus.NONE,
   },
 
   // Written by the three-way match hook, never by hand. A variance someone can
@@ -639,6 +702,35 @@ export const VENDOR_BILL_FIELDS = defineResourceFields({
       isInverse: true,
     },
     description: 'Shares of a vendor credit applied to this bill',
+  },
+
+  // `unlink`, not `cascade`: a carrier's or broker's bill is a document of its
+  // own with its own payable, and it survives the goods bill it references
+  // losing its row (73 §7.2). Nothing here is owned.
+  landedCostLines: {
+    id: toFieldId('landedCostLines'),
+    key: 'landedCostLines',
+    label: 'Landed Cost Lines',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'vendor_bill_landed_cost_lines',
+    systemSortOrder: 'aJ3',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'vendor_bill_line:landedBill' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'unlink',
+      isInverse: true,
+    },
+    description: "Freight and duty lines on other vendors' bills, charged against this shipment",
   },
 
   // The vendor's own paper — the bill itself, as a single FILE value

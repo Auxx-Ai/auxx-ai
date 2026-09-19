@@ -31,6 +31,7 @@ interface BillDraft {
   subtotal: number | null
   shippingTotal: number | null
   taxTotal: number | null
+  discount: number | null
   total: number | null
 }
 
@@ -41,6 +42,7 @@ const EMPTY_DRAFT: BillDraft = {
   subtotal: null,
   shippingTotal: null,
   taxTotal: null,
+  discount: null,
   total: null,
 }
 
@@ -65,6 +67,7 @@ const AMOUNT_LABELS = {
   subtotal: 'Subtotal',
   shippingTotal: 'Shipping',
   taxTotal: 'Tax',
+  discount: 'Discount',
 } as const
 
 export interface ManualBillFormProps {
@@ -194,6 +197,7 @@ export function ManualBillForm({
         vendor_bill_subtotal: draft.subtotal,
         vendor_bill_shipping_total: draft.shippingTotal,
         vendor_bill_tax_total: draft.taxTotal,
+        vendor_bill_discount: draft.discount,
         vendor_bill_total: draft.total,
       },
     })
@@ -294,7 +298,7 @@ export function ManualBillForm({
               triggerProps={{ className: 'ps-0' }}
             />
           </FieldPanelRow>
-          {(['subtotal', 'shippingTotal', 'taxTotal'] as const).map((key) => (
+          {(['subtotal', 'shippingTotal', 'taxTotal', 'discount'] as const).map((key) => (
             <FieldPanelRow key={key} title={AMOUNT_LABELS[key]} type={BaseType.NUMBER} showIcon>
               <FieldInputAdapter
                 fieldType={FieldType.CURRENCY}

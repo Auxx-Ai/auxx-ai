@@ -261,14 +261,13 @@ interface Refusal {
  * nothing anywhere stops a reviewer coding a bank line straight into `1310`,
  * and the next month-end assertion absorbs it into the COGS plug silently.
  *
- * `expense_bill` keeps it for exactly the reason `bank_transaction` does
- * (brief 21 §3.2). Its debit legs are `vendor_bill_line.glAccount`, a picker
- * over the WHOLE chart, and `SINGLE_WRITER_ROLES_BY_POSTING_TYPE.expense_bill`
- * is `[]` - correctly, because only its A/P credit carries a role. Without this
- * line nothing stops a bill line being coded straight into `1310`, and the next
- * month-end assertion absorbs it into the COGS plug silently. (Inventory
- * bought on a purchase order is the L3 `vendor_bill`/`receipt` story, which is
- * governed by `findWriterConflicts` and is not this type.)
+ * `vendor_bill` keeps it for exactly the reason `bank_transaction` does. An
+ * unmatched line's debit leg is `vendor_bill_line.glAccount`, a picker over the
+ * WHOLE chart, and `SINGLE_WRITER_ROLES_BY_POSTING_TYPE.vendor_bill` is `[]` -
+ * correctly, because its accrual and variance legs name roles that are not
+ * inventory accounts. Without this line nothing stops a bill line being coded
+ * straight into `1310`, and the next month-end assertion absorbs it into the
+ * COGS plug silently.
  *
  * `recurring_journal` keeps it because it IS a `manual_journal` that a
  * scheduler re-types every month (brief 21 §1). More urgently, in fact: a
@@ -285,7 +284,7 @@ const CODE_ENTRY_TYPES = new Set<PostingType>([
   'manual_journal',
   'bank_transaction',
   'write_off',
-  'expense_bill',
+  'vendor_bill',
   'recurring_journal',
 ])
 

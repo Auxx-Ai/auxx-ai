@@ -1,7 +1,7 @@
 // apps/web/src/components/purchasing/vendor-bill/bill-read-banner.tsx
 'use client'
 
-import { proposalSummary } from '@auxx/lib/purchasing/bill-intake/client'
+import { proposalSummary } from '@auxx/lib/accounting/purchasing/bill-intake/client'
 import type { RecordId } from '@auxx/types/resource'
 import { formatDistanceToNow } from 'date-fns'
 import { AlertTriangle, ChevronRight, ScanSearch } from 'lucide-react'

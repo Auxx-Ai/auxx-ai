@@ -69,9 +69,11 @@ import {
   Link2,
   PackageSearch,
   Plus,
+  Ship,
   Tag,
   Tags,
   TriangleAlert,
+  Undo2,
   Weight,
   X,
 } from 'lucide-react'
@@ -179,6 +181,19 @@ export type MatchKeyEditorRenderer = (props: {
   onChange: (next: RecordId | null) => void
   scopeRecordId: RecordId | null
   currencyCode: string
+}) => ReactNode
+
+/**
+ * Renders the picker for a line's LANDED BILL, supplied by the consumer for the
+ * same reason {@link MatchKeyEditorRenderer} is (73 §7.2).
+ *
+ * Unscoped, unlike the match key: the goods bill a carrier's freight line names
+ * belongs to a different vendor, so this document's own order says nothing about
+ * which bills may be offered.
+ */
+export type LandedBillEditorRenderer = (props: {
+  value: RecordId | null
+  onChange: (next: RecordId | null) => void
 }) => ReactNode
 
 /**
@@ -1302,12 +1317,16 @@ function LineRowMenu({
   showCategory = true,
   showTaxable = true,
   showMatchKey = false,
+  showLandedBill = false,
   showGlAccount = false,
   showWeight = false,
+  showReturnsStock = false,
+  returnsStock = false,
   hasDescription,
   hasCategory,
   hasPhotos,
   hasMatchKey = false,
+  hasLandedBill = false,
   hasGlAccount = false,
   hasWeight = false,
   onEditDescription,
@@ -1316,8 +1335,10 @@ function LineRowMenu({
   onToggleTaxable,
   onToggleOptional,
   onSetMatchKey,
+  onSetLandedBill,
   onSetGlAccount,
   onSetWeight,
+  onToggleReturnsStock,
   onDelete,
   extraItems,
 }: {
@@ -1333,14 +1354,25 @@ function LineRowMenu({
   showTaxable?: boolean
   /** `schema.attrs.purchaseOrderLineRecordId !== null` — a bill line's match key. */
   showMatchKey?: boolean
+  /** `schema.attrs.landedBillRecordId !== null` — a bill line's landed-cost link. */
+  showLandedBill?: boolean
   /** `schema.attrs.glAccount !== null`. */
   showGlAccount?: boolean
   /** `schema.attrs.weight !== null` — a purchase order line's allocation basis. */
   showWeight?: boolean
+  /**
+   * `schema.attrs.returnsStock !== null` AND the row names a part — a vendor
+   * credit line's "these goods went back" flag (73 §8.2). A credit line with no
+   * part has nothing to send back, so the item is not offered at all rather
+   * than offered and refused at issue.
+   */
+  showReturnsStock?: boolean
+  returnsStock?: boolean
   hasDescription: boolean
   hasCategory: boolean
   hasPhotos: boolean
   hasMatchKey?: boolean
+  hasLandedBill?: boolean
   hasGlAccount?: boolean
   /**
    * Whether THIS row already carries a weight — the item's label only.
@@ -1357,8 +1389,10 @@ function LineRowMenu({
   onToggleTaxable: (next: boolean) => void
   onToggleOptional: (next: boolean) => void
   onSetMatchKey?: () => void
+  onSetLandedBill?: () => void
   onSetGlAccount?: () => void
   onSetWeight?: () => void
+  onToggleReturnsStock?: (next: boolean) => void
   onDelete: () => void
   /**
    * Caller-supplied `DropdownMenuItem`s, rendered above the delete separator.
@@ -1413,6 +1447,12 @@ function LineRowMenu({
           <MenuShortcut keys={['⇧', 'K']} />
         </DropdownMenuItem>
       )}
+      {showLandedBill && onSetLandedBill && (
+        <DropdownMenuItem onSelect={onSetLandedBill}>
+          <Ship />
+          {hasLandedBill ? 'Change goods bill' : 'Landed cost for a bill'}
+        </DropdownMenuItem>
+      )}
       {showGlAccount && onSetGlAccount && (
         <DropdownMenuItem onSelect={onSetGlAccount}>
           <Landmark />
@@ -1427,6 +1467,13 @@ function LineRowMenu({
         <DropdownMenuItem onSelect={onSetWeight}>
           <Weight />
           {hasWeight ? 'Change weight' : 'Set weight'}
+        </DropdownMenuItem>
+      )}
+      {/* No shortcut, for the same reason the weight item has none. */}
+      {showReturnsStock && onToggleReturnsStock && (
+        <DropdownMenuItem onSelect={() => onToggleReturnsStock(!returnsStock)}>
+          <Undo2 />
+          {returnsStock ? 'Keep the stock' : 'Returns stock to vendor'}
         </DropdownMenuItem>
       )}
       {extraItems}
@@ -1480,6 +1527,10 @@ function LinePartCellView({
   description,
   matchKeyAttribute,
   matchKeyRecordId,
+  landedBillAttribute,
+  landedBillRecordId,
+  renderLandedBillEditor,
+  onPickLandedBill,
   matchScopeRecordId,
   renderMatchKeyEditor,
   currencyCode,
@@ -1488,6 +1539,9 @@ function LinePartCellView({
   weightAttribute,
   weight,
   weightRevealed = false,
+  returnsStockAttribute = null,
+  returnsStock = false,
+  onToggleReturnsStock,
   readOnly,
   onPickPart,
   onCommitDescription,
@@ -1507,6 +1561,11 @@ function LinePartCellView({
   /** `schema.attrs.purchaseOrderLineRecordId` — `null` on a line with no match key. */
   matchKeyAttribute: string | null
   matchKeyRecordId: RecordId | null
+  /** `schema.attrs.landedBillRecordId` — `null` on every document but the bill. */
+  landedBillAttribute: string | null
+  landedBillRecordId: RecordId | null
+  renderLandedBillEditor?: LandedBillEditorRenderer
+  onPickLandedBill: (recordId: RecordId | null) => void
   /** Resolved by the builder from `schema.matchScopeAttr`; scopes the picker. */
   matchScopeRecordId: RecordId | null
   renderMatchKeyEditor?: MatchKeyEditorRenderer
@@ -1517,6 +1576,10 @@ function LinePartCellView({
   /** `schema.attrs.weight` — `null` on every document but the purchase order. */
   weightAttribute: string | null
   weight: number | null
+  /** `schema.attrs.returnsStock` — `null` on every document but the vendor credit. */
+  returnsStockAttribute?: string | null
+  returnsStock?: boolean
+  onToggleReturnsStock?: (next: boolean) => void
   /**
    * Whether the weight cell is a STANDING control on this row.
    *
@@ -1584,17 +1647,27 @@ function LinePartCellView({
    * match key has none — its picker writes through on select.
    */
   const [edit, setEdit] = useState<
-    { field: 'description' | 'glAccount' | 'weight'; value: string } | { field: 'matchKey' } | null
+    | { field: 'description' | 'glAccount' | 'weight'; value: string }
+    | { field: 'matchKey' }
+    | { field: 'landedBill' }
+    | null
   >(null)
 
   // The match key is only editable where the consumer supplied an editor for it;
   // see MatchKeyEditorRenderer for why this is a render prop and not an import.
   const showMatchKey = !!matchKeyAttribute && !!renderMatchKeyEditor && !readOnly
+  const showLandedBill = !!landedBillAttribute && !!renderLandedBillEditor && !readOnly
   const showGlAccount = !!glAccountAttribute && !readOnly
   const showWeight = !!weightAttribute && !readOnly
+  // 🛑 Gated on the row naming a PART, not just on the field existing: a credit
+  // line with no part has nothing to send back, and `issueVendorCredit` refuses
+  // a flagged one by name. Offering the toggle there would put the refusal a
+  // click away from the person instead of out of reach.
+  const showReturnsStock =
+    !!returnsStockAttribute && !!onToggleReturnsStock && !!partRecordId && !readOnly
 
   const confirmText = () => {
-    if (!edit || edit.field === 'matchKey') return
+    if (!edit || edit.field === 'matchKey' || edit.field === 'landedBill') return
     const trimmed = edit.value.trim()
     setEdit(null)
     if (edit.field === 'description') return onCommitDescription(trimmed || null)
@@ -1759,6 +1832,21 @@ function LinePartCellView({
     )
   }
 
+  // The landed-bill slot — the same write-through-on-select shape as the match
+  // key above, with no scope: the goods bill belongs to another vendor.
+  if (edit?.field === 'landedBill' && renderLandedBillEditor) {
+    return (
+      <div ref={rootRef} className='flex min-w-0 flex-1 items-center gap-1 py-1'>
+        <div className='min-w-0 flex-1'>
+          {renderLandedBillEditor({ value: landedBillRecordId, onChange: onPickLandedBill })}
+        </div>
+        <TreeRowButton persistent tooltipText='Done' onClick={() => setEdit(null)}>
+          <Check />
+        </TreeRowButton>
+      </div>
+    )
+  }
+
   // At rest - composes the `line-grid` kit's `PartCell` (money/tasks/56 §3.7):
   // description/match-key/GL-account/weight all become `chips` this cell
   // owns, and money's own `LineRowMenu` becomes the `menu` slot. The chip
@@ -1774,8 +1862,14 @@ function LinePartCellView({
           <Link2 className='size-3.5 shrink-0 text-muted-foreground' />
         </SimpleTooltip>
       )}
+      {landedBillRecordId && (
+        <SimpleTooltip content='A landed cost for another bill'>
+          <Ship className='size-3.5 shrink-0 text-muted-foreground' />
+        </SimpleTooltip>
+      )}
       {glAccount && <GlAccountChip glAccountId={glAccount} />}
       {weight !== null && <WeightChip weight={weight} />}
+      {returnsStock && <ReturnsStockChip />}
       {chips}
     </>
   ) : (
@@ -1810,6 +1904,17 @@ function LinePartCellView({
         </TreeRowButton>
       )}
 
+      {showLandedBill && landedBillRecordId && (
+        <TreeRowButton
+          persistent
+          tabIndex={-1}
+          tooltipText='A landed cost for another bill — click to change'
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setEdit({ field: 'landedBill' })}>
+          <Ship />
+        </TreeRowButton>
+      )}
+
       {showGlAccount && glAccount && (
         <GlAccountChip
           glAccountId={glAccount}
@@ -1829,6 +1934,10 @@ function LinePartCellView({
         />
       )}
 
+      {showReturnsStock && returnsStock && (
+        <ReturnsStockChip onClick={() => onToggleReturnsStock?.(false)} />
+      )}
+
       {chips}
     </>
   )
@@ -1846,12 +1955,16 @@ function LinePartCellView({
       showCategory={false}
       showTaxable={false}
       showMatchKey={showMatchKey}
+      showLandedBill={showLandedBill}
       showGlAccount={showGlAccount}
       showWeight={showWeight}
+      showReturnsStock={showReturnsStock}
+      returnsStock={returnsStock}
       hasDescription={!!description}
       hasCategory={false}
       hasPhotos={false}
       hasMatchKey={!!matchKeyRecordId}
+      hasLandedBill={!!landedBillRecordId}
       hasGlAccount={!!glAccount}
       hasWeight={weight !== null}
       onEditDescription={() => setEdit({ field: 'description', value: description ?? '' })}
@@ -1859,6 +1972,7 @@ function LinePartCellView({
       onToggleTaxable={() => {}}
       onToggleOptional={() => {}}
       onSetMatchKey={showMatchKey ? () => setEdit({ field: 'matchKey' }) : undefined}
+      onSetLandedBill={showLandedBill ? () => setEdit({ field: 'landedBill' }) : undefined}
       onSetGlAccount={
         showGlAccount ? () => setEdit({ field: 'glAccount', value: glAccount ?? '' }) : undefined
       }
@@ -1870,6 +1984,7 @@ function LinePartCellView({
             }
           : undefined
       }
+      onToggleReturnsStock={onToggleReturnsStock}
       onDelete={onDelete}
     />
   )
@@ -1885,6 +2000,33 @@ function LinePartCellView({
       chips={cellChips}
       menu={cellMenu}
     />
+  )
+}
+
+/**
+ * "These goods went back to the supplier", as a standing chip — set-only, like
+ * the GL account's, so an ordinary price-adjustment line renders nothing.
+ */
+function ReturnsStockChip({ onClick }: { onClick?: () => void }) {
+  const content = (
+    <span className='flex shrink-0 items-center gap-0.5 rounded-sm bg-primary-100 px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none dark:bg-primary-100/60'>
+      <Undo2 className='size-2.5' />
+      Returned
+    </span>
+  )
+  if (!onClick)
+    return <SimpleTooltip content='Returns stock to the vendor'>{content}</SimpleTooltip>
+  return (
+    <SimpleTooltip content='Returns stock to the vendor — click to keep the stock'>
+      <button
+        type='button'
+        tabIndex={-1}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onClick}
+        className='shrink-0 rounded-sm hover:brightness-95'>
+        {content}
+      </button>
+    </SimpleTooltip>
   )
 }
 
@@ -2110,6 +2252,7 @@ export function LineRow({
   catalogLoading,
   matchScopeRecordId,
   renderMatchKeyEditor,
+  renderLandedBillEditor,
   weightRevealed = false,
   resolvePartPrefill,
   onRevealWeight,
@@ -2134,6 +2277,7 @@ export function LineRow({
   /** Resolved from `schema.matchScopeAttr` by the builder; scopes the match picker. */
   matchScopeRecordId: RecordId | null
   renderMatchKeyEditor?: MatchKeyEditorRenderer
+  renderLandedBillEditor?: LandedBillEditorRenderer
   /** Document-level: any line carries a weight, or somebody opened the editor. */
   weightRevealed?: boolean
   resolvePartPrefill?: PartPrefillResolver
@@ -2196,6 +2340,9 @@ export function LineRow({
               description={line.description}
               matchKeyAttribute={schema.attrs.purchaseOrderLineRecordId}
               matchKeyRecordId={line.purchaseOrderLineRecordId}
+              landedBillAttribute={schema.attrs.landedBillRecordId}
+              landedBillRecordId={line.landedBillRecordId}
+              renderLandedBillEditor={renderLandedBillEditor}
               matchScopeRecordId={matchScopeRecordId}
               renderMatchKeyEditor={renderMatchKeyEditor}
               currencyCode={currencyCode}
@@ -2204,6 +2351,9 @@ export function LineRow({
               weightAttribute={schema.attrs.weight}
               weight={line.weight}
               weightRevealed={weightRevealed}
+              returnsStockAttribute={schema.attrs.returnsStock}
+              returnsStock={line.returnsStock}
+              onToggleReturnsStock={(returnsStock) => onUpdateLine(recordId, { returnsStock })}
               readOnly={readOnly}
               // The part write and the prefill are two separate patches on
               // purpose: the pick must land in this frame (it is what the person
@@ -2230,6 +2380,9 @@ export function LineRow({
               onCommitDescription={(description) => onUpdateLine(recordId, { description })}
               onPickMatchKey={(purchaseOrderLineRecordId) =>
                 onUpdateLine(recordId, { purchaseOrderLineRecordId })
+              }
+              onPickLandedBill={(landedBillRecordId) =>
+                onUpdateLine(recordId, { landedBillRecordId })
               }
               onCommitGlAccount={(glAccount) => onUpdateLine(recordId, { glAccount })}
               onCommitWeight={(weight) => onUpdateLine(recordId, { weight })}
@@ -2355,6 +2508,7 @@ export function DraftLineRow({
   catalogLoading,
   matchScopeRecordId,
   renderMatchKeyEditor,
+  renderLandedBillEditor,
   weightRevealed = false,
   resolvePartPrefill,
   grip = null,
@@ -2380,6 +2534,7 @@ export function DraftLineRow({
   catalogLoading: boolean
   matchScopeRecordId: RecordId | null
   renderMatchKeyEditor?: MatchKeyEditorRenderer
+  renderLandedBillEditor?: LandedBillEditorRenderer
   weightRevealed?: boolean
   resolvePartPrefill?: PartPrefillResolver
   /**
@@ -2436,6 +2591,9 @@ export function DraftLineRow({
             description={draft.description}
             matchKeyAttribute={schema.attrs.purchaseOrderLineRecordId}
             matchKeyRecordId={draft.purchaseOrderLineRecordId}
+            landedBillAttribute={schema.attrs.landedBillRecordId}
+            landedBillRecordId={draft.landedBillRecordId}
+            renderLandedBillEditor={renderLandedBillEditor}
             matchScopeRecordId={matchScopeRecordId}
             renderMatchKeyEditor={renderMatchKeyEditor}
             currencyCode={currencyCode}
@@ -2444,6 +2602,11 @@ export function DraftLineRow({
             weightAttribute={schema.attrs.weight}
             weight={draft.weight}
             weightRevealed={weightRevealed}
+            returnsStockAttribute={schema.attrs.returnsStock}
+            returnsStock={draft.returnsStock}
+            onToggleReturnsStock={(returnsStock) =>
+              void createDraft(draft.draftId, { returnsStock })
+            }
             readOnly={false}
             // On a PURCHASE ORDER the part IS the line's identity, so picking one
             // is what fires the draft's first `record.create` — carrying any
@@ -2476,6 +2639,9 @@ export function DraftLineRow({
             onCommitDescription={(description) => void createDraft(draft.draftId, { description })}
             onPickMatchKey={(purchaseOrderLineRecordId) =>
               void createDraft(draft.draftId, { purchaseOrderLineRecordId })
+            }
+            onPickLandedBill={(landedBillRecordId) =>
+              void createDraft(draft.draftId, { landedBillRecordId })
             }
             onCommitGlAccount={(glAccount) => void createDraft(draft.draftId, { glAccount })}
             onCommitWeight={(weight) => void createDraft(draft.draftId, { weight })}

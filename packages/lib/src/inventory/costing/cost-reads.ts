@@ -6,15 +6,19 @@
  * any lane (plain, quiet, or otherwise); the caller decides how to use the
  * numbers.
  *
- * §3.1-§3.3 rules out `part_standard_cost` as the relief basis: a standard
- * roll's revaluation delta is never posted (`builds/standard-cost.ts:78`), so
- * relieving at current standard leaves a residue on every unit shipped after
- * a roll, and it accumulates invisibly. The basis instead is the part's own
- * ledger-derived average - {@link readPartLedgerAverages} - with one
- * exception, stated in §3.5: a down-delta (an un-relieving row) must be
- * priced at what THIS fulfillment line was actually relieved at, never at
- * today's average, or a quantity correction makes inventory value appear out
- * of a channel that never held it. That is {@link readFulfillmentLineRelievedAverages}.
+ * 🛑 **{@link readPartLedgerAverages} no longer prices relief** (73 §6.2 rule
+ * 3). 50 §3.1-§3.3 ruled out the standard because a roll's revaluation delta
+ * was never posted, so relieving at standard left a residue on every unit
+ * shipped after one; 73 §6.2 rule 2 posts that delta, which removes the
+ * objection. Relief is at the standard with its material / labour / overhead
+ * split, and this read stays as a REPORT of what an account holds per unit -
+ * plus the live on-hand quantity `relieve.ts` predicts a negative shelf from.
+ *
+ * {@link readFulfillmentLineRelievedAverages} is unchanged and still the basis
+ * for a down-delta (50 §3.5): an un-relieving row is priced at what THIS
+ * fulfillment line was actually relieved at, never at today's figure, or a
+ * quantity correction makes inventory value appear out of a channel that never
+ * held it.
  */
 
 import { type Database, schema } from '@auxx/database'

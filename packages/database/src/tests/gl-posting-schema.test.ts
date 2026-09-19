@@ -308,7 +308,9 @@ describe('the enum vocabularies', () => {
       // entry, read back off the provider's general ledger.
       'provider_sync',
       'recurring_journal',
-      'expense_bill',
+      // 71 §5 U7. `expense_bill` stood after this until 73 D3 folded it into
+      // `vendor_bill`: one record may not have two posting types.
+      'vendor_credit',
     ])
   })
 })

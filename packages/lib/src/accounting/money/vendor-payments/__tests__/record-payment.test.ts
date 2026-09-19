@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   inserts: [] as Array<[string, Record<string, unknown>]>,
   postings: [
-    { glPostingId: 'gp_1', docNumber: 'BILL-1', status: 'posted', postingType: 'expense_bill' },
+    { glPostingId: 'gp_1', docNumber: 'BILL-1', status: 'posted', postingType: 'vendor_bill' },
   ] as Array<Record<string, unknown>>,
   applications: [] as Array<Record<string, unknown>>,
   scalars: new Map<string, unknown>(),
@@ -25,7 +25,7 @@ vi.mock('../../commands/run-money-command', () => ({
   ) => run(db, 'cmd_1'),
 }))
 vi.mock('../payment-state', () => ({ syncVendorBillPaymentState: h.syncState }))
-vi.mock('../../../../purchasing/expense-bill/writes', () => ({
+vi.mock('../../../purchasing/expense-bill/writes', () => ({
   listVendorBillPostings: async () => h.postings,
 }))
 vi.mock('../../../../cache', () => ({
@@ -98,7 +98,7 @@ beforeEach(() => {
   h.billRows = [{ id: 'vb_1' }]
   h.vendorRows = [{ relatedEntityId: 'co_1' }]
   h.postings = [
-    { glPostingId: 'gp_1', docNumber: 'BILL-1', status: 'posted', postingType: 'expense_bill' },
+    { glPostingId: 'gp_1', docNumber: 'BILL-1', status: 'posted', postingType: 'vendor_bill' },
   ]
   h.scalars = new Map<string, unknown>([['f_total', 100_000]])
 })
@@ -181,7 +181,7 @@ describe('recordVendorPayment', () => {
 
   it('refuses a bill whose only posting has been reversed', async () => {
     h.postings = [
-      { glPostingId: 'gp_1', docNumber: 'BILL-1', status: 'reversed', postingType: 'expense_bill' },
+      { glPostingId: 'gp_1', docNumber: 'BILL-1', status: 'reversed', postingType: 'vendor_bill' },
     ]
     await expect(run()).rejects.toThrow(/not in the books yet/)
   })

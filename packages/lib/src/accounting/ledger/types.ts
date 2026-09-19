@@ -36,9 +36,12 @@ export const POSTING_TYPES = [
   // document kind travels in the built envelope, not in a second posting type,
   // because every kind claims, exports and reverses identically (TARGET §5).
   'inventory_movement',
-  // The three-way matched purchasing bill: `Dr GRNI ± PPV / Cr A/P`. The other
-  // half of the GRNI `inventory_movement` credits on a receipt - without it that
-  // accrual never clears. Distinct from `expense_bill`, which codes to expense.
+  // THE vendor bill, of either kind (73 D3): `Dr GRNI ± PPV` per line matched to
+  // a purchase order line, `Dr <the account it was coded to>` per line that is
+  // not, the header's shipping and tax, `Cr A/P` at the bill total. The other
+  // half of the GRNI an `inventory_movement` credits on a receipt - without it
+  // that accrual never clears. `expense_bill` was a second type for the second
+  // kind and was retired: one record cannot have two entries.
   'vendor_bill',
   // Added by plans/accounting/HANDOFF.md wave 0 (slot 0B), 2026-09-04.
   // A bookkeeper's adjusting entry, coded by account CODE rather than role.
@@ -97,10 +100,6 @@ export const POSTING_TYPES = [
   // layer available - `FieldValue` has no unique index that could carry
   // `(ruleId, occurrenceDate)`, so the record layer races and this does not.
   'recurring_journal',
-  // brief 21 §3.2. `Dr <expense> / Cr A/P` for rent, insurance, a legal
-  // invoice. Distinct from `vendor_bill`, which is the L3 purchasing story
-  // (`Dr GRNI / PPV`) and cannot express an expense-coded line.
-  'expense_bill',
   // A vendor credit ISSUED: `Dr accounts_payable / Cr <each line's account>`,
   // dated the credit's own `issuedAt`. The expense bill's entry with the sides
   // flipped, and its own type so the export can send a Vendor Credit and a

@@ -189,15 +189,14 @@ async function main() {
   console.log(`  skipped, no part        ${s.skippedNoPart}`)
   console.log(`  skipped, already done   ${s.skippedZeroDelta}`)
   console.log(`  skipped, NO COST        ${s.skippedNoCost}`)
-  console.log(`  priced at standard cost ${s.fallbackStandardCostPartIds.length} part(s)`)
   console.log(`  negative QoH            ${s.negativeQoHPartIds.length} part(s)`)
   console.log(`  batches failed          ${s.batchesFailed}`)
 
-  if (s.skippedNoCost > 0 || s.fallbackStandardCostPartIds.length > 0) {
+  if (s.skippedNoCost > 0) {
     console.log(
-      '\n⚠️  Some lines could not be priced from the ledger. If the builds backfill has\n' +
-        '   not run yet, that is why - run it and re-run this; the lines that were\n' +
-        '   skipped are still owed and will be picked up.'
+      '\n⚠️  Some lines could not be priced: their part has no standard cost. If the\n' +
+        '   builds backfill has not run yet, that is why - run it and re-run this;\n' +
+        '   the lines that were skipped are still owed and will be picked up.'
     )
   }
   if (s.batchesFailed > 0) {

@@ -28,6 +28,12 @@
  * standard. So this can never revalue anything and there is no initial
  * valuation to post under any posting regime.
  *
+ * Every door stamps `part_standard_cost_source` (73 §6.4): `receipt` is
+ * `confirmed`, because an invoice is a price somebody paid; the other three are
+ * `provisional`, because they are a number somebody typed before any purchase
+ * existed. {@link replaceProvisionalStandard} is what the first receipt of a
+ * provisional part then calls.
+ *
  * No permission checks: the router asserts (`docs/lib-module-guide.md` §6).
  */
 
@@ -47,6 +53,7 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../../realtime'
+import type { StandardCostSourceValue } from './client'
 import { guard } from './guard'
 import {
   loadStandardCostWriteContext,
@@ -136,6 +143,9 @@ export async function ensureStandardCost(
           fields: planned.fields,
           allPartIds: planned.allPartIds,
           standardCosts: planned.stored.standardCosts,
+          standardCostSources: planned.stored.standardCostSources,
+          quantitiesOnHand: planned.stored.quantitiesOnHand,
+          partKinds: planned.stored.partKinds,
         }
         skipped = planned.plan.skipped.length
         // 🛑 THE ONE RULE. `previousStandardCost` is the stored
@@ -190,6 +200,7 @@ export async function ensureStandardCost(
         fields: context.fields,
         effectiveAt,
         writes,
+        source: standardCostSourceOf(source.kind),
       })
 
       logger.info('Ensured first standard cost', {
@@ -299,9 +310,10 @@ async function persistFirstStandards(
     fields: StandardCostFields
     effectiveAt: Date
     writes: readonly FirstStandard[]
+    source: StandardCostSourceValue
   }
 ): Promise<string[]> {
-  const { partDefId, fields, effectiveAt, writes } = args
+  const { partDefId, fields, effectiveAt, writes, source } = args
   const effectiveAtIso = effectiveAt.toISOString()
 
   const pending = writes.map((write) => ({
@@ -312,6 +324,10 @@ async function persistFirstStandards(
       { field: fields.overhead, value: numberValue(write.components.standardOverheadCost) },
       { field: fields.standard, value: numberValue(write.components.standardCost) },
       { field: fields.effectiveAt, value: { type: 'date' as const, value: effectiveAtIso } },
+      // Absent on an org short of migration 173; the roll behaves as before.
+      ...(fields.source
+        ? [{ field: fields.source, value: { type: 'option' as const, optionId: source } }]
+        : []),
     ],
   }))
 
@@ -383,4 +399,16 @@ function publishFirstStandards(
 /** `null` is a real answer: it clears the stored value. */
 function numberValue(value: number | null): { type: 'number'; value: number } | null {
   return value == null ? null : { type: 'number', value }
+}
+
+/**
+ * Which source each door stamps (73 §6.4).
+ *
+ * A receipt is an invoice - a price somebody paid, so `confirmed`. The other
+ * three are a typed supplier price, a typed opening cost and a manual roll, all
+ * of them guesses about a purchase that has not happened; a `ppv` against one
+ * would say "our guess was wrong", not "the price moved".
+ */
+function standardCostSourceOf(kind: EnsureStandardCostSource['kind']): StandardCostSourceValue {
+  return kind === 'receipt' ? 'confirmed' : 'provisional'
 }

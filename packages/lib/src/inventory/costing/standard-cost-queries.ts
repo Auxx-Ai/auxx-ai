@@ -19,7 +19,14 @@ import type { Result } from 'neverthrow'
 import { getOrgCache, requireCachedEntityDefId } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import { readOrganizationSettings } from '../../settings/read'
-import { type PartKindValue, resolveAbsorptionRates, resolvePartKind } from './client'
+import {
+  type PartKindValue,
+  resolveAbsorptionRates,
+  resolvePartKind,
+  resolveStandardCostSource,
+  rolledStandardCostSource,
+  type StandardCostSourceValue,
+} from './client'
 import { buildParentGraph, buildSubpartGraph, loadOrgPricingData } from './cost-calculator'
 import { guard } from './guard'
 import {
@@ -47,6 +54,7 @@ const ROLL_ATTRIBUTES = [
   'part_standard_overhead_cost',
   'part_standard_cost',
   'part_standard_cost_effective_at',
+  'part_standard_cost_source',
   'part_labor_cost_per_unit',
   'part_overhead_cost_per_unit',
 ] as const
@@ -58,6 +66,12 @@ export interface StandardCostFields {
   overhead: CustomFieldEntity
   standard: CustomFieldEntity
   effectiveAt: CustomFieldEntity
+  /**
+   * `part_standard_cost_source` (73 §6.4). Nullable for the same reason the two
+   * absorption overrides are: an org whose migration 173 has not run reads every
+   * standard as sourceless and the roll behaves exactly as it did before.
+   */
+  source: CustomFieldEntity | null
   /** Read-only inputs. Absent on an org whose earlier migrations have not run. */
   partKind: CustomFieldEntity | null
   liveCost: CustomFieldEntity | null
@@ -106,6 +120,7 @@ export async function loadStandardCostFields(organizationId: string): Promise<St
     overhead,
     standard,
     effectiveAt,
+    source: fields.part_standard_cost_source,
     partKind: fields.part_kind,
     liveCost: fields.part_cost,
     quantityOnHand: fields.part_quantity_on_hand,
@@ -247,6 +262,8 @@ export interface StoredPartValues {
   standardOverheadCosts: Map<string, number>
   standardCosts: Map<string, number>
   effectiveDates: Map<string, string>
+  /** `part_standard_cost_source` as stored. Absence means nobody has stamped one. */
+  standardCostSources: Map<string, StandardCostSourceValue>
   /**
    * `part_labor_cost_per_unit` / `part_overhead_cost_per_unit` as stored.
    *
@@ -272,6 +289,7 @@ async function loadStoredPartValues(
     standardOverheadCosts: new Map(),
     standardCosts: new Map(),
     effectiveDates: new Map(),
+    standardCostSources: new Map(),
     laborOverrides: new Map(),
     overheadOverrides: new Map(),
   }
@@ -285,6 +303,7 @@ async function loadStoredPartValues(
     fields.overhead.id,
     fields.standard.id,
     fields.effectiveAt.id,
+    fields.source?.id,
     fields.laborOverride?.id,
     fields.overheadOverride?.id,
   ].filter((id): id is string => Boolean(id))
@@ -324,6 +343,11 @@ async function loadStoredPartValues(
       if (row.valueNumber != null) values.standardCosts.set(row.entityId, row.valueNumber)
     } else if (row.fieldId === fields.effectiveAt.id) {
       if (row.valueDate != null) values.effectiveDates.set(row.entityId, row.valueDate)
+    } else if (fields.source && row.fieldId === fields.source.id) {
+      // A SINGLE_SELECT lives in `optionId`; the registry's option rows carry no
+      // id, so the stored key is the raw option value.
+      const source = resolveStandardCostSource(row.optionId)
+      if (source) values.standardCostSources.set(row.entityId, source)
     } else if (fields.laborOverride && row.fieldId === fields.laborOverride.id) {
       // `!= null` and not a truthiness check: a stored `0` is a declared
       // "absorbs nothing" and MUST land in the map, or it reads as unset and
@@ -425,6 +449,10 @@ export async function planStandardCostRoll(
   let revaluationDelta = 0
   let initialValue = 0
 
+  // Filled as the bottom-up walk goes, so a parent reads the source its
+  // children are about to be written with rather than the one they carry now.
+  const nextSources = new Map<string, StandardCostSourceValue | null>()
+
   // `computation.order` is the bottom-up walk order, so a caller rendering the
   // plan sees components before the assemblies built from them.
   for (const partId of computation.order) {
@@ -440,12 +468,24 @@ export async function planStandardCostRoll(
     revaluationDelta += lineDelta
     initialValue += lineInitial
 
+    const previousSource = stored.standardCostSources.get(partId) ?? null
+    const standardCostSource = rolledStandardCostSource(
+      previousSource,
+      (subpartGraph.get(partId) ?? []).map(
+        (edge) =>
+          nextSources.get(edge.childId) ?? stored.standardCostSources.get(edge.childId) ?? null
+      )
+    )
+    nextSources.set(partId, standardCostSource)
+
     lines.push({
       partId,
       partName: partNames.get(partId) ?? null,
       partKind: stored.partKinds.get(partId) ?? 'component',
       ...next,
       previousStandardCost,
+      previousStandardCostSource: previousSource,
+      standardCostSource,
       quantityOnHand,
       revaluationDelta: lineDelta,
       isInitial,
@@ -455,8 +495,20 @@ export async function planStandardCostRoll(
         next.standardLaborCost !== (stored.standardLaborCosts.get(partId) ?? null) ||
         next.standardOverheadCost !== (stored.standardOverheadCosts.get(partId) ?? null) ||
         next.standardCost !== previousStandardCost ||
+        standardCostSource !== previousSource ||
         stored.effectiveDates.get(partId) == null,
     })
+  }
+
+  // Org-wide, not scope-wide: `loadStoredPartValues` reads every part, and the
+  // sentence this answers ("12 of 40 parts have a confirmed standard") is about
+  // the parts list, not about the roll in front of you.
+  let standardCount = 0
+  let confirmedStandardCount = 0
+  for (const [partId, standardCost] of stored.standardCosts) {
+    if (!(standardCost > 0)) continue
+    standardCount += 1
+    if (stored.standardCostSources.get(partId) === 'confirmed') confirmedStandardCount += 1
   }
 
   return {
@@ -472,6 +524,8 @@ export async function planStandardCostRoll(
       revaluationDelta,
       initialValue,
       skipped: computation.skipped,
+      standardCount,
+      confirmedStandardCount,
     },
   }
 }
@@ -613,6 +667,12 @@ export interface StandardCostWriteContext {
   allPartIds: Set<string>
   /** `part_standard_cost` as stored. Absence is the NULL that makes a part writable. */
   standardCosts: ReadonlyMap<string, number>
+  /** `part_standard_cost_source` as stored — what `replaceProvisionalStandard` gates on. */
+  standardCostSources: ReadonlyMap<string, StandardCostSourceValue>
+  /** `part_quantity_on_hand`. What a replaced standard revalues. */
+  quantitiesOnHand: ReadonlyMap<string, number>
+  /** Resolved `part_kind`, for the inventory role a revaluation posts against. */
+  partKinds: ReadonlyMap<string, PartKindValue>
 }
 
 /** Load {@link StandardCostWriteContext}. Reads only. */
@@ -631,5 +691,8 @@ export async function loadStandardCostWriteContext(
     fields,
     allPartIds: new Set(partRows.map((row) => row.id)),
     standardCosts: stored.standardCosts,
+    standardCostSources: stored.standardCostSources,
+    quantitiesOnHand: stored.quantitiesOnHand,
+    partKinds: stored.partKinds,
   }
 }

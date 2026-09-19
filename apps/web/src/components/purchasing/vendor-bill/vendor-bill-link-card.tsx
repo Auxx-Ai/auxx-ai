@@ -7,10 +7,13 @@
 // order line, picks a different one, codes a charge, or folds shipping.
 
 import { FieldType } from '@auxx/database/enums'
+import type {
+  LineProposal,
+  LineProposalCandidate,
+} from '@auxx/lib/accounting/purchasing/bill-intake/client'
+import { matchBill } from '@auxx/lib/accounting/purchasing/client'
+import { isAutoLinkTier } from '@auxx/lib/accounting/purchasing/intake/client'
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
-import type { LineProposal, LineProposalCandidate } from '@auxx/lib/purchasing/bill-intake/client'
-import { matchBill } from '@auxx/lib/purchasing/client'
-import { isAutoLinkTier } from '@auxx/lib/purchasing/intake/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'

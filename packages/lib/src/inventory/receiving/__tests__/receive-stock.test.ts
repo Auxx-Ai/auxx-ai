@@ -325,7 +325,10 @@ describe('receiveStock — door 1, the SENT price is the base', () => {
     expect(h.createSpy).not.toHaveBeenCalled()
   })
 
-  it('does not read the supplier row when both the cost and the price are given', async () => {
+  // Since 73 §7.2 the supplier row is read whenever one is named, even when
+  // the valuation needs nothing from it: its adders are what the receipt
+  // ACCRUES, and the entry cannot split the credit without them.
+  it('reads the supplier row for its adders even when the cost and the price are given', async () => {
     const { readVendorPartCostInputs } = await import('../receipt-queries')
     await receiveStock(db, ORG, USER, {
       partId: 'part_1',
@@ -334,7 +337,7 @@ describe('receiveStock — door 1, the SENT price is the base', () => {
       vendorUnitPrice: 4123,
       unitCost: 4500,
     })
-    expect(vi.mocked(readVendorPartCostInputs)).not.toHaveBeenCalled()
+    expect(vi.mocked(readVendorPartCostInputs)).toHaveBeenCalled()
     const values = writtenValues()
     expect(values.stock_movement_unit_cost).toBe(4500)
     expect(values.stock_movement_vendor_unit_price).toBe(4123)
@@ -420,9 +423,12 @@ describe('receiveStock — step 4, the movement it writes', () => {
     expect(values.stock_movement_adjust_subparts).toBe(false)
   })
 
-  it('stamps costBasis `actual` — a receipt is the first writer of it', async () => {
+  // 73 §6.2 rule 1. `actual` left the gap between what was paid and what every
+  // consume leaves at sitting in the inventory account with no quantity behind
+  // it; the difference is the receipt's `ppv` now.
+  it('stamps costBasis `standard` — a receipt freezes the standard', async () => {
     const values = await receiveAndRead({ partId: 'part_1', quantity: 1, unitCost: 4400 })
-    expect(values.stock_movement_cost_basis).toBe('actual')
+    expect(values.stock_movement_cost_basis).toBe('standard')
   })
 
   it('stamps the GL account resolved from the part kind', async () => {
@@ -556,9 +562,12 @@ describe('receiveStock — the first receipt sets the standard cost', () => {
   // 🛑 The scope limit. This does NOT change what the receipt is valued at:
   // receiving AT standard and posting the difference to 5090 is a books change
   // and lives in `plans/money/design/ppv-treatment.md`.
-  it('still values the receipt at the landed cost, on an ACTUAL basis', async () => {
+  // The part has no readable standard in this file's mocked world, so the
+  // landed estimate is what values the movement - the pre-73 number, and a
+  // `ppv` of zero, rather than a receipt nobody can post.
+  it('falls back to the landed estimate when no standard can be read', async () => {
     const values = await receiveAndRead({ partId: 'part_1', quantity: 5, unitCost: 4400 })
-    expect(values.stock_movement_cost_basis).toBe('actual')
+    expect(values.stock_movement_cost_basis).toBe('standard')
     expect(values.stock_movement_unit_cost).toBe(4400)
   })
 

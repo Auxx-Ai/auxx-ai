@@ -159,6 +159,54 @@ function useLinesForTotals(
   return useMemo(() => [...realLines, ...draftLinesForTotals], [realLines, draftLinesForTotals])
 }
 
+/**
+ * The sum of the lines' own TRANSCRIBED totals, for a `stored` document.
+ *
+ * Not `computeDocumentTotals`' subtotal, which is `qty x rate`: on a bill those
+ * two legitimately disagree, and the disagreement is the vendor's arithmetic.
+ * Computes nothing that is written - it is the hint beside the typed subtotal
+ * and the §5 tie.
+ */
+function useStoredLineTotalSum(
+  lineRecordIds: RecordId[],
+  draftLines: DraftLine[],
+  schema: LineSchema
+): number {
+  const systemAttributeMap = useResourceStore((s) => s.systemAttributeMap)
+  const attr = schema.attrs.lineTotal
+  const fieldId = attr ? systemAttributeMap[attr] : undefined
+
+  const keys = useMemo(
+    () => (fieldId ? lineRecordIds.map((recordId) => buildFieldValueKey(recordId, fieldId)) : []),
+    [lineRecordIds, fieldId]
+  )
+  const keysKey = keys.join(',')
+
+  const storeValues = useFieldValueStore(
+    useShallow(
+      // biome-ignore lint/correctness/useExhaustiveDependencies: keys is captured from the same render as keysKey; keysKey is the stable content key
+      useCallback((state: CustomFieldValueState) => keys.map((key) => state.values[key]), [keysKey])
+    )
+  )
+
+  return useMemo(() => {
+    const scalar = (raw: unknown): number => {
+      if (raw === undefined) return 0
+      const formatted = formatToRawValue(raw, FieldType.CURRENCY)
+      const value = Array.isArray(formatted) ? formatted[0] : formatted
+      return typeof value === 'number' ? value : 0
+    }
+    return (
+      storeValues.reduce((sum: number, raw) => sum + scalar(raw), 0) +
+      draftLines.reduce(
+        (sum, draft) =>
+          sum + (draft.lineTotal ?? computeLineTotal(draft.qty, draft.unitPriceCents) ?? 0),
+        0
+      )
+    )
+  }, [storeValues, draftLines])
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Totals footer
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,6 +214,7 @@ function useLinesForTotals(
 export function TotalsFooter({
   documentType,
   readOnly,
+  amountsReadOnly,
   currencyCode,
   lineRecordIds,
   draftLines,
@@ -177,6 +226,12 @@ export function TotalsFooter({
 }: {
   documentType: DocumentType
   readOnly: boolean
+  /**
+   * The document's LOCK, for a `stored` document whose headers are typed.
+   * Defaults to {@link readOnly}; 73 U3 points it at the bill's lock (posted,
+   * and no edit flag) without touching this component.
+   */
+  amountsReadOnly?: boolean
   currencyCode: string
   lineRecordIds: RecordId[]
   /** Local phantom draft lines not yet persisted — counted optimistically (money plan 18 §3). */
@@ -205,6 +260,7 @@ export function TotalsFooter({
   // Keyed lookups, not `isInvoice ? 'invoice' : 'quote'`: that shape reads an order's
   // totals off `quote_*` and shows the wrong numbers.
   const lines = useLinesForTotals(lineRecordIds, draftLines, schema)
+  const lineTotalSum = useStoredLineTotalSum(lineRecordIds, draftLines, schema)
   const [discountDraft, setDiscountDraft] = useState<string | null>(null)
 
   const discountType =
@@ -240,9 +296,7 @@ export function TotalsFooter({
   if (totalsMode === 'stored') {
     totals = {
       subtotal: stored('subtotal'),
-      // No discount row is rendered in `stored` mode, so this is never read;
-      // it exists to satisfy the shared shape rather than to mean anything.
-      discountAmount: 0,
+      discountAmount: stored('discount'),
       taxTotal: stored('tax_total'),
       total: stored('total'),
     }
@@ -258,6 +312,17 @@ export function TotalsFooter({
       total: computed.subtotal - statedDiscount + statedShipping + statedTax,
     }
   }
+
+  // A credit memo's stored headers are hook-written, so they stay text whatever
+  // the lock says - see `LineSchema.headerAmountsTyped`.
+  const headersReadOnly = !schema.headerAmountsTyped || (amountsReadOnly ?? readOnly)
+  // Σ line totals + shipping + tax − discount = total (73 §5.2). Computed for
+  // the hint only: nothing here writes a header the vendor did not print.
+  const tieDifference =
+    totalsMode === 'stored'
+      ? totals.total -
+        (lineTotalSum + stored('shipping_total') + totals.taxTotal - totals.discountAmount)
+      : 0
 
   const selectedTaxId =
     taxRate !== null
@@ -306,10 +371,25 @@ export function TotalsFooter({
       {/* Totals block */}
       <div className='flex justify-end px-4 py-2'>
         <div className='w-full max-w-xs space-y-1 text-sm'>
-          <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground'>Subtotal</span>
-            <span className='tabular-nums'>{formatCurrency(totals.subtotal, currencyCode)}</span>
-          </div>
+          {totalsMode === 'stored' ? (
+            <>
+              <StatedAmountRow
+                label='Subtotal'
+                cents={totals.subtotal}
+                readOnly={headersReadOnly}
+                currencyCode={currencyCode}
+                onCommit={(next) => onUpdateStatedAmount('subtotal', next)}
+              />
+              {schema.headerAmountsTyped && lineTotalSum !== totals.subtotal && (
+                <Hint>Lines add up to {formatCurrency(lineTotalSum, currencyCode)}</Hint>
+              )}
+            </>
+          ) : (
+            <div className='flex items-center justify-between'>
+              <span className='text-muted-foreground'>Subtotal</span>
+              <span className='tabular-nums'>{formatCurrency(totals.subtotal, currencyCode)}</span>
+            </div>
+          )}
 
           {editableBilling && (
             <div className='flex items-center justify-between gap-2'>
@@ -409,33 +489,40 @@ export function TotalsFooter({
             </div>
           )}
 
-          {/* `stored` (vendor bill): the transcribed additions, displayed and
-              never computed. Both rows were MISSING until the cutover — the
-              footer showed a bill's subtotal and total with nothing between them,
-              so a bill whose shipping and tax were entered simply did not add up
-              on screen. `vendor_bill_shipping_total` had to join `billingAttrs`
-              for this; the descriptor listed only subtotal/tax/total.
-              🛑 READ-ONLY, unlike the `stated` rows below. A PO's shipping and tax
-              are freight-allocation INPUTS typed off the carrier's invoice; a
-              bill's are transcribed with the rest of the vendor's arithmetic. */}
+          {/* `stored` (vendor bill, credit memo): the vendor's own arithmetic,
+              transcribed and never computed — but TYPED here, because this footer
+              is the only surface any of these fields has (73 D5). "Transcribed"
+              was read as "not editable"; it means "not recomputed". */}
           {totalsMode === 'stored' && (
             <>
               {/* A credit memo is `stored` too and has no shipping field, so the
                   row is keyed on the attribute being part of the schema. */}
               {schema.billingAttrs.includes(`${prefix}_shipping_total`) && (
-                <div className='flex items-center justify-between'>
-                  <span className='text-muted-foreground'>Shipping</span>
-                  <span className='tabular-nums'>
-                    {formatCurrency(stored('shipping_total'), currencyCode)}
-                  </span>
-                </div>
+                <StatedAmountRow
+                  label='Shipping'
+                  cents={stored('shipping_total')}
+                  readOnly={headersReadOnly}
+                  currencyCode={currencyCode}
+                  onCommit={(next) => onUpdateStatedAmount('shipping_total', next)}
+                />
               )}
-              <div className='flex items-center justify-between'>
-                <span className='text-muted-foreground'>Tax</span>
-                <span className='tabular-nums'>
-                  {formatCurrency(totals.taxTotal, currencyCode)}
-                </span>
-              </div>
+              <StatedAmountRow
+                label='Tax'
+                cents={totals.taxTotal}
+                readOnly={headersReadOnly}
+                currencyCode={currencyCode}
+                onCommit={(next) => onUpdateStatedAmount('tax_total', next)}
+              />
+              {schema.billingAttrs.includes(`${prefix}_discount`) && (
+                <StatedAmountRow
+                  label='Discount'
+                  cents={totals.discountAmount}
+                  negative
+                  readOnly={headersReadOnly}
+                  currencyCode={currencyCode}
+                  onCommit={(next) => onUpdateStatedAmount('discount', next)}
+                />
+              )}
             </>
           )}
 
@@ -471,10 +558,31 @@ export function TotalsFooter({
             </>
           )}
 
-          <div className='flex items-center justify-between border-primary-200/50 border-t pt-1 font-medium dark:border-[#1e2227]'>
-            <span>Total</span>
-            <span className='tabular-nums'>{formatCurrency(totals.total, currencyCode)}</span>
-          </div>
+          {totalsMode === 'stored' ? (
+            <div className='border-primary-200/50 border-t pt-1 font-medium dark:border-[#1e2227]'>
+              <StatedAmountRow
+                label='Total'
+                cents={totals.total}
+                readOnly={headersReadOnly}
+                currencyCode={currencyCode}
+                onCommit={(next) => onUpdateStatedAmount('total', next)}
+              />
+              {/* The same arithmetic Post refuses on (73 §5.2), shown while the
+                  paper is still in hand. */}
+              {schema.headerAmountsTyped && tieDifference !== 0 && (
+                <Hint>
+                  Lines, shipping, tax and discount are{' '}
+                  {formatCurrency(Math.abs(tieDifference), currencyCode)}{' '}
+                  {tieDifference > 0 ? 'under' : 'over'} the total
+                </Hint>
+              )}
+            </div>
+          ) : (
+            <div className='flex items-center justify-between border-primary-200/50 border-t pt-1 font-medium dark:border-[#1e2227]'>
+              <span>Total</span>
+              <span className='tabular-nums'>{formatCurrency(totals.total, currencyCode)}</span>
+            </div>
+          )}
 
           {/* Invoice-only: the ledger-sync mirrors (money MI1 build spec §J.2) — read-only,
               never written from the footer (recording/deleting a payment is the only writer). */}
@@ -496,9 +604,14 @@ export function TotalsFooter({
   )
 }
 
+/** A read-only note under an amount row. Computes nothing that is written. */
+function Hint({ children }: { children: React.ReactNode }) {
+  return <div className='text-right text-muted-foreground text-xs'>{children}</div>
+}
+
 /**
- * One editable amount row in a `stated` footer — the document's own
- * discount / shipping / tax mirror.
+ * One editable amount row in a `stated` or `stored` footer — the document's own
+ * discount / shipping / tax / subtotal / total mirror.
  *
  * Currency convention: the value is stored in integer minor units and the input
  * shows and accepts DOLLARS, matching the `amount` discount input above and

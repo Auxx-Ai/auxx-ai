@@ -92,6 +92,7 @@ const LINE_BUILDER_CONTRACT: Record<
       'vendor_bill_subtotal',
       'vendor_bill_shipping_total',
       'vendor_bill_tax_total',
+      'vendor_bill_discount',
       'vendor_bill_total',
       // Scopes the match-key picker (`LineSchema.matchScopeAttr`). Not a billing
       // mirror, but it is read off the parent by the same builder.

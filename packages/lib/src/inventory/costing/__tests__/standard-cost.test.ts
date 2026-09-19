@@ -15,6 +15,10 @@ const h = vi.hoisted(() => ({
   subparts: [] as { parentPartId: string; childPartId: string; quantity: number }[],
   settings: {} as Record<string, unknown>,
   callOrder: [] as string[],
+  writeRevaluation: vi.fn(async (..._args: unknown[]) => ({
+    isErr: () => false,
+    value: { movementIds: ['mv_1'], postedMinor: 0 },
+  })),
 }))
 
 function nextRows(): unknown[] {
@@ -59,6 +63,7 @@ const FIELD: Record<string, { id: string; type: string }> = {
   part_standard_overhead_cost: { id: 'f_std_ovh', type: 'CURRENCY' },
   part_standard_cost: { id: 'f_std', type: 'CURRENCY' },
   part_standard_cost_effective_at: { id: 'f_std_at', type: 'DATETIME' },
+  part_standard_cost_source: { id: 'f_std_src', type: 'SINGLE_SELECT' },
 }
 
 vi.mock('../../../cache', () => ({
@@ -129,6 +134,10 @@ vi.mock('../../../realtime', () => ({
   publishFieldValueUpdates: h.publishFieldValueUpdates,
 }))
 
+// The roll's step 4. Mocked rather than exercised so this file stays the IO
+// half of the ROLL; `revalue.ts` pulls the whole ledger post path in.
+vi.mock('../revalue', () => ({ writeRevaluation: h.writeRevaluation }))
+
 import { rollStandardCost } from '../standard-cost'
 import { previewStandardCostRoll, readStandardCost } from '../standard-cost-queries'
 
@@ -188,6 +197,10 @@ beforeEach(() => {
   h.subparts = []
   h.settings = {}
   h.callOrder = []
+  h.writeRevaluation.mockImplementation(async () => ({
+    isErr: () => false,
+    value: { movementIds: ['mv_1'], postedMinor: 0 },
+  }))
 })
 
 describe('previewStandardCostRoll', () => {
@@ -333,7 +346,7 @@ describe('rollStandardCost', () => {
     expect(h.callOrder).toContain('loadOrgPricingData')
   })
 
-  it('writes all five fields and stamps the effective date', async () => {
+  it('writes all five fields, the effective date and the source', async () => {
     queueOrg(
       [PARTS[0]!],
       [
@@ -360,6 +373,84 @@ describe('rollStandardCost', () => {
         FIELD.part_standard_cost_effective_at!.id,
         { type: 'date', value: '2026-08-27T00:00:00.000Z' },
       ],
+      // Nobody has stamped a source and nothing here can invent one: a NULL
+      // reads as "predates the field", which no receipt ever replaces.
+      [FIELD.part_standard_cost_source!.id, null],
+    ])
+  })
+
+  it('posts the revaluation: qty on hand x the delta, one revalue line per part', async () => {
+    // 73 §6.2 rule 2. The number the preview shows is now the number that
+    // reaches the ledger, through a cost-only movement.
+    queueOrg(
+      [PARTS[0]!],
+      [
+        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
+        fv(MOTOR, FIELD.part_quantity_on_hand!.id, { number: 10 }),
+        fv(MOTOR, FIELD.part_standard_cost!.id, { number: 2010 }),
+        fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 2010 }),
+        fv(MOTOR, FIELD.part_standard_cost_effective_at!.id, { date: '2026-01-01T00:00:00.000Z' }),
+      ]
+    )
+
+    await rollStandardCost(db, ORG, USER, { partIds: [MOTOR], effectiveAt: EFFECTIVE_AT })
+
+    expect(h.writeRevaluation).toHaveBeenCalledTimes(1)
+    const [, , , input] = h.writeRevaluation.mock.calls[0] as [
+      unknown,
+      string,
+      string,
+      { lines: { partInstanceId: string; unitDeltaMinor: number; extendedDeltaMinor: number }[] },
+    ]
+    expect(input.lines).toEqual([
+      {
+        partInstanceId: MOTOR,
+        unitDeltaMinor: 190,
+        extendedDeltaMinor: 1900, // (2200 - 2010) x 10
+        glAccountRole: 'inventory_raw_materials',
+      },
+    ])
+  })
+
+  it('posts nothing for a FIRST standard - that is a valuation, not a revaluation', async () => {
+    queueOrg(
+      [PARTS[0]!],
+      [
+        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
+        fv(MOTOR, FIELD.part_quantity_on_hand!.id, { number: 10 }),
+      ]
+    )
+
+    await rollStandardCost(db, ORG, USER, { partIds: [MOTOR], effectiveAt: EFFECTIVE_AT })
+
+    expect(h.writeRevaluation).not.toHaveBeenCalled()
+  })
+
+  it('stamps the source, and a parent is provisional while any child is', async () => {
+    // 73 §6.4. The motor's stored `provisional` survives a roll - only a
+    // receipt confirms - and the assembly above it inherits that answer.
+    h.subparts = [{ parentPartId: ASSEMBLY, childPartId: MOTOR, quantity: 1 }]
+    queueOrg(
+      [PARTS[0]!, PARTS[1]!],
+      [
+        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
+        fv(MOTOR, FIELD.part_standard_cost_source!.id, { option: 'provisional' }),
+        fv(ASSEMBLY, FIELD.part_kind!.id, { option: 'subassembly' }),
+      ]
+    )
+
+    await rollStandardCost(db, ORG, USER, { partIds: [MOTOR], effectiveAt: EFFECTIVE_AT })
+
+    expect(writesFor(MOTOR)).toContainEqual([
+      FIELD.part_standard_cost_source!.id,
+      { type: 'option', optionId: 'provisional' },
+    ])
+    expect(writesFor(ASSEMBLY)).toContainEqual([
+      FIELD.part_standard_cost_source!.id,
+      { type: 'option', optionId: 'provisional' },
     ])
   })
 
@@ -426,6 +517,7 @@ describe('rollStandardCost', () => {
       FIELD.part_standard_overhead_cost!.id,
       FIELD.part_standard_cost!.id,
       FIELD.part_standard_cost_effective_at!.id,
+      FIELD.part_standard_cost_source!.id,
     ])
     const touched = h.setValueWithType.mock.calls.map(
       ([, params]) => (params as { fieldId: string }).fieldId

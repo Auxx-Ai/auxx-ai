@@ -4,9 +4,10 @@
 //
 // Under the perpetual regime the close POSTS nothing (MIGRATION step 5): every
 // inventory document wrote its own `inventory_movement` entry inside its own
-// transaction, so a close is a CHECK. Two of the three checks here are that
-// check - is every movement in an entry, and do the two sides tie - and the
-// third is the channel credit memo count the old completeness gate already ran.
+// transaction, so a close is a CHECK: is every movement in an entry, do the
+// movements and the accounts tie, and does the PARTS LIST agree with the
+// accounts (73 §6.2 rule 4 - the one source that is not the ledger restated).
+// The channel credit memo count is the old completeness gate, unchanged.
 //
 // 🛑 Reads only, and never throws. A month that cannot be checked is reported
 // as a month with no findings, not as a month that cannot be closed: a broken
@@ -14,7 +15,8 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, gte, isNotNull, lt, lte, sql } from 'drizzle-orm'
+import { and, eq, gte, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { getOrgCache } from '../../../cache'
 import { countUnissuedChannelCreditMemos } from '../../../sales/credit-memos/reads'
 import { readTrialBalance } from '../../reports/trial-balance'
@@ -189,6 +191,67 @@ async function readInventoryLedgerValue(
     .reduce((sum, row) => sum + row.debitMinor - row.creditMinor, 0)
 }
 
+/**
+ * Σ `part_quantity_on_hand x part_standard_cost` over the non-archived parts
+ * list — the close's SECOND source (73 §6.2 rule 4).
+ *
+ * 🛑 **Independent by construction.** `readSubledgerValue` and
+ * `readInventoryLedgerValue` are the same money added twice, so a residue
+ * hand-written into an inventory account ties against both. This figure never
+ * touches a movement or a posting: it is what the shelf says it is worth, and
+ * under 73 every movement is valued at standard, so it must equal the accounts.
+ *
+ * ⚠️ Quantity on hand has no history, so this is the shelf as it stands NOW
+ * against the accounts through `lastDay`. Closing a month long past will
+ * therefore report a difference that is really the months since; the check is
+ * written for the ordinary close, a few days after the month ends.
+ *
+ * `null` when either field is unprovisioned — an org without them gets no item
+ * rather than a blocker it cannot act on.
+ */
+async function readPartsListStandardValue(
+  db: Database,
+  organizationId: string
+): Promise<number | null> {
+  const fields = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['part_quantity_on_hand', 'part_standard_cost'] as const)
+  const quantity = fields.part_quantity_on_hand
+  const standard = fields.part_standard_cost
+  if (!quantity || !standard) return null
+
+  const standardValue = alias(schema.FieldValue, 'part_standard')
+  const [row] = await db
+    .select({
+      total: sql<string>`coalesce(sum(${schema.FieldValue.valueNumber} * ${standardValue.valueNumber}), 0)`,
+    })
+    .from(schema.FieldValue)
+    .innerJoin(
+      standardValue,
+      and(
+        eq(standardValue.organizationId, schema.FieldValue.organizationId),
+        eq(standardValue.entityId, schema.FieldValue.entityId),
+        eq(standardValue.fieldId, standard.id)
+      )
+    )
+    .innerJoin(
+      schema.EntityInstance,
+      and(
+        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
+        eq(schema.EntityInstance.organizationId, schema.FieldValue.organizationId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, quantity.id),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+
+  return Math.round(Number(row?.total ?? 0))
+}
+
 export interface CloseBlockersResult {
   periodKey: string
   items: CloseBlockerItem[]
@@ -230,13 +293,20 @@ export async function readCloseBlockers(
   }
 
   try {
-    const [unpostedMovements, subledgerMinor, ledgerMinor] = await Promise.all([
+    const [unpostedMovements, subledgerMinor, ledgerMinor, standardValueMinor] = await Promise.all([
       countUnpostedMovements(db, organizationId, bounds),
       readSubledgerValue(db, organizationId, bounds.last),
       readInventoryLedgerValue(db, organizationId, bounds.last),
+      readPartsListStandardValue(db, organizationId),
     ])
     items.push(
-      ...describeInventoryBlockers({ periodKey, unpostedMovements, subledgerMinor, ledgerMinor })
+      ...describeInventoryBlockers({
+        periodKey,
+        unpostedMovements,
+        subledgerMinor,
+        ledgerMinor,
+        standardValueMinor,
+      })
     )
   } catch (error) {
     logger.error('Could not check the month against the movement ledger', {

@@ -300,9 +300,9 @@ describe('shapeForPosting', () => {
     const result = shapeForPosting({
       posting: posting({
         id: 'glp_bil1',
-        postingType: 'expense_bill',
+        postingType: 'vendor_bill',
         totalMinor: 600,
-        docNumber: 'AUXX-EXB-1',
+        docNumber: 'AUXX-BIL-1',
       }),
       lines,
       roleByGlAccountId,

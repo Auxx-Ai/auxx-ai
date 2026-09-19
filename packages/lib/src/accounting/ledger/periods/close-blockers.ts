@@ -33,6 +33,7 @@ export type CloseBlockerItemKey =
   | 'unmapped_role'
   | 'inventory_unposted'
   | 'inventory_balance'
+  | 'inventory_standard_value'
 
 /**
  * One outstanding piece of work behind a refusal.
@@ -208,16 +209,27 @@ export interface InventoryCloseCounts {
   subledgerMinor: number
   /** The three inventory accounts' balance through the same day. */
   ledgerMinor: number
+  /**
+   * Σ `part_quantity_on_hand x part_standard_cost` over the parts list
+   * (73 §6.2 rule 4). `null` when it cannot be read, which produces no item.
+   */
+  standardValueMinor?: number | null
 }
 
 /**
- * The two inventory checks a month must pass, as items.
+ * The three inventory checks a month must pass, as items.
  *
  * Under the perpetual regime the close POSTS nothing for inventory - every
  * document already posted its own entry - so all a close can do is check that
- * the two sides agree. Completeness first, because an unposted movement is
+ * the sides agree. Completeness first, because an unposted movement is
  * always also a balance difference and sending somebody to reconcile a balance
  * when the real remedy is a document that never posted wastes the trip.
+ *
+ * 🛑 **The third check has a SECOND source** (73 §6.2 rule 4). The movement sum
+ * and the ledger are the same figures added twice, so a hand-written residue in
+ * an inventory account ties perfectly against them; `Σ qty x standard` comes off
+ * the parts list and does not. Under 73 every movement is valued at standard, so
+ * the two must agree to the cent.
  *
  * A zero count and an exact tie produce NO item: this returns the work, not a
  * report card.
@@ -245,6 +257,19 @@ export function describeInventoryBlockers(counts: InventoryCloseCounts): CloseBl
       remedy:
         `The three inventory accounts hold ${ledgerMinor} through the end of ${month} and the ` +
         `movements sum to ${subledgerMinor}. Reconcile them before closing.`,
+      ref: periodKey,
+    })
+  }
+
+  const standardValueMinor = counts.standardValueMinor
+  if (standardValueMinor != null && standardValueMinor !== ledgerMinor) {
+    items.push({
+      key: 'inventory_standard_value',
+      label: `Inventory is out by ${standardValueMinor - ledgerMinor} against the parts list`,
+      remedy:
+        `The parts list values what is on hand at ${standardValueMinor} and the three inventory ` +
+        `accounts hold ${ledgerMinor} through the end of ${month}. Every movement is valued at ` +
+        'standard, so the two must agree: roll, count or revalue before closing.',
       ref: periodKey,
     })
   }

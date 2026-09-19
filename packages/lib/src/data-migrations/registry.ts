@@ -28,6 +28,11 @@ import { migration168RemoveGlPostingStampFields } from './migrations/168-remove-
 import { migration169RemovePaymentEntity } from './migrations/169-remove-payment-entity'
 import { migration170GlAccountParentField } from './migrations/170-gl-account-parent-field'
 import { migration171OneCashEndpoint } from './migrations/171-one-cash-endpoint'
+import { migration172VendorBillMatchStatus } from './migrations/172-vendor-bill-match-status'
+import { migration173PartStandardCostSource } from './migrations/173-part-standard-cost-source'
+import { migration175StockMovementAccruals } from './migrations/175-stock-movement-accruals'
+import { migration177VendorBillLineLandedBill } from './migrations/177-vendor-bill-line-landed-bill'
+import { migration178VendorCreditLineReturnsStock } from './migrations/178-vendor-credit-line-returns-stock'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -152,6 +157,24 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // bill status split (73 D1), the removal of the inert vendor_payment pair
   // (71 U5), and the vendor_credit def with its two owned children (71 U7).
   migration171OneCashEndpoint,
+  // One SINGLE_SELECT on an existing def, plus a value remap off a neighbouring
+  // field and that field's option list re-materialised: the split shape
+  // (plans/accounting/tasks/73-the-buy-side-against-the-ledger.md §1.3 D1).
+  migration172VendorBillMatchStatus,
+  // One SINGLE_SELECT on the existing `part` def, no backfill: where a frozen
+  // standard came from, so the first receipt of a typed guess replaces it
+  // instead of varying against it (73 §6.4).
+  migration173PartStandardCostSource,
+  // Three fields on the existing `stock_movement` def, no backfill: what a
+  // receipt credited the freight and duties accruals, and the rate behind it
+  // (73 §7.2).
+  migration175StockMovementAccruals,
+  // One relationship pair on two existing defs, no backfill: the goods bill a
+  // carrier's or broker's landed-cost line was charged against (73 §7.2).
+  migration177VendorBillLineLandedBill,
+  // One CHECKBOX on the existing `vendor_credit_line` def, no backfill: whether
+  // issuing the line sends the goods back (73 §8.2).
+  migration178VendorCreditLineReturnsStock,
 ]
 
 /**

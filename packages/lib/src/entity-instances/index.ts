@@ -40,6 +40,7 @@ export type {
   MetadataByEntityType,
   PartMetadata,
   TicketMetadata,
+  VendorBillMetadata,
 } from './metadata-types'
 export {
   type ArchiveEntityInstancesParams,

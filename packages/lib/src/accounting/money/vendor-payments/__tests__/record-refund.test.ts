@@ -20,7 +20,7 @@ vi.mock('../../commands/run-money-command', () => ({
     run: (tx: unknown, commandId: string) => unknown
   ) => run(db, 'cmd_1'),
 }))
-vi.mock('../../../../purchasing/vendor-credit/reads', () => ({
+vi.mock('../../../purchasing/vendor-credit/reads', () => ({
   requireVendorCredit: async () => h.credit,
   sumVendorCreditApplications: async () => h.applied,
   sumVendorCreditRefunds: async () => h.refunded,

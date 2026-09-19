@@ -226,6 +226,7 @@ packages/lib/src/
     rails/       payment rails, rail accounts, rail fee status
     money/       MoneyTransaction/MoneyApplication, invoice payments, deposits, payouts, checkout
     banking/     feed/, import/, review/, rules/
+    purchasing/  POs, the three-way match, bills, vendor credits, both intake lanes
   inventory/
     movements/   the stock_movement writer, reversal, movement cost fields
     costing/     part cost, vendor cost, standard cost, QoH
@@ -235,7 +236,6 @@ packages/lib/src/
     bom/         subpart graph
     tariffs/     HTS, 301, tariff starters and schedules
   sales/         quotes, orders, fulfillments, invoice issuance, credit memos, billing, totals
-  purchasing/    POs, the three-way match, bills, both intake lanes
   returns/       returns, salvage, evidence pack, intake
   documents/     PDF rendering
 ```
@@ -249,12 +249,12 @@ Three rules come with that shape:
   have none, because nothing imports them as a unit — a subfolder is a filing
   decision first, and an export surface only when something asks for one. A
   consumer that wants one slice imports the deeper subpath
-  (`@auxx/lib/purchasing/bill-intake/client`), which `generate:exports` picks up
+  (`@auxx/lib/accounting/purchasing/bill-intake/client`), which `generate:exports` picks up
   for free.
 - **Cut by what the record is, not by which table a function writes.** An
   invoice's issuance and lifecycle are `sales/invoices`; recording a payment
   against it writes a `MoneyTransaction`, so it is `accounting/money`.
-- **Direction.** `sales`, `purchasing`, `returns` → `accounting/*` and
+- **Direction.** `sales`, `returns` → `accounting/*` and
   `inventory/*`; `accounting/{money,banking,rails}` → `accounting/ledger`;
   `inventory/*` → `accounting/ledger` to post, and never the reverse except the
   back-edges listed in `docs/accounting-architecture-guide.md` §2.2. Adding a

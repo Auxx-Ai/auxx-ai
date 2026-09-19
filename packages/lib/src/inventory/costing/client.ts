@@ -55,6 +55,40 @@ export function absorbsConversionCost(partKind: PartKindValue): boolean {
   return BUILT_PART_KINDS.has(partKind)
 }
 
+/** The two values `part_standard_cost_source` can hold (73 §6.4). */
+export type StandardCostSourceValue = 'provisional' | 'confirmed'
+
+/**
+ * Read a stored `part_standard_cost_source` option value, or `null`.
+ *
+ * 🛑 **`null` is not `provisional`.** An absent source is a part rolled before
+ * the field existed; calling it provisional would hand the next receipt licence
+ * to overwrite a standard somebody agreed to. The replace-on-first-receipt
+ * branch fires only on a stored `provisional`.
+ */
+export function resolveStandardCostSource(
+  raw: string | null | undefined
+): StandardCostSourceValue | null {
+  return raw === 'provisional' || raw === 'confirmed' ? raw : null
+}
+
+/**
+ * A rolled standard's source: `confirmed` only when every input a person could
+ * have guessed is itself confirmed (73 §6.4 — "a buildable's roll is
+ * provisional while any child is provisional").
+ *
+ * A part with no children keeps whatever it already carries: a roll re-derives
+ * a purchased component's standard from a vendor price, which is the same guess
+ * it started from, so it cannot confirm anything a receipt has not.
+ */
+export function rolledStandardCostSource(
+  own: StandardCostSourceValue | null,
+  childSources: readonly (StandardCostSourceValue | null)[]
+): StandardCostSourceValue | null {
+  if (childSources.length === 0) return own
+  return childSources.some((source) => source !== 'confirmed') ? 'provisional' : 'confirmed'
+}
+
 /**
  * `part_labor_cost_per_unit` / `part_overhead_cost_per_unit`, rounded to a
  * RATE's precision, or `null`.

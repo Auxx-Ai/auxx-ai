@@ -2,10 +2,13 @@
 
 import { isRecordId, type RecordId } from '@auxx/types/resource'
 import { z } from 'zod'
-import type { IntakeDraftPayload, TranscribedLine } from '../../../../../purchasing/intake/client'
-import { isAutoLinkTier } from '../../../../../purchasing/intake/client'
-import { updateIntakeDraftPayload } from '../../../../../purchasing/intake/draft-mutations'
-import { resolveQuoteLines } from '../../../../../purchasing/intake/resolve'
+import type {
+  IntakeDraftPayload,
+  TranscribedLine,
+} from '../../../../../accounting/purchasing/intake/client'
+import { isAutoLinkTier } from '../../../../../accounting/purchasing/intake/client'
+import { updateIntakeDraftPayload } from '../../../../../accounting/purchasing/intake/draft-mutations'
+import { resolveQuoteLines } from '../../../../../accounting/purchasing/intake/resolve'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 import { refuseUnlessDefViewable, resolveIntakeSession, tierConfidence } from './intake-session'

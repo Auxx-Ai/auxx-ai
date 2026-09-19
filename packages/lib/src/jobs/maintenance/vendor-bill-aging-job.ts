@@ -1,7 +1,7 @@
 // packages/lib/src/jobs/maintenance/vendor-bill-aging-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { sweepAgingVendorBills } from '../../purchasing/aging-sweep'
+import { sweepAgingVendorBills } from '../../accounting/purchasing/aging-sweep'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('vendor-bill-aging-job')

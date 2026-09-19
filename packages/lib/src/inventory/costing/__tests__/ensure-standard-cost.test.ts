@@ -64,6 +64,7 @@ const FIELD: Record<string, { id: string; type: string }> = {
   part_standard_overhead_cost: { id: 'f_std_ovh', type: 'CURRENCY' },
   part_standard_cost: { id: 'f_std', type: 'CURRENCY' },
   part_standard_cost_effective_at: { id: 'f_std_at', type: 'DATETIME' },
+  part_standard_cost_source: { id: 'f_std_src', type: 'SINGLE_SELECT' },
 }
 
 const SYSTEM_USER = 'user_system'

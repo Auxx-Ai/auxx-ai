@@ -722,6 +722,7 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_credit_line_gl_account',
   'vendor_credit_line_part', // one-way
   'vendor_credit_line_purchase_order_line', // one-way
+  'vendor_credit_line_returns_stock', // 73 §8.2: the line moves stock back to the vendor
   'vendor_credit_line_sort_order',
 
   // ─── Vendor credit application ──────────────────────────────────
@@ -750,6 +751,13 @@ export const SYSTEM_ATTRIBUTES = [
   'stock_movement_occurred_at', // the ACCOUNTING date; createdAt is when it was typed
   'stock_movement_vendor_part',
   'stock_movement_vendor_unit_price', // raw invoice price, before landed adders
+  // What a receipt accrued to parties other than the goods vendor, and the rate
+  // that produced the duty (73 §7.2). Stamped so the two accrual accounts can be
+  // reconciled to the movements that raised them without re-reading the supplier
+  // row, which moves.
+  'stock_movement_freight_accrued',
+  'stock_movement_duties_accrued',
+  'stock_movement_tariff_rate',
   'stock_movement_purchase_order_line',
   'stock_movement_reverses_movement', // NOT parentMovement — that means BOM explosion
   'stock_movement_reversed_by_movements',
@@ -831,7 +839,11 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_bill_subtotal',
   'vendor_bill_shipping_total',
   'vendor_bill_tax_total',
+  // The trade discount printed on the invoice, the mirror of the order's (73 D5).
+  'vendor_bill_discount',
   'vendor_bill_total',
+  // The match axis, beside `vendor_bill_status`'s lifecycle axis (73 D1).
+  'vendor_bill_match_status',
   'vendor_bill_match_variance',
   'vendor_bill_match_notes',
   'vendor_bill_document', // FILE — the vendor's invoice as received; the phase-2 parse target
@@ -847,12 +859,18 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_bill_amount_credited',
   'vendor_bill_vendor_credits', // inverse of vendor_credit_bill
   'vendor_bill_credit_applications', // inverse of vendor_credit_application_vendor_bill
+  'vendor_bill_landed_cost_lines', // inverse of vendor_bill_line_landed_bill
   'company_vendor_bills', // inverse of vendor_bill_vendor
   'company_vendor_credits', // inverse of vendor_credit_vendor
 
   // ─── Vendor bill line ───────────────────────────────────────────
   'vendor_bill_line_vendor_bill',
   'vendor_bill_line_purchase_order_line', // the match key
+  // The goods bill a LANDED-COST line belongs to — a carrier's freight line or
+  // a broker's duty line naming the shipment it was charged against (73 §7.2).
+  // Never the order: duty is assessed per customs entry and the broker's
+  // document lists the commercial invoice numbers.
+  'vendor_bill_line_landed_bill',
   'vendor_bill_line_part',
   'vendor_bill_line_description',
   // The vendor's own code for the line as printed on their invoice, never the
@@ -956,6 +974,7 @@ export const SYSTEM_ATTRIBUTES = [
   'part_standard_overhead_cost',
   'part_standard_cost', // the sum — the value every movement stamps
   'part_standard_cost_effective_at',
+  'part_standard_cost_source', // provisional (a typed guess) | confirmed (off a receipt)
   // The two per-part absorption overrides (plans/money/tasks/22). The INPUTS
   // whose output is the frozen block above — NULL falls through to the org
   // rate, a stored 0 means "absorbs nothing", and unlike the frozen fields

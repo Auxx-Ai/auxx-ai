@@ -28,20 +28,19 @@
  *
  * ## Judgment calls this file makes that the brief leaves open
  *
- * 1. **`costBasis: 'standard'` on every relief row.** §1.5 does not name a
- *    basis, and the enum has only `standard` | `actual` - neither is
- *    literally true of a ledger AVERAGE (§3.3: "not a new costing method...
- *    the arithmetic answer to what the account holds"). `standard` is the
- *    closer of the two: like `adjustStock` and `completeBuild`, this is an
- *    internally-computed valuation, never a vendor's invoice price.
+ * 1. **`costBasis: 'standard'` on every relief row**, and since 73 §6.2 rule 3
+ *    it is true rather than merely the closer of two: a relief is priced at the
+ *    finished good's frozen `part_standard_cost` and split across
+ *    `cogs_product_cost` / `cogs_direct_labor` / `applied_overhead` by that
+ *    standard's own composition. The ledger average is a report now.
  * 2. **A cancelled fulfillment's lines are not relieved.** `isLiveFulfillment`
  *    exists in `money/fulfillments/client.ts` precisely because its own
  *    header calls this "an open decision for task 50" (§9 item 3 of this
  *    brief agrees it is "mechanical and probably right"). Filtering happens
  *    in the CALLERS (they already hold `Fulfillment.status`), not here - this
  *    function only ever sees lines a caller decided are live.
- * 3. **A line whose cost cannot be priced at all** (no ledger average, no
- *    fallback standard cost, or no relieved average for a down-delta) is
+ * 3. **A line whose cost cannot be priced at all** (no standard cost, or no
+ *    relieved average for a down-delta) is
  *    skipped and counted (`skippedNoCost`), never written at zero. "Never
  *    post a zero cost" is the same rule `complete-build.ts` enforces from the
  *    build side.
@@ -56,7 +55,10 @@ import { createScopedLogger } from '@auxx/logger'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import type { InventoryMovementLine } from '../../accounting/ledger/builders/inventory-movement'
+import type {
+  InventoryMovementLine,
+  ReliefCogsSplit,
+} from '../../accounting/ledger/builders/inventory-movement'
 import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
 import {
   exportInventoryMovement,
@@ -70,9 +72,11 @@ import { StockMovementCostBasis, StockMovementType } from '../../resources/regis
 import { readStandardCost } from '../costing'
 import { readFulfillmentLineRelievedAverages, readPartLedgerAverages } from '../costing/cost-reads'
 import { batchRecalculateQoH } from '../costing/qoh'
+import type { PartStandardCost } from '../costing/types'
 import type { WrittenStockMovement } from '../movements'
 import { type StockMovementInput, type StockMovementsCtx, writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
+import { splitReliefCost } from './cogs-split'
 import { guard } from './guard'
 import { announceQuietReliefWrites, reliefWriteSession } from './write-lane'
 
@@ -124,8 +128,6 @@ export interface RelieveFulfillmentLinesResult {
   skippedZeroDelta: number
   /** A line with a real delta that could not be priced at all. Never posted at zero. */
   skippedNoCost: number
-  /** Parts §3.6's fallback priced at `part_standard_cost` because QoH was <= 0. */
-  fallbackStandardCostPartIds: string[]
   /** §4.2 - parts this run would leave (or already left) at negative QoH. Warn, never refuse. */
   negativeQoHPartIds: string[]
   /** One outcome per fulfillment this run posted an inventory entry for. */
@@ -251,7 +253,6 @@ export async function relieveFulfillmentLines(
           skippedNoPart,
           skippedZeroDelta,
           skippedNoCost: 0,
-          fallbackStandardCostPartIds: [],
           negativeQoHPartIds: [],
           posts: [],
         }
@@ -303,7 +304,6 @@ export async function relieveFulfillmentLines(
           skippedNoPart,
           skippedZeroDelta,
           skippedNoCost: 0,
-          fallbackStandardCostPartIds: [],
           negativeQoHPartIds: [],
           posts: [],
         }
@@ -311,11 +311,10 @@ export async function relieveFulfillmentLines(
 
       const partIds = [...new Set(resolved.map((line) => line.partInstanceId))]
 
-      // §3.4: the ledger average's numerator and denominator come from ONE
-      // statement, `adjust_subparts IS NOT TRUE` on both - `cost-reads.ts`'s
-      // contract. Read for every distinct part in this run, not only the
-      // ones pricing a positive delta: the `quantity` half also feeds the
-      // §4.2 negative-QoH prediction below, for EVERY part touched.
+      // 73 §6.2 rule 3: this read no longer PRICES anything. Its `quantity`
+      // half is still the live on-hand figure the §4.2 negative-QoH prediction
+      // is made from - never the cached, one-recalc-behind
+      // `part_quantity_on_hand` - and `unitCostMinor` stays a report.
       const ledgerAveragesResult = await readPartLedgerAverages(db, {
         organizationId,
         partInstanceIds: partIds,
@@ -333,21 +332,13 @@ export async function relieveFulfillmentLines(
       if (relievedAveragesResult.isErr()) throw relievedAveragesResult.error
       const relievedAverages = relievedAveragesResult.value
 
-      // §3.6: QoH of zero or negative has no average - `unitCostMinor: null`.
-      // Fall back to `part_standard_cost`, warning and naming the part, and
-      // only read it for the parts that actually need it.
-      const partsNeedingFallback = [
-        ...new Set(
-          resolved
-            .filter((line) => line.delta > 0)
-            .filter((line) => ledgerAverages.get(line.partInstanceId)?.unitCostMinor == null)
-            .map((line) => line.partInstanceId)
-        ),
-      ]
-      const standardCosts: Map<string, number> =
-        partsNeedingFallback.length > 0
-          ? await guardedReadStandardCost(db, organizationId, partsNeedingFallback)
-          : new Map()
+      // 73 §6.2 rule 3: relief is at the finished good's frozen STANDARD, with
+      // its material / labour / overhead composition, so the standard is the
+      // only price and there is no fallback behind it. A part with none is
+      // skipped, for the same reason `completeBuild` refuses one: every other
+      // writer values at standard, and relieving at an average would break the
+      // invariant the close now checks (rule 4).
+      const standardCosts = await guardedReadStandardCost(db, organizationId, partIds)
 
       const partKinds = await readPartKindsLocal(db, organizationId, partIds)
 
@@ -355,22 +346,17 @@ export async function relieveFulfillmentLines(
       // The line behind each input, in the same order, so the written records
       // can be regrouped by their dispatch without re-deriving which were skipped.
       const inputLines: ResolvedReliefLine[] = []
+      /** Parallel to `inputLines`: the standard each line's COGS splits by. */
+      const inputStandards: (PartStandardCost | null)[] = []
       const relievedLineIds: string[] = []
       let skippedNoCost = 0
-      const fallbackStandardCostPartIds = new Set<string>()
       const deltaWrittenByPart = new Map<string, number>()
 
       for (const line of resolved) {
+        const standard = standardCosts.get(line.partInstanceId) ?? null
         let unitCostMinor: number | null
         if (line.delta > 0) {
-          unitCostMinor = ledgerAverages.get(line.partInstanceId)?.unitCostMinor ?? null
-          if (unitCostMinor == null) {
-            const standard = standardCosts.get(line.partInstanceId)
-            if (standard != null) {
-              unitCostMinor = standard
-              fallbackStandardCostPartIds.add(line.partInstanceId)
-            }
-          }
+          unitCostMinor = standard?.standardCost ?? null
         } else {
           // §3.5: priced at what THIS line was already relieved at, never at
           // today's average - the down-delta un-relieves a specific prior
@@ -412,6 +398,10 @@ export async function relieveFulfillmentLines(
           links: { fulfillmentLineId: line.fulfillmentLineId },
         })
         inputLines.push(line)
+        // The composition this line's COGS is split by, or `null` for an
+        // un-relief - it is priced at what the line was relieved at, which is
+        // not today's standard and carries no composition of its own.
+        inputStandards.push(line.delta > 0 ? standard : null)
         relievedLineIds.push(line.fulfillmentLineId)
 
         deltaWrittenByPart.set(
@@ -442,7 +432,6 @@ export async function relieveFulfillmentLines(
           skippedNoPart,
           skippedZeroDelta,
           skippedNoCost,
-          fallbackStandardCostPartIds: [...fallbackStandardCostPartIds],
           negativeQoHPartIds: [...negativeQoHPartIds],
           posts: [],
         }
@@ -481,10 +470,11 @@ export async function relieveFulfillmentLines(
         // journal nobody can trace back to a shipment. Inside the movements'
         // own transaction, so a dispatch can never be relieved without its COGS.
         pending = await Promise.all(
-          groupByFulfillment(inputLines, written.value.records).map((document) =>
+          groupByFulfillment(inputLines, inputStandards, written.value.records).map((document) =>
             postInventoryMovementInTx(tx, {
               organizationId,
               kind: 'sale',
+              cogsSplit: document.cogsSplit,
               // 🛑 `occurrence: 'inventory'`. The fulfillment already holds an
               // `original` subject row for its revenue entry (`fulfill.ts`), and
               // the claim is per `(kind, id, occurrence)`.
@@ -519,7 +509,6 @@ export async function relieveFulfillmentLines(
         skippedNoPart,
         skippedZeroDelta,
         skippedNoCost,
-        fallbackStandardCostPartIds: fallbackStandardCostPartIds.size,
         negativeQoHPartIds: negativeQoHPartIds.size,
       })
 
@@ -529,7 +518,6 @@ export async function relieveFulfillmentLines(
         skippedNoPart,
         skippedZeroDelta,
         skippedNoCost,
-        fallbackStandardCostPartIds: [...fallbackStandardCostPartIds],
         negativeQoHPartIds: [...negativeQoHPartIds],
         posts,
       }
@@ -550,21 +538,17 @@ async function guardedReadStandardCost(
   db: Database,
   organizationId: string,
   partIds: string[]
-): Promise<Map<string, number>> {
+): Promise<Map<string, PartStandardCost>> {
   const result = await readStandardCost(db, organizationId, partIds)
   if (result.isErr()) {
-    logger.error('Relief could not read standard cost fallback - affected lines will be skipped', {
+    logger.error('Relief could not read standard costs - affected lines will be skipped', {
       organizationId,
       partIds,
       error: result.error.message,
     })
     return new Map()
   }
-  const byPart = new Map<string, number>()
-  for (const [partId, standard] of result.value) {
-    byPart.set(partId, standard.standardCost)
-  }
-  return byPart
+  return result.value
 }
 
 /** One fulfillment's movements, as the entry builder reads them. */
@@ -573,6 +557,8 @@ interface ReliefDocument {
   orderId: string
   occurredAt: Date
   movements: InventoryMovementLine[]
+  /** 73 §6.2 rule 3. Summed across the dispatch's lines; `cogs_product_cost` takes the rest. */
+  cogsSplit: ReliefCogsSplit
 }
 
 /**
@@ -584,6 +570,7 @@ interface ReliefDocument {
  */
 function groupByFulfillment(
   inputLines: readonly ResolvedReliefLine[],
+  inputStandards: readonly (PartStandardCost | null)[],
   records: readonly WrittenStockMovement[]
 ): ReliefDocument[] {
   const documents = new Map<string, ReliefDocument>()
@@ -596,12 +583,21 @@ function groupByFulfillment(
       orderId: line.orderId,
       occurredAt: line.occurredAt,
       movements: [],
+      cogsSplit: { laborMinor: 0, overheadMinor: 0 },
     }
     document.movements.push({
       id: record.movementId,
       extendedCostMinor: record.extendedCost,
       glAccountRole: record.glAccount,
     })
+    const standard = inputStandards[index]
+    if (standard) {
+      // The movement's cost is signed as it leaves the shelf; the COGS debit is
+      // its negation, and the split follows that sign.
+      const split = splitReliefCost(standard, -record.extendedCost, line.delta)
+      document.cogsSplit.laborMinor += split.laborMinor
+      document.cogsSplit.overheadMinor += split.overheadMinor
+    }
     documents.set(line.fulfillmentId, document)
   }
   return [...documents.values()].filter((document) => document.movements.length > 0)

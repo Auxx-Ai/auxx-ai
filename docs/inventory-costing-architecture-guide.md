@@ -213,7 +213,7 @@ quantity is loud.
 
 ## 5. The Three-Way Match
 
-`packages/lib/src/purchasing/match.ts`. A pure function over three inputs, with tolerances.
+`packages/lib/src/accounting/purchasing/match.ts`. A pure function over three inputs, with tolerances.
 
 ```
                  purchase_order_line.expected_unit_price   ← what we agreed (price arm)
@@ -243,7 +243,7 @@ the exact failure the match exists to catch.
 write. Nothing in `inventory/receiving/` originally called it, so the verdict depended on the order the
 paperwork happened to arrive in: enter the bill before the goods and `billed 1 but only 0
 received` stood **forever**. `rematchBillsForPurchaseOrderLines`
-(`purchasing/match-reconciler.ts`) closes it, driven from the receipt roll-up for lines whose
+(`accounting/purchasing/match-reconciler.ts`) closes it, driven from the receipt roll-up for lines whose
 received total actually moved — gated on the roll-up's own evidence, never on a `targetAttr`
 string.
 
@@ -262,13 +262,13 @@ leave the queue's money column screaming the bill's entire value; a `receipt_ove
 
 **What makes that safe is that it ages, and aging needs a clock.** The predicates
 (`isAwaitingReceipt`, `isReceiptOverdue`, `DEFAULT_MATCH_TOLERANCE.receiptGraceDays = 7`) are
-pure and take `asOf` as a parameter — nothing in `purchasing/match.ts` reads a clock, so the
+pure and take `asOf` as a parameter — nothing in `accounting/purchasing/match.ts` reads a clock, so the
 rule is testable to exhaustion. Every *trigger* for re-running the match, however, is
 event-driven: a bill write, a bill-line write, or a receipt landing. So the transition it
 computes had nothing to fire it, and a bill whose goods never arrive sat `awaiting_receipt`
 forever — the exact vendor-took-the-money-and-never-shipped case the outcome exists to catch.
 
-`purchasing/aging-sweep.ts` (`sweepAgingVendorBills`, the daily `vendorBillAgingJob` on the
+`accounting/purchasing/aging-sweep.ts` (`sweepAgingVendorBills`, the daily `vendorBillAgingJob` on the
 maintenance queue) is that clock, and it is **the only time-driven trigger in this subsystem**.
 Three properties are load-bearing:
 
@@ -503,8 +503,13 @@ month.
 | Field | Written by | Answers |
 | --- | --- | --- |
 | `part_cost` | `recalculateAffectedParts`, on every vendor-price change | *What would this cost to buy next?* — **replacement cost**. Drives markup pricing. |
-| `part_standard_cost` | `rollStandardCost` only. `updatable: false`, `computed: true` | *What do we value this at?* — **the value every movement stamps.** |
+| `part_standard_cost` | `rollStandardCost`, `ensureStandardCost`, and the first receipt of a provisional part (§11). `updatable: false`, `computed: true` | *What do we value this at?* — **the value every movement stamps**, receipts included. |
 | `part_average_cost` | — | Only exists if moving-average is ever chosen over standard. |
+
+The standard is what every movement stamps, with no exception left: a receipt freezes
+`part_standard_cost` and posts the difference from the agreed price to `ppv` (§7.5), and a
+relief leaves at the standard split three ways (§9.6). The ledger-derived average
+(`inventory/costing/cost-reads.ts`) survives as a **report**, not as a valuation.
 
 🛑 **`part_cost` cannot be the accounting standard.** It is rewritten on every vendor-price
 change and propagates to every ancestor, so valuing a movement with it means a motor price
@@ -585,7 +590,7 @@ one until a year of margins is wrong.
 | --- | --- |
 | `unitCost` | Standard cost per unit, frozen at write time, a RATE: five major-unit places (`RATE_DECIMALS`), so it may hold a fractional minor unit. |
 | `extendedCost` | `round(unitCost × quantity)`, **signed like `quantity`**, so a period rollup is a plain `SUM`. |
-| `costBasis` | `standard` \| `actual`. `receiveStock` writes `actual` (a real vendor price); `adjustStock` and `completeBuild` write `standard`. |
+| `costBasis` | `standard` \| `actual`. Every writer now writes `standard` — `receiveStock` and `receivePurchaseOrder` included, since a receipt freezes the standard and sends the gap to `ppv`. `actual` remains only on rows written before that. |
 | `glAccount` | An inventory **ROLE** (`inventory_raw_materials` / `inventory_finished_goods`), resolved from `partKind` **at write time**. Never a code — see §9.1. |
 | `qtyPerUnit` | The as-built BOM snapshot on a `build_consume` row. NULL means the component was **off-BOM** — a floor substitution. |
 
@@ -595,6 +600,16 @@ one until a year of margins is wrong.
 **Why store `glAccount` rather than derive it:** if a part is reclassified from `component` to
 `finished_good`, deriving would silently restate every closed period that touched it. The stored
 value is the classification *as of the movement*.
+
+#### A `revalue` row is cost-only, and it is the only one allowed quantity 0
+
+`buildStockMovementValues` refuses a zero quantity for every type but `revalue`
+(`inventory/movements/values.ts`): a movement that changes neither stock nor money is a
+no-op somebody meant differently. A `revalue` row carries `quantity: 0` and a signed
+`extendedCost` of `on-hand qty × Δstandard`, one per part per inventory role, so QoH is
+untouched while the account moves. It is what a standard-cost roll posts (§7.2 rule 4's
+`revaluationDelta`, no longer merely computed) and what a provisional part's first receipt
+posts over its opening stock (§11).
 
 **Historical movements have NULL costs and stay NULL.** They predate the regime and are not
 postable, so any reader of unposted movements has to filter `unitCost IS NOT NULL` (no such
@@ -645,6 +660,47 @@ shipment, so their charge is inbound freight's problem and clears through the br
 (`G17`). The internal role stays `freight_accrual`: `G17` explicitly permits the account name and
 the role name to differ, and renaming a role is a vocabulary migration across the ledger for no
 behavioural gain.
+
+#### The three credit legs a receipt actually writes
+
+`inventory/receiving/accruals.ts` is the pure split. The two receiving doors read the winning
+`vendor_part`'s `shipping_cost`, `other_cost` and resolved tariff rate **at receipt time**,
+hand them to `computeReceiptAccrual` with the order's frozen agreed price, and the builder
+emits:
+
+```
+Dr <inventory role>    qty × standard (landed)
+   Cr grni             qty × agreed price
+   Cr freight_accrual  qty × (shippingCost + otherCost)
+   Cr duties_accrual   qty × agreed price × tariffRate/100
+   Dr|Cr ppv           the remainder — the frozen standard against today's estimate
+```
+
+🛑 **`agreedUnitPrice` is the ORDER's frozen price, not the supplier row's standing one.** The
+vendor bill debits `grni` at the agreed price, so a receipt crediting anything else leaves an
+accrual that never closes. Only the three adders come off `vendor_part`. A zero component
+produces no leg, so an org with no tariffs never references `duties_accrual`.
+
+The movement stamps what it accrued — `stock_movement_freight_accrued`,
+`stock_movement_duties_accrued`, `stock_movement_tariff_rate` — so a later read can say what a
+shipment expected to pay without re-deriving it from a rate that has since moved.
+
+**Three bills clear the three accruals**, all through the one vendor-bill builder:
+
+| Bill | Its lines | Clears |
+| --- | --- | --- |
+| the goods vendor's | linked to PO lines → `grni` at billed × agreed | GRNI |
+| the carrier's | coded to the freight accrual account; the difference to `ppv` by hand | freight accrual |
+| the broker's | duty coded to the duties accrual, the service charge to the freight accrual | duties accrual |
+
+A landed-cost line on any of them names the **goods bill** it belongs to through
+`vendor_bill_line_landed_bill` — the bill, not the order, because duty is assessed per customs
+entry and the broker's document lists the vendor's commercial invoice numbers. Intake proposes
+it from those numbers. `readLandedCostByBill` and `readLandedCostByVendorPart`
+(`accounting/purchasing/landed-cost/reads.ts`) are the two reads over that link: what the
+receipts accrued, what has been billed against them, and the difference. Neither posts
+anything — matching a freight bill to the receipts it covers and posting the difference itself
+is a later unit, and until it lands the accrual's balance is the control.
 
 ---
 
@@ -831,8 +887,14 @@ sale can carry a hundred movements and one entry.
   a document just wrote — their signed frozen `stock_movement_extended_cost` and their frozen
   `stock_movement_gl_account` role — sums them by role and adds the one counter-leg the document
   kind implies. `InventoryDocumentKind` is `sale | receive | adjust | build | return | scrap |
-  opening`, and it travels **in the built envelope, not as a second posting type**, because every
-  kind claims, exports and reverses identically.
+  opening | revalue | return_to_vendor`, and it travels **in the built envelope, not as a second
+  posting type**, because every kind claims, exports and reverses identically.
+  - `receive` adds three credit legs and a `ppv` remainder rather than one counter-leg (§7.5).
+  - `revalue` has quantity 0 on every row and its counter-role is `inventory_revaluation`.
+  - `return_to_vendor` credits inventory at the standard, debits `grni` at the agreed price the
+    vendor is crediting back, and sends the rest — the freight and duty on goods no longer held
+    — to `ppv`. The vendor credit's own money entry (`Dr accounts_payable / Cr grni`) is what
+    closes GRNI for those units.
   - 🛑 **Nothing here re-derives a cost.** Re-multiplying today's standard by the quantity would
     restate a shipment months later — the exact failure every writer in `inventory/movements/`
     exists to prevent.
@@ -1017,12 +1079,15 @@ Four facts from it that a reader of *this* guide keeps needing:
   **order**, not on an invoice — the DTC/dealer revenue path has no invoice record at all, and
   `invoice` is the separate service-business billing flow. Only `invoice` and `vendor_bill`
   carry a due date the report can bucket on; everything else is `current`.
-- **Inventory relief is built.** `inventory/relief/relieve.ts` writes one `sale` movement per
-  `fulfillment_line` for `quantity - quantity_relieved`, on the quiet lane, valued at the part's
-  **ledger-derived average** (`inventory/costing/cost-reads.ts`) rather than at
-  `part_standard_cost` — a standard-cost roll never posts its revaluation delta, so relieving at
-  the current standard leaves a residue on every unit shipped after a roll and it accumulates
-  invisibly. `sales/orders/fulfill.ts` calls it after the revenue posting succeeds, and
+- **Inventory relief is built, and it relieves at the standard.** `inventory/relief/relieve.ts`
+  writes one `sale` movement per `fulfillment_line` for `quantity - quantity_relieved`, on the
+  quiet lane, valued at `part_standard_cost`. The COGS debit is split across
+  `cogs_product_cost` / `cogs_direct_labor` / `applied_overhead` from the finished good's own
+  frozen composition, with **material as the remainder** so no rounding tail needs plugging
+  (`inventory/relief/cogs-split.ts`). The ledger-derived average it used to relieve at
+  (`inventory/costing/cost-reads.ts`) was a workaround for a roll that never posted its
+  revaluation; the roll posts it now (§7.4), so the average stays only as a report.
+  `sales/orders/fulfill.ts` calls relief after the revenue posting succeeds, and
   `inventory/relief/backfill.ts` is the record-driven door for fulfillments already on disk.
 
 
@@ -1187,6 +1252,24 @@ is the first step of a writer, and an allowlist entry is a reviewable edit. It i
 def with zero rows can be reshaped for free* a fact rather than a comment claiming to be one.
 Adding to that allowlist is the moment to re-read the payment shape decisions.
 
+🛑 **A typed standard is a guess, and a receipt against it must post no `ppv`.** Parts are
+created long before any purchase order exists, so a first standard set from a typed supplier
+price, a typed opening cost or a manual edit is a number nobody has paid. Receiving against it
+at the old rule would post `(agreed − guess) × qty` to `ppv` — a variance that says "our guess
+was wrong", not "the price moved", polluting `5090` with bootstrap noise on every new part.
+`part_standard_cost_source` (`provisional` | `confirmed`) is what tells them apart;
+`ensureStandardCost` stamps `confirmed` only for the receipt door and `provisional` for the
+other three. A provisional part's first receipt calls `replaceProvisionalStandard`, which
+rewrites the standard to the agreed landed price, flips the source to `confirmed`, and revalues
+whatever is on hand at the guess through one `revalue` movement — **and the receipt then posts
+no `ppv`**, because there was never a price to vary from. The order matters: the record carries
+the new standard before the revaluation entry lands, or the close's `qty × standard` check
+reads the two against each other and disagrees.
+
+⚠️ A NULL source is **not** provisional. `replaceProvisionalStandard` no-ops unless the stored
+value is literally `provisional`, so a part that predates the field keeps posting `ppv` as it
+always did rather than having its standard silently rewritten by the next receipt.
+
 **Integration tests do not run in the default suite.** `packages/lib/vitest.config.ts` excludes
 `src/**/*.int.test.*` — that config mocks `@auxx/database`. They need
 `pnpm -F @auxx/lib test:integration` and a live Postgres. **A green package suite is not evidence
@@ -1205,7 +1288,7 @@ Recorded because both documents still exist and a reader will otherwise trust th
 | Gap D §8 "purchase orders — later". | ❌ Stale. The buy side shipped ahead of it. |
 | `EntityTypeValues` / `EntityType` in `packages/database/src/enums.ts` | ⚠️ **Stale by thirteen types** — missing `order`, `purchase_order`, `vendor_bill`, `gl_account`, `build` and more. Its only consumer is a `z.enum` that system-seeded defs never reach, so nothing is broken. ⚠️ That file has a **destructive generator**; hand-edit it. |
 | `EntityRefKind` in `packages/sdk/src/root/tools/types.ts` | ⚠️ Stale — never gained `purchase_order` / `vendor_bill` / `gl_account` / `order` / `build`. **This one blocks work**: an installed app cannot declare a field against a kind not in the union, and hanging provider account ids off `gl_account` needs it. Different union from the one above; confusing them wastes a pass. |
-| `vendor_bill_balance` "computed from total and amountPaid" | ❌ **No writer exists.** Declared `creatable: false` with no hook, so it is unwritable by a human and uncomputed by the system: every bill's stored balance is NULL. The payment card sidesteps it by computing the display value, so the screen is right and any filter or sort on Balance is not. |
+| `vendor_bill_balance` "computed from total and amountPaid" | ✅ **Closed.** `accounting/purchasing/vendor-bill-balance.ts` is the writer and the figure is `total − paid − credited`, so a filter or sort on Balance now agrees with the payment card. |
 
 ---
 
@@ -1215,12 +1298,12 @@ Recorded because both documents still exist and a reader will otherwise trust th
 
 | Path | Owns |
 | --- | --- |
-| `packages/lib/src/purchasing/` | `match.ts` (the pure match), `match-hook.ts` (triggers), `match-reconciler.ts` (re-match on receipt), `aging-sweep.ts` (the one time-driven trigger), `allocate-landed-cost.ts`, `lifecycle.ts`, `post-vendor-bill.ts`, `purchase-order-status*.ts`, `vendor-part-lookup.ts`, `bill-intake/`, `intake/`, `expense-bill/` |
+| `packages/lib/src/accounting/purchasing/` | `match.ts` (the pure match), `match-hook.ts` (triggers), `match-reconciler.ts` (re-match on receipt), `aging-sweep.ts` (the one time-driven trigger), `allocate-landed-cost.ts`, `lifecycle.ts`, `post-vendor-bill.ts` (the one poster), `bill-edit.ts` / `bill-edit-flag.ts` (Edit and Save over `metadata.editOpen`), `vendor-bill-balance.ts`, `purchase-order-status*.ts`, `vendor-part-lookup.ts`, `bill-intake/`, `intake/`, `expense-bill/`, `landed-cost/`, `vendor-credit/` |
 | `packages/lib/src/inventory/movements/` | `write-movements.ts` (`writeStockMovements`, the ONE writer), `values.ts` (the nine keys every writer stamps), `cost-fields.ts`, `reverse-movement.ts`, `client.ts` (`computeExtendedCost`, `resolveInventoryRoleForPartKind`), `types.ts` (`MovementRecord`) |
-| `packages/lib/src/inventory/costing/` | `standard-cost.ts` (`rollStandardCost`, the ONLY writer of the five `part_standard_*` fields), `standard-cost-roll.ts` (pure), `standard-cost-queries.ts`, `ensure-standard-cost.ts` (first standard only, never an overwrite), `cost-calculator.ts` (`recalculateAffectedParts`, the live `part_cost` roll-up), `vendor-cost.ts` (`computeLandedCost`, the tariff resolution), `cost-reads.ts` (the ledger averages relief values at), `qoh.ts` (`batchRecalculateQoH`), `client.ts` (`resolveAbsorptionRates`, `resolvePartKind`) |
-| `packages/lib/src/inventory/receiving/` | `receive-stock.ts`, `receive-purchase-order.ts`, `adjust-stock.ts`, `open-stock-balance.ts`, `bulk-opening-stock.ts`, `opening-stock-subledger.ts`, `receipt-queries.ts`, `client.ts`, `guard.ts` |
+| `packages/lib/src/inventory/costing/` | `standard-cost.ts` (`rollStandardCost`, and the writer of its revaluation), `revalue.ts` (the cost-only movement), `provisional-standard.ts` (`replaceProvisionalStandard`), `standard-cost-roll.ts` (pure), `standard-cost-queries.ts`, `ensure-standard-cost.ts` (first standard only, never an overwrite), `cost-calculator.ts` (`recalculateAffectedParts`, the live `part_cost` roll-up), `vendor-cost.ts` (`computeLandedCost`, the tariff resolution), `cost-reads.ts` (the ledger averages, now a report), `qoh.ts` (`batchRecalculateQoH`), `client.ts` (`resolveAbsorptionRates`, `resolvePartKind`) |
+| `packages/lib/src/inventory/receiving/` | `receive-stock.ts`, `receive-purchase-order.ts`, `accruals.ts` (the pure receipt split), `adjust-stock.ts`, `open-stock-balance.ts`, `bulk-opening-stock.ts`, `opening-stock-subledger.ts`, `receipt-queries.ts`, `client.ts`, `guard.ts` |
 | `packages/lib/src/inventory/builds/` | `complete-build.ts` (the only movement writer in the module), `reverse-build.ts`, `build-mutations.ts`, `build-now.ts`, `build-queries.ts`, `reconcile-order-builds.ts`, `reconcile-policy.ts`, `drift-*.ts`, `auto-build-*.ts`, `backfill-*.ts`, `write-lane.ts`, `guard.ts` |
-| `packages/lib/src/inventory/relief/` | `relieve.ts` (`relieveFulfillmentLines`, the `sale` movement), `backfill.ts`, `write-lane.ts` |
+| `packages/lib/src/inventory/relief/` | `relieve.ts` (`relieveFulfillmentLines`, the `sale` movement), `cogs-split.ts` (the three-way COGS debit), `backfill.ts`, `write-lane.ts` |
 | `packages/lib/src/inventory/bom/` | `subpart-graph.ts` (`loadSubpartGraph`, `MAX_BOM_DEPTH`) |
 | `packages/lib/src/inventory/tariffs/` | `tariff-schedule.ts`, `tariff-starters.ts`, `tariff-hts-general.ts`, `tariff-301-memberships.ts`, `adopt-tariff-starters.ts`, `resync-tariff-starters.ts`, `apply-tariff-schedule.ts`, `client.ts` |
 | `packages/lib/src/accounting/ledger/` | `builders/entry.ts` (`ACCOUNT_ROLES` / `ROLE_ACCOUNT_TYPES` / `ACCOUNT_ROLE_LABELS` — the ONLY role vocabulary), `builders/inventory-movement.ts`, `builders/doc-number.ts`, `post/post-entry.ts`, `post/post-inventory-movement.ts` (the one door for an inventory document), `roles/resolve-roles.ts` (role → account, fails closed), `roles/regime.ts`, `chart/default-chart.ts`, `periods/`, `setup/book-time-zone.ts` |

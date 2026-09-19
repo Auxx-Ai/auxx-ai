@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   findOrder: vi.fn(),
   loadLines: vi.fn(),
   assign: vi.fn(),
+  proposeLanded: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
   phase: vi.fn(),
@@ -37,7 +38,7 @@ vi.mock('../../../cache/index', () => ({
     from: () => ({ bySystemAttributes: async () => ({}) }),
   }),
 }))
-vi.mock('../../../purchasing/bill-intake', () => ({
+vi.mock('../../../accounting/purchasing/bill-intake', () => ({
   assignBillLines: h.assign,
   checkIntakeModelCapability: vi.fn(async () => ({
     isErr: () => false,
@@ -47,20 +48,21 @@ vi.mock('../../../purchasing/bill-intake', () => ({
   findOrderByReference: h.findOrder,
   foldKey: (value: string | null) => value?.trim().toLowerCase() ?? null,
   loadOrderLineFacts: h.loadLines,
+  proposeLandedBills: h.proposeLanded,
   resolveInvoiceVendor: h.resolveVendor,
   transcribeInvoice: h.transcribe,
 }))
-vi.mock('../../../purchasing/bill-intake/create', () => ({
+vi.mock('../../../accounting/purchasing/bill-intake/create', () => ({
   createBillFromIntake: h.create,
   loadPurchaseOrderCurrency: vi.fn(async () => null),
 }))
-vi.mock('../../../purchasing/intake/transcribe', () => ({
+vi.mock('../../../accounting/purchasing/intake/transcribe', () => ({
   checkIntakeModelCapability: vi.fn(async () => ({
     isErr: () => false,
     value: { ok: true, modelId: 'test-model', reason: null },
   })),
 }))
-vi.mock('../../../purchasing/bill-intake/run-store', () => ({
+vi.mock('../../../accounting/purchasing/bill-intake/run-store', () => ({
   failBillIntakeRun: h.fail,
   parkBillIntakeRunForVendor: h.park,
   readStoredBillIntakeRun: async () => h.run,
@@ -68,7 +70,7 @@ vi.mock('../../../purchasing/bill-intake/run-store', () => ({
   updateBillIntakeRun: h.update,
 }))
 vi.mock('../../../field-values/org-currency', () => ({ getOrgCurrencyCode: vi.fn() }))
-vi.mock('../../../purchasing/intake/client', () => ({
+vi.mock('../../../accounting/purchasing/intake/client', () => ({
   resolveIntakeUnitPrice: () => 420,
 }))
 vi.mock('../../../utils/rate-limiter/fixed-window', () => ({ checkFixedWindowLimit: h.limit }))
@@ -78,8 +80,8 @@ vi.mock('../../queues', async (importOriginal) => ({
 }))
 
 import { ok } from 'neverthrow'
-import type { TranscribedInvoice } from '../../../purchasing/bill-intake/client'
-import type { StoredBillIntakeRun } from '../../../purchasing/bill-intake/run-store'
+import type { TranscribedInvoice } from '../../../accounting/purchasing/bill-intake/client'
+import type { StoredBillIntakeRun } from '../../../accounting/purchasing/bill-intake/run-store'
 import { getQueue } from '../../queues'
 import type { JobContext } from '../../types'
 import { billIntakeJob, enqueueBillIntake } from '../bill-intake-job'
@@ -93,10 +95,12 @@ const invoice: TranscribedInvoice = {
   dueDate: null,
   paymentTerms: null,
   purchaseOrderReference: null,
+  referencedInvoiceNumber: null,
   currency: 'USD',
   subtotalText: '4.20',
   shippingText: null,
   taxText: null,
+  discountText: null,
   totalText: '4.20',
   lines: [
     {
@@ -108,6 +112,7 @@ const invoice: TranscribedInvoice = {
       unit: 'ea',
       unitPriceText: '4.20',
       lineTotalText: '4.20',
+      referencedInvoiceNumber: null,
     },
   ],
 }
@@ -157,11 +162,17 @@ beforeEach(() => {
   h.findExisting.mockReset().mockResolvedValue(ok(null))
   h.findOrder.mockReset().mockResolvedValue(ok(null))
   h.loadLines.mockReset().mockResolvedValue(ok([]))
-  h.assign
-    .mockReset()
-    .mockReturnValue([
-      { lineId: '0', tier: 'none', candidates: [], linkedOrderLineRecordId: null, hint: 'goods' },
-    ])
+  h.assign.mockReset().mockReturnValue([
+    {
+      lineId: '0',
+      tier: 'none',
+      candidates: [],
+      linkedOrderLineRecordId: null,
+      landedBillRecordId: null,
+      hint: 'goods',
+    },
+  ])
+  h.proposeLanded.mockReset().mockResolvedValue(ok([null]))
   h.create.mockReset().mockResolvedValue(
     ok({
       vendorBillRecordId: 'vendor_bill:b1',

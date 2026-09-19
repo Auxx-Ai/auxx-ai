@@ -12,6 +12,8 @@
  * which does not name cardinality as a shared axis).
  */
 
+import { UnprocessableEntityError } from '../../errors'
+import { StockMovementType } from '../../resources/registry/enum-values'
 import type { RecordId } from '../../resources/resource-id'
 import { computeExtendedCost } from './client'
 
@@ -43,6 +45,8 @@ export interface StockMovementValueFields {
   reference?: string
   qtyPerUnit?: number | null
   vendorUnitPrice?: number
+  /** See {@link StockMovementInput.accrued}. Receipts only; omitted keys stay absent. */
+  accrued?: { freightMinor?: number; dutiesMinor?: number; tariffRate?: number }
   links?: ResolvedStockMovementLinks
 }
 
@@ -63,10 +67,17 @@ export interface StockMovementValueFields {
  * `round(unitCost x -consumed)` instead can differ from
  * `-round(unitCost x consumed)` on a half-cent tail (`Math.round` breaks ties
  * toward positive infinity). §2.2, §2.4 item 2.
+ *
+ * 🛑 **Quantity 0 is legal for `revalue` and for nothing else** (73 §6.2 rule
+ * 2). A revaluation is a COST-ONLY movement: it restates what the units on the
+ * shelf are worth and must not move the count. Every other type at quantity 0
+ * is a row in an append-only ledger that corrects nothing, and one that carries
+ * an `extendedCost` override would silently move an account against no stock.
  */
 export function buildStockMovementValues(
   fields: StockMovementValueFields
 ): Record<string, unknown> {
+  assertMovableQuantity(fields.type, fields.quantity)
   const {
     partRecordId,
     type,
@@ -81,6 +92,7 @@ export function buildStockMovementValues(
     reference,
     qtyPerUnit,
     vendorUnitPrice,
+    accrued,
     links,
   } = fields
 
@@ -99,6 +111,12 @@ export function buildStockMovementValues(
   if (reason) values.stock_movement_reason = reason
   if (reference) values.stock_movement_reference = reference
   if (vendorUnitPrice != null) values.stock_movement_vendor_unit_price = vendorUnitPrice
+  // 73 §7.2: what this receipt credited the two accrual accounts, and the rate
+  // that produced the duty. Absent on every movement that accrued nothing - a
+  // zero would read as "we checked, it was free" rather than "not a receipt".
+  if (accrued?.freightMinor) values.stock_movement_freight_accrued = accrued.freightMinor
+  if (accrued?.dutiesMinor) values.stock_movement_duties_accrued = accrued.dutiesMinor
+  if (accrued?.tariffRate) values.stock_movement_tariff_rate = accrued.tariffRate
   // NULL is the off-BOM marker and is written as an absence, not a zero.
   if (qtyPerUnit != null) values.stock_movement_qty_per_unit = qtyPerUnit
 
@@ -110,4 +128,14 @@ export function buildStockMovementValues(
   if (links?.fulfillmentLine) values.stock_movement_fulfillment_line = links.fulfillmentLine
 
   return values
+}
+
+/** See {@link buildStockMovementValues}: only `revalue` may be written at quantity 0. */
+function assertMovableQuantity(type: string, quantity: number): void {
+  if (quantity !== 0) return
+  if (type === StockMovementType.REVALUE) return
+  throw new UnprocessableEntityError(
+    `A ${type} movement of zero quantity changes nothing. Only a revalue movement is cost-only.`,
+    { type }
+  )
 }

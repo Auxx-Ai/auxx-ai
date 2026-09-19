@@ -6,6 +6,9 @@ export {
   type PartKindValue,
   resolveAbsorptionRates,
   resolvePartKind,
+  resolveStandardCostSource,
+  rolledStandardCostSource,
+  type StandardCostSourceValue,
 } from './client'
 export {
   type CostSourceValue,
@@ -31,7 +34,22 @@ export {
   type EnsureStandardCostSource,
   ensureStandardCost,
 } from './ensure-standard-cost'
+// The first receipt of a part whose standard was a guess (73 §6.4). U5's
+// receipt path reads `replaced` to skip its `ppv` leg.
+export {
+  type ReplaceProvisionalStandardResult,
+  replaceProvisionalStandard,
+} from './provisional-standard'
 export { batchRecalculateQoH } from './qoh'
+// The cost-only movement: quantity 0, a signed extended cost, one entry of kind
+// `revalue` (73 §6.2 rule 2). The roll and the provisional replace both post
+// through here; §7's landed-cost voucher is next.
+export {
+  type RevaluationLine,
+  type WriteRevaluationInput,
+  type WriteRevaluationResult,
+  writeRevaluation,
+} from './revalue'
 export { rollStandardCost } from './standard-cost'
 export {
   loadAbsorptionRates,

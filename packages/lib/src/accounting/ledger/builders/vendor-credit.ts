@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/ledger/builders/vendor-credit.ts
 
 /**
- * The supplier's credit note: `buildExpenseBillEntry` with the sides flipped.
+ * The supplier's credit note: `buildVendorBillEntry`'s coded lines with the sides flipped.
  *
  * PURE. No database, no clock, no chart.
  *

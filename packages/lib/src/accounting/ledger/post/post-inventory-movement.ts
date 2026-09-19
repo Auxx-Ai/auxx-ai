@@ -20,6 +20,7 @@ import {
   buildInventoryMovementEntry,
   type InventoryDocumentKind,
   type InventoryMovementLine,
+  type ReliefCogsSplit,
 } from '../builders/inventory-movement'
 import { resolvePeriodLock } from '../periods/period-lock'
 import { listPostingsForSource } from '../reads/list-postings'
@@ -53,6 +54,8 @@ export interface PostInventoryMovementInput {
   movements: readonly InventoryMovementLine[]
   /** A build's absorbed labour and overhead. See the builder. */
   absorbed?: { laborMinor: number; overheadMinor: number }
+  /** A relief's labour and overhead share. See the builder. */
+  cogsSplit?: ReliefCogsSplit
   actorUserId?: string
   memo?: string
 }
@@ -89,6 +92,7 @@ export async function postInventoryMovementInTx(
     txnDate,
     movements,
     absorbed: input.absorbed,
+    cogsSplit: input.cogsSplit,
     memo,
   })
   if (!built) return null

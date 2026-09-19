@@ -28,6 +28,8 @@ const RECALC_PART_COST_VENDOR = 'recalculatePartCostFromVendorPart'
 const RECALC_PART_COST_SUBPART = 'recalculatePartCostFromSubpart'
 const CLEAR_OTHER_PREFERRED = 'clearOtherPreferred'
 const RECALC_STOCK_STATUS = 'recalculateStockStatus'
+/** The agreed price on a purchase order line IS the latest agreed price (73 §6.4). */
+const WRITE_VENDOR_PART_PRICE = 'writeVendorPartPriceFromOrderLine'
 /**
  * A `tariff_rate` write is two joins away from a part (rate -> code -> every
  * offer on that code -> its part), which is why it is its own handler rather
@@ -82,6 +84,14 @@ export function registerFieldSystemRules(): void {
   registerNativeRuleHandler(RECALC_STOCK_STATUS, async (event) => {
     const { recalculateStockStatus } = await import('./post/inventory-triggers')
     await recalculateStockStatus(asFieldTriggerEvent(event, 'part_reorder_point'))
+  })
+  registerNativeRuleHandler(WRITE_VENDOR_PART_PRICE, async (event) => {
+    const { writeVendorPartPriceFromOrderLine } = await import(
+      './post/purchase-order-line-vendor-price'
+    )
+    await writeVendorPartPriceFromOrderLine(
+      asFieldTriggerEvent(event, 'purchase_order_line_expected_unit_price')
+    )
   })
   registerNativeRuleHandler(RECALC_PART_COST_TARIFF_RATE, async (event) => {
     const { recalculatePartCostForTariffRates } = await import('./post/tariff-rate-triggers')
@@ -192,6 +202,17 @@ const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
     on: 'changed',
     skipOnCreate: true,
     actions: [{ type: 'native', handler: RECALC_PART_COST_SUBPART }],
+  },
+  {
+    // `skipOnCreate` is deliberately ABSENT: a line raised with its price
+    // already typed is the ordinary case, and it is the same agreement as one
+    // typed a second later.
+    key: 'mfg-purchase-order-line-agreed-price',
+    name: 'Write the agreed order price onto its vendor part',
+    defSlug: 'purchase-order-lines',
+    fieldRef: { systemAttribute: 'purchase_order_line_expected_unit_price' },
+    on: 'changed',
+    actions: [{ type: 'native', handler: WRITE_VENDOR_PART_PRICE }],
   },
   {
     key: 'mfg-part-reorder-point',

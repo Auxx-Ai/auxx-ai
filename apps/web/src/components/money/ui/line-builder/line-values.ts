@@ -184,6 +184,14 @@ export interface LineValues {
    * is legal and simply cannot be matched.
    */
   purchaseOrderLineRecordId: RecordId | null
+  /**
+   * Vendor bill only: the goods bill this line is a LANDED COST of — a carrier's
+   * freight line or a broker's duty line naming the shipment it covers (73 §7.2).
+   *
+   * Mutually exclusive with {@link purchaseOrderLineRecordId} in practice: a line
+   * with one has no order line, so the three-way match skips it either way.
+   */
+  landedBillRecordId: RecordId | null
   /** Buy-side only: the account CODE this line posts to ('2160', '5090'). */
   glAccount: string | null
   /**
@@ -209,6 +217,12 @@ export interface LineValues {
    * is a broken allocation rather than a partly-configured one.
    */
   weight: number | null
+  /**
+   * Vendor credit only (73 §8.2): issuing this line sends the goods back, as
+   * one `return_out` movement at the part's standard. Off on a price
+   * adjustment, which may carry a quantity and must not move stock.
+   */
+  returnsStock: boolean
 }
 
 /**
@@ -247,6 +261,17 @@ export interface LineSchema {
    */
   primaryColumnLabel: string
   totalsMode: TotalsMode
+  /**
+   * `stored` only: whether the header amounts are TYPED off the document or
+   * written by the totals hook.
+   *
+   * 🛑 Not derivable from `totalsMode`. A vendor bill's headers are transcribed
+   * from the vendor's paper and this footer is the only surface they have
+   * (73 D5); a credit memo's are `creatable: false` mirrors whose only writer is
+   * `recomputeOnCreditMemoLineChange`, so offering an input there would let a
+   * person type a figure the next line write silently re-sums away.
+   */
+  headerAmountsTyped: boolean
   /** Whether the line's amount is computed from qty x rate or transcribed. */
   amountMode: AmountMode
   /**
@@ -298,9 +323,11 @@ const NO_LINE_ATTRS: LineAttrMap = {
   partRecordId: null,
   lineTotal: null,
   purchaseOrderLineRecordId: null,
+  landedBillRecordId: null,
   glAccount: null,
   vendorPartRecordId: null,
   weight: null,
+  returnsStock: null,
 }
 
 /** Every sell-side line is a `line_item`, so the four money documents share one map. */
@@ -323,11 +350,13 @@ const LINE_ITEM_ATTRS: LineAttrMap = {
   // writer. Mapping it would let a patch name a field the server owns.
   lineTotal: null,
   purchaseOrderLineRecordId: null,
+  landedBillRecordId: null,
   glAccount: null,
   // Both are purchasing vocabulary. A sell-side line has no supplier and no
   // freight basis, so neither field exists on `line_item` to write to.
   vendorPartRecordId: null,
   weight: null,
+  returnsStock: null,
 }
 
 const SELL_SIDE_CAPABILITIES: LineCapabilities = {
@@ -406,6 +435,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     primaryTextKey: 'name',
     primaryColumnLabel: 'Description',
     totalsMode: 'computed',
+    headerAmountsTyped: false,
     billingPrefix: 'quote',
     billingAttrs: billingAttrsFor('quote'),
     attrs: LINE_ITEM_ATTRS,
@@ -424,6 +454,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     primaryTextKey: 'name',
     primaryColumnLabel: 'Description',
     totalsMode: 'computed',
+    headerAmountsTyped: false,
     billingPrefix: 'invoice',
     billingAttrs: [
       ...billingAttrsFor('invoice'),
@@ -452,6 +483,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     primaryTextKey: 'name',
     primaryColumnLabel: 'Description',
     totalsMode: 'computed',
+    headerAmountsTyped: false,
     billingPrefix: 'order',
     billingAttrs: billingAttrsFor('order'),
     attrs: LINE_ITEM_ATTRS,
@@ -473,6 +505,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     // every use is gated on `totalsMode`. It is still a real prefix rather than an
     // empty string so a missed gate fails loudly instead of building `_tax_rate`.
     totalsMode: 'none',
+    headerAmountsTyped: false,
     billingPrefix: 'work_order',
     billingAttrs: [],
     attrs: LINE_ITEM_ATTRS,
@@ -501,6 +534,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     // `creatable: false`) — but shipping and tax are stated amounts, not rates.
     // Contrast `vendor_bill` below, whose totals are transcribed entirely.
     totalsMode: 'stated',
+    headerAmountsTyped: false,
     billingPrefix: 'purchase_order',
     // ⚠️ Verified against PURCHASE_ORDER_FIELDS, not derived from the prefix.
     // `billingAttrsFor` would have asked for `_discount_type`, `_tax_name` and
@@ -551,11 +585,13 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     primaryColumnLabel: 'Part',
     // 🛑 See TotalsMode. The bill is THEIRS; its totals are transcribed.
     totalsMode: 'stored',
+    headerAmountsTyped: true,
     billingPrefix: 'vendor_bill',
     billingAttrs: [
       'vendor_bill_subtotal',
       'vendor_bill_shipping_total',
       'vendor_bill_tax_total',
+      'vendor_bill_discount',
       'vendor_bill_total',
     ],
     attrs: {
@@ -566,6 +602,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
       partRecordId: 'vendor_bill_line_part',
       lineTotal: 'vendor_bill_line_line_total',
       purchaseOrderLineRecordId: 'vendor_bill_line_purchase_order_line',
+      landedBillRecordId: 'vendor_bill_line_landed_bill',
       glAccount: 'vendor_bill_line_gl_account',
     },
     photosAttr: null,
@@ -598,6 +635,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     // Tax is transcribed per line and never derived from a rate, so there is no
     // rate control to render: the footer displays the three mirrors.
     totalsMode: 'stored',
+    headerAmountsTyped: false,
     billingPrefix: 'credit_memo',
     billingAttrs: ['credit_memo_subtotal', 'credit_memo_tax_total', 'credit_memo_total'],
     attrs: {
@@ -642,6 +680,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     // Subtotal and total are mirrors written by the totals hook; the stated tax
     // is a header input beside them.
     totalsMode: 'stored',
+    headerAmountsTyped: false,
     billingPrefix: 'vendor_credit',
     billingAttrs: ['vendor_credit_subtotal', 'vendor_credit_tax_total', 'vendor_credit_total'],
     attrs: {
@@ -653,6 +692,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
       lineTotal: 'vendor_credit_line_line_total',
       purchaseOrderLineRecordId: 'vendor_credit_line_purchase_order_line',
       glAccount: 'vendor_credit_line_gl_account',
+      returnsStock: 'vendor_credit_line_returns_stock',
     },
     photosAttr: null,
     capabilities: BUY_SIDE_CAPABILITIES,
@@ -779,9 +819,11 @@ export const DEFAULT_LINE_VALUES: LineValues = {
   partRecordId: null,
   lineTotal: null,
   purchaseOrderLineRecordId: null,
+  landedBillRecordId: null,
   glAccount: null,
   vendorPartRecordId: null,
   weight: null,
+  returnsStock: false,
 }
 
 /** Semantic update emitted by a row; absent keys are not written. */
@@ -801,9 +843,11 @@ const LINE_FIELD_TYPES: Record<keyof LineValues, FieldTypeValue> = {
   partRecordId: FieldType.RELATIONSHIP,
   lineTotal: FieldType.CURRENCY,
   purchaseOrderLineRecordId: FieldType.RELATIONSHIP,
+  landedBillRecordId: FieldType.RELATIONSHIP,
   glAccount: FieldType.TEXT,
   vendorPartRecordId: FieldType.RELATIONSHIP,
   weight: FieldType.NUMBER,
+  returnsStock: FieldType.CHECKBOX,
 }
 
 const LINE_VALUE_KEYS = Object.keys(LINE_FIELD_TYPES) as Array<keyof LineValues>
@@ -910,6 +954,7 @@ export function lineValuesFromSystemValues(
     partRecordId: readRecordId('partRecordId'),
     lineTotal: read<number | null>('lineTotal') ?? null,
     purchaseOrderLineRecordId: readRecordId('purchaseOrderLineRecordId'),
+    landedBillRecordId: readRecordId('landedBillRecordId'),
     glAccount: read<string | null>('glAccount') ?? null,
     vendorPartRecordId: readRecordId('vendorPartRecordId'),
     // Coerced rather than cast: a NUMBER value reads back as a bare number on
@@ -917,6 +962,10 @@ export function lineValuesFromSystemValues(
     // weight — so `?? null` on a raw read would keep a string in a field the
     // allocation sums.
     weight: numberOrNull(read<unknown>('weight')),
+    // Opt-IN: only an explicit `true` returns stock. An unset value on a
+    // document that has the field, and every document that does not, read the
+    // same - nothing moves unless somebody said so.
+    returnsStock: read<boolean>('returnsStock') === true,
   }
 }
 

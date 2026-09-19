@@ -1,8 +1,8 @@
 // apps/web/src/components/purchasing/vendor-bill/vendor-bill-document-tab.tsx
 'use client'
 
+import type { TranscribedInvoice } from '@auxx/lib/accounting/purchasing/bill-intake/client'
 import type { FileValue } from '@auxx/lib/field-values/client'
-import type { TranscribedInvoice } from '@auxx/lib/purchasing/bill-intake/client'
 import { getDefinitionId, type RecordId } from '@auxx/types/resource'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import Papa from 'papaparse'

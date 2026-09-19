@@ -21,7 +21,7 @@ vi.mock('../../../field-values/read-field-scalars', () => ({
 
 import { getCachedEntityDefId, getOrgCache } from '../../../cache'
 import { readFieldRelations, readFieldScalars } from '../../../field-values/read-field-scalars'
-import { buildExpenseBillEntry } from '../../ledger/builders/expense-bill'
+import { buildVendorBillEntry } from '../../ledger/builders/entry'
 import { loadRoleAccountCodes } from '../../ledger/roles/resolve-roles'
 import {
   AGING_UNAPPLIED_GROUP_ID,
@@ -482,7 +482,7 @@ describe('readAging', () => {
         bySystemAttributes: async () => ({
           vendor_bill_due_at: { id: 'f_due' },
           vendor_bill_number: { id: 'f_number' },
-          vendor_bill_status: { id: 'f_status' },
+          vendor_bill_match_status: { id: 'f_status' },
           vendor_bill_vendor: { id: 'f_vendor' },
         }),
       }),
@@ -550,20 +550,27 @@ describe('readAging', () => {
   })
 
   it('picks up a posted expense bill entry, because the builder sources it on the bill', async () => {
-    // 🛑 The link this test exists for: `buildExpenseBillEntry` stamps
-    // `sourceType: 'vendor_bill'` (brief 21 §3.2), and that string is the only
-    // reason this read can find the number, the due date, the vendor and the
-    // drawer link for an expense bill. A private source type would land every
-    // one of them in "Unapplied and adjustments" with no due date at all.
-    const built = buildExpenseBillEntry({
+    // 🛑 The link this test exists for: `buildVendorBillEntry` stamps
+    // `sourceType: 'vendor_bill'`, and that string is the only reason this read
+    // can find the number, the due date, the vendor and the drawer link for a
+    // bill. A private source type would land every one of them in "Unapplied
+    // and adjustments" with no due date at all.
+    const built = buildVendorBillEntry({
       vendorBillId: 'bill_2',
       internalNumber: 'BILL-0011',
       billedAt: '2026-07-01',
       currency: 'USD',
       ledgerCurrency: 'USD',
-      total: 250_000,
+      totalMinor: 250_000,
       vendorCompanyInstanceId: 'company_2',
-      lines: [{ lineId: 'l1', glAccountId: 'ei_acct_rent', amount: 250_000, description: 'Rent' }],
+      lines: [
+        {
+          lineId: 'l1',
+          glAccountId: 'ei_acct_rent',
+          lineTotalMinor: 250_000,
+          description: 'Rent',
+        },
+      ],
     })
     const payableLine = built.entry.lines.find((row) => row.direction === 'credit')
 
@@ -586,7 +593,7 @@ describe('readAging', () => {
         bySystemAttributes: async () => ({
           vendor_bill_due_at: { id: 'f_due' },
           vendor_bill_number: { id: 'f_number' },
-          vendor_bill_status: { id: 'f_status' },
+          vendor_bill_match_status: { id: 'f_status' },
           vendor_bill_vendor: { id: 'f_vendor' },
         }),
       }),
@@ -598,7 +605,8 @@ describe('readAging', () => {
           new Map<string, unknown>([
             ['f_due', '2026-07-31T00:00:00.000Z'],
             ['f_number', 'RENT-SEP'],
-            ['f_status', 'posted'],
+            // An expense bill has no purchase order, so it never carries a verdict.
+            ['f_status', 'none'],
           ]),
         ],
       ])
