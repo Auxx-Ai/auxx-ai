@@ -2,10 +2,10 @@
 
 import {
   acceptMatch,
+  findPayoutEvidenceIdByExternalId,
   getPayoutEvidence,
   listMatchCandidates,
   listPayoutEvidence,
-  listPayoutEvidenceHistory,
   listPayoutSourceAccounts,
   listProcessorBalanceEntries,
   listRejectedProcessorEvidence,
@@ -87,14 +87,13 @@ export const payoutEvidenceRouter = createTRPCRouter({
       return payout
     }),
 
-  history: permissionProcedure(PermissionKey.ledgerView)
-    .input(pagination.extend({ transferId: z.string().min(1) }))
+  /** The evidence id for a provider payout id — how Settlements opens this drawer. */
+  idForExternalId: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ externalId: z.string().min(1) }))
     .query(({ ctx, input }) =>
-      listPayoutEvidenceHistory(ctx.db, {
+      findPayoutEvidenceIdByExternalId(ctx.db, {
         organizationId: ctx.session.organizationId,
-        transferId: input.transferId,
-        limit: input.limit,
-        cursor: input.cursor ?? undefined,
+        externalId: input.externalId,
       })
     ),
 

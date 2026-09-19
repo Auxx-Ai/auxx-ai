@@ -6,7 +6,6 @@ const state = vi.hoisted(() => ({
   list: vi.fn(),
   detail: vi.fn(),
   entries: vi.fn(),
-  history: vi.fn(),
   rejected: vi.fn(),
 }))
 
@@ -14,7 +13,6 @@ vi.mock('@auxx/lib/accounting/money/payouts', () => ({
   listPayoutEvidence: state.list,
   getPayoutEvidence: state.detail,
   listProcessorBalanceEntries: state.entries,
-  listPayoutEvidenceHistory: state.history,
   listRejectedProcessorEvidence: state.rejected,
 }))
 vi.mock('@auxx/lib/permissions', () => ({ PermissionKey: { ledgerView: 'ledger.view' } }))
@@ -62,14 +60,10 @@ describe('payout evidence financial read boundary', () => {
     await expect(api.list({})).rejects.toMatchObject({ code: 'FORBIDDEN' })
     await expect(api.detail({ id: 'payout-1' })).rejects.toMatchObject({ code: 'FORBIDDEN' })
     await expect(api.entries({})).rejects.toMatchObject({ code: 'FORBIDDEN' })
-    await expect(api.history({ transferId: 'payout-1' })).rejects.toMatchObject({
-      code: 'FORBIDDEN',
-    })
     await expect(api.rejected({})).rejects.toMatchObject({ code: 'FORBIDDEN' })
     expect(state.list).not.toHaveBeenCalled()
     expect(state.detail).not.toHaveBeenCalled()
     expect(state.entries).not.toHaveBeenCalled()
-    expect(state.history).not.toHaveBeenCalled()
     expect(state.rejected).not.toHaveBeenCalled()
   })
 
@@ -90,14 +84,7 @@ describe('payout evidence financial read boundary', () => {
     })
   })
 
-  it('scopes history and rejected source payloads to the session organization', async () => {
-    await caller().history({ transferId: 'payout-1', limit: 20, cursor: 'page-2' })
-    expect(state.history).toHaveBeenCalledWith(db, {
-      organizationId: 'org-session',
-      transferId: 'payout-1',
-      limit: 20,
-      cursor: 'page-2',
-    })
+  it('scopes rejected source payloads to the session organization', async () => {
     await caller().rejected({ limit: 25 })
     expect(state.rejected).toHaveBeenCalledWith(db, {
       organizationId: 'org-session',

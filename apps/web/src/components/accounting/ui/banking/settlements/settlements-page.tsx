@@ -47,25 +47,32 @@
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
-import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { StatCards } from '@auxx/ui/components/stat-card'
-import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { CircleHelp, Landmark, RefreshCw, TrendingDown, Wallet } from 'lucide-react'
+import { cn } from '@auxx/ui/lib/utils'
+import { CircleHelp, Landmark, PanelRight, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
+import { useMedia } from '~/hooks/use-media'
 import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
+import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
 import { EMPTY_CELL, formatMinor } from '../../ledger/format'
-import { formatEvidenceAmount, formatEvidenceDate } from '../payouts/evidence-format'
+import { formatEvidenceAmount } from '../payouts/evidence-format'
+import { PayoutEvidenceDrawer } from '../payouts/payout-evidence-drawer'
 import { RailStrip } from './rail-strip'
-import { settlementDepositTotals, settlementDisplay } from './settlement-display'
+import { settlementDay, settlementDisplay } from './settlement-display'
+import {
+  EMPTY_SETTLEMENT_FILTERS,
+  type SettlementFilters,
+  SettlementsToolbar,
+} from './settlements-toolbar'
 
 const BREADCRUMBS = [
   { title: 'Accounting', href: '/app/accounting' },
@@ -79,18 +86,13 @@ const PAGE_DESCRIPTION =
 /** The ledger is pinned to USD for the cutover (`LEDGER_CURRENCY`). */
 const DISPLAY_CURRENCY = 'USD'
 
-const STATUS_TONE: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  paid: 'default',
-  in_transit: 'secondary',
-  failed: 'destructive',
-  reversed: 'outline',
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  paid: 'Paid',
-  in_transit: 'In transit',
-  failed: 'Failed',
-  reversed: 'Reversed',
+/** The status hue, the same dot vocabulary `payouts-page.tsx` colours. */
+const STATUS_DOT: Record<string, string> = {
+  paid: 'bg-green-500',
+  in_transit: 'bg-blue-500',
+  failed: 'bg-destructive',
+  canceled: 'bg-muted-foreground',
+  reversed: 'bg-amber-500',
 }
 
 /** Inspect settlements recorded through the existing payout workflow. */
@@ -104,10 +106,48 @@ export function SettlementsPage() {
     defaultValue: false,
   })
 
-  const payoutsQuery = api.money.payout.list.useQuery({
-    ...(onlyUnidentified ? { onlyUnidentified: true } : {}),
-    limit: 200,
+  // Search and the date range stay LOCAL, the split `payouts-page.tsx` makes:
+  // a text box in the URL is a history entry per keystroke, and the tab above
+  // it is the only part of this view worth linking to.
+  const [filters, setFilters] = useState<SettlementFilters>(EMPTY_SETTLEMENT_FILTERS)
+
+  /**
+   * `?payout=` holds the PROVIDER's payout id, which is what a settlement row
+   * carries; the drawer is keyed on the `MoneyTransfer` the sync imported, so
+   * the id is resolved rather than guessed. Null means nothing was imported
+   * for this payout and there is no evidence to open.
+   */
+  const [openPayoutId, setOpenPayoutId] = useQueryState('payout')
+  const evidenceId = api.payoutEvidence.idForExternalId.useQuery(
+    { externalId: openPayoutId ?? '' },
+    { enabled: !!openPayoutId }
+  )
+
+  /** ⚠️ 1280px, the breakpoint `payouts-page.tsx` docks at behind the same layout. */
+  const isDesktop = useMedia('(min-width: 1280px)')
+  const dockedWidth = useDockStore((state) => state.dockedWidth)
+  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
+
+  /**
+   * ⚠️ Memoised: this is the query KEY, so a fresh object every render would be
+   * a new key every render. `undefined` for anything unset, never `''` - a
+   * blank string is a filter the server would honour by matching nothing.
+   */
+  const listInput = useMemo(
+    () => ({
+      limit: 50,
+      ...(onlyUnidentified ? { onlyUnidentified: true } : {}),
+      search: filters.search.trim() || undefined,
+      from: filters.from || undefined,
+      to: filters.to || undefined,
+    }),
+    [onlyUnidentified, filters]
+  )
+
+  const payoutsQuery = api.money.payout.list.useInfiniteQuery(listInput, {
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
   })
+
   // The gateway named on the row's `secondary` (brief 18 §1.1 b), attributed
   // per row through the payout's own `paymentGatewayId` (brief 27 unit 1;
   // brief 49 §7.1) rather than a single org-wide rail. An org running two
@@ -125,26 +165,48 @@ export function SettlementsPage() {
     },
   })
 
-  const payouts = payoutsQuery.data ?? []
+  const payouts = useMemo(
+    () => payoutsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [payoutsQuery.data?.pages]
+  )
 
-  // The three numbers this page is read for. Summed over the loaded page rather
-  // than queried: the page is capped at 200 and a running total that disagreed
-  // with the rows under it would be worse than no total at all.
-  const totals = useMemo(() => {
-    const deposits = settlementDepositTotals(payouts)
-    const accounted = payouts.filter((payout) => !payout.sourceSummary || payout.glPostingId)
-    const paid = accounted.filter((payout) => payout.status === 'paid')
-    return {
-      deposits,
-      fees: paid.reduce((sum, payout) => sum + payout.feesMinor, 0),
-      unidentified: paid.reduce((sum, payout) => sum + payout.unrecognisedNetMinor, 0),
-      incompleteAmounts: payouts.some((payout) => {
-        const value = settlementDisplay(payout)
-        return value.status === 'paid' && value.amountMinor === null
-      }),
-      pending: payouts.some((payout) => payout.sourceSummary && !payout.glPostingId),
-    }
-  }, [payouts])
+  /** Whether an empty list is "these filters exclude everything" or "nothing exists". */
+  const narrowed = !!filters.search.trim() || !!filters.from || !!filters.to
+
+  // ⚠️ Built ONCE and memoised - the panel array below is published to the
+  // Banking layout's docked slot through an effect.
+  const drawer = useMemo(
+    () => (
+      <PayoutEvidenceDrawer
+        payoutId={evidenceId.data ?? null}
+        onOpenChange={(open) => {
+          if (!open) void setOpenPayoutId(null)
+        }}
+        isDocked={isDesktop}
+        width={dockedWidth}
+        onWidthChange={setDockedWidth}
+      />
+    ),
+    [evidenceId.data, setOpenPayoutId, isDesktop, dockedWidth, setDockedWidth]
+  )
+
+  const dockedPanels = useMemo(
+    () =>
+      isDesktop && openPayoutId && evidenceId.data
+        ? [
+            {
+              key: 'payout',
+              content: drawer,
+              width: dockedWidth,
+              onWidthChange: setDockedWidth,
+              minWidth: 380,
+              maxWidth: 800,
+            },
+          ]
+        : [],
+    [isDesktop, openPayoutId, evidenceId.data, drawer, dockedWidth, setDockedWidth]
+  )
+  useRegisterDockedPanels(dockedPanels)
 
   // 🛑 A refusal from the sync is a CARD, not a toast. `syncNow` returns its
   // run summary including the payouts it could not post, because one refused
@@ -181,209 +243,220 @@ export function SettlementsPage() {
           )}
         </div>
       }>
-      <StatCards
-        loading={payoutsQuery.isPending}
-        columns={{ default: 'grid-cols-1', md: 'md:grid-cols-3' }}
-        cards={[
-          {
-            title: 'Deposited',
-            icon: <Wallet className='size-4' />,
-            color: 'text-good-500',
-            body: (
-              <span className='font-mono tabular-nums'>
-                {totals.deposits.map((total) => (
-                  <span className='block' key={total.currency}>
-                    {formatEvidenceAmount(
-                      total.amountMinor,
-                      total.currency,
-                      total.currencyExponent
-                    )}
-                  </span>
-                ))}
-                {totals.deposits.length === 0 && 'Not available'}
-              </span>
-            ),
-            description: totals.incompleteAmounts
-              ? 'Known paid amounts only. Some payout amounts are unavailable.'
-              : 'Paid payouts reported by the processor',
-          },
-          {
-            title: 'Processor fees',
-            icon: <TrendingDown className='size-4' />,
-            color: 'text-bad-500',
-            body: (
-              <span className='font-mono tabular-nums'>
-                {totals.pending ? 'Pending accounting' : formatMinor(totals.fees, DISPLAY_CURRENCY)}
-              </span>
-            ),
-            description: 'Withheld on the charges auxx recognised',
-          },
-          {
-            title: 'Unidentified',
-            icon: <CircleHelp className='size-4' />,
-            color: 'text-comparison-500',
-            body: (
-              <span className='font-mono tabular-nums'>
-                {totals.pending
-                  ? 'Pending accounting'
-                  : formatMinor(totals.unidentified, DISPLAY_CURRENCY)}
-              </span>
-            ),
-            description: 'Settled charges auxx has no payment for. Someone has to code these',
-          },
-        ]}
-      />
-
-      {/* `flex-1` so the list area fills the room under the header: it is a flex
-          item of the ScrollArea's `min-h-full flex flex-col` content wrapper, which
-          is what lets the empty state center itself. No `min-h-0` - a long list
-          keeps its content height and the page scrolls as it always did. */}
-      <div className='flex flex-1 flex-col gap-3 p-4'>
+      <div className='flex flex-1 flex-col'>
         {/* Brief 27 §8.2: one row per rail with a clearing account, below the
             totals and above the payout list. The strip is where a billed rail
             - which never gets a payout record - is visible at all. */}
-        <RailStrip currencyCode={DISPLAY_CURRENCY} />
+        <div className='flex flex-col gap-3 p-4'>
+          <RailStrip currencyCode={DISPLAY_CURRENCY} />
 
-        {blockers.length > 0 && <EntryBlockers blockers={blockers} />}
+          {blockers.length > 0 && <EntryBlockers blockers={blockers} />}
+        </div>
 
-        {/* Brief 49 §7.3: a filter narrows the list, so it lives in a
-            `ListToolbar` above it, not beside "Sync settlements" in the page
-            action slot - that button changes the data, this one doesn't.
-            `sticky={false}`: Settlements has no inner scroll frame (§1), so a
-            sticky row here would pin against the `SettingsPage` header instead
-            of a list viewport, the same call `review-toolbar.tsx` and
-            `entries-list.tsx` make for the identical shape. */}
-        <ListToolbar sticky={false}>
-          <ListToolbarGroup className='shrink-0'>
-            <RadioTab
-              value={onlyUnidentified ? 'unidentified' : 'all'}
-              onValueChange={(value) => void setOnlyUnidentified(value === 'unidentified')}
-              size='sm'>
-              <RadioTabItem value='all'>All payouts</RadioTabItem>
-              <RadioTabItem value='unidentified'>
-                <CircleHelp />
-                Unidentified
-              </RadioTabItem>
-            </RadioTab>
-          </ListToolbarGroup>
-        </ListToolbar>
+        {/* Full-bleed, so its rule runs to both edges of the page rather than
+            stopping inside a padded column - the Payouts toolbar's placement. */}
+        <SettlementsToolbar
+          onlyUnidentified={onlyUnidentified}
+          onOnlyUnidentifiedChange={(next) => void setOnlyUnidentified(next)}
+          filters={filters}
+          onChange={setFilters}
+        />
 
-        {payoutsQuery.isPending ? (
-          <div className='flex flex-col gap-2'>
-            <Skeleton className='h-10 w-full' />
-            <Skeleton className='h-10 w-full' />
-            <Skeleton className='h-10 w-full' />
-          </div>
-        ) : payouts.length === 0 ? (
-          <EmptyState
-            icon={Landmark}
-            title={onlyUnidentified ? 'Nothing unidentified' : 'No payouts yet'}
-            description={
-              onlyUnidentified
-                ? 'No posted settlements have unidentified amounts. Imported payouts may still be awaiting accounting.'
-                : 'Payouts appear when your connected payment provider imports them.'
-            }
-          />
-        ) : (
-          <TreeRowList
-            items={payouts}
-            getKey={(payout) => payout.payoutId}
-            renderRow={(payout) => {
-              const display = settlementDisplay(payout)
-              const rail = payout.paymentGatewayId
-                ? gatewayById.get(payout.paymentGatewayId)
-                : undefined
-              const source = payout.sourceSummary
-              const railName = source
-                ? (source.gatewayName ??
-                  `${source.provider === 'shopify_payments' ? 'Shopify Payments' : (source.provider ?? 'Unknown provider')} · Setup required`)
-                : (rail?.name ?? 'Unrouted')
-              return (
-                <div className='flex flex-col gap-1.5'>
-                  <TreeRow
-                    title={payout.number ?? EMPTY_CELL}
-                    secondary={`${railName} · ${source ? formatEvidenceDate(source.issuedOn) : (payout.paidAt ?? 'Not settled yet')}`}
-                    icon={<Landmark />}
-                    trailing={
-                      <div className='flex items-center gap-3'>
-                        {/* Brief 49 §7.2: an `imported` payout has no itemisation,
-                          so its structural zero in `unrecognisedNetMinor` means
-                          "nothing to split", never "everything recognised" -
-                          27-a §4 rule 2's own wording. */}
-                        {source && !payout.glPostingId && (
-                          <Badge variant='outline' size='sm'>
-                            Pending accounting
-                          </Badge>
-                        )}
-                        {!source && payout.source === 'imported' && (
-                          <Badge variant='outline' size='sm'>
-                            No itemisation
-                          </Badge>
-                        )}
-                        {payout.unrecognisedNetMinor > 0 && (
-                          <Badge variant='outline' size='sm'>
-                            {formatMinor(payout.unrecognisedNetMinor, DISPLAY_CURRENCY)}{' '}
-                            unidentified
-                            {payout.unrecognisedCount > 0 ? ` (${payout.unrecognisedCount})` : ''}
-                          </Badge>
-                        )}
-                        <span className='font-mono text-sm tabular-nums'>
-                          {display.amountMinor !== null &&
-                          display.currency &&
-                          display.currencyExponent !== null
-                            ? formatEvidenceAmount(
-                                display.amountMinor,
-                                display.currency,
-                                display.currencyExponent
-                              )
-                            : 'Amount unavailable'}
+        <div className='flex flex-1 flex-col gap-1 p-4'>
+          {payoutsQuery.isPending ? (
+            <div className='flex flex-col gap-2'>
+              <Skeleton className='h-10 w-full' />
+              <Skeleton className='h-10 w-full' />
+              <Skeleton className='h-10 w-full' />
+            </div>
+          ) : payouts.length === 0 ? (
+            <EmptyState
+              icon={Landmark}
+              title={
+                narrowed
+                  ? 'Nothing in this view'
+                  : onlyUnidentified
+                    ? 'Nothing unidentified'
+                    : 'No payouts yet'
+              }
+              description={
+                narrowed
+                  ? 'No settlements match these filters. Widen the date range, or clear them, to see everything recorded.'
+                  : onlyUnidentified
+                    ? 'No posted settlements have unidentified amounts. Imported payouts may still be awaiting accounting.'
+                    : 'Payouts appear when your connected payment provider imports them.'
+              }
+            />
+          ) : (
+            <TreeRowList
+              items={payouts}
+              className='gap-px'
+              getKey={(payout) => payout.payoutId}
+              renderRow={(payout) => {
+                const display = settlementDisplay(payout)
+                /* 🛑 The SOURCE's external id first: a synced payout carries the
+                   provider's id there, and only a posted one also has
+                   `payout_gateway_id`. Keying on the latter alone left the
+                   drawer unreachable on 264 of 269 rows here. */
+                const externalId = payout.sourceSummary?.externalId ?? payout.gatewayId
+                const rail = payout.paymentGatewayId
+                  ? gatewayById.get(payout.paymentGatewayId)
+                  : undefined
+                const source = payout.sourceSummary
+                const railName = source
+                  ? (source.gatewayName ??
+                    `${source.provider === 'shopify_payments' ? 'Shopify Payments' : (source.provider ?? 'Unknown provider')} · Setup required`)
+                  : (rail?.name ?? 'Unrouted')
+                return (
+                  <div className='flex flex-col gap-1.5'>
+                    <TreeRow
+                      className={TREE_SECONDARY_NOTRUNCATE}
+                      icon={<Landmark className='size-4 text-muted-foreground' />}
+                      /* Date then number in one fixed-width mono column, the way
+                       the Payouts list leads its rows. */
+                      title={
+                        <span className='flex min-w-0 items-center gap-1.5'>
+                          <span className='shrink-0 font-mono text-muted-foreground text-xs tabular-nums'>
+                            {settlementDay(payout) ?? EMPTY_CELL}
+                          </span>
+                          {/* The number is eight characters and fixed-format, so
+                            it keeps its width rather than truncating under a
+                            long badge in `secondary`. */}
+                          <span className='shrink-0 text-sm'>{payout.number ?? EMPTY_CELL}</span>
                         </span>
-                        <Badge variant={STATUS_TONE[display.status] ?? 'secondary'} size='sm'>
-                          {STATUS_LABEL[display.status] ?? display.status}
-                        </Badge>
-                        {/* 🛑 Brief 18 §1: a `paid` payout with no bank line is a
-                          real signal - either the deposit has not landed or
-                          somebody coded it by hand instead of matching it. */}
-                        {payout.bankTransactionId ? (
-                          <Badge variant='green' size='sm'>
-                            matched
+                      }
+                      secondary={
+                        <span className='flex flex-wrap items-center gap-1.5'>
+                          <Badge variant='outline' size='xs'>
+                            {railName}
                           </Badge>
-                        ) : (
-                          display.status === 'paid' && (
-                            <Badge variant='outline' size='sm'>
-                              unmatched
+                          {/* Brief 49 §7.2: an `imported` payout has no itemisation,
+                            so its structural zero in `unrecognisedNetMinor` means
+                            "nothing to split", never "everything recognised" -
+                            27-a §4 rule 2's own wording. */}
+                          {source && !payout.glPostingId && (
+                            <Badge variant='outline' size='xs'>
+                              Pending accounting
                             </Badge>
-                          )
-                        )}
-                      </div>
-                    }
-                  />
-                  {/* 🛑 Brief 13 §2.3: a payout debits a bank account, not a role, and
+                          )}
+                          {!source && payout.source === 'imported' && (
+                            <Badge variant='outline' size='xs'>
+                              No itemisation
+                            </Badge>
+                          )}
+                          {payout.unrecognisedNetMinor > 0 && (
+                            <Badge variant='amber' size='xs'>
+                              <CircleHelp />
+                              {formatMinor(payout.unrecognisedNetMinor, DISPLAY_CURRENCY)}{' '}
+                              unidentified
+                              {payout.unrecognisedCount > 0 ? ` (${payout.unrecognisedCount})` : ''}
+                            </Badge>
+                          )}
+                        </span>
+                      }
+                      /* Where the row ends, at the same x on every line: the
+                       money, the status as a dot plus its word, then whether a
+                       bank line was ever matched to it. */
+                      actions={
+                        <div className='flex items-center gap-2'>
+                          <span className='font-mono text-xs tabular-nums'>
+                            {display.amountMinor !== null &&
+                            display.currency &&
+                            display.currencyExponent !== null
+                              ? formatEvidenceAmount(
+                                  display.amountMinor,
+                                  display.currency,
+                                  display.currencyExponent
+                                )
+                              : 'Amount unavailable'}
+                          </span>
+                          <span className='flex items-center gap-1 text-muted-foreground text-xs'>
+                            <span
+                              className={cn(
+                                'size-1.5 rounded-full',
+                                STATUS_DOT[display.status] ?? 'bg-muted-foreground'
+                              )}
+                              aria-hidden
+                            />
+                            {display.status.replaceAll('_', ' ')}
+                          </span>
+                          {/* 🛑 Brief 18 §1: a `paid` payout with no bank line is a
+                            real signal - either the deposit has not landed or
+                            somebody coded it by hand instead of matching it. */}
+                          {payout.bankTransactionId ? (
+                            <Badge variant='green' size='sm'>
+                              matched
+                            </Badge>
+                          ) : (
+                            display.status === 'paid' && (
+                              <Badge variant='outline' size='sm'>
+                                unmatched
+                              </Badge>
+                            )
+                          )}
+                          {/* The provider's payout id is what the drawer
+                              resolves its evidence from, so a hand-recorded
+                              payout with no id has no panel to open. */}
+                          {externalId && (
+                            <TreeRowButton
+                              persistent
+                              tooltipText='Open details'
+                              onClick={() => void setOpenPayoutId(externalId)}>
+                              <PanelRight />
+                            </TreeRowButton>
+                          )}
+                        </div>
+                      }
+                      rowClassName={cn(
+                        openPayoutId === externalId && 'bg-primary-100 ring-1 ring-primary-200'
+                      )}
+                    />
+                    {/* 🛑 Brief 13 §2.3: a payout debits a bank account, not a role, and
                     refuses to post until its Stripe destination is confirmed on
                     one. `bank_account_unmapped` is the same shape the deposit's
                     own unmapped-account refusal uses (`deposits-page.tsx`). */}
-                  {source?.amountIssue && (
-                    <p className='text-sm text-bad-500'>{source.amountIssue}</p>
-                  )}
-                  {source?.routingIssue && (
-                    <p className='text-sm text-muted-foreground'>
-                      {source.routingIssue}{' '}
-                      <Link className='underline' href='/app/accounting/settings/payment-gateways'>
-                        Review payment gateways
-                      </Link>
-                    </p>
-                  )}
-                  {payout.blockedReason && (
-                    <EntryBlockers
-                      blockers={[{ status: 'bank_account_unmapped', error: payout.blockedReason }]}
-                    />
-                  )}
-                </div>
-              )
-            }}
-          />
-        )}
+                    {source?.amountIssue && (
+                      <p className='text-sm text-bad-500'>{source.amountIssue}</p>
+                    )}
+                    {source?.routingIssue && (
+                      <p className='text-sm text-muted-foreground'>
+                        {source.routingIssue}{' '}
+                        <Link
+                          className='underline'
+                          href='/app/accounting/settings/payment-gateways'>
+                          Review payment gateways
+                        </Link>
+                      </p>
+                    )}
+                    {payout.blockedReason && (
+                      <EntryBlockers
+                        blockers={[
+                          { status: 'bank_account_unmapped', error: payout.blockedReason },
+                        ]}
+                      />
+                    )}
+                  </div>
+                )
+              }}
+            />
+          )}
+
+          {payoutsQuery.hasNextPage && (
+            <Button
+              variant='outline'
+              size='sm'
+              className='self-center'
+              loading={payoutsQuery.isFetchingNextPage}
+              loadingText='Loading...'
+              onClick={() => void payoutsQuery.fetchNextPage()}>
+              Load more settlements
+            </Button>
+          )}
+        </div>
       </div>
+
+      {/* Below the dock breakpoint the same drawer is a floating overlay. */}
+      {!isDesktop && drawer}
     </SettingsPage>
   )
 }

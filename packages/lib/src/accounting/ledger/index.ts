@@ -157,6 +157,7 @@ export {
   listClosePeriods,
   MAX_COMPACT_PERIOD_KEY,
   type MonthActivity,
+  monthDateRange,
   type ParsedPeriodKey,
   PERIOD_LOCK_SETTING_KEY,
   type PeriodGranularity,

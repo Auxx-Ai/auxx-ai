@@ -124,6 +124,20 @@ export function periodMonth(periodKey: string): string {
   return `${String(parsed.year).padStart(4, '0')}-${String(parsed.month).padStart(2, '0')}`
 }
 
+/**
+ * The inclusive `YYYY-MM-DD` range a `YYYY-MM` key covers - `'2026-02'` is
+ * `2026-02-01` through `2026-02-28`, not a hardcoded `-31` Postgres refuses.
+ */
+export function monthDateRange(periodKey: string): { from: string; to: string } {
+  const parsed = parsePeriodKey(periodKey)
+  if (parsed.granularity !== 'month') {
+    throw new BadRequestError(`Expected a YYYY-MM period key, got "${periodKey}"`, { periodKey })
+  }
+  const lastDay = new Date(Date.UTC(parsed.year, parsed.month, 0)).getUTCDate()
+  const month = `${String(parsed.year).padStart(4, '0')}-${String(parsed.month).padStart(2, '0')}`
+  return { from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, '0')}` }
+}
+
 /** Use the accounting date for document/group identities and the period for calendar keys. */
 export function postingLockKey(entry: { periodKey: string; txnDate: string }): string {
   if (!isGroupPeriodKey(entry.periodKey)) {

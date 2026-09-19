@@ -23,7 +23,7 @@ import { SourceAccountBadge } from '~/components/accounting/ui/source-account-ba
 import { EmptyState } from '~/components/global/empty-state'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { formatEvidenceAmount, formatEvidenceDate } from './evidence-format'
+import { formatEvidenceAmount, formatEvidenceDate, formatEvidenceDay } from './evidence-format'
 import { MatchCandidateDialog } from './match-candidate-dialog'
 import {
   MATCH_REASON_COPY,
@@ -193,13 +193,21 @@ export function ProcessorActivity({
             return (
               <TreeRow
                 icon={<Icon className='size-4' />}
-                title={entry.externalId}
+                /* Date first and day-only, the same column the review queue
+                   leads with; the full timestamp stays in the tooltip. */
+                title={
+                  <span className='flex min-w-0 items-center gap-1.5'>
+                    <span
+                      className='shrink-0 font-mono text-muted-foreground text-xs tabular-nums'
+                      title={formatEvidenceDate(entry.transactionDate)}>
+                      {formatEvidenceDay(entry.transactionDate)}
+                    </span>
+                    <span className='truncate text-sm'>{entry.externalId}</span>
+                  </span>
+                }
                 secondary={
                   <span className='flex items-center gap-1.5'>
-                    <span className='text-xs'>
-                      {entry.type.replaceAll('_', ' ')} ·{' '}
-                      {formatEvidenceDate(entry.transactionDate)}
-                    </span>
+                    <span className='text-xs'>{entry.type.replaceAll('_', ' ')}</span>
                     {!entry.payoutExternalId && (
                       <Badge variant='outline' size='sm'>
                         Unassigned
@@ -207,7 +215,7 @@ export function ProcessorActivity({
                     )}
                     {entry.isOutgoingTransfer && (
                       <Badge variant='outline' size='sm'>
-                        Outgoing payout
+                        Out
                       </Badge>
                     )}
                     <MatchBadges
@@ -337,13 +345,8 @@ function MatchBadges({
   matchState: MatchState | null
   matchReason: MatchReason | null
 }) {
-  if (!matchState) {
-    return (
-      <Badge variant='outline' size='sm'>
-        Not applicable
-      </Badge>
-    )
-  }
+  // No state to report — the outgoing payout IS the payout, so it is not matched.
+  if (!matchState) return null
   return (
     <>
       <Badge variant={MATCH_STATE_VARIANT[matchState]} size='sm'>

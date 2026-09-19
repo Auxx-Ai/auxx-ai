@@ -354,7 +354,7 @@ export async function listPayouts(
   db: Database,
   params: { organizationId: string } & ListPayoutsFilters
 ): Promise<Result<PayoutRecord[], Error>> {
-  const { organizationId, status, onlyUnidentified, limit, offset } = params
+  const { organizationId, status, onlyUnidentified, search, from, to, limit, offset } = params
   return guard(
     async () => {
       const ctx = await loadPayoutFieldContext(db, organizationId)
@@ -391,9 +391,63 @@ export async function listPayouts(
         )
       }
 
+      // 🛑 Search and the date range are narrowed HERE, not after the page was
+      // cut: the list is paged, so a filter applied in the browser would only
+      // ever see the rows already fetched.
+      const number = alias(schema.FieldValue, 'payout_number_v')
+      const gatewayIdValue = alias(schema.FieldValue, 'payout_gateway_id_search_v')
+      const term = search?.trim()
+      if (term && ctx.fields.payout_number && ctx.fields.payout_gateway_id) {
+        query = query
+          .leftJoin(number, systemValueJoin(number, ctx.fields.payout_number.id))
+          .leftJoin(
+            gatewayIdValue,
+            systemValueJoin(gatewayIdValue, ctx.fields.payout_gateway_id.id)
+          )
+        const pattern = `%${term.toLowerCase()}%`
+        const matches = or(
+          sql`lower(${number.valueText}) LIKE ${pattern}`,
+          sql`lower(${gatewayIdValue.valueText}) LIKE ${pattern}`
+        )
+        if (matches) where.push(matches)
+      }
+
+      // 🛑 Newest PAYOUT first, not newest record first. A sync writes rows in
+      // whatever order it read them, so `createdAt` alone put a three-week-old
+      // payout above yesterday's. The sort key is the date the screens show -
+      // what the provider issued, else what auxx paid - and `createdAt` stays
+      // as the tiebreak for a payout carrying neither.
+      const issuedOn = alias(schema.FieldValue, 'payout_source_issued_on_v')
+      const paidAt = alias(schema.FieldValue, 'payout_paid_at_v')
+      const sortKeys: SQL[] = []
+      if (ctx.fields.payout_source_issued_on) {
+        query = query.leftJoin(
+          issuedOn,
+          systemValueJoin(issuedOn, ctx.fields.payout_source_issued_on.id)
+        )
+        sortKeys.push(sql`left(${issuedOn.valueText}, 10) DESC NULLS LAST`)
+      }
+      if (ctx.fields.payout_paid_at) {
+        query = query.leftJoin(paidAt, systemValueJoin(paidAt, ctx.fields.payout_paid_at.id))
+        sortKeys.push(sql`${paidAt.valueDate} DESC NULLS LAST`)
+      }
+
+      // The day the screens read a payout by: what the provider issued, else
+      // what auxx paid. Built from whichever of the two fields this org
+      // actually has, so the range never names a column that was not joined.
+      const dayParts = [
+        ctx.fields.payout_source_issued_on ? sql`left(${issuedOn.valueText}, 10)` : null,
+        ctx.fields.payout_paid_at ? sql`to_char(${paidAt.valueDate}, 'YYYY-MM-DD')` : null,
+      ].filter((part): part is SQL => part !== null)
+      if (dayParts.length > 0 && (from || to)) {
+        const day = sql`COALESCE(${sql.join(dayParts, sql`, `)})`
+        if (from) where.push(sql`${day} >= ${from}`)
+        if (to) where.push(sql`${day} <= ${to}`)
+      }
+
       const rows = await query
         .where(and(...where))
-        .orderBy(desc(schema.EntityInstance.createdAt))
+        .orderBy(...sortKeys, desc(schema.EntityInstance.createdAt))
         .limit(limit ?? DEFAULT_LIMIT)
         .offset(offset ?? 0)
 

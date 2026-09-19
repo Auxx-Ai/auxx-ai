@@ -17,9 +17,9 @@ export {
   totalsOnlySplit,
 } from './client'
 export {
+  findPayoutEvidenceIdByExternalId,
   getPayoutEvidence,
   listPayoutEvidence,
-  listPayoutEvidenceHistory,
   listPayoutSourceAccounts,
   listProcessorBalanceEntries,
   listRejectedProcessorEvidence,

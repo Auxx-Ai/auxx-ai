@@ -110,7 +110,8 @@ describe('processor activity rows', () => {
 
     // The line carries what the list is scanned for.
     expect(screen.getByText('balance-1')).toBeInTheDocument()
-    expect(screen.getByText(/charge · 2026-09-15/)).toBeInTheDocument()
+    expect(screen.getByText('2026-09-15')).toBeInTheDocument()
+    expect(screen.getByText('charge')).toBeInTheDocument()
     expect(screen.getByText('Unassigned')).toBeInTheDocument()
     expect(screen.getByText('Pending')).toBeInTheDocument()
     expect(screen.getByText('No receipt yet')).toBeInTheDocument()
@@ -270,8 +271,8 @@ describe('processor activity rows', () => {
     ]
     renderWithTooltips(<ProcessorActivity transferId='transfer-1' />)
 
-    expect(screen.getByText('Outgoing payout')).toBeInTheDocument()
-    expect(screen.getByText('Not applicable')).toBeInTheDocument()
+    expect(screen.getByText('Out')).toBeInTheDocument()
+    expect(screen.queryByText('Not applicable')).not.toBeInTheDocument()
     expect(screen.queryByText('Unassigned')).not.toBeInTheDocument()
 
     expand()

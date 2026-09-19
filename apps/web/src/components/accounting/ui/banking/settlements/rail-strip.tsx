@@ -56,20 +56,27 @@ function relievedBy(source: PaymentGatewaySettlementSourceValue): string {
   }
 }
 
-/** A captioned cell in the trailing cluster. The caption is the column label. */
-function Cell({
-  caption,
-  children,
-  className,
-}: {
-  caption: string
-  children: ReactNode
-  className?: string
-}) {
+/** One template for the header and every row, so the four columns share widths. */
+const RAIL_COLUMNS = 'grid grid-cols-[8rem_6rem_8rem_11rem] items-center justify-items-end gap-x-5'
+
+/** A cell in the trailing cluster — the column it sits under names it. */
+function Cell({ children }: { children: ReactNode }) {
+  return <div className='text-right text-sm'>{children}</div>
+}
+
+function RailColumnHeader() {
   return (
-    <div className={cn('flex flex-col items-end gap-0.5', className)}>
-      <span className='text-[10px] text-muted-foreground uppercase tracking-wide'>{caption}</span>
-      <span className='text-sm'>{children}</span>
+    <div className='flex items-center justify-between gap-4 px-1'>
+      <span className='whitespace-nowrap text-[10px] text-muted-foreground uppercase tracking-wide'>
+        Payment gateway
+      </span>
+      <div
+        className={cn(RAIL_COLUMNS, 'text-[10px] text-muted-foreground uppercase tracking-wide')}>
+        <span>Clearing balance</span>
+        <span>Last settled</span>
+        <span>Last fee booked</span>
+        <span>Relieved by</span>
+      </div>
     </div>
   )
 }
@@ -109,58 +116,61 @@ export function RailStrip({ currencyCode }: RailStripProps) {
           gateways, and its deposits can be coded as settlements from the review queue.
         </p>
       ) : (
-        <TreeRowList
-          items={rails}
-          getKey={(rail) => rail.paymentGatewayId}
-          renderRow={(rail: RailStripRow) => (
-            <TreeRow
-              icon={<Landmark />}
-              title={
-                <span className='flex items-center gap-2'>
-                  {rail.name}
-                  {rail.status === 'closed' && (
-                    <Badge variant='outline' size='xs'>
-                      closed
-                    </Badge>
-                  )}
-                </span>
-              }
-              secondary={<AccountLabel glAccountId={rail.clearingGlAccountId} />}
-              secondaryFill
-              trailing={
-                <div className='flex flex-wrap items-center justify-end gap-x-5 gap-y-1'>
-                  <Cell caption='Clearing balance' className='min-w-28'>
-                    <span className='font-mono tabular-nums'>
-                      {formatMinor(rail.balanceMinor, currencyCode)}
-                    </span>
-                    {rail.sharedWith.length > 0 && (
-                      <span className='block text-[10px] text-muted-foreground'>
-                        account shared with {rail.sharedWith.join(', ')}
+        <>
+          <RailColumnHeader />
+          <TreeRowList
+            items={rails}
+            getKey={(rail) => rail.paymentGatewayId}
+            renderRow={(rail: RailStripRow) => (
+              <TreeRow
+                icon={<Landmark />}
+                title={
+                  <span className='flex items-center gap-2'>
+                    {rail.name}
+                    {rail.status === 'closed' && (
+                      <Badge variant='outline' size='xs'>
+                        closed
+                      </Badge>
+                    )}
+                  </span>
+                }
+                secondary={<AccountLabel glAccountId={rail.clearingGlAccountId} />}
+                secondaryFill
+                trailing={
+                  <div className={RAIL_COLUMNS}>
+                    <Cell>
+                      <span className='font-mono tabular-nums'>
+                        {formatMinor(rail.balanceMinor, currencyCode)}
                       </span>
-                    )}
-                  </Cell>
-                  <Cell caption='Last settled' className='min-w-24'>
-                    <span className='tabular-nums'>{rail.lastSettledAt ?? EMPTY_CELL}</span>
-                  </Cell>
-                  <Cell caption='Last fee booked' className='min-w-24'>
-                    {rail.feeTreatment === 'netted' ? (
-                      <span className='text-muted-foreground'>with each payout</span>
-                    ) : rail.feeAccountShared ? (
-                      <span className='text-muted-foreground'>shared fee account</span>
-                    ) : (
-                      <span className='tabular-nums'>{rail.lastFeeBookedAt ?? EMPTY_CELL}</span>
-                    )}
-                  </Cell>
-                  <Cell caption='Relieved by' className='min-w-24'>
-                    <Badge variant='secondary' size='sm'>
-                      {relievedBy(rail.settlementSource)}
-                    </Badge>
-                  </Cell>
-                </div>
-              }
-            />
-          )}
-        />
+                      {rail.sharedWith.length > 0 && (
+                        <span className='block text-[10px] text-muted-foreground'>
+                          account shared with {rail.sharedWith.join(', ')}
+                        </span>
+                      )}
+                    </Cell>
+                    <Cell>
+                      <span className='tabular-nums'>{rail.lastSettledAt ?? EMPTY_CELL}</span>
+                    </Cell>
+                    <Cell>
+                      {rail.feeTreatment === 'netted' ? (
+                        <span className='text-muted-foreground'>with each payout</span>
+                      ) : rail.feeAccountShared ? (
+                        <span className='text-muted-foreground'>shared fee account</span>
+                      ) : (
+                        <span className='tabular-nums'>{rail.lastFeeBookedAt ?? EMPTY_CELL}</span>
+                      )}
+                    </Cell>
+                    <Cell>
+                      <Badge variant='secondary' size='sm' className='whitespace-nowrap'>
+                        {relievedBy(rail.settlementSource)}
+                      </Badge>
+                    </Cell>
+                  </div>
+                }
+              />
+            )}
+          />
+        </>
       )}
     </div>
   )

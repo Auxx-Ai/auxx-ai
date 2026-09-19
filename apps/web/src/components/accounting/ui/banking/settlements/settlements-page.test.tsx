@@ -29,6 +29,13 @@ vi.mock('~/components/global/settings-page', () => ({
   default: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
 vi.mock('./rail-strip', () => ({ RailStrip: () => null }))
+vi.mock('../payouts/payout-evidence-drawer', () => ({ PayoutEvidenceDrawer: () => null }))
+vi.mock('~/components/global/docked-panels-outlet', () => ({ useRegisterDockedPanels: () => {} }))
+vi.mock('~/hooks/use-media', () => ({ useMedia: () => true }))
+vi.mock('~/stores/dock-store', () => ({
+  useDockStore: (selector: (s: unknown) => unknown) =>
+    selector({ dockedWidth: 420, setDockedWidth: vi.fn() }),
+}))
 vi.mock('@auxx/ui/components/stat-card', () => ({ StatCards: () => null }))
 vi.mock('@auxx/ui/components/tree-row-list', () => ({
   TreeRowList: ({
@@ -46,19 +53,23 @@ vi.mock('@auxx/ui/components/tree-row-list', () => ({
   ),
 }))
 vi.mock('@auxx/ui/components/tree-row', () => ({
+  TREE_SECONDARY_NOTRUNCATE: '',
+  TreeRowButton: ({ children }: { children: ReactNode }) => (
+    <button type='button'>{children}</button>
+  ),
   TreeRow: ({
     title,
     secondary,
-    trailing,
+    actions,
   }: {
-    title: string
-    secondary: string
-    trailing: ReactNode
+    title: ReactNode
+    secondary: ReactNode
+    actions: ReactNode
   }) => (
     <div>
       {title}
       <div>{secondary}</div>
-      {trailing}
+      {actions}
     </div>
   ),
 }))
@@ -66,23 +77,33 @@ vi.mock('~/trpc/react', () => ({
   api: {
     useUtils: () => ({ money: { payout: { list: { invalidate: vi.fn() } } } }),
     paymentGateway: { list: { useQuery: () => ({ data: [] }) } },
+    payoutEvidence: { idForExternalId: { useQuery: () => ({ data: null }) } },
     money: {
       payout: {
         list: {
-          useQuery: () => ({
-            data: [
-              {
-                payoutId: 'pay-1',
-                number: 'PAY-0001',
-                depositedMinor: 0,
-                feesMinor: 0,
-                unrecognisedNetMinor: 0,
-                status: 'in_transit',
-                paymentGatewayId: null,
-                glPostingId: null,
-                sourceSummary: state.source,
-              },
-            ],
+          useInfiniteQuery: () => ({
+            data: {
+              pages: [
+                {
+                  items: [
+                    {
+                      payoutId: 'pay-1',
+                      number: 'PAY-0001',
+                      gatewayId: 'po_1',
+                      paidAt: null,
+                      depositedMinor: 0,
+                      feesMinor: 0,
+                      unrecognisedNetMinor: 0,
+                      status: 'in_transit',
+                      paymentGatewayId: null,
+                      glPostingId: null,
+                      sourceSummary: state.source,
+                    },
+                  ],
+                  nextCursor: null,
+                },
+              ],
+            },
           }),
         },
         syncNow: { useMutation: () => ({}) },
@@ -97,7 +118,7 @@ describe('settlement rows', () => {
   it('renders imported money and setup instructions instead of zero and Unrouted', () => {
     render(<SettlementsPage />)
     expect(screen.getByText('USD 1,423.01')).toBeInTheDocument()
-    expect(screen.getByText('Paid')).toBeInTheDocument()
+    expect(screen.getByText('paid')).toBeInTheDocument()
     expect(screen.getByText('Pending accounting')).toBeInTheDocument()
     expect(screen.getByText(/Shopify Payments · Setup required/)).toBeInTheDocument()
     expect(screen.queryByText('Unrouted')).not.toBeInTheDocument()
@@ -107,7 +128,9 @@ describe('settlement rows', () => {
     state.source.gatewayName = 'Shopify merchant'
     state.source.routingIssue = null
     render(<SettlementsPage />)
-    expect(screen.getByText(/Shopify merchant · 2026-09-15/)).toBeInTheDocument()
+    // The rail is its own badge now and the date leads the row's title.
+    expect(screen.getByText('Shopify merchant')).toBeInTheDocument()
+    expect(screen.getByText('2026-09-15')).toBeInTheDocument()
     expect(screen.queryByText(/Setup required/)).not.toBeInTheDocument()
   })
   it('renders missing amounts honestly', () => {

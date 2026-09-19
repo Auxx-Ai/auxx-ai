@@ -48,6 +48,7 @@ import {
   listPostingsForSource,
   listRoleMap,
   listRoleSources,
+  monthDateRange,
   postDraft,
   readCloseBlockers,
   readExportSettings,
@@ -1090,8 +1091,7 @@ export const ledgerRouter = createTRPCRouter({
       .mutation(async ({ ctx, input }) => {
         const result = await buildExportBatches(ctx.db, {
           organizationId: ctx.session.organizationId,
-          from: `${input.periodKey}-01`,
-          to: `${input.periodKey}-31`,
+          ...monthDateRange(input.periodKey),
         })
         if (result.isErr()) throw result.error
         return result.value

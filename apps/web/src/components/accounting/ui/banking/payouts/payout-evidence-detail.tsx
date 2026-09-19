@@ -4,14 +4,12 @@
 
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { CollapsedJson } from '@auxx/ui/components/collapsed-json'
 import { MetricCell, MetricGrid } from '@auxx/ui/components/metric-grid'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   Banknote,
   BookOpenCheck,
-  Braces,
   CalendarClock,
   Clock,
   FileCheck,
@@ -23,7 +21,6 @@ import Link from 'next/link'
 import { api } from '~/trpc/react'
 import { LedgerCard } from '../../ledger-card'
 import { formatEvidenceAmount, formatEvidenceDate } from './evidence-format'
-import { PayoutSourceHistory } from './payout-source-history'
 import { ProcessorActivity } from './processor-activity'
 
 /** Accounting > Settings > Payment gateways — where a feed is pointed at a rail. */
@@ -205,12 +202,6 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
           <LedgerCard entityInstanceId={payout.payoutInstanceId} sourceKind='payout' />
         </Section>
       )}
-
-      <PayoutSourceHistory payoutId={payout.id} />
-
-      <Section title='Provider details' icon={<Braces className='size-4' />} collapsible={false}>
-        <CollapsedJson title='Source observation' value={payout.sourceObservation} />
-      </Section>
     </>
   )
 }

@@ -23,3 +23,9 @@ export function formatEvidenceDate(value: string | null): string {
     ? value
     : `${date.toISOString().replace('T', ' ').slice(0, 19)} UTC`
 }
+
+/** The day only — the row line shows this and keeps the full value in its tooltip. */
+export function formatEvidenceDay(value: string | null): string {
+  if (!value) return 'Not reported'
+  return formatEvidenceDate(value).slice(0, 10)
+}
