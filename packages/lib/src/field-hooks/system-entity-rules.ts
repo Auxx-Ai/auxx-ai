@@ -29,6 +29,8 @@ const RECALC_PART_QOH = 'recalculatePartQoH'
 const ENRICH_COMPANY_ON_CREATE = 'enrichCompanyOnCreate'
 const RECALC_PO_LINE_RECEIVED = 'recalculatePurchaseOrderLineReceived'
 const RECALC_PO_LINE_BILLED = 'recalculatePurchaseOrderLineBilled'
+/** 73 §8.2 — the netting half of the billed roll-up, off the vendor credit's lines. */
+const RECALC_PO_LINE_BILLED_FROM_CREDIT = 'recalculatePurchaseOrderLineBilledFromCredit'
 /** plans/money/tasks/50-batch-inventory-relief.md §1 - the sell-side mirror of RECALC_PO_LINE_RECEIVED. */
 const RECALC_FULFILLMENT_LINE_RELIEVED = 'recalculateFulfillmentLineRelieved'
 /** Lifecycle twin of the field handler in `system-record-rules.ts`; same key on purpose. */
@@ -142,6 +144,17 @@ export function registerEntitySystemRules(): void {
       './post/purchase-order-line-rollups'
     )
     await fanOutEntityHandler(event, 'vendor-bill-lines', recalculatePurchaseOrderLineBilled)
+  })
+  // 73 §8.2: the same roll-up, driven by the child that comes OFF it.
+  registerNativeRuleHandler(RECALC_PO_LINE_BILLED_FROM_CREDIT, async (event) => {
+    const { recalculatePurchaseOrderLineBilledFromCredit } = await import(
+      './post/purchase-order-line-rollups'
+    )
+    await fanOutEntityHandler(
+      event,
+      'vendor-credit-lines',
+      recalculatePurchaseOrderLineBilledFromCredit
+    )
   })
 
   // Fulfillment line subledger roll-up (plans/money/tasks/50-batch-inventory-relief.md
@@ -279,6 +292,20 @@ const ENTITY_SYSTEM_RULES: SystemRuleDeclaration[] = [
     defSlug: 'vendor-bill-lines',
     on: 'deleted',
     actions: [{ type: 'native', handler: RECALC_PO_LINE_BILLED }],
+  },
+  {
+    key: 'purchasing-vendor-credit-lines-created',
+    name: 'Recalculate purchase order line qty billed on credit line create',
+    defSlug: 'vendor-credit-lines',
+    on: 'created',
+    actions: [{ type: 'native', handler: RECALC_PO_LINE_BILLED_FROM_CREDIT }],
+  },
+  {
+    key: 'purchasing-vendor-credit-lines-deleted',
+    name: 'Recalculate purchase order line qty billed on credit line delete',
+    defSlug: 'vendor-credit-lines',
+    on: 'deleted',
+    actions: [{ type: 'native', handler: RECALC_PO_LINE_BILLED_FROM_CREDIT }],
   },
   {
     key: 'company-created',

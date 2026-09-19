@@ -56,6 +56,12 @@ export interface VendorCreditLineDraft {
   glAccountInstanceId?: string
   partInstanceId?: string
   purchaseOrderLineInstanceId?: string
+  /**
+   * 73 §8.2: issuing this line sends the goods back — one `return_out` movement
+   * at the part's current standard. Off for a price adjustment, which may carry
+   * a quantity and must not move stock.
+   */
+  returnsStock?: boolean
 }
 
 /** One application row as the settlement card lists it. */

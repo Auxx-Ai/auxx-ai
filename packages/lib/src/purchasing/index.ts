@@ -8,6 +8,17 @@ export {
   capitalisableAmount,
 } from './allocate-landed-cost'
 export {
+  type BillEditInput,
+  openBillEdit,
+  type SaveBillEditResult,
+  saveBillEdit,
+} from './bill-edit'
+export {
+  BILL_EDIT_OPEN_KEY,
+  type BillEditOpen,
+  readBillEditOpen,
+} from './bill-edit-flag'
+export {
   assignBillLines,
   type BillIntakeRunCreatedResult,
   type BillLineFactsLoad,
@@ -39,6 +50,7 @@ export {
   parkBillIntakeRunForVendor,
   parseTranscribedInvoice,
   proposeBillLineLinks,
+  proposeLandedBills,
   readStoredBillIntakeRun,
   resolveGrniAccountId,
   resolveInvoiceVendor,
@@ -63,8 +75,8 @@ export {
   type VendorBillLineRecord,
   type VendorBillPostInput,
   type VendorBillRecord,
-  type VoidExpenseBillInput,
-  voidExpenseBill,
+  type VoidVendorBillInput,
+  voidVendorBill,
 } from './expense-bill'
 export {
   checkIntakeModelCapability,
@@ -95,6 +107,14 @@ export {
   updateIntakeDraftPayload,
   type WriteBackTally,
 } from './intake'
+export {
+  EMPTY_LANDED_COST_SUMMARY,
+  type LandedCostLeg,
+  type LandedCostSummary,
+  readLandedCostByBill,
+  readLandedCostByVendorPart,
+  type VendorPartLandedCostSummary,
+} from './landed-cost'
 export type { PurchaseOrderLifecycleInput } from './lifecycle'
 export { markPurchaseOrderSent } from './lifecycle'
 export {
@@ -122,6 +142,7 @@ export {
   buildEntryForVendorBill,
   type PostVendorBillEntryInput,
   postVendorBillEntry,
+  readAllocationBasis,
   type VendorBillEntrySource,
 } from './post-vendor-bill'
 export type {

@@ -28,6 +28,7 @@ const h = vi.hoisted(() => ({
   reverseEntry: vi.fn(),
   listPostingsForSource: vi.fn(),
   setValuesForEntity: vi.fn(),
+  readBillEditOpen: vi.fn(async () => null as { openedAt: string; byUserId: string } | null),
 }))
 
 vi.mock('@auxx/database', async () => {
@@ -40,6 +41,10 @@ vi.mock('../../../accounting/ledger/setup/accounting-enabled', () => ({
 }))
 vi.mock('../../../cache', () => ({
   getEntityDefIdResolver: async () => (type: string) => type,
+  // 73 D5's allocation-basis read reaches `systemFields`. An org with no
+  // `purchase_order` def resolved falls back to the default basis, which is what
+  // every fixture here posts at.
+  getCachedEntityDefId: async () => null,
 }))
 vi.mock('../../../accounting/ledger/reads/list-postings', () => ({
   listPostingsForSource: h.listPostingsForSource,
@@ -61,6 +66,7 @@ vi.mock('../../../field-values/field-value-service', () => ({
     setValuesForEntity = h.setValuesForEntity
   },
 }))
+vi.mock('../../bill-edit-flag', () => ({ readBillEditOpen: h.readBillEditOpen }))
 vi.mock('../reads', () => ({
   requireVendorBill: async () => h.bill,
   loadVendorBillLines: async () => h.lines,
@@ -68,7 +74,7 @@ vi.mock('../reads', () => ({
 
 import type { Database } from '@auxx/database'
 import { BadRequestError } from '../../../errors'
-import { postVendorBill, previewVendorBill, voidExpenseBill } from '../writes'
+import { postVendorBill, previewVendorBill, voidVendorBill } from '../writes'
 
 const ORG = 'org_1'
 const USER = 'user_1'
@@ -86,6 +92,7 @@ function lastWrite(): Array<{ fieldId: string; value: unknown }> {
 beforeEach(() => {
   vi.clearAllMocks()
   h.isAccountingEnabled.mockResolvedValue(true)
+  h.readBillEditOpen.mockResolvedValue(null)
   h.bill = {
     id: BILL_ID,
     number: 'RENT-SEP',
@@ -321,7 +328,7 @@ describe('previewVendorBill', () => {
   })
 })
 
-describe('voidExpenseBill', () => {
+describe('voidVendorBill', () => {
   beforeEach(() => {
     h.bill = { ...h.bill, status: 'posted' }
     h.listPostingsForSource.mockResolvedValue({
@@ -339,7 +346,7 @@ describe('voidExpenseBill', () => {
   })
 
   it('reverses the entry, then sets void', async () => {
-    await voidExpenseBill(db, {
+    await voidVendorBill(db, {
       organizationId: ORG,
       userId: USER,
       vendorBillInstanceId: BILL_ID,
@@ -356,7 +363,7 @@ describe('voidExpenseBill', () => {
     h.reverseEntry.mockResolvedValue({ status: 'period_closed', error: 'September is locked' })
 
     await expect(
-      voidExpenseBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+      voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(/could not be reversed/)
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
@@ -375,7 +382,7 @@ describe('voidExpenseBill', () => {
       ],
     })
 
-    await voidExpenseBill(db, {
+    await voidVendorBill(db, {
       organizationId: ORG,
       userId: USER,
       vendorBillInstanceId: BILL_ID,
@@ -388,7 +395,18 @@ describe('voidExpenseBill', () => {
   it('refuses to void a bill that has been paid', async () => {
     h.bill = { ...h.bill, paymentStatus: 'paid' }
     await expect(
-      voidExpenseBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+      voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(/money has already moved/)
+  })
+
+  // 73 D4. The values on screen are not the values the live entry was built
+  // from, so reversing "every live posting" would back out the wrong figures.
+  it('refuses to void a bill that is open for editing', async () => {
+    h.readBillEditOpen.mockResolvedValue({ openedAt: '2026-09-18T00:00:00.000Z', byUserId: USER })
+    await expect(
+      voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+    ).rejects.toThrow(/open for editing/)
+    expect(h.reverseEntry).not.toHaveBeenCalled()
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
 })

@@ -11,7 +11,7 @@
  */
 
 export { assignBillLines, descriptionTokens, diceSimilarity, foldKey } from './assign'
-export { type ExistingBill, findExistingBill } from './duplicate'
+export { type ExistingBill, findExistingBill, foldInvoiceNumber } from './duplicate'
 export { findOrderByReference } from './find-order'
 export { foldBillLineIntoShipping } from './fold'
 export {
@@ -27,7 +27,7 @@ export {
   type StoredBillLineFacts,
 } from './load-bill-lines'
 export { loadOrderLineFacts } from './load-order-lines'
-export { type BillLineProposals, proposeBillLineLinks } from './propose'
+export { type BillLineProposals, proposeBillLineLinks, proposeLandedBills } from './propose'
 export { type InvoiceVendorResolution, resolveInvoiceVendor } from './resolve-vendor'
 export {
   type BillIntakeRunCreatedResult,

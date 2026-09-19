@@ -198,7 +198,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     // Every inventory document writer, inside its own write's transaction.
     trigger: {
       kind: 'event',
-      on: 'Every inventory document write: a shipment, a goods receipt, an adjustment, a build, a return, a revaluation, the opening run',
+      on: 'Every inventory document write: a shipment, a goods receipt, an adjustment, a build, a return, a return to the vendor, a revaluation, the opening run',
     },
     template: [
       {

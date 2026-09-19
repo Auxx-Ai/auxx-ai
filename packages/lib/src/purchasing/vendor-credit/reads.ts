@@ -41,6 +41,9 @@ const LINE_ATTRIBUTES = pickSystemAttributes(VENDOR_CREDIT_LINE_FIELDS, [
   'vendor_credit_line_unit_price',
   'vendor_credit_line_line_total',
   'vendor_credit_line_gl_account',
+  'vendor_credit_line_part',
+  'vendor_credit_line_purchase_order_line',
+  'vendor_credit_line_returns_stock',
   'vendor_credit_line_sort_order',
 ] as const)
 
@@ -83,6 +86,12 @@ export interface VendorCreditLineRecord {
   lineTotalMinor: number
   /** The `gl_account` instance id, or `null` when the line is uncoded. */
   glAccountId: string | null
+  /** The `part` instance id, when the line names one. */
+  partInstanceId: string | null
+  /** The `purchase_order_line` instance id the credit is against, when the supplier said. */
+  purchaseOrderLineInstanceId: string | null
+  /** 73 §8.2: issuing this line sends the goods back and moves stock. */
+  returnsStock: boolean
   sortOrder: number
 }
 
@@ -162,6 +171,9 @@ export async function loadVendorCreditLines(
       unitPriceMinor: line.number('vendor_credit_line_unit_price') ?? 0,
       lineTotalMinor: line.number('vendor_credit_line_line_total') ?? 0,
       glAccountId: line.text('vendor_credit_line_gl_account'),
+      partInstanceId: line.related('vendor_credit_line_part'),
+      purchaseOrderLineInstanceId: line.related('vendor_credit_line_purchase_order_line'),
+      returnsStock: line.boolean('vendor_credit_line_returns_stock') === true,
       sortOrder: line.number('vendor_credit_line_sort_order') ?? 0,
     }))
     .sort((a, b) => a.sortOrder - b.sortOrder)

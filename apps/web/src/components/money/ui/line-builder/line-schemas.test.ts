@@ -619,6 +619,19 @@ describe('the match key', () => {
   })
 })
 
+// 73 §7.2: a carrier's or broker's line names the goods bill it is a landed cost
+// of. The bill is the only document with the concept, and unlike the match key it
+// carries no scope attribute — the goods bill belongs to a different vendor, so
+// this document's own order says nothing about which bills may be offered.
+describe('the landed bill', () => {
+  it('belongs to the vendor bill alone, and is deliberately unscoped', () => {
+    expect(ALL.filter((d) => lineSchemaFor(d).attrs.landedBillRecordId !== null)).toEqual([
+      'vendor_bill',
+    ])
+    expect(LINE_SCHEMAS.vendor_bill.attrs.landedBillRecordId).toBe('vendor_bill_line_landed_bill')
+  })
+})
+
 describe('the GL account', () => {
   it('belongs to the vendor bill alone', () => {
     expect(ALL.filter((d) => lineSchemaFor(d).attrs.glAccount !== null)).toEqual(['vendor_bill'])

@@ -17,6 +17,6 @@ export {
   postVendorBill,
   previewVendorBill,
   type VendorBillPostInput,
-  type VoidExpenseBillInput,
-  voidExpenseBill,
+  type VoidVendorBillInput,
+  voidVendorBill,
 } from './writes'

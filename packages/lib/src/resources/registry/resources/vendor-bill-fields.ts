@@ -704,6 +704,35 @@ export const VENDOR_BILL_FIELDS = defineResourceFields({
     description: 'Shares of a vendor credit applied to this bill',
   },
 
+  // `unlink`, not `cascade`: a carrier's or broker's bill is a document of its
+  // own with its own payable, and it survives the goods bill it references
+  // losing its row (73 §7.2). Nothing here is owned.
+  landedCostLines: {
+    id: toFieldId('landedCostLines'),
+    key: 'landedCostLines',
+    label: 'Landed Cost Lines',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'vendor_bill_landed_cost_lines',
+    systemSortOrder: 'aJ3',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'vendor_bill_line:landedBill' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'unlink',
+      isInverse: true,
+    },
+    description: "Freight and duty lines on other vendors' bills, charged against this shipment",
+  },
+
   // The vendor's own paper — the bill itself, as a single FILE value
   // (plans/purchasing/08-documents-on-records.md P18). `image` is in the allowed
   // list deliberately: what arrives is very often a phone photo of paper. This is

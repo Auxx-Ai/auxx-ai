@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   findOrder: vi.fn(),
   loadLines: vi.fn(),
   assign: vi.fn(),
+  proposeLanded: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
   phase: vi.fn(),
@@ -47,6 +48,7 @@ vi.mock('../../../purchasing/bill-intake', () => ({
   findOrderByReference: h.findOrder,
   foldKey: (value: string | null) => value?.trim().toLowerCase() ?? null,
   loadOrderLineFacts: h.loadLines,
+  proposeLandedBills: h.proposeLanded,
   resolveInvoiceVendor: h.resolveVendor,
   transcribeInvoice: h.transcribe,
 }))
@@ -93,6 +95,7 @@ const invoice: TranscribedInvoice = {
   dueDate: null,
   paymentTerms: null,
   purchaseOrderReference: null,
+  referencedInvoiceNumber: null,
   currency: 'USD',
   subtotalText: '4.20',
   shippingText: null,
@@ -109,6 +112,7 @@ const invoice: TranscribedInvoice = {
       unit: 'ea',
       unitPriceText: '4.20',
       lineTotalText: '4.20',
+      referencedInvoiceNumber: null,
     },
   ],
 }
@@ -158,11 +162,17 @@ beforeEach(() => {
   h.findExisting.mockReset().mockResolvedValue(ok(null))
   h.findOrder.mockReset().mockResolvedValue(ok(null))
   h.loadLines.mockReset().mockResolvedValue(ok([]))
-  h.assign
-    .mockReset()
-    .mockReturnValue([
-      { lineId: '0', tier: 'none', candidates: [], linkedOrderLineRecordId: null, hint: 'goods' },
-    ])
+  h.assign.mockReset().mockReturnValue([
+    {
+      lineId: '0',
+      tier: 'none',
+      candidates: [],
+      linkedOrderLineRecordId: null,
+      landedBillRecordId: null,
+      hint: 'goods',
+    },
+  ])
+  h.proposeLanded.mockReset().mockResolvedValue(ok([null]))
   h.create.mockReset().mockResolvedValue(
     ok({
       vendorBillRecordId: 'vendor_bill:b1',

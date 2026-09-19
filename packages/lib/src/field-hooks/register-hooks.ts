@@ -77,6 +77,8 @@ import { stampPartOnCatalogItemChange } from './post/line-item-part-stamp'
 import { prefillContactOnVendorChange } from './post/purchase-order-contact-prefill'
 import {
   recalculateBilledRollupOnBillLineChange,
+  recalculateBilledRollupOnBillStatusChange,
+  recalculateBilledRollupOnCreditLineChange,
   registerPurchaseOrderLineRollupReconcilers,
 } from './post/purchase-order-line-rollups'
 import { guardBuildDelete } from './pre/build-delete-guard'
@@ -118,6 +120,14 @@ import { dropUnauthorizedTemplateKey, rejectDeleteIfTemplateTag } from './pre/ta
 import { restampTariffCodeLabel, stampTariffCodeLabel } from './pre/tariff-code-label'
 import { guardTariffCodeUniqueness } from './pre/tariff-code-uniqueness-guard'
 import { guardVendorBillDelete } from './pre/vendor-bill-delete-guard'
+import {
+  guardPostedVendorBillFields,
+  guardPostedVendorBillLineCreate,
+  guardPostedVendorBillLineDelete,
+  guardPostedVendorBillLineFields,
+  VENDOR_BILL_LINE_LOCKED_ATTRS,
+  VENDOR_BILL_LOCKED_ATTRS,
+} from './pre/vendor-bill-lock'
 import { guardVendorCreditDelete } from './pre/vendor-credit-delete-guard'
 import { guardWorkOrderDelete } from './pre/work-order-delete-guard'
 import {
@@ -296,9 +306,12 @@ export function registerAllHooks(): void {
   // well as the set path (a null write fires the same post-hook chain), which is
   // why there is no delete hook beside it; the bill's total is transcribed, not
   // derived from lines, so no bill-line door can move it either.
+  // 73 D4: voiding a bill writes one field on the BILL and touches no line, so
+  // the third handler is what returns the voided lines' units to billable.
   registerEntityFieldChangeHooks('vendor-bills', [
     rematchOnBillChange,
     recalculateBalanceOnBillChange,
+    recalculateBilledRollupOnBillStatusChange,
   ])
   // Two independent derivations off the same writes: the match writes the BILL's
   // verdict, the roll-up writes the ORDER LINE's billed quantity. Both must be
@@ -308,6 +321,9 @@ export function registerAllHooks(): void {
     rematchOnBillLineChange,
     recalculateBilledRollupOnBillLineChange,
   ])
+  // 73 §8.2: a credit line's quantity comes OFF the same order line's billed
+  // total, and like a bill line it is created at the default `1`.
+  registerEntityFieldChangeHooks('vendor-credit-lines', [recalculateBilledRollupOnCreditLineChange])
   //
   // Client-notifications plan §4.3: enroll the seeded `invoice_reminders` sequence on the
   // draft→sent transition (`enrollInvoiceReminderOnSent` checks the PREVIOUS value so a
@@ -535,6 +551,17 @@ export function registerAllHooks(): void {
     registerFieldPreHooks('purchase-order-lines', attribute, [guardEvidenceLockedLineFields])
   }
 
+  // The posted vendor bill lock (73 D4). Same chain and the same reasoning as the
+  // evidence lock above: the drawer and the `LineBuilder` write through
+  // `FieldValueService`, which never reads the system-hook registry.
+  for (const attribute of VENDOR_BILL_LOCKED_ATTRS) {
+    registerFieldPreHooks('vendor-bills', attribute, [guardPostedVendorBillFields])
+  }
+  for (const attribute of VENDOR_BILL_LINE_LOCKED_ATTRS) {
+    registerFieldPreHooks('vendor-bill-lines', attribute, [guardPostedVendorBillLineFields])
+  }
+  registerEntityPreCreateHooks('vendor-bill-lines', [guardPostedVendorBillLineCreate])
+
   // `(code, country)` is a natural key and `naturalKeyPosition` enforces nothing
   // on create. This must be a PRE-CREATE hook, not a field pre-hook - see the
   // guard's header for the record it produced when it was the latter.
@@ -610,6 +637,9 @@ export function registerAllHooks(): void {
   registerEntityPreDeleteHooks('builds', [guardBuildDelete])
   registerEntityPreDeleteHooks('purchase-orders', [guardPurchaseOrderDelete])
   registerEntityPreDeleteHooks('vendor-bills', [guardVendorBillDelete])
+  // A posted bill loses no lines until somebody presses Edit (73 D4). The cascade
+  // from deleting the BILL itself is guarded one line up, on the bill.
+  registerEntityPreDeleteHooks('vendor-bill-lines', [guardPostedVendorBillLineDelete])
 
   // `tariff-codes` has no hook any more: both halves of task 30 §9.1 are
   // declarative, `restrict` on `tariff_code_vendor_parts` and `cascade` on

@@ -249,6 +249,35 @@ export const VENDOR_CREDIT_LINE_FIELDS = defineResourceFields({
     },
   },
 
+  /**
+   * Whether issuing this line sends the goods back (73 §8.2). Off by default:
+   * a price-adjustment credit may carry a quantity and must not move stock, and
+   * a credit for goods never received clears GRNI with money alone.
+   */
+  returnsStock: {
+    id: toFieldId('returnsStock'),
+    key: 'returnsStock',
+    label: 'Returns Stock',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'vendor_credit_line_returns_stock',
+    systemSortOrder: 'aA',
+    showInTable: false,
+    nullable: false,
+    defaultValue: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'When true, issuing the credit writes a return_out movement for this line at the part’s ' +
+      'current standard cost and posts the return_to_vendor inventory entry beside the credit.',
+  },
+
   sortOrder: {
     id: toFieldId('sortOrder'),
     key: 'sortOrder',

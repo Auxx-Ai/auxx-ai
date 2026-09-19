@@ -29,6 +29,7 @@ const lineSchema = z.object({
   unit: intakeTextField,
   unitPriceText: intakeTextField,
   lineTotalText: intakeTextField,
+  referencedInvoiceNumber: intakeTextField,
 })
 
 const invoiceSchema = z.object({
@@ -40,6 +41,7 @@ const invoiceSchema = z.object({
   dueDate: intakeTextField,
   paymentTerms: intakeTextField,
   purchaseOrderReference: intakeTextField,
+  referencedInvoiceNumber: intakeTextField,
   currency: intakeTextField,
   subtotalText: intakeTextField,
   shippingText: intakeTextField,
@@ -69,6 +71,7 @@ export const TRANSCRIBED_INVOICE_JSON_SCHEMA: Record<string, unknown> = {
     'dueDate',
     'paymentTerms',
     'purchaseOrderReference',
+    'referencedInvoiceNumber',
     'currency',
     'subtotalText',
     'shippingText',
@@ -92,6 +95,13 @@ export const TRANSCRIBED_INVOICE_JSON_SCHEMA: Record<string, unknown> = {
       type: ['string', 'null'],
       description:
         "The buyer's purchase order number as printed on the invoice, exactly as printed, or null",
+    },
+    referencedInvoiceNumber: {
+      type: ['string', 'null'],
+      description:
+        "A commercial invoice number this document is charged against - the goods supplier's " +
+        'invoice number printed on a freight or customs invoice. Null unless the document names ' +
+        'exactly one for the whole bill.',
     },
     currency: { type: ['string', 'null'], description: 'ISO 4217, uppercased' },
     subtotalText: { type: ['string', 'null'], description: 'As printed. Never computed.' },
@@ -121,6 +131,7 @@ export const TRANSCRIBED_INVOICE_JSON_SCHEMA: Record<string, unknown> = {
           'unit',
           'unitPriceText',
           'lineTotalText',
+          'referencedInvoiceNumber',
         ],
         properties: {
           lineNumber: { type: ['number', 'null'] },
@@ -138,6 +149,12 @@ export const TRANSCRIBED_INVOICE_JSON_SCHEMA: Record<string, unknown> = {
           unit: { type: ['string', 'null'], description: 'pcs, kg, m, box, …' },
           unitPriceText: { type: ['string', 'null'], description: 'As printed, with separators' },
           lineTotalText: { type: ['string', 'null'], description: 'As printed. Never computed.' },
+          referencedInvoiceNumber: {
+            type: ['string', 'null'],
+            description:
+              'The commercial invoice number THIS line is charged against, when the line names ' +
+              'one of its own',
+          },
         },
       },
     },
@@ -167,6 +184,9 @@ export const TRANSCRIBE_INVOICE_PROMPT = [
   "8. If the invoice prints the buyer's own part number beside the vendor's code, put it in",
   "   customerCode; the vendor's code stays in vendorCode.",
   '9. Copy a trade discount into discountText as a POSITIVE amount, without its minus sign.',
+  "10. A freight or customs invoice often cites the goods supplier's commercial invoice number.",
+  '    Copy it into referencedInvoiceNumber - on the line when the line names its own, on the',
+  "    document when one covers the whole bill. Never the PO number, never this invoice's own.",
 ].join('\n')
 
 function toLine(raw: z.infer<typeof lineSchema>): TranscribedInvoiceLine {
@@ -179,6 +199,7 @@ function toLine(raw: z.infer<typeof lineSchema>): TranscribedInvoiceLine {
     unit: raw.unit,
     unitPriceText: raw.unitPriceText,
     lineTotalText: raw.lineTotalText,
+    referencedInvoiceNumber: raw.referencedInvoiceNumber,
   }
 }
 
@@ -212,6 +233,7 @@ export function parseTranscribedInvoice(raw: unknown): TranscribedInvoice {
     dueDate: value.dueDate,
     paymentTerms: value.paymentTerms,
     purchaseOrderReference: value.purchaseOrderReference,
+    referencedInvoiceNumber: value.referencedInvoiceNumber,
     currency: value.currency ? value.currency.toUpperCase() : null,
     subtotalText: value.subtotalText,
     shippingText: value.shippingText,

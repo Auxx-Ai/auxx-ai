@@ -14,26 +14,40 @@ import {
   buildVendorCreditEntry,
 } from '../../accounting/ledger/builders/vendor-credit'
 import { resolvePeriodLock } from '../../accounting/ledger/periods/period-lock'
+import { withAccountingCommitLock } from '../../accounting/ledger/post/accounting-commit-lock'
 import { isExpectedPostOutcome } from '../../accounting/ledger/post/ledger-accepted'
-import { LEDGER_CURRENCY, previewEntry } from '../../accounting/ledger/post/post-entry'
+import {
+  exportPostedEntry,
+  type InTxPostResult,
+  LEDGER_CURRENCY,
+  previewEntry,
+} from '../../accounting/ledger/post/post-entry'
+import { exportInventoryMovement } from '../../accounting/ledger/post/post-inventory-movement'
 import { isAccountingEnabled } from '../../accounting/ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../accounting/ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../accounting/ledger/types'
 import { getEntityDefIdResolver } from '../../cache'
 import { BadRequestError } from '../../errors'
+import {
+  PURCHASE_ORDER_LINE_ROLLUPS,
+  recalculatePurchaseOrderLineRollups,
+} from '../../field-hooks/post/purchase-order-line-rollups'
 import { FieldValueService } from '../../field-values/field-value-service'
+import { batchRecalculateQoH } from '../../inventory/costing/qoh'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { recomputeTotals } from '../../sales/totals/totals-hooks'
 import { resolveGrniAccountId } from '../bill-intake/link'
-import { postVendorCreditEntry, reverseVendorCreditEntry } from './accounting'
+import { postVendorCreditEntryInTx, reverseVendorCreditEntry } from './accounting'
 import type { VendorCreditLineDraft } from './client'
 import {
   loadVendorCreditLines,
   requireVendorCredit,
   sumVendorCreditApplications,
   sumVendorCreditRefunds,
+  type VendorCreditLineRecord,
 } from './reads'
 import { settleVendorCredit, VENDOR_CREDIT_STATUS_BYPASS } from './settle'
+import { planVendorCreditStockReturns, writeVendorCreditStockReturns } from './stock-return'
 
 const logger = createScopedLogger('purchasing:vendor-credit')
 
@@ -175,6 +189,7 @@ export async function createVendorCredit(
         'purchase_order_line',
         line.purchaseOrderLineInstanceId
       )
+    if (line.returnsStock) values.vendor_credit_line_returns_stock = true
     return values
   })
 
@@ -295,31 +310,65 @@ export async function issueVendorCredit(
   })
 
   const accountingEnabled = await isAccountingEnabled(db, organizationId)
-  const { credit, issuedAt, built } = await resolveIssue(db, input, {
+  const { credit, lines, issuedAt, built } = await resolveIssue(db, input, {
     buildEntry: accountingEnabled,
   })
 
-  let post: PostResult
-  if (accountingEnabled) {
-    post = await postVendorCreditEntry(db, {
+  // 73 §8.2. Resolved BEFORE anything is written, so a flagged line with no
+  // part, no quantity or no standard refuses the issue by name with the credit
+  // still a draft — the same contract the multi-line receipt keeps.
+  const returns = await planVendorCreditStockReturns(db, organizationId, lines)
+  const occurredAt = new Date(calendarDayToInstant(issuedAt))
+
+  // One transaction for the whole supplier return: the money entry, the goods
+  // leaving, and the inventory entry that values them. Half of it committed is a
+  // credit whose stock never moved, or stock that left for no credit.
+  const { post, stock } = await db.transaction(async (tx) => {
+    await withAccountingCommitLock(tx, organizationId)
+
+    let post: InTxPostResult | PostResult = { status: 'not_enabled' as const }
+    if (accountingEnabled) {
+      post = await postVendorCreditEntryInTx(tx, {
+        organizationId,
+        vendorCreditInstanceId,
+        vendorCompanyInstanceId: credit.vendorCompanyInstanceId,
+        vendorBillInstanceId: credit.vendorBillInstanceId,
+        entry: built!.entry,
+        actorUserId: userId,
+        memo: `Vendor credit ${credit.number} issued`,
+      })
+    }
+    if (!isExpectedPostOutcome(post)) {
+      // Inside the transaction, so the refusal takes the movements with it.
+      throw new BadRequestError(
+        'This vendor credit could not be posted to the general ledger' +
+          `${post.error ? `: ${post.error}` : ` (${post.status})`}`,
+        { vendorCreditInstanceId, status: post.status }
+      )
+    }
+
+    const stock = await writeVendorCreditStockReturns(tx, {
       organizationId,
+      userId,
       vendorCreditInstanceId,
-      vendorCompanyInstanceId: credit.vendorCompanyInstanceId,
-      vendorBillInstanceId: credit.vendorBillInstanceId,
-      entry: built!.entry,
-      actorUserId: userId,
-      memo: `Vendor credit ${credit.number} issued`,
+      number: credit.number,
+      occurredAt,
+      returns,
     })
-  } else {
-    post = { status: 'not_enabled' }
+    return { post, stock }
+  })
+
+  // After the commit, never inside it: a provider round trip holds the claim's
+  // index tuple for the length of an HTTP call.
+  if ('pendingExport' in post && post.pendingExport) await exportPostedEntry(db, post.pendingExport)
+  await exportInventoryMovement(db, stock.post)
+  if (stock.affectedPartIds.length > 0) {
+    await batchRecalculateQoH(organizationId, stock.affectedPartIds)
   }
-  if (!isExpectedPostOutcome(post)) {
-    throw new BadRequestError(
-      'This vendor credit could not be posted to the general ledger' +
-        `${post.error ? `: ${post.error}` : ` (${post.status})`}`,
-      { vendorCreditInstanceId, status: post.status }
-    )
-  }
+  await settleReturnRollups(organizationId, {
+    received: stock.purchaseOrderLineIds,
+    billed: purchaseOrderLineIdsOf(lines),
+  })
 
   const writes: Array<{ fieldId: string; value: unknown }> = [
     { fieldId: 'vendor_credit_status', value: 'issued' },
@@ -408,4 +457,50 @@ export async function voidVendorCredit(
 
   const writer = await statusWriter(db, organizationId, userId)
   await writer.write(vendorCreditInstanceId, [{ fieldId: 'vendor_credit_status', value: 'void' }])
+
+  // The billed roll-up nets this credit's lines and skips a VOID credit's
+  // (73 §8.2), so the order lines have to be re-summed now that it is one.
+  const lines = await loadVendorCreditLines(db, organizationId, credit.lineIds)
+  await settleReturnRollups(organizationId, { received: [], billed: purchaseOrderLineIdsOf(lines) })
+}
+
+/** The distinct order lines a credit's lines point at. */
+function purchaseOrderLineIdsOf(lines: readonly VendorCreditLineRecord[]): string[] {
+  return [
+    ...new Set(
+      lines
+        .map((line) => line.purchaseOrderLineInstanceId)
+        .filter((id): id is string => id !== null)
+    ),
+  ]
+}
+
+/**
+ * Re-SUM the order lines a credit touched, now that its lines are committed.
+ *
+ * The lifecycle rules behind the credit-line writes do the same work; this gets
+ * there first so the match sees the netted figure in the same breath as the
+ * issue. A failure is logged and swallowed — the credit is the primary fact and
+ * is already committed, and the rules are the fallback.
+ */
+async function settleReturnRollups(
+  organizationId: string,
+  lines: { received: readonly string[]; billed: readonly string[] }
+): Promise<void> {
+  const passes = [
+    { ids: lines.received, spec: PURCHASE_ORDER_LINE_ROLLUPS.received },
+    { ids: lines.billed, spec: PURCHASE_ORDER_LINE_ROLLUPS.billed },
+  ]
+  for (const { ids, spec } of passes) {
+    if (ids.length === 0) continue
+    try {
+      await recalculatePurchaseOrderLineRollups(organizationId, [...ids], spec)
+    } catch (error) {
+      logger.error('Failed to settle purchase order line roll-ups after a vendor credit', {
+        organizationId,
+        target: spec.targetAttr,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
 }

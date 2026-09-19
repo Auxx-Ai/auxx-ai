@@ -115,6 +115,49 @@ export const VENDOR_BILL_LINE_FIELDS = defineResourceFields({
     },
   },
 
+  /**
+   * The goods bill a LANDED-COST line belongs to — a carrier's freight line or
+   * a broker's duty line, naming the shipment it was charged against (73 §7.2).
+   *
+   * The bill and not the order: duty is assessed per customs entry, a vendor
+   * invoices per shipment, and the broker's document lists the commercial
+   * invoice numbers, which are the vendor invoice numbers on the goods bills.
+   * A line carrying this has no `purchaseOrderLine`, so the three-way match
+   * skips it exactly as it skips any other unlinked line.
+   */
+  landedBill: {
+    id: toFieldId('landedBill'),
+    key: 'landedBill',
+    label: 'Landed Cost For',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'vendor_bill_line_landed_bill',
+    systemSortOrder: 'a2a',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'vendor_bill:landedCostLines' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'vendor_bill',
+      relationshipType: 'belongs_to',
+      inverseName: 'Landed Cost Lines',
+      inverseSystemAttribute: 'vendor_bill_landed_cost_lines',
+    },
+    description:
+      "The goods bill this freight or duty line was charged against. The vendor's own shipment, " +
+      'not the purchase order: customs assesses one entry per shipment.',
+  },
+
   // Stamped from the PO line at write, not hand-set — provenance and grouping
   // only. No inverse field is declared on `part`: `part_vendor_bill_lines` is
   // not a registered system attribute, so `linkNewRelationships` leaves this
@@ -289,12 +332,9 @@ export const VENDOR_BILL_LINE_FIELDS = defineResourceFields({
    * (`plans/accounting/tasks/done/15-the-account-id-is-the-identity.md` §4) - the
    * same shape `GlRoleAssignment.glAccountId` already uses.
    *
-   * ⚠️ What is still wrong: `bill-lines-from-purchase-order.ts` hardcodes
-   * `GRNI_ACCOUNT_CODE = '2160'` to prefill a PO-matched line. That IS a `G8`
-   * violation — the prefill should resolve the `grni` role through the org's
-   * own `gl_account` chart and use whatever account it finds. It is a prefill
-   * and a human can overtype it, which is why it is a defect rather than a
-   * corruption, but it breaks for any org that renumbers GRNI.
+   * A LINKED line no longer reads this at all: 73 D2 posts it to `grni` off the
+   * role, so `bill-lines-from-purchase-order.ts` leaves it blank rather than
+   * prefilling an account.
    */
   glAccount: {
     id: toFieldId('glAccount'),

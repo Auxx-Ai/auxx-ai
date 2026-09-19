@@ -221,6 +221,11 @@ export async function createBillFromIntake(
         const lineValues = defined({
           vendor_bill_line_vendor_bill: vendorBillRecordId,
           vendor_bill_line_purchase_order_line: linkedOrderLineRecordId,
+          // A landed-cost line names the goods bill, never an order line; the
+          // two are mutually exclusive by construction (73 §7.2).
+          vendor_bill_line_landed_bill: linkedOrderLineRecordId
+            ? null
+            : (proposal?.landedBillRecordId ?? null),
           vendor_bill_line_part: partRecordId,
           vendor_bill_line_vendor_code: printed.vendorCode,
           vendor_bill_line_description: printed.description,

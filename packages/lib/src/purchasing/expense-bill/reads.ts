@@ -26,6 +26,8 @@ const VENDOR_BILL_ATTRIBUTES = pickSystemAttributes(VENDOR_BILL_FIELDS, [
   'vendor_bill_internal_number',
   'vendor_bill_status',
   'vendor_bill_payment_status',
+  'vendor_bill_amount_paid',
+  'vendor_bill_amount_credited',
   'vendor_bill_billed_at',
   'vendor_bill_currency',
   'vendor_bill_subtotal',
@@ -80,6 +82,10 @@ export interface VendorBillRecord {
   status: string
   /** The money axis (73 D1): `unpaid`, `partially_paid` or `paid`. */
   paymentStatus: string
+  /** Integer minor units, settled in cash. The Save floor (73 D4). */
+  amountPaidMinor: number
+  /** Integer minor units, settled by vendor credit. The same floor. */
+  amountCreditedMinor: number
   /** `YYYY-MM-DD`, or `null` when the bill has not been dated yet. */
   billedAt: string | null
   currency: string | null
@@ -119,6 +125,8 @@ export async function loadVendorBill(
     // default rather than as a blank the postable-status wall would let through.
     status: bill.option('vendor_bill_status') ?? 'draft',
     paymentStatus: bill.option('vendor_bill_payment_status') ?? 'unpaid',
+    amountPaidMinor: bill.number('vendor_bill_amount_paid') ?? 0,
+    amountCreditedMinor: bill.number('vendor_bill_amount_credited') ?? 0,
     billedAt: toCalendarDay(bill.date('vendor_bill_billed_at')),
     currency: bill.text('vendor_bill_currency'),
     totalMinor: bill.number('vendor_bill_total') ?? 0,

@@ -131,6 +131,7 @@ function invoiceLine(
     unit: 'pcs',
     unitPriceText: '0.42',
     lineTotalText: '210.00',
+    referencedInvoiceNumber: null,
     ...partial,
   }
 }
@@ -145,6 +146,7 @@ function invoice(partial: Partial<TranscribedInvoice> = {}): TranscribedInvoice 
     dueDate: '2026-10-01',
     paymentTerms: 'Net 30',
     purchaseOrderReference: null,
+    referencedInvoiceNumber: null,
     currency: 'USD',
     subtotalText: '210.00',
     shippingText: null,
@@ -171,6 +173,7 @@ function proposal(partial: Partial<LineProposal> = {}): LineProposal {
       },
     ],
     linkedOrderLineRecordId: 'def_purchase_order_line:pol_1' as never,
+    landedBillRecordId: null,
     hint: 'goods',
     ...partial,
   }

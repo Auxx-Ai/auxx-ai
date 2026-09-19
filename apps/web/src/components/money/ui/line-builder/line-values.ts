@@ -184,6 +184,14 @@ export interface LineValues {
    * is legal and simply cannot be matched.
    */
   purchaseOrderLineRecordId: RecordId | null
+  /**
+   * Vendor bill only: the goods bill this line is a LANDED COST of — a carrier's
+   * freight line or a broker's duty line naming the shipment it covers (73 §7.2).
+   *
+   * Mutually exclusive with {@link purchaseOrderLineRecordId} in practice: a line
+   * with one has no order line, so the three-way match skips it either way.
+   */
+  landedBillRecordId: RecordId | null
   /** Buy-side only: the account CODE this line posts to ('2160', '5090'). */
   glAccount: string | null
   /**
@@ -209,6 +217,12 @@ export interface LineValues {
    * is a broken allocation rather than a partly-configured one.
    */
   weight: number | null
+  /**
+   * Vendor credit only (73 §8.2): issuing this line sends the goods back, as
+   * one `return_out` movement at the part's standard. Off on a price
+   * adjustment, which may carry a quantity and must not move stock.
+   */
+  returnsStock: boolean
 }
 
 /**
@@ -309,9 +323,11 @@ const NO_LINE_ATTRS: LineAttrMap = {
   partRecordId: null,
   lineTotal: null,
   purchaseOrderLineRecordId: null,
+  landedBillRecordId: null,
   glAccount: null,
   vendorPartRecordId: null,
   weight: null,
+  returnsStock: null,
 }
 
 /** Every sell-side line is a `line_item`, so the four money documents share one map. */
@@ -334,11 +350,13 @@ const LINE_ITEM_ATTRS: LineAttrMap = {
   // writer. Mapping it would let a patch name a field the server owns.
   lineTotal: null,
   purchaseOrderLineRecordId: null,
+  landedBillRecordId: null,
   glAccount: null,
   // Both are purchasing vocabulary. A sell-side line has no supplier and no
   // freight basis, so neither field exists on `line_item` to write to.
   vendorPartRecordId: null,
   weight: null,
+  returnsStock: null,
 }
 
 const SELL_SIDE_CAPABILITIES: LineCapabilities = {
@@ -584,6 +602,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
       partRecordId: 'vendor_bill_line_part',
       lineTotal: 'vendor_bill_line_line_total',
       purchaseOrderLineRecordId: 'vendor_bill_line_purchase_order_line',
+      landedBillRecordId: 'vendor_bill_line_landed_bill',
       glAccount: 'vendor_bill_line_gl_account',
     },
     photosAttr: null,
@@ -673,6 +692,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
       lineTotal: 'vendor_credit_line_line_total',
       purchaseOrderLineRecordId: 'vendor_credit_line_purchase_order_line',
       glAccount: 'vendor_credit_line_gl_account',
+      returnsStock: 'vendor_credit_line_returns_stock',
     },
     photosAttr: null,
     capabilities: BUY_SIDE_CAPABILITIES,
@@ -799,9 +819,11 @@ export const DEFAULT_LINE_VALUES: LineValues = {
   partRecordId: null,
   lineTotal: null,
   purchaseOrderLineRecordId: null,
+  landedBillRecordId: null,
   glAccount: null,
   vendorPartRecordId: null,
   weight: null,
+  returnsStock: false,
 }
 
 /** Semantic update emitted by a row; absent keys are not written. */
@@ -821,9 +843,11 @@ const LINE_FIELD_TYPES: Record<keyof LineValues, FieldTypeValue> = {
   partRecordId: FieldType.RELATIONSHIP,
   lineTotal: FieldType.CURRENCY,
   purchaseOrderLineRecordId: FieldType.RELATIONSHIP,
+  landedBillRecordId: FieldType.RELATIONSHIP,
   glAccount: FieldType.TEXT,
   vendorPartRecordId: FieldType.RELATIONSHIP,
   weight: FieldType.NUMBER,
+  returnsStock: FieldType.CHECKBOX,
 }
 
 const LINE_VALUE_KEYS = Object.keys(LINE_FIELD_TYPES) as Array<keyof LineValues>
@@ -930,6 +954,7 @@ export function lineValuesFromSystemValues(
     partRecordId: readRecordId('partRecordId'),
     lineTotal: read<number | null>('lineTotal') ?? null,
     purchaseOrderLineRecordId: readRecordId('purchaseOrderLineRecordId'),
+    landedBillRecordId: readRecordId('landedBillRecordId'),
     glAccount: read<string | null>('glAccount') ?? null,
     vendorPartRecordId: readRecordId('vendorPartRecordId'),
     // Coerced rather than cast: a NUMBER value reads back as a bare number on
@@ -937,6 +962,10 @@ export function lineValuesFromSystemValues(
     // weight — so `?? null` on a raw read would keep a string in a field the
     // allocation sums.
     weight: numberOrNull(read<unknown>('weight')),
+    // Opt-IN: only an explicit `true` returns stock. An unset value on a
+    // document that has the field, and every document that does not, read the
+    // same - nothing moves unless somebody said so.
+    returnsStock: read<boolean>('returnsStock') === true,
   }
 }
 

@@ -21,6 +21,7 @@ import {
   findOrderByReference,
   foldKey,
   loadOrderLineFacts,
+  proposeLandedBills,
   resolveInvoiceVendor,
   transcribeInvoice,
 } from '../../purchasing/bill-intake'
@@ -300,7 +301,24 @@ export async function billIntakeJob(ctx: JobContext<BillIntakeJobData>) {
       quantity: line.quantity,
       unitPriceCents: resolveIntakeUnitPrice(line, line.quantity ?? 0, currency),
     }))
-    const proposals = assignBillLines(printedLines, orderLines)
+    const matched = assignBillLines(printedLines, orderLines)
+
+    // 73 §7.2: a carrier's or broker's line names the goods bill it is a landed
+    // cost of, from the commercial invoice number printed on it. Falls back to a
+    // document-level reference when the line prints none of its own.
+    const landedResult = await proposeLandedBills(
+      database,
+      organizationId,
+      transcription.lines.map(
+        (line) => line.referencedInvoiceNumber ?? transcription.referencedInvoiceNumber
+      )
+    )
+    if (landedResult.isErr()) throw landedResult.error
+    const proposals = matched.map((proposal, index) => ({
+      ...proposal,
+      landedBillRecordId: landedResult.value[index] ?? null,
+    }))
+
     const saved = await update(organizationId, runId, {
       purchaseOrderRecordId,
       proposals,

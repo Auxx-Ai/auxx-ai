@@ -13,17 +13,26 @@
 // The "Lines" section title is rendered by the drawer's `TabCardSection`
 // wrapper, so this card must not draw one.
 
+import { VENDOR_CREDIT_EDITABLE_STATUSES } from '@auxx/lib/purchasing/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { PurchaseOrderLinePicker } from '../purchase-order/purchase-order-line-picker'
 
 export function VendorCreditLinesCard({ recordId }: DrawerTabProps) {
+  // Issuing posts the entry and — on a line flagged `returnsStock` — moves the
+  // goods, so the lines stop being editable there rather than at `settled`.
+  const { values } = useSystemValues(recordId, ['vendor_credit_status'], { autoFetch: true })
+  const status = typeof values.vendor_credit_status === 'string' ? values.vendor_credit_status : ''
+  const readOnly = !!status && !VENDOR_CREDIT_EDITABLE_STATUSES.has(status)
+
   return (
     <div className='max-h-[60vh] overflow-auto ps-3 pe-3'>
       <LineBuilder
         documentRecordId={recordId}
         documentType='vendor_credit'
+        readOnly={readOnly}
         renderMatchKeyEditor={({ value, onChange, scopeRecordId, currencyCode }) => (
           <PurchaseOrderLinePicker
             purchaseOrderRecordId={scopeRecordId as RecordId | null}

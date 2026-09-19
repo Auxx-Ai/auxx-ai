@@ -332,6 +332,8 @@ export function assignBillLines(
       tier,
       candidates: top,
       linkedOrderLineRecordId,
+      // The matcher is pure; `proposeLandedBills` fills this from the database.
+      landedBillRecordId: null,
       hint: hintFor(line.description),
     }
   })

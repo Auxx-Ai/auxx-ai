@@ -63,6 +63,7 @@ const invoice: TranscribedInvoice = {
   dueDate: '2026-10-01',
   paymentTerms: 'Net 30',
   purchaseOrderReference: null,
+  referencedInvoiceNumber: null,
   currency: 'USD',
   subtotalText: '12.60',
   shippingText: null,
@@ -79,6 +80,7 @@ const invoice: TranscribedInvoice = {
       unit: 'ea',
       unitPriceText: '4.20',
       lineTotalText: '12.60',
+      referencedInvoiceNumber: null,
     },
   ],
 } as const
@@ -116,6 +118,7 @@ function run(fixture: BillFixture): StoredBillIntakeRun {
           },
         ],
         linkedOrderLineRecordId: orderLineRecordId,
+        landedBillRecordId: null,
         hint: 'goods',
       },
     ],

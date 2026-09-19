@@ -722,6 +722,7 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_credit_line_gl_account',
   'vendor_credit_line_part', // one-way
   'vendor_credit_line_purchase_order_line', // one-way
+  'vendor_credit_line_returns_stock', // 73 §8.2: the line moves stock back to the vendor
   'vendor_credit_line_sort_order',
 
   // ─── Vendor credit application ──────────────────────────────────
@@ -858,12 +859,18 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_bill_amount_credited',
   'vendor_bill_vendor_credits', // inverse of vendor_credit_bill
   'vendor_bill_credit_applications', // inverse of vendor_credit_application_vendor_bill
+  'vendor_bill_landed_cost_lines', // inverse of vendor_bill_line_landed_bill
   'company_vendor_bills', // inverse of vendor_bill_vendor
   'company_vendor_credits', // inverse of vendor_credit_vendor
 
   // ─── Vendor bill line ───────────────────────────────────────────
   'vendor_bill_line_vendor_bill',
   'vendor_bill_line_purchase_order_line', // the match key
+  // The goods bill a LANDED-COST line belongs to — a carrier's freight line or
+  // a broker's duty line naming the shipment it was charged against (73 §7.2).
+  // Never the order: duty is assessed per customs entry and the broker's
+  // document lists the commercial invoice numbers.
+  'vendor_bill_line_landed_bill',
   'vendor_bill_line_part',
   'vendor_bill_line_description',
   // The vendor's own code for the line as printed on their invoice, never the

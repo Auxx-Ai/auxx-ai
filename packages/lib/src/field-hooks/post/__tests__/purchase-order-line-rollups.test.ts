@@ -92,6 +92,7 @@ import {
   PURCHASE_ORDER_LINE_BILLED_ROLLUP,
   PURCHASE_ORDER_LINE_ROLLUPS,
   recalculateBilledRollupOnBillLineChange,
+  recalculateBilledRollupOnCreditLineChange,
   recalculatePurchaseOrderLineBilled,
   recalculatePurchaseOrderLineReceived,
   recalculatePurchaseOrderLineRollup,
@@ -234,12 +235,40 @@ describe('the roll-up specs', () => {
       targetAttr: 'purchase_order_line_quantity_received',
       evidence: 'receipt',
     })
-    expect(PURCHASE_ORDER_LINE_ROLLUPS.billed).toEqual({
+    // `toMatchObject`, not `toEqual`: the billed spec also carries the void
+    // filter (73 D4) and the credit netting (73 §8.2), each asserted below.
+    expect(PURCHASE_ORDER_LINE_ROLLUPS.billed).toMatchObject({
       childEntityType: 'vendor_bill_line',
       quantityAttr: 'vendor_bill_line_quantity_billed',
       lineRelAttr: 'vendor_bill_line_purchase_order_line',
       targetAttr: 'purchase_order_line_quantity_billed',
       evidence: 'billing',
+    })
+  })
+
+  // 73 D4: a voided bill's lines stay in the table, so without this predicate the
+  // units they charge for would never return to billable and the order could
+  // never be re-billed.
+  it('excludes the lines of a VOID bill from the billed roll-up', () => {
+    expect(PURCHASE_ORDER_LINE_ROLLUPS.billed.parent).toEqual({
+      parentRelAttr: 'vendor_bill_line_vendor_bill',
+      parentStatusAttr: 'vendor_bill_status',
+      voidStatus: 'void',
+    })
+  })
+
+  // 73 §8.2: a return of 2 against 10 billed has to leave the order line reading
+  // 8, or `received 8, billed 10` sits in the exception queue for ever.
+  it('nets the vendor credit lines off the billed roll-up', () => {
+    expect(PURCHASE_ORDER_LINE_ROLLUPS.billed.minus).toEqual({
+      childEntityType: 'vendor_credit_line',
+      quantityAttr: 'vendor_credit_line_quantity',
+      lineRelAttr: 'vendor_credit_line_purchase_order_line',
+      parent: {
+        parentRelAttr: 'vendor_credit_line_vendor_credit',
+        parentStatusAttr: 'vendor_credit_status',
+        voidStatus: 'void',
+      },
     })
   })
 
@@ -249,6 +278,103 @@ describe('the roll-up specs', () => {
     await recalculatePurchaseOrderLineRollup('org_1', PO_LINE, PURCHASE_ORDER_LINE_ROLLUPS.received)
 
     expect(h.setValueWithType).not.toHaveBeenCalled()
+  })
+})
+
+describe('the credit netting', () => {
+  beforeEach(() => {
+    h.bySystemAttributes.mockResolvedValue({
+      vendor_bill_line_quantity_billed: { id: 'fld-billed-qty', type: 'NUMBER' },
+      vendor_bill_line_purchase_order_line: { id: 'fld-bl-poline', type: 'RELATIONSHIP' },
+      purchase_order_line_quantity_billed: { id: 'fld-billed', type: 'NUMBER' },
+      vendor_bill_line_vendor_bill: { id: 'fld-bl-bill', type: 'RELATIONSHIP' },
+      vendor_bill_status: { id: 'fld-bill-status', type: 'SINGLE_SELECT' },
+      vendor_credit_line_quantity: { id: 'fld-cl-qty', type: 'NUMBER' },
+      vendor_credit_line_purchase_order_line: { id: 'fld-cl-poline', type: 'RELATIONSHIP' },
+      vendor_credit_line_vendor_credit: { id: 'fld-cl-credit', type: 'RELATIONSHIP' },
+      vendor_credit_status: { id: 'fld-credit-status', type: 'SINGLE_SELECT' },
+    })
+  })
+
+  it('subtracts the credited quantity from what the bills charged', async () => {
+    h.dbResults.push([{ total: '10', current: 10 }]) // the bill lines
+    h.dbResults.push([{ lineId: PO_LINE, total: '2' }]) // the credit lines
+
+    await recalculatePurchaseOrderLineRollup('org_1', PO_LINE, PURCHASE_ORDER_LINE_ROLLUPS.billed)
+
+    expect(h.setValueWithType).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ fieldId: 'fld-billed', value: { type: 'number', value: 8 } })
+    )
+  })
+
+  it('nets per line across a batch', async () => {
+    h.dbResults.push([
+      { lineId: PO_LINE, total: '10' },
+      { lineId: 'poline-2', total: '4' },
+    ])
+    h.dbResults.push([]) // stored totals: neither line has one
+    h.dbResults.push([{ lineId: PO_LINE, total: '2' }]) // only the first was credited
+
+    await recalculatePurchaseOrderLineRollups(
+      'org_1',
+      [PO_LINE, 'poline-2'],
+      PURCHASE_ORDER_LINE_ROLLUPS.billed
+    )
+
+    const written = h.setValueWithType.mock.calls.map((call) => [
+      (call[1] as { recordId: string }).recordId,
+      (call[1] as { value: { value: number } }).value.value,
+    ])
+    expect(written).toEqual([
+      [`poldef:${PO_LINE}`, 8],
+      ['poldef:poline-2', 4],
+    ])
+  })
+
+  it('leaves the bill total alone when the org has no credit lines yet', async () => {
+    h.bySystemAttributes.mockResolvedValue({
+      vendor_bill_line_quantity_billed: { id: 'fld-billed-qty', type: 'NUMBER' },
+      vendor_bill_line_purchase_order_line: { id: 'fld-bl-poline', type: 'RELATIONSHIP' },
+      purchase_order_line_quantity_billed: { id: 'fld-billed', type: 'NUMBER' },
+    })
+    h.dbResults.push([{ total: '10', current: 0 }])
+
+    await recalculatePurchaseOrderLineRollup('org_1', PO_LINE, PURCHASE_ORDER_LINE_ROLLUPS.billed)
+
+    expect(h.setValueWithType).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ value: { type: 'number', value: 10 } })
+    )
+  })
+
+  it('marks the order line when a credit line’s quantity is typed in', async () => {
+    h.resolveParentsByRelation.mockResolvedValue([PO_LINE])
+
+    await recalculateBilledRollupOnCreditLineChange({
+      organizationId: 'org_1',
+      userId: 'usr_1',
+      recordId: 'vcldef:vcl-1',
+      field: { systemAttribute: 'vendor_credit_line_quantity' },
+      oldValue: undefined,
+      newValue: 2,
+    } as unknown as EntityFieldChangeEvent)
+
+    expect(h.mark).toHaveBeenCalledWith('org_1', 'usr_1', PO_LINE)
+  })
+
+  it('marks BOTH order lines when a credit line is repointed', async () => {
+    await recalculateBilledRollupOnCreditLineChange({
+      organizationId: 'org_1',
+      userId: 'usr_1',
+      recordId: 'vcldef:vcl-1',
+      field: { systemAttribute: 'vendor_credit_line_purchase_order_line' },
+      oldValue: `poldef:${PO_LINE}`,
+      newValue: 'poldef:poline-2',
+    } as unknown as EntityFieldChangeEvent)
+
+    expect(h.mark).toHaveBeenCalledWith('org_1', 'usr_1', PO_LINE)
+    expect(h.mark).toHaveBeenCalledWith('org_1', 'usr_1', 'poline-2')
   })
 })
 

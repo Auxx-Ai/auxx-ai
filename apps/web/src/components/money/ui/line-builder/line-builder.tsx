@@ -120,6 +120,7 @@ import {
   type DraftLine,
   DraftLineRow,
   freshDraft,
+  type LandedBillEditorRenderer,
   LINE_COLS,
   LineRow,
   type MatchKeyEditorRenderer,
@@ -175,6 +176,11 @@ export interface LineBuilderProps {
    */
   renderMatchKeyEditor?: MatchKeyEditorRenderer
   /**
+   * The landed-bill picker for a vendor bill line (73 §7.2), supplied by the
+   * consumer for the same reason {@link MatchKeyEditorRenderer} is.
+   */
+  renderLandedBillEditor?: LandedBillEditorRenderer
+  /**
    * Look up the supplier's price for a part just picked on a line
    * (plans/purchasing/05-receiving-cost-and-corrections.md §5.2).
    *
@@ -216,6 +222,7 @@ export function LineBuilder({
   visitId,
   className,
   renderMatchKeyEditor,
+  renderLandedBillEditor,
   resolvePartPrefill,
 }: LineBuilderProps) {
   const docRecordId = documentRecordId as RecordId
@@ -749,6 +756,7 @@ export function LineBuilder({
       if (snapshot.purchaseOrderLineRecordId) {
         set('purchaseOrderLineRecordId', snapshot.purchaseOrderLineRecordId)
       }
+      if (snapshot.landedBillRecordId) set('landedBillRecordId', snapshot.landedBillRecordId)
       if (snapshot.glAccount) set('glAccount', snapshot.glAccount)
       // Both are purchase-order-only and dropped by `set` everywhere else. The
       // vendor part is provenance stamped by the price prefill; the weight is the
@@ -1298,6 +1306,7 @@ export function LineBuilder({
                   catalogLoading={catalogLoading}
                   matchScopeRecordId={matchScopeRecordId}
                   renderMatchKeyEditor={renderMatchKeyEditor}
+                  renderLandedBillEditor={renderLandedBillEditor}
                   weightRevealed={weightRevealed}
                   resolvePartPrefill={boundResolvePartPrefill}
                   onRevealWeight={revealWeight}
@@ -1320,6 +1329,7 @@ export function LineBuilder({
                   catalogLoading={catalogLoading}
                   matchScopeRecordId={matchScopeRecordId}
                   renderMatchKeyEditor={renderMatchKeyEditor}
+                  renderLandedBillEditor={renderLandedBillEditor}
                   weightRevealed={weightRevealed}
                   resolvePartPrefill={boundResolvePartPrefill}
                   onRevealWeight={revealWeight}

@@ -44,6 +44,13 @@ export type InventoryDocumentKind =
    * §7's landed-cost voucher is the second.
    */
   | 'revalue'
+  /**
+   * Goods sent BACK to the supplier on a vendor credit (73 §8.2). Distinct from
+   * `return`, which is a customer's: the inventory credit is at the standard,
+   * `grni` is debited at what the vendor is crediting, and the remainder - the
+   * freight and duty capitalised on units we no longer hold - is `ppv`.
+   */
+  | 'return_to_vendor'
 
 /**
  * What one `receive` movement accrued to parties other than the goods vendor
@@ -93,6 +100,15 @@ export interface InventoryMovementLine {
    * the whole cost, which is what an ad hoc receipt against no supplier row does.
    */
   accrual?: ReceiveAccrualInput
+  /**
+   * `kind: 'return_to_vendor'` only: `qty x the agreed price the vendor is
+   * crediting`, POSITIVE. Debits `grni`, so the credit's own money entry
+   * (`Dr accounts_payable / Cr grni`) nets it to zero for those units.
+   *
+   * Absent puts the movement's whole frozen cost in `grni` - the mirror of a
+   * receipt that accrued nothing.
+   */
+  grniReliefMinor?: number
 }
 
 export interface InventoryMovementEntryInput {
@@ -151,7 +167,7 @@ interface Leg {
  * unit back on the shelf un-books what the sale charged to COGS, and the revenue
  * side of the return is the credit memo's entry, not this one.
  */
-const COUNTER_ROLE: Record<Exclude<InventoryDocumentKind, 'build'>, string> = {
+const COUNTER_ROLE: Record<Exclude<InventoryDocumentKind, 'build' | 'return_to_vendor'>, string> = {
   sale: ACCOUNT_ROLES.COGS_PRODUCT_COST,
   receive: ACCOUNT_ROLES.GRNI,
   adjust: ACCOUNT_ROLES.INVENTORY_COUNT_VARIANCE,
@@ -222,6 +238,43 @@ function receiveCounterLegs(
 }
 
 /**
+ * A supplier return's two counter-legs (73 §8.2): `grni` at what the vendor is
+ * crediting, and `ppv` for the rest of the standard that left the shelf.
+ *
+ * 🛑 **The `grni` debit is the CREDIT's figure, not the order's.** It has to
+ * equal what the credit's own money entry credits `grni` for, or the two halves
+ * of one supplier return leave a residue in an account whose whole job is to net
+ * to zero per line. `ppv` is the balancing plug for the freight and duty the
+ * standard capitalised on units we no longer hold.
+ */
+function returnToVendorCounterLegs(
+  movements: readonly InventoryMovementLine[],
+  net: number,
+  documentId: string,
+  memo: string | undefined
+): Leg[] {
+  let grni = 0
+  for (const movement of movements) {
+    if (movement.grniReliefMinor === undefined) {
+      grni += -movement.extendedCostMinor
+      continue
+    }
+    assertMinor(movement.grniReliefMinor, `Movement ${movement.id} goods credit`)
+    grni += movement.grniReliefMinor
+  }
+
+  return [
+    { role: ACCOUNT_ROLES.GRNI, amountMinor: grni, memo, sourceId: documentId },
+    {
+      role: ACCOUNT_ROLES.PPV,
+      amountMinor: -net - grni,
+      memo: 'Returned to vendor against standard',
+      sourceId: documentId,
+    },
+  ]
+}
+
+/**
  * Build one document's inventory entry, or `null` when it moves no money.
  *
  * The shape per kind, with the sign always following the movements:
@@ -234,6 +287,9 @@ function receiveCounterLegs(
  * adjust    Dr/Cr <inventory role(s)>     Cr/Dr inventory_count_variance
  * scrap     Cr <inventory role(s)>        Dr inventory_count_variance
  * return    Dr <inventory role(s)>        Cr cogs_product_cost
+ * return_to_vendor
+ *           Cr <inventory role(s)> at standard
+ *           Dr grni at the credited price, Dr|Cr ppv remainder
  * opening   Dr <inventory role(s)>        Cr equity_opening_balance
  * revalue   Dr/Cr <inventory role(s)>     Cr/Dr inventory_revaluation
  * build     Dr/Cr the three inventory roles against each other,
@@ -297,6 +353,8 @@ export function buildInventoryMovementEntry(
     })
   } else if (kind === 'receive') {
     legs.push(...receiveCounterLegs(movements, net, documentId, input.memo))
+  } else if (kind === 'return_to_vendor') {
+    legs.push(...returnToVendorCounterLegs(movements, net, documentId, input.memo))
   } else if (kind === 'sale' && input.cogsSplit) {
     const { laborMinor, overheadMinor } = input.cogsSplit
     assertMinor(laborMinor, 'Relieved labour')

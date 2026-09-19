@@ -48,15 +48,19 @@ import type { RecordId } from '@auxx/lib/resources/client'
 import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
+import { RecordPickerContent } from '~/components/pickers/record-picker/record-picker-content'
 import { useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { api } from '~/trpc/react'
 import { PurchaseOrderLinePicker } from '../purchase-order/purchase-order-line-picker'
 import { AddPurchaseOrderLinesButton } from './add-purchase-order-lines-button'
+import { VendorBillActions } from './vendor-bill-actions'
 
 const BILL_ORDER_ATTRS = ['vendor_bill_purchase_order', 'vendor_bill_status'] as const
 
 export function VendorBillLinesCard({ recordId }: DrawerTabProps) {
   const lineDefId = useResourceProperty('vendor_bill_line', 'id')
+  const billDefId = useResourceProperty('vendor_bill', 'id')
   // The bill's own order — the same attribute `LineSchema.matchScopeAttr` names,
   // read here for the header action. Read twice rather than threaded through the
   // builder: the action is a sibling of the builder, not a part of it, and the
@@ -66,12 +70,25 @@ export function VendorBillLinesCard({ recordId }: DrawerTabProps) {
   })
   const purchaseOrderRecordId =
     extractRelationshipRecordIds(values.vendor_bill_purchase_order)[0] ?? null
-  // 73 D5: the footer's transcribed headers are typed until the bill is in the
-  // books. U3 widens this to "posted and no edit flag" in one place.
-  const headersLocked = values.vendor_bill_status === 'posted'
+  const status = (values.vendor_bill_status as string | undefined) ?? 'draft'
+  // The flag lives on `EntityInstance.metadata`, not on a field, so it is its own
+  // read rather than another attribute above.
+  const { data: editState } = api.purchasing.billEditState.useQuery({
+    vendorBillId: instanceIdOf(recordId as RecordId),
+  })
+  const editing = !!editState?.editOpen
+  // 73 D4/D5: the transcribed headers and the whole line grid are typed until the
+  // bill is in the books, and again while it is open for editing.
+  const headersLocked = status === 'posted' && !editing
 
   return (
     <div className='max-h-[60vh] overflow-auto ps-3 pe-3'>
+      <VendorBillActions billRecordId={recordId as RecordId} status={status} editing={editing} />
+      {editing && (
+        <div className='border-amber-300 border-b bg-amber-50 px-1 py-2 text-xs dark:border-amber-800 dark:bg-amber-950/40'>
+          This bill is posted and open for editing. Save to bring its ledger entry up to date.
+        </div>
+      )}
       <DrawerCardActions>
         <AddPurchaseOrderLinesButton
           billRecordId={recordId as RecordId}
@@ -82,6 +99,7 @@ export function VendorBillLinesCard({ recordId }: DrawerTabProps) {
       <LineBuilder
         documentRecordId={recordId}
         documentType='vendor_bill'
+        readOnly={headersLocked || status === 'void'}
         amountsReadOnly={headersLocked}
         // The order to offer lines from is resolved by the builder from
         // `schema.matchScopeAttr` (`vendor_bill_purchase_order`) and handed back
@@ -96,7 +114,26 @@ export function VendorBillLinesCard({ recordId }: DrawerTabProps) {
             currencyCode={currencyCode}
           />
         )}
+        // 73 §7.2: a freight or duty line names the GOODS bill it is a landed
+        // cost of. Unscoped, and it has to be — that bill belongs to the
+        // supplier, not to the carrier or broker whose invoice this is.
+        renderLandedBillEditor={({ value, onChange }) => (
+          <RecordPickerContent
+            value={value ? [value] : []}
+            onChange={(selected) => onChange(selected[0] ?? null)}
+            entityDefinitionId={billDefId ?? undefined}
+            multi={false}
+            excludeIds={[recordId as RecordId]}
+            placeholder='Search goods bills'
+          />
+        )}
       />
     </div>
   )
+}
+
+/** The bill's own instance id — every purchasing procedure takes that, not a `RecordId`. */
+function instanceIdOf(recordId: RecordId): string {
+  const [, instanceId] = recordId.split(':')
+  return instanceId ?? recordId
 }

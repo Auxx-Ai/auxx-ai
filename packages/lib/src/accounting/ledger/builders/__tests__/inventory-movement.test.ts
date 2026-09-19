@@ -401,6 +401,52 @@ describe('a return and the opening run', () => {
   })
 })
 
+describe('a return to the vendor', () => {
+  // 73 §8.2, worked: 10 M received at a landed standard of 16 against an agreed
+  // 12; two go back and the vendor credits 24.
+  it('credits inventory at the standard, debits GRNI at what was credited, plugs ppv', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'return_to_vendor',
+      movements: [{ ...movement('sm_1', -3_200), grniReliefMinor: 2_400 }],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [RAW]: -3_200,
+      [ACCOUNT_ROLES.GRNI]: 2_400,
+      [ACCOUNT_ROLES.PPV]: 800,
+    })
+  })
+
+  it('puts the whole frozen cost in GRNI when nothing says what was credited', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'return_to_vendor',
+      movements: [movement('sm_1', -3_200)],
+    })!
+
+    expect(legs(built.entry)).toEqual({ [RAW]: -3_200, [ACCOUNT_ROLES.GRNI]: 3_200 })
+  })
+
+  it('sums several lines and splits the credit by the frozen account', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'return_to_vendor',
+      movements: [
+        { ...movement('sm_1', -3_200, RAW), grniReliefMinor: 2_400 },
+        { ...movement('sm_2', -1_000, FG), grniReliefMinor: 1_000 },
+      ],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [RAW]: -3_200,
+      [FG]: -1_000,
+      [ACCOUNT_ROLES.GRNI]: 3_400,
+      [ACCOUNT_ROLES.PPV]: 800,
+    })
+  })
+})
+
 describe('what it refuses and what it declines to build', () => {
   it('builds NOTHING for a document that moved no money', () => {
     expect(

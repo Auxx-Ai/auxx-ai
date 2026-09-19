@@ -31,6 +31,8 @@ import { migration171OneCashEndpoint } from './migrations/171-one-cash-endpoint'
 import { migration172VendorBillMatchStatus } from './migrations/172-vendor-bill-match-status'
 import { migration173PartStandardCostSource } from './migrations/173-part-standard-cost-source'
 import { migration175StockMovementAccruals } from './migrations/175-stock-movement-accruals'
+import { migration177VendorBillLineLandedBill } from './migrations/177-vendor-bill-line-landed-bill'
+import { migration178VendorCreditLineReturnsStock } from './migrations/178-vendor-credit-line-returns-stock'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -167,6 +169,12 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // receipt credited the freight and duties accruals, and the rate behind it
   // (73 §7.2).
   migration175StockMovementAccruals,
+  // One relationship pair on two existing defs, no backfill: the goods bill a
+  // carrier's or broker's landed-cost line was charged against (73 §7.2).
+  migration177VendorBillLineLandedBill,
+  // One CHECKBOX on the existing `vendor_credit_line` def, no backfill: whether
+  // issuing the line sends the goods back (73 §8.2).
+  migration178VendorCreditLineReturnsStock,
 ]
 
 /**

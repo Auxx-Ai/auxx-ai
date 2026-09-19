@@ -50,7 +50,12 @@ import type { EntryPreview, PostResult } from '../../accounting/ledger/types'
 import { getEntityDefIdResolver } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
-import { buildEntryForVendorBill, postVendorBillEntry } from '../post-vendor-bill'
+import { readBillEditOpen } from '../bill-edit-flag'
+import {
+  buildEntryForVendorBill,
+  postVendorBillEntry,
+  readAllocationBasis,
+} from '../post-vendor-bill'
 import {
   loadVendorBillLines,
   requireVendorBill,
@@ -177,7 +182,10 @@ async function resolveVendorBill(
     })
   }
 
-  const built = buildEntryForVendorBill({ bill, lines, billedAt })
+  // The order's basis, not the builder's default: a freight-by-weight order
+  // spreads its shipping leg by weight, and the bill has no basis of its own.
+  const allocationBasis = await readAllocationBasis(db, organizationId, bill.purchaseOrderId)
+  const built = buildEntryForVendorBill({ bill, lines, billedAt, allocationBasis })
 
   return { bill, lines, billedAt, built }
 }
@@ -309,7 +317,7 @@ export async function listVendorBillPostings(
   }))
 }
 
-export interface VoidExpenseBillInput {
+export interface VoidVendorBillInput {
   organizationId: string
   vendorBillInstanceId: string
   userId: string
@@ -329,12 +337,22 @@ export interface VoidExpenseBillInput {
  * The reversal claims revision 1 on the same period key, so its document number
  * is the original's with `-R1` on the end.
  */
-export async function voidExpenseBill(db: Database, input: VoidExpenseBillInput): Promise<void> {
+export async function voidVendorBill(db: Database, input: VoidVendorBillInput): Promise<void> {
   const { organizationId, userId, vendorBillInstanceId, memo } = input
   const bill = await requireVendorBill(db, organizationId, vendorBillInstanceId)
 
   if (bill.status === 'void') {
     throw new BadRequestError('This vendor bill is already void', { vendorBillInstanceId })
+  }
+  // An open edit means the values on screen are not the values the live entry was
+  // built from, so "reverse every live posting" would back out the wrong figures.
+  // Save or re-post first; then void (73 D4).
+  if (await readBillEditOpen(db, organizationId, vendorBillInstanceId)) {
+    throw new BadRequestError(
+      'This vendor bill is open for editing. Save the edit first, then void it - a void has to ' +
+        'reverse the entry the bill actually posted.',
+      { vendorBillInstanceId }
+    )
   }
   // The money axis, not the lifecycle (73 D1): "in the books" is `status`,
   // "money has moved" is `paymentStatus`.

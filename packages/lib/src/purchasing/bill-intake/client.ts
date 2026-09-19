@@ -33,6 +33,12 @@ export interface TranscribedInvoiceLine {
   unit: string | null
   unitPriceText: string | null
   lineTotalText: string | null
+  /**
+   * The goods supplier's commercial invoice number THIS line is charged
+   * against, when the line prints one (73 §7.2). What a broker's duty line or a
+   * carrier's freight line is matched to a goods bill by.
+   */
+  referencedInvoiceNumber: string | null
 }
 
 /** The vendor's invoice as printed, and nothing else. */
@@ -48,6 +54,8 @@ export interface TranscribedInvoice {
   paymentTerms: string | null
   /** The buyer's purchase order number as printed on the invoice (§4.1 step 3, §4.2). */
   purchaseOrderReference: string | null
+  /** One commercial invoice number covering the whole document, when it names one (73 §7.2). */
+  referencedInvoiceNumber: string | null
   /** ISO 4217, uppercased. `null` when the document names no currency. */
   currency: string | null
   subtotalText: string | null
@@ -123,6 +131,12 @@ export interface LineProposal {
   candidates: LineProposalCandidate[]
   /** Set only on an auto-link tier (`isAutoLinkTier`); `fuzzy` never links. */
   linkedOrderLineRecordId: RecordId | null
+  /**
+   * The goods bill this line is a landed cost OF, proposed from the commercial
+   * invoice number it prints (73 §7.2). Never set by the pure matcher, which
+   * has no database — `proposeLandedBills` fills it in the job.
+   */
+  landedBillRecordId: RecordId | null
   hint: LineProposalHint
 }
 

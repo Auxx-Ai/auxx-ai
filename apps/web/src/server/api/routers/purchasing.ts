@@ -47,13 +47,18 @@ import {
   linkBillLines,
   markPurchaseOrderSent,
   matchBill,
+  openBillEdit,
   postVendorBill,
   previewVendorBill,
   proposeBillLineLinks,
+  readBillEditOpen,
+  readLandedCostByBill,
+  readLandedCostByVendorPart,
   resumeBillIntakeRun,
+  saveBillEdit,
   updateBillIntakeRun,
   updateIntakeDraftPayload,
-  voidExpenseBill,
+  voidVendorBill,
 } from '@auxx/lib/purchasing'
 import { INTAKE_TIERS } from '@auxx/lib/purchasing/intake/client'
 import { parseRecordId, type RecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
@@ -464,10 +469,58 @@ export const purchasingRouter = createTRPCRouter({
    * reversal refuses the void, so a voided bill can never leave its expense and
    * its payable standing in the books.
    */
-  voidExpenseBill: permissionProcedure(PermissionKey.ledgerPost)
+  voidVendorBill: permissionProcedure(PermissionKey.ledgerPost)
     .input(z.object({ vendorBillId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      await voidExpenseBill(ctx.db, {
+      await voidVendorBill(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+        vendorBillInstanceId: input.vendorBillId,
+      })
+    }),
+
+  /**
+   * Is this bill unlocked for editing? The one thing the drawer needs that the
+   * bill's own fields do not carry — the flag lives on `EntityInstance.metadata`.
+   */
+  billEditState: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ vendorBillId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const editOpen = await readBillEditOpen(
+        ctx.db,
+        ctx.session.organizationId,
+        input.vendorBillId
+      )
+      return { editOpen }
+    }),
+
+  /**
+   * Unlock a posted bill so its header and lines can be edited (73 D4). Writes
+   * one flag and nothing else; the ledger is untouched until Save.
+   *
+   * 🛑 `ledgerPost`, like Post and Void beside it. This is not "may I edit a
+   * record" - it is permission to move what is already in the books, and Save
+   * reverses and re-posts the entry.
+   */
+  openBillEdit: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ vendorBillId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      return openBillEdit(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+        vendorBillInstanceId: input.vendorBillId,
+      })
+    }),
+
+  /**
+   * Close the edit: bring the entry up to the bill's current values, then clear
+   * the flag. An unchanged bill posts nothing. A refusal - a floor, a locked
+   * period, a tie that fails - leaves the entry, the values and the flag alone.
+   */
+  saveBillEdit: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ vendorBillId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      return saveBillEdit(ctx.db, {
         organizationId: ctx.session.organizationId,
         userId: ctx.session.userId,
         vendorBillInstanceId: input.vendorBillId,
@@ -1563,6 +1616,43 @@ export const purchasingRouter = createTRPCRouter({
           throw new UnprocessableEntityError('Choose bill lines and purchase order lines')
       }
       const result = await linkBillLines(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * One goods bill's landed cost (73 §7.2): what its receipts accrued for
+   * freight and duty, what other vendors' bills have charged against it through
+   * `vendor_bill_line_landed_bill`, and the difference.
+   *
+   * Reads only and posts nothing — the accrual balance is the control until the
+   * landed-cost voucher (follow-up item 11) lands.
+   */
+  readLandedCostByBill: capabilityProcedure
+    .input(z.object({ vendorBillInstanceId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'vendor_bill'))
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'stock_movement'))
+
+      const result = await readLandedCostByBill(ctx.db, organizationId, input.vendorBillInstanceId)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /** The same read per vendor part, its share of each shipment derived by value x rate. */
+  readLandedCostByVendorPart: capabilityProcedure
+    .input(z.object({ vendorPartInstanceId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'vendor_part'))
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'stock_movement'))
+
+      const result = await readLandedCostByVendorPart(
+        ctx.db,
+        organizationId,
+        input.vendorPartInstanceId
+      )
       if (result.isErr()) throw result.error
       return result.value
     }),

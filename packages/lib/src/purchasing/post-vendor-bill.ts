@@ -22,10 +22,36 @@ import { readAutoPostMode } from '../accounting/ledger/post/auto-post'
 import { LEDGER_CURRENCY, postEntry } from '../accounting/ledger/post/post-entry'
 import { isAccountingEnabled } from '../accounting/ledger/setup/accounting-enabled'
 import type { PostResult } from '../accounting/ledger/types'
+import { readSystemRecords, systemFields } from '../resources/system-records'
 import type { VendorBillLineRecord, VendorBillRecord } from './expense-bill/reads'
 import type { AllocationBasis } from './types'
 
+const ORDER_BASIS_ATTRIBUTES = ['purchase_order_allocation_basis'] as const
+
 const logger = createScopedLogger('purchasing:post-vendor-bill')
+
+const ALLOCATION_BASES: ReadonlySet<string> = new Set(['value', 'quantity', 'weight'])
+
+/**
+ * The order's own `purchase_order_allocation_basis`, for spreading the bill's
+ * header legs across its goods lines (73 D5).
+ *
+ * `value` for an expense bill and for an order that names none: it is the
+ * registry default, and the only basis that needs no per-line figure the bill
+ * may not carry.
+ */
+export async function readAllocationBasis(
+  db: Database,
+  organizationId: string,
+  purchaseOrderId: string | null | undefined
+): Promise<AllocationBasis> {
+  if (!purchaseOrderId) return 'value'
+  const ctx = await systemFields(db, organizationId, 'purchase_order', ORDER_BASIS_ATTRIBUTES)
+  if (!ctx) return 'value'
+  const [order] = await readSystemRecords(db, organizationId, ctx, { ids: [purchaseOrderId] })
+  const stored = order?.option('purchase_order_allocation_basis')
+  return stored && ALLOCATION_BASES.has(stored) ? (stored as AllocationBasis) : 'value'
+}
 
 export interface VendorBillEntrySource {
   bill: VendorBillRecord

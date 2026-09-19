@@ -1,0 +1,127 @@
+// apps/web/src/components/purchasing/vendor-bill/vendor-bill-landed-cost-card.tsx
+'use client'
+
+// `vendor_bill:landed-cost` — what this shipment's receipts accrued for freight
+// and duty against what other vendors' bills have charged for it (73 §7.2).
+//
+// Read-only, and nothing here posts. The accrual account's balance is the
+// control until the landed-cost voucher (follow-up item 11) lands; this card
+// only says which shipment is running over or under its estimate.
+
+import type { RecordId } from '@auxx/lib/resources/client'
+import { parseRecordId } from '@auxx/types/resource'
+import { EmptySection } from '@auxx/ui/components/section'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@auxx/ui/components/table'
+import { cn } from '@auxx/ui/lib/utils'
+import { formatCurrency } from '@auxx/utils/currency'
+import { Ship } from 'lucide-react'
+import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { useSettings } from '~/hooks/use-settings'
+import { api } from '~/trpc/react'
+import { PurchasingSummaryStrip, unwrapValue } from '../purchasing-summary-strip'
+
+export function VendorBillLandedCostCard({ recordId }: DrawerTabProps) {
+  const { getSetting } = useSettings({})
+  const { values } = useSystemValues(recordId as RecordId, ['vendor_bill_currency'], {
+    autoFetch: true,
+  })
+  const storedCurrency = unwrapValue(values.vendor_bill_currency)
+  const currencyCode =
+    (typeof storedCurrency === 'string' && storedCurrency) ||
+    (getSetting('organization.currency') as string | null) ||
+    'USD'
+
+  const { data, isLoading } = api.purchasing.readLandedCostByBill.useQuery({
+    vendorBillInstanceId: parseRecordId(recordId as RecordId).entityInstanceId,
+  })
+
+  if (isLoading || !data) return <Skeleton className='h-24 w-full' />
+
+  const nothing =
+    data.receiptCount === 0 && data.landedLineCount === 0 && data.otherBilledMinor === 0
+  if (nothing) {
+    return (
+      <EmptySection
+        icon={<Ship className='size-5' />}
+        title='No landed cost yet'
+        description='Receipts against this bill accrue freight and duty here, and a carrier or broker bill charged against it shows what it actually cost.'
+      />
+    )
+  }
+
+  const money = (value: number) => formatCurrency(value, { currencyCode })
+  const signed = (value: number) =>
+    value === 0 ? money(0) : `${value > 0 ? '+' : '-'}${money(Math.abs(value))}`
+
+  const legs = [
+    { label: 'Freight', ...data.freight },
+    { label: 'Duty', ...data.duties },
+  ]
+  const outstanding = data.freight.differenceMinor + data.duties.differenceMinor
+
+  return (
+    <div className='flex flex-col gap-3 pe-3'>
+      <PurchasingSummaryStrip
+        cells={[
+          { label: 'Receipts', value: String(data.receiptCount) },
+          { label: 'Landed lines', value: String(data.landedLineCount) },
+          {
+            label: 'Outstanding',
+            value: signed(outstanding),
+            tone: outstanding === 0 ? 'muted' : 'warning',
+          },
+        ]}
+      />
+
+      <div className='border-t'>
+        <Table>
+          <TableHeader>
+            <TableRow className='hover:bg-transparent'>
+              <TableHead>Accrual</TableHead>
+              <TableHead className='text-right'>Accrued</TableHead>
+              <TableHead className='text-right'>Billed</TableHead>
+              <TableHead className='text-right'>Difference</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {legs.map((legRow) => (
+              <TableRow key={legRow.label} className='border-0 hover:bg-transparent'>
+                <TableCell className='align-top'>{legRow.label}</TableCell>
+                <TableCell className='text-right align-top tabular-nums'>
+                  {money(legRow.accruedMinor)}
+                </TableCell>
+                <TableCell className='text-right align-top tabular-nums'>
+                  {money(legRow.billedMinor)}
+                </TableCell>
+                <TableCell
+                  className={cn(
+                    'text-right align-top tabular-nums',
+                    legRow.differenceMinor === 0
+                      ? 'text-muted-foreground'
+                      : 'font-medium text-amber-600'
+                  )}>
+                  {signed(legRow.differenceMinor)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      {data.otherBilledMinor !== 0 && (
+        <p className='text-muted-foreground text-xs'>
+          {money(data.otherBilledMinor)} on landed-cost lines coded to neither accrual account.
+        </p>
+      )}
+    </div>
+  )
+}

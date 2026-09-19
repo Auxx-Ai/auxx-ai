@@ -470,6 +470,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         { value: 'lines', label: 'Lines', icon: 'receipt-text', fullBleed: true },
         { value: 'link', label: 'Link to order', icon: 'link-2' },
         { value: 'match', label: 'Match', icon: 'scan-search' },
+        // What this shipment accrued for freight and duty against what the
+        // carrier and the broker have billed for it (73 §7.2).
+        { value: 'landed-cost', label: 'Landed cost', icon: 'ship' },
         // The vendor's own invoice, plus the packing slips and freight bills
         // that came with it (plan 08 P18/P21).
         { value: 'documents', label: 'Documents', icon: 'paperclip' },

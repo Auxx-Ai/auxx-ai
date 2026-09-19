@@ -16,6 +16,12 @@ export {
   capitalisableAmount,
 } from './allocate-landed-cost'
 export {
+  EMPTY_LANDED_COST_SUMMARY,
+  type LandedCostLeg,
+  type LandedCostSummary,
+  type VendorPartLandedCostSummary,
+} from './landed-cost/types'
+export {
   DEFAULT_MATCH_TOLERANCE,
   describeAwaitingLine,
   describeAwaitingLines,
@@ -47,3 +53,8 @@ export type {
   MatchResult,
   MatchTolerance,
 } from './types'
+export {
+  VENDOR_CREDIT_EDITABLE_STATUSES,
+  VENDOR_CREDIT_POSTED_STATUSES,
+  type VendorCreditStatus,
+} from './vendor-credit/client'

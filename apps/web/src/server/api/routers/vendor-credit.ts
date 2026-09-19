@@ -42,6 +42,8 @@ const lineSchema = z.object({
   glAccountInstanceId: z.string().min(1).optional(),
   partRecordId: recordIdSchema.optional(),
   purchaseOrderLineRecordId: recordIdSchema.optional(),
+  /** 73 §8.2: issuing this line sends the goods back. Needs a part. */
+  returnsStock: z.boolean().optional(),
 })
 
 export const vendorCreditRouter = createTRPCRouter({
@@ -97,6 +99,7 @@ export const vendorCreditRouter = createTRPCRouter({
                   .entityInstanceId,
               }
             : {}),
+          ...(line.returnsStock ? { returnsStock: true } : {}),
         })),
       })
     }),

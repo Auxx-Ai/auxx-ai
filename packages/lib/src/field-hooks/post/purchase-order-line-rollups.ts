@@ -86,6 +86,38 @@ interface RollupSpec {
    * {@link recalculatePurchaseOrderStatuses}.
    */
   evidence: PurchaseOrderStatusEvidence
+  /**
+   * The child's own parent document, when a VOIDED parent must take its rows out
+   * of the sum (73 D4). A voided bill's lines stay in the table; the units they
+   * charge for return to billable, which is what makes void + re-bill a
+   * correction rather than a dead end.
+   */
+  parent?: ParentVoidSpec
+  /** A second child entity whose quantities are SUBTRACTED from the roll-up. */
+  minus?: MinusSpec
+}
+
+/** The child's parent document and the one status value that means it never happened. */
+interface ParentVoidSpec {
+  parentRelAttr: SystemAttribute
+  parentStatusAttr: SystemAttribute
+  voidStatus: string
+}
+
+/**
+ * The netting half of a roll-up (73 §8.2): a child whose quantities come OFF the
+ * total, ignoring rows whose parent document is void.
+ *
+ * Its own shape rather than a second `RollupSpec` because it contributes no
+ * evidence and never drives the order-level pass on its own — it only changes
+ * what the roll-up it hangs off sums to.
+ */
+interface MinusSpec {
+  childEntityType: string
+  quantityAttr: SystemAttribute
+  lineRelAttr: SystemAttribute
+  /** The netting child's own void filter — the same predicate the plus half uses. */
+  parent: ParentVoidSpec
 }
 
 /** Receipts: SUM(`stock_movement_quantity`) over the movements pointing at the line. */
@@ -97,13 +129,35 @@ const RECEIVED_ROLLUP: RollupSpec = {
   evidence: 'receipt',
 }
 
-/** Bills: SUM(`vendor_bill_line_quantity_billed`) over the bill lines pointing at the line. */
+/**
+ * Bills NET of credits (73 §8.2): SUM(`vendor_bill_line_quantity_billed`) over
+ * the bill lines pointing at the line, LESS the credit lines pointing at it.
+ *
+ * Without the netting a supplier return leaves the order line billed for units
+ * it was credited for, so `received 8, billed 10` sits in the exception queue
+ * for ever. A voided credit's lines are excluded: the credit never happened.
+ */
 const BILLED_ROLLUP: RollupSpec = {
   childEntityType: 'vendor_bill_line',
   quantityAttr: 'vendor_bill_line_quantity_billed',
   lineRelAttr: 'vendor_bill_line_purchase_order_line',
   targetAttr: 'purchase_order_line_quantity_billed',
   evidence: 'billing',
+  parent: {
+    parentRelAttr: 'vendor_bill_line_vendor_bill',
+    parentStatusAttr: 'vendor_bill_status',
+    voidStatus: 'void',
+  },
+  minus: {
+    childEntityType: 'vendor_credit_line',
+    quantityAttr: 'vendor_credit_line_quantity',
+    lineRelAttr: 'vendor_credit_line_purchase_order_line',
+    parent: {
+      parentRelAttr: 'vendor_credit_line_vendor_credit',
+      parentStatusAttr: 'vendor_credit_status',
+      voidStatus: 'void',
+    },
+  },
 }
 
 /** The three fields one roll-up needs, or `undefined` when the org lacks one. */
@@ -112,6 +166,24 @@ interface RollupFields {
   lineRelFieldId: string
   targetFieldId: string
   targetFieldType: StoredFieldType
+  /** Absent when the org has not materialised the child's parent fields yet. */
+  parent?: ParentVoidFields
+  /** Absent when the org has not materialised the netting child's fields yet. */
+  minus?: MinusFields
+}
+
+/** {@link ParentVoidSpec}, resolved to field ids. */
+interface ParentVoidFields {
+  parentRelFieldId: string
+  parentStatusFieldId: string
+  voidStatus: string
+}
+
+/** {@link MinusSpec}, resolved to field ids. */
+interface MinusFields {
+  quantityFieldId: string
+  lineRelFieldId: string
+  parent?: ParentVoidFields
 }
 
 async function resolveRollupFields(
@@ -141,7 +213,127 @@ async function resolveRollupFields(
     lineRelFieldId: lineRelField.id,
     targetFieldId: targetField.id,
     targetFieldType: targetField.type,
+    ...(spec.parent ? { parent: await resolveParentVoidFields(organizationId, spec.parent) } : {}),
+    ...(spec.minus ? { minus: await resolveMinusFields(organizationId, spec.minus) } : {}),
   }
+}
+
+/**
+ * The two fields the void filter needs, or `undefined` when the org lacks one —
+ * in which case the roll-up counts every row, exactly as it did before the
+ * filter existed.
+ */
+async function resolveParentVoidFields(
+  organizationId: string,
+  spec: ParentVoidSpec
+): Promise<ParentVoidFields | undefined> {
+  const fields = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes<SystemAttribute>([spec.parentRelAttr, spec.parentStatusAttr])
+
+  const parentRel = fields[spec.parentRelAttr]
+  const parentStatus = fields[spec.parentStatusAttr]
+  if (!parentRel || !parentStatus) return undefined
+  return {
+    parentRelFieldId: parentRel.id,
+    parentStatusFieldId: parentStatus.id,
+    voidStatus: spec.voidStatus,
+  }
+}
+
+/**
+ * "This child's parent document is not void", as a `NOT EXISTS` on the child
+ * row the enclosing statement is summing. `undefined` when the org has no such
+ * fields, which drops the predicate rather than the roll-up.
+ */
+function notUnderVoidParent(
+  organizationId: string,
+  parent: ParentVoidFields | undefined
+): SQL | undefined {
+  if (!parent) return undefined
+  return sql`NOT EXISTS (
+    SELECT 1 FROM "FieldValue" fv_doc
+    JOIN "FieldValue" fv_doc_status
+      ON fv_doc_status."entityId" = fv_doc."relatedEntityId"
+     AND fv_doc_status."fieldId" = ${parent.parentStatusFieldId}
+     AND fv_doc_status."organizationId" = ${organizationId}
+    WHERE fv_doc."entityId" = ${schema.FieldValue.entityId}
+      AND fv_doc."fieldId" = ${parent.parentRelFieldId}
+      AND fv_doc."organizationId" = ${organizationId}
+      AND fv_doc_status."optionId" = ${parent.voidStatus})`
+}
+
+/**
+ * The four fields the netting half needs, or `undefined` when the org has not
+ * materialised them — an org mid-migration nets nothing rather than failing to
+ * roll up at all, which is the same fail-safe the plus half takes.
+ */
+async function resolveMinusFields(
+  organizationId: string,
+  spec: MinusSpec
+): Promise<MinusFields | undefined> {
+  const fields = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes<SystemAttribute>([spec.quantityAttr, spec.lineRelAttr])
+
+  const quantity = fields[spec.quantityAttr]
+  const lineRel = fields[spec.lineRelAttr]
+  if (!quantity || !lineRel) {
+    logger.debug('Netting child not materialised - roll-up counts bills only', {
+      child: spec.childEntityType,
+    })
+    return undefined
+  }
+
+  const parent = await resolveParentVoidFields(organizationId, spec.parent)
+  return {
+    quantityFieldId: quantity.id,
+    lineRelFieldId: lineRel.id,
+    ...(parent ? { parent } : {}),
+  }
+}
+
+/**
+ * SUM the netting child's quantities for every line in the set, grouped by line,
+ * skipping rows whose parent document is void.
+ *
+ * The same self-join as {@link readTotalsByLine}, under the same
+ * {@link notUnderVoidParent} predicate: a voided credit's lines stay in the
+ * table and must not keep reducing what the order line was billed for.
+ */
+async function readMinusTotalsByLine(
+  organizationId: string,
+  lineIds: string[],
+  minus: MinusFields
+): Promise<Map<string, number>> {
+  const idList = sql.join(
+    lineIds.map((id) => sql`${id}`),
+    sql`, `
+  )
+
+  const rows = await database
+    .select({
+      lineId: sql<string>`fv_line."relatedEntityId"`,
+      total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
+    })
+    .from(schema.FieldValue)
+    .innerJoin(
+      sql`"FieldValue" fv_line`,
+      sql`${schema.FieldValue.entityId} = fv_line."entityId"
+        AND fv_line."fieldId" = ${minus.lineRelFieldId}
+        AND fv_line."relatedEntityId" IN (${idList})
+        AND fv_line."organizationId" = ${organizationId}`
+    )
+    .where(
+      and(
+        eq(schema.FieldValue.fieldId, minus.quantityFieldId),
+        eq(schema.FieldValue.organizationId, organizationId),
+        notUnderVoidParent(organizationId, minus.parent)
+      )
+    )
+    .groupBy(sql`fv_line."relatedEntityId"`)
+
+  return new Map(rows.map((row) => [row.lineId, Number(row.total ?? 0)]))
 }
 
 /**
@@ -183,11 +375,17 @@ export async function recalculatePurchaseOrderLineRollup(
     .where(
       and(
         eq(schema.FieldValue.fieldId, fields.quantityFieldId),
-        eq(schema.FieldValue.organizationId, organizationId)
+        eq(schema.FieldValue.organizationId, organizationId),
+        notUnderVoidParent(organizationId, fields.parent)
       )
     )
 
-  const total = Number(sumRow?.total ?? 0)
+  const credited = fields.minus
+    ? (
+        await readMinusTotalsByLine(organizationId, [purchaseOrderLineInstanceId], fields.minus)
+      ).get(purchaseOrderLineInstanceId)
+    : undefined
+  const total = Number(sumRow?.total ?? 0) - (credited ?? 0)
   const stored = sumRow?.current
 
   // 🛑 Fail SAFE: only a value we actually read and that actually matches skips
@@ -287,9 +485,12 @@ export async function recalculatePurchaseOrderLineRollups(
   const fields = await resolveRollupFields(organizationId, spec)
   if (!fields) return
 
-  const [totals, stored] = await Promise.all([
+  const [totals, stored, credited] = await Promise.all([
     readTotalsByLine(organizationId, lineIds, fields),
     readStoredTotals(organizationId, lineIds, fields.targetFieldId),
+    fields.minus
+      ? readMinusTotalsByLine(organizationId, lineIds, fields.minus)
+      : Promise.resolve(new Map<string, number>()),
   ])
 
   const lineDefId = await requireCachedEntityDefId(organizationId, 'purchase_order_line')
@@ -299,7 +500,7 @@ export async function recalculatePurchaseOrderLineRollups(
 
   for (const lineId of lineIds) {
     // A line with no child rows sums to zero, exactly as the per-line SUM does.
-    const total = totals.get(lineId) ?? 0
+    const total = (totals.get(lineId) ?? 0) - (credited.get(lineId) ?? 0)
     const current = stored.get(lineId)
     if (current != null && current === total) continue
 
@@ -425,7 +626,8 @@ async function readTotalsByLine(
     .where(
       and(
         eq(schema.FieldValue.fieldId, fields.quantityFieldId),
-        eq(schema.FieldValue.organizationId, organizationId)
+        eq(schema.FieldValue.organizationId, organizationId),
+        notUnderVoidParent(organizationId, fields.parent)
       )
     )
     .groupBy(sql`fv_line."relatedEntityId"`)
@@ -480,11 +682,15 @@ function publishRollupValues(
  * A child with no purchase order line is the common case (a manual stock adjustment,
  * a freight-only bill line) and is a silent no-op, not a warning.
  */
-function buildRollupTrigger(spec: RollupSpec): EntityTriggerHandler {
+function buildRollupTrigger(
+  spec: RollupSpec,
+  /** The CHILD's own pointer at the order line — the netting child's differs from the spec's. */
+  lineRelAttr: SystemAttribute = spec.lineRelAttr
+): EntityTriggerHandler {
   return async (event) => {
     const { organizationId, entityInstanceId, values } = event
 
-    let lineInstanceId = unwrapRelationId(values[spec.lineRelAttr])
+    let lineInstanceId = unwrapRelationId(values[lineRelAttr])
 
     if (!lineInstanceId) {
       const [row] = await database
@@ -495,7 +701,7 @@ function buildRollupTrigger(spec: RollupSpec): EntityTriggerHandler {
           and(
             eq(schema.FieldValue.entityId, entityInstanceId),
             eq(schema.FieldValue.organizationId, organizationId),
-            eq(schema.CustomField.systemAttribute, spec.lineRelAttr)
+            eq(schema.CustomField.systemAttribute, lineRelAttr)
           )
         )
         .limit(1)
@@ -515,6 +721,14 @@ export const recalculatePurchaseOrderLineReceived: EntityTriggerHandler =
 /** Re-SUM `purchase_order_line_quantity_billed` after a vendor bill line create/delete. */
 export const recalculatePurchaseOrderLineBilled: EntityTriggerHandler =
   buildRollupTrigger(BILLED_ROLLUP)
+
+/**
+ * Re-SUM `purchase_order_line_quantity_billed` after a vendor CREDIT line
+ * create/delete (73 §8.2) — the netting half of the same roll-up, so it names
+ * the credit line's own pointer at the order line.
+ */
+export const recalculatePurchaseOrderLineBilledFromCredit: EntityTriggerHandler =
+  buildRollupTrigger(BILLED_ROLLUP, 'vendor_credit_line_purchase_order_line')
 
 /** Test/caller convenience: the two specs, so an explicit post-commit call can name one. */
 export const PURCHASE_ORDER_LINE_ROLLUPS = {
@@ -636,5 +850,103 @@ export const recalculateBilledRollupOnBillLineChange: EntityFieldChangeHandler =
   // contributes nothing to any order line's total.
   for (const lineInstanceId of lineInstanceIds) {
     await billedRollupReconciler.mark(event.organizationId, event.userId, lineInstanceId)
+  }
+}
+
+/** The three credit-line attributes whose EDIT can move a purchase order line's billed total. */
+const CREDIT_ROLLUP_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'vendor_credit_line_quantity',
+  'vendor_credit_line_purchase_order_line',
+  'vendor_credit_line_vendor_credit',
+])
+
+/**
+ * Re-SUM the billed roll-up after a vendor CREDIT line is EDITED (73 §8.2).
+ *
+ * The same shape as {@link recalculateBilledRollupOnBillLineChange} one document
+ * over, and for the same reason: a credit line is created at its registry
+ * default and the real quantity is typed in afterwards, so without this the
+ * netting would only ever see a `1`. A reparent counts too — a line moved to
+ * another credit changes whether the void filter drops it.
+ */
+export const recalculateBilledRollupOnCreditLineChange: EntityFieldChangeHandler = async (
+  event
+) => {
+  const attr = event.field.systemAttribute as SystemAttribute | undefined
+  if (!attr || !CREDIT_ROLLUP_TRIGGER_ATTRS.has(attr)) return
+
+  const lineInstanceIds = new Set<string>()
+
+  if (attr === 'vendor_credit_line_purchase_order_line') {
+    // `oldValue` is the only place the vacated order line is still named.
+    for (const value of [event.oldValue, event.newValue]) {
+      for (const recordId of extractRelationshipRecordIds(value)) {
+        lineInstanceIds.add(parseRecordId(recordId).entityInstanceId)
+      }
+    }
+  } else {
+    const { entityInstanceId: creditLineInstanceId } = parseRecordId(event.recordId)
+    const parents = await resolveParentsByRelation(
+      event.organizationId,
+      'vendor_credit_line_purchase_order_line',
+      [creditLineInstanceId]
+    )
+    for (const parent of parents) lineInstanceIds.add(parent)
+  }
+
+  // A credit line with no order line behind it nets against nothing.
+  for (const lineInstanceId of lineInstanceIds) {
+    await billedRollupReconciler.mark(event.organizationId, event.userId, lineInstanceId)
+  }
+}
+
+/**
+ * Re-SUM the billed roll-up when a BILL's own lifecycle moves (73 D4).
+ *
+ * 🛑 Without this the void filter in {@link notUnderVoidParent} would be inert
+ * for the one event it exists to serve. Voiding a bill writes one field on the
+ * BILL; nothing touches its lines, so no line-level hook fires and the order
+ * lines keep counting units the void just released. The reverse move — a bill
+ * coming back out of `void` — has the same hole with the sign flipped, so the
+ * handler fires on any status change rather than on the transition into `void`.
+ */
+export const recalculateBilledRollupOnBillStatusChange: EntityFieldChangeHandler = async (
+  event
+) => {
+  if (event.field.systemAttribute !== 'vendor_bill_status') return
+
+  const { entityInstanceId: billInstanceId } = parseRecordId(event.recordId)
+  const fields = await getOrgCache()
+    .from(event.organizationId, 'customFields')
+    .bySystemAttributes<SystemAttribute>([
+      'vendor_bill_line_vendor_bill',
+      'vendor_bill_line_purchase_order_line',
+    ])
+  const billRelField = fields.vendor_bill_line_vendor_bill
+  const orderLineRelField = fields.vendor_bill_line_purchase_order_line
+  if (!billRelField || !orderLineRelField) return
+
+  // One statement: the order lines this bill's lines charge against.
+  const rows = await database
+    .selectDistinct({ orderLineId: sql<string>`fv_po."relatedEntityId"` })
+    .from(schema.FieldValue)
+    .innerJoin(
+      sql`"FieldValue" fv_po`,
+      sql`fv_po."entityId" = ${schema.FieldValue.entityId}
+        AND fv_po."fieldId" = ${orderLineRelField.id}
+        AND fv_po."organizationId" = ${event.organizationId}`
+    )
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, event.organizationId),
+        eq(schema.FieldValue.fieldId, billRelField.id),
+        eq(schema.FieldValue.relatedEntityId, billInstanceId)
+      )
+    )
+
+  for (const row of rows) {
+    if (row.orderLineId) {
+      await billedRollupReconciler.mark(event.organizationId, event.userId, row.orderLineId)
+    }
   }
 }

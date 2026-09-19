@@ -387,6 +387,25 @@ describe('rematchBill', () => {
     expect(written('f-notes')).toBe('1 line not matched to a purchase order line')
   })
 
+  // 73 §7.2: a landed-cost line names a goods BILL, never an order line, so it
+  // is unlinked as far as the match is concerned and is skipped like any other.
+  it('ignores a landed-cost line exactly as it ignores any unlinked line', async () => {
+    billIsDraft()
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1', 'bl-duty'] })
+    line('bl-1', 'pol-1', 10, 500, 10, 500)
+    recordValues['vendor_bill_line:bl-duty'] = {
+      'f-bl-qty': { type: 'number', value: 1 },
+      'f-bl-price': { type: 'number', value: 3000 },
+      'f-bl-landed': { type: 'relationship', recordId: 'vendor_bill:bill-goods' },
+    }
+
+    await rematch()
+
+    expect(written('f-match')).toBe('matched')
+    expect(written('f-variance')).toBe(0)
+    expect(written('f-notes')).toBe('1 line not matched to a purchase order line')
+  })
+
   it('treats a line with no unit price yet as unmatchable, not a $0 price variance', async () => {
     billIsDraft()
     h.listFiltered.mockResolvedValue({ ids: ['bl-1', 'bl-untyped'] })

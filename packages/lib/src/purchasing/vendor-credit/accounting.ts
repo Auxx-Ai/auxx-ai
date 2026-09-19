@@ -16,12 +16,16 @@
  * No permission checks here. The router asserts (docs/lib-module-guide.md §6).
  */
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq } from 'drizzle-orm'
 import { VENDOR_CREDIT_SOURCE_TYPE } from '../../accounting/ledger/builders/vendor-credit'
 import { resolvePeriodLock } from '../../accounting/ledger/periods/period-lock'
 import { readAutoPostMode } from '../../accounting/ledger/post/auto-post'
-import { postEntry } from '../../accounting/ledger/post/post-entry'
+import {
+  type InTxPostResult,
+  postEntry,
+  postEntryInTx,
+} from '../../accounting/ledger/post/post-entry'
 import { reverseEntry } from '../../accounting/ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../accounting/ledger/reads/list-postings'
 import type { BuiltEntry, GlPostingSourceInput, PostResult } from '../../accounting/ledger/types'
@@ -54,6 +58,32 @@ export async function postVendorCreditEntry(
   db: Database,
   input: PostVendorCreditEntryInput
 ): Promise<PostResult> {
+  const lock = await resolvePeriodLock(input.organizationId)
+  return postEntry(db, {
+    ...(await vendorCreditPostOptions(input)),
+    lock,
+  })
+}
+
+/**
+ * {@link postVendorCreditEntry} on the CALLER'S transaction, for an issue that
+ * also moves stock (73 §8.2): the money entry and the `return_to_vendor` entry
+ * are two halves of one supplier return and must commit together.
+ *
+ * Unlike `postEntry` this THROWS, so the caller's transaction rolls back with
+ * it; a REFUSAL still comes back as a `PostResult`. The caller hands the
+ * returned `pendingExport` to `exportPostedEntry` after the commit.
+ */
+export async function postVendorCreditEntryInTx(
+  tx: Transaction,
+  input: PostVendorCreditEntryInput
+): Promise<InTxPostResult> {
+  const lock = await resolvePeriodLock(input.organizationId, tx)
+  return postEntryInTx(tx, { ...(await vendorCreditPostOptions(input)), lock })
+}
+
+/** The claim links and the auto-post mode both doors share. */
+async function vendorCreditPostOptions(input: PostVendorCreditEntryInput) {
   const { organizationId, vendorCreditInstanceId, entry, actorUserId } = input
 
   const sources: GlPostingSourceInput[] = [
@@ -82,16 +112,14 @@ export async function postVendorCreditEntry(
       : []),
   ]
 
-  const lock = await resolvePeriodLock(organizationId)
-  return postEntry(db, {
+  return {
     organizationId,
     entry,
     actorUserId,
-    lock,
     memo: input.memo,
     sources,
     mode: await readAutoPostMode(organizationId, 'expenseBill'),
-  })
+  }
 }
 
 /**

@@ -334,6 +334,13 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('../purchasing/vendor-bill/vendor-bill-match-card').then((m) => ({
       default: m.VendorBillMatchCard,
     })),
+  // 73 §7.2: the shipment's freight and duty accruals against what has been
+  // billed for them. Read-only; the voucher that would post the difference is
+  // follow-up item 11.
+  'vendor_bill:landed-cost': () =>
+    import('../purchasing/vendor-bill/vendor-bill-landed-cost-card').then((m) => ({
+      default: m.VendorBillLandedCostCard,
+    })),
   'vendor_bill:link': () =>
     import('../purchasing/vendor-bill/vendor-bill-link-card').then((m) => ({
       default: m.VendorBillLinkCard,
