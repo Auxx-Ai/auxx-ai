@@ -107,6 +107,7 @@ function receipt(id: string, overrides: Record<string, unknown> = {}) {
     reference: null,
     currency: 'USD',
     bankDepositInstanceId: null,
+    partyInstanceId: null,
     ...overrides,
   }
 }
@@ -161,6 +162,9 @@ describe('a receipt is hydrated off MoneyTransaction directly', () => {
         reference: 'Check #402',
         invoiceInstanceId: null,
         invoiceName: null,
+        invoiceRecordId: null,
+        orderRecordId: null,
+        partyRecordId: null,
         currency: 'USD',
       },
     ])
@@ -198,6 +202,28 @@ describe('a receipt is hydrated off MoneyTransaction directly', () => {
     expect(rows._unsafeUnwrap()[0]).toMatchObject({
       invoiceInstanceId: 'inv_1',
       invoiceName: 'INV-0042',
+      invoiceRecordId: 'def_invoice:inv_1',
+    })
+  })
+
+  it('names the order and payer of a channel receipt as record ids', async () => {
+    h.results = [[receipt('mt_1', { method: null, partyInstanceId: 'contact_1' })]]
+    h.applications = [
+      {
+        moneyTransactionId: 'mt_1',
+        invoiceInstanceId: null,
+        orderInstanceId: 'ord_1',
+        operation: 'apply',
+        amountMinor: 100_00n,
+      },
+    ]
+
+    const rows = await listUndepositedPayments(stubDb(), { organizationId: ORG })
+    expect(rows._unsafeUnwrap()[0]).toMatchObject({
+      invoiceInstanceId: null,
+      invoiceRecordId: null,
+      orderRecordId: 'def_order:ord_1',
+      partyRecordId: 'def_contact:contact_1',
     })
   })
 

@@ -250,6 +250,11 @@ export async function listCustomerMoneyAccountingCandidates(
         AND link."sourceKind" = 'money_transaction'
         AND link."sourceId" = ${schema.MoneyTransaction.id}
         AND link."linkRole" = 'subject')`,
+    // Waiting on a draft in the Outbox: no claim yet, but nothing to do either.
+    sql`NOT EXISTS (SELECT 1 FROM ${schema.GlPosting} draft
+        WHERE draft."organizationId" = ${organizationId}
+        AND draft."id" = ${schema.MoneyTransaction.draftGlPostingId}
+        AND draft."status" = 'draft')`,
   ]
   if (window?.cutoffPeriod)
     // The book month the poster would compute, in SQL: a date-precision movement

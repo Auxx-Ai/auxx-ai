@@ -55,11 +55,58 @@ async function markPostingBlock(
     )
 }
 
+/** Stamp the draft the movement now waits on; a draft is not a refusal, so the block clears. */
+async function markDrafted(
+  db: Database,
+  organizationId: string,
+  moneyTransactionId: string,
+  glPostingId: string
+): Promise<void> {
+  await db
+    .update(schema.MoneyTransaction)
+    .set({ draftGlPostingId: glPostingId, postingBlockedReason: null, postingBlockedAt: null })
+    .where(
+      and(
+        eq(schema.MoneyTransaction.organizationId, organizationId),
+        eq(schema.MoneyTransaction.id, moneyTransactionId)
+      )
+    )
+}
+
+/** The draft a movement waits on, when its stamp still points at a `draft` row. */
+async function findLiveDraft(
+  db: Database,
+  organizationId: string,
+  moneyTransactionId: string
+): Promise<string | null> {
+  const [row] = await db
+    .select({ id: schema.GlPosting.id })
+    .from(schema.MoneyTransaction)
+    .innerJoin(
+      schema.GlPosting,
+      and(
+        eq(schema.GlPosting.organizationId, schema.MoneyTransaction.organizationId),
+        eq(schema.GlPosting.id, schema.MoneyTransaction.draftGlPostingId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.MoneyTransaction.organizationId, organizationId),
+        eq(schema.MoneyTransaction.id, moneyTransactionId),
+        eq(schema.GlPosting.status, 'draft')
+      )
+    )
+    .limit(1)
+  return row?.id ?? null
+}
+
 /** Every money line's `sourceType`, and the `sourceKind` of the subject link. */
 export const MOVEMENT_SOURCE_TYPE = 'money_transaction'
 
 export type MovementPostingResult =
   | { status: 'accepted'; glPostingId: string }
+  /** A draft is waiting for approval in the Outbox; nothing is in the books yet. */
+  | { status: 'drafted'; glPostingId: string }
   | { status: 'blocked'; reason: string }
   | { status: 'skipped'; reason: string }
 
@@ -163,6 +210,9 @@ export async function postMovementEntry(
     await markPostingBlock(db, input.organizationId, input.moneyTransactionId, null)
     return { status: 'accepted', glPostingId: live.value.id }
   }
+  // A draft holds no subject claim, so the read above cannot see it.
+  const draft = await findLiveDraft(db, input.organizationId, input.moneyTransactionId)
+  if (draft) return { status: 'drafted', glPostingId: draft }
 
   if (!(await isAccountingEnabled(db, input.organizationId)))
     return { status: 'skipped', reason: 'Accounting is not enabled' }
@@ -301,6 +351,10 @@ export async function postMovementEntry(
     railId: built.railId,
     mode: await readAutoPostMode(input.organizationId, input.avenue),
   })
+  if (post.status === 'drafted' && post.glPostingId) {
+    await markDrafted(db, input.organizationId, input.moneyTransactionId, post.glPostingId)
+    return { status: 'drafted', glPostingId: post.glPostingId }
+  }
   if (!didLedgerAccept(post) || !post.glPostingId) {
     const reason = post.error ?? `The ledger answered ${post.status}`
     await markPostingBlock(db, input.organizationId, input.moneyTransactionId, reason)

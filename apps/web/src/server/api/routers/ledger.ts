@@ -97,6 +97,7 @@ import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
 import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { recurrencePatternSchema } from '@auxx/lib/recurrence'
+import { toRecordId } from '@auxx/lib/resources/client'
 import { seedChartAccounts, seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
 import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'
 import { and, eq } from 'drizzle-orm'
@@ -433,7 +434,8 @@ export const ledgerRouter = createTRPCRouter({
   postingSources: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ glPostingId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      return ctx.db
+      const { organizationId } = ctx.session
+      const rows = await ctx.db
         .select({
           id: schema.GlPostingSource.id,
           sourceKind: schema.GlPostingSource.sourceKind,
@@ -444,10 +446,18 @@ export const ledgerRouter = createTRPCRouter({
         .from(schema.GlPostingSource)
         .where(
           and(
-            eq(schema.GlPostingSource.organizationId, ctx.session.organizationId),
+            eq(schema.GlPostingSource.organizationId, organizationId),
             eq(schema.GlPostingSource.glPostingId, input.glPostingId)
           )
         )
+      // A `sourceKind` that is an entity type becomes a `RecordId` so the client
+      // renders a badge; ledger-only kinds (`money_transaction`, `payout`) stay text.
+      return Promise.all(
+        rows.map(async (row) => {
+          const defId = await getCachedEntityDefId(organizationId, row.sourceKind)
+          return { ...row, recordId: defId ? toRecordId(defId, row.sourceId) : null }
+        })
+      )
     }),
 
   /**

@@ -208,7 +208,7 @@ export async function sweepCustomerMoneyAccounting(
       retryBefore: new Date(started - POSTING_RETRY_INTERVAL_MS),
     }
   )
-  const counts = { scanned: 0, accepted: 0, blocked: 0, skipped: 0 }
+  const counts = { scanned: 0, accepted: 0, drafted: 0, blocked: 0, skipped: 0 }
   for (const candidate of candidates) {
     if (input.timeBudgetMs != null && Date.now() - started >= input.timeBudgetMs) break
     const post =

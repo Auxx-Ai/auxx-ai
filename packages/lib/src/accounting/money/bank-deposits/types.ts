@@ -35,6 +35,10 @@ export interface UndepositedPaymentRow {
   invoiceInstanceId: string | null
   /** The invoice's display name, so the list does not have to resolve it. */
   invoiceName: string | null
+  /** `RecordId`s for badges: the invoice or order the receipt applied to, and the payer. */
+  invoiceRecordId: RecordId | null
+  orderRecordId: RecordId | null
+  partyRecordId: RecordId | null
   /** ISO 4217, off the `MoneyTransaction` row. */
   currency: string
 }

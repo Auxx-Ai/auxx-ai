@@ -6,6 +6,7 @@
 
 import { schema } from '@auxx/database'
 import { createTestOrganization, getTestDb } from '@auxx/test-utils'
+import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   type CustomerMoneyCandidateWindow,
@@ -28,6 +29,7 @@ async function receipt(input: {
   occurredOn: string
   createdAt: Date
   postingBlockedAt?: Date | null
+  draftGlPostingId?: string | null
 }): Promise<string> {
   const [money] = await db()
     .insert(schema.MoneyTransaction)
@@ -43,6 +45,7 @@ async function receipt(input: {
       recordedByCommandId: commandId,
       postingBlockedAt: input.postingBlockedAt ?? null,
       postingBlockedReason: input.postingBlockedAt ? 'unmapped handle' : null,
+      draftGlPostingId: input.draftGlPostingId ?? null,
     })
     .returning({ id: schema.MoneyTransaction.id })
   const [object] = await db()
@@ -141,6 +144,36 @@ describe('listCustomerMoneyAccountingCandidates', () => {
         })
       ).map((row) => row.id)
     ).toContain(fresh)
+  })
+
+  it('holds a movement waiting on a live draft, and offers it once the draft is gone', async () => {
+    const [draft] = await db()
+      .insert(schema.GlPosting)
+      .values({
+        organizationId,
+        postingType: 'payment',
+        periodKey: '2026-09',
+        txnDate: '2026-09-03',
+        totalMinor: 1000,
+        built: {},
+        status: 'draft',
+      })
+      .returning({ id: schema.GlPosting.id })
+    const waiting = await receipt({
+      occurredOn: '2026-09-03',
+      createdAt: new Date('2026-09-03T00:00:00Z'),
+      draftGlPostingId: draft!.id,
+    })
+
+    const candidates = () =>
+      listCustomerMoneyAccountingCandidates(db(), organizationId, 50, WINDOW).then((rows) =>
+        rows.map((row) => row.id)
+      )
+    expect(await candidates()).not.toContain(waiting)
+
+    // Discarded: the stamp dangles and the movement is drafted again next sweep.
+    await db().delete(schema.GlPosting).where(eq(schema.GlPosting.id, draft!.id))
+    expect(await candidates()).toContain(waiting)
   })
 
   it('queues a never-tried movement AHEAD of one the ledger already refused', async () => {

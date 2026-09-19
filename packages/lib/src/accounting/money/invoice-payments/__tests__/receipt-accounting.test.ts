@@ -68,6 +68,15 @@ function db(): Database {
   }
   return {
     update: () => ({ set: () => ({ where: async () => undefined }) }),
+    // `findLiveDraft`'s select chain on `db`: no draft is waiting.
+    select: () => {
+      const draftChain: Record<string, unknown> = {}
+      for (const method of ['from', 'innerJoin', 'where', 'limit'])
+        draftChain[method] = () => draftChain
+      // biome-ignore lint/suspicious/noThenProperty: chainable drizzle query-builder stub
+      draftChain.then = (resolve: (v: unknown) => unknown) => Promise.resolve([]).then(resolve)
+      return draftChain
+    },
     transaction: async <T>(fn: (t: unknown) => Promise<T>) => fn(tx),
   } as unknown as Database
 }

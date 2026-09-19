@@ -37,6 +37,7 @@ import { FieldType } from '@auxx/database/enums'
 import type { PostResultStatus } from '@auxx/lib/accounting/ledger/client'
 import { groupByDay } from '@auxx/lib/accounting/money/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -56,13 +57,14 @@ import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import SettingsPage from '~/components/global/settings-page'
 import { useDocumentSendActions } from '~/components/money/ui/use-document-send-actions'
 import { RecordsView } from '~/components/records/records-view'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { BaseType } from '~/components/workflow/types'
 import { useViewportFill } from '~/hooks/use-viewport-fill'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { BankAccountPicker, bankAccountLabel, useBankAccounts } from '../../bank-account-picker'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
-import { EMPTY_CELL, formatMinor } from '../../ledger/format'
+import { formatMinor } from '../../ledger/format'
 
 type DepositsTab = 'undeposited' | 'deposits'
 
@@ -123,6 +125,28 @@ const METHOD_LABELS: Record<string, string> = {
   card: 'Card',
   bank: 'Bank transfer',
   other: 'Other',
+}
+
+interface ReceiptIdentityRow {
+  invoiceRecordId: RecordId | null
+  orderRecordId: RecordId | null
+  partyRecordId: RecordId | null
+}
+
+/** What a receipt paid for and who paid: the order or invoice, then the payer. */
+function ReceiptIdentity({ row }: { row: ReceiptIdentityRow }) {
+  const ids = [row.orderRecordId ?? row.invoiceRecordId, row.partyRecordId].filter(
+    (id): id is RecordId => !!id
+  )
+  if (ids.length === 0) return <span className='truncate text-sm'>Unapplied payment</span>
+  // `shrink-0`: the badges keep their names and the reference beside them truncates.
+  return (
+    <span className='flex shrink-0 items-center gap-1'>
+      {ids.map((id) => (
+        <RecordBadge key={id} recordId={id} size='sm' />
+      ))}
+    </span>
+  )
 }
 
 export function DepositsPage() {
@@ -379,7 +403,12 @@ export function DepositsPage() {
                               </span>
                             </span>
                           }
-                          onToggleOpen={() => toggleDay(dayIds, allSelected)}>
+                          onToggleOpen={() => toggleDay(dayIds, allSelected)}
+                          rowClassName={cn(
+                            'bg-primary-100/50 hover:bg-primary-100',
+                            allSelected &&
+                              'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25'
+                          )}>
                           <TreeRowList
                             items={day.rows}
                             getKey={(row) => row.paymentId}
@@ -391,18 +420,14 @@ export function DepositsPage() {
                                     checked={selectedIds.includes(row.paymentId)}
                                     onClick={(event) => event.stopPropagation()}
                                     onCheckedChange={() => toggle(row.paymentId)}
-                                    aria-label={`Select ${row.invoiceName || 'unapplied payment'}`}
+                                    aria-label={`Select payment ${row.paymentId}`}
                                   />
                                 }
-                                title={
-                                  <span className='truncate text-sm'>
-                                    {row.invoiceName || 'Unapplied payment'}
-                                  </span>
-                                }
+                                title={<ReceiptIdentity row={row} />}
                                 secondary={
                                   <span className='flex items-center gap-1.5'>
                                     <Badge variant='outline' size='xs'>
-                                      {METHOD_LABELS[row.method ?? ''] ?? row.method ?? EMPTY_CELL}
+                                      {METHOD_LABELS[row.method ?? ''] ?? row.method ?? 'Channel'}
                                     </Badge>
                                     {row.reference ? (
                                       <span className='text-muted-foreground text-xs'>
@@ -417,6 +442,11 @@ export function DepositsPage() {
                                   </span>
                                 }
                                 onToggleOpen={() => toggle(row.paymentId)}
+                                rowClassName={cn(
+                                  'bg-primary-100/50 hover:bg-primary-100',
+                                  selectedIds.includes(row.paymentId) &&
+                                    'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25'
+                                )}
                               />
                             )}
                           />
@@ -459,13 +489,14 @@ export function DepositsPage() {
 function DepositPane(props: {
   selectedCount: number
   selectedTotal: number
-  selected: Array<{
-    paymentId: string
-    invoiceName: string | null
-    reference: string | null
-    method: string | null
-    amountMinor: number
-  }>
+  selected: Array<
+    ReceiptIdentityRow & {
+      paymentId: string
+      reference: string | null
+      method: string | null
+      amountMinor: number
+    }
+  >
   bankAccountId: string | null
   onBankAccountChange: (id: string | null) => void
   /** False disables the picker: opening it onto nothing is not an explanation. */
@@ -573,12 +604,14 @@ function DepositPane(props: {
             <div key={row.paymentId}>
               {index > 0 && <Separator />}
               <div className='flex items-center gap-2 px-3 py-2 text-sm'>
-                <span className='min-w-0 flex-1 truncate'>
-                  {row.invoiceName || 'Unapplied payment'}
+                <span className='flex min-w-0 flex-1 items-center gap-2'>
+                  <ReceiptIdentity row={row} />
+                  {row.reference ? (
+                    <span className='min-w-0 truncate text-muted-foreground text-xs'>
+                      {row.reference}
+                    </span>
+                  ) : null}
                 </span>
-                {row.reference ? (
-                  <span className='text-muted-foreground text-xs'>{row.reference}</span>
-                ) : null}
                 <span className='font-mono tabular-nums'>
                   {formatMinor(row.amountMinor, DISPLAY_CURRENCY)}
                 </span>

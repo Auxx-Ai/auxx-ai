@@ -54,6 +54,13 @@ export const MoneyTransaction = pgTable(
      */
     postingBlockedReason: text(),
     postingBlockedAt: timestamp({ withTimezone: true }),
+    /**
+     * The draft `GlPosting` this movement waits on, stamped when the ledger
+     * answers `drafted`. A draft holds no subject claim, so this is the only
+     * thing that stops the poster and the sweep drafting it again every hour.
+     * Left dangling by a discard, which makes the movement a candidate again.
+     */
+    draftGlPostingId: text(),
     /** How the money moved — descriptive only; nullable because channel money has none. */
     method: text().$type<'cash' | 'check' | 'card' | 'bank' | 'other'>(),
     recordedByCommandId: text().notNull(),

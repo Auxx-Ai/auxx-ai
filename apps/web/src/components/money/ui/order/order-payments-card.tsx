@@ -33,7 +33,7 @@ export function OrderPaymentsCard({ entityInstanceId }: DrawerTabProps) {
   const utils = api.useUtils()
   const postReceipt = api.money.postCustomerReceipt.useMutation({
     onSuccess: async (result) => {
-      if (result.status !== 'accepted' && result.reason)
+      if ('reason' in result && result.reason)
         toastError({ title: 'Payment accounting needs attention', description: result.reason })
       await utils.money.orderMoneyTransactions.invalidate({ orderId: entityInstanceId })
     },

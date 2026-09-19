@@ -2682,6 +2682,13 @@
       "when": 1789777717268,
       "tag": "0382_gl_posting_type_vendor_credit",
       "breakpoints": true
+    },
+    {
+      "idx": 383,
+      "version": "7",
+      "when": 1789788503640,
+      "tag": "0383_money_transaction_draft_posting",
+      "breakpoints": true
     }
   ]
 }
