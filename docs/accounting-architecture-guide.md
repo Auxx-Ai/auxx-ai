@@ -1022,10 +1022,10 @@ coding path passes zero; settling a remainder as discount from a bank line is no
 🛑 **Both halves of that leg had to be provisioned per org, and neither is automatic.** Adding
 5093 to `DEFAULT_CHART_OF_ACCOUNTS` gave it to nobody — the pack walk runs once, in the wizard, so
 every account the catalogue gains afterwards is unreachable to an org that already ran it. Data
-migration **180** closes that class for good by recomputing each org's `packState` and re-walking
+migration **181** closes that class for good by recomputing each org's `packState` and re-walking
 every pack reading `partial`; `absent` packs are never walked, because provisioning `payroll` for
 an org that never adopted it is worse than a missing row (75 D2). The mirror field
-`vendor_bill_amount_discounted` is ensured by **181** (75 D3). Until both ran, a discounted payment
+`vendor_bill_amount_discounted` is ensured by **182** (75 D3). Until both ran, a discounted payment
 was refused on the unmapped role and the discount fell out of the balance in silence.
 
 ### 8.4a The vendor credit and the vendor refund
