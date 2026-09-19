@@ -20,23 +20,12 @@
 
 'use client'
 
-import { Section } from '@auxx/ui/components/section'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
-import { OrderPaymentsCard } from '~/components/money/ui/order/order-payments-card'
 import { LedgerCard } from './ledger-card'
 
-/** Order accounting combines actual money observations with the fulfillments the order parents. */
+/** The fulfillment entries the order parents; its money is `order:payments`, its own card. */
 export function OrderLedgerCard(props: DrawerTabProps) {
-  return (
-    <>
-      <Section title='Payments and refunds' collapsible={false}>
-        <OrderPaymentsCard {...props} />
-      </Section>
-      <Section title='Fulfillment accounting' collapsible={false}>
-        <LedgerCard {...props} sourceKind='order' />
-      </Section>
-    </>
-  )
+  return <LedgerCard {...props} sourceKind='order' />
 }
 
 export function InvoiceLedgerCard(props: DrawerTabProps) {

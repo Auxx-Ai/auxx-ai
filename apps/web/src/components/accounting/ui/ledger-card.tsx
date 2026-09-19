@@ -26,13 +26,16 @@ import type {
   PostingType,
 } from '@auxx/lib/accounting/ledger/client'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { BookOpenCheck } from 'lucide-react'
+import { BookOpenCheck, ExternalLink } from 'lucide-react'
+import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { EmptyRow } from '~/components/drawers/cards/related-record-row'
+import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
@@ -135,12 +138,35 @@ export function LedgerCard({ entityInstanceId, sourceKind }: LedgerCardProps) {
     return map
   }, [exportBatchesQuery.data])
 
+  // The report's `?source=` filter, over the range these postings span, so the
+  // page opens on exactly the rows this card lists.
+  const ledgerHref = useMemo(() => {
+    if (postings.length === 0) return null
+    const dates = postings.map((posting) => posting.txnDate).sort()
+    const params = new URLSearchParams({
+      source: `${sourceKind}:${entityInstanceId}`,
+      from: dates[0]!,
+      to: dates[dates.length - 1]!,
+    })
+    return `/app/accounting/reports/general-ledger?${params.toString()}`
+  }, [postings, sourceKind, entityInstanceId])
+
   if (!loading && postings.length === 0 && sweeps.length === 0) {
     return <EmptyRow label='Nothing posted yet' />
   }
 
   return (
     <>
+      {ledgerHref && (
+        <DrawerCardActions>
+          <Button asChild variant='ghost' size='xs'>
+            <Link href={ledgerHref}>
+              <ExternalLink />
+              Open in ledger
+            </Link>
+          </Button>
+        </DrawerCardActions>
+      )}
       <TreeRowList
         items={postings}
         loading={loading}

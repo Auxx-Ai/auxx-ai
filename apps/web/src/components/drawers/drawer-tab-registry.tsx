@@ -283,6 +283,10 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   // LEDGER CARDS (plans/accounting/HANDOFF.md slot 2J, ui-plan §2.3 / §4.4)
   // One component, `sourceType` pinned per entity by the wrapper.
   // ─────────────────────────────────────────────────────────────────
+  'order:payments': () =>
+    import('../money/ui/order/order-payments-card').then((m) => ({
+      default: m.OrderPaymentsCard,
+    })),
   'order:ledger': () =>
     import('../accounting/ui/ledger-card-registrations').then((m) => ({
       default: m.OrderLedgerCard,

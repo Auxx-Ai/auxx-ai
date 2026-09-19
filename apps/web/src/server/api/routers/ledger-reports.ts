@@ -43,6 +43,8 @@ import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
 /** `YYYY-MM-DD`. Every date bound on this router is this shape - the lib reads own the range validity. */
 const dateKey = z.iso.date({ error: 'Expected YYYY-MM-DD' })
+/** One record's postings on `GlPostingSource`: the drawer's "Open in ledger" filter. */
+const ledgerSource = z.object({ sourceKind: z.string().min(1), sourceId: z.string().min(1) })
 
 export const ledgerReportsRouter = createTRPCRouter({
   /**
@@ -172,13 +174,21 @@ export const ledgerReportsRouter = createTRPCRouter({
    * and `balanced` must not be read as a tie-out unless `truncated` is false.
    */
   generalLedger: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ from: dateKey, to: dateKey, glAccountId: z.string().min(1).optional() }))
+    .input(
+      z.object({
+        from: dateKey,
+        to: dateKey,
+        glAccountId: z.string().min(1).optional(),
+        source: ledgerSource.optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       const result = await readGeneralLedger(ctx.db, {
         organizationId: ctx.session.organizationId,
         from: input.from,
         to: input.to,
         glAccountId: input.glAccountId,
+        source: input.source,
         maxLines: GENERAL_LEDGER_MAX_LINES,
       })
       if (result.isErr()) throw result.error
@@ -226,6 +236,7 @@ export const ledgerReportsRouter = createTRPCRouter({
           from: dateKey,
           to: dateKey,
           glAccountId: z.string().min(1).optional(),
+          source: ledgerSource.optional(),
         }),
       ])
     )

@@ -358,8 +358,16 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
           icon: 'receipt-text',
           recordResource: 'credit_memo',
         },
+        // The money the order actually took and gave back; the row's own
+        // "Post payment" gates itself on `ledger.control`.
+        { value: 'payments', label: 'Payments and refunds', icon: 'banknote' },
         // The fulfillment entries this order produced. HANDOFF slot 2J.
-        { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
+        {
+          value: 'ledger',
+          label: 'Fulfillment accounting',
+          icon: 'book-open-check',
+          permissionKey: 'ledger.view',
+        },
       ],
     },
   },

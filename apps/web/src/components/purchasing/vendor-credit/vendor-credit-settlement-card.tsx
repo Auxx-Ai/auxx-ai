@@ -45,7 +45,7 @@ export function VendorCreditSettlementCard({ recordId }: DrawerTabProps) {
     void utils.purchasing.vendorCredit.settlement.invalidate({ vendorCreditRecordId: recordId })
   }
 
-  const unapply = api.purchasing.vendorCredit.unapply.useMutation({
+  const unapply = api.purchasing.vendorCredit.unapplyFromBill.useMutation({
     onSuccess: invalidate,
     onError: (error) =>
       toastError({ title: 'Error unapplying credit', description: error.message }),

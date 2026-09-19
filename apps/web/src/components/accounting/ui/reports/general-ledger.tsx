@@ -74,6 +74,10 @@ export function GeneralLedgerReportPage() {
   // ledger IS the account drill-down, at one zoom level rather than two
   // reports that have to agree with each other.
   const [accountParam, setAccountParam] = useQueryState('account')
+  // `<sourceKind>:<sourceId>` — a record drawer's "Open in ledger": every posting
+  // linked to that record, any link role, no opening balances.
+  const [sourceParam, setSourceParam] = useQueryState('source')
+  const source = useMemo(() => parseSourceParam(sourceParam), [sourceParam])
 
   // The current period, same default the P&L takes - the month a person is
   // working in is the range they almost always want, and it is also the range
@@ -92,7 +96,7 @@ export function GeneralLedgerReportPage() {
   )
 
   const query = api.ledgerReports.generalLedger.useQuery(
-    { from, to, glAccountId: accountParam ?? undefined },
+    { from, to, glAccountId: accountParam ?? undefined, source },
     { enabled: !!from && !!to }
   )
   const renderPdf = api.ledgerReports.renderStatementPdf.useMutation({
@@ -110,7 +114,7 @@ export function GeneralLedgerReportPage() {
 
   function handleDownloadPdf() {
     renderPdf.mutate(
-      { kind: 'general-ledger', from, to, glAccountId: accountParam ?? undefined },
+      { kind: 'general-ledger', from, to, glAccountId: accountParam ?? undefined, source },
       {
         onSuccess: ({ assetId }) =>
           window.open(`/api/files/download/asset:${assetId}`, '_blank', 'noopener,noreferrer'),
@@ -127,7 +131,7 @@ export function GeneralLedgerReportPage() {
     // opens it.
     downloadCsv(
       toCsvRows(query.data.rows, GENERAL_LEDGER_COLUMNS, period.currencyCode),
-      `general-ledger-${accountLabel ? `${accountLabel.replace(/[^\w.-]+/g, '-')}-` : ''}${from}-to-${to}${truncated ? '-INCOMPLETE' : ''}.csv`
+      `general-ledger-${accountLabel ? `${accountLabel.replace(/[^\w.-]+/g, '-')}-` : ''}${source ? `${source.sourceKind}-${source.sourceId}-` : ''}${from}-to-${to}${truncated ? '-INCOMPLETE' : ''}.csv`
     )
   }
 
@@ -153,7 +157,12 @@ export function GeneralLedgerReportPage() {
         filter={
           accountParam
             ? { label: accountLabel ?? 'One account', onClear: () => void setAccountParam(null) }
-            : undefined
+            : source
+              ? {
+                  label: `One ${humanizeSourceKind(source.sourceKind)}`,
+                  onClear: () => void setSourceParam(null),
+                }
+              : undefined
         }
         onDownloadPdf={handleDownloadPdf}
         onDownloadCsv={handleDownloadCsv}
@@ -241,6 +250,18 @@ export function GeneralLedgerReportPage() {
       />
     </div>
   )
+}
+
+/** `?source=<kind>:<id>` → the filter the read takes; malformed values are ignored. */
+function parseSourceParam(value: string | null) {
+  if (!value) return undefined
+  const at = value.indexOf(':')
+  if (at <= 0 || at === value.length - 1) return undefined
+  return { sourceKind: value.slice(0, at), sourceId: value.slice(at + 1) }
+}
+
+function humanizeSourceKind(kind: string) {
+  return kind.replace(/_/g, ' ')
 }
 
 /**
