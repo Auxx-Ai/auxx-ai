@@ -31,10 +31,11 @@ const logger = createScopedLogger('purchasing:match-hook')
  * `purchasing/` that reads and writes. It is deliberately NOT re-exported from
  * `client.ts`, which stays pure so the UI can preview a match before commit.
  *
- * The match computes per line, rolls up to the bill, and writes `vendor_bill_status`,
+ * The match computes per line, rolls up to the bill, and writes `vendor_bill_match_status`,
  * `vendor_bill_match_variance` and `vendor_bill_match_notes` — the three fields declared
  * `creatable: false` with "the three-way match hook is the only writer" in their
- * descriptions.
+ * descriptions. It never touches `vendor_bill_status`, which is the document lifecycle
+ * (73 D1).
  */
 
 /** Fields on `vendor-bills` whose write should re-run the match. */
@@ -48,7 +49,7 @@ export const BILL_MATCH_TRIGGER_ATTRS = new Set<SystemAttribute>([
 /**
  * Fields on `vendor-bill-lines` whose write should re-run the parent bill's match.
  *
- * ⚠️ `vendor_bill_status`, `_match_variance` and `_match_notes` are absent by
+ * ⚠️ `vendor_bill_match_status`, `_match_variance` and `_match_notes` are absent by
  * construction — they are what this hook WRITES, and a trigger set that contained them
  * would recurse.
  */
@@ -60,21 +61,16 @@ export const BILL_LINE_MATCH_TRIGGER_ATTRS = new Set<SystemAttribute>([
 ])
 
 /**
- * The statuses a recomputed match may overwrite.
+ * The document LIFECYCLE values a recomputed match may run against (73 D1).
  *
- * `posted`, `paid` and `void` are settled facts about a document that has already left
- * this system — a late edit to a line must never silently un-post a bill the GL has an
- * entry for. Those need a human reversal, not a hook.
- *
- * 🛑 `awaiting_receipt` MUST be in this set. It is the one status the match itself writes
- * that is waiting on an event outside the bill — the goods landing — and the write that
- * resolves it comes from the receipt side via `rematchBillsForPurchaseOrderLines`. Leave it
- * out and a prepaid bill enters `awaiting_receipt` and can never leave, which is precisely
- * the never-resolving state P24 was designed around.
+ * "Not `void`", and nothing narrower. The verdict is its own field now, so recomputing it
+ * has no ledger consequence and a posted, paid bill must keep matching — a short shipment
+ * discovered after payment is exactly what the queue is for. A void bill is not a document
+ * any more, so there is nothing to judge.
  */
-export const MATCHABLE_STATUSES = new Set(['draft', 'awaiting_receipt', 'matched', 'exception'])
+export const UNMATCHABLE_STATUSES = new Set(['void'])
 
-/** Statuses the match wrote itself, and may therefore reset to `draft`. */
+/** Verdicts the match wrote itself, and may therefore reset to `none`. */
 const MATCH_WRITTEN_STATUSES = new Set(['awaiting_receipt', 'matched', 'exception'])
 
 function readString(
@@ -115,6 +111,7 @@ function date(values: Map<string, unknown> | undefined, fieldId: string | undefi
 const MATCH_ATTRS = [
   'vendor_bill_status',
   'vendor_bill_currency',
+  'vendor_bill_match_status',
   'vendor_bill_match_variance',
   'vendor_bill_match_notes',
   'vendor_bill_line_quantity_billed',
@@ -139,7 +136,7 @@ const MATCH_ATTRS = [
  * (a freight invoice, a one-off — 01 §5.1) and there is nothing to hold such a line
  * against. When NO line is matchable the bill has no verdict at all, so the two computed
  * fields are cleared rather than left showing a stale one, and a bill the match itself
- * had called `matched`, `awaiting_receipt` or `exception` drops back to `draft`.
+ * had called `matched`, `awaiting_receipt` or `exception` drops back to `none`.
  *
  * Unmatchable lines on an otherwise matchable bill are counted into the notes but never
  * change the outcome — a freight line beside three goods lines is ordinary. What they are
@@ -162,10 +159,11 @@ export async function rematchBill(params: {
     .from(organizationId, 'customFields')
     .bySystemAttributes<SystemAttribute>([...MATCH_ATTRS])
 
-  const statusField = cf.vendor_bill_status
+  const lifecycleField = cf.vendor_bill_status
+  const matchStatusField = cf.vendor_bill_match_status
   const varianceField = cf.vendor_bill_match_variance
   const notesField = cf.vendor_bill_match_notes
-  if (!statusField || !varianceField || !notesField) {
+  if (!lifecycleField || !matchStatusField || !varianceField || !notesField) {
     logger.warn('Missing vendor bill match fields — skipping match', { organizationId })
     return
   }
@@ -177,13 +175,14 @@ export async function rematchBill(params: {
   const currencyField = cf.vendor_bill_currency
   const billValues = await handler.getFieldValues(
     billRecordId,
-    [statusField.id, currencyField?.id].filter((id): id is string => !!id)
+    [lifecycleField.id, matchStatusField.id, currencyField?.id].filter((id): id is string => !!id)
   )
-  const statusTyped = firstTyped(billValues.get(statusField.id))
-  const currentStatus = statusTyped ? (extractValue(statusTyped) as string) : null
+  const lifecycleTyped = firstTyped(billValues.get(lifecycleField.id))
+  const lifecycle = lifecycleTyped ? (extractValue(lifecycleTyped) as string) : null
+  const matchTyped = firstTyped(billValues.get(matchStatusField.id))
+  const currentVerdict = matchTyped ? (extractValue(matchTyped) as string) : null
   const currencyCode = readString(billValues, currencyField?.id) ?? 'USD'
-  // A bill with no status yet is a freshly created draft.
-  if (currentStatus !== null && !MATCHABLE_STATUSES.has(currentStatus)) return
+  if (lifecycle !== null && UNMATCHABLE_STATUSES.has(lifecycle)) return
 
   const { ids: lineInstanceIds } = await handler.listFiltered({
     entityDefinitionId: 'vendor_bill_line',
@@ -337,8 +336,8 @@ export async function rematchBill(params: {
       values: [
         { fieldId: varianceField.id, value: null },
         { fieldId: notesField.id, value: null },
-        ...(currentStatus && MATCH_WRITTEN_STATUSES.has(currentStatus)
-          ? [{ fieldId: statusField.id, value: 'draft' }]
+        ...(currentVerdict && MATCH_WRITTEN_STATUSES.has(currentVerdict)
+          ? [{ fieldId: matchStatusField.id, value: 'none' }]
           : []),
       ],
     })
@@ -379,11 +378,10 @@ export async function rematchBill(params: {
   /**
    * 🛑 An untyped line blocks `matched` — but never hides a real `exception`.
    *
-   * `matched` is the ONE status that posts to the general ledger automatically, so
-   * it has to mean "the whole document was compared and it agrees". A bill with a
-   * line nobody has priced yet has not been compared — only part of it has. Left
-   * alone, such a bill renders a green badge with a quiet note beside it, and the
-   * poster reads the STATUS, not the note.
+   * `matched` has to mean "the whole document was compared and it agrees". A bill
+   * with a line nobody has priced yet has not been compared — only part of it has.
+   * Left alone, such a bill renders a green badge with a quiet note beside it, and
+   * a reader reads the badge, not the note.
    *
    * `awaiting_receipt` is demoted for the same reason: it is a verdict, and the
    * honest answer on a half-transcribed bill is that there is no verdict yet.
@@ -398,11 +396,11 @@ export async function rematchBill(params: {
    */
   const notFullyTranscribed = untypedLines > 0 && result.outcome !== 'exception'
 
-  // The outcome IS the status value — `matched` / `awaiting_receipt` / `exception`
-  // are all three members of `VendorBillStatus`, so no mapping table is needed and
-  // a fourth outcome would fail to compile rather than silently become `exception`.
+  // The outcome IS the field value — `matched` / `awaiting_receipt` / `exception`
+  // are all three members of `VendorBillMatchStatus`, so no mapping table is needed
+  // and a fourth outcome would fail to compile rather than silently become `exception`.
   const verdict = [
-    { fieldId: statusField.id, value: notFullyTranscribed ? 'draft' : result.outcome },
+    { fieldId: matchStatusField.id, value: notFullyTranscribed ? 'none' : result.outcome },
     // Null rather than the partial figure: a variance computed across only the
     // lines that happen to be typed is not the bill's variance.
     { fieldId: varianceField.id, value: notFullyTranscribed ? null : variance },
@@ -423,18 +421,16 @@ export async function rematchBill(params: {
     db,
     organizationId,
     [vendorBillInstanceId],
-    [statusField.id, varianceField.id, notesField.id]
+    [matchStatusField.id, varianceField.id, notesField.id]
   )
   const current = stored.get(vendorBillInstanceId)
   if (verdict.every((v) => (current?.get(v.fieldId) ?? null) === v.value)) return
 
   await fieldValueService.setValuesForEntity({ recordId: billRecordId, values: verdict })
 
-  // 🛑 `matched` is the ONE verdict that posts, and it posts the moment the
-  // verdict is written. The receipt credited `grni` per movement (MIGRATION
-  // step 5); this is what relieves it, and an accrual with a writer and no
-  // reader grows without bound while every statement still balances.
-  if (verdict[0]!.value === 'matched' && currentStatus !== 'matched') {
+  // TODO(73 U2): the match never posts — delete this block when the Post action
+  // becomes the one door for both kinds of bill.
+  if (verdict[0]!.value === 'matched' && currentVerdict !== 'matched') {
     const { postVendorBillEntry } = await import('./post-vendor-bill')
     const relations = await readFieldRelations(
       db,

@@ -961,6 +961,7 @@ export const DEFAULT_VIEW_CONFIGS = {
           field_vendor_bill_number: true,
           field_vendor_bill_vendor: true,
           field_vendor_bill_status: true,
+          field_vendor_bill_match_status: true,
           field_vendor_bill_payment_status: true,
           field_vendor_bill_total: true,
           field_vendor_bill_billed_at: true,
@@ -970,6 +971,7 @@ export const DEFAULT_VIEW_CONFIGS = {
           'field_vendor_bill_number',
           'field_vendor_bill_vendor',
           'field_vendor_bill_status',
+          'field_vendor_bill_match_status',
           'field_vendor_bill_payment_status',
           'field_vendor_bill_total',
           'field_vendor_bill_billed_at',
@@ -996,6 +998,7 @@ export const DEFAULT_VIEW_CONFIGS = {
         columnVisibility: {
           field_vendor_bill_number: true,
           field_vendor_bill_vendor: true,
+          field_vendor_bill_match_status: true,
           field_vendor_bill_match_variance: true,
           field_vendor_bill_match_notes: true,
           field_vendor_bill_total: true,
@@ -1003,6 +1006,7 @@ export const DEFAULT_VIEW_CONFIGS = {
         columnOrder: [
           'field_vendor_bill_number',
           'field_vendor_bill_vendor',
+          'field_vendor_bill_match_status',
           'field_vendor_bill_match_variance',
           'field_vendor_bill_match_notes',
           'field_vendor_bill_total',

@@ -24,7 +24,7 @@
 //
 // What this card deliberately does NOT do is decide the outcome. Tolerances are
 // the hardcoded constants in `matchBill` (`DEFAULT_MATCH_TOLERANCE`); the verdict
-// this card shows is the STORED `vendor_bill_status` / `matchVariance` /
+// this card shows is the STORED `vendor_bill_match_status` / `matchVariance` /
 // `matchNotes` the hook wrote. Re-deriving pass/fail on the client would
 // produce a second, disagreeing answer on the same screen. The amber cell
 // highlight is not that second answer — it marks two numbers that DIFFER, which
@@ -69,7 +69,7 @@ import { useVendorBillLines, type VendorBillLineValues } from './use-vendor-bill
 /** The bill-level verdict, written by the match hook. */
 const BILL_MATCH_ATTRIBUTES = [
   'vendor_bill_currency',
-  'vendor_bill_status',
+  'vendor_bill_match_status',
   'vendor_bill_match_variance',
   'vendor_bill_match_notes',
 ] as const
@@ -88,20 +88,19 @@ const PO_LINE_MATCH_ATTRIBUTES = [
 const PURCHASE_ORDER_MATCH_ATTRIBUTES = ['purchase_order_expected_at'] as const
 
 /**
- * Statuses worth a badge — `draft` is the default, so it is not one.
+ * Verdicts worth a badge — `none` is "nothing to judge yet", so it is not one.
  *
- * 🛑 Every value of `VendorBillStatus` except `draft` belongs here. A status with
- * no entry renders NO badge at all — silently, with no fallback — so the card
- * that exists to show the verdict shows nothing. `awaiting_receipt` is amber
+ * 🛑 Every value of `VendorBillMatchStatus` except `none` belongs here. A verdict
+ * with no entry renders NO badge at all — silently, with no fallback — so the
+ * card that exists to show the verdict shows nothing. `awaiting_receipt` is amber
  * because it is a state that still needs something to happen but is not a
- * failure. The money state is `vendor_bill_payment_status`, not this field.
+ * failure. The lifecycle is `vendor_bill_status` and the money state is
+ * `vendor_bill_payment_status`; neither is this field (73 D1).
  */
 const STATUS_BADGE: Record<string, { label: string; variant: 'green' | 'amber' | 'red' }> = {
   awaiting_receipt: { label: 'Awaiting Receipt', variant: 'amber' },
   matched: { label: 'Matched', variant: 'green' },
   exception: { label: 'Exception', variant: 'red' },
-  posted: { label: 'Posted', variant: 'green' },
-  void: { label: 'Void', variant: 'amber' },
 }
 
 function firstString(raw: unknown): string | undefined {
@@ -176,7 +175,7 @@ export function VendorBillMatchCard({ recordId }: DrawerTabProps) {
     firstString(header.vendor_bill_currency) ||
     (getSetting('organization.currency') as string | null) ||
     'USD'
-  const status = firstString(header.vendor_bill_status) ?? 'draft'
+  const status = firstString(header.vendor_bill_match_status) ?? 'none'
   const storedVariance = toNumber(header.vendor_bill_match_variance)
 
   // `describeMatchReasons` joins with `; `, so splitting on it recovers the list

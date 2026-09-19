@@ -198,7 +198,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     // Every inventory document writer, inside its own write's transaction.
     trigger: {
       kind: 'event',
-      on: 'Every inventory document write: a shipment, a goods receipt, an adjustment, a build, a return, the opening run',
+      on: 'Every inventory document write: a shipment, a goods receipt, an adjustment, a build, a return, a revaluation, the opening run',
     },
     template: [
       {
@@ -231,6 +231,16 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         side: 'credit',
         role: ACCOUNT_ROLES.EQUITY_OPENING_BALANCE,
         what: 'The opening run’s balancing leg',
+      },
+      {
+        side: 'credit',
+        role: ACCOUNT_ROLES.BUILD_VARIANCE,
+        what: 'A build’s scrap and whatever the run missed the standard by',
+      },
+      {
+        side: 'credit',
+        role: ACCOUNT_ROLES.INVENTORY_REVALUATION,
+        what: 'A cost-only revaluation; the side follows the sign',
       },
     ],
     settings: [],

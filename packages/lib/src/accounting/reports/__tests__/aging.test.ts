@@ -482,7 +482,7 @@ describe('readAging', () => {
         bySystemAttributes: async () => ({
           vendor_bill_due_at: { id: 'f_due' },
           vendor_bill_number: { id: 'f_number' },
-          vendor_bill_status: { id: 'f_status' },
+          vendor_bill_match_status: { id: 'f_status' },
           vendor_bill_vendor: { id: 'f_vendor' },
         }),
       }),
@@ -586,7 +586,7 @@ describe('readAging', () => {
         bySystemAttributes: async () => ({
           vendor_bill_due_at: { id: 'f_due' },
           vendor_bill_number: { id: 'f_number' },
-          vendor_bill_status: { id: 'f_status' },
+          vendor_bill_match_status: { id: 'f_status' },
           vendor_bill_vendor: { id: 'f_vendor' },
         }),
       }),
@@ -598,7 +598,8 @@ describe('readAging', () => {
           new Map<string, unknown>([
             ['f_due', '2026-07-31T00:00:00.000Z'],
             ['f_number', 'RENT-SEP'],
-            ['f_status', 'posted'],
+            // An expense bill has no purchase order, so it never carries a verdict.
+            ['f_status', 'none'],
           ]),
         ],
       ])

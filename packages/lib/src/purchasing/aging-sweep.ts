@@ -16,7 +16,7 @@
  *
  * ## Why a sweep and not a read-time derivation
  *
- * `vendor_bill_status` is a STORED field. The exception queue filters and sorts
+ * `vendor_bill_match_status` is a STORED field. The exception queue filters and sorts
  * on it, record rules fire off it, the sync manifest exports it, and
  * `vendor_bill_match_notes` — the prose a human reads in the queue — is written
  * beside it by the same call. Deriving "actually overdue" at read time would fix
@@ -57,11 +57,11 @@ import { rematchBill } from './match-hook'
 const logger = createScopedLogger('purchasing:aging-sweep')
 
 /**
- * The stored `vendor_bill_status` value the sweep hunts for.
+ * The stored `vendor_bill_match_status` value the sweep hunts for (73 D1).
  *
  * A SINGLE_SELECT stores its value in `FieldValue.optionId`, and for this seeded
- * field the option id IS the status key (`draft` / `awaiting_receipt` /
- * `matched` / `exception` / …), which is also why `rematchBill`'s no-op guard can
+ * field the option id IS the verdict key (`none` / `awaiting_receipt` /
+ * `matched` / `exception`), which is also why `rematchBill`'s no-op guard can
  * compare a scalar read straight against `MatchResult['outcome']`.
  */
 const AWAITING_RECEIPT = 'awaiting_receipt'
@@ -176,7 +176,7 @@ async function findAwaitingReceiptBills(): Promise<Map<string, string[]>> {
     .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
     .where(
       and(
-        eq(schema.CustomField.systemAttribute, 'vendor_bill_status'),
+        eq(schema.CustomField.systemAttribute, 'vendor_bill_match_status'),
         eq(schema.FieldValue.optionId, AWAITING_RECEIPT),
         isNull(schema.EntityInstance.archivedAt)
       )

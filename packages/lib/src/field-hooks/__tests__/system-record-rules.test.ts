@@ -40,9 +40,9 @@ afterEach(() => {
 })
 
 describe('registerFieldSystemRules — declarations', () => {
-  it('declares exactly the 13 field triggers', () => {
+  it('declares exactly the 14 field triggers', () => {
     const decls = getSystemRuleDeclarations()
-    expect(decls).toHaveLength(13)
+    expect(decls).toHaveLength(14)
     expect(decls.map((d) => d.fieldRef?.systemAttribute).sort()).toEqual(
       [
         // Company enrichment's two field doors: a domain arriving or being corrected, and
@@ -50,6 +50,9 @@ describe('registerFieldSystemRules — declarations', () => {
         'company_domain',
         'company_website',
         'part_reorder_point',
+        // The agreed price on an order line IS the latest agreed price, and it
+        // writes the vendor part's (73 §6.4).
+        'purchase_order_line_expected_unit_price',
         'subpart_quantity',
         // The schedule (29 §7): the three rate-row fields the resolver reads,
         // and the offer's pointer.
@@ -98,7 +101,7 @@ describe('registerFieldSystemRules — declarations', () => {
   it('is idempotent — a second call does not duplicate declarations', () => {
     __resetFieldSystemRulesLatch()
     registerFieldSystemRules()
-    expect(getSystemRuleDeclarations()).toHaveLength(13)
+    expect(getSystemRuleDeclarations()).toHaveLength(14)
   })
 })
 

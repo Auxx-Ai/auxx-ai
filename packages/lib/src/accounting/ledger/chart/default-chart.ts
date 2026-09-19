@@ -656,13 +656,11 @@ const INVENTORY_ACCOUNTS: readonly DefaultChartAccount[] = [
     code: '5010',
     name: 'COGS - Direct Labor',
     accountType: GlAccountType.EXPENSE,
+    role: 'cogs_direct_labor',
     subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
-    // No role, and it stays empty under L1. The labour that went into inventory
-    // is relieved from 2110 Payroll Clearing by the month-end entry, and the
-    // labour that then LEFT inventory on a shipment lands in 5000's plug - a
-    // movement freezes one total unit cost, so nothing can say how much of a
-    // shipped unit's cost was labour. That is why 5000 is named for product
-    // cost rather than materials. See `COGS_PRODUCT_COST` in build-entry.ts.
+    // Role-less and empty until 73 §6.2 rule 3: relief now splits a unit's
+    // frozen standard by the finished good's own composition, so the labour
+    // share stops landing in 5000's plug.
   },
   {
     code: '5020',
@@ -693,6 +691,26 @@ const INVENTORY_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Inventory Count Variance',
     accountType: GlAccountType.EXPENSE,
     role: 'inventory_count_variance',
+    subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
+  },
+  {
+    // 73 §6.2 rule 5 seeds this "to 5090", which a chart cannot do - `role` is
+    // unique per account and 5090 is `ppv`. Its own code, adjacent, so the four
+    // variance accounts read as a block in a sorted chart.
+    code: '5091',
+    name: 'Build Variance',
+    accountType: GlAccountType.EXPENSE,
+    role: 'build_variance',
+    subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
+  },
+  {
+    // The roll's restatement of on-hand stock, and the first receipt of a
+    // provisional part replacing the guess (73 §6.2 rule 2, §6.4). The brief's
+    // own alternative to 5090.
+    code: '5092',
+    name: 'Inventory Revaluation',
+    accountType: GlAccountType.EXPENSE,
+    role: 'inventory_revaluation',
     subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
   },
 ]
@@ -748,6 +766,17 @@ const PURCHASING_ACCOUNTS: readonly DefaultChartAccount[] = [
   },
 
   // ── Cost of goods sold ──────────────────────────────────────────────────
+  {
+    // Tax a vendor charges on a goods bill. Deliberately NOT in the landed
+    // formula and so never in the standard (73 §7.2); an org that would rather
+    // capitalise it puts it in `vendor_part_other_cost` and it accrues with
+    // freight instead.
+    code: '5040',
+    name: 'Purchase tax',
+    accountType: GlAccountType.EXPENSE,
+    role: 'purchase_tax',
+    subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
+  },
   {
     code: '5090',
     name: 'Inventory / Purchase Price Variance',

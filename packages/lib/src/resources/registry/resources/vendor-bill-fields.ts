@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import { VendorBillStatus } from '../enum-values'
+import { VendorBillMatchStatus, VendorBillStatus } from '../enum-values'
 import { defineResourceFields } from '../system-attributes'
 
 /**
@@ -379,6 +379,40 @@ export const VENDOR_BILL_FIELDS = defineResourceFields({
     description:
       'What the vendor is asking for, integer minor units — keyed from their document, not ' +
       're-derived from the lines',
+  },
+
+  /**
+   * The MATCH axis (task 73 D1) — the three-way match's verdict, beside
+   * `status`'s lifecycle and `paymentStatus`'s money.
+   *
+   * One writer: `purchasing/match-hook.ts`, which recomputes it on every line
+   * write and every receipt. A posted, paid bill still matches: the verdict has
+   * no ledger effect, and a short shipment found after payment is exactly what
+   * the queue exists to surface.
+   */
+  matchStatus: {
+    id: toFieldId('matchStatus'),
+    key: 'matchStatus',
+    label: 'Match Status',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'vendor_bill_match_status',
+    systemSortOrder: 'aC1',
+    nullable: true,
+    options: { options: VendorBillMatchStatus.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false, // the three-way match hook is the only writer
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description:
+      'Whether this bill agrees with its purchase order and its receipts — computed by the ' +
+      'three-way match',
+    defaultValue: VendorBillMatchStatus.NONE,
   },
 
   // Written by the three-way match hook, never by hand. A variance someone can

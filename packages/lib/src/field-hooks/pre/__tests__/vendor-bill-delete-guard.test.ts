@@ -99,7 +99,9 @@ describe('guardVendorBillDelete: status', () => {
     })
   }
 
-  for (const status of ['draft', 'awaiting_receipt', 'matched', 'exception']) {
+  // 73 D1: the verdict is its own field, so the lifecycle has one value left
+  // that is not a wall.
+  for (const status of ['draft', 'void']) {
     it(`allows a ${status} bill through the status wall`, async () => {
       await expect(
         guardVendorBillDelete(event({ vendor_bill_status: status }))

@@ -1,6 +1,6 @@
 // packages/lib/src/inventory/costing/types.ts
 
-import type { PartKindValue } from './client'
+import type { PartKindValue, StandardCostSourceValue } from './client'
 
 /**
  * The two `manufacturing.*` org settings, per assembled unit, in minor units.
@@ -89,6 +89,10 @@ export interface StandardCostRollLine extends StandardCostComponents {
   partKind: PartKindValue
   /** The standard this part carried before the roll. `null` = never rolled. */
   previousStandardCost: number | null
+  /** `part_standard_cost_source` as stored. `null` = rolled before the field existed. */
+  previousStandardCostSource: StandardCostSourceValue | null
+  /** What the roll will stamp: `confirmed` only when every child already is (73 §6.4). */
+  standardCostSource: StandardCostSourceValue | null
   /** `part_quantity_on_hand`, or 0 when the part has never been counted. */
   quantityOnHand: number
   /**
@@ -132,12 +136,22 @@ export interface StandardCostRollPlan {
   initialValue: number
   /** Parts in scope that cannot be valued at all. */
   skipped: SkippedPart[]
+  /** ORG-WIDE, not scope-wide: parts carrying a usable standard at all. */
+  standardCount: number
+  /** Of {@link standardCount}, how many came off a receipt (73 §6.4). */
+  confirmedStandardCount: number
 }
 
 /** What a roll DID. */
 export interface StandardCostRollResult extends StandardCostRollPlan {
   /** The parts whose field values were actually written. */
   writtenPartIds: string[]
+  /**
+   * The `revalue` movements the roll posted for its revaluation delta, and the
+   * signed amount that reached `inventory_revaluation` (73 §6.2 rule 2).
+   */
+  revaluationMovementIds: string[]
+  revaluationPostedMinor: number
 }
 
 /** Input to {@link rollStandardCost} and {@link previewStandardCostRoll}. */

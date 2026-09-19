@@ -23,10 +23,11 @@ import {
   inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
-import { requireCachedEntityDefId } from '../../cache'
+import { getOrgCache, requireCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { systemDefId } from '../../resources/system-records'
 import { ensureStandardCost } from '../costing/ensure-standard-cost'
+import { replaceProvisionalStandard } from '../costing/provisional-standard'
 import { batchRecalculateQoH } from '../costing/qoh'
 import { writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
@@ -83,7 +84,13 @@ export async function receiveStock(
       const priced = await resolveReceiptPrice(db, organizationId, input)
       const partKind = await unwrap(readPartKind(db, organizationId, input.partId))
 
-      await setFirstStandardCostFromReceipt(db, organizationId, input.partId, priced.unitCost)
+      await setFirstStandardCostFromReceipt(
+        db,
+        organizationId,
+        input.partId,
+        priced.unitCost,
+        userId
+      )
 
       // The movement and its entry commit together (MIGRATION step 5): a
       // receipt whose row landed and whose entry did not is exactly the state
@@ -279,10 +286,12 @@ interface WriteReceiveMovementArgs {
  * part HAVE a standard afterwards, so the adjust, build and close paths that
  * refuse without one stop refusing.
  *
- * 🛑 **A receipt never MOVES an existing standard.** That is the same file's §5:
- * a standard that follows the last purchase is a moving average wearing a
- * standard's name. A later receipt at a different price varies against the
- * standard; it does not become it.
+ * 🛑 **A receipt never MOVES an existing standard, with ONE exception.** That is
+ * the same file's §5: a standard that follows the last purchase is a moving
+ * average wearing a standard's name. The exception is 73 §6.4 — a standard
+ * somebody TYPED before any purchase existed, which the first receipt replaces
+ * rather than varies against. `replaceProvisionalStandard` gates on the stored
+ * source and is a no-op for every other part.
  *
  * Failures are swallowed. The receipt is the fact being recorded and it is
  * already priced; refusing to record it because a derived convenience could not
@@ -296,7 +305,8 @@ export async function setFirstStandardCostFromReceipt(
   db: Database,
   organizationId: string,
   partId: string,
-  unitCost: number
+  unitCost: number,
+  userId?: string
 ): Promise<void> {
   const ensured = await ensureStandardCost(db, organizationId, [partId], {
     kind: 'receipt',
@@ -307,6 +317,26 @@ export async function setFirstStandardCostFromReceipt(
       organizationId,
       partId,
       error: ensured.error,
+    })
+    return
+  }
+
+  // 73 §6.4. A no-op unless the part carries a stored `provisional` standard,
+  // in which case this replaces it and revalues whatever is on the shelf at the
+  // guess. Swallowed for the same reason the line above is: the arrival is the
+  // fact being recorded.
+  const replaced = await replaceProvisionalStandard(
+    db,
+    organizationId,
+    userId ?? (await getOrgCache().get(organizationId, 'systemUser')),
+    partId,
+    unitCost
+  )
+  if (replaced.isErr()) {
+    logger.warn('Could not replace a provisional standard from a receipt', {
+      organizationId,
+      partId,
+      error: replaced.error,
     })
   }
 }

@@ -37,6 +37,13 @@ export type InventoryDocumentKind =
   | 'return'
   | 'scrap'
   | 'opening'
+  /**
+   * A COST-ONLY document: its movements carry quantity 0 and a signed extended
+   * cost, so the shelf does not move and the ledger restates what it is worth
+   * (73 §6.2 rule 2). The standard-cost roll is the first writer;
+   * §7's landed-cost voucher is the second.
+   */
+  | 'revalue'
 
 /** One `stock_movement` this document wrote, as the entry reads it. */
 export interface InventoryMovementLine {
@@ -111,6 +118,7 @@ const COUNTER_ROLE: Record<Exclude<InventoryDocumentKind, 'build'>, string> = {
   return: ACCOUNT_ROLES.COGS_PRODUCT_COST,
   scrap: ACCOUNT_ROLES.INVENTORY_COUNT_VARIANCE,
   opening: ACCOUNT_ROLES.EQUITY_OPENING_BALANCE,
+  revalue: ACCOUNT_ROLES.INVENTORY_REVALUATION,
 }
 
 /**
@@ -125,8 +133,9 @@ const COUNTER_ROLE: Record<Exclude<InventoryDocumentKind, 'build'>, string> = {
  * scrap     Cr <inventory role(s)>        Dr inventory_count_variance
  * return    Dr <inventory role(s)>        Cr cogs_product_cost
  * opening   Dr <inventory role(s)>        Cr equity_opening_balance
+ * revalue   Dr/Cr <inventory role(s)>     Cr/Dr inventory_revaluation
  * build     Dr/Cr the three inventory roles against each other,
- *           Cr payroll_clearing, Cr applied_overhead, and the residual to ppv
+ *           Cr payroll_clearing, Cr applied_overhead, residual to build_variance
  * ```
  *
  * @throws {UnprocessableEntityError} on a non-integer cost, a movement with no
@@ -176,8 +185,10 @@ export function buildInventoryMovementEntry(
     })
     // What the run produced beyond the components and the absorption it
     // consumed. Favourable is a credit, exactly as a vendor billing low is.
+    // Its OWN role since 73 §6.2 rule 5: scrap and a run that missed standard
+    // are not a vendor's price moving.
     legs.push({
-      role: ACCOUNT_ROLES.PPV,
+      role: ACCOUNT_ROLES.BUILD_VARIANCE,
       amountMinor: -(net - labor - overhead),
       memo: 'Build variance',
       sourceId: documentId,

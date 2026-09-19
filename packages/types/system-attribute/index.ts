@@ -832,6 +832,8 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_bill_shipping_total',
   'vendor_bill_tax_total',
   'vendor_bill_total',
+  // The match axis, beside `vendor_bill_status`'s lifecycle axis (73 D1).
+  'vendor_bill_match_status',
   'vendor_bill_match_variance',
   'vendor_bill_match_notes',
   'vendor_bill_document', // FILE — the vendor's invoice as received; the phase-2 parse target
@@ -956,6 +958,7 @@ export const SYSTEM_ATTRIBUTES = [
   'part_standard_overhead_cost',
   'part_standard_cost', // the sum — the value every movement stamps
   'part_standard_cost_effective_at',
+  'part_standard_cost_source', // provisional (a typed guess) | confirmed (off a receipt)
   // The two per-part absorption overrides (plans/money/tasks/22). The INPUTS
   // whose output is the frozen block above — NULL falls through to the org
   // rate, a stored 0 means "absorbs nothing", and unlike the frozen fields

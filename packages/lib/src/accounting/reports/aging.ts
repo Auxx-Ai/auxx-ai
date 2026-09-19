@@ -129,7 +129,7 @@ export interface AgingDocument {
   /** Natural-sign net for this document as of `asOf`. Negative is a credit balance - never hidden. */
   openMinor: number
   bucket: AgingBucketKey
-  /** `awaiting_receipt` | `exception` on a payable document; absent otherwise. */
+  /** `awaiting_receipt` | `exception`, the match verdict on a payable; absent otherwise. */
   badge?: string
   /** `defId:instanceId`, when the document is a real record (`invoice` or `vendor_bill`) the drawer can open. */
   recordId?: string
@@ -178,7 +178,7 @@ const DOCUMENT_SCALAR_ATTRIBUTES = [
   'invoice_number',
   'vendor_bill_due_at',
   'vendor_bill_number',
-  'vendor_bill_status',
+  'vendor_bill_match_status',
   'order_number',
 ] as const
 
@@ -189,7 +189,11 @@ const DOCUMENT_RELATION_ATTRIBUTES = [
   'order_company',
 ] as const
 
-/** The two statuses task 05 §0 (via the review) says an open payable may carry and never be dropped for. */
+/**
+ * The two MATCH verdicts task 05 §0 (via the review) says an open payable may
+ * carry and never be dropped for. The lifecycle says nothing an aging row needs
+ * — an open payable is posted by definition (73 D1).
+ */
 const AP_BADGE_STATUSES = new Set(['awaiting_receipt', 'exception'])
 
 function emptyAging(options: ReadAgingOptions, accountCode: string | null): Aging {
@@ -329,7 +333,7 @@ export async function readAging(
       cf.invoice_number?.id,
       cf.vendor_bill_due_at?.id,
       cf.vendor_bill_number?.id,
-      cf.vendor_bill_status?.id,
+      cf.vendor_bill_match_status?.id,
       cf.order_number?.id,
     ].filter((id): id is string => !!id)
     const relationFieldIds = [
@@ -393,8 +397,8 @@ export async function readAging(
         const numberRaw = cf.vendor_bill_number
           ? scalars.get(sourceId)?.get(cf.vendor_bill_number.id)
           : undefined
-        const statusRaw = cf.vendor_bill_status
-          ? scalars.get(sourceId)?.get(cf.vendor_bill_status.id)
+        const statusRaw = cf.vendor_bill_match_status
+          ? scalars.get(sourceId)?.get(cf.vendor_bill_match_status.id)
           : undefined
         const vendorId = cf.vendor_bill_vendor
           ? relations.get(sourceId)?.get(cf.vendor_bill_vendor.id)

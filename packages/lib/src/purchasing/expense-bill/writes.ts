@@ -15,8 +15,8 @@
 // `issueCreditMemo` posts `credit_memo` on draft -> issued, both from a router
 // mutation, both with the ledger going FIRST and a refused post refusing the
 // transition. {@link postExpenseBill} is the bill's draft -> posted transition
-// and does the same. `posted` is not in `MATCHABLE_STATUSES`, so the three-way
-// match hook leaves a posted bill alone from then on.
+// and does the same. The three-way match keeps running on a posted bill and
+// writes its own field (73 D1); it never touches the lifecycle.
 //
 // ## Why a refused post refuses the ACTION here
 //
@@ -62,19 +62,14 @@ import {
 const logger = createScopedLogger('purchasing:expense-bill')
 
 /**
- * The bill statuses a Post action may start from.
+ * The bill lifecycle values a Post action may start from - the complement of
+ * `posted` and `void` (73 D1).
  *
- * The complement of `posted` and `void`. `exception` is in: a bill
- * the three-way match flagged is still a bill somebody may decide to accept and
- * book, and refusing to post it would leave the payable off the balance sheet
- * for as long as the exception is open - which is the wrong side to be wrong on.
+ * The match verdict is deliberately NOT consulted: an open `exception` is still
+ * a bill somebody may decide to accept and book, and holding the payable off the
+ * balance sheet while the dispute runs is the wrong side to be wrong on.
  */
-const POSTABLE_BILL_STATUSES: ReadonlySet<string> = new Set([
-  'draft',
-  'awaiting_receipt',
-  'matched',
-  'exception',
-])
+const POSTABLE_BILL_STATUSES: ReadonlySet<string> = new Set(['draft'])
 
 const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/
 

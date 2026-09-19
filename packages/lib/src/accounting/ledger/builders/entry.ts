@@ -194,15 +194,19 @@ export const ACCOUNT_ROLES = {
    * but a unit that ships carries its whole frozen cost - materials, labour and
    * overhead together - out of finished goods. The difference lands here.
    *
-   * There is no `cogs_direct_labor` role and there cannot be one: a
-   * `stock_movement` freezes a single total `unit_cost` and carries no labour or
-   * overhead column, so nothing can say how much of a shipped unit's cost was
-   * labour. Reconstructing it from the part's CURRENT `standardLaborCost` would
-   * value last month's shipments at this month's rates, which is the
-   * restatement the frozen-cost rule exists to prevent. `5010 COGS - Direct
-   * Labor` is therefore in the chart with no role and stays at zero under L1.
+   * Under L1 it held the labour and overhead of a shipped unit as well, for want
+   * of anywhere to split them to. 73 §6.2 rule 3 gives relief the finished
+   * good's own frozen composition, so it lands across this,
+   * {@link ACCOUNT_ROLES.COGS_DIRECT_LABOR} and
+   * {@link ACCOUNT_ROLES.APPLIED_OVERHEAD} instead.
    */
   COGS_PRODUCT_COST: 'cogs_product_cost',
+  /**
+   * COGS - direct labour (default `5010`). The labour share of a relieved unit,
+   * read off the finished good's frozen `part_standard_labor_cost` (73 §6.2
+   * rule 3).
+   */
+  COGS_DIRECT_LABOR: 'cogs_direct_labor',
   /**
    * COGS - applied overhead (default `5020`). Overhead absorbed into inventory
    * this period, credited by the L1 month-end entry.
@@ -226,6 +230,30 @@ export const ACCOUNT_ROLES = {
    * question. Placed at `5095` so it and `5090` read as siblings.
    */
   INVENTORY_COUNT_VARIANCE: 'inventory_count_variance',
+  /**
+   * Build variance (default `5091`). Scrap, and a run that did not close to the
+   * parent's standard.
+   *
+   * 🛑 **Not `ppv`** (73 §6.2 rule 5). A build's residual is "the shop floor
+   * consumed something other than the bill of materials says"; purchase price
+   * variance is "the vendor billed other than we accrued". Different owner,
+   * different remedy - the same argument `G12` makes for count variance.
+   */
+  BUILD_VARIANCE: 'build_variance',
+  /**
+   * Inventory revaluation (default `5092`). The other leg of a `revalue`
+   * movement: a standard-cost roll restating what the on-hand units are worth,
+   * and the first receipt of a provisional part replacing the guess it was
+   * valued at (73 §6.2 rule 2, §6.4).
+   */
+  INVENTORY_REVALUATION: 'inventory_revaluation',
+  /**
+   * Purchase tax (default `5040`). Tax a vendor charges on a goods bill, which
+   * is not in the landed formula and is deliberately kept out of the standard
+   * (73 §7.2). An org that puts it in `vendor_part_other_cost` instead accrues
+   * it with freight and never references this.
+   */
+  PURCHASE_TAX: 'purchase_tax',
 
   // ── Added 2026-09-04 by plans/accounting/HANDOFF.md wave 0 (slot 0A) ──────
   // The roles the revenue, payment, deposit, opening-balance and statement work
@@ -385,9 +413,13 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   grni: 'liability',
   duties_accrual: 'liability',
   cogs_product_cost: 'expense',
+  cogs_direct_labor: 'expense',
   applied_overhead: 'expense',
   ppv: 'expense',
   inventory_count_variance: 'expense',
+  build_variance: 'expense',
+  inventory_revaluation: 'expense',
+  purchase_tax: 'expense',
   accounts_receivable: 'asset',
   undeposited_funds: 'asset',
   clearing: 'asset',
@@ -444,9 +476,13 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   grni: 'Goods Received Not Invoiced',
   duties_accrual: 'Duties Accrual',
   cogs_product_cost: 'COGS - Product Cost',
+  cogs_direct_labor: 'COGS — Direct Labor',
   applied_overhead: 'COGS — Applied Overhead',
   ppv: 'Purchase Price Variance',
   inventory_count_variance: 'Inventory Count Variance',
+  build_variance: 'Build Variance',
+  inventory_revaluation: 'Inventory Revaluation',
+  purchase_tax: 'Purchase Tax',
   accounts_receivable: 'Accounts Receivable',
   undeposited_funds: 'Undeposited Funds',
   clearing: 'Clearing',

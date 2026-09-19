@@ -1,7 +1,7 @@
 // packages/lib/src/purchasing/__tests__/match-hook.test.ts
 //
 // `matchBill` was written and tested to exhaustion and then nothing called it, so
-// `vendor_bill_status`, `_match_variance` and `_match_notes` — all three declared
+// `vendor_bill_match_status`, `_match_variance` and `_match_notes` — all three declared
 // `creatable: false` with "the three-way match hook is the only writer" — stayed empty
 // and the exception queue rendered stored values that were never stored. These tests pin
 // the wiring rather than the math.
@@ -59,6 +59,7 @@ import { registerMatchReconcilers } from '../match-reconciler'
 
 const FIELDS: Record<string, { id: string; type: string }> = {
   vendor_bill_status: { id: 'f-status', type: 'SINGLE_SELECT' },
+  vendor_bill_match_status: { id: 'f-match', type: 'SINGLE_SELECT' },
   vendor_bill_currency: { id: 'f-currency', type: 'STRING' },
   vendor_bill_match_variance: { id: 'f-variance', type: 'CURRENCY' },
   vendor_bill_match_notes: { id: 'f-notes', type: 'TEXT' },
@@ -199,7 +200,7 @@ describe('rematchBill', () => {
 
     await rematch()
 
-    expect(written('f-status')).toBe('matched')
+    expect(written('f-match')).toBe('matched')
     expect(written('f-variance')).toBe(0)
     expect(written('f-notes')).toBeNull()
   })
@@ -215,7 +216,7 @@ describe('rematchBill', () => {
 
     await rematch()
 
-    expect(written('f-status')).toBe('awaiting_receipt')
+    expect(written('f-match')).toBe('awaiting_receipt')
     expect(written('f-variance')).toBe(0)
     expect(written('f-notes')).toBe(
       'Line 1: awaiting receipt of 10 of 10 billed (no expected date on the order)'
@@ -229,7 +230,7 @@ describe('rematchBill', () => {
 
     await rematch()
 
-    expect(written('f-status')).toBe('exception')
+    expect(written('f-match')).toBe('exception')
     // 10 * 500 billed against 4 * 500 received — an overdue line is no longer
     // awaiting, so the variance is back to RECEIVED on the expected side and
     // over-billing cannot net itself out.
@@ -239,17 +240,18 @@ describe('rematchBill', () => {
   })
 
   it('re-matches a bill sitting in `awaiting_receipt` once the goods arrive', async () => {
-    // Without `awaiting_receipt` in MATCHABLE_STATUSES this bill could never leave
-    // the state — the never-resolving bug P24 was designed around, recreated.
+    // The never-resolving bug P24 was designed around: the write that resolves
+    // `awaiting_receipt` comes from the receipt side, so it must be re-askable.
     recordValues['vendor_bill:bill-1'] = {
-      'f-status': { type: 'option', optionId: 'awaiting_receipt' },
+      'f-status': { type: 'option', optionId: 'draft' },
+      'f-match': { type: 'option', optionId: 'awaiting_receipt' },
     }
     h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
     line('bl-1', 'pol-1', 10, 500, 10, 500)
 
     await rematch()
 
-    expect(written('f-status')).toBe('matched')
+    expect(written('f-match')).toBe('matched')
   })
 
   it('reads the expected date off the purchase order HEADER, not the line', async () => {
@@ -261,14 +263,15 @@ describe('rematchBill', () => {
 
     await rematch()
 
-    expect(written('f-status')).toBe('exception')
+    expect(written('f-match')).toBe('exception')
     expect(written('f-notes')).toContain('Line 1:')
     expect(written('f-notes')).toContain('Line 2:')
   })
 
-  it('drops an awaiting bill back to draft when no line is matchable any more', async () => {
+  it('drops an awaiting bill back to `none` when no line is matchable any more', async () => {
     recordValues['vendor_bill:bill-1'] = {
-      'f-status': { type: 'option', optionId: 'awaiting_receipt' },
+      'f-status': { type: 'option', optionId: 'draft' },
+      'f-match': { type: 'option', optionId: 'awaiting_receipt' },
     }
     h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
     recordValues['vendor_bill_line:bl-1'] = {
@@ -278,7 +281,7 @@ describe('rematchBill', () => {
 
     await rematch()
 
-    expect(written('f-status')).toBe('draft')
+    expect(written('f-match')).toBe('none')
   })
 
   it("renders the notes in the bill's own currency scale", async () => {
@@ -306,32 +309,46 @@ describe('rematchBill', () => {
     expect(written('f-notes')).toContain('an agreed 10.00 ')
   })
 
-  it('never un-posts a settled bill', async () => {
-    for (const status of ['posted', 'paid', 'void']) {
-      h.setValuesForEntity.mockClear()
-      recordValues['vendor_bill:bill-1'] = { 'f-status': { type: 'option', optionId: status } }
-      h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
-      line('bl-1', 'pol-1', 10, 500, 0, 500)
+  it('never matches a void bill — there is no document left to judge', async () => {
+    recordValues['vendor_bill:bill-1'] = { 'f-status': { type: 'option', optionId: 'void' } }
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+    line('bl-1', 'pol-1', 10, 500, 0, 500)
 
-      await rematch()
+    await rematch()
 
-      expect(h.setValuesForEntity).not.toHaveBeenCalled()
-    }
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
 
-  it('treats a bill with no status yet as a fresh draft', async () => {
+  it('keeps matching a POSTED bill — the verdict has no ledger effect (73 D1)', async () => {
+    // A short shipment found after the bill was posted and paid is exactly what
+    // the queue exists to surface, so the lifecycle must not switch the match off.
+    recordValues['vendor_bill:bill-1'] = {
+      'f-status': { type: 'option', optionId: 'posted' },
+      'f-match': { type: 'option', optionId: 'matched' },
+    }
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+    line('bl-1', 'pol-1', 10, 500, 4, 500, LONG_OVERDUE)
+
+    await rematch()
+
+    expect(written('f-match')).toBe('exception')
+    expect(writtenIds()).not.toContain('f-status')
+  })
+
+  it('treats a bill with no lifecycle value yet as a fresh draft', async () => {
     recordValues['vendor_bill:bill-1'] = {}
     h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
     line('bl-1', 'pol-1', 10, 500, 10, 500)
 
     await rematch()
 
-    expect(written('f-status')).toBe('matched')
+    expect(written('f-match')).toBe('matched')
   })
 
-  it('clears the verdict — and drops back to draft — when no line is matchable', async () => {
+  it('clears the verdict — and drops back to `none` — when no line is matchable', async () => {
     recordValues['vendor_bill:bill-1'] = {
-      'f-status': { type: 'option', optionId: 'exception' },
+      'f-status': { type: 'option', optionId: 'draft' },
+      'f-match': { type: 'option', optionId: 'exception' },
     }
     h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
     recordValues['vendor_bill_line:bl-1'] = {
@@ -343,10 +360,10 @@ describe('rematchBill', () => {
 
     expect(written('f-variance')).toBeNull()
     expect(written('f-notes')).toBeNull()
-    expect(written('f-status')).toBe('draft')
+    expect(written('f-match')).toBe('none')
   })
 
-  it('leaves a draft bill with no matchable lines as a draft', async () => {
+  it('leaves an unjudged bill with no matchable lines alone', async () => {
     billIsDraft()
     h.listFiltered.mockResolvedValue({ ids: [] })
 
@@ -366,7 +383,7 @@ describe('rematchBill', () => {
 
     await rematch()
 
-    expect(written('f-status')).toBe('matched')
+    expect(written('f-match')).toBe('matched')
     expect(written('f-notes')).toBe('1 line not matched to a purchase order line')
   })
 
@@ -382,7 +399,7 @@ describe('rematchBill', () => {
     // the whole bill to `exception` on a price nobody has typed yet. But it must not
     // read `matched` either — that status posts to the GL, and half this document
     // has not been transcribed.
-    expect(written('f-status')).toBe('draft')
+    expect(written('f-match')).toBe('none')
     expect(written('f-variance')).toBeNull()
     expect(written('f-notes')).toBe('1 line with no unit price entered yet')
   })
@@ -397,7 +414,7 @@ describe('rematchBill', () => {
 
     await rematch()
 
-    expect(written('f-status')).toBe('exception')
+    expect(written('f-match')).toBe('exception')
     expect(written('f-variance')).not.toBeNull()
   })
 
@@ -414,7 +431,7 @@ describe('rematchBill', () => {
 
     await rematch()
 
-    expect(written('f-status')).toBe('matched')
+    expect(written('f-match')).toBe('matched')
   })
 
   it('leaves a freshly raised prepaid bill as a draft rather than an exception', async () => {
@@ -430,7 +447,7 @@ describe('rematchBill', () => {
 
     await rematch()
 
-    expect(written('f-status')).toBeUndefined() // already draft, nothing to rewrite
+    expect(written('f-match')).toBeUndefined() // already unjudged, nothing to rewrite
     expect(written('f-variance')).toBeNull()
     expect(written('f-notes')).toBeNull()
   })
@@ -444,7 +461,7 @@ describe('rematchBill', () => {
 
     await rematch()
 
-    expect(written('f-status')).toBe('matched')
+    expect(written('f-match')).toBe('matched')
     expect(written('f-variance')).toBe(0)
   })
 
@@ -458,7 +475,7 @@ describe('rematchBill', () => {
 
     await rematch()
 
-    expect(written('f-status')).toBe('exception')
+    expect(written('f-match')).toBe('exception')
     expect(written('f-variance')).toBe(300)
   })
 
@@ -472,13 +489,14 @@ describe('rematchBill', () => {
 
     await rematch()
 
-    expect(written('f-status')).toBe('exception')
+    expect(written('f-match')).toBe('exception')
     expect(written('f-variance')).toBe(7000)
   })
 
   it('skips the write when the bill already carries this verdict', async () => {
     recordValues['vendor_bill:bill-1'] = {
-      'f-status': { type: 'option', optionId: 'matched' },
+      'f-status': { type: 'option', optionId: 'draft' },
+      'f-match': { type: 'option', optionId: 'matched' },
       'f-variance': { type: 'number', value: 0 },
     }
     h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
@@ -491,7 +509,8 @@ describe('rematchBill', () => {
 
   it('writes when the stored verdict differs by any one field', async () => {
     recordValues['vendor_bill:bill-1'] = {
-      'f-status': { type: 'option', optionId: 'matched' },
+      'f-status': { type: 'option', optionId: 'draft' },
+      'f-match': { type: 'option', optionId: 'matched' },
       'f-variance': { type: 'number', value: 1 },
     }
     h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
@@ -506,7 +525,7 @@ describe('rematchBill', () => {
 describe('the trigger vocabulary', () => {
   it('never contains a field the hook itself writes — that would recurse', () => {
     for (const attr of [
-      'vendor_bill_status',
+      'vendor_bill_match_status',
       'vendor_bill_match_variance',
       'vendor_bill_match_notes',
     ]) {
@@ -536,7 +555,7 @@ describe('the trigger vocabulary', () => {
       field: { id: 'f-bl-qty', systemAttribute: 'vendor_bill_line_quantity_billed' },
     } as unknown as EntityFieldChangeEvent)
 
-    expect(written('f-status')).toBe('matched')
+    expect(written('f-match')).toBe('matched')
   })
 
   it('ignores a line write the match does not depend on', async () => {

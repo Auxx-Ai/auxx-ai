@@ -12,6 +12,8 @@
  * which does not name cardinality as a shared axis).
  */
 
+import { UnprocessableEntityError } from '../../errors'
+import { StockMovementType } from '../../resources/registry/enum-values'
 import type { RecordId } from '../../resources/resource-id'
 import { computeExtendedCost } from './client'
 
@@ -63,10 +65,17 @@ export interface StockMovementValueFields {
  * `round(unitCost x -consumed)` instead can differ from
  * `-round(unitCost x consumed)` on a half-cent tail (`Math.round` breaks ties
  * toward positive infinity). §2.2, §2.4 item 2.
+ *
+ * 🛑 **Quantity 0 is legal for `revalue` and for nothing else** (73 §6.2 rule
+ * 2). A revaluation is a COST-ONLY movement: it restates what the units on the
+ * shelf are worth and must not move the count. Every other type at quantity 0
+ * is a row in an append-only ledger that corrects nothing, and one that carries
+ * an `extendedCost` override would silently move an account against no stock.
  */
 export function buildStockMovementValues(
   fields: StockMovementValueFields
 ): Record<string, unknown> {
+  assertMovableQuantity(fields.type, fields.quantity)
   const {
     partRecordId,
     type,
@@ -110,4 +119,14 @@ export function buildStockMovementValues(
   if (links?.fulfillmentLine) values.stock_movement_fulfillment_line = links.fulfillmentLine
 
   return values
+}
+
+/** See {@link buildStockMovementValues}: only `revalue` may be written at quantity 0. */
+function assertMovableQuantity(type: string, quantity: number): void {
+  if (quantity !== 0) return
+  if (type === StockMovementType.REVALUE) return
+  throw new UnprocessableEntityError(
+    `A ${type} movement of zero quantity changes nothing. Only a revalue movement is cost-only.`,
+    { type }
+  )
 }

@@ -55,6 +55,7 @@ const BILL_ATTRS = [
   'vendor_bill_total',
   'vendor_bill_amount_paid',
   'vendor_bill_status',
+  'vendor_bill_match_status',
   'vendor_bill_payment_status',
   'vendor_bill_number',
 ] as const
@@ -196,6 +197,7 @@ function BillRow({
   const { record } = useRecord({ recordId: billRecordId, enabled: true })
   const { resource } = useResource(getDefinitionId(billRecordId))
   const statusField = useSystemField('vendor_bill_status', getDefinitionId(billRecordId))
+  const matchStatusField = useSystemField('vendor_bill_match_status', getDefinitionId(billRecordId))
 
   const total = numberValue(values?.vendor_bill_total)
   const amountPaid = numberValue(values?.vendor_bill_amount_paid)
@@ -204,6 +206,13 @@ function BillRow({
   const statusOption = statusField?.options?.options?.find((option) => option.value === status)
   // The money axis (73 D1), separate from the lifecycle above.
   const paymentStatus = (unwrapValue(values?.vendor_bill_payment_status) as string) || 'unpaid'
+  // The match axis. Only the two verdicts that need somebody are badged here —
+  // `matched` and `none` say nothing an order's bill list acts on.
+  const matchStatus = unwrapValue(values?.vendor_bill_match_status) as string | undefined
+  const matchOption =
+    matchStatus === 'awaiting_receipt' || matchStatus === 'exception'
+      ? matchStatusField?.options?.options?.find((option) => option.value === matchStatus)
+      : undefined
 
   // A bill out of the books has no payable to pay, and a zero-total bill has no
   // amount to settle — offering Pay on either is offering an action against a
@@ -235,6 +244,11 @@ function BillRow({
           {status && (
             <Badge variant={(statusOption?.color as Variant) ?? 'secondary'} size='xs'>
               {statusOption?.label ?? status}
+            </Badge>
+          )}
+          {matchStatus && matchOption && (
+            <Badge variant={(matchOption.color as Variant) ?? 'secondary'} size='xs'>
+              {matchOption.label ?? matchStatus}
             </Badge>
           )}
         </span>

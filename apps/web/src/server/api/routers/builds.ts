@@ -193,12 +193,13 @@ export const buildsRouter = createTRPCRouter({
   }),
 
   /**
-   * Freeze a new standard cost onto every part in scope.
+   * Freeze a new standard cost onto every part in scope, and post what that
+   * does to the balance sheet.
    *
-   * The revaluation delta comes back on the result and is **not posted** — GL
-   * posting is out of scope for this directory (README B9). Nothing here
-   * touches an existing `stock_movement`: a mid-period standard change revalues
-   * on-hand inventory, it never restates history.
+   * The revaluation delta lands as one `inventory_movement` entry of kind
+   * `revalue` over cost-only movements — quantity 0, so nothing here touches a
+   * count or an existing `stock_movement`: a mid-period standard change
+   * revalues on-hand inventory, it never restates history (73 §6.2 rule 2).
    */
   roll: capabilityProcedure.input(rollInput).mutation(async ({ ctx, input }) => {
     const { organizationId, userId } = ctx.session

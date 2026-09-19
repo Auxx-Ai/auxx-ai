@@ -320,6 +320,14 @@ export const StockMovementType = {
   RETURN_IN: 'return_in',
   RETURN_OUT: 'return_out',
   INITIAL: 'initial',
+  /**
+   * A cost-only movement: quantity 0, a signed `extended_cost` of
+   * `on-hand qty x delta standard`, one row per part per inventory role. Quantity on
+   * hand is untouched; the ledger restates what the shelf is worth
+   * (73 §6.2 rule 2). The ONE movement type `values.ts` lets through at
+   * quantity 0.
+   */
+  REVALUE: 'revalue',
 
   values: [
     { value: 'receive', label: 'Receive', color: 'green' },
@@ -341,6 +349,24 @@ export const StockMovementType = {
     { value: 'return_in', label: 'Return (inbound)', color: 'purple' },
     { value: 'return_out', label: 'Return (outbound)', color: 'pink' },
     { value: 'initial', label: 'Initial Stock', color: 'gray' },
+    { value: 'revalue', label: 'Revaluation', color: 'gray' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Where a part's frozen `part_standard_cost` came from (73 §6.4).
+ *
+ * `provisional` is a number somebody typed before any purchase existed, so the
+ * first receipt REPLACES it rather than varying against it - a `ppv` of
+ * (agreed - guess) says "our guess was wrong", not "the price moved".
+ */
+export const PartStandardCostSource = {
+  PROVISIONAL: 'provisional',
+  CONFIRMED: 'confirmed',
+
+  values: [
+    { value: 'provisional', label: 'Provisional', color: 'amber' },
+    { value: 'confirmed', label: 'Confirmed', color: 'green' },
   ] satisfies FieldOptionItem[],
 } as const
 
@@ -637,40 +663,52 @@ export const LandedCostAllocationBasis = {
  * Vendor Bill Status — the document LIFECYCLE axis, and nothing else
  * plans/purchasing/01-build-plan.md §5.1, split by task 73 D1.
  *
- * `matched` / `exception` are written by the three-way match, never by hand —
- * that split is the control. A control a person has to run by comparing three
- * documents is a control that stops being run.
- *
- * 🛑 `partially_paid` and `paid` are NOT here. A money-state value landing on
- * this field destroyed the match verdict, because `MATCHABLE_STATUSES` admits
- * only the four verdict values — so a paid bill could never be rematched when
- * the vendor short-shipped it. The money state is `vendor_bill_payment_status`
- * on `vendor-bill-fields.ts`, projected from the applications.
+ * 🛑 Three values, and the three other axes a bill has are three other fields:
+ * the match verdict is {@link VendorBillMatchStatus}, the money state is
+ * `vendor_bill_payment_status`. Every value that ever shared this field
+ * destroyed the verdict it displaced — a paid bill could not be rematched after
+ * a short shipment, and a posted bill could not be matched at all.
  */
 export const VendorBillStatus = {
   DRAFT: 'draft',
-  AWAITING_RECEIPT: 'awaiting_receipt',
-  MATCHED: 'matched',
-  EXCEPTION: 'exception',
   POSTED: 'posted',
   VOID: 'void',
 
   values: [
     { value: 'draft', label: 'Draft', color: 'gray' },
-    // 🛑 `awaiting_receipt` is the prepaid case, and it is not an exception (P24).
-    // Vendors here often will not ship until the invoice is paid, so `billed >
-    // received` is the NORMAL state of a CORRECT bill for weeks. Calling that an
-    // exception fills the queue with false positives, and a queue that is always
-    // red is one nobody reads — which is the exact failure the match exists to
-    // prevent, arriving from the other side. It ages off the purchase order's
-    // `expectedAt` and becomes a real `exception` once late, so a vendor who took
-    // the money and never shipped still surfaces. `amber` for the same reason
-    // `partially_paid` is amber: a state that still needs something to happen.
+    { value: 'posted', label: 'Posted', color: 'blue' },
+    { value: 'void', label: 'Void', color: 'orange' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Vendor Bill Match Status — the three-way match's verdict (task 73 D1).
+ *
+ * Written only by `purchasing/match-hook.ts`, never by hand: a control a person
+ * can type the answer to is a control that stops being run. It keeps moving as
+ * receipts land, for the whole life of the bill, with no ledger effect.
+ *
+ * 🛑 `awaiting_receipt` is the prepaid case, and it is not an exception (P24).
+ * Vendors here often will not ship until the invoice is paid, so `billed >
+ * received` is the NORMAL state of a CORRECT bill for weeks. Calling that an
+ * exception fills the queue with false positives, and a queue that is always red
+ * is one nobody reads. It ages off the purchase order's `expectedAt` and becomes
+ * a real `exception` once late, so a vendor who took the money and never shipped
+ * still surfaces.
+ */
+export const VendorBillMatchStatus = {
+  NONE: 'none',
+  AWAITING_RECEIPT: 'awaiting_receipt',
+  MATCHED: 'matched',
+  EXCEPTION: 'exception',
+
+  values: [
+    // `none` is the honest answer on a bill with nothing to judge — no PO line
+    // on any line, or no price typed yet — and it is the default.
+    { value: 'none', label: 'Not Matched', color: 'gray' },
     { value: 'awaiting_receipt', label: 'Awaiting Receipt', color: 'amber' },
     { value: 'matched', label: 'Matched', color: 'green' },
     { value: 'exception', label: 'Exception', color: 'red' },
-    { value: 'posted', label: 'Posted', color: 'blue' },
-    { value: 'void', label: 'Void', color: 'orange' },
   ] satisfies FieldOptionItem[],
 } as const
 

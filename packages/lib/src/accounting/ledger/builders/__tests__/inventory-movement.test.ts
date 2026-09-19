@@ -147,9 +147,10 @@ describe('a build', () => {
     })
   })
 
-  it('lands the residual in purchase price variance, on the side its sign says', () => {
+  it('lands the residual in BUILD variance, on the side its sign says', () => {
     // Produced value below what the run consumed and absorbed is unfavourable:
-    // a debit. Reading it as a credit would report a loss as a gain.
+    // a debit. Reading it as a credit would report a loss as a gain. Its own
+    // role since 73 §6.2 rule 5 — never `ppv`, which answers a vendor question.
     const built = buildInventoryMovementEntry({
       ...BASE,
       kind: 'build',
@@ -157,7 +158,8 @@ describe('a build', () => {
       absorbed: { laborMinor: 8_000, overheadMinor: 4_000 },
     })!
 
-    expect(legs(built.entry)[ACCOUNT_ROLES.PPV]).toBe(2_000)
+    expect(legs(built.entry)[ACCOUNT_ROLES.BUILD_VARIANCE]).toBe(2_000)
+    expect(legs(built.entry)[ACCOUNT_ROLES.PPV]).toBeUndefined()
   })
 
   it('emits no absorption legs at all when a run absorbed nothing', () => {
@@ -168,6 +170,47 @@ describe('a build', () => {
     })!
 
     expect(legs(built.entry)).toEqual({ [RAW]: -40_000, [FG]: 40_000 })
+  })
+})
+
+describe('a revaluation', () => {
+  // The cost-only document (73 §6.2 rule 2). Its movements carry quantity 0, so
+  // the only thing the builder ever sees is the signed extended cost — which is
+  // why the kind needs no new arithmetic, only its own counter-role.
+  it('debits the inventory roles it restated and credits inventory revaluation', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'revalue',
+      movements: [movement('sm_1', 1_800, RAW), movement('sm_2', 1_200, FG)],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [RAW]: 1_800,
+      [FG]: 1_200,
+      [ACCOUNT_ROLES.INVENTORY_REVALUATION]: -3_000,
+    })
+    expect(built.memberMovementIds).toEqual(['sm_1', 'sm_2'])
+  })
+
+  it('reverses both sides when the standard fell', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'revalue',
+      movements: [movement('sm_1', -2_500, RAW)],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [RAW]: -2_500,
+      [ACCOUNT_ROLES.INVENTORY_REVALUATION]: 2_500,
+    })
+  })
+
+  it('builds nothing when every part it was handed nets to zero', () => {
+    // A roll that moved a standard on a part with no stock on hand. The caller
+    // skips; it is not a refusal.
+    expect(
+      buildInventoryMovementEntry({ ...BASE, kind: 'revalue', movements: [movement('sm_1', 0)] })
+    ).toBeNull()
   })
 })
 

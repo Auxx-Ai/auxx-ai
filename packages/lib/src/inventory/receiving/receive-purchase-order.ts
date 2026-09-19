@@ -159,7 +159,13 @@ export async function receivePurchaseOrder(
       // one is missing, so two lines of the same part must run in the order the
       // caller sent them, exactly as the per-line delegation this replaces did.
       for (let i = 0; i < lines.length; i++) {
-        await setFirstStandardCostFromReceipt(db, organizationId, lines[i]!.partId, unitCosts[i]!)
+        await setFirstStandardCostFromReceipt(
+          db,
+          organizationId,
+          lines[i]!.partId,
+          unitCosts[i]!,
+          userId
+        )
       }
 
       // The movements and the ONE entry that raises them, together — a
