@@ -332,8 +332,9 @@ describe('saveBillEdit', () => {
     expect(h.clearBillEditOpen).not.toHaveBeenCalled()
   })
 
-  it('clears the flag with no ledger work when the bill carries no live posting', async () => {
+  it('reads not_posted only when accounting is off', async () => {
     h.postings = []
+    h.postVendorBillEntry.mockResolvedValue(null)
 
     const result = await saveBillEdit(db, {
       organizationId: ORG,
@@ -342,6 +343,7 @@ describe('saveBillEdit', () => {
     })
 
     expect(result.outcome).toBe('not_posted')
+    expect(result.docNumber).toBeNull()
     expect(h.reverseEntry).not.toHaveBeenCalled()
     expect(h.clearBillEditOpen).toHaveBeenCalled()
   })
@@ -480,6 +482,67 @@ describe('saving against a drafted entry', () => {
     })
 
     expect(result.outcome).not.toBe('not_posted')
+  })
+
+  it('posts again on the same generation when the draft was discarded in the outbox', async () => {
+    // The stranding this closes: the bill is `posted` from the moment Post ran,
+    // so Post refuses it, and before this Save read `not_posted` and cleared the
+    // flag - leaving a bill in the books' lifecycle with no entry and no door.
+    h.ledgerState = { draftGlPostingId: null, generation: 1 }
+    h.postings = []
+
+    const result = await saveBillEdit(db, {
+      organizationId: ORG,
+      userId: USER,
+      vendorBillInstanceId: BILL_ID,
+    })
+
+    expect(result.outcome).toBe('reposted')
+    expect(h.reverseEntry).not.toHaveBeenCalled()
+    expect(h.discardDraftPosting).not.toHaveBeenCalled()
+    expect(postedEntry().periodKey).toBe('BILL-0007')
+    expect(h.writeBillLedgerGeneration).not.toHaveBeenCalled()
+    expect(h.clearBillEditOpen).toHaveBeenCalled()
+  })
+
+  // posted -> Save reversed it and bumped to 2 -> that repost's DRAFT was
+  // discarded. Generation 2's document number was never minted, so the repost
+  // keys on 2 again; bumping to 3 here would burn a generation per discard.
+  it('keys on the already-bumped generation without bumping it again', async () => {
+    h.bill = { ...h.bill, internalNumber: 'BILL-0002' }
+    h.ledgerState = { draftGlPostingId: null, generation: 2 }
+    h.postings = [
+      {
+        glPostingId: 'gp_1',
+        docNumber: 'AUXX-BIL-BILL0002',
+        status: 'reversed',
+        postingType: 'vendor_bill',
+      },
+    ]
+
+    const result = await saveBillEdit(db, {
+      organizationId: ORG,
+      userId: USER,
+      vendorBillInstanceId: BILL_ID,
+    })
+
+    expect(result.outcome).toBe('reposted')
+    expect(postedEntry().periodKey).toBe('0002G2')
+    expect(h.writeBillLedgerGeneration).not.toHaveBeenCalled()
+    expect(h.reverseEntry).not.toHaveBeenCalled()
+  })
+
+  it('leaves the flag standing when the re-post of a discarded entry is refused', async () => {
+    h.postings = []
+    h.postVendorBillEntry.mockResolvedValue({
+      status: 'period_closed',
+      error: 'September is locked',
+    })
+
+    await expect(
+      saveBillEdit(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+    ).rejects.toThrow(/September is locked/)
+    expect(h.clearBillEditOpen).not.toHaveBeenCalled()
   })
 
   it('leaves everything alone when the draft cannot be discarded', async () => {

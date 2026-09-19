@@ -21,6 +21,7 @@
 'use client'
 
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { api } from '~/trpc/react'
 import { LedgerCard } from './ledger-card'
 
@@ -71,11 +72,16 @@ export function VendorBillLedgerCard(props: DrawerTabProps) {
     { vendorBillId: props.entityInstanceId },
     { enabled: !!props.entityInstanceId }
   )
+  const { values } = useSystemValues(props.recordId, ['vendor_bill_status'], { autoFetch: true })
+  // A `posted` bill with no entry lost its draft in the outbox. Post refuses a
+  // bill that is not `draft`, so Save is the door back and the card says so.
+  const stranded = values.vendor_bill_status === 'posted'
   return (
     <LedgerCard
       {...props}
       sourceKind='vendor_bill'
       draftPostingId={data?.draftGlPostingId ?? null}
+      emptyLabel={stranded ? 'No entry — Edit then Save to post it again' : undefined}
     />
   )
 }

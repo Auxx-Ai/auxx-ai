@@ -77,6 +77,8 @@ export interface LedgerCardProps extends Partial<DrawerTabProps> {
    * read below cannot reach it, and the record itself holds the pointer.
    */
   draftPostingId?: string | null
+  /** Overrides `Nothing posted yet` when this record's empty state means more. */
+  emptyLabel?: string
 }
 
 const STATUS_VARIANT: Record<PostingStatus, Variant> = {
@@ -106,7 +108,12 @@ const LINK_ROLE_LABEL: Record<PostingLinkRole, string> = {
  * renders), since these entries are not on the ledger page's own `?posting=`
  * deep link from here.
  */
-export function LedgerCard({ entityInstanceId, sourceKind, draftPostingId }: LedgerCardProps) {
+export function LedgerCard({
+  entityInstanceId,
+  sourceKind,
+  draftPostingId,
+  emptyLabel,
+}: LedgerCardProps) {
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
   const bookTimeZone = (getSetting('accounting.bookTimeZone') as string | null) ?? 'UTC'
@@ -166,7 +173,7 @@ export function LedgerCard({ entityInstanceId, sourceKind, draftPostingId }: Led
       : null
 
   if (!loading && postings.length === 0 && sweeps.length === 0 && !pendingDraftId) {
-    return <EmptyRow label='Nothing posted yet' />
+    return <EmptyRow label={emptyLabel ?? 'Nothing posted yet'} />
   }
 
   return (

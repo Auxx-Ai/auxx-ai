@@ -496,6 +496,26 @@ describe('listVendorBillPostings and the drafted entry', () => {
 
     expect(postings).toHaveLength(1)
     expect(postings[0]?.status).toBe('posted')
+    // The subject link is the truth now, so the pointer has nothing left to say.
+    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+  })
+
+  it('drops a pointer whose posting is no longer a draft', async () => {
+    h.ledgerState = { draftGlPostingId: 'gp_old', generation: 1 }
+    h.draftRow = {
+      id: 'gp_old',
+      docNumber: 'AUXX-BIL-BILL0007',
+      status: 'reversed',
+      postingType: 'vendor_bill',
+    }
+
+    const postings = await listVendorBillPostings(db, {
+      organizationId: ORG,
+      vendorBillInstanceId: BILL_ID,
+    })
+
+    expect(postings).toEqual([])
+    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
   })
 
   it('stamps the pointer when the ledger drafts the entry, and clears it on a post', async () => {
@@ -530,6 +550,25 @@ describe('voidVendorBill and a drafted entry', () => {
       glPostingId: 'gp_draft',
     })
     expect(h.reverseEntry).not.toHaveBeenCalled()
+    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+    expect(lastWrite()).toContainEqual({ fieldId: 'vendor_bill_status', value: 'void' })
+  })
+
+  // After promote -> reverse the pointer names a reversed row. Harmless, but a
+  // void is the last chance to clear it before the bill stops being read.
+  it('clears a pointer left standing on a posting that is no longer a draft', async () => {
+    h.bill = { ...h.bill, status: 'posted' }
+    h.ledgerState = { draftGlPostingId: 'gp_old', generation: 1 }
+    h.draftRow = {
+      id: 'gp_old',
+      docNumber: 'AUXX-BIL-BILL0007',
+      status: 'reversed',
+      postingType: 'vendor_bill',
+    }
+
+    await voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+
+    expect(h.discardDraftPosting).not.toHaveBeenCalled()
     expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
     expect(lastWrite()).toContainEqual({ fieldId: 'vendor_bill_status', value: 'void' })
   })

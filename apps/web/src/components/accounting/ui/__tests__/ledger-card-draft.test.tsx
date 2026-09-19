@@ -39,13 +39,14 @@ vi.mock('~/trpc/react', () => ({
 
 import { LedgerCard } from '../ledger-card'
 
-const card = (draftPostingId: string | null) =>
+const card = (draftPostingId: string | null, emptyLabel?: string) =>
   render(
     <TooltipProvider>
       <LedgerCard
         entityInstanceId='bill-1'
         sourceKind='vendor_bill'
         draftPostingId={draftPostingId}
+        emptyLabel={emptyLabel}
       />
     </TooltipProvider>
   )
@@ -69,6 +70,14 @@ describe('the vendor bill ledger card and a drafted entry', () => {
   it('still says nothing posted when there is no draft', () => {
     card(null)
     expect(screen.getByText('Nothing posted yet')).toBeInTheDocument()
+  })
+
+  // A `posted` bill whose draft was discarded in the outbox: "Nothing posted
+  // yet" reads as "not posted", when the way back is Edit then Save.
+  it('names the way back when the record hands it one', () => {
+    card(null, 'No entry — Edit then Save to post it again')
+    expect(screen.getByText('No entry — Edit then Save to post it again')).toBeInTheDocument()
+    expect(screen.queryByText('Nothing posted yet')).not.toBeInTheDocument()
   })
 
   // Approved in the outbox: the draft took its claim and arrives through the

@@ -335,8 +335,11 @@ export async function listVendorBillPostings(
   const { draftGlPostingId } = await readBillLedgerState(db, organizationId, vendorBillInstanceId)
   if (!draftGlPostingId) return claimed
   // Promoted since the pointer was written: the subject link exists and the row
-  // is already above.
-  if (claimed.some((posting) => posting.glPostingId === draftGlPostingId)) return claimed
+  // is already above, so the pointer has nothing left to say.
+  if (claimed.some((posting) => posting.glPostingId === draftGlPostingId)) {
+    await writeBillDraftPosting(db, organizationId, vendorBillInstanceId, null)
+    return claimed
+  }
 
   const [row] = await db
     .select({
@@ -354,13 +357,13 @@ export async function listVendorBillPostings(
     )
     .limit(1)
 
-  // Discarded in the outbox, or promoted and reversed away. Either way the
-  // pointer is stale; drop it rather than reading it again on every call.
-  if (!row) {
+  // Discarded in the outbox (no row), or promoted and then reversed away (a row
+  // that is no longer a draft). Either way the pointer is stale; drop it rather
+  // than reading it again on every call.
+  if (!row || row.status !== 'draft') {
     await writeBillDraftPosting(db, organizationId, vendorBillInstanceId, null)
     return claimed
   }
-  if (row.status !== 'draft') return claimed
 
   return [
     {

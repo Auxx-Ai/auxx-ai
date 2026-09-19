@@ -57,8 +57,9 @@ export interface BillEditInput {
 export interface SaveBillEditResult {
   /**
    * `unchanged` — the rebuilt entry equals the live one, so nothing was posted.
-   * `reposted` — the live entry was reversed and the bill posted again.
-   * `not_posted` — the bill carries no live entry (accounting is off).
+   * `reposted` — the live entry was reversed (or its draft discarded, or it was
+   * already gone) and the bill posted again.
+   * `not_posted` — accounting is off, so there is no entry to keep up to date.
    */
   outcome: 'unchanged' | 'reposted' | 'not_posted'
   /** The entry's document number, when there is one. */
@@ -116,7 +117,9 @@ export async function openBillEdit(db: Database, input: BillEditInput): Promise<
  * twin in the books.
  *
  * Under an avenue with auto-post off the live entry is a DRAFT: it is discarded
- * and the bill drafted again, with no reversal pair and no new generation.
+ * and the bill drafted again, with no reversal pair and no new generation. A
+ * bill whose draft was discarded in the OUTBOX has no entry at all, and Save is
+ * the only door back — Post refuses anything that is not `draft`.
  */
 export async function saveBillEdit(
   db: Database,
@@ -156,9 +159,52 @@ export async function saveBillEdit(
     (posting) => posting.postingType === VENDOR_BILL_POSTING_TYPE && posting.status !== 'reversed'
   )
 
+  const ledgerState = await readBillLedgerState(db, organizationId, vendorBillInstanceId)
+
+  // The bill reads `posted` and carries no entry: its draft was discarded in the
+  // outbox. Post it again from current values rather than leave it stranded -
+  // Post itself refuses a bill that is not `draft`, so Save is the only door.
   if (live.length === 0) {
+    const post = await postVendorBillEntry(db, {
+      organizationId,
+      actorUserId: userId,
+      vendorBillInstanceId,
+      purchaseOrderId: bill.purchaseOrderId,
+      vendorCompanyInstanceId: bill.vendorCompanyInstanceId,
+      // A discarded draft took no document number with it, so the generation the
+      // bill already stands at is still free. Reversals bumped it at the time.
+      entry:
+        ledgerState.generation > 1
+          ? buildEntryForVendorBill({
+              bill,
+              lines,
+              billedAt,
+              allocationBasis,
+              generation: ledgerState.generation,
+            })
+          : built,
+      memo: `Bill ${bill.number || bill.internalNumber} posted again after its entry was discarded`,
+    })
+    if (!post) {
+      await clearBillEditOpen(db, organizationId, vendorBillInstanceId)
+      return { outcome: 'not_posted', docNumber: null }
+    }
+    if (!isExpectedPostOutcome(post)) {
+      throw new BadRequestError(
+        'This vendor bill could not be posted to the general ledger again' +
+          `${post.error ? `: ${post.error}` : ` (${post.status})`}. Nothing has been changed.`,
+        { vendorBillInstanceId, status: post.status }
+      )
+    }
     await clearBillEditOpen(db, organizationId, vendorBillInstanceId)
-    return { outcome: 'not_posted', docNumber: null }
+    logger.info('Posted a vendor bill again after its entry was discarded', {
+      organizationId,
+      vendorBillInstanceId,
+      internalNumber: bill.internalNumber,
+      generation: ledgerState.generation,
+      docNumber: post.docNumber,
+    })
+    return { outcome: 'reposted', docNumber: post.docNumber ?? null }
   }
 
   if (
@@ -175,7 +221,6 @@ export async function saveBillEdit(
   }
 
   const lock = await resolvePeriodLock(organizationId)
-  const ledgerState = await readBillLedgerState(db, organizationId, vendorBillInstanceId)
   const docNumber = await db.transaction(async (tx) => {
     await withAccountingCommitLock(tx, organizationId)
     // The poster and the reverser each open a transaction of their own. Handed

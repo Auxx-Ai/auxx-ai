@@ -131,10 +131,19 @@ export function settingRowTitle(key: string, policy?: PostingPolicy): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
-/** The setting keys this page renders as INPUTS: everything on a policy that no other page owns. */
-export const POSTING_PAGE_INPUT_KEYS: readonly string[] = POSTING_PAGE_POLICIES.flatMap((policy) =>
-  policy.settings.filter((key) => !(key in EXTERNAL_SETTING_HOMES))
-)
+/**
+ * The setting keys this page renders as INPUTS: everything on a policy that no
+ * other page owns. Deduplicated - `vendor_bill` and `vendor_credit` share the
+ * buy-side avenue's `autoPost` key, and a key listed twice is sent twice in the
+ * one batch the save bar writes.
+ */
+export const POSTING_PAGE_INPUT_KEYS: readonly string[] = [
+  ...new Set(
+    POSTING_PAGE_POLICIES.flatMap((policy) =>
+      policy.settings.filter((key) => !(key in EXTERNAL_SETTING_HOMES))
+    )
+  ),
+]
 
 // ── The export row (TARGET §3, §4 gate 2) ───────────────────────────────────
 //
@@ -178,6 +187,18 @@ const AUTO_POST_AVENUES: readonly ExportAvenue[] = [
 
 export function autoPostKeyForAvenue(avenue: ExportAvenue): string | null {
   return AUTO_POST_AVENUES.includes(avenue) ? `accounting.autoPost.${avenue}` : null
+}
+
+/**
+ * The `autoPost` key this policy is gated on, whether or not its section
+ * carries the avenue's export row. Keyed on the policy's OWN avenue rather than
+ * {@link exportAvenueForPolicy}: a policy sharing an avenue (a vendor credit
+ * rides the expense bill's switch) would otherwise render a second control for
+ * the primary section's setting.
+ */
+export function autoPostKeyForPolicy(policy: PostingPolicy): string | null {
+  const avenue = avenueOfPostingType(policy.type)
+  return avenue ? autoPostKeyForAvenue(avenue) : null
 }
 
 export function autoSendKeyForAvenue(avenue: ExportAvenue): string {
