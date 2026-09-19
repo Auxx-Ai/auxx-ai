@@ -144,7 +144,11 @@ export function MappingList({
     return map
   }, [rails, readinessResults])
 
-  const [search, setSearch] = useState('')
+  // `?role=<key>` is the anchor every "Map role" deep link uses (the close
+  // console's remedy rows, the Outbox's Blocked tab). It seeds the search box,
+  // which already matches on the role key, so the row lands on screen open.
+  const [roleParam] = useQueryState('role')
+  const [search, setSearch] = useState(() => roleParam ?? '')
   const [configuredOnly, setConfiguredOnly] = useState(false)
   const [scopeParam, setScopeParam] = useQueryState('scope')
   const [collapsed, setCollapsed] = useState<GlAccountTypeValue[]>([])

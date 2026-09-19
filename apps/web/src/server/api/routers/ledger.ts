@@ -74,7 +74,12 @@ import {
   syncProviderSyncScheduler,
 } from '@auxx/lib/accounting/mirror'
 import type { ProviderSyncScheduleConfig } from '@auxx/lib/accounting/mirror/client'
-import { getPaymentAccount } from '@auxx/lib/accounting/money'
+import {
+  countBlockedMovements,
+  getPaymentAccount,
+  listBlockedMovements,
+  postBlockedMovement,
+} from '@auxx/lib/accounting/money'
 import {
   accountingOpeningPolicySchema,
   activateAccountingBookConnection,
@@ -1541,6 +1546,44 @@ export const ledgerRouter = createTRPCRouter({
       if (result.isErr()) throw result.error
       return result.value
     }),
+
+  /**
+   * Every movement the ledger refused - the Outbox's Blocked tab (75-D1). Its
+   * work is parked, not lost: `postingBlockedReason` holds `postEntry`'s own
+   * words and the mark clears the moment a retry is accepted.
+   *
+   * 🛑 Paginated and counted in SQL. One dev org already holds ~1,100 of these.
+   */
+  listBlockedMovements: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      z.object({
+        limit: z.number().int().min(1).max(200).default(50),
+        offset: z.number().int().min(0).default(0),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const [rows, total] = await Promise.all([
+        listBlockedMovements(ctx.db, organizationId, input),
+        countBlockedMovements(ctx.db, organizationId),
+      ])
+      return { rows, total }
+    }),
+
+  /**
+   * Post one parked movement again, through whichever poster its evidence
+   * names. The outcome is returned rather than thrown: a movement still blocked
+   * on an unmapped role is an answer the row renders, not a 500.
+   */
+  retryBlockedMovement: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ moneyTransactionId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) =>
+      postBlockedMovement(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        moneyTransactionId: input.moneyTransactionId,
+        actorUserId: ctx.session.userId,
+      })
+    ),
 
   /**
    * Promote a draft: re-resolve its roles, re-check the period lock, claim,

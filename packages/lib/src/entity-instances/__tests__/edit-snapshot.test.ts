@@ -19,6 +19,26 @@ const cache = vi.hoisted(() => ({
 
 const snapshots = vi.hoisted(() => ({ fetch: vi.fn() }))
 
+/** The derived-total write door, plus an ordering log shared with the fake `db`. */
+const derived = vi.hoisted(() => ({
+  ops: [] as string[],
+  setValueWithType: vi.fn(async (_ctx: unknown, params: { fieldId: string }) => {
+    derived.ops.push(`set:${params.fieldId}`)
+    return []
+  }),
+  publish: vi.fn(async () => undefined),
+}))
+
+vi.mock('../../field-values/field-value-mutations', () => ({
+  setValueWithType: derived.setValueWithType,
+}))
+vi.mock('../../field-values/field-value-helpers', () => ({
+  createFieldValueContext: (organizationId: string, userId?: string) => ({
+    organizationId,
+    userId,
+  }),
+}))
+
 vi.mock('../../cache', () => ({
   getCachedResourceFields: vi.fn(
     async (_org: string, defId: string) => cache.resourceFields[defId] ?? []
@@ -35,6 +55,7 @@ vi.mock('../../record-rules/snapshot-fetcher', () => ({
 vi.mock('../../realtime', () => ({
   getRealtimeService: () => ({ publish: vi.fn(async () => true) }),
   rooms: { orgRecords: (org: string, def: string) => `${org}:${def}` },
+  publishFieldValueUpdates: derived.publish,
 }))
 
 vi.mock('../../resources/crud/unified-handler', () => ({
@@ -132,6 +153,7 @@ function makeDb(selectResults: unknown[][]) {
     }),
     delete: () => {
       state.deletes += 1
+      derived.ops.push('delete')
       return thenable([{ id: 'row' }])
     },
     query: { EntityInstance: { findFirst: async () => state.instance } },
@@ -142,6 +164,7 @@ function makeDb(selectResults: unknown[][]) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  derived.ops = []
   cache.resourceFields = { [BILL_DEF]: billFields(), [LINE_DEF]: lineFields() }
   cache.customFields = {
     [BILL_DEF]: [
@@ -323,6 +346,158 @@ describe('restoreRecordSnapshot', () => {
 
     expect(handler.update).toHaveBeenCalledWith(`${MEMO_DEF}:${MEMO}`, {
       credit_memo_note: 'before',
+    })
+  })
+
+  // 75-D4. The totals hook is frozen again the moment the edit row goes, so the
+  // header would otherwise keep the abandoned edit's numbers.
+  describe('the derived totals (75-D4)', () => {
+    const INV_DEF = 'def_inv00000000000000000'
+    const INV = 'inv_00000000000000000000'
+    const DERIVED = ['invoice_subtotal', 'invoice_tax_total', 'invoice_total', 'invoice_balance']
+
+    function invoiceSnapshot() {
+      return {
+        entityDefinitionId: INV_DEF,
+        snapshot: {
+          record: {
+            id: INV,
+            entityDefinitionId: INV_DEF,
+            fieldValues: {
+              invoice_notes: 'before',
+              invoice_status: 'partially_paid',
+              invoice_subtotal: 198_000,
+              invoice_tax_total: 0,
+              invoice_total: 198_000,
+              invoice_balance: 98_000,
+            },
+          },
+          children: {},
+        },
+      }
+    }
+
+    beforeEach(() => {
+      cache.resourceFields[INV_DEF] = [
+        field('invoice_notes', { updatable: true, creatable: true }),
+        field('invoice_status', { updatable: true, creatable: true }),
+        ...DERIVED.map((attr) => field(attr, { updatable: false, creatable: false })),
+      ]
+      cache.customFields[INV_DEF] = DERIVED.map((attr) => ({
+        id: `f_${attr}`,
+        systemAttribute: attr,
+        type: 'CURRENCY',
+      }))
+    })
+
+    it('writes the captured totals and balance back, before the row is dropped', async () => {
+      const { db } = makeDb([[invoiceSnapshot()]])
+
+      await restoreRecordSnapshot(db, {
+        organizationId: ORG,
+        entityInstanceId: INV,
+        actorUserId: USER,
+        derivedTotalAttrs: DERIVED,
+      })
+
+      for (const [attr, value] of [
+        ['invoice_subtotal', 198_000],
+        ['invoice_tax_total', 0],
+        ['invoice_total', 198_000],
+        ['invoice_balance', 98_000],
+      ] as const) {
+        expect(derived.setValueWithType).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            recordId: `${INV_DEF}:${INV}`,
+            fieldId: `f_${attr}`,
+            fieldType: 'CURRENCY',
+            value: { type: 'number', value },
+          })
+        )
+      }
+      // The row is the lock the writes run under, so it goes last.
+      expect(derived.ops.at(-1)).toBe('delete')
+      expect(derived.publish).toHaveBeenCalledWith(expect.anything(), ORG, expect.any(Array))
+    })
+
+    // A payment landing mid-edit is the projection's, not the snapshot's.
+    it('still never writes back invoice_status', async () => {
+      const { db } = makeDb([[invoiceSnapshot()]])
+
+      await restoreRecordSnapshot(db, {
+        organizationId: ORG,
+        entityInstanceId: INV,
+        actorUserId: USER,
+        derivedTotalAttrs: DERIVED,
+      })
+
+      expect(handler.update).toHaveBeenCalledWith(`${INV_DEF}:${INV}`, { invoice_notes: 'before' })
+      const setAttrs = derived.setValueWithType.mock.calls.map((call) => call[1].fieldId)
+      expect(setAttrs).not.toContain('f_invoice_status')
+    })
+
+    it('writes nothing derived when the family names no attributes', async () => {
+      const { db } = makeDb([[invoiceSnapshot()]])
+
+      await restoreRecordSnapshot(db, {
+        organizationId: ORG,
+        entityInstanceId: INV,
+        actorUserId: USER,
+      })
+
+      expect(derived.setValueWithType).not.toHaveBeenCalled()
+      expect(derived.publish).not.toHaveBeenCalled()
+    })
+
+    // A bill's total is transcribed and `updatable`: it comes back with the
+    // header, not through the derived writer.
+    it('leaves a transcribed total to the ordinary write path', async () => {
+      cache.resourceFields[BILL_DEF] = [
+        ...billFields(),
+        field('vendor_bill_total', { updatable: true, creatable: true }),
+        field('vendor_bill_balance', { updatable: false, creatable: false }),
+      ]
+      cache.customFields[BILL_DEF] = [
+        ...(cache.customFields[BILL_DEF] ?? []),
+        { id: 'f_vendor_bill_balance', systemAttribute: 'vendor_bill_balance', type: 'CURRENCY' },
+      ]
+      const { db } = makeDb([
+        [
+          {
+            entityDefinitionId: BILL_DEF,
+            snapshot: {
+              record: {
+                id: BILL,
+                entityDefinitionId: BILL_DEF,
+                fieldValues: {
+                  vendor_bill_note: 'before',
+                  vendor_bill_total: 109_225,
+                  vendor_bill_balance: 10_400,
+                },
+              },
+              children: {},
+            },
+          },
+        ],
+      ])
+
+      await restoreRecordSnapshot(db, {
+        organizationId: ORG,
+        entityInstanceId: BILL,
+        actorUserId: USER,
+        derivedTotalAttrs: ['vendor_bill_balance'],
+      })
+
+      expect(handler.update).toHaveBeenCalledWith(`${BILL_DEF}:${BILL}`, {
+        vendor_bill_note: 'before',
+        vendor_bill_total: 109_225,
+      })
+      expect(derived.setValueWithType).toHaveBeenCalledTimes(1)
+      expect(derived.setValueWithType).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ fieldId: 'f_vendor_bill_balance' })
+      )
     })
   })
 

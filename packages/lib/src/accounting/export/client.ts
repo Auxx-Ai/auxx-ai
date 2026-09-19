@@ -6,20 +6,39 @@
 export const EXPORT_BATCH_STATES = ['ready', 'sending', 'sent', 'failed', 'withdrawn'] as const
 export type ExportBatchState = (typeof EXPORT_BATCH_STATES)[number]
 
-/** The export tabs, in the order they render. `withdrawn` is history, not a tab. */
-export const EXPORT_BATCH_TABS = ['ready', 'sending', 'sent', 'failed'] as const
+/**
+ * The export tabs, in the order they render. `withdrawn` is history, not a tab,
+ * and neither is `sending` (75-D6) - a momentary state is not a place to stand,
+ * so a sending batch stays listed under Ready and spins there.
+ */
+export const EXPORT_BATCH_TABS = ['ready', 'sent', 'failed'] as const
 export type ExportBatchTab = (typeof EXPORT_BATCH_TABS)[number]
 
 /**
- * The Outbox's tabs: the ledger's own drafts, then the four export states.
- * `drafts` is not an `ExportBatchState` - a draft has no batch yet, which is
- * the point of it leading the strip.
+ * The Outbox's tabs: the ledger's own drafts, the movements the ledger refused,
+ * then the export states. Neither `drafts` nor `blocked` is an
+ * `ExportBatchState` - one has no batch yet and the other has no posting at
+ * all, which is the point of the two leading the strip (75-D1).
  */
-export const OUTBOX_TABS = ['drafts', ...EXPORT_BATCH_TABS] as const
+export const OUTBOX_TABS = ['drafts', 'blocked', ...EXPORT_BATCH_TABS] as const
 export type OutboxTab = (typeof OUTBOX_TABS)[number]
 
 export function isExportBatchTab(tab: OutboxTab): tab is ExportBatchTab {
-  return tab !== 'drafts'
+  return tab !== 'drafts' && tab !== 'blocked'
+}
+
+/** `?queue=` values a pasted link may still carry - tabs that no longer render included. */
+export const OUTBOX_TAB_PARAMS = [...OUTBOX_TABS, 'sending'] as const
+
+/** A link written before 75-D6 dropped the Sending tab lands on Ready, not on an empty strip. */
+export function parseOutboxTab(value: string | null | undefined): OutboxTab | null {
+  if (!value) return null
+  return (OUTBOX_TABS as readonly string[]).includes(value) ? (value as OutboxTab) : 'ready'
+}
+
+/** Which batch states a tab lists. Ready holds `sending` too (75-D6). */
+export function exportBatchTabAdmits(tab: ExportBatchTab, state: ExportBatchState): boolean {
+  return tab === 'ready' ? state === 'ready' || state === 'sending' : state === tab
 }
 
 const LABELS: Record<ExportBatchState, string> = {

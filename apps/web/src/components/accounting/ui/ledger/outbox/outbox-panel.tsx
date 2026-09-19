@@ -5,7 +5,7 @@
 // Accounting > Ledger > the OUTBOX (TARGET §3, §4 gate 1 and 2, step 3 part C).
 //
 // One strip over the whole pipeline of work leaving the books: Drafts (posted
-// with `autoPost` off, waiting for approval - `drafts-panel.tsx`) then the four
+// with `autoPost` off, waiting for approval - `drafts-panel.tsx`) then the
 // export-batch states. It was two rail items, "Drafts" and "Sync queue", which
 // split one question ("what is outstanding?") across two screens.
 //
@@ -30,7 +30,14 @@
 // ledger's own drawer.
 
 import type { ExportBatchMember } from '@auxx/lib/accounting/export'
-import { isExportBatchTab, OUTBOX_TABS, type OutboxTab } from '@auxx/lib/accounting/export/client'
+import {
+  type ExportBatchTab,
+  exportBatchTabAdmits,
+  isExportBatchTab,
+  OUTBOX_TABS,
+  type OutboxTab,
+} from '@auxx/lib/accounting/export/client'
+import { EXPORT_AVENUES } from '@auxx/lib/accounting/ledger/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { ActionBar } from '@auxx/ui/components/action-bar'
 import { Badge } from '@auxx/ui/components/badge'
@@ -66,6 +73,7 @@ import {
   useSelectionIds,
 } from '~/components/list-selection'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { exportAvenueLabel } from '../export-avenue-labels'
@@ -77,6 +85,7 @@ import {
   humanizePostingType,
 } from '../format'
 import { useLedgerSources } from '../use-ledger-sources'
+import { BlockedPanel } from './blocked-panel'
 import { DraftsPanel } from './drafts-panel'
 import { ExportBatchStateBadge } from './export-batch-badge'
 
@@ -85,16 +94,16 @@ type ExportBatchRow = RouterOutputs['ledger']['exportBatches']['list'][number]
 
 const TAB_ICON: Record<OutboxTab, typeof CheckCircle2> = {
   drafts: FileClock,
+  blocked: CircleAlert,
   ready: CheckCircle2,
-  sending: Loader,
   sent: CheckCheck,
   failed: CircleAlert,
 }
 
 const TAB_LABEL: Record<OutboxTab, string> = {
   drafts: 'Drafts',
+  blocked: 'Blocked',
   ready: 'Ready',
-  sending: 'Sending',
   sent: 'Sent',
   failed: 'Failed',
 }
@@ -159,38 +168,62 @@ function OutboxBody({
   // tab is absent, not disabled, for a read-only member - a tab that 403s on
   // click is worse than one that was never offered. `effectiveTab` catches the
   // pasted `?queue=drafts` link that member has no read for.
+  // Blocked is gated the same way and for the same reason: `retryBlockedMovement`
+  // posts, so a read-only member is offered neither tab.
   const showDrafts = canRelease
-  const effectiveTab: OutboxTab = tab === 'drafts' && !showDrafts ? 'ready' : tab
+  const effectiveTab: OutboxTab =
+    (tab === 'drafts' || tab === 'blocked') && !showDrafts ? 'ready' : tab
   const isDrafts = effectiveTab === 'drafts'
+  const isBlocked = effectiveTab === 'blocked'
   /** The same tab, narrowed for the export-only copy below. `ready` is unreachable when `isDrafts`. */
   const exportTab = isExportBatchTab(effectiveTab) ? effectiveTab : 'ready'
   const tabs = useMemo(
-    () => OUTBOX_TABS.filter((value) => showDrafts || value !== 'drafts'),
+    () => OUTBOX_TABS.filter((value) => showDrafts || (value !== 'drafts' && value !== 'blocked')),
     [showDrafts]
   )
 
   // Count only - `DraftsPanel` runs the same query for its rows, and React Query
   // dedupes the two into one fetch.
   const draftsQuery = api.ledger.listDrafts.useQuery({}, { enabled: showDrafts })
+  // Count only, and it is a SQL `count()` - the dev org holds ~1,100 of these,
+  // so the badge never rides on the rows (75-D1).
+  const blockedQuery = api.ledger.listBlockedMovements.useQuery(
+    { limit: 1, offset: 0 },
+    { enabled: canRelease }
+  )
 
   const visible = useMemo(
-    () => (isDrafts ? [] : all.filter((batch) => batch.state === effectiveTab)),
-    [all, effectiveTab, isDrafts]
+    () =>
+      isDrafts || isBlocked
+        ? []
+        : all.filter((batch) => exportBatchTabAdmits(exportTab, batch.state)),
+    [all, exportTab, isDrafts, isBlocked]
   )
   const tally = useMemo(() => {
     const counts: Record<OutboxTab, number> = {
       drafts: 0,
+      blocked: 0,
       ready: 0,
-      sending: 0,
       sent: 0,
       failed: 0,
     }
     for (const batch of all) {
-      if (batch.state in counts) counts[batch.state as OutboxTab]++
+      for (const value of OUTBOX_TABS) {
+        if (isExportBatchTab(value) && exportBatchTabAdmits(value, batch.state)) counts[value]++
+      }
     }
     counts.drafts = draftsQuery.data?.length ?? 0
+    counts.blocked = blockedQuery.data?.total ?? 0
     return counts
-  }, [all, draftsQuery.data])
+  }, [all, draftsQuery.data, blockedQuery.data])
+
+  // ⚠️ Free: `useSettings` rides the org cache the provider already hydrated.
+  const { getSetting } = useSettings({ scope: 'GENERAL' })
+  const heldForRelease = EXPORT_AVENUES.every(
+    (avenue) =>
+      getSetting(`accounting.autoSend.${avenue}` as Parameters<typeof getSetting>[0]) !== true
+  )
+  const monthLabel = periodLabel || 'this month'
 
   const selectedIds = useSelectionIds()
   const selecting = useBulkMode()
@@ -316,6 +349,8 @@ function OutboxBody({
     release.mutate({ batchIds })
   }
 
+  // Blocked rows are acted on one at a time - a retry is a post, and forty of
+  // them racing the same period claim is what `approveMany` avoids too.
   const selectable = effectiveTab === 'ready' || effectiveTab === 'sent' || isDrafts
 
   return (
@@ -323,11 +358,13 @@ function OutboxBody({
     // to reach both edges, so the padding lives on the blocks around it, not here.
     <div className='flex flex-1 flex-col'>
       {/* `min-h-7` is the `size='sm'` Button's own height: the build control is
-          absent on Drafts and on a read-only member, and without the floor the
-          whole list shifted on every tab change. */}
+          absent for a read-only member, and without the floor the whole list
+          shifted on every tab change. */}
       <div className='flex min-h-12 flex-wrap items-center justify-between gap-2 p-3 pb-2'>
-        <p className='text-muted-foreground text-xs'>{introSentence(isDrafts, providerLabel)}</p>
-        {canRelease && !isDrafts && (
+        <p className='text-muted-foreground text-xs'>
+          {introSentence(effectiveTab, providerLabel)}
+        </p>
+        {canRelease && !isBlocked && (
           <div className='flex items-center gap-2'>
             <Button
               variant='outline'
@@ -345,7 +382,7 @@ function OutboxBody({
 
       {buildResult && (
         <p className='px-3 pb-2 text-muted-foreground text-xs'>
-          {buildResultSentence(buildResult)}
+          {buildResultSentence(buildResult, monthLabel)}
         </p>
       )}
 
@@ -371,8 +408,14 @@ function OutboxBody({
         </ListToolbarGroup>
       </ListToolbar>
 
-      {isDrafts ? (
+      {isBlocked ? (
+        <BlockedPanel
+          emptyDescription={emptyDescription('blocked', providerLabel, monthLabel, heldForRelease)}
+          bookTimeZone={bookTimeZone}
+        />
+      ) : isDrafts ? (
         <DraftsPanel
+          emptyDescription={emptyDescription('drafts', providerLabel, monthLabel, heldForRelease)}
           currencyCode={currencyCode}
           bookTimeZone={bookTimeZone}
           providerLabel={providerLabel}
@@ -388,7 +431,9 @@ function OutboxBody({
         <EmptyState
           icon={TAB_ICON[effectiveTab]}
           title={emptyTitle(exportTab)}
-          description={<span>{emptyDescription(exportTab, providerLabel)}</span>}
+          description={
+            <span>{emptyDescription(exportTab, providerLabel, monthLabel, heldForRelease)}</span>
+          }
         />
       ) : (
         <div className='flex flex-col gap-px p-3 pb-16'>
@@ -401,6 +446,7 @@ function OutboxBody({
             renderRow={(batch: ExportBatchRow) => {
               const isOpen = openBatchIds.has(batch.id)
               const url = batch.providerObjectUrl
+              const inFlight = batch.state === 'sending'
               const sending = send.isPending && send.variables?.batchId === batch.id
               const retrying = retry.isPending && retry.variables?.batchId === batch.id
               const releasing =
@@ -425,7 +471,9 @@ function OutboxBody({
                       <span className='w-24 shrink-0 font-mono text-muted-foreground text-xs tabular-nums'>
                         {batchDateLabel(batch, bookTimeZone)}
                       </span>
-                      <span className='truncate text-sm'>{exportAvenueLabel(batch.avenue)}</span>
+                      <span className='min-w-0 truncate text-sm'>
+                        {exportAvenueLabel(batch.avenue)}
+                      </span>
                     </span>
                   }
                   secondary={
@@ -476,6 +524,7 @@ function OutboxBody({
                       <span className='font-mono text-xs tabular-nums'>
                         {formatMinor(batch.totalMinor, batch.currency)}
                       </span>
+                      {inFlight && <Loader className='size-3.5 animate-spin text-primary-400' />}
                       <ExportBatchStateBadge state={batch.state} />
                       {batch.state === 'ready' && canRelease && (
                         <>
@@ -648,39 +697,41 @@ function batchDateLabel(batch: ExportBatchRow, bookTimeZone: string): string {
   return formatAccountingDate(batch.grainKey, bookTimeZone)
 }
 
-function buildResultSentence(result: {
-  built: number
-  batchIds: string[]
-  skippedBeforeCutover: number
-  connected: boolean
-}): string {
+function buildResultSentence(
+  result: {
+    built: number
+    batchIds: string[]
+    skippedBeforeCutover: number
+    connected: boolean
+  },
+  monthLabel: string
+): string {
   if (!result.connected) return 'No accounting system is connected, so nothing was built.'
+  const skipped = result.skippedBeforeCutover
+  const postings = `${skipped} posting${skipped === 1 ? '' : 's'}`
   if (result.built === 0) {
-    return result.skippedBeforeCutover > 0
-      ? `Nothing built. ${result.skippedBeforeCutover} posting${result.skippedBeforeCutover === 1 ? '' : 's'} dated before the export cutover.`
-      : 'Nothing to build - every posted entry this month is already in a batch.'
+    return skipped > 0
+      ? `Nothing built for ${monthLabel}: ${postings} dated before the export cutover.`
+      : `${monthLabel} has no posted entry that is not already in a batch.`
   }
-  const tail =
-    result.skippedBeforeCutover > 0
-      ? ` ${result.skippedBeforeCutover} posting${result.skippedBeforeCutover === 1 ? '' : 's'} skipped, dated before the cutover.`
-      : ''
-  return `Built ${result.built} batch${result.built === 1 ? '' : 'es'}.${tail}`
+  const tail = skipped > 0 ? ` ${postings} skipped, dated before the cutover.` : ''
+  return `Built ${result.built} batch${result.built === 1 ? '' : 'es'} for ${monthLabel}.${tail}`
 }
 
 /** What the tab on screen is a list OF. Every tab spans every period. */
-function introSentence(isDrafts: boolean, providerLabel: string): string {
-  return isDrafts
-    ? 'Every posting waiting for approval, from any month - its avenue posts with autoPost switched off.'
-    : `Every batch in the books that is not yet a settled copy in ${providerLabel}, or was refused. Every period, not only the month below.`
+function introSentence(tab: OutboxTab, providerLabel: string): string {
+  if (tab === 'drafts')
+    return 'Every posting waiting for approval, from any month - its avenue posts with autoPost switched off.'
+  if (tab === 'blocked')
+    return 'Every movement the ledger refused: the money moved, nothing was written, and the work waits on the reason each row gives.'
+  return `Every batch in the books that is not yet a settled copy in ${providerLabel}, or was refused. Every period, not only the month the build button names.`
 }
 
 /** ⚠️ An empty Ready tab is the HEALTHY state and has to read like one. */
-function emptyTitle(tab: Exclude<OutboxTab, 'drafts'>): string {
+function emptyTitle(tab: ExportBatchTab): string {
   switch (tab) {
     case 'ready':
       return 'Nothing is waiting to be sent'
-    case 'sending':
-      return 'Nothing is in flight'
     case 'sent':
       return 'Nothing has been sent yet'
     case 'failed':
@@ -688,15 +739,26 @@ function emptyTitle(tab: Exclude<OutboxTab, 'drafts'>): string {
   }
 }
 
-function emptyDescription(tab: Exclude<OutboxTab, 'drafts'>, providerLabel: string): string {
+/** ⚠️ Names WHICH month Build would take, and why a tab is empty (75-D7) - it used to read as a fault. */
+function emptyDescription(
+  tab: OutboxTab,
+  providerLabel: string,
+  monthLabel: string,
+  heldForRelease: boolean
+): string {
+  const held = heldForRelease
+    ? ' No avenue has auto-send switched on, so a batch that is built is held for release rather than sent.'
+    : ''
   switch (tab) {
+    case 'blocked':
+      return 'Nothing the ledger refused is waiting. A movement lands here when its entry could not be built - an account role nothing is mapped to, a period that is shut - and leaves it the moment a retry is accepted.'
+    case 'drafts':
+      return `A draft is left here when its avenue posts with autoPost switched off (Settings › Posting). Approving one posts its entry; it does not build an export batch - "Build batches for ${monthLabel}" does, for that month alone.${held}`
     case 'ready':
-      return `Every batch is either sent or has not been built. "Build batches for this month" freezes posted entries into batches.`
-    case 'sending':
-      return `Nothing is leased by the export worker right now.`
+      return `These tabs list every period, so nothing anywhere is waiting to be sent. "Build batches for ${monthLabel}" freezes that month's posted entries into batches, and nothing is built until somebody asks.${held}`
     case 'sent':
-      return `Nothing has settled in ${providerLabel} yet.`
+      return `Nothing has settled in ${providerLabel} yet, in any period. A batch is built one month at a time - ${monthLabel} is the one the button above takes - and then released.${held}`
     case 'failed':
-      return `${providerLabel} has not refused a batch. A refusal shows the reason it gave, on the row.`
+      return `${providerLabel} has not refused a batch, in any period. A refusal shows the reason it gave, on the row.`
   }
 }

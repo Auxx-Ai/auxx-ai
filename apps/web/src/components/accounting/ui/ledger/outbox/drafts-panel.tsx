@@ -33,6 +33,8 @@ import { LedgerSourceLink } from '../ledger-source-link'
 import { PostResultCallout } from '../post-result-callout'
 
 interface DraftsPanelProps {
+  /** Owned by `outbox-panel.tsx` so every tab's empty copy is written in one place. */
+  emptyDescription: string
   currencyCode: string
   bookTimeZone: string
   providerLabel: string
@@ -55,6 +57,7 @@ interface DraftsPanelProps {
  * `OUTCOMES` does.
  */
 export function DraftsPanel({
+  emptyDescription,
   currencyCode,
   bookTimeZone,
   providerLabel,
@@ -208,7 +211,7 @@ export function DraftsPanel({
         <EmptyState
           icon={FileClock}
           title='Nothing is waiting for approval'
-          description='A draft is left here when its avenue posts with autoPost switched off (Settings › Posting).'
+          description={emptyDescription}
         />
       ) : (
         <TreeRowList

@@ -149,6 +149,31 @@ describe('syncVendorBillPaymentState', () => {
     expect(last()).toContainEqual({ fieldId: 'f_pay_status', value: 'unpaid' })
   })
 
+  // 75-D5. `saveDocumentEdit` runs this after the repost: before it did, an
+  // edit that raised the total left the bill `paid` and hid Record payment.
+  it('takes a paid bill back to partially_paid when an edit raises its total', async () => {
+    h.scalars.set('f_total', 119_625)
+    h.scalars.set('f_pay_status', 'paid')
+    h.scalars.set('f_paid', 109_225)
+    h.applications = [{ operation: 'apply', amountMinor: 109_225n, effectiveDate: '2026-09-01' }]
+    await run()
+    expect(last()).toContainEqual({ fieldId: 'f_pay_status', value: 'partially_paid' })
+    expect(last()).toContainEqual({ fieldId: 'f_paid_at', value: null })
+  })
+
+  it('reads paid when an edit lowers the total to exactly what was paid', async () => {
+    h.scalars.set('f_total', 109_225)
+    h.scalars.set('f_pay_status', 'partially_paid')
+    h.scalars.set('f_paid', 109_225)
+    h.applications = [{ operation: 'apply', amountMinor: 109_225n, effectiveDate: '2026-09-01' }]
+    await run()
+    expect(last()).toContainEqual({ fieldId: 'f_pay_status', value: 'paid' })
+    expect(last()).toContainEqual({
+      fieldId: 'f_paid_at',
+      value: '2026-09-01T00:00:00.000Z',
+    })
+  })
+
   it('never writes the lifecycle field, whatever the bill is settled to', async () => {
     h.applications = [{ operation: 'apply', amountMinor: 100_000n, effectiveDate: '2026-09-01' }]
     await run()

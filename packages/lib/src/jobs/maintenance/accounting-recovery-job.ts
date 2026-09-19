@@ -3,7 +3,7 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import { sweepExportBatches } from '../../accounting/export'
-import { sweepCustomerMoneyAccounting } from '../../accounting/money/customer-money/accounting'
+import { sweepMovementAccounting } from '../../accounting/money/blocked-movements'
 import { sweepFinancialRecordBridge } from '../../accounting/money/customer-money/bridge-sweep'
 import { sweepDepositApplicationAccounting } from '../../accounting/money/customer-money/deposit-application-accounting'
 import { sweepImportedCustomerMoney } from '../../accounting/money/customer-money/ingest'
@@ -57,7 +57,7 @@ export async function accountingRecoveryJob(ctx: JobContext): Promise<void> {
     }
     if (Date.now() < deadline) {
       try {
-        await sweepCustomerMoneyAccounting(database, {
+        await sweepMovementAccounting(database, {
           organizationId: organization.id,
           limit: 100,
           timeBudgetMs: deadline - Date.now(),

@@ -10,6 +10,7 @@ import {
 } from '../../../entity-instances/edit-snapshot'
 import { ConflictError } from '../../../errors'
 import type { DocumentEditInput } from './open'
+import { documentEditRow } from './spec'
 
 const logger = createScopedLogger('accounting:document-edit')
 
@@ -38,7 +39,12 @@ export async function cancelDocumentEdit(
     )
   }
 
-  await restoreRecordSnapshot(db, { organizationId, entityInstanceId, actorUserId: userId })
+  await restoreRecordSnapshot(db, {
+    organizationId,
+    entityInstanceId,
+    actorUserId: userId,
+    derivedTotalAttrs: documentEditRow(family).derivedTotalAttrs,
+  })
 
   const entityDefinitionId = await getCachedEntityDefId(organizationId, family)
   if (entityDefinitionId) {

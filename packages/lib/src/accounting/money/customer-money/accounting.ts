@@ -23,7 +23,6 @@
 
 import type { Database, Transaction } from '@auxx/database'
 import { UnprocessableEntityError } from '../../../errors'
-import { readOrganizationSettings } from '../../../settings/read'
 import { toLedgerMinor } from '../../ledger/builders/basis-hash'
 import type { GlPostingLineInput } from '../../ledger/types'
 import {
@@ -32,18 +31,13 @@ import {
   type PreparedMovement,
   postMovementEntry,
 } from '../post-movement'
-import {
-  listCustomerMoneyAccountingCandidates,
-  POSTING_RETRY_INTERVAL_MS,
-  readCustomerReceiptAccountingSource,
-} from './receipt-accounting'
+import { readCustomerReceiptAccountingSource } from './receipt-accounting'
 import { allocateRecognitionTaxComponents } from './recognition'
 import { readOrderRecognitionFactsInTx } from './recognition-facts'
 import {
   readOrderRecognitionSource,
   requireCompleteOrderRecognitionSource,
 } from './recognition-source'
-import { postCustomerRefundAccounting } from './refund-accounting'
 
 export type CustomerReceiptAccountingResult = MovementPostingResult
 
@@ -180,47 +174,4 @@ export async function postCustomerReceiptAccounting(
     actorUserId: input.actorUserId,
     prepare: (tx, loaded) => prepareReceipt(tx, input.organizationId, loaded),
   })
-}
-
-/**
- * Bounded recovery retries repaired channel-money evidence without starving later
- * movements. One sweep over both purposes — a blocked receipt and a blocked refund
- * are the same repair with the same schedule (task 71 Q3).
- */
-export async function sweepCustomerMoneyAccounting(
-  db: Database,
-  input: { organizationId: string; limit?: number; timeBudgetMs?: number }
-) {
-  const started = Date.now()
-  // Hoisted, so the window is one settings read for the whole run rather than one
-  // refusal per movement.
-  const settings = await readOrganizationSettings(input.organizationId, [
-    'accounting.bookTimeZone',
-    'accounting.cutoffPeriod',
-  ] as const)
-  const candidates = await listCustomerMoneyAccountingCandidates(
-    db,
-    input.organizationId,
-    Math.min(input.limit ?? 100, 500),
-    {
-      cutoffPeriod: settings['accounting.cutoffPeriod'],
-      bookTimeZone: settings['accounting.bookTimeZone'] ?? 'UTC',
-      retryBefore: new Date(started - POSTING_RETRY_INTERVAL_MS),
-    }
-  )
-  const counts = { scanned: 0, accepted: 0, drafted: 0, blocked: 0, skipped: 0 }
-  for (const candidate of candidates) {
-    if (input.timeBudgetMs != null && Date.now() - started >= input.timeBudgetMs) break
-    const post =
-      candidate.purpose === 'customer_refund'
-        ? postCustomerRefundAccounting
-        : postCustomerReceiptAccounting
-    const result = await post(db, {
-      organizationId: input.organizationId,
-      moneyTransactionId: candidate.id,
-    })
-    counts.scanned++
-    counts[result.status]++
-  }
-  return counts
 }

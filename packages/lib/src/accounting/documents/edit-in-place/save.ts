@@ -92,6 +92,12 @@ export async function saveDocumentEdit(
     await publishStamp(organizationId, family, entityInstanceId)
   }
 
+  // Post-commit, on the pool connection: the projection re-reads the money model
+  // against committed truth, exactly as the payment rails call it.
+  const reproject = async () => {
+    await row.afterSave?.(db, { organizationId, userId, entityInstanceId })
+  }
+
   // The document is finalized and carries no entry: its draft was discarded in
   // the outbox. Post it again from current values rather than leave it stranded —
   // a discarded draft took no document number with it, so the generation the
@@ -100,6 +106,7 @@ export async function saveDocumentEdit(
     const post = await built.post(db, { actorUserId: userId, memo: row.restoredMemo(doc) })
     if (!post) {
       await close()
+      await reproject()
       return { outcome: 'not_posted', docNumber: null, edit: null }
     }
     if (!isExpectedPostOutcome(post)) {
@@ -110,6 +117,7 @@ export async function saveDocumentEdit(
       )
     }
     await close()
+    await reproject()
     logger.info('Posted a document again after its entry was discarded', {
       organizationId,
       family,
@@ -220,6 +228,7 @@ export async function saveDocumentEdit(
   }
 
   await publishStamp(organizationId, family, entityInstanceId)
+  await reproject()
   logger.info('Re-posted a document after an edit', {
     organizationId,
     family,

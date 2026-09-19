@@ -29,6 +29,7 @@ const h = vi.hoisted(() => ({
   publishRecordEditStamp: vi.fn(),
   ledgerState: { draftGlPostingId: null as string | null, generation: 1 },
   writeDocumentLedgerGeneration: vi.fn(),
+  syncInvoicePaymentState: vi.fn(async () => undefined),
 }))
 
 vi.mock('@auxx/database', async () => {
@@ -56,6 +57,9 @@ vi.mock('../../../../entity-instances/edit-snapshot', () => ({
   restoreRecordSnapshot: h.restoreRecordSnapshot,
   deleteEditSnapshot: h.deleteEditSnapshot,
   publishRecordEditStamp: h.publishRecordEditStamp,
+}))
+vi.mock('../../../money/invoice-payments/payment-state', () => ({
+  syncInvoicePaymentState: h.syncInvoicePaymentState,
 }))
 vi.mock('../../../sales/invoices/edit-reads', () => ({
   loadInvoiceForEdit: async () => h.invoice,
@@ -205,6 +209,50 @@ describe('cancelDocumentEdit', () => {
       db,
       expect.objectContaining({ entityInstanceId: INVOICE_ID, actorUserId: USER })
     )
+  })
+
+  // 75-D4. The totals hook freezes again the moment the edit row goes, so the
+  // header would otherwise keep the abandoned edit's numbers.
+  it('hands the restore the family\u2019s derived totals', async () => {
+    await cancelDocumentEdit(db, target)
+
+    expect(h.restoreRecordSnapshot).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        derivedTotalAttrs: [
+          'invoice_subtotal',
+          'invoice_tax_total',
+          'invoice_total',
+          'invoice_balance',
+        ],
+      })
+    )
+  })
+})
+
+// 75-D5. An edit that moves the total moves what is still due.
+describe('the post-Save re-projection', () => {
+  it('re-projects payment state after the repost, never before it', async () => {
+    raiseTheInvoice()
+
+    await saveDocumentEdit(db, target)
+
+    expect(h.syncInvoicePaymentState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: ORG,
+        userId: USER,
+        invoiceInstanceId: INVOICE_ID,
+      })
+    )
+    expect(h.postInvoiceIssuanceBuiltEntry.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.syncInvoicePaymentState.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('re-projects nothing when the Save had no consequence', async () => {
+    await saveDocumentEdit(db, target)
+
+    expect(h.syncInvoicePaymentState).not.toHaveBeenCalled()
   })
 })
 

@@ -1,6 +1,6 @@
 // packages/lib/src/accounting/money/customer-money/receipt-accounting.ts
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import { periodKeyForDate } from '../../ledger/periods/periods'
@@ -204,78 +204,4 @@ export async function readCustomerReceiptAccountingSource(
       gateway: gateway ? JSON.parse(JSON.stringify(gateway)) : handle,
     }),
   }
-}
-
-/** How long a refused movement waits before the sweep offers it again. */
-export const POSTING_RETRY_INTERVAL_MS = 60 * 60 * 1000
-
-export interface CustomerMoneyCandidateWindow {
-  /** `accounting.cutoffPeriod` (`YYYY-MM`). Movements on or before it are refused forever. */
-  cutoffPeriod: string | null
-  /** `accounting.bookTimeZone`, the zone an instant's book month is cut in. */
-  bookTimeZone: string
-  /** Movements blocked more recently than this are held back. */
-  retryBefore: Date
-}
-
-/**
- * Shopify customer receipts and refunds with no live subject posting.
- *
- * The claim is the candidate list: a movement that has posted holds a `subject`
- * row on `GlPostingSource`, and a reversal deletes that row, so the same query
- * re-offers a reversed movement without a state machine of its own.
- *
- * 🛑 **No head-of-line blocking.** A thousand receipts on an unmapped handle must
- * not stop a postable one from being reached, so a movement the ledger refused is
- * held back for {@link POSTING_RETRY_INTERVAL_MS} and then queued BEHIND every
- * movement nobody has tried yet. Anything before the opening cutoff is refused
- * forever and is excluded in SQL rather than re-refused every run.
- */
-export async function listCustomerMoneyAccountingCandidates(
-  db: Database,
-  organizationId: string,
-  limit = 100,
-  window?: CustomerMoneyCandidateWindow
-): Promise<Array<{ id: string; purpose: 'customer_receipt' | 'customer_refund' }>> {
-  const conditions = [
-    eq(schema.MoneyTransaction.organizationId, organizationId),
-    inArray(schema.MoneyTransaction.purpose, ['customer_receipt', 'customer_refund']),
-    sql`EXISTS (SELECT 1 FROM ${schema.FinancialSourceAcceptance} acceptance
-        JOIN ${schema.FinancialSourceObject} object ON object."id" = acceptance."sourceObjectId" AND object."organizationId" = acceptance."organizationId"
-        JOIN ${schema.FinancialSourceAccount} account ON account."id" = object."sourceAccountId" AND account."organizationId" = object."organizationId"
-        WHERE acceptance."organizationId" = ${organizationId} AND acceptance."moneyTransactionId" = ${schema.MoneyTransaction.id}
-        AND account."providerKey" = 'shopify')`,
-    sql`NOT EXISTS (SELECT 1 FROM ${schema.GlPostingSource} link
-        WHERE link."organizationId" = ${organizationId}
-        AND link."sourceKind" = 'money_transaction'
-        AND link."sourceId" = ${schema.MoneyTransaction.id}
-        AND link."linkRole" = 'subject')`,
-    // Waiting on a draft in the Outbox: no claim yet, but nothing to do either.
-    sql`NOT EXISTS (SELECT 1 FROM ${schema.GlPosting} draft
-        WHERE draft."organizationId" = ${organizationId}
-        AND draft."id" = ${schema.MoneyTransaction.draftGlPostingId}
-        AND draft."status" = 'draft')`,
-  ]
-  if (window?.cutoffPeriod)
-    // The book month the poster would compute, in SQL: a date-precision movement
-    // already IS its day; an instant is cut in the book zone.
-    conditions.push(
-      sql`to_char(COALESCE(${schema.MoneyTransaction.occurredOn}, (${schema.MoneyTransaction.occurredAt} AT TIME ZONE ${window.bookTimeZone})::date), 'YYYY-MM') > ${window.cutoffPeriod}`
-    )
-  if (window)
-    conditions.push(
-      sql`(${schema.MoneyTransaction.postingBlockedAt} IS NULL OR ${schema.MoneyTransaction.postingBlockedAt} <= ${window.retryBefore})`
-    )
-
-  const rows = await db
-    .select({ id: schema.MoneyTransaction.id, purpose: schema.MoneyTransaction.purpose })
-    .from(schema.MoneyTransaction)
-    .where(and(...conditions))
-    .orderBy(
-      sql`${schema.MoneyTransaction.postingBlockedAt} ASC NULLS FIRST`,
-      asc(schema.MoneyTransaction.createdAt),
-      asc(schema.MoneyTransaction.id)
-    )
-    .limit(limit)
-  return rows as Array<{ id: string; purpose: 'customer_receipt' | 'customer_refund' }>
 }
