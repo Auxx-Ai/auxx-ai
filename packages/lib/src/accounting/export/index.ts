@@ -14,10 +14,13 @@ export {
   type ExportBatchTab,
   exportBatchStateHint,
   exportBatchStateLabel,
+  exportBatchTabAdmits,
   exportObjectTypeLabel,
   isExportBatchTab,
+  OUTBOX_TAB_PARAMS,
   OUTBOX_TABS,
   type OutboxTab,
+  parseOutboxTab,
 } from './client'
 export { type ShapedPosting, type ShapeForPostingInput, shapeForPosting } from './object-shape'
 export {

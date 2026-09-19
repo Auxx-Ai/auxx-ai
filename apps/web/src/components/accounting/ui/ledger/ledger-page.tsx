@@ -2,7 +2,11 @@
 
 'use client'
 
-import { OUTBOX_TABS, type OutboxTab } from '@auxx/lib/accounting/export/client'
+import {
+  OUTBOX_TAB_PARAMS,
+  type OutboxTab,
+  parseOutboxTab,
+} from '@auxx/lib/accounting/export/client'
 import { Button } from '@auxx/ui/components/button'
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
@@ -107,7 +111,7 @@ const SECTION_BLEED = '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3
  *     the lock, its other entries. The absence of `?queue=`.
  *   - **Outbox** - `?queue=<tab>` over `OUTBOX_TABS`. Everything on its way out
  *     of the books: `drafts` (TARGET §4 gate 1 - approve or discard), then the
- *     four export-batch states. EVERY period on every tab, which is why it does
+ *     export-batch states. EVERY period on every tab, which is why it does
  *     not share a screen with a month-scoped header.
  *
  * 🛑 Both are this URL. `?month=`, `?queue=` and `?posting=` are the whole of
@@ -146,8 +150,9 @@ export function LedgerPage() {
    * the outbox is what the column is showing, and its value is the tab - so a
    * pasted link reopens the pile somebody was actually looking at.
    */
-  const [queueTab, setQueueTab] = useQueryState('queue', parseAsStringLiteral(OUTBOX_TABS))
+  const [queueTab, setQueueTab] = useQueryState('queue', parseAsStringLiteral(OUTBOX_TAB_PARAMS))
   const isOutboxOpen = queueTab !== null
+  const outboxTab = parseOutboxTab(queueTab) ?? 'ready'
   /**
    * The Entries section's own view (TARGET §6) - Detail is one row per
    * posting, Summary groups them by avenue, grain, store, rail and currency.
@@ -530,7 +535,7 @@ export function LedgerPage() {
                    one of them looked like navigation. */
 
                 <OutboxPanel
-                  tab={queueTab ?? 'ready'}
+                  tab={outboxTab}
                   onTabChange={(next: OutboxTab) => void setQueueTab(next)}
                   periodKey={activePeriodKey}
                   periodLabel={periodLabel}

@@ -6,8 +6,12 @@
 export const EXPORT_BATCH_STATES = ['ready', 'sending', 'sent', 'failed', 'withdrawn'] as const
 export type ExportBatchState = (typeof EXPORT_BATCH_STATES)[number]
 
-/** The export tabs, in the order they render. `withdrawn` is history, not a tab. */
-export const EXPORT_BATCH_TABS = ['ready', 'sending', 'sent', 'failed'] as const
+/**
+ * The export tabs, in the order they render. `withdrawn` is history, not a tab,
+ * and neither is `sending` (75-D6) - a momentary state is not a place to stand,
+ * so a sending batch stays listed under Ready and spins there.
+ */
+export const EXPORT_BATCH_TABS = ['ready', 'sent', 'failed'] as const
 export type ExportBatchTab = (typeof EXPORT_BATCH_TABS)[number]
 
 /**
@@ -20,6 +24,20 @@ export type OutboxTab = (typeof OUTBOX_TABS)[number]
 
 export function isExportBatchTab(tab: OutboxTab): tab is ExportBatchTab {
   return tab !== 'drafts'
+}
+
+/** `?queue=` values a pasted link may still carry - tabs that no longer render included. */
+export const OUTBOX_TAB_PARAMS = [...OUTBOX_TABS, 'sending'] as const
+
+/** A link written before 75-D6 dropped the Sending tab lands on Ready, not on an empty strip. */
+export function parseOutboxTab(value: string | null | undefined): OutboxTab | null {
+  if (!value) return null
+  return (OUTBOX_TABS as readonly string[]).includes(value) ? (value as OutboxTab) : 'ready'
+}
+
+/** Which batch states a tab lists. Ready holds `sending` too (75-D6). */
+export function exportBatchTabAdmits(tab: ExportBatchTab, state: ExportBatchState): boolean {
+  return tab === 'ready' ? state === 'ready' || state === 'sending' : state === tab
 }
 
 const LABELS: Record<ExportBatchState, string> = {
