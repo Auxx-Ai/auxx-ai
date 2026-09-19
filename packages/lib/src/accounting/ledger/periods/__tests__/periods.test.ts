@@ -6,6 +6,7 @@ import {
   assertPeriodOpen,
   compareMonths,
   isPeriodLocked,
+  monthDateRange,
   parsePeriodKey,
   periodKeyForDate,
   periodMonth,
@@ -116,6 +117,19 @@ describe('parsePeriodKey', () => {
     expect(() => parsePeriodKey('')).toThrow(BadRequestError)
     expect(() => parsePeriodKey('august')).toThrow(BadRequestError)
     expect(() => parsePeriodKey('2026-08-18T00:00:00Z')).toThrow(BadRequestError)
+  })
+})
+
+describe('monthDateRange', () => {
+  it('ends on the real last day of the month', () => {
+    expect(monthDateRange('2026-02')).toEqual({ from: '2026-02-01', to: '2026-02-28' })
+    expect(monthDateRange('2028-02')).toEqual({ from: '2028-02-01', to: '2028-02-29' })
+    expect(monthDateRange('2026-04')).toEqual({ from: '2026-04-01', to: '2026-04-30' })
+    expect(monthDateRange('2026-12')).toEqual({ from: '2026-12-01', to: '2026-12-31' })
+  })
+
+  it('refuses a day key', () => {
+    expect(() => monthDateRange('2026-02-03')).toThrow(BadRequestError)
   })
 })
 

@@ -11,6 +11,8 @@ export interface PayoutSourceSummary {
   currency: string | null
   currencyExponent: number | null
   status: string | null
+  /** The provider's payout id — what `MoneyTransfer.externalId` carries. */
+  externalId: string | null
   issuedOn: string | null
   provider: string | null
   externalAccountId: string | null
@@ -86,6 +88,7 @@ export async function loadPayoutSourceSummaries(
       currency,
       currencyExponent,
       status: text('payout_source_status'),
+      externalId: text('payout_source_external_id'),
       issuedOn: text('payout_source_issued_on') ?? text('payout_source_issued_at'),
       provider,
       externalAccountId,

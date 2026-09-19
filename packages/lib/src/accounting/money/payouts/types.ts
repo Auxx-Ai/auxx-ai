@@ -78,6 +78,11 @@ export interface ListPayoutsFilters {
   status?: PayoutStatus
   /** Only payouts that left something in `2450` - the queue somebody works. */
   onlyUnidentified?: boolean
+  /** Matches the payout number or the provider's payout id, case-insensitively. */
+  search?: string
+  /** Inclusive `YYYY-MM-DD` bounds on the date the payout is READ by (issued, else paid). */
+  from?: string
+  to?: string
   limit?: number
   offset?: number
 }

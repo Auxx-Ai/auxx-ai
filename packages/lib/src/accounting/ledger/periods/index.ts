@@ -18,6 +18,7 @@ export {
   assertPeriodOpen,
   compareMonths,
   isPeriodLocked,
+  monthDateRange,
   type ParsedPeriodKey,
   type PeriodGranularity,
   type PeriodLock,

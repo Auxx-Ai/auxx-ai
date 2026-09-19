@@ -1161,7 +1161,13 @@ export const moneyRouter = createTRPCRouter({
       return result.value
     }),
 
-    /** Recorded payouts, newest first. */
+    /**
+     * Recorded payouts, newest first, one page at a time.
+     *
+     * The cursor is the next OFFSET: the sort key is a coalesce over two field
+     * values, so there is no single column a keyset cursor could name. A page
+     * shorter than `limit` is the last one.
+     */
     list: permissionProcedure(PermissionKey.ledgerView)
       .input(
         z
@@ -1169,17 +1175,28 @@ export const moneyRouter = createTRPCRouter({
             status: z.enum(PAYOUT_STATUSES).optional(),
             /** Only payouts that left something in `2450` - the queue somebody works. */
             onlyUnidentified: z.boolean().optional(),
+            search: z.string().max(200).optional(),
+            from: z.string().max(10).optional(),
+            to: z.string().max(10).optional(),
             limit: z.number().int().min(1).max(500).optional(),
+            cursor: z.number().int().min(0).optional(),
           })
           .optional()
       )
       .query(async ({ ctx, input }) => {
+        const limit = input?.limit ?? 50
+        const offset = input?.cursor ?? 0
         const result = await listPayouts(ctx.db, {
           organizationId: ctx.session.organizationId,
           ...(input ?? {}),
+          limit,
+          offset,
         })
         if (result.isErr()) throw result.error
-        return result.value
+        return {
+          items: result.value,
+          nextCursor: result.value.length === limit ? offset + limit : null,
+        }
       }),
 
     /**

@@ -12,7 +12,6 @@ vi.mock('../fields', () => ({ loadPayoutFieldContext: vi.fn(async () => null) })
 import {
   getPayoutEvidence,
   listPayoutEvidence,
-  listPayoutEvidenceHistory,
   listProcessorBalanceEntries,
 } from '../evidence-reads'
 
@@ -202,34 +201,18 @@ describe('bounded provider-independent payout reads', () => {
   it('does not display a previous complete assessment while current evidence is pending', async () => {
     const row = transfer()
     row.reconciliationState = 'pending'
-    const { db } = database([[joined(row)], [{ payload: { current: true } }], []])
+    const { db } = database([[joined(row)], []])
     const detail = await getPayoutEvidence(db, { organizationId: 'org', id: row.id })
     expect(detail).toMatchObject({
       reconciliationState: 'pending',
       membershipState: 'incomplete',
       constituentNetMinor: null,
       differenceMinor: null,
-      sourceObservation: { current: true },
       // No `payout` field context, so no record and therefore no posting to
       // key the drawer's ledger card on (§11.5).
       payoutInstanceId: null,
       livePostingId: null,
     })
-  })
-  it('pages history without reading all past membership observations', async () => {
-    const rows = Array.from({ length: 21 }, (_, index) => ({
-      observation: { id: `observation-${index}`, observedAt: new Date(), payload: evidence() },
-    }))
-    const { db, select, limits } = database([rows])
-    const result = await listPayoutEvidenceHistory(db, {
-      organizationId: 'org',
-      transferId: 'transfer-1',
-      limit: 20,
-    })
-    expect(result.items).toHaveLength(20)
-    expect(result.nextCursor).toBe('observation-19')
-    expect(select).toHaveBeenCalledOnce()
-    expect(limits).toEqual([21])
   })
   it('reads exact immutable membership without requiring separately materialized activity rows', async () => {
     const { db, select } = database([[joined()], [coverage], [{ payload: evidence() }], []])

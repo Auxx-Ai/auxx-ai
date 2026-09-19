@@ -147,6 +147,7 @@ export {
   incompleteRevenueLead,
   isPeriodLocked,
   MAX_COMPACT_PERIOD_KEY,
+  monthDateRange,
   monthLabel,
   type ParsedPeriodKey,
   type PeriodGranularity,

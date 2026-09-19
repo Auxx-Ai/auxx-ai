@@ -256,7 +256,8 @@ export function describeInventoryBlockers(counts: InventoryCloseCounts): CloseBl
       label: `Inventory is out by ${difference} against the movement ledger`,
       remedy:
         `The three inventory accounts hold ${ledgerMinor} through the end of ${month} and the ` +
-        `movements sum to ${subledgerMinor}. Reconcile them before closing.`,
+        `opening baseline plus the movements since the cutover sum to ${subledgerMinor}. ` +
+        'Reconcile them before closing.',
       ref: periodKey,
     })
   }

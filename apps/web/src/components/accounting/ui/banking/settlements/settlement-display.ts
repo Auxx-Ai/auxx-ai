@@ -29,6 +29,14 @@ export function settlementDisplay(row: SettlementRow) {
   }
 }
 
+/** The day a settlement is read by: what the provider filed, else what auxx paid. */
+export function settlementDay(row: {
+  paidAt: string | null
+  sourceSummary?: { issuedOn?: string | null } | null
+}): string | null {
+  return row.sourceSummary?.issuedOn?.slice(0, 10) ?? row.paidAt ?? null
+}
+
 /** Sum paid payouts exactly, keeping currencies separate and excluding unknown amounts. */
 export function settlementDepositTotals(rows: SettlementRow[]) {
   const totals = new Map<

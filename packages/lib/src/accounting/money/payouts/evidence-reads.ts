@@ -456,6 +456,28 @@ async function livePostingId(
   return row?.id ?? null
 }
 
+/**
+ * The evidence id for a payout RECORD's provider id, so a settlement row can
+ * open the same drawer the Payouts list does. Null when nothing was imported
+ * for it - a hand-recorded payout has a record and no `MoneyTransfer`.
+ */
+export async function findPayoutEvidenceIdByExternalId(
+  db: Database,
+  input: { organizationId: string; externalId: string }
+): Promise<string | null> {
+  const [row] = await db
+    .select({ id: schema.MoneyTransfer.id })
+    .from(schema.MoneyTransfer)
+    .where(
+      and(
+        eq(schema.MoneyTransfer.organizationId, input.organizationId),
+        eq(schema.MoneyTransfer.externalId, input.externalId)
+      )
+    )
+    .limit(1)
+  return row?.id ?? null
+}
+
 /** Inspect the current header and persisted assessment without loading all membership history. */
 export async function getPayoutEvidence(
   db: Database,
@@ -470,16 +492,6 @@ export async function getPayoutEvidence(
     )
     .limit(1)
   if (!row) return null
-  const [observation] = await db
-    .select({ payload: schema.FinancialSourceObservation.payload })
-    .from(schema.FinancialSourceObservation)
-    .where(
-      and(
-        eq(schema.FinancialSourceObservation.organizationId, input.organizationId),
-        eq(schema.FinancialSourceObservation.id, row.transfer.currentObservationId)
-      )
-    )
-    .limit(1)
   const matching = await openMatchSummaries(db, input.organizationId, [row.transfer])
   const instanceId = await payoutInstanceId(
     db,
@@ -489,59 +501,10 @@ export async function getPayoutEvidence(
   )
   return {
     ...transferDto(row.transfer, row.account, row.snapshot, matching.get(row.transfer.id)),
-    sourceObservation: observation?.payload ?? null,
     /** The `payout` record the ledger card is keyed on (§11.5). Null until the sync raises one. */
     payoutInstanceId: instanceId,
     /** Set while a non-reversed posting names that record — what freezes a matched item (§9.1). */
     livePostingId: instanceId ? await livePostingId(db, input.organizationId, instanceId) : null,
-  }
-}
-
-/** Page immutable source observations independently of payout membership and current assessment. */
-export async function listPayoutEvidenceHistory(
-  db: Database,
-  input: PageInput & { transferId: string }
-) {
-  const limit = pageSize(input.limit)
-  const rows = await db
-    .select({ observation: schema.FinancialSourceObservation })
-    .from(schema.FinancialSourceObservation)
-    .innerJoin(
-      schema.MoneyTransfer,
-      and(
-        eq(schema.MoneyTransfer.organizationId, schema.FinancialSourceObservation.organizationId),
-        eq(schema.MoneyTransfer.sourceObjectId, schema.FinancialSourceObservation.sourceObjectId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.MoneyTransfer.organizationId, input.organizationId),
-        eq(schema.MoneyTransfer.id, input.transferId),
-        input.cursor ? lt(schema.FinancialSourceObservation.id, input.cursor) : undefined
-      )
-    )
-    .orderBy(desc(schema.FinancialSourceObservation.id))
-    .limit(limit + 1)
-  return {
-    items: rows.slice(0, limit).map(({ observation }) => {
-      const parsed = payoutRecordEvidenceSchema.safeParse(observation.payload)
-      const evidence = parsed.success ? parsed.data : null
-      return {
-        id: observation.id,
-        createdAt: observation.observedAt.toISOString(),
-        acquisitionId: evidence?.acquisition.id ?? null,
-        pageIndex: evidence?.membership.page?.index ?? null,
-        providerReady: evidence?.membership.providerReady ?? false,
-        entryCount: evidence?.membership.entries.length ?? 0,
-        reason:
-          evidence?.rejectionReason ??
-          evidence?.membership.reason ??
-          (evidence ? null : 'Source evidence does not match the supported contract.'),
-        rejections: evidence?.membership.rejections ?? [],
-        rawEvidence: observation.payload,
-      }
-    }),
-    nextCursor: rows.length > limit ? rows[limit - 1]!.observation.id : null,
   }
 }
 

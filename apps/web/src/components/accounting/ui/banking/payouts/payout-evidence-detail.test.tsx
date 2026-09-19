@@ -39,12 +39,6 @@ vi.mock('~/trpc/react', () => ({
     useUtils: () => ({ payoutEvidence: { invalidate: vi.fn() } }),
     payoutEvidence: {
       detail: { useQuery: () => ({ data: state.payout, error: state.detailError }) },
-      history: {
-        useInfiniteQuery: () => ({
-          data: { pages: [{ items: state.payout.generations ?? [] }] },
-          isPending: false,
-        }),
-      },
       entries: {
         useInfiniteQuery: () => ({
           data: { pages: [{ items: state.entries }] },
@@ -107,19 +101,6 @@ beforeEach(() => {
     livePostingId: null,
     blockers: ['The provider has not completed the payout membership.'],
     nextActions: ['Run the payout stream again after the provider finishes processing.'],
-    generations: [
-      {
-        id: 'observation-1',
-        createdAt: '2026-09-15T12:00:00.000Z',
-        state: 'incomplete',
-        rejections: [],
-        pageIndex: 0,
-        providerReady: false,
-        entryCount: 0,
-        reason: 'Membership fetch interrupted',
-      },
-    ],
-    sourceObservation: { payout_id: 'payout-123' },
   }
 })
 
@@ -172,7 +153,6 @@ describe('payout evidence inspection', () => {
       screen.getByText('Bank confirmation is not assessed for these payouts.')
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /post|sync/i })).not.toBeInTheDocument()
-    expect(screen.getByText('Membership fetch interrupted')).toBeInTheDocument()
     // 🛑 The blocker survives; the "Next actions" list that restated it as an
     // imperative does not. Asserted as absent so it does not come back.
     expect(screen.queryByText(/Run the payout stream again/)).not.toBeInTheDocument()
@@ -222,8 +202,8 @@ describe('payout evidence inspection', () => {
       },
     ]
     detail()
-    expect(screen.getByText('Outgoing payout')).toBeInTheDocument()
-    expect(screen.getByText('Not applicable')).toBeInTheDocument()
+    expect(screen.getByText('Out')).toBeInTheDocument()
+    expect(screen.queryByText('Not applicable')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Match manually' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Load more activity' }))
     expect(state.fetchNextPage).toHaveBeenCalledOnce()

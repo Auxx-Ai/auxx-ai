@@ -15,13 +15,16 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, gte, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm'
+import { and, eq, gt, gte, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { getOrgCache } from '../../../cache'
 import { countUnissuedChannelCreditMemos } from '../../../sales/credit-memos/reads'
+import { readOrganizationSettings } from '../../../settings/read'
 import { readTrialBalance } from '../../reports/trial-balance'
+import { cutoverDateFor } from '../builders/opening-balance'
 import { INVENTORY_ROLES } from '../roles/regime'
 import { readRoleAssignments } from '../roles/role-assignments'
+import { OPENING_BASELINE_SETTING_KEYS } from '../setup/setup-readiness'
 import {
   type CloseBlockerItem,
   describeIncompleteRevenue,
@@ -105,8 +108,11 @@ async function countUnpostedMovements(
 }
 
 /**
- * Σ frozen `stock_movement_extended_cost` for every movement dated on or before
- * the month's last day.
+ * The opening baseline plus Σ frozen `stock_movement_extended_cost` for every
+ * movement dated after the cutover and on or before the month's last day.
+ *
+ * Movements at or before the cutover are the old system's; the opening baseline
+ * replaces that history, and it is what the ledger side holds for the same days.
  *
  * `adjust_subparts` rows are excluded, the same population every other cost read
  * excludes: an exploded child row is a second copy of a value its parent already
@@ -115,8 +121,9 @@ async function countUnpostedMovements(
 async function readSubledgerValue(
   db: Database,
   organizationId: string,
-  lastDay: string
+  window: { cutoverDate: string | null; openingMinor: number; lastDay: string }
 ): Promise<number> {
+  const { cutoverDate, openingMinor, lastDay } = window
   const fields = await getOrgCache()
     .from(organizationId, 'customFields')
     .bySystemAttributes([
@@ -127,7 +134,7 @@ async function readSubledgerValue(
   const occurredAt = fields.stock_movement_occurred_at
   const extendedCost = fields.stock_movement_extended_cost
   const adjustSubparts = fields.stock_movement_adjust_subparts
-  if (!occurredAt || !extendedCost) return 0
+  if (!occurredAt || !extendedCost) return openingMinor
 
   const dated = db
     .select({ entityId: schema.FieldValue.entityId })
@@ -137,6 +144,7 @@ async function readSubledgerValue(
         eq(schema.FieldValue.organizationId, organizationId),
         eq(schema.FieldValue.fieldId, occurredAt.id),
         isNotNull(schema.FieldValue.valueDate),
+        ...(cutoverDate ? [gt(sql`${schema.FieldValue.valueDate}::date`, cutoverDate)] : []),
         lte(sql`${schema.FieldValue.valueDate}::date`, lastDay)
       )
     )
@@ -166,7 +174,7 @@ async function readSubledgerValue(
       )
     )
 
-  return Math.round(Number(row?.total ?? 0))
+  return openingMinor + Math.round(Number(row?.total ?? 0))
 }
 
 /** The three inventory accounts' balance through one day, in minor units. */
@@ -252,6 +260,24 @@ async function readPartsListStandardValue(
   return Math.round(Number(row?.total ?? 0))
 }
 
+/** Where the old system's books end and what inventory was worth there. */
+async function readCutover(
+  organizationId: string
+): Promise<{ cutoverDate: string | null; openingMinor: number }> {
+  const K = OPENING_BASELINE_SETTING_KEYS
+  const settings = await readOrganizationSettings(organizationId, [
+    K.cutoffPeriod,
+    K.inventory_raw_materials,
+    K.inventory_wip,
+    K.inventory_finished_goods,
+  ] as const)
+  const cutoff = settings[K.cutoffPeriod]?.trim() || null
+  const openingMinor = [K.inventory_raw_materials, K.inventory_wip, K.inventory_finished_goods]
+    .map((key) => settings[key])
+    .reduce<number>((sum, value) => sum + (typeof value === 'number' ? value : 0), 0)
+  return { cutoverDate: cutoff ? cutoverDateFor(cutoff) : null, openingMinor }
+}
+
 export interface CloseBlockersResult {
   periodKey: string
   items: CloseBlockerItem[]
@@ -293,9 +319,10 @@ export async function readCloseBlockers(
   }
 
   try {
+    const cutover = await readCutover(organizationId)
     const [unpostedMovements, subledgerMinor, ledgerMinor, standardValueMinor] = await Promise.all([
       countUnpostedMovements(db, organizationId, bounds),
-      readSubledgerValue(db, organizationId, bounds.last),
+      readSubledgerValue(db, organizationId, { ...cutover, lastDay: bounds.last }),
       readInventoryLedgerValue(db, organizationId, bounds.last),
       readPartsListStandardValue(db, organizationId),
     ])
