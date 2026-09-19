@@ -34,6 +34,12 @@ const h = vi.hoisted(() => ({
   exportSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
   /** The batched roll-up this door runs once the whole receipt is committed. */
   settleSpy: vi.fn(),
+  /** The post-commit QoH recalculation, which the hook also performs. */
+  qohSpy: vi.fn(async (..._args: unknown[]) => {}),
+}))
+
+vi.mock('../../costing/qoh', () => ({
+  batchRecalculateQoH: (...args: unknown[]) => h.qohSpy(...args),
 }))
 
 // `inventory/movements` still reads the cache directly; this door does not.
@@ -718,5 +724,29 @@ describe('receivePurchaseOrder — the roll-up is settled once, not once per lin
 
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap()).toHaveLength(1)
+  })
+})
+
+describe('receivePurchaseOrder — the post-commit QoH recalculation', () => {
+  it('🛑 still reports the receipt as written when the recalculation fails', async () => {
+    // The movements are committed by then, and the per-movement hook writes the
+    // same rows behind this call. The receipt that reported "failed" while the
+    // order showed the goods received is the bug this pins.
+    h.qohSpy.mockRejectedValue(new Error('FieldValue_entity_field_sortKey_key'))
+
+    const result = await receivePurchaseOrder(db, ORG, USER, { lines: [line()] })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap()).toHaveLength(1)
+    h.qohSpy.mockResolvedValue(undefined)
+  })
+
+  it('recalculates each received part exactly once', async () => {
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
+    })
+
+    expect(h.qohSpy).toHaveBeenCalledTimes(1)
+    expect(h.qohSpy).toHaveBeenCalledWith(ORG, ['part_1', 'part_2'])
   })
 })

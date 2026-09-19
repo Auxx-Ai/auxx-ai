@@ -172,27 +172,25 @@ export async function batchRecalculateQoH(
     }
   }
 
-  // 1 bulk DELETE + 1 bulk INSERT, atomically
-  // (plans/field-values/delete-insert-replace.md Phase 0): a crash between
-  // the statements must not wipe stock levels for the whole batch.
-  // Cross-entity bulk replace, so no per-(entity, field) advisory lock —
-  // the transaction alone closes the destroy window.
-  const fieldIds = [qohField.id, ...(statusField ? [statusField.id] : [])]
-  await database.transaction(async (tx) => {
-    await tx
-      .delete(schema.FieldValue)
-      .where(
-        and(
-          inArray(schema.FieldValue.entityId, unique),
-          inArray(schema.FieldValue.fieldId, fieldIds),
-          eq(schema.FieldValue.organizationId, organizationId)
-        )
-      )
-
-    if (insertRows.length > 0) {
-      await tx.insert(schema.FieldValue).values(insertRows)
-    }
-  })
+  // ONE upsert on `FieldValue_entity_field_sortKey_key`, not a delete+insert
+  // (plans/field-values/delete-insert-replace.md §5C): the per-movement hook
+  // writes these same two rows after the same commit, and a hook row landing
+  // between the delete and the insert tripped the unique index and failed the
+  // whole receipt. Both writers SUM the same committed movements, so
+  // last-write-wins is the right answer and the write is order-independent.
+  if (insertRows.length > 0) {
+    await database
+      .insert(schema.FieldValue)
+      .values(insertRows)
+      .onConflictDoUpdate({
+        target: [schema.FieldValue.entityId, schema.FieldValue.fieldId, schema.FieldValue.sortKey],
+        set: {
+          valueNumber: sql`excluded."valueNumber"`,
+          optionId: sql`excluded."optionId"`,
+          updatedAt: new Date(),
+        },
+      })
+  }
 
   // 4. One batched realtime publish
   if (realtimeEntries.length > 0) {

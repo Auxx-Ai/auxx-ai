@@ -29,6 +29,13 @@ const h = vi.hoisted(() => ({
   listPostingsForSource: vi.fn(),
   setValuesForEntity: vi.fn(),
   readBillEditOpen: vi.fn(async () => null as { openedAt: string; byUserId: string } | null),
+  ledgerState: { draftGlPostingId: null as string | null, generation: 1 },
+  writeBillDraftPosting: vi.fn(async () => {}),
+  discardDraftPosting: vi.fn(
+    async (): Promise<{ isErr: () => boolean; error?: Error }> => ({ isErr: () => false })
+  ),
+  /** The `GlPosting` row the draft pointer resolves to, or `null` when it is gone. */
+  draftRow: null as Record<string, unknown> | null,
 }))
 
 vi.mock('@auxx/database', async () => {
@@ -67,6 +74,13 @@ vi.mock('../../../../field-values/field-value-service', () => ({
   },
 }))
 vi.mock('../../bill-edit-flag', () => ({ readBillEditOpen: h.readBillEditOpen }))
+vi.mock('../../bill-ledger-state', () => ({
+  readBillLedgerState: async () => h.ledgerState,
+  writeBillDraftPosting: h.writeBillDraftPosting,
+}))
+vi.mock('../../../ledger/post/draft-lines', () => ({
+  discardDraftPosting: h.discardDraftPosting,
+}))
 vi.mock('../reads', () => ({
   requireVendorBill: async () => h.bill,
   loadVendorBillLines: async () => h.lines,
@@ -74,12 +88,22 @@ vi.mock('../reads', () => ({
 
 import type { Database } from '@auxx/database'
 import { BadRequestError } from '../../../../errors'
-import { postVendorBill, previewVendorBill, voidVendorBill } from '../writes'
+import {
+  listVendorBillPostings,
+  postVendorBill,
+  previewVendorBill,
+  voidVendorBill,
+} from '../writes'
 
 const ORG = 'org_1'
 const USER = 'user_1'
 const BILL_ID = 'ei_bill_1'
-const db = {} as Database
+/** Answers the one `GlPosting` read `listVendorBillPostings` makes for a draft pointer. */
+const db = {
+  select: () => ({
+    from: () => ({ where: () => ({ limit: async () => (h.draftRow ? [h.draftRow] : []) }) }),
+  }),
+} as unknown as Database
 
 /** What was written to the bill in the last `setValuesForEntity` call. */
 function lastWrite(): Array<{ fieldId: string; value: unknown }> {
@@ -129,6 +153,9 @@ beforeEach(() => {
   })
   h.reverseEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_2' })
   h.listPostingsForSource.mockResolvedValue({ isErr: () => false, isOk: () => true, value: [] })
+  h.ledgerState = { draftGlPostingId: null, generation: 1 }
+  h.draftRow = null
+  h.discardDraftPosting.mockResolvedValue({ isErr: () => false })
 })
 
 describe('postVendorBill', () => {
@@ -407,6 +434,157 @@ describe('voidVendorBill', () => {
       voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(/open for editing/)
     expect(h.reverseEntry).not.toHaveBeenCalled()
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+})
+
+// The draft blindness this suite could not see: `post-entry.ts` writes NO
+// subject `GlPostingSource` row for a draft, so a bill whose avenue has
+// auto-post OFF had a posting nothing on this path could reach.
+describe('listVendorBillPostings and the drafted entry', () => {
+  it('surfaces the draft the bill points at, as `draft`', async () => {
+    h.ledgerState = { draftGlPostingId: 'gp_draft', generation: 1 }
+    h.draftRow = {
+      id: 'gp_draft',
+      docNumber: null,
+      status: 'draft',
+      postingType: 'vendor_bill',
+    }
+
+    const postings = await listVendorBillPostings(db, {
+      organizationId: ORG,
+      vendorBillInstanceId: BILL_ID,
+    })
+
+    expect(postings).toEqual([
+      { glPostingId: 'gp_draft', docNumber: '', status: 'draft', postingType: 'vendor_bill' },
+    ])
+  })
+
+  it('drops a pointer whose posting was discarded in the outbox', async () => {
+    h.ledgerState = { draftGlPostingId: 'gp_gone', generation: 1 }
+    h.draftRow = null
+
+    const postings = await listVendorBillPostings(db, {
+      organizationId: ORG,
+      vendorBillInstanceId: BILL_ID,
+    })
+
+    expect(postings).toEqual([])
+    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+  })
+
+  it('does not list a promoted draft twice', async () => {
+    h.ledgerState = { draftGlPostingId: 'gp_1', generation: 1 }
+    h.listPostingsForSource.mockResolvedValue({
+      isErr: () => false,
+      isOk: () => true,
+      value: [
+        {
+          id: 'gp_1',
+          docNumber: 'AUXX-BIL-BILL0007',
+          status: 'posted',
+          postingType: 'vendor_bill',
+        },
+      ],
+    })
+
+    const postings = await listVendorBillPostings(db, {
+      organizationId: ORG,
+      vendorBillInstanceId: BILL_ID,
+    })
+
+    expect(postings).toHaveLength(1)
+    expect(postings[0]?.status).toBe('posted')
+    // The subject link is the truth now, so the pointer has nothing left to say.
+    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+  })
+
+  it('drops a pointer whose posting is no longer a draft', async () => {
+    h.ledgerState = { draftGlPostingId: 'gp_old', generation: 1 }
+    h.draftRow = {
+      id: 'gp_old',
+      docNumber: 'AUXX-BIL-BILL0007',
+      status: 'reversed',
+      postingType: 'vendor_bill',
+    }
+
+    const postings = await listVendorBillPostings(db, {
+      organizationId: ORG,
+      vendorBillInstanceId: BILL_ID,
+    })
+
+    expect(postings).toEqual([])
+    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+  })
+
+  it('stamps the pointer when the ledger drafts the entry, and clears it on a post', async () => {
+    h.postEntry.mockResolvedValue({ status: 'drafted', glPostingId: 'gp_draft' })
+    await postVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, 'gp_draft')
+
+    h.writeBillDraftPosting.mockClear()
+    h.bill = { ...h.bill, status: 'draft' }
+    h.postEntry.mockResolvedValue({
+      status: 'posted',
+      glPostingId: 'gp_1',
+      docNumber: 'AUXX-BIL-BILL0007',
+    })
+    await postVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+  })
+})
+
+describe('voidVendorBill and a drafted entry', () => {
+  // 🛑 A draft left standing can still be approved in the outbox, raising a
+  // payable for a bill that is void.
+  it('discards the draft rather than reversing it, then sets void', async () => {
+    h.bill = { ...h.bill, status: 'posted' }
+    h.ledgerState = { draftGlPostingId: 'gp_draft', generation: 1 }
+    h.draftRow = { id: 'gp_draft', docNumber: null, status: 'draft', postingType: 'vendor_bill' }
+
+    await voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+
+    expect(h.discardDraftPosting).toHaveBeenCalledWith(db, {
+      organizationId: ORG,
+      glPostingId: 'gp_draft',
+    })
+    expect(h.reverseEntry).not.toHaveBeenCalled()
+    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+    expect(lastWrite()).toContainEqual({ fieldId: 'vendor_bill_status', value: 'void' })
+  })
+
+  // After promote -> reverse the pointer names a reversed row. Harmless, but a
+  // void is the last chance to clear it before the bill stops being read.
+  it('clears a pointer left standing on a posting that is no longer a draft', async () => {
+    h.bill = { ...h.bill, status: 'posted' }
+    h.ledgerState = { draftGlPostingId: 'gp_old', generation: 1 }
+    h.draftRow = {
+      id: 'gp_old',
+      docNumber: 'AUXX-BIL-BILL0007',
+      status: 'reversed',
+      postingType: 'vendor_bill',
+    }
+
+    await voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+
+    expect(h.discardDraftPosting).not.toHaveBeenCalled()
+    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+    expect(lastWrite()).toContainEqual({ fieldId: 'vendor_bill_status', value: 'void' })
+  })
+
+  it('refuses the void when the draft cannot be discarded', async () => {
+    h.bill = { ...h.bill, status: 'posted' }
+    h.ledgerState = { draftGlPostingId: 'gp_draft', generation: 1 }
+    h.draftRow = { id: 'gp_draft', docNumber: null, status: 'draft', postingType: 'vendor_bill' }
+    h.discardDraftPosting.mockResolvedValue({
+      isErr: () => true,
+      error: new Error('it is posted, not draft'),
+    })
+
+    await expect(
+      voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
+    ).rejects.toThrow(/could not be discarded/)
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
 })

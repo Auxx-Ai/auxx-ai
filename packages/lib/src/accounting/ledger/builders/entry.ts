@@ -823,6 +823,16 @@ export interface VendorBillEntryInput {
    * `already_posted` - a SUCCESS - with its payable never recorded.
    */
   internalNumber: string
+  /**
+   * The claim and document-number key, when it is NOT the internal number.
+   *
+   * A repost after an edit passes one: the reversed original's claim row is
+   * gone but its document number is still in the books, and re-keying on
+   * `internalNumber` would mint that same number again. See
+   * `purchasing/post-vendor-bill.ts`'s `vendorBillEntryKey`. The messages keep
+   * naming the internal number either way.
+   */
+  periodKey?: string | null
   /** `YYYY-MM-DD`. The bill's own `billedAt` - the ACCOUNTING date, never today. */
   billedAt: string
   /** The bill's currency; refused when it differs from `ledgerCurrency`. */
@@ -855,7 +865,7 @@ export interface VendorBillEntryInput {
 
 export interface BuiltVendorBillEntry {
   entry: BuiltEntry
-  /** `internalNumber`, trimmed. The claim key and the document number's key. */
+  /** The claim key and the document number's key - `internalNumber` unless one was passed. */
   periodKey: string
   /** The payable raised. Equals the bill's stored total. */
   totalMinor: number
@@ -913,6 +923,14 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
       'entry instead.',
     context: { vendorBillId },
   })
+  const periodKey = input.periodKey?.trim()
+    ? assertCompactablePeriodKey({
+        value: input.periodKey,
+        label: 'Bill entry key',
+        remedy: 'Shorten the vendor bill sequence prefix.',
+        context: { vendorBillId },
+      })
+    : number
 
   const currency = input.currency?.trim() || input.ledgerCurrency
   if (input.ledgerCurrency && currency !== input.ledgerCurrency) {
@@ -1100,11 +1118,11 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
   return {
     entry: buildEntry({
       postingType: VENDOR_BILL_POSTING_TYPE,
-      periodKey: number,
+      periodKey,
       txnDate: billedAt,
       lines,
     }),
-    periodKey: number,
+    periodKey,
     totalMinor,
     allocations: read.map((row, index) => ({
       lineId: row.line.lineId,

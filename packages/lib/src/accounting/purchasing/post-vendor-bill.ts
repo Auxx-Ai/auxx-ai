@@ -18,11 +18,13 @@ import {
   VENDOR_BILL_POSTING_TYPE,
   VENDOR_BILL_SOURCE_TYPE,
 } from '../ledger/builders/entry'
+import { hashedPeriodKey, MAX_COMPACT_PERIOD_KEY } from '../ledger/periods/period-key'
 import { resolvePeriodLock } from '../ledger/periods/period-lock'
 import { readAutoPostMode } from '../ledger/post/auto-post'
 import { LEDGER_CURRENCY, postEntry } from '../ledger/post/post-entry'
 import { isAccountingEnabled } from '../ledger/setup/accounting-enabled'
 import type { PostResult } from '../ledger/types'
+import { writeBillDraftPosting } from './bill-ledger-state'
 import type { VendorBillLineRecord, VendorBillRecord } from './expense-bill/reads'
 import type { AllocationBasis } from './types'
 
@@ -60,6 +62,37 @@ export interface VendorBillEntrySource {
   billedAt: string
   /** The order's own basis. Defaults to `value`; it never changes what posts. */
   allocationBasis?: AllocationBasis
+  /** How many times this bill has posted. 1 (the default) keys on the internal number. */
+  generation?: number
+}
+
+/**
+ * The claim and document-number key for one generation of a bill's entry.
+ *
+ * Generation 1 is the internal number verbatim (`BILL-0002` -> `AUXX-BIL-BILL0002`)
+ * and must stay so, or every bill already in a ledger re-keys. A repost cannot
+ * reuse it: Save reverses the original at `-R1`, which frees the CLAIM but
+ * leaves `AUXX-BIL-BILL0002` standing on the reversed row, and `docNumber` is
+ * unique per org.
+ *
+ * So a repost keys on the number's DIGITS plus a generation marker -
+ * `0002G2` -> `AUXX-BIL-0002G2`, whose own reversal `AUXX-BIL-0002G2-R1` is 18
+ * of the 21 characters allowed. `BILL0002G2` would be 10 against a 9-character
+ * budget and does not fit. When the internal number carries no digits, or the
+ * marker would not fit beside them, the key falls back to a 6-digit hash of the
+ * number and the generation (`BGN-<hash>`), which always fits.
+ */
+export function vendorBillEntryKey(internalNumber: string, generation: number): string | undefined {
+  if (generation <= 1) return undefined
+  const digits = internalNumber.replace(/\D/g, '')
+  const marked = `${digits}G${generation}`
+  if (digits.length > 0 && marked.length <= MAX_COMPACT_PERIOD_KEY) return marked
+  return hashedPeriodKey({
+    prefix: 'BGN',
+    sourceId: `${internalNumber}:${generation}`,
+    label: 'vendor bill repost',
+    idLabel: 'internal number',
+  })
 }
 
 /**
@@ -74,6 +107,7 @@ export function buildEntryForVendorBill(source: VendorBillEntrySource): BuiltVen
   return buildVendorBillEntry({
     vendorBillId: bill.id,
     internalNumber: bill.internalNumber,
+    periodKey: vendorBillEntryKey(bill.internalNumber, source.generation ?? 1),
     billedAt,
     currency: bill.currency,
     ledgerCurrency: LEDGER_CURRENCY,
@@ -115,7 +149,8 @@ export interface PostVendorBillEntryInput {
  * Idempotent by the claim's unique index: the period key is the bill's own
  * INTERNAL number, `RecordSequence`-issued and unique in the org, so a second
  * Post claims the same `(org, vendor_bill, periodKey, revision=0)` tuple and
- * converges to `already_posted`. The mode follows the `expenseBill` avenue,
+ * converges to `already_posted`. A repost after an edit keys on a later
+ * generation of it - see {@link vendorBillEntryKey}. The mode follows the `expenseBill` avenue,
  * which is the one buy-side document lane.
  *
  * **Never throws.** Every outcome is a `PostResult`; `null` means accounting is
@@ -159,6 +194,14 @@ export async function postVendorBillEntry(
         : []),
     ],
   })
+
+  // A draft writes no subject row, so this pointer is the bill's only way back
+  // to the entry it is waiting on; a real post makes the subject link the truth.
+  if (result.status === 'drafted' && result.glPostingId) {
+    await writeBillDraftPosting(db, organizationId, vendorBillInstanceId, result.glPostingId)
+  } else if (result.status === 'posted' || result.status === 'already_posted') {
+    await writeBillDraftPosting(db, organizationId, vendorBillInstanceId, null)
+  }
 
   logger.info('Posted a vendor bill', {
     organizationId,

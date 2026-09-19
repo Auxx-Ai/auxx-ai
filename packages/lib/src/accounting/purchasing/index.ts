@@ -65,6 +65,11 @@ export {
   updateBillIntakeRun,
 } from './bill-intake'
 export {
+  BILL_LEDGER_KEY,
+  type BillLedgerState,
+  readBillLedgerState,
+} from './bill-ledger-state'
+export {
   listVendorBillPostings,
   loadVendorBill,
   loadVendorBillLines,
@@ -74,6 +79,7 @@ export {
   requireVendorBill,
   type VendorBillLineRecord,
   type VendorBillPostInput,
+  type VendorBillPosting,
   type VendorBillRecord,
   type VoidVendorBillInput,
   voidVendorBill,

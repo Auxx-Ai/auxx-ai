@@ -57,6 +57,16 @@ export type VendorBillMetadata = {
     openedAt: string
     byUserId: string
   }
+  /** What the bill knows about its own entry that `GlPostingSource` cannot say. */
+  ledger?: {
+    /**
+     * The `GlPosting` this bill is waiting on in the outbox. A draft writes no
+     * subject claim, so this pointer is the only way back to it.
+     */
+    draftGlPostingId?: string | null
+    /** How many times the entry has been posted; a repost after Save claims the next. */
+    generation?: number
+  }
 }
 
 /**

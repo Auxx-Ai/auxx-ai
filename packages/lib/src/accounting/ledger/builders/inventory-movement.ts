@@ -19,7 +19,9 @@
 // and produce legs net exactly, a run of movements that were all skipped).
 
 import { UnprocessableEntityError } from '../../../errors'
+import { hashedPeriodKey } from '../periods/period-key'
 import type { BuiltEntry, GlPostingLineInput } from '../types'
+import { DOC_NUMBER_PREFIX } from './doc-number'
 import { ACCOUNT_ROLES, buildEntry } from './entry'
 
 /**
@@ -115,7 +117,7 @@ export interface InventoryMovementEntryInput {
   kind: InventoryDocumentKind
   /** The subject's source kind - `'fulfillment'`, `'stock_movement'`, `'build'`. */
   documentKind: string
-  /** The subject's source id. Also the entry's `periodKey`, so the claim is per document. */
+  /** The subject's source id. {@link inventoryPeriodKey} of it is the entry's `periodKey`. */
   documentId: string
   /** `YYYY-MM-DD`. The document's own accounting date, never today. */
   txnDate: string
@@ -149,6 +151,24 @@ function assertMinor(value: number, label: string): void {
       { amount: String(value) }
     )
   }
+}
+
+/**
+ * The claim key for one inventory document — `INV-<6 base36>` of its subject id.
+ *
+ * 🛑 Hashed, never verbatim: every subject an inventory document has is a
+ * 24-character cuid (a movement, a build, a fulfillment, the org), and
+ * `AUXX-INV-<cuid>` is 33 characters against a 21-character cap. It inherits
+ * `hashedPeriodKey`'s collision caveat, which `postInventoryMovementInTx`
+ * discharges on `already_posted`.
+ */
+export function inventoryPeriodKey(documentId: string): string {
+  return hashedPeriodKey({
+    prefix: DOC_NUMBER_PREFIX.inventory_movement,
+    sourceId: documentId,
+    label: 'inventory entry',
+    idLabel: 'document id',
+  })
 }
 
 /** A draft leg, before zero legs are dropped and the sign is split off. */
@@ -410,7 +430,7 @@ export function buildInventoryMovementEntry(
       postingType: 'inventory_movement',
       // The DOCUMENT is the claim's identity: one live entry per document,
       // whatever month it falls in.
-      periodKey: documentId,
+      periodKey: inventoryPeriodKey(documentId),
       txnDate,
       lines,
     }),

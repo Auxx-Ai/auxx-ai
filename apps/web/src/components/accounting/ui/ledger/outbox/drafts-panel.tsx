@@ -170,7 +170,12 @@ export function DraftsPanel({
     const confirmed = await confirm({
       title: `Discard ${posting.docNumber || 'this draft'}?`,
       description:
-        'A draft holds no claim and no document number, so nothing else is affected. This cannot be undone from here.',
+        'A draft holds no claim and no document number, so nothing else is affected. This cannot be undone from here.' +
+        // The bill is already `posted`, so Post will not take it again - Save is
+        // the door back.
+        (posting.postingType === 'vendor_bill'
+          ? ' For a vendor bill, Edit then Save drafts it again.'
+          : ''),
       confirmText: 'Discard the draft',
       cancelText: 'Keep it',
       destructive: true,

@@ -204,14 +204,26 @@ export function useSettings({ scope }: UseSettingsOptions) {
 
   // Helper function to batch update organization settings (admin only)
   const batchUpdateOrganizationSettings = useCallback(
-    (settings: Array<{ key: string; value: SettingValue }>) => {
-      batchUpdateOrgSettingsMutation.mutate({ settings })
+    (updates: Array<{ key: string; value: SettingValue }>) => {
+      // 🛑 The optimistic patch below is the only thing driving the control, and
+      // a dirty-draft form reseeds off it - so a refused write left the switch
+      // reading saved with nothing in `OrganizationSetting` behind it.
+      const previous = Object.fromEntries(updates.map((s) => [s.key, settings[s.key] ?? null]))
+      batchUpdateOrgSettingsMutation.mutate(
+        { settings: updates },
+        {
+          onError: () => {
+            setSettings((prev) => ({ ...prev, ...previous }))
+            if (organizationId) patchSettings(organizationId, previous)
+          },
+        }
+      )
 
-      const patch = Object.fromEntries(settings.map((s) => [s.key, s.value]))
+      const patch = Object.fromEntries(updates.map((s) => [s.key, s.value]))
       setSettings((prev) => ({ ...prev, ...patch }))
       if (organizationId) patchSettings(organizationId, patch)
     },
-    [batchUpdateOrgSettingsMutation, organizationId, patchSettings]
+    [batchUpdateOrgSettingsMutation, organizationId, patchSettings, settings]
   )
 
   return {

@@ -48,6 +48,7 @@ import { ExportAvenueRow } from './export-avenue-row'
 import { PostingGuideDialog } from './posting-guide-dialog'
 import {
   autoPostKeyForAvenue,
+  autoPostKeyForPolicy,
   autoSendKeyForAvenue,
   EXPORT_ROW_DRAFT_KEYS,
   EXTERNAL_SETTING_HOMES,
@@ -152,9 +153,11 @@ export function AccountingPostingSettingsPage() {
     const avenue = exportAvenueForPolicy(policy)
     const avenueAutoPostKey = avenue ? autoPostKeyForAvenue(avenue) : null
     // The avenue's own `autoPost` row moves INTO the export row below, so it is
-    // dropped from the generic loop rather than shown twice.
+    // dropped from the generic loop rather than shown twice - and dropped on
+    // every policy sharing that avenue, not just the one carrying the row.
+    const ownAutoPostKey = autoPostKeyForPolicy(policy)
     const inputKeys = policy.settings.filter(
-      (key) => !(key in EXTERNAL_SETTING_HOMES) && key !== avenueAutoPostKey
+      (key) => !(key in EXTERNAL_SETTING_HOMES) && key !== ownAutoPostKey
     )
     const externalKeys = policy.settings.filter((key) => key in EXTERNAL_SETTING_HOMES)
     const summaryGrainKey = avenue ? summaryGrainKeyForAvenue(avenue) : null

@@ -284,8 +284,19 @@ export async function receivePurchaseOrder(
       })
 
       // Belt on the plain lane's own recalculation, which fired against a
-      // pre-commit snapshot from inside the transaction above.
-      await batchRecalculateQoH(organizationId, [...new Set(written.map((r) => r.partInstanceId))])
+      // pre-commit snapshot from inside the transaction above. Swallowed for
+      // `settleLineRollups`' reason: the movements are committed, and the
+      // per-movement hook recalculates the same parts behind us.
+      try {
+        await batchRecalculateQoH(organizationId, [
+          ...new Set(written.map((r) => r.partInstanceId)),
+        ])
+      } catch (error) {
+        logger.error('Quantity on hand was not recalculated after a receipt', {
+          organizationId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
       await exportInventoryMovement(db, post)
 
       await settleLineRollups(

@@ -24,6 +24,7 @@ import {
   previewVendorBill,
   proposeBillLineLinks,
   readBillEditOpen,
+  readBillLedgerState,
   readLandedCostByBill,
   readLandedCostByVendorPart,
   resumeBillIntakeRun,
@@ -480,18 +481,19 @@ export const purchasingRouter = createTRPCRouter({
     }),
 
   /**
-   * Is this bill unlocked for editing? The one thing the drawer needs that the
-   * bill's own fields do not carry — the flag lives on `EntityInstance.metadata`.
+   * Is this bill unlocked for editing, and is it waiting on a drafted entry?
+   * Both live on `EntityInstance.metadata` — the flag because it has no
+   * reporting meaning, the draft pointer because a draft writes no subject
+   * `GlPostingSource` row for the ledger card to find.
    */
   billEditState: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ vendorBillId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const editOpen = await readBillEditOpen(
-        ctx.db,
-        ctx.session.organizationId,
-        input.vendorBillId
-      )
-      return { editOpen }
+      const [editOpen, ledger] = await Promise.all([
+        readBillEditOpen(ctx.db, ctx.session.organizationId, input.vendorBillId),
+        readBillLedgerState(ctx.db, ctx.session.organizationId, input.vendorBillId),
+      ])
+      return { editOpen, draftGlPostingId: ledger.draftGlPostingId }
     }),
 
   /**
