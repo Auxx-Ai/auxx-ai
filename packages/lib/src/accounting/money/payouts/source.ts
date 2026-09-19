@@ -38,15 +38,16 @@ import type { PaymentGatewayRow, PaymentGatewaySettlementSourceValue } from '../
  * review queue (§3) and wants no feed, ever.
  *
  * ⚠️ **A key here is not a promise that a source exists.** `affirm` joined the
- * vocabulary with `plans/apps/affirm/affirm-build-plan.md` §5.1 and is therefore
- * in this union, but **nothing will ever register a `PayoutSource` for it, by
- * design** (that plan's §5.3, resolved 2026-09-15). Affirm is read by the
- * financial connector (task 46) instead, through its own evidence path - an
- * `AFFIRM_PAYOUT_SOURCE` would simply never be registered.
+ * vocabulary with `plans/apps/affirm/affirm-build-plan.md` §5.1 and
+ * `authorize_net` with `plans/apps/authorize-net/authorize-net-build-plan.md`
+ * §5.1, so both are in this union - but **nothing will ever register a
+ * `PayoutSource` for either, by design** (those plans' §5.3 and §5.4). Both are
+ * read by the financial connector (task 46) instead, through their own evidence
+ * path; an `AFFIRM_PAYOUT_SOURCE` would simply never be registered.
  *
  * Until something registers it, `getPayoutSource` answers a `NotFoundError`
  * naming the id and the sweep never polls it, which is a visible absence rather
- * than a silent one. For `affirm` that absence is the permanent, correct state.
+ * than a silent one. For those two that absence is the permanent, correct state.
  */
 export type PayoutSourceId = Exclude<PaymentGatewaySettlementSourceValue, 'manual'>
 

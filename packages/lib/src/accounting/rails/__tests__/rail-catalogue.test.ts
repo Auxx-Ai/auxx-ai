@@ -38,6 +38,8 @@ describe('suggestRail', () => {
         // A traditional acquirer batches the deposit GROSS and bills for the
         // card fees monthly, so a payout entry with a fee leg would be wrong.
         expect(suggestion.feeTreatment).toBe('billed')
+        // All three spellings read the same settled-batch feed (build plan §5.2).
+        expect(suggestion.settlementSource).toBe('authorize_net')
       }
     })
 
@@ -52,18 +54,18 @@ describe('suggestRail', () => {
     })
 
     it('keeps fee treatment independent of settlement source', () => {
-      // 🛑 The proof is two rails that SHARE a settlement source and disagree
-      // about fees: PayPal is worked by hand and nets its cut out of the
-      // deposit, the acquirer behind Authorize.Net is worked by hand and bills
-      // monthly. Neither field may be derived from the other (§4).
-      expect(suggestRail('paypal').settlementSource).toBe('manual')
-      expect(suggestRail('paypal').feeTreatment).toBe('netted')
-      expect(suggestRail('authorize_net').settlementSource).toBe('manual')
-      expect(suggestRail('authorize_net').feeTreatment).toBe('billed')
-
-      // And from the other side: Affirm has a feed AND nets its discount fee.
+      // 🛑 The proof is two rails that each READ a feed and disagree about
+      // fees: Affirm nets its discount fee out of the settlement, the acquirer
+      // behind Authorize.Net deposits gross and bills monthly. Neither field
+      // may be derived from the other (§4).
       expect(suggestRail('affirm').settlementSource).toBe('affirm')
       expect(suggestRail('affirm').feeTreatment).toBe('netted')
+      expect(suggestRail('authorize_net').settlementSource).toBe('authorize_net')
+      expect(suggestRail('authorize_net').feeTreatment).toBe('billed')
+
+      // And from the other side: PayPal is worked by hand and still nets.
+      expect(suggestRail('paypal').settlementSource).toBe('manual')
+      expect(suggestRail('paypal').feeTreatment).toBe('netted')
     })
 
     it('suggests a readable source only for the rails that have a feed', () => {
@@ -75,6 +77,9 @@ describe('suggestRail', () => {
       // ✔ Affirm settles on its own weekly `deposit_id`, in no Shopify Payments
       // deposit (`plans/apps/affirm/portal-probe-2026-09-15.md` §5).
       expect(suggestRail('affirm').settlementSource).toBe('affirm')
+      // A billed rail can have a reader too - the batch is evidence, not a
+      // posting (`plans/accounting/decisions.md` 27a-3b).
+      expect(suggestRail('authorize.net').settlementSource).toBe('authorize_net')
 
       for (const handle of ['paypal', 'square', 'klarna', 'braintree', 'amazon_pay', 'afterpay']) {
         expect(suggestRail(handle).settlementSource).toBe('manual')
