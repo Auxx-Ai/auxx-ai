@@ -34,17 +34,6 @@ import {
 } from '@auxx/lib/accounting/money/customer-money'
 import { listRailStrip } from '@auxx/lib/accounting/money/payouts'
 import { listPaymentGateways } from '@auxx/lib/accounting/rails'
-import { conditionGroupsSchema } from '@auxx/lib/conditions'
-import { isRecordConnectorManaged } from '@auxx/lib/data-connectors'
-import { renderPreviewQuotePdf } from '@auxx/lib/documents'
-import { NotFoundError } from '@auxx/lib/errors'
-import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
-import { FeatureKey } from '@auxx/lib/permissions/client'
-import {
-  describeRecurrence,
-  type RecurrencePattern,
-  recurrencePatternSchema,
-} from '@auxx/lib/recurrence'
 import {
   addVisitExtrasToContract,
   approveQuote,
@@ -78,7 +67,18 @@ import {
   setInvoiceSchedule,
   voidInvoice,
   writeOffInvoice,
-} from '@auxx/lib/sales'
+} from '@auxx/lib/accounting/sales'
+import { conditionGroupsSchema } from '@auxx/lib/conditions'
+import { isRecordConnectorManaged } from '@auxx/lib/data-connectors'
+import { renderPreviewQuotePdf } from '@auxx/lib/documents'
+import { NotFoundError } from '@auxx/lib/errors'
+import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
+import { FeatureKey } from '@auxx/lib/permissions/client'
+import {
+  describeRecurrence,
+  type RecurrencePattern,
+  recurrencePatternSchema,
+} from '@auxx/lib/recurrence'
 import { getOrganizationSetting } from '@auxx/lib/settings'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { z } from 'zod'
@@ -575,6 +575,8 @@ export const moneyRouter = createTRPCRouter({
         vendorBillRecordId: recordIdSchema,
         /** Integer cents. */
         amount: z.number().int().positive(),
+        /** Integer cents the vendor forgave under terms (74 D3). */
+        discount: z.number().int().nonnegative().optional(),
         /** ISO date string (`yyyy-MM-dd`) — the day the money left. */
         date: z.string(),
         method: z.enum(['cash', 'check', 'card', 'bank', 'other']),
@@ -594,6 +596,7 @@ export const moneyRouter = createTRPCRouter({
         userId: ctx.session.user.id,
         vendorBillInstanceId: entityInstanceId,
         amountMinor: input.amount,
+        discountMinor: input.discount ?? 0,
         date: input.date,
         method: input.method,
         paymentGatewayId: input.paymentGatewayId,

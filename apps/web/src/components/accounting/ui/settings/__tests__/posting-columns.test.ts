@@ -22,14 +22,18 @@ describe('splitPostingColumns', () => {
     )
   })
 
+  // The tallest section, not the shortest: a cut that may only fall between two
+  // sections can be off by the one it could not split, and which section that
+  // is depends on the declared order. It read `shortest` until
+  // `landed_cost_clear` (74 D4) made the best available cut 170 units off.
   it('leaves both columns populated and ending within one section of each other', () => {
     const { left, right } = splitPostingColumns(POSTING_PAGE_POLICIES)
-    const shortest = Math.min(...POSTING_PAGE_POLICIES.map(postingSectionUnits))
+    const tallest = Math.max(...POSTING_PAGE_POLICIES.map(postingSectionUnits))
 
     expect(left.length).toBeGreaterThan(0)
     expect(right.length).toBeGreaterThan(0)
     expect(Math.abs(units(left) - (units(right) + NOT_POSTING_SECTION_UNITS))).toBeLessThanOrEqual(
-      shortest
+      tallest
     )
   })
 

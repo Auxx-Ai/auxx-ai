@@ -79,6 +79,10 @@ export const glPostingType = pgEnum('GlPostingType', [
   // plans/accounting/tasks/71-one-cash-endpoint.md §5 U7: a supplier's credit
   // note - `Dr A/P / Cr <each line's account>`, the expense bill sides-flipped.
   'vendor_credit',
+  // plans/accounting/tasks/74-what-73-left-open.md §3, 74-D4: the landed-cost
+  // under-run - `Dr freight_accrual / Dr duties_accrual / Cr ppv` - posted by
+  // Clear on a goods bill once no further carrier or broker bill is coming.
+  'landed_cost_clear',
 ])
 
 /**

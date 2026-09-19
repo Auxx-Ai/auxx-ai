@@ -22,11 +22,10 @@ import type { ResourceField } from '../field-types'
  * `hasDetailPage: true` — a PO is iterated and worked, which is page-shaped
  * rather than drawer-shaped.
  *
- * The header carries `shippingTotal`, `taxTotal`, `discountValue`,
- * `allocationBasis` and `taxRecoverable` because together they are exactly
- * `allocateLandedCost`'s argument list. That is why receiving needs no separate
- * `goods_receipt` header: the one thing such a header would have uniquely
- * justified already lives here.
+ * The header carries `shippingTotal`, `taxTotal`, `discountValue` and
+ * `allocationBasis`, which is why receiving needs no separate `goods_receipt`
+ * header: the one thing such a header would have uniquely justified already
+ * lives here.
  *
  * Money is stored in **integer minor units** (`subtotal`, `shippingTotal`,
  * `taxTotal`, `discountValue`, `total`).
@@ -450,9 +449,7 @@ export const PURCHASE_ORDER_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description:
-      'Tax for the whole order, integer minor units — capitalised into cost only when ' +
-      '`taxRecoverable` is false',
+    description: 'Tax for the whole order, integer minor units — a cost, never reclaimable (74-D8)',
   },
 
   discountValue: {
@@ -535,30 +532,6 @@ export const PURCHASE_ORDER_FIELDS: Record<string, ResourceField> = {
     // its share of a $10,000 freight bill in proportion to nothing that shipped.
     description: 'How shipping, tax and discount are spread across the lines on receipt',
     defaultValue: 'value',
-  },
-
-  taxRecoverable: {
-    id: toFieldId('taxRecoverable'),
-    key: 'taxRecoverable',
-    label: 'Tax Recoverable',
-    type: BaseType.BOOLEAN,
-    fieldType: FieldType.CHECKBOX,
-    isSystem: true,
-    systemAttribute: 'purchase_order_tax_recoverable',
-    systemSortOrder: 'aG',
-    showInTable: false,
-    nullable: false,
-    defaultValue: false,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    // Reclaimable input tax is a receivable from the tax authority, not part of
-    // what the inventory cost. Capitalising it overstates stock permanently.
-    description: 'When true, tax is reclaimable and is NOT capitalised into inventory cost',
   },
 
   notes: {

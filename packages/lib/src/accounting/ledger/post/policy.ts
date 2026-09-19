@@ -460,6 +460,11 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         role: 'by id',
         what: 'The rail, bank account or undeposited funds an outgoing payment left by',
       },
+      {
+        side: 'credit',
+        role: ACCOUNT_ROLES.PURCHASE_DISCOUNTS,
+        what: 'The part of a bill an early-payment discount settled, when one was taken',
+      },
     ],
     settings: ['accounting.autoPost.receipt'],
     sentence:
@@ -994,6 +999,48 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
           'On, a bill posts immediately on Post. Off, it drafts on the ledger for review and approval.',
       },
     },
+    enabled: true,
+    exportRoute: 'journal',
+    singleWriterRoles: [],
+  },
+
+  landed_cost_clear: {
+    type: 'landed_cost_clear',
+    label: 'Landed cost cleared',
+    // purchasing/landed-cost/clear.ts `postEntry` call, on Clear.
+    trigger: { kind: 'event', on: "Clear on a goods bill's landed cost" },
+    template: [
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.FREIGHT_ACCRUAL,
+        what: 'Freight the receipts accrued and no carrier ever billed',
+      },
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.DUTIES_ACCRUAL,
+        what: 'Duty the receipts accrued and no broker ever billed',
+      },
+      { side: 'credit', role: ACCOUNT_ROLES.PPV, what: 'The under-run, as a period variance' },
+    ],
+    settings: ['accounting.autoPost.expenseBill'],
+    sentence:
+      "Clearing a shipment's landed cost takes the freight and duty its receipts accrued and nobody billed back out of the accruals, against purchase price variance.",
+    disabledSentence:
+      'Landed cost clearing is off, so a shipment nobody finished billing leaves its freight and duty estimates sitting in the accruals forever.',
+    parameters: [
+      {
+        name: 'No stock revaluation',
+        value: 'A period variance',
+        sentence:
+          "The difference between an estimate and what was billed is a variance of the period, never a restatement of the stock's cost (73 D6), so nothing on hand moves.",
+      },
+      {
+        name: 'A late bill',
+        value: 'Posts to variance',
+        sentence:
+          'A carrier or broker bill arriving after a clear finds nothing left accrued and posts entirely to purchase price variance.',
+      },
+    ],
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],

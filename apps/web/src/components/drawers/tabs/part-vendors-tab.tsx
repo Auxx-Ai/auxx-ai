@@ -11,6 +11,8 @@ import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
+import { pluralize } from '@auxx/utils'
+import { formatCurrency } from '@auxx/utils/currency'
 import { Store } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useOfferTariffs } from '~/components/manufacturing/hooks/use-offer-tariffs'
@@ -70,6 +72,34 @@ function toRowValues(
     purchaseUnit: (values?.vendor_part_purchase_unit as string | null | undefined) ?? null,
     purchaseRatio: (values?.vendor_part_purchase_ratio as number | null | undefined) ?? null,
   }
+}
+
+/**
+ * What this supplier's shipments accrued for freight and duty against what the
+ * carriers and brokers have since billed (74 D5) — the feedback on the shipping
+ * cost and tariff code edited two cells to the left.
+ *
+ * Rendered by the tab rather than the row so the row stays presentational, and
+ * silent until a receipt has actually accrued something.
+ */
+function VendorPartLandedCost({ vendorPartInstanceId }: { vendorPartInstanceId: string }) {
+  const { data } = api.purchasing.readLandedCostByVendorPart.useQuery({ vendorPartInstanceId })
+  if (!data || (data.receiptCount === 0 && data.landedLineCount === 0)) return null
+
+  const leg = (label: string, value: (typeof data)['freight']) =>
+    value.accruedMinor === 0 && value.billedMinor === 0
+      ? null
+      : `${label} ${formatCurrency(value.billedMinor)} of ${formatCurrency(value.accruedMinor)}${
+          value.remainingMinor > 0 ? ` (${formatCurrency(value.remainingMinor)} left)` : ''
+        }`
+  const parts = [leg('Freight', data.freight), leg('Duty', data.duties)].filter(Boolean)
+  if (parts.length === 0) return null
+
+  return (
+    <span className='text-muted-foreground text-xs'>
+      {parts.join(' · ')} over {data.receiptCount} {pluralize(data.receiptCount, 'shipment')}
+    </span>
+  )
 }
 
 /** Vendors tab content for parts drawer */
@@ -285,6 +315,7 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
                       tariff={offer?.tariff}
                       codeLabel={offer?.codeLabel}
                       isWinner={rowRecordId === winningRecordId}
+                      landedCost={<VendorPartLandedCost vendorPartInstanceId={id} />}
                       onEdit={() => handleEditVendorPart(id)}
                       onDelete={() => handleDeleteVendorPart(id)}
                       onSetPreferred={() => handleSetPreferred(id)}

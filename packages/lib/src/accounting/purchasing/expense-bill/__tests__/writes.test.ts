@@ -28,9 +28,9 @@ const h = vi.hoisted(() => ({
   reverseEntry: vi.fn(),
   listPostingsForSource: vi.fn(),
   setValuesForEntity: vi.fn(),
-  readBillEditOpen: vi.fn(async () => null as { openedAt: string; byUserId: string } | null),
+  readEditStamp: vi.fn(async () => null as { openedAt: string; byUserId: string } | null),
   ledgerState: { draftGlPostingId: null as string | null, generation: 1 },
-  writeBillDraftPosting: vi.fn(async () => {}),
+  writeDocumentDraftPosting: vi.fn(async () => {}),
   discardDraftPosting: vi.fn(
     async (): Promise<{ isErr: () => boolean; error?: Error }> => ({ isErr: () => false })
   ),
@@ -56,6 +56,11 @@ vi.mock('../../../../cache', () => ({
 vi.mock('../../../ledger/reads/list-postings', () => ({
   listPostingsForSource: h.listPostingsForSource,
 }))
+// 74 D4's landed-cost split reads the remaining per shipment. None of these
+// fixtures carries a landed line; the read has its own suite.
+vi.mock('../../landed-cost/reads', () => ({
+  readLandedAccrualRemaining: async () => new Map(),
+}))
 vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
@@ -73,10 +78,10 @@ vi.mock('../../../../field-values/field-value-service', () => ({
     setValuesForEntity = h.setValuesForEntity
   },
 }))
-vi.mock('../../bill-edit-flag', () => ({ readBillEditOpen: h.readBillEditOpen }))
-vi.mock('../../bill-ledger-state', () => ({
-  readBillLedgerState: async () => h.ledgerState,
-  writeBillDraftPosting: h.writeBillDraftPosting,
+vi.mock('../../../../entity-instances/edit-snapshot', () => ({ readEditStamp: h.readEditStamp }))
+vi.mock('../../../documents/document-ledger-state', () => ({
+  readDocumentLedgerState: async () => h.ledgerState,
+  writeDocumentDraftPosting: h.writeDocumentDraftPosting,
 }))
 vi.mock('../../../ledger/post/draft-lines', () => ({
   discardDraftPosting: h.discardDraftPosting,
@@ -116,7 +121,7 @@ function lastWrite(): Array<{ fieldId: string; value: unknown }> {
 beforeEach(() => {
   vi.clearAllMocks()
   h.isAccountingEnabled.mockResolvedValue(true)
-  h.readBillEditOpen.mockResolvedValue(null)
+  h.readEditStamp.mockResolvedValue(null)
   h.bill = {
     id: BILL_ID,
     number: 'RENT-SEP',
@@ -429,7 +434,7 @@ describe('voidVendorBill', () => {
   // 73 D4. The values on screen are not the values the live entry was built
   // from, so reversing "every live posting" would back out the wrong figures.
   it('refuses to void a bill that is open for editing', async () => {
-    h.readBillEditOpen.mockResolvedValue({ openedAt: '2026-09-18T00:00:00.000Z', byUserId: USER })
+    h.readEditStamp.mockResolvedValue({ openedAt: '2026-09-18T00:00:00.000Z', byUserId: USER })
     await expect(
       voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(/open for editing/)
@@ -471,7 +476,7 @@ describe('listVendorBillPostings and the drafted entry', () => {
     })
 
     expect(postings).toEqual([])
-    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+    expect(h.writeDocumentDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
   })
 
   it('does not list a promoted draft twice', async () => {
@@ -497,7 +502,7 @@ describe('listVendorBillPostings and the drafted entry', () => {
     expect(postings).toHaveLength(1)
     expect(postings[0]?.status).toBe('posted')
     // The subject link is the truth now, so the pointer has nothing left to say.
-    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+    expect(h.writeDocumentDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
   })
 
   it('drops a pointer whose posting is no longer a draft', async () => {
@@ -515,15 +520,15 @@ describe('listVendorBillPostings and the drafted entry', () => {
     })
 
     expect(postings).toEqual([])
-    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+    expect(h.writeDocumentDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
   })
 
   it('stamps the pointer when the ledger drafts the entry, and clears it on a post', async () => {
     h.postEntry.mockResolvedValue({ status: 'drafted', glPostingId: 'gp_draft' })
     await postVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, 'gp_draft')
+    expect(h.writeDocumentDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, 'gp_draft')
 
-    h.writeBillDraftPosting.mockClear()
+    h.writeDocumentDraftPosting.mockClear()
     h.bill = { ...h.bill, status: 'draft' }
     h.postEntry.mockResolvedValue({
       status: 'posted',
@@ -531,7 +536,7 @@ describe('listVendorBillPostings and the drafted entry', () => {
       docNumber: 'AUXX-BIL-BILL0007',
     })
     await postVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+    expect(h.writeDocumentDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
   })
 })
 
@@ -550,7 +555,7 @@ describe('voidVendorBill and a drafted entry', () => {
       glPostingId: 'gp_draft',
     })
     expect(h.reverseEntry).not.toHaveBeenCalled()
-    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+    expect(h.writeDocumentDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
     expect(lastWrite()).toContainEqual({ fieldId: 'vendor_bill_status', value: 'void' })
   })
 
@@ -569,7 +574,7 @@ describe('voidVendorBill and a drafted entry', () => {
     await voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
 
     expect(h.discardDraftPosting).not.toHaveBeenCalled()
-    expect(h.writeBillDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
+    expect(h.writeDocumentDraftPosting).toHaveBeenCalledWith(db, ORG, BILL_ID, null)
     expect(lastWrite()).toContainEqual({ fieldId: 'vendor_bill_status', value: 'void' })
   })
 

@@ -116,7 +116,7 @@ async function replayMoneyTotals(scope: TxWriteScope): Promise<void> {
 
   const [{ recomputeTotalsForCommittedWrite }, { runWithDirtyParents }, { findCachedResource }] =
     await Promise.all([
-      import('../../sales/totals/totals-hooks'),
+      import('../../accounting/sales/totals/totals-hooks'),
       import('../../reconcilers/dirty-parents'),
       import('../../cache'),
     ])

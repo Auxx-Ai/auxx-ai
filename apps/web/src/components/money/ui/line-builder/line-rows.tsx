@@ -34,14 +34,14 @@
 // `LineRowMenu`/`LinePartCellView` compose the kit's shells, and
 // `CurrencyCellInput`/`QuantityCellView` are built on the kit's `CellInput`.
 
-import type { ResourceField } from '@auxx/lib/resources/client'
 import {
   computeLineTotal,
   formatLineItemUnit,
   LINE_ITEM_UNIT_OPTIONS,
   type LineItemUnit,
   parseQuantityWithUnit,
-} from '@auxx/lib/sales/client'
+} from '@auxx/lib/accounting/sales/client'
+import type { ResourceField } from '@auxx/lib/resources/client'
 import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Checkbox } from '@auxx/ui/components/checkbox'

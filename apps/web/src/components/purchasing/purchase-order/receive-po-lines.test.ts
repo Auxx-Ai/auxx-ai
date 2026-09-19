@@ -96,7 +96,6 @@ describe('buildReceivePoInput', () => {
     expect(input).not.toHaveProperty('shipping')
     expect(input).not.toHaveProperty('tax')
     expect(input).not.toHaveProperty('discount')
-    expect(input).not.toHaveProperty('taxRecoverable')
     expect(input).not.toHaveProperty('basis')
   })
 

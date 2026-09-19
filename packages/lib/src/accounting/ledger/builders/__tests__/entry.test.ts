@@ -432,4 +432,91 @@ describe('buildVendorBillEntry - the one bill entry (73 D2, D3, D5)', () => {
     const built = buildVendorBillEntry({ ...BILL, shippingMinor: 1_000, totalMinor: 51_000 })
     expect(roles(built)).not.toContain(ACCOUNT_ROLES.DUTIES_ACCRUAL)
   })
+
+  // 74 §3.2's worked sequence, against a shipment that accrued 10 freight and
+  // 30 duty.
+  describe('the landed-cost split (74 D4)', () => {
+    const FREIGHT = 'ei_freight_accrual'
+    const DUTIES = 'ei_duties_accrual'
+    const landed = (lineTotalMinor: number, remainingAccrualMinor: number) => ({
+      ...BILL,
+      totalMinor: lineTotalMinor,
+      lines: [
+        {
+          lineId: 'l1',
+          description: 'Carrier',
+          glAccountId: FREIGHT,
+          landedPoolKey: `vb_goods:${FREIGHT}`,
+          lineTotalMinor,
+          remainingAccrualMinor,
+        },
+      ],
+    })
+
+    it('carrier bills 12 against 10 accrued: 10 to the accrual, 2 to PPV', () => {
+      const built = buildVendorBillEntry(landed(1_200, 1_000))
+      expect(built.entry.lines.filter((line) => line.glAccountId)).toMatchObject([
+        { glAccountId: FREIGHT, direction: 'debit', amount: 1_000 },
+      ])
+      expect(role(built, ACCOUNT_ROLES.PPV)).toMatchObject({ direction: 'debit', amount: 200 })
+      expect(role(built, ACCOUNT_ROLES.ACCOUNTS_PAYABLE)?.amount).toBe(1_200)
+    })
+
+    it("carrier bills 8 against 10: 8 to the accrual and no PPV - the 2 is the clear's", () => {
+      const built = buildVendorBillEntry(landed(800, 1_000))
+      expect(built.entry.lines.filter((line) => line.glAccountId)).toMatchObject([
+        { glAccountId: FREIGHT, direction: 'debit', amount: 800 },
+      ])
+      expect(roles(built)).not.toContain(ACCOUNT_ROLES.PPV)
+    })
+
+    it('the broker bills 30 duty and 5 service on one pool: 30 to duties, 5 to PPV', () => {
+      const built = buildVendorBillEntry({
+        ...BILL,
+        totalMinor: 3_500,
+        lines: [
+          {
+            lineId: 'l1',
+            description: 'Duty',
+            lineTotalMinor: 3_000,
+            glAccountId: DUTIES,
+            landedPoolKey: `vb_goods:${DUTIES}`,
+            remainingAccrualMinor: 3_000,
+          },
+          {
+            lineId: 'l2',
+            description: 'Entry fee',
+            lineTotalMinor: 500,
+            glAccountId: DUTIES,
+            landedPoolKey: `vb_goods:${DUTIES}`,
+            remainingAccrualMinor: 3_000,
+          },
+        ],
+      })
+      expect(built.entry.lines.filter((line) => line.glAccountId)).toMatchObject([
+        { glAccountId: DUTIES, direction: 'debit', amount: 3_000 },
+      ])
+      expect(role(built, ACCOUNT_ROLES.PPV)).toMatchObject({ direction: 'debit', amount: 500 })
+    })
+
+    it('a second bill against a CLEARED shipment posts to PPV alone', () => {
+      const built = buildVendorBillEntry(landed(400, 0))
+      expect(built.entry.lines.filter((line) => line.glAccountId)).toEqual([])
+      expect(role(built, ACCOUNT_ROLES.PPV)).toMatchObject({ direction: 'debit', amount: 400 })
+    })
+
+    it('a landed line coded to a THIRD account carries no remaining and is untouched', () => {
+      const built = buildVendorBillEntry({
+        ...BILL,
+        totalMinor: 400,
+        lines: [
+          { lineId: 'l1', description: 'Storage', lineTotalMinor: 400, glAccountId: 'ei_other' },
+        ],
+      })
+      expect(built.entry.lines.filter((line) => line.glAccountId)).toMatchObject([
+        { glAccountId: 'ei_other', direction: 'debit', amount: 400 },
+      ])
+      expect(roles(built)).not.toContain(ACCOUNT_ROLES.PPV)
+    })
+  })
 })

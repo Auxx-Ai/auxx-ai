@@ -32,6 +32,8 @@ export const MoneyApplication = pgTable(
     moneyTransactionId: text().notNull(),
     operation: text().notNull().$type<'apply' | 'unapply'>(),
     amountMinor: bigint({ mode: 'bigint' }).notNull(),
+    /** Early-payment discount taken alongside this money, integer minor (74 D3). */
+    discountMinor: bigint({ mode: 'bigint' }).notNull().default(sql`0`),
     orderInstanceId: text(),
     invoiceInstanceId: text(),
     vendorBillInstanceId: text(),
@@ -83,7 +85,7 @@ export const MoneyApplication = pgTable(
     index('MoneyApplication_quote_idx').on(t.organizationId, t.quoteInstanceId),
     check(
       'MoneyApplication_shape_check',
-      sql`${t.amountMinor} > 0 AND num_nonnulls(${t.orderInstanceId}, ${t.invoiceInstanceId}, ${t.vendorBillInstanceId}) = 1 AND ((${t.operation} = 'apply' AND ${t.reversesApplicationId} IS NULL) OR (${t.operation} = 'unapply' AND ${t.reversesApplicationId} IS NOT NULL))`
+      sql`${t.amountMinor} > 0 AND ${t.discountMinor} >= 0 AND num_nonnulls(${t.orderInstanceId}, ${t.invoiceInstanceId}, ${t.vendorBillInstanceId}) = 1 AND ((${t.operation} = 'apply' AND ${t.reversesApplicationId} IS NULL) OR (${t.operation} = 'unapply' AND ${t.reversesApplicationId} IS NOT NULL))`
     ),
   ]
 )

@@ -24,6 +24,7 @@ import { UnifiedCrudHandler } from '../../../resources/crud'
 import { settledPeriodsFor } from '../../ledger/periods/settled-periods'
 import { runMoneyCommand } from '../../money/commands/run-money-command'
 import {
+  sumVendorBillDiscounts,
   sumVendorBillPayments,
   syncVendorBillPaymentState,
 } from '../../money/vendor-payments/payment-state'
@@ -124,14 +125,15 @@ export async function applyVendorCredit(
           { vendorCreditInstanceId, vendorBillInstanceId }
         )
 
-      const [applied, refunded, billCredited, billPaid] = await Promise.all([
+      const [applied, refunded, billCredited, billPaid, billDiscounted] = await Promise.all([
         sumVendorCreditApplications(db, organizationId, vendorCreditInstanceId),
         sumVendorCreditRefunds(db, organizationId, vendorCreditInstanceId),
         sumVendorBillCreditApplications(db, organizationId, vendorBillInstanceId),
         sumVendorBillPayments(db, organizationId, vendorBillInstanceId),
+        sumVendorBillDiscounts(db, organizationId, vendorBillInstanceId),
       ])
       const creditBalance = Math.max(0, credit.totalMinor - applied - refunded)
-      const billBalance = Math.max(0, bill.totalMinor - billPaid - billCredited)
+      const billBalance = Math.max(0, bill.totalMinor - billPaid - billCredited - billDiscounted)
 
       if (amount > creditBalance)
         throw new BadRequestError(

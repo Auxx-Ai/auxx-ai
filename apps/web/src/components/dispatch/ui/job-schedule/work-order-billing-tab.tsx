@@ -1,7 +1,7 @@
 // apps/web/src/components/dispatch/ui/job-schedule/work-order-billing-tab.tsx
 'use client'
 
-import { BILLING_BASIS_LABELS, BILLING_TIMING_LABELS } from '@auxx/lib/sales/client'
+import { BILLING_BASIS_LABELS, BILLING_TIMING_LABELS } from '@auxx/lib/accounting/sales/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'

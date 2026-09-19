@@ -7,7 +7,7 @@
 // pending states, decline disclosure) lives in the `public-quote-actions.tsx` client components,
 // but every action is still a plain `<form method="post">` to a route handler.
 
-import type { PublicQuotePayload } from '@auxx/lib/sales'
+import type { PublicQuotePayload } from '@auxx/lib/accounting/sales'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Card } from '@auxx/ui/components/card'
 import { Download, Loader2 } from 'lucide-react'

@@ -41,7 +41,7 @@ vi.mock('../../../../settings/settings-service', () => ({
   getOrganizationSetting: async ({ key }: { key: string }) =>
     key === 'organization.currency' ? 'USD' : 'America/New_York',
 }))
-vi.mock('../../../../sales/invoices/issuance-reads', () => ({
+vi.mock('../../../sales/invoices/issuance-reads', () => ({
   loadInvoiceForIssuance: h.loadInvoiceForIssuance,
 }))
 

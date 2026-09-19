@@ -2,7 +2,7 @@
 //
 // 73 D4's lock. Three rules:
 //
-//  1. A `posted` bill with no `editOpen` flag refuses a header write, a line
+//  1. A `posted` bill with no edit-snapshot row refuses a header write, a line
 //     write, a line create and a line delete.
 //  2. The flag LIFTS it — every one of those goes through untouched.
 //  3. It never fires on a bill that is not posted, and it is registered on
@@ -16,7 +16,7 @@ const h = vi.hoisted(() => ({
   fields: {} as Record<string, { id: string } | undefined>,
   billRows: [] as Array<{ fieldId: string; optionId: string | null; valueText: string | null }>,
   lineParentRows: [] as Array<{ relatedEntityId: string | null }>,
-  editOpen: null as { openedAt: string; byUserId: string } | null,
+  editStamp: null as { openedAt: string; byUserId: string } | null,
 }))
 
 vi.mock('../../../cache', () => ({
@@ -24,8 +24,8 @@ vi.mock('../../../cache', () => ({
     from: () => ({ bySystemAttributes: async () => h.fields }),
   }),
 }))
-vi.mock('../../../accounting/purchasing/bill-edit-flag', () => ({
-  readBillEditOpen: async () => h.editOpen,
+vi.mock('../../../entity-instances/edit-snapshot', () => ({
+  readEditStamp: async () => h.editStamp,
 }))
 
 // Two chains: the bill's own values (`where` resolves) and the line's parent
@@ -91,7 +91,7 @@ beforeEach(() => {
     { fieldId: NUMBER_FIELD, optionId: null, valueText: 'BILL-0007' },
   ]
   h.lineParentRows = [{ relatedEntityId: BILL_ID }]
-  h.editOpen = null
+  h.editStamp = null
 })
 
 describe('the header lock', () => {
@@ -104,7 +104,7 @@ describe('the header lock', () => {
   })
 
   it('lifts once the bill is open for editing', async () => {
-    h.editOpen = { openedAt: '2026-09-18T00:00:00.000Z', byUserId: 'u1' }
+    h.editStamp = { openedAt: '2026-09-18T00:00:00.000Z', byUserId: 'u1' }
     const value = { type: 'number', value: 1 }
     await expect(
       guardPostedVendorBillFields(fieldEvent(`${BILL_DEF}:${BILL_ID}`, 'vendor_bill_total', value))
@@ -143,7 +143,7 @@ describe('the line lock', () => {
   })
 
   it('lifts with the flag', async () => {
-    h.editOpen = { openedAt: '2026-09-18T00:00:00.000Z', byUserId: 'u1' }
+    h.editStamp = { openedAt: '2026-09-18T00:00:00.000Z', byUserId: 'u1' }
     const value = { type: 'number', value: 4 }
     await expect(
       guardPostedVendorBillLineFields(
@@ -188,7 +188,7 @@ describe('the line lock', () => {
     }
     await expect(guardPostedVendorBillLineDelete(event)).rejects.toThrow(/remove a line/)
 
-    h.editOpen = { openedAt: '2026-09-18T00:00:00.000Z', byUserId: 'u1' }
+    h.editStamp = { openedAt: '2026-09-18T00:00:00.000Z', byUserId: 'u1' }
     await expect(guardPostedVendorBillLineDelete(event)).resolves.toBeUndefined()
   })
 })

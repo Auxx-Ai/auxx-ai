@@ -6,7 +6,7 @@ import {
   BILLING_BASIS_LABELS,
   BILLING_TIMING_LABELS,
   COMPATIBLE_BILLING_TIMINGS,
-} from '@auxx/lib/sales/client'
+} from '@auxx/lib/accounting/sales/client'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import {
@@ -20,7 +20,7 @@ import {
 import type { ReactNode } from 'react'
 import type { BillingBasis, BillingTiming } from './types'
 
-/** Basis descriptions/icons — labels themselves come from the shared `@auxx/lib/sales/client`
+/** Basis descriptions/icons — labels themselves come from the shared `@auxx/lib/accounting/sales/client`
  * matrix so this UI copy can't drift from the billing tab's plan summary. */
 const BASIS_DESCRIPTIONS: Record<BillingBasis, string> = {
   fixed_contract: 'Invoice the agreed contract once or progressively.',

@@ -57,10 +57,10 @@ vi.mock('../../../../settings/read', () => ({
       )
     ),
 }))
-vi.mock('../../../../sales/credit-memos/accounting', () => ({
+vi.mock('../../../sales/credit-memos/accounting', () => ({
   readCreditMemoControlAccount: h.readCreditMemoControlAccount,
 }))
-vi.mock('../../../../sales/credit-memos/reads', () => ({
+vi.mock('../../../sales/credit-memos/reads', () => ({
   loadCreditMemo: h.loadCreditMemo,
   sumCreditMemoApplications: h.sumCreditMemoApplications,
   sumReservedCreditMemoRefunds: h.sumReservedCreditMemoRefunds,

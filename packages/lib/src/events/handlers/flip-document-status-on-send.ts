@@ -4,15 +4,15 @@ import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
-import { resolveThreadLinkedEntityIds } from '../../entity-instances/activity'
-import { BadRequestError } from '../../errors'
 // Leaf import, not the `money` barrel: this module is registered in the worker's handler map
 // and should not drag every money surface in behind it.
 import {
   documentEmailProfile,
   documentTypeOf,
   recordDocumentSendSignal,
-} from '../../sales/send-email'
+} from '../../accounting/sales/send-email'
+import { resolveThreadLinkedEntityIds } from '../../entity-instances/activity'
+import { BadRequestError } from '../../errors'
 import type { AuxxEvent, MessageSentEvent } from '../types'
 
 /**

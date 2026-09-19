@@ -784,6 +784,16 @@ const PURCHASING_ACCOUNTS: readonly DefaultChartAccount[] = [
     role: 'ppv',
     subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
   },
+  {
+    // An early-payment discount taken on a vendor payment (74 D3). Contra-COGS
+    // so the discount shows in margin, and `5093` because 5090/5091/5092/5095
+    // are taken and it reads beside them in a sorted chart.
+    code: '5093',
+    name: 'Purchase Discounts',
+    accountType: GlAccountType.EXPENSE,
+    role: 'purchase_discounts',
+    subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
+  },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────

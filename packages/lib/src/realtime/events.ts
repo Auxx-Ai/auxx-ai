@@ -3,6 +3,7 @@
 import type { ActorId } from '@auxx/types/actor'
 import type { FieldValueKey } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
+import type { EditStamp } from '../resources/picker/types'
 import type { ThreadMergeData } from '../threads/types'
 
 /** Stored field value — matches the client store's StoredFieldValue shape. */
@@ -88,6 +89,12 @@ export interface RecordMeta {
   avatarUrl?: string | null
   createdAt?: string
   updatedAt?: string
+  /**
+   * The record's open edit-in-place (74-D1 §1.2.1). Published by the lane's
+   * open/save/cancel only; absent on every other `record:updated` frame, so a
+   * reader merges it exactly as it merges the denormalised columns.
+   */
+  edit?: EditStamp | null
 }
 
 /** A new record was created. */

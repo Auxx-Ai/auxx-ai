@@ -28,7 +28,7 @@ vi.mock('../../../../cache', () => ({ getOrgCache: () => ({ get: async () => 'us
 vi.mock('../../../../resources/crud', () => ({ UnifiedCrudHandler: class {} }))
 vi.mock('../../../rails/reads', () => ({ listPaymentGateways: async () => ({}) }))
 vi.mock('../../stripe-connect/account', () => ({ getPaymentAccount: async () => null }))
-vi.mock('../../../../sales/public-token', () => ({ isPaymentsConnected: () => false }))
+vi.mock('../../../sales/public-token', () => ({ isPaymentsConnected: () => false }))
 
 const { sumQuoteDeposits } = await import('../reads')
 

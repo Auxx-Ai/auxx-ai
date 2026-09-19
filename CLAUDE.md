@@ -277,7 +277,7 @@ the area**, not after review catches it.
 | Upload routes and handlers, `StorageManager`, storage adapters, `MediaAsset`/`FolderFile`/`Attachment`/`StorageLocation`, thumbnail and cleanup jobs, the uploader UI | `docs/files-upload-architecture-guide.md` |
 | Anything under `packages/lib/src/accounting/` — the ledger, the export batch, the mirror, the provider seam, the rails, banking, the money model, periods and the close, statements | `docs/accounting-architecture-guide.md`; target model: `plans/accounting/TARGET.md` |
 | Anything under `packages/lib/src/inventory/` or `packages/lib/src/purchasing/` — purchase orders, vendor bills, the three-way match, receiving, `stock_movement`, builds, standard cost, QoH, the GL seam | `docs/inventory-costing-architecture-guide.md` |
-| The sales documents under `packages/lib/src/sales/` — quotes, orders, fulfillments, invoice issuance, credit memos, billing, totals | `docs/accounting-architecture-guide.md` §7 (what they post) and `docs/entity-architecture-guide.md` (the records) |
+| The sales documents under `packages/lib/src/accounting/sales/` — quotes, orders, fulfillments, invoice issuance, credit memos, billing, totals | `docs/accounting-architecture-guide.md` §7 (what they post) and `docs/entity-architecture-guide.md` (the records) |
 | Workflow node schemas, output variables, the engine's preprocess/execute contract, draft mutations, Kopilot graph edits | `docs/core-workflow-architecture-guide.md` |
 | Workflow blocks contributed by **installed apps** (a different subsystem from the row above) | `docs/workflow-architecture-guide.md` |
 | Records, custom fields, field values, field resolution and rendering | `docs/entity-architecture-guide.md` |

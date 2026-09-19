@@ -44,6 +44,17 @@ export interface RecordSourceChip {
 }
 
 /**
+ * An open edit-in-place on a record (74-D1): who pressed Edit, and when.
+ * Lives here rather than beside the table so the web store can import it
+ * type-only through `@auxx/lib/resources/client`, as `RecordSourceChip` does.
+ */
+export interface EditStamp {
+  /** ISO timestamp of the capture. */
+  openedAt: string
+  byUserId: string
+}
+
+/**
  * Record item formatted for picker display
  */
 export interface RecordPickerItem {
@@ -94,6 +105,18 @@ export interface RecordPickerItem {
    * separate `deleteAt` / `editAt` vocabulary anywhere.
    */
   _access?: Rung
+
+  /**
+   * The open edit-in-place on this row (74-D1 §1.2.1), resolved in the same
+   * batch that produced the row: a stamp when one is open, `null` when the
+   * lane stamped and found none.
+   *
+   * **Absent means "unknown", never "not editing"** — the same rule `_access`
+   * documents. Only `getResourcesByIds` stamps; `record.listAll`, the realtime
+   * `record:created` payload and an optimistic seed do not, and every reader
+   * must treat absent as locked, which is the safe side for a posted document.
+   */
+  edit?: EditStamp | null
 
   /** Timestamps (can be Date or ISO string) */
   createdAt: Date | string

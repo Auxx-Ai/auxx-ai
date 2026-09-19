@@ -142,6 +142,46 @@ describe('acceptVendorPaymentAccounting', () => {
     ])
   })
 
+  it('relieves A/P for money plus discount and credits the discount taken (74 D3)', async () => {
+    h.applications = [
+      {
+        id: 'ma_1',
+        operation: 'apply',
+        vendorBillInstanceId: BILL,
+        amountMinor: 45_000n,
+        discountMinor: 5_000n,
+      },
+    ]
+    await post()
+    expect(lines()).toEqual([
+      expect.objectContaining({
+        accountRole: 'accounts_payable',
+        direction: 'debit',
+        amount: 50_000,
+      }),
+      expect.objectContaining({ glAccountId: 'gl_bank', direction: 'credit', amount: 45_000 }),
+      expect.objectContaining({
+        accountRole: 'purchase_discounts',
+        direction: 'credit',
+        amount: 5_000,
+      }),
+    ])
+  })
+
+  it('posts no discount line at all when none was taken', async () => {
+    h.applications = [
+      {
+        id: 'ma_1',
+        operation: 'apply',
+        vendorBillInstanceId: BILL,
+        amountMinor: 45_000n,
+        discountMinor: 0n,
+      },
+    ]
+    await post()
+    expect(lines()).toHaveLength(2)
+  })
+
   it("credits a rail's clearing account and scopes the posting to it", async () => {
     ;(h.money as { cashAccountInstanceId: string | null }).cashAccountInstanceId = null
     ;(h.money as { paymentGatewayId: string | null }).paymentGatewayId = 'pg_1'

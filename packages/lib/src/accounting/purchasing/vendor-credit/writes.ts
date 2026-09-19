@@ -18,7 +18,6 @@ import {
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { batchRecalculateQoH } from '../../../inventory/costing/qoh'
 import { UnifiedCrudHandler } from '../../../resources/crud'
-import { recomputeTotals } from '../../../sales/totals/totals-hooks'
 import {
   type VendorCreditLineInput as BuilderLineInput,
   buildVendorCreditEntry,
@@ -36,6 +35,7 @@ import { exportInventoryMovement } from '../../ledger/post/post-inventory-moveme
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../ledger/types'
+import { recomputeTotals } from '../../sales/totals/totals-hooks'
 import { resolveGrniAccountId } from '../bill-intake/link'
 import { postVendorCreditEntryInTx, reverseVendorCreditEntry } from './accounting'
 import type { VendorCreditLineDraft } from './client'

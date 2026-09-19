@@ -1,0 +1,697 @@
+// packages/lib/src/accounting/sales/invoices/__tests__/write-off.test.ts
+//
+// The two things that make a write-off dangerous to get wrong, per the file
+// it tests:
+//
+//  1. **the amount is bounded by the invoice's own balance** - a write-off
+//     that could exceed the balance would move a phantom expense through the
+//     books;
+//  2. **the status flip only happens once the ledger actually accepted the
+//     entry** - a refused post (a locked period, an unmapped role) must leave
+//     `invoice_status` untouched, exactly as `voidInvoice`'s own guard does.
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const h = vi.hoisted(() => ({
+  bySystemAttributes: vi.fn(),
+  selectRows: [] as unknown[],
+  resolvePeriodLock: vi.fn(),
+  postEntry: vi.fn(),
+  readAutoPostMode: vi.fn(async () => 'post'),
+  previewEntry: vi.fn(),
+  getOrganizationSetting: vi.fn(),
+  setValuesForEntity: vi.fn(),
+  fieldValueServiceArgs: [] as unknown[][],
+  isAccountingEnabled: vi.fn(),
+  captureDocumentWorkInTx: vi.fn(),
+  assertDocumentJournalIsOwnedInTx: vi.fn(),
+  resolveAccountLines: vi.fn(),
+  resolveFulfillmentDeliveryIntentInTx: vi.fn(),
+  planAccountingDeliveryInTx: vi.fn(),
+  withAccountingCommitLock: vi.fn(),
+  readEditStamp: vi.fn(),
+}))
+
+vi.mock('../../../../cache', () => ({
+  getOrgCache: () => ({ from: () => ({ bySystemAttributes: h.bySystemAttributes }) }),
+}))
+vi.mock('../../../../entity-instances/edit-snapshot', () => ({
+  readEditStamp: h.readEditStamp,
+}))
+vi.mock('../../../ledger/setup/accounting-enabled', () => ({
+  isAccountingEnabled: h.isAccountingEnabled,
+}))
+vi.mock('../../../ledger/periods/period-lock', () => ({
+  resolvePeriodLock: h.resolvePeriodLock,
+}))
+// `postEntry` is the one seam. `buildWriteOffEntry` stays real, which is what
+// keeps the period-key and occurrence assertions below meaningful.
+vi.mock('../../../ledger/post/post-entry', () => ({
+  LEDGER_CURRENCY: 'USD',
+  previewEntry: h.previewEntry,
+  postEntry: h.postEntry,
+}))
+vi.mock('../../../ledger/post/auto-post', () => ({
+  readAutoPostMode: h.readAutoPostMode,
+}))
+vi.mock('../../../../settings/settings-service', () => ({
+  getOrganizationSetting: h.getOrganizationSetting,
+}))
+vi.mock('../../../../field-values/field-value-service', () => ({
+  FieldValueService: class {
+    constructor(...args: unknown[]) {
+      h.fieldValueServiceArgs.push(args)
+    }
+    setValuesForEntity = h.setValuesForEntity
+  },
+}))
+
+const { writeOffInvoice, previewWriteOffInvoice } = await import('../write-off')
+const { BadRequestError, NotFoundError } = await import('../../../../errors')
+
+const ORG = 'org-1'
+const USER = 'user-1'
+const INVOICE = 'inv-1'
+
+const STATUS_FIELD = { id: 'f-status' }
+const NUMBER_FIELD = { id: 'f-number' }
+const BALANCE_FIELD = { id: 'f-balance' }
+const TOTAL_FIELD = { id: 'f-total' }
+const AMOUNT_PAID_FIELD = { id: 'f-amount-paid' }
+const WRITTEN_OFF_FIELD = { id: 'f-written-off' }
+const CONTACT_FIELD = { id: 'f-contact' }
+
+interface WireInvoiceOptions {
+  number?: string
+  balanceMinor?: number
+  totalMinor?: number
+  amountPaidMinor?: number
+  writtenOffMinor?: number
+  /** Simulate an org short of entity migration 128. */
+  hasWrittenOffField?: boolean
+  /** `invoice_contact`'s related contact instance id (brief 13 §1.2). `null` omits the row. */
+  contactInstanceId?: string | null
+}
+
+/**
+ * Wire the field read `loadInvoiceForWriteOff` performs.
+ *
+ * `totalMinor` defaults to `balanceMinor + amountPaidMinor`, which is exactly
+ * what `syncInvoicePaymentState` leaves behind: it derives
+ * `balance = total - amountPaid` and knows nothing about bad debt, so a
+ * `writtenOffMinor` here does NOT reduce the mirrored balance. That is the
+ * whole reason the outstanding figure is derived rather than read off it.
+ */
+function wireInvoice(status: string | null, options: WireInvoiceOptions = {}) {
+  const {
+    number = 'INV-0042',
+    balanceMinor = 50_000,
+    amountPaidMinor = 0,
+    writtenOffMinor = 0,
+    hasWrittenOffField = true,
+    contactInstanceId = 'ei_contact_1',
+  } = options
+  const totalMinor = options.totalMinor ?? balanceMinor + amountPaidMinor
+
+  h.bySystemAttributes.mockResolvedValue({
+    invoice_status: STATUS_FIELD,
+    invoice_number: NUMBER_FIELD,
+    invoice_balance: BALANCE_FIELD,
+    invoice_total: TOTAL_FIELD,
+    invoice_amount_paid: AMOUNT_PAID_FIELD,
+    invoice_written_off: hasWrittenOffField ? WRITTEN_OFF_FIELD : null,
+    invoice_contact: CONTACT_FIELD,
+  })
+  h.selectRows = status
+    ? [
+        { fieldId: STATUS_FIELD.id, optionId: status, valueText: null, valueNumber: null },
+        { fieldId: NUMBER_FIELD.id, optionId: null, valueText: number, valueNumber: null },
+        { fieldId: BALANCE_FIELD.id, optionId: null, valueText: null, valueNumber: balanceMinor },
+        { fieldId: TOTAL_FIELD.id, optionId: null, valueText: null, valueNumber: totalMinor },
+        {
+          fieldId: AMOUNT_PAID_FIELD.id,
+          optionId: null,
+          valueText: null,
+          valueNumber: amountPaidMinor,
+        },
+        {
+          fieldId: WRITTEN_OFF_FIELD.id,
+          optionId: null,
+          valueText: null,
+          valueNumber: writtenOffMinor,
+        },
+        ...(contactInstanceId
+          ? [
+              {
+                fieldId: CONTACT_FIELD.id,
+                optionId: null,
+                valueText: null,
+                valueNumber: null,
+                relatedEntityId: contactInstanceId,
+              },
+            ]
+          : []),
+      ]
+    : []
+}
+
+/**
+ * How many `write_off` postings the invoice already has, as
+ * `countWriteOffPostings`'s `selectDistinct` reads it.
+ */
+let writeOffPostings: unknown[] = []
+
+function stubDb() {
+  const chain: Record<string, unknown> = {}
+  const passthrough = () => chain
+  for (const method of ['from', 'where']) chain[method] = passthrough
+  // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
+  chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+    Promise.resolve(h.selectRows).then(resolve, reject)
+
+  const countChain: Record<string, unknown> = {}
+  for (const method of ['from', 'innerJoin', 'where']) countChain[method] = () => countChain
+  // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
+  countChain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+    Promise.resolve(writeOffPostings).then(resolve, reject)
+
+  const db: Record<string, unknown> = {
+    select: () => chain,
+    selectDistinct: () => countChain,
+  }
+  db.transaction = (fn: (tx: unknown) => unknown) => fn(db)
+  return db as never
+}
+
+/** What `postEntry` answers when the ledger accepts the entry. */
+const accepted = (glPostingId: string) => ({ status: 'posted' as const, glPostingId })
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  h.fieldValueServiceArgs.length = 0
+  writeOffPostings = []
+  h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
+  h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) =>
+    key === 'organization.currency' ? 'USD' : 'UTC'
+  )
+  h.isAccountingEnabled.mockResolvedValue(true)
+  h.readAutoPostMode.mockResolvedValue('post')
+  h.readEditStamp.mockResolvedValue(null)
+})
+
+describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
+  it('refuses a blank reason', async () => {
+    wireInvoice('sent')
+    await expect(
+      writeOffInvoice(stubDb(), {
+        organizationId: ORG,
+        actorUserId: USER,
+        invoiceId: INVOICE,
+        reason: '  ',
+      })
+    ).rejects.toBeInstanceOf(BadRequestError)
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it('refuses when the invoice does not exist', async () => {
+    wireInvoice(null)
+    await expect(
+      writeOffInvoice(stubDb(), {
+        organizationId: ORG,
+        actorUserId: USER,
+        invoiceId: INVOICE,
+        reason: 'Bankrupt',
+      })
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  // An open edit means the balance on screen is not the one the live entry was
+  // built from, so the write-off would land on the wrong figure (73 D4).
+  it('refuses while an edit is open', async () => {
+    wireInvoice('sent')
+    h.readEditStamp.mockResolvedValue({ openedAt: '2026-09-18T00:00:00.000Z', byUserId: USER })
+    await expect(
+      writeOffInvoice(stubDb(), {
+        organizationId: ORG,
+        actorUserId: USER,
+        invoiceId: INVOICE,
+        reason: 'Bankrupt',
+      })
+    ).rejects.toThrow(/open for editing/)
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it.each(['void', 'draft'])('refuses a %s invoice on its status alone', async (status) => {
+    wireInvoice(status)
+    await expect(
+      writeOffInvoice(stubDb(), {
+        organizationId: ORG,
+        actorUserId: USER,
+        invoiceId: INVOICE,
+        reason: 'Bankrupt',
+      })
+    ).rejects.toBeInstanceOf(BadRequestError)
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    'written_off',
+    'paid',
+  ])('refuses a %s invoice with nothing outstanding', async (status) => {
+    wireInvoice(status, { balanceMinor: 0, totalMinor: 50_000, amountPaidMinor: 50_000 })
+    await expect(
+      writeOffInvoice(stubDb(), {
+        organizationId: ORG,
+        actorUserId: USER,
+        invoiceId: INVOICE,
+        reason: 'Bankrupt',
+      })
+    ).rejects.toBeInstanceOf(BadRequestError)
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  // 🛑 The regression this pins was found in a BROWSER, not here, because both
+  // halves were individually right. `readWriteOffState` derives what is still
+  // outstanding and the dialog opens prefilled with it; the guard refused on the
+  // STATUS, so every preview and post against a `written_off` row that still
+  // carried a receivable failed with "already written off" and the balance was
+  // unreachable by every door at once. A row can reach that state by being
+  // written off before entity migration 128 existed.
+  it('allows a written_off invoice that still carries a receivable', async () => {
+    wireInvoice('written_off', {
+      balanceMinor: 49_583,
+      totalMinor: 72_583,
+      amountPaidMinor: 3_000,
+      writtenOffMinor: 20_000,
+    })
+    h.postEntry.mockResolvedValue(accepted('gl-1'))
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      reason: 'Bankrupt',
+    })
+
+    // Everything still outstanding, not the whole invoice a second time:
+    // 72,583 total less 3,000 paid less the 20,000 already written off.
+    expect(h.postEntry).toHaveBeenCalledTimes(1)
+    expect(h.postEntry.mock.calls[0]![1].entry.totalDebit).toBe(49_583)
+  })
+
+  it('refuses an amount over the invoice balance', async () => {
+    wireInvoice('sent', { balanceMinor: 10_000 })
+    await expect(
+      writeOffInvoice(stubDb(), {
+        organizationId: ORG,
+        actorUserId: USER,
+        invoiceId: INVOICE,
+        amountMinor: 10_001,
+        reason: 'Bankrupt',
+      })
+    ).rejects.toBeInstanceOf(BadRequestError)
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it('refuses a zero balance', async () => {
+    wireInvoice('sent', { balanceMinor: 0, totalMinor: 0 })
+    await expect(
+      writeOffInvoice(stubDb(), {
+        organizationId: ORG,
+        actorUserId: USER,
+        invoiceId: INVOICE,
+        reason: 'Bankrupt',
+      })
+    ).rejects.toBeInstanceOf(BadRequestError)
+  })
+})
+
+describe('writeOffInvoice - the happy path', () => {
+  it('defaults the amount to the whole balance, posts, and flips the status', async () => {
+    wireInvoice('sent', { balanceMinor: 50_000 })
+    h.postEntry.mockResolvedValue(accepted('gp_1'))
+
+    const result = await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      reason: 'Customer bankrupt',
+    })
+
+    expect(result.status).toBe('posted')
+    const postedEntry = h.postEntry.mock.calls[0]![1].entry
+    expect(postedEntry.totalDebit).toBe(50_000)
+    expect(postedEntry.lines.map((l: { direction: string }) => l.direction)).toEqual([
+      'debit',
+      'credit',
+    ])
+
+    expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
+    const write = h.setValuesForEntity.mock.calls[0]![0]
+    expect(write.values).toEqual(
+      expect.arrayContaining([
+        { fieldId: 'invoice_status', value: 'written_off' },
+        { fieldId: 'invoice_balance', value: 0 },
+      ])
+    )
+    // The field-hook bypass is load-bearing - see invoice-lifecycle.test.ts's
+    // header for why: without it, `written_off` (an ACTION status) is refused
+    // by the exact wall this write-off just added it to.
+    expect(h.fieldValueServiceArgs[0]?.[4]).toEqual({
+      bypassFieldGuards: new Set(['invoice_status']),
+    })
+  })
+
+  // brief 13 §1.2: the receivable credit leg carries the invoice's own contact.
+  it('carries the invoice contact on the accounts_receivable credit leg only', async () => {
+    wireInvoice('sent', { balanceMinor: 50_000 })
+    h.postEntry.mockResolvedValue(accepted('gp_1'))
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      reason: 'Customer bankrupt',
+    })
+
+    const [debit, credit] = h.postEntry.mock.calls[0]![1].entry.lines
+    expect(debit.counterpartyId).toBeUndefined()
+    expect(credit).toMatchObject({ counterpartyType: 'customer', counterpartyId: 'ei_contact_1' })
+  })
+
+  it('posts fine with no contact on the invoice', async () => {
+    wireInvoice('sent', { balanceMinor: 50_000, contactInstanceId: null })
+    h.postEntry.mockResolvedValue(accepted('gp_1'))
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      reason: 'Customer bankrupt',
+    })
+
+    const [, credit] = h.postEntry.mock.calls[0]![1].entry.lines
+    expect(credit.counterpartyId).toBeUndefined()
+  })
+
+  // 🛑 A partial write-off must NOT stamp `written_off`. That status is a
+  // statement about the whole invoice: it would drop a live 30,000 balance out
+  // of A/R aging, and `assertWriteOffAllowed` would then refuse to write off the
+  // remainder ("already written off") - the balance would be unreachable from
+  // every door at once.
+  it('writes off part of the balance and reduces invoice_balance by that much', async () => {
+    wireInvoice('partially_paid', { balanceMinor: 50_000 })
+    h.postEntry.mockResolvedValue(accepted('gp_1'))
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      amountMinor: 20_000,
+      reason: 'Partial settlement',
+    })
+
+    const write = h.setValuesForEntity.mock.calls[0]![0]
+    expect(write.values).toEqual([
+      { fieldId: 'invoice_balance', value: 30_000 },
+      { fieldId: 'invoice_written_off', value: 20_000 },
+    ])
+    expect(write.values).not.toContainEqual(expect.objectContaining({ fieldId: 'invoice_status' }))
+  })
+
+  it('does stamp written_off when the amount clears the whole balance', async () => {
+    wireInvoice('partially_paid', { balanceMinor: 20_000 })
+    h.postEntry.mockResolvedValue(accepted('gp_1'))
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      amountMinor: 20_000,
+      reason: 'Customer bankrupt',
+    })
+
+    const write = h.setValuesForEntity.mock.calls[0]![0]
+    expect(write.values).toContainEqual({ fieldId: 'invoice_status', value: 'written_off' })
+    expect(write.values).toContainEqual({ fieldId: 'invoice_balance', value: 0 })
+  })
+
+  it('does NOT flip the status when the post is refused', async () => {
+    wireInvoice('sent', { balanceMinor: 50_000 })
+    h.postEntry.mockResolvedValue({ status: 'period_closed', error: 'That month is locked.' })
+
+    const result = await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      reason: 'Customer bankrupt',
+    })
+
+    expect(result.status).toBe('period_closed')
+    expect(result.error).toMatch(/locked/)
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+
+  it('names the invoice number as the docNumber key, via the reason as memo', async () => {
+    wireInvoice('sent', { number: 'INV-0077', balanceMinor: 50_000 })
+    h.postEntry.mockResolvedValue(accepted('gp_1'))
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      reason: 'Customer bankrupt',
+    })
+
+    const call = h.postEntry.mock.calls[0]![1]
+    expect(call.entry.periodKey).toBe('INV-0077')
+    expect(call.memo).toBe('Customer bankrupt')
+  })
+})
+
+// 🛑 The defect this block exists for: `periodKey` used to be the invoice
+// number and nothing else, so a SECOND partial write-off claimed the tuple the
+// first already held, the ledger answered `already_posted` - a SUCCESS - and
+// nothing posted while this function reported that it had. The books were short
+// by the second write-off with no error anywhere.
+describe('writeOffInvoice - a partial write-off can be topped up', () => {
+  it('posts a DISTINCT entry for the second partial rather than re-claiming the first key', async () => {
+    // The first write-off, on a 50,000 invoice with nothing paid.
+    wireInvoice('partially_paid', { balanceMinor: 50_000 })
+    h.postEntry.mockResolvedValue(accepted('gp_1'))
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      amountMinor: 20_000,
+      reason: 'First tranche',
+    })
+    const first = h.postEntry.mock.calls[0]![1].entry
+
+    // The second, with the first's posting now in the ledger and its amount
+    // recorded on the invoice. `balance` is deliberately the FULL 50,000 here:
+    // `syncInvoicePaymentState` re-derives it as `total - amountPaid` and knows
+    // nothing about bad debt, so the outstanding figure has to come from
+    // `invoice_written_off`, not from the mirrored balance.
+    wireInvoice('partially_paid', { balanceMinor: 50_000, writtenOffMinor: 20_000 })
+    writeOffPostings = [{ glPostingId: 'gp_1' }]
+    h.postEntry.mockResolvedValue(accepted('gp_2'))
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      amountMinor: 15_000,
+      reason: 'Second tranche',
+    })
+    const second = h.postEntry.mock.calls[1]![1].entry
+
+    expect(first.periodKey).toBe('INV-0042')
+    expect(second.periodKey).toBe('INV-00421')
+    expect(second.periodKey).not.toBe(first.periodKey)
+    expect(second.totalDebit).toBe(15_000)
+
+    // 🔑 The ATTEMPT is the subject claim's occurrence, so two write-offs of one
+    // invoice are two claims rather than a collision - and neither collides with
+    // the issuance entry's `original`.
+    const [firstSubject, secondSubject] = h.postEntry.mock.calls.map((call) => call[1].sources[0])
+    expect(firstSubject).toMatchObject({
+      sourceKind: 'invoice',
+      sourceId: INVOICE,
+      linkRole: 'subject',
+      occurrence: 'write_off:0',
+    })
+    expect(secondSubject).toMatchObject({
+      sourceKind: 'invoice',
+      sourceId: INVOICE,
+      linkRole: 'subject',
+      occurrence: 'write_off:1',
+    })
+
+    // And the cumulative figure grows rather than being restated.
+    const write = h.setValuesForEntity.mock.calls[1]![0]
+    expect(write.values).toContainEqual({ fieldId: 'invoice_written_off', value: 35_000 })
+    expect(write.values).toContainEqual({ fieldId: 'invoice_balance', value: 15_000 })
+    expect(write.values).not.toContainEqual(expect.objectContaining({ fieldId: 'invoice_status' }))
+  })
+
+  it('refuses a second write-off that would exceed what is left, naming the invoice', async () => {
+    wireInvoice('partially_paid', {
+      number: 'INV-0091',
+      balanceMinor: 50_000,
+      writtenOffMinor: 20_000,
+    })
+    writeOffPostings = [{ glPostingId: 'gp_1' }]
+
+    await expect(
+      writeOffInvoice(stubDb(), {
+        organizationId: ORG,
+        actorUserId: USER,
+        invoiceId: INVOICE,
+        amountMinor: 30_001,
+        reason: 'Too much',
+      })
+    ).rejects.toThrowError(/INV-0091/)
+    await expect(
+      writeOffInvoice(stubDb(), {
+        organizationId: ORG,
+        actorUserId: USER,
+        invoiceId: INVOICE,
+        amountMinor: 30_001,
+        reason: 'Too much',
+      })
+    ).rejects.toThrowError(/already been written off/)
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it('writes off only the REMAINDER when no amount is named, and then stamps written_off', async () => {
+    wireInvoice('partially_paid', { balanceMinor: 50_000, writtenOffMinor: 20_000 })
+    writeOffPostings = [{ glPostingId: 'gp_1' }]
+    h.postEntry.mockResolvedValue(accepted('gp_2'))
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      reason: 'Write off the rest',
+    })
+
+    // 30,000, not the invoice's whole 50,000: the first tranche already left A/R.
+    expect(h.postEntry.mock.calls[0]![1].entry.totalDebit).toBe(30_000)
+    const write = h.setValuesForEntity.mock.calls[0]![0]
+    expect(write.values).toContainEqual({ fieldId: 'invoice_status', value: 'written_off' })
+    expect(write.values).toContainEqual({ fieldId: 'invoice_balance', value: 0 })
+    expect(write.values).toContainEqual({ fieldId: 'invoice_written_off', value: 50_000 })
+  })
+
+  it('subtracts payments as well as bad debt from what is left', async () => {
+    wireInvoice('partially_paid', {
+      totalMinor: 100_000,
+      amountPaidMinor: 40_000,
+      writtenOffMinor: 10_000,
+      balanceMinor: 60_000,
+    })
+    writeOffPostings = [{ glPostingId: 'gp_1' }]
+    h.postEntry.mockResolvedValue(accepted('gp_2'))
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      reason: 'Write off the rest',
+    })
+
+    expect(h.postEntry.mock.calls[0]![1].entry.totalDebit).toBe(50_000)
+  })
+
+  // An org short of entity migration 128 must still be able to write an invoice
+  // off - it just cannot record the cumulative figure, and so falls back to the
+  // mirrored balance for the bound. Writing a field that does not exist would
+  // throw and take the whole action down with it.
+  it('skips the invoice_written_off write on an org that has no such field', async () => {
+    wireInvoice('sent', { balanceMinor: 50_000, hasWrittenOffField: false })
+    h.postEntry.mockResolvedValue(accepted('gp_1'))
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      amountMinor: 20_000,
+      reason: 'Partial',
+    })
+
+    const write = h.setValuesForEntity.mock.calls[0]![0]
+    expect(write.values).toEqual([{ fieldId: 'invoice_balance', value: 30_000 }])
+  })
+})
+
+// task 17 section 3: accounting is opt-in, and a write-off must land on the
+// invoice's balance whether or not the org has ever turned it on.
+describe('writeOffInvoice - accounting not enabled', () => {
+  it('returns not_enabled, never reads the period lock or posts, and still writes off the invoice', async () => {
+    wireInvoice('sent', { balanceMinor: 50_000 })
+    h.isAccountingEnabled.mockResolvedValue(false)
+
+    const result = await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      reason: 'Customer bankrupt',
+    })
+
+    expect(result).toEqual({ status: 'not_enabled' })
+    expect(h.resolvePeriodLock).not.toHaveBeenCalled()
+    expect(h.postEntry).not.toHaveBeenCalled()
+
+    expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
+    const write = h.setValuesForEntity.mock.calls[0]![0]
+    expect(write.values).toEqual(
+      expect.arrayContaining([
+        { fieldId: 'invoice_status', value: 'written_off' },
+        { fieldId: 'invoice_balance', value: 0 },
+      ])
+    )
+  })
+
+  it('writes off part of the balance exactly as it would with accounting on', async () => {
+    wireInvoice('partially_paid', { balanceMinor: 50_000 })
+    h.isAccountingEnabled.mockResolvedValue(false)
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      amountMinor: 20_000,
+      reason: 'Partial settlement',
+    })
+
+    expect(h.postEntry).not.toHaveBeenCalled()
+    const write = h.setValuesForEntity.mock.calls[0]![0]
+    expect(write.values).toEqual([
+      { fieldId: 'invoice_balance', value: 30_000 },
+      { fieldId: 'invoice_written_off', value: 20_000 },
+    ])
+  })
+})
+
+describe('previewWriteOffInvoice', () => {
+  it('previews without accepting an effect or touching the invoice fields', async () => {
+    wireInvoice('sent', { balanceMinor: 50_000 })
+    h.previewEntry.mockResolvedValue({
+      postingType: 'write_off',
+      periodKey: 'INV-0042',
+      txnDate: '2026-09-03',
+      docNumber: 'AUXX-WOF-INV0042',
+      lines: [],
+      totalMinor: 50_000,
+    })
+
+    const preview = await previewWriteOffInvoice(stubDb(), {
+      organizationId: ORG,
+      invoiceId: INVOICE,
+    })
+
+    expect(preview.totalMinor).toBe(50_000)
+    expect(h.postEntry).not.toHaveBeenCalled()
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+})

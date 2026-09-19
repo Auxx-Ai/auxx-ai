@@ -16,10 +16,14 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { verifyBooksBalance } from '../src/accounting/ledger'
 import { recordInvoicePayment } from '../src/accounting/money/invoice-payments/record-payment'
 import { readTrialBalance } from '../src/accounting/reports'
+import {
+  fulfillOrder,
+  previewFulfillment,
+  readOrderForFulfillment,
+} from '../src/accounting/sales/orders'
 import { getCachedEntityDefId, getOrgCache } from '../src/cache'
 import { UnifiedCrudHandler } from '../src/resources/crud/unified-handler'
 import { toRecordId } from '../src/resources/resource-id'
-import { fulfillOrder, previewFulfillment, readOrderForFulfillment } from '../src/sales/orders'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 

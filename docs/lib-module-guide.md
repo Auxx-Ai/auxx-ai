@@ -227,6 +227,8 @@ packages/lib/src/
     money/       MoneyTransaction/MoneyApplication, invoice payments, deposits, payouts, checkout
     banking/     feed/, import/, review/, rules/
     purchasing/  POs, the three-way match, bills, vendor credits, both intake lanes
+    sales/       quotes, orders, fulfillments, invoice issuance, credit memos, billing, totals
+    documents/   edit-in-place/, the ledger generation, the document entry key
   inventory/
     movements/   the stock_movement writer, reversal, movement cost fields
     costing/     part cost, vendor cost, standard cost, QoH
@@ -235,7 +237,6 @@ packages/lib/src/
     relief/      sale movements on fulfillment
     bom/         subpart graph
     tariffs/     HTS, 301, tariff starters and schedules
-  sales/         quotes, orders, fulfillments, invoice issuance, credit memos, billing, totals
   returns/       returns, salvage, evidence pack, intake
   documents/     PDF rendering
 ```
@@ -243,18 +244,19 @@ packages/lib/src/
 Three rules come with that shape:
 
 - **A subfolder keeps the barrel it already has; a new subfolder gets none
-  unless a consumer needs the subpath.** Around thirty subfolder `index.ts`
+  unless a consumer needs the subpath.** Around forty subfolder `index.ts`
   files exist under `accounting/` and they stay. But
-  `accounting/money/invoice-payments` and `sales/quotes|invoices|billing|totals`
+  `accounting/money/invoice-payments` and
+  `accounting/sales/quotes|invoices|billing|totals`
   have none, because nothing imports them as a unit — a subfolder is a filing
   decision first, and an export surface only when something asks for one. A
   consumer that wants one slice imports the deeper subpath
   (`@auxx/lib/accounting/purchasing/bill-intake/client`), which `generate:exports` picks up
   for free.
 - **Cut by what the record is, not by which table a function writes.** An
-  invoice's issuance and lifecycle are `sales/invoices`; recording a payment
+  invoice's issuance and lifecycle are `accounting/sales/invoices`; recording a payment
   against it writes a `MoneyTransaction`, so it is `accounting/money`.
-- **Direction.** `sales`, `returns` → `accounting/*` and
+- **Direction.** `returns` → `accounting/*` and
   `inventory/*`; `accounting/{money,banking,rails}` → `accounting/ledger`;
   `inventory/*` → `accounting/ledger` to post, and never the reverse except the
   back-edges listed in `docs/accounting-architecture-guide.md` §2.2. Adding a

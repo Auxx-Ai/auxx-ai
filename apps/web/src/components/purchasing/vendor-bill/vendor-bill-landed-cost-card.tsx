@@ -2,14 +2,12 @@
 'use client'
 
 // `vendor_bill:landed-cost` — what this shipment's receipts accrued for freight
-// and duty against what other vendors' bills have charged for it (73 §7.2).
-//
-// Read-only, and nothing here posts. The accrual account's balance is the
-// control until the landed-cost voucher (follow-up item 11) lands; this card
-// only says which shipment is running over or under its estimate.
+// and duty against what other vendors' bills have charged for it (73 §7.2), and
+// Clear for the under-run nobody will ever bill (74 D4).
 
 import type { RecordId } from '@auxx/lib/resources/client'
 import { parseRecordId } from '@auxx/types/resource'
+import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
@@ -20,11 +18,13 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
+import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatCurrency } from '@auxx/utils/currency'
 import { Ship } from 'lucide-react'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { PurchasingSummaryStrip, unwrapValue } from '../purchasing-summary-strip'
@@ -40,8 +40,22 @@ export function VendorBillLandedCostCard({ recordId }: DrawerTabProps) {
     (getSetting('organization.currency') as string | null) ||
     'USD'
 
+  const vendorBillInstanceId = parseRecordId(recordId as RecordId).entityInstanceId
   const { data, isLoading } = api.purchasing.readLandedCostByBill.useQuery({
-    vendorBillInstanceId: parseRecordId(recordId as RecordId).entityInstanceId,
+    vendorBillInstanceId,
+  })
+
+  const utils = api.useUtils()
+  const [confirm, ConfirmDialog] = useConfirm()
+  const clearLandedCost = api.purchasing.clearLandedCost.useMutation({
+    onSuccess: () => {
+      void utils.purchasing.readLandedCostByBill.invalidate()
+      void utils.purchasing.readLandedCostByVendorPart.invalidate()
+      void utils.ledger.listPostingsForSource.invalidate()
+    },
+    onError: (error) => {
+      toastError({ title: 'Error clearing landed cost', description: error.message })
+    },
   })
 
   if (isLoading || !data) return <Skeleton className='h-24 w-full' />
@@ -67,6 +81,17 @@ export function VendorBillLandedCostCard({ recordId }: DrawerTabProps) {
     { label: 'Duty', ...data.duties },
   ]
   const outstanding = data.freight.differenceMinor + data.duties.differenceMinor
+  const remaining = data.freight.remainingMinor + data.duties.remainingMinor
+
+  const onClear = async () => {
+    const confirmed = await confirm({
+      title: 'Clear the landed cost?',
+      description: `${money(remaining)} still accrued for this shipment posts to purchase price variance. A carrier or broker bill arriving after this posts there too.`,
+      confirmText: 'Clear',
+      cancelText: 'Cancel',
+    })
+    if (confirmed) clearLandedCost.mutate({ vendorBillInstanceId })
+  }
 
   return (
     <div className='flex flex-col gap-3 pe-3'>
@@ -82,6 +107,23 @@ export function VendorBillLandedCostCard({ recordId }: DrawerTabProps) {
         ]}
       />
 
+      {remaining > 0 && (
+        <div className='flex items-center justify-between gap-3'>
+          <p className='text-muted-foreground text-xs'>
+            {money(remaining)} is still accrued for this shipment. Clear it once no carrier or
+            broker bill is coming.
+          </p>
+          <Button
+            variant='outline'
+            size='xs'
+            loading={clearLandedCost.isPending}
+            loadingText='Clearing...'
+            onClick={onClear}>
+            Clear
+          </Button>
+        </div>
+      )}
+
       <div className='border-t'>
         <Table>
           <TableHeader>
@@ -89,6 +131,8 @@ export function VendorBillLandedCostCard({ recordId }: DrawerTabProps) {
               <TableHead>Accrual</TableHead>
               <TableHead className='text-right'>Accrued</TableHead>
               <TableHead className='text-right'>Billed</TableHead>
+              <TableHead className='text-right'>Cleared</TableHead>
+              <TableHead className='text-right'>Remaining</TableHead>
               <TableHead className='text-right'>Difference</TableHead>
             </TableRow>
           </TableHeader>
@@ -101,6 +145,12 @@ export function VendorBillLandedCostCard({ recordId }: DrawerTabProps) {
                 </TableCell>
                 <TableCell className='text-right align-top tabular-nums'>
                   {money(legRow.billedMinor)}
+                </TableCell>
+                <TableCell className='text-right align-top tabular-nums'>
+                  {money(legRow.clearedMinor)}
+                </TableCell>
+                <TableCell className='text-right align-top tabular-nums'>
+                  {money(legRow.remainingMinor)}
                 </TableCell>
                 <TableCell
                   className={cn(
@@ -122,6 +172,8 @@ export function VendorBillLandedCostCard({ recordId }: DrawerTabProps) {
           {money(data.otherBilledMinor)} on landed-cost lines coded to neither accrual account.
         </p>
       )}
+
+      <ConfirmDialog />
     </div>
   )
 }

@@ -20,6 +20,17 @@
  */
 
 import { database } from '@auxx/database'
+import {
+  approveQuote,
+  clearInvoiceSchedule,
+  convertQuoteToWorkOrder,
+  deleteInvoiceLine,
+  generateInvoiceDraft,
+  getInvoiceSchedule,
+  markQuoteSent,
+  setInvoiceSchedule,
+  sweepInvoiceDrafts,
+} from '@auxx/lib/accounting/sales'
 import { onCacheEvent } from '@auxx/lib/cache'
 import {
   endEngagement,
@@ -32,17 +43,6 @@ import {
 import { AuxxError } from '@auxx/lib/errors'
 import { expandOccurrences, type RecurrencePattern } from '@auxx/lib/recurrence'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
-import {
-  approveQuote,
-  clearInvoiceSchedule,
-  convertQuoteToWorkOrder,
-  deleteInvoiceLine,
-  generateInvoiceDraft,
-  getInvoiceSchedule,
-  markQuoteSent,
-  setInvoiceSchedule,
-  sweepInvoiceDrafts,
-} from '@auxx/lib/sales'
 import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'
 
 /** Build a RecordId string without pulling in `@auxx/types` (not a worker dependency). */
@@ -144,7 +144,7 @@ async function getRuleFor(subjectType: string, subjectId: string) {
  * Active `InvoiceLineAllocation` row whose `invoiceLineItemId` is `copyId` — the allocation-
  * table replacement for reading the removed `line_item_source_line_id` field off a gather copy
  * (entity migration 043 hard-deleted that field; provenance now lives in
- * `packages/lib/src/sales/billing/allocations.ts`'s tables). Per plan §3.2, EVERY generated
+ * `packages/lib/src/accounting/sales/billing/allocations.ts`'s tables). Per plan §3.2, EVERY generated
  * invoice line gets exactly one allocation row now (including template copies, `kind:
  * 'visit_template'`/`'contract'`) — presence alone no longer distinguishes "template" from
  * "gathered/addition". Callers must branch on `.kind`, not on whether a row exists.

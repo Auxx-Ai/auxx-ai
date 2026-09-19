@@ -25,9 +25,9 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
-import { loadInvoiceForIssuance } from '../../../sales/invoices/issuance-reads'
 import { toLedgerMinor } from '../../ledger/builders/basis-hash'
 import type { GlPostingLineInput } from '../../ledger/types'
+import { loadInvoiceForIssuance } from '../../sales/invoices/issuance-reads'
 import {
   type LoadedMovement,
   type MovementPostingResult,

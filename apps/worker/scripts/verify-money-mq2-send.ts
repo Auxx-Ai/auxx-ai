@@ -23,6 +23,7 @@
  */
 
 import { database } from '@auxx/database'
+import { prepareDocumentEmail } from '@auxx/lib/accounting/sales'
 import { BadRequestError } from '@auxx/lib/errors'
 import {
   createS3StoragePort,
@@ -30,7 +31,6 @@ import {
   deleteAsset,
 } from '@auxx/lib/files/server'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
-import { prepareDocumentEmail } from '@auxx/lib/sales'
 
 /** Build a RecordId string without pulling in `@auxx/types` (not a worker dependency). */
 function toRecordId(entityDefinitionId: string, entityInstanceId: string) {

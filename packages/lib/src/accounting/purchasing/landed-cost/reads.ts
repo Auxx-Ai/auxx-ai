@@ -28,7 +28,8 @@ import { pickSystemAttributes } from '../../../resources/registry/system-attribu
 import { readSystemRecords, systemFields } from '../../../resources/system-records'
 import { createGuard } from '../../../utils/guard'
 import { readRoleAssignments } from '../../ledger/roles/role-assignments'
-import type { LandedCostSummary, VendorPartLandedCostSummary } from './types'
+import { readClearedByAccount } from './cleared'
+import type { LandedCostLeg, LandedCostSummary, VendorPartLandedCostSummary } from './types'
 
 const guard = createGuard('purchasing:landed-cost')
 
@@ -56,6 +57,16 @@ const ORDER_LINE_ATTRIBUTES = pickSystemAttributes(PURCHASE_ORDER_LINE_FIELDS, [
 interface AccrualAccounts {
   freightAccountId: string | null
   dutiesAccountId: string | null
+}
+
+/** One accrual's cleared total, or `0` where the role is unmapped. */
+function clearedOf(
+  cleared: ReadonlyMap<string, number>,
+  accounts: AccrualAccounts,
+  which: 'freight' | 'duties'
+): number {
+  const accountId = which === 'freight' ? accounts.freightAccountId : accounts.dutiesAccountId
+  return accountId ? (cleared.get(accountId) ?? 0) : 0
 }
 
 /**
@@ -112,7 +123,14 @@ async function loadBillLandedCost(
   db: Database,
   organizationId: string,
   vendorBillId: string,
-  accounts: AccrualAccounts
+  accounts: AccrualAccounts,
+  /**
+   * A bill whose own landed lines are left out of `billed`. The Post split
+   * passes the bill it is building, which is linked already: counting its own
+   * lines against the accrual they are about to relieve would read as nothing
+   * remaining and send the whole line to `ppv`.
+   */
+  excludeVendorBillId?: string
 ): Promise<BillLandedCost> {
   const lineCtx = await systemFields(db, organizationId, 'vendor_bill_line', BILL_LINE_ATTRIBUTES)
   if (!lineCtx) {
@@ -139,6 +157,12 @@ async function loadBillLandedCost(
   let billedDutiesMinor = 0
   let billedOtherMinor = 0
   for (const line of landedLines) {
+    if (
+      excludeVendorBillId &&
+      line.related('vendor_bill_line_vendor_bill') === excludeVendorBillId
+    ) {
+      continue
+    }
     const amount = line.number('vendor_bill_line_line_total') ?? 0
     const accountId = line.text('vendor_bill_line_gl_account')
     if (accountId && accountId === accounts.freightAccountId) billedFreightMinor += amount
@@ -239,8 +263,14 @@ async function loadOrderLineVendorParts(
   return out
 }
 
-function leg(accruedMinor: number, billedMinor: number) {
-  return { accruedMinor, billedMinor, differenceMinor: accruedMinor - billedMinor }
+function leg(accruedMinor: number, billedMinor: number, clearedMinor = 0): LandedCostLeg {
+  return {
+    accruedMinor,
+    billedMinor,
+    differenceMinor: accruedMinor - billedMinor,
+    clearedMinor,
+    remainingMinor: Math.max(0, accruedMinor - billedMinor - clearedMinor),
+  }
 }
 
 /**
@@ -259,6 +289,7 @@ export async function readLandedCostByBill(
     async () => {
       const accounts = await readAccrualAccounts(db, organizationId)
       const bill = await loadBillLandedCost(db, organizationId, vendorBillId, accounts)
+      const cleared = await readClearedByAccount(db, organizationId, vendorBillId)
 
       let accruedFreight = 0
       let accruedDuties = 0
@@ -268,8 +299,12 @@ export async function readLandedCostByBill(
       }
 
       return {
-        freight: leg(accruedFreight, bill.billedFreightMinor),
-        duties: leg(accruedDuties, bill.billedDutiesMinor),
+        freight: leg(
+          accruedFreight,
+          bill.billedFreightMinor,
+          clearedOf(cleared, accounts, 'freight')
+        ),
+        duties: leg(accruedDuties, bill.billedDutiesMinor, clearedOf(cleared, accounts, 'duties')),
         otherBilledMinor: bill.billedOtherMinor,
         receiptCount: bill.receipts.length,
         landedLineCount: bill.landedLineCount,
@@ -322,18 +357,27 @@ export async function readLandedCostByVendorPart(
       let billedFreight = 0
       let billedDuties = 0
       let billedOther = 0
+      let clearedFreight = 0
+      let clearedDuties = 0
       let landedLineCount = 0
       for (const billId of billIds) {
         const bill = await loadBillLandedCost(db, organizationId, billId, accounts)
+        const cleared = await readClearedByAccount(db, organizationId, billId)
         landedLineCount += bill.landedLineCount
         billedFreight += apportion(bill.goodsLines, vendorPartId, bill.billedFreightMinor, false)
         billedDuties += apportion(bill.goodsLines, vendorPartId, bill.billedDutiesMinor, true)
         billedOther += apportion(bill.goodsLines, vendorPartId, bill.billedOtherMinor, false)
+        // A clear is a residual of the same accrual, so it splits across parts
+        // on the same weights the bill it replaces would have.
+        const freight = clearedOf(cleared, accounts, 'freight')
+        const duties = clearedOf(cleared, accounts, 'duties')
+        clearedFreight += apportion(bill.goodsLines, vendorPartId, freight, false)
+        clearedDuties += apportion(bill.goodsLines, vendorPartId, duties, true)
       }
 
       return {
-        freight: leg(accruedFreight, billedFreight),
-        duties: leg(accruedDuties, billedDuties),
+        freight: leg(accruedFreight, billedFreight, clearedFreight),
+        duties: leg(accruedDuties, billedDuties, clearedDuties),
         otherBilledMinor: billedOther,
         receiptCount: receipts.length,
         landedLineCount,
@@ -363,6 +407,80 @@ async function loadGoodsBillsForOrderLines(
     if (billId) out.add(billId)
   }
   return [...out]
+}
+
+/** What one landed line may still draw off its shipment's accrual (74 D4). */
+export interface LandedAccrualRemaining {
+  /** `<goods bill id>:<accrual account id>`. Two lines on one pool share it. */
+  poolKey: string
+  /** `accrued − billed by other bills − cleared`, floored at zero. */
+  remainingMinor: number
+}
+
+/**
+ * Per `vendor_bill_line` id, what that line may still relieve of the accrual
+ * its shipment carries - the input `buildVendorBillEntry` splits on (74 D4).
+ *
+ * Only a line that BOTH names a goods bill through `vendor_bill_line_landed_bill`
+ * AND is coded to one of the two accrual accounts is in the map; a landed line
+ * coded to a third account is absent and posts unchanged, which is the coding
+ * question the card already shows rather than one this silently answers.
+ */
+export async function readLandedAccrualRemaining(
+  db: Database,
+  organizationId: string,
+  vendorBillId: string,
+  billLineIds: readonly string[]
+): Promise<Map<string, LandedAccrualRemaining>> {
+  const out = new Map<string, LandedAccrualRemaining>()
+  if (billLineIds.length === 0) return out
+
+  const accounts = await readAccrualAccounts(db, organizationId)
+  if (!accounts.freightAccountId && !accounts.dutiesAccountId) return out
+
+  const ctx = await systemFields(db, organizationId, 'vendor_bill_line', BILL_LINE_ATTRIBUTES)
+  if (!ctx) return out
+  const lines = await readSystemRecords(db, organizationId, ctx, { ids: [...billLineIds] })
+
+  const landed: Array<{ lineId: string; goodsBillId: string; accountId: string }> = []
+  for (const line of lines) {
+    const goodsBillId = line.related('vendor_bill_line_landed_bill')
+    const accountId = line.text('vendor_bill_line_gl_account')
+    if (!goodsBillId || !accountId) continue
+    if (accountId !== accounts.freightAccountId && accountId !== accounts.dutiesAccountId) continue
+    landed.push({ lineId: line.id, goodsBillId, accountId })
+  }
+  if (landed.length === 0) return out
+
+  for (const goodsBillId of new Set(landed.map((line) => line.goodsBillId))) {
+    const bill = await loadBillLandedCost(db, organizationId, goodsBillId, accounts, vendorBillId)
+    const cleared = await readClearedByAccount(db, organizationId, goodsBillId)
+    let accruedFreight = 0
+    let accruedDuties = 0
+    for (const receipt of bill.receipts) {
+      accruedFreight += receipt.freightMinor
+      accruedDuties += receipt.dutiesMinor
+    }
+    const freightRemaining = leg(
+      accruedFreight,
+      bill.billedFreightMinor,
+      clearedOf(cleared, accounts, 'freight')
+    ).remainingMinor
+    const dutiesRemaining = leg(
+      accruedDuties,
+      bill.billedDutiesMinor,
+      clearedOf(cleared, accounts, 'duties')
+    ).remainingMinor
+    for (const line of landed) {
+      if (line.goodsBillId !== goodsBillId) continue
+      out.set(line.lineId, {
+        poolKey: `${goodsBillId}:${line.accountId}`,
+        remainingMinor:
+          line.accountId === accounts.freightAccountId ? freightRemaining : dutiesRemaining,
+      })
+    }
+  }
+  return out
 }
 
 /** This vendor part's share of one bill's landed amount, rounded to a minor unit. */

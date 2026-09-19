@@ -32,6 +32,9 @@ export { useIsRecordLoading, useIsRecordPending, useRecord } from './use-record'
 export type { RecordRowAccess } from './use-record-access'
 export { useRecordAccess, useRecordAccessAt, useRecordAccessFor } from './use-record-access'
 export { useRecordBatchFetcher } from './use-record-batch-fetcher'
+// Per-ROW edit-in-place state, from the `edit` stamp (74-D1 §1.2.1)
+export type { RecordEditState } from './use-record-edit-state'
+export { useRecordEditState } from './use-record-edit-state'
 // Record hydration hook
 export { useRecordHydration } from './use-record-hydration'
 export { useRecordInvalidation } from './use-record-invalidation'

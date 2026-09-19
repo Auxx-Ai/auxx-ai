@@ -21,7 +21,7 @@
 
 import { closePools, database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { issueCreditMemo } from '../src/sales/credit-memos'
+import { issueCreditMemo } from '../src/accounting/sales/credit-memos'
 
 async function main() {
   const [organizationId, ...creditMemoIds] = process.argv.slice(2)

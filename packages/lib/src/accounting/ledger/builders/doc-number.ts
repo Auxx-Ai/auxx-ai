@@ -128,6 +128,10 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   // `already_posted`, exactly as `postPaymentTransaction` does. Skip it and a
   // one-in-2.2e9 fold silently swallows a real entry.
   recurring_journal: 'RJE',
+  // 74 D4. Keys on `hashedPeriodKey({ prefix: 'LCC', sourceId:
+  // `${goodsBillId}:${attempt}` })`: the goods bill's own number is not in this
+  // builder's reach and a clear is repeatable, so the attempt is in the key.
+  landed_cost_clear: 'LCC',
 }
 
 /** What identifies one entry of one type. See {@link buildDocNumber}. */

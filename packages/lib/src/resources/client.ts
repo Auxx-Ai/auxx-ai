@@ -27,6 +27,7 @@ export type { MergeFieldInput, MergeFieldResult } from './merge/client'
 export { mergeFieldValue } from './merge/client'
 // Picker types
 export type {
+  EditStamp,
   GetResourceByIdInput,
   GetResourcesInput,
   PaginatedResourcesResult,

@@ -25,6 +25,8 @@ import { RecordBillPaymentDialog } from './record-bill-payment-dialog'
 const BILL_ATTRS = [
   'vendor_bill_total',
   'vendor_bill_amount_paid',
+  'vendor_bill_amount_credited',
+  'vendor_bill_amount_discounted',
   'vendor_bill_status',
   'vendor_bill_payment_status',
   'vendor_bill_currency',
@@ -43,7 +45,9 @@ export function VendorBillPaymentCard({ recordId }: DrawerTabProps) {
 
   const total = numberValue(values.vendor_bill_total)
   const amountPaid = numberValue(values.vendor_bill_amount_paid)
-  const balance = total - amountPaid
+  const credited = numberValue(values.vendor_bill_amount_credited)
+  const discounted = numberValue(values.vendor_bill_amount_discounted)
+  const balance = total - amountPaid - credited - discounted
 
   const status = stringValue(values.vendor_bill_status)
   // The money axis (73 D1). `status` answers "is it in the books"; this answers
@@ -72,6 +76,12 @@ export function VendorBillPaymentCard({ recordId }: DrawerTabProps) {
         cells={[
           { label: 'Bill total', value: formatCurrency(total, { currencyCode }) },
           { label: 'Paid', value: formatCurrency(amountPaid, { currencyCode }) },
+          ...(credited > 0
+            ? [{ label: 'Credited', value: formatCurrency(credited, { currencyCode }) }]
+            : []),
+          ...(discounted > 0
+            ? [{ label: 'Discounted', value: formatCurrency(discounted, { currencyCode }) }]
+            : []),
           {
             label: 'Balance',
             value: formatCurrency(balance, { currencyCode }),
@@ -127,6 +137,7 @@ export function VendorBillPaymentCard({ recordId }: DrawerTabProps) {
         billRecordId={recordId}
         total={total}
         amountPaid={amountPaid}
+        amountSettledOtherwise={credited + discounted}
         currencyCode={currencyCode}
       />
     </div>

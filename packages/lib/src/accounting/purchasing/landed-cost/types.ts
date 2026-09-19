@@ -15,6 +15,18 @@ export interface LandedCostLeg {
   billedMinor: number
   /** `accrued − billed`. Positive: still owed. Negative: billed over the estimate. */
   differenceMinor: number
+  /**
+   * What `landed_cost_clear` entries standing in the books have already taken
+   * back out of this accrual (74 D4), read off those postings' own lines.
+   */
+  clearedMinor: number
+  /**
+   * `accrued − billed − cleared`, floored at zero: what this accrual still
+   * holds for the shipment, and so what the next landed-cost line may relieve
+   * before the excess becomes `ppv`. Zero means a late bill posts to `ppv`
+   * alone.
+   */
+  remainingMinor: number
 }
 
 /** The freight and duty picture for one goods bill, or for one vendor part. */
@@ -40,9 +52,17 @@ export interface VendorPartLandedCostSummary extends LandedCostSummary {
   billCount: number
 }
 
+const EMPTY_LEG: LandedCostLeg = {
+  accruedMinor: 0,
+  billedMinor: 0,
+  differenceMinor: 0,
+  clearedMinor: 0,
+  remainingMinor: 0,
+}
+
 export const EMPTY_LANDED_COST_SUMMARY: LandedCostSummary = {
-  freight: { accruedMinor: 0, billedMinor: 0, differenceMinor: 0 },
-  duties: { accruedMinor: 0, billedMinor: 0, differenceMinor: 0 },
+  freight: EMPTY_LEG,
+  duties: EMPTY_LEG,
   otherBilledMinor: 0,
   receiptCount: 0,
   landedLineCount: 0,

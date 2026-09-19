@@ -1,8 +1,8 @@
 // apps/web/src/app/(public)/quote/[token]/deposit-checkout/route.ts
 
 import { createQuoteDepositCheckoutSession } from '@auxx/lib/accounting/money'
+import { buildQuoteViewUrl, resolveQuoteByPublicToken } from '@auxx/lib/accounting/sales'
 import { AuxxError } from '@auxx/lib/errors'
-import { buildQuoteViewUrl, resolveQuoteByPublicToken } from '@auxx/lib/sales'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 

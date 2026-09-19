@@ -49,6 +49,12 @@ vi.mock('../../../cache', () => ({
   getOrgCache: vi.fn(() => ({ get: vi.fn(async () => ({})) })),
 }))
 
+// 74-D1: `getResourcesByIds` now stamps `edit` from one batched read. These fakes
+// serve only their own query, so the stamp read is mocked away.
+vi.mock('../../../entity-instances/edit-snapshot', () => ({
+  readEditStamps: vi.fn(async () => new Map()),
+}))
+
 import type { RecordId } from '@auxx/types/resource'
 import type { CapabilityView } from '../../../permissions/capabilities/capability-view'
 import { RecordPickerService } from '../record-picker-service'

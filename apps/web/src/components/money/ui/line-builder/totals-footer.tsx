@@ -5,13 +5,12 @@
 // Totals footer for the line builder (money MQ1 build spec §H.1): subtotal →
 // discount → tax → total (the add-line row lives in the builder itself).
 // All amounts are computed client-side with `computeDocumentTotals` from
-// `@auxx/lib/sales/client` over the same optimistic field-value store the
+// `@auxx/lib/accounting/sales/client` over the same optimistic field-value store the
 // editors write to. `LineBuilder` owns fetching and mutations; this footer is
 // a passive aggregate subscriber plus totals UI.
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeValue } from '@auxx/database/types'
-import { formatToRawValue } from '@auxx/lib/field-values/client'
 import {
   computeDocumentTotals,
   computeLineTotal,
@@ -19,7 +18,8 @@ import {
   type DocumentBillingInputs,
   type DocumentTotals,
   type LineForTotals,
-} from '@auxx/lib/sales/client'
+} from '@auxx/lib/accounting/sales/client'
+import { formatToRawValue } from '@auxx/lib/field-values/client'
 import {
   Select,
   SelectContent,

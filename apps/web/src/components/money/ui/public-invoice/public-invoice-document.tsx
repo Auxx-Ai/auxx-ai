@@ -7,7 +7,7 @@
 // `<form method="post">` to `./checkout` (a route handler), so a click needs zero client
 // JavaScript: Stripe Checkout is a full-page hosted redirect anyway.
 
-import type { PublicInvoicePayload } from '@auxx/lib/sales'
+import type { PublicInvoicePayload } from '@auxx/lib/accounting/sales'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Card } from '@auxx/ui/components/card'

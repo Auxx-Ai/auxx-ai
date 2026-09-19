@@ -1,9 +1,11 @@
 // apps/web/src/server/api/routers/purchasing.ts
 
 import { type Database, schema } from '@auxx/database'
+import { readDocumentLedgerState } from '@auxx/lib/accounting/documents'
 import {
   allocateLandedCost,
   checkIntakeModelCapability,
+  clearLandedCost,
   commitIntakeDraft,
   createBillIntakeRun,
   createIntakeDraft,
@@ -19,16 +21,12 @@ import {
   linkBillLines,
   markPurchaseOrderSent,
   matchBill,
-  openBillEdit,
   postVendorBill,
   previewVendorBill,
   proposeBillLineLinks,
-  readBillEditOpen,
-  readBillLedgerState,
   readLandedCostByBill,
   readLandedCostByVendorPart,
   resumeBillIntakeRun,
-  saveBillEdit,
   updateBillIntakeRun,
   updateIntakeDraftPayload,
   voidVendorBill,
@@ -188,7 +186,6 @@ const purchaseOrderHeader = {
   shipping: minorUnits.optional(),
   tax: minorUnits.optional(),
   discount: minorUnits.optional(),
-  taxRecoverable: z.boolean().optional(),
   basis: allocationBasis.optional(),
 }
 
@@ -481,52 +478,14 @@ export const purchasingRouter = createTRPCRouter({
     }),
 
   /**
-   * Is this bill unlocked for editing, and is it waiting on a drafted entry?
-   * Both live on `EntityInstance.metadata` — the flag because it has no
-   * reporting meaning, the draft pointer because a draft writes no subject
-   * `GlPostingSource` row for the ledger card to find.
+   * Is this bill waiting on a drafted entry? A draft writes no subject
+   * `GlPostingSource` row, so the ledger card has no other way to find it. The
+   * edit stamp rides the record itself now (74 §1.2.1), not this query.
    */
-  billEditState: permissionProcedure(PermissionKey.ledgerView)
+  billLedgerState: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ vendorBillId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const [editOpen, ledger] = await Promise.all([
-        readBillEditOpen(ctx.db, ctx.session.organizationId, input.vendorBillId),
-        readBillLedgerState(ctx.db, ctx.session.organizationId, input.vendorBillId),
-      ])
-      return { editOpen, draftGlPostingId: ledger.draftGlPostingId }
-    }),
-
-  /**
-   * Unlock a posted bill so its header and lines can be edited (73 D4). Writes
-   * one flag and nothing else; the ledger is untouched until Save.
-   *
-   * 🛑 `ledgerPost`, like Post and Void beside it. This is not "may I edit a
-   * record" - it is permission to move what is already in the books, and Save
-   * reverses and re-posts the entry.
-   */
-  openBillEdit: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ vendorBillId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      return openBillEdit(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        userId: ctx.session.userId,
-        vendorBillInstanceId: input.vendorBillId,
-      })
-    }),
-
-  /**
-   * Close the edit: bring the entry up to the bill's current values, then clear
-   * the flag. An unchanged bill posts nothing. A refusal - a floor, a locked
-   * period, a tie that fails - leaves the entry, the values and the flag alone.
-   */
-  saveBillEdit: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ vendorBillId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      return saveBillEdit(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        userId: ctx.session.userId,
-        vendorBillInstanceId: input.vendorBillId,
-      })
+      return readDocumentLedgerState(ctx.db, ctx.session.organizationId, input.vendorBillId)
     }),
 
   /**
@@ -1028,7 +987,6 @@ export const purchasingRouter = createTRPCRouter({
           shipping: input.shipping ?? 0,
           tax: input.tax ?? 0,
           discount: input.discount ?? 0,
-          taxRecoverable: input.taxRecoverable ?? false,
         },
         input.basis ?? 'value'
       )
@@ -1655,6 +1613,25 @@ export const purchasingRouter = createTRPCRouter({
         organizationId,
         input.vendorPartInstanceId
       )
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Clear what a shipment still has accrued for freight and duty, as
+   * `Dr <accrual> / Cr ppv` (74 D4). Refuses when nothing is left accrued.
+   */
+  clearLandedCost: capabilityProcedure
+    .input(z.object({ vendorBillInstanceId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'vendor_bill'))
+
+      const result = await clearLandedCost(ctx.db, {
+        organizationId,
+        goodsBillInstanceId: input.vendorBillInstanceId,
+        actorUserId: userId,
+      })
       if (result.isErr()) throw result.error
       return result.value
     }),

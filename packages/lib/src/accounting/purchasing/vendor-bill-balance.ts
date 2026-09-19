@@ -57,17 +57,19 @@ const logger = createScopedLogger('purchasing:vendor-bill-balance')
  * facts we already hold.
  */
 
-/** The two inputs. A write to either can move the balance; nothing else can. */
+/** The inputs. A write to any of them can move the balance; nothing else can. */
 export const VENDOR_BILL_BALANCE_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'vendor_bill_total',
   'vendor_bill_amount_paid',
   'vendor_bill_amount_credited',
+  'vendor_bill_amount_discounted',
 ])
 
 const BALANCE_ATTRS = [
   'vendor_bill_total',
   'vendor_bill_amount_paid',
   'vendor_bill_amount_credited',
+  'vendor_bill_amount_discounted',
   'vendor_bill_balance',
 ] as const
 
@@ -93,16 +95,18 @@ export const VENDOR_BILL_BALANCE_RECONCILER = 'vendor-bill:balance'
 export function vendorBillBalance(
   total: number | null,
   amountPaid: number | null,
-  amountCredited: number | null = null
+  amountCredited: number | null = null,
+  amountDiscounted: number | null = null
 ): number | null {
   if (total === null) return null
   // Both inputs are integer minor units, but they are stored in a double column
   // — round rather than trust float subtraction, because `setValueWithType`
   // rejects a non-integer CURRENCY value outright.
   //
-  // A vendor credit reduces what is owed exactly as a payment does: it is what
-  // the supplier no longer asks for (71 U7).
-  return Math.round(total - (amountPaid ?? 0) - (amountCredited ?? 0))
+  // A vendor credit reduces what is owed exactly as a payment does, and so does
+  // an early-payment discount: each is what the supplier no longer asks for
+  // (71 U7, 74 D3).
+  return Math.round(total - (amountPaid ?? 0) - (amountCredited ?? 0) - (amountDiscounted ?? 0))
 }
 
 /**
@@ -140,6 +144,8 @@ export async function recalculateVendorBillBalance(
   // Absent until the vendor credit def lands on the org; an org without it has
   // no credits to net off.
   const amountCreditedField = fields.vendor_bill_amount_credited
+  // Absent until the org has been provisioned with 74's discount field.
+  const amountDiscountedField = fields.vendor_bill_amount_discounted
 
   if (!totalField || !amountPaidField || !balanceField) {
     logger.warn('Missing custom fields for vendor bill balance', {
@@ -160,6 +166,7 @@ export async function recalculateVendorBillBalance(
       amountPaidField.id,
       balanceField.id,
       ...(amountCreditedField ? [amountCreditedField.id] : []),
+      ...(amountDiscountedField ? [amountDiscountedField.id] : []),
     ]
   )
   const values = scalars.get(vendorBillInstanceId)
@@ -167,7 +174,8 @@ export async function recalculateVendorBillBalance(
   const next = vendorBillBalance(
     num(values, totalField.id),
     num(values, amountPaidField.id),
-    amountCreditedField ? num(values, amountCreditedField.id) : null
+    amountCreditedField ? num(values, amountCreditedField.id) : null,
+    amountDiscountedField ? num(values, amountDiscountedField.id) : null
   )
   const stored = num(values, balanceField.id)
 

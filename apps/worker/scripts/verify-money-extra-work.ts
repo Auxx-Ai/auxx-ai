@@ -21,14 +21,14 @@
  */
 
 import { database } from '@auxx/database'
-import { scheduleVisit, setVisitStatus } from '@auxx/lib/dispatch'
-import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import {
   computeWorkOrderBillingProjection,
   createExtraWorkInvoice,
   createVisitInvoice,
   getWorkOrderBillingState,
-} from '@auxx/lib/sales'
+} from '@auxx/lib/accounting/sales'
+import { scheduleVisit, setVisitStatus } from '@auxx/lib/dispatch'
+import { UnifiedCrudHandler } from '@auxx/lib/resources'
 
 /** Build a RecordId string without pulling in `@auxx/types` (not a worker dependency). */
 function toRecordId(entityDefinitionId: string, entityInstanceId: string) {

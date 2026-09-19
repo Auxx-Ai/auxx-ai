@@ -5,6 +5,7 @@ import type { Rung } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import {
   type DroppedFilterNotice,
+  type EditStamp,
   parseRecordId,
   type RecordId,
   type RecordSourceChip,
@@ -61,6 +62,17 @@ export interface RecordMeta {
    * its own fallback explicitly rather than treating `undefined` as a rung.
    */
   _access?: Rung
+  /**
+   * **The open edit-in-place on this row** (74-D1 §1.2.1), resolved server-side
+   * in the same batch that produced the row: a stamp while an edit is open,
+   * `null` once the lane stamped and found none.
+   *
+   * **Absent means "unknown", never "not editing"** — the same rule `_access`
+   * documents. It is absent on rows from a lane that does not stamp
+   * (`record.listAll`, the realtime `record:created` payload, an optimistic
+   * seed), and `useRecordEditState` reports that as `isKnown: false`, locked.
+   */
+  edit?: EditStamp | null
   /** Additional database fields from the specific resource table */
   [key: string]: unknown
 }

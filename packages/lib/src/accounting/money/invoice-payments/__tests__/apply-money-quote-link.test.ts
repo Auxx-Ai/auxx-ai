@@ -8,7 +8,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 
 const runMoneyCommand = vi.hoisted(() => vi.fn())
 vi.mock('../../commands/run-money-command', () => ({ runMoneyCommand }))
-vi.mock('../../../../sales/invoices/issuance-reads', () => ({
+vi.mock('../../../sales/invoices/issuance-reads', () => ({
   loadInvoiceForIssuance: async () => ({ totalMinor: 50_000 }),
 }))
 vi.mock('../../customer-money/deposit-application-accounting', () => ({

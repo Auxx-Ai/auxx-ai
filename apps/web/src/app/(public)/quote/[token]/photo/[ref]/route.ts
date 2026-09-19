@@ -1,7 +1,7 @@
 // apps/web/src/app/(public)/quote/[token]/photo/[ref]/route.ts
 
+import { getPublicQuotePayload, resolveQuoteByPublicToken } from '@auxx/lib/accounting/sales'
 import { resolvePhotoRef } from '@auxx/lib/documents'
-import { getPublicQuotePayload, resolveQuoteByPublicToken } from '@auxx/lib/sales'
 import { NextResponse } from 'next/server'
 
 /**

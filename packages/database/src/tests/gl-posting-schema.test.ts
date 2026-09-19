@@ -311,6 +311,8 @@ describe('the enum vocabularies', () => {
       // 71 §5 U7. `expense_bill` stood after this until 73 D3 folded it into
       // `vendor_bill`: one record may not have two posting types.
       'vendor_credit',
+      // 74 D4.
+      'landed_cost_clear',
     ])
   })
 })

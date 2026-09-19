@@ -6,7 +6,7 @@ const runMoneyCommand = vi.hoisted(() => vi.fn())
 const loadInvoice = vi.hoisted(() => vi.fn())
 
 vi.mock('../../commands/run-money-command', () => ({ runMoneyCommand }))
-vi.mock('../../../../sales/invoices/issuance-reads', () => ({
+vi.mock('../../../sales/invoices/issuance-reads', () => ({
   loadInvoiceForIssuance: loadInvoice,
 }))
 

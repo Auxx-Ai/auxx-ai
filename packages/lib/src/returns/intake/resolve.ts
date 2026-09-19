@@ -46,10 +46,10 @@ import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray, isNull, or, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
+import { isLiveFulfillment } from '../../accounting/sales/fulfillments/client'
+import { readFulfillmentsForOrders } from '../../accounting/sales/fulfillments/reads'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
-import { isLiveFulfillment } from '../../sales/fulfillments/client'
-import { readFulfillmentsForOrders } from '../../sales/fulfillments/reads'
 import type {
   ReturnIntakeCandidate,
   ReturnIntakeOrderOption,

@@ -40,7 +40,7 @@ export interface AllocationLine {
   weight?: number
 }
 
-/** The three header totals that get capitalised into the lines, plus the tax switch. */
+/** The three header totals that get capitalised into the lines. */
 export interface AllocationHeader {
   /** Freight charged on the purchase as a whole, integer minor units. */
   shipping: number
@@ -48,14 +48,6 @@ export interface AllocationHeader {
   tax: number
   /** Header-level discount, integer minor units. Subtracted from the capitalised amount. */
   discount: number
-  /**
-   * True when the buyer reclaims input tax, in which case tax is NOT capitalised
-   * into inventory — it is a receivable from the tax authority, not part of what
-   * the goods cost. The implementation this was modelled from capitalises tax
-   * unconditionally with no switch anywhere in its settings, which is wrong for
-   * anyone reclaiming input tax (costing plan section 4.2).
-   */
-  taxRecoverable: boolean
 }
 
 /** One bill line to check against what was received and what was agreed. */

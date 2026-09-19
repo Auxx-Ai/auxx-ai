@@ -16,8 +16,8 @@ import { defineResourceFields } from '../system-attributes'
  * ```
  *
  * `settled` is written only by the settlement writer (`money/credit-memos/settle.ts`),
- * never by hand. An issued memo is corrected by void and re-issue, never by edit,
- * the same discipline as `journal_entry`.
+ * never by hand. An issued memo is amended in place (74 D2): Edit reverses its entry
+ * and Save reposts it at the next generation, and void stays for abandoning it.
  */
 export const CREDIT_MEMO_STATUS_OPTIONS = [
   { label: 'Draft', value: 'draft', color: 'gray' },

@@ -33,6 +33,12 @@ export interface RecordVendorPaymentInput {
   vendorBillInstanceId: string
   /** Integer minor units. Must be positive and within the bill's balance. */
   amountMinor: number
+  /**
+   * The early-payment discount the vendor granted alongside this money, integer
+   * minor units (74 D3). Never computed from terms — the remittance is the
+   * truth. `money + discount` is what the cap is read against.
+   */
+  discountMinor?: number
   /** `YYYY-MM-DD`, the day the money left. May be backdated. */
   date: string
   method: PaymentMethod
@@ -135,7 +141,8 @@ async function readVendorBillBalance(
     ),
   })
   const settledMinor = applications.reduce(
-    (sum, a) => sum + (a.operation === 'apply' ? a.amountMinor : -a.amountMinor),
+    (sum, a) =>
+      sum + (a.operation === 'apply' ? 1n : -1n) * (a.amountMinor + (a.discountMinor ?? 0n)),
     0n
   )
   return {
@@ -156,8 +163,20 @@ export async function recordVendorPayment(
   db: Database,
   input: RecordVendorPaymentInput
 ): Promise<RecordVendorPaymentResult> {
+  const discountMinor = input.discountMinor ?? 0
+  // 🛑 Zero money with a discount is refused, not allowed: `MoneyApplication`'s
+  // shape check requires `amountMinor > 0` and the payment's own entry balances
+  // the applications against the movement, so a bill forgiven in full under
+  // terms is a vendor credit, not a payment of nothing.
   if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0)
-    throw new BadRequestError('A payment amount must be a positive whole number of cents')
+    throw new BadRequestError(
+      'A payment amount must be a positive whole number of cents. A bill settled entirely by ' +
+        'a discount is a vendor credit, not a payment.'
+    )
+  if (!Number.isSafeInteger(discountMinor) || discountMinor < 0)
+    throw new BadRequestError(
+      'A discount taken must be a whole number of cents, and never negative'
+    )
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date))
     throw new BadRequestError('A payment needs a calendar date')
 
@@ -174,6 +193,7 @@ export async function recordVendorPayment(
       payload: {
         vendorBillInstanceId: input.vendorBillInstanceId,
         amountMinor: input.amountMinor,
+        discountMinor,
         date: input.date,
         method: input.method,
         paymentGatewayId,
@@ -182,9 +202,10 @@ export async function recordVendorPayment(
     },
     async (tx, commandId) => {
       const bill = await readVendorBillBalance(tx, input.organizationId, input.vendorBillInstanceId)
-      if (BigInt(input.amountMinor) > bill.outstandingMinor)
+      if (BigInt(input.amountMinor) + BigInt(discountMinor) > bill.outstandingMinor)
         throw new UnprocessableEntityError(
-          `That is more than the ${bill.outstandingMinor} cents this bill still owes`
+          `${input.amountMinor} cents paid plus ${discountMinor} cents of discount is more than ` +
+            `the ${bill.outstandingMinor} cents this bill still owes`
         )
 
       const money = await insertMovement(tx, input.organizationId, commandId, {
@@ -209,6 +230,7 @@ export async function recordVendorPayment(
           moneyTransactionId: money.id,
           operation: 'apply',
           amountMinor: BigInt(input.amountMinor),
+          discountMinor: BigInt(discountMinor),
           vendorBillInstanceId: input.vendorBillInstanceId,
           appliedAt: new Date(),
           effectiveDate: input.date,

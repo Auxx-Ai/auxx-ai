@@ -56,6 +56,7 @@
 
 import { database } from '@auxx/database'
 import { deleteManualPayment, recordManualPayment } from '@auxx/lib/accounting/money'
+import { markInvoiceSent } from '@auxx/lib/accounting/sales'
 import { onCacheEvent } from '@auxx/lib/cache'
 import {
   assignVisit,
@@ -66,7 +67,6 @@ import {
 } from '@auxx/lib/dispatch'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
-import { markInvoiceSent } from '@auxx/lib/sales'
 import {
   buildSequenceGraph,
   computeAnchorTarget,

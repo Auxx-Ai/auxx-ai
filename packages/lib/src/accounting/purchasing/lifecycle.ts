@@ -11,7 +11,7 @@ import { BadRequestError } from '../../errors'
 import { firstTyped } from '../../field-values/client'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../resources/crud'
-import type { MoneyMutationInput } from '../../sales/types'
+import type { MoneyMutationInput } from '../sales/types'
 
 /**
  * Input for `markPurchaseOrderSent`.

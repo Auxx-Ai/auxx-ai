@@ -13,6 +13,39 @@ import {
   registerVendorBillBalanceReconcilers,
 } from '../accounting/purchasing/vendor-bill-balance'
 import {
+  BILLING_PROJECTION_ATTRS,
+  guardAllocatedLineDelete,
+  guardAllocatedSourceLineChange,
+  guardBillingConfiguration,
+  guardBillingProjectionWrite,
+  syncBillingAfterInvoiceDelete,
+  syncBillingAfterLineDelete,
+  syncBillingOnInvoiceChange,
+  syncBillingOnLineChange,
+  syncBillingOnWorkOrderChange,
+  syncContactAfterWorkOrderDelete,
+} from '../accounting/sales/billing/hooks'
+import { registerBillingReconcilers } from '../accounting/sales/billing/reconciler'
+import { generateDraftOnCompletion } from '../accounting/sales/invoices/auto-invoice'
+import {
+  pauseMarkupOnPriceEdit,
+  recomputePriceOnMarkupChange,
+  syncCatalogCostOnPartChange,
+} from '../accounting/sales/totals/catalog-pricing'
+import {
+  recomputeCreditMemoAfterLineDelete,
+  recomputeOnCreditMemoLineChange,
+  recomputeOnInvoiceBillingChange,
+  recomputeOnLineChange,
+  recomputeOnOrderBillingChange,
+  recomputeOnPurchaseOrderBillingChange,
+  recomputeOnPurchaseOrderLineChange,
+  recomputeOnQuoteBillingChange,
+  recomputeOnVendorCreditLineChange,
+  recomputeVendorCreditAfterLineDelete,
+} from '../accounting/sales/totals/totals-hooks'
+import { registerMoneyTotalsReconcilers } from '../accounting/sales/totals/totals-reconciler'
+import {
   ensureVisitOnWorkOrderCreate,
   syncVisitPinsOnAddressNormalized,
 } from '../dispatch/visit-hooks'
@@ -35,39 +68,6 @@ import { derivePhoneGeoOnChange, warmPhoneGeo } from '../phone-geo'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import { repairNameCasing } from '../records/name-case/hook'
 import {
-  BILLING_PROJECTION_ATTRS,
-  guardAllocatedLineDelete,
-  guardAllocatedSourceLineChange,
-  guardBillingConfiguration,
-  guardBillingProjectionWrite,
-  syncBillingAfterInvoiceDelete,
-  syncBillingAfterLineDelete,
-  syncBillingOnInvoiceChange,
-  syncBillingOnLineChange,
-  syncBillingOnWorkOrderChange,
-  syncContactAfterWorkOrderDelete,
-} from '../sales/billing/hooks'
-import { registerBillingReconcilers } from '../sales/billing/reconciler'
-import { generateDraftOnCompletion } from '../sales/invoices/auto-invoice'
-import {
-  pauseMarkupOnPriceEdit,
-  recomputePriceOnMarkupChange,
-  syncCatalogCostOnPartChange,
-} from '../sales/totals/catalog-pricing'
-import {
-  recomputeCreditMemoAfterLineDelete,
-  recomputeOnCreditMemoLineChange,
-  recomputeOnInvoiceBillingChange,
-  recomputeOnLineChange,
-  recomputeOnOrderBillingChange,
-  recomputeOnPurchaseOrderBillingChange,
-  recomputeOnPurchaseOrderLineChange,
-  recomputeOnQuoteBillingChange,
-  recomputeOnVendorCreditLineChange,
-  recomputeVendorCreditAfterLineDelete,
-} from '../sales/totals/totals-hooks'
-import { registerMoneyTotalsReconcilers } from '../sales/totals/totals-reconciler'
-import {
   enrollInvoiceReminderOnSent,
   enrollJobFollowUpOnCompletion,
   reanchorInvoiceOnDueDateChange,
@@ -89,8 +89,24 @@ import {
   guardCreditApplicationField,
 } from './pre/credit-application-guard'
 import { guardCreditMemoDelete } from './pre/credit-memo-delete-guard'
+import {
+  CREDIT_MEMO_LINE_LOCKED_ATTRS,
+  CREDIT_MEMO_LOCKED_ATTRS,
+  guardIssuedCreditMemoFields,
+  guardIssuedCreditMemoLineCreate,
+  guardIssuedCreditMemoLineDelete,
+  guardIssuedCreditMemoLineFields,
+} from './pre/credit-memo-lock'
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
 import { guardInvoiceDelete } from './pre/invoice-delete-guard'
+import {
+  guardIssuedInvoiceFields,
+  guardIssuedInvoiceLineCreate,
+  guardIssuedInvoiceLineDelete,
+  guardIssuedInvoiceLineFields,
+  INVOICE_LINE_LOCKED_ATTRS,
+  INVOICE_LOCKED_ATTRS,
+} from './pre/invoice-lock'
 import { guardJournalEntryDelete } from './pre/journal-entry-delete-guard'
 import {
   guardManualInvoiceLifecycleStatus,
@@ -562,6 +578,17 @@ export function registerAllHooks(): void {
   }
   registerEntityPreCreateHooks('vendor-bill-lines', [guardPostedVendorBillLineCreate])
 
+  // The issued invoice lock (74 §1.3), the bill lock's shape one family over.
+  // A `line_item` may belong to a quote, an order or a work order instead, so
+  // the line guards resolve the parent invoice first and pass when there is none.
+  for (const attribute of INVOICE_LOCKED_ATTRS) {
+    registerFieldPreHooks('invoices', attribute, [guardIssuedInvoiceFields])
+  }
+  for (const attribute of INVOICE_LINE_LOCKED_ATTRS) {
+    registerFieldPreHooks('line-items', attribute, [guardIssuedInvoiceLineFields])
+  }
+  registerEntityPreCreateHooks('line-items', [guardIssuedInvoiceLineCreate])
+
   // `(code, country)` is a natural key and `naturalKeyPosition` enforces nothing
   // on create. This must be a PRE-CREATE hook, not a field pre-hook - see the
   // guard's header for the record it produced when it was the latter.
@@ -619,7 +646,10 @@ export function registerAllHooks(): void {
   // line guard refuses an allocated source line; the quote guard refuses while a
   // converted job is still active, a status the registry cannot see.
   registerEntityPreDeleteHooks('invoices', [guardInvoiceDelete])
-  registerEntityPreDeleteHooks('line-items', [guardAllocatedLineDelete])
+  registerEntityPreDeleteHooks('line-items', [
+    guardAllocatedLineDelete,
+    guardIssuedInvoiceLineDelete,
+  ])
   registerEntityPreDeleteHooks('work-orders', [guardWorkOrderDelete])
   registerEntityPreDeleteHooks('quotes', [guardQuoteConvertedDelete])
   // An order's fulfillment entry standing in a settled month. The line cascade
@@ -702,6 +732,18 @@ export function registerAllHooks(): void {
   // `syncBillingAfterLineDelete` does for an invoice line. Together with the field-change
   // registration above this covers create, update and delete of a memo line.
   registerEntityPostDeleteHooks('credit-memo-lines', [recomputeCreditMemoAfterLineDelete])
+
+  // The issued credit memo lock (74 §1.3), the vendor bill's twin. Same chain and
+  // the same reasoning: the drawer and the `LineBuilder` write through
+  // `FieldValueService`, which never reads the system-hook registry.
+  for (const attribute of CREDIT_MEMO_LOCKED_ATTRS) {
+    registerFieldPreHooks('credit-memos', attribute, [guardIssuedCreditMemoFields])
+  }
+  for (const attribute of CREDIT_MEMO_LINE_LOCKED_ATTRS) {
+    registerFieldPreHooks('credit-memo-lines', attribute, [guardIssuedCreditMemoLineFields])
+  }
+  registerEntityPreCreateHooks('credit-memo-lines', [guardIssuedCreditMemoLineCreate])
+  registerEntityPreDeleteHooks('credit-memo-lines', [guardIssuedCreditMemoLineDelete])
 
   // ─── Vendor credits (plans/accounting/tasks/71-one-cash-endpoint.md §5 U7) ──
   // The buy-side mirror of the block above, registration for registration.

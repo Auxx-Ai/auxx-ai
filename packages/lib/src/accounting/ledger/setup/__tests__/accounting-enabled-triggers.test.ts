@@ -33,8 +33,8 @@ const TRIGGER_FILES = [
   // D19: `post-invoice.ts` is now the never-throws door and `issuance-accounting.ts`
   // is where the invoice is read, the entry built and the effect accepted — so
   // the gate moved with the build. It is still checked before ANY read.
-  'sales/invoices/issuance-accounting.ts',
-  'sales/orders/fulfill.ts',
+  'accounting/sales/invoices/issuance-accounting.ts',
+  'accounting/sales/orders/fulfill.ts',
   // The legacy `money/payments/` lane (`post-transaction.ts`,
   // `post-deposit-application.ts`) is gone (accounting migration step 0). Every
   // receipt now posts off `MoneyTransaction`/`MoneyApplication` through one of
@@ -47,9 +47,9 @@ const TRIGGER_FILES = [
   // D19: `write-off.ts` still checks the gate before its own reads, and
   // `write-off-accounting.ts` is where the entry is now built and accepted — so
   // the gate is asserted on both halves rather than moved off the builder.
-  'sales/invoices/write-off.ts',
-  'sales/invoices/write-off-accounting.ts',
-  'sales/credit-memos/writes.ts',
+  'accounting/sales/invoices/write-off.ts',
+  'accounting/sales/invoices/write-off-accounting.ts',
+  'accounting/sales/credit-memos/writes.ts',
   'accounting/money/bank-deposits/writes.ts',
   'accounting/ledger/post/post-payout-entry.ts',
   // The per-org gate for the payout sync, which never even lets

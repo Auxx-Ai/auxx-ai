@@ -16,8 +16,6 @@
  */
 
 import { database } from '@auxx/database'
-import { convertRequestToWorkOrder } from '@auxx/lib/dispatch'
-import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import {
   approveQuote,
   computeDocumentTotals,
@@ -27,7 +25,9 @@ import {
   markQuoteSent,
   recomputeTotals,
   reorderLines,
-} from '@auxx/lib/sales'
+} from '@auxx/lib/accounting/sales'
+import { convertRequestToWorkOrder } from '@auxx/lib/dispatch'
+import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import { getOrganizationSetting } from '@auxx/lib/settings'
 
 /** Build a RecordId string without pulling in `@auxx/types` (not a worker dependency). */
@@ -355,7 +355,7 @@ async function main() {
       ],
       { discountType: 'percent', discountValue: 10, taxRate: 7.5 }
     )
-    // Whole-cent rounding convention (roundCents, packages/lib/src/sales/totals/totals.ts, PR #1128):
+    // Whole-cent rounding convention (roundCents, packages/lib/src/accounting/sales/totals/totals.ts, PR #1128):
     // raw tax 6.75 / total 186.75 round to 7 / 187.
     check(
       'computeDocumentTotals sanity: subtotal 200, discount 20, tax 7, total 187',

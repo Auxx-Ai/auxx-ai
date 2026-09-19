@@ -21,8 +21,8 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
 import { firstTyped } from '../../../field-values/client'
 import { UnifiedCrudHandler } from '../../../resources/crud'
-import { isPaymentsConnected } from '../../../sales/public-token'
 import { listPaymentGateways } from '../../rails/reads'
+import { isPaymentsConnected } from '../../sales/public-token'
 import { getPaymentAccount } from '../stripe-connect/account'
 
 /** The `MoneyCommand.kind` a quote-deposit checkout is recorded under. */

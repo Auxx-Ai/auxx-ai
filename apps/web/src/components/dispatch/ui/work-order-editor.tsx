@@ -2,7 +2,7 @@
 
 'use client'
 
-import { COMPATIBLE_BILLING_TIMINGS } from '@auxx/lib/sales/client'
+import { COMPATIBLE_BILLING_TIMINGS } from '@auxx/lib/accounting/sales/client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   EntityInstanceForm,

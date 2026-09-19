@@ -35,7 +35,7 @@ vi.mock('../../../ledger/roles/resolve-roles', () => ({ resolveRoles: h.resolveR
 vi.mock('../../../ledger/chart/resolve-cash-account', () => ({
   resolveBankAccountGlAccountInTx: h.resolveBankAccountGlAccountInTx,
 }))
-vi.mock('../../../../sales/invoices/issuance-reads', () => ({
+vi.mock('../../../sales/invoices/issuance-reads', () => ({
   loadInvoiceForIssuance: h.loadInvoiceForIssuance,
 }))
 vi.mock('../../../../settings/read', () => ({

@@ -2,13 +2,14 @@
 
 # Accounting Architecture Guide
 
-**Last Updated:** 2026-09-18
+**Last Updated:** 2026-09-19
 
 **Scope:** Everything under `packages/lib/src/accounting/` — the general ledger and the pipeline
 that writes it, account roles and the chart, periods and the close, the statements, the money
 model, source evidence, the export batch and the provider mirror, the payment rails, and the bank
-feed, and the buy side in `accounting/purchasing/`. The document flows outside it (`sales/`,
-`returns/`) are described where they touch the books and nowhere else.
+feed, the buy side in `accounting/purchasing/`, the sell side in `accounting/sales/`, and the
+edit-in-place lane in `accounting/documents/`. The one document flow outside it (`returns/`) is
+described where it touches the books and nowhere else.
 
 > **This guide is the mechanism. It is not the status.**
 > What is merged, what is open and what the counts are lives in
@@ -135,8 +136,10 @@ packages/lib/src/
     banking/     feed/ import/ review/ rules/
     purchasing/  POs, the three-way match, bills, vendor credits, landed cost,
                  both intake lanes
+    sales/       quotes, orders, fulfillments, invoice issuance, credit memos, billing, totals
+    documents/   what the three posting families share: edit-in-place/, the
+                 generation on `metadata.ledger`, the document entry key
   inventory/     movements/ costing/ receiving/ builds/ relief/ bom/ tariffs/
-  sales/         quotes, orders, fulfillments, invoice issuance, credit memos, billing, totals
   returns/       returns, salvage, the evidence pack, intake
   documents/     PDF rendering
 ```
@@ -147,34 +150,36 @@ whole output is postings and payables; measured before the move it held 33 impor
 and the back-edges the ledger and the money model had into it stop being exceptions and become
 sibling imports.
 
-**The remaining document flows stay top level, and that is the cut.** `sales/`, `returns/` and
-`documents/` are what the two parents serve; they are neither books nor stock. A reader looking
-for quote acceptance looks under `sales`, not `accounting`. `sales/` has the same shape as
-purchasing and is expected to follow it down later; `returns/` does not — it is stock and
-customer facing.
+**`sales/` followed it down (74 D9).** It had 77 imports into `accounting/` against 20 back-edges
+the money side held into it; under `accounting/sales/` those 20 are sibling imports and the cut is
+the same argument one module over. `returns/` stays top level and is not expected to follow — it is
+stock and customer facing — and top-level `documents/` is the PDF renderer, unrelated to
+`accounting/documents/`.
 
 **The line runs through the record, not through the table a function writes.** An invoice's
-issuance and lifecycle are `sales/invoices`; recording a payment against that invoice writes a
-`MoneyTransaction`, so it is `accounting/money/invoice-payments`. Credit memos are whole in
-`sales/credit-memos` because the record is a sales document — and `apply.ts` / `settle.ts` call
-into `accounting/money` from there.
+issuance and lifecycle are `accounting/sales/invoices`; recording a payment against that invoice
+writes a `MoneyTransaction`, so it is `accounting/money/invoice-payments`. Credit memos are whole
+in `accounting/sales/credit-memos` because the record is a sales document — and `apply.ts` /
+`settle.ts` call into `accounting/money` from there.
 
-**A subfolder keeps the barrel it already has; a new one gets none by default.** Twenty-nine
-subfolder `index.ts` files exist under `accounting/` — every `ledger/` child, `money/`'s
+**A subfolder keeps the barrel it already has; a new one gets none by default.** Forty-one
+`index.ts` files sit under `accounting/` — every `ledger/` child, `money/`'s
 `bank-deposits` / `checkout` / `commands` / `customer-money` / `payouts`, `banking/`'s four,
-`journals/`'s two. `accounting/money/invoice-payments` and `sales/{quotes,invoices,billing,totals}`
+`journals/`'s two, `sales/`'s three, and `documents/`'s two (`accounting/documents` and its
+`edit-in-place` child are both export subpaths). `accounting/money/invoice-payments` and
+`accounting/sales/{quotes,invoices,billing,totals}`
 have none, because nothing imports them as a unit; `export/payloads` has one because the
 discriminated `parseExportPayload` is the unit (§11.3). A subfolder is a filing decision first and
 an export surface only when a consumer wants the subpath, which `generate:exports` then picks up
 for free. Client code imports `<module>/client`, never a barrel.
 
-### 2.2 Direction, and the thirty edges that go the other way
+### 2.2 Direction, and the edges that go the other way
 
 The sanctioned direction is:
 
 ```
-sales, returns  →  accounting/*, inventory/*
-accounting/{money,banking,rails,export,mirror,providers,purchasing}  →  accounting/ledger
+returns  →  accounting/*, inventory/*
+accounting/{money,banking,rails,export,mirror,providers,purchasing,sales,documents}  →  accounting/ledger
 inventory/*  →  accounting/ledger        (to post)
 documents  →  everything                 (a renderer; only accounting/reports imports it, for the PDF theme)
 ```
@@ -182,12 +187,13 @@ documents  →  everything                 (a renderer; only accounting/reports 
 Everything below runs the other way. They are **listed so nobody "fixes" them, and so a
 thirty-first is noticed.**
 
-**`accounting/ledger` → outside the ledger — 11**, of which 2 leave `accounting/` altogether:
+**`accounting/ledger` → outside the ledger — 12**, and since 74 D9 not one of them leaves
+`accounting/`:
 
 | Site | Symbol | Why it is honest |
 | --- | --- | --- |
-| `ledger/periods/read-close-blockers.ts` | `countUnissuedChannelCreditMemos` ← `sales/credit-memos/reads` | A close blocker asking a document module a question |
-| `ledger/post/verify-balance.ts` | `countUnissuedChannelCreditMemos` ← `sales/credit-memos/reads` | The same question, from the after-the-fact sweep |
+| `ledger/periods/read-close-blockers.ts` | `countUnissuedChannelCreditMemos` ← `accounting/sales/credit-memos/reads` | A close blocker asking a document module a question |
+| `ledger/post/verify-balance.ts` | `countUnissuedChannelCreditMemos` ← `accounting/sales/credit-memos/reads` | The same question, from the after-the-fact sweep |
 | `ledger/periods/read-close-blockers.ts` | `readTrialBalance` ← `accounting/reports/trial-balance` | The inventory-balance blocker is a trial-balance read |
 | `ledger/post/post-entry.ts` | `buildExportBatches`, `sendExportBatch` ← `accounting/export` | `exportPostedEntry` — the after-commit half of the poster, §5.4 |
 | `ledger/chart/chart-import.ts` | `resolveAccountingProvider` ← `accounting/providers/provider` | Importing the chart is a provider read by definition |
@@ -196,24 +202,13 @@ thirty-first is noticed.**
 | `ledger/builders/payment.ts` | `type PaymentRoute` ← `accounting/money/bank-deposits/client` | **Type-only, erased.** A second copy of the union is the thing that drifts |
 | `ledger/builders/payout.ts` | `type PaymentGatewayFeeTreatmentValue` ← `accounting/rails/client` | Type-only, erased |
 
-**`accounting/money` → `sales` — 14**, every one a document read:
+**`accounting/money` → `sales` (14) and `accounting/purchasing` → `sales` (4) are no longer
+exceptions.** They are the reason `sales/` moved (74 D9): the money side's document reads —
+`loadInvoiceForIssuance`, the credit-memo reads, the quote public tokens — and purchasing's
+`roundCents` and `MoneyMutationInput` are sibling imports inside `accounting/` now, listed
+nowhere because there is nothing to list.
 
-- `money/types.ts` → `sales/types` (`MoneyMutationInput`)
-- `money/checkout/reads.ts`, `checkout/writes.ts` ×3 → `sales/public-token`,
-  `sales/quotes/quote-deposit`, `sales/quotes/quote-public-token`
-- `money/customer-money/refund-accounting.ts` ×2 → `sales/credit-memos/{accounting,reads}`
-- `money/customer-money/ingest.ts` → `sales/credit-memos/reads`
-- `money/customer-money/recognition-source.ts` → `sales/fulfillments/reads`
-- `money/customer-money/deposit-application-accounting.ts`,
-  `money/invoice-payments/{apply-money,receipt-accounting,record-payment}.ts` →
-  `sales/invoices/issuance-reads` (`loadInvoiceForIssuance`, the one loader)
-- `money/invoice-payments/payment-state.ts` → `sales/credit-memos/reads`
-
-**`accounting/purchasing` → `sales` — 4**: `roundCents` from `sales/totals/totals` in `match.ts`,
-`post-vendor-bill.ts` and `allocate-landed-cost.ts`; `type MoneyMutationInput` from `sales/types`
-in `lifecycle.ts`.
-
-**What the move deleted, and the one edge it added.** The four back-edges that used to run
+**What the purchasing move deleted, and the one edge it added.** The four back-edges that used to run
 `accounting/ledger` and `accounting/money` → `purchasing` — `ledger/builders/entry.ts` for
 `allocateCapitalisedCost` and the allocation types, and `money/vendor-payments/`'s three into
 `expense-bill/writes`, `vendor-credit/reads` and `vendor-credit/accounting` — are now sibling
@@ -223,14 +218,10 @@ the `return_out` movements a flagged credit line implies. It is honest — a sup
 the one buy-side document that moves stock — but it is the first, and purchasing measured 0
 edges into `inventory` before it.
 
-**`inventory` → `sales` — 1**: `inventory/relief/backfill.ts` → `sales/fulfillments`
-(`readFulfillmentsForOrders`, `isLiveFulfillment`). The live relief path has no such edge —
-`sales/orders/fulfill.ts` calls *into* `inventory/relief`.
-
-⚠️ **`MoneyMutationInput` is an actor envelope living in `sales/types.ts`**, and it is why both
-`accounting/money` and `purchasing` import into `sales`. There is no neutral home for it in this
-tree; moving it to `accounting/money/types.ts` would delete two of the thirty and is an open
-follow-up, not a fact.
+**`inventory` → `accounting/sales` — 1**: `inventory/relief/backfill.ts` →
+`accounting/sales/fulfillments` (`readFulfillmentsForOrders`, `isLiveFulfillment`). The live
+relief path has no such edge — `accounting/sales/orders/fulfill.ts` calls *into*
+`inventory/relief`.
 
 ---
 
@@ -392,13 +383,13 @@ key needs. Eight production readers wrote their own `select` before it existed.
 
 ### 5.1 Posting types
 
-Declared in `ledger/types.ts` (`POSTING_TYPES`, 19 values) and mirrored by the `GlPostingType`
+Declared in `ledger/types.ts` (`POSTING_TYPES`, 20 values) and mirrored by the `GlPostingType`
 Postgres enum. **Two copies on purpose** — `types.ts` is client-safe and `@auxx/database` is not
 — and there must never be a third. `__tests__/types.test.ts` pins them to each other.
 
-| Enabled (16, in `ENABLED_POSTING_TYPES` order) | Not enabled |
+| Enabled (17, in `ENABLED_POSTING_TYPES` order) | Not enabled |
 | --- | --- |
-| `inventory_movement`, `manual_journal`, `opening_balance`, `bank_deposit`, `fulfillment`, `payment`, `refund`, `payout`, `write_off`, `bank_transaction`, `invoice_issued`, `deposit_application`, `credit_memo`, `vendor_credit`, `recurring_journal`, `vendor_bill` | `provider_sync`, `month_end_deferral`, `month_end_reversal` |
+| `inventory_movement`, `manual_journal`, `opening_balance`, `bank_deposit`, `fulfillment`, `payment`, `refund`, `payout`, `write_off`, `bank_transaction`, `invoice_issued`, `deposit_application`, `credit_memo`, `vendor_credit`, `recurring_journal`, `vendor_bill`, `landed_cost_clear` | `provider_sync`, `month_end_deferral`, `month_end_reversal` |
 
 🛑 **`vendor_bill` is the ONE type for a supplier invoice, with or without a purchase order.**
 `expense_bill` was a second type for the second kind — same record, same lines, same A/P line,
@@ -412,10 +403,8 @@ by name when the lines and the header do not tie.
 **The trigger is the Post action, never the match.** The three-way verdict moved to
 `vendor_bill_match_status`, where it recomputes on every line write and every receipt with no
 ledger effect. `vendor_bill_status` is `draft | posted | void` and is written only by Post,
-Save and Void. A posted bill is locked by a field pre-hook until somebody presses Edit, which
-writes `metadata.editOpen`; **Save** is where the ledger is touched again — one transaction
-under the commit lock that builds the entry from current values, compares it to the live
-posting's built lines, and reverses-then-reposts only if they differ. Void refuses unless the
+Save and Void. A posted bill is locked by a field pre-hook until somebody presses Edit; the
+amendment itself is the generic lane, §5.10. Void refuses unless the
 bill is unpaid, reverses every live `vendor_bill` posting, and returns the order lines to
 billable.
 
@@ -608,6 +597,50 @@ unrelated deposits of the same size two days apart" except a human reading both 
 is **never resolved automatically** — a detector that resolves a duplicate has guessed which one
 was real.
 
+### 5.10 Edit in place — an amendment is a reversal plus a repost
+
+`accounting/documents/edit-in-place/` (74 D2). A finalized document is amended by editing it and
+pressing Save; **Save is where the ledger is touched**, in one transaction under the commit lock
+that rebuilds the entry from current values, compares it to the live posting's built lines, and
+reverses-then-reposts only if they differ. §5.6's rule is not bent: the correction is still a
+second, opposite entry, and both halves are dated today in the book time zone rather than in the
+document's original month. Under an avenue with auto-post off the live entry is a draft, so it is
+discarded and drafted again — no pair, no new generation.
+
+**The repost needs a new key.** `GlPosting_org_docNumber_key` is unique per org and the reversed
+original keeps its number, so `documentEntryKey` (`accounting/documents/document-entry-key.ts`)
+keys generation 2 and up on the internal number's DIGITS plus `G<n>` — `0002G2` → `AUXX-BIL-0002G2`
+— falling back to a six-digit hash (`BGN` bill, `IGN` invoice, `CGN` credit memo) when that will not
+fit in `DOC_NUMBER_MAX_LENGTH`. 🛑 **Generation 1 is the internal number verbatim and must stay so**,
+or every document already in a ledger re-keys. The counter lives on
+`EntityInstance.metadata.ledger` beside the draft pointer (`document-ledger-state.ts`).
+
+**`spec.ts` is the only file that knows a family.** One row each for `vendor_bill`, `invoice` and
+`credit_memo`: the content children, the poster and the posting type, the statuses Edit refuses
+(`draft` and `void` for all three, plus `written_off` for an invoice), and the **floor** — what has
+already been settled against the document, below which Save refuses. The floors are read from the
+money model, never from the projected header fields: paid + credited + discounted for a bill,
+applied payments + applied credits for an invoice, applied + reserved refunds for a credit memo —
+which is exactly what `voidCreditMemo` reads before it reverses.
+
+**The flag is a row, not a jsonb key.** `EntityInstanceEditSnapshot` holds one row per record under
+edit — the snapshot, who opened it, when — and its existence *is* "an edit is open" (74 D1). The
+lock hooks (`field-hooks/pre/{vendor-bill,invoice,credit-memo}-lock.ts`) and the front end ask an
+indexed key lookup rather than detoasting `EntityInstance.metadata` on every autosaved line write.
+Cancel restores the snapshot through `UnifiedCrudHandler`, so the match reconciler, the totals
+engine and the PO billed roll-up all run on the way back. The row is deleted by Save and by Cancel,
+so the table never grows. The `edit` stamp rides `RecordPickerItem` beside `_access` — same batch,
+same "absent means unknown" rule — and `record:updated` carries it, so a second tab sees the lock
+lift without a refetch.
+
+⚠️ **The totals freeze lifts while an edit row exists.** `totals-hooks.ts` normally refuses to
+recompute a document past its editable statuses; during an edit it must, or the header total the
+Save floor reads would be the pre-edit one.
+
+`routers/document-edit.ts` carries `readState`, `open`, `save` and `cancel`, all four gated on
+**`ledgerPost`** for all three families: an edit reverses and reposts, so it belongs with Void and
+the write-off, not with the desk mutations that move a description.
+
 ---
 
 ## 6. Roles and the Chart of Accounts
@@ -619,7 +652,7 @@ vary by country, industry and taste. Once the chart is editable the number canno
 meaning: a customer renumbering GRNI from `2160` to `2155` would silently break posting, and the
 entry would still balance. So builders emit roles (`G8`).
 
-There are **31 roles**, all in `ledger/builders/entry.ts` (`ACCOUNT_ROLES`), with
+There are **32 roles**, all in `ledger/builders/entry.ts` (`ACCOUNT_ROLES`), with
 `ROLE_ACCOUNT_TYPES`, `ROLE_ACCOUNT_SUBTYPES`, `ACCOUNT_ROLE_LABELS`, `ROLES_WITHOUT_DEFAULT`,
 `SCOPABLE_ROLES` and `roleScopeAxis` beside them. That is the **only** copy of the vocabulary.
 
@@ -957,10 +990,22 @@ Grouping posts nothing; only the bank run does, and it posts ONE line so it matc
 cashAccountInstanceId IS NULL AND bankDepositInstanceId IS NULL` — the movement's own columns, not
 a settings table.
 
+**A vendor payment may carry a third leg: the early-payment discount** (74 D3). `Dr
+accounts_payable 100 / Cr <endpoint> 98 / Cr purchase_discounts 2` — one entry, so
+`voidVendorPayment` unwinds both legs for free, and the A/P debit is money + discount. The amount
+is typed in the Record payment dialog as **Discount taken** and lives on
+`MoneyApplication.discountMinor`; it is **never computed from terms** — the vendor's remittance is
+the truth, and there is no terms field on a bill to compute from. The cap is
+`money + discount ≤ balance`, a zero discount posts no third line at all, and a payment of zero
+money with a discount is **refused by name**: a settlement with no money in it is a vendor credit,
+which is the vendor's own document. `purchase_discounts` is an `expense` role seeded at **5093**,
+a contra-COGS beside `ppv` 5090 — discounts show in margin, not in other income. The bank-review
+coding path passes zero; settling a remainder as discount from a bank line is not built.
+
 ### 8.4a The vendor credit and the vendor refund
 
 A supplier's credit note is a DOCUMENT, not an edit to a bill's total:
-`accounting/purchasing/vendor-credit/`, the mirror of `sales/credit-memos/` with the parties swapped. The
+`accounting/purchasing/vendor-credit/`, the mirror of `accounting/sales/credit-memos/` with the parties swapped. The
 `vendor_credit` entity carries lines, a status (`draft -> issued -> settled`, `void` off either),
 attachments and a PDF, numbered `VC-0001` from its own `RecordSequence` scope. The supplier's own
 reference lives beside it on `vendor_credit_vendor_reference` and is never the entry's key: two
@@ -975,8 +1020,10 @@ the same entry with that account on the line. One builder, no per-line roles. Au
 `expenseBill` avenue: a credit is the same buy-side document lane as the bill it reverses.
 
 Applying a credit to a bill posts NOTHING — the issue entry already debited the payable. What
-moves is `vendor_bill_amount_credited`, the bill's balance (`total − paid − credited`) and its
-`vendor_bill_payment_status`.
+moves is `vendor_bill_amount_credited`, the bill's balance
+(`total − paid − credited − discounted`, `vendor-bill-balance.ts`) and its
+`vendor_bill_payment_status`. `vendor_bill_amount_discounted` is the discount's mirror on the same
+projection, written by `syncVendorBillPaymentState`; `amount_paid` stays the money alone.
 
 **A supplier return is a credit line that moved stock**, not a document of its own.
 `vendor_credit_line_returns_stock` on a line makes issuing the credit write one `return_out`
@@ -1083,7 +1130,7 @@ endpoint the event arrives on:
 | Job | Who pays whom | Code | Webhook secret |
 | --- | --- | --- | --- |
 | **Platform billing** | the org pays auxx.ai | `@auxx/billing`, `apps/web/src/lib/stripe.ts` | `STRIPE_WEBHOOK_SECRET` |
-| **Stripe Connect** | the org's customers pay the org | `accounting/money/stripe-connect/`, `money/checkout/`, `sales/credit-memos/card-refund.ts`, `money/payouts/sources/stripe-connect.ts` | `STRIPE_CONNECT_WEBHOOK_SECRET` |
+| **Stripe Connect** | the org's customers pay the org | `accounting/money/stripe-connect/`, `money/checkout/`, `accounting/sales/credit-memos/card-refund.ts`, `money/payouts/sources/stripe-connect.ts` | `STRIPE_CONNECT_WEBHOOK_SECRET` |
 | **Financial Connections** | nobody; auxx reads the org's bank | `data-connectors/connectors/stripe-financial-connections*.ts`, `accounting/banking/feed/fc-*.ts` | `STRIPE_BANKING_WEBHOOK_SECRET` |
 
 A fourth meaning is not ours at all: **Stripe as a system the org uses** — the `stripe` rail in
@@ -1578,7 +1625,8 @@ exists but is not yours" is itself a disclosure.
 `ledger.ts` (the big one: periods, chart, roles, the account map, `exportBatches.*`, the mirror
 procedures) · `ledger-reports.ts` · `ledger-opening.ts` · `money.ts` (which also holds the sales
 verbs) · `credit-memo.ts` · `payment-gateways.ts` · `payout-evidence.ts` · `banking.ts` ·
-`banking-review.ts` · `banking-rules.ts` · `banking-import.ts` · `sync-history.ts`
+`banking-review.ts` · `banking-rules.ts` · `banking-import.ts` · `sync-history.ts` ·
+`document-edit.ts` (§5.10's four, for all three families)
 
 ⚠️ There is **no** `inventory.ts`, `sales.ts` or `invoice.ts` router: sales verbs live in
 `money.ts` and inventory verbs are split between `purchasing.ts` and `builds.ts`. That is an

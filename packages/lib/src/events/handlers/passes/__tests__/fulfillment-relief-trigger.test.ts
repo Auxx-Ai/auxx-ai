@@ -46,7 +46,7 @@ vi.mock('../../../../reconcilers/parent-reconciler', () => ({
   resolveParentsByRelation: h.resolveParentsByRelation,
 }))
 
-vi.mock('../../../../sales/fulfillments', () => ({
+vi.mock('../../../../accounting/sales/fulfillments', () => ({
   readFulfillmentsForOrders: async (_db: unknown, params: { orderIds: string[] }) => {
     const byOrder = new Map<string, unknown[]>()
     for (const orderId of params.orderIds) {

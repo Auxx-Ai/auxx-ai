@@ -2,7 +2,7 @@
 
 # Inventory, Purchasing & Costing Architecture Guide
 
-**Last Updated:** 2026-09-18
+**Last Updated:** 2026-09-19
 
 > [`plans/accounting/TARGET.md`](../plans/accounting/TARGET.md) is the statement of intent this
 > subsystem was built to, and it has landed: the monthly inventory assertion is gone and every
@@ -690,17 +690,51 @@ shipment expected to pay without re-deriving it from a rate that has since moved
 | Bill | Its lines | Clears |
 | --- | --- | --- |
 | the goods vendor's | linked to PO lines → `grni` at billed × agreed | GRNI |
-| the carrier's | coded to the freight accrual account; the difference to `ppv` by hand | freight accrual |
+| the carrier's | coded to the freight accrual account | freight accrual, up to what is left |
 | the broker's | duty coded to the duties accrual, the service charge to the freight accrual | duties accrual |
 
 A landed-cost line on any of them names the **goods bill** it belongs to through
 `vendor_bill_line_landed_bill` — the bill, not the order, because duty is assessed per customs
 entry and the broker's document lists the vendor's commercial invoice numbers. Intake proposes
-it from those numbers. `readLandedCostByBill` and `readLandedCostByVendorPart`
-(`accounting/purchasing/landed-cost/reads.ts`) are the two reads over that link: what the
-receipts accrued, what has been billed against them, and the difference. Neither posts
-anything — matching a freight bill to the receipts it covers and posting the difference itself
-is a later unit, and until it lands the accrual's balance is the control.
+it from those numbers.
+
+#### The split at Post, and Clear (74 D4)
+
+A landed-cost line debits its accrual **only up to what that goods bill still has accrued for
+that account**; the excess debits `ppv`. `readLandedAccrualRemaining` reads the remaining per
+(goods bill × accrual account) before the builder runs — `postVendorBillEntry` passes it in, so
+the builder stays pure — and a running balance is carried across a bill's own lines so two lines
+against one pool do not each claim the whole of it. 🛑 `billed` **excludes the bill being posted**,
+or a repost would find its own lines already booked. Nobody writes a hand `ppv` line any more.
+
+```
+carrier bills 12 against 10 accrued
+  Post:  Dr Freight accrual 10 / Dr PPV 2 / Cr A/P 12
+carrier bills 8 instead of 12
+  Post:  Dr Freight accrual 8 / Cr A/P 8
+  Clear: Dr Freight accrual 2 / Cr PPV 2        the under-run, by hand
+```
+
+**Clear** (`landed-cost/clear.ts`) is an action on the goods bill's Landed cost card, offered when
+something is still accrued: one `landed_cost_clear` entry — `Dr freight_accrual / Dr duties_accrual
+/ Cr ppv` — subject the goods bill, occurrence `clear:<attempt>`, on the `expenseBill` auto-post
+avenue, reversible like any entry. 🛑 **Remaining = accrued − billed − cleared, and `cleared` is
+read off the `landed_cost_clear` postings themselves** (`cleared.ts`), never off a flag: a reversal
+takes the entry out of the books and a mirrored column would still say it was cleared. A draft
+clear counts, a reversed one does not. After a clear, a late carrier bill finds nothing accrued and
+posts entirely to `ppv`.
+
+⚠️ **No stock revaluation.** The gap between an estimate and a bill is a variance of the period,
+never a restatement of what is on hand (73 D6), so `revalue.ts` is not this path's tool and nothing
+on hand moves. And no movement stamps the billed amounts: the reads apportion by value × rate
+already, and a stamp would be a second writer of the same fact.
+
+`readLandedCostByBill` and `readLandedCostByVendorPart`
+(`accounting/purchasing/landed-cost/reads.ts`) are the two reads over the link: what the receipts
+accrued, what has been billed against them, what has been cleared, and the remaining. The first
+feeds the bill's Landed cost card; the second is one line per vendor-part row on the part's
+**Vendors tab**, beside the shipping cost and tariff code the accruals are built from — the
+estimate is edited there, so its feedback belongs there.
 
 ---
 
@@ -953,7 +987,7 @@ deliberately *not* modelled on it.
 
 **Not `numeric`, either** — though it is the textbook accounting type and the tempting answer.
 `numeric` is exact and would be correct in isolation, but the entire codebase already speaks minor
-units: `G2`, `sales/totals/totals.ts`, the `CURRENCY` `FieldType` convention, `matchVariance`, and the
+units: `G2`, `accounting/sales/totals/totals.ts`, the `CURRENCY` `FieldType` convention, `matchVariance`, and the
 pure builders in `accounting/ledger/builders/entry.ts`, which are typed on `number`. Introducing decimal
 strings only in the GL creates a conversion boundary between the subledger and the ledger it
 feeds — and a conversion boundary is precisely where money bugs live. Consistency is the
@@ -1087,7 +1121,7 @@ Four facts from it that a reader of *this* guide keeps needing:
   (`inventory/relief/cogs-split.ts`). The ledger-derived average it used to relieve at
   (`inventory/costing/cost-reads.ts`) was a workaround for a roll that never posted its
   revaluation; the roll posts it now (§7.4), so the average stays only as a report.
-  `sales/orders/fulfill.ts` calls relief after the revenue posting succeeds, and
+  `accounting/sales/orders/fulfill.ts` calls relief after the revenue posting succeeds, and
   `inventory/relief/backfill.ts` is the record-driven door for fulfillments already on disk.
 
 
@@ -1288,7 +1322,7 @@ Recorded because both documents still exist and a reader will otherwise trust th
 | Gap D §8 "purchase orders — later". | ❌ Stale. The buy side shipped ahead of it. |
 | `EntityTypeValues` / `EntityType` in `packages/database/src/enums.ts` | ⚠️ **Stale by thirteen types** — missing `order`, `purchase_order`, `vendor_bill`, `gl_account`, `build` and more. Its only consumer is a `z.enum` that system-seeded defs never reach, so nothing is broken. ⚠️ That file has a **destructive generator**; hand-edit it. |
 | `EntityRefKind` in `packages/sdk/src/root/tools/types.ts` | ⚠️ Stale — never gained `purchase_order` / `vendor_bill` / `gl_account` / `order` / `build`. **This one blocks work**: an installed app cannot declare a field against a kind not in the union, and hanging provider account ids off `gl_account` needs it. Different union from the one above; confusing them wastes a pass. |
-| `vendor_bill_balance` "computed from total and amountPaid" | ✅ **Closed.** `accounting/purchasing/vendor-bill-balance.ts` is the writer and the figure is `total − paid − credited`, so a filter or sort on Balance now agrees with the payment card. |
+| `vendor_bill_balance` "computed from total and amountPaid" | ✅ **Closed.** `accounting/purchasing/vendor-bill-balance.ts` is the writer and the figure is `total − paid − credited − discounted` (74 D3), so a filter or sort on Balance now agrees with the payment card. |
 
 ---
 
@@ -1298,7 +1332,7 @@ Recorded because both documents still exist and a reader will otherwise trust th
 
 | Path | Owns |
 | --- | --- |
-| `packages/lib/src/accounting/purchasing/` | `match.ts` (the pure match), `match-hook.ts` (triggers), `match-reconciler.ts` (re-match on receipt), `aging-sweep.ts` (the one time-driven trigger), `allocate-landed-cost.ts`, `lifecycle.ts`, `post-vendor-bill.ts` (the one poster), `bill-edit.ts` / `bill-edit-flag.ts` (Edit and Save over `metadata.editOpen`), `vendor-bill-balance.ts`, `purchase-order-status*.ts`, `vendor-part-lookup.ts`, `bill-intake/`, `intake/`, `expense-bill/`, `landed-cost/`, `vendor-credit/` |
+| `packages/lib/src/accounting/purchasing/` | `match.ts` (the pure match), `match-hook.ts` (triggers), `match-reconciler.ts` (re-match on receipt), `aging-sweep.ts` (the one time-driven trigger), `allocate-landed-cost.ts`, `lifecycle.ts`, `post-vendor-bill.ts` (the one poster; Edit and Save are generic now — `accounting/documents/edit-in-place/`), `vendor-bill-balance.ts`, `purchase-order-status*.ts`, `vendor-part-lookup.ts`, `bill-intake/`, `intake/`, `expense-bill/`, `landed-cost/` (`reads.ts`, `clear.ts`, `cleared.ts`), `vendor-credit/` |
 | `packages/lib/src/inventory/movements/` | `write-movements.ts` (`writeStockMovements`, the ONE writer), `values.ts` (the nine keys every writer stamps), `cost-fields.ts`, `reverse-movement.ts`, `client.ts` (`computeExtendedCost`, `resolveInventoryRoleForPartKind`), `types.ts` (`MovementRecord`) |
 | `packages/lib/src/inventory/costing/` | `standard-cost.ts` (`rollStandardCost`, and the writer of its revaluation), `revalue.ts` (the cost-only movement), `provisional-standard.ts` (`replaceProvisionalStandard`), `standard-cost-roll.ts` (pure), `standard-cost-queries.ts`, `ensure-standard-cost.ts` (first standard only, never an overwrite), `cost-calculator.ts` (`recalculateAffectedParts`, the live `part_cost` roll-up), `vendor-cost.ts` (`computeLandedCost`, the tariff resolution), `cost-reads.ts` (the ledger averages, now a report), `qoh.ts` (`batchRecalculateQoH`), `client.ts` (`resolveAbsorptionRates`, `resolvePartKind`) |
 | `packages/lib/src/inventory/receiving/` | `receive-stock.ts`, `receive-purchase-order.ts`, `accruals.ts` (the pure receipt split), `adjust-stock.ts`, `open-stock-balance.ts`, `bulk-opening-stock.ts`, `opening-stock-subledger.ts`, `receipt-queries.ts`, `client.ts`, `guard.ts` |

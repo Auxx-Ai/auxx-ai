@@ -37,7 +37,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
 import { BadRequestError, UnprocessableEntityError } from '../../../errors'
-import { loadInvoiceForIssuance } from '../../../sales/invoices/issuance-reads'
+import { loadInvoiceForIssuance } from '../../sales/invoices/issuance-reads'
 import { runMoneyCommand } from '../commands/run-money-command'
 import { acceptDepositApplicationAccounting } from '../customer-money/deposit-application-accounting'
 

@@ -172,6 +172,42 @@ describe('recordVendorPayment', () => {
     await expect(run()).rejects.toThrow(/more than the 30000 cents/)
   })
 
+  it('carries the discount taken onto the application row (74 D3)', async () => {
+    await run({ amountMinor: 98_000, discountMinor: 2_000 })
+    expect(h.inserts[0]![1]).toMatchObject({ amountMinor: 98_000n })
+    expect(h.inserts[1]![1]).toMatchObject({ amountMinor: 98_000n, discountMinor: 2_000n })
+  })
+
+  it('defaults the discount to nothing', async () => {
+    await run()
+    expect(h.inserts[1]![1]).toMatchObject({ discountMinor: 0n })
+  })
+
+  it('caps money PLUS discount at the balance', async () => {
+    await expect(run({ amountMinor: 99_000, discountMinor: 2_000 })).rejects.toThrow(
+      /99000 cents paid plus 2000 cents of discount is more than the 100000 cents/
+    )
+    expect(h.inserts).toEqual([])
+  })
+
+  it('nets an earlier payment’s discount out of what is still owed', async () => {
+    h.applications = [{ operation: 'apply', amountMinor: 70_000n, discountMinor: 5_000n }]
+    await expect(run({ amountMinor: 26_000 })).rejects.toThrow(/more than the 25000 cents/)
+  })
+
+  it.each([-1, 12.5])('refuses the discount %s', async (discountMinor) => {
+    await expect(run({ discountMinor })).rejects.toThrow(/whole number of cents/)
+    expect(h.inserts).toEqual([])
+  })
+
+  // A bill forgiven entirely under terms is a vendor credit: `MoneyApplication`
+  // cannot hold a zero-money row and the movement would post nothing.
+  it('refuses a payment of no money at all, discount or not', async () => {
+    await expect(run({ amountMinor: 0, discountMinor: 2_000 })).rejects.toThrow(
+      /vendor credit, not a payment/
+    )
+  })
+
   // 73 D1: the gate is the ledger, not the lifecycle.
   it('refuses a bill with no general ledger entry behind it', async () => {
     h.postings = []
