@@ -19,7 +19,10 @@ export function hasAccountingHistory(value: string | null | undefined): boolean 
     financialRecordType(value) !== null ||
     value === 'credit_memo' ||
     value === 'credit_memo_line' ||
-    value === 'credit_memo_application'
+    value === 'credit_memo_application' ||
+    value === 'vendor_credit' ||
+    value === 'vendor_credit_line' ||
+    value === 'vendor_credit_application'
   )
 }
 /** Resolve verified reporting connection data from the platform write session. */

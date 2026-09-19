@@ -94,6 +94,12 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   // issuance keys on the invoice number: one entry per memo falls out of the
   // claim index, and a void reverses it at `-R1`.
   credit_memo: 'CRM',
+  // The supplier's credit note. Keys on `vendor_credit_number` - OURS, `VC-0001`
+  // - and never on the supplier's own reference, for exactly the reason
+  // `expense_bill` keys on the internal number: two suppliers may print the same
+  // credit-note string, and two entries on one period key means the loser
+  // converges to `already_posted` with its credit never recorded.
+  vendor_credit: 'VCR',
   // The accountant's own entry, synced in (brief 20 §6). Keys on the PROVIDER'S
   // transaction id, which is the only identity it has - the claim index then
   // gives per-transaction idempotency for free.

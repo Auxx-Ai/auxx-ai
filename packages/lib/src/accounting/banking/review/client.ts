@@ -47,13 +47,12 @@ export const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
  * - only `transferTransaction` may write it, because a transfer also has to
  * post the one cash-to-cash entry that a document match must never post.
  *
- * 🛑 `money_transaction` (a customer receipt or refund) has no bank-line column
+ * 🛑 `money_transaction` (any of the four movement purposes) has no bank-line column
  * of its own, so the match is recorded only on the BANK LINE's
  * `matchedRecordId` - which is why `readDocumentLink` falls back to scanning
  * bank lines for it, the same way it does for `vendor_bill`.
  */
 export const MATCH_RECORD_TYPES = [
-  'vendor_payment',
   'money_transaction',
   'bank_deposit',
   'vendor_bill',
@@ -62,7 +61,7 @@ export const MATCH_RECORD_TYPES = [
 ] as const
 export type MatchRecordType = (typeof MATCH_RECORD_TYPES)[number]
 
-/** The five a person may pick in the match panel. */
+/** The four a person may pick in the match panel. */
 export const MATCHABLE_RECORD_TYPES = MATCH_RECORD_TYPES.filter(
   (type) => type !== 'bank_transaction'
 ) as readonly Exclude<MatchRecordType, 'bank_transaction'>[]
@@ -87,8 +86,7 @@ export const MATCHED_RECORD_TYPES = [...MATCH_RECORD_TYPES, 'bank_account'] as c
 export type MatchedRecordType = (typeof MATCHED_RECORD_TYPES)[number]
 
 export const MATCH_RECORD_TYPE_LABELS: Record<MatchRecordType, string> = {
-  vendor_payment: 'Vendor payment',
-  money_transaction: 'Customer payment',
+  money_transaction: 'Payment',
   bank_deposit: 'Bank deposit',
   vendor_bill: 'Vendor bill',
   payout: 'Payout',
@@ -595,10 +593,10 @@ export interface SettlementOffer {
  *
  * PURE, so the picker and the tests share one answer. Money ARRIVING on a
  * non-void line, every ACTIVE rail whose clearing account is set. A closed rail
- * is excluded from the OFFER only - its history still routes
- * (`matchGatewayRoute`), but a deposit arriving today on a rail marked closed
- * is a question for a person, not a one-click default. Sorted by name so the
- * list is stable between renders.
+ * is excluded from the OFFER only - a channel receipt whose handle matches it
+ * still posts to it (`matchGatewayRoute`), but a deposit arriving today on a rail
+ * marked closed is a question for a person, not a one-click default. Sorted by
+ * name so the list is stable between renders.
  */
 export function settlementOffers(
   gateways: readonly Pick<

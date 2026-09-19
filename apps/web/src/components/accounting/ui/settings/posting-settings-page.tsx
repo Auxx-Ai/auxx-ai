@@ -20,7 +20,6 @@
 // to `POSTING_PAGE_INPUT_KEYS` and diffs only against those.
 
 import type { PostingPolicy, PostingType } from '@auxx/lib/accounting/ledger/client'
-import { PAYMENT_ROUTE_SETTING_KEYS } from '@auxx/lib/accounting/money/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingKey, SettingValue } from '@auxx/lib/settings/client'
 import { Badge } from '@auxx/ui/components/badge'
@@ -74,8 +73,6 @@ const BREADCRUMBS = [
 
 const PAGE_DESCRIPTION = 'What posts to the ledger, when, and the settings that change it.'
 
-const CASH_BANK_ACCOUNT_KEY = 'accounting.cashBankAccountId'
-
 /**
  * Render a `YYYY-MM-DD` posting date.
  *
@@ -116,10 +113,6 @@ export function AccountingPostingSettingsPage() {
 
   const [guidePage, setGuidePage] = useState<PostingGuidePage | null>(null)
 
-  const anyRouteIsCash = Object.values(PAYMENT_ROUTE_SETTING_KEYS).some(
-    (key) => draft.draft[key] === 'cash'
-  )
-
   if (!hasAccess(FeatureKey.accounting)) {
     return (
       <SettingsPage title='Posting' description={PAGE_DESCRIPTION} breadcrumbs={BREADCRUMBS}>
@@ -138,24 +131,6 @@ export function AccountingPostingSettingsPage() {
     const home = EXTERNAL_SETTING_HOMES[key]
     if (home) return null
     const copy = policy.settingCopy?.[key]
-
-    if (key === CASH_BANK_ACCOUNT_KEY) {
-      // Shown only while a route reads `cash`: there is nothing to name while
-      // nothing lands there (brief 13 §2.4).
-      if (!anyRouteIsCash) return null
-      return (
-        <SettingsFieldRow
-          key={key}
-          settingKey={key as SettingKey}
-          title={copy?.title}
-          description={copy?.description}>
-          <BankAccountPicker
-            value={readText(draft.draft[key])}
-            onChange={(id) => draft.patch({ [key]: id as SettingValue })}
-          />
-        </SettingsFieldRow>
-      )
-    }
 
     return (
       <SettingsFieldRow

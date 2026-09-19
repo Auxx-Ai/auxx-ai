@@ -1,0 +1,147 @@
+// packages/lib/src/accounting/money/__tests__/cash-endpoint.test.ts
+//
+// One resolver, three shapes: a rail's clearing scoped by rail and currency, a
+// bank account's own pointer, or the unscoped undeposited funds role.
+
+import { err, ok } from 'neverthrow'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const h = vi.hoisted(() => ({
+  resolveRoles: vi.fn(),
+  resolveBankAccountGlAccountInTx: vi.fn(),
+}))
+
+vi.mock('../../ledger/roles/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
+vi.mock('../../ledger/chart/resolve-cash-account', () => ({
+  resolveBankAccountGlAccountInTx: h.resolveBankAccountGlAccountInTx,
+}))
+
+import type { Transaction } from '@auxx/database'
+import { UnprocessableEntityError } from '../../../errors'
+import { resolveCashEndpoint } from '../cash-endpoint'
+import { validateCashEndpointSource } from '../client'
+
+const ORG = 'org_1'
+const tx = {} as Transaction
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  h.resolveRoles.mockResolvedValue(ok(new Map([['clearing', { glAccountId: 'gl_clearing' }]])))
+  h.resolveBankAccountGlAccountInTx.mockResolvedValue('gl_bank')
+})
+
+describe('resolveCashEndpoint', () => {
+  it('resolves a rail through the clearing role scoped by rail and currency', async () => {
+    const endpoint = await resolveCashEndpoint(
+      tx,
+      ORG,
+      { paymentGatewayId: 'pg_1', cashAccountInstanceId: null, currency: 'USD' },
+      'Invoice receipt'
+    )
+    expect(endpoint).toEqual({ glAccountId: 'gl_clearing', kind: 'clearing', railId: 'pg_1' })
+    expect(h.resolveRoles).toHaveBeenCalledWith(tx, ORG, ['clearing'], {
+      rail: 'pg_1',
+      currency: 'USD',
+    })
+  })
+
+  it('resolves a bank account through its own GL pointer', async () => {
+    const endpoint = await resolveCashEndpoint(
+      tx,
+      ORG,
+      { paymentGatewayId: null, cashAccountInstanceId: 'ba_1', currency: 'USD' },
+      'Refund'
+    )
+    expect(endpoint).toEqual({ glAccountId: 'gl_bank', kind: 'bank_account', railId: null })
+    expect(h.resolveBankAccountGlAccountInTx).toHaveBeenCalledWith(tx, ORG, 'ba_1', 'Refund')
+    expect(h.resolveRoles).not.toHaveBeenCalled()
+  })
+
+  it('resolves neither to the unscoped undeposited funds role', async () => {
+    h.resolveRoles.mockResolvedValue(
+      ok(new Map([['undeposited_funds', { glAccountId: 'gl_undep' }]]))
+    )
+    const endpoint = await resolveCashEndpoint(
+      tx,
+      ORG,
+      { paymentGatewayId: null, cashAccountInstanceId: null, currency: 'USD' },
+      'Invoice receipt'
+    )
+    expect(endpoint).toEqual({
+      glAccountId: 'gl_undep',
+      kind: 'undeposited_funds',
+      railId: null,
+    })
+    expect(h.resolveRoles).toHaveBeenCalledWith(tx, ORG, ['undeposited_funds'])
+  })
+
+  it('refuses a movement that names both a rail and a bank account', async () => {
+    await expect(
+      resolveCashEndpoint(
+        tx,
+        ORG,
+        { paymentGatewayId: 'pg_1', cashAccountInstanceId: 'ba_1', currency: 'USD' },
+        'Vendor payment'
+      )
+    ).rejects.toBeInstanceOf(UnprocessableEntityError)
+  })
+
+  it('names the subject when a rail is unmapped', async () => {
+    h.resolveRoles.mockResolvedValue(err(new Error('Role clearing is not mapped')))
+    await expect(
+      resolveCashEndpoint(
+        tx,
+        ORG,
+        { paymentGatewayId: 'pg_1', cashAccountInstanceId: null, currency: 'USD' },
+        'Vendor payment'
+      )
+    ).rejects.toThrow(/^Vendor payment: Role clearing is not mapped$/)
+  })
+
+  it('names the subject when undeposited funds is unmapped', async () => {
+    h.resolveRoles.mockResolvedValue(ok(new Map()))
+    await expect(
+      resolveCashEndpoint(
+        tx,
+        ORG,
+        { paymentGatewayId: null, cashAccountInstanceId: null, currency: 'USD' },
+        'Refund'
+      )
+    ).rejects.toThrow('Refund undeposited funds account is not mapped')
+  })
+
+  it('names the subject when a bank account is unmapped', async () => {
+    h.resolveBankAccountGlAccountInTx.mockRejectedValue(
+      new UnprocessableEntityError('Refund bank account is missing or archived')
+    )
+    await expect(
+      resolveCashEndpoint(
+        tx,
+        ORG,
+        { paymentGatewayId: null, cashAccountInstanceId: 'ba_1', currency: 'USD' },
+        'Refund'
+      )
+    ).rejects.toThrow('Refund bank account is missing or archived')
+  })
+})
+
+describe('validateCashEndpointSource', () => {
+  it('accepts each of the three shapes', () => {
+    for (const source of [
+      { paymentGatewayId: 'pg_1', cashAccountInstanceId: null, currency: 'USD' },
+      { paymentGatewayId: null, cashAccountInstanceId: 'ba_1', currency: 'USD' },
+      { paymentGatewayId: null, cashAccountInstanceId: null, currency: 'USD' },
+    ])
+      expect(() => validateCashEndpointSource(source)).not.toThrow()
+  })
+
+  it('refuses both at once', () => {
+    expect(() =>
+      validateCashEndpointSource({
+        paymentGatewayId: 'pg_1',
+        cashAccountInstanceId: 'ba_1',
+        currency: 'USD',
+      })
+    ).toThrow(UnprocessableEntityError)
+  })
+})

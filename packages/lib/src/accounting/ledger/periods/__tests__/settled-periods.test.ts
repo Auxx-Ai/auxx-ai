@@ -69,7 +69,7 @@ describe('isFrozenSetupSettingKey', () => {
   })
 
   it('leaves unrelated settings alone', () => {
-    expect(isFrozenSetupSettingKey('accounting.paymentRoute.check')).toBe(false)
+    expect(isFrozenSetupSettingKey('accounting.autoPost.receipt')).toBe(false)
     expect(isFrozenSetupSettingKey('manufacturing.overheadCostPerUnit')).toBe(false)
     expect(isFrozenSetupSettingKey('organization.currency')).toBe(false)
     // Near misses, both directions.

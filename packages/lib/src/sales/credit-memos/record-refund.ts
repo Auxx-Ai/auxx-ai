@@ -19,21 +19,16 @@
  * written: an application is what relieves an invoice's receivable, and an
  * unapplied memo may be refunded with its invoice still at full balance.
  *
- * ⚠️ The two-way endpoint is the receipt's choice reversed — a named bank
- * account, or undeposited funds — validated here against the org's
- * `accounting.paymentRoute.<method>` setting, because both wrong answers still
- * balance. `refund-accounting.ts`'s `readRoute` freezes the same choice.
+ * The endpoint is the receipt's choice reversed: a rail, a bank account, or
+ * neither. `refund-accounting.ts` resolves the same three shapes at post time.
  *
  * @see docs/lib-module-guide.md
  */
 
 import { type Database, schema } from '@auxx/database'
-import {
-  type PaymentRouteMethod,
-  resolvePaymentRoute,
-} from '../../accounting/money/bank-deposits/route'
+import type { PaymentMethod } from '../../accounting/money/client'
+import { insertMovement } from '../../accounting/money/commands/insert-movement'
 import { runMoneyCommand } from '../../accounting/money/commands/run-money-command'
-import { getOrgCache } from '../../cache/singletons'
 import { BadRequestError } from '../../errors'
 import { readCreditMemoForRefund } from './reads'
 
@@ -46,11 +41,10 @@ export interface RecordCreditMemoRefundInput {
   amountMinor: number
   /** `YYYY-MM-DD`, the day the money went back. May be backdated. */
   date: string
-  method: PaymentRouteMethod
-  /**
-   * The `bank_account` record the money left. Required when the method's route
-   * is `cash`, forbidden when it is `undeposited_funds`.
-   */
+  method: PaymentMethod
+  /** The `payment_gateway` the money went back through, when it went through one. */
+  paymentGatewayId?: string | null
+  /** The `bank_account` record the money left. Exclusive with the gateway. */
   bankAccountInstanceId?: string | null
   reference?: string
   note?: string
@@ -80,19 +74,8 @@ export async function recordCreditMemoRefund(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date))
     throw new BadRequestError('A refund needs a calendar date')
 
-  const settings = await getOrgCache().get(input.organizationId, 'orgSettings')
-  const route = resolvePaymentRoute(input.method, settings)
   const bankAccountInstanceId = input.bankAccountInstanceId?.trim() || null
-  if (route === 'cash' && !bankAccountInstanceId)
-    throw new BadRequestError('Choose the bank account this refund was paid from')
-  if (route === 'undeposited_funds' && bankAccountInstanceId)
-    throw new BadRequestError(
-      'This refund method comes out of undeposited funds and cannot name a bank account'
-    )
-  // 🔑 `clearing` does not carry over to a hand-recorded refund, the same rule
-  // `record-payment.ts` states for a receipt: a clearing account exists to be
-  // drained by a payout, and a refund auxx paid by hand produces none. The
-  // recorder says where the money went instead.
+  const paymentGatewayId = input.paymentGatewayId?.trim() || null
 
   return runMoneyCommand(
     db,
@@ -106,6 +89,7 @@ export async function recordCreditMemoRefund(
         amountMinor: input.amountMinor,
         date: input.date,
         method: input.method,
+        paymentGatewayId,
         bankAccountInstanceId,
       },
     },
@@ -121,27 +105,20 @@ export async function recordCreditMemoRefund(
         db: tx as unknown as Database,
       })
 
-      const [money] = await tx
-        .insert(schema.MoneyTransaction)
-        .values({
-          organizationId: input.organizationId,
-          purpose: 'customer_refund',
-          amountMinor: BigInt(input.amountMinor),
-          currency: 'USD',
-          currencyExponent: 2,
-          // `date`, not `instant`: nobody observed a time, and the schema CHECK
-          // enforces the pairing.
-          datePrecision: 'date',
-          occurredOn: input.date,
-          partyInstanceId: memo.contactInstanceId,
+      const money = await insertMovement(tx, input.organizationId, commandId, {
+        purpose: 'customer_refund',
+        amountMinor: input.amountMinor,
+        when: { date: input.date },
+        partyInstanceId: memo.contactInstanceId,
+        endpoint: {
+          paymentGatewayId,
           cashAccountInstanceId: bankAccountInstanceId,
-          method: input.method,
-          recordedByCommandId: commandId,
-          reference: input.reference?.trim() || null,
-          note: input.note?.trim() || null,
-        })
-        .returning({ id: schema.MoneyTransaction.id })
-      if (!money) throw new Error('Money transaction insert returned no row')
+          currency: 'USD',
+        },
+        method: input.method,
+        reference: input.reference,
+        note: input.note,
+      })
 
       const [settlement] = await tx
         .insert(schema.MoneyRefundSettlement)

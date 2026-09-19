@@ -4,6 +4,7 @@ import { listBankAccounts } from '@auxx/lib/accounting/banking'
 import type { InvoicePaymentRow } from '@auxx/lib/accounting/money'
 import {
   acceptInvoiceReceiptAccounting,
+  acceptVendorPaymentAccounting,
   clearBankDeposit,
   createBankDeposit,
   disconnectPaymentAccount,
@@ -14,15 +15,16 @@ import {
   listPayouts,
   listQuoteDepositReceipts,
   listUndepositedPayments,
+  listVendorBillPayments,
   listWorkOrderMoneyPayments,
   PAYOUT_STATUSES,
   recordInvoicePayment,
+  recordVendorPayment,
   syncAccountState,
   syncPayouts,
   updateBankDeposit,
   voidInvoicePayment,
 } from '@auxx/lib/accounting/money'
-import { resolvePaymentRoute } from '@auxx/lib/accounting/money/client'
 import {
   listOrderMoneyTransactions,
   postCustomerReceiptAccounting,
@@ -31,7 +33,7 @@ import {
   resolveImportedMoneyReferences,
 } from '@auxx/lib/accounting/money/customer-money'
 import { listRailStrip } from '@auxx/lib/accounting/money/payouts'
-import { getOrgCache } from '@auxx/lib/cache'
+import { listPaymentGateways } from '@auxx/lib/accounting/rails'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { isRecordConnectorManaged } from '@auxx/lib/data-connectors'
 import { renderPreviewQuotePdf } from '@auxx/lib/documents'
@@ -529,24 +531,13 @@ export const moneyRouter = createTRPCRouter({
    * be a choice that always fails at posting time.
    */
   paymentDestinations: moneyViewProcedure.query(async ({ ctx }) => {
-    const settings = await getOrgCache().get(ctx.session.organizationId, 'orgSettings')
-    const accounts = await listBankAccounts(ctx.db, {
-      organizationId: ctx.session.organizationId,
-    })
+    const [accounts, gateways] = await Promise.all([
+      listBankAccounts(ctx.db, { organizationId: ctx.session.organizationId }),
+      listPaymentGateways(ctx.db, ctx.session.organizationId),
+    ])
     if (accounts.isErr()) throw accounts.error
+    if (gateways.isErr()) throw gateways.error
     return {
-      requiresBankAccount: Object.fromEntries(
-        (['cash', 'check', 'card', 'bank', 'other'] as const).map((method) => [
-          method,
-          resolvePaymentRoute(method, settings) === 'cash',
-        ])
-      ) as Record<'cash' | 'check' | 'card' | 'bank' | 'other', boolean>,
-      forbidsBankAccount: Object.fromEntries(
-        (['cash', 'check', 'card', 'bank', 'other'] as const).map((method) => [
-          method,
-          resolvePaymentRoute(method, settings) === 'undeposited_funds',
-        ])
-      ) as Record<'cash' | 'check' | 'card' | 'bank' | 'other', boolean>,
       bankAccounts: accounts.value
         .filter((account) => account.glAccountId && !account.archivedAt)
         .map((account) => ({
@@ -554,8 +545,70 @@ export const moneyRouter = createTRPCRouter({
           name: account.name ?? account.institution ?? 'Bank account',
           last4: account.last4,
         })),
+      // A rail is offerable only once it names the clearing account its receipts
+      // and refunds post to.
+      paymentGateways: gateways.value
+        .filter((gateway) => gateway.clearingGlAccountId)
+        .map((gateway) => ({ id: gateway.id, name: gateway.name })),
     }
   }),
+
+  /** Every payment applied to one vendor bill — the A/P twin of `listPayments`. */
+  billPayments: moneyViewProcedure
+    .input(z.object({ vendorBillRecordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.vendorBillRecordId)
+      return listVendorBillPayments(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        vendorBillInstanceId: entityInstanceId,
+      })
+    }),
+
+  /**
+   * Pay a vendor bill. The money is recorded first and its journal accepted
+   * after, so a ledger that is not set up refuses the posting without also
+   * refusing to record that the vendor was paid.
+   */
+  recordBillPayment: moneyProcedure
+    .input(
+      z.object({
+        vendorBillRecordId: recordIdSchema,
+        /** Integer cents. */
+        amount: z.number().int().positive(),
+        /** ISO date string (`yyyy-MM-dd`) — the day the money left. */
+        date: z.string(),
+        method: z.enum(['cash', 'check', 'card', 'bank', 'other']),
+        /** The rail the money went out on. Exclusive with `bankAccountInstanceId`. */
+        paymentGatewayId: z.string().nullish(),
+        /** The `bank_account` the money left. Exclusive with the rail. */
+        bankAccountInstanceId: z.string().nullish(),
+        reference: z.string().optional(),
+        note: z.string().optional(),
+        commandKey: z.string().min(1).max(200),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.vendorBillRecordId)
+      const recorded = await recordVendorPayment(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        vendorBillInstanceId: entityInstanceId,
+        amountMinor: input.amount,
+        date: input.date,
+        method: input.method,
+        paymentGatewayId: input.paymentGatewayId,
+        bankAccountInstanceId: input.bankAccountInstanceId,
+        reference: input.reference,
+        note: input.note,
+        commandKey: input.commandKey,
+      })
+      const posting = await acceptVendorPaymentAccounting(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        moneyTransactionId: recorded.moneyTransactionId,
+        actorUserId: ctx.session.user.id,
+      })
+      return { ...recorded, postingStatus: posting.status }
+    }),
 
   recordPayment: moneyProcedure
     .input(
@@ -566,11 +619,9 @@ export const moneyRouter = createTRPCRouter({
         /** ISO date string (`yyyy-MM-dd`) — the date the payment was made (may be backdated). */
         date: z.string(),
         method: z.enum(['cash', 'check', 'card', 'bank', 'other']),
-        /**
-         * The `bank_account` record the money landed in. Required for a method
-         * the org routes straight to cash, forbidden for one held in
-         * undeposited funds — `recordInvoicePayment` enforces which.
-         */
+        /** The rail the money arrived on. Exclusive with `bankAccountInstanceId`. */
+        paymentGatewayId: z.string().nullish(),
+        /** The `bank_account` record the money landed in. Exclusive with the rail. */
         bankAccountInstanceId: z.string().nullish(),
         reference: z.string().optional(),
         note: z.string().optional(),
@@ -594,6 +645,7 @@ export const moneyRouter = createTRPCRouter({
         amountMinor: input.amount,
         date: input.date,
         method: input.method,
+        paymentGatewayId: input.paymentGatewayId,
         bankAccountInstanceId: input.bankAccountInstanceId,
         reference: input.reference,
         note: input.note,

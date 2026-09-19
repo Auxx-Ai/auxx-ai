@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   getOrganizationSetting: vi.fn(),
   isAccountingEnabled: vi.fn(),
-  listCustomerReceiptAccountingCandidates: vi.fn(),
+  listCustomerMoneyAccountingCandidates: vi.fn(),
   readCustomerReceiptAccountingSource: vi.fn(),
   readOrderRecognitionFactsInTx: vi.fn(),
   readOrderRecognitionSource: vi.fn(),
@@ -18,6 +18,8 @@ const h = vi.hoisted(() => ({
   findLiveSubjectPosting: vi.fn(),
   resolvePeriodLock: vi.fn(),
   readAutoPostMode: vi.fn(async () => 'post'),
+  money: null as unknown,
+  updates: [] as unknown[],
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
@@ -49,7 +51,7 @@ vi.mock('../../../../settings/read', () => ({
     ),
 }))
 vi.mock('../receipt-accounting', () => ({
-  listCustomerReceiptAccountingCandidates: h.listCustomerReceiptAccountingCandidates,
+  listCustomerMoneyAccountingCandidates: h.listCustomerMoneyAccountingCandidates,
   readCustomerReceiptAccountingSource: h.readCustomerReceiptAccountingSource,
 }))
 vi.mock('../recognition-facts', () => ({
@@ -70,8 +72,12 @@ const organizationId = 'org_1'
 const moneyTransactionId = 'money_1'
 
 function db(): Database {
-  const tx = {}
+  const tx = {
+    query: { MoneyTransaction: { findFirst: async () => h.money } },
+    update: () => ({ set: (values: unknown) => ({ where: async () => h.updates.push(values) }) }),
+  }
   return {
+    update: () => ({ set: () => ({ where: async () => undefined }) }),
     transaction: async <T>(fn: (transaction: typeof tx) => Promise<T>) => fn(tx),
   } as unknown as Database
 }
@@ -148,6 +154,22 @@ function prepareRecognition(
 
 beforeEach(() => {
   vi.clearAllMocks()
+  h.updates = []
+  h.money = {
+    id: moneyTransactionId,
+    organizationId,
+    purpose: 'customer_receipt',
+    amountMinor: 120n,
+    currency: 'USD',
+    currencyExponent: 2,
+    datePrecision: 'instant',
+    occurredAt: new Date('2026-09-01T15:00:00.000Z'),
+    occurredOn: null,
+    partyInstanceId: 'customer_1',
+    cashAccountInstanceId: null,
+    paymentGatewayId: null,
+    method: null,
+  }
   h.isAccountingEnabled.mockResolvedValue(true)
   h.readAutoPostMode.mockResolvedValue('post')
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
@@ -182,7 +204,10 @@ describe('postCustomerReceiptAccounting', () => {
     ])
     expect(options.storeId).toBe('store_1')
     expect(options.railId).toBe('gateway_1')
+    expect(options.scope).toEqual({ store: 'store_1', rail: 'gateway_1' })
     expect(options.mode).toBe('post')
+    // The rail is stamped onto the movement inside the posting transaction.
+    expect(h.updates).toEqual([{ paymentGatewayId: 'gateway_1' }])
   })
 
   it('builds the advance journal from the recognition allocation', async () => {
@@ -216,6 +241,26 @@ describe('postCustomerReceiptAccounting', () => {
     })
   })
 
+  it('debits undeposited funds for a receipt whose handle names no rail', async () => {
+    prepareRecognition(120n, '0', '100', '20')
+    h.readCustomerReceiptAccountingSource.mockResolvedValue({
+      ...receiptSource(120n),
+      paymentGatewayId: null,
+    })
+    h.resolveRoles.mockResolvedValue({
+      isErr: () => false,
+      value: new Map([['undeposited_funds', { glAccountId: 'gl_undep' }]]),
+    })
+
+    await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
+
+    // Nothing stamped: a `manual` Shopify payment is money in no processor.
+    expect(h.updates).toEqual([])
+    const options = h.postEntry.mock.calls[0]![1]
+    expect(options.railId).toBeNull()
+    expect(options.entry.lines[0]).toMatchObject({ glAccountId: 'gl_undep', direction: 'debit' })
+  })
+
   it('returns the standing posting without preparing anything, on a retry', async () => {
     h.findLiveSubjectPosting.mockResolvedValue({ isErr: () => false, value: { id: 'posting_1' } })
 
@@ -243,7 +288,7 @@ describe('postCustomerReceiptAccounting', () => {
     })
 
     expect(result.status).toBe('blocked')
-    expect(result.reason).toMatch(/unresolved/)
+    expect((result as { reason: string }).reason).toMatch(/unresolved/)
     expect(h.postEntry).not.toHaveBeenCalled()
   })
 

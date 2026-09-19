@@ -63,10 +63,9 @@ export function PaymentGatewaysList({
   )
 
   // The handles actually on this org's orders (`listObservedGatewayHandles`).
-  // 🛑 The point of this line is the UNROUTED ones: a handle no record claims
-  // falls back to `clearing` inside `resolveFulfillmentDebit` and posts a
-  // balanced entry, so nothing else on this screen - or anywhere downstream -
-  // would ever say it is unrouted.
+  // 🛑 The point of this line is the UNCLAIMED ones: a rail's handles decide which
+  // rail a channel receipt posts to, so a receipt carrying an unclaimed handle is
+  // refused until somebody maps it.
   const observed = api.paymentGateway.observedHandles.useQuery()
   const unrouted = useMemo(
     () => (observed.data ?? []).filter((row) => !row.claimedBy),
@@ -129,7 +128,7 @@ export function PaymentGatewaysList({
             <span className='text-muted-foreground text-xs tabular-nums'>
               {observedCount === 0
                 ? 'None on your orders yet'
-                : `${routedCount} of ${observedCount} routed`}
+                : `${routedCount} of ${observedCount} claimed`}
             </span>
           }>
           <TreeRowList
@@ -143,7 +142,7 @@ export function PaymentGatewaysList({
                 secondaryFill
                 secondary={
                   <span className='truncate text-muted-foreground text-xs'>
-                    No gateway routes this, so it clears to the default card account
+                    No rail claims this handle, so its receipts cannot post
                   </span>
                 }
               />

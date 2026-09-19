@@ -34,7 +34,7 @@ vi.mock('../../../accounting/money/customer-money/ingest', () => ({
   sweepImportedCustomerMoney: h.money,
 }))
 vi.mock('../../../accounting/money/customer-money/accounting', () => ({
-  sweepCustomerReceiptAccounting: h.receipt,
+  sweepCustomerMoneyAccounting: h.receipt,
 }))
 vi.mock('../../../accounting/money/customer-money/deposit-application-accounting', () => ({
   sweepDepositApplicationAccounting: h.application,

@@ -15,6 +15,7 @@ import { toCalendarDay } from '@auxx/utils/calendar-day'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { BadRequestError, ConflictError, NotFoundError } from '../../errors'
+import { BANK_DEPOSIT_FIELDS } from '../../resources/registry/resources/bank-deposit-fields'
 import { CREDIT_MEMO_APPLICATION_FIELDS } from '../../resources/registry/resources/credit-memo-application-fields'
 import { CREDIT_MEMO_FIELDS } from '../../resources/registry/resources/credit-memo-fields'
 import { CREDIT_MEMO_LINE_FIELDS } from '../../resources/registry/resources/credit-memo-line-fields'
@@ -609,53 +610,6 @@ export async function loadInvoiceLinesForCredit(
 // ─── The order ──────────────────────────────────────────────────────────────
 
 /**
- * Every gateway `order_payment_gateways` holds for one order, raw.
- *
- * 🛑 Read for the REFUND's account, not the sale's. `issueCreditMemo` matches
- * these against the org's `payment_gateway` records so a channel refund credits
- * the account its sale debited - see `CreditMemoSettlement`. Before 2026-09-11
- * the refund was hardcoded to `clearing`, which was correct only while
- * every rail shared one clearing account.
- *
- * ⚠️ **TAGS, so the value is in `optionId`**, not `valueText` - one row per
- * gateway, each an option KEY that for a connector-provisioned option set IS
- * the gateway's name (`readOrderFacts` says the same). Reading `valueText`
- * here returns nothing at all and every refund falls back to the role, which
- * is the silent version of the bug this read exists to fix.
- *
- * Empty when the field is unprovisioned or the order names no gateway: the
- * caller then takes the `clearing` default, which is what the fulfillment
- * debit fork does with the same input.
- */
-export async function readOrderGateways(
-  db: Database,
-  organizationId: string,
-  orderId: string
-): Promise<string[]> {
-  // One attribute of one known order: `readSystemRecords` would cost a second
-  // `EntityInstance` query for the same two columns.
-  const fields = await systemFieldMap(db, organizationId, ['order_payment_gateways'] as const)
-  const field = fields.order_payment_gateways
-  if (!field) return []
-
-  const rows = await db
-    .select({ optionId: schema.FieldValue.optionId, valueText: schema.FieldValue.valueText })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.entityId, orderId),
-        eq(schema.FieldValue.fieldId, field.id)
-      )
-    )
-
-  return rows.flatMap((row) => {
-    const value = row.optionId ?? row.valueText
-    return value ? [value] : []
-  })
-}
-
-/**
  * Whether the order had a fulfillment shipped on or before `issuedAt`.
  *
  * Read from the order's `fulfillment` records (`money/fulfillments/reads.ts`),
@@ -971,4 +925,140 @@ export async function readCreditMemoForRefund(params: {
     contactInstanceId: memo.contactInstanceId,
     invoiceInstanceId: memo.invoiceInstanceId,
   }
+}
+
+/** One receipt against an invoice that still has room to be refunded. */
+export interface RefundableReceipt {
+  id: string
+  reference: string | null
+  method: string | null
+  partyInstanceId: string | null
+  /** Where a refund of this receipt leaves by — deposit-aware, see below. */
+  paymentGatewayId: string | null
+  cashAccountInstanceId: string | null
+  refundableMinor: number
+  occurredAt: number
+}
+
+/**
+ * Where a refund of each receipt leaves by, read THROUGH the receipt's deposit.
+ *
+ * 🛑 A receipt banked by a `bank_deposit` is no longer in undeposited funds: the
+ * cash left the deposit's own bank account, and refunding it back out of
+ * undeposited funds drives that account negative against money that is not there.
+ * So a deposited receipt's refund names the deposit's bank account and no rail;
+ * anything else carries the receipt's own two columns.
+ *
+ * The ONE reader: the refund dialog's prefill and the channel refund's post-time
+ * stamp both come through here, or they can disagree about one receipt.
+ */
+export async function readReceiptRefundEndpoints(
+  db: Database,
+  organizationId: string,
+  receipts: ReadonlyArray<{
+    id: string
+    paymentGatewayId: string | null
+    cashAccountInstanceId: string | null
+    bankDepositInstanceId: string | null
+  }>
+): Promise<Map<string, { paymentGatewayId: string | null; cashAccountInstanceId: string | null }>> {
+  const out = new Map<
+    string,
+    { paymentGatewayId: string | null; cashAccountInstanceId: string | null }
+  >()
+  const depositIds = [
+    ...new Set(
+      receipts.flatMap((row) => (row.bankDepositInstanceId ? [row.bankDepositInstanceId] : []))
+    ),
+  ]
+  const bankAccountByDeposit = new Map<string, string | null>()
+  if (depositIds.length > 0) {
+    const ctx = await systemFields(
+      db,
+      organizationId,
+      'bank_deposit',
+      pickSystemAttributes(BANK_DEPOSIT_FIELDS, ['bank_deposit_bank_account_record'] as const)
+    )
+    if (ctx) {
+      const records = await readSystemRecords(db, organizationId, ctx, { ids: depositIds })
+      for (const record of records)
+        bankAccountByDeposit.set(record.id, record.related('bank_deposit_bank_account_record'))
+    }
+  }
+  for (const receipt of receipts) {
+    const banked = receipt.bankDepositInstanceId
+      ? bankAccountByDeposit.get(receipt.bankDepositInstanceId)
+      : null
+    out.set(
+      receipt.id,
+      banked
+        ? { paymentGatewayId: null, cashAccountInstanceId: banked }
+        : {
+            paymentGatewayId: receipt.paymentGatewayId,
+            cashAccountInstanceId: receipt.cashAccountInstanceId,
+          }
+    )
+  }
+  return out
+}
+
+/**
+ * Receipts applied to an invoice with refundable room left, newest first.
+ *
+ * The card door filters this to card receipts carrying a payment intent; the
+ * refund dialog reads the newest one's endpoint as its prefill (D5).
+ */
+export async function listRefundableReceipts(
+  db: Database,
+  organizationId: string,
+  invoiceInstanceId: string
+): Promise<RefundableReceipt[]> {
+  const applications = await db.query.MoneyApplication.findMany({
+    where: and(
+      eq(schema.MoneyApplication.organizationId, organizationId),
+      eq(schema.MoneyApplication.invoiceInstanceId, invoiceInstanceId),
+      eq(schema.MoneyApplication.operation, 'apply')
+    ),
+  })
+  if (applications.length === 0) return []
+  const receipts = await db.query.MoneyTransaction.findMany({
+    where: and(
+      eq(schema.MoneyTransaction.organizationId, organizationId),
+      eq(schema.MoneyTransaction.purpose, 'customer_receipt'),
+      inArray(
+        schema.MoneyTransaction.id,
+        applications.map((row) => row.moneyTransactionId)
+      )
+    ),
+  })
+  if (receipts.length === 0) return []
+  const settlements = await db.query.MoneyRefundSettlement.findMany({
+    where: and(
+      eq(schema.MoneyRefundSettlement.organizationId, organizationId),
+      inArray(
+        schema.MoneyRefundSettlement.originalTransactionId,
+        receipts.map((row) => row.id)
+      )
+    ),
+  })
+  const usedById = new Map<string, bigint>()
+  for (const row of settlements)
+    usedById.set(
+      row.originalTransactionId!,
+      (usedById.get(row.originalTransactionId!) ?? 0n) + row.amountMinor
+    )
+  const endpoints = await readReceiptRefundEndpoints(db, organizationId, receipts)
+  return receipts
+    .map((row) => ({
+      id: row.id,
+      reference: row.reference,
+      method: row.method,
+      partyInstanceId: row.partyInstanceId,
+      paymentGatewayId: endpoints.get(row.id)?.paymentGatewayId ?? null,
+      cashAccountInstanceId: endpoints.get(row.id)?.cashAccountInstanceId ?? null,
+      refundableMinor: Number(row.amountMinor - (usedById.get(row.id) ?? 0n)),
+      occurredAt: row.occurredAt?.getTime() ?? 0,
+    }))
+    .filter((row) => row.refundableMinor > 0)
+    .sort((a, b) => b.occurredAt - a.occurredAt)
 }

@@ -10,13 +10,12 @@
  *
  * ## 🛑 Suggestions, never routing
  *
- * Nothing here decides where money lands. `matchGatewayRoute`
- * (`accounting/rails/client.ts`) is the single matcher from a handle to an
- * account and it reads the org's own `payment_gateway` records, never this
- * table; `resolveFulfillmentDebit` reads that. A catalogue that started
- * answering "which account" would be a second matcher, and two matchers that
- * disagree put a sale and its refund in different accounts - which balances,
- * and is therefore undetectable downstream.
+ * Nothing here decides where money lands. A movement names its rail and
+ * `resolveCashEndpoint` (`accounting/money/cash-endpoint.ts`) resolves that
+ * rail's clearing account through the role assignment, never this table. A
+ * catalogue that started answering "which account" would be a second resolver,
+ * and two resolvers that disagree put a sale and its refund in different
+ * accounts - which balances, and is therefore undetectable downstream.
  *
  * 🛑 **An unknown handle is never refused.** Same argument the Shopify
  * connector already makes for shipping `paymentGateways` with no predefined

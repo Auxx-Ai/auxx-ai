@@ -67,7 +67,6 @@ vi.mock('../reads', () => ({
   orderHadFulfillmentBefore: h.orderHadFulfillmentBefore,
   loadInvoiceForCredit: vi.fn(),
   loadInvoiceLinesForCredit: vi.fn(),
-  readOrderGateways: vi.fn(async () => []),
   sumCreditMemoApplications: h.sumCreditMemoApplications,
   sumSucceededCreditMemoRefunds: h.sumSucceededCreditMemoRefunds,
   sumReservedCreditMemoRefunds: async () =>
@@ -184,6 +183,40 @@ describe('issueCreditMemo', () => {
 
     await expect(issueCreditMemo(db, input)).rejects.toThrow('has no number yet')
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+})
+
+describe('the channel memo entry', () => {
+  it('carries no money leg — the refund movement posts its own entry (D6)', async () => {
+    h.memo.source = 'channel'
+    h.memo.orderInstanceId = 'order_1'
+    h.memo.amountRefundedMinor = 100_00
+    h.orderHadFulfillmentBefore.mockResolvedValue(true)
+
+    await issueCreditMemo(db, input)
+
+    expect(h.buildCreditMemoEntry).toHaveBeenCalledOnce()
+    const built = h.buildCreditMemoEntry.mock.calls[0]![0]
+    expect(built).not.toHaveProperty('settlement')
+    expect(built.reverseRevenue).toBe(true)
+  })
+
+  // 71 D14. The builder turns this into `Dr customer_deposits / Cr A/R`; what
+  // this file owns is that the memo still ISSUES, and issues with the flag that
+  // selects that branch. Before D14 it refused, and a Shopify refund taken
+  // before the order shipped could not be recorded at all.
+  it('issues a memo on an order that never shipped, with reverseRevenue false', async () => {
+    h.memo.source = 'channel'
+    h.memo.orderInstanceId = 'order_1'
+    h.orderHadFulfillmentBefore.mockResolvedValue(false)
+
+    await expect(issueCreditMemo(db, input)).resolves.toBeDefined()
+
+    expect(h.buildCreditMemoEntry.mock.calls[0]![0]).toMatchObject({
+      reverseRevenue: false,
+      total: 100_00,
+    })
+    expect(h.postCreditMemoEntry).toHaveBeenCalledOnce()
   })
 })
 

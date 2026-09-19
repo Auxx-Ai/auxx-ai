@@ -61,6 +61,7 @@ export {
   listCreditMemoApplications,
   listCreditMemoRefunds,
   listOpenInvoicesForContact,
+  listRefundableReceipts,
   loadCreditMemo,
   loadCreditMemoApplication,
   loadCreditMemoLines,

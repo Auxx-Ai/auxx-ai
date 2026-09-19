@@ -270,7 +270,9 @@ describe('isLinkableTransferLeg', () => {
   })
 
   it('refuses a line matched to a DOCUMENT rather than left pointing at an account', () => {
-    expect(isLinkableTransferLeg(LATE, posted({ matchedRecordType: 'vendor_payment' }))).toBe(false)
+    expect(isLinkableTransferLeg(LATE, posted({ matchedRecordType: 'money_transaction' }))).toBe(
+      false
+    )
   })
 
   it('refuses a line nobody coded, which the ordinary detector handles', () => {

@@ -57,9 +57,10 @@ import { TICKET_FIELDS } from './resources/ticket-fields'
 import { USER_FIELDS } from './resources/user-fields'
 import { VENDOR_BILL_FIELDS } from './resources/vendor-bill-fields'
 import { VENDOR_BILL_LINE_FIELDS } from './resources/vendor-bill-line-fields'
+import { VENDOR_CREDIT_APPLICATION_FIELDS } from './resources/vendor-credit-application-fields'
+import { VENDOR_CREDIT_FIELDS } from './resources/vendor-credit-fields'
+import { VENDOR_CREDIT_LINE_FIELDS } from './resources/vendor-credit-line-fields'
 import { VENDOR_PART_FIELDS } from './resources/vendor-part-fields'
-import { VENDOR_PAYMENT_ALLOCATION_FIELDS } from './resources/vendor-payment-allocation-fields'
-import { VENDOR_PAYMENT_FIELDS } from './resources/vendor-payment-fields'
 import { VISIT_FIELDS } from './resources/visit-fields'
 import { WORK_ORDER_FIELDS } from './resources/work-order-fields'
 
@@ -164,8 +165,9 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   purchase_order_line: PURCHASE_ORDER_LINE_FIELDS,
   vendor_bill: VENDOR_BILL_FIELDS,
   vendor_bill_line: VENDOR_BILL_LINE_FIELDS,
-  vendor_payment: VENDOR_PAYMENT_FIELDS,
-  vendor_payment_allocation: VENDOR_PAYMENT_ALLOCATION_FIELDS,
+  vendor_credit: VENDOR_CREDIT_FIELDS,
+  vendor_credit_line: VENDOR_CREDIT_LINE_FIELDS,
+  vendor_credit_application: VENDOR_CREDIT_APPLICATION_FIELDS,
   gl_account: GL_ACCOUNT_FIELDS,
   journal_entry: JOURNAL_ENTRY_FIELDS,
   build: BUILD_FIELDS,

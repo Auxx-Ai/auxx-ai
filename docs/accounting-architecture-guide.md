@@ -827,7 +827,7 @@ catches them.
 movements**:
 
 - **`money/customer-money/`** — the ORDER policy. A channel receipt against an order:
-  `Dr <the rail's clearing account> / Cr accounts_receivable + customer_deposits +
+  `Dr <the cash endpoint> / Cr accounts_receivable + customer_deposits +
   sales_tax_payable`, where the split comes from the order's **recognition timeline**
   (`recognition.ts` replays receipts and shipments in occurrence order; `recognition-facts.ts`
   reads the exact order facts; `recognition-source.ts` assembles the timeline and gates on its
@@ -835,8 +835,12 @@ movements**:
   observations, and it owns the ordering rule: **source order is acquisition order; arrival time
   never grants authority**, so a verified prior beaten by an unverified next is a `conflict`.
 - **`money/invoice-payments/`** — the INVOICE policy. An issued invoice has already answered the
-  recognition question, so a receipt against it is `Dr <bank account or undeposited funds> /
+  recognition question, so a receipt against it is `Dr <the cash endpoint> /
   Cr accounts_receivable`, in one step.
+
+🔑 **The two doors differ on the CREDIT side only.** The recognition timeline against one A/R line
+is the whole distinction; the DEBIT is one resolver for both, and for every other movement
+(§8.4).
 
 The eight `invoice-payments` files are one verb each: `record-payment` (money that was never
 held), `apply-money` (**held money only** — `Dr customer_deposits / Cr accounts_receivable`),
@@ -850,28 +854,103 @@ keyed on the **application** id so one deposit split across two invoices cannot 
 `already_posted`. 🛑 **Only money that was APPLIED can be moved** — a receipt that named its
 invoice in its own entry has nothing to move.
 
-### 8.4 Payment routing
+### 8.4 The cash endpoint
 
-`money/bank-deposits/route.ts` is pure and client-safe. It routes by **method** to
-`undeposited_funds`, `cash` (a bank account) or `clearing`, per `accounting.paymentRoute.{cash,
-check,card,bank,other}`.
+Every `MoneyTransaction` says where the money physically sits, in one of three ways, and **one
+function** — `resolveCashEndpoint` (`money/cash-endpoint.ts`) — turns that into a GL account:
 
-🛑 **Three rails get three treatments and getting one wrong breaks bank matching silently for
-every payment on that rail.** Cheque and cash are banked in a run, so they sit in
-`undeposited_funds` until a `bank_deposit` groups them into the single `Dr cash / Cr
-undeposited_funds` line. ACH and wire arrive alone and match their own bank line. Card settles as
-a **net** payout days later, so it goes to the rail's clearing account — ⚠️ **a card receipt must
-never route through undeposited funds**, or the deposit asserts a gross amount the bank never
-credited. Every one of those wrong answers still balances, which is why the mapping is declared
-per method in one place rather than derived per payment.
+```
+paymentGatewayId set      → resolveRoles(['clearing'], { rail, currency })   the rail's clearing, fails closed
+cashAccountInstanceId set → resolveBankAccountGlAccountInTx(...)              the bank account's GL pointer
+neither                   → resolveRoles(['undeposited_funds'])               the unscoped role
+both                      → refused when the movement is written
+```
 
-⚠️ **Falling back rather than throwing is deliberate**: an org that has never opened the settings
-page has no rows at all. 🛑 The catalog's defaults and `DEFAULT_PAYMENT_ROUTES` are two copies and
-a test pins them together.
+A receipt or a vendor refund **debits** that account; a customer refund or a vendor payment
+**credits** it. Same function, same three refusals, same `GlPosting.railId` on every posting.
+`method` (cash, check, card, bank, other) stays on the movement as a descriptive fact and decides
+nothing.
 
-🛑 **The bank deposit's debit is the bank account the operator picked, by `gl_account` id — not
-the `cash` role.** Grouping posts nothing; only the bank run does, and it posts ONE line so it
-matches ONE bank line.
+⚠️ `undeposited_funds` is resolved **unscoped**, and that asymmetry is the point: a deposit run
+groups across rails.
+
+🛑 **`clearing` is reachable only through a named rail.** A clearing account exists to be drained
+by a payout, and a rail is the only thing a payout arrives on.
+
+**When the rail is written, per door.** A hand-recorded receipt, refund or vendor payment stamps
+`paymentGatewayId` at record time from the dialog; the Stripe checkout and card-refund doors stamp
+it from `resolveStripeRail`. A **channel** movement stamps it at post time, inside the posting
+transaction, because the mapping is made by a person and may not exist when the movement arrives.
+
+A channel receipt resolves its rail from the movement's own gateway **handle**, in four rules
+(`customer-money/receipt-accounting.ts`):
+
+1. The handle normalises to a RESERVED handle (`manual`, `bogus`) → **no rail**. The movement
+   resolves through the "neither" shape and lands in undeposited funds; the feed link is not
+   consulted and its refusal does not apply. A manual Shopify payment is money in no processor.
+2. The handle matches exactly one `payment_gateway` record through `matchGatewayRoute` → **that
+   rail**, whether it is active or closed. The feed link is not consulted.
+3. The handle is present but unmapped, or two rails claim it → **blocked**, naming the handle. No
+   silent fallback: the sweep retries it once somebody maps it.
+4. The handle is absent → the feed's `FinancialSourceAccount.paymentGatewayId`, with the existing
+   "no payment gateway linked" refusal when that is missing too.
+
+A channel refund stamps from the refunded receipt's `paymentGatewayId`, which may be null — a
+manual receipt's refund leaves by undeposited funds, and that is correct.
+
+🔑 **The memo a refund draws down always has a control account to draw on.** A credit memo issued
+after its order shipped posts `Dr returns (± tax) / Cr accounts_receivable`; one issued before it
+shipped reverses revenue that was never recognised, so it posts `Dr customer_deposits (total) /
+Cr accounts_receivable` instead — the pre-fulfillment receipt credited the whole amount, tax
+included, to `customer_deposits`, and the memo moves that advance onto the control account (71
+D14). Either way the refund is the same `Dr <the memo's control> / Cr <the endpoint>`.
+
+🛑 **The bank deposit's debit is the bank account the operator picked, by `gl_account` id.**
+Grouping posts nothing; only the bank run does, and it posts ONE line so it matches ONE bank line.
+`listUndepositedPayments` is `purpose = 'customer_receipt' AND paymentGatewayId IS NULL AND
+cashAccountInstanceId IS NULL AND bankDepositInstanceId IS NULL` — the movement's own columns, not
+a settings table.
+
+### 8.4a The vendor credit and the vendor refund
+
+A supplier's credit note is a DOCUMENT, not an edit to a bill's total:
+`purchasing/vendor-credit/`, the mirror of `sales/credit-memos/` with the parties swapped. The
+`vendor_credit` entity carries lines, a status (`draft -> issued -> settled`, `void` off either),
+attachments and a PDF, numbered `VC-0001` from its own `RecordSequence` scope. The supplier's own
+reference lives beside it on `vendor_credit_vendor_reference` and is never the entry's key: two
+suppliers may print the same string.
+
+Issuing it posts `Dr accounts_payable (counterparty: vendor) / Cr <each line's account>` —
+`buildExpenseBillEntry` with the sides flipped, and the entry ties to the stored total or it does
+not post. A line names its account by **id**, like a `vendor_bill_line`, and a credit raised
+against a PO-backed bill has its lines prefilled with the org's resolved `grni` account
+(`resolveGrniAccountId`, never a hardcoded code), so the short-shipment case `Dr A/P / Cr GRNI` is
+the same entry with that account on the line. One builder, no per-line roles. Auto-post reads the
+`expenseBill` avenue: a credit is the same buy-side document lane as the bill it reverses.
+
+Applying a credit to a bill posts NOTHING — the issue entry already debited the payable. What
+moves is `vendor_bill_amount_credited`, the bill's balance (`total − paid − credited`) and its
+`vendor_bill_payment_status`.
+
+A supplier paying the credit back is a `MoneyTransaction` with purpose `vendor_refund` and a
+`MoneyRefundSettlement` at disposition `vendor_credit`. It posts `Dr <the cash endpoint> /
+Cr <the credit's control account>` through the same `postMovementEntry` frame on the `refund`
+avenue — the customer refund with the money arriving instead of leaving. The control account is
+read off the credit's own posted lines (`readVendorCreditControlAccount`), never re-resolved, and a
+refund may not precede the credit's issue date.
+
+🛑 **A vendor credit does not touch inventory quantities.** A physical return to the supplier is a
+`stock_movement` on its own document; this is the money side only, and a person raises both.
+
+### 8.4b One frame, six posters
+
+`money/post-movement.ts`'s `postMovementEntry` holds what every money poster shares: the
+live-posting check, `isAccountingEnabled`, the finalized-setup gate, zone and cutoff, the movement
+load and its three refusals, `resolveCashEndpoint`, the three link rows, the period lock,
+`postEntry` and the `accepted | blocked | skipped` answer. Each poster is a `prepare` callback that
+returns only its LINES — the recognition split, the one A/R credit, the memo control account, A/P
+— because that is the accounting and each differs by design. `commands/insert-movement.ts` is the
+same story for the six writers' `MoneyTransaction` insert.
 
 ### 8.5 Payouts
 
@@ -1009,7 +1088,7 @@ naming one would need a role per gateway, and the vocabulary is closed (§6.1).
 
 | File | Owns |
 | --- | --- |
-| `rails/client.ts` | The vocabularies, the read model, and the pure handle arithmetic (`normaliseGatewayHandle`, `matchGatewayRoute`) |
+| `rails/client.ts` | The vocabularies, the read model, and the pure handle arithmetic (`normaliseGatewayHandle`) |
 | `rails/reads.ts` / `writes.ts` | Every read and write over `payment_gateway`. **No delete** — `status: 'closed'` is the removal answer |
 | `rails/rail-catalogue.ts` | `suggestRail(handle)` → a rail name, settlement source, fee treatment and two account names. 🛑 **Suggestions, never routing**, and the function is TOTAL: an unknown handle is never refused |
 | `rails/mint-rail-accounts.ts` | Mints the chart accounts one rail needs. 🛑 **Not inside `createPaymentGateway`**, and 🛑 **a minted account gets NO role** — it is named by a rail-scoped `GlRoleAssignment` row |
@@ -1489,8 +1568,6 @@ about a rate-limited far side.
 | `accounting.exportMode`, `.exportModeCutover` | Transaction or summary, and from when |
 | `accounting.autoSend.<avenue>` | Gate 2 — hold or send |
 | `accounting.summaryGrain.<avenue>` | The summary bucket, `day` or `month` |
-| `accounting.paymentRoute.{cash,check,card,bank,other}` | Where a payment's debit lands |
-| `accounting.cashBankAccountId` | The `cash` route's bank account |
 | `accounting.opening*`, `qboOpening*` | The opening trial balance. Frozen by prefix after the first posting |
 | `accounting.setupState`, `setupFinalizedAt/ByUserId` | Wizard completion |
 | `accounting.providerSyncedThrough` | 🛑 The inbound marker — advance it only over a chunk that succeeded |

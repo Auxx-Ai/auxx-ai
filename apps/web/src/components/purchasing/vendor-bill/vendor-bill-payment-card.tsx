@@ -1,23 +1,10 @@
 // apps/web/src/components/purchasing/vendor-bill/vendor-bill-payment-card.tsx
 'use client'
 
-// `vendor_bill:payment` — what this bill still owes, and what settled it
-// (plans/purchasing/01-build-plan.md §5.3, decision P12).
-//
-// The work-order Billing card's shape: a summary strip, a header action, then rows.
-// The AR-side twin (`invoice-payments-card.tsx`) lists `payment` RECORDS; this one
-// cannot, because `vendor_payment` is inert under P13 — the bill's own six fields
-// are the whole ledger, so the card renders those.
-//
-// 🛑 `vendor_bill_balance` is declared `creatable: false` "computed from total and
-// amountPaid" and NOTHING WRITES IT — there is no balance hook in
-// `purchasing-hooks.ts`, which registers only the two numbering hooks. That is the
-// same shape as the latent defect 02-handoff.md §1 documents (a field unwritable by
-// a hook that does not exist and unwritable by a human), so every row's stored
-// balance is NULL. This card therefore computes `total − amountPaid` for display and
-// never reads the stored field. See 02-handoff.md §4.
+// `vendor_bill:payment` — what this bill still owes, and the payments that settled
+// it. The A/P twin of `invoice-payments-card.tsx`: it lists the bill's
+// `MoneyApplication` rows (task 71 D7).
 
-import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { formatCurrency } from '@auxx/utils/currency'
@@ -31,27 +18,17 @@ import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useSettings } from '~/hooks/use-settings'
+import { api } from '~/trpc/react'
 import { numberValue, PurchasingSummaryStrip, unwrapValue } from '../purchasing-summary-strip'
-import { MarkBillPaidDialog } from './mark-bill-paid-dialog'
+import { RecordBillPaymentDialog } from './record-bill-payment-dialog'
 
 const BILL_ATTRS = [
   'vendor_bill_total',
   'vendor_bill_amount_paid',
-  'vendor_bill_paid_at',
-  'vendor_bill_payment_method',
-  'vendor_bill_payment_reference',
-  'vendor_bill_paid_source',
   'vendor_bill_status',
+  'vendor_bill_payment_status',
   'vendor_bill_currency',
 ] as const
-
-/** How the payment was established — P12's "not decoration" distinction, surfaced. */
-const PAID_SOURCE_BADGE: Record<string, { label: string; variant: Variant }> = {
-  manual: { label: 'Confirmed', variant: 'green' },
-  provider: { label: 'From accounting', variant: 'blue' },
-  bank_import: { label: 'From bank', variant: 'blue' },
-  rule: { label: 'Presumed', variant: 'amber' },
-}
 
 export function VendorBillPaymentCard({ recordId }: DrawerTabProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -69,15 +46,15 @@ export function VendorBillPaymentCard({ recordId }: DrawerTabProps) {
   const balance = total - amountPaid
 
   const status = stringValue(values.vendor_bill_status)
-  const paidAt = stringValue(values.vendor_bill_paid_at)
-  const method = stringValue(values.vendor_bill_payment_method)
-  const reference = stringValue(values.vendor_bill_payment_reference)
-  const paidSource = stringValue(values.vendor_bill_paid_source)
-  const sourceBadge = paidSource ? PAID_SOURCE_BADGE[paidSource] : undefined
+  // The money axis (73 D1). `status` answers "is it in the books"; this answers
+  // "how much of it is settled".
+  const paymentStatus = stringValue(values.vendor_bill_payment_status) ?? 'unpaid'
+  const { data: payments } = api.money.billPayments.useQuery({ vendorBillRecordId: recordId })
 
   // A void bill owes nothing by definition; a zero-total bill has nothing to settle
   // and would otherwise offer a payment against an amount nobody has entered yet.
-  const canMarkPaid = status !== 'void' && total > 0 && balance > 0
+  const canMarkPaid =
+    status !== 'void' && status !== 'draft' && paymentStatus !== 'paid' && total > 0 && balance > 0
 
   if (isLoading) return <RowSkeleton />
 
@@ -86,7 +63,7 @@ export function VendorBillPaymentCard({ recordId }: DrawerTabProps) {
       {canMarkPaid && (
         <DrawerCardActions>
           <Button variant='ghost' size='xs' onClick={() => setDialogOpen(true)}>
-            <Plus /> Mark paid
+            <Plus /> Record payment
           </Button>
         </DrawerCardActions>
       )}
@@ -103,28 +80,39 @@ export function VendorBillPaymentCard({ recordId }: DrawerTabProps) {
         ]}
       />
 
-      {paidAt ? (
-        <TreeRow
-          rowClassName='hover:bg-primary-100'
-          icon={<Banknote className='size-4' />}
-          title={<span className='truncate text-sm'>{method || 'Payment'}</span>}
-          secondary={
-            <span className='flex items-center gap-1.5 text-xs'>
-              <span className='text-muted-foreground'>{formatDate(paidAt)}</span>
-              {reference && <span className='truncate text-muted-foreground'>· {reference}</span>}
-              {sourceBadge && (
-                <Badge variant={sourceBadge.variant} size='xs'>
-                  {sourceBadge.label}
-                </Badge>
-              )}
-            </span>
-          }
-        />
+      {payments?.length ? (
+        payments.map((payment) => (
+          <TreeRow
+            key={payment.moneyTransactionId}
+            rowClassName='hover:bg-primary-100'
+            icon={<Banknote className='size-4' />}
+            title={
+              <span className='truncate text-sm'>
+                {formatCurrency(payment.allocatedAmount, { currencyCode })}
+              </span>
+            }
+            secondary={
+              <span className='flex items-center gap-1.5 text-xs'>
+                <span className='text-muted-foreground'>{formatDate(payment.effectiveDate)}</span>
+                {payment.method && (
+                  <span className='text-muted-foreground'>· {payment.method}</span>
+                )}
+                {payment.reference && (
+                  <span className='truncate text-muted-foreground'>· {payment.reference}</span>
+                )}
+              </span>
+            }
+          />
+        ))
       ) : (
         <TreeRow
           rowClassName='hover:bg-primary-100'
           icon={<CircleCheck className='size-4' />}
-          title={<span className='text-muted-foreground text-sm'>Unpaid</span>}
+          title={
+            <span className='text-muted-foreground text-sm'>
+              {paymentStatus === 'paid' ? 'Paid' : 'Unpaid'}
+            </span>
+          }
           secondary={
             <span className='text-xs'>
               {total > 0 ? `${formatCurrency(balance, { currencyCode })} owed` : 'No total entered'}
@@ -133,7 +121,7 @@ export function VendorBillPaymentCard({ recordId }: DrawerTabProps) {
         />
       )}
 
-      <MarkBillPaidDialog
+      <RecordBillPaymentDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         billRecordId={recordId}

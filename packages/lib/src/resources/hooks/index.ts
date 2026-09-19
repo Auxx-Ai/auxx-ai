@@ -22,4 +22,5 @@ export {
 } from './system-hooks'
 export { TICKET_HOOKS } from './ticket-hooks'
 export type { SystemHook, SystemHookContext, SystemHookRegistry } from './types'
+export { VENDOR_CREDIT_HOOKS } from './vendor-credit-hooks'
 export { WORK_ORDER_HOOKS } from './work-order-hooks'

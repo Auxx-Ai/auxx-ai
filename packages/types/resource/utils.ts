@@ -163,8 +163,6 @@ export const ENTITY_DEFINITION_TYPES = [
   'purchase_order_line',
   'vendor_bill',
   'vendor_bill_line',
-  'vendor_payment',
-  'vendor_payment_allocation',
   'gl_account',
   'build',
   'bank_deposit',
@@ -180,6 +178,11 @@ export const ENTITY_DEFINITION_TYPES = [
   'credit_memo',
   'credit_memo_line',
   'credit_memo_application',
+  // plans/accounting/tasks/71-one-cash-endpoint.md §5 U7 — the purchase-side
+  // mirror, same three grains.
+  'vendor_credit',
+  'vendor_credit_line',
+  'vendor_credit_application',
   // A record carrying its clearing account, never a role
   // (plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md §5.3).
   'payment_gateway',

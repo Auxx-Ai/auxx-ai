@@ -18,7 +18,6 @@ import { and, count, eq } from 'drizzle-orm'
 import {
   type BuiltCreditMemoEntry,
   buildCreditMemoEntry,
-  type CreditMemoSettlement as CreditMemoSettlementLeg,
 } from '../../accounting/ledger/builders/credit-memo'
 import { resolvePeriodLock } from '../../accounting/ledger/periods/period-lock'
 import { isExpectedPostOutcome } from '../../accounting/ledger/post/ledger-accepted'
@@ -26,12 +25,6 @@ import { LEDGER_CURRENCY, previewEntry } from '../../accounting/ledger/post/post
 import { isAccountingEnabled } from '../../accounting/ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../accounting/ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../accounting/ledger/types'
-import {
-  type GatewayRoute,
-  matchGatewayRoute,
-  toGatewayRoutes,
-} from '../../accounting/rails/client'
-import { listPaymentGateways } from '../../accounting/rails/reads'
 import { getEntityDefIdResolver } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
@@ -50,7 +43,6 @@ import {
   loadInvoiceForCredit,
   loadInvoiceLinesForCredit,
   orderHadFulfillmentBefore,
-  readOrderGateways,
   requireCreditMemo,
   sumCreditMemoApplications,
   sumReservedCreditMemoRefunds,
@@ -474,30 +466,18 @@ export async function resolveIssue(
 
   // Native: always reverses revenue, because it exists only where an invoice
   // was issued. Channel: only when the order shipped before the memo's date,
-  // because `build-fulfillment-entry.ts` recognised nothing otherwise.
+  // because `build-fulfillment-entry.ts` recognised nothing otherwise - and
+  // when it did not, the builder moves the customer's advance instead (71 D14).
+  //
+  // ⚠️ All-or-nothing on purpose. A memo whose order shipped SOME of its lines
+  // is not split here; `orderHadFulfillmentBefore` is the one switch, and
+  // splitting it would need a per-line recognition read the memo does not have.
   const reverseRevenue =
     memo.source === 'channel'
       ? memo.orderInstanceId
         ? await orderHadFulfillmentBefore(db, organizationId, memo.orderInstanceId, issuedAt)
         : false
       : true
-
-  // The channel money leg: what Shopify already paid back, mirrored out of
-  // clearing (section 3.2). A native memo's money moves as a
-  // `PaymentTransaction` and posts through the payment builder instead.
-  //
-  // 🛑 It must come out of the account the SALE debited. A `payment_gateway`
-  // record routes a non-card rail to its own clearing account by id, so an
-  // Affirm sale debits `1210` while `clearing` is `1200`; crediting the
-  // role here would leave `1210` overstated forever in an entry that balances.
-  // Same matcher the fulfillment debit fork uses, so the two cannot drift.
-  const settlement: CreditMemoSettlementLeg | undefined =
-    memo.source === 'channel' && memo.amountRefundedMinor > 0
-      ? {
-          ...(await resolveSettlementAccount(db, organizationId, memo.orderInstanceId)),
-          amount: Math.round(memo.amountRefundedMinor),
-        }
-      : undefined
 
   const currency = await organizationCurrency(organizationId)
   const built = buildCreditMemoEntry({
@@ -510,63 +490,11 @@ export async function resolveIssue(
     taxTotal,
     total,
     reverseRevenue,
-    settlement,
     contactInstanceId: memo.contactInstanceId,
     memo: `Credit memo ${memo.number} issued`,
   })
 
   return { memo, lines, issuedAt, built }
-}
-
-/**
- * Where a channel refund comes back out of: a `payment_gateway` record's own
- * clearing account, or `clearing`.
- *
- * The mirror of `resolveFulfillmentDebit`'s gateway branch, and deliberately
- * only that branch - a refund asks "which account did this order's money land
- * in", never "is this order paid", so the financial-status fork has no part in
- * it. `matchGatewayRoute` is shared with the sale side so one gateway cannot
- * resolve two ways.
- *
- * Falls back to the role on every uncertainty - no order, no gateway, no
- * matching record, two records claiming one handle - because `clearing` is
- * where a wrong answer fails to reconcile visibly rather than quietly.
- *
- * ⚠️ An order with TWO gateways takes the role too. The fulfillment fork
- * excludes that shipment outright as `gateway-ambiguous`; a refund cannot
- * refuse (the money has already moved), so it lands in the account a person
- * reconciling the rail is looking at anyway.
- *
- * 🛑 **Exported for `money/credit-memo-posting/`** (brief 25 §3.1 item 1). The
- * batch builder resolves the settlement account once per memo through this same
- * function and never collapses the answers, because an Affirm memo and a card
- * memo in one group must stay two credit lines or `1210` is overstated forever
- * in an entry that still balances.
- *
- * @param routes Pre-loaded gateway routes. Omitted, the org's `payment_gateway`
- *   records are read here, which is right for the one-memo door and wrong for a
- *   batch: a 1,061-memo backlog would make 1,061 identical reads. The batch
- *   caller loads `toGatewayRoutes(listPaymentGateways(...))` once and passes it.
- */
-export async function resolveSettlementAccount(
-  db: Database,
-  organizationId: string,
-  orderInstanceId: string | null,
-  routes?: readonly GatewayRoute[]
-): Promise<{ role: 'clearing' } | { glAccountId: string }> {
-  const fallback = { role: 'clearing' } as const
-  if (!orderInstanceId) return fallback
-
-  const gateways = await readOrderGateways(db, organizationId, orderInstanceId)
-  if (gateways.length !== 1) return fallback
-
-  let resolved = routes
-  if (!resolved) {
-    const result = await listPaymentGateways(db, organizationId)
-    resolved = result.isOk() ? toGatewayRoutes(result.value) : []
-  }
-  const glAccountId = matchGatewayRoute(gateways[0] as string, resolved)
-  return glAccountId ? { glAccountId } : fallback
 }
 
 /**

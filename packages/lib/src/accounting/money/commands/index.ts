@@ -1,5 +1,6 @@
 // packages/lib/src/accounting/money/commands/index.ts
 
+export { type InsertMovementInput, insertMovement } from './insert-movement'
 export {
   type MoneyCommandInput,
   type MoneyCommandOptions,

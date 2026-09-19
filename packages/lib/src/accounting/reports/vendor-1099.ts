@@ -1,15 +1,12 @@
 // packages/lib/src/accounting/reports/vendor-1099.ts
 //
-// The 1099 summary READ: eligible vendors whose POSTED `vendor_payment` total
-// for a calendar year meets the IRS $600 filing threshold, grouped by 1099 box
+// The 1099 summary READ: eligible vendors whose `vendor_payment` movements for a
+// calendar year meet the IRS $600 filing threshold, grouped by 1099 box
 // (plans/accounting/HANDOFF.md slot 2K; ui-plan.md §3 "1099 / W-9").
 //
-// UNLIKE every other report in this folder, this one is NOT a GL read - it
-// predates the ledger side of a vendor payment entirely (`vendor_payment` ships
-// inert per its own field-file header: no writer, no UI, isVisible: false).
-// So the source of truth here is the `vendor_payment` and `company`
-// EntityInstances themselves, read the way `postings/journal-entries/reads.ts`
-// reads a draft: one `FieldValue` alias per attribute, joined on `entityId`.
+// UNLIKE every other report in this folder, this one is NOT a GL read: it sums
+// `MoneyTransaction` rows with purpose `vendor_payment` by `partyInstanceId`
+// (task 71 U5), then hydrates the vendor's own 1099 fields off `company`.
 //
 // The types and the pure `toXRows`/CSV shaping live in `vendor-1099-rows.ts`,
 // split out for the same reason `adapters.ts` is split from `trial-balance.ts`
@@ -21,9 +18,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { startOfDayInstant } from '@auxx/utils/calendar-day'
-import { toMinor } from '@auxx/utils/currency'
-import { and, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
+import { and, eq, gte, inArray, isNotNull, lt, or, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { AuxxError, BadRequestError } from '../../errors'
@@ -45,16 +40,6 @@ export {
 } from './vendor-1099-rows'
 
 const logger = createScopedLogger('postings:reports:vendor-1099')
-
-/** Only a POSTED vendor payment counts - a draft or void row moved no money. */
-const COUNTED_STATUS = 'posted'
-
-const VENDOR_PAYMENT_ATTRIBUTES = [
-  'vendor_payment_vendor',
-  'vendor_payment_amount',
-  'vendor_payment_paid_at',
-  'vendor_payment_status',
-] as const
 
 const COMPANY_1099_ATTRIBUTES = [
   'company_is_1099_eligible',
@@ -88,14 +73,13 @@ function emptySummary(organizationId: string, year: number): Vendor1099Summary {
 }
 
 /**
- * Aggregate posted `vendor_payment` amounts by vendor (company) over a
- * calendar year, keep only companies marked `is1099Eligible` whose total
- * reaches {@link VENDOR_1099_THRESHOLD_MINOR}, and box each one.
+ * Aggregate `vendor_payment` movements by vendor over a calendar year, keep only
+ * companies marked `is1099Eligible` whose total reaches
+ * {@link VENDOR_1099_THRESHOLD_MINOR}, and box each one.
  *
- * Returns an EMPTY summary (never an error) when the org predates the
- * `vendor_payment` entity or its 1099 fields on `company` - the identical
- * "absent rather than failed" rule `124`/`129`'s migrations follow, because an
- * org that has not run the migrations has nothing to report, not a broken read.
+ * Returns an EMPTY summary (never an error) when the org has no 1099 fields on
+ * `company` - the identical "absent rather than failed" rule `124`/`129`'s
+ * migrations follow.
  */
 export async function readVendor1099Summary(
   db: Database,
@@ -112,29 +96,13 @@ export async function readVendor1099Summary(
       )
     }
 
-    const vendorPaymentDefId = await getCachedEntityDefId(organizationId, 'vendor_payment')
-    if (!vendorPaymentDefId) return ok(emptySummary(organizationId, year))
-
-    const vpFields = await getOrgCache()
-      .from(organizationId, 'customFields')
-      .bySystemAttributes([...VENDOR_PAYMENT_ATTRIBUTES])
-    if (
-      !vpFields.vendor_payment_vendor ||
-      !vpFields.vendor_payment_amount ||
-      !vpFields.vendor_payment_paid_at ||
-      !vpFields.vendor_payment_status
-    ) {
-      return ok(emptySummary(organizationId, year))
-    }
-
     const companyFields = await getOrgCache()
       .from(organizationId, 'customFields')
       .bySystemAttributes([...COMPANY_1099_ATTRIBUTES])
 
     // 🛑 Half-open year bounds drawn at the BOOK zone's own midnight, not at
-    // UTC's. `paidAt` is an instant, so a payment made at 4pm on Dec 31 in
-    // `America/Los_Angeles` is already Jan 1 in UTC: UTC bounds would file it
-    // on the wrong year's 1099, and a 1099 is filed with the IRS.
+    // UTC's. A movement observed at 4pm on Dec 31 in `America/Los_Angeles` is
+    // already Jan 1 in UTC: UTC bounds would file it on the wrong year's 1099.
     const bookTimeZone =
       readText(
         await getOrganizationSetting({
@@ -142,60 +110,40 @@ export async function readVendor1099Summary(
           key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
         })
       ) ?? 'UTC'
-    const yearStart = startOfDayInstant(`${year}-01-01`, bookTimeZone).toISOString()
-    const yearEnd = startOfDayInstant(`${year + 1}-01-01`, bookTimeZone).toISOString()
+    const yearStart = startOfDayInstant(`${year}-01-01`, bookTimeZone)
+    const yearEnd = startOfDayInstant(`${year + 1}-01-01`, bookTimeZone)
 
-    const amountValue = alias(schema.FieldValue, 'vp_amount')
-    const vendorValue = alias(schema.FieldValue, 'vp_vendor')
-    const paidAtValue = alias(schema.FieldValue, 'vp_paid_at')
-    const statusValue = alias(schema.FieldValue, 'vp_status')
-
+    // ⚠️ A movement carries its date in ONE of two columns, so the year window
+    // is an OR over both rather than a range over one.
     const grouped = await db
       .select({
-        companyId: vendorValue.relatedEntityId,
-        totalMinor: sql<string>`coalesce(sum(${amountValue.valueNumber}), 0)`,
+        companyId: schema.MoneyTransaction.partyInstanceId,
+        totalMinor: sql<string>`coalesce(sum(${schema.MoneyTransaction.amountMinor}), 0)`,
       })
-      .from(amountValue)
-      .innerJoin(
-        vendorValue,
-        and(
-          eq(vendorValue.entityId, amountValue.entityId),
-          eq(vendorValue.organizationId, organizationId),
-          eq(vendorValue.fieldId, vpFields.vendor_payment_vendor.id),
-          isNotNull(vendorValue.relatedEntityId)
-        )
-      )
-      .innerJoin(
-        paidAtValue,
-        and(
-          eq(paidAtValue.entityId, amountValue.entityId),
-          eq(paidAtValue.organizationId, organizationId),
-          eq(paidAtValue.fieldId, vpFields.vendor_payment_paid_at.id),
-          gte(paidAtValue.valueDate, yearStart),
-          lt(paidAtValue.valueDate, yearEnd)
-        )
-      )
-      .innerJoin(
-        statusValue,
-        and(
-          eq(statusValue.entityId, amountValue.entityId),
-          eq(statusValue.organizationId, organizationId),
-          eq(statusValue.fieldId, vpFields.vendor_payment_status.id),
-          eq(statusValue.optionId, COUNTED_STATUS)
-        )
-      )
+      .from(schema.MoneyTransaction)
       .where(
         and(
-          eq(amountValue.organizationId, organizationId),
-          eq(amountValue.fieldId, vpFields.vendor_payment_amount.id)
+          eq(schema.MoneyTransaction.organizationId, organizationId),
+          eq(schema.MoneyTransaction.purpose, 'vendor_payment'),
+          isNotNull(schema.MoneyTransaction.partyInstanceId),
+          or(
+            and(
+              gte(schema.MoneyTransaction.occurredAt, yearStart),
+              lt(schema.MoneyTransaction.occurredAt, yearEnd)
+            ),
+            and(
+              gte(schema.MoneyTransaction.occurredOn, yearStart.toISOString().slice(0, 10)),
+              lt(schema.MoneyTransaction.occurredOn, yearEnd.toISOString().slice(0, 10))
+            )
+          )
         )
       )
-      .groupBy(vendorValue.relatedEntityId)
+      .groupBy(schema.MoneyTransaction.partyInstanceId)
 
     const totalsByCompany = new Map<string, number>()
     for (const row of grouped) {
       if (!row.companyId) continue
-      const totalMinor = toMinor(row.totalMinor)
+      const totalMinor = Number(row.totalMinor)
       if (totalMinor < VENDOR_1099_THRESHOLD_MINOR) continue
       totalsByCompany.set(row.companyId, totalMinor)
     }

@@ -16,6 +16,7 @@ import { RETURN_HOOKS, RETURN_LINE_HOOKS } from './return-hooks'
 import { SERVICE_REQUEST_HOOKS } from './service-request-hooks'
 import { TICKET_HOOKS } from './ticket-hooks'
 import type { SystemHook, SystemHookRegistry } from './types'
+import { VENDOR_CREDIT_HOOKS } from './vendor-credit-hooks'
 import { WORK_ORDER_HOOKS } from './work-order-hooks'
 
 /**
@@ -45,6 +46,7 @@ const HOOKS_BY_ENTITY_TYPE: Record<string, SystemHookRegistry> = {
   bank_deposit: BANK_DEPOSIT_HOOKS,
   payout: PAYOUT_HOOKS,
   credit_memo: CREDIT_MEMO_HOOKS,
+  vendor_credit: VENDOR_CREDIT_HOOKS,
 }
 
 /**

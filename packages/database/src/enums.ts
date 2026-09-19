@@ -146,8 +146,6 @@ export const ModelTypeValues = [
   'purchase_order_line',
   'vendor_bill',
   'vendor_bill_line',
-  'vendor_payment',
-  'vendor_payment_allocation',
   'gl_account',
   'build',
   // Undeposited funds moved to the bank as one line per bank run
@@ -229,8 +227,6 @@ export const ModelTypes = {
   PURCHASE_ORDER_LINE: 'purchase_order_line',
   VENDOR_BILL: 'vendor_bill',
   VENDOR_BILL_LINE: 'vendor_bill_line',
-  VENDOR_PAYMENT: 'vendor_payment',
-  VENDOR_PAYMENT_ALLOCATION: 'vendor_payment_allocation',
   GL_ACCOUNT: 'gl_account',
   BUILD: 'build',
   BANK_DEPOSIT: 'bank_deposit',
@@ -579,24 +575,6 @@ export const ModelTypeMeta: Record<
     dbTable: 'EntityInstance',
     hasDetailPage: false,
   },
-  vendor_payment: {
-    label: 'Vendor Payment',
-    plural: 'Vendor Payments',
-    icon: 'banknote',
-    color: 'emerald',
-    apiSlug: 'vendor-payments',
-    dbTable: 'EntityInstance',
-    hasDetailPage: false,
-  },
-  vendor_payment_allocation: {
-    label: 'Payment Allocation',
-    plural: 'Payment Allocations',
-    icon: 'calculator',
-    color: 'emerald',
-    apiSlug: 'vendor-payment-allocations',
-    dbTable: 'EntityInstance',
-    hasDetailPage: false,
-  },
   gl_account: {
     label: 'GL Account',
     plural: 'GL Accounts',
@@ -836,6 +814,7 @@ export const GlPostingTypeValues = [
   'provider_sync',
   'recurring_journal',
   'expense_bill',
+  'vendor_credit',
 ] as const
 export type GlPostingType = (typeof GlPostingTypeValues)[number]
 

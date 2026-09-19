@@ -264,7 +264,7 @@ describe('recalculateBalanceOnBillChange', () => {
   it('ignores a bill write the balance does not depend on', async () => {
     stored = { 'f-total': 3000 }
 
-    await recalculateBalanceOnBillChange(event('vendor_bill_payment_method'))
+    await recalculateBalanceOnBillChange(event('vendor_bill_number'))
 
     expect(h.setValueWithType).not.toHaveBeenCalled()
   })

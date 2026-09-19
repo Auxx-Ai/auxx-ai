@@ -126,7 +126,13 @@ export const PURCHASE_ORDER_LINE_TOTAL_TRIGGER_ATTRS = new Set<SystemAttribute>(
 /** The **totalled** documents. `work_order` owns lines but stores no totals; so does `vendor_bill`,
  * whose totals are TRANSCRIBED from the supplier's document rather than computed (01 §5.4b) —
  * recomputing them would silently correct the arithmetic error the three-way match exists to find. */
-export type TotalledDocumentType = 'quote' | 'invoice' | 'order' | 'purchase_order' | 'credit_memo'
+export type TotalledDocumentType =
+  | 'quote'
+  | 'invoice'
+  | 'order'
+  | 'purchase_order'
+  | 'credit_memo'
+  | 'vendor_credit'
 
 /**
  * Fields on `credit-memo-lines` whose write should trigger a recompute
@@ -147,6 +153,20 @@ export const CREDIT_MEMO_LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
 export const CREDIT_MEMO_LINE_TOTAL_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'credit_memo_line_qty',
   'credit_memo_line_unit_price',
+])
+
+/** The `vendor_credit_line` writes that re-sum the credit (71 §5 U7). */
+export const VENDOR_CREDIT_LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'vendor_credit_line_quantity',
+  'vendor_credit_line_unit_price',
+  'vendor_credit_line_line_total',
+  'vendor_credit_line_vendor_credit',
+])
+
+/** Subset of the above that also rewrites `vendor_credit_line_line_total`. */
+export const VENDOR_CREDIT_LINE_TOTAL_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'vendor_credit_line_quantity',
+  'vendor_credit_line_unit_price',
 ])
 
 /**
@@ -215,6 +235,18 @@ const CREDIT_MEMO_LINE_TOTALS_SPEC: LineTotalsSpec = {
   unitPriceAttr: 'credit_memo_line_unit_price',
   lineTotalAttr: 'credit_memo_line_subtotal',
   lineTaxAttr: 'credit_memo_line_tax_total',
+}
+
+/**
+ * A vendor credit line: a buy-side line with no tax of its own. Tax and freight
+ * on a supplier's credit note get their own coded line, the way they do on a
+ * vendor bill, so there is no `lineTaxAttr` here.
+ */
+const VENDOR_CREDIT_LINE_TOTALS_SPEC: LineTotalsSpec = {
+  lineEntityType: 'vendor_credit_line',
+  qtyAttr: 'vendor_credit_line_quantity',
+  unitPriceAttr: 'vendor_credit_line_unit_price',
+  lineTotalAttr: 'vendor_credit_line_line_total',
 }
 
 /**
@@ -427,6 +459,27 @@ const DOCUMENT_TOTALS_SPECS: Record<TotalledDocumentType, DocumentTotalsSpec> = 
     extraLineConditions: [],
     publishEvents: true,
     frozenStatus: { attr: 'credit_memo_status', editableValues: new Set(['draft']) },
+  },
+  vendor_credit: {
+    attrPrefix: 'vendor_credit',
+    line: VENDOR_CREDIT_LINE_TOTALS_SPEC,
+    // The buy-side shape: no discount, no rate. Tax arrives STATED on the header
+    // as an amount and is added on top, exactly as the purchase order's is - and
+    // the issue entry then ties to `total`, so a stated tax with no coded line
+    // is refused by the builder rather than plugged.
+    billing: {
+      discountTypeAttr: null,
+      fixedDiscountType: null,
+      discountValueAttr: null,
+      taxRateAttr: null,
+      shippingAttr: null,
+      statedAdditionAttrs: ['vendor_credit_tax_total'],
+      writesTaxTotal: false,
+    },
+    lineRelFieldId: 'vendor_credit_line:vendorCredit',
+    extraLineConditions: [],
+    publishEvents: true,
+    frozenStatus: { attr: 'vendor_credit_status', editableValues: new Set(['draft']) },
   },
 }
 
@@ -1209,5 +1262,50 @@ export const recomputeCreditMemoAfterLineDelete: EntityPostDeleteHandler = async
     userId: event.userId,
     documentType: 'credit_memo',
     documentInstanceId: creditMemoInstanceId,
+  })
+}
+
+/** {@link recomputeOnCreditMemoLineChange}'s buy-side twin (71 §5 U7). */
+export const recomputeOnVendorCreditLineChange: EntityFieldChangeHandler = async (event) => {
+  const attr = event.field.systemAttribute as SystemAttribute | undefined
+  if (!attr || !VENDOR_CREDIT_LINE_TRIGGER_ATTRS.has(attr)) return
+
+  const { organizationId, userId } = event
+  const { entityInstanceId: lineInstanceId } = parseRecordId(event.recordId)
+
+  if (VENDOR_CREDIT_LINE_TOTAL_TRIGGER_ATTRS.has(attr)) {
+    await recomputeLineTotal({
+      organizationId,
+      userId,
+      lineInstanceId,
+      line: VENDOR_CREDIT_LINE_TOTALS_SPEC,
+    })
+  }
+
+  const cf = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['vendor_credit_line_vendor_credit'] as const)
+  if (!cf.vendor_credit_line_vendor_credit) return
+
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const values = await handler.getFieldValues(toRecordId('vendor_credit_line', lineInstanceId), [
+    cf.vendor_credit_line_vendor_credit.id,
+  ])
+  const parentTyped = firstTyped(values.get(cf.vendor_credit_line_vendor_credit.id))
+  if (parentTyped?.type !== 'relationship' || !parentTyped.recordId) return
+
+  const { entityInstanceId: vendorCreditInstanceId } = parseRecordId(parentTyped.recordId)
+  await markOrRecomputeDocument(organizationId, userId, 'vendor_credit', vendorCreditInstanceId)
+}
+
+/** {@link recomputeCreditMemoAfterLineDelete}'s buy-side twin. */
+export const recomputeVendorCreditAfterLineDelete: EntityPostDeleteHandler = async (event) => {
+  const vendorCreditInstanceId = unwrapRelationId(event.values.vendor_credit_line_vendor_credit)
+  if (!vendorCreditInstanceId) return
+  await recomputeTotals({
+    organizationId: event.organizationId,
+    userId: event.userId,
+    documentType: 'vendor_credit',
+    documentInstanceId: vendorCreditInstanceId,
   })
 }

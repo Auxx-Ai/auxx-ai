@@ -50,6 +50,9 @@ const ENABLED_TYPES_PINNED: readonly PostingType[] = [
   'invoice_issued',
   'deposit_application',
   'credit_memo',
+  // 71 §5 U7. Declared beside `expense_bill`, whose entry it is with the sides
+  // flipped, so it lands here rather than at the end of the block.
+  'vendor_credit',
   'expense_bill',
   'recurring_journal',
   // MIGRATION step 5 wired the three-way match's `matched` verdict to the

@@ -188,8 +188,7 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
     // stops seeding it.
     //
     // 16.1 kept it seeded: a `bank_account` must point at a `gl_account` id,
-    // the `cash` payment route needs `accounting.cashBankAccountId` to name
-    // one, and the opening trial balance needs somewhere for cash to land. An
+    // and the opening trial balance needs somewhere for cash to land. An
     // org that imports from QuickBooks gets its real bank accounts instead and
     // never sees `1000`.
     subtype: GlAccountSubtype.BANK,

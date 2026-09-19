@@ -1,9 +1,9 @@
 // packages/lib/src/accounting/money/customer-money/__tests__/refund-accounting.test.ts
 //
-// The refund writer on the one poster: the movement is the claim, the order is
-// the parent, the customer is the counterparty, and a receipt-backed refund
-// inherits its rail and endpoint from the original receipt's own posting rather
-// than re-resolving them (MIGRATION.md step 1b).
+// The refund poster on the shared frame: the movement is the claim, the order is
+// the parent, the customer is the counterparty, and the refund resolves its OWN
+// endpoint through `resolveCashEndpoint` — a forward event, nothing frozen off
+// the receipt it settles (task 71 D5).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -14,6 +14,8 @@ const h = vi.hoisted(() => ({
   findLiveSubjectPosting: vi.fn(),
   resolvePeriodLock: vi.fn(),
   readAutoPostMode: vi.fn(async () => 'post'),
+  resolveRoles: vi.fn(),
+  resolveBankAccountGlAccountInTx: vi.fn(),
   readCreditMemoControlAccount: vi.fn(),
   loadCreditMemo: vi.fn(),
   sumCreditMemoApplications: vi.fn(async () => 0),
@@ -36,6 +38,10 @@ vi.mock('../../../ledger/reads/list-postings', () => ({
 }))
 vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: h.resolvePeriodLock,
+}))
+vi.mock('../../../ledger/roles/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
+vi.mock('../../../ledger/chart/resolve-cash-account', () => ({
+  resolveBankAccountGlAccountInTx: h.resolveBankAccountGlAccountInTx,
 }))
 vi.mock('../../../ledger/setup/setup-readiness', () => ({
   FINALIZED_SETUP_STATE: 'finalized',
@@ -82,6 +88,7 @@ function db(): Database {
     Promise.resolve(call++ === 0 ? h.postingRows : h.lineRows).then(resolve, reject)
   const base = {
     select: () => chain,
+    update: () => ({ set: () => ({ where: async () => undefined }) }),
     query: {
       MoneyTransaction: { findFirst: async () => h.money },
       MoneyRefundSettlement: { findMany: async () => h.settlements },
@@ -89,6 +96,7 @@ function db(): Database {
   }
   return {
     ...base,
+    update: () => ({ set: () => ({ where: async () => undefined }) }),
     transaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn(base),
   } as unknown as Database
 }
@@ -101,6 +109,11 @@ beforeEach(() => {
   h.sumReservedCreditMemoRefunds.mockResolvedValue(0)
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gl_refund' })
+  h.resolveRoles.mockResolvedValue({
+    isErr: () => false,
+    value: new Map([['clearing', { glAccountId: 'gl_clearing' }]]),
+  })
+  h.resolveBankAccountGlAccountInTx.mockResolvedValue('gl_bank')
   h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) => {
     if (key === 'accounting.bookTimeZone') return 'America/Los_Angeles'
     if (key === 'accounting.setupState') return 'finalized'
@@ -118,6 +131,7 @@ beforeEach(() => {
     partyInstanceId: CUSTOMER,
     method: 'card',
     cashAccountInstanceId: null,
+    paymentGatewayId: 'pg_1',
   }
   h.settlements = [
     {
@@ -171,16 +185,70 @@ describe('postCustomerRefundAccounting', () => {
     ])
   })
 
-  // 🛑 Read off the receipt's own posting: a rail remapped since must not move
-  // the refund away from the account the money actually went out through.
-  it('settles back through the original receipt rail and clearing account', async () => {
+  it("credits the rail's clearing account the refund itself names", async () => {
     await postCustomerRefundAccounting(db(), { organizationId: ORG, moneyTransactionId: MOVEMENT })
 
     const options = h.postEntry.mock.calls[0]![1]
     expect(options.railId).toBe('pg_1')
+    expect(options.scope).toEqual({ rail: 'pg_1' })
     const [debit, credit] = options.entry.lines
     expect(debit).toMatchObject({ glAccountId: 'gl_ar', direction: 'debit', amount: 20_000 })
     expect(credit).toMatchObject({ glAccountId: 'gl_clearing', direction: 'credit' })
+  })
+
+  // 71 D14, the other half: a memo issued before the order shipped credits A/R
+  // out of `customer_deposits`, so its control account is A/R and the refund
+  // draws THAT down. The refund poster does not branch on how the memo posted.
+  it('draws down a pre-fulfillment memo through the same control account', async () => {
+    h.readCreditMemoControlAccount.mockResolvedValue({
+      glPostingId: 'gl_memo_prefulfilment',
+      glAccountId: 'gl_ar',
+      txnDate: '2026-09-01',
+    })
+    await postCustomerRefundAccounting(db(), { organizationId: ORG, moneyTransactionId: MOVEMENT })
+
+    const [debit, credit] = h.postEntry.mock.calls[0]![1].entry.lines
+    expect(debit).toMatchObject({ glAccountId: 'gl_ar', direction: 'debit', amount: 20_000 })
+    expect(credit).toMatchObject({ glAccountId: 'gl_clearing', direction: 'credit' })
+  })
+
+  it('credits the bank account a hand-recorded refund names', async () => {
+    ;(h.money as { paymentGatewayId: string | null }).paymentGatewayId = null
+    ;(h.money as { cashAccountInstanceId: string | null }).cashAccountInstanceId = 'ba_1'
+    await postCustomerRefundAccounting(db(), { organizationId: ORG, moneyTransactionId: MOVEMENT })
+
+    const options = h.postEntry.mock.calls[0]![1]
+    expect(options.railId).toBeNull()
+    expect(options.entry.lines[1]).toMatchObject({ glAccountId: 'gl_bank', direction: 'credit' })
+  })
+
+  it('credits undeposited funds when the refund names neither', async () => {
+    ;(h.money as { paymentGatewayId: string | null }).paymentGatewayId = null
+    h.resolveRoles.mockResolvedValue({
+      isErr: () => false,
+      value: new Map([['undeposited_funds', { glAccountId: 'gl_undep' }]]),
+    })
+    await postCustomerRefundAccounting(db(), { organizationId: ORG, moneyTransactionId: MOVEMENT })
+
+    expect(h.postEntry.mock.calls[0]![1].entry.lines[1]).toMatchObject({
+      glAccountId: 'gl_undep',
+      direction: 'credit',
+    })
+  })
+
+  it('refuses a refund dated before the receipt it settles', async () => {
+    h.findLiveSubjectPosting.mockImplementation(
+      async (_db: unknown, options: { sourceId: string }) =>
+        options.sourceId === MOVEMENT
+          ? { isErr: () => false, value: null }
+          : { isErr: () => false, value: { id: 'gl_receipt', txnDate: '2026-09-20' } }
+    )
+    const result = await postCustomerRefundAccounting(db(), {
+      organizationId: ORG,
+      moneyTransactionId: MOVEMENT,
+    })
+    expect(result.status).toBe('blocked')
+    expect((result as { reason: string }).reason).toMatch(/precedes the original receipt/)
   })
 
   it('returns the standing posting on a retry, without preparing anything', async () => {

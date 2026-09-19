@@ -92,17 +92,15 @@ const PURCHASE_ORDER_MATCH_ATTRIBUTES = ['purchase_order_expected_at'] as const
  *
  * 🛑 Every value of `VendorBillStatus` except `draft` belongs here. A status with
  * no entry renders NO badge at all — silently, with no fallback — so the card
- * that exists to show the verdict shows nothing. `awaiting_receipt` is amber for
- * the same reason `partially_paid` is: a state that still needs something to
- * happen, but is not a failure.
+ * that exists to show the verdict shows nothing. `awaiting_receipt` is amber
+ * because it is a state that still needs something to happen but is not a
+ * failure. The money state is `vendor_bill_payment_status`, not this field.
  */
 const STATUS_BADGE: Record<string, { label: string; variant: 'green' | 'amber' | 'red' }> = {
   awaiting_receipt: { label: 'Awaiting Receipt', variant: 'amber' },
   matched: { label: 'Matched', variant: 'green' },
   exception: { label: 'Exception', variant: 'red' },
   posted: { label: 'Posted', variant: 'green' },
-  partially_paid: { label: 'Partially Paid', variant: 'amber' },
-  paid: { label: 'Paid', variant: 'green' },
   void: { label: 'Void', variant: 'amber' },
 }
 

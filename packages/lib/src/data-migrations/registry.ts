@@ -27,6 +27,7 @@ import { migration167DocumentAttachments } from './migrations/167-document-attac
 import { migration168RemoveGlPostingStampFields } from './migrations/168-remove-gl-posting-stamp-fields'
 import { migration169RemovePaymentEntity } from './migrations/169-remove-payment-entity'
 import { migration170GlAccountParentField } from './migrations/170-gl-account-parent-field'
+import { migration171OneCashEndpoint } from './migrations/171-one-cash-endpoint'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -147,6 +148,10 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // vendor's own printed code for the line, never the same field as the
   // part's SKU, and never backfilled because nothing has ever written it.
   migration159VendorBillLineVendorCode,
+  // The whole of the one-cash-endpoint branch, per org, in one id: the vendor
+  // bill status split (73 D1), the removal of the inert vendor_payment pair
+  // (71 U5), and the vendor_credit def with its two owned children (71 U7).
+  migration171OneCashEndpoint,
 ]
 
 /**

@@ -53,9 +53,10 @@ import { THREAD_FIELDS } from '../../resources/registry/resources/thread-fields'
 import { TICKET_FIELDS } from '../../resources/registry/resources/ticket-fields'
 import { VENDOR_BILL_FIELDS } from '../../resources/registry/resources/vendor-bill-fields'
 import { VENDOR_BILL_LINE_FIELDS } from '../../resources/registry/resources/vendor-bill-line-fields'
+import { VENDOR_CREDIT_APPLICATION_FIELDS } from '../../resources/registry/resources/vendor-credit-application-fields'
+import { VENDOR_CREDIT_FIELDS } from '../../resources/registry/resources/vendor-credit-fields'
+import { VENDOR_CREDIT_LINE_FIELDS } from '../../resources/registry/resources/vendor-credit-line-fields'
 import { VENDOR_PART_FIELDS } from '../../resources/registry/resources/vendor-part-fields'
-import { VENDOR_PAYMENT_ALLOCATION_FIELDS } from '../../resources/registry/resources/vendor-payment-allocation-fields'
-import { VENDOR_PAYMENT_FIELDS } from '../../resources/registry/resources/vendor-payment-fields'
 import { WORK_ORDER_FIELDS } from '../../resources/registry/resources/work-order-fields'
 import { ENTITY_INSTANCE_COLUMNS } from './constants'
 import type { EntityDefMap, FieldMap, FieldRecord } from './types'
@@ -99,8 +100,9 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   purchase_order_line: PURCHASE_ORDER_LINE_FIELDS,
   vendor_bill: VENDOR_BILL_FIELDS,
   vendor_bill_line: VENDOR_BILL_LINE_FIELDS,
-  vendor_payment: VENDOR_PAYMENT_FIELDS,
-  vendor_payment_allocation: VENDOR_PAYMENT_ALLOCATION_FIELDS,
+  vendor_credit: VENDOR_CREDIT_FIELDS,
+  vendor_credit_line: VENDOR_CREDIT_LINE_FIELDS,
+  vendor_credit_application: VENDOR_CREDIT_APPLICATION_FIELDS,
   gl_account: GL_ACCOUNT_FIELDS,
   journal_entry: JOURNAL_ENTRY_FIELDS,
   build: BUILD_FIELDS,

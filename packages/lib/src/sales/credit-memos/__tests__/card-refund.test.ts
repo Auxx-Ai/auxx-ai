@@ -44,7 +44,33 @@ vi.mock('drizzle-orm', () => ({
   eq: () => undefined,
   inArray: () => undefined,
 }))
-vi.mock('../reads', () => ({ readCreditMemoForRefund: async () => h.memo }))
+vi.mock('../reads', () => ({
+  readCreditMemoForRefund: async () => h.memo,
+  listRefundableReceipts: async () => {
+    const used = new Map<string, bigint>()
+    for (const row of h.settlements)
+      used.set(
+        row.originalTransactionId as string,
+        (used.get(row.originalTransactionId as string) ?? 0n) + (row.amountMinor as bigint)
+      )
+    return h.receipts
+      .map((row) => ({
+        id: row.id as string,
+        reference: row.reference as string | null,
+        method: row.method as string | null,
+        partyInstanceId: row.partyInstanceId as string | null,
+        paymentGatewayId: null,
+        cashAccountInstanceId: null,
+        refundableMinor: Number((row.amountMinor as bigint) - (used.get(row.id as string) ?? 0n)),
+        occurredAt: (row.occurredAt as Date | undefined)?.getTime() ?? 0,
+      }))
+      .filter((row) => row.refundableMinor > 0)
+      .sort((a, b) => b.occurredAt - a.occurredAt)
+  },
+}))
+vi.mock('../../../accounting/money/checkout/reads', () => ({
+  resolveStripeRail: async () => ({ paymentGatewayId: 'pg-stripe', clearingGlAccountId: 'gl-1' }),
+}))
 vi.mock('../settle', () => ({
   settleCreditMemo: async (_db: unknown, input: { creditMemoInstanceId: string }) => {
     h.order.push('settle')
@@ -131,6 +157,8 @@ describe('refunding a card-paid credit memo', () => {
       purpose: 'customer_refund',
       amountMinor: 4_000n,
       reference: 're_1',
+      // The refund names the Stripe rail itself rather than freezing the receipt's.
+      paymentGatewayId: 'pg-stripe',
     })
     // 🛑 A settlement, never an application: the invoice the charge paid stays as paid.
     expect(h.inserts.find((row) => row.table === 'MoneyApplication')).toBeUndefined()

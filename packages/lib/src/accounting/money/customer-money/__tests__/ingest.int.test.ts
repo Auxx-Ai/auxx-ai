@@ -446,6 +446,11 @@ describe('customer money source acceptance against PostgreSQL', () => {
         },
       })
       .where(eq(schema.FinancialSourceObservation.id, refund.observationId))
+    // The refund goes back the way the receipt came in (task 71 D6).
+    await db()
+      .update(schema.MoneyTransaction)
+      .set({ paymentGatewayId: 'pg_shopify' })
+      .where(eq(schema.MoneyTransaction.purpose, 'customer_receipt'))
     await accept(refund.id)
     await accept(refund.id)
     expect(await db().select().from(schema.MoneyRefundSettlement)).toHaveLength(1)
@@ -453,6 +458,7 @@ describe('customer money source acceptance against PostgreSQL', () => {
       where: eq(schema.MoneyTransaction.purpose, 'customer_refund'),
     })
     expect(refundMoney!.amountMinor).toBe(1000n)
+    expect(refundMoney!.paymentGatewayId).toBe('pg_shopify')
     const [replacement] = await db()
       .insert(schema.Credential)
       .values({

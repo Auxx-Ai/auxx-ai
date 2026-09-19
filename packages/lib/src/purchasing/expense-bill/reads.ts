@@ -24,6 +24,7 @@ const VENDOR_BILL_ATTRIBUTES = pickSystemAttributes(VENDOR_BILL_FIELDS, [
   'vendor_bill_number',
   'vendor_bill_internal_number',
   'vendor_bill_status',
+  'vendor_bill_payment_status',
   'vendor_bill_billed_at',
   'vendor_bill_currency',
   'vendor_bill_total',
@@ -58,6 +59,8 @@ export interface VendorBillRecord {
   /** OURS - `BILL-0007`. What the entry's period key and document number key on. */
   internalNumber: string
   status: string
+  /** The money axis (73 D1): `unpaid`, `partially_paid` or `paid`. */
+  paymentStatus: string
   /** `YYYY-MM-DD`, or `null` when the bill has not been dated yet. */
   billedAt: string | null
   currency: string | null
@@ -90,6 +93,7 @@ export async function loadVendorBill(
     // A bill created before the status field carried a default reads as its own
     // default rather than as a blank the postable-status wall would let through.
     status: bill.option('vendor_bill_status') ?? 'draft',
+    paymentStatus: bill.option('vendor_bill_payment_status') ?? 'unpaid',
     billedAt: toCalendarDay(bill.date('vendor_bill_billed_at')),
     currency: bill.text('vendor_bill_currency'),
     totalMinor: bill.number('vendor_bill_total') ?? 0,

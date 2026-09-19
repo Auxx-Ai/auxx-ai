@@ -1,12 +1,7 @@
 // packages/lib/src/accounting/money/invoice-payments/record-payment.ts
 
 /**
- * Recording a payment received against an invoice, on the money model
- * (plans/accounting/tasks/54-one-money-model.md unit 2b).
- *
- * The replacement for `payments/ledger.ts`'s `recordManualPayment`, which wrote
- * a `PaymentTransaction` + `PaymentAllocation` pair. This writes the three rows
- * that model the same fact durably:
+ * Recording a payment received against an invoice, on the money model.
  *
  * ```
  *   MoneyCommand      the idempotency key and who pressed the button
@@ -14,39 +9,20 @@
  *   MoneyApplication  what it was applied TO — this invoice
  * ```
  *
- * ## 🔑 The bank account is optional, and that is an accounting decision
+ * The one rule about where the money went: it names a rail, a bank account, or
+ * neither (undeposited funds, waiting for a `bank_deposit` to group it).
  *
- * `bank-deposits/route.ts` routes cash and cheque to **undeposited funds** on
- * purpose: five cheques banked together arrive at the bank as ONE line, and
- * five separate cash postings can never match it. So a receipt with no named
- * bank account is not an incomplete record — it is money received and not yet
- * banked, and it sits in the `undeposited_funds` role until a `bank_deposit`
- * groups it.
+ * 🛑 Not a refund door. `purpose` is `customer_receipt` only.
  *
- * ⚠️ The org's `accounting.paymentRoute.<method>` setting decides which of the
- * two a method takes, so a `bank` payment (routed to `cash` by default) MUST
- * name an account and a `cash` one must not. This function enforces that rather
- * than silently picking, because both wrong answers still balance.
- *
- * 🛑 The `clearing` route is the exception and does not apply here — see the
- * comment on it below. A hand-recorded card payment has no payout coming to
- * drain a clearing account.
- *
- * ## 🛑 Not a refund door
- *
- * `purpose` is `customer_receipt` only. A refund is `customer_refund` with its
- * own effect and its own settlement rules; see unit 4.
- *
- * @see plans/accounting/tasks/54-one-money-model.md
- * @see docs/lib-module-guide.md
+ * @see plans/accounting/tasks/71-one-cash-endpoint.md
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
-import { getOrgCache } from '../../../cache/singletons'
 import { BadRequestError, UnprocessableEntityError } from '../../../errors'
 import { loadInvoiceForIssuance } from '../../../sales/invoices/issuance-reads'
-import { type PaymentRouteMethod, resolvePaymentRoute } from '../bank-deposits/route'
+import type { PaymentMethod } from '../client'
+import { insertMovement } from '../commands/insert-movement'
 import { runMoneyCommand } from '../commands/run-money-command'
 import { syncInvoicePaymentState } from './payment-state'
 
@@ -59,11 +35,10 @@ export interface RecordInvoicePaymentInput {
   amountMinor: number
   /** `YYYY-MM-DD`, the day the payment was received. May be backdated. */
   date: string
-  method: PaymentRouteMethod
-  /**
-   * The `bank_account` record the money landed in. Required when the method's
-   * route is `cash`, forbidden when it is `undeposited_funds`.
-   */
+  method: PaymentMethod
+  /** The `payment_gateway` the money arrived through, when it arrived through one. */
+  paymentGatewayId?: string | null
+  /** The `bank_account` record the money landed in. Exclusive with the gateway. */
   bankAccountInstanceId?: string | null
   reference?: string
   note?: string
@@ -150,23 +125,8 @@ export async function recordInvoicePayment(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date))
     throw new BadRequestError('A payment needs a calendar date')
 
-  // Through the org cache, as `bank-deposits/reads.ts` reads the same table:
-  // `orgSettings` is a cached key and a fresh query would defeat invalidation.
-  const settings = await getOrgCache().get(input.organizationId, 'orgSettings')
-  const route = resolvePaymentRoute(input.method, settings)
   const bankAccountInstanceId = input.bankAccountInstanceId?.trim() || null
-  if (route === 'cash' && !bankAccountInstanceId)
-    throw new BadRequestError('Choose the bank account this payment landed in')
-  if (route === 'undeposited_funds' && bankAccountInstanceId)
-    throw new BadRequestError(
-      'This payment method is held in undeposited funds until a bank deposit banks it'
-    )
-  // 🔑 `clearing` is the one route that does NOT carry over to a hand-recorded
-  // payment, and it is the subtlest rule here. A clearing account exists to be
-  // DRAINED by a payout entry (`route.ts`: card settles net, days later). A card
-  // taken on a terminal auxx knows nothing about produces no payout, so booking
-  // it to clearing leaves a balance nothing will ever clear. The recorder says
-  // where the money went instead: a named bank account, or undeposited funds.
+  const paymentGatewayId = input.paymentGatewayId?.trim() || null
 
   return runMoneyCommand(
     db,
@@ -180,6 +140,7 @@ export async function recordInvoicePayment(
         amountMinor: input.amountMinor,
         date: input.date,
         method: input.method,
+        paymentGatewayId,
         bankAccountInstanceId,
       },
     },
@@ -190,28 +151,22 @@ export async function recordInvoicePayment(
           `That is more than the ${invoice.outstandingMinor} cents this invoice still owes`
         )
 
-      const [money] = await tx
-        .insert(schema.MoneyTransaction)
-        .values({
-          organizationId: input.organizationId,
-          purpose: 'customer_receipt',
-          amountMinor: BigInt(input.amountMinor),
-          currency: 'USD',
-          currencyExponent: 2,
-          // 🛑 `date`, not `instant`. Nobody observed a time — inventing one
-          // would make the book date depend on converting a fact that was
-          // never recorded. The schema CHECK enforces the pairing.
-          datePrecision: 'date',
-          occurredOn: input.date,
-          partyInstanceId: invoice.contactInstanceId,
+      const money = await insertMovement(tx, input.organizationId, commandId, {
+        purpose: 'customer_receipt',
+        amountMinor: input.amountMinor,
+        // `date`, not `instant`: nobody observed a time, and inventing one would
+        // make the book date depend on a fact that was never recorded.
+        when: { date: input.date },
+        partyInstanceId: invoice.contactInstanceId,
+        endpoint: {
+          paymentGatewayId,
           cashAccountInstanceId: bankAccountInstanceId,
-          method: input.method,
-          recordedByCommandId: commandId,
-          reference: input.reference?.trim() || null,
-          note: input.note?.trim() || null,
-        })
-        .returning({ id: schema.MoneyTransaction.id })
-      if (!money) throw new Error('Money transaction insert returned no row')
+          currency: 'USD',
+        },
+        method: input.method,
+        reference: input.reference,
+        note: input.note,
+      })
 
       const [application] = await tx
         .insert(schema.MoneyApplication)

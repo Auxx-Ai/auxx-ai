@@ -1408,6 +1408,12 @@
       "import": "./dist/purchasing/intake/client.mjs",
       "default": "./src/purchasing/intake/client.ts"
     },
+    "./purchasing/vendor-credit/client": {
+      "types": "./src/purchasing/vendor-credit/client.ts",
+      "source": "./src/purchasing/vendor-credit/client.ts",
+      "import": "./dist/purchasing/vendor-credit/client.mjs",
+      "default": "./src/purchasing/vendor-credit/client.ts"
+    },
     "./quick-actions": {
       "types": "./src/quick-actions/index.ts",
       "source": "./src/quick-actions/index.ts",

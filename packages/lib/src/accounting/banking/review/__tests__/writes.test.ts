@@ -3,8 +3,8 @@
 // The treatment contract, which is the part of this slot that can lose money.
 //
 // 🛑 **The assertion that matters most is a negative one: matching posts
-// NOTHING** (decision B5). `buildPaymentEntry` and the bill-payment builder
-// already credit cash for the event a bank line corroborates, so a feed that
+// NOTHING** (decision B5). The movement's own posting already moves cash for
+// the event a bank line corroborates, so a feed that
 // also posts it credits cash twice - and both entries balance, so the trial
 // balance ties and nothing detects it until a cash account will not reconcile
 // months later. Every test below that asserts `postEntry` was NOT called is
@@ -48,6 +48,13 @@ const h = vi.hoisted(() => ({
    * "an update happened" would pass just as happily against the old blob write.
    */
   dbUpdates: [] as Record<string, unknown>[],
+  /** `MoneyTransaction.id -> row`, for the D9 provenance read in `undoReview`. */
+  movements: new Map<string, { id: string; purpose: string; recordedByCommandId: string }>(),
+  /** `MoneyCommand.id -> row`. What says WHO minted a vendor payment. */
+  commands: new Map<string, { id: string; kind: string; commandKey: string }>(),
+  recordVendorPayment: vi.fn(),
+  voidVendorPayment: vi.fn(),
+  acceptVendorPaymentAccounting: vi.fn(),
 }))
 
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
@@ -59,6 +66,15 @@ vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ mode: 'ledger', lockedThroughMonth: null }),
 }))
 vi.mock('../../../money/bank-deposits', () => ({ clearBankDeposit: h.clearBankDeposit }))
+vi.mock('../../../money/vendor-payments/record-payment', () => ({
+  recordVendorPayment: h.recordVendorPayment,
+}))
+vi.mock('../../../money/vendor-payments/void-payment', () => ({
+  voidVendorPayment: h.voidVendorPayment,
+}))
+vi.mock('../../../money/vendor-payments/payment-accounting', () => ({
+  acceptVendorPaymentAccounting: h.acceptVendorPaymentAccounting,
+}))
 vi.mock('../../../../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
     update = h.crudUpdate
@@ -117,6 +133,15 @@ const ACTOR = 'user_1'
 const db = new Proxy({} as never, {
   get: (_target, key) => {
     if (key === 'then') return undefined
+    // `undoReview`'s D9 provenance check reads two rows by id rather than
+    // building a query, so it needs a real `query` surface, not the chain.
+    if (key === 'query')
+      return {
+        MoneyTransaction: {
+          findFirst: async () => [...h.movements.values()][0] ?? null,
+        },
+        MoneyCommand: { findFirst: async () => [...h.commands.values()][0] ?? null },
+      }
     // A terminal `.limit()`/`.where()` is awaited, so every stage is both
     // chainable and thenable. `h.selectRows` is what any of them resolves to.
     return () => Object.assign(Promise.resolve(h.selectRows), promiseChain())
@@ -190,6 +215,17 @@ function updateFor(recordId: string): Record<string, unknown> | undefined {
 beforeEach(() => {
   vi.clearAllMocks()
   h.rows.clear()
+  h.movements.clear()
+  h.commands.clear()
+  h.recordVendorPayment.mockResolvedValue({
+    moneyTransactionId: 'mt_vp_1',
+    moneyApplicationId: 'ma_1',
+  })
+  h.voidVendorPayment.mockResolvedValue({ glPostingId: 'gl_rev' })
+  h.acceptVendorPaymentAccounting.mockResolvedValue({
+    status: 'accepted',
+    glPostingId: 'gl_vp',
+  })
   h.dbUpdates = []
   h.postingCount = 0
   // Kept non-empty for queries unrelated to postings (e.g. `resolveDefIdForRecord`),
@@ -1063,5 +1099,212 @@ describe('settlement of a rail (brief 27 §8.1, test 5)', () => {
       bank_transaction_review_status: 'matched',
       bank_transaction_matched_record_type: 'payout',
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D9: coding a line to a BILL records a vendor payment; matching it to a payment
+// somebody recorded by hand does not. The two undo differently, and the money
+// command that minted the payment is the only thing that can tell them apart.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Say that `mt_vp_1` exists, and which command minted it. */
+function mintedBy(kind: string, commandKey: string) {
+  h.movements.set('mt_vp_1', {
+    id: 'mt_vp_1',
+    purpose: 'vendor_payment',
+    recordedByCommandId: 'cmd_1',
+  })
+  h.commands.set('cmd_1', { id: 'cmd_1', kind, commandKey })
+}
+
+describe('a bank line coded to a vendor bill (D9)', () => {
+  it('records a vendor payment, matches the line to THAT movement, and posts it', async () => {
+    row({ amountMinor: -45_000 })
+
+    const result = await matchTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      recordType: 'vendor_bill',
+      recordId: 'vb_1',
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.recordVendorPayment).toHaveBeenCalledOnce()
+    const input = h.recordVendorPayment.mock.calls[0]![1]
+    expect(input).toMatchObject({
+      vendorBillInstanceId: 'vb_1',
+      amountMinor: 45_000,
+      date: '2026-09-10',
+      method: 'bank',
+      bankAccountInstanceId: 'acct_1',
+      reference: 'WIRE FEE',
+    })
+    expect(updateFor('def_bt:txn_1')).toMatchObject({
+      bank_transaction_matched_record_id: 'mt_vp_1',
+      bank_transaction_matched_record_type: 'money_transaction',
+    })
+    expect(h.acceptVendorPaymentAccounting).toHaveBeenCalledOnce()
+    // 🛑 B5 still holds: the ENTRY is the payment's, and the match posts none.
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it('refuses a deposit — only money leaving the account can pay a bill', async () => {
+    row({ amountMinor: 45_000 })
+    const result = await matchTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      recordType: 'vendor_bill',
+      recordId: 'vb_1',
+    })
+    expect(result._unsafeUnwrapErr().message).toMatch(/Only money leaving the account/)
+    expect(h.recordVendorPayment).not.toHaveBeenCalled()
+  })
+
+  it('keys every attempt separately, so match -> undo -> match records a NEW payment', async () => {
+    row({ amountMinor: -45_000 })
+    await matchTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      recordType: 'vendor_bill',
+      recordId: 'vb_1',
+    })
+    h.rows.clear()
+    row({ amountMinor: -45_000 })
+    await matchTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      recordType: 'vendor_bill',
+      recordId: 'vb_1',
+    })
+
+    // 🛑 A stable key would replay: `runMoneyCommand` answers a repeated
+    // key/payload with the FIRST run's ids, so the second match would adopt the
+    // movement the undo just voided and record nothing.
+    expect(h.recordVendorPayment).toHaveBeenCalledTimes(2)
+    const keys = h.recordVendorPayment.mock.calls.map((call) => call[1].commandKey as string)
+    expect(keys[0]).not.toBe(keys[1])
+    for (const key of keys) expect(key.startsWith('bank-match:txn_1:')).toBe(true)
+  })
+
+  it('lets the second attempt name a DIFFERENT bill without a retry-key conflict', async () => {
+    row({ amountMinor: -45_000 })
+    await matchTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      recordType: 'vendor_bill',
+      recordId: 'vb_1',
+    })
+    h.rows.clear()
+    row({ amountMinor: -45_000 })
+    const second = await matchTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      recordType: 'vendor_bill',
+      recordId: 'vb_2',
+    })
+
+    expect(second.isOk()).toBe(true)
+    const calls = h.recordVendorPayment.mock.calls
+    expect(calls[1]![1].vendorBillInstanceId).toBe('vb_2')
+    expect(calls[0]![1].commandKey).not.toBe(calls[1]![1].commandKey)
+  })
+})
+
+describe('undoing a match to a vendor payment', () => {
+  it('VOIDS the payment the match itself recorded', async () => {
+    row({
+      reviewStatus: 'matched',
+      matchedRecordId: 'mt_vp_1',
+      matchedRecordType: 'money_transaction',
+    })
+    mintedBy('record_vendor_payment', 'bank-match:txn_1:11111111-1111-1111-1111-111111111111')
+
+    const result = await undoReview(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.voidVendorPayment).toHaveBeenCalledOnce()
+    expect(h.voidVendorPayment.mock.calls[0]![1]).toMatchObject({
+      moneyTransactionId: 'mt_vp_1',
+    })
+  })
+
+  it('leaves a HAND-RECORDED payment alone and only unlinks it', async () => {
+    row({
+      reviewStatus: 'matched',
+      matchedRecordId: 'mt_vp_1',
+      matchedRecordType: 'money_transaction',
+    })
+    // The dialog's own key, not this line's: the person recorded this payment,
+    // and undoing the evidence must not reverse their posting or reopen the bill.
+    mintedBy('record_vendor_payment', 'dialog-7f1c')
+
+    const result = await undoReview(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.voidVendorPayment).not.toHaveBeenCalled()
+    expect(updateFor('def_bt:txn_1')).toMatchObject({
+      bank_transaction_review_status: 'for_review',
+      bank_transaction_matched_record_id: null,
+    })
+  })
+
+  it('leaves a payment ANOTHER bank line recorded alone', async () => {
+    row({
+      reviewStatus: 'matched',
+      matchedRecordId: 'mt_vp_1',
+      matchedRecordType: 'money_transaction',
+    })
+    mintedBy('record_vendor_payment', 'bank-match:txn_9:22222222-2222-2222-2222-222222222222')
+
+    await undoReview(db, { organizationId: ORG, actorUserId: ACTOR, transactionId: 'txn_1' })
+
+    expect(h.voidVendorPayment).not.toHaveBeenCalled()
+  })
+
+  it('leaves a customer receipt alone — it is not a vendor payment at all', async () => {
+    row({
+      reviewStatus: 'matched',
+      matchedRecordId: 'mt_vp_1',
+      matchedRecordType: 'money_transaction',
+    })
+    h.movements.set('mt_vp_1', {
+      id: 'mt_vp_1',
+      purpose: 'customer_receipt',
+      recordedByCommandId: 'cmd_1',
+    })
+
+    await undoReview(db, { organizationId: ORG, actorUserId: ACTOR, transactionId: 'txn_1' })
+
+    expect(h.voidVendorPayment).not.toHaveBeenCalled()
+  })
+
+  it('keys each undo separately, so a second undo is not a replay', async () => {
+    for (const _ of [0, 1]) {
+      h.rows.clear()
+      row({
+        reviewStatus: 'matched',
+        matchedRecordId: 'mt_vp_1',
+        matchedRecordType: 'money_transaction',
+      })
+      mintedBy('record_vendor_payment', 'bank-match:txn_1:33333333-3333-3333-3333-333333333333')
+      await undoReview(db, { organizationId: ORG, actorUserId: ACTOR, transactionId: 'txn_1' })
+    }
+    const keys = h.voidVendorPayment.mock.calls.map((call) => call[1].commandKey as string)
+    expect(keys[0]).not.toBe(keys[1])
   })
 })

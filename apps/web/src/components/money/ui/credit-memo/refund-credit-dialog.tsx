@@ -3,8 +3,8 @@
 
 // Refund-credit dialog (plans/accounting/tasks/done/10-credit-memos.md §6.2), the
 // `record-payment-dialog.tsx` FieldPanel recipe. Recorded by hand with a method,
-// reference, date and - where the method routes there - the bank account it left.
-// Amount prefilled to the memo's balance.
+// reference, date and the endpoint the money left by — prefilled from the newest
+// receipt on the memo's invoice. Amount prefilled to the memo's balance.
 //
 // The Stripe rail (refunding straight onto the linked invoice's original charge)
 // went with the legacy `PaymentTransaction` lane it refunded (accounting migration
@@ -27,6 +27,12 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useEffect, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import {
+  cashEndpointOptions,
+  cashEndpointValueFor,
+  cashEndpointValueOf,
+  UNDEPOSITED_VALUE,
+} from '~/components/money/ui/cash-endpoint-select'
 import {
   PAYMENT_METHOD_OPTIONS,
   type PaymentMethod,
@@ -60,16 +66,15 @@ export function RefundCreditDialog({
   const [date, setDate] = useState<string>(todayIso())
   const [method, setMethod] = useState<PaymentMethod>('cash')
   const [reference, setReference] = useState('')
-  const [bankAccountId, setBankAccountId] = useState<string | null>(null)
+  const [refundedFrom, setRefundedFrom] = useState<string>(UNDEPOSITED_VALUE)
 
-  // Which methods need a bank account named, and which accounts can be named.
-  // Server-resolved from the same route table `recordCreditMemoRefund` enforces
-  // with, so the dialog cannot offer a combination the mutation will refuse.
   const { data: destinations } = api.money.paymentDestinations.useQuery(undefined, {
     enabled: open,
   })
-  const needsBankAccount = destinations?.requiresBankAccount[method] ?? false
-  const forbidsBankAccount = destinations?.forbidsBankAccount[method] ?? true
+  const { data: prefill } = api.creditMemo.refundEndpoint.useQuery(
+    { creditMemoRecordId },
+    { enabled: open }
+  )
 
   // Reset the draft every time the dialog opens.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-init only when the dialog opens.
@@ -79,15 +84,15 @@ export function RefundCreditDialog({
     setDate(todayIso())
     setMethod('cash')
     setReference('')
-    setBankAccountId(null)
+    setRefundedFrom(UNDEPOSITED_VALUE)
   }, [open])
 
-  // A method the org holds in undeposited funds must not carry an account, and
-  // the command refuses one. Clear it on the switch rather than letting a stale
-  // pick fail at submit.
+  // The receipt this refund settles lands after the dialog opens; it is a prefill
+  // the person may change, not a constraint.
   useEffect(() => {
-    if (forbidsBankAccount) setBankAccountId(null)
-  }, [forbidsBankAccount])
+    if (!open || !prefill) return
+    setRefundedFrom(cashEndpointValueFor(prefill))
+  }, [open, prefill])
 
   const refundKeys = useRef(new Map<string, string>())
   useEffect(() => {
@@ -106,8 +111,7 @@ export function RefundCreditDialog({
     onError: (error) => toastError({ title: 'Error refunding credit', description: error.message }),
   })
 
-  const bankValid = !needsBankAccount || Boolean(bankAccountId)
-  const canSave = !!amount && amount > 0 && amount <= balance && bankValid
+  const canSave = !!amount && amount > 0 && amount <= balance
 
   const handleSubmit = async () => {
     if (!canSave || !amount) return
@@ -117,14 +121,14 @@ export function RefundCreditDialog({
           creditMemoRecordId,
           amount,
           method,
-          bankAccountId,
+          refundedFrom,
           reference,
           date,
         ]),
         creditMemoRecordId,
         amount,
         method,
-        bankAccountInstanceId: bankAccountId,
+        ...cashEndpointValueOf(refundedFrom),
         reference: reference.trim() || undefined,
         date: date.split('T')[0]!,
       })
@@ -182,24 +186,16 @@ export function RefundCreditDialog({
             />
           </FieldPanelRow>
 
-          {needsBankAccount ? (
-            <FieldPanelRow title='Paid from' type={BaseType.ENUM} showIcon isRequired>
-              <FieldInputAdapter
-                fieldType={FieldType.SINGLE_SELECT}
-                fieldOptions={{
-                  options: (destinations?.bankAccounts ?? []).map((account) => ({
-                    id: account.id,
-                    value: account.id,
-                    label: account.last4 ? `${account.name} ····${account.last4}` : account.name,
-                  })),
-                }}
-                triggerProps={{ className: 'w-full ps-0 pe-1' }}
-                value={bankAccountId ?? ''}
-                onChange={(val) => setBankAccountId((val as string[])[0] ?? null)}
-                disabled={refund.isPending}
-              />
-            </FieldPanelRow>
-          ) : null}
+          <FieldPanelRow title='Refunded from' type={BaseType.ENUM} showIcon isRequired>
+            <FieldInputAdapter
+              fieldType={FieldType.SINGLE_SELECT}
+              fieldOptions={{ options: cashEndpointOptions(destinations) }}
+              triggerProps={{ className: 'w-full ps-0 pe-1' }}
+              value={refundedFrom}
+              onChange={(val) => setRefundedFrom((val as string[])[0] ?? UNDEPOSITED_VALUE)}
+              disabled={refund.isPending}
+            />
+          </FieldPanelRow>
 
           <FieldPanelRow title='Reference' type={BaseType.STRING} showIcon>
             <FieldInputAdapter

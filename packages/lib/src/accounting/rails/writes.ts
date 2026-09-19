@@ -308,8 +308,8 @@ export async function updatePaymentGateway(
 
 /**
  * Mark a gateway closed. Not a delete (see the file header) - a closed rail
- * still routes its own history (`toGatewayRoutes` in `client.ts` reads active
- * AND closed rows) and its clearing balance still has to wind down to zero.
+ * carries its own history - movements already stamped with it still post to its
+ * clearing account - and that clearing balance still has to wind down to zero.
  */
 export async function archivePaymentGateway(
   db: Database,

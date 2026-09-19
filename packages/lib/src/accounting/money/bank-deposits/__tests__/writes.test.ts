@@ -188,6 +188,8 @@ function payment(overrides: Record<string, unknown> = {}) {
     invoiceName: 'INV-0001',
     currency: 'USD',
     bankDepositId: null,
+    paymentGatewayId: null,
+    cashAccountInstanceId: null,
     ...overrides,
   }
 }
@@ -309,12 +311,19 @@ describe('createBankDeposit refusals', () => {
     expect(result._unsafeUnwrapErr().message).toMatch(/no longer exist/i)
   })
 
-  it('refuses a rail that does not route through undeposited funds, naming the method', async () => {
-    h.payments = [payment({ method: 'card' })]
+  it('refuses a receipt that names a rail, naming the method', async () => {
+    h.payments = [payment({ method: 'card', paymentGatewayId: 'pg_1' })]
     const result = await createBankDeposit(db, input)
     const message = result._unsafeUnwrapErr().message
-    expect(message).toMatch(/do not route through undeposited funds/i)
+    expect(message).toMatch(/name a payment gateway or a bank account/i)
     expect(message).toContain('card')
+    expect(h.created).toHaveLength(0)
+  })
+
+  it('refuses a receipt that names a bank account', async () => {
+    h.payments = [payment({ method: 'bank', cashAccountInstanceId: 'ba_1' })]
+    const result = await createBankDeposit(db, input)
+    expect(result._unsafeUnwrapErr().message).toMatch(/name a payment gateway or a bank account/i)
     expect(h.created).toHaveLength(0)
   })
 

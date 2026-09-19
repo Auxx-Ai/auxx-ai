@@ -36,6 +36,8 @@ const PURE_DEFAULT_ENTITY_TYPES = [
   'service_request',
   'build',
   'return',
+  // The visible parent of the two owned children below (71 §5 U7).
+  'vendor_credit',
 ] as const
 
 describe('the shipped behavior map is exactly the curated set', () => {
@@ -80,9 +82,9 @@ describe('the shipped behavior map is exactly the curated set', () => {
       'tax_line',
       'thread',
       'vendor_bill_line',
+      'vendor_credit_application',
+      'vendor_credit_line',
       'vendor_part',
-      'vendor_payment',
-      'vendor_payment_allocation',
     ])
   })
 })

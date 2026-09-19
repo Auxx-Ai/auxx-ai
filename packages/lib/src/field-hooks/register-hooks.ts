@@ -63,6 +63,8 @@ import {
   recomputeOnPurchaseOrderBillingChange,
   recomputeOnPurchaseOrderLineChange,
   recomputeOnQuoteBillingChange,
+  recomputeOnVendorCreditLineChange,
+  recomputeVendorCreditAfterLineDelete,
 } from '../sales/totals/totals-hooks'
 import { registerMoneyTotalsReconcilers } from '../sales/totals/totals-reconciler'
 import {
@@ -116,6 +118,7 @@ import { dropUnauthorizedTemplateKey, rejectDeleteIfTemplateTag } from './pre/ta
 import { restampTariffCodeLabel, stampTariffCodeLabel } from './pre/tariff-code-label'
 import { guardTariffCodeUniqueness } from './pre/tariff-code-uniqueness-guard'
 import { guardVendorBillDelete } from './pre/vendor-bill-delete-guard'
+import { guardVendorCreditDelete } from './pre/vendor-credit-delete-guard'
 import { guardWorkOrderDelete } from './pre/work-order-delete-guard'
 import {
   registerEntityFieldChangeHooks,
@@ -669,4 +672,10 @@ export function registerAllHooks(): void {
   // `syncBillingAfterLineDelete` does for an invoice line. Together with the field-change
   // registration above this covers create, update and delete of a memo line.
   registerEntityPostDeleteHooks('credit-memo-lines', [recomputeCreditMemoAfterLineDelete])
+
+  // ─── Vendor credits (plans/accounting/tasks/71-one-cash-endpoint.md §5 U7) ──
+  // The buy-side mirror of the block above, registration for registration.
+  registerEntityFieldChangeHooks('vendor-credit-lines', [recomputeOnVendorCreditLineChange])
+  registerEntityPostDeleteHooks('vendor-credit-lines', [recomputeVendorCreditAfterLineDelete])
+  registerEntityPreDeleteHooks('vendor-credits', [guardVendorCreditDelete])
 }

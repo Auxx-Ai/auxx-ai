@@ -34,8 +34,6 @@ const BASE: BuildCreditMemoEntryInput = {
   reverseRevenue: true,
 }
 
-const SETTLEMENT = { role: 'clearing' as const, amount: 12_990 }
-
 function expectRefusal(fn: () => unknown): UnprocessableEntityError {
   try {
     fn()
@@ -82,9 +80,8 @@ describe('a native credit memo (reverseRevenue, no settlement)', () => {
     expect(built.entry.lines).toHaveLength(3)
   })
 
-  it('touches no clearing account', () => {
+  it('touches no clearing account — the refund is its own entry (71 D6)', () => {
     expect(lines(built, ACCOUNT_ROLES.CLEARING)).toHaveLength(0)
-    expect(built.settlementMinor).toBe(0)
   })
 
   it('carries the memo as sourceType/sourceId on every line, by ROLE', () => {
@@ -169,103 +166,59 @@ describe('tax', () => {
   })
 })
 
-describe('a channel credit memo with a settlement', () => {
-  it('adds Dr accounts_receivable / Cr clearing to the SAME entry as the revenue leg', () => {
-    const built = buildCreditMemoEntry({ ...BASE, settlement: SETTLEMENT })
+describe('a channel credit memo on an order that never shipped (71 D14)', () => {
+  // Nothing was recognised, so there is no revenue to reverse and no tax to give
+  // back: the pre-fulfillment receipt credited the WHOLE amount, tax included,
+  // to `customer_deposits`. The memo moves that advance onto the control
+  // account, and the refund then draws it down like any other memo's.
+  const built = buildCreditMemoEntry({ ...BASE, reverseRevenue: false })
 
-    expect(built.entry.lines).toHaveLength(5)
-    const receivable = lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)
-    expect(receivable).toHaveLength(2)
-    expect(receivable.find((row) => row.direction === 'credit')?.amount).toBe(12_990)
-    expect(receivable.find((row) => row.direction === 'debit')?.amount).toBe(12_990)
-
-    const [clearing] = lines(built, ACCOUNT_ROLES.CLEARING)
-    expect(clearing).toMatchObject({ direction: 'credit', amount: 12_990 })
-    expect(clearing?.memo).toBe('Credit memo CM-0007 refunded')
-
-    expect(built.settlementMinor).toBe(12_990)
-    expect(built.entry.totalDebit).toBe(25_980)
-    expect(built.entry.totalCredit).toBe(25_980)
-    expect(built.entry.lines.map((row) => row.sortOrder)).toEqual([0, 1, 2, 3, 4])
-  })
-
-  it('posts only the money leg on the pre-fulfillment branch (no revenue was ever posted)', () => {
-    const built = buildCreditMemoEntry({ ...BASE, reverseRevenue: false, settlement: SETTLEMENT })
-
+  it('moves the advance: Dr customer_deposits / Cr accounts_receivable, for the total', () => {
     expect(built.entry.lines).toHaveLength(2)
-    expect(lines(built, ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES)).toHaveLength(0)
-    expect(lines(built, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toHaveLength(0)
-    expect(lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)[0]).toMatchObject({
+    expect(lines(built, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)[0]).toMatchObject({
       direction: 'debit',
       amount: 12_990,
     })
-    expect(lines(built, ACCOUNT_ROLES.CLEARING)[0]).toMatchObject({
+    expect(lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)[0]).toMatchObject({
       direction: 'credit',
       amount: 12_990,
     })
-    expect(built.entry.totalDebit).toBe(12_990)
-    expect(built.totalMinor).toBe(0)
-    expect(built.subtotalMinor).toBe(0)
-    expect(built.taxTotalMinor).toBe(0)
-    expect(built.settlementMinor).toBe(12_990)
-  })
-
-  /**
-   * 🛑 The refund must come out of the account the SALE debited.
-   *
-   * A `payment_gateway` record routes a non-card rail to its own clearing
-   * account by id, so an Affirm sale debits `1210` while `clearing` is
-   * `1200`. Crediting the role for that refund leaves `1210` overstated
-   * forever - in an entry that balances perfectly, so nothing downstream
-   * detects it. This was the shape until 2026-09-11.
-   */
-  it('credits the gateway route BY ID when the sale was routed to one', () => {
-    const built = buildCreditMemoEntry({
-      ...BASE,
-      settlement: { glAccountId: 'acct_affirm', amount: 12_990 },
-    })
-
-    const clearing = built.entry.lines.find((row) => row.glAccountId === 'acct_affirm')
-    expect(clearing).toMatchObject({ direction: 'credit', amount: 12_990 })
-    // ...and NOT through the role, which is a different account.
-    expect(lines(built, ACCOUNT_ROLES.CLEARING)).toHaveLength(0)
-    expect(clearing?.accountRole).toBeUndefined()
-    expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
-  })
-
-  it('still balances on the pre-fulfillment branch with an id-routed settlement', () => {
-    const built = buildCreditMemoEntry({
-      ...BASE,
-      reverseRevenue: false,
-      settlement: { glAccountId: 'acct_affirm', amount: 12_990 },
-    })
-
-    expect(built.entry.lines).toHaveLength(2)
     expect(built.entry.totalDebit).toBe(12_990)
     expect(built.entry.totalCredit).toBe(12_990)
-    expect(built.entry.lines.find((row) => row.glAccountId === 'acct_affirm')).toMatchObject({
-      direction: 'credit',
-      amount: 12_990,
-    })
   })
 
-  it('allows a settlement smaller than the total', () => {
-    const built = buildCreditMemoEntry({
+  it('reverses no revenue and gives back no tax — neither was ever posted', () => {
+    expect(lines(built, ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES)).toHaveLength(0)
+    expect(lines(built, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toHaveLength(0)
+    expect(built.subtotalMinor).toBe(0)
+    expect(built.taxTotalMinor).toBe(0)
+  })
+
+  it('still reports the memo total, because that is what it credits', () => {
+    expect(built.totalMinor).toBe(12_990)
+  })
+
+  it('touches no clearing account — the refund posts its own entry', () => {
+    expect(lines(built, ACCOUNT_ROLES.CLEARING)).toHaveLength(0)
+  })
+
+  it('carries the contact on the receivable leg, never on the deposit leg', () => {
+    const withContact = buildCreditMemoEntry({
       ...BASE,
-      settlement: { role: 'clearing', amount: 5_000 },
+      reverseRevenue: false,
+      contactInstanceId: 'ei_contact_1',
     })
-    expect(lines(built, ACCOUNT_ROLES.CLEARING)[0]?.amount).toBe(5_000)
-    expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
+    expect(lines(withContact, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)[0]).toMatchObject({
+      counterpartyType: 'customer',
+      counterpartyId: 'ei_contact_1',
+    })
+    expect(lines(withContact, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)[0]?.counterpartyId).toBeUndefined()
   })
 })
 
 describe('the counterparty (brief 13 §1.2)', () => {
   it('carries the contact on every accounts_receivable line, never on revenue, tax or clearing', () => {
-    const built = buildCreditMemoEntry({
-      ...BASE,
-      settlement: SETTLEMENT,
-      contactInstanceId: 'ei_contact_1',
-    })
+    const built = buildCreditMemoEntry({ ...BASE, contactInstanceId: 'ei_contact_1' })
     for (const receivable of lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)) {
       expect(receivable).toMatchObject({
         counterpartyType: 'customer',
@@ -286,12 +239,6 @@ describe('the counterparty (brief 13 §1.2)', () => {
 })
 
 describe('refusals', () => {
-  it('refuses a memo with neither a revenue leg nor a settlement, naming why', () => {
-    const error = expectRefusal(() => buildCreditMemoEntry({ ...BASE, reverseRevenue: false }))
-    expect(error.message).toMatch(/reverses no revenue and carries no settlement/)
-    expect(error.message).toMatch(/CM-0007/)
-  })
-
   it('refuses a total that does not equal subtotal plus tax', () => {
     const error = expectRefusal(() => buildCreditMemoEntry({ ...BASE, total: 13_000 }))
     expect(error.message).toMatch(/totals 13000 but its subtotal 12000 plus tax 990 is 12990/)
@@ -330,22 +277,6 @@ describe('refusals', () => {
 
   it('refuses a non-finite amount', () => {
     expectRefusal(() => buildCreditMemoEntry({ ...BASE, total: Number.NaN }))
-  })
-
-  it('refuses a settlement that is zero, negative or fractional', () => {
-    for (const amount of [0, -1, 10.5]) {
-      const error = expectRefusal(() =>
-        buildCreditMemoEntry({ ...BASE, settlement: { role: 'clearing', amount } })
-      )
-      expect(error.message).toMatch(/positive whole number of minor units/)
-    }
-  })
-
-  it('refuses a settlement larger than the total', () => {
-    const error = expectRefusal(() =>
-      buildCreditMemoEntry({ ...BASE, settlement: { role: 'clearing', amount: 13_000 } })
-    )
-    expect(error.message).toMatch(/cannot have paid back more than the memo credits/)
   })
 
   it('refuses a blank memo number', () => {

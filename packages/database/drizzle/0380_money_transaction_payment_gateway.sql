@@ -1,0 +1,3 @@
+ALTER TABLE "MoneyTransaction" ADD COLUMN "paymentGatewayId" text;--> statement-breakpoint
+CREATE INDEX "MoneyTransaction_payment_gateway_idx" ON "MoneyTransaction" USING btree ("organizationId","paymentGatewayId");--> statement-breakpoint
+ALTER TABLE "MoneyTransaction" ADD CONSTRAINT "MoneyTransaction_endpoint_check" CHECK (NOT ("MoneyTransaction"."paymentGatewayId" IS NOT NULL AND "MoneyTransaction"."cashAccountInstanceId" IS NOT NULL));

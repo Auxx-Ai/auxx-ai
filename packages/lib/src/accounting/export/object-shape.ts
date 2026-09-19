@@ -44,6 +44,11 @@ import {
   SALES_RECEIPT_OBJECT_TYPE,
 } from './payloads/sales-receipt'
 import { PRIVATE_NOTE_MAX_LENGTH } from './payloads/shared'
+import {
+  type ExportVendorCreditPayload,
+  exportVendorCreditSchema,
+  VENDOR_CREDIT_OBJECT_TYPE,
+} from './payloads/vendor-credit'
 
 /** `auxx:gl:<type>:<date>:<id>` - the stamp a human greps the provider's register for. */
 function stamp(parts: string[], memo: string | undefined, max: number | undefined): string {
@@ -383,6 +388,40 @@ function shapeBill(input: ShapeForPostingInput): ShapedPosting {
   return { objectType: BILL_OBJECT_TYPE, payload }
 }
 
+/** A vendor credit: one A/P debit, and account-coded credits - `shapeBill` flipped. */
+function shapeVendorCredit(input: ShapeForPostingInput): ShapedPosting {
+  const lines = roled(input)
+  const accountLines = lines.filter((line) => line.direction === 'credit')
+  const apLine = lines.find(
+    (line) => line.direction === 'debit' && line.role === 'accounts_payable'
+  )
+  const otherDebits = lines.filter((line) => line.direction === 'debit' && line !== apLine)
+  const vendor = input.counterparty
+  if (
+    accountLines.length === 0 ||
+    !apLine ||
+    otherDebits.length > 0 ||
+    !vendor ||
+    vendor.type !== 'vendor'
+  ) {
+    return fallbackToJournal(
+      input,
+      'A vendor credit needs a vendor, an accounts-payable debit and at least one account credit'
+    )
+  }
+  const payload = exportVendorCreditSchema.parse({
+    ...base(input.posting, input.limits),
+    vendor,
+    lines: accountLines.map((line) => ({
+      glAccountId: line.glAccountId,
+      accountCode: line.accountCode,
+      amountMinor: line.amountMinor,
+      ...(line.memo ? { memo: line.memo } : {}),
+    })),
+  } satisfies ExportVendorCreditPayload)
+  return { objectType: VENDOR_CREDIT_OBJECT_TYPE, payload }
+}
+
 /**
  * Turn one posting into its native provider object, or `journal` (plan 67 §2).
  *
@@ -411,6 +450,8 @@ export function shapeForPosting(input: ShapeForPostingInput): ShapedPosting {
     case 'expense_bill':
     case 'vendor_bill':
       return shapeBill(input)
+    case 'vendor_credit':
+      return shapeVendorCredit(input)
     // write_off, manual_journal, recurring_journal, inventory_movement and the
     // month-end types have no native shape (§1's table) - a plain journal, not
     // a fallback: nothing here was tried and rejected.

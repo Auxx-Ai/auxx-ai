@@ -55,7 +55,7 @@ import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import type { PostResult } from '../../ledger/types'
-import { BANK_DEPOSIT_SOURCE_TYPE, isBankDepositFrozen, resolvePaymentRoute } from './client'
+import { BANK_DEPOSIT_SOURCE_TYPE, isBankDepositFrozen } from './client'
 import {
   loadBankDepositFieldContext,
   requireBankDepositFieldContext,
@@ -126,10 +126,9 @@ async function lockPayments(
  * - **A payment that is already in a deposit.** "Which deposit was this cheque
  *   in" must have exactly one answer. `FieldValue` cannot express the
  *   constraint, so it is read and refused here, naming the deposit.
- * - **A payment whose route is not `undeposited_funds`.** An ACH arrives as its
- *   own bank line and a card settles as a net payout; banking either would
- *   assert a bank line that does not exist. The route table
- *   (`accounting.paymentRoute.*`) is the authority, never the caller.
+ * - **A payment that names a rail or a bank account.** A receipt on a rail is
+ *   drained by its payout and one into a bank account arrived on its own line;
+ *   banking either would assert a bank line that does not exist.
  * - **Mixed currencies**, explicitly, rather than posting the sum at an implied
  *   1.0 rate. Same for a single currency that is not the ledger's: the ledger
  *   is pinned to {@link LEDGER_CURRENCY} and converting is out of scope.
@@ -211,14 +210,13 @@ export async function createBankDeposit(
         }
 
         const misrouted = payments.filter(
-          (payment) => resolvePaymentRoute(payment.method, settings) !== 'undeposited_funds'
+          (payment) => payment.paymentGatewayId || payment.cashAccountInstanceId
         )
         if (misrouted.length > 0) {
           const methods = [...new Set(misrouted.map((payment) => payment.method ?? 'unknown'))]
           throw new UnprocessableEntityError(
-            `These payments do not route through undeposited funds (${methods.join(', ')}), so ` +
-              'they arrive at the bank on their own line and must not be grouped. Change the ' +
-              'route under Accounting settings if that is wrong.',
+            `These payments name a payment gateway or a bank account (${methods.join(', ')}), so ` +
+              'they arrive at the bank on their own line and must not be grouped.',
             { methods: methods.join(', ') }
           )
         }

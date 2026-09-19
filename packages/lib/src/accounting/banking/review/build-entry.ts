@@ -10,8 +10,8 @@
  *
  * A bank line that corroborates a document auxx already holds LINKS to it and
  * posts nothing (decision **B5**). The reason is the whole point of the bank
- * plan: `buildBillPaymentEntry` and `buildPaymentEntry` already credit cash for
- * that event, so a second entry from the feed credits cash TWICE, both entries
+ * plan: the document's own posting already moves cash for that event, so a
+ * second entry from the feed moves cash TWICE, both entries
  * balance, the trial balance balances, and nothing in the system detects it. It
  * surfaces months later as a cash account that will not tie.
  *

@@ -128,7 +128,6 @@ const REFERENCE_ATTRIBUTES = [
   'vendor_bill_purchase_order',
   // → vendor_bill
   'vendor_bill_line_vendor_bill',
-  'vendor_payment_allocation_vendor_bill',
 ] as const
 
 /**
@@ -217,11 +216,6 @@ const PARENTS: readonly ParentSpec[] = [
         entityType: 'vendor_bill_line',
         attribute: 'vendor_bill_line_vendor_bill',
         disposition: 'cascade',
-      },
-      {
-        entityType: 'vendor_payment_allocation',
-        attribute: 'vendor_payment_allocation_vendor_bill',
-        disposition: 'refuse',
       },
     ],
   },

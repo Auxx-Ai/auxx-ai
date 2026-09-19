@@ -61,11 +61,13 @@ const logger = createScopedLogger('purchasing:vendor-bill-balance')
 export const VENDOR_BILL_BALANCE_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'vendor_bill_total',
   'vendor_bill_amount_paid',
+  'vendor_bill_amount_credited',
 ])
 
 const BALANCE_ATTRS = [
   'vendor_bill_total',
   'vendor_bill_amount_paid',
+  'vendor_bill_amount_credited',
   'vendor_bill_balance',
 ] as const
 
@@ -88,12 +90,19 @@ export const VENDOR_BILL_BALANCE_RECONCILER = 'vendor-bill:balance'
  *   the vendor owes us money. The bills card clamps for DISPLAY; the stored
  *   column must not.
  */
-export function vendorBillBalance(total: number | null, amountPaid: number | null): number | null {
+export function vendorBillBalance(
+  total: number | null,
+  amountPaid: number | null,
+  amountCredited: number | null = null
+): number | null {
   if (total === null) return null
   // Both inputs are integer minor units, but they are stored in a double column
   // — round rather than trust float subtraction, because `setValueWithType`
   // rejects a non-integer CURRENCY value outright.
-  return Math.round(total - (amountPaid ?? 0))
+  //
+  // A vendor credit reduces what is owed exactly as a payment does: it is what
+  // the supplier no longer asks for (71 U7).
+  return Math.round(total - (amountPaid ?? 0) - (amountCredited ?? 0))
 }
 
 /**
@@ -128,6 +137,9 @@ export async function recalculateVendorBillBalance(
   const totalField = fields.vendor_bill_total
   const amountPaidField = fields.vendor_bill_amount_paid
   const balanceField = fields.vendor_bill_balance
+  // Absent until the vendor credit def lands on the org; an org without it has
+  // no credits to net off.
+  const amountCreditedField = fields.vendor_bill_amount_credited
 
   if (!totalField || !amountPaidField || !balanceField) {
     logger.warn('Missing custom fields for vendor bill balance', {
@@ -143,11 +155,20 @@ export async function recalculateVendorBillBalance(
     db,
     organizationId,
     [vendorBillInstanceId],
-    [totalField.id, amountPaidField.id, balanceField.id]
+    [
+      totalField.id,
+      amountPaidField.id,
+      balanceField.id,
+      ...(amountCreditedField ? [amountCreditedField.id] : []),
+    ]
   )
   const values = scalars.get(vendorBillInstanceId)
 
-  const next = vendorBillBalance(num(values, totalField.id), num(values, amountPaidField.id))
+  const next = vendorBillBalance(
+    num(values, totalField.id),
+    num(values, amountPaidField.id),
+    amountCreditedField ? num(values, amountCreditedField.id) : null
+  )
   const stored = num(values, balanceField.id)
 
   if (stored === next) {

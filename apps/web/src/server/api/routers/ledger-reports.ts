@@ -286,11 +286,10 @@ export const ledgerReportsRouter = createTRPCRouter({
     }),
 
   /**
-   * The 1099 summary (HANDOFF slot 2K): eligible vendors whose posted
-   * `vendor_payment` total for `year` meets the $600 IRS threshold, grouped by
-   * box. NOT a GL read - `vendor_payment` ships inert, so this reads the
-   * `vendor_payment`/`company` EntityInstances directly. Reports zero rows
-   * (never an error) on an org that predates the entity or its 1099 fields.
+   * The 1099 summary (HANDOFF slot 2K): eligible vendors whose `vendor_payment`
+   * movements for `year` meet the $600 IRS threshold, grouped by box. NOT a GL
+   * read - it sums `MoneyTransaction` rows and hydrates `company`. Reports zero
+   * rows (never an error) on an org with no 1099 fields.
    */
   vendor1099: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ year: z.number().int() }))

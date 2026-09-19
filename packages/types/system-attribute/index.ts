@@ -688,6 +688,49 @@ export const SYSTEM_ATTRIBUTES = [
   'credit_memo_application_reverses',
   'credit_memo_application_reversals',
 
+  // ─── Vendor credit (task 71 U7) ─────────────────────────────────
+  // The purchase-side mirror of `credit_memo`: a supplier's credit note as a
+  // document, not an edit to a bill's total.
+  'vendor_credit_number', // OURS, VC-0001 — what the issue entry's period key is
+  'vendor_credit_vendor_reference', // THEIRS, never the key
+  'vendor_credit_status',
+  'vendor_credit_reason',
+  'vendor_credit_issued_at', // THE accounting date
+  'vendor_credit_note',
+  'vendor_credit_vendor', // owning side; inverse of company_vendor_credits
+  'vendor_credit_bill', // owning side; inverse of vendor_bill_vendor_credits
+  'vendor_credit_purchase_order', // owning side; inverse of purchase_order_vendor_credits
+  'vendor_credit_subtotal',
+  'vendor_credit_tax_total',
+  'vendor_credit_total',
+  'vendor_credit_amount_applied',
+  'vendor_credit_amount_refunded',
+  'vendor_credit_balance',
+  'vendor_credit_lines', // inverse of vendor_credit_line_vendor_credit
+  'vendor_credit_applications', // inverse of vendor_credit_application_vendor_credit
+  'vendor_credit_pdf_asset',
+  'vendor_credit_attachments',
+  'vendor_credit_document',
+
+  // ─── Vendor credit line ─────────────────────────────────────────
+  // A BUY-side line: it names a gl_account id, and carries no tax of its own.
+  'vendor_credit_line_vendor_credit', // owning side; inverse of vendor_credit_lines
+  'vendor_credit_line_description',
+  'vendor_credit_line_quantity',
+  'vendor_credit_line_unit_price', // a per-each RATE
+  'vendor_credit_line_line_total',
+  'vendor_credit_line_gl_account',
+  'vendor_credit_line_part', // one-way
+  'vendor_credit_line_purchase_order_line', // one-way
+  'vendor_credit_line_sort_order',
+
+  // ─── Vendor credit application ──────────────────────────────────
+  'vendor_credit_application_vendor_credit',
+  'vendor_credit_application_vendor_bill',
+  'vendor_credit_application_amount',
+  'vendor_credit_application_applied_at',
+  'vendor_credit_application_operation',
+
   // ─── Receiving: cost, date and provenance on stock_movement ──────
   // plans/purchasing/01-build-plan.md §2. Every one of these is
   // `updatable: false` — the ledger is append-only by construction, which is
@@ -751,6 +794,7 @@ export const SYSTEM_ATTRIBUTES = [
   'purchase_order_attachments', // FILE, multi — vendor confirmations, drawings, signed terms
   'purchase_order_lines', // inverse of purchase_order_line_purchase_order
   'purchase_order_bills', // inverse of vendor_bill_purchase_order
+  'purchase_order_vendor_credits', // inverse of vendor_credit_purchase_order
   'company_purchase_orders', // inverse of purchase_order_vendor
 
   // ─── Purchase order line ────────────────────────────────────────
@@ -798,11 +842,13 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_bill_paid_at',
   'vendor_bill_amount_paid',
   'vendor_bill_balance',
-  'vendor_bill_payment_method',
-  'vendor_bill_payment_reference',
-  'vendor_bill_paid_source', // manual | provider | bank_import | rule — never dropped
-  'vendor_bill_payment_allocations',
+  // The money axis, beside `vendor_bill_status`'s lifecycle axis (73 D1).
+  'vendor_bill_payment_status',
+  'vendor_bill_amount_credited',
+  'vendor_bill_vendor_credits', // inverse of vendor_credit_bill
+  'vendor_bill_credit_applications', // inverse of vendor_credit_application_vendor_bill
   'company_vendor_bills', // inverse of vendor_bill_vendor
+  'company_vendor_credits', // inverse of vendor_credit_vendor
 
   // ─── Vendor bill line ───────────────────────────────────────────
   'vendor_bill_line_vendor_bill',
@@ -830,22 +876,6 @@ export const SYSTEM_ATTRIBUTES = [
   // ─── Vendor payment + allocation ────────────────────────────────
   // P13/P15: seeded, hidden and INERT. Nothing writes these until the write
   // path is built; a def with zero rows can be reshaped for free.
-  'vendor_payment_vendor',
-  'vendor_payment_amount',
-  'vendor_payment_paid_at',
-  'vendor_payment_method',
-  'vendor_payment_reference',
-  'vendor_payment_note',
-  'vendor_payment_status',
-  'vendor_payment_bank_transaction_id',
-  'vendor_payment_cleared_at',
-  'vendor_payment_reconciled_at',
-  'vendor_payment_unallocated', // amount - SUM(allocations); non-zero = a vendor credit
-  'vendor_payment_allocations',
-  'vendor_payment_allocation_payment',
-  'vendor_payment_allocation_vendor_bill',
-  'vendor_payment_allocation_amount',
-  'company_vendor_payments', // inverse of vendor_payment_vendor
 
   // ─── 1099 / W-9 (plans/accounting/HANDOFF.md slot 2K) ────────────
   'company_tax_classification',
@@ -952,10 +982,9 @@ export const SYSTEM_ATTRIBUTES = [
   // delivery, a liability, and lives on `PaymentTransaction`. Say "bank
   // deposit" in full.
   //
-  // 🛑 `bank_deposit_bank_transaction_id` is bare TEXT and copies
-  // `vendor_payment_bank_transaction_id` by name AND semantics, so the bank
-  // feed's matcher has one shape to look for. Both convert to a RELATIONSHIP
-  // together once the `bank_transaction` def exists.
+  // 🛑 `bank_deposit_bank_transaction_id` is bare TEXT, the same shape
+  // `payout_bank_transaction_id` carries, so the bank feed's matcher has one
+  // shape to look for.
   'bank_deposit_number', // RecordSequence `DEP-0001`; the posting's docNumber keys on it
   'bank_deposit_date', // THE accounting date
   'bank_deposit_bank_account', // the GL account CODE the entry POSTED to, frozen at build time
@@ -998,7 +1027,7 @@ export const SYSTEM_ATTRIBUTES = [
   'payout_unrecognised_net', // settled charges auxx has no payment for, net
   'payout_unrecognised_count',
   'payout_gl_posting_id', // denormalized backlink; the posting is the authority
-  'payout_bank_transaction_id', // the bank_deposit / vendor_payment twin, by name and meaning
+  'payout_bank_transaction_id', // the bank_deposit twin, by name and meaning
   'payout_destination', // the gateway's own external-account id (brief 13 §2.3), never last4
   // 🛑 Set only when the payout could not be posted for lack of a confirmed
   // bank-account identity. Never a role; naming the payout, the destination and
