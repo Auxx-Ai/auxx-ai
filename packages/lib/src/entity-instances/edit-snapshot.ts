@@ -10,11 +10,20 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { getInverseFieldId, getRelatedEntityDefinitionId } from '@auxx/types/custom-field'
+import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedCustomFields, getCachedResourceFields } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
-import { getRealtimeService, rooms } from '../realtime'
+import { createFieldValueContext } from '../field-values/field-value-helpers'
+import { setValueWithType } from '../field-values/field-value-mutations'
+import { toFieldType } from '../field-values/stored-field-type'
+import {
+  type FieldValueUpdateEntry,
+  getRealtimeService,
+  publishFieldValueUpdates,
+  rooms,
+} from '../realtime'
 import type { RecordSnapshot } from '../record-rules/resolver'
 import { fetchResourceSnapshots } from '../record-rules/snapshot-fetcher'
 import type { EditStamp } from '../resources/picker/types'
@@ -31,33 +40,29 @@ export interface EditSnapshotPayload {
 }
 
 /**
- * Projections whose registry entry does not (yet) declare `computed`, so the
- * capability rule below cannot see them. Restoring a stale copy would fight
- * their own writer — `vendor-payments/payment-state.ts` owns these three.
+ * Owned by a projection whose input is OUTSIDE the edit (75-D4): restoring a
+ * stale copy would fight the writer, or be refused outright. A payment landing
+ * mid-edit must survive Cancel.
+ *
+ * The content-derived totals are the other half of the old one rule and are
+ * restored instead — see `derivedTotalAttrs` on {@link RestoreRecordSnapshotInput}.
  */
 const PROJECTED_ATTRIBUTES: ReadonlySet<string> = new Set([
   'vendor_bill_amount_paid',
   'vendor_bill_paid_at',
-  'vendor_bill_balance',
   // The memo's own settlement writer owns this one; it is `updatable` only so
-  // the channel connector can transcribe it. Its siblings (`amount_applied`,
-  // `balance`) and the totals the line hook recomputes (`subtotal`, `tax_total`,
-  // `total`) are `updatable: false` and the rule above already skips them.
+  // the channel connector can transcribe it.
   'credit_memo_amount_refunded',
   // `settleCreditMemo` moves it (`issued` -> `settled`) and it carries a
   // lifecycle guard on both write chains, so restoring it would be refused
   // outright — Cancel on any issued memo would throw.
   'credit_memo_status',
-  // `invoice-payments/payment-state.ts` is the only writer of these four, and an
-  // invoice's is the one lifecycle field a projection moves (`sent` ->
-  // `partially_paid` -> `paid`), so a payment landing mid-edit would be undone
-  // by Cancel. `amount_paid`/`amount_credited`/`balance` are `updatable: false`
-  // and the rule above already skips them; they are listed for the same reason
-  // the bill's balance is — the set is what the projection owns.
+  // An invoice's status is the one lifecycle field a projection moves (`sent` ->
+  // `partially_paid` -> `paid`); `invoice-payments/payment-state.ts` owns it and
+  // the two amounts beside it.
   'invoice_status',
   'invoice_amount_paid',
   'invoice_amount_credited',
-  'invoice_balance',
 ])
 
 /** One named content relationship, resolved to the child side the rows are read through. */
@@ -309,9 +314,8 @@ export async function deleteEditSnapshot(
  * **The rule, from the registry alone:** a field is restored when it is
  * writable (`updatable`, or `creatable` when recreating a removed line), is not
  * `computed`, and is not a has_many/has_one mirror — everything else is either
- * refused by the write path or is a projection with its own writer
- * ({@link PROJECTED_ATTRIBUTES} covers the three whose registry entry has not
- * caught up).
+ * refused by the write path, is a projection with its own writer
+ * ({@link PROJECTED_ATTRIBUTES}), or is a derived total put back separately.
  */
 function restorableValues(
   fields: ResourceField[],
@@ -383,6 +387,14 @@ export interface RestoreRecordSnapshotInput {
   organizationId: string
   entityInstanceId: string
   actorUserId: string
+  /**
+   * The header's content-derived `updatable: false` attributes — the totals and
+   * the balance that key off them (75-D4). Named by the family spec, never
+   * inferred, and written from the snapshot through the low-level writer: the
+   * totals hook is frozen again the moment the edit row goes, so restoring the
+   * lines does not bring the header back with them.
+   */
+  derivedTotalAttrs?: readonly string[]
 }
 
 /**
@@ -427,6 +439,7 @@ export async function restoreRecordSnapshot(
   // reaching the handler statically would close that cycle.
   const { UnifiedCrudHandler } = await import('../resources/crud/unified-handler')
 
+  let published: FieldValueUpdateEntry[] = []
   await db.transaction(async (tx) => {
     const scoped = tx as unknown as Database
     const handler = new UnifiedCrudHandler(organizationId, actorUserId, scoped)
@@ -482,6 +495,16 @@ export async function restoreRecordSnapshot(
       }
     }
 
+    // After the children, before the row goes: the freeze the row lifts is what
+    // stops the totals hook putting these back on its own.
+    published = await restoreDerivedTotals(scoped, {
+      organizationId,
+      headerDefinitionId,
+      entityInstanceId,
+      attrs: input.derivedTotalAttrs ?? [],
+      record: payload.record,
+    })
+
     await tx
       .delete(schema.EntityInstanceEditSnapshot)
       .where(
@@ -492,7 +515,60 @@ export async function restoreRecordSnapshot(
       )
   })
 
+  if (published.length > 0) {
+    publishFieldValueUpdates(getRealtimeService(), organizationId, published).catch(() => {})
+  }
+
   logger.debug('Restored record from edit snapshot', { organizationId, entityInstanceId })
+}
+
+interface RestoreDerivedTotalsInput {
+  organizationId: string
+  headerDefinitionId: string
+  entityInstanceId: string
+  attrs: readonly string[]
+  record: RecordSnapshot
+}
+
+/**
+ * Put the captured derived totals back, and report the realtime frames to
+ * publish once the transaction has committed.
+ *
+ * The low-level writer with no `userId` in its context, the same door
+ * `vendor-bill-balance.ts` uses: a derived write must not re-enter the field
+ * hooks that produced it.
+ */
+async function restoreDerivedTotals(
+  db: Database,
+  input: RestoreDerivedTotalsInput
+): Promise<FieldValueUpdateEntry[]> {
+  const { organizationId, headerDefinitionId, entityInstanceId, attrs, record } = input
+  if (attrs.length === 0) return []
+
+  const customFields = await getCachedCustomFields(organizationId, headerDefinitionId)
+  const fieldValues = record.fieldValues ?? {}
+  const recordId = toRecordId(headerDefinitionId, entityInstanceId)
+  const ctx = createFieldValueContext(organizationId, undefined, db)
+
+  const entries: FieldValueUpdateEntry[] = []
+  for (const attr of attrs) {
+    if (!(attr in fieldValues)) continue
+    const field = customFields.find((f) => f.systemAttribute === attr)
+    if (!field) continue
+    const captured = fieldValues[attr]
+    // Every derived total is CURRENCY; anything else is not one of these.
+    if (captured !== null && typeof captured !== 'number') continue
+
+    await setValueWithType(ctx, {
+      recordId,
+      fieldId: field.id,
+      fieldType: toFieldType(field.type),
+      value: captured === null ? null : { type: 'number', value: captured },
+    })
+    const key = buildFieldValueKey(recordId, field.id as FieldId)
+    entries.push(captured === null ? { key } : { key, value: { type: 'number', value: captured } })
+  }
+  return entries
 }
 
 export interface PublishRecordEditStampInput {

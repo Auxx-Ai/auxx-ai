@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
   publishRecordEditStamp: vi.fn(),
   ledgerState: { draftGlPostingId: null as string | null, generation: 1 },
   writeDocumentLedgerGeneration: vi.fn(),
+  settleCreditMemo: vi.fn(async () => ({})),
 }))
 
 vi.mock('@auxx/database', async () => {
@@ -50,6 +51,9 @@ vi.mock('../../../../entity-instances/edit-snapshot', () => ({
   deleteEditSnapshot: h.deleteEditSnapshot,
   publishRecordEditStamp: h.publishRecordEditStamp,
 }))
+vi.mock('../../../sales/credit-memos/settle', () => ({
+  settleCreditMemo: h.settleCreditMemo,
+}))
 vi.mock('../../../sales/credit-memos/reads', () => ({
   requireCreditMemo: async () => h.memo,
   loadCreditMemoLines: async () => h.lines,
@@ -76,6 +80,7 @@ import { BadRequestError, ConflictError } from '../../../../errors'
 import { buildDocNumber, DOC_NUMBER_MAX_LENGTH } from '../../../ledger/builders/doc-number'
 import { buildEntryForCreditMemo } from '../../../sales/credit-memos/accounting'
 import type { CreditMemoLineRecord, CreditMemoRecord } from '../../../sales/credit-memos/reads'
+import { cancelDocumentEdit } from '../cancel'
 import { openDocumentEdit } from '../open'
 import { saveDocumentEdit } from '../save'
 
@@ -204,6 +209,52 @@ describe('openDocumentEdit', () => {
     h.memo = { ...h.memo, status: 'draft' }
     await expect(openDocumentEdit(db, target)).rejects.toThrow(BadRequestError)
     expect(h.captureRecordSnapshot).not.toHaveBeenCalled()
+  })
+})
+
+// 75-D4. The memo's totals are `updatable: false` and the line hook will not
+// recompute them once the edit row is gone, so Cancel puts them back itself.
+describe('cancelDocumentEdit', () => {
+  it('hands the restore the family\u2019s derived totals', async () => {
+    await cancelDocumentEdit(db, target)
+
+    expect(h.restoreRecordSnapshot).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        entityInstanceId: MEMO_ID,
+        actorUserId: USER,
+        derivedTotalAttrs: [
+          'credit_memo_subtotal',
+          'credit_memo_tax_total',
+          'credit_memo_total',
+          'credit_memo_balance',
+        ],
+      })
+    )
+  })
+})
+
+// 75-D5. An edit that moves the total moves the memo's remaining balance.
+describe('the post-Save re-projection', () => {
+  it('settles the memo again after the repost, never before it', async () => {
+    raiseTheMemo()
+
+    await saveDocumentEdit(db, target)
+
+    expect(h.settleCreditMemo).toHaveBeenCalledWith(db, {
+      organizationId: ORG,
+      userId: USER,
+      creditMemoInstanceId: MEMO_ID,
+    })
+    expect(h.postCreditMemoEntry.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.settleCreditMemo.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('re-projects nothing when the Save had no consequence', async () => {
+    await saveDocumentEdit(db, target)
+
+    expect(h.settleCreditMemo).not.toHaveBeenCalled()
   })
 })
 

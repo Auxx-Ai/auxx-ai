@@ -34,6 +34,7 @@ const h = vi.hoisted(() => ({
   publishRecordEditStamp: vi.fn(),
   ledgerState: { draftGlPostingId: null as string | null, generation: 1 },
   writeDocumentLedgerGeneration: vi.fn(),
+  syncVendorBillPaymentState: vi.fn(async () => undefined),
 }))
 
 vi.mock('@auxx/database', async () => {
@@ -68,6 +69,9 @@ vi.mock('../../../purchasing/expense-bill/reads', () => ({
 }))
 vi.mock('../../../purchasing/expense-bill/writes', () => ({
   listVendorBillPostings: async () => h.postings,
+}))
+vi.mock('../../../money/vendor-payments/payment-state', () => ({
+  syncVendorBillPaymentState: h.syncVendorBillPaymentState,
 }))
 vi.mock('../../../purchasing/landed-cost/reads', () => ({
   readLandedAccrualRemaining: async () => new Map(),
@@ -232,6 +236,17 @@ describe('cancelDocumentEdit', () => {
       db,
       expect.objectContaining({ entityInstanceId: BILL_ID, actorUserId: USER })
     )
+  })
+
+  // 75-D4. A bill's total, subtotal and tax are transcribed and `updatable`, so
+  // the balance is the only figure Cancel has to put back by hand.
+  it('hands the restore the family’s derived totals', async () => {
+    await cancelDocumentEdit(db, target)
+
+    expect(h.restoreRecordSnapshot).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ derivedTotalAttrs: ['vendor_bill_balance'] })
+    )
     expect(h.publishRecordEditStamp).toHaveBeenCalledWith(expect.objectContaining({ edit: null }))
   })
 
@@ -360,6 +375,49 @@ describe('saveDocumentEdit', () => {
   it('refuses a bill that is no longer posted', async () => {
     h.bill = { ...h.bill, status: 'void' }
     await expect(saveDocumentEdit(db, target)).rejects.toThrow(BadRequestError)
+  })
+})
+
+// 75-D5. Moving the total moves what is still owed, and the projection is the
+// only writer of the status that gates Record payment.
+describe('the post-Save re-projection', () => {
+  it('re-projects payment state after the repost, never before it', async () => {
+    raiseTheBill()
+
+    await saveDocumentEdit(db, target)
+
+    expect(h.syncVendorBillPaymentState).toHaveBeenCalledWith(db, {
+      organizationId: ORG,
+      userId: USER,
+      vendorBillInstanceId: BILL_ID,
+    })
+    expect(h.postVendorBillEntry.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.syncVendorBillPaymentState.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('re-projects nothing when the Save had no consequence', async () => {
+    await saveDocumentEdit(db, target)
+
+    expect(h.syncVendorBillPaymentState).not.toHaveBeenCalled()
+  })
+
+  it('re-projects nothing when a refusal left the edit open', async () => {
+    raiseTheBill()
+    h.reverseEntry.mockResolvedValue({ status: 'period_closed', error: 'September is locked' })
+
+    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/September is locked/)
+    expect(h.syncVendorBillPaymentState).not.toHaveBeenCalled()
+  })
+
+  it('re-projects even with accounting off, because the status is not a ledger fact', async () => {
+    h.postings = []
+    h.postVendorBillEntry.mockResolvedValue(null)
+
+    const result = await saveDocumentEdit(db, target)
+
+    expect(result.outcome).toBe('not_posted')
+    expect(h.syncVendorBillPaymentState).toHaveBeenCalled()
   })
 })
 

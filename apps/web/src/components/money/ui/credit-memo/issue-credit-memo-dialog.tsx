@@ -121,8 +121,8 @@ export function IssueCreditMemoDialog({
         <DialogHeader>
           <DialogTitle>Issue credit memo</DialogTitle>
           <DialogDescription>
-            Posts the credit against receivable and freezes the lines. An issued memo is corrected
-            by voiding and re-issuing, never by editing.
+            Posts the credit against receivable and freezes the lines. Editing an issued memo
+            reverses its entry and posts a new one.
           </DialogDescription>
         </DialogHeader>
 

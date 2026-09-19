@@ -10,6 +10,8 @@ import { VENDOR_BILL_POSTING_TYPE } from '../../ledger/builders/entry'
 import { INVOICE_ISSUED_POSTING_TYPE } from '../../ledger/builders/invoice'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { BuiltEntry, PostResult } from '../../ledger/types'
+import { syncInvoicePaymentState } from '../../money/invoice-payments/payment-state'
+import { syncVendorBillPaymentState } from '../../money/vendor-payments/payment-state'
 import { loadVendorBillLines, requireVendorBill } from '../../purchasing/expense-bill/reads'
 import { listVendorBillPostings } from '../../purchasing/expense-bill/writes'
 import { readLandedAccrualRemaining } from '../../purchasing/landed-cost/reads'
@@ -31,6 +33,7 @@ import {
   sumCreditMemoApplications,
   sumReservedCreditMemoRefunds,
 } from '../../sales/credit-memos/reads'
+import { settleCreditMemo } from '../../sales/credit-memos/settle'
 import { loadInvoiceForEdit } from '../../sales/invoices/edit-reads'
 import {
   buildEntryForInvoiceIssuance,
@@ -85,12 +88,31 @@ export interface DocumentEditPlan {
   build(generation: number): BuiltDocumentEntry
 }
 
+/** What a family's post-Save re-projection is handed. */
+export interface DocumentEditAfterSaveInput {
+  organizationId: string
+  userId: string
+  entityInstanceId: string
+}
+
 export interface DocumentEditRow {
   readonly family: DocumentEditFamily
   /** The document in the words on the screen — `'bill'`. */
   readonly noun: string
   /** The header definition's content relationship keys (66 D6). */
   readonly children: readonly string[]
+  /**
+   * The header's content-derived `updatable: false` attributes, restored from
+   * the snapshot on Cancel (75-D4). A transcribed, `updatable` total is not one
+   * of these — it comes back through the ordinary write path.
+   */
+  readonly derivedTotalAttrs: readonly string[]
+  /**
+   * The family's payment-state projection, re-run after Save reposts (75-D5): an
+   * edit that moves the total moves what is still owed, and the projection is
+   * the only writer of the status that gates Record payment.
+   */
+  afterSave?(db: Database, input: DocumentEditAfterSaveInput): Promise<void>
   /** The posting type this document claims on its own key. */
   readonly postingType: string
   /** Lifecycle values Edit refuses outright (74 §1.3). */
@@ -116,8 +138,18 @@ const vendorBillRow: DocumentEditRow = {
   family: 'vendor_bill',
   noun: 'bill',
   children: ['lines'],
+  // `vendor_bill_total`, `_subtotal` and `_tax_total` are transcribed from the
+  // vendor's document and `updatable`, so they restore through the ordinary path.
+  derivedTotalAttrs: ['vendor_bill_balance'],
   postingType: VENDOR_BILL_POSTING_TYPE,
   editRefusedIn: ['draft', 'void'],
+
+  afterSave: (db, { organizationId, userId, entityInstanceId }) =>
+    syncVendorBillPaymentState(db, {
+      organizationId,
+      userId,
+      vendorBillInstanceId: entityInstanceId,
+    }),
 
   async load(db, organizationId, entityInstanceId) {
     const bill = await requireVendorBill(db, organizationId, entityInstanceId)
@@ -210,8 +242,18 @@ const creditMemoRow: DocumentEditRow = {
   family: 'credit_memo',
   noun: 'credit memo',
   children: ['lines'],
+  derivedTotalAttrs: [
+    'credit_memo_subtotal',
+    'credit_memo_tax_total',
+    'credit_memo_total',
+    'credit_memo_balance',
+  ],
   postingType: CREDIT_MEMO_POSTING_TYPE,
   editRefusedIn: ['draft', 'void'],
+
+  afterSave: async (db, { organizationId, userId, entityInstanceId }) => {
+    await settleCreditMemo(db, { organizationId, userId, creditMemoInstanceId: entityInstanceId })
+  },
 
   async load(db, organizationId, entityInstanceId) {
     const memo = await requireCreditMemo(db, organizationId, entityInstanceId)
@@ -307,10 +349,14 @@ const invoiceRow: DocumentEditRow = {
   family: 'invoice',
   noun: 'invoice',
   children: ['lineItems'],
+  derivedTotalAttrs: ['invoice_subtotal', 'invoice_tax_total', 'invoice_total', 'invoice_balance'],
   postingType: INVOICE_ISSUED_POSTING_TYPE,
   // A draft is already editable; a void or written-off invoice has had its
   // receivable taken back out of the books and is corrected by raising a new one.
   editRefusedIn: ['draft', 'void', 'written_off'],
+
+  afterSave: (db, { organizationId, userId, entityInstanceId }) =>
+    syncInvoicePaymentState({ db, organizationId, userId, invoiceInstanceId: entityInstanceId }),
 
   async load(db, organizationId, entityInstanceId) {
     const invoice = await loadInvoiceForEdit(db, organizationId, entityInstanceId)
