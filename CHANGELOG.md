@@ -1,5 +1,93 @@
 # Changelog
 
+## [0.1.239](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.238...auxx-v0.1.239) (2026-09-19)
+
+
+### Features
+
+* **accounting:** a real date range on the reports, and one way to drill in ([#2192](https://github.com/Auxx-Ai/auxx-ai/issues/2192)) ([c8cdf89](https://github.com/Auxx-Ai/auxx-ai/commit/c8cdf89d04b2d7789d3144f82f047e93dc98a7a7))
+* **accounting:** add atomic effect acceptance foundation ([#2168](https://github.com/Auxx-Ai/auxx-ai/issues/2168)) ([d9a9bb2](https://github.com/Auxx-Ai/auxx-ai/commit/d9a9bb2a6f4bc6118d9d0b49815fe1ffa2c337ce))
+* **accounting:** add credit and refund effect commands ([#2179](https://github.com/Auxx-Ai/auxx-ai/issues/2179)) ([eb31b31](https://github.com/Auxx-Ai/auxx-ai/commit/eb31b3190beb3c2973481ed6aeaef835c68f1d21))
+* **accounting:** add posting controls and payout source support ([#2164](https://github.com/Auxx-Ai/auxx-ai/issues/2164)) ([1db0743](https://github.com/Auxx-Ai/auxx-ai/commit/1db0743c2fbc7142a4813ee110554e3fe752d79b))
+* **accounting:** affirm as a settlement source, and the financial-source contract in the SDK ([#2188](https://github.com/Auxx-Ai/auxx-ai/issues/2188)) ([5658610](https://github.com/Auxx-Ai/auxx-ai/commit/56586107476917e00616724306b6961e91089cb4))
+* **accounting:** an account per source ([#2174](https://github.com/Auxx-Ai/auxx-ai/issues/2174)) ([f7ac10e](https://github.com/Auxx-Ai/auxx-ai/commit/f7ac10e4888c4527a8daae0a43a53cfb0594d636))
+* **accounting:** clearing subtypes, source account labels, payout paging ([#2180](https://github.com/Auxx-Ai/auxx-ai/issues/2180)) ([214c365](https://github.com/Auxx-Ai/auxx-ai/commit/214c3659a54a3a9030405b2effe5300be7fc4c42))
+* **accounting:** document effects, a pre-export gate, the register, and the ledger page rebuilt ([#2185](https://github.com/Auxx-Ai/auxx-ai/issues/2185)) ([a4c65cd](https://github.com/Auxx-Ai/auxx-ai/commit/a4c65cdf48dbf9a8eccb651f66aed933a33375a3))
+* **accounting:** every posting can be reversed, effect-backed or not (62) ([#2207](https://github.com/Auxx-Ai/auxx-ai/issues/2207)) ([5786001](https://github.com/Auxx-Ai/auxx-ai/commit/57860018526d1043004b9e61225b386cadf0932c))
+* **accounting:** invoice receipts on the money model, and one command runner ([#2186](https://github.com/Auxx-Ai/auxx-ai/issues/2186)) ([700ac1c](https://github.com/Auxx-Ai/auxx-ai/commit/700ac1cdef9d49c86dcb3dd5615302918b16ff0d))
+* **accounting:** native provider objects, PO receipt per document, export queue book guard (67) ([#2212](https://github.com/Auxx-Ai/auxx-ai/issues/2212)) ([f43fca1](https://github.com/Auxx-Ai/auxx-ai/commit/f43fca1da6d89654d1849e939062d2d4af4acb9b))
+* **accounting:** one cash endpoint - every money movement finds its cash account the same way ([#2257](https://github.com/Auxx-Ai/auxx-ai/issues/2257)) ([4d3a801](https://github.com/Auxx-Ai/auxx-ai/commit/4d3a801c0e1491a00d15725acf02b9f39007a26f))
+* **accounting:** one ledger, one poster, export batches, provider mirror, inventory per document ([#2211](https://github.com/Auxx-Ai/auxx-ai/issues/2211)) ([5c18a06](https://github.com/Auxx-Ai/auxx-ai/commit/5c18a06b27f1f4d0bec46612e6b9ffd4e7705111))
+* **accounting:** one mapping table — the rail scope, and the Mapping tab ([#2201](https://github.com/Auxx-Ai/auxx-ai/issues/2201)) ([1b46920](https://github.com/Auxx-Ai/auxx-ai/commit/1b46920b488cb62cd5fbcd6abce0f11e441fed34))
+* **accounting:** open a posting from a statement without leaving it ([#2191](https://github.com/Auxx-Ai/auxx-ai/issues/2191)) ([1b8af3f](https://github.com/Auxx-Ai/auxx-ai/commit/1b8af3f0d049a094c669127842db30bbf91090cd))
+* **accounting:** payment corrections, and the invariant the ledger never had ([#2187](https://github.com/Auxx-Ai/auxx-ai/issues/2187)) ([c62b0ef](https://github.com/Auxx-Ai/auxx-ai/commit/c62b0ef1a7c16f565c080a85ec05148b0c9c8807))
+* **accounting:** payout links - member rows, stored match state, accept/manual match, one lane ([#2253](https://github.com/Auxx-Ai/auxx-ai/issues/2253)) ([5d289d4](https://github.com/Auxx-Ai/auxx-ai/commit/5d289d436ba54fc63852c089640c2b8443eaa540))
+* **accounting:** posting settings in two columns, sync status in the toolbar ([#2190](https://github.com/Auxx-Ai/auxx-ai/issues/2190)) ([1f71d1c](https://github.com/Auxx-Ai/auxx-ai/commit/1f71d1cfdbcdfa9e877f70f028dcd8fada7ae2f2))
+* **accounting:** provider limits and capabilities, unit D driver, sandbox fixes (67 D) ([#2243](https://github.com/Auxx-Ai/auxx-ai/issues/2243)) ([5c3127a](https://github.com/Auxx-Ai/auxx-ai/commit/5c3127a2a4ca5e4045b3231c8d0c3c34d434317d))
+* **accounting:** recognize shopify receipts and shipments ([#2170](https://github.com/Auxx-Ai/auxx-ai/issues/2170)) ([738ea37](https://github.com/Auxx-Ai/auxx-ai/commit/738ea37658de2a53ef154f5405dde30b7763100d))
+* **accounting:** select-all on the two queues, and a sync queue that fills its column ([#2202](https://github.com/Auxx-Ai/auxx-ai/issues/2202)) ([68455d3](https://github.com/Auxx-Ai/auxx-ai/commit/68455d3f61b859869ff5275f6f12ae8cbadb8458))
+* **accounting:** settlements reads like payouts, and the payout drawer is shared ([#2263](https://github.com/Auxx-Ai/auxx-ai/issues/2263)) ([b5b2503](https://github.com/Auxx-Ai/auxx-ai/commit/b5b25034bbf558a6932916caec5dfbd43607d772))
+* **accounting:** sub-accounts - a hierarchy for the chart of accounts ([#2245](https://github.com/Auxx-Ai/auxx-ai/issues/2245)) ([9f2c1cd](https://github.com/Auxx-Ai/auxx-ai/commit/9f2c1cd077c0843a2a2f9b77a53eff24151af1fb))
+* **accounting:** syncing a sub-account creates its parents too ([#2246](https://github.com/Auxx-Ai/auxx-ai/issues/2246)) ([9828096](https://github.com/Auxx-Ai/auxx-ai/commit/98280961b488a198b1958a89547c566f5aefa4bf))
+* **accounting:** the buy side against the ledger (73) ([#2260](https://github.com/Auxx-Ai/auxx-ai/issues/2260)) ([7500fdb](https://github.com/Auxx-Ai/auxx-ai/commit/7500fdbbcf5ac6928c5498ac38cf2155b99da299))
+* **accounting:** the closeout's two notices become tree rows ([#2194](https://github.com/Auxx-Ai/auxx-ai/issues/2194)) ([a97509d](https://github.com/Auxx-Ai/auxx-ai/commit/a97509d9e5ae76bb29f53891612ba51cf3ca3249))
+* **accounting:** the evidence bridge - records become evidence rows, in batches ([#2254](https://github.com/Auxx-Ai/auxx-ai/issues/2254)) ([f649fb0](https://github.com/Auxx-Ai/auxx-ai/commit/f649fb0cb6c8d0193061112b3beeff689227560b))
+* **accounting:** the fiscal year starts in a month the org picks ([#2199](https://github.com/Auxx-Ai/auxx-ai/issues/2199)) ([d2d99c1](https://github.com/Auxx-Ai/auxx-ai/commit/d2d99c1f6e7fca685836ed36912e2e2190e2ad39))
+* **accounting:** the inbound sync runs in a worker (55) ([#2205](https://github.com/Auxx-Ai/auxx-ai/issues/2205)) ([ecb6a53](https://github.com/Auxx-Ai/auxx-ai/commit/ecb6a53f9459b4221eba50a9ac71223a25d64da5))
+* **accounting:** the ledger Outbox - Drafts folds into the export queue ([#2241](https://github.com/Auxx-Ai/auxx-ai/issues/2241)) ([84ffd5c](https://github.com/Auxx-Ai/auxx-ai/commit/84ffd5c4aa425e46584ba19f2ce0697d4e0e41ae))
+* **accounting:** the posting drawer says its outcome in the header ([#2198](https://github.com/Auxx-Ai/auxx-ai/issues/2198)) ([79d9ff6](https://github.com/Auxx-Ai/auxx-ai/commit/79d9ff676024c2ec163b0eeaf4a93788d671302e))
+* **accounting:** the reports keep one window, and as-of takes a date ([#2196](https://github.com/Auxx-Ai/auxx-ai/issues/2196)) ([5f386c1](https://github.com/Auxx-Ai/auxx-ai/commit/5f386c1e3f0778380e230a0420ca2fa067398f8f))
+* **accounting:** the sync queue, a neutral delivery vocabulary, and component partitioning ([#2183](https://github.com/Auxx-Ai/auxx-ai/issues/2183)) ([9174b4b](https://github.com/Auxx-Ai/auxx-ai/commit/9174b4b064b27f46dc96390b092f6b079db1c136))
+* **accounting:** the trial balance closes the year ([#2200](https://github.com/Auxx-Ai/auxx-ai/issues/2200)) ([1655e5e](https://github.com/Auxx-Ai/auxx-ai/commit/1655e5ee029cb5110e88bbbea49167baf9976445))
+* **accounting:** un-syncing from the provider (60) ([#2206](https://github.com/Auxx-Ai/auxx-ai/issues/2206)) ([a0c0321](https://github.com/Auxx-Ai/auxx-ai/commit/a0c0321b68f1f4e3fd237c36f18fa1f4f08e7029))
+* **accounting:** what 58 left behind (64) ([#2209](https://github.com/Auxx-Ai/auxx-ai/issues/2209)) ([34cc9fd](https://github.com/Auxx-Ai/auxx-ai/commit/34cc9fd5beade81e6c6eb8c1bfcd739f2fab073d))
+* **accounting:** what 73 left open (74) — the edit lane, the discount, the landed-cost voucher ([#2264](https://github.com/Auxx-Ai/auxx-ai/issues/2264)) ([12ffbff](https://github.com/Auxx-Ai/auxx-ai/commit/12ffbff229978c227b062d6060d86b33025a8d8e))
+* add accounting delivery and customer money tracking ([#2169](https://github.com/Auxx-Ai/auxx-ai/issues/2169)) ([9049c94](https://github.com/Auxx-Ai/auxx-ai/commit/9049c947f9c10bf65d7196022919e34821b2ee45))
+* **api:** records and resources read API for apps (outbound 01) ([#2210](https://github.com/Auxx-Ai/auxx-ai/issues/2210)) ([30fbc45](https://github.com/Auxx-Ai/auxx-ai/commit/30fbc4504a24d9f24f0d3baf0a0c74cbd592bf59))
+* **banking:** payout drawer and list in the app's own idiom ([#2177](https://github.com/Auxx-Ai/auxx-ai/issues/2177)) ([04e4210](https://github.com/Auxx-Ai/auxx-ai/commit/04e421016a2cbf54a9e082b6a01f7a5346e626a8))
+* **banking:** payouts and settlements are two pages ([#2173](https://github.com/Auxx-Ai/auxx-ai/issues/2173)) ([4d31c6f](https://github.com/Auxx-Ai/auxx-ai/commit/4d31c6f3fa4b7973956d1628f286db24190f4a42))
+* **connections:** offer optional OAuth scopes on the platform client ([#2167](https://github.com/Auxx-Ai/auxx-ai/issues/2167)) ([cdcb87f](https://github.com/Auxx-Ai/auxx-ai/commit/cdcb87fa7a0315dc85799ee4e03a18711c4fb519))
+* **documents:** every document def gets the documents card ([#2208](https://github.com/Auxx-Ai/auxx-ai/issues/2208)) ([247269a](https://github.com/Auxx-Ai/auxx-ai/commit/247269aa1cfb76007f351f8029bf0cc9d8e69037))
+* **lib:** system-records reader primitive (LIB-LAYOUT B1) ([#2220](https://github.com/Auxx-Ai/auxx-ai/issues/2220)) ([5b56e0e](https://github.com/Auxx-Ai/auxx-ai/commit/5b56e0e75fa83453ec373c4c11cb3532ec62be6c))
+* preserve credit application history and retry identity ([#2176](https://github.com/Auxx-Ai/auxx-ai/issues/2176)) ([a9c5afa](https://github.com/Auxx-Ai/auxx-ai/commit/a9c5afacf9fc487d50c89ff2047829701d88af5d))
+* **purchasing:** add invoice intake foundation and vendor bill page ([#2163](https://github.com/Auxx-Ai/auxx-ai/issues/2163)) ([a17b08e](https://github.com/Auxx-Ai/auxx-ai/commit/a17b08e9fb440bd187dfd6757b6dc6a2fa5caa66))
+* **purchasing:** complete vendor bill invoice intake and review ([#2166](https://github.com/Auxx-Ai/auxx-ai/issues/2166)) ([be3ba98](https://github.com/Auxx-Ai/auxx-ai/commit/be3ba98b886099237d4df069711cc7e0cef054c2))
+* **tariffs:** section 232 derivatives and the note 52 per-origin duty ([#2255](https://github.com/Auxx-Ai/auxx-ai/issues/2255)) ([8c6664a](https://github.com/Auxx-Ai/auxx-ai/commit/8c6664a0ee26d815bf0aa37d7eb46f4e2d987af3))
+
+
+### Bug Fixes
+
+* **accounting:** 73 follow-ups from the browser retest ([#2261](https://github.com/Auxx-Ai/auxx-ai/issues/2261)) ([ed22d4a](https://github.com/Auxx-Ai/auxx-ai/commit/ed22d4a01796cb4baa67e61a95f498ac93c09997))
+* **accounting:** a deleted journal no longer reports its month as posted ([#2193](https://github.com/Auxx-Ai/auxx-ai/issues/2193)) ([03690be](https://github.com/Auxx-Ai/auxx-ai/commit/03690be0718577f4100a16905563d278a790a384))
+* **accounting:** a movement is drafted once, and the outbox and deposits name their records ([#2259](https://github.com/Auxx-Ai/auxx-ai/issues/2259)) ([8f49049](https://github.com/Auxx-Ai/auxx-ai/commit/8f490494bac6197eff1d5a553a445781b313a22f))
+* **accounting:** a payment's document number keys on its movement, not the day ([#2262](https://github.com/Auxx-Ai/auxx-ai/issues/2262)) ([d22b887](https://github.com/Auxx-Ai/auxx-ai/commit/d22b88741e6d92edc6e7808a1c03feb81c0b7a12))
+* **accounting:** a provider entry id is unique per company, not per org ([#2197](https://github.com/Auxx-Ai/auxx-ai/issues/2197)) ([0c4b9a4](https://github.com/Auxx-Ai/auxx-ai/commit/0c4b9a457b295dd132dbeec21421dab5d6b85303))
+* **accounting:** chart import names a sub-account by its full path ([#2244](https://github.com/Auxx-Ai/auxx-ai/issues/2244)) ([2a027b6](https://github.com/Auxx-Ai/auxx-ai/commit/2a027b6c0a829fe17cb02744f6bbf6dd072735f1))
+* **accounting:** reconcile financial records through standard fields ([#2171](https://github.com/Auxx-Ai/auxx-ai/issues/2171)) ([448cdfc](https://github.com/Auxx-Ai/auxx-ai/commit/448cdfce6723fa31db42aa992fb35951244c535d))
+* **accounting:** settlements rows select, open on click, and keep the drawer mounted ([#2265](https://github.com/Auxx-Ai/auxx-ai/issues/2265)) ([ae65926](https://github.com/Auxx-Ai/auxx-ai/commit/ae65926b349f4027d5beb6e7f400c51f11ef979f))
+* **accounting:** statements stop warning about what is in them ([#2189](https://github.com/Auxx-Ai/auxx-ai/issues/2189)) ([02a99f0](https://github.com/Auxx-Ai/auxx-ai/commit/02a99f0d9b0754525c1b554240e04e8148d3e656))
+* **accounting:** store-axis scoping, a named source account, and the settlements page ([#2178](https://github.com/Auxx-Ai/auxx-ai/issues/2178)) ([cf07c2e](https://github.com/Auxx-Ai/auxx-ai/commit/cf07c2eedd94d873f91e84f81a2ce4d404996e86))
+* **accounting:** the delivery sweep gives up instead of retrying forever ([#2203](https://github.com/Auxx-Ai/auxx-ai/issues/2203)) ([35265c3](https://github.com/Auxx-Ai/auxx-ai/commit/35265c3749a9315e6661b53c66e332a76871376e))
+* **accounting:** the finalize page read the trial balance before the save landed ([#2251](https://github.com/Auxx-Ai/auxx-ai/issues/2251)) ([5ae89ba](https://github.com/Auxx-Ai/auxx-ai/commit/5ae89ba4b9f9cd2c4bb266adbf83b4d074c0c6cf))
+* **accounting:** the gateway panel scrolls itself, and its rows read as sections ([#2252](https://github.com/Auxx-Ai/auxx-ai/issues/2252)) ([e8645b7](https://github.com/Auxx-Ai/auxx-ai/commit/e8645b7b95a2cc8be3f148c05677bcecb3980377))
+* **accounting:** the never-run receipt integration fixtures match their contracts ([#2204](https://github.com/Auxx-Ai/auxx-ai/issues/2204)) ([2c6f89c](https://github.com/Auxx-Ai/auxx-ai/commit/2c6f89ca5c88794f4b946262b881caab6af55492))
+* **accounting:** the pointer scan by field id, and one reset tool ([#2249](https://github.com/Auxx-Ai/auxx-ai/issues/2249)) ([301776c](https://github.com/Auxx-Ai/auxx-ai/commit/301776cc1c198953c81b9341b3c5a142fb93b675))
+* **accounting:** the wizard gate, and books that start at the cutover ([#2250](https://github.com/Auxx-Ai/auxx-ai/issues/2250)) ([1b1f2d7](https://github.com/Auxx-Ai/auxx-ai/commit/1b1f2d70e0115846545aef074eab2b8f8326ed33))
+* **accounting:** vendor credit router names, order drawer cards, open in ledger ([#2258](https://github.com/Auxx-Ai/auxx-ai/issues/2258)) ([b8bee73](https://github.com/Auxx-Ai/auxx-ai/commit/b8bee7380b7bf7d3d6a7520f7bf00568ab951fea))
+* **connectors:** preserve financial facts and pause active syncs ([#2175](https://github.com/Auxx-Ai/auxx-ai/issues/2175)) ([9d789bc](https://github.com/Auxx-Ai/auxx-ai/commit/9d789bc8ddc47ea31a36b315017b285cecda795c))
+* **data-connectors:** listRuns stops selecting the 16MB run manifest ([#2256](https://github.com/Auxx-Ai/auxx-ai/issues/2256)) ([0dfb664](https://github.com/Auxx-Ai/auxx-ai/commit/0dfb664fd61bffb403444532bc9c97af8355a76d))
+* **entity:** hide customer and processor transaction defs ([#2172](https://github.com/Auxx-Ai/auxx-ai/issues/2172)) ([6513a83](https://github.com/Auxx-Ai/auxx-ai/commit/6513a83dca4cdea746c18391584316dac50b2a96))
+* **jobs:** every custom BullMQ job id containing a colon was rejected ([#2247](https://github.com/Auxx-Ai/auxx-ai/issues/2247)) ([52eae9b](https://github.com/Auxx-Ai/auxx-ai/commit/52eae9b3dbba17f21fdb19c480d6cf295e8bfe3e))
+* **lib:** recordAudit rolls back with its transaction, ratchet prefix, connections guide (LIB-LAYOUT A3 follow-up) ([#2216](https://github.com/Auxx-Ai/auxx-ai/issues/2216)) ([a414dd2](https://github.com/Auxx-Ai/auxx-ai/commit/a414dd213404ff54af8a8f16eba5c0091e766785))
+* **lib:** related() falls back to the instance id, two archived reads restored (LIB-LAYOUT B4) ([#2240](https://github.com/Auxx-Ai/auxx-ai/issues/2240)) ([83c80e5](https://github.com/Auxx-Ai/auxx-ai/commit/83c80e5861a9c0553d496f28655cc332aebcc095))
+* **ui:** date range picker selection + feat(accounting): GL account picker icons, link state and add rows ([#2181](https://github.com/Auxx-Ai/auxx-ai/issues/2181)) ([54b8da3](https://github.com/Auxx-Ai/auxx-ai/commit/54b8da3d4c7d2f88d0b12bcfee0b166dca31b425))
+
+
+### Performance Improvements
+
+* **accounting:** cut bulk fulfillment posting round trips, and queue the QuickBooks export ([#2182](https://github.com/Auxx-Ai/auxx-ai/issues/2182)) ([df977ea](https://github.com/Auxx-Ai/auxx-ai/commit/df977eac985f14e2e62f3ba02f285d1df17bcae3))
+* **accounting:** cut redundant reads from the pinned-connection and install paths ([#2184](https://github.com/Auxx-Ai/auxx-ai/issues/2184)) ([8e2a210](https://github.com/Auxx-Ai/auxx-ai/commit/8e2a210efaadac369067c0d109595d41480163e8))
+
 ## [0.1.238](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.237...auxx-v0.1.238) (2026-09-14)
 
 
