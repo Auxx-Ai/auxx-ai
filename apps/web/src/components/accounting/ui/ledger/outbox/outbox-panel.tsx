@@ -69,7 +69,13 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { exportAvenueLabel } from '../export-avenue-labels'
-import { EMPTY_CELL, formatAccountingDate, formatMinor } from '../format'
+import {
+  EMPTY_CELL,
+  formatAccountingDate,
+  formatMinor,
+  formatShortPeriodLabel,
+  humanizePostingType,
+} from '../format'
 import { useLedgerSources } from '../use-ledger-sources'
 import { DraftsPanel } from './drafts-panel'
 import { ExportBatchStateBadge } from './export-batch-badge'
@@ -401,21 +407,23 @@ function OutboxBody({
                 release.isPending && release.variables?.batchIds.includes(batch.id) === true
               const rollingBack =
                 rollback.isPending && (rollback.variables?.batchId === batch.id || bulkRunning)
+              const StateIcon = TAB_ICON[batch.state as OutboxTab] ?? CheckCircle2
 
               return (
                 <TreeRow
                   className={TREE_SECONDARY_NOTRUNCATE}
+                  icon={<StateIcon className='size-4 text-muted-foreground' />}
                   expandable
                   isOpen={isOpen}
                   selectable={selectable}
                   selecting={selecting}
                   selected={selectedIds.includes(batch.id)}
                   onSelectChange={(_next, event) => toggle(batch.id, { shiftKey: event.shiftKey })}
-                  selectLabel={`Select batch ${batch.grainKey}`}
+                  selectLabel={`Select ${exportAvenueLabel(batch.avenue)} batch of ${batchDateLabel(batch, bookTimeZone)}`}
                   title={
                     <span className='flex min-w-0 items-center gap-1.5'>
-                      <span className='w-24 shrink-0 font-mono text-muted-foreground text-xs'>
-                        {batch.grainKey}
+                      <span className='w-24 shrink-0 font-mono text-muted-foreground text-xs tabular-nums'>
+                        {batchDateLabel(batch, bookTimeZone)}
                       </span>
                       <span className='truncate text-sm'>{exportAvenueLabel(batch.avenue)}</span>
                     </span>
@@ -594,24 +602,29 @@ function BatchMembers({
           key={member.glPostingId}
           depth={1}
           className={TREE_SECONDARY_NOTRUNCATE}
-          icon={<PanelRight className='size-3.5 text-muted-foreground' />}
           title={
             <span className='flex min-w-0 items-center gap-1.5'>
+              <span className='w-24 shrink-0 font-mono text-muted-foreground text-xs tabular-nums'>
+                {formatAccountingDate(member.txnDate, bookTimeZone)}
+              </span>
               <span className='shrink-0 font-mono text-xs'>{member.docNumber || EMPTY_CELL}</span>
               <span className='truncate text-muted-foreground text-xs'>
-                {member.postingType.replace(/_/g, ' ')}
+                {humanizePostingType(member.postingType)}
               </span>
             </span>
           }
-          secondary={
-            <span className='text-muted-foreground text-xs'>
-              {formatAccountingDate(member.txnDate, bookTimeZone)}
-            </span>
-          }
           actions={
-            <span className='font-mono text-xs tabular-nums'>
-              {formatMinor(member.totalMinor, currencyCode)}
-            </span>
+            <div className='flex items-center gap-2'>
+              <span className='font-mono text-xs tabular-nums'>
+                {formatMinor(member.totalMinor, currencyCode)}
+              </span>
+              <TreeRowButton
+                persistent
+                tooltipText='Open details'
+                onClick={() => onSelectPosting(member.glPostingId)}>
+                <PanelRight />
+              </TreeRowButton>
+            </div>
           }
           onToggleOpen={() => onSelectPosting(member.glPostingId)}
           rowClassName={
@@ -623,6 +636,16 @@ function BatchMembers({
       ))}
     </div>
   )
+}
+
+/** The posting's day in Transaction mode; the summary grain (a day or a month) otherwise. */
+function batchDateLabel(batch: ExportBatchRow, bookTimeZone: string): string {
+  if (batch.mode === 'transaction') {
+    const day = batch.members[0]?.txnDate
+    return day ? formatAccountingDate(day, bookTimeZone) : EMPTY_CELL
+  }
+  if (/^\d{4}-\d{2}$/.test(batch.grainKey)) return formatShortPeriodLabel(batch.grainKey)
+  return formatAccountingDate(batch.grainKey, bookTimeZone)
 }
 
 function buildResultSentence(result: {
