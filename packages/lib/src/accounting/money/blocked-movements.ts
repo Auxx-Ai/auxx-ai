@@ -15,7 +15,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, asc, count, eq, isNotNull, sql } from 'drizzle-orm'
+import { and, asc, count, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { NotFoundError, UnprocessableEntityError } from '../../errors'
 import { readOrganizationSettings } from '../../settings/read'
 import { postCustomerReceiptAccounting } from './customer-money/accounting'
@@ -214,12 +214,31 @@ export interface BlockedMovementRow {
   occurredAt: Date | null
   /** The customer or vendor the money moved with, when the movement names one. */
   partyName: string | null
+  partyInstanceId: string | null
+  partyDefinitionId: string | null
+  cashAccountInstanceId: string | null
   reference: string | null
+  note: string | null
+  method: MovementRow['method']
   /** `postEntry`'s own words. Rendered verbatim - never paraphrased. */
   reason: string
   blockedAt: Date | null
   /** `account_unmapped` gets the remedy card; everything else is plain text. */
   reasonKind: 'account_unmapped' | 'other'
+}
+
+/** A record a movement points at, with which role it plays for the movement. */
+export interface MovementLinkedRecord {
+  role: 'cash_account' | 'order' | 'invoice' | 'vendor_bill' | 'quote'
+  instanceId: string
+  definitionId: string | null
+  displayName: string | null
+}
+
+/** One parked movement in full - the drawer's read. */
+export interface BlockedMovementDetail extends BlockedMovementRow {
+  /** The cash account, then every document the money was applied to. */
+  links: MovementLinkedRecord[]
 }
 
 /**
@@ -243,13 +262,9 @@ function blockedWhere(organizationId: string) {
   )
 }
 
-/** Newest refusal first, so a role somebody just hit surfaces above a year of backlog. */
-export async function listBlockedMovements(
-  db: Database,
-  organizationId: string,
-  options: { limit?: number; offset?: number } = {}
-): Promise<BlockedMovementRow[]> {
-  const rows = await db
+/** The row's columns with the party joined - the list and the detail select the same thing. */
+function selectBlockedRows(db: Database) {
+  return db
     .select({
       id: schema.MoneyTransaction.id,
       purpose: schema.MoneyTransaction.purpose,
@@ -259,7 +274,12 @@ export async function listBlockedMovements(
       occurredOn: schema.MoneyTransaction.occurredOn,
       occurredAt: schema.MoneyTransaction.occurredAt,
       partyName: schema.EntityInstance.displayName,
+      partyInstanceId: schema.EntityInstance.id,
+      partyDefinitionId: schema.EntityInstance.entityDefinitionId,
+      cashAccountInstanceId: schema.MoneyTransaction.cashAccountInstanceId,
       reference: schema.MoneyTransaction.reference,
+      note: schema.MoneyTransaction.note,
+      method: schema.MoneyTransaction.method,
       reason: schema.MoneyTransaction.postingBlockedReason,
       blockedAt: schema.MoneyTransaction.postingBlockedAt,
       reasonKind: REASON_KIND,
@@ -272,6 +292,23 @@ export async function listBlockedMovements(
         eq(schema.EntityInstance.id, schema.MoneyTransaction.partyInstanceId)
       )
     )
+}
+
+type SelectedBlockedRow = Awaited<
+  ReturnType<ReturnType<typeof selectBlockedRows>['execute']>
+>[number]
+
+function toBlockedRow(row: SelectedBlockedRow): BlockedMovementRow {
+  return { ...row, amountMinor: Number(row.amountMinor), reason: row.reason ?? '' }
+}
+
+/** Newest refusal first, so a role somebody just hit surfaces above a year of backlog. */
+export async function listBlockedMovements(
+  db: Database,
+  organizationId: string,
+  options: { limit?: number; offset?: number } = {}
+): Promise<BlockedMovementRow[]> {
+  const rows = await selectBlockedRows(db)
     .where(blockedWhere(organizationId))
     .orderBy(
       sql`${schema.MoneyTransaction.postingBlockedAt} DESC NULLS LAST`,
@@ -279,12 +316,81 @@ export async function listBlockedMovements(
     )
     .limit(options.limit ?? 50)
     .offset(options.offset ?? 0)
+  return rows.map(toBlockedRow)
+}
 
-  return rows.map((row) => ({
-    ...row,
-    amountMinor: Number(row.amountMinor),
-    reason: row.reason ?? '',
-  }))
+/** One parked movement with the records it points at, or `null` once it has posted or never was parked. */
+export async function readBlockedMovement(
+  db: Database,
+  organizationId: string,
+  moneyTransactionId: string
+): Promise<BlockedMovementDetail | null> {
+  const [row] = await selectBlockedRows(db)
+    .where(and(blockedWhere(organizationId), eq(schema.MoneyTransaction.id, moneyTransactionId)))
+    .limit(1)
+  if (!row) return null
+
+  const applications = await db
+    .select({
+      orderInstanceId: schema.MoneyApplication.orderInstanceId,
+      invoiceInstanceId: schema.MoneyApplication.invoiceInstanceId,
+      vendorBillInstanceId: schema.MoneyApplication.vendorBillInstanceId,
+      quoteInstanceId: schema.MoneyApplication.quoteInstanceId,
+    })
+    .from(schema.MoneyApplication)
+    .where(
+      and(
+        eq(schema.MoneyApplication.organizationId, organizationId),
+        eq(schema.MoneyApplication.moneyTransactionId, moneyTransactionId),
+        eq(schema.MoneyApplication.operation, 'apply')
+      )
+    )
+    .orderBy(asc(schema.MoneyApplication.appliedAt))
+
+  const refs: Array<{ role: MovementLinkedRecord['role']; instanceId: string }> = []
+  const seen = new Set<string>()
+  const push = (role: MovementLinkedRecord['role'], instanceId: string | null) => {
+    if (!instanceId || seen.has(instanceId)) return
+    seen.add(instanceId)
+    refs.push({ role, instanceId })
+  }
+  push('cash_account', row.cashAccountInstanceId)
+  for (const application of applications) {
+    push('order', application.orderInstanceId)
+    push('invoice', application.invoiceInstanceId)
+    push('vendor_bill', application.vendorBillInstanceId)
+    push('quote', application.quoteInstanceId)
+  }
+
+  const instances =
+    refs.length === 0
+      ? []
+      : await db
+          .select({
+            id: schema.EntityInstance.id,
+            definitionId: schema.EntityInstance.entityDefinitionId,
+            displayName: schema.EntityInstance.displayName,
+          })
+          .from(schema.EntityInstance)
+          .where(
+            and(
+              eq(schema.EntityInstance.organizationId, organizationId),
+              inArray(
+                schema.EntityInstance.id,
+                refs.map((ref) => ref.instanceId)
+              )
+            )
+          )
+  const byId = new Map(instances.map((instance) => [instance.id, instance]))
+
+  return {
+    ...toBlockedRow(row),
+    links: refs.map((ref) => ({
+      ...ref,
+      definitionId: byId.get(ref.instanceId)?.definitionId ?? null,
+      displayName: byId.get(ref.instanceId)?.displayName ?? null,
+    })),
+  }
 }
 
 /** The tab's badge. SQL, because a dev org already holds ~1,100 of these. */

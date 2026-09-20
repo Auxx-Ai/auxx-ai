@@ -9,6 +9,11 @@ export {
   type ReadLedgerSummaryOptions,
   readLedgerSummary,
 } from './ledger-summary'
-export { listPostings, listPostingsForSource, type SourcePosting } from './list-postings'
+export {
+  countDraftPostings,
+  listPostings,
+  listPostingsForSource,
+  type SourcePosting,
+} from './list-postings'
 export { getPosting, readPostingLineSourceIds } from './read-posting'
 export { summaryGrainKey } from './summary-grain'

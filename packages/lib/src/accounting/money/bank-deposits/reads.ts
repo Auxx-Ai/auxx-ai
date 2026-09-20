@@ -236,7 +236,8 @@ async function hydrateReceipts(
       amountMinor: Number(row.amountMinor),
       date: row.occurredOn ?? row.occurredAt?.toISOString().slice(0, 10) ?? null,
       method: row.method,
-      reference: row.reference,
+      // Channel money's `reference` is the provider's own id; only a hand-recorded payment carries one somebody typed.
+      reference: row.method ? row.reference : null,
       invoiceInstanceId,
       invoiceName: invoiceInstanceId ? (invoiceNames.get(invoiceInstanceId) ?? null) : null,
       invoiceRecordId: recordId(invoiceDefId, invoiceInstanceId),

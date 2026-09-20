@@ -37,8 +37,12 @@ export function parseOutboxTab(value: string | null | undefined): OutboxTab | nu
 }
 
 /** Which batch states a tab lists. Ready holds `sending` too (75-D6). */
+export function exportBatchTabStates(tab: ExportBatchTab): ExportBatchState[] {
+  return tab === 'ready' ? ['ready', 'sending'] : [tab]
+}
+
 export function exportBatchTabAdmits(tab: ExportBatchTab, state: ExportBatchState): boolean {
-  return tab === 'ready' ? state === 'ready' || state === 'sending' : state === tab
+  return exportBatchTabStates(tab).includes(state)
 }
 
 const LABELS: Record<ExportBatchState, string> = {

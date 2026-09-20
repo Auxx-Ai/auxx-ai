@@ -29,7 +29,7 @@ import {
   Send,
   Undo2,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -115,21 +115,15 @@ export function PostingDrawer({
     { enabled: !!postingId, staleTime: 30_000 }
   )
 
-  // The Export section's read (step 3 part C): every batch, the same
-  // unbounded read the queue itself renders (`ledger.exportBatches.list`), so
-  // this rides that cache instead of adding a second shape of the same query.
-  // A `withdrawn` batch's `ExportBatchPosting` rows are excluded server-side
-  // (`isNull(withdrawnAt)`), so a member found here always belongs to a batch
-  // still on one of the queue's four tabs.
-  const exportBatchesQuery = api.ledger.exportBatches.list.useQuery({}, { enabled: !!postingId })
-  const exportBatch = useMemo(() => {
-    if (!postingId) return null
-    return (
-      (exportBatchesQuery.data ?? []).find((batch) =>
-        batch.members.some((member) => member.glPostingId === postingId)
-      ) ?? null
-    )
-  }, [exportBatchesQuery.data, postingId])
+  // The Export section's read (step 3 part C): the batch this posting is a live
+  // member of. A `withdrawn` batch's `ExportBatchPosting` rows are excluded
+  // server-side (`isNull(withdrawnAt)`), so a match always belongs to a batch
+  // still on one of the queue's tabs.
+  const exportBatchesQuery = api.ledger.exportBatches.list.useQuery(
+    { glPostingIds: postingId ? [postingId] : [] },
+    { enabled: !!postingId }
+  )
+  const exportBatch = exportBatchesQuery.data?.items[0] ?? null
 
   /** Nothing to put in the strip is an absent strip, not an empty flex row. */
   const headerActions = detail?.status === 'posted'

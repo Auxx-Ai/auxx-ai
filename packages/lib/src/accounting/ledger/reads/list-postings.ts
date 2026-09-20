@@ -27,7 +27,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toDateKey, toIso } from '@auxx/utils/calendar-day'
-import { and, desc, eq, gte, inArray, lt, ne } from 'drizzle-orm'
+import { and, count, desc, eq, gte, inArray, lt, ne } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../../errors'
 import type { PostingSummary } from '../../journals/entries/client'
@@ -78,9 +78,10 @@ export async function listPostings(
     periodKey?: string | null
     status?: PostingStatus
     limit?: number
+    offset?: number
   }
 ): Promise<Result<PostingSummary[], Error>> {
-  const { organizationId, periodKey, status, limit = DEFAULT_LIMIT } = options
+  const { organizationId, periodKey, status, limit = DEFAULT_LIMIT, offset = 0 } = options
 
   try {
     // A malformed month is still an error. Only an ABSENT one widens the read:
@@ -116,6 +117,7 @@ export async function listPostings(
       )
       .orderBy(desc(schema.GlPosting.txnDate), desc(schema.GlPosting.createdAt))
       .limit(limit)
+      .offset(offset)
 
     return ok(rows.map(toSummary))
   } catch (error) {
@@ -123,6 +125,21 @@ export async function listPostings(
     logger.error('Failed to list postings', { error, organizationId, periodKey })
     return err(new AuxxError('Internal error'))
   }
+}
+
+/** Drafts awaiting approval across every period - the Outbox tab badge, counted in SQL. */
+export async function countDraftPostings(db: Database, organizationId: string): Promise<number> {
+  const [row] = await db
+    .select({ total: count() })
+    .from(schema.GlPosting)
+    .where(
+      and(
+        eq(schema.GlPosting.organizationId, organizationId),
+        eq(schema.GlPosting.status, 'draft'),
+        ne(schema.GlPosting.postingType, CLOSE_POSTING_TYPE)
+      )
+    )
+  return row?.total ?? 0
 }
 
 /** A posting plus the `GlPostingSource` role it was found through. */

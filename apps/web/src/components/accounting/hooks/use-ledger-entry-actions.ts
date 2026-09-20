@@ -58,6 +58,7 @@ export function useLedgerEntryActions({
   const refreshBooks = useCallback(() => {
     void utils.ledger.periods.invalidate()
     void utils.ledger.exportBatches.invalidate()
+    void utils.ledger.outboxCounts.invalidate()
     void utils.ledger.verifyBalance.invalidate()
     void utils.ledger.closeBlockers.invalidate()
   }, [utils])
