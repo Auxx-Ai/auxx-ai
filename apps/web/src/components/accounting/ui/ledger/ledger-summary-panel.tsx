@@ -63,8 +63,9 @@ export function LedgerSummaryPanel({
   )
   // The same month's batches, to badge a row that IS one in Summary mode -
   // absent in Transaction mode, where nothing here has a live batch yet.
+  // One page holds a month: Summary mode builds a handful of batches per month.
   const batchesQuery = api.ledger.exportBatches.list.useQuery(
-    { month: periodKey },
+    { month: periodKey, limit: 500 },
     { enabled: !!periodKey }
   )
   // The month's postings, read once here rather than per member row - the same
@@ -73,8 +74,8 @@ export function LedgerSummaryPanel({
   const postingsQuery = api.ledger.listPostings.useQuery({ periodKey }, { enabled: !!periodKey })
 
   const batchByKey = useMemo(() => {
-    const map = new Map<string, NonNullable<typeof batchesQuery.data>[number]>()
-    for (const batch of batchesQuery.data ?? []) map.set(groupKey(batch), batch)
+    const map = new Map<string, NonNullable<typeof batchesQuery.data>['items'][number]>()
+    for (const batch of batchesQuery.data?.items ?? []) map.set(groupKey(batch), batch)
     return map
   }, [batchesQuery.data])
 

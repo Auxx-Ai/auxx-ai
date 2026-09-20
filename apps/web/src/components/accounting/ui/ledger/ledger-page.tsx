@@ -56,6 +56,7 @@ import { LedgerSidebar, type LedgerView } from './ledger-sidebar'
 import { LedgerStats } from './ledger-stats'
 import { LedgerSummaryPanel } from './ledger-summary-panel'
 import { LedgerToolbar } from './ledger-toolbar'
+import { MovementDrawer } from './movement-drawer'
 import { OutboxPanel } from './outbox/outbox-panel'
 import { PostingDrawer } from './posting-drawer'
 
@@ -143,6 +144,8 @@ export function LedgerPage() {
   const [postingId, setPostingId] = useQueryState('posting')
   // `?je=new` or `?je=<journalEntryId>` - the JE drawer (HANDOFF slot 1B).
   const [journalEntryParam, setJournalEntryParam] = useQueryState('je')
+  // `?movement=<moneyTransactionId>` - a movement the ledger refused (75-D1).
+  const [movementId, setMovementId] = useQueryState('movement')
   /**
    * 🛑 The outbox is a VIEW of this page, not a second route (53 D17).
    * `GlPosting` is already the aggregate, so an exports page would list the same
@@ -176,8 +179,9 @@ export function LedgerPage() {
   }, [setQueueTab])
   const closeOutbox = useCallback(() => {
     void setPostingId(null)
+    void setMovementId(null)
     void setQueueTab(null)
-  }, [setQueueTab, setPostingId])
+  }, [setQueueTab, setPostingId, setMovementId])
 
   /**
    * The two rail items and the one param behind them. Closeout is the absence
@@ -229,15 +233,22 @@ export function LedgerPage() {
   const canControlLedger = can('ledger.control')
   const providerLabel = provider.providerLabel ?? UNKNOWN_PROVIDER_LABEL
 
-  // The two drawers share ONE dock slot (ui-plan.md §2.1), so opening one
-  // closes the other rather than letting both params coexist unrendered.
+  // The three drawers share ONE dock slot (ui-plan.md §2.1), so opening one
+  // closes the others rather than letting the params coexist unrendered.
   function openPosting(id: string) {
     void setJournalEntryParam(null)
+    void setMovementId(null)
     void setPostingId(id)
   }
   function openJournalEntry(id: string) {
     void setPostingId(null)
+    void setMovementId(null)
     void setJournalEntryParam(id)
+  }
+  function openMovement(id: string) {
+    void setPostingId(null)
+    void setJournalEntryParam(null)
+    void setMovementId(id)
   }
 
   const actions = useLedgerEntryActions({
@@ -254,18 +265,11 @@ export function LedgerPage() {
     enabled: !isChecklistState && !!activePeriodKey,
   })
 
-  const exportBatchesQuery = api.ledger.exportBatches.list.useQuery({})
-  // The Outbox rail badge and the Drafts tab read the same query (TARGET §4
-  // gate 1) - one hook, so the count in the rail cannot disagree with the list
-  // under it. `ledgerPost`-gated on the server, so a read-only member does not
-  // fire a read that 403s.
-  const draftsQuery = api.ledger.listDrafts.useQuery({}, { enabled: can('ledger.post') })
-  // The rail's badge counts what is parked as well as what is queued; one row is
-  // enough, the total is the `count()` beside it (75-D1).
-  const blockedQuery = api.ledger.listBlockedMovements.useQuery(
-    { limit: 1, offset: 0 },
-    { enabled: can('ledger.post') }
-  )
+  // The rail's Outbox badge: every tab's count in one SQL read, the same query
+  // the outbox strip's badges use, so the rail cannot disagree with the list.
+  const outboxCountsQuery = api.ledger.outboxCounts.useQuery()
+  // The banner's read: refusals only, summarised - the outbox is the list.
+  const failedBatchesQuery = api.ledger.exportBatches.list.useQuery({ tab: 'failed' })
   // The month on screen rides along so the sweep can answer the COMPLETENESS
   // question too - what this month still owes the ledger. Without it the counts
   // come back `null` and the Books section renders the balance half alone.
@@ -419,6 +423,20 @@ export function LedgerPage() {
     />
   )
 
+  const movementDrawer = (
+    <MovementDrawer
+      movementId={movementId}
+      onOpenChange={(open) => {
+        if (!open) void setMovementId(null)
+      }}
+      onSelectPosting={openPosting}
+      isDocked={isDesktop}
+      width={dockedWidth}
+      onWidthChange={setDockedWidth}
+      bookTimeZone={bookTimeZone}
+    />
+  )
+
   const journalEntryDrawer = (
     <JournalEntryDrawer
       journalEntryId={journalEntryParam === 'new' ? null : journalEntryParam}
@@ -453,11 +471,15 @@ export function LedgerPage() {
   const content = (
     <MainPageContent
       dockedPanels={
-        isDesktop && (postingId || journalEntryParam)
+        isDesktop && (postingId || journalEntryParam || movementId)
           ? [
               {
-                key: journalEntryParam ? 'je' : 'posting',
-                content: journalEntryParam ? journalEntryDrawer : postingDrawer,
+                key: journalEntryParam ? 'je' : movementId ? 'movement' : 'posting',
+                content: journalEntryParam
+                  ? journalEntryDrawer
+                  : movementId
+                    ? movementDrawer
+                    : postingDrawer,
                 width: dockedWidth,
                 onWidthChange: setDockedWidth,
                 minWidth: 380,
@@ -483,10 +505,8 @@ export function LedgerPage() {
         <LedgerSidebar
           view={isOutboxOpen ? 'outbox' : 'closeout'}
           onSelectView={selectView}
-          syncQueue={exportBatchesQuery.data}
+          counts={outboxCountsQuery.data}
           providerLabel={providerLabel}
-          draftCount={draftsQuery.data?.length ?? 0}
-          blockedCount={blockedQuery.data?.total ?? 0}
         />
 
         <div className='flex h-full min-w-0 flex-1 flex-col overflow-hidden'>
@@ -552,6 +572,8 @@ export function LedgerPage() {
                   providerLabel={providerLabel}
                   activePostingId={postingId}
                   onSelectPosting={openPosting}
+                  activeMovementId={movementId}
+                  onSelectMovement={openMovement}
                 />
               ) : period.isLoading ? (
                 <div className='flex flex-col gap-3 p-3'>
@@ -564,7 +586,7 @@ export function LedgerPage() {
                     hasPeriod={!!activePeriodKey}
                     hasOpenPeriod={period.hasOpenPeriod}
                     periodLabel={periodLabel}
-                    exports={exportBatchesQuery.data ?? []}
+                    exports={failedBatchesQuery.data?.items ?? []}
                     providerLabel={providerLabel}
                     onOpenOutbox={openOutbox}
                     blockers={activePeriodKey ? entry.blockers : []}
@@ -760,6 +782,7 @@ export function LedgerPage() {
           way; this is the mobile half of the same rule. */}
       {!isDesktop && !!postingId && postingDrawer}
       {!isDesktop && !!journalEntryParam && journalEntryDrawer}
+      {!isDesktop && !!movementId && movementDrawer}
 
       <ConfirmDialog />
     </>

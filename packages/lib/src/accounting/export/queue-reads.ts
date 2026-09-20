@@ -3,7 +3,7 @@
 // rolls up. Same read in both modes (TARGET §6).
 
 import { type Database, schema } from '@auxx/database'
-import { and, asc, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
+import { and, asc, count, desc, eq, exists, gte, inArray, isNull, lte } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError } from '../../errors'
 import type { PostingType } from '../ledger/types'
@@ -42,10 +42,17 @@ export interface ExportBatchRow {
 
 export interface ListExportBatchesInput {
   organizationId: string
-  /** One accounting month, `'2026-09'`. Bounds the read; it is unbounded without one. */
+  /** One accounting month, `'2026-09'`. Bounds the read by DETAIL date. */
   month?: string
-  state?: ExportBatchState
+  states?: ExportBatchState[]
+  /** Only batches holding one of these postings as a live member - a card or drawer's read. */
+  glPostingIds?: string[]
+  limit?: number
+  offset?: number
 }
+
+/** Rows per page when a caller does not say. */
+export const EXPORT_BATCH_PAGE_SIZE = 50
 
 /**
  * The queue, newest first, with every batch's member postings.
@@ -63,17 +70,35 @@ export async function listExportBatches(
     if (input.month && !/^\d{4}-\d{2}$/.test(input.month))
       return err(new BadRequestError(`'${input.month}' is not an accounting month (YYYY-MM)`))
 
+    if (input.glPostingIds && input.glPostingIds.length === 0) return ok([])
+
     const batches = await db
       .select()
       .from(schema.ExportBatch)
       .where(
         and(
           eq(schema.ExportBatch.organizationId, organizationId),
-          input.state ? eq(schema.ExportBatch.state, input.state) : undefined
+          input.states ? inArray(schema.ExportBatch.state, input.states) : undefined,
+          input.glPostingIds
+            ? exists(
+                db
+                  .select({ id: schema.ExportBatchPosting.id })
+                  .from(schema.ExportBatchPosting)
+                  .where(
+                    and(
+                      eq(schema.ExportBatchPosting.organizationId, organizationId),
+                      eq(schema.ExportBatchPosting.batchId, schema.ExportBatch.id),
+                      isNull(schema.ExportBatchPosting.withdrawnAt),
+                      inArray(schema.ExportBatchPosting.glPostingId, input.glPostingIds)
+                    )
+                  )
+              )
+            : undefined
         )
       )
-      .orderBy(desc(schema.ExportBatch.createdAt))
-      .limit(500)
+      .orderBy(desc(schema.ExportBatch.createdAt), asc(schema.ExportBatch.id))
+      .limit(input.limit ?? EXPORT_BATCH_PAGE_SIZE)
+      .offset(input.offset ?? 0)
     if (batches.length === 0) return ok([])
 
     const memberRows = await db
@@ -153,26 +178,23 @@ export async function listExportBatches(
   }
 }
 
-/** How many batches are outstanding, for the ledger banner. */
-export async function countOutstandingExportBatches(
+/** Every state's batch count, in one `GROUP BY` - the Outbox tab badges and the rail. */
+export async function countExportBatchesByState(
   db: Database,
   organizationId: string
-): Promise<Result<{ ready: number; failed: number }, Error>> {
-  try {
-    const rows = await db
-      .select({ id: schema.ExportBatch.id, state: schema.ExportBatch.state })
-      .from(schema.ExportBatch)
-      .where(
-        and(
-          eq(schema.ExportBatch.organizationId, organizationId),
-          inArray(schema.ExportBatch.state, ['ready', 'failed'])
-        )
-      )
-    return ok({
-      ready: rows.filter((row) => row.state === 'ready').length,
-      failed: rows.filter((row) => row.state === 'failed').length,
-    })
-  } catch (error) {
-    return err(error instanceof Error ? error : new Error(String(error)))
+): Promise<Record<ExportBatchState, number>> {
+  const rows = await db
+    .select({ state: schema.ExportBatch.state, total: count() })
+    .from(schema.ExportBatch)
+    .where(eq(schema.ExportBatch.organizationId, organizationId))
+    .groupBy(schema.ExportBatch.state)
+  const counts: Record<ExportBatchState, number> = {
+    ready: 0,
+    sending: 0,
+    sent: 0,
+    failed: 0,
+    withdrawn: 0,
   }
+  for (const row of rows) counts[row.state] = row.total
+  return counts
 }

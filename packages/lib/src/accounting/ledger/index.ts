@@ -226,6 +226,7 @@ export {
   withAccountingCommitLock,
 } from './post'
 export {
+  countDraftPostings,
   getPosting,
   type LatestPostingByType,
   type LedgerSummaryLine,

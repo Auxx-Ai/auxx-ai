@@ -3,6 +3,8 @@
 import { schema } from '@auxx/database'
 import {
   buildExportBatches,
+  countExportBatchesByState,
+  EXPORT_BATCH_PAGE_SIZE,
   listExportBatches,
   releaseExportBatches,
   retryExportBatch,
@@ -12,7 +14,7 @@ import {
 // The comparison itself is PURE (brief 20 §8.2), so it lives on the client-safe
 // leaf beside the other planners and is imported from there rather than being
 // re-exported through the server barrel for one call site.
-import { EXPORT_BATCH_STATES } from '@auxx/lib/accounting/export/client'
+import { EXPORT_BATCH_TABS, exportBatchTabStates } from '@auxx/lib/accounting/export/client'
 import {
   createJournalEntry,
   discardJournalEntry,
@@ -32,6 +34,7 @@ import {
   ACCOUNT_ROLES,
   assertAccountingSetupUnfrozen,
   CHART_PACK_KEYS,
+  countDraftPostings,
   createChartAccount,
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
@@ -79,6 +82,7 @@ import {
   getPaymentAccount,
   listBlockedMovements,
   postBlockedMovement,
+  readBlockedMovement,
 } from '@auxx/lib/accounting/money'
 import {
   accountingOpeningPolicySchema,
@@ -186,6 +190,15 @@ const optionalMonthKey = z.object({
     .string()
     .regex(/^\d{4}-\d{2}$/, 'periodKey must be a YYYY-MM month')
     .optional(),
+})
+
+/** Rows per page on every Outbox tab. */
+const OUTBOX_PAGE_SIZE = 50
+
+/** Offset paging in `useInfiniteQuery`'s shape - the banking review queue's convention. */
+const outboxPage = z.object({
+  limit: z.number().int().min(1).max(200).optional(),
+  cursor: z.number().int().min(0).optional(),
 })
 
 /**
@@ -1044,21 +1057,33 @@ export const ledgerRouter = createTRPCRouter({
    * A read, and `ledgerView`: asking changes nothing.
    */
   exportBatches: createTRPCRouter({
+    /**
+     * Batches, newest first, one page at a time. `tab` is the Outbox's own
+     * filter (Ready holds `sending` too); `glPostingIds` is a card's or the
+     * drawer's read - the batches these postings are live members of.
+     */
     list: permissionProcedure(PermissionKey.ledgerView)
       .input(
-        z
-          .object({
-            /** One accounting month, `'2026-09'`. Bounds the read by DETAIL date. */
-            month: z.string().min(1).optional(),
-            state: z.enum(EXPORT_BATCH_STATES).optional(),
-          })
-          .optional()
+        z.object({
+          /** One accounting month, `'2026-09'`. Bounds the read by DETAIL date. */
+          month: z.string().min(1).optional(),
+          tab: z.enum(EXPORT_BATCH_TABS).optional(),
+          glPostingIds: z.array(z.string().min(1)).max(500).optional(),
+          limit: z.number().int().min(1).max(500).optional(),
+          /** The row offset the next page starts at, as `useInfiniteQuery` hands it back. */
+          cursor: z.number().int().min(0).optional(),
+        })
       )
       .query(async ({ ctx, input }) => {
+        const pageSize = input.limit ?? EXPORT_BATCH_PAGE_SIZE
+        const offset = input.cursor ?? 0
         const result = await listExportBatches(ctx.db, {
           organizationId: ctx.session.organizationId,
-          ...(input?.month ? { month: input.month } : {}),
-          ...(input?.state ? { state: input.state } : {}),
+          ...(input.month ? { month: input.month } : {}),
+          ...(input.tab ? { states: exportBatchTabStates(input.tab) } : {}),
+          ...(input.glPostingIds ? { glPostingIds: input.glPostingIds } : {}),
+          limit: pageSize,
+          offset,
         })
         if (result.isErr()) throw result.error
 
@@ -1072,7 +1097,7 @@ export const ledgerRouter = createTRPCRouter({
         ])
         const activeBookId = connection?.bookId ?? null
 
-        return result.value.map((batch) => ({
+        const items = result.value.map((batch) => ({
           ...batch,
           providerObjectUrl:
             batch.state === 'sent' && batch.providerObjectId && batch.bookId === activeBookId
@@ -1082,6 +1107,8 @@ export const ledgerRouter = createTRPCRouter({
                 }) ?? null)
               : null,
         }))
+        // A full page means there MAY be more; a short one is the end.
+        return { items, nextCursor: items.length === pageSize ? offset + pageSize : undefined }
       }),
 
     /**
@@ -1536,39 +1563,70 @@ export const ledgerRouter = createTRPCRouter({
    * discarded, and reviewing what is queued to post is part of that authority.
    */
   listDrafts: permissionProcedure(PermissionKey.ledgerPost)
-    .input(optionalMonthKey)
+    .input(outboxPage)
     .query(async ({ ctx, input }) => {
+      const pageSize = input.limit ?? OUTBOX_PAGE_SIZE
+      const offset = input.cursor ?? 0
       const result = await listPostings(ctx.db, {
         organizationId: ctx.session.organizationId,
-        periodKey: input.periodKey,
         status: 'draft',
+        limit: pageSize,
+        offset,
       })
       if (result.isErr()) throw result.error
-      return result.value
+      return {
+        items: result.value,
+        nextCursor: result.value.length === pageSize ? offset + pageSize : undefined,
+      }
     }),
 
   /**
    * Every movement the ledger refused - the Outbox's Blocked tab (75-D1). Its
    * work is parked, not lost: `postingBlockedReason` holds `postEntry`'s own
    * words and the mark clears the moment a retry is accepted.
-   *
-   * 🛑 Paginated and counted in SQL. One dev org already holds ~1,100 of these.
    */
   listBlockedMovements: permissionProcedure(PermissionKey.ledgerPost)
-    .input(
-      z.object({
-        limit: z.number().int().min(1).max(200).default(50),
-        offset: z.number().int().min(0).default(0),
-      })
-    )
+    .input(outboxPage)
     .query(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      const [rows, total] = await Promise.all([
-        listBlockedMovements(ctx.db, organizationId, input),
-        countBlockedMovements(ctx.db, organizationId),
-      ])
-      return { rows, total }
+      const pageSize = input.limit ?? OUTBOX_PAGE_SIZE
+      const offset = input.cursor ?? 0
+      const items = await listBlockedMovements(ctx.db, ctx.session.organizationId, {
+        limit: pageSize,
+        offset,
+      })
+      return { items, nextCursor: items.length === pageSize ? offset + pageSize : undefined }
     }),
+
+  /**
+   * Every Outbox tab's badge and the rail's total, counted in SQL - one dev org
+   * holds ~1,100 blocked movements, so no badge rides on the rows. Drafts and
+   * blocked are `ledgerPost` reads, so a member without it sees zero for both,
+   * matching the tabs that member is not offered.
+   */
+  outboxCounts: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+    const canPost = ctx.capabilities.can(PermissionKey.ledgerPost)
+    const [drafts, blocked, batches] = await Promise.all([
+      canPost ? countDraftPostings(ctx.db, organizationId) : 0,
+      canPost ? countBlockedMovements(ctx.db, organizationId) : 0,
+      countExportBatchesByState(ctx.db, organizationId),
+    ])
+    return {
+      drafts,
+      blocked,
+      ready: batches.ready,
+      sending: batches.sending,
+      sent: batches.sent,
+      failed: batches.failed,
+    }
+  }),
+
+  /** One parked movement for the drawer; `null` once it has posted, so a stale link reads as such. */
+  getBlockedMovement: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ moneyTransactionId: z.string().min(1) }))
+    .query(({ ctx, input }) =>
+      readBlockedMovement(ctx.db, ctx.session.organizationId, input.moneyTransactionId)
+    ),
 
   /**
    * Post one parked movement again, through whichever poster its evidence

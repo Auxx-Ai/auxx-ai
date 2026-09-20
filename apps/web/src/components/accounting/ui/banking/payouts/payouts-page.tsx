@@ -26,6 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SourceAccountBadge } from '~/components/accounting/ui/source-account-badge'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
+import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import SettingsPage from '~/components/global/settings-page'
 import { Tooltip } from '~/components/global/tooltip'
 import { useMedia } from '~/hooks/use-media'
@@ -66,17 +67,6 @@ const TABS = [
 
 /** The frame never collapses below this, matching the review queue's own. */
 const MIN_FRAME_HEIGHT = 260
-
-/**
- * Consecutive pages the sentinel may pull without the reader scrolling again.
- *
- * The sentinel sits at the end of the list, so a page that does not fill the
- * viewport leaves it on screen and it fires straight away. Correct once or
- * twice - that is a short first page catching up to a tall window - but
- * unbounded it walks every payout on mount. Reset on scroll, the same guard
- * `review-queue-page.tsx` and `mail-thread-list.tsx` use.
- */
-const MAX_AUTO_FETCHES = 5
 
 /** Inspect imported payouts and processor activity as the provider reported them. */
 export function PayoutsPage() {
@@ -351,51 +341,10 @@ function PayoutList({
   const accounts = api.payoutEvidence.sourceAccounts.useQuery()
   const hasPayouts = (accounts.data ?? []).length > 0
 
-  // ── Infinite scroll ─────────────────────────────────────────────────────
-  //
-  // Verbatim the review queue's machinery. Refs rather than deps so the observer
-  // is built once per viewport instead of being torn down after every fetch.
+  /** A new view is a new pile: back to the top, and the tail below is keyed on the filters so its auto-fetch budget starts over. */
   const [listViewport, setListViewport] = useState<HTMLDivElement | null>(null)
-  const sentinelRef = useRef<HTMLDivElement>(null)
-  const nextPage = useRef({ fetch: query.fetchNextPage, has: false, fetching: false })
-  nextPage.current = {
-    fetch: query.fetchNextPage,
-    has: query.hasNextPage,
-    fetching: query.isFetchingNextPage,
-  }
-  const autoFetches = useRef(0)
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current
-    if (!listViewport || !sentinel) return
-
-    const reset = () => {
-      autoFetches.current = 0
-    }
-    listViewport.addEventListener('scroll', reset, { passive: true })
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        const { has, fetching, fetch } = nextPage.current
-        if (!entry?.isIntersecting || !has || fetching) return
-        if (autoFetches.current >= MAX_AUTO_FETCHES) return
-        autoFetches.current++
-        void fetch()
-      },
-      { root: listViewport, threshold: 0 }
-    )
-    observer.observe(sentinel)
-
-    return () => {
-      listViewport.removeEventListener('scroll', reset)
-      observer.disconnect()
-    }
-  }, [listViewport])
-
-  /** A new view is a new pile - the auto-fetch budget starts over with it. */
   // biome-ignore lint/correctness/useExhaustiveDependencies: the filters are the trigger
   useEffect(() => {
-    autoFetches.current = 0
     listViewport?.scrollTo({ top: 0 })
   }, [listInput])
 
@@ -554,30 +503,13 @@ function PayoutList({
             />
           )}
         />
-        {/* The trigger for the next page: it scrolls into view, the observer
-            above fires, and the list grows. The button below is the fallback
-            for when the auto-fetch budget runs out, which only happens on a
-            viewport the pages do not fill - exactly when there is nothing to
-            scroll to reset it. */}
-        <div ref={sentinelRef} className='h-px shrink-0' aria-hidden />
-        {query.isFetchingNextPage && (
-          <div className='py-3 text-center text-muted-foreground text-xs'>
-            Loading more payouts...
-          </div>
-        )}
-        {query.hasNextPage && !query.isFetchingNextPage && (
-          <div className='flex justify-center py-3'>
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => {
-                autoFetches.current = 0
-                void query.fetchNextPage()
-              }}>
-              Load more
-            </Button>
-          </div>
-        )}
+        <InfiniteListTail
+          key={JSON.stringify(listInput)}
+          hasNextPage={query.hasNextPage}
+          isFetchingNextPage={query.isFetchingNextPage}
+          fetchNextPage={query.fetchNextPage}
+          loadingLabel='Loading more payouts...'
+        />
       </div>
     </ScrollArea>
   )

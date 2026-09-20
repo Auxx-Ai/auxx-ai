@@ -56,7 +56,8 @@ export {
   SALES_RECEIPT_OBJECT_TYPE,
 } from './payloads'
 export {
-  countOutstandingExportBatches,
+  countExportBatchesByState,
+  EXPORT_BATCH_PAGE_SIZE,
   type ExportBatchMember,
   type ExportBatchRow,
   type ListExportBatchesInput,

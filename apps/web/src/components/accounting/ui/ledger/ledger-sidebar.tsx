@@ -2,7 +2,6 @@
 
 'use client'
 
-import type { ExportBatchRow } from '@auxx/lib/accounting/export'
 import { ModuleSidebar } from '@auxx/ui/components/module-sidebar'
 import {
   SidebarGroup,
@@ -14,41 +13,25 @@ import {
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { BookOpenCheck, Send } from 'lucide-react'
 import { useLedgerSidebarStore } from '~/components/accounting/stores/ledger-sidebar-store'
+import type { RouterOutputs } from '~/trpc/react'
 
-interface ExportQueueTally {
-  ready: number
-  sending: number
-  failed: number
-  total: number
-}
+/** `ledger.outboxCounts` - every Outbox tab's count, ALL periods. */
+type OutboxCounts = RouterOutputs['ledger']['outboxCounts']
 
 /** 🛑 `sent` is not counted: the rail is about what is OUTSTANDING. */
-function tallyExportBatches(rows: ExportBatchRow[] | undefined): ExportQueueTally {
-  const tally = { ready: 0, sending: 0, failed: 0, total: 0 }
-  for (const row of rows ?? []) {
-    if (row.state === 'ready') tally.ready++
-    else if (row.state === 'sending') tally.sending++
-    else if (row.state === 'failed') tally.failed++
-    else continue
-    tally.total++
-  }
-  return tally
+function outstanding(counts: OutboxCounts): number {
+  return counts.drafts + counts.blocked + counts.ready + counts.sending + counts.failed
 }
 
 /** Null when nothing is outstanding - a figure that reads the same every day is one nobody reads. */
-function outboxRailSentence(
-  tally: ExportQueueTally,
-  draftCount: number,
-  blockedCount: number,
-  providerLabel: string
-): string | null {
-  if (tally.total === 0 && draftCount === 0 && blockedCount === 0) return null
+function outboxRailSentence(counts: OutboxCounts, providerLabel: string): string | null {
+  if (outstanding(counts) === 0) return null
   const parts: string[] = []
-  if (draftCount > 0) parts.push(`${draftCount} waiting for approval`)
-  if (blockedCount > 0) parts.push(`${blockedCount} refused by the ledger`)
-  if (tally.ready > 0) parts.push(`${tally.ready} ready to send`)
-  if (tally.sending > 0) parts.push(`${tally.sending} sending`)
-  if (tally.failed > 0) parts.push(`${tally.failed} refused`)
+  if (counts.drafts > 0) parts.push(`${counts.drafts} waiting for approval`)
+  if (counts.blocked > 0) parts.push(`${counts.blocked} refused by the ledger`)
+  if (counts.ready > 0) parts.push(`${counts.ready} ready to send`)
+  if (counts.sending > 0) parts.push(`${counts.sending} sending`)
+  if (counts.failed > 0) parts.push(`${counts.failed} refused`)
   return `${parts.join(', ')}. Sends to ${providerLabel}.`
 }
 
@@ -84,14 +67,10 @@ const SECONDARY_SURFACE =
 interface LedgerSidebarProps {
   view: LedgerView
   onSelectView: (view: LedgerView) => void
-  /** Everything in the books and not in the provider's, ALL periods. */
-  syncQueue: ExportBatchRow[] | undefined
+  /** Undefined while loading; the badge is simply absent until it lands. */
+  counts: OutboxCounts | undefined
   /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
   providerLabel: string
-  /** Drafts awaiting approval, ALL periods - `ledger.listDrafts`' own count, not `syncQueue`'s. */
-  draftCount: number
-  /** Movements the ledger refused, ALL periods - `ledger.listBlockedMovements`' SQL count. */
-  blockedCount: number
 }
 
 /**
@@ -124,20 +103,12 @@ interface LedgerSidebarProps {
  * and it is the only one. Only Closeout is scoped to it; every Outbox tab
  * spans every period.
  */
-export function LedgerSidebar({
-  view,
-  onSelectView,
-  syncQueue,
-  providerLabel,
-  draftCount,
-  blockedCount,
-}: LedgerSidebarProps) {
+export function LedgerSidebar({ view, onSelectView, counts, providerLabel }: LedgerSidebarProps) {
   const open = useLedgerSidebarStore((state) => state.open)
   const setOpen = useLedgerSidebarStore((state) => state.setOpen)
 
-  const tally = tallyExportBatches(syncQueue)
-  const outboxSentence = outboxRailSentence(tally, draftCount, blockedCount, providerLabel)
-  const outboxCount = tally.total + draftCount + blockedCount
+  const outboxSentence = counts ? outboxRailSentence(counts, providerLabel) : null
+  const outboxCount = counts ? outstanding(counts) : 0
 
   return (
     <ModuleSidebar open={open} onOpenChange={setOpen} className={SECONDARY_SURFACE}>

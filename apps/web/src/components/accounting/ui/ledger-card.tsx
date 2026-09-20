@@ -140,14 +140,17 @@ export function LedgerCard({
   )
   const sweeps = sweepsQuery.data ?? []
 
-  // The batch state badge (step 3 part C, TARGET §4 gate 2) - the same
-  // unbounded `exportBatches.list` read the queue and the drawer's Export
-  // section both use, so this card's badge cannot disagree with either. No
-  // per-posting Retry or Un-sync here, same rule the drawer keeps.
-  const exportBatchesQuery = api.ledger.exportBatches.list.useQuery({})
+  // The batch state badge (step 3 part C, TARGET §4 gate 2): the batches these
+  // postings are live members of. No per-posting Retry or Un-sync here, same
+  // rule the drawer keeps.
+  const glPostingIds = useMemo(() => postings.map((posting) => posting.id), [postings])
+  const exportBatchesQuery = api.ledger.exportBatches.list.useQuery(
+    { glPostingIds },
+    { enabled: glPostingIds.length > 0 }
+  )
   const batchStateByPostingId = useMemo(() => {
     const map = new Map<string, ExportBatchState>()
-    for (const batch of exportBatchesQuery.data ?? []) {
+    for (const batch of exportBatchesQuery.data?.items ?? []) {
       for (const member of batch.members) map.set(member.glPostingId, batch.state)
     }
     return map
