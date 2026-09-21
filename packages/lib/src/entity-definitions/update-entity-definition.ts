@@ -2,6 +2,7 @@
 
 import { database, EntityDefinition } from '@auxx/database'
 import { fromDatabase } from '@auxx/services/shared/utils'
+import type { EntityColor } from '@auxx/types/entity-color'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { getEntityDefinition } from './get-entity-definition'
@@ -12,7 +13,7 @@ export interface UpdateEntityDefinitionParams {
   organizationId: string
   data: {
     icon?: string
-    color?: string
+    color?: EntityColor
     singular?: string
     plural?: string
     archivedAt?: Date | null

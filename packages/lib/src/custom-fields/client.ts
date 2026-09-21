@@ -67,8 +67,9 @@ export interface OptionColor {
 }
 
 /**
- * Available colors for select options with their styling classes
- * Matches ICON_COLORS from icon-picker
+ * Available colors for select options — the twelve of `ENTITY_COLORS`, in that order, and
+ * the same twelve `ICON_COLORS` carries. The palette guard
+ * (`packages/lib/src/seed/entity-seeder/__tests__/palette.test.ts`) asserts both.
  */
 export const OPTION_COLORS: OptionColor[] = [
   {
@@ -123,6 +124,17 @@ export const OPTION_COLORS: OptionColor[] = [
     badgeClasses:
       'bg-green-100 text-green-900 border-green-500 dark:bg-[#0f2e21] dark:text-[#7ECFA6] dark:border-[#1a4631]',
     selectedBorderClasses: 'border-green-600 dark:border-green-500',
+  },
+  {
+    id: 'emerald',
+    label: 'Emerald',
+    swatch: 'bg-emerald-500',
+    hex: '#10b981',
+    // Dark values are hand-picked to sit between green's and teal's, not derived — this
+    // list's `badgeClasses` carry literal dark hex rather than Tailwind dark classes.
+    badgeClasses:
+      'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-[#12362c] dark:text-[#9DECC8] dark:border-[#1b4a3b]',
+    selectedBorderClasses: 'border-emerald-400 dark:border-emerald-400',
   },
   {
     id: 'teal',

@@ -1,6 +1,7 @@
 // apps/web/src/components/workflow/panels/settings/workflow-settings-panel.tsx
 
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
+import { toEntityColor } from '@auxx/types/entity-color'
 import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -330,7 +331,7 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
               <IconPicker
                 value={
                   localIcon
-                    ? { icon: localIcon.iconId, color: localIcon.color }
+                    ? { icon: localIcon.iconId, color: toEntityColor(localIcon.color) }
                     : { icon: 'text', color: 'blue' }
                 }
                 onChange={handleIconChange}>

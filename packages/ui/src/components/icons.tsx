@@ -1,6 +1,7 @@
 // packages/ui/src/components/icons.tsx
 'use client'
 
+import { DEFAULT_ENTITY_COLOR, type EntityColor } from '@auxx/types/entity-color'
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
 import type React from 'react'
@@ -13,7 +14,7 @@ export { getIcon, ICON_DATA, type IconItem }
 
 /** Color configuration for icons */
 export interface IconColor {
-  id: string
+  id: EntityColor
   label: string
   /** Preview swatch color (for color selector buttons) */
   swatch: string
@@ -27,7 +28,10 @@ export interface IconColor {
   groupClasses: string
 }
 
-/** Available icon colors */
+/**
+ * Available icon colors — the twelve of `ENTITY_COLORS`, in that order. The palette guard
+ * (`packages/lib/src/seed/entity-seeder/__tests__/palette.test.ts`) asserts both.
+ */
 export const ICON_COLORS: IconColor[] = [
   {
     id: 'gray',
@@ -78,6 +82,18 @@ export const ICON_COLORS: IconColor[] = [
     inverseColor: 'bg-green-500 text-green-100 dark:bg-green-500',
     groupClasses:
       '[--icon-bg:var(--color-green-50)] [--icon-bg-hover:var(--color-green-100)] [--icon-color:var(--color-green-600)] dark:[--icon-bg:var(--color-green-950)] dark:[--icon-bg-hover:var(--color-green-900)] dark:[--icon-color:var(--color-green-400)]',
+  },
+  {
+    id: 'forest',
+    label: 'Forest',
+    swatch: 'bg-green-800',
+    // Not a Tailwind scale (`--color-forest-50` does not exist) — a darker green ramp,
+    // kept off `green`'s 50/100/600 so the two read apart side by side in the picker.
+    iconColor: 'text-green-800 dark:text-green-300',
+    bgClasses: 'bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800',
+    inverseColor: 'bg-green-800 text-green-100 dark:bg-green-700',
+    groupClasses:
+      '[--icon-bg:var(--color-green-100)] [--icon-bg-hover:var(--color-green-200)] [--icon-color:var(--color-green-800)] dark:[--icon-bg:var(--color-green-900)] dark:[--icon-bg-hover:var(--color-green-800)] dark:[--icon-color:var(--color-green-300)]',
   },
   {
     id: 'emerald',
@@ -142,7 +158,7 @@ export const ICON_COLORS: IconColor[] = [
 ]
 
 /** Default color ID */
-export const DEFAULT_COLOR = 'gray'
+export const DEFAULT_COLOR: EntityColor = DEFAULT_ENTITY_COLOR
 
 /** Get color configuration by ID */
 export const getIconColor = (colorId: string): IconColor =>

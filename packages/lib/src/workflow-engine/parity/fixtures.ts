@@ -33,6 +33,7 @@
  */
 
 import type { TypedFieldValue } from '@auxx/types'
+import { toEntityColor } from '@auxx/types/entity-color'
 import type { FieldId, ResourceFieldId } from '@auxx/types/field'
 import { toRecordId } from '@auxx/types/resource'
 import {
@@ -210,7 +211,7 @@ export const THREAD_RESOURCE: SystemResource = {
   label: RESOURCE_TABLE_MAP.thread.label,
   plural: RESOURCE_TABLE_MAP.thread.plural,
   icon: RESOURCE_TABLE_MAP.thread.icon,
-  color: RESOURCE_TABLE_MAP.thread.color,
+  color: toEntityColor(RESOURCE_TABLE_MAP.thread.color),
   fields: THREAD_FIELDS,
   entityType: 'thread',
   ...resolveSystemEntityBehavior('thread'),

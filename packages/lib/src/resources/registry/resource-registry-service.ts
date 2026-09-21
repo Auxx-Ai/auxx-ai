@@ -8,6 +8,7 @@ import {
   ModelTypeValues,
 } from '@auxx/database/enums'
 import { type RelationshipConfig, SELECT_OPTION_COLORS } from '@auxx/types/custom-field'
+import { toEntityColor } from '@auxx/types/entity-color'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { ENTITY_DEFINITION_TYPES, isEntityDefinitionType } from '@auxx/types/resource'
 import { isSystemAttribute } from '@auxx/types/system-attribute'
@@ -152,7 +153,7 @@ function toCustomResourceBase(
     entityType: def.entityType ?? undefined,
     plural: def.plural,
     icon: def.icon,
-    color: def.color ?? 'gray',
+    color: toEntityColor(def.color),
     entityDefinitionId: def.id,
     organizationId: def.organizationId,
     isVisible: def.isVisible,
@@ -203,7 +204,7 @@ function toSystemResourceBase(tableId: TableId): Omit<SystemResource, 'fields'> 
     label: entry.label,
     plural: entry.plural,
     icon: entry.icon,
-    color: entry.color,
+    color: toEntityColor(entry.color),
     apiSlug: entry.apiSlug,
     dbName: entry.dbName,
     isVisible: false, // System resources from registry are hidden from sidebar

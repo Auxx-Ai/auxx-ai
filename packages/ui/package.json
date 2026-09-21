@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@auxx/types": "workspace:*",
     "@auxx/utils": "workspace:*",
     "@radix-ui/colors": "^3.0.0",
     "minisearch": "catalog:"

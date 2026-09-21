@@ -16,6 +16,12 @@
       "import": "./dist/actor/index.mjs",
       "default": "./actor/index.ts"
     },
+    "./entity-color": {
+      "types": "./entity-color/index.ts",
+      "source": "./entity-color/index.ts",
+      "import": "./dist/entity-color/index.mjs",
+      "default": "./entity-color/index.ts"
+    },
     "./custom-field": {
       "types": "./custom-field/index.ts",
       "source": "./custom-field/index.ts",

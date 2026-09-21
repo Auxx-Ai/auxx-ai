@@ -3,6 +3,7 @@
 
 import type { SeatType } from '@auxx/database/types'
 import type { Area, Level } from '@auxx/lib/permissions/client'
+import { toEntityColor } from '@auxx/types/entity-color'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -129,7 +130,7 @@ export function ProfileCreateDialog({
             <Label htmlFor='profile-name'>Name</Label>
             <div className='flex items-center gap-2'>
               <IconPicker
-                value={{ icon: icon.iconId, color: icon.color }}
+                value={{ icon: icon.iconId, color: toEntityColor(icon.color) }}
                 onChange={(value) => setIcon({ iconId: value.icon, color: value.color })}
                 modal={false}>
                 <button type='button' aria-label='Pick profile icon'>
