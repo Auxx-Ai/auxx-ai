@@ -6,8 +6,8 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
-import { getOrgCache } from '../../../cache'
 import { NotFoundError } from '../../../errors'
+import { systemFieldMap } from '../../../resources/system-records'
 import { listInvoiceMoneyPayments } from '../../money/invoice-payments/payment-reads'
 import { sumInvoiceCreditApplications } from '../credit-memos/reads'
 
@@ -41,9 +41,7 @@ export async function loadInvoiceForEdit(
   organizationId: string,
   invoiceId: string
 ): Promise<InvoiceForEdit> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...INVOICE_ATTRIBUTES])
+  const cf = await systemFieldMap(db, organizationId, [...INVOICE_ATTRIBUTES])
   const fields = [cf.invoice_status, cf.invoice_number, cf.invoice_total].filter(
     (field) => field !== null
   )

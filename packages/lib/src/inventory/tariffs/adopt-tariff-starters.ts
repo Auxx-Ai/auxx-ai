@@ -53,10 +53,11 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
+import { getCachedEntityDefId } from '../../cache'
 import { AuxxError, BadRequestError, NotFoundError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { ISO_COUNTRY_OPTIONS } from '../../resources/registry/iso-country-options'
+import { systemFieldMap } from '../../resources/system-records'
 import { loadTariffMemberships } from './tariff-301-memberships'
 import {
   findHtsGeneral,
@@ -136,9 +137,10 @@ async function loadExistingPairKeys(
   organizationId: string,
   tariffCodeDefId: string
 ): Promise<Set<string>> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['tariff_code_code', 'tariff_code_country'] as const)
+  const fields = await systemFieldMap(db, organizationId, [
+    'tariff_code_code',
+    'tariff_code_country',
+  ] as const)
   const codeField = fields.tariff_code_code
   const countryField = fields.tariff_code_country
   if (!codeField || !countryField) return new Set()

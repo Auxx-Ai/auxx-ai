@@ -48,8 +48,8 @@ import { createScopedLogger } from '@auxx/logger'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { toDate } from '@auxx/utils/calendar-day'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { getOrgCache } from '../../cache'
 import { readFieldRelations, readFieldScalars } from '../../field-values/read-field-scalars'
+import { systemFieldMap } from '../../resources/system-records'
 import { SystemUserService } from '../../users/system-user-service'
 import { DEFAULT_MATCH_TOLERANCE, isReceiptOverdue } from './match'
 import { rematchBill } from './match-hook'
@@ -219,9 +219,7 @@ async function selectOverdueBills(
   vendorBillInstanceIds: string[],
   asOf: Date
 ): Promise<string[]> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>([...SWEEP_ATTRS])
+  const cf = await systemFieldMap<SystemAttribute>(undefined, organizationId, [...SWEEP_ATTRS])
 
   const billRelId = cf.vendor_bill_line_vendor_bill?.id
   const poLineRelId = cf.vendor_bill_line_purchase_order_line?.id

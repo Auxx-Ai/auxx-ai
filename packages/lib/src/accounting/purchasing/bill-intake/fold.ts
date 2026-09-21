@@ -3,11 +3,11 @@
 import { type Database, schema } from '@auxx/database'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { getCachedEntityDefId, getOrgCache } from '../../../cache'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../../../errors'
 import { flushTxWriteScope } from '../../../resources/crud/tx-write-flush'
 import { runInTxWrite } from '../../../resources/crud/tx-write-scope'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
+import { systemDefId, systemFieldMap } from '../../../resources/system-records'
 import { guard } from './guard'
 
 /** Move a printed line amount into an empty shipping field and remove the line atomically. */
@@ -22,16 +22,14 @@ export async function foldBillLineIntoShipping(
       const bill = parseRecordId(input.billRecordId)
       const line = parseRecordId(input.lineRecordId)
       const [billDefId, lineDefId, fields] = await Promise.all([
-        getCachedEntityDefId(organizationId, 'vendor_bill'),
-        getCachedEntityDefId(organizationId, 'vendor_bill_line'),
-        getOrgCache()
-          .from(organizationId, 'customFields')
-          .bySystemAttributes([
-            'vendor_bill_shipping_total',
-            'vendor_bill_line_vendor_bill',
-            'vendor_bill_line_purchase_order_line',
-            'vendor_bill_line_line_total',
-          ] as const),
+        systemDefId(db, organizationId, 'vendor_bill'),
+        systemDefId(db, organizationId, 'vendor_bill_line'),
+        systemFieldMap(db, organizationId, [
+          'vendor_bill_shipping_total',
+          'vendor_bill_line_vendor_bill',
+          'vendor_bill_line_purchase_order_line',
+          'vendor_bill_line_line_total',
+        ] as const),
       ])
       if (
         !billDefId ||

@@ -26,7 +26,6 @@ import { parseFileRef } from '@auxx/types/file-ref'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { getOrgCache } from '../../../cache'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
 import {
   PURCHASE_ORDER_LINE_ROLLUPS,
@@ -35,6 +34,7 @@ import {
 import { getOrgCurrencyCode } from '../../../field-values/org-currency'
 import { convertTempAssetToPermanent } from '../../../files/assets/asset-mutations'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
+import { systemFieldMap } from '../../../resources/system-records'
 import { parseIntakeTotal, resolveIntakeUnitPrice } from '../intake/client'
 import { rematchBill } from '../match-hook'
 import type { BillIntakeWarning } from './client'
@@ -81,9 +81,7 @@ export async function loadPurchaseOrderCurrency(
   organizationId: string,
   purchaseOrderRecordId: RecordId
 ): Promise<string | null> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['purchase_order_currency'] as const)
+  const fields = await systemFieldMap(db, organizationId, ['purchase_order_currency'] as const)
   const fieldId = fields.purchase_order_currency?.id
   if (!fieldId) return null
 

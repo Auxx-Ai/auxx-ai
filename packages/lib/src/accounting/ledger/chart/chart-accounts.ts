@@ -36,9 +36,8 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { PgTransaction } from 'drizzle-orm/pg-core'
-import { getOrgCache } from '../../../cache'
 import { UnprocessableEntityError } from '../../../errors'
+import { systemFieldMap } from '../../../resources/system-records'
 import type { ChartAccountRow } from '../types'
 import type { GlAccountSubtypeValue } from './account-subtype'
 import type { GlAccountTypeValue } from './default-chart'
@@ -118,27 +117,7 @@ export async function loadChartAccountFields(
   notProvisionedMessage: string,
   db?: Database | Transaction
 ): Promise<ChartAccountFields> {
-  const fields = db
-    ? Object.fromEntries(
-        (
-          await db
-            .select({
-              id: schema.CustomField.id,
-              entityDefinitionId: schema.CustomField.entityDefinitionId,
-              systemAttribute: schema.CustomField.systemAttribute,
-            })
-            .from(schema.CustomField)
-            .where(
-              and(
-                eq(schema.CustomField.organizationId, organizationId),
-                inArray(schema.CustomField.systemAttribute, [...ACCOUNT_ATTRIBUTES])
-              )
-            )
-        ).map((field) => [field.systemAttribute, field])
-      )
-    : await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes([...ACCOUNT_ATTRIBUTES])
+  const fields = await systemFieldMap(db, organizationId, ACCOUNT_ATTRIBUTES)
 
   const code = fields.gl_account_code
   const type = fields.gl_account_type
@@ -308,11 +287,7 @@ export async function loadChartAccountsById(
 ): Promise<ChartAccountsRead> {
   if (accountIds.length === 0) return { accounts: new Map(), malformed: [] }
 
-  const fields = await loadChartAccountFields(
-    organizationId,
-    notProvisionedMessage,
-    db instanceof PgTransaction ? db : undefined
-  )
+  const fields = await loadChartAccountFields(organizationId, notProvisionedMessage, db)
 
   const live = await db
     .select({ id: schema.EntityInstance.id })

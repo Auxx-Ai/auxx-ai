@@ -120,6 +120,15 @@ function chain(route: (params: string[]) => unknown[]) {
 
 vi.mock('@auxx/database', () => ({
   schema: {
+    EntityInstance: {
+      id: 'id',
+      organizationId: 'organizationId',
+      entityDefinitionId: 'entityDefinitionId',
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
+      archivedAt: 'archivedAt',
+      displayName: 'displayName',
+    },
     FieldValue: {
       entityId: 'entityId',
       organizationId: 'organizationId',

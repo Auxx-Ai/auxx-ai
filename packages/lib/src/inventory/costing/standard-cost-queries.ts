@@ -16,9 +16,9 @@ import { type Database, schema } from '@auxx/database'
 import type { CustomFieldEntity } from '@auxx/database/types'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { requireCachedEntityDefId } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
-import { readSystemRecords } from '../../resources/system-records'
+import { readSystemRecords, systemFieldMap } from '../../resources/system-records'
 import { readOrganizationSettings } from '../../settings/read'
 import {
   type PartKindValue,
@@ -99,9 +99,7 @@ export interface StandardCostFields {
  * part as a `component`, which is the documented NULL behaviour anyway.
  */
 export async function loadStandardCostFields(organizationId: string): Promise<StandardCostFields> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...ROLL_ATTRIBUTES])
+  const fields = await systemFieldMap(undefined, organizationId, [...ROLL_ATTRIBUTES])
 
   const material = fields.part_standard_material_cost
   const labor = fields.part_standard_labor_cost

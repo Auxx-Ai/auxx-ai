@@ -12,6 +12,7 @@ import { getRecurrenceRule } from '../../../recurrence'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { flushTxWriteScope } from '../../../resources/crud/tx-write-flush'
 import { runInTxWrite, type TxWriteScope } from '../../../resources/crud/tx-write-scope'
+import { systemFieldMap } from '../../../resources/system-records'
 import { copyLineOntoInvoice, createInvoiceShell, LINE_COPY_ATTRS } from '../gather'
 import { applyHeldDepositsToInvoice } from '../quotes/quote-deposit'
 import { recomputeTotals } from '../totals/totals-hooks'
@@ -117,12 +118,10 @@ async function getSourceLines(input: {
     limit: 1000,
   })
   const cache = getOrgCache()
-  const fields = await cache
-    .from(input.organizationId, 'customFields')
-    .bySystemAttributes([...LINE_COPY_ATTRS])
-  const visitFields = await cache
-    .from(input.organizationId, 'customFields')
-    .bySystemAttributes(['line_item_visit_id'] as const)
+  const fields = await systemFieldMap(input.db, input.organizationId, [...LINE_COPY_ATTRS])
+  const visitFields = await systemFieldMap(input.db, input.organizationId, [
+    'line_item_visit_id',
+  ] as const)
   const fieldIds = [...Object.values(fields), visitFields.line_item_visit_id]
     .filter(Boolean)
     .map((field) => field!.id)

@@ -14,6 +14,7 @@ import { toRecordId } from '@auxx/types/resource'
 import { getOrgCache } from '../../../cache'
 import { firstTyped } from '../../../field-values/client'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { systemFieldMap } from '../../../resources/system-records'
 import { readOrganizationSettings } from '../../../settings/read'
 import { listWorkOrderDepositReceipts } from '../../money/checkout/reads'
 import { applyMoneyToInvoice } from '../../money/invoice-payments/apply-money'
@@ -66,9 +67,10 @@ export async function resolveQuoteDeposit(
   const handler = new UnifiedCrudHandler(organizationId, systemUserId)
   const quoteRecordId = toRecordId('quote', quoteInstanceId)
 
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['quote_deposit_type', 'quote_deposit_value'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'quote_deposit_type',
+    'quote_deposit_value',
+  ] as const)
 
   const fieldIds = [cf.quote_deposit_type, cf.quote_deposit_value].filter(Boolean).map((f) => f!.id)
   const values = fieldIds.length

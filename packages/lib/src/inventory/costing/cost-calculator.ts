@@ -9,13 +9,14 @@ import { toRecordId } from '@auxx/types/resource'
 import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
-import { getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { requireCachedEntityDefId } from '../../cache'
 import { toFieldType } from '../../field-values/stored-field-type'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../../realtime'
+import { systemFieldMap } from '../../resources/system-records'
 import { loadTariffSchedule } from '../tariffs/tariff-schedule'
 import { type CostWrite, writeCostValues } from './cost-writer'
 import {
@@ -131,8 +132,6 @@ const UNCOSTED: PartCostResult = {
  * Two queries: one for vendor parts, one for subparts.
  */
 async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
-  const cache = getOrgCache()
-
   // Resolve entity definition IDs for vendor_part and subpart
   const vendorPartDefId = await requireCachedEntityDefId(orgId, 'vendor_part')
   const subpartDefId = await requireCachedEntityDefId(orgId, 'subpart')
@@ -140,20 +139,18 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
   logger.info('Loading org pricing data', { orgId, vendorPartDefId, subpartDefId })
 
   // Resolve custom field IDs by systemAttribute (single pass)
-  const cfFields = await cache
-    .from(orgId, 'customFields')
-    .bySystemAttributes([
-      'vendor_part_part',
-      'vendor_part_unit_price',
-      'vendor_part_is_preferred',
-      'vendor_part_shipping_cost',
-      'vendor_part_tariff_rate',
-      'vendor_part_tariff_code',
-      'vendor_part_other_cost',
-      'subpart_parent_part',
-      'subpart_child_part',
-      'subpart_quantity',
-    ] as const)
+  const cfFields = await systemFieldMap(undefined, orgId, [
+    'vendor_part_part',
+    'vendor_part_unit_price',
+    'vendor_part_is_preferred',
+    'vendor_part_shipping_cost',
+    'vendor_part_tariff_rate',
+    'vendor_part_tariff_code',
+    'vendor_part_other_cost',
+    'subpart_parent_part',
+    'subpart_child_part',
+    'subpart_quantity',
+  ] as const)
 
   const vpPartField = cfFields.vendor_part_part
   const vpPriceField = cfFields.vendor_part_unit_price
@@ -588,14 +585,12 @@ interface CostFields {
  * pre-migration org must still get its `part_cost` maintained.
  */
 async function loadCostFields(orgId: string): Promise<CostFields | null> {
-  const fields = await getOrgCache()
-    .from(orgId, 'customFields')
-    .bySystemAttributes([
-      'part_cost',
-      'part_purchase_cost',
-      'part_rollup_cost',
-      'part_cost_source',
-    ] as const)
+  const fields = await systemFieldMap(undefined, orgId, [
+    'part_cost',
+    'part_purchase_cost',
+    'part_rollup_cost',
+    'part_cost_source',
+  ] as const)
 
   if (!fields.part_cost) {
     logger.warn('part_cost custom field not found, skipping cost persistence')

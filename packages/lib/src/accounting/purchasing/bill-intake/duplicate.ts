@@ -23,7 +23,8 @@ import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../../cache'
+import { getCachedEntityDefId } from '../../../cache'
+import { systemFieldMap } from '../../../resources/system-records'
 import { guard } from './guard'
 
 /** The bill an invoice already exists as, when it does. */
@@ -64,13 +65,11 @@ export async function findExistingBill(
       const vendorBillDefId = await getCachedEntityDefId(organizationId, 'vendor_bill')
       if (!vendorBillDefId) return null
 
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes([
-          'vendor_bill_vendor',
-          'vendor_bill_number',
-          'vendor_bill_internal_number',
-        ] as const)
+      const fields = await systemFieldMap(db, organizationId, [
+        'vendor_bill_vendor',
+        'vendor_bill_number',
+        'vendor_bill_internal_number',
+      ] as const)
 
       const vendorField = fields.vendor_bill_vendor
       const numberField = fields.vendor_bill_number

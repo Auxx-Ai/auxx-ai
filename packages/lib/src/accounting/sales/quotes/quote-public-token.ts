@@ -20,6 +20,7 @@ import { getAssetContent } from '../../../files/assets/content'
 import { createS3StoragePort } from '../../../files/storage/ports'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { quietSession } from '../../../resources/crud/write-origin'
+import { systemFieldMap } from '../../../resources/system-records'
 import { isCheckoutAvailable, sumQuoteDeposits } from '../../money/checkout/reads'
 import type { DiscountType } from '../types'
 import { resolveQuoteDeposit } from './quote-deposit'
@@ -63,11 +64,8 @@ export async function ensureQuotePublicToken(
   const quoteRecordId = toRecordId('quote', quoteInstanceId)
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   const handler = new UnifiedCrudHandler(organizationId, systemUserId)
-  const cache = getOrgCache()
 
-  const cf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['quote_public_token'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, ['quote_public_token'] as const)
   const field = cf.quote_public_token
   if (!field) {
     // Field not provisioned on this org yet (pre-041 org that hasn't run the migration) —
@@ -204,7 +202,6 @@ export async function getPublicQuotePayload(token: string): Promise<PublicQuoteP
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   const quoteRecordId = toRecordId('quote', quoteInstanceId)
   const handler = new UnifiedCrudHandler(organizationId, systemUserId)
-  const cache = getOrgCache()
 
   const [{ payload }, pageSettings, cf] = await Promise.all([
     buildQuotePdfPayload({ organizationId, userId: systemUserId, quoteRecordId }),
@@ -213,14 +210,12 @@ export async function getPublicQuotePayload(token: string): Promise<PublicQuoteP
       'documents.quote.allowDecline',
       'documents.quote.requireSignature',
     ] as const),
-    cache
-      .from(organizationId, 'customFields')
-      .bySystemAttributes([
-        'quote_accepted_by_name',
-        'quote_accepted_at',
-        'quote_decline_reason',
-        'quote_total',
-      ] as const),
+    systemFieldMap(undefined, organizationId, [
+      'quote_accepted_by_name',
+      'quote_accepted_at',
+      'quote_decline_reason',
+      'quote_total',
+    ] as const),
   ])
   const acceptancePageEnabled = pageSettings['documents.quote.acceptancePageEnabled']
   const allowDecline = pageSettings['documents.quote.allowDecline']

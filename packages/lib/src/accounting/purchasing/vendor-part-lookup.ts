@@ -18,9 +18,9 @@ import { createScopedLogger } from '@auxx/logger'
 import { getInstanceId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
+import { getCachedEntityDefId } from '../../cache'
 import { AuxxError } from '../../errors'
-import { findSystemRecordIdsByValue } from '../../resources/system-records'
+import { findSystemRecordIdsByValue, systemFieldMap } from '../../resources/system-records'
 
 const logger = createScopedLogger('purchasing:vendor-part-lookup')
 
@@ -105,9 +105,7 @@ export async function findVendorPartForLine(
     const vendorPartRecordId = matches.value.get(partInstanceId)
     if (!vendorPartRecordId) return ok(null)
 
-    const fields = await getOrgCache()
-      .from(organizationId, 'customFields')
-      .bySystemAttributes(['vendor_part_unit_price'] as const)
+    const fields = await systemFieldMap(db, organizationId, ['vendor_part_unit_price'] as const)
 
     // Read as a second statement rather than a third join: the price is optional
     // on the row AND its field may not be materialised on a mid-migration org.
@@ -173,9 +171,10 @@ export async function findVendorPartsForParts(
     const vendorPartDefId = await getCachedEntityDefId(organizationId, 'vendor_part')
     if (!vendorPartDefId) return ok(found)
 
-    const fields = await getOrgCache()
-      .from(organizationId, 'customFields')
-      .bySystemAttributes(['vendor_part_part', 'vendor_part_contact'] as const)
+    const fields = await systemFieldMap(db, organizationId, [
+      'vendor_part_part',
+      'vendor_part_contact',
+    ] as const)
 
     const partField = fields.vendor_part_part
     const supplierField = fields.vendor_part_contact

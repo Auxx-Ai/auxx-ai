@@ -38,6 +38,7 @@ import {
   upsertRecurrenceRule,
 } from '../../../recurrence'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { systemFieldMap } from '../../../resources/system-records'
 import { getOrganizationSetting } from '../../../settings/settings-service'
 import {
   listInstallments,
@@ -82,9 +83,7 @@ async function getWorkOrderJobType(
   userId: string,
   workOrderInstanceId: string
 ): Promise<string | undefined> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['work_order_job_type'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, ['work_order_job_type'] as const)
   if (!cf.work_order_job_type) return undefined
 
   const fieldValueService = new FieldValueService(organizationId, userId)
@@ -126,7 +125,6 @@ export async function generateInvoiceDraft(
 
   const userId = await getOrgCache().get(organizationId, 'systemUser')
   const handler = new UnifiedCrudHandler(organizationId, userId)
-  const cache = getOrgCache()
   const workOrderRecordId = toRecordId('work_order', workOrderInstanceId)
 
   // ─── Step 1b: WO exists ──────────────────────────────────────────────────────
@@ -147,13 +145,11 @@ export async function generateInvoiceDraft(
   }
 
   // ─── Step 1c: invoice_timing matches the trigger (re-read at fire time) ────
-  const cf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'work_order_invoice_timing',
-      'work_order_pricing_model',
-      'work_order_contact',
-    ] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'work_order_invoice_timing',
+    'work_order_pricing_model',
+    'work_order_contact',
+  ] as const)
   const woFieldIds = [
     cf.work_order_invoice_timing,
     cf.work_order_pricing_model,
@@ -283,9 +279,9 @@ export async function generateInvoiceDraft(
 export async function maybeGenerateVisitInvoiceDraft(visit: WorkOrderVisitRow): Promise<void> {
   try {
     const cache = getOrgCache()
-    const cf = await cache
-      .from(visit.organizationId, 'customFields')
-      .bySystemAttributes(['work_order_invoice_timing'] as const)
+    const cf = await systemFieldMap(undefined, visit.organizationId, [
+      'work_order_invoice_timing',
+    ] as const)
     if (!cf.work_order_invoice_timing) return
 
     const userId = await cache.get(visit.organizationId, 'systemUser')
@@ -338,10 +334,9 @@ export const generateDraftOnCompletion: EntityFieldChangeHandler = async (event)
   const { entityInstanceId: workOrderInstanceId } = parseRecordId(event.recordId)
 
   try {
-    const cache = getOrgCache()
-    const cf = await cache
-      .from(event.organizationId, 'customFields')
-      .bySystemAttributes(['work_order_invoice_timing'] as const)
+    const cf = await systemFieldMap(undefined, event.organizationId, [
+      'work_order_invoice_timing',
+    ] as const)
     if (!cf.work_order_invoice_timing) return
 
     const handler = new UnifiedCrudHandler(event.organizationId, event.userId)
@@ -385,10 +380,7 @@ export async function setInvoiceSchedule(
     throw new BadRequestError(`Invalid recurrence pattern: ${parsed.error.message}`)
   }
 
-  const cache = getOrgCache()
-  const cf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['work_order_invoice_timing'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, ['work_order_invoice_timing'] as const)
   if (cf.work_order_invoice_timing) {
     const handler = new UnifiedCrudHandler(organizationId, userId)
     const workOrderRecordId = toRecordId('work_order', workOrderInstanceId)

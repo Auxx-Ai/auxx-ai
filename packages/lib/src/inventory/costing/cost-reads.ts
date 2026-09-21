@@ -24,9 +24,9 @@
 import { type Database, schema } from '@auxx/database'
 import { and, eq, sql } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import { StockMovementType } from '../../resources/registry/enum-values'
+import { systemFieldMap } from '../../resources/system-records'
 import { guard } from './guard'
 import type { FulfillmentLineRelievedAverage, PartLedgerAverage } from './types'
 
@@ -95,14 +95,12 @@ export async function readPartLedgerAverages(
       const result = new Map<string, PartLedgerAverage>()
       if (uniqueIds.length === 0) return result
 
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes([
-          'stock_movement_part',
-          'stock_movement_quantity',
-          'stock_movement_extended_cost',
-          'stock_movement_adjust_subparts',
-        ] as const)
+      const fields = await systemFieldMap(db, organizationId, [
+        'stock_movement_part',
+        'stock_movement_quantity',
+        'stock_movement_extended_cost',
+        'stock_movement_adjust_subparts',
+      ] as const)
 
       const partField = fields.stock_movement_part
       const quantityField = fields.stock_movement_quantity
@@ -232,14 +230,12 @@ export async function readFulfillmentLineRelievedAverages(
       const result = new Map<string, FulfillmentLineRelievedAverage>()
       if (uniqueIds.length === 0) return result
 
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes([
-          'stock_movement_fulfillment_line',
-          'stock_movement_type',
-          'stock_movement_quantity',
-          'stock_movement_extended_cost',
-        ] as const)
+      const fields = await systemFieldMap(db, organizationId, [
+        'stock_movement_fulfillment_line',
+        'stock_movement_type',
+        'stock_movement_quantity',
+        'stock_movement_extended_cost',
+      ] as const)
 
       const lineRelField = fields.stock_movement_fulfillment_line
       const typeField = fields.stock_movement_type

@@ -40,7 +40,8 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { ok, type Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
+import { getCachedEntityDefId } from '../../cache'
+import { systemFieldMap } from '../../resources/system-records'
 import { recalculateAffectedParts } from '../costing/cost-calculator'
 
 const logger = createScopedLogger('bom:apply-tariff-schedule')
@@ -74,9 +75,10 @@ export async function applyTariffSchedule(
   const offerDefId = await getCachedEntityDefId(organizationId, 'vendor_part')
   if (!offerDefId) return ok(empty)
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['vendor_part_tariff_code', 'vendor_part_part'] as const)
+  const fields = await systemFieldMap(db, organizationId, [
+    'vendor_part_tariff_code',
+    'vendor_part_part',
+  ] as const)
   const codeField = fields.vendor_part_tariff_code
   const partField = fields.vendor_part_part
   if (!codeField || !partField) return ok(empty)

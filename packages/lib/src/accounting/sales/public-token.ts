@@ -16,6 +16,7 @@ import { firstTyped } from '../../field-values/client'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { quietSession } from '../../resources/crud/write-origin'
+import { systemFieldMap } from '../../resources/system-records'
 import { readOrganizationSettings } from '../../settings/read'
 import { isCheckoutAvailable, sumInvoiceDepositApplications } from '../money/checkout/reads'
 import { resolvePartialPaymentBounds } from '../money/customer-money/partial-payment'
@@ -60,11 +61,8 @@ export async function ensureInvoicePublicToken(
   const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   const handler = new UnifiedCrudHandler(organizationId, systemUserId)
-  const cache = getOrgCache()
 
-  const cf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['invoice_public_token'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, ['invoice_public_token'] as const)
   const field = cf.invoice_public_token
   if (!field) {
     // Field not provisioned on this org yet (pre-036 org that hasn't run the migration) —

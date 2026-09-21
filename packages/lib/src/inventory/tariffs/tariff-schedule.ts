@@ -17,7 +17,8 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
+import { getCachedEntityDefId } from '../../cache'
+import { systemFieldMap } from '../../resources/system-records'
 import type { TariffRateRow } from '../costing/vendor-cost'
 
 /**
@@ -44,15 +45,13 @@ export async function loadTariffSchedule(
   if (!rateDefId) return byCode
 
   // The four rate attributes the resolver reads, plus the pointer that groups them.
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'tariff_rate_tariff_code',
-      'tariff_rate_rate',
-      'tariff_rate_effective_from',
-      'tariff_rate_authority',
-      'tariff_rate_chapter99_code',
-    ] as const)
+  const fields = await systemFieldMap(db, organizationId, [
+    'tariff_rate_tariff_code',
+    'tariff_rate_rate',
+    'tariff_rate_effective_from',
+    'tariff_rate_authority',
+    'tariff_rate_chapter99_code',
+  ] as const)
   const codeField = fields.tariff_rate_tariff_code
   const rateField = fields.tariff_rate_rate
   const fromField = fields.tariff_rate_effective_from

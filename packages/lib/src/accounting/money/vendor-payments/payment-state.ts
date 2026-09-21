@@ -12,9 +12,10 @@
 import { type Database, database } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { getEntityDefIdResolver, getOrgCache } from '../../../cache'
+import { getEntityDefIdResolver } from '../../../cache'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { readFieldScalars } from '../../../field-values/read-field-scalars'
+import { systemFieldMap } from '../../../resources/system-records'
 import { netApplied } from '../client'
 import { listVendorBillApplications, sumAppliedToVendorBill } from '../reads'
 
@@ -63,9 +64,7 @@ export async function syncVendorBillPaymentState(
   input: SyncVendorBillPaymentStateInput
 ): Promise<void> {
   const { organizationId, userId, vendorBillInstanceId } = input
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>([...STATE_ATTRS])
+  const fields = await systemFieldMap<SystemAttribute>(db, organizationId, [...STATE_ATTRS])
   const totalField = fields.vendor_bill_total
   const paymentStatusField = fields.vendor_bill_payment_status
   const amountPaidField = fields.vendor_bill_amount_paid

@@ -97,9 +97,10 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
+import { getCachedEntityDefId } from '../../cache'
 import { AuxxError, BadRequestError, NotFoundError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud'
+import { systemFieldMap } from '../../resources/system-records'
 import {
   authorityKey,
   effectiveDay,
@@ -267,9 +268,10 @@ async function loadTariffCodeRows(
   tariffCodeDefId: string,
   codeInstanceIds?: readonly string[]
 ): Promise<CodeRow[]> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['tariff_code_code', 'tariff_code_country'] as const)
+  const fields = await systemFieldMap(db, organizationId, [
+    'tariff_code_code',
+    'tariff_code_country',
+  ] as const)
   const codeField = fields.tariff_code_code
   const countryField = fields.tariff_code_country
   if (!codeField || !countryField) return []

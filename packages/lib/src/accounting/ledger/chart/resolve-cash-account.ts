@@ -2,9 +2,8 @@
 
 import { schema, type Transaction } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
-import { getCachedEntityDefId } from '../../../cache'
-import { getOrgCache } from '../../../cache/singletons'
 import { UnprocessableEntityError } from '../../../errors'
+import { systemFields } from '../../../resources/system-records'
 
 /**
  * The GL account a `bank_account` record points at, or a refusal naming which
@@ -31,11 +30,11 @@ export async function resolveBankAccountGlAccountInTx(
   /** Prefixes every refusal, so the caller's flow is named in the message. */
   subject: string
 ): Promise<string> {
-  const bankDefId = await getCachedEntityDefId(organizationId, 'bank_account')
-  const field = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['bank_account_gl_account'])
-  const fieldId = field.bank_account_gl_account?.id
+  const ctx = await systemFields(tx, organizationId, 'bank_account', [
+    'bank_account_gl_account',
+  ] as const)
+  const bankDefId = ctx?.defId
+  const fieldId = ctx?.fields.bank_account_gl_account?.id
   if (!bankDefId || !fieldId)
     throw new UnprocessableEntityError(`${subject} bank account mapping is not provisioned`)
 

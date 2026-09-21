@@ -7,7 +7,7 @@ import type { RecordId } from '@auxx/types/resource'
 import { toRecordId } from '@auxx/types/resource'
 import { nextKeyAfter } from '@auxx/utils/fractional-indexing'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { requireCachedEntityDefId } from '../../cache'
 import { buildFieldValueRow } from '../../field-values/field-value-mutations'
 import { toFieldType } from '../../field-values/stored-field-type'
 import {
@@ -15,6 +15,7 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../../realtime'
+import { systemFieldMap } from '../../resources/system-records'
 
 const logger = createScopedLogger('bom:qoh')
 
@@ -34,18 +35,15 @@ export async function batchRecalculateQoH(
   if (partInstanceIds.length === 0) return
 
   const unique = [...new Set(partInstanceIds)]
-  const cache = getOrgCache()
 
-  const fields = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'stock_movement_quantity',
-      'stock_movement_part',
-      'stock_movement_adjust_subparts',
-      'part_quantity_on_hand',
-      'part_reorder_point',
-      'part_stock_status',
-    ] as const)
+  const fields = await systemFieldMap(undefined, organizationId, [
+    'stock_movement_quantity',
+    'stock_movement_part',
+    'stock_movement_adjust_subparts',
+    'part_quantity_on_hand',
+    'part_reorder_point',
+    'part_stock_status',
+  ] as const)
 
   const qtyField = fields.stock_movement_quantity
   const partRelField = fields.stock_movement_part

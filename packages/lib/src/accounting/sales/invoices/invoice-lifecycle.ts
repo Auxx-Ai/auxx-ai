@@ -5,12 +5,13 @@ import type { RecordId } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { getEntityDefIdResolver, getOrgCache } from '../../../cache'
+import { getEntityDefIdResolver } from '../../../cache'
 import { readEditStamp } from '../../../entity-instances/edit-snapshot'
 import { BadRequestError, ConflictError } from '../../../errors'
 import { firstTyped } from '../../../field-values/client'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { systemFieldMap } from '../../../resources/system-records'
 import { listInvoiceMoneyPayments } from '../../money/invoice-payments/payment-reads'
 import {
   listInvoiceAllocations,
@@ -27,10 +28,7 @@ async function getInvoiceStatus(
   organizationId: string,
   invoiceRecordId: RecordId
 ): Promise<string | undefined> {
-  const cache = getOrgCache()
-  const cf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['invoice_status'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, ['invoice_status'] as const)
   if (!cf.invoice_status) return undefined
   const values = await handler.getFieldValues(invoiceRecordId, [cf.invoice_status.id])
   const typed = firstTyped(values.get(cf.invoice_status.id))
@@ -107,10 +105,7 @@ export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<voi
     { fieldId: 'invoice_status', value: 'sent' },
   ]
 
-  const cache = getOrgCache()
-  const cf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['invoice_issued_at'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, ['invoice_issued_at'] as const)
   if (cf.invoice_issued_at) {
     const values = await handler.getFieldValues(invoiceRecordId, [cf.invoice_issued_at.id])
     const issuedTyped = firstTyped(values.get(cf.invoice_issued_at.id))

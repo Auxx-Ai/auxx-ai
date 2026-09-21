@@ -24,10 +24,10 @@ import { type Database, database } from '@auxx/database'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { getOrgCache } from '../../../cache'
 import { firstTyped } from '../../../field-values/client'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { systemFieldMap } from '../../../resources/system-records'
 import { sumInvoiceCreditApplications } from '../../sales/credit-memos/reads'
 import type { SyncInvoicePaymentStateInput } from '../types'
 import { listInvoiceMoneyPayments } from './payment-reads'
@@ -63,17 +63,14 @@ export async function syncInvoicePaymentState(
   const db = input.db ?? database
   const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
   const handler = new UnifiedCrudHandler(organizationId, userId, db)
-  const cache = getOrgCache()
 
-  const cf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'invoice_status',
-      'invoice_total',
-      'invoice_amount_paid',
-      'invoice_amount_credited',
-      'invoice_balance',
-    ] as const)
+  const cf = await systemFieldMap(db, organizationId, [
+    'invoice_status',
+    'invoice_total',
+    'invoice_amount_paid',
+    'invoice_amount_credited',
+    'invoice_balance',
+  ] as const)
 
   const fieldIds = [
     cf.invoice_status,

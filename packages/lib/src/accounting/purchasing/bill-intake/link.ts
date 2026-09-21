@@ -20,9 +20,10 @@ import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../../cache'
+import { getCachedEntityDefId } from '../../../cache'
 import { UnprocessableEntityError } from '../../../errors'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
+import { systemFieldMap } from '../../../resources/system-records'
 import { resolveRoles } from '../../ledger/roles/resolve-roles'
 import { guard } from './guard'
 
@@ -149,14 +150,12 @@ export async function linkBillLines(
 
       const { entityInstanceId: billInstanceId } = parseRecordId(input.billRecordId)
 
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes([
-          'vendor_bill_purchase_order',
-          'vendor_bill_line_vendor_bill',
-          'purchase_order_line_purchase_order',
-          'purchase_order_line_part',
-        ] as const)
+      const fields = await systemFieldMap(db, organizationId, [
+        'vendor_bill_purchase_order',
+        'vendor_bill_line_vendor_bill',
+        'purchase_order_line_purchase_order',
+        'purchase_order_line_part',
+      ] as const)
 
       const billOrderField = fields.vendor_bill_purchase_order
       const lineBillField = fields.vendor_bill_line_vendor_bill

@@ -117,18 +117,18 @@ export async function rematchBillsForPurchaseOrderLines(
   const lineIds = [...new Set(purchaseOrderLineInstanceIds)].filter(Boolean)
   if (lineIds.length === 0) return
 
-  const [{ database, schema }, { getOrgCache }, { and, eq, inArray }] = await Promise.all([
+  const [{ database, schema }, { systemFieldMap }, { and, eq, inArray }] = await Promise.all([
     import('@auxx/database'),
-    import('../../cache'),
+    import('../../resources/system-records'),
     import('drizzle-orm'),
   ])
 
   // The INVERSE of `vendor_bill_line_purchase_order_line`, read from the bill-line
   // side rather than through the purchase order line's `_vendor_bill_lines` mirror:
   // the mirror is a maintained copy and this is the fact itself. One query.
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['vendor_bill_line_purchase_order_line'] as const)
+  const fields = await systemFieldMap(database, organizationId, [
+    'vendor_bill_line_purchase_order_line',
+  ] as const)
   const relField = fields.vendor_bill_line_purchase_order_line
   // An org without the field has no bills to rematch — not an error.
   if (!relField) return
