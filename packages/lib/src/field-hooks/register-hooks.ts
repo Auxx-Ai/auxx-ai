@@ -745,7 +745,7 @@ export function registerAllHooks(): void {
   registerEntityPreCreateHooks('credit-memo-lines', [guardIssuedCreditMemoLineCreate])
   registerEntityPreDeleteHooks('credit-memo-lines', [guardIssuedCreditMemoLineDelete])
 
-  // ─── Vendor credits (plans/accounting/tasks/71-one-cash-endpoint.md §5 U7) ──
+  // ─── Vendor credits (plans/accounting/tasks/done/71-one-cash-endpoint.md §5 U7) ──
   // The buy-side mirror of the block above, registration for registration.
   registerEntityFieldChangeHooks('vendor-credit-lines', [recomputeOnVendorCreditLineChange])
   registerEntityPostDeleteHooks('vendor-credit-lines', [recomputeVendorCreditAfterLineDelete])

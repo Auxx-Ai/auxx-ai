@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/vendor-credit.ts
 //
 // The vendor credit actions generic record mutations cannot do
-// (plans/accounting/tasks/71-one-cash-endpoint.md §5 U7). A draft credit and
+// (plans/accounting/tasks/done/71-one-cash-endpoint.md §5 U7). A draft credit and
 // its lines are created and edited through the ordinary record doors; what is
 // here is what moves the ledger or the subledger: create, issue, void, apply,
 // unapply, refund, and the two reads the drawer and the dialogs render.

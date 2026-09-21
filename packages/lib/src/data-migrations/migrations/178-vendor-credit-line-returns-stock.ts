@@ -20,7 +20,7 @@ const CACHE_KEYS = ['customFields', 'resources'] as const
 
 /**
  * Migration 178: a vendor credit line says whether it sends the goods back
- * (`plans/accounting/tasks/73-the-buy-side-against-the-ledger.md` §8.2).
+ * (`plans/accounting/tasks/done/73-the-buy-side-against-the-ledger.md` §8.2).
  *
  * ## No backfill, deliberately
  *

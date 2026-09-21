@@ -15,7 +15,7 @@
  * `resolveRoles` by the writer and prefilled onto the line, never a per-line
  * role here (71 U7, decision 1).
  *
- * @see plans/accounting/tasks/71-one-cash-endpoint.md §5 U7
+ * @see plans/accounting/tasks/done/71-one-cash-endpoint.md §5 U7
  */
 
 import { UnprocessableEntityError } from '../../../errors'

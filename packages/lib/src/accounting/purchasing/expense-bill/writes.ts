@@ -29,7 +29,7 @@
 //
 // No permission checks here. The router asserts (§6).
 //
-// plans/accounting/tasks/73-the-buy-side-against-the-ledger.md §3
+// plans/accounting/tasks/done/73-the-buy-side-against-the-ledger.md §3
 
 import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'

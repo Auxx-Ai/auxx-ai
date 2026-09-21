@@ -20,7 +20,7 @@ const CACHE_KEYS = ['customFields', 'resources'] as const
 
 /**
  * Migration 175: a receipt records what it accrued
- * (`plans/accounting/tasks/73-the-buy-side-against-the-ledger.md` §7.2).
+ * (`plans/accounting/tasks/done/73-the-buy-side-against-the-ledger.md` §7.2).
  *
  * The standard is landed, so a receipt valued at standard has capitalised money
  * the carrier and the customs broker will invoice separately. Its entry credits

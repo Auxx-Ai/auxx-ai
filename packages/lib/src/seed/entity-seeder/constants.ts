@@ -280,7 +280,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
   },
   {
     // A supplier's credit note as a DOCUMENT, the purchase-side mirror of
-    // `credit_memo` (plans/accounting/tasks/71-one-cash-endpoint.md §5 U7).
+    // `credit_memo` (plans/accounting/tasks/done/71-one-cash-endpoint.md §5 U7).
     // `isVisible: true` like `vendor_bill`: it gets its own records view, and
     // the bill and purchase-order drawers render it as a card.
     entityType: 'vendor_credit',
