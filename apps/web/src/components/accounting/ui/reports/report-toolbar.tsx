@@ -29,7 +29,7 @@ const COMPARE_LABEL: Record<CompareOption, string> = {
 
 const COMPARE_OPTIONS: CompareOption[] = ['none', 'prior_period', 'prior_year']
 
-export interface ReportToolbarProps {
+export interface ReportToolbarControlsProps {
   /**
    * `asOf` is one day-granular `DateTimePicker` in `mode='date'` (trial
    * balance, balance sheet, aging). `range` is a `DateRangePicker` (the P&L,
@@ -63,22 +63,18 @@ export interface ReportToolbarProps {
   /** Omit entirely to hide the compare control - the trial balance has none. */
   compare?: CompareOption
   onSelectCompare?: (compare: CompareOption) => void
-  onDownloadPdf: () => void
-  onDownloadCsv: () => void
-  /** The last date the statement covers, for the "Synced through" status. */
-  through?: string
-  isDownloadingPdf?: boolean
   disabled?: boolean
 }
 
 /**
- * The reports toolbar (`plans/accounting/ui-plan.md` §2.4, §4.5), on
- * `ledger-toolbar.tsx`'s own scale: `gap-1 p-1`, ghost `h-7` buttons,
- * `Separator` dividers. The period control(s) come first, an optional
- * compare dropdown after a separator, then PDF/CSV on the right after a
- * trailing separator - matching the ASCII layout `ui-plan.md` §2.4 draws.
+ * A report's LEFT half of the accounting topbar (`tasks/81` §4): the period
+ * control, the filter chip, the compare dropdown.
+ *
+ * 🛑 No bar of its own. The layout owns the one `AccountingToolbar` and its
+ * `gap-1 p-1` scale; a page publishes these controls into it with
+ * `useRegisterAccountingToolbar`, memoised.
  */
-export function ReportToolbar({
+export function ReportToolbarControls({
   mode,
   asOf,
   onSelectAsOf,
@@ -91,12 +87,8 @@ export function ReportToolbar({
   filter,
   compare,
   onSelectCompare,
-  onDownloadPdf,
-  onDownloadCsv,
-  through,
-  isDownloadingPdf = false,
   disabled = false,
-}: ReportToolbarProps) {
+}: ReportToolbarControlsProps) {
   // `DateTimePicker` has no notion of an ACTIVE preset, so the label is worked
   // out here: naming the preset back ("As of Last month end") beats restating a
   // date the reader just picked by name. Same idea as `DateRangePicker`'s own
@@ -107,7 +99,7 @@ export function ReportToolbar({
     : 'Select a date...'
 
   return (
-    <div className='flex flex-wrap items-center gap-1 border-b p-1'>
+    <>
       {mode === 'asOf' && (
         <DateTimePicker
           mode='date'
@@ -207,9 +199,27 @@ export function ReportToolbar({
           </DropdownMenu>
         </>
       )}
+    </>
+  )
+}
 
-      <div className='flex-1' />
+export interface ReportToolbarActionsProps {
+  onDownloadPdf: () => void
+  onDownloadCsv: () => void
+  /** The last date the statement covers, for the "Synced through" status. */
+  through?: string
+  isDownloadingPdf?: boolean
+}
 
+/** A report's RIGHT half of the topbar (`tasks/81` §4): sync status, PDF, CSV. */
+export function ReportToolbarActions({
+  onDownloadPdf,
+  onDownloadCsv,
+  through,
+  isDownloadingPdf = false,
+}: ReportToolbarActionsProps) {
+  return (
+    <>
       {through && <ProviderSyncStatus through={through} />}
 
       <Separator orientation='vertical' className='h-6' />
@@ -221,6 +231,6 @@ export function ReportToolbar({
         <FileSpreadsheet />
         CSV
       </Button>
-    </div>
+    </>
   )
 }

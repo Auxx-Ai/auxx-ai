@@ -12,20 +12,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Separator } from '@auxx/ui/components/separator'
 import { format } from 'date-fns'
-import {
-  Ban,
-  CircleAlert,
-  CircleCheck,
-  CircleX,
-  Link2Off,
-  List,
-  type LucideIcon,
-  Send,
-  Undo2,
-} from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Ban, CircleAlert, CircleX, Link2Off, List, type LucideIcon, Undo2 } from 'lucide-react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { sourceAccountLabel } from '~/components/accounting/ui/source-account-label'
 import { SourceProviderIcon } from '~/components/accounting/ui/source-provider-icon'
+import { Tooltip } from '~/components/global/tooltip'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
 import { api } from '~/trpc/react'
@@ -62,38 +53,30 @@ export const EMPTY_PAYOUT_FILTERS: PayoutFilters = {
 /**
  * The status vocabulary this toolbar offers, `all` first.
  *
- * ⚠️ The UNION of two provider vocabularies, not either one. `PAYOUT_STATUSES`
- * (`money/payouts/client.ts`) is `in_transit | paid | failed | reversed`, while
- * `PayoutHeader.status` (`money/payouts/source.ts`) is
- * `in_transit | paid | failed | canceled` - the record side added `reversed` and
- * the source side kept `canceled`. `MoneyTransfer.status` is free text carrying
- * whichever word the provider used, so neither list alone covers what is on the
- * rows, and `STATUS_DOT` in `payouts-page.tsx` already colours all five.
+ * 🛑 Only the three ways a payout did NOT land (81 §5.5). The row already ends
+ * with a coloured dot and the status word, so the filter only has to answer
+ * *find me the ones I cannot see from here*: `in_transit` self-resolves within
+ * a day and `paid` is approximately `all`. `STATUS_DOT` in `payouts-page.tsx`
+ * keeps all five keys — the tabs shrink, the row's vocabulary does not.
+ *
+ * 🛑 Not one `Exceptions` tab. `MoneyTransfer.status` is free text carrying the
+ * provider's word and the set is explicitly open, so a server-side exception
+ * SET would silently hide a payout whose status is none of the five.
  *
  * Exported so the page can validate `?status=` before it reaches the query: the
- * tabs below can only emit these, but a hand-edited URL can emit anything.
+ * tabs below can only emit these, but a hand-edited URL can emit anything, and
+ * an old `?status=paid` link folds back to `all` rather than 400ing.
  */
-export const PAYOUT_FILTER_STATUSES = [
-  'all',
-  'paid',
-  'in_transit',
-  'failed',
-  'canceled',
-  'reversed',
-] as const
+export const PAYOUT_FILTER_STATUSES = ['all', 'failed', 'canceled', 'reversed'] as const
 
 export type PayoutFilterStatus = (typeof PAYOUT_FILTER_STATUSES)[number]
 
 /**
- * The statuses in the order a reader works down them: everything, then the two
- * ordinary outcomes, then the three ways a payout did not land. Sentence case,
- * because these are the provider's snake_case tokens rendered as words - the
- * same treatment the row's status text gets.
+ * Sentence case, because these are the provider's snake_case tokens rendered as
+ * words - the same treatment the row's status text gets.
  */
 const STATUSES: { value: PayoutFilterStatus; label: string; icon: LucideIcon }[] = [
   { value: 'all', label: 'All', icon: List },
-  { value: 'paid', label: 'Paid', icon: CircleCheck },
-  { value: 'in_transit', label: 'In transit', icon: Send },
   { value: 'failed', label: 'Failed', icon: CircleAlert },
   { value: 'canceled', label: 'Canceled', icon: Ban },
   { value: 'reversed', label: 'Reversed', icon: Undo2 },
@@ -222,14 +205,23 @@ function SourceAccountPicker({ value, onChange }: SourceAccountPickerProps) {
 interface PayoutsToolbarProps {
   filters: PayoutFilters
   onChange: (next: PayoutFilters) => void
+  /**
+   * The list's `SelectAllCheckbox`, FIRST in row two beside the search.
+   *
+   * 🛑 First, or the alignment is wrong. The box's `marginLeft` is measured from
+   * `ListToolbar`'s own `px-3`, so it only lands on the `TreeRow` checkboxes
+   * below when nothing precedes it in the bar. Its `size-12 -my-2` is also what
+   * holds the row at 48px without a `RadioTab` in it.
+   */
+  selectAll?: ReactNode
 }
 
 /**
  * The payouts list's toolbar: source account, status, search, date range.
  *
- * TWO `ListToolbar` rows inside one sticky block, the shape `review-toolbar.tsx`
- * settled on and for the same reason: a six-item `RadioTab` plus an account
- * combobox plus search plus a date range cannot share a line at a width anybody
+ * TWO `ListToolbar` rows in one block, the shape `review-toolbar.tsx` settled
+ * on and for the same reason: a `RadioTab` plus an account combobox plus search
+ * plus a date range cannot share a line at a width anybody
  * actually uses, and `ListToolbar`'s `overflow-x-auto` turns that into a
  * horizontal scroll that hides half the filters. Row one is what you are looking
  * AT - which account, then which pile of it; row two is how you narrow that
@@ -241,10 +233,10 @@ interface PayoutsToolbarProps {
  * it can be acted on - so checkboxes would select rows for an action that does
  * not exist.
  *
- * Both rows are `sticky={false}` because the WRAPPER is the sticky element; two
- * sticky rows would pin to the same `top-0` and cover each other.
+ * Both rows are `sticky={false}`: the block sits ABOVE the list's `ScrollArea`
+ * rather than inside it, so it never scrolls and has nothing to pin against.
  */
-export function PayoutsToolbar({ filters, onChange }: PayoutsToolbarProps) {
+export function PayoutsToolbar({ filters, onChange, selectAll }: PayoutsToolbarProps) {
   const set = <K extends keyof PayoutFilters>(key: K, value: PayoutFilters[K]) =>
     onChange({ ...filters, [key]: value })
 
@@ -260,7 +252,7 @@ export function PayoutsToolbar({ filters, onChange }: PayoutsToolbarProps) {
   const dirty = !!filters.search || !!filters.from || !!filters.to || filters.needsMatching
 
   return (
-    <div className='sticky top-0 z-10 shrink-0 backdrop-blur-sm'>
+    <div className='shrink-0'>
       <ListToolbar sticky={false}>
         <ListToolbarGroup className='shrink-0'>
           <SourceAccountPicker
@@ -287,6 +279,8 @@ export function PayoutsToolbar({ filters, onChange }: PayoutsToolbarProps) {
       </ListToolbar>
 
       <ListToolbar sticky={false}>
+        {selectAll}
+
         <ListToolbarGroup className='min-w-40 flex-1'>
           {/* The payout id, not a description: these rows have no free text on
               them at all. What a reader has in hand is a `po_…` or a `gid://…`
@@ -330,12 +324,16 @@ export function PayoutsToolbar({ filters, onChange }: PayoutsToolbarProps) {
           />
         </ListToolbarGroup>
 
-        {dirty && (
-          <ListToolbarGroup className='shrink-0'>
+        <ListToolbarGroup className='shrink-0'>
+          {/* 🛑 Always rendered, disabled when there is nothing to clear. Gating
+              it on `dirty` re-flowed the whole row the moment somebody typed one
+              character into the search. */}
+          <Tooltip content='Clear all'>
             <Button
               variant='ghost'
-              size='sm'
-              className='h-7'
+              size='icon-sm'
+              aria-label='Clear all'
+              disabled={!dirty}
               onClick={() =>
                 onChange({
                   ...EMPTY_PAYOUT_FILTERS,
@@ -344,10 +342,9 @@ export function PayoutsToolbar({ filters, onChange }: PayoutsToolbarProps) {
                 })
               }>
               <CircleX />
-              Clear
             </Button>
-          </ListToolbarGroup>
-        )}
+          </Tooltip>
+        </ListToolbarGroup>
       </ListToolbar>
     </div>
   )

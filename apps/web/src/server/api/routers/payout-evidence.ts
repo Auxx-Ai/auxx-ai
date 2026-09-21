@@ -2,6 +2,7 @@
 
 import {
   acceptMatch,
+  countPayoutEvidence,
   findPayoutEvidenceIdByExternalId,
   getPayoutEvidence,
   listMatchCandidates,
@@ -96,6 +97,16 @@ export const payoutEvidenceRouter = createTRPCRouter({
         externalId: input.externalId,
       })
     ),
+
+  /**
+   * Both of the Payouts topbar's badges in one read, the way
+   * `ledger.outboxCounts` serves the rail — the `⚠ Import issues (n)` button is
+   * absent at zero, so a page fetched for its length would be a page nobody
+   * opens.
+   */
+  counts: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) =>
+    unwrap(await countPayoutEvidence(ctx.db, { organizationId: ctx.session.organizationId }))
+  ),
 
   rejected: permissionProcedure(PermissionKey.ledgerView)
     .input(pagination)

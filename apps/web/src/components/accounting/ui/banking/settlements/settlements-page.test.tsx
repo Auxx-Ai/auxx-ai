@@ -1,4 +1,5 @@
 // apps/web/src/components/accounting/ui/banking/settlements/settlements-page.test.tsx
+import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import { render, screen } from '@testing-library/react'
 import { type ComponentProps, Fragment, type ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -25,9 +26,6 @@ vi.mock('~/providers/capabilities-provider', () => ({
   useRequireCapability: () => {},
 }))
 vi.mock('nuqs', () => ({ useQueryState: () => [false, vi.fn()] }))
-vi.mock('~/components/global/settings-page', () => ({
-  default: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}))
 vi.mock('./rail-strip', () => ({ RailStrip: () => null }))
 vi.mock('../payouts/payout-evidence-drawer', () => ({ PayoutEvidenceDrawer: () => null }))
 vi.mock('~/components/global/docked-panels-outlet', () => ({ useRegisterDockedPanels: () => {} }))
@@ -114,9 +112,37 @@ vi.mock('~/trpc/react', () => ({
 
 import { SettlementsPage } from './settlements-page'
 
+/**
+ * A real CLASS, for the reason `payouts-page.test.tsx` spells out: the shared
+ * `IntersectionObserver` stub in `src/test/setup.ts` is a `vi.fn()`, which
+ * throws "is not a constructor" the moment base-ui's `ScrollArea` viewport
+ * constructs one — and the list now sits in a `ScrollArea`.
+ */
+class NoopIntersectionObserver {
+  readonly root = null
+  readonly rootMargin = ''
+  readonly thresholds: number[] = []
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return []
+  }
+}
+vi.stubGlobal('IntersectionObserver', NoopIntersectionObserver)
+
+/** The toolbar's Clear is a `Tooltip`, which throws outside a provider. */
+function renderPage() {
+  return render(
+    <TooltipProvider>
+      <SettlementsPage />
+    </TooltipProvider>
+  )
+}
+
 describe('settlement rows', () => {
   it('renders imported money and setup instructions instead of zero and Unrouted', () => {
-    render(<SettlementsPage />)
+    renderPage()
     expect(screen.getByText('USD 1,423.01')).toBeInTheDocument()
     expect(screen.getByText('paid')).toBeInTheDocument()
     expect(screen.getByText('Pending accounting')).toBeInTheDocument()
@@ -127,7 +153,7 @@ describe('settlement rows', () => {
   it('renders the explicitly selected gateway', () => {
     state.source.gatewayName = 'Shopify merchant'
     state.source.routingIssue = null
-    render(<SettlementsPage />)
+    renderPage()
     // The rail is its own badge now and the date leads the row's title.
     expect(screen.getByText('Shopify merchant')).toBeInTheDocument()
     expect(screen.getByText('2026-09-15')).toBeInTheDocument()
@@ -136,7 +162,7 @@ describe('settlement rows', () => {
   it('renders missing amounts honestly', () => {
     state.source.amountMinor = null
     state.source.amountIssue = 'Re-sync this payout.'
-    render(<SettlementsPage />)
+    renderPage()
     expect(screen.getByText('Amount unavailable')).toBeInTheDocument()
     expect(screen.getByText('Re-sync this payout.')).toBeInTheDocument()
   })

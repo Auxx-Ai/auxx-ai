@@ -118,9 +118,12 @@ const ACCOUNTING_SETTINGS: SidebarProps[] = [
 /**
  * The layout owns the one `MainPageContent`, so a page below it (Recurring
  * templates' journal-entry drawer) docks a panel by publishing it to the
- * outlet rather than by passing a prop it cannot reach — same reason
- * `accounting/banking/layout.tsx` does this. The other five settings pages
- * publish nothing, so they keep getting an empty `dockedPanels` array.
+ * outlet rather than by passing a prop it cannot reach. The other five settings
+ * pages publish nothing, so they keep getting an empty `dockedPanels` array.
+ *
+ * ⚠️ Settings keeps its OWN shell: `accounting/layout.tsx` renders bare children
+ * under `/settings` so this `MainPageContent` is not nested inside its one
+ * (`tasks/81` §10.1).
  */
 function AccountingSettingsLayoutFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()

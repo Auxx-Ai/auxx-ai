@@ -48,6 +48,7 @@ import { PermissionKey } from '@auxx/lib/permissions/client'
 import { ActionBar } from '@auxx/ui/components/action-bar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
@@ -56,9 +57,11 @@ import { CircleHelp, Landmark, PanelRight, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
 import { useEffect, useMemo, useState } from 'react'
+import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
+import { ToolbarTitle } from '~/components/accounting/ui/accounting-toolbar'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
-import SettingsPage from '~/components/global/settings-page'
+import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import {
   ListSelectionProvider,
   SelectAllCheckbox,
@@ -81,15 +84,6 @@ import {
   type SettlementFilters,
   SettlementsToolbar,
 } from './settlements-toolbar'
-
-const BREADCRUMBS = [
-  { title: 'Accounting', href: '/app/accounting' },
-  { title: 'Banking' },
-  { title: 'Settlements' },
-]
-
-const PAGE_DESCRIPTION =
-  'Payout amounts and status reported by your payment providers, with gateway setup and accounting progress.'
 
 /** The ledger is pinned to USD for the cutover (`LEDGER_CURRENCY`). */
 const DISPLAY_CURRENCY = 'USD'
@@ -263,31 +257,37 @@ function SettlementsBody() {
     })
   }
 
+  useRegisterAccountingToolbar(
+    useMemo(
+      () => ({
+        left: <ToolbarTitle>Settlements</ToolbarTitle>,
+        // 🛑 The view tabs and the select-all stay in the page's own
+        // `ListToolbar` (81 §3): the `RadioTab` is what makes the bar 48px
+        // tall, and `SelectAllCheckbox`'s offset is derived from that height.
+        right: can(PermissionKey.ledgerPost) ? (
+          <Button
+            variant='ghost'
+            size='sm'
+            className='h-7'
+            loading={syncNow.isPending}
+            loadingText='Syncing...'
+            onClick={() => syncNow.mutate()}>
+            <RefreshCw />
+            Sync settlements
+          </Button>
+        ) : null,
+      }),
+      [can, syncNow.isPending, syncNow.mutate]
+    )
+  )
+
   return (
-    <SettingsPage
-      title='Settlements'
-      description={PAGE_DESCRIPTION}
-      breadcrumbs={BREADCRUMBS}
-      button={
-        <div className='flex flex-wrap items-center gap-2'>
-          {can(PermissionKey.ledgerPost) && (
-            <Button
-              variant='outline'
-              size='sm'
-              loading={syncNow.isPending}
-              loadingText='Syncing...'
-              onClick={() => syncNow.mutate()}>
-              <RefreshCw />
-              Sync settlements
-            </Button>
-          )}
-        </div>
-      }>
-      <div className='flex flex-1 flex-col'>
+    <>
+      <div className='flex min-h-0 flex-1 flex-col'>
         {/* Brief 27 §8.2: one row per rail with a clearing account, below the
             totals and above the payout list. The strip is where a billed rail
             - which never gets a payout record - is visible at all. */}
-        <div className='flex flex-col gap-3 p-4'>
+        <div className='flex shrink-0 flex-col gap-3 p-4'>
           <RailStrip currencyCode={DISPLAY_CURRENCY} />
 
           {blockers.length > 0 && <EntryBlockers blockers={blockers} />}
@@ -303,215 +303,218 @@ function SettlementsBody() {
           selectAll={<SelectAllCheckbox listPadding={16} />}
         />
 
-        <div className='flex flex-1 flex-col gap-1 p-4 pb-24'>
-          {payoutsQuery.isPending ? (
-            <div className='flex flex-col gap-2'>
-              <Skeleton className='h-10 w-full' />
-              <Skeleton className='h-10 w-full' />
-              <Skeleton className='h-10 w-full' />
-            </div>
-          ) : payouts.length === 0 ? (
-            <EmptyState
-              icon={Landmark}
-              title={
-                narrowed
-                  ? 'Nothing in this view'
-                  : onlyUnidentified
-                    ? 'Nothing unidentified'
-                    : 'No payouts yet'
-              }
-              description={
-                narrowed
-                  ? 'No settlements match these filters. Widen the date range, or clear them, to see everything recorded.'
-                  : onlyUnidentified
-                    ? 'No posted settlements have unidentified amounts. Imported payouts may still be awaiting accounting.'
-                    : 'Payouts appear when your connected payment provider imports them.'
-              }
-            />
-          ) : (
-            <TreeRowList
-              items={payouts}
-              className='gap-px'
-              getKey={(payout) => payout.payoutId}
-              renderRow={(payout) => {
-                const display = settlementDisplay(payout)
-                /* 🛑 The SOURCE's external id first: a synced payout carries the
+        <ScrollArea className='min-h-0 flex-1'>
+          <div className='flex flex-col gap-1 p-4 pb-24'>
+            {payoutsQuery.isPending ? (
+              <div className='flex flex-col gap-2'>
+                <Skeleton className='h-10 w-full' />
+                <Skeleton className='h-10 w-full' />
+                <Skeleton className='h-10 w-full' />
+              </div>
+            ) : payouts.length === 0 ? (
+              <EmptyState
+                icon={Landmark}
+                title={
+                  narrowed
+                    ? 'Nothing in this view'
+                    : onlyUnidentified
+                      ? 'Nothing unidentified'
+                      : 'No payouts yet'
+                }
+                description={
+                  narrowed
+                    ? 'No settlements match these filters. Widen the date range, or clear them, to see everything recorded.'
+                    : onlyUnidentified
+                      ? 'No posted settlements have unidentified amounts. Imported payouts may still be awaiting accounting.'
+                      : 'Payouts appear when your connected payment provider imports them.'
+                }
+              />
+            ) : (
+              <TreeRowList
+                items={payouts}
+                className='gap-px'
+                getKey={(payout) => payout.payoutId}
+                renderRow={(payout) => {
+                  const display = settlementDisplay(payout)
+                  /* 🛑 The SOURCE's external id first: a synced payout carries the
                    provider's id there, and only a posted one also has
                    `payout_gateway_id`. Keying on the latter alone left the
                    drawer unreachable on 264 of 269 rows here. */
-                const externalId = payout.sourceSummary?.externalId ?? payout.gatewayId
-                const rail = payout.paymentGatewayId
-                  ? gatewayById.get(payout.paymentGatewayId)
-                  : undefined
-                const source = payout.sourceSummary
-                const railName = source
-                  ? (source.gatewayName ??
-                    `${source.provider === 'shopify_payments' ? 'Shopify Payments' : (source.provider ?? 'Unknown provider')} · Setup required`)
-                  : (rail?.name ?? 'Unrouted')
-                return (
-                  <div className='flex flex-col gap-1.5'>
-                    <TreeRow
-                      className={TREE_SECONDARY_NOTRUNCATE}
-                      icon={<Landmark className='size-4 text-muted-foreground' />}
-                      selectable
-                      selecting={selecting}
-                      selected={selectedIds.includes(payout.payoutId)}
-                      onSelectChange={(_next, event) =>
-                        toggle(payout.payoutId, { shiftKey: event.shiftKey })
-                      }
-                      selectLabel={`Select ${payout.number ?? payout.payoutId}`}
-                      /* Date then number in one fixed-width mono column, the way
+                  const externalId = payout.sourceSummary?.externalId ?? payout.gatewayId
+                  const rail = payout.paymentGatewayId
+                    ? gatewayById.get(payout.paymentGatewayId)
+                    : undefined
+                  const source = payout.sourceSummary
+                  const railName = source
+                    ? (source.gatewayName ??
+                      `${source.provider === 'shopify_payments' ? 'Shopify Payments' : (source.provider ?? 'Unknown provider')} · Setup required`)
+                    : (rail?.name ?? 'Unrouted')
+                  return (
+                    <div className='flex flex-col gap-1.5'>
+                      <TreeRow
+                        className={TREE_SECONDARY_NOTRUNCATE}
+                        icon={<Landmark className='size-4 text-muted-foreground' />}
+                        selectable
+                        selecting={selecting}
+                        selected={selectedIds.includes(payout.payoutId)}
+                        onSelectChange={(_next, event) =>
+                          toggle(payout.payoutId, { shiftKey: event.shiftKey })
+                        }
+                        selectLabel={`Select ${payout.number ?? payout.payoutId}`}
+                        /* Date then number in one fixed-width mono column, the way
                        the Payouts list leads its rows. */
-                      title={
-                        <span className='flex min-w-0 items-center gap-1.5'>
-                          <span className='shrink-0 font-mono text-muted-foreground text-xs tabular-nums'>
-                            {settlementDay(payout) ?? EMPTY_CELL}
-                          </span>
-                          {/* The number is eight characters and fixed-format, so
+                        title={
+                          <span className='flex min-w-0 items-center gap-1.5'>
+                            <span className='shrink-0 font-mono text-muted-foreground text-xs tabular-nums'>
+                              {settlementDay(payout) ?? EMPTY_CELL}
+                            </span>
+                            {/* The number is eight characters and fixed-format, so
                             it keeps its width rather than truncating under a
                             long badge in `secondary`. */}
-                          <span className='shrink-0 text-sm'>{payout.number ?? EMPTY_CELL}</span>
-                        </span>
-                      }
-                      secondary={
-                        <span className='flex flex-wrap items-center gap-1.5'>
-                          <Badge variant='outline' size='xs'>
-                            {railName}
-                          </Badge>
-                          {/* Brief 49 §7.2: an `imported` payout has no itemisation,
+                            <span className='shrink-0 text-sm'>{payout.number ?? EMPTY_CELL}</span>
+                          </span>
+                        }
+                        secondary={
+                          <span className='flex flex-wrap items-center gap-1.5'>
+                            <Badge variant='outline' size='xs'>
+                              {railName}
+                            </Badge>
+                            {/* Brief 49 §7.2: an `imported` payout has no itemisation,
                             so its structural zero in `unrecognisedNetMinor` means
                             "nothing to split", never "everything recognised" -
                             27-a §4 rule 2's own wording. */}
-                          {source && !payout.glPostingId && (
-                            <Badge variant='outline' size='xs'>
-                              Pending accounting
-                            </Badge>
-                          )}
-                          {!source && payout.source === 'imported' && (
-                            <Badge variant='outline' size='xs'>
-                              No itemisation
-                            </Badge>
-                          )}
-                          {payout.unrecognisedNetMinor > 0 && (
-                            <Badge variant='amber' size='xs'>
-                              <CircleHelp />
-                              {formatMinor(payout.unrecognisedNetMinor, DISPLAY_CURRENCY)}{' '}
-                              unidentified
-                              {payout.unrecognisedCount > 0 ? ` (${payout.unrecognisedCount})` : ''}
-                            </Badge>
-                          )}
-                        </span>
-                      }
-                      /* Where the row ends, at the same x on every line: the
+                            {source && !payout.glPostingId && (
+                              <Badge variant='outline' size='xs'>
+                                Pending accounting
+                              </Badge>
+                            )}
+                            {!source && payout.source === 'imported' && (
+                              <Badge variant='outline' size='xs'>
+                                No itemisation
+                              </Badge>
+                            )}
+                            {payout.unrecognisedNetMinor > 0 && (
+                              <Badge variant='amber' size='xs'>
+                                <CircleHelp />
+                                {formatMinor(payout.unrecognisedNetMinor, DISPLAY_CURRENCY)}{' '}
+                                unidentified
+                                {payout.unrecognisedCount > 0
+                                  ? ` (${payout.unrecognisedCount})`
+                                  : ''}
+                              </Badge>
+                            )}
+                          </span>
+                        }
+                        /* Where the row ends, at the same x on every line: the
                        money, the status as a dot plus its word, then whether a
                        bank line was ever matched to it. */
-                      actions={
-                        <div className='flex items-center gap-2'>
-                          <span className='font-mono text-xs tabular-nums'>
-                            {display.amountMinor !== null &&
-                            display.currency &&
-                            display.currencyExponent !== null
-                              ? formatEvidenceAmount(
-                                  display.amountMinor,
-                                  display.currency,
-                                  display.currencyExponent
-                                )
-                              : 'Amount unavailable'}
-                          </span>
-                          <span className='flex items-center gap-1 text-muted-foreground text-xs'>
-                            <span
-                              className={cn(
-                                'size-1.5 rounded-full',
-                                STATUS_DOT[display.status] ?? 'bg-muted-foreground'
-                              )}
-                              aria-hidden
-                            />
-                            {display.status.replaceAll('_', ' ')}
-                          </span>
-                          {/* 🛑 Brief 18 §1: a `paid` payout with no bank line is a
+                        actions={
+                          <div className='flex items-center gap-2'>
+                            <span className='font-mono text-xs tabular-nums'>
+                              {display.amountMinor !== null &&
+                              display.currency &&
+                              display.currencyExponent !== null
+                                ? formatEvidenceAmount(
+                                    display.amountMinor,
+                                    display.currency,
+                                    display.currencyExponent
+                                  )
+                                : 'Amount unavailable'}
+                            </span>
+                            <span className='flex items-center gap-1 text-muted-foreground text-xs'>
+                              <span
+                                className={cn(
+                                  'size-1.5 rounded-full',
+                                  STATUS_DOT[display.status] ?? 'bg-muted-foreground'
+                                )}
+                                aria-hidden
+                              />
+                              {display.status.replaceAll('_', ' ')}
+                            </span>
+                            {/* 🛑 Brief 18 §1: a `paid` payout with no bank line is a
                             real signal - either the deposit has not landed or
                             somebody coded it by hand instead of matching it. */}
-                          {payout.bankTransactionId ? (
-                            <Badge variant='green' size='sm'>
-                              matched
-                            </Badge>
-                          ) : (
-                            display.status === 'paid' && (
-                              <Badge variant='outline' size='sm'>
-                                unmatched
+                            {payout.bankTransactionId ? (
+                              <Badge variant='green' size='sm'>
+                                matched
                               </Badge>
-                            )
-                          )}
-                          {/* The provider's payout id is what the drawer
+                            ) : (
+                              display.status === 'paid' && (
+                                <Badge variant='outline' size='sm'>
+                                  unmatched
+                                </Badge>
+                              )
+                            )}
+                            {/* The provider's payout id is what the drawer
                               resolves its evidence from, so a hand-recorded
                               payout with no id has no panel to open. */}
-                          {externalId && (
-                            <TreeRowButton
-                              persistent
-                              tooltipText='Open details'
-                              onClick={() => void setOpenPayoutId(externalId)}>
-                              <PanelRight />
-                            </TreeRowButton>
-                          )}
-                        </div>
-                      }
-                      /* Mid-selection a row click extends the pick; otherwise it
+                            {externalId && (
+                              <TreeRowButton
+                                persistent
+                                tooltipText='Open details'
+                                onClick={() => void setOpenPayoutId(externalId)}>
+                                <PanelRight />
+                              </TreeRowButton>
+                            )}
+                          </div>
+                        }
+                        /* Mid-selection a row click extends the pick; otherwise it
                        opens the drawer, the same split the review queue makes. */
-                      onToggleOpen={() => {
-                        if (selecting) toggle(payout.payoutId)
-                        else if (externalId) void setOpenPayoutId(externalId)
-                      }}
-                      rowClassName={cn(
-                        openPayoutId === externalId && 'bg-primary-100 ring-1 ring-primary-200',
-                        selectedIds.includes(payout.payoutId) &&
-                          cn(
-                            'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25',
-                            openPayoutId === externalId && 'ring-info/40'
-                          )
-                      )}
-                    />
-                    {/* 🛑 Brief 13 §2.3: a payout debits a bank account, not a role, and
+                        onToggleOpen={() => {
+                          if (selecting) toggle(payout.payoutId)
+                          else if (externalId) void setOpenPayoutId(externalId)
+                        }}
+                        rowClassName={cn(
+                          openPayoutId === externalId && 'bg-primary-100 ring-1 ring-primary-200',
+                          selectedIds.includes(payout.payoutId) &&
+                            cn(
+                              'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25',
+                              openPayoutId === externalId && 'ring-info/40'
+                            )
+                        )}
+                      />
+                      {/* 🛑 Brief 13 §2.3: a payout debits a bank account, not a role, and
                     refuses to post until its Stripe destination is confirmed on
                     one. `bank_account_unmapped` is the same shape the deposit's
                     own unmapped-account refusal uses (`deposits-page.tsx`). */}
-                    {source?.amountIssue && (
-                      <p className='text-sm text-bad-500'>{source.amountIssue}</p>
-                    )}
-                    {source?.routingIssue && (
-                      <p className='text-sm text-muted-foreground'>
-                        {source.routingIssue}{' '}
-                        <Link
-                          className='underline'
-                          href='/app/accounting/settings/payment-gateways'>
-                          Review payment gateways
-                        </Link>
-                      </p>
-                    )}
-                    {payout.blockedReason && (
-                      <EntryBlockers
-                        blockers={[
-                          { status: 'bank_account_unmapped', error: payout.blockedReason },
-                        ]}
-                      />
-                    )}
-                  </div>
-                )
-              }}
-            />
-          )}
+                      {source?.amountIssue && (
+                        <p className='text-sm text-bad-500'>{source.amountIssue}</p>
+                      )}
+                      {source?.routingIssue && (
+                        <p className='text-sm text-muted-foreground'>
+                          {source.routingIssue}{' '}
+                          <Link
+                            className='underline'
+                            href='/app/accounting/settings/payment-gateways'>
+                            Review payment gateways
+                          </Link>
+                        </p>
+                      )}
+                      {payout.blockedReason && (
+                        <EntryBlockers
+                          blockers={[
+                            { status: 'bank_account_unmapped', error: payout.blockedReason },
+                          ]}
+                        />
+                      )}
+                    </div>
+                  )
+                }}
+              />
+            )}
 
-          {payoutsQuery.hasNextPage && (
-            <Button
-              variant='outline'
-              size='sm'
-              className='self-center'
-              loading={payoutsQuery.isFetchingNextPage}
-              loadingText='Loading...'
-              onClick={() => void payoutsQuery.fetchNextPage()}>
-              Load more settlements
-            </Button>
-          )}
-        </div>
+            {/* `key` on the filters: a new view is a new pile, so the tail's
+                auto-fetch budget starts over rather than carrying the last
+                one's. Same as the payouts list and the review queue. */}
+            <InfiniteListTail
+              key={JSON.stringify(listInput)}
+              hasNextPage={payoutsQuery.hasNextPage}
+              isFetchingNextPage={payoutsQuery.isFetchingNextPage}
+              fetchNextPage={payoutsQuery.fetchNextPage}
+              loadingLabel='Loading more settlements...'
+            />
+          </div>
+        </ScrollArea>
       </div>
 
       <ActionBar
@@ -525,6 +528,6 @@ function SettlementsBody() {
 
       {/* Below the dock breakpoint the same drawer is a floating overlay. */}
       {!isDesktop && drawer}
-    </SettingsPage>
+    </>
   )
 }

@@ -12,21 +12,9 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
-import {
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  CircleHelp,
-  Lock,
-  PanelLeft,
-  Plug,
-  PlugZap,
-} from 'lucide-react'
-import { useState } from 'react'
+import { ChevronDown, ChevronLeft, ChevronRight, Lock, Plug, PlugZap } from 'lucide-react'
 import { useAccountingProviderStatus } from '~/components/accounting/hooks/use-accounting-provider-status'
 import type { LedgerPeriodOption } from '~/components/accounting/hooks/use-ledger-period'
-import { useLedgerSidebarStore } from '~/components/accounting/stores/ledger-sidebar-store'
-import { PostingGuideDialog } from '~/components/accounting/ui/settings/posting-guide-dialog'
 import { Tooltip } from '~/components/global/tooltip'
 import { formatPeriodLabel } from './format'
 
@@ -43,7 +31,7 @@ const STATE_DOT: Record<PeriodState, string> = {
   locked: 'bg-primary-400',
 }
 
-interface LedgerToolbarProps {
+interface LedgerPeriodControlsProps {
   periodKey: string
   options: LedgerPeriodOption[]
   period?: ClosePeriod
@@ -56,23 +44,27 @@ interface LedgerToolbarProps {
 }
 
 /**
- * The ledger's first row inside `MainPageContent`, on `BoardToolbar`'s scale
- * (`gap-1 p-1`, ghost `h-7` buttons, `Separator` dividers, tooltips).
+ * CLOSEOUT's half of the module topbar, published through
+ * `useRegisterAccountingToolbar` (81-one-accounting-shell.md §4).
  *
  * ```
- * [ Current ] [ ‹ ] [ March 2027 ▾ ] [ › ]  │  ● Posted · AUXX-MEI-2027-03  │  QuickBooks Online
+ * [ Current ] [ ‹ ] [ March 2027 ▾ ] [ › ]  │  ● Open
  * ```
  *
  * ⚠️ Ordered by `BoardToolbar`'s own rule: the period nav is the STABLE PREFIX
  * and never moves, so switching months causes no layout shift; everything that
  * varies with the month's state lives after the `Separator`.
  *
+ * 🛑 Closeout ONLY. Every Outbox tab reads with no month bound, so a month and a
+ * period state over that list are both false claims — which is the complaint
+ * 81-one-accounting-shell.md was opened to settle.
+ *
  * 🛑 Post and Reverse are deliberately NOT here. They are the decision, not
  * navigation, and a consequential button in a dense ghost strip reads as a
  * minor control. They sit in the body beside the entry they act on
  * (13-accounting-ui.md section 5.1).
  */
-export function LedgerToolbar({
+export function LedgerPeriodControls({
   periodKey,
   options,
   period,
@@ -81,26 +73,11 @@ export function LedgerToolbar({
   resolvedPeriodKey,
   onSelectPeriod,
   disabled = false,
-}: LedgerToolbarProps) {
+}: LedgerPeriodControlsProps) {
   const state = period?.state ?? 'open'
-  const sidebarOpen = useLedgerSidebarStore((store) => store.open)
-  const setSidebarOpen = useLedgerSidebarStore((store) => store.setOpen)
-  const [guideOpen, setGuideOpen] = useState(false)
 
   return (
-    <div className='flex flex-wrap items-center gap-1 border-b p-1'>
-      <Tooltip content={sidebarOpen ? 'Hide the rail' : 'Show the rail'}>
-        <Button
-          variant={sidebarOpen ? 'secondary' : 'ghost'}
-          size='icon-sm'
-          aria-label='Toggle the ledger rail'
-          onClick={() => setSidebarOpen(!sidebarOpen)}>
-          <PanelLeft />
-        </Button>
-      </Tooltip>
-
-      <Separator orientation='vertical' className='h-6' />
-
+    <>
       <Button
         variant='ghost'
         size='sm'
@@ -120,34 +97,15 @@ export function LedgerToolbar({
         </Button>
       </Tooltip>
 
-      {/* 🛑 The month lives HERE, in the stable prefix, and nowhere else. It was
-          briefly a list in the rail; one value with two pickers on one screen is
-          two things to keep in step, and the rail chooses which VIEW is on
-          screen (Closeout or the Outbox), never which month. */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild disabled={disabled || options.length === 0}>
-          <Button variant='ghost' size='sm' className='min-w-[9.5rem] justify-between'>
-            {periodKey ? formatPeriodLabel(periodKey) : 'No months yet'}
-            <ChevronDown />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align='start' className='min-w-[13rem]'>
-          {options.map((option) => (
-            <DropdownMenuItem
-              key={option.periodKey}
-              onSelect={() => onSelectPeriod(option.periodKey)}
-              className='justify-between gap-6'>
-              <span className={cn(option.periodKey === periodKey && 'font-medium')}>
-                {option.label}
-              </span>
-              <span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
-                {option.period.state === 'locked' && <Lock className='size-3' />}
-                {STATE_LABEL[option.period.state]}
-              </span>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {/* 🛑 The month lives HERE and nowhere else on this route. The Outbox's
+          Build control has a month dropdown of its own because building freezes
+          one month's posted entries; that is a different question. */}
+      <MonthDropdown
+        periodKey={periodKey}
+        options={options}
+        disabled={disabled}
+        onSelectPeriod={onSelectPeriod}
+      />
 
       <Tooltip content='Next month'>
         <Button
@@ -168,27 +126,57 @@ export function LedgerToolbar({
           <span className='text-foreground'>{STATE_LABEL[state]}</span>
         </div>
       )}
+    </>
+  )
+}
 
-      <Separator orientation='vertical' className='h-6' />
-      <ProviderPill />
+interface MonthDropdownProps {
+  periodKey: string
+  options: LedgerPeriodOption[]
+  onSelectPeriod: (periodKey: string) => void
+  disabled?: boolean
+  /** Rendered instead of the month when nothing has resolved. */
+  emptyLabel?: string
+  className?: string
+}
 
-      <div className='flex-1' />
-
-      {/* The posting guide's overview (brief 28 §4): what posts, when, and
-          what changes it. Last, like the records guide on the table toolbar. */}
-      <Tooltip content='How your books post'>
+/** The month list, shared by Closeout's period nav and the Outbox's Build control. */
+export function MonthDropdown({
+  periodKey,
+  options,
+  onSelectPeriod,
+  disabled = false,
+  emptyLabel = 'No months yet',
+  className,
+}: MonthDropdownProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild disabled={disabled || options.length === 0}>
         <Button
           variant='ghost'
-          size='icon-sm'
-          aria-label='How your books post'
-          onClick={() => setGuideOpen(true)}>
-          <CircleHelp />
+          size='sm'
+          className={cn('min-w-[9.5rem] justify-between', className)}>
+          {periodKey ? formatPeriodLabel(periodKey) : emptyLabel}
+          <ChevronDown />
         </Button>
-      </Tooltip>
-      {guideOpen && (
-        <PostingGuideDialog open={guideOpen} onOpenChange={setGuideOpen} initialPage='overview' />
-      )}
-    </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align='start' className='min-w-[13rem]'>
+        {options.map((option) => (
+          <DropdownMenuItem
+            key={option.periodKey}
+            onSelect={() => onSelectPeriod(option.periodKey)}
+            className='justify-between gap-6'>
+            <span className={cn(option.periodKey === periodKey && 'font-medium')}>
+              {option.label}
+            </span>
+            <span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
+              {option.period.state === 'locked' && <Lock className='size-3' />}
+              {STATE_LABEL[option.period.state]}
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -208,7 +196,7 @@ export function LedgerToolbar({
  * separately, so `connected` is false for a beat after `installed` turns true,
  * and an ungated pill flashes "none connected" on every cold load.
  */
-function ProviderPill() {
+export function ProviderPill() {
   const provider = useAccountingProviderStatus()
   if (provider.loading) return null
 

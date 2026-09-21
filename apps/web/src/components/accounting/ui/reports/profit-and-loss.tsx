@@ -11,7 +11,8 @@ import { todayInZone } from '@auxx/utils/calendar-day'
 import { TrendingUp } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
@@ -22,13 +23,12 @@ import {
   type CompareOption,
   compareRangeFor,
   periodEndDate,
-  periodKeyFromDate,
   periodStartDate,
   profitAndLossColumns,
   toStatementTableRows,
 } from './report-helpers'
 import { reportRangePresets } from './report-range-presets'
-import { ReportToolbar } from './report-toolbar'
+import { ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
 import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
 
@@ -52,7 +52,10 @@ export function ProfitAndLossReportPage() {
   const from = fromParam || (fallbackKey ? periodStartDate(fallbackKey) : '')
   const to = toParam || (fallbackKey ? periodEndDate(fallbackKey) : '')
   const compare = (compareParam as CompareOption | null) ?? 'none'
-  const compareRange = from && to ? compareRangeFor(from, to, compare) : undefined
+  const compareRange = useMemo(
+    () => (from && to ? compareRangeFor(from, to, compare) : undefined),
+    [from, to, compare]
+  )
 
   // The books' own floor and the day they run to, both in BOOK time - a
   // preset resolved against the viewer's midnight would name a different day
@@ -71,25 +74,75 @@ export function ProfitAndLossReportPage() {
     onError: (error) => toastError({ title: 'Error generating PDF', description: error.message }),
   })
 
-  function handleDownloadPdf() {
-    renderPdf.mutate(
+  // The handlers are `useCallback`s only because the toolbar registration below
+  // is memoised over them - a fresh identity each render republishes forever.
+  const renderPdfMutate = renderPdf.mutate
+  const handleDownloadPdf = useCallback(() => {
+    renderPdfMutate(
       { kind: 'profit-and-loss', from, to, compare: compareRange },
       {
         onSuccess: ({ assetId }) =>
           window.open(`/api/files/download/asset:${assetId}`, '_blank', 'noopener,noreferrer'),
       }
     )
-  }
+  }, [renderPdfMutate, from, to, compareRange])
 
-  const columns = query.data ? profitAndLossColumns(query.data, period.bookTimeZone) : []
+  const data = query.data
+  const bookTimeZone = period.bookTimeZone
+  const columns = useMemo(
+    () => (data ? profitAndLossColumns(data, bookTimeZone) : []),
+    [data, bookTimeZone]
+  )
 
-  function handleDownloadCsv() {
-    if (!query.data) return
-    downloadCsv(
-      toCsvRows(query.data.rows, columns, period.currencyCode),
-      `profit-and-loss-${from}-${to}.csv`
+  const currencyCode = period.currencyCode
+  const handleDownloadCsv = useCallback(() => {
+    if (!data) return
+    downloadCsv(toCsvRows(data.rows, columns, currencyCode), `profit-and-loss-${from}-${to}.csv`)
+  }, [data, columns, currencyCode, from, to])
+
+  useRegisterAccountingToolbar(
+    useMemo(
+      () => ({
+        left: (
+          <ReportToolbarControls
+            mode='range'
+            from={from}
+            to={to}
+            onSelectRange={(next) => {
+              void setFromParam(next.from)
+              void setToParam(next.to)
+            }}
+            presets={presets}
+            cutoff={cutoff}
+            compare={compare}
+            onSelectCompare={(next) => void setCompareParam(next === 'none' ? null : next)}
+            disabled={!from || !to}
+          />
+        ),
+        right: (
+          <ReportToolbarActions
+            onDownloadPdf={handleDownloadPdf}
+            onDownloadCsv={handleDownloadCsv}
+            through={to}
+            isDownloadingPdf={renderPdf.isPending}
+          />
+        ),
+      }),
+      [
+        from,
+        to,
+        setFromParam,
+        setToParam,
+        presets,
+        cutoff,
+        compare,
+        setCompareParam,
+        handleDownloadPdf,
+        handleDownloadCsv,
+        renderPdf.isPending,
+      ]
     )
-  }
+  )
 
   const rows = query.data ? toStatementTableRows(query.data.rows) : []
   const isEmpty =
@@ -98,30 +151,11 @@ export function ProfitAndLossReportPage() {
     query.data.cogs.length === 0 &&
     query.data.operatingExpenses.length === 0
 
-  // One `MainPageContent` per screen, and it is the reports LAYOUT's - see
-  // `accounting/settings/layout.tsx` for the same split. A second one here
-  // nested a `PanelFrame` inside a `PanelFrame`, which doubled the border and
-  // the padding on every report.
+  // One `MainPageContent` per screen and it is the accounting LAYOUT's, which
+  // also owns the topbar this page registers into (`tasks/81` §6): a document
+  // page is one `ScrollArea` over everything.
   return (
     <div className='flex h-full min-h-0 w-full flex-1 flex-col'>
-      <ReportToolbar
-        mode='range'
-        from={from}
-        to={to}
-        onSelectRange={(next) => {
-          void setFromParam(next.from)
-          void setToParam(next.to)
-        }}
-        presets={presets}
-        cutoff={cutoff}
-        compare={compare}
-        onSelectCompare={(next) => void setCompareParam(next === 'none' ? null : next)}
-        onDownloadPdf={handleDownloadPdf}
-        onDownloadCsv={handleDownloadCsv}
-        through={to}
-        isDownloadingPdf={renderPdf.isPending}
-        disabled={!from || !to}
-      />
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
           <StatementNotices through={to} />

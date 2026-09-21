@@ -23,12 +23,15 @@ export {
   readEntry,
 } from './entry-reads'
 export {
+  countPayoutEvidence,
   findPayoutEvidenceIdByExternalId,
   getPayoutEvidence,
   listPayoutEvidence,
   listPayoutSourceAccounts,
   listProcessorBalanceEntries,
   listRejectedProcessorEvidence,
+  type PayoutEvidenceCounts,
+  type UnassignedActivityTotal,
 } from './evidence-reads'
 export {
   loadPayoutFieldContext,

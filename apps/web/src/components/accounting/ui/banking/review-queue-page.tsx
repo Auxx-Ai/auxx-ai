@@ -50,11 +50,12 @@ import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { Inbox, Landmark, ListChecks, PanelRight } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
+import { ToolbarTitle } from '~/components/accounting/ui/accounting-toolbar'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
-import SettingsPage from '~/components/global/settings-page'
 import {
   ListSelectionProvider,
   SelectAllCheckbox,
@@ -64,7 +65,6 @@ import {
 } from '~/components/list-selection'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
-import { useViewportFill } from '~/hooks/use-viewport-fill'
 import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
@@ -76,23 +76,11 @@ import { ReviewDrawer } from './review/review-drawer'
 import { ReviewStats } from './review/review-stats'
 import { EMPTY_REVIEW_FILTERS, type ReviewFilters, ReviewToolbar } from './review/review-toolbar'
 
-const BREADCRUMBS = [
-  { title: 'Accounting', href: '/app/accounting' },
-  { title: 'Banking' },
-  { title: 'Review queue' },
-]
-
-const PAGE_DESCRIPTION =
-  'Bank lines waiting for a decision. Match one to something you already recorded, code it to an account, mark it a transfer between your own accounts, or exclude it.'
-
 /**
  * The ledger is pinned to USD for the cutover (`LEDGER_CURRENCY`), so the
  * display currency is that constant rather than a read.
  */
 const DISPLAY_CURRENCY = 'USD'
-
-/** The queue never collapses below this, however short the window is. */
-const MIN_FRAME_HEIGHT = 260
 
 /** What one "apply rules" run reports back, as `applySuggestions` returns it. */
 interface RunCounts {
@@ -201,7 +189,7 @@ function ReviewQueueBody() {
 
   /**
    * ⚠️ `1280px`, not the `1024px` `ledger-page.tsx` docks at. This page sits
-   * behind the Banking layout's `SidebarSecondary`, so the shell eats ~255px
+   * behind the accounting shell's `SidebarSecondary`, so it eats ~255px
    * more than the ledger's does: at 1100 the app rail plus that sidebar plus a
    * 450px panel leave the queue about 100px, which is not a list any more.
    * 1280 is the first width where the queue keeps a readable column.
@@ -312,7 +300,9 @@ function ReviewQueueBody() {
     },
   })
 
-  const handleApplyRules = async () => {
+  // Memoised because the button below is published to the module toolbar, which
+  // requires a stable node (`accounting-toolbar-outlet.tsx`).
+  const handleApplyRules = useCallback(async () => {
     if (autoApplyRules.length > 0) {
       const names = autoApplyRules.map((rule) => rule.name).join(', ')
       const confirmed = await confirm({
@@ -329,28 +319,41 @@ function ReviewQueueBody() {
     setLastRun(null)
     // The account the person is looking at, not the whole org.
     applyRules.mutate({ bankAccountId: filters.bankAccountId ?? undefined })
-  }
+  }, [autoApplyRules, confirm, applyRules.mutate, filters.bankAccountId])
 
-  const applyRulesAction = canApplyRules ? (
-    <div className='flex items-center gap-2'>
-      <Button
-        variant='ghost'
-        size='sm'
-        className='h-7'
-        loading={applyRules.isPending}
-        loadingText='Applying...'
-        onClick={() => void handleApplyRules()}>
-        <ListChecks />
-        Apply rules to unreviewed lines
-      </Button>
-      {/* No success toasts by policy, so the counts have nowhere else to go. */}
-      {lastRun && !applyRules.isPending && (
-        <span className='whitespace-nowrap text-muted-foreground text-xs'>
-          {lastRun.suggested} suggested, {lastRun.autoApplied} applied, {lastRun.skipped} skipped
-        </span>
-      )}
-    </div>
-  ) : undefined
+  /**
+   * Row 1 of the accounting shell: the page's name and the one action that
+   * changes the pile below it (task 81 §4). The state tabs and the select-all
+   * stay in the page's own `ListToolbar` - §3.
+   */
+  const toolbar = useMemo(
+    () => ({
+      left: <ToolbarTitle>Review queue</ToolbarTitle>,
+      right: canApplyRules ? (
+        <div className='flex items-center gap-2'>
+          <Button
+            variant='ghost'
+            size='sm'
+            className='h-7'
+            loading={applyRules.isPending}
+            loadingText='Applying...'
+            onClick={() => void handleApplyRules()}>
+            <ListChecks />
+            Apply rules to unreviewed lines
+          </Button>
+          {/* No success toasts by policy, so the counts have nowhere else to go. */}
+          {lastRun && !applyRules.isPending && (
+            <span className='whitespace-nowrap text-muted-foreground text-xs'>
+              {lastRun.suggested} suggested, {lastRun.autoApplied} applied, {lastRun.skipped}{' '}
+              skipped
+            </span>
+          )}
+        </div>
+      ) : undefined,
+    }),
+    [canApplyRules, applyRules.isPending, handleApplyRules, lastRun]
+  )
+  useRegisterAccountingToolbar(toolbar)
 
   /**
    * ⚠️ Built ONCE and memoised. The panel array below is published to the
@@ -393,20 +396,6 @@ function ReviewQueueBody() {
   )
   useRegisterDockedPanels(dockedPanels)
 
-  /**
-   * 🛑 The frame needs a DEFINITE height, and `flex-1` is not one here.
-   *
-   * `SettingsPage` is itself a `ScrollArea` whose content wrapper is
-   * `min-h-full` with an auto height, and a grow item of an auto-height flex
-   * column is sized by its own content, not by the container. Left on `flex-1`
-   * this frame grew to the full list, the `ScrollArea` below it became as tall
-   * as its contents and never scrolled, and the settings viewport scrolled the
-   * whole page instead - the stat strip and the toolbar scrolled away with it.
-   * `rules-page.tsx` and `deposits-page.tsx` measure the same way.
-   */
-  const frameRef = useRef<HTMLDivElement>(null)
-  const frameHeight = useViewportFill(frameRef, MIN_FRAME_HEIGHT)
-
   /** A new view is a new pile: back to the top, and the tail below is keyed on the filters so its auto-fetch budget starts over. */
   const [listViewport, setListViewport] = useState<HTMLDivElement | null>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: the filters are the trigger
@@ -415,202 +404,203 @@ function ReviewQueueBody() {
   }, [listInput])
 
   return (
-    <SettingsPage title='Review queue' description={PAGE_DESCRIPTION} breadcrumbs={BREADCRUMBS}>
-      <div ref={frameRef} className='flex min-h-0 flex-col' style={{ height: frameHeight }}>
-        <ReviewStats
-          stats={stats.data}
-          loading={stats.isPending}
-          currencyCode={DISPLAY_CURRENCY}
-          accountSelected={!!filters.bankAccountId}
-        />
+    // The layout hands this page a definite height, so the stat strip and the
+    // toolbar pin and the `ScrollArea` below is the one scroll owner (§6).
+    <div className='flex h-full min-h-0 flex-col'>
+      <ReviewStats
+        stats={stats.data}
+        loading={stats.isPending}
+        currencyCode={DISPLAY_CURRENCY}
+        accountSelected={!!filters.bankAccountId}
+      />
 
-        <ReviewToolbar
-          filters={filters}
-          onChange={handleFiltersChange}
-          actions={applyRulesAction}
-          selectAll={<SelectAllCheckbox listPadding={16} />}
-        />
+      <ReviewToolbar
+        filters={filters}
+        onChange={handleFiltersChange}
+        selectAll={<SelectAllCheckbox listPadding={16} />}
+      />
 
-        {!list.isPending && rows.length === 0 ? (
-          <EmptyState
-            icon={hasAccounts ? Inbox : Landmark}
-            title={hasAccounts ? 'Nothing in this view' : 'No bank account yet'}
-            description={
-              hasAccounts ? (
-                <span>
-                  No bank lines match these filters. An empty For review tab is the healthy state -
-                  it means every line the bank showed has been decided on.
-                </span>
-              ) : (
-                <span>
-                  Add a bank account and map it to a GL account, then import a statement or connect
-                  a feed. Until an account is mapped there is nothing to credit, so nothing can be
-                  coded.
-                </span>
-              )
-            }
-            button={
-              hasAccounts ? undefined : (
-                <Button asChild variant='outline'>
-                  <a href='/app/accounting/settings/bank-accounts'>Add a bank account</a>
-                </Button>
-              )
-            }
-          />
-        ) : (
-          <ScrollArea className='min-h-0 flex-1' viewportRef={setListViewport}>
-            <div className='flex flex-col gap-1 p-4 pb-24'>
-              <TreeRowList
-                items={rows}
-                loading={list.isPending}
-                skeletonCount={6}
-                /* A hairline between rows. The selected row draws a `ring-1`,
+      {!list.isPending && rows.length === 0 ? (
+        <EmptyState
+          icon={hasAccounts ? Inbox : Landmark}
+          title={hasAccounts ? 'Nothing in this view' : 'No bank account yet'}
+          description={
+            hasAccounts ? (
+              <span>
+                No bank lines match these filters. An empty For review tab is the healthy state - it
+                means every line the bank showed has been decided on: matched to something you
+                already recorded, coded to an account, marked a transfer between your own accounts,
+                or excluded.
+              </span>
+            ) : (
+              <span>
+                Add a bank account and map it to a GL account, then import a statement or connect a
+                feed. Until an account is mapped there is nothing to credit, so nothing can be
+                coded.
+              </span>
+            )
+          }
+          button={
+            hasAccounts ? undefined : (
+              <Button asChild variant='outline'>
+                <a href='/app/accounting/settings/bank-accounts'>Add a bank account</a>
+              </Button>
+            )
+          }
+        />
+      ) : (
+        <ScrollArea className='min-h-0 flex-1' viewportRef={setListViewport}>
+          <div className='flex flex-col gap-1 p-4 pb-24'>
+            <TreeRowList
+              items={rows}
+              loading={list.isPending}
+              skeletonCount={6}
+              /* A hairline between rows. The selected row draws a `ring-1`,
                    which paints OUTSIDE its border box - flush against the next
                    row, whose background paints later and clips the ring's
                    bottom edge. One pixel of gap is enough to keep it whole. */
-                className='gap-px'
-                getKey={(row: BankTransactionRow) => row.id}
-                renderRow={(row: BankTransactionRow) => (
-                  <TreeRow
-                    className={TREE_SECONDARY_NOTRUNCATE}
-                    icon={<Landmark className='size-4 text-muted-foreground' />}
-                    /* 🛑 Selection is always AVAILABLE and only PINNED once
+              className='gap-px'
+              getKey={(row: BankTransactionRow) => row.id}
+              renderRow={(row: BankTransactionRow) => (
+                <TreeRow
+                  className={TREE_SECONDARY_NOTRUNCATE}
+                  icon={<Landmark className='size-4 text-muted-foreground' />}
+                  /* 🛑 Selection is always AVAILABLE and only PINNED once
                        something is selected - the same idiom the chart list
                        uses. A pinned column of empty boxes is what a list of
                        270 lines looks like before anyone has decided anything;
                        the box belongs on the row you are pointing at, and on
                        every row only once you are actually picking. */
-                    selectable
-                    selecting={selecting}
-                    selected={selectedIds.includes(row.id)}
-                    onSelectChange={(_next, event) => toggle(row.id, { shiftKey: event.shiftKey })}
-                    selectLabel={`Select ${row.description ?? row.id}`}
-                    /* Direction, then date, then the description - all three
+                  selectable
+                  selecting={selecting}
+                  selected={selectedIds.includes(row.id)}
+                  onSelectChange={(_next, event) => toggle(row.id, { shiftKey: event.shiftKey })}
+                  selectLabel={`Select ${row.description ?? row.id}`}
+                  /* Direction, then date, then the description - all three
                        inside `title`, so every row starts on the same two
                        fixed-width columns and the eye reads straight down them.
                        The In/Out badge is width-pinned for exactly that reason:
                        left to its content, "Out" and "In" differ by ~8px and
                        every date after them sits at a different x. */
-                    title={
-                      <span className='flex min-w-0 items-center gap-1.5'>
-                        <Badge
-                          variant={row.amountMinor < 0 ? 'outline' : 'green'}
-                          size='xs'
-                          className='w-9 shrink-0 justify-center'>
-                          {row.amountMinor < 0 ? 'Out' : 'In'}
+                  title={
+                    <span className='flex min-w-0 items-center gap-1.5'>
+                      <Badge
+                        variant={row.amountMinor < 0 ? 'outline' : 'green'}
+                        size='xs'
+                        className='w-9 shrink-0 justify-center'>
+                        {row.amountMinor < 0 ? 'Out' : 'In'}
+                      </Badge>
+                      <span className='shrink-0 font-mono text-xs tabular-nums text-muted-foreground'>
+                        {row.postedAt ?? EMPTY_CELL}
+                      </span>
+                      <span className='truncate text-sm' title={row.matchKey ?? undefined}>
+                        {row.description || EMPTY_CELL}
+                      </span>
+                    </span>
+                  }
+                  secondary={
+                    <span className='flex flex-wrap items-center gap-1.5'>
+                      <BankAccountBadge bankAccountId={row.bankAccountId} size='sm' />
+                      {row.bankStatus === 'void' && (
+                        <Badge variant='outline' size='xs'>
+                          Void
                         </Badge>
-                        <span className='shrink-0 font-mono text-xs tabular-nums text-muted-foreground'>
-                          {row.postedAt ?? EMPTY_CELL}
-                        </span>
-                        <span className='truncate text-sm' title={row.matchKey ?? undefined}>
-                          {row.description || EMPTY_CELL}
-                        </span>
-                      </span>
-                    }
-                    secondary={
-                      <span className='flex flex-wrap items-center gap-1.5'>
-                        <BankAccountBadge bankAccountId={row.bankAccountId} size='sm' />
-                        {row.bankStatus === 'void' && (
-                          <Badge variant='outline' size='xs'>
-                            Void
-                          </Badge>
-                        )}
-                        {row.suggestedGlAccountId && row.reviewStatus !== 'coded' && (
-                          <Badge variant='blue' size='xs'>
-                            Suggested{' '}
-                            <AccountLabel glAccountId={row.suggestedGlAccountId} density='chip' />
-                          </Badge>
-                        )}
-                        {row.glAccountId && (
-                          <Badge variant='outline' size='xs' className='font-mono'>
-                            <AccountLabel glAccountId={row.glAccountId} density='chip' />
-                          </Badge>
-                        )}
-                      </span>
-                    }
-                    /* The status is where a row ENDS, not another chip in the
+                      )}
+                      {row.suggestedGlAccountId && row.reviewStatus !== 'coded' && (
+                        <Badge variant='blue' size='xs'>
+                          Suggested{' '}
+                          <AccountLabel glAccountId={row.suggestedGlAccountId} density='chip' />
+                        </Badge>
+                      )}
+                      {row.glAccountId && (
+                        <Badge variant='outline' size='xs' className='font-mono'>
+                          <AccountLabel glAccountId={row.glAccountId} density='chip' />
+                        </Badge>
+                      )}
+                    </span>
+                  }
+                  /* The status is where a row ENDS, not another chip in the
                        middle of it: right-aligned it lands at the same x on
                        every row, so a column of "for review" reads as one thing
                        to clear rather than six labels at six positions. */
-                    actions={
-                      <div className='flex items-center gap-2'>
-                        {/* Amounts are unsigned with the direction in its own
+                  actions={
+                    <div className='flex items-center gap-2'>
+                      {/* Amounts are unsigned with the direction in its own
                             badge, the same rule the ledger's own tables keep.
                             It leads the trailing cluster because the money is
                             what a reviewer scans a queue for. */}
+                      <span
+                        className={cn(
+                          'font-mono text-xs tabular-nums',
+                          row.amountMinor < 0
+                            ? 'text-foreground'
+                            : 'text-green-700 dark:text-green-400'
+                        )}>
+                        {formatMinor(Math.abs(row.amountMinor), DISPLAY_CURRENCY)}
+                      </span>
+                      <span className='flex items-center gap-1 text-muted-foreground text-xs'>
                         <span
                           className={cn(
-                            'font-mono text-xs tabular-nums',
-                            row.amountMinor < 0
-                              ? 'text-foreground'
-                              : 'text-green-700 dark:text-green-400'
-                          )}>
-                          {formatMinor(Math.abs(row.amountMinor), DISPLAY_CURRENCY)}
-                        </span>
-                        <span className='flex items-center gap-1 text-muted-foreground text-xs'>
-                          <span
-                            className={cn(
-                              'size-1.5 rounded-full',
-                              STATUS_DOT[row.reviewStatus] ?? 'bg-muted-foreground'
-                            )}
-                            aria-hidden
-                          />
-                          {row.reviewStatus.replace('_', ' ')}
-                        </span>
-                        {/* 🛑 `persistent`, not the hover-revealed default. Once
+                            'size-1.5 rounded-full',
+                            STATUS_DOT[row.reviewStatus] ?? 'bg-muted-foreground'
+                          )}
+                          aria-hidden
+                        />
+                        {row.reviewStatus.replace('_', ' ')}
+                      </span>
+                      {/* 🛑 `persistent`, not the hover-revealed default. Once
                             anything is selected a row click extends the
                             selection, so this button is the ONLY way into a
                             line's detail - an affordance you have to discover by
                             hovering is not one at that point. */}
-                        <TreeRowButton
-                          persistent
-                          tooltipText='Open details'
-                          onClick={() => void setTxn(row.id)}>
-                          <PanelRight />
-                        </TreeRowButton>
-                      </div>
-                    }
-                    /* 🛑 Mid-selection, a row click EXTENDS the selection - it
+                      <TreeRowButton
+                        persistent
+                        tooltipText='Open details'
+                        onClick={() => void setTxn(row.id)}>
+                        <PanelRight />
+                      </TreeRowButton>
+                    </div>
+                  }
+                  /* 🛑 Mid-selection, a row click EXTENDS the selection - it
                        does not open the drawer. Picking the next of forty lines
                        is a click on the row, not a click on a 16px box, and a
                        drawer thrown open over the list every time somebody
                        missed the box is how a bulk pass gets abandoned. The
                        drawer comes back the moment the selection clears. */
-                    onToggleOpen={() => (selecting ? toggle(row.id) : void setTxn(row.id))}
-                    rowClassName={cn(
-                      'bg-primary-100/50 hover:bg-primary-100',
-                      txn === row.id && 'bg-primary-100 ring-1 ring-primary-200',
-                      // Picked for a bulk action - a DIFFERENT state from "open
-                      // in the drawer", and the app already separates the two by
-                      // hue: `info` is what a multi-selection wears on
-                      // `ListCard` and in the mail list, while `primary-*` stays
-                      // the row you are looking AT. Last in the merge, so a row
-                      // that is both keeps the drawer's ring and takes the
-                      // selection's tint.
-                      selectedIds.includes(row.id) &&
-                        cn(
-                          'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25',
-                          // Open AND picked: the ring turns info too, so the two
-                          // states read as one row rather than a blue fill
-                          // wearing a grey outline from the other palette.
-                          txn === row.id && 'ring-info/40'
-                        )
-                    )}
-                  />
-                )}
-              />
+                  onToggleOpen={() => (selecting ? toggle(row.id) : void setTxn(row.id))}
+                  rowClassName={cn(
+                    'bg-primary-100/50 hover:bg-primary-100',
+                    txn === row.id && 'bg-primary-100 ring-1 ring-primary-200',
+                    // Picked for a bulk action - a DIFFERENT state from "open
+                    // in the drawer", and the app already separates the two by
+                    // hue: `info` is what a multi-selection wears on
+                    // `ListCard` and in the mail list, while `primary-*` stays
+                    // the row you are looking AT. Last in the merge, so a row
+                    // that is both keeps the drawer's ring and takes the
+                    // selection's tint.
+                    selectedIds.includes(row.id) &&
+                      cn(
+                        'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25',
+                        // Open AND picked: the ring turns info too, so the two
+                        // states read as one row rather than a blue fill
+                        // wearing a grey outline from the other palette.
+                        txn === row.id && 'ring-info/40'
+                      )
+                  )}
+                />
+              )}
+            />
 
-              <InfiniteListTail
-                key={JSON.stringify(listInput)}
-                hasNextPage={list.hasNextPage}
-                isFetchingNextPage={list.isFetchingNextPage}
-                fetchNextPage={list.fetchNextPage}
-                loadingLabel='Loading more lines...'
-              />
-            </div>
-          </ScrollArea>
-        )}
-      </div>
+            <InfiniteListTail
+              key={JSON.stringify(listInput)}
+              hasNextPage={list.hasNextPage}
+              isFetchingNextPage={list.isFetchingNextPage}
+              fetchNextPage={list.fetchNextPage}
+              loadingLabel='Loading more lines...'
+            />
+          </div>
+        </ScrollArea>
+      )}
 
       <ReviewBulkBar selectedIds={selectedIds} onClear={exitSelection} onDone={exitSelection} />
 
@@ -619,6 +609,6 @@ function ReviewQueueBody() {
       {!isDesktop && drawer}
 
       <ConfirmDialog />
-    </SettingsPage>
+    </div>
   )
 }

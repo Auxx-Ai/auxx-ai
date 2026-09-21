@@ -44,29 +44,17 @@ import { toastError } from '@auxx/ui/components/toast'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { ListChecks, Pencil, Plus, Power, Trash2 } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
+import { ToolbarTitle } from '~/components/accounting/ui/accounting-toolbar'
 import { EmptyState } from '~/components/global/empty-state'
-import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useViewportFill } from '~/hooks/use-viewport-fill'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { formatAccountLabel } from '../../account-label'
 import { useChartAccounts } from '../../gl-account-picker'
 import { BankRuleDialog } from './bank-rule-dialog'
 import { describeRule } from './bank-rule-options'
-
-const BREADCRUMBS = [
-  { title: 'Accounting', href: '/app/accounting' },
-  { title: 'Banking' },
-  { title: 'Rules' },
-]
-
-const PAGE_DESCRIPTION =
-  'Repeating categorisation decisions, applied in priority order. Suggest-from-history covers most lines on its own; a rule is for a pattern worth encoding by hand.'
-
-/** The list frame never collapses below this, however short the viewport is. */
-const MIN_FRAME_HEIGHT = 200
 
 export function BankingRulesPage() {
   useRequireCapability(PermissionKey.ledgerView)
@@ -75,9 +63,6 @@ export function BankingRulesPage() {
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<BankRuleRecord | null>(null)
-
-  const frameRef = useRef<HTMLDivElement>(null)
-  const frameHeight = useViewportFill(frameRef, MIN_FRAME_HEIGHT)
 
   const rulesQuery = api.bankingRules.list.useQuery()
   const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data])
@@ -121,10 +106,26 @@ export function BankingRulesPage() {
     },
   })
 
-  const openCreate = () => {
+  // Memoised because the toolbar node below has to be stable
+  // (`accounting-toolbar-outlet.tsx`).
+  const openCreate = useCallback(() => {
     setEditing(null)
     setDialogOpen(true)
-  }
+  }, [])
+
+  const toolbar = useMemo(
+    () => ({
+      left: <ToolbarTitle>Rules</ToolbarTitle>,
+      right: (
+        <Button size='sm' className='h-7' onClick={openCreate}>
+          <Plus />
+          New rule
+        </Button>
+      ),
+    }),
+    [openCreate]
+  )
+  useRegisterAccountingToolbar(toolbar)
 
   const openEdit = (rule: BankRuleRecord) => {
     setEditing(rule)
@@ -146,97 +147,88 @@ export function BankingRulesPage() {
   const isEmpty = !rulesQuery.isPending && rules.length === 0
 
   return (
-    <SettingsPage
-      title='Rules'
-      description={PAGE_DESCRIPTION}
-      breadcrumbs={BREADCRUMBS}
-      button={
-        <Button size='sm' onClick={openCreate}>
-          <Plus />
-          New rule
-        </Button>
-      }>
-      <div ref={frameRef} className='p-4' style={{ height: frameHeight }}>
-        <div className='flex h-full flex-col overflow-hidden rounded-xl border bg-background'>
-          {isEmpty ? (
-            <EmptyState
-              icon={ListChecks}
-              title='No rules yet'
-              description='Suggest-from-history already proposes an account for a line it has seen before. Add a rule once a pattern is confirmed and you want it applied every time.'
-              button={
-                <Button variant='outline' onClick={openCreate}>
-                  <Plus />
-                  New rule
-                </Button>
-              }
-            />
-          ) : (
-            <ScrollArea className='min-h-0 flex-1'>
-              <div className='flex flex-col p-2'>
-                <TreeRowList
-                  items={rules}
-                  loading={rulesQuery.isPending}
-                  skeletonCount={4}
-                  getKey={(rule: BankRuleRecord) => rule.id}
-                  renderRow={(rule: BankRuleRecord) => (
-                    <TreeRow
-                      className={TREE_SECONDARY_NOTRUNCATE}
-                      icon={<ListChecks className='size-4' />}
-                      title={<span className='truncate text-sm'>{rule.name}</span>}
-                      secondary={
-                        <span className='flex flex-wrap items-center gap-1.5'>
-                          <span className='text-muted-foreground text-xs'>
-                            {describeRule(rule, resolveAccountName, resolveGlAccountLabel)}
-                          </span>
-                          {rule.autoApply && (
-                            <Badge variant='amber' size='xs'>
-                              Auto-apply
-                            </Badge>
-                          )}
-                          {!rule.enabled && (
-                            <Badge variant='outline' size='xs'>
-                              Disabled
-                            </Badge>
-                          )}
-                          {rule.appliedCount > 0 && (
-                            <span className='text-muted-foreground text-xs'>
-                              applied {rule.appliedCount} times
-                            </span>
-                          )}
+    // The layout hands this page a definite height, so the card fills it and the
+    // `ScrollArea` inside is the one scroll owner (§6).
+    <div className='flex h-full min-h-0 flex-col p-4'>
+      <div className='flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background'>
+        {isEmpty ? (
+          <EmptyState
+            icon={ListChecks}
+            title='No rules yet'
+            description='Suggest-from-history already proposes an account for a line it has seen before. Add a rule once a pattern is confirmed and you want it applied every time.'
+            button={
+              <Button variant='outline' onClick={openCreate}>
+                <Plus />
+                New rule
+              </Button>
+            }
+          />
+        ) : (
+          <ScrollArea className='min-h-0 flex-1'>
+            <div className='flex flex-col p-2'>
+              <TreeRowList
+                items={rules}
+                loading={rulesQuery.isPending}
+                skeletonCount={4}
+                getKey={(rule: BankRuleRecord) => rule.id}
+                renderRow={(rule: BankRuleRecord) => (
+                  <TreeRow
+                    className={TREE_SECONDARY_NOTRUNCATE}
+                    icon={<ListChecks className='size-4' />}
+                    title={<span className='truncate text-sm'>{rule.name}</span>}
+                    secondary={
+                      <span className='flex flex-wrap items-center gap-1.5'>
+                        <span className='text-muted-foreground text-xs'>
+                          {describeRule(rule, resolveAccountName, resolveGlAccountLabel)}
                         </span>
-                      }
-                      onToggleOpen={() => openEdit(rule)}
-                      actions={
-                        <>
-                          <TreeRowButton tooltipText='Edit rule' onClick={() => openEdit(rule)}>
-                            <Pencil />
-                          </TreeRowButton>
-                          <TreeRowButton
-                            tooltipText={rule.enabled ? 'Disable rule' : 'Enable rule'}
-                            onClick={() =>
-                              updateRule.mutate({ id: rule.id, enabled: !rule.enabled })
-                            }>
-                            <Power />
-                          </TreeRowButton>
-                          <TreeRowButton
-                            variant='destructive'
-                            tooltipText='Delete rule'
-                            onClick={() => void handleDelete(rule)}>
-                            <Trash2 />
-                          </TreeRowButton>
-                        </>
-                      }
-                    />
-                  )}
-                />
-              </div>
-            </ScrollArea>
-          )}
-        </div>
+                        {rule.autoApply && (
+                          <Badge variant='amber' size='xs'>
+                            Auto-apply
+                          </Badge>
+                        )}
+                        {!rule.enabled && (
+                          <Badge variant='outline' size='xs'>
+                            Disabled
+                          </Badge>
+                        )}
+                        {rule.appliedCount > 0 && (
+                          <span className='text-muted-foreground text-xs'>
+                            applied {rule.appliedCount} times
+                          </span>
+                        )}
+                      </span>
+                    }
+                    onToggleOpen={() => openEdit(rule)}
+                    actions={
+                      <>
+                        <TreeRowButton tooltipText='Edit rule' onClick={() => openEdit(rule)}>
+                          <Pencil />
+                        </TreeRowButton>
+                        <TreeRowButton
+                          tooltipText={rule.enabled ? 'Disable rule' : 'Enable rule'}
+                          onClick={() =>
+                            updateRule.mutate({ id: rule.id, enabled: !rule.enabled })
+                          }>
+                          <Power />
+                        </TreeRowButton>
+                        <TreeRowButton
+                          variant='destructive'
+                          tooltipText='Delete rule'
+                          onClick={() => void handleDelete(rule)}>
+                          <Trash2 />
+                        </TreeRowButton>
+                      </>
+                    }
+                  />
+                )}
+              />
+            </div>
+          </ScrollArea>
+        )}
       </div>
 
       <BankRuleDialog open={dialogOpen} onClose={() => setDialogOpen(false)} rule={editing} />
       <ConfirmDialog />
-    </SettingsPage>
+    </div>
   )
 }

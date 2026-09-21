@@ -12,7 +12,8 @@ import { todayInZone } from '@auxx/utils/calendar-day'
 import { BookOpen, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
@@ -20,14 +21,9 @@ import { api } from '~/trpc/react'
 import { formatAccountLabel } from '../account-label'
 import { PostingDrawerHost, usePostingDrawer } from './posting-drawer-host'
 import { ReportErrorCard } from './report-error-card'
-import {
-  periodEndDate,
-  periodKeyFromDate,
-  periodStartDate,
-  toStatementTableRows,
-} from './report-helpers'
+import { periodEndDate, periodStartDate, toStatementTableRows } from './report-helpers'
 import { generalLedgerRangePresets } from './report-range-presets'
-import { ReportToolbar } from './report-toolbar'
+import { ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
 import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
 
@@ -112,62 +108,64 @@ export function GeneralLedgerReportPage() {
     ? formatAccountLabel({ code: filtered.accountCode, name: filtered.accountName })
     : null
 
-  function handleDownloadPdf() {
-    renderPdf.mutate(
+  // The handlers are `useCallback`s only because the toolbar registration below
+  // is memoised over them - a fresh identity each render republishes forever.
+  const renderPdfMutate = renderPdf.mutate
+  const handleDownloadPdf = useCallback(() => {
+    renderPdfMutate(
       { kind: 'general-ledger', from, to, glAccountId: accountParam ?? undefined, source },
       {
         onSuccess: ({ assetId }) =>
           window.open(`/api/files/download/asset:${assetId}`, '_blank', 'noopener,noreferrer'),
       }
     )
-  }
+  }, [renderPdfMutate, from, to, accountParam, source])
 
-  function handleDownloadCsv() {
-    if (!query.data) return
+  const data = query.data
+  const currencyCode = period.currencyCode
+  const handleDownloadCsv = useCallback(() => {
+    if (!data) return
     // `rows[0]` is already the adapter's `INCOMPLETE` row when the read
     // truncated, so the warning is in the file without anything being added
     // here. The FILENAME is this page's own contribution: a file that gets
     // forwarded, renamed or attached is read by its name long before anyone
     // opens it.
     downloadCsv(
-      toCsvRows(query.data.rows, GENERAL_LEDGER_COLUMNS, period.currencyCode),
+      toCsvRows(data.rows, GENERAL_LEDGER_COLUMNS, currencyCode),
       `general-ledger-${accountLabel ? `${accountLabel.replace(/[^\w.-]+/g, '-')}-` : ''}${source ? `${source.sourceKind}-${source.sourceId}-` : ''}${from}-to-${to}${truncated ? '-INCOMPLETE' : ''}.csv`
     )
-  }
+  }, [data, currencyCode, accountLabel, source, from, to, truncated])
 
-  const rows = query.data ? toStatementTableRows(query.data.rows) : []
-  const isEmpty = !!query.data && query.data.accounts.length === 0
-
-  // One `MainPageContent` per screen, and it is the reports LAYOUT's - see
-  // `accounting/settings/layout.tsx` for the same split. A second one here
-  // nested a `PanelFrame` inside a `PanelFrame`, which doubled the border and
-  // the padding on every report.
-  return (
-    <div className='flex h-full min-h-0 w-full flex-1 flex-col'>
-      <ReportToolbar
-        mode='range'
-        from={from}
-        to={to}
-        onSelectRange={(next) => {
-          void setFromParam(next.from)
-          void setToParam(next.to)
-        }}
-        presets={presets}
-        cutoff={cutoff}
-        filter={
-          accountParam
-            ? { label: accountLabel ?? 'One account', onClear: () => void setAccountParam(null) }
-            : source
-              ? {
-                  label: `One ${humanizeSourceKind(source.sourceKind)}`,
-                  onClear: () => void setSourceParam(null),
-                }
-              : undefined
-        }
-        onDownloadPdf={handleDownloadPdf}
-        onDownloadCsv={handleDownloadCsv}
-        through={to}
-        isDownloadingPdf={renderPdf.isPending}
+  useRegisterAccountingToolbar(
+    useMemo(
+      () => ({
+        left: (
+          <ReportToolbarControls
+            mode='range'
+            from={from}
+            to={to}
+            onSelectRange={(next) => {
+              void setFromParam(next.from)
+              void setToParam(next.to)
+            }}
+            presets={presets}
+            cutoff={cutoff}
+            filter={
+              accountParam
+                ? {
+                    label: accountLabel ?? 'One account',
+                    onClear: () => void setAccountParam(null),
+                  }
+                : source
+                  ? {
+                      label: `One ${humanizeSourceKind(source.sourceKind)}`,
+                      onClear: () => void setSourceParam(null),
+                    }
+                  : undefined
+            }
+            disabled={!from || !to}
+          />
+        ),
         // 🛑 Both exports stay ENABLED while the ledger is truncated, and that
         // is a deliberate call. `renderStatementPdf` reads under the SAME
         // `GENERAL_LEDGER_MAX_LINES` cap and renders through the SAME
@@ -176,8 +174,42 @@ export function GeneralLedgerReportPage() {
         // building looking finished. Disabling them would only push a person
         // toward screenshotting a partial ledger instead, which carries no
         // warning at all.
-        disabled={!from || !to}
-      />
+        right: (
+          <ReportToolbarActions
+            onDownloadPdf={handleDownloadPdf}
+            onDownloadCsv={handleDownloadCsv}
+            through={to}
+            isDownloadingPdf={renderPdf.isPending}
+          />
+        ),
+      }),
+      [
+        from,
+        to,
+        setFromParam,
+        setToParam,
+        presets,
+        cutoff,
+        accountParam,
+        accountLabel,
+        setAccountParam,
+        source,
+        setSourceParam,
+        handleDownloadPdf,
+        handleDownloadCsv,
+        renderPdf.isPending,
+      ]
+    )
+  )
+
+  const rows = query.data ? toStatementTableRows(query.data.rows) : []
+  const isEmpty = !!query.data && query.data.accounts.length === 0
+
+  // One `MainPageContent` per screen and it is the accounting LAYOUT's, which
+  // also owns the topbar this page registers into (`tasks/81` §6): a document
+  // page is one `ScrollArea` over everything.
+  return (
+    <div className='flex h-full min-h-0 w-full flex-1 flex-col'>
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
           {truncated && <TruncatedBanner maxLines={query.data?.maxLines} />}

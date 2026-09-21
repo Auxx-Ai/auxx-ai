@@ -8,15 +8,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({
   payouts: [] as Record<string, unknown>[],
   accounts: [] as Record<string, unknown>[],
+  counts: { rejected: 0, unassignedCount: 0, unassignedTotals: [] } as Record<string, unknown>,
   /** The last input `payoutEvidence.list` was called with — the contract under test. */
   listInput: null as Record<string, unknown> | null,
 }))
 
 /**
- * `useQueryState` backed by `useState`, so `?s=`, `?payout=`, `?account=` and
+ * `useQueryState` backed by `useState`, so `?payout=`, `?account=` and
  * `?status=` behave like real URL state for the duration of a test without a
  * router. Hook ORDER is what keys them, which is stable: the page always calls
- * the four in the same sequence.
+ * the three in the same sequence.
  */
 vi.mock('nuqs', async () => {
   const { useState } = await import('react')
@@ -38,39 +39,14 @@ vi.mock('~/providers/capabilities-provider', () => ({
   useRequireCapability: () => {},
   useAccess: () => ({ can: () => true }),
 }))
-vi.mock('~/components/global/settings-page', () => ({
-  default: ({ subHeader, children }: { subHeader: ReactNode; children: ReactNode }) => (
-    <div>
-      {subHeader}
-      {children}
-    </div>
-  ),
-}))
-vi.mock('@auxx/ui/components/responsive-tabs', () => ({
-  ResponsiveTabs: ({
-    items,
-    onValueChange,
-  }: {
-    items: { value: string; label: string }[]
-    onValueChange: (value: string) => void
-  }) => (
-    <div>
-      {items.map((item) => (
-        <button key={item.value} type='button' onClick={() => onValueChange(item.value)}>
-          {item.label}
-        </button>
-      ))}
-    </div>
-  ),
-}))
 vi.mock('~/components/global/docked-panels-outlet', () => ({ useRegisterDockedPanels: () => {} }))
 vi.mock('~/hooks/use-media', () => ({ useMedia: () => false }))
-vi.mock('~/hooks/use-viewport-fill', () => ({ useViewportFill: () => 600 }))
 vi.mock('~/stores/dock-store', () => ({ useDockStore: () => 480 }))
 vi.mock('./payout-evidence-drawer', () => ({ PayoutEvidenceDrawer: () => null }))
 vi.mock('./processor-activity', () => ({ ProcessorActivity: () => <div>processor activity</div> }))
 vi.mock('./rejected-processor-evidence', () => ({
-  RejectedProcessorEvidence: () => <div>import issues</div>,
+  RejectedProcessorEvidenceDrawer: ({ open }: { open: boolean }) =>
+    open ? <div>import issues</div> : null,
 }))
 
 vi.mock('~/trpc/react', () => ({
@@ -91,10 +67,15 @@ vi.mock('~/trpc/react', () => ({
         },
       },
       sourceAccounts: { useQuery: () => ({ data: state.accounts, isPending: false }) },
+      counts: { useQuery: () => ({ data: state.counts }) },
     },
   },
 }))
 
+import {
+  AccountingToolbarOutletProvider,
+  useAccountingToolbarOutlet,
+} from '~/components/accounting/accounting-toolbar-outlet'
 import { PayoutsPage } from './payouts-page'
 
 /**
@@ -147,16 +128,31 @@ const PAYOUT = {
   dominantMatchReason: null as string | null,
 }
 
+/** The real outlet, so the topbar the page publishes into is assertable. */
+function Toolbar() {
+  const { left, right } = useAccountingToolbarOutlet()
+  return (
+    <div>
+      {left}
+      {right}
+    </div>
+  )
+}
+
 const renderPage = () =>
   render(
     <TooltipProvider>
-      <PayoutsPage />
+      <AccountingToolbarOutletProvider>
+        <Toolbar />
+        <PayoutsPage />
+      </AccountingToolbarOutletProvider>
     </TooltipProvider>
   )
 
 beforeEach(() => {
   state.payouts = [PAYOUT]
   state.accounts = [ACCOUNT]
+  state.counts = { rejected: 0, unassignedCount: 0, unassignedTotals: [] }
   state.listInput = null
 })
 
@@ -177,14 +173,16 @@ describe('payouts filter toolbar', () => {
     })
   })
 
-  it('puts the status on the query and offers the union of both provider vocabularies', () => {
+  it('offers only the three ways a payout did not land', () => {
     renderPage()
 
-    // `canceled` comes from `PayoutHeader.status`, `reversed` from the record
-    // side's `PAYOUT_STATUSES` — neither list alone covers the rows.
-    for (const label of ['All', 'Paid', 'In transit', 'Failed', 'Canceled', 'Reversed']) {
+    for (const label of ['All', 'Failed', 'Canceled', 'Reversed']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
+    // 🛑 81 §5.5: the row's dot already says `paid`, and `in_transit` resolves
+    // itself — as filters they are approximately `All` and nothing.
+    expect(screen.queryByText('Paid')).not.toBeInTheDocument()
+    expect(screen.queryByText('In transit')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByText('Failed'))
     expect(state.listInput?.status).toBe('failed')
@@ -201,19 +199,21 @@ describe('payouts filter toolbar', () => {
 
     // Clear is row two only — the status is the VIEW and lives in the URL, so a
     // Clear that reset it would drop the link somebody arrived on.
-    fireEvent.click(screen.getByText('Clear'))
+    fireEvent.click(screen.getByLabelText('Clear all'))
     expect(state.listInput?.search).toBeUndefined()
     expect(state.listInput?.status).toBe('failed')
   })
 
-  it('offers Clear only once something on row two is set', () => {
+  it('keeps Clear in place and only enables it once row two is set', () => {
     renderPage()
-    expect(screen.queryByText('Clear')).not.toBeInTheDocument()
+    // Present but DISABLED, never absent: gating it on dirt re-flowed the row on
+    // the first keystroke in the search beside it.
+    expect(screen.getByLabelText('Clear all')).toBeDisabled()
 
     fireEvent.change(screen.getByPlaceholderText('Search payout id'), {
       target: { value: 'po_1' },
     })
-    expect(screen.getByText('Clear')).toBeInTheDocument()
+    expect(screen.getByLabelText('Clear all')).toBeEnabled()
   })
 
   it('narrows to the worklist and counts as row-two dirt', () => {
@@ -222,9 +222,9 @@ describe('payouts filter toolbar', () => {
 
     fireEvent.click(screen.getByText('Needs matching'))
     expect(state.listInput?.needsMatching).toBe(true)
-    expect(screen.getByText('Clear')).toBeInTheDocument()
+    expect(screen.getByLabelText('Clear all')).toBeEnabled()
 
-    fireEvent.click(screen.getByText('Clear'))
+    fireEvent.click(screen.getByLabelText('Clear all'))
     expect(state.listInput?.needsMatching).toBeUndefined()
   })
 
@@ -234,16 +234,34 @@ describe('payouts filter toolbar', () => {
     expect(screen.getByText('16 need matching')).toBeInTheDocument()
     expect(screen.getByText('Feed has no gateway')).toBeInTheDocument()
   })
+})
 
-  it('renders only on the payouts tab', () => {
+describe('payouts topbar', () => {
+  it('hides the import-issues door at zero and opens the panel when there are some', () => {
     renderPage()
-    expect(screen.getByPlaceholderText('Search payout id')).toBeInTheDocument()
+    expect(screen.queryByText(/Import issues/)).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByText('Import issues'))
+    state.counts = { rejected: 3, unassignedCount: 0, unassignedTotals: [] }
+    renderPage()
+    fireEvent.click(screen.getByText('Import issues (3)'))
     expect(screen.getByText('import issues')).toBeInTheDocument()
-    // Import issues reads a different query, so every one of these filters would
-    // be a control that does nothing.
-    expect(screen.queryByPlaceholderText('Search payout id')).not.toBeInTheDocument()
+  })
+
+  it('states the unassigned balance without implying work is owed', () => {
+    state.counts = {
+      rejected: 0,
+      unassignedCount: 1,
+      unassignedTotals: [{ currency: 'USD', currencyExponent: 2, netMinor: '7500', count: 1 }],
+    }
+    renderPage()
+
+    expect(screen.getByText('USD 75.00')).toBeInTheDocument()
+    expect(screen.getByText('of processor activity is not yet in a payout')).toBeInTheDocument()
+    // It expands to the same list the deleted tab held, and the list is not
+    // rendered until it does.
+    expect(screen.queryByText('processor activity')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('of processor activity is not yet in a payout'))
+    expect(screen.getByText('processor activity')).toBeInTheDocument()
   })
 })
 

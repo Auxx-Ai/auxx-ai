@@ -289,7 +289,7 @@ describe('processor activity rows', () => {
     state.entries = [CHARGE]
     renderWithTooltips(<ProcessorActivity transferId='transfer-1' />)
     expect(screen.getByText(/Evidence temporarily unavailable/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Load more activity' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
     expect(state.fetchNextPage).toHaveBeenCalledOnce()
   })
 })

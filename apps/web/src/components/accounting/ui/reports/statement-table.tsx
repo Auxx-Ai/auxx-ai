@@ -337,8 +337,9 @@ export function StatementTable({
       <div className='rounded-lg border border-primary-200/50 dark:border-[#1e2227]'>
         {/*
           ⚠️ `top-[var(--statement-sticky-top,0px)]` and NOT `top-0`. The reports
-          scroll inside their own `ScrollArea` with the toolbar outside it, where
-          0 is right; the two settings doors sit under `SettingsPage`'s pinned
+          scroll inside their own `ScrollArea` with the toolbar outside it - the
+          accounting LAYOUT's, above the scroll - where 0 is right; the two
+          settings doors sit under `SettingsPage`'s pinned
           title + tab block and set the var to `var(--settings-sticky-top)`, or
           this header pins underneath that block and is invisible for the whole
           scroll (the trap `opening-stock-list.tsx` documents).

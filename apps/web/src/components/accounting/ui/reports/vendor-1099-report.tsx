@@ -13,13 +13,13 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, FileDown, FileSpreadsheet, FileText } from 'lucide-react'
+import { ChevronDown, FileText } from 'lucide-react'
 import { parseAsInteger, parseAsString, useQueryState } from 'nuqs'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
@@ -27,9 +27,9 @@ import { RecordDrawer } from '~/components/records/record-drawer'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
-import { ProviderSyncStatus } from './provider-sync-status'
 import { ReportErrorCard } from './report-error-card'
 import { toStatementTableRows } from './report-helpers'
+import { ReportToolbarActions } from './report-toolbar'
 import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
 
@@ -40,8 +40,9 @@ function recentYears(currentYear: number, count = 6): number[] {
 
 /**
  * `/app/accounting/reports/vendor-1099` (`plans/accounting/HANDOFF.md` slot
- * 2K read, 2H page). Its own toolbar rather than `ReportToolbar`'s `asOf`/
- * `range` modes: the 1099 summary is a CALENDAR-YEAR report, and
+ * 2K read, 2H page). Its own period control rather than
+ * `ReportToolbarControls`' `asOf`/`range` modes: the 1099 summary is a
+ * CALENDAR-YEAR report, and
  * `readVendor1099Summary` is not a GL read at all
  * (`postings/reports/vendor-1099.ts`'s own header) - there is no ledger
  * period list to drive a month dropdown from.
@@ -83,65 +84,70 @@ export function Vendor1099ReportPage() {
     onError: (error) => toastError({ title: 'Error generating PDF', description: error.message }),
   })
 
-  function handleDownloadPdf() {
-    renderPdf.mutate(
+  // The handlers are `useCallback`s only because the toolbar registration below
+  // is memoised over them - a fresh identity each render republishes forever.
+  const renderPdfMutate = renderPdf.mutate
+  const handleDownloadPdf = useCallback(() => {
+    renderPdfMutate(
       { kind: 'vendor-1099', year },
       {
         onSuccess: ({ assetId }) =>
           window.open(`/api/files/download/asset:${assetId}`, '_blank', 'noopener,noreferrer'),
       }
     )
-  }
+  }, [renderPdfMutate, year])
 
-  function handleDownloadCsv() {
-    if (!query.data) return
-    downloadCsv(
-      toCsvRows(query.data.rows, query.data.columns, period.currencyCode),
-      `1099-summary-${year}.csv`
+  const data = query.data
+  const currencyCode = period.currencyCode
+  const handleDownloadCsv = useCallback(() => {
+    if (!data) return
+    downloadCsv(toCsvRows(data.rows, data.columns, currencyCode), `1099-summary-${year}.csv`)
+  }, [data, currencyCode, year])
+
+  // Its own left half rather than `ReportToolbarControls`' `asOf`/`range` modes:
+  // the 1099 summary is a CALENDAR-YEAR report with no ledger period behind it.
+  useRegisterAccountingToolbar(
+    useMemo(
+      () => ({
+        left: (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='ghost' size='sm' className='min-w-[8rem] justify-between gap-1'>
+                <span className='text-muted-foreground'>Year</span>
+                {year}
+                <ChevronDown />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='start'>
+              {recentYears(currentYear).map((option) => (
+                <DropdownMenuItem key={option} onSelect={() => void setYear(option)}>
+                  <span className={cn(option === year && 'font-medium')}>{option}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ),
+        right: (
+          <ReportToolbarActions
+            onDownloadPdf={handleDownloadPdf}
+            onDownloadCsv={handleDownloadCsv}
+            through={`${year}-12-31`}
+            isDownloadingPdf={renderPdf.isPending}
+          />
+        ),
+      }),
+      [year, currentYear, setYear, handleDownloadPdf, handleDownloadCsv, renderPdf.isPending]
     )
-  }
+  )
 
   const rows = query.data ? toStatementTableRows(query.data.rows) : []
   const hasActivity = rows.length > 0
 
-  // One `MainPageContent` per screen, and it is the reports LAYOUT's - see
-  // `accounting/settings/layout.tsx` for the same split. A second one here
-  // nested a `PanelFrame` inside a `PanelFrame`, which doubled the border and
-  // the padding on every report.
+  // One `MainPageContent` per screen and it is the accounting LAYOUT's, which
+  // also owns the topbar this page registers into (`tasks/81` §6): a document
+  // page is one `ScrollArea` over everything.
   return (
     <div className='flex h-full min-h-0 w-full flex-1 flex-col'>
-      <div className='flex flex-wrap items-center gap-1 border-b p-1'>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant='ghost' size='sm' className='min-w-[8rem] justify-between gap-1'>
-              <span className='text-muted-foreground'>Year</span>
-              {year}
-              <ChevronDown />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='start'>
-            {recentYears(currentYear).map((option) => (
-              <DropdownMenuItem key={option} onSelect={() => void setYear(option)}>
-                <span className={cn(option === year && 'font-medium')}>{option}</span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <div className='flex-1' />
-
-        <ProviderSyncStatus through={`${year}-12-31`} />
-
-        <Separator orientation='vertical' className='h-6' />
-        <Button variant='ghost' size='sm' loading={renderPdf.isPending} onClick={handleDownloadPdf}>
-          <FileDown />
-          PDF
-        </Button>
-        <Button variant='ghost' size='sm' onClick={handleDownloadCsv}>
-          <FileSpreadsheet />
-          CSV
-        </Button>
-      </div>
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
           <StatementNotices through={`${year}-12-31`} />

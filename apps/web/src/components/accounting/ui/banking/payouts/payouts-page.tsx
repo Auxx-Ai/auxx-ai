@@ -14,23 +14,38 @@ import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { AlertTriangle, Inbox, Landmark, Link2Off, PanelRight, RefreshCw } from 'lucide-react'
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  Inbox,
+  Landmark,
+  Link2Off,
+  PanelRight,
+  RefreshCw,
+} from 'lucide-react'
 import Link from 'next/link'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
+import { ToolbarTitle } from '~/components/accounting/ui/accounting-toolbar'
 import { SourceAccountBadge } from '~/components/accounting/ui/source-account-badge'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
-import SettingsPage from '~/components/global/settings-page'
 import { Tooltip } from '~/components/global/tooltip'
+import {
+  ListSelectionProvider,
+  SelectAllCheckbox,
+  useBulkMode,
+  useListSelection,
+  useSelectionIds,
+} from '~/components/list-selection'
 import { useMedia } from '~/hooks/use-media'
-import { useViewportFill } from '~/hooks/use-viewport-fill'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
@@ -46,35 +61,31 @@ import {
   PayoutsToolbar,
 } from './payouts-toolbar'
 import { ProcessorActivity } from './processor-activity'
-import { RejectedProcessorEvidence } from './rejected-processor-evidence'
+import { RejectedProcessorEvidenceDrawer } from './rejected-processor-evidence'
 
-const BREADCRUMBS = [
-  { title: 'Accounting', href: '/app/accounting' },
-  { title: 'Banking' },
-  { title: 'Payouts' },
-]
-
-const PAGE_DESCRIPTION =
-  'Inspect imported payouts and processor activity, exactly as the provider reported them. What auxx posted from them is on Settlements.'
-
-type PayoutsTab = 'payouts' | 'unassigned' | 'issues'
-
-const TABS = [
-  { value: 'payouts', label: 'Payouts', icon: Landmark },
-  { value: 'unassigned', label: 'Unassigned', icon: Inbox },
-  { value: 'issues', label: 'Import issues', icon: AlertTriangle },
-]
-
-/** The frame never collapses below this, matching the review queue's own. */
-const MIN_FRAME_HEIGHT = 260
-
-/** Inspect imported payouts and processor activity as the provider reported them. */
+/**
+ * Inspect imported payouts and processor activity as the provider reported them.
+ *
+ * 🛑 ONE list and no tabs (81 §5). The three former tabs read three different
+ * tables, which is why a toolbar could only ever apply to one of them: Import
+ * issues is now a count-gated panel and Unassigned a strip over this same list.
+ */
 export function PayoutsPage() {
+  return (
+    <ListSelectionProvider>
+      <PayoutsBody />
+    </ListSelectionProvider>
+  )
+}
+
+/** One `ListSelectionProvider` per mount, the shape the outbox and the review queue use. */
+function PayoutsBody() {
   useRequireCapability(PermissionKey.ledgerView)
   const utils = api.useUtils()
-
-  const [tab, setTab] = useQueryState('s', { defaultValue: 'payouts' as string })
-  const activeTab: PayoutsTab = tab === 'unassigned' || tab === 'issues' ? tab : 'payouts'
+  // A `useCallback` because the toolbar registration below is memoised over it:
+  // reading `utils.payoutEvidence.invalidate` inline is a fresh identity per
+  // render, which republishes forever.
+  const refreshEvidence = useCallback(() => void utils.payoutEvidence.invalidate(), [utils])
 
   const [payoutId, setPayoutId] = useQueryState('payout')
 
@@ -89,7 +100,7 @@ export function PayoutsPage() {
    * URL is either a history entry per keystroke or a throttle to tune, and
    * nobody shares "payouts between two dates".
    *
-   * ⚠️ `?s=` (the tab) and `?payout=` (the drawer) are untouched by any of this.
+   * ⚠️ `?payout=` (the drawer) is untouched by any of this.
    */
   const [sourceAccount, setSourceAccount] = useQueryState('account')
   const [status, setStatus] = useQueryState(
@@ -118,18 +129,23 @@ export function PayoutsPage() {
 
   /**
    * ⚠️ `1280px`, matching `review-queue-page.tsx`: this page sits behind the
-   * Banking layout's `SidebarSecondary`, so the shell eats more room than a
-   * bare `MainPageContent` page does, and 1280 is the first width where the
-   * list keeps a readable column next to a docked panel.
+   * accounting rail, so the shell eats more room than a bare `MainPageContent`
+   * page does, and 1280 is the first width where the list keeps a readable
+   * column next to a docked panel.
    */
   const isDesktop = useMedia('(min-width: 1280px)')
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
 
+  // Local, not `?issues=`: diagnostics nobody deep-links to.
+  const [issuesOpen, setIssuesOpen] = useState(false)
+  const counts = api.payoutEvidence.counts.useQuery()
+  const rejectedCount = counts.data?.rejected ?? 0
+
   /**
    * ⚠️ Built ONCE and memoised. The panel array below is published to the
-   * Banking layout's docked slot through an effect, so a drawer element with a
-   * fresh identity every render would re-publish on every render.
+   * accounting layout's docked slot through an effect, so a drawer element with
+   * a fresh identity every render would re-publish on every render.
    */
   const drawer = useMemo(
     () => (
@@ -146,101 +162,138 @@ export function PayoutsPage() {
     [payoutId, setPayoutId, isDesktop, dockedWidth, setDockedWidth]
   )
 
-  // The Banking LAYOUT owns the `MainPageContent`, so the docked panel is
-  // published to it rather than passed as a prop (`docked-panels-outlet.tsx`).
-  const dockedPanels = useMemo(
-    () =>
-      isDesktop && payoutId
-        ? [
-            {
-              key: 'payout',
-              content: drawer,
-              width: dockedWidth,
-              onWidthChange: setDockedWidth,
-              minWidth: 380,
-              maxWidth: 800,
-            },
-          ]
-        : [],
-    [isDesktop, payoutId, drawer, dockedWidth, setDockedWidth]
+  const issuesDrawer = useMemo(
+    () => (
+      <RejectedProcessorEvidenceDrawer
+        open={issuesOpen}
+        onOpenChange={setIssuesOpen}
+        isDocked={isDesktop}
+        width={dockedWidth}
+        onWidthChange={setDockedWidth}
+      />
+    ),
+    [issuesOpen, isDesktop, dockedWidth, setDockedWidth]
   )
+
+  // The accounting LAYOUT owns the `MainPageContent`, so the docked panel is
+  // published to it rather than passed as a prop (`docked-panels-outlet.tsx`).
+  const dockedPanels = useMemo(() => {
+    if (!isDesktop) return []
+    const panel = (key: string, content: React.ReactNode) => ({
+      key,
+      content,
+      width: dockedWidth,
+      onWidthChange: setDockedWidth,
+      minWidth: 380,
+      maxWidth: 800,
+    })
+    return [
+      ...(payoutId ? [panel('payout', drawer)] : []),
+      ...(issuesOpen ? [panel('import-issues', issuesDrawer)] : []),
+    ]
+  }, [isDesktop, payoutId, drawer, issuesOpen, issuesDrawer, dockedWidth, setDockedWidth])
   useRegisterDockedPanels(dockedPanels)
 
-  /**
-   * 🛑 The frame needs a DEFINITE height, and `flex-1` is not one here.
-   * `SettingsPage` is itself a `ScrollArea` whose content wrapper is
-   * `min-h-full` with an auto height, so a grow item of it is sized by its own
-   * content, not by the container - `review-queue-page.tsx` documents this at
-   * length. `useViewportFill` measures the room actually left under the
-   * header instead.
-   */
-  const frameRef = useRef<HTMLDivElement>(null)
-  const frameHeight = useViewportFill(frameRef, MIN_FRAME_HEIGHT)
+  useRegisterAccountingToolbar(
+    useMemo(
+      () => ({
+        left: <ToolbarTitle>Payouts</ToolbarTitle>,
+        right: (
+          <>
+            {/* Absent at zero (81 §5.4): a permanent door to an empty
+                diagnostics list is dead chrome. */}
+            {rejectedCount > 0 && (
+              <Button
+                variant='ghost'
+                size='sm'
+                className='h-7'
+                aria-pressed={issuesOpen}
+                onClick={() => setIssuesOpen((open) => !open)}>
+                <AlertTriangle />
+                Import issues ({rejectedCount})
+              </Button>
+            )}
+            <Button variant='ghost' size='sm' className='h-7' onClick={refreshEvidence}>
+              <RefreshCw />
+              Refresh evidence
+            </Button>
+          </>
+        ),
+      }),
+      [rejectedCount, issuesOpen, refreshEvidence]
+    )
+  )
 
   return (
-    <SettingsPage
-      title='Payouts'
-      description={PAGE_DESCRIPTION}
-      breadcrumbs={BREADCRUMBS}
-      subHeader={
-        <ResponsiveTabs
-          value={activeTab}
-          onValueChange={(next) => void setTab(next)}
-          items={TABS}
-          size='sm'
-        />
-      }
-      button={
-        <Button variant='outline' size='sm' onClick={() => void utils.payoutEvidence.invalidate()}>
-          <RefreshCw />
-          Refresh evidence
-        </Button>
-      }>
+    <>
       {/* 🛑 BLED to the page edges, not a bordered card - `review-queue-page.tsx`,
-          which is the screen this one is a sibling of. This used to be a `p-4`
-          wrapper around a `rounded-xl border bg-background` frame (the shape
-          `rules-page.tsx` uses for a SETTINGS list), which put a second border
-          inside the panel's own and inset the rows from the docked drawer by
-          16px the queue does not spend. The padding lives inside each tab's
-          `ScrollArea` instead, so a row's hover and its selected ring reach the
-          full width the way the queue's do. */}
-      <div
-        ref={frameRef}
-        className='flex min-h-0 flex-col'
-        style={frameHeight ? { height: `${frameHeight}px` } : undefined}>
-        {activeTab === 'payouts' ? (
-          <>
-            {/* 🛑 The payouts tab ONLY. Unassigned reads
-                `payoutEvidence.entries` and Import issues reads
-                `payoutEvidence.rejected` - different rows, none of which carry
-                a payout status or a source-account filter, so a toolbar above
-                them would be four controls that do nothing. */}
-            <PayoutsToolbar filters={filters} onChange={handleFiltersChange} />
-            <PayoutList
-              filters={filters}
-              selectedId={payoutId}
-              onSelect={(id) => void setPayoutId(id)}
-            />
-          </>
-        ) : activeTab === 'unassigned' ? (
-          <ScrollArea className='min-h-0 flex-1'>
-            <div className='flex flex-col gap-4 p-4'>
-              <ProcessorActivity unassignedOnly />
-            </div>
-          </ScrollArea>
-        ) : (
-          <ScrollArea className='min-h-0 flex-1'>
-            <div className='flex flex-col p-4'>
-              <RejectedProcessorEvidence />
-            </div>
-          </ScrollArea>
-        )}
+          which is the screen this one is a sibling of. The padding lives inside
+          the list's `ScrollArea` instead, so a row's hover and its selected ring
+          reach the full width the way the queue's do. */}
+      <div className='flex min-h-0 flex-1 flex-col'>
+        <PayoutsToolbar
+          filters={filters}
+          onChange={handleFiltersChange}
+          /* `16`, matching the list's own `p-4` — that is what the box's offset
+             is derived from. */
+          selectAll={<SelectAllCheckbox listPadding={16} />}
+        />
+        <UnassignedStrip />
+        <PayoutList
+          filters={filters}
+          selectedId={payoutId}
+          onSelect={(id) => void setPayoutId(id)}
+        />
       </div>
 
-      {/* Below the dock breakpoint the same drawer renders as a floating
-          overlay, the way every other docked panel's fallback does. */}
+      {/* Below the dock breakpoint the same drawers render as floating
+          overlays, the way every other docked panel's fallback does. */}
       {!isDesktop && drawer}
-    </SettingsPage>
+      {!isDesktop && issuesDrawer}
+    </>
+  )
+}
+
+/**
+ * "Not yet in a payout", as a balance rather than a queue.
+ *
+ * 🛑 The wording must not imply work is owed. `unassignedOnly` is
+ * `payoutExternalId IS NULL` — payout MEMBERSHIP, not matching — so activity
+ * leaves this line by itself when the next deposit lands (81 §5.3). The work
+ * that does need a person is the `Needs matching` toggle above, and
+ * Settlements › Unidentified.
+ */
+function UnassignedStrip() {
+  const [open, setOpen] = useState(false)
+  const counts = api.payoutEvidence.counts.useQuery()
+  const totals = counts.data?.unassignedTotals ?? []
+
+  if (totals.length === 0) return null
+
+  return (
+    <div className='flex shrink-0 flex-col border-b'>
+      <button
+        type='button'
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className='flex items-center gap-1.5 px-3 py-1.5 text-left text-muted-foreground text-xs hover:bg-muted/50'>
+        {open ? <ChevronDown className='size-3.5' /> : <ChevronRight className='size-3.5' />}
+        <Inbox className='size-3.5' />
+        <span className='font-mono tabular-nums'>
+          {totals
+            .map((total) =>
+              formatEvidenceAmount(total.netMinor, total.currency, total.currencyExponent)
+            )
+            .join(' · ')}
+        </span>
+        <span>of processor activity is not yet in a payout</span>
+      </button>
+      {open && (
+        <div className='max-h-72 overflow-y-auto border-t p-4'>
+          <ProcessorActivity unassignedOnly />
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -285,9 +338,10 @@ function listDate(payout: { occurredOn: string | null; occurredAt: string | null
  * row at the same x on every line. `gap-px` between rows, not `gap-2`, so the
  * open row's ring has one pixel to paint into.
  *
- * ⚠️ NOT selectable. The review queue's checkbox column exists for its bulk bar;
- * payout evidence has no bulk action, so a row click opens the drawer with no
- * mid-selection branch to guard.
+ * ⚠️ Selectable, though payout evidence still has no bulk action. This reverses
+ * the earlier "no bulk action, so no checkbox" rule: every other list in the
+ * module selects the same way, and a row that behaves differently here is a
+ * worse surprise than an empty bulk vocabulary.
  */
 function PayoutList({
   filters,
@@ -329,6 +383,17 @@ function PayoutList({
     () => query.data?.pages.flatMap((page) => page.items) ?? [],
     [query.data?.pages]
   )
+
+  const selecting = useBulkMode()
+  const selectedIds = useSelectionIds()
+  const toggle = useListSelection((state) => state.toggle)
+  const setItemIds = useListSelection((state) => state.setItemIds)
+  // The store prunes the selection to these, so a filter change drops whatever
+  // left the list rather than acting on a row nobody can see.
+  const payoutIds = useMemo(() => payouts.map((payout) => payout.id), [payouts])
+  useEffect(() => {
+    setItemIds(payoutIds)
+  }, [payoutIds, setItemIds])
 
   /**
    * The accounts that appear on a payout - the same query the toolbar's picker
@@ -400,6 +465,11 @@ function PayoutList({
                  the review queue does it. */
               className={TREE_SECONDARY_NOTRUNCATE}
               icon={<Landmark className='size-4 text-muted-foreground' />}
+              selectable
+              selecting={selecting}
+              selected={selectedIds.includes(payout.id)}
+              onSelectChange={(_next, event) => toggle(payout.id, { shiftKey: event.shiftKey })}
+              selectLabel={`Select ${payout.externalId}`}
               /* Date then id, both inside `title`, so every row starts on the
                  same fixed-width mono column and the eye reads straight down it
                  - the review queue's argument for leading with `postedAt`. The
@@ -495,10 +565,26 @@ function PayoutList({
                   </TreeRowButton>
                 </div>
               }
-              onToggleOpen={() => onSelect(payout.id)}
+              onToggleOpen={() => {
+                // Mid-selection a row click extends the selection; opening the
+                // drawer would drop it (`settlements-page.tsx` does the same).
+                if (selecting) toggle(payout.id)
+                else onSelect(payout.id)
+              }}
               rowClassName={cn(
                 'bg-primary-100/50 hover:bg-primary-100',
-                selectedId === payout.id && 'bg-primary-100 ring-1 ring-primary-200'
+                selectedId === payout.id && 'bg-primary-100 ring-1 ring-primary-200',
+                // Picked for a bulk action - a DIFFERENT state from "open in the
+                // drawer", and the app separates the two by hue: `info` is what a
+                // multi-selection wears here, on `ListCard` and in the mail list,
+                // while `primary-*` stays the row you are looking AT. Last in the
+                // merge, so a row that is both keeps the drawer's ring and takes
+                // the selection's tint (`review-queue-page.tsx` sets this).
+                selectedIds.includes(payout.id) &&
+                  cn(
+                    'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25',
+                    selectedId === payout.id && 'ring-info/40'
+                  )
               )}
             />
           )}

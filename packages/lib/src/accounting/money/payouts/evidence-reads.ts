@@ -1,7 +1,8 @@
 // packages/lib/src/accounting/money/payouts/evidence-reads.ts
 import { type Database, schema } from '@auxx/database'
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lt, sql, sum } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
+import { ok, type Result } from 'neverthrow'
 import { z } from 'zod'
 import { BadRequestError, ConflictError } from '../../../errors'
 import { systemDefId, systemRecordScope, systemValueJoin } from '../../../resources/system-records'
@@ -913,4 +914,87 @@ export async function listRejectedProcessorEvidence(db: Database, input: PageInp
     })),
     nextCursor: rows.length > limit ? rows[limit - 1]!.observation.id : null,
   }
+}
+
+/** One currency's worth of activity that is not in a payout yet. */
+export interface UnassignedActivityTotal {
+  currency: string
+  currencyExponent: number
+  /** Exact minor units, as a decimal string — never a JavaScript number. */
+  netMinor: string
+  count: number
+}
+
+/** The two badges the Payouts topbar gates on, both counted in SQL. */
+export interface PayoutEvidenceCounts {
+  /** Source rows that became neither a payout nor an activity entry. */
+  rejected: number
+  /** Activity with no payout yet, across every currency. */
+  unassignedCount: number
+  /**
+   * ⚠️ One row PER CURRENCY, not one figure. A `ProcessorBalanceEntry` carries
+   * the provider's own currency and exponent, so a single total would add 100
+   * JPY to 100 USD — the reason the evidence list refuses an amount filter.
+   */
+  unassignedTotals: UnassignedActivityTotal[]
+}
+
+/**
+ * The counts behind `⚠ Import issues (n)` and the "not yet in a payout" strip
+ * (81 §5.4), in one read rather than two pages fetched for their length.
+ */
+export async function countPayoutEvidence(
+  db: Database,
+  input: { organizationId: string }
+): Promise<Result<PayoutEvidenceCounts, Error>> {
+  const [rejected, unassigned] = await Promise.all([
+    db
+      .select({ value: count() })
+      .from(schema.FinancialSourceObservation)
+      .innerJoin(
+        schema.FinancialSourceObject,
+        and(
+          eq(
+            schema.FinancialSourceObject.organizationId,
+            schema.FinancialSourceObservation.organizationId
+          ),
+          eq(schema.FinancialSourceObject.id, schema.FinancialSourceObservation.sourceObjectId)
+        )
+      )
+      .where(
+        and(
+          eq(schema.FinancialSourceObservation.organizationId, input.organizationId),
+          inArray(schema.FinancialSourceObject.objectType, ['balance_transaction', 'payout']),
+          sql`COALESCE(${schema.FinancialSourceObservation.payload}->>'rejectionReason', ${schema.FinancialSourceObservation.reportingInstallationSnapshot}->>'rejectionReason') IS NOT NULL`,
+          currentObservationFilter()
+        )
+      ),
+    db
+      .select({
+        currency: schema.ProcessorBalanceEntry.currency,
+        currencyExponent: schema.ProcessorBalanceEntry.currencyExponent,
+        netMinor: sum(schema.ProcessorBalanceEntry.netMinor),
+        value: count(),
+      })
+      .from(schema.ProcessorBalanceEntry)
+      .where(
+        and(
+          eq(schema.ProcessorBalanceEntry.organizationId, input.organizationId),
+          isNull(schema.ProcessorBalanceEntry.payoutExternalId)
+        )
+      )
+      .groupBy(schema.ProcessorBalanceEntry.currency, schema.ProcessorBalanceEntry.currencyExponent)
+      .orderBy(asc(schema.ProcessorBalanceEntry.currency)),
+  ])
+
+  return ok({
+    rejected: rejected[0]?.value ?? 0,
+    unassignedCount: unassigned.reduce((total, row) => total + row.value, 0),
+    unassignedTotals: unassigned.map((row) => ({
+      currency: row.currency,
+      currencyExponent: row.currencyExponent,
+      netMinor: row.netMinor ?? '0',
+      count: row.value,
+    })),
+  })
 }

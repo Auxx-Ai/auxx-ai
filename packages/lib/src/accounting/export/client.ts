@@ -27,7 +27,7 @@ export function isExportBatchTab(tab: OutboxTab): tab is ExportBatchTab {
   return tab !== 'drafts' && tab !== 'blocked'
 }
 
-/** `?queue=` values a pasted link may still carry - tabs that no longer render included. */
+/** `?tab=` values a pasted link may still carry - tabs that no longer render included. */
 export const OUTBOX_TAB_PARAMS = [...OUTBOX_TABS, 'sending'] as const
 
 /** A link written before 75-D6 dropped the Sending tab lands on Ready, not on an empty strip. */

@@ -11,6 +11,7 @@ import {
   useAccountingProviderStatus,
 } from '~/components/accounting/hooks/use-accounting-provider-status'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
+import { outboxHref } from '~/components/accounting/ui/ledger/outbox-route'
 import { PostingDrawer } from '~/components/accounting/ui/ledger/posting-drawer'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
@@ -36,7 +37,7 @@ interface PostingDrawerHostProps {
  * `PostingDrawer` on a report, with the org-level props every report would
  * otherwise re-derive.
  *
- * Docked, the drawer is published to the reports layout's outlet: a docked
+ * Docked, the drawer is published to the accounting layout's outlet: a docked
  * `DockableDrawer` with no portal target renders its children inline, which puts
  * the panel in the middle of the statement.
  */
@@ -77,7 +78,7 @@ export function PostingDrawerHost({ postingId, onClose, onSelectPosting }: Posti
         currencyCode={currencyCode}
         bookTimeZone={bookTimeZone}
         providerLabel={providerLabel}
-        onOpenOutbox={(tab) => router.push(`/app/accounting?queue=${tab}`)}
+        onOpenOutbox={(tab) => router.push(outboxHref(tab))}
         onReverse={(memo) => {
           if (!postingId) return
           reverseMutate({ glPostingId: postingId, memo: memo.trim() || undefined })

@@ -1,8 +1,10 @@
 // apps/web/src/components/accounting/ui/banking/payouts/rejected-processor-evidence.tsx
 'use client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { Button } from '@auxx/ui/components/button'
 import { CollapsedJson } from '@auxx/ui/components/collapsed-json'
+import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
+import { DrawerHeader } from '@auxx/ui/components/drawer'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
@@ -11,6 +13,7 @@ import { AlertTriangle, ShieldCheck } from 'lucide-react'
 import { useState } from 'react'
 import { SourceAccountBadge } from '~/components/accounting/ui/source-account-badge'
 import { EmptyState } from '~/components/global/empty-state'
+import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { api } from '~/trpc/react'
 import { formatEvidenceDate } from './evidence-format'
 
@@ -89,16 +92,54 @@ export function RejectedProcessorEvidence() {
             )}
           />
         )}
-        {query.hasNextPage && (
-          <Button
-            variant='outline'
-            loading={query.isFetchingNextPage}
-            loadingText='Loading...'
-            onClick={() => void query.fetchNextPage()}>
-            Load more issues
-          </Button>
-        )}
+        <InfiniteListTail
+          hasNextPage={query.hasNextPage}
+          isFetchingNextPage={query.isFetchingNextPage}
+          fetchNextPage={query.fetchNextPage}
+          loadingLabel='Loading more issues...'
+        />
       </div>
     </Section>
+  )
+}
+
+/**
+ * The same list as a panel, opened from the topbar's count-gated button — the
+ * tab it replaces was dead chrome in the healthy case (81 §5.4).
+ */
+export function RejectedProcessorEvidenceDrawer({
+  open,
+  onOpenChange,
+  isDocked,
+  width,
+  onWidthChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  isDocked: boolean
+  width: number
+  onWidthChange: (width: number) => void
+}) {
+  return (
+    <DockableDrawer
+      open={open}
+      onOpenChange={onOpenChange}
+      isDocked={isDocked}
+      width={width}
+      onWidthChange={onWidthChange}
+      minWidth={380}
+      maxWidth={800}
+      title='Import issues'>
+      <div className='flex min-h-0 flex-1 flex-col rounded-t-xl'>
+        <DrawerHeader
+          icon={<AlertTriangle className='size-5 text-muted-foreground' />}
+          title='Import issues'
+          onClose={() => onOpenChange(false)}
+        />
+        <ScrollArea className='min-h-0 flex-1'>
+          <div className='flex flex-col'>{open && <RejectedProcessorEvidence />}</div>
+        </ScrollArea>
+      </div>
+    </DockableDrawer>
   )
 }

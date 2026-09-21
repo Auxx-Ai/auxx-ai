@@ -205,7 +205,7 @@ describe('payout evidence inspection', () => {
     expect(screen.getByText('Out')).toBeInTheDocument()
     expect(screen.queryByText('Not applicable')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Match manually' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Load more activity' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
     expect(state.fetchNextPage).toHaveBeenCalledOnce()
   })
 

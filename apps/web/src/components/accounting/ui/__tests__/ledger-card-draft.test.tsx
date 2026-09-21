@@ -70,7 +70,7 @@ describe('the ledger card and a drafted entry', () => {
     expect(screen.getByText('Drafted — awaiting approval in the outbox')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open outbox' })).toHaveAttribute(
       'href',
-      '/app/accounting?queue=drafts&posting=gp_draft'
+      '/app/accounting/outbox?tab=drafts&posting=gp_draft'
     )
   })
 

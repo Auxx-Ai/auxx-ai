@@ -11,7 +11,8 @@ import { toastError } from '@auxx/ui/components/toast'
 import { todayInZone } from '@auxx/utils/calendar-day'
 import { Building2, Users } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
@@ -23,7 +24,7 @@ import { formatMinor } from '../ledger/format'
 import { ReportErrorCard } from './report-error-card'
 import { periodStartDate, toStatementTableRows } from './report-helpers'
 import { reportAsOfPresets } from './report-range-presets'
-import { ReportToolbar } from './report-toolbar'
+import { ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
 import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
 import { useReportAsOf } from './use-report-window'
@@ -68,7 +69,7 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
   )
   const selectedRecordId = isRecordId(recordIdParam) ? (recordIdParam as RecordId) : undefined
 
-  // 🛑 Published to the reports layout's outlet, not rendered inline. A
+  // 🛑 Published to the accounting layout's outlet, not rendered inline. A
   // `DockableDrawer` that is docked with no portal target renders its children
   // where they stand, which put this drawer in the middle of the statement -
   // the same trap `posting-drawer-host.tsx` documents.
@@ -102,47 +103,71 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
     onError: (error) => toastError({ title: 'Error generating PDF', description: error.message }),
   })
 
-  function handleDownloadPdf() {
-    renderPdf.mutate(
-      { kind: copy.kind, asOf },
+  // The handlers are `useCallback`s only because the toolbar registration below
+  // is memoised over them - a fresh identity each render republishes forever.
+  const renderPdfMutate = renderPdf.mutate
+  const kind = copy.kind
+  const handleDownloadPdf = useCallback(() => {
+    renderPdfMutate(
+      { kind, asOf },
       {
         onSuccess: ({ assetId }) =>
           window.open(`/api/files/download/asset:${assetId}`, '_blank', 'noopener,noreferrer'),
       }
     )
-  }
+  }, [renderPdfMutate, kind, asOf])
 
-  function handleDownloadCsv() {
-    if (!query.data) return
-    downloadCsv(
-      toCsvRows(query.data.rows, query.data.columns, period.currencyCode),
-      `${copy.kind}-${asOf}.csv`
+  const data = query.data
+  const currencyCode = period.currencyCode
+  const handleDownloadCsv = useCallback(() => {
+    if (!data) return
+    downloadCsv(toCsvRows(data.rows, data.columns, currencyCode), `${kind}-${asOf}.csv`)
+  }, [data, currencyCode, kind, asOf])
+
+  useRegisterAccountingToolbar(
+    useMemo(
+      () => ({
+        left: (
+          <ReportToolbarControls
+            mode='asOf'
+            asOf={asOf}
+            onSelectAsOf={setAsOf}
+            asOfPresets={asOfPresets}
+            cutoff={cutoff}
+            disabled={!asOf}
+          />
+        ),
+        right: (
+          <ReportToolbarActions
+            onDownloadPdf={handleDownloadPdf}
+            onDownloadCsv={handleDownloadCsv}
+            through={asOf}
+            isDownloadingPdf={renderPdf.isPending}
+          />
+        ),
+      }),
+      [
+        asOf,
+        setAsOf,
+        asOfPresets,
+        cutoff,
+        handleDownloadPdf,
+        handleDownloadCsv,
+        renderPdf.isPending,
+      ]
     )
-  }
+  )
 
   const rows = query.data ? toStatementTableRows(query.data.rows) : []
   // `toAgingRows` always appends its own `'total'` row, even over zero
   // groups (`trial-balance.tsx`'s own `rows.length > 1` reasoning).
   const hasActivity = rows.length > 1
 
-  // One `MainPageContent` per screen, and it is the reports LAYOUT's - see
-  // `accounting/settings/layout.tsx` for the same split. A second one here
-  // nested a `PanelFrame` inside a `PanelFrame`, which doubled the border and
-  // the padding on every report.
+  // One `MainPageContent` per screen and it is the accounting LAYOUT's, which
+  // also owns the topbar this page registers into (`tasks/81` §6): a document
+  // page is one `ScrollArea` over everything.
   return (
     <div className='flex h-full min-h-0 w-full flex-1 flex-col'>
-      <ReportToolbar
-        mode='asOf'
-        asOf={asOf}
-        onSelectAsOf={setAsOf}
-        asOfPresets={asOfPresets}
-        cutoff={cutoff}
-        onDownloadPdf={handleDownloadPdf}
-        onDownloadCsv={handleDownloadCsv}
-        through={asOf}
-        isDownloadingPdf={renderPdf.isPending}
-        disabled={!asOf}
-      />
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
           <StatementNotices through={asOf} />

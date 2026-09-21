@@ -23,33 +23,35 @@
 
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Landmark } from 'lucide-react'
 import { useQueryState } from 'nuqs'
+import {
+  type AccountingToolbarContent,
+  useRegisterAccountingToolbar,
+} from '~/components/accounting/accounting-toolbar-outlet'
+import { ToolbarTitle } from '~/components/accounting/ui/accounting-toolbar'
 import { BankAccountPicker, useBankAccounts } from '~/components/accounting/ui/bank-account-picker'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
-import SettingsPage from '~/components/global/settings-page'
 import { BaseType } from '~/components/workflow/types'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { BankImportBatches } from './bank-import-batches'
 import { BankImportUploader } from './bank-import-uploader'
 
-const BREADCRUMBS = [
-  { title: 'Accounting', href: '/app/accounting' },
-  { title: 'Banking' },
-  { title: 'Import' },
-]
-
-const PAGE_DESCRIPTION =
-  'Bring a bank statement in from a file. CSV, or OFX/QFX/QBO where the bank still offers it. A file and a live feed can cover the same weeks safely - lines already present are linked, not duplicated.'
-
 /** The ledger is pinned to USD for the cutover, like every other accounting screen. */
 const DISPLAY_CURRENCY = 'USD'
 
+/** Module-level, so the outlet's memoisation rule is satisfied without a `useMemo`. */
+const TOOLBAR: AccountingToolbarContent = {
+  left: <ToolbarTitle>Import statements</ToolbarTitle>,
+}
+
 export function BankImportPage() {
   useRequireCapability(PermissionKey.ledgerView)
+  useRegisterAccountingToolbar(TOOLBAR)
 
   // The chosen account rides the URL so it survives the hop into the wizard and
   // back, and so a coverage gap on the settings page can deep-link to it.
@@ -65,10 +67,7 @@ export function BankImportPage() {
 
   if (!accountsLoading && accounts.length === 0) {
     return (
-      <SettingsPage
-        title='Import statements'
-        description={PAGE_DESCRIPTION}
-        breadcrumbs={BREADCRUMBS}>
+      <div className='flex h-full min-h-0 flex-col'>
         <EmptyState
           icon={Landmark}
           title='No bank account yet'
@@ -84,15 +83,13 @@ export function BankImportPage() {
             </Button>
           }
         />
-      </SettingsPage>
+      </div>
     )
   }
 
   return (
-    <SettingsPage
-      title='Import statements'
-      description={PAGE_DESCRIPTION}
-      breadcrumbs={BREADCRUMBS}>
+    // A document page: one `ScrollArea` over everything (§6).
+    <ScrollArea className='h-full w-full'>
       <Section
         title='Account'
         description='Which account this statement is for. Every line in the file lands on it.'>
@@ -133,7 +130,7 @@ export function BankImportPage() {
 
       <Section
         title='Statement file'
-        description='Drop the export your bank gave you. OFX, QFX and QBO carry a transaction id, so there is nothing to map and a re-import cannot duplicate.'>
+        description='Drop the export your bank gave you — CSV, or OFX/QFX/QBO where the bank still offers it. Those three carry a transaction id, so there is nothing to map and a re-import cannot duplicate. A file and a live feed can cover the same weeks safely: lines already present are linked, not duplicated.'>
         {selected ? (
           <BankImportUploader
             bankAccountId={selected.id}
@@ -150,6 +147,6 @@ export function BankImportPage() {
         bankAccountId={selected?.id ?? null}
         currencyCode={selected?.currency ?? DISPLAY_CURRENCY}
       />
-    </SettingsPage>
+    </ScrollArea>
   )
 }
