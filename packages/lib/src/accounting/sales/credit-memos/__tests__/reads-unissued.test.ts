@@ -39,7 +39,7 @@ vi.mock('../../../../cache', () => ({
         Object.fromEntries(
           attributes.map((attribute) => [
             attribute,
-            h.present.has(attribute) ? { id: `fld_${attribute}` } : null,
+            h.present.has(attribute) ? { id: `fld_${attribute}`, type: 'DATETIME' } : null,
           ])
         ),
     }),
@@ -54,7 +54,15 @@ function stubDb(): Database {
   let index = 0
   const chain = (): Record<string, unknown> => {
     const self: Record<string, unknown> = {}
-    for (const method of ['from', 'innerJoin', 'leftJoin', 'where', 'orderBy', 'limit']) {
+    for (const method of [
+      'from',
+      '$dynamic',
+      'innerJoin',
+      'leftJoin',
+      'where',
+      'orderBy',
+      'limit',
+    ]) {
       self[method] = () => self
     }
     // biome-ignore lint/suspicious/noThenProperty: chainable drizzle query-builder stub
@@ -65,9 +73,38 @@ function stubDb(): Database {
   return { select: () => chain() } as unknown as Database
 }
 
-/** What postgres hands back for a `DATETIME` field value. */
-function issuedAt(day: string) {
-  return { valueDate: `${day} 00:00:00+00` }
+/**
+ * The three queries the count issues for `days`: the draft-and-channel value
+ * lookup, then the reader's instance and value reads.
+ *
+ * `valueDate` is what postgres hands back for a `DATETIME` field value.
+ */
+function issued(...days: (string | null)[]): unknown[][] {
+  const ids = days.map((_, index) => `cm_${index}`)
+  return [
+    ids.map((id) => ({ entityId: id, key: 'draft' })),
+    ids.map((id) => ({
+      id,
+      organizationId: ORG,
+      entityDefinitionId: 'def_credit_memo',
+      createdAt: new Date('2026-07-01'),
+      updatedAt: new Date('2026-07-01'),
+      archivedAt: null,
+      displayName: id,
+    })),
+    days.flatMap((day, index) =>
+      day === null
+        ? []
+        : [
+            {
+              entityId: ids[index],
+              fieldId: 'fld_credit_memo_issued_at',
+              sortKey: 'a',
+              valueDate: `${day} 00:00:00+00`,
+            },
+          ]
+    ),
+  ]
 }
 
 beforeEach(() => {
@@ -84,7 +121,7 @@ describe('countUnissuedChannelCreditMemos', () => {
   it('counts the channel drafts dated inside the month', async () => {
     // The SQL has already narrowed to status draft and source channel; what
     // comes back is one row per such memo, carrying its issue date.
-    h.results = [[issuedAt('2026-07-02'), issuedAt('2026-07-31'), issuedAt('2026-07-15')]]
+    h.results = issued('2026-07-02', '2026-07-31', '2026-07-15')
 
     await expect(
       countUnissuedChannelCreditMemos(stubDb(), { organizationId: ORG, month: '2026-07' })
@@ -92,14 +129,7 @@ describe('countUnissuedChannelCreditMemos', () => {
   })
 
   it('ignores a draft dated in another month, including the neighbouring days', async () => {
-    h.results = [
-      [
-        issuedAt('2026-06-30'),
-        issuedAt('2026-07-01'),
-        issuedAt('2026-08-01'),
-        issuedAt('2027-07-05'),
-      ],
-    ]
+    h.results = issued('2026-06-30', '2026-07-01', '2026-08-01', '2027-07-05')
 
     await expect(
       countUnissuedChannelCreditMemos(stubDb(), { organizationId: ORG, month: '2026-07' })
@@ -107,7 +137,7 @@ describe('countUnissuedChannelCreditMemos', () => {
   })
 
   it('does not count a draft with no issue date at all', async () => {
-    h.results = [[{ valueDate: null }, issuedAt('2026-07-09')]]
+    h.results = issued(null, '2026-07-09')
 
     await expect(
       countUnissuedChannelCreditMemos(stubDb(), { organizationId: ORG, month: '2026-07' })

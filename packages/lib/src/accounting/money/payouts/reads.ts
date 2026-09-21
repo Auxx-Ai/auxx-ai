@@ -17,6 +17,7 @@ import { and, desc, eq, gt, inArray, isNotNull, isNull, like, or, type SQL, sql 
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import {
+  findSystemRecordIdsByValue,
   readSystemRecords,
   type SystemRecord,
   systemInstanceColumns,
@@ -241,27 +242,16 @@ export async function readBankAccountSettlementDestinations(
   glAccountId: string
 ): Promise<string[]> {
   const ctx = await loadPayoutBankAccountFieldContext(db, organizationId)
-  if (!ctx?.fields.bank_account_gl_account) return []
+  if (!ctx) return []
 
-  // Value-keyed: which records hold THIS gl account. The reader answers by id,
-  // so the lookup stays a SQL filter on the value join.
-  const glValue = alias(schema.FieldValue, 'bank_account_gl_account_v')
-  const matches = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .innerJoin(
-      glValue,
-      and(
-        systemValueJoin(glValue, ctx.fields.bank_account_gl_account.id),
-        eq(glValue.valueText, glAccountId)
-      )
-    )
-    .where(and(systemRecordScope(organizationId, ctx.defId)))
-  if (matches.length === 0) return []
-
-  const records = await readSystemRecords(db, organizationId, ctx, {
-    ids: matches.map((match) => match.id),
+  const matches = await findSystemRecordIdsByValue(db, organizationId, ctx, {
+    attribute: 'bank_account_gl_account',
+    text: [glAccountId],
   })
+  const ids = matches.get(glAccountId) ?? []
+  if (ids.length === 0) return []
+
+  const records = await readSystemRecords(db, organizationId, ctx, { ids })
   // TAGS (58 §4.4): one row per destination, the typed text written AS the
   // `optionId`, so the open-tag fallback to `valueText` has no typed shape.
   return [

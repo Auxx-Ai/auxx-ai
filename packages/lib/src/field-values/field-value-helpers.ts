@@ -1069,13 +1069,16 @@ export async function preBatchValidateRelationships(
 /**
  * Fetch the displayName for a related entity instance.
  * Lightweight single-column query — used when a display field is a RELATIONSHIP type.
+ *
+ * `record` may be a bare `EntityInstance.id` for the callers that hold one and
+ * do not know its definition (a bank line's matched document, a contact's company).
  */
 export async function getRelatedDisplayName(
   db: Database | Transaction,
   organizationId: string,
-  recordId: RecordId
+  record: RecordId | string
 ): Promise<string | null> {
-  const { entityInstanceId } = parseRecordId(recordId)
+  const entityInstanceId = isRecordId(record) ? parseRecordId(record).entityInstanceId : record
   const row = await db.query.EntityInstance.findFirst({
     where: (ei, { eq: eqOp, and: andOp }) =>
       andOp(eqOp(ei.id, entityInstanceId), eqOp(ei.organizationId, organizationId)),

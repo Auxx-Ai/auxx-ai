@@ -40,6 +40,7 @@ import type { Result } from 'neverthrow'
 import { BadRequestError, ConflictError, UnprocessableEntityError } from '../../../errors'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
+import { findSystemRecordIdsByValue } from '../../../resources/system-records'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { postEntry } from '../../ledger/post/post-entry'
@@ -52,7 +53,11 @@ import { acceptVendorPaymentAccounting } from '../../money/vendor-payments/payme
 import { recordVendorPayment } from '../../money/vendor-payments/record-payment'
 import { voidVendorPayment } from '../../money/vendor-payments/void-payment'
 import { pinPostedBankTransaction, unpinPostedBankTransaction } from '../feed/pins'
-import { requireBankAccountFieldContext, requireReviewFieldContext } from '../fields'
+import {
+  loadReviewFieldContext,
+  requireBankAccountFieldContext,
+  requireReviewFieldContext,
+} from '../fields'
 import { guard } from '../guard'
 import { getBankAccount } from '../reads'
 import { buildCodedBankEntry, buildTransferEntry } from './build-entry'
@@ -1015,21 +1020,13 @@ async function readBankLineClaiming(
   organizationId: string,
   recordId: string
 ): Promise<string | null> {
-  const [row] = await db
-    .select({ entityId: schema.FieldValue.entityId })
-    .from(schema.FieldValue)
-    .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
-    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.valueText, recordId),
-        eq(schema.CustomField.systemAttribute, 'bank_transaction_matched_record_id'),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .limit(1)
-  return row?.entityId ?? null
+  const ctx = await loadReviewFieldContext(db, organizationId)
+  if (!ctx) return null
+  const claimed = await findSystemRecordIdsByValue(db, organizationId, ctx, {
+    attribute: 'bank_transaction_matched_record_id',
+    text: [recordId],
+  })
+  return claimed.get(recordId)?.[0] ?? null
 }
 
 /** Write the document's half of the link. */

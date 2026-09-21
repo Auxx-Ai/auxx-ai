@@ -115,3 +115,40 @@ describe('requireSystemFields', () => {
     expect(ctx.defId).toBe('def_pg')
   })
 })
+
+describe('required', () => {
+  it('names the entity type and every missing attribute', async () => {
+    await expect(
+      requireSystemFields(undefined, ORG, 'payment_gateway', ATTRS, {
+        required: ['payment_gateway_name', 'payment_gateway_status'],
+      })
+    ).rejects.toThrow(
+      'The payment_gateway entity is missing required fields: payment_gateway_status'
+    )
+  })
+
+  it('refuses with the caller`s own sentence when it has one', async () => {
+    await expect(
+      requireSystemFields(undefined, ORG, 'payment_gateway', ATTRS, {
+        required: ['payment_gateway_status'],
+        message: 'Gateways are not available until migration 157 has run',
+      })
+    ).rejects.toThrow('Gateways are not available until migration 157 has run')
+  })
+
+  it('reads a missing required field as unavailable on the soft path', async () => {
+    expect(
+      await systemFields(undefined, ORG, 'payment_gateway', ATTRS, {
+        required: ['payment_gateway_status'],
+      })
+    ).toBeNull()
+    // The fields that ARE provisioned still resolve when none is required.
+    expect(
+      (
+        await systemFields(undefined, ORG, 'payment_gateway', ATTRS, {
+          required: ['payment_gateway_name'],
+        })
+      )?.defId
+    ).toBe('def_pg')
+  })
+})

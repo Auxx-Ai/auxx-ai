@@ -14,6 +14,7 @@ import {
   type RecurrenceRuleRow,
 } from '../../../recurrence'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { readSystemRecords } from '../../../resources/system-records'
 import { listVisitAllocationsForVisits } from '../billing/allocations'
 import { createRecurringCharge, createVisitInvoice } from '../billing/commands'
 import { batchReadSystemValues, computeWorkOrderBillingProjection } from '../billing/projection'
@@ -143,22 +144,30 @@ async function loadContactNames(input: {
     attributes: ['work_order_contact'] as const,
   })
   const contactInstanceIdByWorkOrder = new Map<string, string>()
-  const contactInstanceIds = new Set<string>()
+  // Grouped by the def the RecordId names: `work_order_contact` may point at a
+  // contact or a company, and a def-less read would be org-less too.
+  const idsByDef = new Map<string, string[]>()
   for (const workOrderInstanceId of input.workOrderInstanceIds) {
     const contactValue = contactValuesById.get(workOrderInstanceId)?.get('work_order_contact')
     if (typeof contactValue === 'string' && contactValue.includes(':')) {
-      const { entityInstanceId } = parseRecordId(contactValue as RecordId)
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(contactValue as RecordId)
       contactInstanceIdByWorkOrder.set(workOrderInstanceId, entityInstanceId)
-      contactInstanceIds.add(entityInstanceId)
+      idsByDef.set(entityDefinitionId, [
+        ...(idsByDef.get(entityDefinitionId) ?? []),
+        entityInstanceId,
+      ])
     }
   }
-  const contactRows = contactInstanceIds.size
-    ? await database
-        .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
-        .from(schema.EntityInstance)
-        .where(inArray(schema.EntityInstance.id, [...contactInstanceIds]))
-    : []
-  const contactNameById = new Map(contactRows.map((row) => [row.id, row.displayName]))
+  const contactNameById = new Map<string, string | null>()
+  for (const [defId, ids] of idsByDef) {
+    const records = await readSystemRecords(
+      database,
+      input.organizationId,
+      { defId, fields: {} },
+      { ids, includeArchived: true, cells: false }
+    )
+    for (const record of records) contactNameById.set(record.id, record.displayName)
+  }
   const result = new Map<string, string | null>()
   for (const workOrderInstanceId of input.workOrderInstanceIds) {
     const contactInstanceId = contactInstanceIdByWorkOrder.get(workOrderInstanceId)

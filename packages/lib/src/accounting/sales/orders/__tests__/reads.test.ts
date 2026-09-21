@@ -70,7 +70,7 @@ function stubDb(): Database {
   let index = 0
   const chain = (): Record<string, unknown> => {
     const self: Record<string, unknown> = {}
-    for (const method of ['from', 'where', 'orderBy', 'innerJoin']) {
+    for (const method of ['from', '$dynamic', 'where', 'orderBy', 'innerJoin']) {
       self[method] = () => self
     }
     // biome-ignore lint/suspicious/noThenProperty: chainable drizzle query-builder stub
@@ -140,7 +140,7 @@ async function readLine(extra: ReturnType<typeof value>[]) {
   h.selects = [
     [instance('ord_1')],
     orderRows(),
-    [{ entityId: 'li_1' }],
+    [{ entityId: 'li_1', key: 'k' }],
     [instance('li_1')],
     lineRows(extra),
   ]

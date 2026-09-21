@@ -6,9 +6,9 @@
  * is filed under. Read-only; a miss or an ambiguous order leaves the entry unreferenced.
  */
 
-import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import type { Database, Transaction } from '@auxx/database'
 import { getCachedCustomFields, getCachedEntityDefId } from '../../../../cache'
+import { findSystemRecordIdsByValue } from '../../../../resources/system-records'
 import { bridgeFieldSpecs, pivotRecordFields } from '../../customer-money/bridge'
 import type {
   EntryReferenceResolver,
@@ -38,77 +38,6 @@ const text = (value: unknown): string | null => {
 function orderNameSpellings(invoiceNumber: string): string[] {
   const bare = invoiceNumber.startsWith('#') ? invoiceNumber.slice(1) : invoiceNumber
   return [...new Set([invoiceNumber, bare, `#${bare}`])].filter((value) => value.length > 0)
-}
-
-/** Active entity ids carrying one of `values` in `fieldId`, grouped by the value. */
-async function entityIdsByText(
-  db: Database | Transaction,
-  organizationId: string,
-  fieldId: string | undefined,
-  values: readonly string[]
-): Promise<Map<string, string[]>> {
-  const grouped = new Map<string, string[]>()
-  if (!fieldId || !values.length) return grouped
-  const rows = await db
-    .select({ entityId: schema.FieldValue.entityId, value: schema.FieldValue.valueText })
-    .from(schema.FieldValue)
-    .innerJoin(
-      schema.EntityInstance,
-      and(
-        eq(schema.EntityInstance.organizationId, schema.FieldValue.organizationId),
-        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, fieldId),
-        inArray(schema.FieldValue.valueText, [...values])
-      )
-    )
-  for (const row of rows) {
-    if (!row.value) continue
-    grouped.set(row.value, [...(grouped.get(row.value) ?? []), row.entityId])
-  }
-  return grouped
-}
-
-/** Active entity ids whose `fieldId` relationship points at one of `relatedIds`. */
-async function entityIdsByRelation(
-  db: Database | Transaction,
-  organizationId: string,
-  fieldId: string | undefined,
-  relatedIds: readonly string[]
-): Promise<Map<string, string[]>> {
-  const grouped = new Map<string, string[]>()
-  if (!fieldId || !relatedIds.length) return grouped
-  const rows = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .innerJoin(
-      schema.EntityInstance,
-      and(
-        eq(schema.EntityInstance.organizationId, schema.FieldValue.organizationId),
-        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, fieldId),
-        inArray(schema.FieldValue.relatedEntityId, [...relatedIds])
-      )
-    )
-  for (const row of rows) {
-    if (!row.relatedEntityId) continue
-    grouped.set(row.relatedEntityId, [...(grouped.get(row.relatedEntityId) ?? []), row.entityId])
-  }
-  return grouped
 }
 
 /** The reference a stored `customer_transaction` is filed under, or null if it is incomplete. */
@@ -179,37 +108,51 @@ async function resolve(
     [...specs].map(([fieldId, spec]) => [spec.attribute, fieldId] as const)
   )
 
-  const byGatewayId = await entityIdsByText(
-    db,
-    organizationId,
-    fieldIdByAttribute.get(GATEWAY_TRANSACTION_ID),
-    transIds
-  )
+  const idOf = (attribute: string) => {
+    const fieldId = fieldIdByAttribute.get(attribute)
+    return fieldId ? { id: fieldId } : null
+  }
+  const transactionCtx = {
+    defId: entityDefinitionId,
+    fields: {
+      [GATEWAY_TRANSACTION_ID]: idOf(GATEWAY_TRANSACTION_ID),
+      [ORDER_EXTERNAL_ID]: idOf(ORDER_EXTERNAL_ID),
+      [ORDER_RELATIONSHIP]: idOf(ORDER_RELATIONSHIP),
+    },
+  }
+
+  const byGatewayId = await findSystemRecordIdsByValue(db, organizationId, transactionCtx, {
+    attribute: GATEWAY_TRANSACTION_ID,
+    text: transIds,
+  })
 
   // The invoice number is the order NAME on a Shopify-originated transaction, so
   // the order id it is compared against is only the second spelling to try.
   const spellings = new Map(invoiceNumbers.map((value) => [value, orderNameSpellings(value)]))
-  const byOrderExternalId = await entityIdsByText(
-    db,
-    organizationId,
-    fieldIdByAttribute.get(ORDER_EXTERNAL_ID),
-    [...new Set([...spellings.values()].flat())]
-  )
+  const names = [...new Set([...spellings.values()].flat())]
+  const byOrderExternalId = await findSystemRecordIdsByValue(db, organizationId, transactionCtx, {
+    attribute: ORDER_EXTERNAL_ID,
+    text: names,
+  })
   const orderDefId = await getCachedEntityDefId(organizationId, 'order')
   const orderNumberFieldId = orderDefId
     ? (await getCachedCustomFields(organizationId, orderDefId)).find(
         (field) => field.systemAttribute === ORDER_NUMBER
       )?.id
     : undefined
-  const orderIdsByName = await entityIdsByText(db, organizationId, orderNumberFieldId, [
-    ...new Set([...spellings.values()].flat()),
-  ])
-  const byOrderInstance = await entityIdsByRelation(
-    db,
-    organizationId,
-    fieldIdByAttribute.get(ORDER_RELATIONSHIP),
-    [...new Set([...orderIdsByName.values()].flat())]
-  )
+  const orderIdsByName =
+    orderDefId && orderNumberFieldId
+      ? await findSystemRecordIdsByValue(
+          db,
+          organizationId,
+          { defId: orderDefId, fields: { [ORDER_NUMBER]: { id: orderNumberFieldId } } },
+          { attribute: ORDER_NUMBER, text: names }
+        )
+      : new Map<string, string[]>()
+  const byOrderInstance = await findSystemRecordIdsByValue(db, organizationId, transactionCtx, {
+    attribute: ORDER_RELATIONSHIP,
+    related: [...new Set([...orderIdsByName.values()].flat())],
+  })
 
   const candidateIds = [
     ...new Set([

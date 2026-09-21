@@ -90,6 +90,10 @@ vi.mock('../../fields', () => ({
   // too. `updateFor('def_ba:acct_1')` is how the tests below read that stamp.
   requireBankAccountFieldContext: async () => ({ defId: 'def_ba', fields: {} }),
   requireReviewFieldContext: async () => ({ defId: 'def_bt', fields: {} }),
+  loadReviewFieldContext: async () => ({
+    defId: 'def_bt',
+    fields: { bank_transaction_matched_record_id: { id: 'f_matched_id' } },
+  }),
 }))
 vi.mock('../../reads', () => ({
   getBankAccount: async (_db: unknown, params: { bankAccountId: string }) => ({
@@ -151,7 +155,16 @@ const db = new Proxy({} as never, {
 
 /** Every builder method, each answering the same thenable. */
 function promiseChain(): Record<string, () => unknown> {
-  const methods = ['from', 'innerJoin', 'leftJoin', 'where', 'limit', 'orderBy', 'returning']
+  const methods = [
+    'from',
+    '$dynamic',
+    'innerJoin',
+    'leftJoin',
+    'where',
+    'limit',
+    'orderBy',
+    'returning',
+  ]
   const chain: Record<string, () => unknown> = {}
   for (const method of methods) {
     chain[method] = () => Object.assign(Promise.resolve(h.selectRows), promiseChain())
@@ -349,7 +362,7 @@ describe('matchTransaction', () => {
     // the other bank line's `matchedRecordId`. Answering null here let two lines
     // each claim to have paid one bill.
     row()
-    h.selectRows = [{ entityId: 'txn_other' }]
+    h.selectRows = [{ entityId: 'txn_other', key: 'bill_1' }]
     const result = await matchTransaction(db, {
       organizationId: ORG,
       actorUserId: ACTOR,

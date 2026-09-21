@@ -13,7 +13,11 @@ import { type Database, schema } from '@auxx/database'
 import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, eq, ilike, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { readSystemRecords, type SystemRecord } from '../../../resources/system-records'
+import {
+  findSystemRecordIdsByValue,
+  readSystemRecords,
+  type SystemRecord,
+} from '../../../resources/system-records'
 import { daysBetween } from '../client'
 import {
   type BankRuleAttribute,
@@ -152,41 +156,20 @@ export async function listForReviewTransactionIds(
   return guard(
     async () => {
       const ctx = await loadRuleTransactionFieldContext(db, organizationId)
-      const statusField = ctx?.fields.bank_transaction_review_status
-      if (!ctx || !statusField) return []
+      if (!ctx) return []
 
-      const statusRows = await db
-        .select({ entityId: schema.FieldValue.entityId })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            eq(schema.FieldValue.fieldId, statusField.id),
-            eq(schema.FieldValue.optionId, 'for_review')
-          )
-        )
-      let ids = [...new Set(statusRows.map((row) => row.entityId))]
-      if (ids.length === 0) return []
-
-      const acctField = ctx.fields.bank_transaction_bank_account
-      if (bankAccountId && acctField) {
-        const acctRows = await db
-          .select({ entityId: schema.FieldValue.entityId })
-          .from(schema.FieldValue)
-          .where(
-            and(
-              eq(schema.FieldValue.organizationId, organizationId),
-              eq(schema.FieldValue.fieldId, acctField.id),
-              eq(schema.FieldValue.relatedEntityId, bankAccountId),
-              inArray(schema.FieldValue.entityId, ids)
-            )
-          )
-        const acctIds = new Set(acctRows.map((row) => row.entityId))
-        ids = ids.filter((id) => acctIds.has(id))
-      }
-      const live = await readSystemRecords(db, organizationId, ctx, { ids, cells: false })
-      const liveIds = new Set(live.map((record) => record.id))
-      return ids.filter((id) => liveIds.has(id))
+      const found = await findSystemRecordIdsByValue(db, organizationId, ctx, [
+        { attribute: 'bank_transaction_review_status', option: ['for_review'] },
+        ...(bankAccountId
+          ? [
+              {
+                attribute: 'bank_transaction_bank_account' as const,
+                related: [bankAccountId],
+              },
+            ]
+          : []),
+      ])
+      return found.get('for_review') ?? []
     },
     'Failed to list for-review transactions',
     { organizationId, bankAccountId }
@@ -196,11 +179,6 @@ export async function listForReviewTransactionIds(
 /**
  * The last {@link HISTORY_SAMPLE_SIZE} `coded` or `matched` lines with the same
  * `matchKey` on the same account, newest first, excluding the line itself.
- *
- * Three narrowing queries intersected in memory rather than one join per
- * attribute - the `readTransactionDateKeys` precedent in `banking/reads.ts`.
- * The candidate set for one org's one match key is small; this is not the
- * query that needs to scale to millions of rows.
  */
 export async function listHistoryMatches(
   db: Database,
@@ -215,49 +193,14 @@ export async function listHistoryMatches(
   return guard(
     async () => {
       const ctx = await loadRuleTransactionFieldContext(db, organizationId)
-      const matchKeyField = ctx?.fields.bank_transaction_match_key
-      const acctField = ctx?.fields.bank_transaction_bank_account
-      const statusField = ctx?.fields.bank_transaction_review_status
-      if (!ctx || !matchKeyField || !acctField || !statusField) return []
+      if (!ctx) return []
 
-      const [keyRows, acctRows, statusRows] = await Promise.all([
-        db
-          .select({ entityId: schema.FieldValue.entityId })
-          .from(schema.FieldValue)
-          .where(
-            and(
-              eq(schema.FieldValue.organizationId, organizationId),
-              eq(schema.FieldValue.fieldId, matchKeyField.id),
-              eq(schema.FieldValue.valueText, matchKey)
-            )
-          ),
-        db
-          .select({ entityId: schema.FieldValue.entityId })
-          .from(schema.FieldValue)
-          .where(
-            and(
-              eq(schema.FieldValue.organizationId, organizationId),
-              eq(schema.FieldValue.fieldId, acctField.id),
-              eq(schema.FieldValue.relatedEntityId, bankAccountId)
-            )
-          ),
-        db
-          .select({ entityId: schema.FieldValue.entityId })
-          .from(schema.FieldValue)
-          .where(
-            and(
-              eq(schema.FieldValue.organizationId, organizationId),
-              eq(schema.FieldValue.fieldId, statusField.id),
-              inArray(schema.FieldValue.optionId, ['coded', 'matched'])
-            )
-          ),
+      const found = await findSystemRecordIdsByValue(db, organizationId, ctx, [
+        { attribute: 'bank_transaction_match_key', text: [matchKey] },
+        { attribute: 'bank_transaction_bank_account', related: [bankAccountId] },
+        { attribute: 'bank_transaction_review_status', option: ['coded', 'matched'] },
       ])
-
-      const keyIds = new Set(keyRows.map((row) => row.entityId))
-      const acctIds = new Set(acctRows.map((row) => row.entityId))
-      const candidateIds = [...new Set(statusRows.map((row) => row.entityId))].filter(
-        (id) => id !== excludeTransactionId && keyIds.has(id) && acctIds.has(id)
-      )
+      const candidateIds = (found.get(matchKey) ?? []).filter((id) => id !== excludeTransactionId)
       if (candidateIds.length === 0) return []
 
       const rows = await readTxMatchRows(db, organizationId, ctx, candidateIds)
@@ -297,22 +240,15 @@ export async function findTransferCandidate(
     async () => {
       if (!postedAt) return null
       const ctx = await loadRuleTransactionFieldContext(db, organizationId)
-      const amountField = ctx?.fields.bank_transaction_amount
-      if (!ctx || !amountField) return null
+      if (!ctx) return null
 
-      const amountRows = await db
-        .select({ entityId: schema.FieldValue.entityId })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            eq(schema.FieldValue.fieldId, amountField.id),
-            eq(schema.FieldValue.valueNumber, -amountMinor)
-          )
-        )
-      const candidateIds = amountRows
-        .map((row) => row.entityId)
-        .filter((id) => id !== excludeTransactionId)
+      const found = await findSystemRecordIdsByValue(db, organizationId, ctx, {
+        attribute: 'bank_transaction_amount',
+        number: [-amountMinor],
+      })
+      const candidateIds = (found.get(String(-amountMinor)) ?? []).filter(
+        (id) => id !== excludeTransactionId
+      )
       if (candidateIds.length === 0) return null
 
       const rows = await readTxMatchRows(db, organizationId, ctx, candidateIds)

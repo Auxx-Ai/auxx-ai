@@ -44,6 +44,7 @@ import {
   optionalFieldId,
   systemDefId,
   systemFieldMap,
+  systemRecordScope,
   systemValueJoin,
 } from '../../resources/system-records'
 import { resolvePartKind } from '../costing/client'
@@ -330,6 +331,9 @@ async function readCoverage(
   const periodStartValue = alias(schema.FieldValue, 'backfill_build_period_start_v')
   const periodEndValue = alias(schema.FieldValue, 'backfill_build_period_end_v')
 
+  // 🛑 Stays one statement, and stays raw: the quantity, the order and the two
+  // period columns are the ANSWER, not filters, and an id-returning lookup would
+  // make the whole backfill read three statements where the budget test pins one.
   const rows = await db
     .select({
       buildPartId: partValue.relatedEntityId,
@@ -368,14 +372,7 @@ async function readCoverage(
       periodEndValue,
       systemValueJoin(periodEndValue, optionalFieldId(ctx.fields.build_period_end))
     )
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-        isNull(schema.EntityInstance.archivedAt),
-        isNull(reversalValue.relatedEntityId)
-      )
-    )
+    .where(and(systemRecordScope(organizationId, ctx.defId), isNull(reversalValue.relatedEntityId)))
 
   const coverage: BackfillCoverage[] = []
   for (const row of rows) {

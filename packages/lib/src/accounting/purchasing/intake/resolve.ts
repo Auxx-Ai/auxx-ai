@@ -39,6 +39,12 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../../cache'
 import { normalizeForLookup } from '../../../field-values/normalize-for-lookup'
+import {
+  findSystemRecordIdsByValue,
+  readSystemRecords,
+  systemRecordScope,
+  systemValueJoin,
+} from '../../../resources/system-records'
 import { findVendorPartForLine } from '../vendor-part-lookup'
 import type {
   IntakeCandidate,
@@ -148,6 +154,8 @@ export async function resolveQuoteVendor(
       if (rows.length === 0 && nameField && domainField) {
         const domain = transcription.vendorEmail?.split('@')[1]?.trim().toLowerCase()
         if (domain) {
+          // One statement, like the name arm above: the company NAME rides back
+          // with the match, and an id-only lookup cannot carry it.
           const domainValue = alias(schema.FieldValue, 'company_domain_value')
           rows = await db
             .select({ id: schema.EntityInstance.id, name: nameValue.valueText })
@@ -155,27 +163,12 @@ export async function resolveQuoteVendor(
             .innerJoin(
               domainValue,
               and(
-                eq(domainValue.entityId, schema.EntityInstance.id),
-                eq(domainValue.organizationId, schema.EntityInstance.organizationId),
-                eq(domainValue.fieldId, domainField.id),
+                systemValueJoin(domainValue, domainField.id),
                 eq(sql`lower(${domainValue.valueText})`, domain)
               )
             )
-            .leftJoin(
-              nameValue,
-              and(
-                eq(nameValue.entityId, schema.EntityInstance.id),
-                eq(nameValue.organizationId, schema.EntityInstance.organizationId),
-                eq(nameValue.fieldId, nameField.id)
-              )
-            )
-            .where(
-              and(
-                eq(schema.EntityInstance.organizationId, organizationId),
-                eq(schema.EntityInstance.entityDefinitionId, companyDefId),
-                isNull(schema.EntityInstance.archivedAt)
-              )
-            )
+            .leftJoin(nameValue, systemValueJoin(nameValue, nameField.id))
+            .where(systemRecordScope(organizationId, companyDefId))
             .limit(VENDOR_CANDIDATE_LIMIT)
         }
       }
@@ -231,6 +224,9 @@ async function resolveVendorSkuTier(
   const skuField = fields.vendor_part_vendor_sku
   if (!partField || !supplierField || !skuField) return hits
 
+  // 🛑 Stays one statement, and stays raw: the part leg is the ANSWER, not a
+  // filter, and `findSystemRecordIdsByValue` returns ids only - reading the part
+  // edge afterwards would make this tier three statements instead of one.
   const partValue = alias(schema.FieldValue, 'vp_part_value')
   const supplierValue = alias(schema.FieldValue, 'vp_supplier_value')
   const skuValue = alias(schema.FieldValue, 'vp_sku_value')
@@ -245,36 +241,16 @@ async function resolveVendorSkuTier(
     .innerJoin(
       supplierValue,
       and(
-        eq(supplierValue.entityId, schema.EntityInstance.id),
-        eq(supplierValue.organizationId, schema.EntityInstance.organizationId),
-        eq(supplierValue.fieldId, supplierField.id),
+        systemValueJoin(supplierValue, supplierField.id),
         eq(supplierValue.relatedEntityId, vendorInstanceId)
       )
     )
     .innerJoin(
       skuValue,
-      and(
-        eq(skuValue.entityId, schema.EntityInstance.id),
-        eq(skuValue.organizationId, schema.EntityInstance.organizationId),
-        eq(skuValue.fieldId, skuField.id),
-        inArray(sql`lower(${skuValue.valueText})`, codes)
-      )
+      and(systemValueJoin(skuValue, skuField.id), inArray(sql`lower(${skuValue.valueText})`, codes))
     )
-    .innerJoin(
-      partValue,
-      and(
-        eq(partValue.entityId, schema.EntityInstance.id),
-        eq(partValue.organizationId, schema.EntityInstance.organizationId),
-        eq(partValue.fieldId, partField.id)
-      )
-    )
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, vendorPartDefId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
+    .innerJoin(partValue, systemValueJoin(partValue, partField.id))
+    .where(systemRecordScope(organizationId, vendorPartDefId))
 
   for (const row of rows) {
     if (!row.partInstanceId || !row.code) continue
@@ -301,40 +277,14 @@ async function matchPartsByText(
   fieldId: string,
   keys: string[]
 ): Promise<Map<string, string[]>> {
-  const found = new Map<string, string[]>()
-  if (keys.length === 0) return found
+  if (keys.length === 0) return new Map()
 
-  const textValue = alias(schema.FieldValue, 'part_text_value')
-  const rows = await db
-    .select({
-      partInstanceId: schema.EntityInstance.id,
-      key: sql<string>`lower(${textValue.valueText})`,
-    })
-    .from(schema.EntityInstance)
-    .innerJoin(
-      textValue,
-      and(
-        eq(textValue.entityId, schema.EntityInstance.id),
-        eq(textValue.organizationId, schema.EntityInstance.organizationId),
-        eq(textValue.fieldId, fieldId),
-        inArray(sql`lower(${textValue.valueText})`, keys)
-      )
-    )
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, partDefId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-
-  for (const row of rows) {
-    if (!row.key) continue
-    const bucket = found.get(row.key)
-    if (bucket) bucket.push(row.partInstanceId)
-    else found.set(row.key, [row.partInstanceId])
-  }
-  return found
+  return findSystemRecordIdsByValue(
+    db,
+    organizationId,
+    { defId: partDefId, fields: { key: { id: fieldId } } },
+    { attribute: 'key', text: keys, caseInsensitive: true }
+  )
 }
 
 /** Title + sku for every part any tier named, in one statement, for the badges. */

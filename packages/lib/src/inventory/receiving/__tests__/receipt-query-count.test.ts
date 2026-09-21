@@ -251,7 +251,7 @@ import { receivePurchaseOrder } from '../receive-purchase-order'
 function routeCallerSelect(query: Query): unknown[] {
   const keys = Object.keys(query.projection).sort().join(',')
   // readInstances
-  if (keys === 'archivedAt,createdAt,entityDefinitionId,id,organizationId,updatedAt')
+  if (keys === 'archivedAt,createdAt,displayName,entityDefinitionId,id,organizationId,updatedAt')
     return h.lineIds.map((id) => ({
       id,
       organizationId: ORG,
@@ -259,6 +259,7 @@ function routeCallerSelect(query: Query): unknown[] {
       createdAt: null,
       updatedAt: null,
       archivedAt: null,
+      displayName: null,
     }))
   // readValues — whole rows, so the projection is empty
   if (keys === '')

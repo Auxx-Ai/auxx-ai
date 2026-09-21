@@ -15,12 +15,12 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { type RecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
+import { getInstanceId, type RecordId, toRecordId } from '@auxx/types/resource'
+import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { AuxxError } from '../../errors'
+import { findSystemRecordIdsByValue } from '../../resources/system-records'
 
 const logger = createScopedLogger('purchasing:vendor-part-lookup')
 
@@ -87,9 +87,8 @@ export interface VendorPartLookupParams {
  * relationship fields not materialised, or simply no catalogue entry for the
  * pair. A missing prefill is not a failure of the pick.
  *
- * The `orderBy` exists only to make an unexpected duplicate deterministic. Under
- * the natural key there is at most one row, so it never changes which row is
- * returned; without it a violated key would return a different price per call.
+ * One pair through {@link findVendorPartsForParts}, so the two cannot come to
+ * disagree about what the natural key matches.
  */
 export async function findVendorPartForLine(
   db: Database,
@@ -98,63 +97,20 @@ export async function findVendorPartForLine(
 ): Promise<Result<VendorPartPrefill | null, Error>> {
   const { partInstanceId, vendorInstanceId } = params
   try {
-    const vendorPartDefId = await getCachedEntityDefId(organizationId, 'vendor_part')
-    if (!vendorPartDefId) return ok(null)
+    const matches = await findVendorPartsForParts(db, organizationId, {
+      vendorInstanceId,
+      partInstanceIds: [partInstanceId],
+    })
+    if (matches.isErr()) return err(matches.error)
+    const vendorPartRecordId = matches.value.get(partInstanceId)
+    if (!vendorPartRecordId) return ok(null)
 
     const fields = await getOrgCache()
       .from(organizationId, 'customFields')
-      .bySystemAttributes([
-        'vendor_part_part',
-        'vendor_part_contact',
-        'vendor_part_unit_price',
-      ] as const)
-
-    const partField = fields.vendor_part_part
-    const supplierField = fields.vendor_part_contact
-    // Both legs of the natural key are required to identify a row. Matching on
-    // one alone would return "any vendor part for this part" — which is the
-    // preferred-vendor fallback this function exists to refuse.
-    if (!partField || !supplierField) return ok(null)
-
-    const partValue = alias(schema.FieldValue, 'vendor_part_part_value')
-    const supplierValue = alias(schema.FieldValue, 'vendor_part_supplier_value')
-
-    const [row] = await db
-      .select({ id: schema.EntityInstance.id })
-      .from(schema.EntityInstance)
-      .innerJoin(
-        partValue,
-        and(
-          eq(partValue.entityId, schema.EntityInstance.id),
-          eq(partValue.organizationId, schema.EntityInstance.organizationId),
-          eq(partValue.fieldId, partField.id),
-          eq(partValue.relatedEntityId, partInstanceId)
-        )
-      )
-      .innerJoin(
-        supplierValue,
-        and(
-          eq(supplierValue.entityId, schema.EntityInstance.id),
-          eq(supplierValue.organizationId, schema.EntityInstance.organizationId),
-          eq(supplierValue.fieldId, supplierField.id),
-          eq(supplierValue.relatedEntityId, vendorInstanceId)
-        )
-      )
-      .where(
-        and(
-          eq(schema.EntityInstance.organizationId, organizationId),
-          eq(schema.EntityInstance.entityDefinitionId, vendorPartDefId),
-          isNull(schema.EntityInstance.archivedAt)
-        )
-      )
-      .orderBy(schema.EntityInstance.createdAt)
-      .limit(1)
-
-    if (!row) return ok(null)
+      .bySystemAttributes(['vendor_part_unit_price'] as const)
 
     // Read as a second statement rather than a third join: the price is optional
-    // on the row AND its field may not be materialised on a mid-migration org, so
-    // a join would have to be conditional and the projection with it.
+    // on the row AND its field may not be materialised on a mid-migration org.
     const priceField = fields.vendor_part_unit_price
     let unitPrice: number | null = null
     if (priceField) {
@@ -164,7 +120,7 @@ export async function findVendorPartForLine(
         .where(
           and(
             eq(schema.FieldValue.organizationId, organizationId),
-            eq(schema.FieldValue.entityId, row.id),
+            eq(schema.FieldValue.entityId, getInstanceId(vendorPartRecordId)),
             eq(schema.FieldValue.fieldId, priceField.id)
           )
         )
@@ -172,7 +128,7 @@ export async function findVendorPartForLine(
       unitPrice = priceRow?.valueNumber ?? null
     }
 
-    return ok({ vendorPartRecordId: toRecordId(vendorPartDefId, row.id), unitPrice })
+    return ok({ vendorPartRecordId, unitPrice })
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to look up vendor part for a purchase order line', {
@@ -223,50 +179,28 @@ export async function findVendorPartsForParts(
 
     const partField = fields.vendor_part_part
     const supplierField = fields.vendor_part_contact
+    // Both legs of the natural key are required to identify a row. Matching on
+    // one alone would return "any vendor part for this part" - which is the
+    // preferred-vendor fallback this module exists to refuse.
     if (!partField || !supplierField) return ok(found)
 
-    const partValue = alias(schema.FieldValue, 'vendor_part_part_value')
-    const supplierValue = alias(schema.FieldValue, 'vendor_part_supplier_value')
+    const matches = await findSystemRecordIdsByValue(
+      db,
+      organizationId,
+      {
+        defId: vendorPartDefId,
+        fields: { vendor_part_part: partField, vendor_part_contact: supplierField },
+      },
+      [
+        { attribute: 'vendor_part_part', related: [...new Set(partInstanceIds)] },
+        { attribute: 'vendor_part_contact', related: [vendorInstanceId] },
+      ]
+    )
 
-    const rows = await db
-      .select({
-        id: schema.EntityInstance.id,
-        partInstanceId: partValue.relatedEntityId,
-      })
-      .from(schema.EntityInstance)
-      .innerJoin(
-        partValue,
-        and(
-          eq(partValue.entityId, schema.EntityInstance.id),
-          eq(partValue.organizationId, schema.EntityInstance.organizationId),
-          eq(partValue.fieldId, partField.id),
-          inArray(partValue.relatedEntityId, [...new Set(partInstanceIds)])
-        )
-      )
-      .innerJoin(
-        supplierValue,
-        and(
-          eq(supplierValue.entityId, schema.EntityInstance.id),
-          eq(supplierValue.organizationId, schema.EntityInstance.organizationId),
-          eq(supplierValue.fieldId, supplierField.id),
-          eq(supplierValue.relatedEntityId, vendorInstanceId)
-        )
-      )
-      .where(
-        and(
-          eq(schema.EntityInstance.organizationId, organizationId),
-          eq(schema.EntityInstance.entityDefinitionId, vendorPartDefId),
-          isNull(schema.EntityInstance.archivedAt)
-        )
-      )
-
-    for (const row of rows) {
-      if (!row.partInstanceId) continue
-      // First wins, matching `findVendorPartForLine`'s `orderBy … limit 1`. Under
-      // the natural key there is at most one row per pair anyway.
-      if (!found.has(row.partInstanceId)) {
-        found.set(row.partInstanceId, toRecordId(vendorPartDefId, row.id))
-      }
+    // First wins; the reader answers in `(createdAt, id)` order, so an
+    // unexpected duplicate under the natural key resolves the same way twice.
+    for (const [partInstanceId, ids] of matches) {
+      if (ids[0]) found.set(partInstanceId, toRecordId(vendorPartDefId, ids[0]))
     }
 
     return ok(found)

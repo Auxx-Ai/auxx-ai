@@ -22,7 +22,11 @@ import { UnprocessableEntityError } from '../../../errors'
 import { BANK_ACCOUNT_FIELDS } from '../../../resources/registry/resources/bank-account-fields'
 import { BANK_DEPOSIT_FIELDS } from '../../../resources/registry/resources/bank-deposit-fields'
 import { pickSystemAttributes } from '../../../resources/registry/system-attributes'
-import { type SystemFieldContext, systemFields } from '../../../resources/system-records'
+import {
+  requireSystemFields,
+  type SystemFieldContext,
+  systemFields,
+} from '../../../resources/system-records'
 
 type ReadDb = Database | Transaction | undefined
 
@@ -65,31 +69,35 @@ export type DepositBankAccountContext = SystemFieldContext<DepositBankAccountAtt
  * {@link requireBankDepositFieldContext} instead: a write that silently did
  * nothing would be worse than a refusal.
  */
-export async function loadBankDepositFieldContext(
+export function loadBankDepositFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<BankDepositFieldContext | null> {
-  const ctx = await systemFields(db, organizationId, 'bank_deposit', BANK_DEPOSIT_ATTRIBUTES)
-  // Without `status` and `total` there is no deposit at all: the freeze rule and
-  // the sum-must-equal-the-payments rule both reduce to "yes".
-  if (!ctx?.fields.bank_deposit_status || !ctx.fields.bank_deposit_total) return null
-  return ctx
+  return systemFields(db, organizationId, 'bank_deposit', BANK_DEPOSIT_ATTRIBUTES, BANK_DEPOSIT)
 }
 
 /** {@link loadBankDepositFieldContext}, as the refusal a write path needs. */
-export async function requireBankDepositFieldContext(
+export function requireBankDepositFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<BankDepositFieldContext> {
-  const ctx = await loadBankDepositFieldContext(db, organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Bank deposits are not available until the bank deposit entity and its fields are ' +
-        'provisioned (entity migration 125)'
-    )
-  }
-  return ctx
+  return requireSystemFields(
+    db,
+    organizationId,
+    'bank_deposit',
+    BANK_DEPOSIT_ATTRIBUTES,
+    BANK_DEPOSIT
+  )
 }
+
+// Without `status` and `total` there is no deposit at all: the freeze rule and
+// the sum-must-equal-the-payments rule both reduce to "yes".
+const BANK_DEPOSIT = {
+  required: ['bank_deposit_status', 'bank_deposit_total'],
+  message:
+    'Bank deposits are not available until the bank deposit entity and its fields are ' +
+    'provisioned (entity migration 125)',
+} as const
 
 /**
  * {@link requireBankDepositFieldContext} plus the link to the bank account.

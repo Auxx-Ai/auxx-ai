@@ -17,20 +17,23 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+/** The registry type each attribute's field carries, so a cell types correctly. */
+const FIELD_TYPE: Record<string, string> = {
+  part_sku: 'TEXT',
+  part_kind: 'SINGLE_SELECT',
+  part_standard_cost: 'CURRENCY',
+  part_product: 'RELATIONSHIP',
+}
+
 const h = vi.hoisted(() => ({
   /** systemAttributes the org has materialised. */
   materialised: new Set<string>(),
   /** entityType -> def id; a missing key models a def the org does not have. */
   defs: new Map<string, string>(),
-  /** The part rows the candidate join returns. */
-  partRows: [] as Array<{
-    partId: string
-    title: string | null
-    sku: string | null
-    partKind: string | null
-    standardCost: number | null
-    productId: string | null
-  }>,
+  /** The `part` instance rows the reader's first statement returns. */
+  partRows: [] as Record<string, unknown>[],
+  /** Their stored values, the reader's second statement. */
+  partValueRows: [] as Record<string, unknown>[],
   /** The grouped movement scan's answer. */
   coverageRows: [] as Array<{ partId: string | null; hasInitial: boolean }>,
   /** Parts that are somebody's `subpart_child_part`. */
@@ -50,7 +53,10 @@ vi.mock('../../../cache', () => ({
     from: () => ({
       bySystemAttributes: async (attrs: string[]) =>
         Object.fromEntries(
-          attrs.map((a) => [a, h.materialised.has(a) ? { id: `fld_${a}` } : null])
+          attrs.map((a) => [
+            a,
+            h.materialised.has(a) ? { id: `fld_${a}`, type: FIELD_TYPE[a] ?? 'TEXT' } : null,
+          ])
         ),
     }),
   }),
@@ -66,13 +72,13 @@ const ORG = 'org_1'
  * is the subpart probe, and everything else is the candidate join.
  */
 const db = {
-  select: () => chain(false),
-  selectDistinct: () => chain(true),
+  select: (columns?: unknown) => chain(false, columns === undefined),
+  selectDistinct: () => chain(true, false),
 } as never
 
-function chain(distinct: boolean) {
+function chain(distinct: boolean, values: boolean) {
   h.queries += 1
-  const state = { distinct, grouped: false }
+  const state = { distinct, values, grouped: false }
   const link: Record<string, unknown> = {}
   link.from = () => link
   link.leftJoin = () => link
@@ -83,11 +89,36 @@ function chain(distinct: boolean) {
     return link
   }
   // biome-ignore lint/suspicious/noThenProperty: the double stands in for a drizzle query builder, which IS awaitable
+  link.orderBy = () => link
   link.then = (resolve: (rows: unknown[]) => unknown, reject: (error: unknown) => unknown) => {
-    const rows = state.grouped ? h.coverageRows : state.distinct ? h.subpartChildRows : h.partRows
+    const rows = state.grouped
+      ? h.coverageRows
+      : state.distinct
+        ? h.subpartChildRows
+        : state.values
+          ? h.partValueRows
+          : h.partRows
     return Promise.resolve(rows as unknown[]).then(resolve, reject)
   }
   return link
+}
+
+/** One `part` instance row, as `readSystemRecords` selects it. */
+function part(id: string, displayName: string | null) {
+  return {
+    id,
+    organizationId: ORG,
+    entityDefinitionId: 'def_part',
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date('2026-01-01'),
+    archivedAt: null,
+    displayName,
+  }
+}
+
+/** One stored `FieldValue` row for a part. */
+function value(entityId: string, fieldId: string, columns: Record<string, unknown>) {
+  return { id: `${entityId}:${fieldId}`, entityId, fieldId, sortKey: 'a', ...columns }
 }
 
 const ALL_ATTRS = [
@@ -108,23 +139,12 @@ beforeEach(() => {
     ['part', 'def_part'],
     ['stock_movement', 'def_mv'],
   ])
-  h.partRows = [
-    {
-      partId: 'part_1',
-      title: 'Widget 9000',
-      sku: 'W-9000',
-      partKind: 'component',
-      standardCost: 1200,
-      productId: 'prod_1',
-    },
-    {
-      partId: 'part_2',
-      title: null,
-      sku: null,
-      partKind: null,
-      standardCost: null,
-      productId: null,
-    },
+  h.partRows = [part('part_1', 'Widget 9000'), part('part_2', null)]
+  h.partValueRows = [
+    value('part_1', 'fld_part_sku', { valueText: 'W-9000' }),
+    value('part_1', 'fld_part_kind', { optionId: 'component' }),
+    value('part_1', 'fld_part_standard_cost', { valueNumber: 1200 }),
+    value('part_1', 'fld_part_product', { relatedEntityId: 'prod_1' }),
   ]
   h.coverageRows = []
   h.subpartChildRows = []
@@ -171,14 +191,10 @@ describe('listOpeningStockCandidates — the checklist row', () => {
     await list()
     const forTwoParts = h.queries
 
-    h.partRows = Array.from({ length: 200 }, (_unused, index) => ({
-      partId: `part_${index}`,
-      title: `Part ${index}`,
-      sku: null,
-      partKind: null,
-      standardCost: null,
-      productId: null,
-    }))
+    h.partRows = Array.from({ length: 200 }, (_unused, index) =>
+      part(`part_${index}`, `Part ${index}`)
+    )
+    h.partValueRows = []
     h.queries = 0
     await list()
     expect(h.queries).toBe(forTwoParts)

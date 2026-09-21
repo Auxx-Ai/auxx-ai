@@ -16,10 +16,13 @@
  */
 
 import type { Database, Transaction } from '@auxx/database'
-import { UnprocessableEntityError } from '../../../errors'
 import { JOURNAL_ENTRY_FIELDS } from '../../../resources/registry/resources/journal-entry-fields'
 import { pickSystemAttributes } from '../../../resources/registry/system-attributes'
-import { type SystemFieldContext, systemFields } from '../../../resources/system-records'
+import {
+  requireSystemFields,
+  type SystemFieldContext,
+  systemFields,
+} from '../../../resources/system-records'
 
 type ReadDb = Database | Transaction | undefined
 
@@ -64,43 +67,40 @@ export type JournalEntryRecurrenceContext = SystemFieldContext<JournalEntryRecur
  * all: without it there is no pointer to the posting that carries the entry's
  * status and lines.
  */
-export async function loadJournalEntryFieldContext(
+export function loadJournalEntryFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<JournalEntryFieldContext | null> {
-  const ctx = await systemFields(db, organizationId, 'journal_entry', JOURNAL_ENTRY_ATTRIBUTES)
-  if (!ctx?.fields.journal_entry_gl_posting_id || !ctx.fields.journal_entry_date) return null
-  return ctx
+  return systemFields(db, organizationId, 'journal_entry', JOURNAL_ENTRY_ATTRIBUTES, JOURNAL_ENTRY)
 }
 
 /** {@link loadJournalEntryFieldContext}, as the refusal a write path needs. */
-export async function requireJournalEntryFieldContext(
+export function requireJournalEntryFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<JournalEntryFieldContext> {
-  const ctx = await loadJournalEntryFieldContext(db, organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Journal entries are not available until the journal_entry entity and its fields are ' +
-        'provisioned. Run the entity migrations.',
-      { organizationId }
-    )
-  }
-  return ctx
-}
-
-/** The recurrence slice, or `null` unless BOTH halves of the identity exist — half a pair names no slot. */
-export async function loadRecurrenceIdentityContext(
-  db: ReadDb,
-  organizationId: string
-): Promise<JournalEntryRecurrenceContext | null> {
-  const ctx = await systemFields(
+  return requireSystemFields(
     db,
     organizationId,
     'journal_entry',
-    JOURNAL_ENTRY_RECURRENCE_ATTRIBUTES
+    JOURNAL_ENTRY_ATTRIBUTES,
+    JOURNAL_ENTRY
   )
-  if (!ctx?.fields.journal_entry_recurrence_rule_id || !ctx.fields.journal_entry_occurrence_date)
-    return null
-  return ctx
+}
+
+const JOURNAL_ENTRY = {
+  required: ['journal_entry_gl_posting_id', 'journal_entry_date'],
+  message:
+    'Journal entries are not available until the journal_entry entity and its fields are ' +
+    'provisioned. Run the entity migrations.',
+} as const
+
+/** The recurrence slice, or `null` unless BOTH halves of the identity exist — half a pair names no slot. */
+export function loadRecurrenceIdentityContext(
+  db: ReadDb,
+  organizationId: string
+): Promise<JournalEntryRecurrenceContext | null> {
+  return systemFields(db, organizationId, 'journal_entry', JOURNAL_ENTRY_RECURRENCE_ATTRIBUTES, {
+    required: ['journal_entry_recurrence_rule_id', 'journal_entry_occurrence_date'],
+  })
 }

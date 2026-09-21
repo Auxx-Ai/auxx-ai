@@ -18,6 +18,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getOrgCache, requireCachedEntityDefId } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
+import { readSystemRecords } from '../../resources/system-records'
 import { readOrganizationSettings } from '../../settings/read'
 import {
   type PartKindValue,
@@ -240,16 +241,15 @@ async function loadPartRows(
   organizationId: string,
   partDefId: string
 ): Promise<{ id: string; displayName: string | null }[]> {
-  return db
-    .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, partDefId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
+  const rows = await readSystemRecords(
+    db,
+    organizationId,
+    { defId: partDefId, fields: {} },
+    {
+      cells: false,
+    }
+  )
+  return rows.map((row) => ({ id: row.id, displayName: row.displayName }))
 }
 
 /** Every stored value of every field the roll touches, in one query. */

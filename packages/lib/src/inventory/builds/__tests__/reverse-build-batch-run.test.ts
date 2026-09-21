@@ -182,9 +182,21 @@ function boundValues(node: any, out: string[] = []): string[] {
 }
 
 function makeChain(columns: unknown) {
-  const state = { table: null as unknown, joined: false }
+  const state = { table: null as unknown, joined: false, joinBound: [] as string[] }
+  const keyed = !!columns && typeof columns === 'object' && 'key' in columns
   const rows = (condition: unknown) => {
-    const bound = boundValues(condition)
+    const bound = [...boundValues(condition), ...state.joinBound]
+    // `findSystemRecordIdsByValue` is the only read projecting a `key` beside
+    // the instance id - the reader's child-by-parent lookup.
+    if (keyed) {
+      if (bound.includes('fld_stock_movement_build')) {
+        return h.movementInstances.map((row) => ({ entityId: row.id, key: 'k' }))
+      }
+      if (bound.includes('fld_build_reversal_of')) {
+        return h.reversalRows.map((row) => ({ entityId: row.id, key: 'k' }))
+      }
+      return []
+    }
     if (state.table === schema.EntityInstance) {
       if (state.joined) return h.movementInstances
       const movementDefId = h.defs.get('stock_movement')
@@ -205,8 +217,9 @@ function makeChain(columns: unknown) {
       state.table = table
       return chain
     },
-    innerJoin: () => {
+    innerJoin: (_table: unknown, on: unknown) => {
       state.joined = true
+      state.joinBound.push(...boundValues(on))
       return chain
     },
     leftJoin: () => chain,

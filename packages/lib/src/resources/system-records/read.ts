@@ -3,14 +3,16 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import type { RecordId, TypedFieldValue } from '@auxx/types'
-import { and, asc, eq, inArray, isNull, type SQL } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { rowsToTypedValues } from '../../field-values/field-value-helpers'
 import type { FieldValueRow } from '../../field-values/types'
 import { getInstanceId, toRecordId } from '../resource-id'
 import type { SystemFieldContext } from './fields'
+import { findSystemRecordIdsByValue } from './find-by-value'
+import { chunked, type SystemInstanceRow, systemInstanceColumns, systemRecordScope } from './scope'
 
-/** Bounded IN-list, the same 200 `readFieldScalars` uses: one predictable query shape per chunk. */
-const CHUNK = 200
+export type { SystemInstanceRow } from './scope'
+export { systemInstanceColumns, systemRecordScope } from './scope'
 
 /** One system record: its instance columns, plus its stored cells typed by attribute. */
 export interface SystemRecord<A extends string> {
@@ -19,6 +21,8 @@ export interface SystemRecord<A extends string> {
   createdAt: Date
   updatedAt: Date
   archivedAt: Date | null
+  /** The denormalised `EntityInstance.displayName`, as the write path last composed it. */
+  displayName: string | null
   /** The first stored value of `attribute`, or `undefined` when the field is missing or unset. */
   cell(attribute: A): TypedFieldValue | undefined
   /** Every stored value of `attribute`, in `sortKey` order. */
@@ -98,79 +102,34 @@ async function readOwnInstances<A extends string>(
 ): Promise<SystemInstanceRow[]> {
   let ids = options.ids ? [...new Set(options.ids)] : undefined
   if (options.by) {
-    const children = await readChildIds(db, organizationId, ctx, options.by)
+    const children = [
+      ...new Set(
+        [
+          ...(
+            await findSystemRecordIdsByValue(
+              db,
+              organizationId,
+              ctx,
+              { attribute: options.by.attribute, related: options.by.in },
+              { includeArchived }
+            )
+          ).values(),
+        ].flat()
+      ),
+    ]
     const wanted = ids ? new Set(ids) : null
     ids = wanted ? children.filter((id) => wanted.has(id)) : children
   }
   if (ids && ids.length === 0) return []
 
   const instances = await readInstances(db, organizationId, ctx.defId, ids, includeArchived)
+  // A copy: the un-chunked arm hands back the driver's own array, and sorting it
+  // in place would reorder whatever else still holds a reference to it.
   // `?.`: both columns are NOT NULL, but a row handed in short must not crash the sort.
-  instances.sort(
+  return [...instances].sort(
     (a, b) =>
       (a[orderBy]?.getTime() ?? 0) - (b[orderBy]?.getTime() ?? 0) || a.id.localeCompare(b.id)
   )
-  return instances
-}
-
-/** The ids of every instance whose `by.attribute` relationship points at one of `by.in`. */
-async function readChildIds<A extends string>(
-  db: Database | Transaction,
-  organizationId: string,
-  ctx: SystemFieldContext<A>,
-  by: { attribute: A; in: readonly string[] }
-): Promise<string[]> {
-  const field = ctx.fields[by.attribute]
-  if (!field) return []
-  const parents = [...new Set(by.in)]
-  const out = new Set<string>()
-  for (const chunk of chunked(parents)) {
-    const rows = await db
-      .select({ entityId: schema.FieldValue.entityId })
-      .from(schema.FieldValue)
-      .where(
-        and(
-          eq(schema.FieldValue.organizationId, organizationId),
-          eq(schema.FieldValue.fieldId, field.id),
-          inArray(schema.FieldValue.relatedEntityId, chunk)
-        )
-      )
-    for (const row of rows) out.add(row.entityId)
-  }
-  return [...out]
-}
-
-/** The `EntityInstance` columns a record is built from. */
-export type SystemInstanceRow = {
-  id: string
-  organizationId: string
-  entityDefinitionId: string
-  createdAt: Date
-  updatedAt: Date
-  archivedAt: Date | null
-}
-
-/** The `select()` shape a paginated caller hands back through `instances`. */
-export const systemInstanceColumns = {
-  id: schema.EntityInstance.id,
-  organizationId: schema.EntityInstance.organizationId,
-  entityDefinitionId: schema.EntityInstance.entityDefinitionId,
-  createdAt: schema.EntityInstance.createdAt,
-  updatedAt: schema.EntityInstance.updatedAt,
-  archivedAt: schema.EntityInstance.archivedAt,
-}
-
-/** The org / def / archived predicate every read of a system record is scoped by — the one spelling, so a paging query cannot drop a third of it. */
-export function systemRecordScope(
-  organizationId: string,
-  defId: string,
-  options: { includeArchived?: boolean } = {}
-): SQL {
-  return and(
-    eq(schema.EntityInstance.organizationId, organizationId),
-    eq(schema.EntityInstance.entityDefinitionId, defId),
-    ...(options.includeArchived ? [] : [isNull(schema.EntityInstance.archivedAt)])
-  ) as SQL
 }
 
 /**
@@ -290,6 +249,7 @@ function buildRecord<A extends string>(
   return {
     id: instance.id,
     recordId: toRecordId(ctx.defId, instance.id),
+    displayName: instance.displayName,
     createdAt: instance.createdAt,
     updatedAt: instance.updatedAt,
     archivedAt: instance.archivedAt,
@@ -342,11 +302,4 @@ function fieldIdsOf<A extends string>(ctx: SystemFieldContext<A>): string[] {
     if (field) ids.add(field.id)
   }
   return [...ids]
-}
-
-function chunked(ids: readonly string[]): string[][] {
-  const unique = [...new Set(ids)]
-  const out: string[][] = []
-  for (let i = 0; i < unique.length; i += CHUNK) out.push(unique.slice(i, i + CHUNK))
-  return out
 }

@@ -55,6 +55,7 @@ function fakeDb() {
       h.paths.push(path)
       const rows = h.results[h.paths.length - 1] ?? []
       const stage = (): Record<string, unknown> => ({
+        $dynamic: () => stage(),
         from: () => {
           path.push('from')
           return stage()
@@ -81,7 +82,7 @@ beforeEach(() => {
   predicates.length = 0
   h.results = [
     // 1: the accounts this connector feeds
-    [{ entityId: 'acct_1' }],
+    [{ entityId: 'acct_1', key: 'conn_1' }],
     // 2: those account instances
     [{ id: 'acct_1', createdAt: null, updatedAt: null, archivedAt: null }],
     // 3: their cells, carrying the stored coverage floor
@@ -94,7 +95,7 @@ beforeEach(() => {
       },
     ],
     // 4: the LINKED transaction cells
-    [{ entityId: 'txn_1' }],
+    [{ entityId: 'txn_1', key: 'acct_1' }],
     // 5: the live transaction instances - the query this test is about
     [{ id: 'txn_1', createdAt: null, updatedAt: null, archivedAt: null }],
     // 6: their cells

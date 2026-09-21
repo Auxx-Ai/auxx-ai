@@ -23,6 +23,7 @@ import { LINE_ITEM_FIELDS } from '../../../resources/registry/resources/line-ite
 import { pickSystemAttributes } from '../../../resources/registry/system-attributes'
 import { getInstanceId } from '../../../resources/resource-id'
 import {
+  findSystemRecordIdsByValue,
   readSystemRecords,
   type SystemFieldContext,
   type SystemRecord,
@@ -838,40 +839,28 @@ export async function countUnissuedChannelCreditMemos(
 ): Promise<number> {
   const { organizationId, month } = params
 
-  const fields = await systemFieldMap(db, organizationId, CONTACT_CREDIT_ATTRIBUTES)
+  const ctx = await systemFields(db, organizationId, 'credit_memo', CONTACT_CREDIT_ATTRIBUTES)
+  const issuedAtField = ctx?.fields.credit_memo_issued_at
+  if (!ctx || !issuedAtField) return 0
 
-  const statusField = fields.credit_memo_status
-  const sourceField = fields.credit_memo_source
-  const issuedAtField = fields.credit_memo_issued_at
-  if (!statusField || !sourceField || !issuedAtField) return 0
+  const drafts = await findSystemRecordIdsByValue(db, organizationId, ctx, [
+    { attribute: 'credit_memo_status', option: ['draft'] },
+    { attribute: 'credit_memo_source', option: ['channel'] },
+  ])
+  const ids = drafts.get('draft') ?? []
+  if (ids.length === 0) return 0
 
-  const source = alias(schema.FieldValue, 'cm_source')
-  const issuedAt = alias(schema.FieldValue, 'cm_issued_at')
-
-  const rows = await db
-    .select({ valueDate: issuedAt.valueDate })
-    .from(schema.FieldValue)
-    .innerJoin(
-      schema.EntityInstance,
-      and(
-        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .innerJoin(source, systemValueJoin(source, sourceField.id))
-    .innerJoin(issuedAt, systemValueJoin(issuedAt, issuedAtField.id))
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, statusField.id),
-        eq(schema.FieldValue.optionId, 'draft'),
-        eq(source.optionId, 'channel')
-      )
-    )
+  // One attribute, not the whole pick: the count only needs the issue date.
+  const dated = await readSystemRecords(
+    db,
+    organizationId,
+    { defId: ctx.defId, fields: { credit_memo_issued_at: issuedAtField } },
+    { ids }
+  )
 
   let count = 0
-  for (const row of rows) {
-    if (toCalendarDay(row.valueDate)?.startsWith(`${month}-`)) count += 1
+  for (const record of dated) {
+    if (toCalendarDay(record.date('credit_memo_issued_at'))?.startsWith(`${month}-`)) count += 1
   }
   return count
 }

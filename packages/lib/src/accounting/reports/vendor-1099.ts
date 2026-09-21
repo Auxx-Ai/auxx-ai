@@ -20,8 +20,12 @@ import { createScopedLogger } from '@auxx/logger'
 import { startOfDayInstant } from '@auxx/utils/calendar-day'
 import { and, eq, gte, inArray, isNotNull, lt, or, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { AuxxError, BadRequestError } from '../../errors'
+import {
+  readSystemRecords,
+  type SystemFieldContext,
+  systemFields,
+} from '../../resources/system-records'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import { OPENING_BASELINE_SETTING_KEYS } from '../ledger/setup/setup-readiness'
 import {
@@ -48,6 +52,8 @@ const COMPANY_1099_ATTRIBUTES = [
   'company_tin',
   'company_w9_on_file',
 ] as const
+
+type Company1099Attribute = (typeof COMPANY_1099_ATTRIBUTES)[number]
 
 export interface ReadVendor1099SummaryOptions {
   organizationId: string
@@ -96,9 +102,7 @@ export async function readVendor1099Summary(
       )
     }
 
-    const companyFields = await getOrgCache()
-      .from(organizationId, 'customFields')
-      .bySystemAttributes([...COMPANY_1099_ATTRIBUTES])
+    const companyCtx = await systemFields(db, organizationId, 'company', COMPANY_1099_ATTRIBUTES)
 
     // 🛑 Half-open year bounds drawn at the BOOK zone's own midnight, not at
     // UTC's. A movement observed at 4pm on Dec 31 in `America/Los_Angeles` is
@@ -151,7 +155,9 @@ export async function readVendor1099Summary(
     if (totalsByCompany.size === 0) return ok(emptySummary(organizationId, year))
 
     const companyIds = [...totalsByCompany.keys()]
-    const companyInfo = await loadCompany1099Info(db, organizationId, companyIds, companyFields)
+    const companyInfo = companyCtx
+      ? await loadCompany1099Info(db, organizationId, companyIds, companyCtx)
+      : new Map<string, Company1099Info>()
 
     const rows: Vendor1099Row[] = []
     for (const companyId of companyIds) {
@@ -178,7 +184,7 @@ export async function readVendor1099Summary(
       year,
       thresholdMinor: VENDOR_1099_THRESHOLD_MINOR,
       // What turns a vendor row into a drill-down - see the field's own JSDoc.
-      companyDefId: (await getCachedEntityDefId(organizationId, 'company')) ?? null,
+      companyDefId: companyCtx?.defId ?? null,
       rows,
       totalMinor: rows.reduce((sum, row) => sum + row.totalMinor, 0),
     })
@@ -187,14 +193,6 @@ export async function readVendor1099Summary(
     logger.error('Failed to read the 1099 summary', { error, organizationId, year })
     return err(new AuxxError('Internal error'))
   }
-}
-
-interface CompanyFieldIds {
-  company_is_1099_eligible?: { id: string } | null
-  company_default_1099_box?: { id: string } | null
-  company_tax_classification?: { id: string } | null
-  company_tin?: { id: string } | null
-  company_w9_on_file?: { id: string } | null
 }
 
 interface Company1099Info {
@@ -216,65 +214,26 @@ async function loadCompany1099Info(
   db: Database,
   organizationId: string,
   companyIds: string[],
-  fields: CompanyFieldIds
+  ctx: SystemFieldContext<Company1099Attribute>
 ): Promise<Map<string, Company1099Info>> {
-  const [instances, values] = await Promise.all([
-    db
-      .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
-      .from(schema.EntityInstance)
-      .where(
-        and(
-          eq(schema.EntityInstance.organizationId, organizationId),
-          inArray(schema.EntityInstance.id, companyIds)
-        )
-      ),
-    (async () => {
-      const fieldIds = Object.values(fields)
-        .filter((f): f is { id: string } => f != null)
-        .map((f) => f.id)
-      if (fieldIds.length === 0) return []
-      return db
-        .select({
-          entityId: schema.FieldValue.entityId,
-          fieldId: schema.FieldValue.fieldId,
-          valueText: schema.FieldValue.valueText,
-          valueBoolean: schema.FieldValue.valueBoolean,
-          optionId: schema.FieldValue.optionId,
-        })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            inArray(schema.FieldValue.entityId, companyIds),
-            inArray(schema.FieldValue.fieldId, fieldIds)
-          )
-        )
-    })(),
-  ])
+  // Archived companies are included: a vendor paid during the year is on the
+  // 1099 whether or not somebody has since removed the record.
+  const records = await readSystemRecords(db, organizationId, ctx, {
+    ids: companyIds,
+    includeArchived: true,
+  })
 
-  const byInstance = new Map<string, Map<string, (typeof values)[number]>>()
-  for (const value of values) {
-    let bucket = byInstance.get(value.entityId)
-    if (!bucket) {
-      bucket = new Map()
-      byInstance.set(value.entityId, bucket)
-    }
-    bucket.set(value.fieldId, value)
-  }
-
-  const result = new Map<string, Company1099Info>()
-  for (const instance of instances) {
-    const bucket = byInstance.get(instance.id)
-    const read = (field?: { id: string } | null) => (field ? bucket?.get(field.id) : undefined)
-
-    result.set(instance.id, {
-      name: instance.displayName ?? '',
-      is1099Eligible: read(fields.company_is_1099_eligible)?.valueBoolean ?? false,
-      default1099Box: read(fields.company_default_1099_box)?.optionId ?? null,
-      taxClassification: read(fields.company_tax_classification)?.optionId ?? null,
-      tin: read(fields.company_tin)?.valueText ?? null,
-      w9OnFile: read(fields.company_w9_on_file)?.valueBoolean ?? false,
-    })
-  }
-  return result
+  return new Map(
+    records.map((record) => [
+      record.id,
+      {
+        name: record.displayName ?? '',
+        is1099Eligible: record.boolean('company_is_1099_eligible') ?? false,
+        default1099Box: record.option('company_default_1099_box'),
+        taxClassification: record.option('company_tax_classification'),
+        tin: record.text('company_tin'),
+        w9OnFile: record.boolean('company_w9_on_file') ?? false,
+      },
+    ])
+  )
 }

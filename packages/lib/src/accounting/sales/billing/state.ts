@@ -1,11 +1,11 @@
 // packages/lib/src/accounting/sales/billing/state.ts
 
-import { database, schema } from '@auxx/database'
+import { database } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
-import { inArray } from 'drizzle-orm'
 import { listVisitsForWorkOrder } from '../../../dispatch/board'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { readSystemRecords, systemFields } from '../../../resources/system-records'
 import { sumUnappliedCustomerMoney, sumWorkOrderDeposits } from '../../money/checkout/reads'
 import { listUninvoicedLines } from '../gather'
 import { listInstallments, listWorkOrderVisitAllocations } from './allocations'
@@ -27,11 +27,13 @@ async function invoiceRows(input: {
   userId: string
   invoiceIds: string[]
 }) {
+  const invoiceCtx = await systemFields(database, input.organizationId, 'invoice', [])
   const [instances, valuesById] = await Promise.all([
-    input.invoiceIds.length
-      ? database.query.EntityInstance.findMany({
-          where: inArray(schema.EntityInstance.id, input.invoiceIds),
-          columns: { id: true, displayName: true },
+    invoiceCtx && input.invoiceIds.length
+      ? readSystemRecords(database, input.organizationId, invoiceCtx, {
+          ids: input.invoiceIds,
+          includeArchived: true,
+          cells: false,
         })
       : Promise.resolve([]),
     batchReadSystemValues({

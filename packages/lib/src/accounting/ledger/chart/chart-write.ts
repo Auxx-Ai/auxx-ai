@@ -60,6 +60,7 @@ import {
 } from '../../../errors'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
+import { findSystemRecordIdsByValue } from '../../../resources/system-records'
 import { ACCOUNT_ROLE_LABELS, type AccountRole, ROLE_ACCOUNT_TYPES } from '../builders/entry'
 import { readRoleAssignments } from '../roles/role-assignments'
 import type { ChartAccountRow } from '../types'
@@ -184,7 +185,7 @@ export async function createChartAccount(
     if (!name) throw new BadRequestError('An account needs a name.', { organizationId })
 
     const { fields, defId } = await loadChartTarget(organizationId)
-    if (code) await assertCodeIsFree(db, organizationId, code, fields)
+    if (code) await assertCodeIsFree(db, organizationId, code, defId, fields)
 
     const values: AccountValues = {
       gl_account_code: code,
@@ -242,7 +243,7 @@ export async function updateChartAccount(
       // no-op the person cannot tell apart from any other save, and checking it
       // would make the account collide with itself.
       if (code && code !== account.code) {
-        await assertCodeIsFree(db, organizationId, code, fields, accountId)
+        await assertCodeIsFree(db, organizationId, code, defId, fields, accountId)
       }
       values.gl_account_code = code
     }
@@ -618,46 +619,27 @@ async function assertCodeIsFree(
   db: Database,
   organizationId: string,
   code: string,
+  defId: string,
   fields: ChartAccountFields,
   excludeAccountId?: string
 ): Promise<void> {
-  const holders = await db
-    .select({ entityId: schema.FieldValue.entityId })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, fields.code.id),
-        eq(schema.FieldValue.valueText, code)
-      )
-    )
-
-  const candidates = holders.map((row) => row.entityId).filter((id) => id !== excludeAccountId)
-  if (candidates.length === 0) return
-
-  // An ARCHIVED account keeps its code and does not block a new one: every
-  // reader of this chart excludes archived rows, so the code is free as far as
-  // the chart, the role picker and the resolver are concerned. That matches
+  // Live-only: an ARCHIVED account keeps its code and does not block a new one,
+  // because every reader of this chart excludes archived rows - which is also
   // `removeChartAccount`'s contract, where removal IS archival.
-  const live = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        inArray(schema.EntityInstance.id, candidates),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .limit(1)
-
-  if (live.length === 0) return
+  const holders = await findSystemRecordIdsByValue(
+    db,
+    organizationId,
+    { defId, fields: { gl_account_code: fields.code } },
+    { attribute: 'gl_account_code', text: [code] }
+  )
+  const [holder] = (holders.get(code) ?? []).filter((id) => id !== excludeAccountId)
+  if (!holder) return
 
   throw new UniqueValueConflictError({
     message: `${code} is already in use by another account in this chart.`,
     conflictingValue: code,
     fieldId: fields.code.id,
-    existingEntityId: live[0]?.id,
+    existingEntityId: holder,
   })
 }
 

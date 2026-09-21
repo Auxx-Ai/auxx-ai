@@ -25,7 +25,9 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId } from '../../../cache'
 import { NotFoundError } from '../../../errors'
+import { getRelatedDisplayName } from '../../../field-values/field-value-helpers'
 import {
+  findSystemRecordIdsByValue,
   readSystemRecords,
   type SystemRecord,
   systemValueJoin,
@@ -549,17 +551,10 @@ async function describeReview(
   if (line.reviewStatus === 'excluded') return line.excludeReason
   if (line.reviewStatus === 'coded') return describeGlAccount(db, organizationId, line.glAccountId)
   if (line.reviewStatus === 'matched' && line.matchedRecordId) {
-    const [instance] = await db
-      .select({ displayName: schema.EntityInstance.displayName })
-      .from(schema.EntityInstance)
-      .where(
-        and(
-          eq(schema.EntityInstance.id, line.matchedRecordId),
-          eq(schema.EntityInstance.organizationId, organizationId)
-        )
-      )
-      .limit(1)
-    return instance?.displayName ?? line.matchedRecordId
+    return (
+      (await getRelatedDisplayName(db, organizationId, line.matchedRecordId)) ??
+      line.matchedRecordId
+    )
   }
   return null
 }
@@ -970,21 +965,15 @@ async function readBankLinesClaimingMoney(
 ): Promise<Map<string, string>> {
   const out = new Map<string, string>()
   if (moneyTransactionIds.length === 0) return out
-  const rows = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      valueText: schema.FieldValue.valueText,
-    })
-    .from(schema.FieldValue)
-    .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.CustomField.systemAttribute, 'bank_transaction_matched_record_id'),
-        inArray(schema.FieldValue.valueText, moneyTransactionIds)
-      )
-    )
-  for (const row of rows) if (row.valueText) out.set(row.valueText, row.entityId)
+  const ctx = await loadReviewFieldContext(db, organizationId)
+  if (!ctx) return out
+  const claimed = await findSystemRecordIdsByValue(db, organizationId, ctx, {
+    attribute: 'bank_transaction_matched_record_id',
+    text: moneyTransactionIds,
+  })
+  for (const [movementId, lineIds] of claimed) {
+    if (lineIds[0]) out.set(movementId, lineIds[0])
+  }
   return out
 }
 

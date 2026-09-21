@@ -14,6 +14,8 @@ import { fieldTypeOf } from '../../__tests__/support/field-stubs'
 const h = vi.hoisted(() => ({
   moneyRows: [] as Record<string, unknown>[],
   fieldValueRows: [] as Record<string, unknown>[],
+  /** `findSystemRecordIdsByValue`: which line claims which movement. */
+  claimRows: [] as Record<string, unknown>[],
 }))
 
 function tableProxy(name: string) {
@@ -74,16 +76,27 @@ const FIELDS: Record<string, { id: string; type: string }> = {
 }
 
 vi.mock('@auxx/database', () => {
-  const rowsFor = (name: string) => {
+  const rowsFor = (name: string, columns: unknown) => {
+    // The only read that projects a `key` beside the instance id is the
+    // value-keyed lookup behind "which line already claims this movement".
+    if (columns && typeof columns === 'object' && 'key' in columns) return h.claimRows
     if (name === 'MoneyTransaction') return h.moneyRows
     if (name === 'FieldValue') return h.fieldValueRows
     if (name === 'EntityInstance') return [{ id: LINE_ID, createdAt: new Date('2026-09-10') }]
     return []
   }
-  const builder = () => {
+  const builder = (columns?: unknown) => {
     let table = ''
     const chain: Record<string, unknown> = {}
-    for (const key of ['innerJoin', 'leftJoin', 'where', 'orderBy', 'limit', 'groupBy']) {
+    for (const key of [
+      '$dynamic',
+      'innerJoin',
+      'leftJoin',
+      'where',
+      'orderBy',
+      'limit',
+      'groupBy',
+    ]) {
       chain[key] = () => chain
     }
     chain.from = (target: { __name: string }) => {
@@ -92,11 +105,11 @@ vi.mock('@auxx/database', () => {
     }
     // biome-ignore lint/suspicious/noThenProperty: chainable drizzle query-builder stub
     chain.then = (resolve: (value: unknown) => unknown) =>
-      Promise.resolve(rowsFor(table)).then(resolve)
+      Promise.resolve(rowsFor(table, columns)).then(resolve)
     return chain
   }
   return {
-    database: { select: () => builder() },
+    database: { select: (columns?: unknown) => builder(columns) },
     schema: new Proxy({}, { get: (_target, table) => tableProxy(String(table)) }),
   }
 })
@@ -153,6 +166,7 @@ async function candidates() {
 beforeEach(() => {
   h.fieldValueRows = bankLineValues()
   h.moneyRows = []
+  h.claimRows = []
 })
 
 describe('a customer payment as a match candidate', () => {
@@ -184,10 +198,7 @@ describe('a customer payment as a match candidate', () => {
   // "already matched" has to be read off the bank lines themselves.
   it('names the bank line already claiming the movement', async () => {
     h.moneyRows = [movement()]
-    h.fieldValueRows = [
-      ...bankLineValues(),
-      { entityId: 'txn_other', fieldId: 'f_matched_id', valueText: 'mt_1' },
-    ]
+    h.claimRows = [{ entityId: 'txn_other', key: 'mt_1' }]
     expect((await candidates())[0]?.matchedToBankTransactionId).toBe('txn_other')
   })
 })
