@@ -12,10 +12,19 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const disconnectAccountAtStripe = vi.fn(async () => true)
+const removeConnectorScheduler = vi.fn(async () => {})
 
 vi.mock('../fc-client', () => ({
   disconnectAccountAtStripe,
   FC_PROVIDER_KEY: 'stripeFinancialConnections',
+}))
+// A release tears the connector's BullMQ schedulers down; the queue is not under test.
+vi.mock('../../../../data-connectors/data-connector-scheduler', () => ({
+  removeConnectorScheduler,
+  SUSPENDED_CONNECTOR_STATUSES: ['paused', 'disconnected', 'deleting', 'delete_failed'],
+  isSuspendedConnectorStatus: (status: string) =>
+    ['paused', 'disconnected', 'deleting', 'delete_failed'].includes(status),
+  syncConnectorScheduler: vi.fn(async () => {}),
 }))
 
 const {
@@ -115,6 +124,7 @@ function row(over: Partial<Row> = {}): Row {
 beforeEach(() => {
   disconnectAccountAtStripe.mockClear()
   disconnectAccountAtStripe.mockResolvedValue(true)
+  removeConnectorScheduler.mockClear()
 })
 
 describe('the waiting period', () => {
@@ -235,10 +245,14 @@ describe('reapBankFeedAccount', () => {
     const db = fakeDb([])
     const released = await reapBankFeedAccount(db, {
       connectorId: 'conn_1',
+      organizationId: 'org_1',
       providerAccountId: 'fca_1',
     })
     expect(released).toBe(true)
     expect(disconnectAccountAtStripe).toHaveBeenCalledWith('fca_1')
+    // 🛑 The 12-hour sync scheduler goes with it. A registered BullMQ scheduler keeps
+    // firing whatever the status says, and a released account fails auth every time.
+    expect(removeConnectorScheduler).toHaveBeenCalledWith('conn_1')
     const update = (db as unknown as { updates: Record<string, unknown>[] }).updates[0]
     expect(update?.status).toBe('disconnected')
     expect(String(update?.error)).toMatch(/Reconnect/i)
@@ -254,7 +268,11 @@ describe('reapBankFeedAccount', () => {
     disconnectAccountAtStripe.mockResolvedValue(false)
     const db = fakeDb([])
     expect(
-      await reapBankFeedAccount(db, { connectorId: 'conn_1', providerAccountId: 'fca_1' })
+      await reapBankFeedAccount(db, {
+        connectorId: 'conn_1',
+        organizationId: 'org_1',
+        providerAccountId: 'fca_1',
+      })
     ).toBe(false)
     expect((db as unknown as { updates: unknown[] }).updates).toHaveLength(0)
   })

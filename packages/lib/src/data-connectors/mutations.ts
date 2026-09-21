@@ -1151,6 +1151,36 @@ export async function reconnectConnectorsForInstallation(
   return { reconnected: rows.length }
 }
 
+/**
+ * Re-arm ONE connector a provider let back in: `'pending'`, error cleared, scheduler
+ * re-registered.
+ *
+ * 🛑 The scheduler call is the half that is easy to drop. {@link disconnectConnectors}
+ * tears the BullMQ schedulers down, so a re-arm that only writes the status leaves a
+ * `'scheduled'` connector that never fires again — and nothing says so until a merchant
+ * notices the feed is quiet.
+ *
+ * Distinct from {@link reconnectConnectorsForInstallation}, which lands on `'paused'`
+ * because reinstalling an app is not consent to sync. Here the provider itself just
+ * restored the connection, so the connector resumes.
+ */
+export async function rearmConnector(
+  db: Database,
+  organizationId: string,
+  id: string
+): Promise<DataConnectorRow> {
+  const [row] = await db
+    .update(schema.DataConnector)
+    .set({ status: 'pending', error: null, updatedAt: new Date() })
+    .where(
+      and(eq(schema.DataConnector.organizationId, organizationId), eq(schema.DataConnector.id, id))
+    )
+    .returning()
+  if (!row) throw new NotFoundError(`Data connector '${id}' not found`)
+  await syncConnectorScheduler(row)
+  return row
+}
+
 export type DeleteSyncedDataBehavior = 'keep' | 'archive' | 'delete'
 
 /**

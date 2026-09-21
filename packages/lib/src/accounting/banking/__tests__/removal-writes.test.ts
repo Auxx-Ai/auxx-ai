@@ -29,6 +29,7 @@ const h = vi.hoisted(() => ({
   trace: [] as string[],
   reapBankFeedAccount: vi.fn(),
   findBankFeedAccountForConnector: vi.fn(),
+  removeConnectorScheduler: vi.fn(),
   disconnectBankAccountFeed: vi.fn(),
   deleteCredential: vi.fn(),
   crudUpdate: vi.fn(),
@@ -58,6 +59,10 @@ vi.mock('../feed/reaper', () => ({
   findBankFeedAccountForConnector: h.findBankFeedAccountForConnector,
 }))
 vi.mock('../feed/actions', () => ({ disconnectBankAccountFeed: h.disconnectBankAccountFeed }))
+// The connector delete tears its BullMQ schedulers down; the queue is not under test.
+vi.mock('../../../data-connectors/data-connector-scheduler', () => ({
+  removeConnectorScheduler: h.removeConnectorScheduler,
+}))
 vi.mock('@auxx/credentials/store', () => ({ deleteCredential: h.deleteCredential }))
 vi.mock('../../../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
@@ -164,9 +169,8 @@ function fakeDb() {
     }),
     select: () => ({
       from: () => ({
-        where: () => ({
-          limit: async () => h.siblings,
-        }),
+        // Thenable AND `.limit()`-able: the sibling probe awaits the chain directly.
+        where: () => Object.assign(Promise.resolve(h.siblings), { limit: async () => h.siblings }),
       }),
     }),
   } as never

@@ -42,7 +42,8 @@ function makeReadChain(resolve: () => unknown[]): Chain {
 
 /** Rows a test queues up for `db.query.<Table>.findFirst` / `db.select()`. */
 export interface MakeFakeDbOptions {
-  /** Results for `db.query.<Table>.findFirst`, keyed by table name, one per call. */
+  /** Results per `db.query.<Table>.findFirst`/`findMany` call, keyed by table name (a
+   *  `findMany` entry is itself an array). */
   queryFindFirst?: Record<string, unknown[]>
   /** Results for each awaited `db.select()...` chain, in call order. */
   select?: unknown[][]

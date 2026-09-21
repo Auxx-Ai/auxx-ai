@@ -44,6 +44,7 @@ export {
   listAppCredentials,
   readAppCredential,
 } from './credential-reads'
+export { setDefaultAppCredential } from './credential-writes'
 export {
   type HostedProvisionCompleteCtx,
   type HostedProvisionCompleteResult,

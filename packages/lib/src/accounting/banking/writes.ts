@@ -55,8 +55,10 @@
 import { deleteCredential } from '@auxx/credentials/store'
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, ne } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
+import { removeConnectorScheduler } from '../../data-connectors/data-connector-scheduler'
+import { listConnectorIdsForCredential } from '../../data-connectors/service'
 import { BadRequestError, ConflictError, NotFoundError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
@@ -471,6 +473,7 @@ export async function deleteBankAccount(
           // has run yet, so the account is still whole and still retryable.
           releasedAtStripe = await reapBankFeedAccount(db, {
             connectorId,
+            organizationId,
             providerAccountId: feedAccount.providerAccountId,
           })
         }
@@ -490,22 +493,20 @@ export async function deleteBankAccount(
           )
           .returning({ id: schema.DataConnector.id })
         connectorDeleted = deleted.length > 0
+        // Raw, not `deleteConnector`: this function already released at Stripe above
+        // and throwing `NotFoundError` on a connector a half-finished removal already
+        // dropped would make the account permanently un-removable. The scheduler
+        // teardown is the one thing `deleteConnector` does that still has to happen.
+        await removeConnectorScheduler(connectorId)
 
         if (credentialId) {
           // 🛑 One credential is one bank LOGIN. Two accounts under one login
           // share it, so deleting it while a sibling connector still points at
           // it would take that account's feed down as a side effect of removing
           // this one.
-          const siblings = await db
-            .select({ id: schema.DataConnector.id })
-            .from(schema.DataConnector)
-            .where(
-              and(
-                eq(schema.DataConnector.credentialId, credentialId),
-                ne(schema.DataConnector.id, connectorId)
-              )
-            )
-            .limit(1)
+          const siblings = await listConnectorIdsForCredential(db, credentialId, {
+            excludeConnectorId: connectorId,
+          })
           if (siblings.length === 0) {
             const removed = await deleteCredential(credentialId, organizationId)
             credentialDeleted = removed.isOk()
