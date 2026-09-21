@@ -5,7 +5,7 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
+import { and, asc, eq, gt, gte, inArray, isNull, lte, or } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { DOC_NUMBER_MAX_LENGTH } from '../ledger/builders/doc-number'
@@ -71,17 +71,39 @@ interface ReceiptInfo {
   txnDate: string
 }
 
+const POSTINGS_PAGE_SIZE = 5000
+
 /**
  * Posted entries in range, with whether a live batch already holds each one.
  *
  * The anti-join is against `ExportBatchPosting`'s live rows, which is the same
  * partial unique index that makes a second batch on one posting impossible.
+ * Read to exhaustion by keyset on (txnDate, id): a truncated read would report
+ * `built` for a range it only half saw, and in Summary mode would drop already-
+ * batched postings from the exclusion list and sum them twice.
  */
 async function readPostingsInRange(
   db: Database,
   input: BuildExportBatchesInput
 ): Promise<Array<CandidateRow & { batched: boolean }>> {
-  const rows = await db
+  const rows: Array<CandidateRow & { batchedId: string | null }> = []
+  let after: { txnDate: string; id: string } | null = null
+  for (;;) {
+    const page = await readPostingsPage(db, input, after)
+    rows.push(...page)
+    if (page.length < POSTINGS_PAGE_SIZE) break
+    const last = page[page.length - 1]!
+    after = { txnDate: last.txnDate, id: last.id }
+  }
+  return rows.map(({ batchedId, ...row }) => ({ ...row, batched: batchedId !== null }))
+}
+
+async function readPostingsPage(
+  db: Database,
+  input: BuildExportBatchesInput,
+  after: { txnDate: string; id: string } | null
+) {
+  return db
     .select({
       id: schema.GlPosting.id,
       postingType: schema.GlPosting.postingType,
@@ -108,12 +130,19 @@ async function readPostingsInRange(
         eq(schema.GlPosting.organizationId, input.organizationId),
         eq(schema.GlPosting.status, 'posted'),
         gte(schema.GlPosting.txnDate, input.from),
-        lte(schema.GlPosting.txnDate, input.to)
+        lte(schema.GlPosting.txnDate, input.to),
+        // The auto-send path names its postings; read those rows, not the whole day.
+        input.glPostingIds?.length ? inArray(schema.GlPosting.id, input.glPostingIds) : undefined,
+        after
+          ? or(
+              gt(schema.GlPosting.txnDate, after.txnDate),
+              and(eq(schema.GlPosting.txnDate, after.txnDate), gt(schema.GlPosting.id, after.id))
+            )
+          : undefined
       )
     )
     .orderBy(asc(schema.GlPosting.txnDate), asc(schema.GlPosting.id))
-    .limit(5000)
-  return rows.map(({ batchedId, ...row }) => ({ ...row, batched: batchedId !== null }))
+    .limit(POSTINGS_PAGE_SIZE)
 }
 
 async function readLines(db: Database, organizationId: string, glPostingIds: string[]) {
