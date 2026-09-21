@@ -125,8 +125,28 @@ async function backfillGuestCustomer(
   const guest = await ensureGuestContact(db, organizationId)
   if (!guest.contactInstanceId) return nothing
 
+  const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
+  const handler = new UnifiedCrudHandler(organizationId, systemUserId, db, undefined, {
+    session: seedSession('guest order contact backfill'),
+  })
+  const guestRecordId = toRecordId('contact', guest.contactInstanceId)
+  // 🛑 The memo pass runs whatever the order pass finds: orders backfilled on an
+  // earlier run leave nothing missing here, and the memos still need their contact.
+  const finish = async (backfilled: number) => {
+    const memos = await backfillCreditMemoContacts(db, organizationId, handler, guestRecordId)
+    if (backfilled > 0 || memos > 0 || guest.created > 0)
+      logger.info('Migration 183 backfilled guest orders', {
+        organizationId,
+        guestCreated: guest.created,
+        backfilled,
+        memosBackfilled: memos,
+        requeued: guest.requeued,
+      })
+    return { created: guest.created, backfilled: backfilled + memos }
+  }
+
   const orderDefId = await getCachedEntityDefId(organizationId, 'order')
-  if (!orderDefId) return { created: guest.created, backfilled: 0 }
+  if (!orderDefId) return finish(0)
 
   const fields = await getOrgCache()
     .from(organizationId, 'customFields')
@@ -134,7 +154,7 @@ async function backfillGuestCustomer(
   const partyFieldIds = [fields.order_contact?.id, fields.order_company?.id].filter(
     (id): id is string => !!id
   )
-  if (partyFieldIds.length === 0) return { created: guest.created, backfilled: 0 }
+  if (partyFieldIds.length === 0) return finish(0)
 
   const orders = await db
     .select({ id: schema.EntityInstance.id })
@@ -145,7 +165,7 @@ async function backfillGuestCustomer(
         eq(schema.EntityInstance.entityDefinitionId, orderDefId)
       )
     )
-  if (orders.length === 0) return { created: guest.created, backfilled: 0 }
+  if (orders.length === 0) return finish(0)
 
   const withParty = await db
     .selectDistinct({ entityId: schema.FieldValue.entityId })
@@ -159,13 +179,7 @@ async function backfillGuestCustomer(
     )
   const covered = new Set(withParty.map((row) => row.entityId))
   const missing = orders.filter((order) => !covered.has(order.id))
-  if (missing.length === 0) return { created: guest.created, backfilled: 0 }
-
-  const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
-  const handler = new UnifiedCrudHandler(organizationId, systemUserId, db, undefined, {
-    session: seedSession('guest order contact backfill'),
-  })
-  const guestRecordId = toRecordId('contact', guest.contactInstanceId)
+  if (missing.length === 0) return finish(0)
 
   // Sequential: a fan-out over a five-figure order table is the one thing a
   // migration pass must not do to the pool.
@@ -175,11 +189,98 @@ async function backfillGuestCustomer(
     backfilled++
   }
 
-  logger.info('Migration 183 backfilled guest orders', {
-    organizationId,
-    guestCreated: guest.created,
-    backfilled,
-    requeued: guest.requeued,
-  })
-  return { created: guest.created, backfilled }
+  return finish(backfilled)
+}
+
+/**
+ * Give every contactless `credit_memo` its order's contact — the guest, after the
+ * pass above. The Shopify connector clears `credit_memo_contact` on a guest
+ * checkout (`shopify.connector.ts:814-819`), which leaves the refund ingest's
+ * customer leg unsatisfiable.
+ */
+async function backfillCreditMemoContacts(
+  db: Database,
+  organizationId: string,
+  handler: UnifiedCrudHandler,
+  guestRecordId: string
+): Promise<number> {
+  const memoDefId = await getCachedEntityDefId(organizationId, 'credit_memo')
+  if (!memoDefId) return 0
+
+  const fields = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['credit_memo_contact', 'credit_memo_order', 'order_contact'] as const)
+  const contactFieldId = fields.credit_memo_contact?.id
+  const orderFieldId = fields.credit_memo_order?.id
+  const orderContactFieldId = fields.order_contact?.id
+  if (!contactFieldId) return 0
+
+  const memos = await db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, memoDefId)
+      )
+    )
+  if (memos.length === 0) return 0
+
+  const withContact = await db
+    .selectDistinct({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, contactFieldId),
+        isNotNull(schema.FieldValue.relatedEntityId)
+      )
+    )
+  const covered = new Set(withContact.map((row) => row.entityId))
+  const missing = memos.filter((memo) => !covered.has(memo.id))
+  if (missing.length === 0) return 0
+
+  // memo -> its order, and order -> its contact, in two reads rather than 2N.
+  const memoOrders = orderFieldId
+    ? await db
+        .select({
+          entityId: schema.FieldValue.entityId,
+          related: schema.FieldValue.relatedEntityId,
+        })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, organizationId),
+            eq(schema.FieldValue.fieldId, orderFieldId),
+            isNotNull(schema.FieldValue.relatedEntityId)
+          )
+        )
+    : []
+  const orderOf = new Map(memoOrders.map((row) => [row.entityId, row.related as string]))
+  const orderContacts = orderContactFieldId
+    ? await db
+        .select({
+          entityId: schema.FieldValue.entityId,
+          related: schema.FieldValue.relatedEntityId,
+        })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, organizationId),
+            eq(schema.FieldValue.fieldId, orderContactFieldId),
+            isNotNull(schema.FieldValue.relatedEntityId)
+          )
+        )
+    : []
+  const contactOf = new Map(orderContacts.map((row) => [row.entityId, row.related as string]))
+
+  let written = 0
+  for (const memo of missing) {
+    const inherited = contactOf.get(orderOf.get(memo.id) ?? '')
+    await handler.update(toRecordId(memoDefId, memo.id), {
+      credit_memo_contact: inherited ? toRecordId('contact', inherited) : guestRecordId,
+    })
+    written++
+  }
+  return written
 }

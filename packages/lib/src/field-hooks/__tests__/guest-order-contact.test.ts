@@ -10,6 +10,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   getOrganizationSetting: vi.fn(),
+  related: vi.fn(),
+}))
+
+// The memo hook reads the order's contact straight off `FieldValue`. Only
+// `database` is overridden — `schema` and the rest stay real for every other
+// importer the graph pulls in.
+vi.mock('@auxx/database', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  database: {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: async () => {
+            const related = await h.related()
+            return related ? [{ related }] : []
+          },
+        }),
+      }),
+    }),
+  },
 }))
 
 vi.mock('../../cache', () => ({
@@ -17,7 +37,11 @@ vi.mock('../../cache', () => ({
 }))
 vi.mock('../../settings', () => ({ getOrganizationSetting: h.getOrganizationSetting }))
 
-import { fillGuestOrderContact, guardGuestContactDelete } from '../pre/guest-order-contact'
+import {
+  fillGuestCreditMemoContact,
+  fillGuestOrderContact,
+  guardGuestContactDelete,
+} from '../pre/guest-order-contact'
 import type { EntityPreCreateEvent, EntityPreDeleteEvent } from '../types'
 
 const ORG = 'org1'
@@ -141,5 +165,59 @@ describe('guardGuestContactDelete', () => {
     h.getOrganizationSetting.mockResolvedValue(null)
 
     await expect(guardGuestContactDelete(deleteEvent(GUEST))).resolves.toBeUndefined()
+  })
+})
+
+describe('fillGuestCreditMemoContact', () => {
+  function memoEvent(values: Record<string, unknown>): EntityPreCreateEvent {
+    return {
+      entityDefinitionId: 'def-credit-memo',
+      entityType: 'credit_memo',
+      entitySlug: 'credit-memos',
+      values,
+      organizationId: ORG,
+      userId: 'user1',
+    }
+  }
+
+  beforeEach(() => {
+    h.bySystemAttributes.mockResolvedValue({
+      credit_memo_contact: { id: 'f-memo-contact' },
+      credit_memo_order: { id: 'f-memo-order' },
+      order_contact: { id: 'f-contact' },
+    })
+    h.related.mockReset().mockResolvedValue(null)
+  })
+
+  it('names the guest on a memo with no contact and no resolvable order', async () => {
+    const event = memoEvent({ credit_memo_total: 30 })
+    await fillGuestCreditMemoContact(event)
+    expect(event.values.credit_memo_contact).toBe(GUEST_RECORD)
+  })
+
+  it('inherits the order contact over the guest when the order names one', async () => {
+    h.related.mockResolvedValue('contact-real')
+    const event = memoEvent({ credit_memo_order: 'order:order-1' })
+    await fillGuestCreditMemoContact(event)
+    expect(event.values.credit_memo_contact).toBe('contact:contact-real')
+  })
+
+  it('falls back to the guest when the order itself has no contact', async () => {
+    const event = memoEvent({ credit_memo_order: 'order:order-1' })
+    await fillGuestCreditMemoContact(event)
+    expect(event.values.credit_memo_contact).toBe(GUEST_RECORD)
+  })
+
+  it('leaves a memo that already names a contact alone', async () => {
+    const event = memoEvent({ credit_memo_contact: 'contact:someone' })
+    await fillGuestCreditMemoContact(event)
+    expect(event.values.credit_memo_contact).toBe('contact:someone')
+  })
+
+  it('does nothing when the org has no guest', async () => {
+    h.getOrganizationSetting.mockResolvedValue(null)
+    const event = memoEvent({ credit_memo_total: 30 })
+    await fillGuestCreditMemoContact(event)
+    expect(event.values.credit_memo_contact).toBeUndefined()
   })
 })

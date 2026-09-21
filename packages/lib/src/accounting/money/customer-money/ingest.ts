@@ -504,7 +504,8 @@ export async function materializeImportedMoneyInTx(
         typeof creditTotal !== 'number' ||
         !Number.isSafeInteger(creditTotal) ||
         BigInt(creditApplied) + BigInt(creditReserved) + money.amountMinor > BigInt(creditTotal) ||
-        creditFacts.get('credit_memo_currency')?.text !== money.currency ||
+        // No `credit_memo_currency` leg: the memo models no currency, it inherits the
+        // order's, which `order_currency` above already matched against this movement.
         creditFacts.get('credit_memo_contact')?.related !== partyId
       ) {
         await updateAcceptance(tx, organizationId, acceptance.id, {
