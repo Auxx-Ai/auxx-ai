@@ -17,6 +17,12 @@ export {
   totalsOnlySplit,
 } from './client'
 export {
+  listPayoutEntries,
+  type PayoutEntryScope as ProcessorEntryScope,
+  type ProcessorBalanceEntryRow,
+  readEntry,
+} from './entry-reads'
+export {
   findPayoutEvidenceIdByExternalId,
   getPayoutEvidence,
   listPayoutEvidence,

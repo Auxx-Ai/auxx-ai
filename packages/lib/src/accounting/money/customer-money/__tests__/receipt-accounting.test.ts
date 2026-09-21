@@ -20,6 +20,18 @@ vi.mock('../../../rails/reads', () => ({
   getPaymentGateway: h.getPaymentGateway,
 }))
 
+vi.mock('../source-reads', () => ({
+  readSourceObject: async () => ({ id: 'fo_1', sourceAccountId: 'fsa_1', externalId: 'capture_1' }),
+  readSourceAccount: async () => ({
+    id: 'fsa_1',
+    environment: 'live',
+    archivedAt: null,
+    providerKey: 'shopify',
+    externalAccountId: 'demo.myshopify.com',
+    paymentGatewayId: h.feedRailId,
+  }),
+}))
+
 import type { Transaction } from '@auxx/database'
 import { readCustomerReceiptAccountingSource } from '../receipt-accounting'
 
@@ -65,19 +77,6 @@ function tx(): Transaction {
             moneyTransactionId: MOVEMENT,
           },
         ],
-      },
-      FinancialSourceObject: {
-        findFirst: async () => ({ id: 'fo_1', sourceAccountId: 'fsa_1', externalId: 'capture_1' }),
-      },
-      FinancialSourceAccount: {
-        findFirst: async () => ({
-          id: 'fsa_1',
-          environment: 'live',
-          archivedAt: null,
-          providerKey: 'shopify',
-          externalAccountId: 'demo.myshopify.com',
-          paymentGatewayId: h.feedRailId,
-        }),
       },
       FinancialSourceObservation: {
         findFirst: async () => ({

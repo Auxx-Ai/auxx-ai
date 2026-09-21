@@ -1,11 +1,14 @@
 // packages/lib/src/accounting/money/customer-money/resolve-references.ts
 import { type Database, schema, withAccountingCommitLock } from '@auxx/database'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { recordAudit } from '../../../audit-log'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
+import { readLiveSourceAccountIds } from '../../ledger/roles/source-scope'
 import { confirmedCustomerMovement } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
+import { readSourceObject } from './source-reads'
+import { updateAcceptancesBySourceObjects } from './source-writes'
 
 /** Explicit verified source association; similarity is never evidence. */
 export interface ResolveImportedMoneyReferencesInput {
@@ -56,21 +59,13 @@ export async function resolveImportedMoneyReferences(
     })
     if (!money) throw new UnprocessableEntityError('Money transaction is not in this organization')
     for (const objectId of objectIds) {
-      const object = await tx.query.FinancialSourceObject.findFirst({
-        where: and(
-          eq(schema.FinancialSourceObject.organizationId, input.organizationId),
-          eq(schema.FinancialSourceObject.id, objectId)
-        ),
-      })
+      const object = await readSourceObject(tx, input.organizationId, objectId)
       if (!object)
         throw new UnprocessableEntityError('Verified source object is not in this organization')
-      const sourceAccount = await tx.query.FinancialSourceAccount.findFirst({
-        where: and(
-          eq(schema.FinancialSourceAccount.organizationId, input.organizationId),
-          eq(schema.FinancialSourceAccount.id, object.sourceAccountId)
-        ),
-      })
-      if (sourceAccount?.environment !== 'live')
+      const live = await readLiveSourceAccountIds(tx, input.organizationId, [
+        object.sourceAccountId,
+      ])
+      if (!live.has(object.sourceAccountId))
         throw new UnprocessableEntityError('Test source evidence cannot bind operational money')
       const link = await tx.query.MoneySourceLink.findFirst({
         where: and(
@@ -82,6 +77,9 @@ export async function resolveImportedMoneyReferences(
         throw new ConflictError(
           'Both source objects already materialized; duplicate resolution requires an explicit correction'
         )
+      // Every observation this object ever carried has to agree with the
+      // movement, not just the current one: an older disagreeing reading is
+      // what this command exists to refuse.
       const observations = await tx.query.FinancialSourceObservation.findMany({
         where: and(
           eq(schema.FinancialSourceObservation.organizationId, input.organizationId),
@@ -138,21 +136,11 @@ export async function resolveImportedMoneyReferences(
         .onConflictDoNothing({
           target: [schema.MoneySourceLink.organizationId, schema.MoneySourceLink.sourceObjectId],
         })
-    if (objectIds.length)
-      await tx
-        .update(schema.FinancialSourceAcceptance)
-        .set({
-          moneyTransactionId: money.id,
-          state: 'pending',
-          nextAttemptAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(schema.FinancialSourceAcceptance.organizationId, input.organizationId),
-            inArray(schema.FinancialSourceAcceptance.sourceObjectId, objectIds)
-          )
-        )
+    await updateAcceptancesBySourceObjects(tx, input.organizationId, objectIds, {
+      moneyTransactionId: money.id,
+      state: 'pending',
+      nextAttemptAt: new Date(),
+    })
     await recordAudit(
       {
         organizationId: input.organizationId,

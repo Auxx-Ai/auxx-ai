@@ -61,6 +61,7 @@ export async function pokePendingMatchesForSourceObject(
     .where(
       and(
         eq(schema.ProcessorBalanceEntry.organizationId, organizationId),
+        // Not `unmatchable`: that state is a person's answer, never retried by a poke.
         inArray(schema.ProcessorBalanceEntry.matchState, ['pending', 'suggested']),
         sql`${reference}->'sourceAccount'->>'providerKey' = ${object.providerKey}`,
         sql`${reference}->'sourceAccount'->>'externalAccountId' = ${object.externalAccountId}`,

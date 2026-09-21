@@ -3,6 +3,7 @@ import { schema, type Transaction } from '@auxx/database'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import { customerMoneyObservationSchema } from './contracts'
+import { readSourceAccount } from './source-reads'
 
 /** Stored observations contain shared financial facts; provider translation happens in the source app. */
 export function readStoredCustomerMoneyObservation(payload: unknown) {
@@ -21,12 +22,7 @@ export async function resolveSourceDocumentFromConnector(
   }
 ) {
   if (!input.connectorId || !input.sourceAccountId) return null
-  const account = await tx.query.FinancialSourceAccount.findFirst({
-    where: and(
-      eq(schema.FinancialSourceAccount.organizationId, input.organizationId),
-      eq(schema.FinancialSourceAccount.id, input.sourceAccountId)
-    ),
-  })
+  const account = await readSourceAccount(tx, input.organizationId, input.sourceAccountId)
   if (!account) return null
   const connector = await tx.query.DataConnector.findFirst({
     where: and(

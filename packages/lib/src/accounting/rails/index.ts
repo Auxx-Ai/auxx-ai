@@ -50,7 +50,9 @@ export {
 } from './rail-fee-status'
 export {
   getPaymentGateway,
+  type LinkedFeed,
   listGatewayHandleCensus,
+  listLinkedFeeds,
   listObservedGatewayHandles,
   listPaymentGateways,
   requirePaymentGatewayDefId,

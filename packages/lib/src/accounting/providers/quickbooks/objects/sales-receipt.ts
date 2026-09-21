@@ -106,7 +106,7 @@ export async function send(
     try {
       customerId = payload.customer
         ? await resolveCustomer(tool, payload.customer.id)
-        : await resolvePlaceholderCustomer(tool, payload.storeId)
+        : await resolvePlaceholderCustomer(database, tool, payload.storeId)
       itemIdByAccount = await resolveItemsForAccounts(
         tool,
         payload.lines.map((line) => line.glAccountId),

@@ -13,7 +13,7 @@
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
@@ -466,6 +466,55 @@ async function readGatewayRailAccounts(
   return byGateway
 }
 
+/** One live `FinancialSourceAccount` a person has pointed at a rail (task 58 §4.2/§5.5). */
+export interface LinkedFeed {
+  id: string
+  providerKey: string
+  externalAccountId: string
+  name: string | null
+  /** Never null: an unlinked feed is a manual rail and is filtered out below. */
+  paymentGatewayId: string
+}
+
+/**
+ * Every live feed linked to a rail, narrowed by provider and/or rail.
+ *
+ * THE feed discovery query: a payout source builds one context per row this
+ * returns, and the gateway editor lists the same rows.
+ */
+export async function listLinkedFeeds(
+  db: Database | Transaction,
+  organizationId: string,
+  filter: { providerKey?: string; paymentGatewayIds?: readonly string[] } = {}
+): Promise<LinkedFeed[]> {
+  const gatewayIds = filter.paymentGatewayIds ? [...new Set(filter.paymentGatewayIds)] : undefined
+  if (gatewayIds && gatewayIds.length === 0) return []
+  const rows = await db
+    .select({
+      id: schema.FinancialSourceAccount.id,
+      paymentGatewayId: schema.FinancialSourceAccount.paymentGatewayId,
+      providerKey: schema.FinancialSourceAccount.providerKey,
+      externalAccountId: schema.FinancialSourceAccount.externalAccountId,
+      name: schema.FinancialSourceAccount.name,
+    })
+    .from(schema.FinancialSourceAccount)
+    .where(
+      and(
+        eq(schema.FinancialSourceAccount.organizationId, organizationId),
+        gatewayIds
+          ? inArray(schema.FinancialSourceAccount.paymentGatewayId, gatewayIds)
+          : isNotNull(schema.FinancialSourceAccount.paymentGatewayId),
+        filter.providerKey
+          ? eq(schema.FinancialSourceAccount.providerKey, filter.providerKey)
+          : undefined,
+        isNull(schema.FinancialSourceAccount.archivedAt)
+      )
+    )
+  return rows.flatMap((row) =>
+    row.paymentGatewayId ? [{ ...row, paymentGatewayId: row.paymentGatewayId }] : []
+  )
+}
+
 /** One live feed linked to a rail, for the settlement-source/merchant-id derivation below. */
 interface GatewayLinkedFeed {
   providerKey: string
@@ -479,23 +528,8 @@ async function readGatewayLinkedFeeds(
   paymentGatewayIds: readonly string[]
 ): Promise<Map<string, GatewayLinkedFeed>> {
   const byGateway = new Map<string, GatewayLinkedFeed>()
-  if (paymentGatewayIds.length === 0) return byGateway
-  const rows = await db
-    .select({
-      paymentGatewayId: schema.FinancialSourceAccount.paymentGatewayId,
-      providerKey: schema.FinancialSourceAccount.providerKey,
-      externalAccountId: schema.FinancialSourceAccount.externalAccountId,
-    })
-    .from(schema.FinancialSourceAccount)
-    .where(
-      and(
-        eq(schema.FinancialSourceAccount.organizationId, organizationId),
-        inArray(schema.FinancialSourceAccount.paymentGatewayId, [...paymentGatewayIds]),
-        isNull(schema.FinancialSourceAccount.archivedAt)
-      )
-    )
-  for (const row of rows) {
-    if (!row.paymentGatewayId || byGateway.has(row.paymentGatewayId)) continue
+  for (const row of await listLinkedFeeds(db, organizationId, { paymentGatewayIds })) {
+    if (byGateway.has(row.paymentGatewayId)) continue
     byGateway.set(row.paymentGatewayId, {
       providerKey: row.providerKey,
       externalAccountId: row.externalAccountId,

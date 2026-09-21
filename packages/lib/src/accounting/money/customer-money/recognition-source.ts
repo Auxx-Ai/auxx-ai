@@ -4,6 +4,7 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
 import { periodKeyForDate } from '../../ledger/periods/periods'
+import { readLiveSourceAccountIds } from '../../ledger/roles/source-scope'
 import { readFulfillmentsForOrder } from '../../sales/fulfillments/reads'
 import { readOrderMoneyCoverage } from './reads'
 import {
@@ -13,6 +14,7 @@ import {
   type OrderRecognitionEvent,
 } from './recognition'
 import { readOrderRecognitionFactsInTx } from './recognition-facts'
+import { readSourceObjects } from './source-reads'
 
 type Db = Database | Transaction
 
@@ -124,36 +126,18 @@ export async function readOrderRecognitionSource(
       columns: { orderExternalId: true, sourceObjectId: true, state: true },
     }),
   ])
-  const sourceObjects = accepted.length
-    ? await db.query.FinancialSourceObject.findMany({
-        where: and(
-          eq(schema.FinancialSourceObject.organizationId, input.organizationId),
-          inArray(schema.FinancialSourceObject.id, [
-            ...new Set(accepted.map((row) => row.sourceObjectId)),
-          ])
-        ),
-        columns: { id: true, sourceAccountId: true },
-      })
-    : []
+  const sourceObjects = [
+    ...(
+      await readSourceObjects(
+        db,
+        input.organizationId,
+        accepted.map((row) => row.sourceObjectId)
+      )
+    ).values(),
+  ]
   const sourceAccountIds = [...new Set(sourceObjects.map((row) => row.sourceAccountId))]
-  const sourceAccounts = sourceAccountIds.length
-    ? await db.query.FinancialSourceAccount.findMany({
-        where: and(
-          eq(schema.FinancialSourceAccount.organizationId, input.organizationId),
-          inArray(schema.FinancialSourceAccount.id, sourceAccountIds)
-        ),
-        columns: { id: true, environment: true, archivedAt: true, providerKey: true },
-      })
-    : []
-  if (
-    sourceAccountIds.length !== sourceAccounts.length ||
-    sourceAccounts.some(
-      (account) =>
-        account.environment !== 'live' ||
-        account.archivedAt !== null ||
-        !coverage.sourceStoreIds.includes(account.id)
-    )
-  )
+  const live = await readLiveSourceAccountIds(db, input.organizationId, sourceAccountIds)
+  if (sourceAccountIds.some((id) => !live.has(id) || !coverage.sourceStoreIds.includes(id)))
     blockers.push('Source transaction evidence is not from one live source account')
   const sourceStoreIds = [...new Set(sourceObjects.map((row) => row.sourceAccountId))]
   if (sourceStoreIds.length > 1)

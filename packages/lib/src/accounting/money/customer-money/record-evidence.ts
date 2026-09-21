@@ -7,6 +7,16 @@ import { customerMoneyObservationSchema, orderPaymentEvidenceSchema } from './co
 import { materializeImportedMoneyInTx } from './ingest'
 import type { FinancialWriteProvenance } from './record-storage'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
+import { readOrderCoverageRow } from './source-reads'
+import {
+  countOrderAcceptanceStates,
+  insertObservations,
+  refreshOrderCoverageCountsForOrders,
+  upsertAcceptances,
+  upsertCoverage,
+  upsertSourceAccounts,
+  upsertSourceObjects,
+} from './source-writes'
 
 /** Source versions order updates; replay timestamps and unchanged raw formatting do not. */
 export function shouldPromoteOrderObservation(
@@ -71,26 +81,12 @@ export async function stageOrderPaymentEvidenceInTx(
   }
   if (!groups.size) groups.set(evidence.sourceAccount.environment, [])
   for (const [environment, rows] of groups) {
-    const [account] = await tx
-      .insert(schema.FinancialSourceAccount)
-      .values({ organizationId: input.organizationId, ...evidence.sourceAccount, environment })
-      .onConflictDoUpdate({
-        target: [
-          schema.FinancialSourceAccount.organizationId,
-          schema.FinancialSourceAccount.providerKey,
-          schema.FinancialSourceAccount.externalAccountId,
-          schema.FinancialSourceAccount.environment,
-        ],
-        set: { externalAccountId: evidence.sourceAccount.externalAccountId },
-      })
-      .returning()
-    const previousCoverage = await tx.query.FinancialSourceCoverage.findFirst({
-      where: and(
-        eq(schema.FinancialSourceCoverage.organizationId, input.organizationId),
-        eq(schema.FinancialSourceCoverage.sourceAccountId, account!.id),
-        eq(schema.FinancialSourceCoverage.streamKey, 'order_transactions'),
-        eq(schema.FinancialSourceCoverage.windowKey, input.orderInstanceId)
-      ),
+    const [account] = await upsertSourceAccounts(tx, input.organizationId, [
+      { ...evidence.sourceAccount, environment },
+    ])
+    const previousCoverage = await readOrderCoverageRow(tx, input.organizationId, {
+      sourceAccountId: account!.id,
+      orderInstanceId: input.orderInstanceId,
     })
     const coverageTime = (
       previousCoverage?.fetchedBoundary as { sourceUpdatedAt?: string | null } | undefined
@@ -117,30 +113,16 @@ export async function stageOrderPaymentEvidenceInTx(
         )
       unique.set(row.externalId, row)
     }
-    const objects = unique.size
-      ? await tx
-          .insert(schema.FinancialSourceObject)
-          .values(
-            [...unique.values()].map((row) => ({
-              organizationId: input.organizationId,
-              sourceAccountId: account!.id,
-              objectType: 'order_transaction',
-              externalId: row.externalId,
-              componentKey: '',
-            }))
-          )
-          .onConflictDoUpdate({
-            target: [
-              schema.FinancialSourceObject.organizationId,
-              schema.FinancialSourceObject.sourceAccountId,
-              schema.FinancialSourceObject.objectType,
-              schema.FinancialSourceObject.externalId,
-              schema.FinancialSourceObject.componentKey,
-            ],
-            set: { externalId: sql`excluded."externalId"` },
-          })
-          .returning()
-      : []
+    const objects = await upsertSourceObjects(
+      tx,
+      input.organizationId,
+      [...unique.values()].map((row) => ({
+        sourceAccountId: account!.id,
+        objectType: 'order_transaction',
+        externalId: row.externalId,
+        componentKey: '',
+      }))
+    )
     const prior = objects.length
       ? await tx
           .select({
@@ -163,42 +145,31 @@ export async function stageOrderPaymentEvidenceInTx(
           )
       : []
     const previous = new Map(prior.map((row) => [row.acceptance.sourceObjectId, row]))
-    const observations = objects.length
-      ? await tx
-          .insert(schema.FinancialSourceObservation)
-          .values(
-            objects.map((object) => {
-              const row = unique.get(object.externalId)!
-              return {
-                organizationId: input.organizationId,
-                sourceObjectId: object.id,
-                contentHash: accountingBasisHash({
-                  payload: row.raw,
-                  sourceUpdatedAt: evidence.sourceUpdatedAt,
-                }),
-                observedAt: new Date(),
-                payload: row.raw,
-                reportingInstallationSnapshot: {
-                  ...input.provenance,
-                  orderInstanceId: input.orderInstanceId,
-                  orderExternalId: evidence.orderExternalId,
-                  sourceUpdatedAt: evidence.sourceUpdatedAt,
-                },
-              }
-            })
-          )
-          .onConflictDoUpdate({
-            target: [
-              schema.FinancialSourceObservation.organizationId,
-              schema.FinancialSourceObservation.sourceObjectId,
-              schema.FinancialSourceObservation.contentHash,
-            ],
-            set: { contentHash: sql`excluded."contentHash"` },
-          })
-          .returning()
-      : []
+    const observations = await insertObservations(
+      tx,
+      input.organizationId,
+      objects.map((object) => {
+        const row = unique.get(object.externalId)!
+        return {
+          sourceObjectId: object.id,
+          contentHash: accountingBasisHash({
+            payload: row.raw,
+            sourceUpdatedAt: evidence.sourceUpdatedAt,
+          }),
+          observedAt: new Date(),
+          payload: row.raw,
+          reportingInstallationSnapshot: {
+            ...input.provenance,
+            orderInstanceId: input.orderInstanceId,
+            orderExternalId: evidence.orderExternalId,
+            sourceUpdatedAt: evidence.sourceUpdatedAt,
+          },
+        }
+      })
+    )
     const observationByObject = new Map(observations.map((row) => [row.sourceObjectId, row]))
-    const updates: (typeof schema.FinancialSourceAcceptance.$inferInsert)[] = []
+    const updates: Omit<typeof schema.FinancialSourceAcceptance.$inferInsert, 'organizationId'>[] =
+      []
     let stale = oldCoverage
     for (const object of objects) {
       const row = unique.get(object.externalId)!,
@@ -228,7 +199,6 @@ export async function stageOrderPaymentEvidenceInTx(
       }
       const unchanged = old?.observation.id === observation.id
       updates.push({
-        organizationId: input.organizationId,
         sourceObjectId: object.id,
         observationId: observation.id,
         orderExternalId: evidence.orderExternalId,
@@ -247,46 +217,20 @@ export async function stageOrderPaymentEvidenceInTx(
         updatedAt: new Date(),
       })
     }
-    if (updates.length)
-      await tx
-        .insert(schema.FinancialSourceAcceptance)
-        .values(updates)
-        .onConflictDoUpdate({
-          target: [
-            schema.FinancialSourceAcceptance.organizationId,
-            schema.FinancialSourceAcceptance.sourceObjectId,
-          ],
-          set: {
-            observationId: sql`excluded."observationId"`,
-            orderInstanceId: sql`excluded."orderInstanceId"`,
-            state: sql`excluded.state`,
-            reason: sql`excluded.reason`,
-            unresolvedReferences: sql`excluded."unresolvedReferences"`,
-            nextAttemptAt: sql`excluded."nextAttemptAt"`,
-            updatedAt: new Date(),
-          },
-        })
+    await upsertAcceptances(tx, input.organizationId, updates)
     if (stale) continue
-    const retained = await tx
-      .select({ state: schema.FinancialSourceAcceptance.state })
-      .from(schema.FinancialSourceAcceptance)
-      .innerJoin(
-        schema.FinancialSourceObject,
-        eq(schema.FinancialSourceObject.id, schema.FinancialSourceAcceptance.sourceObjectId)
-      )
-      .where(
-        and(
-          eq(schema.FinancialSourceAcceptance.organizationId, input.organizationId),
-          eq(schema.FinancialSourceAcceptance.orderInstanceId, input.orderInstanceId),
-          eq(schema.FinancialSourceObject.sourceAccountId, account!.id)
-        )
-      )
-    const acceptedCount = retained.filter((r) => r.state === 'accepted').length,
-      rejectedCount = retained.filter((r) => r.state === 'rejected').length,
-      pendingCount = retained.length - acceptedCount - rejectedCount
-    const sourceComplete = evidence.complete && unique.size === retained.length
+    const [retained] = await countOrderAcceptanceStates(tx, input.organizationId, {
+      orderInstanceIds: [input.orderInstanceId],
+      sourceAccountId: account!.id,
+    })
+    const { fetchedCount, acceptedCount, rejectedCount, pendingCount } = retained ?? {
+      fetchedCount: 0,
+      acceptedCount: 0,
+      rejectedCount: 0,
+      pendingCount: 0,
+    }
+    const sourceComplete = evidence.complete && unique.size === fetchedCount
     const values = {
-      organizationId: input.organizationId,
       sourceAccountId: account!.id,
       streamKey: 'order_transactions',
       windowKey: input.orderInstanceId,
@@ -299,25 +243,14 @@ export async function stageOrderPaymentEvidenceInTx(
         sourceComplete,
         orderInstanceId: input.orderInstanceId,
       },
-      fetchedCount: retained.length,
+      fetchedCount,
       acceptedCount,
       rejectedCount,
       pendingCount,
       complete: sourceComplete && pendingCount === 0 && rejectedCount === 0,
       updatedAt: new Date(),
     }
-    await tx
-      .insert(schema.FinancialSourceCoverage)
-      .values(values)
-      .onConflictDoUpdate({
-        target: [
-          schema.FinancialSourceCoverage.organizationId,
-          schema.FinancialSourceCoverage.sourceAccountId,
-          schema.FinancialSourceCoverage.streamKey,
-          schema.FinancialSourceCoverage.windowKey,
-        ],
-        set: values,
-      })
+    await upsertCoverage(tx, input.organizationId, [values])
   }
 }
 
@@ -363,17 +296,5 @@ export async function refreshOrderPaymentCoverage(
   organizationId: string,
   orderInstanceIds: string[]
 ) {
-  if (!orderInstanceIds.length) return
-  await db.execute(sql`UPDATE "FinancialSourceCoverage" c SET
-   "fetchedCount"=s.total,"acceptedCount"=s.accepted,"rejectedCount"=s.rejected,"pendingCount"=s.pending,
-   complete=(COALESCE((c."fetchedBoundary"->>'sourceComplete')::boolean,false) AND c."fetchedCount"=s.total AND s.pending=0 AND s.rejected=0),"updatedAt"=now()
- FROM (SELECT a."orderInstanceId" AS owner,o."sourceAccountId" AS account,count(*)::int AS total,
-   count(*) FILTER(WHERE a.state='accepted')::int AS accepted,count(*) FILTER(WHERE a.state='rejected')::int AS rejected,
-   count(*) FILTER(WHERE a.state NOT IN ('accepted','rejected'))::int AS pending
- FROM "FinancialSourceAcceptance" a JOIN "FinancialSourceObject" o ON o.id=a."sourceObjectId" AND o."organizationId"=a."organizationId"
- WHERE a."organizationId"=${organizationId} AND a."orderInstanceId" IN (${sql.join(
-   orderInstanceIds.map((id) => sql`${id}`),
-   sql`,`
- )}) GROUP BY a."orderInstanceId",o."sourceAccountId")s
- WHERE c."organizationId"=${organizationId} AND c."sourceAccountId"=s.account AND c."streamKey"='order_transactions' AND c."windowKey"=s.owner`)
+  await refreshOrderCoverageCountsForOrders(db, organizationId, orderInstanceIds)
 }

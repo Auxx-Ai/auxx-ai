@@ -17,6 +17,13 @@ import {
   readStoredCustomerMoneyObservation,
   resolveSourceDocumentFromConnector,
 } from './source-observation-adapter'
+import {
+  findSourceObjectByIdentity,
+  readAcceptance,
+  readSourceAccount,
+  readSourceObject,
+} from './source-reads'
+import { refreshOrderCoverageCounts, updateAcceptance } from './source-writes'
 
 async function typedDocument(
   tx: Transaction,
@@ -57,12 +64,7 @@ async function typedDocument(
       kind,
     })
   if (!connectionId || !sourceAccountId) return fromConnector()
-  const account = await tx.query.FinancialSourceAccount.findFirst({
-    where: and(
-      eq(schema.FinancialSourceAccount.organizationId, organizationId),
-      eq(schema.FinancialSourceAccount.id, sourceAccountId)
-    ),
-  })
+  const account = await readSourceAccount(tx, organizationId, sourceAccountId)
   if (!account) return null
   const rows = await tx
     .select({ id: schema.EntityInstance.id })
@@ -111,17 +113,6 @@ async function documentFacts(tx: Transaction, organizationId: string, entityId: 
   return new Map(rows.map((row) => [row.attribute, row]))
 }
 
-async function updateAcceptance(
-  tx: Transaction,
-  id: string,
-  values: Partial<typeof schema.FinancialSourceAcceptance.$inferInsert>
-) {
-  await tx
-    .update(schema.FinancialSourceAcceptance)
-    .set({ ...values, updatedAt: new Date() })
-    .where(eq(schema.FinancialSourceAcceptance.id, id))
-}
-
 /** Materialize or resolve one durable source observation; shared lock protects money capacities. */
 export async function materializeImportedMoneyInTx(
   tx: Transaction,
@@ -129,12 +120,7 @@ export async function materializeImportedMoneyInTx(
   acceptanceId: string
 ): Promise<void> {
   await withAccountingCommitLock(tx, organizationId)
-  const acceptance = await tx.query.FinancialSourceAcceptance.findFirst({
-    where: and(
-      eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
-      eq(schema.FinancialSourceAcceptance.id, acceptanceId)
-    ),
-  })
+  const acceptance = await readAcceptance(tx, organizationId, acceptanceId)
   if (!acceptance) return
   const observation = await tx.query.FinancialSourceObservation.findFirst({
     where: and(
@@ -143,12 +129,7 @@ export async function materializeImportedMoneyInTx(
     ),
   })
   if (!observation) throw new Error('Source observation is missing')
-  const object = await tx.query.FinancialSourceObject.findFirst({
-    where: and(
-      eq(schema.FinancialSourceObject.organizationId, organizationId),
-      eq(schema.FinancialSourceObject.id, acceptance.sourceObjectId)
-    ),
-  })
+  const object = await readSourceObject(tx, organizationId, acceptance.sourceObjectId)
   if (!object) throw new Error('Source object is missing')
   const acquisition = {
     ...(observation.reportingInstallationSnapshot as {
@@ -177,10 +158,10 @@ export async function materializeImportedMoneyInTx(
         )
       : null)
   if (acquiredOrderId && !acceptance.orderInstanceId)
-    await updateAcceptance(tx, acceptance.id, { orderInstanceId: acquiredOrderId })
+    await updateAcceptance(tx, organizationId, acceptance.id, { orderInstanceId: acquiredOrderId })
   const source = readStoredCustomerMoneyObservation(observation.payload)
   if (!source.success) {
-    await updateAcceptance(tx, acceptance.id, {
+    await updateAcceptance(tx, organizationId, acceptance.id, {
       state: 'rejected',
       reason: 'Invalid transaction identity or money evidence',
     })
@@ -190,23 +171,17 @@ export async function materializeImportedMoneyInTx(
     acceptance.moneyTransactionId &&
     (source.data.status !== 'confirmed' || !['receipt', 'refund'].includes(source.data.kind))
   ) {
-    await updateAcceptance(tx, acceptance.id, {
+    await updateAcceptance(tx, organizationId, acceptance.id, {
       state: 'blocked',
       reason:
         'Accepted money source no longer reports the same confirmed movement; explicit correction required',
     })
     return
   }
-  const sourceAccount = await tx.query.FinancialSourceAccount.findFirst({
-    where: and(
-      eq(schema.FinancialSourceAccount.organizationId, organizationId),
-      eq(schema.FinancialSourceAccount.id, object.sourceAccountId)
-    ),
-    columns: { environment: true },
-  })
+  const sourceAccount = await readSourceAccount(tx, organizationId, object.sourceAccountId)
   if (!sourceAccount) throw new Error('Source account is outside this organization')
   if (source.data.test || sourceAccount.environment === 'test') {
-    await updateAcceptance(tx, acceptance.id, {
+    await updateAcceptance(tx, organizationId, acceptance.id, {
       state: 'accepted',
       reason: 'Test-mode observation; no operational money created',
       nextAttemptAt: null,
@@ -214,7 +189,7 @@ export async function materializeImportedMoneyInTx(
     return
   }
   if (['authorization', 'void'].includes(source.data.kind) || source.data.status === 'failed') {
-    await updateAcceptance(tx, acceptance.id, {
+    await updateAcceptance(tx, organizationId, acceptance.id, {
       state: 'accepted',
       reason: 'Source observation records no confirmed cash movement',
       nextAttemptAt: null,
@@ -222,7 +197,7 @@ export async function materializeImportedMoneyInTx(
     return
   }
   if (source.data.status !== 'confirmed') {
-    await updateAcceptance(tx, acceptance.id, {
+    await updateAcceptance(tx, organizationId, acceptance.id, {
       state: 'pending',
       reason: 'Transaction success is not yet confirmed',
     })
@@ -232,7 +207,7 @@ export async function materializeImportedMoneyInTx(
   try {
     movement = confirmedCustomerMovement(source.data)
   } catch (error) {
-    await updateAcceptance(tx, acceptance.id, {
+    await updateAcceptance(tx, organizationId, acceptance.id, {
       state: 'rejected',
       reason: error instanceof Error ? error.message : String(error),
     })
@@ -271,7 +246,7 @@ export async function materializeImportedMoneyInTx(
       money.purpose !== movement.purpose ||
       money.occurredAt?.getTime() !== movement.occurredAt.getTime())
   ) {
-    await updateAcceptance(tx, acceptance.id, {
+    await updateAcceptance(tx, organizationId, acceptance.id, {
       state: 'blocked',
       reason: 'Observed movement changed; explicit accounting correction required',
     })
@@ -353,7 +328,7 @@ export async function materializeImportedMoneyInTx(
     nextAttemptAt: new Date(Date.now() + 60_000),
   }
   if (!orderId || !facts) {
-    await updateAcceptance(tx, acceptance.id, {
+    await updateAcceptance(tx, organizationId, acceptance.id, {
       ...base,
       state: 'blocked',
       reason: 'Order reference is unresolved',
@@ -361,7 +336,7 @@ export async function materializeImportedMoneyInTx(
     return
   }
   if (!partyId || facts.get('order_currency')?.text !== money.currency) {
-    await updateAcceptance(tx, acceptance.id, {
+    await updateAcceptance(tx, organizationId, acceptance.id, {
       ...base,
       state: 'blocked',
       reason: 'Order customer or currency is unresolved or incompatible',
@@ -369,7 +344,7 @@ export async function materializeImportedMoneyInTx(
     return
   }
   if (money.partyInstanceId && money.partyInstanceId !== partyId) {
-    await updateAcceptance(tx, acceptance.id, {
+    await updateAcceptance(tx, organizationId, acceptance.id, {
       ...base,
       state: 'blocked',
       reason: 'Observed customer differs from the immutable movement customer',
@@ -390,7 +365,7 @@ export async function materializeImportedMoneyInTx(
     if (typeof zone !== 'string' || !zone.trim()) throw new Error('missing timezone')
     effectiveDate = periodKeyForDate(money.occurredAt!, 'day', zone)
   } catch {
-    await updateAcceptance(tx, acceptance.id, {
+    await updateAcceptance(tx, organizationId, acceptance.id, {
       ...base,
       state: 'blocked',
       reason: 'Book timezone is unresolved or invalid',
@@ -418,7 +393,7 @@ export async function materializeImportedMoneyInTx(
         0n
       )
       if (usedMoney !== 0n) {
-        await updateAcceptance(tx, acceptance.id, {
+        await updateAcceptance(tx, organizationId, acceptance.id, {
           ...base,
           state: 'blocked',
           reason: 'Movement is already applied; new source evidence cannot apply it again',
@@ -427,7 +402,7 @@ export async function materializeImportedMoneyInTx(
       }
       const total = facts.get('order_total')?.amount
       if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < 0) {
-        await updateAcceptance(tx, acceptance.id, {
+        await updateAcceptance(tx, organizationId, acceptance.id, {
           ...base,
           state: 'blocked',
           reason: 'Order balance is unresolved',
@@ -445,7 +420,7 @@ export async function materializeImportedMoneyInTx(
         0n
       )
       if (applied + money.amountMinor > BigInt(total)) {
-        await updateAcceptance(tx, acceptance.id, {
+        await updateAcceptance(tx, organizationId, acceptance.id, {
           ...base,
           state: 'blocked',
           reason: 'Confirmed receipt exceeds the remaining order obligation',
@@ -473,13 +448,11 @@ export async function materializeImportedMoneyInTx(
     })
     if (!existing) {
       const originalObject = source.data.parentTransactionId
-        ? await tx.query.FinancialSourceObject.findFirst({
-            where: and(
-              eq(schema.FinancialSourceObject.organizationId, organizationId),
-              eq(schema.FinancialSourceObject.sourceAccountId, object.sourceAccountId),
-              eq(schema.FinancialSourceObject.objectType, 'order_transaction'),
-              eq(schema.FinancialSourceObject.externalId, source.data.parentTransactionId)
-            ),
+        ? await findSourceObjectByIdentity(tx, organizationId, {
+            sourceAccountId: object.sourceAccountId,
+            objectType: 'order_transaction',
+            externalId: source.data.parentTransactionId,
+            componentKey: '',
           })
         : undefined
       const originalLink = originalObject
@@ -506,7 +479,7 @@ export async function materializeImportedMoneyInTx(
             )
           : null
       if (!originalLink || !creditId) {
-        await updateAcceptance(tx, acceptance.id, {
+        await updateAcceptance(tx, organizationId, acceptance.id, {
           ...base,
           state: 'blocked',
           reason: 'Refund original receipt or credit document is unresolved',
@@ -555,7 +528,7 @@ export async function materializeImportedMoneyInTx(
         creditFacts.get('credit_memo_currency')?.text !== money.currency ||
         creditFacts.get('credit_memo_contact')?.related !== partyId
       ) {
-        await updateAcceptance(tx, acceptance.id, {
+        await updateAcceptance(tx, organizationId, acceptance.id, {
           ...base,
           state: 'blocked',
           reason: 'Refund capacity, credit currency or customer does not match',
@@ -600,7 +573,7 @@ export async function materializeImportedMoneyInTx(
           )
     }
   }
-  await updateAcceptance(tx, acceptance.id, {
+  await updateAcceptance(tx, organizationId, acceptance.id, {
     ...base,
     state: 'accepted',
     reason: null,
@@ -614,68 +587,14 @@ async function refreshMoneyCoverageInTx(
   organizationId: string,
   acceptanceId: string
 ) {
-  const acceptance = await tx.query.FinancialSourceAcceptance.findFirst({
-    where: and(
-      eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
-      eq(schema.FinancialSourceAcceptance.id, acceptanceId)
-    ),
-  })
-  if (!acceptance) return
-  const object = await tx.query.FinancialSourceObject.findFirst({
-    where: and(
-      eq(schema.FinancialSourceObject.organizationId, organizationId),
-      eq(schema.FinancialSourceObject.id, acceptance.sourceObjectId)
-    ),
-  })
+  const acceptance = await readAcceptance(tx, organizationId, acceptanceId)
+  if (!acceptance?.orderInstanceId) return
+  const object = await readSourceObject(tx, organizationId, acceptance.sourceObjectId)
   if (!object) return
-  const coverage = await tx.query.FinancialSourceCoverage.findFirst({
-    where: and(
-      eq(schema.FinancialSourceCoverage.organizationId, organizationId),
-      eq(schema.FinancialSourceCoverage.sourceAccountId, object.sourceAccountId),
-      eq(schema.FinancialSourceCoverage.streamKey, 'order_transactions'),
-      eq(schema.FinancialSourceCoverage.windowKey, acceptance.orderInstanceId ?? '')
-    ),
+  await refreshOrderCoverageCounts(tx, organizationId, {
+    sourceAccountId: object.sourceAccountId,
+    orderInstanceId: acceptance.orderInstanceId,
   })
-  if (!coverage) return
-  const rows = await tx
-    .select({ state: schema.FinancialSourceAcceptance.state })
-    .from(schema.FinancialSourceAcceptance)
-    .innerJoin(
-      schema.FinancialSourceObject,
-      and(
-        eq(
-          schema.FinancialSourceObject.organizationId,
-          schema.FinancialSourceAcceptance.organizationId
-        ),
-        eq(schema.FinancialSourceObject.id, schema.FinancialSourceAcceptance.sourceObjectId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
-        eq(schema.FinancialSourceObject.sourceAccountId, object.sourceAccountId),
-        eq(schema.FinancialSourceAcceptance.orderExternalId, acceptance.orderExternalId)
-      )
-    )
-  const acceptedCount = rows.filter((row) => row.state === 'accepted').length
-  const rejectedCount = rows.filter((row) => row.state === 'rejected').length
-  const pendingCount = rows.length - acceptedCount - rejectedCount
-  const fetched = coverage.fetchedBoundary as { sourceComplete?: boolean }
-  await tx
-    .update(schema.FinancialSourceCoverage)
-    .set({
-      fetchedCount: rows.length,
-      acceptedCount,
-      rejectedCount,
-      pendingCount,
-      complete:
-        fetched.sourceComplete === true &&
-        coverage.fetchedCount === rows.length &&
-        rejectedCount === 0 &&
-        pendingCount === 0,
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.FinancialSourceCoverage.id, coverage.id))
 }
 
 /** Bounded retry through the existing maintenance job; isolate failed records and rotate fairly. */
@@ -707,23 +626,22 @@ export async function sweepImportedCustomerMoney(
       failed++
       await db.transaction(async (tx) => {
         await withAccountingCommitLock(tx, organizationId)
-        await tx
-          .update(schema.FinancialSourceAcceptance)
-          .set({
+        await updateAcceptance(
+          tx,
+          organizationId,
+          row.id,
+          {
             state: 'blocked',
             reason: error instanceof Error ? error.message : 'Source recovery failed',
             attempts: row.attempts + 1,
             nextAttemptAt: new Date(Date.now() + 60_000),
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
-              eq(schema.FinancialSourceAcceptance.id, row.id),
-              eq(schema.FinancialSourceAcceptance.observationId, row.observationId),
-              inArray(schema.FinancialSourceAcceptance.state, ['pending', 'blocked'])
-            )
+          },
+          // Only if nothing else has moved the row since this attempt started.
+          and(
+            eq(schema.FinancialSourceAcceptance.observationId, row.observationId),
+            inArray(schema.FinancialSourceAcceptance.state, ['pending', 'blocked'])
           )
+        )
       })
     }
   }

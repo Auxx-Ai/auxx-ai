@@ -47,6 +47,7 @@ vi.mock('../reads', () => ({
     isOk: () => true,
     value: state.gateway && state.gateway.id === id ? state.gateway : null,
   }),
+  listLinkedFeeds: async () => state.linkedFeeds,
 }))
 
 vi.mock('../../ledger/roles/role-assignments', () => ({

@@ -5,11 +5,12 @@
 // `FinancialSourceAccount.providerCustomerRef`, a vendor through the same
 // (refuse-if-unsynced) resolution the journal path already used.
 
-import { database, schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../../errors'
 import { UnifiedCrudHandler } from '../../../../resources/crud'
+import { readSourceAccounts } from '../../../money/customer-money/source-reads'
 import { readQuickbooksIdField } from '../identity-field'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
 import { readQuickbooksCustomerFields, upsertQuickbooksCustomer } from '../upsert-customer'
@@ -74,33 +75,6 @@ export async function resolveVendor(
   )
 }
 
-interface StoreCustomerRow {
-  id: string
-  name: string | null
-  providerCustomerRef: Record<string, { customerId: string }> | null
-}
-
-async function readStoreRow(
-  organizationId: string,
-  storeId: string
-): Promise<StoreCustomerRow | undefined> {
-  const [row] = await database
-    .select({
-      id: schema.FinancialSourceAccount.id,
-      name: schema.FinancialSourceAccount.name,
-      providerCustomerRef: schema.FinancialSourceAccount.providerCustomerRef,
-    })
-    .from(schema.FinancialSourceAccount)
-    .where(
-      and(
-        eq(schema.FinancialSourceAccount.organizationId, organizationId),
-        eq(schema.FinancialSourceAccount.id, storeId)
-      )
-    )
-    .limit(1)
-  return row
-}
-
 /**
  * The channel placeholder customer for a `null` counterparty (T14): read from
  * `FinancialSourceAccount.providerCustomerRef.quickbooks`, created on first
@@ -111,6 +85,7 @@ async function readStoreRow(
  * minting an unaddressable customer nobody can find again.
  */
 export async function resolvePlaceholderCustomer(
+  db: Database,
   tool: QuickbooksToolContext,
   storeId: string | null
 ): Promise<string> {
@@ -121,7 +96,7 @@ export async function resolvePlaceholderCustomer(
     )
   }
 
-  const store = await readStoreRow(tool.organizationId, storeId)
+  const store = (await readSourceAccounts(db, tool.organizationId, [storeId])).get(storeId)
   if (!store) {
     throw new UnprocessableEntityError(
       `No financial source account '${storeId}' exists to resolve a channel placeholder customer against.`,
@@ -146,7 +121,7 @@ export async function resolvePlaceholderCustomer(
           ).customerId
         )
 
-  await database
+  await db
     .update(schema.FinancialSourceAccount)
     .set({
       providerCustomerRef: { ...(store.providerCustomerRef ?? {}), quickbooks: { customerId } },

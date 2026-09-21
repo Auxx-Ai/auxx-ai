@@ -23,6 +23,11 @@ export {
 } from './match-reasons'
 export type { PayoutHeader, PayoutItem, PayoutItemRef } from './source'
 
+/** The `FinancialSourceCoverage.windowKey` of a `payout_membership` row: one acquisition of one payout. */
+export function payoutMembershipWindowKey(externalId: string, acquisitionId: string): string {
+  return `payout:${externalId}:acquisition:${acquisitionId}`
+}
+
 /** A payout's life. Only `paid` carries a posting. */
 export const PAYOUT_STATUSES = ['in_transit', 'paid', 'failed', 'reversed'] as const
 

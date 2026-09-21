@@ -5,6 +5,7 @@ import { and, eq, inArray, or, sql } from 'drizzle-orm'
 import { PgTransaction } from 'drizzle-orm/pg-core'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
+import { payoutMembershipWindowKey } from '../payouts/client'
 import { exactEvidenceMinor } from './evidence-contracts'
 import {
   type FinancialRecordEvidence,
@@ -13,7 +14,14 @@ import {
   payoutRecordEvidenceSchema,
   processorRecordEvidenceSchema,
 } from './record-contracts'
+import { readCurrentObservations } from './source-reads'
 import { FinancialSourceIdentityConflictError } from './source-write-errors'
+import {
+  insertObservations,
+  upsertCoverage,
+  upsertSourceAccounts,
+  upsertSourceObjects,
+} from './source-writes'
 
 type Db = Database | Transaction
 /** Canonical entity header plus typed financial extension; every intake uses these fields. */
@@ -163,19 +171,7 @@ export async function writeFinancialRecords(
         parsed.map(({ evidence }) => [accountKey(evidence.sourceAccount), evidence.sourceAccount])
       ).values(),
     ]
-    const accounts = await tx
-      .insert(schema.FinancialSourceAccount)
-      .values(identities.map((a) => ({ organizationId: input.organizationId, ...a })))
-      .onConflictDoUpdate({
-        target: [
-          schema.FinancialSourceAccount.organizationId,
-          schema.FinancialSourceAccount.providerKey,
-          schema.FinancialSourceAccount.externalAccountId,
-          schema.FinancialSourceAccount.environment,
-        ],
-        set: { externalAccountId: sql`excluded."externalAccountId"` },
-      })
-      .returning()
+    const accounts = await upsertSourceAccounts(tx, input.organizationId, identities)
     const accountsByKey = new Map(accounts.map((a) => [accountKey(a), a]))
     const objectInputs = [
       ...new Map(
@@ -186,7 +182,6 @@ export async function writeFinancialRecords(
           return [
             objectKey(account.id, objectType, external),
             {
-              organizationId: input.organizationId,
               sourceAccountId: account.id,
               objectType,
               externalId: external,
@@ -196,20 +191,7 @@ export async function writeFinancialRecords(
         })
       ).values(),
     ]
-    const objects = await tx
-      .insert(schema.FinancialSourceObject)
-      .values(objectInputs)
-      .onConflictDoUpdate({
-        target: [
-          schema.FinancialSourceObject.organizationId,
-          schema.FinancialSourceObject.sourceAccountId,
-          schema.FinancialSourceObject.objectType,
-          schema.FinancialSourceObject.externalId,
-          schema.FinancialSourceObject.componentKey,
-        ],
-        set: { externalId: sql`excluded."externalId"` },
-      })
-      .returning()
+    const objects = await upsertSourceObjects(tx, input.organizationId, objectInputs)
     const objectsByKey = new Map(
       objects.map((o) => [objectKey(o.sourceAccountId, o.objectType, o.externalId), o])
     )
@@ -242,24 +224,12 @@ export async function writeFinancialRecords(
             )
           )
         ),
-      tx
-        .selectDistinctOn([schema.FinancialSourceObservation.sourceObjectId])
-        .from(schema.FinancialSourceObservation)
-        .where(
-          and(
-            eq(schema.FinancialSourceObservation.organizationId, input.organizationId),
-            inArray(schema.FinancialSourceObservation.sourceObjectId, objectIds)
-          )
-        )
-        .orderBy(
-          schema.FinancialSourceObservation.sourceObjectId,
-          sql`${schema.FinancialSourceObservation.observedAt} DESC`
-        ),
+      readCurrentObservations(tx, input.organizationId, objectIds),
     ])
     const canonicalByObject = new Map(
       [...transfers, ...entries].map((r) => [r.sourceObjectId, r.id])
     )
-    for (const observation of latest) {
+    for (const observation of latest.values()) {
       const saved = observation.reportingInstallationSnapshot as { recordId?: string }
       if (saved.recordId && !canonicalByObject.has(observation.sourceObjectId))
         canonicalByObject.set(observation.sourceObjectId, saved.recordId)
@@ -276,7 +246,8 @@ export async function writeFinancialRecords(
             )
           )
       : []
-    const latestByObject = new Map([...latest, ...current].map((o) => [o.sourceObjectId, o]))
+    const latestByObject = new Map(latest)
+    for (const o of current) latestByObject.set(o.sourceObjectId, o)
     const batchCanonical = new Map<string, string>()
     const prepared = parsed.map((item) => {
       const account = accountsByKey.get(accountKey(item.evidence.sourceAccount))!
@@ -441,7 +412,6 @@ export async function writeFinancialRecords(
         prepared.map((p) => [
           `${p.object.id}:${p.contentHash}`,
           {
-            organizationId: input.organizationId,
             sourceObjectId: p.object.id,
             contentHash: p.contentHash,
             observedAt: new Date(),
@@ -458,18 +428,7 @@ export async function writeFinancialRecords(
         ])
       ).values(),
     ]
-    const observations = await tx
-      .insert(schema.FinancialSourceObservation)
-      .values(observationInputs)
-      .onConflictDoUpdate({
-        target: [
-          schema.FinancialSourceObservation.organizationId,
-          schema.FinancialSourceObservation.sourceObjectId,
-          schema.FinancialSourceObservation.contentHash,
-        ],
-        set: { contentHash: sql`excluded."contentHash"` },
-      })
-      .returning()
+    const observations = await insertObservations(tx, input.organizationId, observationInputs)
     const observationsByKey = new Map(
       observations.map((o) => [`${o.sourceObjectId}:${o.contentHash}`, o])
     )
@@ -698,7 +657,7 @@ async function persistMembershipCoverage(
 ) {
   if (!inputs.length) return
   const windowOf = (e: PayoutRecordEvidence) =>
-    `payout:${externalId(e)}:acquisition:${e.acquisition.id}`
+    payoutMembershipWindowKey(externalId(e), e.acquisition.id)
   const keyOf = (accountId: string, windowKey: string) => JSON.stringify([accountId, windowKey])
   const existing = await tx
     .select()
@@ -715,9 +674,10 @@ async function persistMembershipCoverage(
         ])
       )
     )
-  const pending = new Map<string, typeof schema.FinancialSourceCoverage.$inferInsert>(
-    existing.map((r) => [keyOf(r.sourceAccountId, r.windowKey), r])
-  )
+  const pending = new Map<
+    string,
+    Omit<typeof schema.FinancialSourceCoverage.$inferInsert, 'organizationId'>
+  >(existing.map((r) => [keyOf(r.sourceAccountId, r.windowKey), r]))
   const touched = new Set<string>()
   for (const input of inputs) {
     const e = input.evidence
@@ -769,7 +729,6 @@ async function persistMembershipCoverage(
       { fetchedCount: 0, acceptedCount: 0, rejectedCount: 0 }
     )
     const values = {
-      organizationId,
       sourceAccountId: input.sourceAccountId,
       streamKey: 'payout_membership',
       windowKey,
@@ -796,24 +755,9 @@ async function persistMembershipCoverage(
     pending.set(key, values)
     touched.add(key)
   }
-  await tx
-    .insert(schema.FinancialSourceCoverage)
-    .values([...touched].map((key) => pending.get(key)!))
-    .onConflictDoUpdate({
-      target: [
-        schema.FinancialSourceCoverage.organizationId,
-        schema.FinancialSourceCoverage.sourceAccountId,
-        schema.FinancialSourceCoverage.streamKey,
-        schema.FinancialSourceCoverage.windowKey,
-      ],
-      set: {
-        fetchedBoundary: sql`excluded."fetchedBoundary"`,
-        fetchedCount: sql`excluded."fetchedCount"`,
-        acceptedCount: sql`excluded."acceptedCount"`,
-        rejectedCount: sql`excluded."rejectedCount"`,
-        pendingCount: sql`excluded."pendingCount"`,
-        complete: sql`excluded.complete`,
-        updatedAt: sql`excluded."updatedAt"`,
-      },
-    })
+  await upsertCoverage(
+    tx,
+    organizationId,
+    [...touched].map((key) => pending.get(key)!)
+  )
 }

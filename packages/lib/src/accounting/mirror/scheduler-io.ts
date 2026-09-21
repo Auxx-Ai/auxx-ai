@@ -7,6 +7,7 @@
 import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { listOrganizationsWithApp } from '../../apps/installations/organizations'
 import { isDemoOrganization } from '../../demo'
 import { readOrganizationSettings } from '../../settings/read'
 import {
@@ -78,20 +79,5 @@ export async function listOrgsWithAccountingProvider(db: Database): Promise<stri
     return []
   }
 
-  const rows = await db
-    .selectDistinct({ organizationId: schema.AppInstallation.organizationId })
-    .from(schema.AppInstallation)
-    .innerJoin(schema.App, eq(schema.App.id, schema.AppInstallation.appId))
-    .innerJoin(
-      schema.Organization,
-      eq(schema.Organization.id, schema.AppInstallation.organizationId)
-    )
-    .where(
-      and(
-        isNull(schema.AppInstallation.uninstalledAt),
-        inArray(schema.App.slug, providerIds),
-        isNull(schema.Organization.demoExpiresAt)
-      )
-    )
-  return rows.map((row) => row.organizationId)
+  return listOrganizationsWithApp(db, providerIds, { excludeDemo: true })
 }

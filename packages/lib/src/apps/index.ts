@@ -43,6 +43,7 @@ export {
 } from './installations/app-field-provisioning'
 export { getInstallationDeployment } from './installations/get-installation-deployment'
 export { type InstallAppOutput, installApp } from './installations/install-app'
+export { listOrganizationsWithApp } from './installations/organizations'
 export { resolveActiveInstallationId } from './installations/resolve-active-installation'
 export { rollForwardInstallations } from './installations/roll-forward-installations'
 export {
