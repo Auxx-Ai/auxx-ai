@@ -35,7 +35,8 @@ vi.mock('@auxx/database', () => ({
   },
 }))
 
-vi.mock('drizzle-orm/pg-core', () => ({
+vi.mock('drizzle-orm/pg-core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('drizzle-orm/pg-core')>()),
   alias: (table: unknown) => table,
 }))
 

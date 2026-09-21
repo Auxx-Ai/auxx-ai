@@ -14,13 +14,14 @@
 import { type Database, database } from '@auxx/database'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { getOrgCache, requireCachedEntityDefId } from '../../../cache'
+import { requireCachedEntityDefId } from '../../../cache'
 import { BadRequestError, ConflictError, NotFoundError } from '../../../errors'
 import { createFieldValueContext } from '../../../field-values/field-value-helpers'
 import { setValueWithType } from '../../../field-values/field-value-mutations'
 import { readFieldScalars } from '../../../field-values/read-field-scalars'
 import { toFieldType } from '../../../field-values/stored-field-type'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { systemFieldMap } from '../../../resources/system-records'
 import { settledPeriodsFor } from '../../ledger/periods/settled-periods'
 import { runMoneyCommand } from '../../money/commands/run-money-command'
 import {
@@ -282,9 +283,9 @@ export async function projectBillCredit(
   input: { organizationId: string; userId: string; vendorBillInstanceId: string }
 ): Promise<void> {
   const { organizationId, userId, vendorBillInstanceId } = input
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>(['vendor_bill_amount_credited'])
+  const fields = await systemFieldMap<SystemAttribute>(db, organizationId, [
+    'vendor_bill_amount_credited',
+  ])
   const creditedField = fields.vendor_bill_amount_credited
   if (creditedField) {
     const credited = await sumVendorBillCreditApplications(db, organizationId, vendorBillInstanceId)

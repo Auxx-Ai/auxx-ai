@@ -7,7 +7,7 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
-import { getOrgCache } from '../../../cache'
+import { systemFieldMap } from '../../../resources/system-records'
 import { WRITE_OFF_SOURCE_TYPE } from '../../ledger/builders/write-off'
 import { countPostingsForLineSource } from '../../ledger/reads/read-posting'
 
@@ -95,9 +95,7 @@ export async function loadInvoiceForWriteOff(
   organizationId: string,
   invoiceId: string
 ): Promise<InvoiceForWriteOff | null> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...INVOICE_ATTRIBUTES])
+  const cf = await systemFieldMap(db, organizationId, [...INVOICE_ATTRIBUTES])
   const fieldIds = [
     cf.invoice_status,
     cf.invoice_number,

@@ -17,7 +17,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, gt, gte, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
-import { getOrgCache } from '../../../cache'
+import { systemFieldMap } from '../../../resources/system-records'
 import { readOrganizationSettings } from '../../../settings/read'
 import { readTrialBalance } from '../../reports/trial-balance'
 import { countUnissuedChannelCreditMemos } from '../../sales/credit-memos/reads'
@@ -63,9 +63,10 @@ async function countUnpostedMovements(
   organizationId: string,
   bounds: { first: string; next: string }
 ): Promise<number> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['stock_movement_occurred_at', 'stock_movement_extended_cost'] as const)
+  const fields = await systemFieldMap(db, organizationId, [
+    'stock_movement_occurred_at',
+    'stock_movement_extended_cost',
+  ] as const)
   const occurredAt = fields.stock_movement_occurred_at
   const extendedCost = fields.stock_movement_extended_cost
   if (!occurredAt || !extendedCost) return 0
@@ -124,13 +125,11 @@ async function readSubledgerValue(
   window: { cutoverDate: string | null; openingMinor: number; lastDay: string }
 ): Promise<number> {
   const { cutoverDate, openingMinor, lastDay } = window
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'stock_movement_occurred_at',
-      'stock_movement_extended_cost',
-      'stock_movement_adjust_subparts',
-    ] as const)
+  const fields = await systemFieldMap(db, organizationId, [
+    'stock_movement_occurred_at',
+    'stock_movement_extended_cost',
+    'stock_movement_adjust_subparts',
+  ] as const)
   const occurredAt = fields.stock_movement_occurred_at
   const extendedCost = fields.stock_movement_extended_cost
   const adjustSubparts = fields.stock_movement_adjust_subparts
@@ -221,9 +220,10 @@ async function readPartsListStandardValue(
   db: Database,
   organizationId: string
 ): Promise<number | null> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['part_quantity_on_hand', 'part_standard_cost'] as const)
+  const fields = await systemFieldMap(db, organizationId, [
+    'part_quantity_on_hand',
+    'part_standard_cost',
+  ] as const)
   const quantity = fields.part_quantity_on_hand
   const standard = fields.part_standard_cost
   if (!quantity || !standard) return null

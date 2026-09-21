@@ -4,11 +4,11 @@ import type { RecordId } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { getOrgCache } from '../../../cache'
 import { BadRequestError } from '../../../errors'
 import { firstTyped } from '../../../field-values/client'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { systemFieldMap } from '../../../resources/system-records'
 import type { CreateQuoteFromRequestInput, QuoteLifecycleInput } from '../types'
 
 /** Assert the quote is currently at `expected` status, else reject with a clear message. */
@@ -29,10 +29,10 @@ async function getQuoteStatusAndRequest(
   organizationId: string,
   quoteRecordId: RecordId
 ): Promise<{ status: string | undefined; requestRecordId: RecordId | undefined }> {
-  const cache = getOrgCache()
-  const cf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['quote_status', 'quote_request'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'quote_status',
+    'quote_request',
+  ] as const)
 
   const fieldIds = [cf.quote_status, cf.quote_request].filter(Boolean).map((f) => f!.id)
   const values = await handler.getFieldValues(quoteRecordId, fieldIds)
@@ -172,7 +172,6 @@ export async function declineQuote(input: QuoteLifecycleInput): Promise<void> {
 export async function createQuoteFromRequest(input: CreateQuoteFromRequestInput) {
   const { organizationId, userId, requestInstanceId } = input
   const handler = new UnifiedCrudHandler(organizationId, userId)
-  const cache = getOrgCache()
   const requestRecordId = toRecordId('service_request', requestInstanceId)
 
   const existing = await handler.listFiltered({
@@ -203,9 +202,10 @@ export async function createQuoteFromRequest(input: CreateQuoteFromRequestInput)
     throw new BadRequestError('An active quote already exists for this service request')
   }
 
-  const cf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['service_request_title', 'service_request_contact'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'service_request_title',
+    'service_request_contact',
+  ] as const)
 
   const fieldIds = [cf.service_request_title, cf.service_request_contact]
     .filter(Boolean)

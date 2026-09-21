@@ -36,9 +36,10 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, lte } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
+import { getCachedEntityDefId } from '../../cache'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { readFieldRelations, readFieldScalars } from '../../field-values/read-field-scalars'
+import { systemFieldMap } from '../../resources/system-records'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { standingLineFilter } from '../ledger/reads/standing-lines'
 import { loadRoleAccountCodes } from '../ledger/roles/resolve-roles'
@@ -319,9 +320,10 @@ export async function readAging(
       .filter((d) => d.accum.sourceType === 'payment_transaction')
       .map((d) => d.accum.sourceId)
 
-    const cf = await getOrgCache()
-      .from(organizationId, 'customFields')
-      .bySystemAttributes([...DOCUMENT_SCALAR_ATTRIBUTES, ...DOCUMENT_RELATION_ATTRIBUTES])
+    const cf = await systemFieldMap(db, organizationId, [
+      ...DOCUMENT_SCALAR_ATTRIBUTES,
+      ...DOCUMENT_RELATION_ATTRIBUTES,
+    ])
 
     const scalarFieldIds = [
       cf.invoice_due_date?.id,

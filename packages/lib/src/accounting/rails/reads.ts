@@ -16,7 +16,6 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import type { FieldOptions } from '../../field-values/converters'
 import { buildOptionIndex, resolveOptionId } from '../../resources/registry/option-helpers'
@@ -28,6 +27,7 @@ import {
   type SystemFieldContext,
   type SystemRecord,
   systemDefId,
+  systemFieldMap,
   systemFields,
 } from '../../resources/system-records'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
@@ -204,9 +204,7 @@ export async function listObservedGatewayHandles(
 ): Promise<Result<ObservedGatewayHandle[], Error>> {
   return guard(
     async () => {
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes(['order_payment_gateways'])
+      const fields = await systemFieldMap(db, organizationId, ['order_payment_gateways'])
       const field = fields.order_payment_gateways
       if (!field) return []
 
@@ -274,9 +272,10 @@ export async function listGatewayHandleCensus(
 ): Promise<Result<GatewayHandleCensusRow[], Error>> {
   return guard(
     async () => {
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes(['order_payment_gateways', 'order_placed_at'])
+      const fields = await systemFieldMap(db, organizationId, [
+        'order_payment_gateways',
+        'order_placed_at',
+      ])
       const field = fields.order_payment_gateways
       if (!field) return []
       const placedAtFieldId = fields.order_placed_at?.id ?? null

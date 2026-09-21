@@ -17,9 +17,10 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
-import { getOrgCache, requireCachedEntityDefId } from '../../../cache'
+import { requireCachedEntityDefId } from '../../../cache'
 import { BadRequestError, UnprocessableEntityError } from '../../../errors'
 import { readFieldScalars } from '../../../field-values/read-field-scalars'
+import { systemFieldMap } from '../../../resources/system-records'
 import { listVendorBillPostings } from '../../purchasing/expense-bill/writes'
 import type { PaymentMethod } from '../client'
 import { insertMovement } from '../commands/insert-movement'
@@ -102,9 +103,10 @@ async function readVendorBillBalance(
         : 'This vendor bill is not in the books yet, so there is no payable to pay. Post it first.'
     )
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['vendor_bill_total', 'vendor_bill_vendor'] as const)
+  const fields = await systemFieldMap(tx, organizationId, [
+    'vendor_bill_total',
+    'vendor_bill_vendor',
+  ] as const)
   const totalField = fields.vendor_bill_total
   const vendorField = fields.vendor_bill_vendor
   if (!totalField)

@@ -6,12 +6,12 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { getOrgCache } from '../../cache'
 import type { EntityFieldChangeHandler, EntityPostDeleteHandler } from '../../field-hooks/types'
 import { firstTyped } from '../../field-values/client'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { readFieldRelations, readFieldScalars } from '../../field-values/read-field-scalars'
 import { UnifiedCrudHandler } from '../../resources/crud'
+import { systemFieldMap } from '../../resources/system-records'
 import {
   DEFAULT_MATCH_TOLERANCE,
   describeAwaitingLines,
@@ -156,9 +156,7 @@ export async function rematchBill(params: {
   const billRecordId = toRecordId('vendor_bill', vendorBillInstanceId)
   const handler = new UnifiedCrudHandler(organizationId, userId, db)
 
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>([...MATCH_ATTRS])
+  const cf = await systemFieldMap<SystemAttribute>(db, organizationId, [...MATCH_ATTRS])
 
   const lifecycleField = cf.vendor_bill_status
   const matchStatusField = cf.vendor_bill_match_status

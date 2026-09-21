@@ -37,11 +37,12 @@ import { generateId } from '@auxx/utils'
 import { and, eq, ilike, inArray, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../../cache'
+import { getCachedEntityDefId } from '../../../cache'
 import { normalizeForLookup } from '../../../field-values/normalize-for-lookup'
 import {
   findSystemRecordIdsByValue,
   readSystemRecords,
+  systemFieldMap,
   systemRecordScope,
   systemValueJoin,
 } from '../../../resources/system-records'
@@ -110,9 +111,10 @@ export async function resolveQuoteVendor(
       const companyDefId = await getCachedEntityDefId(organizationId, 'company')
       if (!companyDefId) return []
 
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes(['company_name', 'company_domain'] as const)
+      const fields = await systemFieldMap(db, organizationId, [
+        'company_name',
+        'company_domain',
+      ] as const)
 
       const nameField = fields.company_name
       const domainField = fields.company_domain
@@ -211,13 +213,11 @@ async function resolveVendorSkuTier(
   const vendorPartDefId = await getCachedEntityDefId(organizationId, 'vendor_part')
   if (!vendorPartDefId) return hits
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'vendor_part_part',
-      'vendor_part_contact',
-      'vendor_part_vendor_sku',
-    ] as const)
+  const fields = await systemFieldMap(db, organizationId, [
+    'vendor_part_part',
+    'vendor_part_contact',
+    'vendor_part_vendor_sku',
+  ] as const)
 
   const partField = fields.vendor_part_part
   const supplierField = fields.vendor_part_contact
@@ -342,9 +342,7 @@ export async function resolveQuoteLines(
       const { vendorRecordId, currency, lines } = input
 
       const partDefId = await getCachedEntityDefId(organizationId, 'part')
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes(['part_sku', 'part_title'] as const)
+      const fields = await systemFieldMap(db, organizationId, ['part_sku', 'part_title'] as const)
       const skuFieldId = fields.part_sku?.id ?? null
       const titleFieldId = fields.part_title?.id ?? null
 

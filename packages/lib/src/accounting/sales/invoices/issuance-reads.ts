@@ -6,7 +6,7 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
-import { getOrgCache } from '../../../cache'
+import { systemFieldMap } from '../../../resources/system-records'
 
 const INVOICE_ATTRIBUTES = [
   'invoice_number',
@@ -41,9 +41,7 @@ export async function loadInvoiceForIssuance(
   organizationId: string,
   invoiceId: string
 ): Promise<InvoiceForIssuance | null> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...INVOICE_ATTRIBUTES])
+  const cf = await systemFieldMap(db, organizationId, [...INVOICE_ATTRIBUTES])
   const fields = [
     cf.invoice_number,
     cf.invoice_issued_at,

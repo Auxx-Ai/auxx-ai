@@ -6,11 +6,12 @@ import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq, sql } from 'drizzle-orm'
-import { getEntityDefIdResolver, getOrgCache } from '../../cache'
+import { getEntityDefIdResolver } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { firstTyped } from '../../field-values/client'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../resources/crud'
+import { systemFieldMap } from '../../resources/system-records'
 import type { MoneyMutationInput } from '../sales/types'
 
 /**
@@ -42,9 +43,10 @@ async function getStatusAndExpectedAt(
   organizationId: string,
   purchaseOrderRecordId: RecordId
 ): Promise<{ status: string | undefined; expectedAt: unknown }> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['purchase_order_status', 'purchase_order_expected_at'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'purchase_order_status',
+    'purchase_order_expected_at',
+  ] as const)
 
   const fieldIds = [cf.purchase_order_status, cf.purchase_order_expected_at]
     .filter(Boolean)
@@ -85,13 +87,11 @@ async function readMaxLineLeadTimeDays(
   organizationId: string,
   purchaseOrderInstanceId: string
 ): Promise<number | null> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'purchase_order_line_purchase_order',
-      'purchase_order_line_vendor_part',
-      'vendor_part_lead_time',
-    ] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'purchase_order_line_purchase_order',
+    'purchase_order_line_vendor_part',
+    'vendor_part_lead_time',
+  ] as const)
 
   const orderRelField = cf.purchase_order_line_purchase_order
   const vendorPartRelField = cf.purchase_order_line_vendor_part

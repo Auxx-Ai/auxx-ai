@@ -28,7 +28,7 @@ import {
   linkMovementsToPosting,
   reversePostingForMovement,
 } from '../../accounting/ledger/post/post-inventory-movement'
-import { getCachedEntityDefId, getOrgCache } from '../../cache'
+import { getCachedEntityDefId } from '../../cache'
 import {
   BadRequestError,
   ConflictError,
@@ -36,6 +36,7 @@ import {
   UnprocessableEntityError,
 } from '../../errors'
 import { StockMovementType } from '../../resources/registry/enum-values'
+import { systemFieldMap } from '../../resources/system-records'
 import { guard } from './guard'
 import type { MovementRecord } from './types'
 import { writeStockMovements } from './write-movements'
@@ -175,9 +176,9 @@ export async function reverseMovement(
         throw new NotFoundError('This organization has no stock_movement entity definition')
       }
 
-      const fields = (await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes([...REVERSAL_ATTRIBUTES])) as ReversalFields
+      const fields = (await systemFieldMap(db, organizationId, [
+        ...REVERSAL_ATTRIBUTES,
+      ])) as ReversalFields
 
       const reversesField = fields.stock_movement_reverses_movement
       if (!reversesField || !fields.stock_movement_unit_cost || !fields.stock_movement_quantity) {

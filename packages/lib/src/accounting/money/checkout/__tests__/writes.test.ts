@@ -36,7 +36,20 @@ const h = vi.hoisted(() => ({
   stamped: [] as Array<{ fieldId: string; value: unknown }>,
 }))
 
-vi.mock('@auxx/database', () => ({ database: {}, schema: {} }))
+vi.mock('@auxx/database', () => ({
+  database: {},
+  schema: {
+    EntityInstance: {
+      id: 'id',
+      organizationId: 'organizationId',
+      entityDefinitionId: 'entityDefinitionId',
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
+      archivedAt: 'archivedAt',
+      displayName: 'displayName',
+    },
+  },
+}))
 vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({
     get: async () => 'user-system',

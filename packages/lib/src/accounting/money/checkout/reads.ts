@@ -21,6 +21,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
 import { firstTyped } from '../../../field-values/client'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { systemFieldMap } from '../../../resources/system-records'
 import { listPaymentGateways } from '../../rails/reads'
 import { isPaymentsConnected } from '../../sales/public-token'
 import { netApplied } from '../client'
@@ -94,14 +95,12 @@ export async function readInvoiceCheckoutTarget(
 ): Promise<InvoiceCheckoutTarget> {
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   const handler = new UnifiedCrudHandler(organizationId, systemUserId)
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'invoice_status',
-      'invoice_number',
-      'invoice_balance',
-      'invoice_contact',
-    ] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'invoice_status',
+    'invoice_number',
+    'invoice_balance',
+    'invoice_contact',
+  ] as const)
   const fieldIds = [cf.invoice_status, cf.invoice_number, cf.invoice_balance, cf.invoice_contact]
     .filter(Boolean)
     .map((field) => field!.id)
@@ -135,15 +134,13 @@ export async function readQuoteCheckoutTarget(
 ): Promise<QuoteCheckoutTarget> {
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   const handler = new UnifiedCrudHandler(organizationId, systemUserId)
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'quote_status',
-      'quote_number',
-      'quote_total',
-      'quote_contact',
-      'quote_work_orders',
-    ] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'quote_status',
+    'quote_number',
+    'quote_total',
+    'quote_contact',
+    'quote_work_orders',
+  ] as const)
   const fieldIds = [
     cf.quote_status,
     cf.quote_number,

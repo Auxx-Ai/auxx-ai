@@ -9,6 +9,7 @@ import { FieldValueService } from '../../../field-values/field-value-service'
 import { toFieldType } from '../../../field-values/stored-field-type'
 import { NotificationService } from '../../../notifications/notification-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { systemFieldMap } from '../../../resources/system-records'
 import { batchReadSystemValues } from '../billing/projection'
 import { recomputeTotals } from '../totals/totals-hooks'
 import {
@@ -208,9 +209,9 @@ async function applyOptionalLineSelections(params: {
 
   const selectedSet = validateSelectedLineIds(optionalLineInstanceIds, selectedLineIds)
 
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['line_item_optional_selected'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'line_item_optional_selected',
+  ] as const)
   const optionalSelectedField = cf.line_item_optional_selected
   if (!optionalSelectedField) return [] // pre-migration org — field doesn't exist, nothing to write
 

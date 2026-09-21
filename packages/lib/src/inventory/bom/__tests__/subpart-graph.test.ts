@@ -46,7 +46,8 @@ vi.mock('drizzle-orm', () => ({
   sql: Object.assign(() => ({}), { join: () => ({}), raw: () => ({}) }),
 }))
 
-vi.mock('drizzle-orm/pg-core', () => ({
+vi.mock('drizzle-orm/pg-core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('drizzle-orm/pg-core')>()),
   alias: (_table: unknown, name: string) => tableRef(name),
 }))
 

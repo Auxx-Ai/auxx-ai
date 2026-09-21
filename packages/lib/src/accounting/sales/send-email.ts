@@ -23,6 +23,7 @@ import { extractRelationshipRecordIds } from '../../field-values/relationship-fi
 import type { PlaceholderResolutionContext } from '../../placeholders'
 import { resolvePlaceholdersInHtml } from '../../placeholders'
 import { UnifiedCrudHandler } from '../../resources/crud'
+import { systemFieldMap } from '../../resources/system-records'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import { recordSignal, toSignalRecordKey } from '../../signals'
 import { getSystemSnippet } from '../../snippets'
@@ -208,7 +209,7 @@ export const DOCUMENT_EMAIL_PROFILES: Record<DocumentType, DocumentEmailProfile>
 }
 
 /**
- * The contact `systemAttribute` of every profile — the single `bySystemAttributes` batch both
+ * The contact `systemAttribute` of every profile — the single `systemFieldMap` batch both
  * {@link prepareDocumentEmail} and {@link recordDocumentSendSignal} resolve their recipient
  * field out of. Derived from the table so the fetched set can never drift from it.
  */
@@ -368,9 +369,7 @@ export async function prepareDocumentEmail(
 
   // ─── Step 1: the document's contact (email required to send) ───────────
   // The fetched attribute set is derived from the profile table so the two can never drift.
-  const cf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(DOCUMENT_CONTACT_SYSTEM_ATTRIBUTES)
+  const cf = await systemFieldMap(undefined, organizationId, DOCUMENT_CONTACT_SYSTEM_ATTRIBUTES)
   const contactField = cf[profile.contactSystemAttribute]
   const contactFieldId = contactField?.id
   const documentValues = contactFieldId
@@ -383,9 +382,10 @@ export async function prepareDocumentEmail(
     throw new BadRequestError(noContactMessage)
   }
 
-  const contactCf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['full_name', 'primary_email'] as const)
+  const contactCf = await systemFieldMap(undefined, organizationId, [
+    'full_name',
+    'primary_email',
+  ] as const)
 
   // Resolve through `batchGetValues`, NOT the naive `getFieldValues`: `full_name` is a NAME
   // field type (first/last composite, no stored FieldValue row), so the plain join returns
@@ -555,14 +555,14 @@ export async function recordDocumentSendSignal(
   try {
     const documentRecordId = toRecordId(documentType, documentInstanceId)
     const handler = new UnifiedCrudHandler(organizationId, userId)
-    const cache = getOrgCache()
 
     // ─── Recipient contact ──────────────────────────────────────────────────
     // Same profile table as `prepareDocumentEmail`, so the signal's recipient is by
     // construction the address the email actually went to.
-    const contactCf = await cache
-      .from(organizationId, 'customFields')
-      .bySystemAttributes([...DOCUMENT_CONTACT_SYSTEM_ATTRIBUTES, 'primary_email' as const])
+    const contactCf = await systemFieldMap(undefined, organizationId, [
+      ...DOCUMENT_CONTACT_SYSTEM_ATTRIBUTES,
+      'primary_email' as const,
+    ])
     const contactField = contactCf[documentEmailProfile(documentType).contactSystemAttribute]
 
     let contactEntityInstanceId: string | undefined
@@ -589,9 +589,10 @@ export async function recordDocumentSendSignal(
     // different cardinality (belongs_to vs has_many) and therefore different extraction, and
     // a purchase order has no work-order link at all — it is a supplier document, not a job
     // document. Both `if` arms simply don't fire for it, which is the correct behavior.
-    const woCf = await cache
-      .from(organizationId, 'customFields')
-      .bySystemAttributes(['invoice_work_order', 'quote_work_orders'] as const)
+    const woCf = await systemFieldMap(undefined, organizationId, [
+      'invoice_work_order',
+      'quote_work_orders',
+    ] as const)
 
     let workOrderInstanceId: string | undefined
     if (documentType === 'invoice' && woCf.invoice_work_order) {

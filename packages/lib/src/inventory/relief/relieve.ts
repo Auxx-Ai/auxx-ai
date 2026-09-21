@@ -66,9 +66,10 @@ import {
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
 import type { PostResult } from '../../accounting/ledger/types'
-import { getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { requireCachedEntityDefId } from '../../cache'
 import { recalculateFulfillmentLineQuantityRelievedBatch } from '../../field-hooks/post/fulfillment-line-rollups'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
+import { systemFieldMap } from '../../resources/system-records'
 import { readStandardCost } from '../costing'
 import { readFulfillmentLineRelievedAverages, readPartLedgerAverages } from '../costing/cost-reads'
 import { batchRecalculateQoH } from '../costing/qoh'
@@ -158,9 +159,7 @@ async function readLineItemParts(
   const parts = new Map<string, string>()
   if (lineItemInstanceIds.length === 0) return parts
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['line_item_part'] as const)
+  const fields = await systemFieldMap(db, organizationId, ['line_item_part'] as const)
   const partField = fields.line_item_part
   if (!partField) return parts
 
@@ -200,9 +199,7 @@ async function readPartKindsLocal(
   const kinds = new Map<string, string>()
   if (partInstanceIds.length === 0) return kinds
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['part_kind'] as const)
+  const fields = await systemFieldMap(db, organizationId, ['part_kind'] as const)
   const kindField = fields.part_kind
   if (!kindField) return kinds
 

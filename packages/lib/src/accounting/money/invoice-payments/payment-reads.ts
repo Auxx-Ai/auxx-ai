@@ -22,9 +22,9 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, asc, eq } from 'drizzle-orm'
-import { getOrgCache } from '../../../cache'
 import { extractRelationshipRecordIds } from '../../../field-values/relationship-field'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { systemFieldMap } from '../../../resources/system-records'
 
 /** One recorded payment, shaped for the invoice drawer's existing row contract. */
 export interface InvoicePaymentRow {
@@ -136,9 +136,7 @@ export async function listWorkOrderMoneyPayments(
   const handler = new UnifiedCrudHandler(organizationId, userId)
   const workOrderRecordId = toRecordId('work_order', workOrderInstanceId)
 
-  const woCf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['work_order_invoices'] as const)
+  const woCf = await systemFieldMap(db, organizationId, ['work_order_invoices'] as const)
   if (!woCf.work_order_invoices) return []
 
   const values = await handler.getFieldValues(workOrderRecordId, [woCf.work_order_invoices.id])

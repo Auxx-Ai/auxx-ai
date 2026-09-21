@@ -75,6 +75,8 @@ vi.mock('../../../resources/system-records', () => ({
       ),
     }
   },
+  systemFieldMap: async (_db: unknown, _org: string, attrs: string[]) =>
+    Object.fromEntries(attrs.map((a) => [a, h.materialised.has(a) ? { id: `fld_${a}` } : null])),
   readSystemRecords: (...args: unknown[]) => h.readRecords(...args),
 }))
 

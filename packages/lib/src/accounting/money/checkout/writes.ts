@@ -24,6 +24,7 @@ import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getOrgCache } from '../../../cache'
 import { BadRequestError } from '../../../errors'
 import { FieldValueService } from '../../../field-values/field-value-service'
+import { systemFieldMap } from '../../../resources/system-records'
 import { readOrganizationSettings } from '../../../settings/read'
 import { buildPayUrl, ensureInvoicePublicToken } from '../../sales/public-token'
 import { resolveQuoteDeposit } from '../../sales/quotes/quote-deposit'
@@ -69,9 +70,7 @@ async function stampSessionId(
   attribute: SystemAttribute,
   sessionId: string
 ): Promise<void> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([attribute] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [attribute] as const)
   if (!cf[attribute]) return
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   const service = new FieldValueService(organizationId, systemUserId)

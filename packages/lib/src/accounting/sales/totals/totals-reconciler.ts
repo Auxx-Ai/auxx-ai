@@ -27,12 +27,12 @@
  * below stayed here rather than moving into `resolveParentsByRelation`.
  */
 
-import { getOrgCache } from '../../../cache'
 import { readFieldRelations } from '../../../field-values/read-field-scalars'
 import {
   defineParentReconciler,
   resolveParentsByRelation,
 } from '../../../reconcilers/parent-reconciler'
+import { systemFieldMap } from '../../../resources/system-records'
 import type { TotalledDocumentType } from './totals-hooks'
 
 /** Key per marked entity. See the table above. */
@@ -138,14 +138,12 @@ async function resolveLineParents(
   organizationId: string,
   lineInstanceIds: string[]
 ): Promise<ParentDocument[]> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'line_item_quote',
-      'line_item_invoice',
-      'line_item_order',
-      'line_item_work_order',
-    ] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'line_item_quote',
+    'line_item_invoice',
+    'line_item_order',
+    'line_item_work_order',
+  ] as const)
 
   const byField = new Map<string, 'quote' | 'invoice' | 'order' | 'work_order'>()
   if (cf.line_item_quote) byField.set(cf.line_item_quote.id, 'quote')

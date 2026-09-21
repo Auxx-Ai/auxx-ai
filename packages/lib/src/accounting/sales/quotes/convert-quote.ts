@@ -7,7 +7,6 @@ import { extractValue } from '@auxx/types'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
-import { getOrgCache } from '../../../cache'
 import { BadRequestError } from '../../../errors'
 import { firstTyped } from '../../../field-values/client'
 import type { FileValue } from '../../../field-values/converters'
@@ -15,6 +14,7 @@ import { FieldValueService } from '../../../field-values/field-value-service'
 import { extractRelationshipRecordIds } from '../../../field-values/relationship-field'
 import { getRealtimeService, publishFieldValueUpdates } from '../../../realtime'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { systemFieldMap } from '../../../resources/system-records'
 import type { ConvertQuoteToWorkOrderInput } from '../types'
 
 const logger = createScopedLogger('money:convert-quote')
@@ -114,22 +114,19 @@ export async function stampQuoteDepositsOnWorkOrder(params: {
 export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInput) {
   const { organizationId, userId, quoteInstanceId } = input
   const handler = new UnifiedCrudHandler(organizationId, userId)
-  const cache = getOrgCache()
   const quoteRecordId = toRecordId('quote', quoteInstanceId)
 
   // ─── Step 1: assert convertible ─────────────────────────────────────────────
-  const cf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'quote_status',
-      'quote_title',
-      'quote_contact',
-      'quote_request',
-      'quote_pricing_model',
-      'quote_invoice_timing',
-      'quote_work_orders',
-      'service_request_address',
-    ] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'quote_status',
+    'quote_title',
+    'quote_contact',
+    'quote_request',
+    'quote_pricing_model',
+    'quote_invoice_timing',
+    'quote_work_orders',
+    'service_request_address',
+  ] as const)
 
   const quoteFieldIds = [
     cf.quote_status,
@@ -219,25 +216,23 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
   // ─── Step 4: copy lines, ordered by sortOrder ───────────────────────────────
   // No `line_item_quote` on the copies — the quote keeps its own lines untouched;
   // the job gets its own set.
-  const lineCf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'line_item_name',
-      'line_item_description',
-      'line_item_qty',
-      'line_item_unit',
-      'line_item_unit_price',
-      'line_item_line_total',
-      'line_item_taxable',
-      'line_item_category',
-      'line_item_discount',
-      'line_item_sort_order',
-      'line_item_catalog_item',
-      'line_item_optional',
-      'line_item_optional_selected',
-      'line_item_source_line',
-      'line_item_photos',
-    ] as const)
+  const lineCf = await systemFieldMap(undefined, organizationId, [
+    'line_item_name',
+    'line_item_description',
+    'line_item_qty',
+    'line_item_unit',
+    'line_item_unit_price',
+    'line_item_line_total',
+    'line_item_taxable',
+    'line_item_category',
+    'line_item_discount',
+    'line_item_sort_order',
+    'line_item_catalog_item',
+    'line_item_optional',
+    'line_item_optional_selected',
+    'line_item_source_line',
+    'line_item_photos',
+  ] as const)
 
   const { ids: lineInstanceIds } = await handler.listFiltered({
     entityDefinitionId: 'line_item',
@@ -281,7 +276,7 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
   for (const lineInstanceId of lineInstanceIds) {
     const lineRecordId = toRecordId('line_item', lineInstanceId)
     const values = await handler.getFieldValues(lineRecordId, lineFieldIds)
-    // `bySystemAttributes` yields `CustomFieldEntity | null` per key — a field the
+    // `systemFieldMap` yields `CustomFieldEntity | null` per key — a field the
     // org has not materialised is `null`, not absent — so accept both.
     const get = (f?: { id: string } | null) => (f ? firstTyped(values.get(f.id)) : undefined)
 

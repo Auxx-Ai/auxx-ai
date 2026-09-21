@@ -6,7 +6,6 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { getOrgCache } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { firstTyped } from '../../field-values/client'
 import type { FileValue } from '../../field-values/converters'
@@ -14,6 +13,7 @@ import { FieldValueService } from '../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { flushTxWriteScope } from '../../resources/crud/tx-write-flush'
 import { runInTxWrite } from '../../resources/crud/tx-write-scope'
+import { systemFieldMap } from '../../resources/system-records'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import {
   allocateInvoiceLine,
@@ -63,7 +63,7 @@ const LINE_ROW_ATTRS = [
 
 /**
  * Exported so the MI2 auto-draft builder (`money/auto-invoice.ts`) can read the same field
- * set via `cache.from(...).bySystemAttributes(LINE_COPY_ATTRS)` and pass the identically-typed
+ * set via `systemFieldMap(db, organizationId, LINE_COPY_ATTRS)` and pass the identically-typed
  * result into {@link copyLineOntoInvoice} without redeclaring the attribute list.
  */
 export const LINE_COPY_ATTRS = [
@@ -209,13 +209,13 @@ export async function createInvoiceShell(input: {
 }) {
   const { organizationId, userId, workOrderInstanceId, issuedAt, extraValues, db } = input
   const handler = new UnifiedCrudHandler(organizationId, userId, db)
-  const cache = getOrgCache()
   const workOrderRecordId = toRecordId('work_order', workOrderInstanceId)
 
   // ─── Step 1: contact + linked quote ─────────────────────────────────────────
-  const woCf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['work_order_contact', 'work_order_quote'] as const)
+  const woCf = await systemFieldMap(db, organizationId, [
+    'work_order_contact',
+    'work_order_quote',
+  ] as const)
   const woFieldIds = [woCf.work_order_contact, woCf.work_order_quote]
     .filter(Boolean)
     .map((f) => f!.id)
@@ -241,14 +241,12 @@ export async function createInvoiceShell(input: {
   let taxRate: number | null = null
 
   if (quoteRecordId) {
-    const quoteCf = await cache
-      .from(organizationId, 'customFields')
-      .bySystemAttributes([
-        'quote_discount_type',
-        'quote_discount_value',
-        'quote_tax_name',
-        'quote_tax_rate',
-      ] as const)
+    const quoteCf = await systemFieldMap(db, organizationId, [
+      'quote_discount_type',
+      'quote_discount_value',
+      'quote_tax_name',
+      'quote_tax_rate',
+    ] as const)
     const quoteFieldIds = [
       quoteCf.quote_discount_type,
       quoteCf.quote_discount_value,
@@ -314,7 +312,6 @@ export async function createInvoiceShell(input: {
 
   return {
     handler,
-    cache,
     workOrderRecordId,
     contactRecordId,
     quoteRecordId,
@@ -452,12 +449,10 @@ async function composeInvoiceFromWorkOrder(
 
   // ─── Steps 1–3: contact + quote read, billing inheritance, invoice create ──
   const shell = await createInvoiceShell({ organizationId, userId, workOrderInstanceId })
-  const { handler, cache, recordId: invoiceRecordId, instanceId: invoiceInstanceId } = shell
+  const { handler, recordId: invoiceRecordId, instanceId: invoiceInstanceId } = shell
 
   // ─── Step 4: re-validate requested lines (concurrency guard) ───────────────
-  const lineCf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...LINE_COPY_ATTRS])
+  const lineCf = await systemFieldMap(undefined, organizationId, [...LINE_COPY_ATTRS])
   const lineFieldIds = Object.values(lineCf)
     .filter(Boolean)
     .map((f) => f!.id)
@@ -560,12 +555,9 @@ async function composeInvoiceFromWorkOrder(
 export async function deleteInvoiceLine(input: DeleteInvoiceLineInput): Promise<void> {
   const { organizationId, userId, lineInstanceId } = input
   const handler = new UnifiedCrudHandler(organizationId, userId)
-  const cache = getOrgCache()
   const lineRecordId = toRecordId('line_item', lineInstanceId)
 
-  const cf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['line_item_invoice'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, ['line_item_invoice'] as const)
   const fieldIds = [cf.line_item_invoice].filter(Boolean).map((f) => f!.id)
   const values = await handler.getFieldValues(lineRecordId, fieldIds)
 
@@ -578,9 +570,7 @@ export async function deleteInvoiceLine(input: DeleteInvoiceLineInput): Promise<
   }
   const { entityInstanceId: invoiceInstanceId } = parseRecordId(invoiceRecordId)
 
-  const invoiceCf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['invoice_status'] as const)
+  const invoiceCf = await systemFieldMap(undefined, organizationId, ['invoice_status'] as const)
   const statusFieldIds = invoiceCf.invoice_status ? [invoiceCf.invoice_status.id] : []
   const invoiceValues = await handler.getFieldValues(invoiceRecordId, statusFieldIds)
   const statusTyped = invoiceCf.invoice_status

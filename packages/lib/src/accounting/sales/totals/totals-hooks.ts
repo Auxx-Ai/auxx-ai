@@ -5,7 +5,6 @@ import { createScopedLogger } from '@auxx/logger'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { getOrgCache } from '../../../cache'
 import { isFieldConnectorManaged } from '../../../data-connectors/managed-fields'
 import { readEditStamp } from '../../../entity-instances/edit-snapshot'
 import { BadRequestError } from '../../../errors'
@@ -15,6 +14,7 @@ import { FieldValueService } from '../../../field-values/field-value-service'
 import { readFieldScalars } from '../../../field-values/read-field-scalars'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { unwrapRelationId } from '../../../resources/events/captured-values'
+import { systemFieldMap } from '../../../resources/system-records'
 import { syncInvoicePaymentState } from '../../money/invoice-payments/payment-state'
 import type {
   DiscountType,
@@ -529,7 +529,6 @@ async function recomputeDocumentTotals(params: {
   const spec = DOCUMENT_TOTALS_SPECS[documentType]
   const documentRecordId = toRecordId(documentType, documentInstanceId)
   const handler = new UnifiedCrudHandler(organizationId, userId, db)
-  const cache = getOrgCache()
 
   const headerAttrs = [
     spec.billing.discountTypeAttr,
@@ -567,9 +566,11 @@ async function recomputeDocumentTotals(params: {
     ...(spec.allocatesHeaderDiscount ? [spec.line.netTotalAttr] : []),
   ].filter((a): a is SystemAttribute => a !== undefined)
 
-  const cf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>([...headerAttrs, ...mirrorAttrs, ...lineAttrs])
+  const cf = await systemFieldMap<SystemAttribute>(db, organizationId, [
+    ...headerAttrs,
+    ...mirrorAttrs,
+    ...lineAttrs,
+  ])
 
   const discountTypeField = spec.billing.discountTypeAttr
     ? cf[spec.billing.discountTypeAttr]
@@ -918,9 +919,11 @@ export async function recomputeLineTotal(params: {
   const lineRecordId = toRecordId(line.lineEntityType, lineInstanceId)
   const handler = new UnifiedCrudHandler(organizationId, userId, db)
 
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>([line.qtyAttr, line.unitPriceAttr, line.lineTotalAttr])
+  const cf = await systemFieldMap<SystemAttribute>(db, organizationId, [
+    line.qtyAttr,
+    line.unitPriceAttr,
+    line.lineTotalAttr,
+  ])
   const qtyField = cf[line.qtyAttr]
   const unitPriceField = cf[line.unitPriceAttr]
   if (!qtyField || !unitPriceField) return
@@ -978,14 +981,12 @@ export async function resolveLineParentDocument(params: {
   const lineRecordId = toRecordId('line_item', lineInstanceId)
   const handler = new UnifiedCrudHandler(organizationId, userId)
 
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'line_item_quote',
-      'line_item_invoice',
-      'line_item_order',
-      'line_item_work_order',
-    ] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'line_item_quote',
+    'line_item_invoice',
+    'line_item_order',
+    'line_item_work_order',
+  ] as const)
 
   // Resolve the parent quote — work_order lines have no stored totals in MQ1, skip.
   if (cf.line_item_quote) {
@@ -1232,9 +1233,9 @@ export const recomputeOnCreditMemoLineChange: EntityFieldChangeHandler = async (
     })
   }
 
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['credit_memo_line_credit_memo'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'credit_memo_line_credit_memo',
+  ] as const)
   if (!cf.credit_memo_line_credit_memo) return
 
   const handler = new UnifiedCrudHandler(organizationId, userId)
@@ -1288,9 +1289,9 @@ export const recomputeOnVendorCreditLineChange: EntityFieldChangeHandler = async
     })
   }
 
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['vendor_credit_line_vendor_credit'] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'vendor_credit_line_vendor_credit',
+  ] as const)
   if (!cf.vendor_credit_line_vendor_credit) return
 
   const handler = new UnifiedCrudHandler(organizationId, userId)

@@ -30,7 +30,20 @@ const h = vi.hoisted(() => ({
   markInstallmentsInvoiced: vi.fn(),
 }))
 
-vi.mock('@auxx/database', () => ({ database: {}, schema: {} }))
+vi.mock('@auxx/database', () => ({
+  database: {},
+  schema: {
+    EntityInstance: {
+      id: 'id',
+      organizationId: 'organizationId',
+      entityDefinitionId: 'entityDefinitionId',
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
+      archivedAt: 'archivedAt',
+      displayName: 'displayName',
+    },
+  },
+}))
 vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({ from: () => ({ bySystemAttributes: h.bySystemAttributes }) }),
   getEntityDefIdResolver: async () => (slug: string) => `def-${slug}`,

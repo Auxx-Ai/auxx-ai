@@ -5,7 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { requireCachedEntityDefId } from '../../cache'
 import type { EntityFieldChangeHandler } from '../../field-hooks/types'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
@@ -17,6 +17,7 @@ import {
   publishFieldValueUpdates,
 } from '../../realtime'
 import { defineParentReconciler } from '../../reconcilers/parent-reconciler'
+import { systemFieldMap } from '../../resources/system-records'
 
 const logger = createScopedLogger('purchasing:vendor-bill-balance')
 
@@ -134,9 +135,7 @@ export async function recalculateVendorBillBalance(
   vendorBillInstanceId: string,
   db?: Database
 ): Promise<boolean> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>([...BALANCE_ATTRS])
+  const fields = await systemFieldMap<SystemAttribute>(db, organizationId, [...BALANCE_ATTRS])
 
   const totalField = fields.vendor_bill_total
   const amountPaidField = fields.vendor_bill_amount_paid

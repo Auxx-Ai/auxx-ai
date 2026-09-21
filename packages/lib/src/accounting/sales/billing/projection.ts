@@ -7,7 +7,7 @@ import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { fromZonedTime } from 'date-fns-tz'
 import { and, asc, eq, sql } from 'drizzle-orm'
-import { getEntityDefIdResolver, getOrgCache } from '../../../cache'
+import { getEntityDefIdResolver } from '../../../cache'
 import { listVisitsForWorkOrder, readVisits } from '../../../dispatch/board'
 import { firstTyped } from '../../../field-values/client'
 import { FieldValueService } from '../../../field-values/field-value-service'
@@ -18,6 +18,7 @@ import {
   type RecurrencePattern,
 } from '../../../recurrence'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { systemFieldMap } from '../../../resources/system-records'
 import {
   INVOICE_DRAFT_SUBJECT_TYPE,
   type InvoiceBillingKind,
@@ -105,9 +106,7 @@ async function readSystemValues(
   recordId: ReturnType<typeof toRecordId>,
   attributes: readonly string[]
 ) {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(attributes as never)
+  const fields = await systemFieldMap(undefined, organizationId, attributes as never)
   const fieldIds = Object.values(fields as Record<string, { id: string } | null>)
     .filter(Boolean)
     .map((field) => field!.id)
@@ -133,9 +132,11 @@ export async function batchReadSystemValues(input: {
 }): Promise<Map<string, Map<string, unknown>>> {
   const result = new Map<string, Map<string, unknown>>()
   if (input.entityInstanceIds.length === 0) return result
-  const fields = (await getOrgCache()
-    .from(input.organizationId, 'customFields')
-    .bySystemAttributes(input.attributes as never)) as Record<string, { id: string } | null>
+  const fields = (await systemFieldMap(
+    undefined,
+    input.organizationId,
+    input.attributes as never
+  )) as Record<string, { id: string } | null>
   const fieldRefs = input.attributes
     .map((attribute) => fields[attribute]?.id)
     .filter(Boolean)

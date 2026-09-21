@@ -4,7 +4,8 @@ import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
-import { getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { requireCachedEntityDefId } from '../../cache'
+import { systemFieldMap } from '../../resources/system-records'
 
 const logger = createScopedLogger('bom:subpart-graph')
 
@@ -25,12 +26,13 @@ export async function loadSubpartGraph(
   organizationId: string,
   rootPartId: string
 ): Promise<Map<string, { childId: string; qty: number }[]>> {
-  const cache = getOrgCache()
   const subpartDefId = await requireCachedEntityDefId(organizationId, 'subpart')
 
-  const cfFields = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['subpart_parent_part', 'subpart_child_part', 'subpart_quantity'] as const)
+  const cfFields = await systemFieldMap(undefined, organizationId, [
+    'subpart_parent_part',
+    'subpart_child_part',
+    'subpart_quantity',
+  ] as const)
 
   const spParentField = cfFields.subpart_parent_part
   const spChildField = cfFields.subpart_child_part
@@ -138,12 +140,13 @@ export async function loadDirectSubparts(
   organizationId: string,
   partInstanceId: string
 ): Promise<{ childId: string; qty: number }[]> {
-  const cache = getOrgCache()
   const subpartDefId = await requireCachedEntityDefId(organizationId, 'subpart')
 
-  const cfFields = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['subpart_parent_part', 'subpart_child_part', 'subpart_quantity'] as const)
+  const cfFields = await systemFieldMap(db, organizationId, [
+    'subpart_parent_part',
+    'subpart_child_part',
+    'subpart_quantity',
+  ] as const)
 
   const spParentField = cfFields.subpart_parent_part
   const spChildField = cfFields.subpart_child_part

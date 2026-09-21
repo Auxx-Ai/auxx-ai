@@ -74,6 +74,15 @@ vi.mock('@auxx/database', () => {
   const column = (name: string) => ({ name })
   return {
     schema: {
+      EntityInstance: {
+        id: column('id'),
+        organizationId: column('organizationId'),
+        entityDefinitionId: column('entityDefinitionId'),
+        createdAt: column('createdAt'),
+        updatedAt: column('updatedAt'),
+        archivedAt: column('archivedAt'),
+        displayName: column('displayName'),
+      },
       FieldValue: {
         organizationId: column('organizationId'),
         entityId: column('entityId'),

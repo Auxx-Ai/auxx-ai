@@ -11,8 +11,8 @@
  * enforced while it is not.
  */
 
-import { getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
+import { systemFieldMap } from '../../resources/system-records'
 
 /** The two attributes without which a cost cannot be expressed at all. */
 const REQUIRED_COST_ATTRIBUTES = ['stock_movement_unit_cost', 'stock_movement_cost_basis'] as const
@@ -33,9 +33,7 @@ export async function assertCostFieldsMaterialized(
   organizationId: string,
   message = 'Receiving is not available until the stock movement cost fields are provisioned'
 ): Promise<void> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...REQUIRED_COST_ATTRIBUTES])
+  const fields = await systemFieldMap(undefined, organizationId, [...REQUIRED_COST_ATTRIBUTES])
   if (!fields.stock_movement_unit_cost || !fields.stock_movement_cost_basis) {
     throw new UnprocessableEntityError(message)
   }

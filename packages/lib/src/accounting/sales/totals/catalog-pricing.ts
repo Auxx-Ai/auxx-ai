@@ -22,6 +22,7 @@ import { firstTyped } from '../../../field-values/client'
 import { createFieldValueContext } from '../../../field-values/field-value-helpers'
 import { setValueWithType } from '../../../field-values/field-value-mutations'
 import { getRealtimeService, publishFieldValueUpdates } from '../../../realtime'
+import { systemFieldMap } from '../../../resources/system-records'
 
 const logger = createScopedLogger('money:catalog-pricing')
 
@@ -70,15 +71,13 @@ interface CatalogPricingFields {
 async function resolveCatalogPricingFields(
   organizationId: string
 ): Promise<CatalogPricingFields | null> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'catalog_item_part',
-      'catalog_item_cost',
-      'catalog_item_markup',
-      'catalog_item_default_unit_price',
-      'catalog_item_active',
-    ] as const)
+  const cf = await systemFieldMap(undefined, organizationId, [
+    'catalog_item_part',
+    'catalog_item_cost',
+    'catalog_item_markup',
+    'catalog_item_default_unit_price',
+    'catalog_item_active',
+  ] as const)
 
   if (!cf.catalog_item_part || !cf.catalog_item_cost) {
     logger.warn('catalog_item pricing fields not found — org not migrated (044)', {

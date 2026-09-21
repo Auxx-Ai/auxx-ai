@@ -34,6 +34,15 @@ function makeChain() {
 vi.mock('@auxx/database', () => ({
   database: { select: () => makeChain() },
   schema: {
+    EntityInstance: {
+      id: 'id',
+      organizationId: 'organizationId',
+      entityDefinitionId: 'entityDefinitionId',
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
+      archivedAt: 'archivedAt',
+      displayName: 'displayName',
+    },
     FieldValue: {
       entityId: 'entityId',
       organizationId: 'organizationId',

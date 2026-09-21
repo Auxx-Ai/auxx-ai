@@ -63,7 +63,6 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { PgTransaction } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, type AuxxErrorDetails, UnprocessableEntityError } from '../../../errors'
 import { findSystemRecordIdsByValue } from '../../../resources/system-records'
@@ -816,11 +815,7 @@ async function loadAccountsByCode(
   organizationId: string,
   codes: string[]
 ): Promise<Map<string, ResolvedAccount[]>> {
-  const fields = await loadChartAccountFields(
-    organizationId,
-    NOT_PROVISIONED,
-    db instanceof PgTransaction ? db : undefined
-  )
+  const fields = await loadChartAccountFields(organizationId, NOT_PROVISIONED, db)
 
   const defId = fields.code.entityDefinitionId
   if (!defId) return new Map()

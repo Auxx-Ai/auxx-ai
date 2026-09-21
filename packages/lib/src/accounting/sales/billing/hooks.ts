@@ -14,6 +14,7 @@ import type {
 } from '../../../field-hooks'
 import { firstTyped } from '../../../field-values/client'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { systemFieldMap } from '../../../resources/system-records'
 import { recomputeTotals } from '../totals/totals-hooks'
 import type { WorkOrderBillingBasis, WorkOrderInvoiceTiming } from '../types'
 import { hasActiveAllocations, listInstallments, releaseLineAllocations } from './allocations'
@@ -114,10 +115,10 @@ export const guardBillingProjectionWrite: FieldPreHookHandler = async (event) =>
  * schedule first — silently reinterpreting billed history would corrupt the projection.
  */
 export const guardBillingConfiguration: FieldPreHookHandler = async (event) => {
-  const cache = getOrgCache()
-  const fields = await cache
-    .from(event.organizationId, 'customFields')
-    .bySystemAttributes(['work_order_pricing_model', 'work_order_invoice_timing'] as const)
+  const fields = await systemFieldMap(undefined, event.organizationId, [
+    'work_order_pricing_model',
+    'work_order_invoice_timing',
+  ] as const)
   const handler = new UnifiedCrudHandler(event.organizationId, event.userId ?? '')
   const fieldIds = [fields.work_order_pricing_model, fields.work_order_invoice_timing]
     .filter(Boolean)
@@ -214,9 +215,10 @@ export const guardAllocatedSourceLineChange: FieldPreHookHandler = async (event)
     .reduce((total, allocation) => total + allocation.amount, 0)
   if (contractAllocated === 0) return event.newValue
 
-  const fields = await getOrgCache()
-    .from(event.organizationId, 'customFields')
-    .bySystemAttributes(['line_item_qty', 'line_item_unit_price'] as const)
+  const fields = await systemFieldMap(undefined, event.organizationId, [
+    'line_item_qty',
+    'line_item_unit_price',
+  ] as const)
   const qtyField = fields.line_item_qty
   const unitPriceField = fields.line_item_unit_price
   if (!qtyField || !unitPriceField) return event.newValue
@@ -279,10 +281,7 @@ export const guardAllocatedLineDelete: EntityPreDeleteHandler = async (event) =>
     throw new BadRequestError('Remove this line from its draft invoice before deleting it')
   }
   if (invoiceAllocation) {
-    const cache = getOrgCache()
-    const cf = await cache
-      .from(event.organizationId, 'customFields')
-      .bySystemAttributes(['invoice_status'] as const)
+    const cf = await systemFieldMap(undefined, event.organizationId, ['invoice_status'] as const)
     let status: unknown
     if (cf.invoice_status) {
       const handler = new UnifiedCrudHandler(event.organizationId, event.userId)

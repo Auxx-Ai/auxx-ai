@@ -18,7 +18,8 @@ import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache } from '../../../cache'
+import { getCachedEntityDefId } from '../../../cache'
+import { systemFieldMap } from '../../../resources/system-records'
 import { foldKey } from './assign'
 import { guard } from './guard'
 
@@ -44,14 +45,12 @@ export async function findOrderByReference(
       const purchaseOrderDefId = await getCachedEntityDefId(organizationId, 'purchase_order')
       if (!purchaseOrderDefId) return null
 
-      const fields = await getOrgCache()
-        .from(organizationId, 'customFields')
-        .bySystemAttributes([
-          'purchase_order_vendor',
-          'purchase_order_number',
-          'purchase_order_reference',
-          'purchase_order_status',
-        ] as const)
+      const fields = await systemFieldMap(db, organizationId, [
+        'purchase_order_vendor',
+        'purchase_order_number',
+        'purchase_order_reference',
+        'purchase_order_status',
+      ] as const)
 
       const vendorField = fields.purchase_order_vendor
       const numberField = fields.purchase_order_number

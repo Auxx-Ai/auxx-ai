@@ -9,7 +9,7 @@ import { toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { requireCachedEntityDefId } from '../../cache'
 import { AuxxError } from '../../errors'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
@@ -20,6 +20,7 @@ import {
   publishFieldValueUpdates,
 } from '../../realtime'
 import { PurchaseOrderStatus } from '../../resources/registry/enum-values'
+import { systemFieldMap } from '../../resources/system-records'
 import {
   derivePurchaseOrderStatuses,
   type PurchaseOrderBillingStatusValue,
@@ -321,9 +322,7 @@ function toStatusError(
  * is unavailable.
  */
 async function resolveStatusFields(organizationId: string): Promise<StatusFields | undefined> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>([...STATUS_ATTRS])
+  const fields = await systemFieldMap<SystemAttribute>(undefined, organizationId, [...STATUS_ATTRS])
 
   const orderRelField = fields.purchase_order_line_purchase_order
   const orderedField = fields.purchase_order_line_quantity_ordered
