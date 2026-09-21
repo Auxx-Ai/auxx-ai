@@ -904,6 +904,13 @@ a 500.
 | `MoneyRefundSettlement` | A refund settling a credit memo |
 | `PaymentAccount` | The org's Stripe Connect account. `money/stripe-connect/account.ts` is its ONLY writer |
 
+`money/reads.ts` and `money/writes.ts` are the family's readers and writers: `readMovements` /
+`readMovement`, `listMovementApplications`, `listLiveApplications` (apply rows minus the ones an
+`unapply` names — the read a void or a refundable-receipt list wants), `sumAppliedByMovement`,
+`sumAppliedToInvoice` / `sumAppliedToVendorBill` / `sumAppliedToOrder`, `listRefundSettlements`,
+`findSourceLink`, and `insertApplication` beside `commands/insert-movement.ts`'s `insertMovement`.
+`netApplied` in `money/client.ts` is the pure reducer over application rows.
+
 **Dates model two precisions.** `datePrecision` is `'instant'` (with `occurredAt`) or `'date'`
 (with `occurredOn`). A card charge is an instant; a hand-recorded payment is a date. Timezone
 conversion applies only to instants.
@@ -1190,6 +1197,15 @@ Every one carries `(organizationId, id)` as a unique, and every cross-table FK i
 | `FinancialSourceCoverage` | How far acquisition has progressed. CHECKed: `accepted + rejected + pending = fetched` |
 | `FinancialSourceObject` | The provider object an observation is about |
 
+`money/customer-money/source-reads.ts` and `source-writes.ts` own all five:
+`readSourceAccounts` / `readSourceObjects` / `readAcceptance` / `readOrderCoverageRow`,
+`findSourceObjectByIdentity` (all five columns of the unique key), `readCurrentObservations` —
+the one definition of "latest", ordered `(observedAt, id)` — and the upserts both the storage and
+the evidence lane call, including `refreshOrderCoverageCounts`, whose one predicate keys the tally
+on the acceptance's resolved `orderInstanceId` — an acceptance that resolved to no order is
+coverage of no order — so the two lanes cannot disagree about `complete`. `payouts/entry-reads.ts`
+is the same for `ProcessorBalanceEntry` (`readEntry`, `listPayoutEntries`).
+
 🔑 **`FinancialSourceAccount.id` is the source scope key** (brief 47) — not the connector id, not
 the credential id. Neither of those is 1:1 with a store, and neither survives a rebuild or a
 reconnect. It is also what scopes the role map (§4.4), so two stores can keep revenue apart.
@@ -1218,7 +1234,7 @@ naming one would need a role per gateway, and the vocabulary is closed (§6.1).
 | File | Owns |
 | --- | --- |
 | `rails/client.ts` | The vocabularies, the read model, and the pure handle arithmetic (`normaliseGatewayHandle`) |
-| `rails/reads.ts` / `writes.ts` | Every read and write over `payment_gateway`. **No delete** — `status: 'closed'` is the removal answer |
+| `rails/reads.ts` / `writes.ts` | Every read and write over `payment_gateway`, plus `listLinkedFeeds` — the one feed-discovery read, every live `FinancialSourceAccount` linked to a rail. **No delete** — `status: 'closed'` is the removal answer |
 | `rails/rail-catalogue.ts` | `suggestRail(handle)` → a rail name, settlement source, fee treatment and two account names. 🛑 **Suggestions, never routing**, and the function is TOTAL: an unknown handle is never refused |
 | `rails/mint-rail-accounts.ts` | Mints the chart accounts one rail needs. 🛑 **Not inside `createPaymentGateway`**, and 🛑 **a minted account gets NO role** — it is named by a rail-scoped `GlRoleAssignment` row |
 | `rails/rail-fee-status.ts` | What the close can honestly say about a rail's processor fees. 🛑 **A fact, never an alarm and never a refusal** — it produces a date, and `prepareClose` does not call it |
@@ -1248,6 +1264,11 @@ pins the raw columns so the feed cannot rewrite a posted row.
 
 ⚠️ `banking/writes.ts` reaches the feed through its **leaf** module, never the `./feed` barrel,
 because that barrel pulls the Stripe SDK and the connector engine.
+
+🛑 **Disconnecting a feed goes through `disconnectConnectors`, re-arming through
+`rearmConnector`** (`data-connectors/mutations.ts`), never a hand-written status write: the feed is
+provisioned `syncBehavior: 'scheduled'`, so the 12-hour repeat job has to be removed with the
+status and registered again with it.
 
 ---
 
@@ -1281,6 +1302,11 @@ Two partial unique indexes carry the design:
 `build-batches.ts` uses `onConflictDoNothing` rather than a read-then-write: two builders racing
 the same grain must produce one batch, and the partial index is the only thing that can settle
 that.
+
+`export/queue-reads.ts` owns the export tables' reads: `listExportBatches` and
+`countExportBatchesByState` behind the Outbox, and `readLiveBatchMemberships` for anyone asking
+which live batch holds a posting. The list's month filter is the half-open window from
+`monthBounds` (`ledger/periods/periods.ts`) — `2026-02-31` is not a `date`.
 
 ### 11.2 The two gates
 
@@ -1565,7 +1591,9 @@ scheduled door so that a scheduled walk and a pressed one are the same walk.
 
 ## 13. Statements and Reports
 
-`accounting/reports/`. All of them are presentations of one sweep over `GlPostingLine`.
+`accounting/reports/`. All of them are presentations of one sweep over `GlPostingLine`. The
+aggregates share the line predicate — `standingLineFilter` (`ledger/reads/standing-lines.ts`) over
+`POSTED_STATUSES`, the one export in `ledger/types.ts` — and keep their own select lists.
 
 | Report | File | Shape |
 | --- | --- | --- |
@@ -1666,7 +1694,14 @@ instead of pretending the four are the same thing. It is two queries rather than
 
 `findLiveSubjectPosting` is the read every "reverse this record's entry" path makes first: a
 reversal deletes the original's subject row, so anything still `subject` and not `reversed` is what
-is standing in the books right now.
+is standing in the books right now. `findLiveSubjectPostings` is its batch.
+
+`findLinkedPostings` is the `parent` / `member` read and takes `statuses` **required**: those link
+rows survive the reversal, so "posted" and "any" are different answers — order recognition asks for
+`['posted']` and a reversed credit memo therefore does not block it. `readPostingHeaders` is the
+batched header read (the `FOR UPDATE` header reads stay in `ledger/post/`),
+`readControlAccountLine` the A/R or A/P leg an entry actually landed in, and
+`countPostingsForLineSource` the retry counter a key's `attempt` is minted from.
 
 🛑 **Nothing in these reads is re-derived.** `totalMinor` is the header's own recorded total and
 never `SUM(lines)`; `accountName` is the snapshot on the line and **there is never a join to the
