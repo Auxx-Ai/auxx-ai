@@ -1,10 +1,11 @@
 // packages/lib/src/accounting/money/payouts/evidence-reads.ts
 import { type Database, schema } from '@auxx/database'
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { z } from 'zod'
 import { BadRequestError, ConflictError } from '../../../errors'
 import { systemDefId, systemRecordScope, systemValueJoin } from '../../../resources/system-records'
+import { findLiveSubjectPostings } from '../../ledger/reads/list-postings'
 import { exactEvidenceMinor } from '../customer-money/evidence-contracts'
 import { payoutRecordEvidenceSchema } from '../customer-money/record-contracts'
 import { currentObservationFilter } from '../customer-money/source-reads'
@@ -436,26 +437,11 @@ async function livePostingId(
   organizationId: string,
   instanceId: string
 ): Promise<string | null> {
-  const [row] = await db
-    .select({ id: schema.GlPosting.id })
-    .from(schema.GlPostingSource)
-    .innerJoin(
-      schema.GlPosting,
-      and(
-        eq(schema.GlPosting.organizationId, schema.GlPostingSource.organizationId),
-        eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.GlPostingSource.organizationId, organizationId),
-        eq(schema.GlPostingSource.sourceKind, 'payout'),
-        eq(schema.GlPostingSource.sourceId, instanceId),
-        ne(schema.GlPosting.status, 'reversed')
-      )
-    )
-    .limit(1)
-  return row?.id ?? null
+  const live = await findLiveSubjectPostings(db, organizationId, {
+    sourceKind: 'payout',
+    sourceIds: [instanceId],
+  })
+  return live.get(instanceId)?.glPostingId ?? null
 }
 
 /**

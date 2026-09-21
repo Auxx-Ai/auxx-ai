@@ -40,15 +40,13 @@ import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { readFieldRelations, readFieldScalars } from '../../field-values/read-field-scalars'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
+import { standingLineFilter } from '../ledger/reads/standing-lines'
 import { loadRoleAccountCodes } from '../ledger/roles/resolve-roles'
 import { type StatementColumn, type StatementRow, totalRow } from './rows'
 import { signedBalance } from './statement-math'
 import { readTrialBalance } from './trial-balance'
 
 const logger = createScopedLogger('postings:reports:aging')
-
-/** Only a posted entry counts - the same rule every reader in this folder follows. */
-const POSTED_STATUSES = ['posted', 'reversed'] as const
 
 /** Which receivable/payable role this read walks. */
 export type AgingSide = 'receivable' | 'payable'
@@ -271,15 +269,13 @@ export async function readAging(
       })
       .from(schema.GlPostingLine)
       .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
+      // By id (task 15), not by code: a renumber of the A/R or A/P account
+      // between two postings must not split its open documents in two.
       .where(
-        and(
-          eq(schema.GlPosting.organizationId, organizationId),
-          inArray(schema.GlPosting.status, [...POSTED_STATUSES]),
-          // By id (task 15), not by code: a renumber of the A/R or A/P account
-          // between two postings must not split its open documents in two.
-          eq(schema.GlPostingLine.glAccountId, account.glAccountId),
-          lte(schema.GlPosting.txnDate, asOf)
-        )
+        standingLineFilter(organizationId, {
+          to: asOf,
+          glAccountIds: [account.glAccountId],
+        })
       )
 
     // ── Net per document, keyed on sourceType/sourceId ───────────────────

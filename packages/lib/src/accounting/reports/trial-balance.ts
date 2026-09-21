@@ -26,14 +26,12 @@ import { AuxxError } from '../../errors'
 import { compareAccountsByCodeThenName } from '../ledger/chart/account-label'
 import type { GlAccountSubtypeValue } from '../ledger/chart/account-subtype'
 import { GL_ACCOUNT_TYPES, type GlAccountTypeValue } from '../ledger/chart/default-chart'
+import { standingLineFilter } from '../ledger/reads/standing-lines'
 import { listChartAccounts } from '../ledger/roles/role-map'
 import type { ChartAccountRow } from '../ledger/types'
 import { signedBalance } from './statement-math'
 
 const logger = createScopedLogger('postings:reports:trial-balance')
-
-/** Only a posted entry counts - see `verify-balance.ts` for why `pending`/`failed` do not. */
-const POSTED_STATUSES = ['posted', 'reversed'] as const
 
 /**
  * Statement order (asset, liability, equity, revenue, expense) as a rank map,
@@ -160,12 +158,7 @@ export async function readTrialBalance(
     }
     const chartById = new Map(chart.map((account) => [account.id, account]))
 
-    const bounds = [
-      eq(schema.GlPosting.organizationId, organizationId),
-      inArray(schema.GlPosting.status, [...POSTED_STATUSES]),
-      lte(schema.GlPosting.txnDate, to),
-    ]
-    if (from) bounds.push(gte(schema.GlPosting.txnDate, from))
+    const bounds = standingLineFilter(organizationId, { from, to })
 
     const grouped = await db
       .select({
@@ -180,7 +173,7 @@ export async function readTrialBalance(
       })
       .from(schema.GlPostingLine)
       .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
-      .where(and(...bounds))
+      .where(bounds)
       .groupBy(schema.GlPostingLine.glAccountId)
 
     const rows: TrialBalanceRow[] = grouped

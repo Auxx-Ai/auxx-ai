@@ -11,9 +11,23 @@ export {
 } from './ledger-summary'
 export {
   countDraftPostings,
+  type FindLinkedPostingsOptions,
+  findLinkedPostings,
+  findLiveSubjectPosting,
+  findLiveSubjectPostings,
+  type LinkedPosting,
   listPostings,
   listPostingsForSource,
   type SourcePosting,
 } from './list-postings'
-export { getPosting, readPostingLineSourceIds } from './read-posting'
+export {
+  countPostingsForLineSource,
+  getPosting,
+  type PostingHeader,
+  readControlAccountLine,
+  readPostingHeader,
+  readPostingHeaders,
+  readPostingLineSourceIds,
+} from './read-posting'
+export { type StandingLineFilter, standingLineFilter } from './standing-lines'
 export { summaryGrainKey } from './summary-grain'

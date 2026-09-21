@@ -1,6 +1,6 @@
 // packages/lib/src/accounting/ledger/periods/settled-periods.ts
 
-import { database, schema } from '@auxx/database'
+import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { ConflictError } from '../../../errors'
 import { getOrganizationSetting } from '../../../settings/settings-service'
@@ -189,19 +189,7 @@ export async function assertAccountingSetupUnfrozen(
   const frozen = keys.filter(isFrozenSetupSettingKey)
   if (frozen.length === 0) return
 
-  const [standing] = await database
-    .select({ id: schema.GlPosting.id })
-    .from(schema.GlPosting)
-    .where(
-      // Any row IS an entry since the export split: a GlPosting row only exists once
-      // the claim and its lines have committed, and nothing a provider answers can
-      // take it back out. The old `[posted, pending]` filter existed to skip rows
-      // that had been stamped `failed` by an EXPORT fault, which is exactly the
-      // freeze this guard must not let slip.
-      eq(schema.GlPosting.organizationId, organizationId)
-    )
-    .limit(1)
-  if (!standing) return
+  if (!(await hasStandingEntry(database, organizationId))) return
 
   throw new ConflictError(
     `${frozen.join(', ')} cannot change once the ledger holds an entry. ` +
@@ -210,4 +198,23 @@ export async function assertAccountingSetupUnfrozen(
       'can then be re-entered.',
     { keys: frozen.join(',') }
   )
+}
+
+/**
+ * Does this org's ledger hold an entry at all?
+ *
+ * Any row IS an entry since the export split: a `GlPosting` row only exists
+ * once the claim and its lines have committed, and nothing a provider answers
+ * can take it back out.
+ */
+export async function hasStandingEntry(
+  db: Database | Transaction,
+  organizationId: string
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: schema.GlPosting.id })
+    .from(schema.GlPosting)
+    .where(eq(schema.GlPosting.organizationId, organizationId))
+    .limit(1)
+  return !!row
 }

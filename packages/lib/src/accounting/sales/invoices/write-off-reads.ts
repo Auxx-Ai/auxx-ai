@@ -9,6 +9,7 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
 import { WRITE_OFF_SOURCE_TYPE } from '../../ledger/builders/write-off'
+import { countPostingsForLineSource } from '../../ledger/reads/read-posting'
 
 const INVOICE_ATTRIBUTES = [
   'invoice_status',
@@ -178,17 +179,9 @@ export async function countWriteOffPostings(
   organizationId: string,
   invoiceId: string
 ): Promise<number> {
-  const rows = await db
-    .selectDistinct({ glPostingId: schema.GlPosting.id })
-    .from(schema.GlPostingLine)
-    .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
-    .where(
-      and(
-        eq(schema.GlPosting.organizationId, organizationId),
-        eq(schema.GlPosting.postingType, 'write_off'),
-        eq(schema.GlPostingLine.sourceType, WRITE_OFF_SOURCE_TYPE),
-        eq(schema.GlPostingLine.sourceId, invoiceId)
-      )
-    )
-  return rows.length
+  return countPostingsForLineSource(db, organizationId, {
+    sourceType: WRITE_OFF_SOURCE_TYPE,
+    sourceId: invoiceId,
+    postingType: 'write_off',
+  })
 }

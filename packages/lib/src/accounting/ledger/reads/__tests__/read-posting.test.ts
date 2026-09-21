@@ -25,7 +25,7 @@
 import { type Database, schema } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
 import { NotFoundError } from '../../../../errors'
-import { getPosting, readPostingLineSourceIds } from '../read-posting'
+import { getPosting, readControlAccountLine, readPostingLineSourceIds } from '../read-posting'
 
 const ORG = 'org_1'
 const OTHER_ORG = 'org_2'
@@ -548,5 +548,56 @@ describe('readPostingLineSourceIds', () => {
       sourceType: 'payment_transaction',
     })
     expect(result._unsafeUnwrap()).toEqual(['ptx_1'])
+  })
+})
+
+describe('readControlAccountLine', () => {
+  /** A stub that records the `where` values and answers whatever it was seeded with. */
+  function controlStub(rows: unknown[]) {
+    let params: string[] = []
+    let ordered = false
+    const chain: Record<string, unknown> = {
+      from: () => chain,
+      where: (condition: unknown) => {
+        params = whereValues(condition)
+        return chain
+      },
+      orderBy: () => {
+        ordered = true
+        return chain
+      },
+      limit: () => chain,
+      // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
+      then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+        Promise.resolve(rows).then(resolve, reject),
+    }
+    return {
+      db: { select: () => chain } as unknown as Database,
+      params: () => params,
+      ordered: () => ordered,
+    }
+  }
+
+  it('narrows on the org, the posting, the direction and the counterparty type', async () => {
+    const stub = controlStub([{ glAccountId: 'gl_ar' }])
+    const line = await readControlAccountLine(stub.db, ORG, {
+      glPostingId: 'gp_1',
+      direction: 'credit',
+      counterpartyType: 'customer',
+    })
+    expect(line).toEqual({ glAccountId: 'gl_ar' })
+    for (const value of [ORG, 'gp_1', 'credit', 'customer']) expect(stub.params()).toContain(value)
+    // FIRST by line number, or two entries with the same legs could disagree.
+    expect(stub.ordered()).toBe(true)
+  })
+
+  it('answers null when the posting has no line on that side', async () => {
+    const stub = controlStub([])
+    const line = await readControlAccountLine(stub.db, ORG, {
+      glPostingId: 'gp_1',
+      direction: 'debit',
+      counterpartyType: 'vendor',
+    })
+    expect(line).toBeNull()
   })
 })

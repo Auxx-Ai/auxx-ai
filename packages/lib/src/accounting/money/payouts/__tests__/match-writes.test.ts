@@ -14,18 +14,20 @@ function database(results: unknown[][], frozen: unknown[] = [], movements: unkno
   const updates: Array<Record<string, unknown>> = []
   const chain = (rows: unknown[]) => {
     const link: Record<string, unknown> = {}
-    for (const key of ['from', 'innerJoin', 'where', 'limit']) link[key] = () => link
+    for (const key of ['from', 'innerJoin', 'where', 'orderBy', 'limit']) link[key] = () => link
     // biome-ignore lint/suspicious/noThenProperty: Drizzle query builders are awaitable.
     link.then = (resolve: (value: unknown[]) => void) => Promise.resolve(rows).then(resolve)
     return link
   }
+  // The linked-posting read is an ordinary `select` since R2, and every writer
+  // here makes it straight after reading the entry.
+  const queue = [results[0] ?? [], frozen, ...results.slice(1)]
   const db = {
     select: vi.fn(() => {
-      const rows = results.shift()
+      const rows = queue.shift()
       if (!rows) throw new Error('Unexpected extra query')
       return chain(rows)
     }),
-    selectDistinct: vi.fn(() => chain(frozen)),
     query: { MoneyTransaction: { findMany: async () => movements } },
     update: vi.fn(() => ({
       set: (values: Record<string, unknown>) => {

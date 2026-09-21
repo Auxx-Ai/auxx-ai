@@ -138,6 +138,27 @@ export function monthDateRange(periodKey: string): { from: string; to: string } 
   return { from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, '0')}` }
 }
 
+/**
+ * A `YYYY-MM` month as the HALF-OPEN `[first, next)` range of `YYYY-MM-DD` keys
+ * a `txnDate` filter wants - right for every month length without a table, and
+ * a December key rolls into January of the next year.
+ *
+ * @throws {BadRequestError} for anything but a real `YYYY-MM` month.
+ */
+export function monthBounds(month: string): { first: string; next: string } {
+  const parsed = parsePeriodKey(month)
+  if (parsed.granularity !== 'month') {
+    throw new BadRequestError(`Expected a YYYY-MM month, got "${month}"`, { month })
+  }
+  const nextYear = parsed.month === 12 ? parsed.year + 1 : parsed.year
+  const nextMonth = parsed.month === 12 ? 1 : parsed.month + 1
+  const pad = (value: number, width: number) => String(value).padStart(width, '0')
+  return {
+    first: `${pad(parsed.year, 4)}-${pad(parsed.month, 2)}-01`,
+    next: `${pad(nextYear, 4)}-${pad(nextMonth, 2)}-01`,
+  }
+}
+
 /** Use the accounting date for document/group identities and the period for calendar keys. */
 export function postingLockKey(entry: { periodKey: string; txnDate: string }): string {
   if (!isGroupPeriodKey(entry.periodKey)) {

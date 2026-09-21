@@ -23,6 +23,7 @@ import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { discardDraftPosting } from '../../ledger/post/draft-lines'
 import { isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
+import { readPostingHeaders } from '../../ledger/reads/read-posting'
 import type { BuiltEntry, GlPostingLineInput } from '../../ledger/types'
 import { readDocumentLedgerState, writeDocumentLedgerGeneration } from '../document-ledger-state'
 import type { DocumentEditInput } from './open'
@@ -281,13 +282,7 @@ async function readBuiltEntry(
   organizationId: string,
   glPostingId: string
 ): Promise<BuiltEntry | null> {
-  const [row] = await db
-    .select({ built: schema.GlPosting.built })
-    .from(schema.GlPosting)
-    .where(
-      and(eq(schema.GlPosting.id, glPostingId), eq(schema.GlPosting.organizationId, organizationId))
-    )
-    .limit(1)
+  const [row] = [...(await readPostingHeaders(db, organizationId, [glPostingId])).values()]
 
   const built = row?.built
   if (!built || typeof built !== 'object') return null

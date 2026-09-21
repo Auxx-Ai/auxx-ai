@@ -23,6 +23,7 @@ import {
   systemRecordScope,
   systemValueJoin,
 } from '../../../resources/system-records'
+import { findLiveSubjectPostings } from '../../ledger/reads/list-postings'
 import { listLinkedFeeds } from '../../rails/reads'
 import { resolvePayoutStatus } from './client'
 import { listPayoutEntries } from './entry-reads'
@@ -492,25 +493,16 @@ async function withLivePostings(
   // provider's payout id (`plans/accounting/payout-links.md` §11.5).
   const instanceIds = records.map((record) => record.payoutId)
   if (instanceIds.length === 0) return records
-  const rows = await db
-    .select({ sourceId: schema.GlPostingSource.sourceId, glPostingId: schema.GlPosting.id })
-    .from(schema.GlPostingSource)
-    .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId))
-    .where(
-      and(
-        eq(schema.GlPostingSource.organizationId, organizationId),
-        eq(schema.GlPostingSource.sourceKind, 'payout'),
-        eq(schema.GlPostingSource.linkRole, 'subject'),
-        inArray(schema.GlPostingSource.sourceId, instanceIds),
-        eq(schema.GlPosting.status, 'posted')
-      )
-    )
-  const byInstance = new Map(rows.map((row) => [row.sourceId, row.glPostingId]))
-  return records.map((record) =>
-    byInstance.has(record.payoutId)
-      ? { ...record, glPostingId: byInstance.get(record.payoutId) ?? null }
-      : record
-  )
+  const live = await findLiveSubjectPostings(db, organizationId, {
+    sourceKind: 'payout',
+    sourceIds: instanceIds,
+  })
+  return records.map((record) => {
+    // POSTED only: a drafted entry holds the subject row too, and this column
+    // is "what is in the books".
+    const posting = live.get(record.payoutId)
+    return posting?.status === 'posted' ? { ...record, glPostingId: posting.glPostingId } : record
+  })
 }
 
 /**

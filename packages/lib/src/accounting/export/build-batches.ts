@@ -11,6 +11,7 @@ import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { DOC_NUMBER_MAX_LENGTH } from '../ledger/builders/doc-number'
 import type { AccountRole } from '../ledger/builders/entry'
 import { readLedgerSummary } from '../ledger/reads/ledger-summary'
+import { findLinkedPostings } from '../ledger/reads/list-postings'
 import { avenueOfPostingType } from '../ledger/setup/export-settings'
 import { readExportSettings } from '../ledger/setup/read-export-settings'
 import type { CounterpartyType, PostingType } from '../ledger/types'
@@ -174,32 +175,13 @@ async function readReceiptsForOrders(
   organizationId: string,
   orderIds: string[]
 ): Promise<Map<string, ReceiptInfo[]>> {
-  if (orderIds.length === 0) return new Map()
-  const rows = await db
-    .select({
-      orderId: schema.GlPostingSource.sourceId,
-      glPostingId: schema.GlPosting.id,
-      totalMinor: schema.GlPosting.totalMinor,
-      txnDate: schema.GlPosting.txnDate,
-    })
-    .from(schema.GlPostingSource)
-    .innerJoin(
-      schema.GlPosting,
-      and(
-        eq(schema.GlPosting.organizationId, schema.GlPostingSource.organizationId),
-        eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.GlPostingSource.organizationId, organizationId),
-        eq(schema.GlPostingSource.linkRole, 'parent'),
-        eq(schema.GlPostingSource.sourceKind, 'order'),
-        inArray(schema.GlPostingSource.sourceId, orderIds),
-        eq(schema.GlPosting.postingType, 'payment'),
-        eq(schema.GlPosting.status, 'posted')
-      )
-    )
+  const rows = await findLinkedPostings(db, organizationId, {
+    sourceKind: 'order',
+    sourceIds: orderIds,
+    linkRole: 'parent',
+    postingTypes: ['payment'],
+    statuses: ['posted'],
+  })
   const map = new Map<string, ReceiptInfo[]>()
   for (const row of rows) {
     const info: ReceiptInfo = {
@@ -207,9 +189,9 @@ async function readReceiptsForOrders(
       totalMinor: row.totalMinor,
       txnDate: row.txnDate,
     }
-    const bucket = map.get(row.orderId)
+    const bucket = map.get(row.sourceId)
     if (bucket) bucket.push(info)
-    else map.set(row.orderId, [info])
+    else map.set(row.sourceId, [info])
   }
   return map
 }
@@ -225,31 +207,12 @@ async function readClaimsForSources(
   organizationId: string,
   sources: Array<{ sourceKind: string; sourceId: string }>
 ): Promise<Map<string, string>> {
-  if (sources.length === 0) return new Map()
-  const sourceIds = [...new Set(sources.map((source) => source.sourceId))]
-  const rows = await db
-    .select({
-      sourceKind: schema.GlPostingSource.sourceKind,
-      sourceId: schema.GlPostingSource.sourceId,
-      glPostingId: schema.GlPosting.id,
-    })
-    .from(schema.GlPostingSource)
-    .innerJoin(
-      schema.GlPosting,
-      and(
-        eq(schema.GlPosting.organizationId, schema.GlPostingSource.organizationId),
-        eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.GlPostingSource.organizationId, organizationId),
-        inArray(schema.GlPostingSource.linkRole, ['parent', 'subject']),
-        inArray(schema.GlPostingSource.sourceId, sourceIds),
-        inArray(schema.GlPosting.postingType, ['fulfillment', 'invoice_issued']),
-        eq(schema.GlPosting.status, 'posted')
-      )
-    )
+  const rows = await findLinkedPostings(db, organizationId, {
+    sourceIds: sources.map((source) => source.sourceId),
+    linkRole: ['parent', 'subject'],
+    postingTypes: ['fulfillment', 'invoice_issued'],
+    statuses: ['posted'],
+  })
   const wanted = new Set(sources.map((source) => `${source.sourceKind}:${source.sourceId}`))
   const map = new Map<string, string>()
   for (const row of rows) {
@@ -373,7 +336,7 @@ export async function buildExportBatches(
     const base = {
       organizationId,
       bookId: connection.bookId,
-      connectionId: connection.connectionId,
+      connectionId: connection.id,
       state: 'ready' as const,
     }
     const batchIds: string[] = []

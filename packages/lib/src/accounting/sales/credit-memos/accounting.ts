@@ -34,6 +34,7 @@ import { discardDraftsForSource } from '../../ledger/post/draft-lines'
 import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting, listPostingsForSource } from '../../ledger/reads/list-postings'
+import { readControlAccountLine } from '../../ledger/reads/read-posting'
 import type { BuiltEntry, GlPostingSourceInput, PostResult } from '../../ledger/types'
 import { readOrderSourceScope } from '../../money/customer-money/reads'
 import { roundCents } from '../totals/totals'
@@ -224,19 +225,11 @@ export async function readCreditMemoControlAccount(
   if (live.isErr()) throw new UnprocessableEntityError(live.error.message)
   if (!live.value) return null
 
-  const [line] = await db
-    .select({ glAccountId: schema.GlPostingLine.glAccountId })
-    .from(schema.GlPostingLine)
-    .where(
-      and(
-        eq(schema.GlPostingLine.organizationId, input.organizationId),
-        eq(schema.GlPostingLine.glPostingId, live.value.id),
-        eq(schema.GlPostingLine.direction, 'credit'),
-        eq(schema.GlPostingLine.counterpartyType, 'customer')
-      )
-    )
-    .orderBy(asc(schema.GlPostingLine.lineNumber))
-    .limit(1)
+  const line = await readControlAccountLine(db, input.organizationId, {
+    glPostingId: live.value.id,
+    direction: 'credit',
+    counterpartyType: 'customer',
+  })
   if (!line) return null
   return { glPostingId: live.value.id, glAccountId: line.glAccountId, txnDate: live.value.txnDate }
 }

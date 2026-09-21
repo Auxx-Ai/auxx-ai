@@ -10,14 +10,14 @@
 // provider lacks, uncoded and with no identity. `db` first, `Result` from
 // neverthrow, no permission checks: the router asserts `ledgerControl` and calls.
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, isNull } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UniqueValueConflictError, UnprocessableEntityError } from '../../../errors'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../../providers/provider'
 import type { AccountRole } from '../builders/entry'
 import { withAccountingCommitLock } from '../post/accounting-commit-lock'
+import { insertDefaultRoleAssignmentsIfAbsent } from '../roles/role-assignments'
 import { listChartAccounts, listRoleMap } from '../roles/role-map'
 import type { ChartImportResult } from '../types'
 import type { GlAccountSubtypeValue } from './account-subtype'
@@ -272,27 +272,12 @@ async function insertRoleAssignment(
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
     await withAccountingCommitLock(tx, organizationId)
-    const inserted = await tx
-      .insert(schema.GlRoleAssignment)
-      .values({ organizationId, role, glAccountId, source })
-      .onConflictDoNothing({
-        target: [schema.GlRoleAssignment.organizationId, schema.GlRoleAssignment.role],
-        // 🛑 `GlRoleAssignment_org_role_key` became two PARTIAL indexes in task
-        // 47, so a bare `(organizationId, role)` target no longer names one.
-        // `targetWhere` picks the ORG DEFAULT half - the only half an import
-        // ever writes; a per-source override is a human's decision, made in
-        // settings.
-        // `where` is `onConflictDoNothing`'s spelling of the index predicate;
-        // `onConflictDoUpdate` spells the same thing `targetWhere`.
-        // ⚠️ Both halves: task 58 widened the index predicate, and a narrower
-        // `where` infers no index at all (42P10).
-        where: and(
-          isNull(schema.GlRoleAssignment.sourceAccountId),
-          isNull(schema.GlRoleAssignment.paymentGatewayId)
-        ),
-      })
-      .returning({ id: schema.GlRoleAssignment.id })
-
-    return inserted.length > 0
+    const inserted = await insertDefaultRoleAssignmentsIfAbsent(
+      tx,
+      organizationId,
+      [{ role, glAccountId }],
+      source
+    )
+    return inserted > 0
   })
 }

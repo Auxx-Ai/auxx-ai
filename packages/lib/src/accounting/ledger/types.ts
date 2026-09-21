@@ -430,6 +430,15 @@ export const POSTING_STATUSES = ['draft', 'posted', 'reversed'] as const
 export type PostingStatus = (typeof POSTING_STATUSES)[number]
 
 /**
+ * The two statuses whose lines are standing in the books.
+ *
+ * `reversed` is included: a reversal is a SECOND, opposite entry (decision G4),
+ * so the original's lines stay in the ledger and the pair nets to zero on its
+ * own. Dropping the original would leave only the reversal, with the wrong sign.
+ */
+export const POSTED_STATUSES = ['posted', 'reversed'] as const satisfies readonly PostingStatus[]
+
+/**
  * How a source relates to the posting on `GlPostingSource`.
  *
  * `subject` is what the entry is OF, and its row IS the claim - one live

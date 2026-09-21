@@ -16,6 +16,7 @@
 import { type Database, schema } from '@auxx/database'
 import { and, eq, ne } from 'drizzle-orm'
 import { VENDOR_BILL_SOURCE_TYPE } from '../../ledger/builders/entry'
+import { countPostingsForLineSource } from '../../ledger/reads/read-posting'
 
 /** The posting type a clear claims, and the source type its lines carry. */
 export const LANDED_COST_CLEAR_POSTING_TYPE = 'landed_cost_clear' as const
@@ -71,17 +72,9 @@ export async function countClearPostings(
   organizationId: string,
   goodsBillInstanceId: string
 ): Promise<number> {
-  const rows = await db
-    .selectDistinct({ glPostingId: schema.GlPostingLine.glPostingId })
-    .from(schema.GlPostingLine)
-    .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
-    .where(
-      and(
-        eq(schema.GlPosting.organizationId, organizationId),
-        eq(schema.GlPosting.postingType, LANDED_COST_CLEAR_POSTING_TYPE),
-        eq(schema.GlPostingLine.sourceType, VENDOR_BILL_SOURCE_TYPE),
-        eq(schema.GlPostingLine.sourceId, goodsBillInstanceId)
-      )
-    )
-  return rows.length
+  return countPostingsForLineSource(db, organizationId, {
+    sourceType: VENDOR_BILL_SOURCE_TYPE,
+    sourceId: goodsBillInstanceId,
+    postingType: LANDED_COST_CLEAR_POSTING_TYPE,
+  })
 }

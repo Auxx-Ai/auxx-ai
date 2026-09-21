@@ -26,6 +26,7 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { toRecordId } from '../../../resources/resource-id'
 import { readSystemRecords, type SystemRecord } from '../../../resources/system-records'
+import { findLiveSubjectPostings } from '../../ledger/reads/list-postings'
 import { loadFulfillmentFieldContext } from './fields'
 import type { Fulfillment, FulfillmentLine, FulfillmentStatusValue } from './types'
 
@@ -89,29 +90,10 @@ export async function readFulfillmentsForOrders(
   // One bulk read of `GlPostingSource` joined to `GlPosting`, the same two
   // tables `listPostingsForSource` reads, shaped for many fulfillments at once
   // rather than one call per id.
-  const subjects = await db
-    .select({
-      fulfillmentId: schema.GlPostingSource.sourceId,
-      glPostingId: schema.GlPosting.id,
-      docNumber: schema.GlPosting.docNumber,
-    })
-    .from(schema.GlPostingSource)
-    .innerJoin(
-      schema.GlPosting,
-      and(
-        eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId),
-        eq(schema.GlPosting.organizationId, organizationId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.GlPostingSource.organizationId, organizationId),
-        eq(schema.GlPostingSource.sourceKind, 'fulfillment'),
-        eq(schema.GlPostingSource.linkRole, 'subject'),
-        inArray(schema.GlPostingSource.sourceId, fulfillmentIds)
-      )
-    )
-  const postedById = new Map(subjects.map((row) => [row.fulfillmentId, row]))
+  const postedById = await findLiveSubjectPostings(db, organizationId, {
+    sourceKind: 'fulfillment',
+    sourceIds: fulfillmentIds,
+  })
 
   for (const record of fulfillments) {
     const orderId = record.related('fulfillment_order')

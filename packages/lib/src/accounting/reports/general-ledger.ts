@@ -35,15 +35,13 @@ import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { compareAccountsByCodeThenName } from '../ledger/chart/account-label'
 import { GL_ACCOUNT_TYPES, type GlAccountTypeValue } from '../ledger/chart/default-chart'
+import { standingLineFilter } from '../ledger/reads/standing-lines'
 import { listChartAccounts } from '../ledger/roles/role-map'
 import type { ChartAccountRow, PostingDirection } from '../ledger/types'
 import { previousCalendarDay } from './fiscal-year'
 import { NATURAL_BALANCE_DIRECTION, signedBalance } from './statement-math'
 
 const logger = createScopedLogger('postings:reports:general-ledger')
-
-/** Only a posted entry counts - `verify-balance.ts` says why `pending`/`failed` do not. */
-const POSTED_STATUSES = ['posted', 'reversed'] as const
 
 /**
  * Statement order (asset, liability, equity, revenue, expense) as a rank map -
@@ -227,11 +225,11 @@ export async function readGeneralLedger(
       .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
       .where(
         and(
-          eq(schema.GlPosting.organizationId, organizationId),
-          inArray(schema.GlPosting.status, [...POSTED_STATUSES]),
-          gte(schema.GlPosting.txnDate, from),
-          lte(schema.GlPosting.txnDate, to),
-          ...(glAccountId ? [eq(schema.GlPostingLine.glAccountId, glAccountId)] : []),
+          standingLineFilter(organizationId, {
+            from,
+            to,
+            glAccountIds: glAccountId ? [glAccountId] : undefined,
+          }),
           ...(source
             ? [
                 sql`EXISTS (SELECT 1 FROM ${schema.GlPostingSource} link
@@ -402,15 +400,13 @@ async function readOpeningBalances(
     })
     .from(schema.GlPostingLine)
     .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
+    // Narrowed by account with the lines above, or the brought-forward figures
+    // would be computed for the whole chart to serve one account.
     .where(
-      and(
-        eq(schema.GlPosting.organizationId, organizationId),
-        inArray(schema.GlPosting.status, [...POSTED_STATUSES]),
-        lte(schema.GlPosting.txnDate, through),
-        // Narrowed with the lines above, or the brought-forward figures would
-        // be computed for the whole chart to serve one account.
-        ...(glAccountId ? [eq(schema.GlPostingLine.glAccountId, glAccountId)] : [])
-      )
+      standingLineFilter(organizationId, {
+        to: through,
+        glAccountIds: glAccountId ? [glAccountId] : undefined,
+      })
     )
     .groupBy(schema.GlPostingLine.glAccountId)
 

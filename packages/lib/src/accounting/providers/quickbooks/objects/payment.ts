@@ -4,11 +4,12 @@
 // `DocNumber` in QuickBooks, so - like Deposit - there is no doc-number heal
 // and no `find` tool.
 
-import { database, schema } from '@auxx/database'
-import { and, eq, isNull } from 'drizzle-orm'
+import { type Database, database, schema } from '@auxx/database'
+import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { exportObjectTypeLabel } from '../../../export/client'
 import { exportPaymentSchema, PAYMENT_OBJECT_TYPE } from '../../../export/payloads/payment'
+import { readLiveBatchMemberships } from '../../../export/queue-reads'
 import { ProviderPostError, type WithdrawResult } from '../../../ledger/types'
 import type {
   ProviderObjectContext,
@@ -53,23 +54,16 @@ interface AppliesToBatch {
 
 /** `appliesTo.glPostingId` -> its live `ExportBatchPosting` -> that batch, or null when nothing has claimed it yet. */
 async function resolveAppliesToBatch(
+  db: Database,
   organizationId: string,
   glPostingId: string
 ): Promise<AppliesToBatch | null> {
-  const [member] = await database
-    .select({ batchId: schema.ExportBatchPosting.batchId })
-    .from(schema.ExportBatchPosting)
-    .where(
-      and(
-        eq(schema.ExportBatchPosting.organizationId, organizationId),
-        eq(schema.ExportBatchPosting.glPostingId, glPostingId),
-        isNull(schema.ExportBatchPosting.withdrawnAt)
-      )
-    )
-    .limit(1)
+  const [member] = await readLiveBatchMemberships(db, organizationId, {
+    glPostingIds: [glPostingId],
+  })
   if (!member) return null
 
-  const [batch] = await database
+  const [batch] = await db
     .select({
       state: schema.ExportBatch.state,
       objectType: schema.ExportBatch.objectType,
@@ -115,7 +109,9 @@ export async function send(
     // §5.2's dependency: the invoice (or fulfillment sent as one) this
     // payment applies to must have SENT before this can. Checked first and
     // cheaply, before any resolution below spends a QuickBooks call.
+    // `ProviderObjectContext` carries no handle, so the global is the db here.
     const appliesToBatch = await resolveAppliesToBatch(
+      database,
       organizationId,
       payload.appliesTo.glPostingId
     )

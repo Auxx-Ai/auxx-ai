@@ -981,22 +981,8 @@ async function readRoleOverrides(
   organizationId: string,
   role: AccountRole
 ): Promise<RoleSourceAssignmentRow[]> {
-  const rows = await db
-    .select({
-      glAccountId: schema.GlRoleAssignment.glAccountId,
-      source: schema.GlRoleAssignment.source,
-      confirmedAt: schema.GlRoleAssignment.confirmedAt,
-      sourceAccountId: schema.GlRoleAssignment.sourceAccountId,
-    })
-    .from(schema.GlRoleAssignment)
-    .where(
-      and(
-        eq(schema.GlRoleAssignment.organizationId, organizationId),
-        eq(schema.GlRoleAssignment.role, role),
-        isNotNull(schema.GlRoleAssignment.sourceAccountId)
-      )
-    )
-  const scoped = rows.filter((row) => row.sourceAccountId != null)
+  const rows = await readRoleAssignments(db, organizationId)
+  const scoped = rows.filter((row) => row.role === role && row.sourceAccountId != null)
   if (scoped.length === 0) return []
   const accounts = await loadChartAccountsById(
     db,
@@ -1021,23 +1007,8 @@ async function readRoleRailOverrides(
   organizationId: string,
   role: AccountRole
 ): Promise<RoleRailAssignmentRow[]> {
-  const rows = await db
-    .select({
-      glAccountId: schema.GlRoleAssignment.glAccountId,
-      source: schema.GlRoleAssignment.source,
-      confirmedAt: schema.GlRoleAssignment.confirmedAt,
-      paymentGatewayId: schema.GlRoleAssignment.paymentGatewayId,
-      currency: schema.GlRoleAssignment.currency,
-    })
-    .from(schema.GlRoleAssignment)
-    .where(
-      and(
-        eq(schema.GlRoleAssignment.organizationId, organizationId),
-        eq(schema.GlRoleAssignment.role, role),
-        isNotNull(schema.GlRoleAssignment.paymentGatewayId)
-      )
-    )
-  const scoped = rows.filter((row) => row.paymentGatewayId != null)
+  const rows = await readRoleAssignments(db, organizationId)
+  const scoped = rows.filter((row) => row.role === role && row.paymentGatewayId != null)
   if (scoped.length === 0) return []
   const accounts = await loadChartAccountsById(
     db,

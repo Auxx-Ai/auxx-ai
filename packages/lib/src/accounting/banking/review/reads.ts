@@ -31,7 +31,8 @@ import {
   systemValueJoin,
 } from '../../../resources/system-records'
 import { loadChartAccountsById } from '../../ledger/chart/chart-accounts'
-import { listPostingsForSource } from '../../ledger/reads/list-postings'
+import { findLiveSubjectPostings, listPostingsForSource } from '../../ledger/reads/list-postings'
+import { countPostingsForLineSource } from '../../ledger/reads/read-posting'
 import type { BankAccountRow } from '../client'
 import {
   type BankTransactionReviewAttribute,
@@ -460,18 +461,10 @@ export async function countBankTransactionPostings(
   db: Database,
   params: { organizationId: string; transactionId: string }
 ): Promise<number> {
-  const rows = await db
-    .selectDistinct({ glPostingId: schema.GlPosting.id })
-    .from(schema.GlPostingLine)
-    .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
-    .where(
-      and(
-        eq(schema.GlPosting.organizationId, params.organizationId),
-        eq(schema.GlPostingLine.sourceType, BANK_TRANSACTION_SOURCE_TYPE),
-        eq(schema.GlPostingLine.sourceId, params.transactionId)
-      )
-    )
-  return rows.length
+  return countPostingsForLineSource(db, params.organizationId, {
+    sourceType: BANK_TRANSACTION_SOURCE_TYPE,
+    sourceId: params.transactionId,
+  })
 }
 
 /** What happened to this line, oldest first. */
@@ -1019,23 +1012,13 @@ async function hydrateTransactions(
   // (TARGET §1) rather than the retired `bank_transaction_gl_posting_id` stamp:
   // a reversal releases the claim entirely (the row simply stops appearing
   // here), where the stamp used to need `undoReview` to clear it by hand.
-  const livePostings = ids.length
-    ? await db
-        .select({
-          sourceId: schema.GlPostingSource.sourceId,
-          glPostingId: schema.GlPostingSource.glPostingId,
-        })
-        .from(schema.GlPostingSource)
-        .where(
-          and(
-            eq(schema.GlPostingSource.organizationId, organizationId),
-            eq(schema.GlPostingSource.sourceKind, BANK_TRANSACTION_SOURCE_TYPE),
-            eq(schema.GlPostingSource.linkRole, 'subject'),
-            inArray(schema.GlPostingSource.sourceId, ids)
-          )
-        )
-    : []
-  const glPostingIdBySourceId = new Map(livePostings.map((row) => [row.sourceId, row.glPostingId]))
+  const livePostings = await findLiveSubjectPostings(db, organizationId, {
+    sourceKind: BANK_TRANSACTION_SOURCE_TYPE,
+    sourceIds: ids,
+  })
+  const glPostingIdBySourceId = new Map(
+    [...livePostings].map(([sourceId, row]) => [sourceId, row.glPostingId])
+  )
 
   // 🛑 The account's mapped GL code is read THROUGH the account, never copied
   // onto the line. One list read for the whole page - an org has a handful of

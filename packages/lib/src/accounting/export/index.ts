@@ -62,6 +62,7 @@ export {
   type ExportBatchRow,
   type ListExportBatchesInput,
   listExportBatches,
+  readLiveBatchMemberships,
 } from './queue-reads'
 export {
   enqueueExportBatch,

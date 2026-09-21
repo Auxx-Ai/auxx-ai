@@ -1,6 +1,7 @@
 // packages/lib/src/accounting/money/customer-money/reads.ts
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { findLiveSubjectPostings } from '../../ledger/reads/list-postings'
 import type { RoleSourceScope } from '../../ledger/types'
 import type { OrderMoneyTransaction } from './client'
 import { exactSourceMoney } from './contracts'
@@ -69,34 +70,13 @@ export async function listOrderMoneyTransactions(
   const moneyIds = [...new Set(rows.flatMap(({ money }) => (money ? [money.id] : [])))]
   // The posting a movement produced, through its subject claim: a live subject
   // row IS "this has been accounted for", and a reversal deletes it.
-  const accountingRows = moneyIds.length
-    ? await db
-        .select({
-          moneyTransactionId: schema.GlPostingSource.sourceId,
-          txnDate: schema.GlPosting.txnDate,
-          glPostingId: schema.GlPosting.id,
-          status: schema.GlPosting.status,
-        })
-        .from(schema.GlPostingSource)
-        .innerJoin(
-          schema.GlPosting,
-          and(
-            eq(schema.GlPosting.organizationId, schema.GlPostingSource.organizationId),
-            eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId)
-          )
-        )
-        .where(
-          and(
-            eq(schema.GlPostingSource.organizationId, organizationId),
-            eq(schema.GlPostingSource.sourceKind, 'money_transaction'),
-            inArray(schema.GlPostingSource.sourceId, moneyIds),
-            eq(schema.GlPostingSource.linkRole, 'subject')
-          )
-        )
-    : []
+  const accounting = await findLiveSubjectPostings(db, organizationId, {
+    sourceKind: 'money_transaction',
+    sourceIds: moneyIds,
+  })
   const accountingByMoney = new Map(
-    accountingRows.map((row) => [
-      row.moneyTransactionId,
+    [...accounting].map(([moneyTransactionId, row]) => [
+      moneyTransactionId,
       {
         state: (row.status === 'draft' ? 'pending' : 'accepted') as 'pending' | 'accepted',
         reason: null,

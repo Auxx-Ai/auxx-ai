@@ -4,6 +4,7 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
 import { periodKeyForDate } from '../../ledger/periods/periods'
+import { findLinkedPostings, findLiveSubjectPostings } from '../../ledger/reads/list-postings'
 import { readLiveSourceAccountIds } from '../../ledger/roles/source-scope'
 import { readFulfillmentsForOrder } from '../../sales/fulfillments/reads'
 import { listOrderApplications, listRefundSettlements, readMovements } from '../reads'
@@ -81,27 +82,17 @@ export async function readOrderRecognitionSource(
   // A credit memo posted against this order changes what its revenue timeline
   // means, and this reader cannot express that. Found through the memo posting's
   // `parent` link, never a stamp (TARGET §1).
-  const [credit] = await db
-    .select({ id: schema.GlPostingSource.id })
-    .from(schema.GlPostingSource)
-    .innerJoin(
-      schema.GlPosting,
-      and(
-        eq(schema.GlPosting.organizationId, schema.GlPostingSource.organizationId),
-        eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId),
-        eq(schema.GlPosting.postingType, 'credit_memo')
-      )
-    )
-    .where(
-      and(
-        eq(schema.GlPostingSource.organizationId, input.organizationId),
-        eq(schema.GlPostingSource.sourceKind, 'order'),
-        eq(schema.GlPostingSource.sourceId, input.orderId),
-        eq(schema.GlPostingSource.linkRole, 'parent')
-      )
-    )
-    .limit(1)
-  if (credit)
+  // `statuses: ['posted']` on purpose: a REVERSED memo has been backed out of
+  // the books and must stop blocking, which the unfiltered copy this replaced
+  // did not do.
+  const credits = await findLinkedPostings(db, input.organizationId, {
+    sourceKind: 'order',
+    sourceIds: [input.orderId],
+    linkRole: 'parent',
+    postingTypes: ['credit_memo'],
+    statuses: ['posted'],
+  })
+  if (credits.length > 0)
     blockers.push(
       'Order recognition must include its posted credit components before further posting'
     )
@@ -279,18 +270,14 @@ export async function readOrderRecognitionSource(
   // An earlier receipt that has not posted would make this one recognise out
   // of order, exactly as an unposted earlier shipment does.
   if (allocations.length && moneyIds.length && targetTimelineEvent) {
-    const postedReceipts = await db
-      .select({ sourceId: schema.GlPostingSource.sourceId })
-      .from(schema.GlPostingSource)
-      .where(
-        and(
-          eq(schema.GlPostingSource.organizationId, input.organizationId),
-          eq(schema.GlPostingSource.sourceKind, 'money_transaction'),
-          inArray(schema.GlPostingSource.sourceId, moneyIds),
-          eq(schema.GlPostingSource.linkRole, 'subject')
-        )
-      )
-    const posted = new Set(postedReceipts.map((row) => row.sourceId))
+    const posted = new Set(
+      (
+        await findLiveSubjectPostings(db, input.organizationId, {
+          sourceKind: 'money_transaction',
+          sourceIds: moneyIds,
+        })
+      ).keys()
+    )
     for (const event of events) {
       if (event.kind !== 'receipt' || event.id === input.target?.id) continue
       if (eventPrecedes(event, targetTimelineEvent) && !posted.has(event.id))

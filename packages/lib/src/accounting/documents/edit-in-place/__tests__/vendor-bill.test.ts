@@ -134,7 +134,10 @@ function postedEntry(call = 0) {
 const db = {
   select: () => ({
     from: () => ({
-      where: () => ({ limit: async () => (storedBuilt ? [{ built: storedBuilt }] : []) }),
+      where: () => {
+        const rows = storedBuilt ? [{ id: 'gp_read', built: storedBuilt }] : []
+        return Object.assign(Promise.resolve(rows), { limit: async () => rows })
+      },
     }),
   }),
   transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),

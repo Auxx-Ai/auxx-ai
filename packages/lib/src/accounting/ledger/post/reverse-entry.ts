@@ -32,6 +32,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq } from 'drizzle-orm'
 import { buildEntry } from '../builders/entry'
 import type { PeriodLock } from '../periods/periods'
+import { readPostingHeader } from '../reads/read-posting'
 import type {
   CounterpartyType,
   GlPostingLineInput,
@@ -132,27 +133,7 @@ export async function reverseEntryInTx(
 
   {
     const db = tx
-    const [original] = await db
-      .select({
-        id: schema.GlPosting.id,
-        postingType: schema.GlPosting.postingType,
-        periodKey: schema.GlPosting.periodKey,
-        txnDate: schema.GlPosting.txnDate,
-        revision: schema.GlPosting.revision,
-        status: schema.GlPosting.status,
-        docNumber: schema.GlPosting.docNumber,
-        built: schema.GlPosting.built,
-        storeId: schema.GlPosting.storeId,
-        railId: schema.GlPosting.railId,
-      })
-      .from(schema.GlPosting)
-      .where(
-        and(
-          eq(schema.GlPosting.id, glPostingId),
-          eq(schema.GlPosting.organizationId, organizationId)
-        )
-      )
-      .limit(1)
+    const original = await readPostingHeader(db, organizationId, glPostingId)
 
     if (!original) {
       return refuse(`No posting ${glPostingId} in this organization.`)
