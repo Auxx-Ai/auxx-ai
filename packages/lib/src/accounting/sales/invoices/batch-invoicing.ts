@@ -7,13 +7,18 @@ import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, gte, inArray, lte, ne } from 'drizzle-orm'
 import type { ConditionGroup } from '../../../conditions'
 import { FieldValueService } from '../../../field-values/field-value-service'
-import { expandOccurrences, type RecurrencePattern } from '../../../recurrence'
+import {
+  expandOccurrences,
+  listRecurrenceRules,
+  type RecurrencePattern,
+  type RecurrenceRuleRow,
+} from '../../../recurrence'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { listVisitAllocationsForVisits } from '../billing/allocations'
 import { createRecurringCharge, createVisitInvoice } from '../billing/commands'
 import { batchReadSystemValues, computeWorkOrderBillingProjection } from '../billing/projection'
 import { listUninvoicedLines } from '../gather'
-import type { WorkOrderBillingBasis } from '../types'
+import { INVOICE_DRAFT_SUBJECT_TYPE, type WorkOrderBillingBasis } from '../types'
 
 const logger = createScopedLogger('money:batch-invoicing')
 
@@ -206,18 +211,14 @@ async function loadScheduleState(input: {
   organizationId: string
   workOrderInstanceIds: string[]
 }): Promise<{
-  ruleByWorkOrder: Map<string, typeof schema.RecurrenceRule.$inferSelect>
+  ruleByWorkOrder: Map<string, RecurrenceRuleRow>
   allocatedOccurrencesByRule: Map<string, Set<string>>
 }> {
-  const rules = await database.query.RecurrenceRule.findMany({
-    where: and(
-      eq(schema.RecurrenceRule.organizationId, input.organizationId),
-      eq(schema.RecurrenceRule.subjectType, 'invoice_drafts'),
-      inArray(schema.RecurrenceRule.subjectId, input.workOrderInstanceIds)
-    ),
+  const ruleByWorkOrder = await listRecurrenceRules(database, input.organizationId, {
+    subjectType: INVOICE_DRAFT_SUBJECT_TYPE,
+    subjectIds: input.workOrderInstanceIds,
   })
-  const ruleByWorkOrder = new Map(rules.map((rule) => [rule.subjectId, rule]))
-  const ruleIds = rules.map((rule) => rule.id)
+  const ruleIds = [...ruleByWorkOrder.values()].map((rule) => rule.id)
   const allocations = ruleIds.length
     ? await database.query.InvoiceScheduleAllocation.findMany({
         where: and(

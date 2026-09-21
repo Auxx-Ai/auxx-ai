@@ -8,19 +8,21 @@ import { getOrgCache } from '../../../cache'
 import { listVisitsForWorkOrder } from '../../../dispatch/board'
 import { BadRequestError } from '../../../errors'
 import { FieldValueService } from '../../../field-values/field-value-service'
+import { getRecurrenceRule } from '../../../recurrence'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { flushTxWriteScope } from '../../../resources/crud/tx-write-flush'
 import { runInTxWrite, type TxWriteScope } from '../../../resources/crud/tx-write-scope'
 import { copyLineOntoInvoice, createInvoiceShell, LINE_COPY_ATTRS } from '../gather'
 import { applyHeldDepositsToInvoice } from '../quotes/quote-deposit'
 import { recomputeTotals } from '../totals/totals-hooks'
-import type {
-  AddVisitExtrasToContractInput,
-  CreateExtraWorkInvoiceInput,
-  CreateFixedContractInvoiceInput,
-  CreateInvoiceFromWorkOrderResult,
-  CreateRecurringChargeInput,
-  CreateVisitInvoiceInput,
+import {
+  type AddVisitExtrasToContractInput,
+  type CreateExtraWorkInvoiceInput,
+  type CreateFixedContractInvoiceInput,
+  type CreateInvoiceFromWorkOrderResult,
+  type CreateRecurringChargeInput,
+  type CreateVisitInvoiceInput,
+  INVOICE_DRAFT_SUBJECT_TYPE,
 } from '../types'
 import { allocateProportionally, resolveFixedInvoiceAmount } from './allocation-math'
 import {
@@ -454,12 +456,9 @@ export async function createRecurringCharge(
     if (projection.basis !== 'recurring_flat') {
       throw new BadRequestError('This work order does not use recurring flat-rate billing')
     }
-    const rule = await db.query.RecurrenceRule.findFirst({
-      where: and(
-        eq(schema.RecurrenceRule.organizationId, input.organizationId),
-        eq(schema.RecurrenceRule.subjectId, input.workOrderInstanceId),
-        eq(schema.RecurrenceRule.subjectType, 'invoice_drafts')
-      ),
+    const rule = await getRecurrenceRule(db, input.organizationId, {
+      subjectType: INVOICE_DRAFT_SUBJECT_TYPE,
+      subjectId: input.workOrderInstanceId,
     })
     if (!rule) throw new BadRequestError('Configure an invoice schedule before generating a charge')
     const occurrenceDate = input.occurrenceDate ?? new Date().toISOString().split('T')[0]!

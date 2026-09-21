@@ -15,7 +15,11 @@ import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import type { RecurrencePattern } from '../../../recurrence'
+import {
+  listRecurrenceRules,
+  type RecurrencePattern,
+  type RecurrenceRuleRow,
+} from '../../../recurrence'
 import { systemValueJoin } from '../../../resources/system-records'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import type { PeriodLock } from '../../ledger/periods/periods'
@@ -29,9 +33,6 @@ import {
 } from './client'
 import { guard } from './guard'
 
-/** A `RecurrenceRule` row, as drizzle returns it. */
-export type RecurrenceRuleRow = typeof schema.RecurrenceRule.$inferSelect
-
 /** One template, its schedule, and what it currently owes. */
 export interface RecurringJournalTemplate {
   /** The `journal_entry` record with `kind: 'recurring_template'`. */
@@ -44,33 +45,6 @@ export interface RecurringJournalTemplate {
    * is held. `null` when there is no rule.
    */
   plan: RecurringJournalPlan | null
-}
-
-/**
- * The `RecurrenceRule` scheduling one template, or `null`.
- *
- * Scoped by organization AND by `subjectType`, never by `subjectId` alone: the
- * unique index is `(subjectType, subjectId)`, so one `EntityInstance` id could
- * in principle carry a rule under another subject type, and reading it here
- * would hand a work order's visit schedule to the accounting screen.
- */
-export async function getRecurringJournalRule(
-  db: Database,
-  organizationId: string,
-  templateId: string
-): Promise<RecurrenceRuleRow | null> {
-  const [rule] = await db
-    .select()
-    .from(schema.RecurrenceRule)
-    .where(
-      and(
-        eq(schema.RecurrenceRule.organizationId, organizationId),
-        eq(schema.RecurrenceRule.subjectType, RECURRING_JOURNAL_SUBJECT_TYPE),
-        eq(schema.RecurrenceRule.subjectId, templateId)
-      )
-    )
-    .limit(1)
-  return rule ?? null
 }
 
 /**
@@ -95,20 +69,10 @@ export async function listRecurringJournalTemplates(
       const templates = listed.value
       if (templates.length === 0) return []
 
-      const rules = await db
-        .select()
-        .from(schema.RecurrenceRule)
-        .where(
-          and(
-            eq(schema.RecurrenceRule.organizationId, organizationId),
-            eq(schema.RecurrenceRule.subjectType, RECURRING_JOURNAL_SUBJECT_TYPE),
-            inArray(
-              schema.RecurrenceRule.subjectId,
-              templates.map((entry) => entry.id)
-            )
-          )
-        )
-      const ruleBySubject = new Map(rules.map((rule) => [rule.subjectId, rule]))
+      const ruleBySubject = await listRecurrenceRules(db, organizationId, {
+        subjectType: RECURRING_JOURNAL_SUBJECT_TYPE,
+        subjectIds: templates.map((entry) => entry.id),
+      })
 
       // One lock read for the whole list. It fails CLOSED on a malformed
       // setting (`period-lock.ts`), which is right here too: a screen that

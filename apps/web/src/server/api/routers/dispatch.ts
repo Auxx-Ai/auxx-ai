@@ -1,6 +1,5 @@
 // apps/web/src/server/api/routers/dispatch.ts
 
-import { schema } from '@auxx/database'
 import { listVisitAllocationsForVisits } from '@auxx/lib/accounting/sales'
 import { getOrgCache, isOrgMember } from '@auxx/lib/cache'
 import {
@@ -59,17 +58,21 @@ import {
   updateQcItemTemplate,
   updateTeam,
   upsertDispatchWorker,
+  VISIT_RECURRENCE_SUBJECT_TYPE,
   VISIT_STATUS_VALUES,
 } from '@auxx/lib/dispatch'
 import { BadRequestError, NotFoundError } from '@auxx/lib/errors'
 import { FieldValueService } from '@auxx/lib/field-values'
 import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
-import { recurrencePatternSchema } from '@auxx/lib/recurrence'
+import {
+  getRecurrenceRule,
+  getRecurrenceRuleById,
+  recurrencePatternSchema,
+} from '@auxx/lib/recurrence'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
-import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -849,14 +852,10 @@ export const dispatchRouter = createTRPCRouter({
     .input(z.object({ workOrderRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
-      const rule = await ctx.db.query.RecurrenceRule.findFirst({
-        where: and(
-          eq(schema.RecurrenceRule.organizationId, ctx.session.organizationId),
-          eq(schema.RecurrenceRule.subjectType, 'work_order_visits'),
-          eq(schema.RecurrenceRule.subjectId, entityInstanceId)
-        ),
+      return getRecurrenceRule(ctx.db, ctx.session.organizationId, {
+        subjectType: VISIT_RECURRENCE_SUBJECT_TYPE,
+        subjectId: entityInstanceId,
       })
-      return rule ?? null
     }),
   setRecurrence: dispatchAdminProcedure
     .input(
@@ -956,12 +955,11 @@ export const dispatchRouter = createTRPCRouter({
       if (!visit?.recurrenceRuleId) {
         throw new NotFoundError('Visit is not part of a recurring series')
       }
-      const rule = await ctx.db.query.RecurrenceRule.findFirst({
-        where: and(
-          eq(schema.RecurrenceRule.id, visit.recurrenceRuleId),
-          eq(schema.RecurrenceRule.organizationId, ctx.session.organizationId)
-        ),
-      })
+      const rule = await getRecurrenceRuleById(
+        ctx.db,
+        ctx.session.organizationId,
+        visit.recurrenceRuleId
+      )
       if (!rule) throw new NotFoundError('Recurrence rule not found')
 
       const effectiveFrom =

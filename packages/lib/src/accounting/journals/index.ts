@@ -29,7 +29,6 @@ export {
 export {
   clearRecurringJournalSchedule,
   findGeneratedEntryIds,
-  getRecurringJournalRule,
   listRecurringJournalTemplates,
   type MaterializeRecurringJournalsResult,
   materializeRecurringJournals,
@@ -37,7 +36,6 @@ export {
   planRecurringOccurrences,
   RECURRING_JOURNAL_DOC_PREFIX,
   RECURRING_JOURNAL_SUBJECT_TYPE,
-  type RecurrenceRuleRow,
   type RecurringJournalIdentity,
   type RecurringJournalPlan,
   type RecurringJournalSweepSummary,
