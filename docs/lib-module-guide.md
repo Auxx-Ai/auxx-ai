@@ -339,11 +339,30 @@ too, and the directive turns every export into a client-reference proxy there.
   `appInstallationId` option for the one caller that had an installation, not an app
   slug, rather than that caller joining `Credential` itself. `scripts/ci/raw-query-ratchet.js`
   enforces both tables; see plans/accounting/LIB-LAYOUT.md §3c.
+- **One `reads.ts` and one `writes.ts` per owned table.** The accounting owners are
+  `accounting/money/reads.ts` + `writes.ts`, `accounting/ledger/reads/*`,
+  `accounting/money/customer-money/source-reads.ts` + `source-writes.ts`,
+  `accounting/money/payouts/entry-reads.ts` and `accounting/sales/billing/allocations.ts`;
+  `RecurrenceRule` lives in `recurrence/rules.ts` because `dispatch/` shares it,
+  `DataConnector` in `data-connectors/` and `Credential` in `connections/credential-reads.ts`
+  + `credential-writes.ts`.
+- **Write the batch, derive the single.** Every by-id reader has an `inArray` form and
+  the single-id form calls it — `readMovement` is `readMovements` with one id.
+- **A status or scope predicate the old copies disagreed on is a required parameter with
+  no default.** `findLinkedPostings({ statuses })` and
+  `listWorkOrderAllocations({ visitKind })` take theirs from the caller, so a caller that
+  wants any status or any visit kind says so instead of inheriting someone else's default.
+- **Honest raw queries stay raw**, each with a one-line reason in place: aggregates,
+  `FOR UPDATE` locks, `DISTINCT ON`, JSON-predicate matches, cross-org sweeps and the cost
+  writers. `scripts/ci/raw-query-ratchet.js` baselines them per table family and only lets
+  the count shrink.
 - **Read a system record through `resources/system-records/`, not by hand.**
   `systemFields` / `requireSystemFields` resolve the def and its fields once
   (with the transaction-snapshot fallback); `readSystemRecords` returns instances
   plus typed cells in two chunked queries, filtered by `ids` or by a parent
-  through a relationship field (`by: { attribute, in }`). `systemValueJoin` is
+  through a relationship field (`by: { attribute, in }`). Each row carries the
+  instance's `displayName`, and `requireSystemFields` takes `{ required, message }`
+  so a surface that cannot work without a field refuses naming it. `systemValueJoin` is
   the alias join for filtering on a value in SQL. The attribute list comes from
   the registry — `pickSystemAttributes(PAYMENT_GATEWAY_FIELDS, ['payment_gateway_handle'] as const)`
   — never a second hand-typed `as const` array.
@@ -359,8 +378,13 @@ too, and the directive turns every export into a client-reference proxy there.
   and handing that to `readSystemRecords` fetches one `FieldValue` row per child
   per parent. `pickSystemAttributes` also refuses a `dbColumn`-backed attribute at
   compile time, because those are columns on `EntityInstance` and no `FieldValue`
-  query can return them. Raw `FieldValue` selects stay legitimate for aggregates,
-  value-keyed lookups and the cost writers.
+  query can return them. Raw `FieldValue` selects stay legitimate for aggregates and
+  the cost writers.
+
+  The inverse direction — which instances STORE a value — is
+  `findSystemRecordIdsByValue` (`resources/system-records/find-by-value.ts`), returning
+  a `Map` from the matched value to live instance ids. Live-only unless
+  `includeArchived`, and equality only: a search or a range stays on `systemValueJoin`.
 - **Settings: the cached path is the default.** `readOrganizationSettings(orgId, keys, db?)`
   (`settings/read.ts`) reads many keys at once, typed per key from the catalog;
   `getOrganizationSetting(key)` is sugar over it. Pass `db` only for a
