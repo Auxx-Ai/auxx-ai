@@ -30,6 +30,7 @@ import {
   systemValueJoin,
 } from '../../../resources/system-records'
 import { parsePeriodKey } from '../../ledger/periods/periods'
+import { readPostingHeaders } from '../../ledger/reads/read-posting'
 import type {
   JournalEntryKindValue,
   JournalEntryLine,
@@ -313,25 +314,10 @@ async function readLinkedPostings(
   organizationId: string,
   glPostingIds: string[]
 ): Promise<Map<string, LinkedPosting>> {
+  const headers = await readPostingHeaders(db, organizationId, glPostingIds)
   const byId = new Map<string, LinkedPosting>()
-  if (glPostingIds.length === 0) return byId
-
-  const rows = await db
-    .select({
-      id: schema.GlPosting.id,
-      status: schema.GlPosting.status,
-      built: schema.GlPosting.built,
-    })
-    .from(schema.GlPosting)
-    .where(
-      and(
-        eq(schema.GlPosting.organizationId, organizationId),
-        inArray(schema.GlPosting.id, glPostingIds)
-      )
-    )
-
-  for (const row of rows) {
-    byId.set(row.id, { status: row.status as JournalEntryStatusValue, built: row.built })
+  for (const [id, header] of headers) {
+    byId.set(id, { status: header.status as JournalEntryStatusValue, built: header.built })
   }
   return byId
 }

@@ -4,13 +4,14 @@
 // `postEntry`/`postDraft`/`reverseEntry` (TARGET §1). A draft holds no claim;
 // its `pending` link is how a source finds the drafts standing on it.
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, withAccountingCommitLock } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, ConflictError, NotFoundError } from '../../../errors'
 import type { PeriodLock } from '../periods/periods'
 import type { BuiltEntry, GlPostingSourceInput } from '../types'
 import { buildPostingDraft } from './draft'
+import { toLineRows } from './insert-posting'
 import { prepareEntry } from './post-entry'
 
 export interface UpdateDraftLinesInput {
@@ -39,6 +40,10 @@ export async function updateDraftLines(
 
   try {
     await db.transaction(async (tx) => {
+      // The same lock `postEntry` and `postDraft` take, and re-entrant on a
+      // caller that already holds it: `postDraftInTx` reads the header without
+      // `FOR UPDATE`, so an edit racing a promotion must serialize here.
+      await withAccountingCommitLock(tx, organizationId)
       const [row] = await tx
         .select({
           status: schema.GlPosting.status,
@@ -82,25 +87,9 @@ export async function updateDraftLines(
         )
 
       if (prepared.lines.length > 0) {
-        await tx.insert(schema.GlPostingLine).values(
-          prepared.lines.map((line, index) => ({
-            organizationId,
-            glPostingId,
-            lineNumber: index + 1,
-            glAccountId: line.resolved.glAccountId,
-            accountCode: line.resolved.accountCode,
-            accountRole: line.accountRole,
-            accountName: line.resolved.accountName ?? null,
-            direction: line.resolved.direction,
-            amountMinor: line.resolved.amount,
-            memo: line.resolved.memo ?? null,
-            sourceType: line.resolved.sourceType,
-            sourceId: line.resolved.sourceId,
-            counterpartyType: line.resolved.counterpartyType ?? null,
-            counterpartyId: line.resolved.counterpartyId ?? null,
-            dimensions: line.resolved.dimensions ?? null,
-          }))
-        )
+        await tx
+          .insert(schema.GlPostingLine)
+          .values(toLineRows(organizationId, glPostingId, prepared.lines))
       }
 
       await tx
@@ -146,6 +135,9 @@ export async function discardDraftPosting(
 
   try {
     await db.transaction(async (tx) => {
+      // See {@link updateDraftLines}: the discard must serialize with a
+      // promotion of the same draft.
+      await withAccountingCommitLock(tx, organizationId)
       const [row] = await tx
         .select({ status: schema.GlPosting.status })
         .from(schema.GlPosting)

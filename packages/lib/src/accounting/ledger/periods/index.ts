@@ -18,6 +18,7 @@ export {
   assertPeriodOpen,
   compareMonths,
   isPeriodLocked,
+  monthBounds,
   monthDateRange,
   type ParsedPeriodKey,
   type PeriodGranularity,
@@ -28,4 +29,8 @@ export {
 } from './periods'
 export { type CloseBlockersResult, readCloseBlockers } from './read-close-blockers'
 export { type SetLockedThroughInput, setLockedThrough } from './set-locked-through'
-export { assertAccountingSetupUnfrozen, FROZEN_SETUP_SETTING_KEYS } from './settled-periods'
+export {
+  assertAccountingSetupUnfrozen,
+  FROZEN_SETUP_SETTING_KEYS,
+  hasStandingEntry,
+} from './settled-periods'

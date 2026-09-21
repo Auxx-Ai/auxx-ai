@@ -23,7 +23,7 @@
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 
 /** One org's `GlRoleAssignment` row, exactly as stored. Callers filter in memory. */
 export interface RoleAssignmentRecord {
@@ -58,4 +58,43 @@ export async function readRoleAssignments(
     })
     .from(schema.GlRoleAssignment)
     .where(eq(schema.GlRoleAssignment.organizationId, organizationId))
+}
+
+/**
+ * Insert org-default role rows, `ON CONFLICT DO NOTHING`, and answer how many
+ * actually landed.
+ *
+ * 🛑 `GlRoleAssignment_org_role_key` became two PARTIAL indexes in task 47, so a
+ * bare `(organizationId, role)` target no longer names one. `where` picks the
+ * ORG DEFAULT half - the only half a seed or an import ever writes; a per-source
+ * override is a human's decision, made in settings. ⚠️ BOTH null predicates:
+ * task 58 widened the index predicate, and a narrower `where` infers no index at
+ * all (42P10).
+ *
+ * `source` and NOT `confirmedAt`: `G19` leans on the difference between "we
+ * chose this for you" and "you chose this".
+ *
+ * The caller owns the transaction and its {@link withAccountingCommitLock}.
+ */
+export async function insertDefaultRoleAssignmentsIfAbsent(
+  tx: Transaction,
+  organizationId: string,
+  rows: readonly { role: string; glAccountId: string }[],
+  source: 'seed' | 'import'
+): Promise<number> {
+  if (rows.length === 0) return 0
+  const inserted = await tx
+    .insert(schema.GlRoleAssignment)
+    .values(
+      rows.map((row) => ({ organizationId, role: row.role, glAccountId: row.glAccountId, source }))
+    )
+    .onConflictDoNothing({
+      target: [schema.GlRoleAssignment.organizationId, schema.GlRoleAssignment.role],
+      where: and(
+        isNull(schema.GlRoleAssignment.sourceAccountId),
+        isNull(schema.GlRoleAssignment.paymentGatewayId)
+      ),
+    })
+    .returning({ id: schema.GlRoleAssignment.id })
+  return inserted.length
 }

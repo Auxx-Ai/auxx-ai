@@ -10,9 +10,8 @@
 // and that the posted entry is keyed on the cutover date rather than on the
 // record number.
 //
-// The one exception is `hasStandingPosting`, a two-line select this module owns,
-// which gets a hand-written `db` double for the same reason `post-entry.test.ts`
-// hand-writes its own: a chainable spy cannot answer two queries differently.
+// `hasStandingEntry` is doubled at the `settled-periods` seam beside the freeze
+// it backs, so the two can never disagree about what a standing entry is.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -104,6 +103,7 @@ vi.mock('../../ledger/periods/period-lock', () => ({
 // under test here is that this module CALLS it and stops when it refuses, so
 // the double reproduces its refusal verbatim, including the reversal sentence.
 vi.mock('../../ledger/periods/settled-periods', () => ({
+  hasStandingEntry: async () => h.standingPostings > 0,
   assertAccountingSetupUnfrozen: async (_org: string, keys: readonly string[]) => {
     if (h.standingPostings === 0) return
     const { ConflictError } = await import('../../../errors')
@@ -152,7 +152,7 @@ import {
 const ORG = 'org_1'
 const USER = 'usr_1'
 
-/** `hasStandingPosting`'s only query: `select().from().where().limit()`. */
+/** Unused now that `hasStandingEntry` is doubled; kept as the handle callers pass. */
 const db = {
   select: () => ({
     from: () => ({

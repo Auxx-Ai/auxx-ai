@@ -24,13 +24,14 @@
  * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
  */
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toDateKey, toIso } from '@auxx/utils/calendar-day'
 import { and, count, desc, eq, gte, inArray, lt, ne } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../../errors'
 import type { PostingSummary } from '../../journals/entries/client'
+import { monthBounds } from '../periods/periods'
 import type { PostingLinkRole, PostingStatus, PostingType } from '../types'
 
 const logger = createScopedLogger('postings:list-postings')
@@ -89,8 +90,9 @@ export async function listPostings(
     // in a period key would silently return the whole ledger.
     let bounds: { first: string; next: string } | null = null
     if (periodKey != null) {
-      bounds = monthBounds(periodKey)
-      if (!bounds) {
+      try {
+        bounds = monthBounds(periodKey)
+      } catch {
         return err(new AuxxError(`'${periodKey}' is not an accounting month. Expected 'YYYY-MM'.`))
       }
     }
@@ -285,19 +287,6 @@ function readBuiltMemo(built: unknown): string | null {
   return typeof memo === 'string' && memo ? memo : null
 }
 
-/** The half-open `[first, next)` day keys of one accounting month, or null. */
-function monthBounds(periodKey: string): { first: string; next: string } | null {
-  const match = /^(\d{4})-(\d{2})$/.exec(periodKey)
-  if (!match) return null
-  const year = Number(match[1])
-  const month = Number(match[2])
-  if (month < 1 || month > 12) return null
-  const pad = (value: number) => String(value).padStart(2, '0')
-  const nextYear = month === 12 ? year + 1 : year
-  const nextMonth = month === 12 ? 1 : month + 1
-  return { first: `${year}-${pad(month)}-01`, next: `${nextYear}-${pad(nextMonth)}-01` }
-}
-
 /**
  * The one posting that currently holds a source's subject claim, or `null`.
  *
@@ -324,4 +313,127 @@ export async function findLiveSubjectPosting(
       (options.occurrence === undefined || posting.occurrence === options.occurrence)
   )
   return ok(live ?? null)
+}
+
+/** A posting header paired with the `GlPostingSource` row it was found through. */
+export interface LinkedPosting {
+  sourceKind: string
+  sourceId: string
+  linkRole: PostingLinkRole
+  occurrence: string
+  glPostingId: string
+  postingType: PostingType
+  status: PostingStatus
+  /** Null while the entry is a draft: a draft holds no claim and gets no number. */
+  docNumber: string | null
+  /** The accounting date, `YYYY-MM-DD`. */
+  txnDate: string
+  totalMinor: number
+}
+
+/** Which sources to look up, and how the link must read. */
+export interface FindLinkedPostingsOptions {
+  /** Omit to match any kind - `sourceIds` then carries the whole narrowing. */
+  sourceKind?: string
+  sourceIds: readonly string[]
+  linkRole: PostingLinkRole | readonly PostingLinkRole[]
+  postingTypes?: readonly PostingType[]
+  /**
+   * 🛑 REQUIRED, and with no default. The copies this replaced disagreed -
+   * `posted`, `ne reversed`, or no filter at all - and for a `parent` or
+   * `member` link the three give different answers, because only a `subject`
+   * row is deleted by the reversal. A caller that wants any status says so.
+   */
+  statuses: readonly PostingStatus[]
+}
+
+/**
+ * Postings linked to a set of sources, in one query.
+ *
+ * Reached through `GlPostingSource`, never a stamp field on the record and
+ * never `GlPostingLine.sourceType` (TARGET §1).
+ */
+export async function findLinkedPostings(
+  db: Database | Transaction,
+  organizationId: string,
+  options: FindLinkedPostingsOptions
+): Promise<LinkedPosting[]> {
+  const { sourceKind, sourceIds, linkRole, postingTypes, statuses } = options
+  const ids = [...new Set(sourceIds)]
+  if (ids.length === 0 || statuses.length === 0) return []
+  const roles = Array.isArray(linkRole) ? [...linkRole] : [linkRole as PostingLinkRole]
+
+  const rows = await db
+    .select({
+      sourceKind: schema.GlPostingSource.sourceKind,
+      sourceId: schema.GlPostingSource.sourceId,
+      linkRole: schema.GlPostingSource.linkRole,
+      occurrence: schema.GlPostingSource.occurrence,
+      glPostingId: schema.GlPosting.id,
+      postingType: schema.GlPosting.postingType,
+      status: schema.GlPosting.status,
+      docNumber: schema.GlPosting.docNumber,
+      txnDate: schema.GlPosting.txnDate,
+      totalMinor: schema.GlPosting.totalMinor,
+      createdAt: schema.GlPosting.createdAt,
+    })
+    .from(schema.GlPostingSource)
+    .innerJoin(
+      schema.GlPosting,
+      and(
+        eq(schema.GlPosting.organizationId, schema.GlPostingSource.organizationId),
+        eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.GlPostingSource.organizationId, organizationId),
+        ...(sourceKind ? [eq(schema.GlPostingSource.sourceKind, sourceKind)] : []),
+        inArray(schema.GlPostingSource.sourceId, ids),
+        roles.length === 1
+          ? eq(schema.GlPostingSource.linkRole, roles[0] as PostingLinkRole)
+          : inArray(schema.GlPostingSource.linkRole, roles),
+        ...(postingTypes?.length ? [inArray(schema.GlPosting.postingType, [...postingTypes])] : []),
+        statuses.length === 1
+          ? eq(schema.GlPosting.status, statuses[0] as PostingStatus)
+          : inArray(schema.GlPosting.status, [...statuses])
+      )
+    )
+    // Newest first, so a caller that keeps one row per source keeps the latest
+    // rather than whatever the planner happened to emit first.
+    .orderBy(desc(schema.GlPosting.createdAt), desc(schema.GlPosting.id))
+
+  return rows.map(({ createdAt: _createdAt, ...row }) => ({
+    ...row,
+    linkRole: row.linkRole as PostingLinkRole,
+    postingType: row.postingType as PostingType,
+    status: row.status as PostingStatus,
+  }))
+}
+
+/** The statuses a live subject row can carry. A reversal deletes the row itself. */
+const LIVE_SUBJECT_STATUSES = ['draft', 'posted'] as const satisfies readonly PostingStatus[]
+
+/**
+ * The posting that currently holds each source's subject claim, batched.
+ *
+ * A reversal deletes the original's subject row (`markReversedInTx`), so
+ * anything still `subject` is what stands in the books right now. `draft` stays
+ * in the status filter although a draft's subject is written as `pending` since
+ * #2274: callers that want only the POSTED ones filter the returned `status`.
+ */
+export async function findLiveSubjectPostings(
+  db: Database | Transaction,
+  organizationId: string,
+  options: { sourceKind: string; sourceIds: readonly string[] }
+): Promise<Map<string, LinkedPosting>> {
+  const rows = await findLinkedPostings(db, organizationId, {
+    sourceKind: options.sourceKind,
+    sourceIds: options.sourceIds,
+    linkRole: 'subject',
+    statuses: LIVE_SUBJECT_STATUSES,
+  })
+  const bySource = new Map<string, LinkedPosting>()
+  for (const row of rows) if (!bySource.has(row.sourceId)) bySource.set(row.sourceId, row)
+  return bySource
 }

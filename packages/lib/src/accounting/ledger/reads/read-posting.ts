@@ -55,10 +55,17 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toDateKey, toIso } from '@auxx/utils/calendar-day'
 import { toMinor } from '@auxx/utils/currency'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, NotFoundError } from '../../../errors'
-import type { PostingDetail, PostingDetailLine, PostingDirection, PostingType } from '../types'
+import type {
+  CounterpartyType,
+  PostingDetail,
+  PostingDetailLine,
+  PostingDirection,
+  PostingStatus,
+  PostingType,
+} from '../types'
 
 const logger = createScopedLogger('postings:read-posting')
 
@@ -227,4 +234,133 @@ export async function readPostingLineSourceIds(
     logger.error("Failed to read a posting's line sources", { error, organizationId, ...params })
     return err(new AuxxError('Internal error'))
   }
+}
+
+/** A `GlPosting` header without its lines - what the by-id readers all wanted. */
+export interface PostingHeader {
+  id: string
+  postingType: PostingType
+  periodKey: string
+  /** The accounting date, `YYYY-MM-DD`. */
+  txnDate: string
+  revision: number
+  status: PostingStatus
+  /** Null while the entry is a draft. */
+  docNumber: string | null
+  /** The stored envelope, verbatim and unparsed - `read-posting.ts`'s rule 1. */
+  built: unknown
+  storeId: string | null
+  railId: string | null
+}
+
+/**
+ * The headers of a set of postings, by id.
+ *
+ * The plain read. The `FOR UPDATE` ones in `post/` are a different question and
+ * stay where they are: they are taking a row lock, not reading a header.
+ */
+export async function readPostingHeaders(
+  db: Database | Transaction,
+  organizationId: string,
+  ids: readonly string[]
+): Promise<Map<string, PostingHeader>> {
+  const unique = [...new Set(ids)]
+  const byId = new Map<string, PostingHeader>()
+  if (unique.length === 0) return byId
+
+  const rows = await db
+    .select({
+      id: schema.GlPosting.id,
+      postingType: schema.GlPosting.postingType,
+      periodKey: schema.GlPosting.periodKey,
+      txnDate: schema.GlPosting.txnDate,
+      revision: schema.GlPosting.revision,
+      status: schema.GlPosting.status,
+      docNumber: schema.GlPosting.docNumber,
+      built: schema.GlPosting.built,
+      storeId: schema.GlPosting.storeId,
+      railId: schema.GlPosting.railId,
+    })
+    .from(schema.GlPosting)
+    .where(
+      and(eq(schema.GlPosting.organizationId, organizationId), inArray(schema.GlPosting.id, unique))
+    )
+
+  for (const row of rows) {
+    byId.set(row.id, {
+      ...row,
+      postingType: row.postingType as PostingType,
+      status: row.status as PostingStatus,
+    })
+  }
+  return byId
+}
+
+/** One posting's header, or `null`. The batch above is the query. */
+export async function readPostingHeader(
+  db: Database | Transaction,
+  organizationId: string,
+  id: string
+): Promise<PostingHeader | null> {
+  return (await readPostingHeaders(db, organizationId, [id])).get(id) ?? null
+}
+
+/**
+ * The first line of a posting on one side of a counterparty - the A/R or A/P
+ * control account an entry actually landed in.
+ *
+ * Read off the LINE rather than re-resolved from the role, so the answer stays
+ * right after the role is repointed.
+ */
+export async function readControlAccountLine(
+  db: Database | Transaction,
+  organizationId: string,
+  params: {
+    glPostingId: string
+    direction: PostingDirection
+    counterpartyType: CounterpartyType
+  }
+): Promise<{ glAccountId: string } | null> {
+  const [line] = await db
+    .select({ glAccountId: schema.GlPostingLine.glAccountId })
+    .from(schema.GlPostingLine)
+    .where(
+      and(
+        eq(schema.GlPostingLine.organizationId, organizationId),
+        eq(schema.GlPostingLine.glPostingId, params.glPostingId),
+        eq(schema.GlPostingLine.direction, params.direction),
+        eq(schema.GlPostingLine.counterpartyType, params.counterpartyType)
+      )
+    )
+    .orderBy(asc(schema.GlPostingLine.lineNumber))
+    .limit(1)
+  return line ?? null
+}
+
+/**
+ * How many distinct postings name this source on their LINES - the retry
+ * counter a period key's `attempt` is minted from.
+ *
+ * 🛑 Counted over the lines, and over every status including `reversed`. A
+ * reversed attempt keeps its document number, so re-using its key would refuse
+ * at `GlPosting_org_docNumber_key`.
+ */
+export async function countPostingsForLineSource(
+  db: Database | Transaction,
+  organizationId: string,
+  params: { sourceType: string; sourceId: string; postingType?: PostingType }
+): Promise<number> {
+  const rows = await db
+    .selectDistinct({ glPostingId: schema.GlPosting.id })
+    .from(schema.GlPostingLine)
+    .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
+    .where(
+      and(
+        eq(schema.GlPosting.organizationId, organizationId),
+        eq(schema.GlPostingLine.sourceType, params.sourceType),
+        eq(schema.GlPostingLine.sourceId, params.sourceId),
+        ...(params.postingType ? [eq(schema.GlPosting.postingType, params.postingType)] : [])
+      )
+    )
+  return rows.length
 }

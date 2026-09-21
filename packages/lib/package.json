@@ -46,12 +46,6 @@
       "import": "./dist/accounting/banking/rules/client.mjs",
       "default": "./src/accounting/banking/rules/client.ts"
     },
-    "./accounting/documents": {
-      "types": "./src/accounting/documents/index.ts",
-      "source": "./src/accounting/documents/index.ts",
-      "import": "./dist/accounting/documents/index.mjs",
-      "default": "./src/accounting/documents/index.ts"
-    },
     "./accounting/documents/edit-in-place": {
       "types": "./src/accounting/documents/edit-in-place/index.ts",
       "source": "./src/accounting/documents/edit-in-place/index.ts",

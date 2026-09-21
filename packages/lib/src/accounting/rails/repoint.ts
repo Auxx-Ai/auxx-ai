@@ -33,20 +33,10 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
+import { standingLineFilter } from '../ledger/reads/standing-lines'
 import { guard } from './guard'
-
-/**
- * The two ledger states whose lines are real.
- *
- * `reversed` is included for the same reason `readTrialBalance` includes it: a
- * reversal is a SECOND, opposite entry (decision G4), so the original's lines
- * stay in the ledger and the pair nets to zero on their own. Excluding the
- * original would leave only the reversal and report a balance of the wrong
- * sign.
- */
-const POSTED_STATUSES = ['posted', 'reversed'] as const
 
 /** What is posted to one clearing account, as the repoint warning reads it. */
 export interface ClearingAccountBalance {
@@ -97,13 +87,7 @@ export async function readClearingAccountBalance(
         })
         .from(schema.GlPostingLine)
         .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
-        .where(
-          and(
-            eq(schema.GlPostingLine.organizationId, organizationId),
-            eq(schema.GlPostingLine.glAccountId, glAccountId),
-            inArray(schema.GlPosting.status, [...POSTED_STATUSES])
-          )
-        )
+        .where(standingLineFilter(organizationId, { glAccountIds: [glAccountId] }))
 
       const debitMinor = Number(row?.debitMinor ?? 0) || 0
       const creditMinor = Number(row?.creditMinor ?? 0) || 0

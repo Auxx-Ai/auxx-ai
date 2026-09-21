@@ -33,7 +33,7 @@
  * `list-postings.ts` says why at length: for `manual_journal`, `bank_deposit`
  * and `write_off` the period key is the source record's NUMBER, not a date, so
  * the only field that answers "what landed in September" is the accounting
- * date. The month's bounds are derived through `parsePeriodKey`, and the range
+ * date. The month's bounds come from `monthBounds`, and the range
  * is half-open on `YYYY-MM-DD` keys, which a Postgres `date` compares to
  * directly (drizzle's `date()` is string-mode) - no timezone arithmetic, and
  * therefore no UTC month masquerading as the book month.
@@ -46,12 +46,12 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, gte, lt, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { AuxxError, BadRequestError } from '../../../errors'
+import { AuxxError } from '../../../errors'
 import type { PostingType } from '../types'
 // 🛑 The LEAVES, never the `money/*` barrels, the same call `rail-fee-status.ts`
 // makes: `postings/index.ts` re-exports this file, and a barrel that reaches
 // back into `postings/` would close a cycle.
-import { parsePeriodKey } from './periods'
+import { monthBounds } from './periods'
 
 const logger = createScopedLogger('postings:month-activity')
 
@@ -144,25 +144,5 @@ export async function readMonthActivity(
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to read the month activity', { error, organizationId, month })
     return err(new AuxxError('Internal error'))
-  }
-}
-
-/**
- * `'2026-09'` as a half-open range of date keys: its first day, and the first
- * day of the month after it. Right for every month length without a table,
- * and a December key rolls into January of the next year.
- *
- * @throws {BadRequestError} for anything but a real `YYYY-MM` month.
- */
-function monthBounds(month: string): { first: string; next: string } {
-  const parsed = parsePeriodKey(month)
-  if (parsed.granularity !== 'month') {
-    throw new BadRequestError(`Expected a YYYY-MM month, got "${month}"`, { month })
-  }
-  const nextYear = parsed.month === 12 ? parsed.year + 1 : parsed.year
-  const nextMonth = parsed.month === 12 ? 1 : parsed.month + 1
-  return {
-    first: `${month}-01`,
-    next: `${String(nextYear).padStart(4, '0')}-${String(nextMonth).padStart(2, '0')}-01`,
   }
 }

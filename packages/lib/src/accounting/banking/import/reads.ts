@@ -13,6 +13,7 @@ import { schema } from '@auxx/database'
 import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, eq, inArray } from 'drizzle-orm'
 import { readSystemRecords, type SystemRecord } from '../../../resources/system-records'
+import { findLiveSubjectPostings } from '../../ledger/reads/list-postings'
 import type { BankTransactionImportAttribute, BankTransactionImportContext } from '../fields'
 
 // Mirrors `banking/review/client.ts`'s own constant. Inlined rather than
@@ -119,24 +120,13 @@ async function toRows(
   // The live posting each line currently claims, read through
   // `GlPostingSource` (TARGET §1) rather than the retired
   // `bank_transaction_gl_posting_id` stamp.
-  const livePostings = await db
-    .select({
-      sourceId: schema.GlPostingSource.sourceId,
-      glPostingId: schema.GlPostingSource.glPostingId,
-    })
-    .from(schema.GlPostingSource)
-    .where(
-      and(
-        eq(schema.GlPostingSource.organizationId, organizationId),
-        eq(schema.GlPostingSource.sourceKind, BANK_TRANSACTION_SOURCE_TYPE),
-        eq(schema.GlPostingSource.linkRole, 'subject'),
-        inArray(
-          schema.GlPostingSource.sourceId,
-          records.map((record) => record.id)
-        )
-      )
-    )
-  const glPostingIdBySourceId = new Map(livePostings.map((row) => [row.sourceId, row.glPostingId]))
+  const livePostings = await findLiveSubjectPostings(db, organizationId, {
+    sourceKind: BANK_TRANSACTION_SOURCE_TYPE,
+    sourceIds: records.map((record) => record.id),
+  })
+  const glPostingIdBySourceId = new Map(
+    [...livePostings].map(([sourceId, row]) => [sourceId, row.glPostingId])
+  )
 
   return records.map((record) => {
     const postedAt = record.date('bank_transaction_posted_at')

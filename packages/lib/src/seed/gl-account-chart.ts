@@ -70,7 +70,10 @@ import {
   type DefaultChartAccount,
 } from '../accounting/ledger/chart/default-chart'
 import { withAccountingCommitLock } from '../accounting/ledger/post/accounting-commit-lock'
-import { readRoleAssignments } from '../accounting/ledger/roles/role-assignments'
+import {
+  insertDefaultRoleAssignmentsIfAbsent,
+  readRoleAssignments,
+} from '../accounting/ledger/roles/role-assignments'
 import { ensureManualSourceAccount } from '../accounting/ledger/roles/source-scope'
 import {
   createPaymentGateway,
@@ -346,35 +349,14 @@ async function assignSeededRoles(
     if (!account.role) return []
     const glAccountId = byCode.get(account.code)
     if (!glAccountId) return []
-    return [{ organizationId, role: account.role, glAccountId, source: 'seed' }]
+    return [{ role: account.role, glAccountId }]
   })
 
   if (rows.length === 0) return 0
 
   return db.transaction(async (tx) => {
     await withAccountingCommitLock(tx, organizationId)
-    const inserted = await tx
-      .insert(schema.GlRoleAssignment)
-      .values(rows)
-      .onConflictDoNothing({
-        target: [schema.GlRoleAssignment.organizationId, schema.GlRoleAssignment.role],
-        // 🛑 `GlRoleAssignment_org_role_key` became two PARTIAL indexes in task
-        // 47, so a bare `(organizationId, role)` target no longer names one.
-        // `targetWhere` picks the ORG DEFAULT half - which is the only half a
-        // seed or an import ever writes; a per-source override is a human's
-        // decision, made in settings.
-        // `where` is `onConflictDoNothing`'s spelling of the index predicate;
-        // `onConflictDoUpdate` spells the same thing `targetWhere`.
-        // ⚠️ Both halves: task 58 widened the index predicate, and a narrower
-        // `where` infers no index at all (42P10).
-        where: and(
-          isNull(schema.GlRoleAssignment.sourceAccountId),
-          isNull(schema.GlRoleAssignment.paymentGatewayId)
-        ),
-      })
-      .returning({ id: schema.GlRoleAssignment.id })
-
-    return inserted.length
+    return insertDefaultRoleAssignmentsIfAbsent(tx, organizationId, rows, 'seed')
   })
 }
 

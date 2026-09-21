@@ -14,7 +14,7 @@
 // exists to catch, and it should be unreachable rather than merely detectable.
 // The provider push is the one thing that stays outside: see `postEntryInTx`.
 
-import { type Database, schema, type Transaction } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import {
   buildInventoryMovementEntry,
@@ -27,6 +27,7 @@ import { listPostingsForSource } from '../reads/list-postings'
 import { readPostingLineSourceIds } from '../reads/read-posting'
 import { isAccountingEnabled } from '../setup/accounting-enabled'
 import type { GlPostingSourceInput, PostResult } from '../types'
+import { insertSourceLinksInTx } from './insert-posting'
 import { exportPostedEntry, type InTxPostResult, postEntryInTx } from './post-entry'
 import { reverseEntry } from './reverse-entry'
 
@@ -289,14 +290,15 @@ export async function linkMovementsToPosting(
 ): Promise<void> {
   const { organizationId, glPostingId, movementIds } = input
   if (movementIds.length === 0) return
-  await db.insert(schema.GlPostingSource).values(
-    movementIds.map((movementId) => ({
-      organizationId,
-      glPostingId,
+  await insertSourceLinksInTx(db, {
+    organizationId,
+    glPostingId,
+    sources: movementIds.map((movementId) => ({
       sourceKind: 'stock_movement',
       sourceId: movementId,
       linkRole: 'member' as const,
       occurrence: 'reversal',
-    }))
-  )
+    })),
+    mode: 'post',
+  })
 }

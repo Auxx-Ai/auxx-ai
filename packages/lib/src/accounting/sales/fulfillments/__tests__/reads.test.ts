@@ -400,7 +400,7 @@ describe('readFulfillmentsForOrders', () => {
       ],
       [], // no lines
       // `GlPostingSource` joined to `GlPosting` for this fulfillment's subject row.
-      [{ fulfillmentId: 'ful_1', glPostingId: 'gp_1', docNumber: 'AUXX-FUL-ORD1F1' }],
+      [{ sourceId: 'ful_1', glPostingId: 'gp_1', docNumber: 'AUXX-FUL-ORD1F1' }],
     ])
 
     const result = await readFulfillmentsForOrders(db, {

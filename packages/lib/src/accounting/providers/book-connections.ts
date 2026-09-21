@@ -108,12 +108,7 @@ async function validatePinnedConnectionInTx(
     ),
   })
   if (connection.state === 'retired') {
-    const active = await tx.query.ExternalBookConnection.findFirst({
-      where: and(
-        eq(schema.ExternalBookConnection.organizationId, organizationId),
-        eq(schema.ExternalBookConnection.state, 'active')
-      ),
-    })
+    const active = await readActiveBookConnection(tx, organizationId)
     if (
       !active ||
       active.bookId !== connection.bookId ||
@@ -186,15 +181,11 @@ export async function readActiveBookCompanyId(
  * built: that day is the cutover the opening balance was derived from.
  */
 export async function readActiveBookConnection(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string
-): Promise<{ connectionId: string; bookId: string; exportFromDate: string } | null> {
+): Promise<ExternalBookConnectionEntity | null> {
   const [row] = await db
-    .select({
-      connectionId: schema.ExternalBookConnection.id,
-      bookId: schema.ExternalBookConnection.bookId,
-      exportFromDate: schema.ExternalBookConnection.exportFromDate,
-    })
+    .select()
     .from(schema.ExternalBookConnection)
     .where(
       and(
@@ -251,12 +242,7 @@ export async function activateAccountingBookConnectionInTx(
     throw new UnprocessableEntityError('An actor is required for accounting cutover')
   await withAccountingCommitLock(tx, input.organizationId)
   const credential = await readCredentialInTx(tx, input.organizationId, input.credentialId)
-  const active = await tx.query.ExternalBookConnection.findFirst({
-    where: and(
-      eq(schema.ExternalBookConnection.organizationId, input.organizationId),
-      eq(schema.ExternalBookConnection.state, 'active')
-    ),
-  })
+  const active = await readActiveBookConnection(tx, input.organizationId)
   if (
     active?.credentialId === input.credentialId &&
     active.exportFromDate === input.exportFromDate &&
@@ -456,12 +442,7 @@ export async function repairAccountingBookConnection(
       book.externalCompanyId !== credential.companyId
     )
       throw new ConflictError('Repair must authorize the original QuickBooks company')
-    const active = await tx.query.ExternalBookConnection.findFirst({
-      where: and(
-        eq(schema.ExternalBookConnection.organizationId, input.organizationId),
-        eq(schema.ExternalBookConnection.state, 'active')
-      ),
-    })
+    const active = await readActiveBookConnection(tx, input.organizationId)
     if ((active?.id ?? null) !== input.expectedActiveConnectionId)
       throw new ConflictError('The active accounting company changed; refresh before repairing')
     if (

@@ -37,31 +37,14 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../../errors'
 import { countUnissuedChannelCreditMemos } from '../../sales/credit-memos/reads'
-import type { BooksBalanceDiscrepancy, BooksBalanceReport, PostingType } from '../types'
+import {
+  type BooksBalanceDiscrepancy,
+  type BooksBalanceReport,
+  POSTED_STATUSES,
+  type PostingType,
+} from '../types'
 
 const logger = createScopedLogger('postings:verify-balance')
-
-/**
- * The statuses that count as "in the books" for the balance sweep.
- *
- * `pending` is excluded because a claimed row legitimately has no lines yet:
- * the claim and the line inserts share one transaction, but a run that crashed
- * between them leaves exactly that shape, and so does any concurrent reader
- * peeking mid-transaction. Reporting those as unbalanced would make the sweep
- * cry wolf on its most common non-event, and a check nobody believes is worse
- * than no check.
- *
- * `failed` is excluded because it is not in the books: nothing was posted, the
- * financial statements do not include it, and its lines (if any) are the debris
- * of an attempt rather than a claim about money.
- *
- * `reversed` IS included. It is a posted entry whose effect was cancelled by a
- * second, opposite entry (decision G4); the original's own lines still have to
- * tie, and the reversal is an ordinary `posted` row that ties on its own. A
- * reversal pair therefore contributes two balanced entries, not one net-zero
- * one.
- */
-const POSTED_STATUSES = ['posted', 'reversed'] as const
 
 /** One entry whose lines do not tie, or do not agree with its recorded total. */
 // `BooksBalanceDiscrepancy` moved to `types.ts` - see the note there.

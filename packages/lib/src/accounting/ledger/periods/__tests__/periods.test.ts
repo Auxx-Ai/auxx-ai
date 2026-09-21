@@ -6,6 +6,7 @@ import {
   assertPeriodOpen,
   compareMonths,
   isPeriodLocked,
+  monthBounds,
   monthDateRange,
   parsePeriodKey,
   periodKeyForDate,
@@ -212,5 +213,24 @@ describe('assertPeriodOpen', () => {
     } catch (error) {
       expect((error as UnprocessableEntityError).statusCode).toBe(422)
     }
+  })
+})
+
+describe('monthBounds', () => {
+  it('is half-open, so a short month needs no table and no `-31`', () => {
+    // `'2026-02-31'::date` is a hard Postgres error, which is what the private
+    // copies in `queue-reads.ts` used to build.
+    expect(monthBounds('2026-02')).toEqual({ first: '2026-02-01', next: '2026-03-01' })
+    expect(monthBounds('2028-02')).toEqual({ first: '2028-02-01', next: '2028-03-01' })
+    expect(monthBounds('2026-04')).toEqual({ first: '2026-04-01', next: '2026-05-01' })
+  })
+
+  it('rolls December into January of the next year', () => {
+    expect(monthBounds('2026-12')).toEqual({ first: '2026-12-01', next: '2027-01-01' })
+  })
+
+  it('refuses anything that is not a real YYYY-MM month', () => {
+    for (const key of ['2026-13', '2026-08-18', '2026-8', 'not-a-month'])
+      expect(() => monthBounds(key)).toThrow(BadRequestError)
   })
 })

@@ -29,6 +29,9 @@ import {
   sql,
 } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
+import { readLiveBatchMemberships } from '../export/queue-reads'
+import { findLiveSubjectPostings } from '../ledger/reads/list-postings'
+import { readActiveBookConnection } from '../providers/book-connections'
 import type { OurPostedEntry, OurPostedLine, ProviderLedgerLine, ProviderSyncRange } from './client'
 import { PROVIDER_LEDGER_SOURCE_KIND, PROVIDER_SYNC_POSTING_TYPE } from './client'
 import { guard } from './guard'
@@ -122,22 +125,9 @@ export async function readOurPostedEntries(
         )
       if (batches.length === 0) return []
 
-      const members = await db
-        .select({
-          batchId: schema.ExportBatchPosting.batchId,
-          glPostingId: schema.ExportBatchPosting.glPostingId,
-        })
-        .from(schema.ExportBatchPosting)
-        .where(
-          and(
-            eq(schema.ExportBatchPosting.organizationId, organizationId),
-            inArray(
-              schema.ExportBatchPosting.batchId,
-              batches.map((batch) => batch.id)
-            ),
-            isNull(schema.ExportBatchPosting.withdrawnAt)
-          )
-        )
+      const members = await readLiveBatchMemberships(db, organizationId, {
+        batchIds: batches.map((batch) => batch.id),
+      })
       const firstMember = new Map<string, string>()
       for (const member of members)
         if (!firstMember.has(member.batchId)) firstMember.set(member.batchId, member.glPostingId)
@@ -188,19 +178,7 @@ export async function readActiveBookId(
   organizationId: string
 ): Promise<Result<string | null, Error>> {
   return guard(
-    async () => {
-      const [row] = await db
-        .select({ bookId: schema.ExternalBookConnection.bookId })
-        .from(schema.ExternalBookConnection)
-        .where(
-          and(
-            eq(schema.ExternalBookConnection.organizationId, organizationId),
-            eq(schema.ExternalBookConnection.state, 'active')
-          )
-        )
-        .limit(1)
-      return row?.bookId ?? null
-    },
+    async () => (await readActiveBookConnection(db, organizationId))?.bookId ?? null,
     'Failed to read the active accounting book',
     { organizationId }
   )
@@ -305,23 +283,10 @@ export async function readMirrorForTranslation(
       // The live claim, in one read rather than one per entry. `linkRole` is the
       // claim and a reversal deletes it, so a row here means our books still
       // stand behind that mirror entry.
-      const claims = await db
-        .select({
-          sourceId: schema.GlPostingSource.sourceId,
-          glPostingId: schema.GlPostingSource.glPostingId,
-          status: schema.GlPosting.status,
-          docNumber: schema.GlPosting.docNumber,
-        })
-        .from(schema.GlPostingSource)
-        .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId))
-        .where(
-          and(
-            eq(schema.GlPostingSource.organizationId, organizationId),
-            eq(schema.GlPostingSource.sourceKind, PROVIDER_LEDGER_SOURCE_KIND),
-            eq(schema.GlPostingSource.linkRole, 'subject'),
-            inArray(schema.GlPostingSource.sourceId, ids)
-          )
-        )
+      const claimByEntry = await findLiveSubjectPostings(db, organizationId, {
+        sourceKind: PROVIDER_LEDGER_SOURCE_KIND,
+        sourceIds: ids,
+      })
 
       const linesByEntry = new Map<string, ProviderLedgerLine[]>()
       for (const row of lineRows) {
@@ -341,10 +306,6 @@ export async function readMirrorForTranslation(
         })
         linesByEntry.set(row.entryId, lines)
       }
-
-      const claimByEntry = new Map(
-        claims.filter((row) => row.status !== 'reversed').map((row) => [row.sourceId, row])
-      )
 
       return entries.map((entry) => ({
         id: entry.id,

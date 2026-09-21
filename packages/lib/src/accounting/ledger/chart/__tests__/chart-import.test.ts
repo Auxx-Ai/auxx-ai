@@ -116,20 +116,23 @@ function stubDb(alreadyAssigned: Set<string> = new Set()) {
       return fn(this)
     },
     insert: () => ({
-      values: (row: {
-        organizationId: string
-        role: string
-        glAccountId: string
-        source: string
-      }) => ({
+      values: (
+        rows: {
+          organizationId: string
+          role: string
+          glAccountId: string
+          source: string
+        }[]
+      ) => ({
         onConflictDoNothing: () => ({
-          returning: async () => {
-            const key = `${row.organizationId}:${row.role}`
-            if (alreadyAssigned.has(key)) return []
-            alreadyAssigned.add(key)
-            insertedRows.push(row)
-            return [{ id: `assignment_${row.role}` }]
-          },
+          returning: async () =>
+            rows.flatMap((row) => {
+              const key = `${row.organizationId}:${row.role}`
+              if (alreadyAssigned.has(key)) return []
+              alreadyAssigned.add(key)
+              insertedRows.push(row)
+              return [{ id: `assignment_${row.role}` }]
+            }),
         }),
       }),
     }),

@@ -16,16 +16,9 @@ import { toMinor } from '@auxx/utils/currency'
 import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../errors'
+import { standingLineFilter } from '../ledger/reads/standing-lines'
 
 const logger = createScopedLogger('postings:reports:dimension-breakdown')
-
-/**
- * Both statuses, like every other statement read in this folder
- * (`account-lines.ts`, `trial-balance.ts`): a reversed entry's PAIR of lines
- * both count, so the two net to zero rather than one side vanishing from the
- * breakdown.
- */
-const POSTED_STATUSES = ['posted', 'reversed'] as const
 
 /** One dimension value's totals on one account. Raw, not natural-signed. */
 export interface DimensionBreakdownRow {
@@ -75,13 +68,7 @@ export async function readDimensionBreakdown(
   try {
     const value = sql<string | null>`${schema.GlPostingLine.dimensions} ->> ${dimension}`
 
-    const bounds = [
-      eq(schema.GlPosting.organizationId, organizationId),
-      inArray(schema.GlPosting.status, [...POSTED_STATUSES]),
-      eq(schema.GlPostingLine.glAccountId, glAccountId),
-    ]
-    if (from) bounds.push(gte(schema.GlPosting.txnDate, from))
-    if (to) bounds.push(lte(schema.GlPosting.txnDate, to))
+    const bounds = standingLineFilter(organizationId, { from, to, glAccountIds: [glAccountId] })
 
     const rows = await db
       .select({
@@ -91,7 +78,7 @@ export async function readDimensionBreakdown(
       })
       .from(schema.GlPostingLine)
       .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
-      .where(and(...bounds))
+      .where(bounds)
       .groupBy(value)
 
     const breakdown = rows.map((row) => {

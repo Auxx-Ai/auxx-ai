@@ -29,6 +29,7 @@ import type { JournalEntryLine, JournalEntryRecord } from '../journals/entries/c
 import { listJournalEntries } from '../journals/entries/reads'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { cutoverDateFor } from '../ledger/builders/opening-balance'
+import { hasStandingEntry } from '../ledger/periods/settled-periods'
 import { getPosting } from '../ledger/reads/read-posting'
 import { INVENTORY_ROLES } from '../ledger/roles/regime'
 import { loadRoleAccountCodes } from '../ledger/roles/resolve-roles'
@@ -112,7 +113,7 @@ export async function readOpeningTrialBalance(
           result.isErr() ? [] : result.value
         ),
         loadRoleAccountCodes(db, organizationId, [...INVENTORY_ROLES]),
-        hasStandingPosting(db, organizationId),
+        hasStandingEntry(db, organizationId),
       ])
 
       // A settings form that clears a text input writes '' rather than
@@ -263,27 +264,6 @@ async function readPosting(
     status: posting.status,
     totalMinor: posting.totalMinor,
   }
-}
-
-/**
- * Whether the ledger holds an entry that is standing in the books.
- *
- * The same predicate `assertAccountingSetupUnfrozen` enforces on a write -
- * `posted` or `pending` - so the screen's lock and the server's refusal can
- * never disagree. Read here rather than through `verifyBooksBalance` (which the
- * browser hook uses) because this read wants one boolean, not a sweep of every
- * line in the ledger.
- */
-async function hasStandingPosting(db: Database, organizationId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: schema.GlPosting.id })
-    .from(schema.GlPosting)
-    .where(
-      // Any row IS an entry. See the note in `settled-periods.ts`.
-      eq(schema.GlPosting.organizationId, organizationId)
-    )
-    .limit(1)
-  return !!row
 }
 
 /**

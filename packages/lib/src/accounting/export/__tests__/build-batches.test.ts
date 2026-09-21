@@ -251,7 +251,7 @@ describe('Transaction mode', () => {
         { glPostingId: 'glp_1', sourceKind: 'order', sourceId: 'order_1' },
         { glPostingId: 'glp_pay', sourceKind: 'order', sourceId: 'order_1' },
       ],
-      [{ orderId: 'order_1', glPostingId: 'glp_pay', totalMinor: 5000, txnDate: '2026-09-14' }],
+      [{ sourceId: 'order_1', glPostingId: 'glp_pay', totalMinor: 5000, txnDate: '2026-09-14' }],
       [], // claims - unused, glp_pay is absorbed
       [
         line({
@@ -301,7 +301,7 @@ describe('Transaction mode', () => {
         { glPostingId: 'glp_1', sourceKind: 'order', sourceId: 'order_1' },
         { glPostingId: 'glp_pay', sourceKind: 'order', sourceId: 'order_1' },
       ],
-      [{ orderId: 'order_1', glPostingId: 'glp_pay', totalMinor: 2000, txnDate: '2026-09-14' }],
+      [{ sourceId: 'order_1', glPostingId: 'glp_pay', totalMinor: 2000, txnDate: '2026-09-14' }],
       [{ sourceKind: 'order', sourceId: 'order_1', glPostingId: 'glp_1' }],
       [
         line({
@@ -353,7 +353,7 @@ describe('Transaction mode', () => {
         { glPostingId: 'glp_1', sourceKind: 'order', sourceId: 'order_1' },
         { glPostingId: 'glp_pay', sourceKind: 'order', sourceId: 'order_1' },
       ],
-      [{ orderId: 'order_1', glPostingId: 'glp_pay', totalMinor: 5000, txnDate: '2026-09-14' }],
+      [{ sourceId: 'order_1', glPostingId: 'glp_pay', totalMinor: 5000, txnDate: '2026-09-14' }],
       [{ sourceKind: 'order', sourceId: 'order_1', glPostingId: 'glp_1' }],
       [
         line({

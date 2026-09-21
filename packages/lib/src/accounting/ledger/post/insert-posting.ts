@@ -3,7 +3,7 @@
 // The row write, and the claim. `post-entry.ts` owns the order of operations;
 // this file owns the SQL.
 
-import { schema, type Transaction } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, sql } from 'drizzle-orm'
 import { ConflictError } from '../../../errors'
 import { LEDGER_CURRENCY } from '../setup/ledger-currency'
@@ -130,7 +130,7 @@ export async function claimSubjectInTx(
  * record it is about can find it without the draft holding a claim.
  */
 export async function insertSourceLinksInTx(
-  tx: Transaction,
+  tx: Database | Transaction,
   input: {
     organizationId: string
     glPostingId: string
@@ -224,32 +224,43 @@ export async function insertPostingInTx(
   if (!row) throw new Error('GlPosting insert returned no row')
 
   if (lines.length > 0) {
-    await tx.insert(schema.GlPostingLine).values(
-      lines.map((line, index) => ({
-        organizationId,
-        glPostingId: row.id,
-        // 1-based and derived from the built order, which `prepareEntry` sorted
-        // by `sortOrder`. Unique per posting.
-        lineNumber: index + 1,
-        glAccountId: line.resolved.glAccountId,
-        accountCode: line.resolved.accountCode,
-        accountRole: line.accountRole,
-        accountName: line.resolved.accountName ?? null,
-        direction: line.resolved.direction,
-        amountMinor: line.resolved.amount,
-        memo: line.resolved.memo ?? null,
-        sourceType: line.resolved.sourceType,
-        sourceId: line.resolved.sourceId,
-        // FROZEN here (brief 13 §1.1): a retry replays this column, never a
-        // re-resolve.
-        counterpartyType: line.resolved.counterpartyType ?? null,
-        counterpartyId: line.resolved.counterpartyId ?? null,
-        dimensions: line.resolved.dimensions ?? null,
-      }))
-    )
+    await tx.insert(schema.GlPostingLine).values(toLineRows(organizationId, row.id, lines))
   }
 
   return row
+}
+
+/**
+ * The `GlPostingLine` values for a prepared entry - the first insert and a
+ * draft's re-insert must write the same columns or an edited draft would post
+ * differently from a fresh one.
+ *
+ * `lineNumber` is 1-based over the built order, which `prepareEntry` sorted by
+ * `sortOrder`. `counterparty*` is FROZEN here (brief 13 §1.1): a retry replays
+ * the column rather than re-resolving it.
+ */
+export function toLineRows(
+  organizationId: string,
+  glPostingId: string,
+  lines: readonly PreparedLine[]
+) {
+  return lines.map((line, index) => ({
+    organizationId,
+    glPostingId,
+    lineNumber: index + 1,
+    glAccountId: line.resolved.glAccountId,
+    accountCode: line.resolved.accountCode,
+    accountRole: line.accountRole,
+    accountName: line.resolved.accountName ?? null,
+    direction: line.resolved.direction,
+    amountMinor: line.resolved.amount,
+    memo: line.resolved.memo ?? null,
+    sourceType: line.resolved.sourceType,
+    sourceId: line.resolved.sourceId,
+    counterpartyType: line.resolved.counterpartyType ?? null,
+    counterpartyId: line.resolved.counterpartyId ?? null,
+    dimensions: line.resolved.dimensions ?? null,
+  }))
 }
 
 /**

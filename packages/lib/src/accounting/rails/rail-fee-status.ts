@@ -56,11 +56,12 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm'
+import { and, eq, gte, lt, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { AuxxError, BadRequestError } from '../../errors'
+import { AuxxError } from '../../errors'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
-import { parsePeriodKey } from '../ledger/periods/periods'
+import { monthBounds } from '../ledger/periods/periods'
+import { standingLineFilter } from '../ledger/reads/standing-lines'
 import { readRoleAssignments } from '../ledger/roles/role-assignments'
 import type { PaymentGatewayFeeTreatmentValue, PaymentGatewayRow } from './client'
 // 🛑 The LEAF, never `../payment-gateways` - the barrel re-exports `writes.ts`,
@@ -298,14 +299,14 @@ async function readAccountActivity(
   db: Database,
   organizationId: string,
   accountIds: string[],
-  bounds: { from: string; to: string }
+  bounds: { first: string; next: string }
 ): Promise<Map<string, AccountActivity>> {
   const byAccount = new Map<string, AccountActivity>()
   if (accountIds.length === 0) return byAccount
 
   const inMonth = and(
-    gte(schema.GlPosting.txnDate, bounds.from),
-    lte(schema.GlPosting.txnDate, bounds.to)
+    gte(schema.GlPosting.txnDate, bounds.first),
+    lt(schema.GlPosting.txnDate, bounds.next)
   )
 
   const rows = await db
@@ -318,13 +319,9 @@ async function readAccountActivity(
     })
     .from(schema.GlPostingLine)
     .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
-    .where(
-      and(
-        eq(schema.GlPosting.organizationId, organizationId),
-        eq(schema.GlPosting.status, 'posted'),
-        inArray(schema.GlPostingLine.glAccountId, accountIds)
-      )
-    )
+    // POSTED_STATUSES, not `posted` alone: a reversed original is activity on
+    // the account too, and the two copies of this question must agree.
+    .where(standingLineFilter(organizationId, { glAccountIds: accountIds }))
     .groupBy(schema.GlPostingLine.glAccountId)
 
   for (const row of rows) {
@@ -334,15 +331,4 @@ async function readAccountActivity(
     })
   }
   return byAccount
-}
-
-/** `'2026-09'` as its first and last date keys. */
-function monthBounds(month: string): { from: string; to: string } {
-  const parsed = parsePeriodKey(month)
-  if (parsed.granularity !== 'month') {
-    throw new BadRequestError(`Expected a YYYY-MM month, got "${month}"`, { month })
-  }
-  // Day 0 of the NEXT month index is the last day of this one.
-  const end = new Date(Date.UTC(parsed.year, parsed.month, 0))
-  return { from: `${month}-01`, to: end.toISOString().slice(0, 10) }
 }

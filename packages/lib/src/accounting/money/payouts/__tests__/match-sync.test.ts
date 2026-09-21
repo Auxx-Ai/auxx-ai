@@ -14,11 +14,11 @@ function mentions(value: unknown, needle: unknown): boolean {
 
 /**
  * The query order `syncStoredMatches` issues: entries, accounts, the matcher's
- * gateways and candidates, the frozen ids (`selectDistinct`), and - only when
- * something is frozen - the postings' `unidentified_receipts` credits.
+ * gateways and candidates, the linked postings, and - only when something is
+ * frozen - the postings' `unidentified_receipts` credits.
  */
 function transaction(results: unknown[][], frozen: unknown[], credits: unknown[] = []) {
-  if (frozen.length) results = [...results, credits]
+  results = frozen.length ? [...results, frozen, credits] : [...results, frozen]
   const statements: unknown[] = []
   const chain = (rows: unknown[]) => {
     const link: Record<string, unknown> = {}
@@ -35,7 +35,7 @@ function transaction(results: unknown[][], frozen: unknown[], credits: unknown[]
   })
   const tx = {
     select,
-    selectDistinct: vi.fn(() => chain(frozen)),
+    selectDistinct: select,
     execute: vi.fn((statement: unknown) => {
       statements.push(statement)
       return Promise.resolve()

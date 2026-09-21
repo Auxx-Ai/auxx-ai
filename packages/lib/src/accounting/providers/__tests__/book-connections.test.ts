@@ -69,10 +69,12 @@ function fixture() {
   // `getOrganizationSetting` reads through `tx`) end in `.limit(1)`.
   const rows: Record<string, unknown[]> = {
     Credential: [credentialRow],
+    ExternalBookConnection: [active],
     OrganizationSetting: [{ key: 'quickbooks.postJournalEntries', value: true }],
   }
   const tables = new Map<unknown, string>([
     [schema.Credential, 'Credential'],
+    [schema.ExternalBookConnection, 'ExternalBookConnection'],
     [schema.OrganizationSetting, 'OrganizationSetting'],
   ])
   const select = vi.fn(() => {

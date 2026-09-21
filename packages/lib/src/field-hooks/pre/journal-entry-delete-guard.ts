@@ -1,9 +1,9 @@
 // packages/lib/src/field-hooks/pre/journal-entry-delete-guard.ts
 
-import { database, schema } from '@auxx/database'
+import { database } from '@auxx/database'
 import { parseRecordId } from '@auxx/types/resource'
-import { and, eq } from 'drizzle-orm'
 import { assertJournalEntryIsDraft } from '../../accounting/journals/entries/refusals'
+import { readPostingHeader } from '../../accounting/ledger/reads/read-posting'
 import { unwrapStatusValue } from '../../resources/events/captured-values'
 import type { EntityPreDeleteHandler } from '../types'
 
@@ -46,14 +46,8 @@ export const guardJournalEntryDelete: EntityPreDeleteHandler = async (event) => 
 
 /** The linked `GlPosting`'s status, or `'draft'` when the row is somehow gone. */
 async function readPostingStatus(organizationId: string, glPostingId: string): Promise<string> {
-  const [row] = await database
-    .select({ status: schema.GlPosting.status })
-    .from(schema.GlPosting)
-    .where(
-      and(eq(schema.GlPosting.id, glPostingId), eq(schema.GlPosting.organizationId, organizationId))
-    )
-    .limit(1)
-  return row?.status ?? 'draft'
+  const header = await readPostingHeader(database, organizationId, glPostingId)
+  return header?.status ?? 'draft'
 }
 
 /**

@@ -3,9 +3,10 @@
 // rolls up. Same read in both modes (TARGET §6).
 
 import { type Database, schema } from '@auxx/database'
-import { and, asc, count, desc, eq, exists, gte, inArray, isNull, lte } from 'drizzle-orm'
+import { and, asc, count, desc, eq, exists, gte, inArray, isNull, lt, lte } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError } from '../../errors'
+import { monthBounds } from '../ledger/periods/periods'
 import type { PostingType } from '../ledger/types'
 import type { ExportBatchState } from './client'
 
@@ -69,6 +70,7 @@ export async function listExportBatches(
   try {
     if (input.month && !/^\d{4}-\d{2}$/.test(input.month))
       return err(new BadRequestError(`'${input.month}' is not an accounting month (YYYY-MM)`))
+    const monthWindow = input.month ? monthBounds(input.month) : null
 
     if (input.glPostingIds && input.glPostingIds.length === 0) return ok([])
 
@@ -126,8 +128,14 @@ export async function listExportBatches(
             batches.map((batch) => batch.id)
           ),
           isNull(schema.ExportBatchPosting.withdrawnAt),
-          input.month ? gte(schema.GlPosting.txnDate, `${input.month}-01`) : undefined,
-          input.month ? lte(schema.GlPosting.txnDate, `${input.month}-31`) : undefined
+          // Half-open through `monthBounds`: `${month}-31` is not a date in a
+          // short month and Postgres refuses the cast outright.
+          ...(monthWindow
+            ? [
+                gte(schema.GlPosting.txnDate, monthWindow.first),
+                lt(schema.GlPosting.txnDate, monthWindow.next),
+              ]
+            : [])
         )
       )
       .orderBy(asc(schema.GlPosting.txnDate))
@@ -197,4 +205,38 @@ export async function countExportBatchesByState(
   }
   for (const row of rows) counts[row.state] = row.total
   return counts
+}
+
+/**
+ * The live `ExportBatchPosting` rows for a set of postings or a set of batches.
+ *
+ * "Live" is `withdrawnAt IS NULL` - a withdrawn membership is history and must
+ * never resolve as the batch a posting is in.
+ */
+export async function readLiveBatchMemberships(
+  db: Database,
+  organizationId: string,
+  where: { glPostingIds?: readonly string[]; batchIds?: readonly string[] }
+): Promise<Array<{ batchId: string; glPostingId: string }>> {
+  const glPostingIds = where.glPostingIds ? [...new Set(where.glPostingIds)] : undefined
+  const batchIds = where.batchIds ? [...new Set(where.batchIds)] : undefined
+  if (glPostingIds?.length === 0 || batchIds?.length === 0) return []
+  if (!glPostingIds && !batchIds) {
+    throw new BadRequestError('readLiveBatchMemberships needs glPostingIds or batchIds')
+  }
+
+  return db
+    .select({
+      batchId: schema.ExportBatchPosting.batchId,
+      glPostingId: schema.ExportBatchPosting.glPostingId,
+    })
+    .from(schema.ExportBatchPosting)
+    .where(
+      and(
+        eq(schema.ExportBatchPosting.organizationId, organizationId),
+        isNull(schema.ExportBatchPosting.withdrawnAt),
+        ...(glPostingIds ? [inArray(schema.ExportBatchPosting.glPostingId, glPostingIds)] : []),
+        ...(batchIds ? [inArray(schema.ExportBatchPosting.batchId, batchIds)] : [])
+      )
+    )
 }

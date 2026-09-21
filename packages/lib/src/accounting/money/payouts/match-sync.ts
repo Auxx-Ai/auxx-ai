@@ -10,8 +10,9 @@
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, eq, inArray, ne, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, or, sql } from 'drizzle-orm'
 import { ACCOUNT_ROLES } from '../../ledger/builders/entry'
+import { findLinkedPostings } from '../../ledger/reads/list-postings'
 import { readSourceAccounts } from '../customer-money/source-reads'
 import { type PayoutSplit, type StoredPayoutEntry, splitStoredEntries } from './client'
 import { listPayoutEntries } from './entry-reads'
@@ -76,23 +77,12 @@ async function readLivePostingsByEntry(
   organizationId: string,
   entryIds: readonly string[]
 ): Promise<Map<string, string>> {
-  if (!entryIds.length) return new Map()
-  const rows = await db
-    .selectDistinct({
-      sourceId: schema.GlPostingSource.sourceId,
-      glPostingId: schema.GlPostingSource.glPostingId,
-    })
-    .from(schema.GlPostingSource)
-    .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId))
-    .where(
-      and(
-        eq(schema.GlPostingSource.organizationId, organizationId),
-        eq(schema.GlPostingSource.sourceKind, 'processor_balance_entry'),
-        eq(schema.GlPostingSource.linkRole, 'member'),
-        inArray(schema.GlPostingSource.sourceId, [...new Set(entryIds)]),
-        ne(schema.GlPosting.status, 'reversed')
-      )
-    )
+  const rows = await findLinkedPostings(db, organizationId, {
+    sourceKind: 'processor_balance_entry',
+    sourceIds: entryIds,
+    linkRole: 'member',
+    statuses: ['draft', 'posted'],
+  })
   return new Map(rows.map((row) => [row.sourceId, row.glPostingId]))
 }
 
