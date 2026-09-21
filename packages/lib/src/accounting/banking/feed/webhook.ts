@@ -30,6 +30,8 @@ import { PROVIDER_ACCOUNT_ID_METADATA_KEY } from '../../../connections/hosted-pr
 import { STRIPE_FC_CONNECTOR_TYPE } from '../../../data-connectors/connectors/stripe-financial-connections'
 import { enqueueConnectorSync } from '../../../data-connectors/data-connector-queue'
 import { isSuspendedConnectorStatus } from '../../../data-connectors/data-connector-scheduler'
+import { disconnectConnectors, rearmConnector } from '../../../data-connectors/mutations'
+import { markWebhookEventReceived } from '../../../data-connectors/service'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
 import { loadBankAccountFieldContext } from '../fields'
@@ -132,10 +134,7 @@ export async function applyFinancialConnectionsEvent(
     return
   }
 
-  await db
-    .update(schema.DataConnector)
-    .set({ lastWebhookEventAt: new Date() })
-    .where(eq(schema.DataConnector.id, feed.connectorId))
+  await markWebhookEventReceived(db, feed.organizationId, [feed.connectorId])
 
   switch (event.type) {
     case 'financial_connections.account.refreshed_transactions': {
@@ -196,15 +195,13 @@ async function markFeedDisconnected(
   feed: ResolvedFeedConnector,
   eventType: string
 ): Promise<void> {
-  await db
-    .update(schema.DataConnector)
-    .set({
-      status: 'disconnected',
-      error:
-        'The bank ended this connection. Reconnect the account to start the feed again. Every ' +
-        'transaction already synced is kept.',
-    })
-    .where(eq(schema.DataConnector.id, feed.connectorId))
+  await disconnectConnectors(
+    db,
+    feed.organizationId,
+    [feed.connectorId],
+    'The bank ended this connection. Reconnect the account to start the feed again. Every ' +
+      'transaction already synced is kept.'
+  )
 
   // 🛑 The reaper's 14-day clock starts HERE, on a key of its own, because the
   // `lastWebhookEventAt` write above resets `updatedAt` on every redelivery -
@@ -221,10 +218,7 @@ async function markFeedDisconnected(
 
 /** The bank let us back in without a re-authentication. Re-arm and pull. */
 async function markFeedReconnected(db: Database, feed: ResolvedFeedConnector): Promise<void> {
-  await db
-    .update(schema.DataConnector)
-    .set({ status: 'pending', error: null })
-    .where(eq(schema.DataConnector.id, feed.connectorId))
+  await rearmConnector(db, feed.organizationId, feed.connectorId)
   // The clock stops, so a later death starts a fresh fourteen days.
   await clearFeedDisconnectedAt(db, feed.connectorId)
   await setBankAccountStatus(db, feed, 'connected')

@@ -8,16 +8,16 @@
  * (`docs/lib-module-guide.md` §6).
  */
 
-import { getCredential } from '@auxx/credentials/store'
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
+import { readAppCredential } from '../../../connections/credential-reads'
 import { readProviderAccountId as readAccountIdFromMetadata } from '../../../connections/hosted-provision/types'
 import { getProviderByKey } from '../../../connections/providers'
 import { enqueueConnectorSync } from '../../../data-connectors/data-connector-queue'
+import { disconnectConnectors } from '../../../data-connectors/mutations'
 import { getConnectorReadiness, READINESS_REASON } from '../../../data-connectors/readiness'
-import { listStreams } from '../../../data-connectors/service'
+import { getConnector, listStreams } from '../../../data-connectors/service'
 import { BadRequestError, NotFoundError } from '../../../errors'
 import { guard } from '../guard'
 import { getBankAccount } from '../reads'
@@ -109,16 +109,13 @@ export async function syncBankAccountFeed(
   return guard(
     async () => {
       const connectorId = await requireConnectorId(db, organizationId, bankAccountId)
-      const connector = await db.query.DataConnector.findFirst({
-        where: (dc, { and, eq: e }) =>
-          and(e(dc.id, connectorId), e(dc.organizationId, organizationId)),
-      })
-      if (!connector) {
+      const connector = await getConnector(db, organizationId, connectorId)
+      if (connector.isErr()) {
         throw new NotFoundError('The feed behind this bank account no longer exists')
       }
 
       const streams = await listStreams(db, organizationId, connectorId)
-      const readiness = getConnectorReadiness(connector, streams)
+      const readiness = getConnectorReadiness(connector.value, streams)
       if (!readiness.canSync) {
         const problem = readiness.problems[0]
         throw new BadRequestError(
@@ -165,32 +162,31 @@ export async function disconnectBankAccountFeed(
   return guard(
     async () => {
       const connectorId = await requireConnectorId(db, organizationId, bankAccountId)
-      const connector = await db.query.DataConnector.findFirst({
-        where: (dc, { and, eq: e }) =>
-          and(e(dc.id, connectorId), e(dc.organizationId, organizationId)),
-        columns: { id: true, credentialId: true },
-      })
+      const connector = await getConnector(db, organizationId, connectorId)
+      const credentialId = connector.isOk() ? connector.value.credentialId : null
 
       let releasedAtProvider = false
-      const providerAccountId = connector?.credentialId
-        ? await readProviderAccountId(organizationId, connector.credentialId)
+      const providerAccountId = credentialId
+        ? await readProviderAccountId(db, organizationId, credentialId)
         : null
       if (providerAccountId) {
-        releasedAtProvider = await reapBankFeedAccount(db, { connectorId, providerAccountId })
+        releasedAtProvider = await reapBankFeedAccount(db, {
+          connectorId,
+          organizationId,
+          providerAccountId,
+        })
       }
 
       // The status write happens whether or not Stripe answered. A release that failed
       // is a billing problem the nightly reaper will retry; leaving the feed reading
       // "connected" because of it would be a correctness problem on the settings page.
-      await db
-        .update(schema.DataConnector)
-        .set({
-          status: 'disconnected',
-          error:
-            'You disconnected this bank. Reconnect it to start the feed again - every ' +
-            'transaction already synced is kept.',
-        })
-        .where(eq(schema.DataConnector.id, connectorId))
+      await disconnectConnectors(
+        db,
+        organizationId,
+        [connectorId],
+        'You disconnected this bank. Reconnect it to start the feed again - every ' +
+          'transaction already synced is kept.'
+      )
 
       // The reaper's clock, on its own key: `updatedAt` is reset by every later
       // write to the row (`FEED_DISCONNECTED_AT_KEY`). Stamped even when Stripe
@@ -235,10 +231,11 @@ async function requireConnectorId(
 
 /** The `fca_...` id off a credential, or null when the row or the key has gone. */
 async function readProviderAccountId(
+  db: Database,
   organizationId: string,
   credentialId: string
 ): Promise<string | null> {
-  const credential = await getCredential(credentialId, organizationId)
-  if (credential.isErr()) return null
-  return readAccountIdFromMetadata(credential.value.metadata)
+  // The metadata-only read: this never needs the secret, so it never decrypts one.
+  const credential = await readAppCredential(db, organizationId, credentialId)
+  return credential ? readAccountIdFromMetadata(credential.metadata) : null
 }

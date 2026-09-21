@@ -19,10 +19,10 @@
  * two answers.
  */
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { toDateKey } from '@auxx/utils/calendar-day'
-import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
+import { readConnectors } from '../../data-connectors/service'
 import { NotFoundError } from '../../errors'
 import { readSystemRecords, type SystemRecord } from '../../resources/system-records'
 import {
@@ -529,25 +529,21 @@ async function readConnectorHealth(
   organizationId: string,
   connectorIds: string[]
 ): Promise<Map<string, BankConnectorHealth>> {
-  if (connectorIds.length === 0) return new Map()
-  const rows = await db
-    .select({
-      id: schema.DataConnector.id,
-      name: schema.DataConnector.name,
-      status: schema.DataConnector.status,
-      lastSyncedAt: schema.DataConnector.lastSyncedAt,
-      lastWebhookEventAt: schema.DataConnector.lastWebhookEventAt,
-      itemCount: schema.DataConnector.itemCount,
-      error: schema.DataConnector.error,
-    })
-    .from(schema.DataConnector)
-    .where(
-      and(
-        eq(schema.DataConnector.organizationId, organizationId),
-        inArray(schema.DataConnector.id, connectorIds)
-      )
-    )
-  return new Map(rows.map((row) => [row.id, row satisfies BankConnectorHealth]))
+  const rows = await readConnectors(db, organizationId, connectorIds)
+  return new Map(
+    [...rows.values()].map((row) => [
+      row.id,
+      {
+        id: row.id,
+        name: row.name,
+        status: row.status,
+        lastSyncedAt: row.lastSyncedAt,
+        lastWebhookEventAt: row.lastWebhookEventAt,
+        itemCount: row.itemCount,
+        error: row.error,
+      } satisfies BankConnectorHealth,
+    ])
+  )
 }
 
 /**

@@ -25,11 +25,10 @@
  * No permission checks. The router asserts `ledgerPost` (`docs/lib-module-guide.md` §6).
  */
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
-import { eq } from 'drizzle-orm'
 import { getCachedCustomFields, getCachedEntityDefId } from '../../../cache'
 import {
   FC_ACCOUNTS_STREAM,
@@ -40,8 +39,10 @@ import {
   addMapping,
   addStream,
   createConnector,
+  rearmConnector,
   updateConnector,
 } from '../../../data-connectors/mutations'
+import { findConnectorByCredential } from '../../../data-connectors/service'
 import type { FieldMapping } from '../../../data-connectors/types'
 import { UnprocessableEntityError } from '../../../errors'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
@@ -106,13 +107,9 @@ export async function provisionBankFeed(
     )
   }
 
-  const existing = await db.query.DataConnector.findFirst({
-    where: (dc, { and, eq: e }) =>
-      and(
-        e(dc.organizationId, organizationId),
-        e(dc.type, STRIPE_FC_CONNECTOR_TYPE),
-        e(dc.credentialId, credentialId)
-      ),
+  const existing = await findConnectorByCredential(db, organizationId, {
+    type: STRIPE_FC_CONNECTOR_TYPE,
+    credentialId,
   })
   if (existing) {
     const repaired = await repairBankFeed(db, {
@@ -210,10 +207,7 @@ async function repairBankFeed(
   // 🛑 `disconnected` is load-bearing state, not a label. Moving OFF it is the whole
   // point of a reconnect, and moving off it any OTHER way is what removes a connector
   // from every repair path there is.
-  await db
-    .update(schema.DataConnector)
-    .set({ status: 'pending', error: null })
-    .where(eq(schema.DataConnector.id, connectorId))
+  await rearmConnector(db, organizationId, connectorId)
 
   // 🛑 Scoped to the connector-id FIELD, never `valueText` alone. Every TEXT cell in the
   // org lives in one table, so an unfielded match on a cuid would happily return some

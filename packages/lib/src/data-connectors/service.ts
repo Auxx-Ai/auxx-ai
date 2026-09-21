@@ -8,12 +8,14 @@ import { type Database, database as defaultDb, schema, type Transaction } from '
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
+import { NotFoundError } from '../errors'
 import type { SyncChangeManifest, SyncChangeManifestV1 } from '../record-rules/sync-manifest-types'
 import type { SyncRunErrorSample } from '../sync-core/contracts'
 import { hashCatalogConnectorSection, selectCatalogConnector } from './catalog-shape'
 import { maxLevel } from './edit-impact'
 import { completeRunStream, isRunPauseRequested } from './run-control'
 import type {
+  DataConnectorType,
   FieldMapping,
   LinkMode,
   OrphanBehavior,
@@ -1386,17 +1388,72 @@ async function catalogUpdateFlags(
 
 /** Get one connector by id, org-scoped. */
 export async function getConnector(
-  db: Database,
+  db: DbOrTx,
   organizationId: string,
   id: string
 ): Promise<Result<DataConnectorRow, Error>> {
-  const row = await db.query.DataConnector.findFirst({
+  const rows = await readConnectors(db, organizationId, [id])
+  const row = rows.get(id)
+  return row ? ok(row) : err(new NotFoundError(`DataConnector not found: ${id}`))
+}
+
+/** Connectors by id, org-scoped, keyed by id. The batch {@link getConnector} derives from. */
+export async function readConnectors(
+  db: DbOrTx,
+  organizationId: string,
+  ids: string[]
+): Promise<Map<string, DataConnectorRow>> {
+  if (ids.length === 0) return new Map()
+  const rows = await db.query.DataConnector.findMany({
     where: and(
-      eq(schema.DataConnector.id, id),
-      eq(schema.DataConnector.organizationId, organizationId)
+      eq(schema.DataConnector.organizationId, organizationId),
+      inArray(schema.DataConnector.id, ids)
     ),
   })
-  return row ? ok(row) : err(new Error(`DataConnector not found: ${id}`))
+  return new Map(rows.map((row) => [row.id, row]))
+}
+
+/**
+ * The connector of one type bound to one credential, org-scoped. The reconnect
+ * probe: a provider hands back a credential, not a connector id.
+ */
+export async function findConnectorByCredential(
+  db: DbOrTx,
+  organizationId: string,
+  filter: { type: DataConnectorType; credentialId: string }
+): Promise<DataConnectorRow | null> {
+  const row = await db.query.DataConnector.findFirst({
+    where: and(
+      eq(schema.DataConnector.organizationId, organizationId),
+      eq(schema.DataConnector.type, filter.type),
+      eq(schema.DataConnector.credentialId, filter.credentialId)
+    ),
+  })
+  return row ?? null
+}
+
+/**
+ * Every connector id bound to one credential. Deliberately NOT org-scoped: the
+ * caller's question is "does anything else still hold this login", and a credential
+ * belongs to one org anyway.
+ */
+export async function listConnectorIdsForCredential(
+  db: DbOrTx,
+  credentialId: string,
+  options: { excludeConnectorId?: string } = {}
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: schema.DataConnector.id })
+    .from(schema.DataConnector)
+    .where(
+      and(
+        eq(schema.DataConnector.credentialId, credentialId),
+        options.excludeConnectorId
+          ? ne(schema.DataConnector.id, options.excludeConnectorId)
+          : undefined
+      )
+    )
+  return rows.map((row) => row.id)
 }
 
 /**

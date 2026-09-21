@@ -41,7 +41,7 @@ function fakeDeps() {
 describe('runAdoptionPreflight', () => {
   it('composes the sweep, lookup and classification into one report', async () => {
     const { db, writesAttempted } = makeFakeDb({
-      queryFindFirst: { DataConnector: [makeConnectorRow()] },
+      queryFindFirst: { DataConnector: [[makeConnectorRow()]] },
     })
 
     const result = await runAdoptionPreflight(
@@ -82,7 +82,7 @@ describe('runAdoptionPreflight', () => {
 
   it('running twice against unchanged input is idempotent and never writes either time', async () => {
     const { db, writesAttempted } = makeFakeDb({
-      queryFindFirst: { DataConnector: [makeConnectorRow(), makeConnectorRow()] },
+      queryFindFirst: { DataConnector: [[makeConnectorRow()], [makeConnectorRow()]] },
     })
     const deps = fakeDeps()
     const input = { organizationId: 'org_1', connectorId: 'connector_1' }

@@ -51,6 +51,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { PROVIDER_ACCOUNT_ID_METADATA_KEY } from '../../../connections/hosted-provision/types'
 import { STRIPE_FC_CONNECTOR_TYPE } from '../../../data-connectors/connectors/stripe-financial-connections-type'
+import { disconnectConnectors } from '../../../data-connectors/mutations'
 import { disconnectAccountAtStripe, FC_PROVIDER_KEY } from './fc-client'
 
 const logger = createScopedLogger('banking-feed-reaper')
@@ -145,6 +146,9 @@ export interface ReapCandidate extends BankFeedAccountRef {
  * so every path that wants to release an account has to make this join. Sharing the
  * projection is what stops door 3 or door 4 inventing its own and quietly reading the
  * wrong key.
+ *
+ * Raw, and staying raw: it joins `Credential` for a key only the bank feed knows, so
+ * `data-connectors/` cannot own it without learning that bank feeds exist (decision B13).
  */
 const feedAccountColumns = {
   connectorId: schema.DataConnector.id,
@@ -319,19 +323,17 @@ export async function findReapableBankFeeds(
  */
 export async function reapBankFeedAccount(
   db: Database,
-  candidate: Pick<ReapCandidate, 'connectorId' | 'providerAccountId'>
+  candidate: Pick<ReapCandidate, 'connectorId' | 'organizationId' | 'providerAccountId'>
 ): Promise<boolean> {
   const released = await disconnectAccountAtStripe(candidate.providerAccountId)
   if (!released) return false
-  await db
-    .update(schema.DataConnector)
-    .set({
-      status: 'disconnected',
-      error:
-        'This bank account was released at Stripe so it stops being billed. Reconnect the bank ' +
-        'to start the feed again - every transaction already synced is kept.',
-    })
-    .where(eq(schema.DataConnector.id, candidate.connectorId))
+  await disconnectConnectors(
+    db,
+    candidate.organizationId,
+    [candidate.connectorId],
+    'This bank account was released at Stripe so it stops being billed. Reconnect the bank ' +
+      'to start the feed again - every transaction already synced is kept.'
+  )
   // Write-once, so a row the sweep already reaped keeps the date it actually died.
   await stampFeedDisconnectedAt(db, candidate.connectorId)
   return true

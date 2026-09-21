@@ -15,8 +15,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const enqueueConnectorSync = vi.fn(async () => {})
 const refreshBankAccountCoverage = vi.fn(async () => 0)
 const crudUpdate = vi.fn(async () => ({}))
+const SUSPENDED = ['paused', 'disconnected', 'deleting', 'delete_failed']
+const removeConnectorScheduler = vi.fn(async () => {})
+const syncConnectorScheduler = vi.fn(async () => {})
 
 vi.mock('../../../../data-connectors/data-connector-queue', () => ({ enqueueConnectorSync }))
+// Disconnect removes the connector's BullMQ schedulers and the re-arm puts them back;
+// the queue itself is not under test.
+vi.mock('../../../../data-connectors/data-connector-scheduler', () => ({
+  removeConnectorScheduler,
+  syncConnectorScheduler,
+  SUSPENDED_CONNECTOR_STATUSES: SUSPENDED,
+  isSuspendedConnectorStatus: (status: string) => SUSPENDED.includes(status),
+}))
 vi.mock('../coverage', () => ({ refreshBankAccountCoverage }))
 vi.mock('../../fields', () => ({
   loadBankAccountFieldContext: async () => ({
@@ -48,11 +59,14 @@ function fakeDb(feedRow: Record<string, unknown> | null) {
       }),
     }),
     update: () => ({
-      set: (values: Record<string, unknown>) => ({
-        where: async () => {
+      set: (values: Record<string, unknown>) => {
+        const run = async () => {
           updates.push(values)
-        },
-      }),
+          return [{ id: 'conn_1', ...values }]
+        }
+        // `.returning()` too: the re-arm reads the row back to re-register its scheduler.
+        return { where: () => Object.assign(run(), { returning: run }) }
+      },
     }),
     query: {
       FieldValue: { findFirst: async () => ({ entityId: 'inst_bank_account' }) },
@@ -78,6 +92,8 @@ beforeEach(() => {
   enqueueConnectorSync.mockClear()
   refreshBankAccountCoverage.mockClear()
   crudUpdate.mockClear()
+  removeConnectorScheduler.mockClear()
+  syncConnectorScheduler.mockClear()
 })
 
 describe('isFinancialConnectionsEvent', () => {
@@ -149,6 +165,7 @@ describe('applyFinancialConnectionsEvent', () => {
     await applyFinancialConnectionsEvent(event('financial_connections.account.deactivated'), db)
     const status = db.updates.find((u) => u.status === 'disconnected')
     expect(status).toBeDefined()
+    expect(removeConnectorScheduler).toHaveBeenCalledWith('conn_1')
     // `classifyConnectorError` matches on the word, which is what routes the connector
     // to `action-needed` with a Reconnect rather than a Retry that cannot work.
     expect(String(status?.error)).toMatch(/Reconnect/i)
@@ -170,6 +187,9 @@ describe('applyFinancialConnectionsEvent', () => {
     // 🛑 Off `disconnected` deliberately and only here - anything else that moves a
     // connector off that status removes it from the repair path permanently.
     expect(db.updates.some((u) => u.status === 'pending' && u.error === null)).toBe(true)
+    // 🛑 And the scheduler goes back with it: the disconnect that preceded this removed
+    // it, so a status-only re-arm would leave a feed that never fires again.
+    expect(syncConnectorScheduler).toHaveBeenCalled()
     expect(crudUpdate).toHaveBeenCalledWith('def_bank_account:inst_bank_account', {
       bank_account_status: 'connected',
     })

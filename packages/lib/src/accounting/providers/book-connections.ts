@@ -9,6 +9,7 @@ import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAudit } from '../../audit-log'
 import { listAppCredentials, readAppCredential } from '../../connections/credential-reads'
+import { setDefaultAppCredential } from '../../connections/credential-writes'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
 import { canonicalAccountingJson } from '../ledger/builders/basis-hash'
 import { withAccountingCommitLock } from '../ledger/post/accounting-commit-lock'
@@ -320,26 +321,10 @@ export async function activateAccountingBookConnectionInTx(
     })
     .returning()
   if (!connection) throw new Error('Failed to create accounting connection identity')
-  await tx
-    .update(schema.Credential)
-    .set({ isDefault: false, updatedAt: new Date() })
-    .where(
-      and(
-        eq(schema.Credential.organizationId, input.organizationId),
-        eq(schema.Credential.appId, credential.appId),
-        isNull(schema.Credential.userId),
-        ne(schema.Credential.id, credential.id)
-      )
-    )
-  await tx
-    .update(schema.Credential)
-    .set({ isDefault: true, updatedAt: new Date() })
-    .where(
-      and(
-        eq(schema.Credential.organizationId, input.organizationId),
-        eq(schema.Credential.id, credential.id)
-      )
-    )
+  await setDefaultAppCredential(tx, input.organizationId, {
+    appId: credential.appId,
+    credentialId: credential.id,
+  })
   await recordAudit(
     {
       organizationId: input.organizationId,
